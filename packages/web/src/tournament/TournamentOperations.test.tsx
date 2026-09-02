@@ -427,7 +427,10 @@ describe('TournamentOperations', () => {
     const dialog = screen.getByRole('dialog', { name: 'Перенести регулярный сезон' });
     expect(dialog).toHaveTextContent('Регистрация останется без изменений');
     expect(dialog).toHaveTextContent('регулярный сезон и плей-офф');
-    fireEvent.change(within(dialog).getByLabelText('Новая дата первого тура'), {
+    const newFirstMatchday = within(dialog).getByLabelText('Новая дата первого тура');
+    expect(newFirstMatchday).toHaveAttribute('min');
+    expect(dialog).toHaveTextContent('Выберите будущую дату');
+    fireEvent.change(newFirstMatchday, {
       target: { value: '2030-09-05' },
     });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Перенести расписание' }));

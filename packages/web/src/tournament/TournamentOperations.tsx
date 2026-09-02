@@ -215,6 +215,37 @@ function tournamentDate(value: string | null | undefined, timezone: string): str
   }
 }
 
+function nextTournamentLocalDate(timezone: string, now = new Date()): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(now);
+    const year = Number(parts.find((part) => part.type === 'year')?.value);
+    const month = Number(parts.find((part) => part.type === 'month')?.value);
+    const day = Number(parts.find((part) => part.type === 'day')?.value);
+    if (Number.isInteger(year) && Number.isInteger(month) && Number.isInteger(day)) {
+      return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
+    }
+  } catch {
+    // Fall back to UTC when an old browser does not recognize the tournament timezone.
+  }
+  return new Date(now.getTime() + 86_400_000).toISOString().slice(0, 10);
+}
+
+function readableDateOnly(value: string): string {
+  const date = new Date(`${value}T12:00:00.000Z`);
+  if (!Number.isFinite(date.getTime())) return value;
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'UTC',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(date);
+}
+
 function lifecycleDate(value: string | null, timezone: string): string | null {
   if (value === null) return null;
   const date = new Date(value);
@@ -928,6 +959,7 @@ export function TournamentOperations({
   const canEditRules = ['draft', 'registration', 'registration_blocked'].includes(status);
   const canEditPlayoffSchedule = status === 'playoff';
   const tournamentTimezone = String(tournament.rules?.config?.timezone ?? 'Europe/Moscow');
+  const minimumScheduleShiftDate = nextTournamentLocalDate(tournamentTimezone);
   const currentLifecycleMessage = lifecycleMessage(tournament, tournamentTimezone);
   const canGenerateBlockedHeadToHeadSchedule =
     tournament.regularSource === 'head_to_head' &&
@@ -1701,11 +1733,13 @@ export function TournamentOperations({
               <input
                 type="date"
                 aria-label="Новая дата первого тура"
+                min={minimumScheduleShiftDate}
                 value={scheduleShiftDate}
                 onChange={(event) => setScheduleShiftDate(event.target.value)}
               />
             </label>
             <p className="tournament-schedule-shift__note">
+              Выберите будущую дату, не раньше {readableDateOnly(minimumScheduleShiftDate)}.
               Регистрация останется без изменений. Перенос доступен только до фактического старта
               игр.
             </p>
@@ -1718,7 +1752,7 @@ export function TournamentOperations({
               <button
                 type="button"
                 className="modal-primary btn btn--cta"
-                disabled={scheduleShiftDate === '' || shiftSchedule.isPending}
+                disabled={scheduleShiftDate < minimumScheduleShiftDate || shiftSchedule.isPending}
                 onClick={() => shiftSchedule.mutate()}
               >
                 {shiftSchedule.isPending ? 'Переносим…' : 'Перенести расписание'}

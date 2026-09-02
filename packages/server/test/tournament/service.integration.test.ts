@@ -1551,6 +1551,19 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       [tournament.id],
     );
 
+    await expect(
+      shiftTournamentSchedule(pool, {
+        tournamentId: tournament.id,
+        expectedRevision: tournament.revision,
+        firstMatchdayLocalDate: '2030-09-02',
+        adminUserId: ADMIN_ID,
+        now: new Date('2030-09-02T12:00:00.000Z'),
+      }),
+    ).rejects.toMatchObject({
+      code: 'tournament_schedule_date_not_future',
+      statusCode: 400,
+    });
+
     const shifted = await shiftTournamentSchedule(pool, {
       tournamentId: tournament.id,
       expectedRevision: tournament.revision,
@@ -2222,7 +2235,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(fixture.rows[0]!.scheduled_starts_at.toISOString()).toBe('2030-09-03T07:00:00.000Z');
   });
 
-  it('reschedules every unstarted playoff game when an admin changes the published round dates', async () => {
+  it('reschedules every unstarted playoff game from a legacy rules snapshot', async () => {
     await seedUsers(pool, 0);
     const template = await pool.query<{ id: string }>(
       `select id from amateur_duel_template
@@ -2239,6 +2252,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
           readinessMinutes: 5,
           plannedStartIntervalMinutes: 20,
           roundBreakMs: 0,
+          overtime: { count: 1, shootoutInitialShots: 3 },
           firstGameStartsAt: '2030-09-05T07:00:00.000Z',
           scheduleDays: [
             { localDate: '2030-09-05', firstWaveLocalTime: '10:00', maxResultGames: 2 },
@@ -2247,6 +2261,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         },
       ],
     });
+    delete initialRules.regularDuelTemplateId;
     const tournament = await createPublishedTournament(
       pool,
       'published-playoff-reschedule',
@@ -2256,11 +2271,28 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
     await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
 
+    const updatedRound = {
+      ...(initialRules.playoffRounds as Array<Record<string, unknown>>)[0],
+    };
+    delete updatedRound.overtime;
     const updatedRules: TournamentRulesSnapshot = {
       ...initialRules,
+      regularDuelTemplateId: null,
+      regularScoring: {
+        regulationWin: 3,
+        overtimeWin: 2,
+        overtimeLoss: 1,
+        draw: 1,
+        loss: 0,
+        technicalLoss: 0,
+      },
+      dailyPlacePoints: [],
+      notificationReminderOffsetsMs: [1_800_000, 300_000],
+      notificationDeadlineLeadMs: 1_800_000,
+      notificationOverrides: {},
       playoffRounds: [
         {
-          ...(initialRules.playoffRounds as Array<Record<string, unknown>>)[0],
+          ...updatedRound,
           firstGameStartsAt: '2030-09-10T08:00:00.000Z',
           scheduleDays: [
             { localDate: '2030-09-10', firstWaveLocalTime: '11:00', maxResultGames: 2 },
@@ -2283,6 +2315,18 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
 
     expect(updated.status).toBe('playoff');
     expect(updated.revision).toBe(tournament.revision + 1);
+    const storedRevision = await pool.query<{ rules_snapshot: TournamentRulesSnapshot }>(
+      `select rules_snapshot from tournament_revision
+        where tournament_id = $1 and revision = $2`,
+      [tournament.id, updated.revision],
+    );
+    expect(storedRevision.rows[0]!.rules_snapshot).not.toHaveProperty('regularDuelTemplateId');
+    expect(storedRevision.rows[0]!.rules_snapshot).not.toHaveProperty(
+      'notificationReminderOffsetsMs',
+    );
+    expect(storedRevision.rows[0]!.rules_snapshot).toMatchObject({
+      playoffRounds: [expect.objectContaining({ overtime: { count: 1, shootoutInitialShots: 3 } })],
+    });
     const fixtures = await pool.query<{
       game_number: number;
       fixture_starts_at: Date;
@@ -2409,8 +2453,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         startsAt: new Date('2030-09-01T07:00:00.000Z'),
       }),
     ).rejects.toMatchObject({
-      code: 'conflict',
+      code: 'playoff_round_started',
       message: 'Раунд 1 уже начался. Перенесите оставшиеся игры отдельно в календаре',
+      details: { roundNumber: 1 },
     });
 
     const unchanged = await pool.query<{
@@ -2430,6 +2475,101 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       firstAttempt.rows[0]!.scheduled_starts_at.toISOString(),
     );
     expect(unchanged.rows[0]!.home_ready_at).not.toBeNull();
+  });
+
+  it('reschedules a playoff round whose readiness window opened but nobody confirmed', async () => {
+    await seedUsers(pool, 0);
+    const template = await pool.query<{ id: string }>(
+      `select id from amateur_duel_template
+        where deleted_at is null and is_active
+        order by created_at limit 1`,
+    );
+    const initialRules = playoffTournamentRules(2, {
+      playoffRounds: [
+        {
+          roundNumber: 1,
+          winsRequired: 2,
+          homeSequence: ['H', 'A', 'H'],
+          duelTemplateId: template.rows[0]!.id,
+          readinessMinutes: 5,
+          plannedStartIntervalMinutes: 20,
+          roundBreakMs: 0,
+          firstGameStartsAt: '2030-09-05T07:00:00.000Z',
+          scheduleDays: [
+            { localDate: '2030-09-05', firstWaveLocalTime: '10:00', maxResultGames: 2 },
+            { localDate: '2030-09-06', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+          ],
+        },
+      ],
+    });
+    const tournament = await createPublishedTournament(
+      pool,
+      'published-playoff-unattended-readiness-reschedule',
+      0,
+      initialRules,
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+    const firstFixture = await pool.query<{ id: string; attempt_id: string }>(
+      `select fixture.id, attempt.id as attempt_id
+         from tournament_fixture fixture
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+        where fixture.tournament_id = $1
+        order by fixture.fixture_number
+        limit 1`,
+      [tournament.id],
+    );
+    await pool.query(`update tournament_fixture set status = 'active' where id = $1`, [
+      firstFixture.rows[0]!.id,
+    ]);
+    await pool.query(`update tournament_fixture_attempt set status = 'ready_check' where id = $1`, [
+      firstFixture.rows[0]!.attempt_id,
+    ]);
+
+    const updatedRules: TournamentRulesSnapshot = {
+      ...initialRules,
+      playoffRounds: [
+        {
+          ...(initialRules.playoffRounds as Array<Record<string, unknown>>)[0],
+          firstGameStartsAt: '2030-09-10T08:00:00.000Z',
+          scheduleDays: [
+            { localDate: '2030-09-10', firstWaveLocalTime: '11:00', maxResultGames: 2 },
+            { localDate: '2030-09-11', firstWaveLocalTime: '11:00', maxResultGames: 1 },
+          ],
+        },
+      ],
+    };
+    await expect(
+      updateTournamentDraft(pool, {
+        tournamentId: tournament.id,
+        expectedRevision: tournament.revision,
+        title: 'Integration Championship',
+        description: 'Tournament integration test',
+        rules: updatedRules,
+        updatedBy: ADMIN_ID,
+        registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+        registrationClosesAt: new Date('2030-08-31T07:00:00.000Z'),
+        startsAt: new Date('2030-09-01T07:00:00.000Z'),
+      }),
+    ).resolves.toMatchObject({ revision: tournament.revision + 1 });
+
+    const rescheduled = await pool.query<{
+      fixture_status: string;
+      attempt_status: string;
+      scheduled_starts_at: Date;
+    }>(
+      `select fixture.status as fixture_status, attempt.status as attempt_status,
+              attempt.scheduled_starts_at
+         from tournament_fixture fixture
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+        where fixture.id = $1`,
+      [firstFixture.rows[0]!.id],
+    );
+    expect(rescheduled.rows[0]).toMatchObject({
+      fixture_status: 'scheduled',
+      attempt_status: 'pending',
+      scheduled_starts_at: new Date('2030-09-10T08:00:00.000Z'),
+    });
   });
 
   it('rebases each scheduled playoff round after the prior rebased round and its break', async () => {
