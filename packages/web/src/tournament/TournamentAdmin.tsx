@@ -807,8 +807,13 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
           requiredInteger(round.gameBreakMinutes, `${prefix}: пауза между играми, минуты`, 0) *
           60_000,
         roundBreakMs:
-          requiredInteger(round.roundBreakMinutes, `${prefix}: пауза после раунда, минуты`, 0) *
-          60_000,
+          round.preserveLegacySchedule === true && round.scheduleTouched !== true
+            ? requiredInteger(
+                round.roundBreakMinutes,
+                `${prefix}: пауза после раунда, минуты`,
+                0,
+              ) * 60_000
+            : 0,
         firstGameStartsAt: dateOrNull(round.firstGameNotBefore, draft.timezone),
         readinessMinutes: requiredInteger(
           round.readinessMinutes,
