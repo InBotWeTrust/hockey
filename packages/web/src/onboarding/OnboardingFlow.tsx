@@ -115,8 +115,9 @@ export function OnboardingFlow({ runId, required, onCompleted }: OnboardingFlowP
             runId={runId}
             step={step}
             goalConfirmed={confirmedTutorialSteps.current.has(step.id)}
+            canGoBack={stepIndex > 0}
             onGoalConfirmed={() => confirmedTutorialSteps.current.add(step.id)}
-            onBack={() => setStepIndex((current) => current - 1)}
+            onBack={() => setStepIndex((current) => Math.max(0, current - 1))}
             onContinue={advance}
           />
         )}

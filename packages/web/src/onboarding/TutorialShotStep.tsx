@@ -19,6 +19,7 @@ interface TutorialShotStepProps {
   runId: string;
   step: Extract<OnboardingStep, { kind: 'tutorial_shot' }>;
   goalConfirmed: boolean;
+  canGoBack?: boolean;
   onGoalConfirmed: () => void;
   onBack: () => void;
   onContinue: () => void;
@@ -41,6 +42,7 @@ export function TutorialShotStep({
   runId,
   step,
   goalConfirmed: preservedGoal,
+  canGoBack = true,
   onGoalConfirmed,
   onBack,
   onContinue,
@@ -49,7 +51,12 @@ export function TutorialShotStep({
   const [state, setState] = useState<TutorialState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [shotError, setShotError] = useState(false);
   const startedRef = useRef(false);
+  const reduceMotion =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const load = useCallback(async (): Promise<void> => {
     if (startedRef.current) return;
@@ -101,6 +108,8 @@ export function TutorialShotStep({
           suppressedByModal={false}
           showIceCar={false}
           onBack={onBack}
+          hideBackAction
+          reduceMotion={reduceMotion}
           active
           seed={session.seed}
           goalieId={session.goalieId}
@@ -144,16 +153,27 @@ export function TutorialShotStep({
             post: 'Ещё раз',
             goal: 'Первая шайба!',
           }}
+          onSubmitError={() => setShotError(true)}
         />
       </div>
+      {shotError && (
+        <div className="onboarding-flow__error" role="alert">
+          <span>Не удалось отправить бросок. Проверьте соединение.</span>
+          <button className="btn btn--ghost" type="button" onClick={() => setShotError(false)}>
+            Попробовать ещё раз
+          </button>
+        </div>
+      )}
       <div className="onboarding-flow__copy">
         <h1>{step.title}</h1>
         <p>{step.description}</p>
       </div>
       <div className="onboarding-flow__actions">
-        <button className="btn btn--ghost" type="button" onClick={onBack}>
-          Назад
-        </button>
+        {canGoBack && (
+          <button className="btn btn--ghost" type="button" onClick={onBack}>
+            Назад
+          </button>
+        )}
         <button
           className="btn btn--cta"
           type="button"

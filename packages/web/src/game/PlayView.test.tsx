@@ -351,8 +351,11 @@ describe('PlayView', () => {
     );
 
     const shotButton = screen.getByRole('button', { name: 'БРОСОК' });
-    fireEvent.click(shotButton);
-    await act(async () => Promise.resolve());
+    await act(async () => {
+      fireEvent.click(shotButton);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     expect(shotButton).toBeDisabled();
     expect(applyResolvedState).not.toHaveBeenCalled();
@@ -461,5 +464,111 @@ describe('PlayView', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('Ещё раз');
     expect(screen.getByRole('status')).not.toHaveTextContent('Первая шайба!');
+  });
+
+  it('recovers from a rejected shot submission and reports the retryable error', async () => {
+    vi.useFakeTimers();
+    const onSubmitError = vi.fn();
+    const submitShot = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ serverResult: 'miss', state: {} });
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="submit-retry-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotResolver={() => ({ type: 'miss', reason: 'wide' })}
+        optimisticAddShot={() => undefined}
+        submitShot={submitShot}
+        applyState={() => undefined}
+        onSubmitError={onSubmitError}
+      />,
+    );
+    const shotButton = screen.getByRole('button', { name: 'БРОСОК' });
+
+    await act(async () => {
+      fireEvent.click(shotButton);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(onSubmitError).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTimeAsync(1_500));
+    await act(async () => {
+      fireEvent.click(shotButton);
+      await Promise.resolve();
+    });
+
+    expect(submitShot).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not report a rejected shot after unmount', async () => {
+    let rejectShot!: (error: unknown) => void;
+    const pending = new Promise<never>((_resolve, reject) => {
+      rejectShot = reject;
+    });
+    const onSubmitError = vi.fn();
+    const view = render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="stale-submit-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotResolver={() => ({ type: 'miss', reason: 'wide' })}
+        optimisticAddShot={() => undefined}
+        submitShot={() => pending}
+        applyState={() => undefined}
+        onSubmitError={onSubmitError}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    view.unmount();
+    rejectShot(new Error('late'));
+    await act(async () => Promise.resolve());
+
+    expect(onSubmitError).not.toHaveBeenCalled();
+  });
+
+  it('can hide its internal back action and shorten animation for reduced motion', async () => {
+    vi.useFakeTimers();
+    const applyState = vi.fn();
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        hideBackAction
+        reduceMotion
+        active
+        seed="reduced-motion-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotResolver={() => ({ type: 'miss', reason: 'wide' })}
+        optimisticAddShot={() => undefined}
+        submitShot={async () => ({ serverResult: 'miss', state: {} })}
+        applyState={applyState}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'К режимам' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => vi.advanceTimersByTimeAsync(5));
+    expect(applyState).toHaveBeenCalledWith({});
   });
 });

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -208,5 +208,83 @@ describe('TutorialShotStep', () => {
     expect(onboardingCss).toMatch(
       /\.onboarding-tutorial__rink\s*>\s*main\s*\{[^}]*position:\s*absolute\s*!important/s,
     );
+  });
+
+  it('shows exactly one outer Back later in the flow and hides PlayView navigation', async () => {
+    render(
+      <TutorialShotStep
+        runId="run-1"
+        step={step}
+        goalConfirmed={false}
+        canGoBack
+        onGoalConfirmed={vi.fn()}
+        onBack={vi.fn()}
+        onContinue={vi.fn()}
+      />,
+    );
+    await screen.findByTestId('play-view');
+
+    expect(screen.getAllByRole('button', { name: 'Назад' })).toHaveLength(1);
+    expect(playProps?.hideBackAction).toBe(true);
+  });
+
+  it('has no Back when the server publishes the tutorial as the first step', async () => {
+    render(
+      <TutorialShotStep
+        runId="run-1"
+        step={step}
+        goalConfirmed={false}
+        canGoBack={false}
+        onGoalConfirmed={vi.fn()}
+        onBack={vi.fn()}
+        onContinue={vi.fn()}
+      />,
+    );
+    await screen.findByTestId('play-view');
+
+    expect(screen.queryByRole('button', { name: 'Назад' })).not.toBeInTheDocument();
+  });
+
+  it('detects reduced motion before mounting the shot surface', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: true })),
+    );
+    render(
+      <TutorialShotStep
+        runId="run-1"
+        step={step}
+        goalConfirmed={false}
+        canGoBack
+        onGoalConfirmed={vi.fn()}
+        onBack={vi.fn()}
+        onContinue={vi.fn()}
+      />,
+    );
+    await screen.findByTestId('play-view');
+
+    expect(playProps?.reduceMotion).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it('shows a retryable shot error and leaves another attempt available', async () => {
+    render(
+      <TutorialShotStep
+        runId="run-1"
+        step={step}
+        goalConfirmed={false}
+        canGoBack
+        onGoalConfirmed={vi.fn()}
+        onBack={vi.fn()}
+        onContinue={vi.fn()}
+      />,
+    );
+    await screen.findByTestId('play-view');
+    act(() => playProps?.onSubmitError?.(new Error('offline')));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось отправить бросок');
+    fireEvent.click(screen.getByRole('button', { name: 'Попробовать ещё раз' }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mock shot' })).toBeEnabled();
   });
 });

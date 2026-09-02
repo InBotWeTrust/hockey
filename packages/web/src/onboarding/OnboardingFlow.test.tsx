@@ -13,11 +13,13 @@ let tutorialGoalConfirmed = false;
 vi.mock('./TutorialShotStep.js', () => ({
   TutorialShotStep: ({
     goalConfirmed,
+    canGoBack,
     onGoalConfirmed,
     onBack,
     onContinue,
   }: {
     goalConfirmed: boolean;
+    canGoBack: boolean;
     onGoalConfirmed: () => void;
     onBack: () => void;
     onContinue: () => void;
@@ -28,9 +30,11 @@ vi.mock('./TutorialShotStep.js', () => ({
         <button type="button" onClick={onGoalConfirmed}>
           Confirm goal
         </button>
-        <button type="button" onClick={onBack}>
-          Tutorial Back
-        </button>
+        {canGoBack && (
+          <button type="button" onClick={onBack}>
+            Tutorial Back
+          </button>
+        )}
         <button type="button" onClick={onContinue}>
           Tutorial Next
         </button>
@@ -251,5 +255,28 @@ describe('OnboardingFlow', () => {
 
     expect(await screen.findByTestId('tutorial-step')).toBeInTheDocument();
     expect(tutorialGoalConfirmed).toBe(true);
+  });
+
+  it('does not decrement below zero when tutorial is the first published step', async () => {
+    const tutorialOnly: OnboardingRequired = {
+      chain: 'beginner',
+      versionId: 'beginner-v2',
+      steps: [
+        {
+          id: 'tutorial-first',
+          position: 1,
+          kind: 'tutorial_shot',
+          title: 'Первая шайба',
+          description: 'Забей гол',
+          ctaLabel: 'Далее',
+          tutorial: { shooterFrequency: 0.2, goalieFrequency: 0.3, goalFrequency: 0.1 },
+        },
+      ],
+    };
+    render(<OnboardingFlow runId="run-1" required={tutorialOnly} onCompleted={vi.fn()} />);
+
+    expect(await screen.findByTestId('tutorial-step')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tutorial Back' })).not.toBeInTheDocument();
+    expect(screen.getByText('1 из 1')).toBeInTheDocument();
   });
 });

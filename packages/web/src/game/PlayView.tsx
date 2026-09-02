@@ -300,6 +300,9 @@ export interface PlayViewProps<TState> {
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
   readyPresence?: ReadyPresence | undefined;
   resultCopy?: Partial<Record<ResultModalKind, string>> | undefined;
+  onSubmitError?: ((error: unknown) => void) | undefined;
+  hideBackAction?: boolean | undefined;
+  reduceMotion?: boolean | undefined;
 }
 
 export interface ReadyPresence {
@@ -564,6 +567,9 @@ export function PlayView<TState>({
   scoreboardOpponent,
   readyPresence,
   resultCopy,
+  onSubmitError,
+  hideBackAction = false,
+  reduceMotion = false,
 }: PlayViewProps<TState>): JSX.Element {
   const session: PlaySessionSnapshot = useMemo(
     () => ({
@@ -1452,6 +1458,8 @@ export function PlayView<TState>({
     let subText: string | null = null;
     let displayKind: ResultModalKind = result.type;
     const flightMs = (PUCK_START.y - GOAL_OPENING.y) / puckSpeed;
+    const visualFlightMs = reduceMotion ? 0 : flightMs;
+    const visualPauseMs = reduceMotion ? 1 : PAUSE_MS;
     const tGoalCross = tapTime + flightMs;
     const tGoalieCross = tapTime + (PUCK_START.y - GOALIE_Y) / puckSpeed;
     if (result.type === 'save') {
@@ -1498,7 +1506,7 @@ export function PlayView<TState>({
     loop.beginShooterPause();
     playerRef.current?.playShot();
     const puckShotPath = puck.shotPath(sx, GOAL_OPENING.y);
-    puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), flightMs);
+    puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), visualFlightMs);
 
     const scheduleShotTimeout = (fn: () => void, delay: number): void => {
       const id = window.setTimeout(() => {
@@ -1520,7 +1528,7 @@ export function PlayView<TState>({
       setResultSubText(subText);
       setResultDisplayKind(authoritativeResultRef.current ?? displayKind);
       setIsShowingResult(true);
-    }, flightMs);
+    }, visualFlightMs);
 
     scheduleShotTimeout(() => {
       loop.endScenePause();
@@ -1540,29 +1548,45 @@ export function PlayView<TState>({
         applyPending();
         pendingMidShotApplyRef.current = null;
       }
-    }, flightMs + PAUSE_MS);
+    }, visualFlightMs + visualPauseMs);
 
     void submitShot({
       shotIndex,
       input,
       claimedResult: result.type,
-    }).then((res) => {
-      if (!mountedRef.current) return;
-      shotSubmitPendingRef.current = false;
-      setIsShotSubmitPending(false);
-      if (res === null) return;
-      if (resultCopy) {
-        authoritativeResultRef.current = res.serverResult;
-        setResultDisplayKind(res.serverResult);
-      }
-      const applyNextState = () => (applyResolvedState ?? applyState)(res.state);
-      if (shotAnimationInProgressRef.current) {
-        pendingMidShotApplyRef.current = applyNextState;
-        return;
-      }
-      applyNextState();
-    });
-  }, [optimisticAddShot, submitShot, applyState, applyResolvedState, resultCopy]);
+    })
+      .then((res) => {
+        if (!mountedRef.current) return;
+        if (res === null) return;
+        if (resultCopy) {
+          authoritativeResultRef.current = res.serverResult;
+          setResultDisplayKind(res.serverResult);
+        }
+        const applyNextState = () => (applyResolvedState ?? applyState)(res.state);
+        if (shotAnimationInProgressRef.current) {
+          pendingMidShotApplyRef.current = applyNextState;
+          return;
+        }
+        applyNextState();
+      })
+      .catch((error: unknown) => {
+        if (!mountedRef.current) return;
+        onSubmitError?.(error);
+      })
+      .finally(() => {
+        if (!mountedRef.current) return;
+        shotSubmitPendingRef.current = false;
+        setIsShotSubmitPending(false);
+      });
+  }, [
+    optimisticAddShot,
+    submitShot,
+    applyState,
+    applyResolvedState,
+    resultCopy,
+    onSubmitError,
+    reduceMotion,
+  ]);
 
   const handleInactiveAction = useCallback(async (): Promise<void> => {
     if (!inactiveAction || isInactiveActionPending) return;
@@ -1820,21 +1844,23 @@ export function PlayView<TState>({
           ...routeChromeStyle,
         }}
       >
-        <button
-          type="button"
-          aria-label={backLabel}
-          title={backLabel}
-          onClick={handleBackTap}
-          className="icon-btn icon-btn--dark"
-          disabled={isRouteCameraZoomed}
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: 20,
-          }}
-        >
-          <Home size={22} />
-        </button>
+        {!hideBackAction && (
+          <button
+            type="button"
+            aria-label={backLabel}
+            title={backLabel}
+            onClick={handleBackTap}
+            className="icon-btn icon-btn--dark"
+            disabled={isRouteCameraZoomed}
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 20,
+            }}
+          >
+            <Home size={22} />
+          </button>
+        )}
         <button
           type="button"
           className={isDuelRestBlocked ? 'btn btn--cta btn--duel-blocked' : 'btn btn--cta'}
@@ -1918,7 +1944,7 @@ export function PlayView<TState>({
       {isShowingResult && lastResult && (
         <ResultModal
           result={lastResult}
-          durationMs={PAUSE_MS}
+          durationMs={reduceMotion ? 1 : PAUSE_MS}
           subText={resultSubText}
           displayKind={resultDisplayKind ?? undefined}
           title={resultCopy?.[resultDisplayKind ?? lastResult.type]}
