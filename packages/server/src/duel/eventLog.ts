@@ -36,6 +36,7 @@ export type EventType =
   | 'admin_official_account_avatar_updated'
   | 'admin_tournament_rewards_updated'
   | 'admin_tournament_manual_schedule_recovered'
+  | 'admin_tournament_schedule_shifted'
   | 'admin_tournament_lifecycle_enabled'
   | 'admin_push_notification_updated'
   | 'admin_inventory_item_created'

@@ -872,16 +872,19 @@ describe('TournamentCatalog', () => {
     );
     expect(screen.getByText('Полуфинал 1')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Первый' })).toHaveAttribute('src', '/first.webp');
-    expect(screen.getByText('Посев 1')).toBeInTheDocument();
-    expect(screen.getByText('Посев 4')).toBeInTheDocument();
+    expect(screen.getByLabelText('Посев 1')).toHaveTextContent('1');
+    expect(screen.getByLabelText('Посев 4')).toHaveTextContent('4');
+    expect(screen.getByLabelText('4 победы в серии')).toHaveTextContent('4');
+    expect(screen.getByLabelText('2 победы в серии')).toHaveTextContent('2');
+    expect(screen.getAllByLabelText('0 побед в серии')).toHaveLength(2);
+    expect(screen.queryByText(/Игра 1/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть серию Полуфинал 1' }));
     expect(screen.getByText('Игра 1 · 10 сентября, 15:00–16:00')).toBeInTheDocument();
     expect(screen.getByText('Первый 3 : 2 Четвёртый')).toBeInTheDocument();
     expect(screen.getByText('Первый 3 : 2 Четвёртый')).toHaveClass(
       'tournament-bracket-game__result--home-won',
     );
-    expect(screen.getByText('Счёт в серии 4 : 2')).toBeInTheDocument();
-    expect(screen.queryByText('Счёт в серии 0 : 0')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('0 побед')).not.toBeInTheDocument();
+    expect(screen.queryByText('Счёт в серии 4 : 2')).not.toBeInTheDocument();
     expect(screen.getByText('Первый').closest('.tournament-bracket-player')).toHaveClass(
       'tournament-bracket-player--winner',
     );
@@ -889,7 +892,12 @@ describe('TournamentCatalog', () => {
       'tournament-bracket-player--winner',
     );
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Финал' }));
+    const finalTab = screen.getByRole('tab', { name: 'Финал' });
+    expect(finalTab).toHaveClass('tournament-bracket__round-tab--gold');
+    expect(screen.getByRole('tab', { name: 'За 3-е место' })).toHaveClass(
+      'tournament-bracket__round-tab--bronze',
+    );
+    fireEvent.click(finalTab);
     expect(screen.getByRole('heading', { name: 'Финал' })).toBeInTheDocument();
     expect(screen.getByText('Победитель полуфинала 1')).toBeInTheDocument();
     expect(screen.getByText('Победитель полуфинала 2')).toBeInTheDocument();
@@ -1015,6 +1023,7 @@ describe('TournamentCatalog', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок готовности' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Плей-офф' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть серию Финал' }));
 
     expect(await screen.findByText('Вы готовы')).toBeInTheDocument();
     expect(screen.getByText('Ждём готовность соперника')).toBeInTheDocument();
