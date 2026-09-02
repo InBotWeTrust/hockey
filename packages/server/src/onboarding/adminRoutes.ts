@@ -627,6 +627,9 @@ function cleanFileName(value: string | string[] | undefined): string {
   return cleaned.length > 0 ? cleaned : 'onboarding.webp';
 }
 
+const ONBOARDING_IMAGE_MIN_WIDTH = 800;
+const ONBOARDING_IMAGE_MIN_HEIGHT = 1200;
+
 async function readWebpUpload(
   body: unknown,
   contentType: string,
@@ -641,13 +644,30 @@ async function readWebpUpload(
   if (body.byteLength > maxBytes) {
     throw new AppError('payload_too_large', 'onboarding image is too large', 413);
   }
+  let width: number | undefined;
+  let height: number | undefined;
   try {
     const image = sharp(body, { failOn: 'warning', limitInputPixels: 16_777_216 });
     const metadata = await image.metadata();
     if (metadata.format !== 'webp') throw new Error('not WebP');
     await image.raw().toBuffer();
+    width = metadata.width;
+    height = metadata.height;
   } catch {
     throw new AppError('invalid_webp', 'invalid WebP body', 415);
+  }
+  if (
+    width === undefined ||
+    height === undefined ||
+    width < ONBOARDING_IMAGE_MIN_WIDTH ||
+    height < ONBOARDING_IMAGE_MIN_HEIGHT ||
+    width * 3 !== height * 2
+  ) {
+    throw new AppError(
+      'invalid_image_dimensions',
+      'onboarding image must be portrait 2:3 and at least 800x1200 pixels',
+      422,
+    );
   }
   return body;
 }

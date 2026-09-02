@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
+import sharp from 'sharp';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createJwt } from '../../src/auth/jwt.js';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
@@ -48,6 +49,19 @@ interface AdminChain {
 
 function validWebpBytes(): Buffer {
   return Buffer.from('UklGRh4AAABXRUJQVlA4TBEAAAAvAUAAAAdQkTIUp/+BiOh/AAA=', 'base64');
+}
+
+async function webpBytes(width: number, height: number): Promise<Buffer> {
+  return sharp({
+    create: {
+      width,
+      height,
+      channels: 3,
+      background: { r: 20, g: 40, b: 80 },
+    },
+  })
+    .webp({ lossless: true })
+    .toBuffer();
 }
 
 const tutorialInput = {
@@ -111,7 +125,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app !== undefined) await app.close();
     vi.unstubAllGlobals();
   });
 
@@ -444,8 +458,8 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
     expect(chain.draft?.steps.map((step) => step.title)).toEqual(['Три', 'Один', 'Два']);
   });
 
-  it('uploads only non-empty in-limit WebP media and persists its protected proxy URL', async () => {
-    const body = validWebpBytes();
+  it('accepts valid 2:3 onboarding image dimensions and persists the protected proxy URL', async () => {
+    const body = await webpBytes(800, 1200);
     const uploaded = await app.inject({
       method: 'POST',
       url: '/admin/onboarding/media',
@@ -500,13 +514,43 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
     expect(oversized.statusCode).toBe(413);
   });
 
+  it('rejects WebP uploads below the minimum onboarding image dimensions', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/onboarding/media',
+      headers: { ...adminHeaders, 'content-type': 'image/webp' },
+      payload: await webpBytes(1, 1),
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json().error).toEqual({
+      code: 'invalid_image_dimensions',
+      message: 'onboarding image must be portrait 2:3 and at least 800x1200 pixels',
+    });
+  });
+
+  it('rejects onboarding image dimensions with the wrong aspect ratio', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/onboarding/media',
+      headers: { ...adminHeaders, 'content-type': 'image/webp' },
+      payload: await webpBytes(1200, 1200),
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json().error).toEqual({
+      code: 'invalid_image_dimensions',
+      message: 'onboarding image must be portrait 2:3 and at least 800x1200 pixels',
+    });
+  });
+
   it('leaves no media row when object storage rejects an upload', async () => {
     storageFetch.mockResolvedValueOnce(new Response(null, { status: 503 }));
     const response = await app.inject({
       method: 'POST',
       url: '/admin/onboarding/media',
       headers: { ...adminHeaders, 'content-type': 'image/webp' },
-      payload: validWebpBytes(),
+      payload: await webpBytes(800, 1200),
     });
     expect(response.statusCode).toBe(502);
     expect(response.json().error.code).toBe('storage_upload_failed');
