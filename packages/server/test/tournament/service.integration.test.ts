@@ -2317,6 +2317,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       notificationReminderOffsetsMs: [1_800_000, 300_000],
       notificationDeadlineLeadMs: 1_800_000,
       notificationOverrides: {},
+      stageRewards: { regular: [], playoff: [] },
       playoffRounds: [
         {
           ...updatedRound,
@@ -2328,17 +2329,24 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         },
       ],
     };
-    const updated = await updateTournamentDraft(pool, {
-      tournamentId: tournament.id,
-      expectedRevision: tournament.revision,
-      title: 'Integration Championship',
-      description: 'Tournament integration test',
-      rules: updatedRules,
-      updatedBy: ADMIN_ID,
-      registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
-      registrationClosesAt: new Date('2030-08-31T07:00:00.000Z'),
-      startsAt: new Date('2030-09-01T07:00:00.000Z'),
-    });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2030-09-10T07:00:00.000Z'));
+    let updated!: Awaited<ReturnType<typeof updateTournamentDraft>>;
+    try {
+      updated = await updateTournamentDraft(pool, {
+        tournamentId: tournament.id,
+        expectedRevision: tournament.revision,
+        title: 'Integration Championship',
+        description: 'Tournament integration test',
+        rules: updatedRules,
+        updatedBy: ADMIN_ID,
+        registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+        registrationClosesAt: new Date('2030-08-31T07:00:00.000Z'),
+        startsAt: new Date('2030-09-01T07:00:00.000Z'),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
 
     expect(updated.status).toBe('playoff');
     expect(updated.revision).toBe(tournament.revision + 1);
@@ -2405,6 +2413,77 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         localDate: '2030-09-11',
       },
     ]);
+  });
+
+  it('returns a stable error when a later playoff round would start before the rescheduled round', async () => {
+    await seedUsers(pool, 0);
+    const templateId = await activeTournamentDuelTemplateId(pool);
+    const initialRules = playoffTournamentRules(4, {
+      playoffRounds: [
+        {
+          roundNumber: 1,
+          winsRequired: 1,
+          homeSequence: ['H'],
+          duelTemplateId: templateId,
+          readinessMinutes: 5,
+          plannedStartIntervalMinutes: 20,
+          roundBreakMs: 0,
+          scheduleDays: [
+            { localDate: '2030-09-03', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+          ],
+        },
+        {
+          roundNumber: 2,
+          winsRequired: 1,
+          homeSequence: ['H'],
+          duelTemplateId: templateId,
+          readinessMinutes: 5,
+          plannedStartIntervalMinutes: 20,
+          roundBreakMs: 0,
+          scheduleDays: [
+            { localDate: '2030-09-04', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+          ],
+        },
+      ],
+    });
+    const tournament = await createPublishedTournament(
+      pool,
+      'published-playoff-invalid-round-order',
+      0,
+      initialRules,
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+
+    const updatedRules: TournamentRulesSnapshot = {
+      ...initialRules,
+      playoffRounds: [
+        {
+          ...(initialRules.playoffRounds as Array<Record<string, unknown>>)[0],
+          scheduleDays: [
+            { localDate: '2030-09-05', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+          ],
+        },
+        (initialRules.playoffRounds as Array<Record<string, unknown>>)[1],
+      ],
+    };
+
+    await expect(
+      updateTournamentDraft(pool, {
+        tournamentId: tournament.id,
+        expectedRevision: tournament.revision,
+        title: 'Integration Championship',
+        description: 'Tournament integration test',
+        rules: updatedRules,
+        updatedBy: ADMIN_ID,
+        registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+        registrationClosesAt: new Date('2030-08-31T07:00:00.000Z'),
+        startsAt: new Date('2030-09-01T07:00:00.000Z'),
+      }),
+    ).rejects.toMatchObject({
+      code: 'playoff_round_schedule_order',
+      details: { roundNumber: 2, previousRoundNumber: 1 },
+    });
   });
 
   it('preserves playoff history when an admin tries to reschedule a round that has started', async () => {

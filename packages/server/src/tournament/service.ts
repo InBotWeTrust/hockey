@@ -79,6 +79,7 @@ const LEGACY_TOURNAMENT_EDITOR_DEFAULTS: Record<string, unknown> = {
     technicalLoss: 0,
   },
   dailyPlacePoints: [],
+  stageRewards: { regular: [], playoff: [] },
   notificationReminderOffsetsMs: [1_800_000, 300_000],
   notificationDeadlineLeadMs: 1_800_000,
   notificationOverrides: {},
@@ -513,9 +514,10 @@ async function reschedulePublishedPlayoffRounds(
     );
     if (current.starts_at < earliestStart) {
       throw new AppError(
-        'bad_request',
+        'playoff_round_schedule_order',
         `Раунд ${current.number} должен начинаться после окончания предыдущего раунда и паузы`,
         400,
+        { roundNumber: Number(current.number), previousRoundNumber: Number(previous.number) },
       );
     }
   }

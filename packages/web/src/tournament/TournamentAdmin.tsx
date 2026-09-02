@@ -1125,7 +1125,10 @@ function PlayoffScheduleDaysEditor(props: {
                 </button>
               )}
             </div>
-            <TournamentAdminField label="Дата" help="Дата игр по часовому поясу турнира.">
+            <TournamentAdminField
+              label="Дата"
+              help="Дата игр по часовому поясу турнира. Сегодняшнюю дату можно выбрать, если время первой игры ещё не наступило."
+            >
               <input
                 aria-label={`Раунд ${props.roundNumber}, день ${dayIndex + 1}: дата`}
                 type="date"
