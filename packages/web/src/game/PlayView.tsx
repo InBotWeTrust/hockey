@@ -1832,6 +1832,7 @@ export function PlayView<TState>({
 
       <div
         ref={controlsRef}
+        className="play-controls"
         style={{
           padding: '0 14px 10px',
           display: 'grid',
@@ -1844,7 +1845,9 @@ export function PlayView<TState>({
           ...routeChromeStyle,
         }}
       >
-        {!hideBackAction && (
+        {hideBackAction ? (
+          <span className="play-controls__back-slot" aria-hidden="true" />
+        ) : (
           <button
             type="button"
             aria-label={backLabel}
@@ -1867,6 +1870,7 @@ export function PlayView<TState>({
           onClick={handlePrimaryTap}
           disabled={primaryButtonDisabled}
           style={{
+            gridColumn: 2,
             width: '100%',
             minHeight: 58,
             padding: '0 22px',

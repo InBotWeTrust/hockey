@@ -52,6 +52,8 @@ export function TutorialShotStep({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [shotError, setShotError] = useState(false);
+  const [recoveringShot, setRecoveringShot] = useState(false);
+  const [shotNeedsResync, setShotNeedsResync] = useState(false);
   const startedRef = useRef(false);
   const reduceMotion =
     typeof window !== 'undefined' &&
@@ -79,6 +81,27 @@ export function TutorialShotStep({
   useEffect(() => {
     void load();
   }, [load]);
+
+  const recoverRejectedShot = useCallback(async (): Promise<void> => {
+    setRecoveringShot(true);
+    setShotError(false);
+    setShotNeedsResync(true);
+    try {
+      // POST /tutorial/start is idempotent for an existing run and returns the
+      // current authoritative nextShotIndex. This safely distinguishes a request
+      // that never committed from a committed response that was lost in transit.
+      const authoritativeSession = await startOnboardingTutorial(runId);
+      setSession(authoritativeSession);
+      setState(stateFromSession(authoritativeSession, preservedGoal));
+      if (authoritativeSession.goalConfirmed && !preservedGoal) onGoalConfirmed();
+      setShotNeedsResync(false);
+      setShotError(true);
+    } catch {
+      setShotError(true);
+    } finally {
+      setRecoveringShot(false);
+    }
+  }, [onGoalConfirmed, preservedGoal, runId]);
 
   if (loading)
     return (
@@ -110,7 +133,7 @@ export function TutorialShotStep({
           onBack={onBack}
           hideBackAction
           reduceMotion={reduceMotion}
-          active
+          active={!recoveringShot && !shotError}
           seed={session.seed}
           goalieId={session.goalieId}
           periodNumber={1}
@@ -153,14 +176,22 @@ export function TutorialShotStep({
             post: 'Ещё раз',
             goal: 'Первая шайба!',
           }}
-          onSubmitError={() => setShotError(true)}
+          onSubmitError={() => void recoverRejectedShot()}
         />
       </div>
       {shotError && (
         <div className="onboarding-flow__error" role="alert">
           <span>Не удалось отправить бросок. Проверьте соединение.</span>
-          <button className="btn btn--ghost" type="button" onClick={() => setShotError(false)}>
-            Попробовать ещё раз
+          <button
+            className="btn btn--ghost"
+            type="button"
+            disabled={recoveringShot}
+            onClick={() => {
+              if (shotNeedsResync) void recoverRejectedShot();
+              else setShotError(false);
+            }}
+          >
+            {recoveringShot ? 'Сверяем…' : 'Попробовать ещё раз'}
           </button>
         </div>
       )}

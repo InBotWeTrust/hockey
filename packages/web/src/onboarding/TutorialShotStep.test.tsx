@@ -39,7 +39,8 @@ vi.mock('../game/PlayView.js', () => ({
               })
               .then((result) => {
                 if (result) props.applyState(result.state);
-              });
+              })
+              .catch((error: unknown) => props.onSubmitError?.(error));
           }}
         >
           Mock shot
@@ -286,5 +287,79 @@ describe('TutorialShotStep', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Попробовать ещё раз' }));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Mock shot' })).toBeEnabled();
+  });
+
+  it('re-syncs the authoritative shot index after a rejected optimistic attempt', async () => {
+    const onGoalConfirmed = vi.fn();
+    vi.mocked(startOnboardingTutorial)
+      .mockResolvedValueOnce(session)
+      .mockResolvedValueOnce(session);
+    vi.mocked(submitOnboardingTutorialShot)
+      .mockRejectedValueOnce(new Error('response lost'))
+      .mockResolvedValueOnce({ serverResult: 'goal', nextShotIndex: 2, goalConfirmed: true });
+    render(
+      <TutorialShotStep
+        runId="run-1"
+        step={step}
+        goalConfirmed={false}
+        canGoBack
+        onGoalConfirmed={onGoalConfirmed}
+        onBack={vi.fn()}
+        onContinue={vi.fn()}
+      />,
+    );
+    await screen.findByTestId('play-view');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mock shot' }));
+    await waitFor(() => expect(startOnboardingTutorial).toHaveBeenCalledTimes(2));
+    expect(playProps?.shots).toBe(0);
+    expect(submitOnboardingTutorialShot).toHaveBeenNthCalledWith(
+      1,
+      'run-1',
+      expect.objectContaining({ shotIndex: 1 }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Попробовать ещё раз' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mock shot' }));
+    await waitFor(() => expect(onGoalConfirmed).toHaveBeenCalledTimes(1));
+    expect(submitOnboardingTutorialShot).toHaveBeenNthCalledWith(
+      2,
+      'run-1',
+      expect.objectContaining({ shotIndex: 1 }),
+    );
+  });
+
+  it('continues from the advanced index when a rejected response was committed by the server', async () => {
+    vi.mocked(startOnboardingTutorial)
+      .mockResolvedValueOnce(session)
+      .mockResolvedValueOnce({ ...session, shotIndex: 2 });
+    vi.mocked(submitOnboardingTutorialShot)
+      .mockRejectedValueOnce(new Error('response lost after commit'))
+      .mockResolvedValueOnce({ serverResult: 'save', nextShotIndex: 3, goalConfirmed: false });
+    render(
+      <TutorialShotStep
+        runId="run-1"
+        step={step}
+        goalConfirmed={false}
+        canGoBack
+        onGoalConfirmed={vi.fn()}
+        onBack={vi.fn()}
+        onContinue={vi.fn()}
+      />,
+    );
+    await screen.findByTestId('play-view');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mock shot' }));
+    await waitFor(() => expect(playProps?.shots).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Попробовать ещё раз' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mock shot' }));
+
+    await waitFor(() =>
+      expect(submitOnboardingTutorialShot).toHaveBeenNthCalledWith(
+        2,
+        'run-1',
+        expect.objectContaining({ shotIndex: 2 }),
+      ),
+    );
   });
 });

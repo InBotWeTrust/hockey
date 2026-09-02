@@ -567,6 +567,11 @@ describe('PlayView', () => {
     );
 
     expect(screen.queryByRole('button', { name: 'К режимам' })).not.toBeInTheDocument();
+    const controls = screen.getByRole('button', { name: 'БРОСОК' }).parentElement;
+    expect(controls).toHaveClass('play-controls');
+    expect(controls?.children).toHaveLength(3);
+    expect(controls?.firstElementChild).toHaveClass('play-controls__back-slot');
+    expect(screen.getByRole('button', { name: 'БРОСОК' })).toHaveStyle({ gridColumn: '2' });
     fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
     await act(async () => vi.advanceTimersByTimeAsync(5));
     expect(applyState).toHaveBeenCalledWith({});
