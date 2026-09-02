@@ -61,6 +61,8 @@ interface PlayoffRoundDraft {
   gameBreakMinutes: NumericDraftValue;
   roundBreakMinutes: NumericDraftValue;
   firstGameNotBefore: string;
+  preserveLegacySchedule?: boolean;
+  scheduleTouched?: boolean;
 }
 
 interface TournamentDraftOrigin {
@@ -134,6 +136,8 @@ const defaultPlayoffRound = (): PlayoffRoundDraft => ({
   gameBreakMinutes: 15,
   roundBreakMinutes: 1_440,
   firstGameNotBefore: '',
+  preserveLegacySchedule: false,
+  scheduleTouched: false,
 });
 
 const defaultClassicPeriods = (): [ClassicPeriodDraft, ClassicPeriodDraft, ClassicPeriodDraft] => [
@@ -613,8 +617,10 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
               typeof firstScheduleDay.firstWaveLocalTime === 'string'
             ? `${firstScheduleDay.localDate}T${firstScheduleDay.firstWaveLocalTime}`
             : '';
+      const winsRequired = numberValue(configured.winsRequired, fallback.winsRequired);
+      const totalGames = Math.max(1, winsRequired * 2 - 1);
       return {
-        winsRequired: numberValue(configured.winsRequired, fallback.winsRequired),
+        winsRequired,
         duelTemplateId: stringValue(configured.duelTemplateId),
         homeSequence: Array.isArray(configured.homeSequence)
           ? configured.homeSequence.map(String).join('-')
@@ -628,17 +634,23 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
         roundBreakMinutes:
           numberValue(configured.roundBreakMs, draftNumber(fallback.roundBreakMinutes) * 60_000) /
           60_000,
-        daysPerRound: scheduleDays.length || fallback.daysPerRound,
-        maxGamesPerDay: scheduleDays.reduce(
-          (maximum, day) => Math.max(maximum, numberValue(day.maxResultGames, 0)),
-          draftNumber(fallback.maxGamesPerDay),
-        ),
+        daysPerRound:
+          scheduleDays.length || Math.min(draftNumber(fallback.daysPerRound), totalGames),
+        maxGamesPerDay:
+          scheduleDays.length === 0
+            ? Math.min(draftNumber(fallback.maxGamesPerDay), totalGames)
+            : scheduleDays.reduce(
+                (maximum, day) => Math.max(maximum, numberValue(day.maxResultGames, 0)),
+                0,
+              ),
         readinessMinutes: numberValue(configured.readinessMinutes, fallback.readinessMinutes),
         plannedStartIntervalMinutes: numberValue(
           configured.plannedStartIntervalMinutes,
           fallback.plannedStartIntervalMinutes,
         ),
         firstGameNotBefore: firstGameStartsAt,
+        preserveLegacySchedule: scheduleDays.length === 0,
+        scheduleTouched: false,
       };
     }),
     regularRewards: rewardsDraft(rewards.regular),
@@ -771,7 +783,10 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
           1,
           1_440,
         ),
-        scheduleDays: playoffScheduleDays(round, winsRequired, prefix),
+        scheduleDays:
+          round.preserveLegacySchedule === true && round.scheduleTouched !== true
+            ? undefined
+            : playoffScheduleDays(round, winsRequired, prefix),
       };
     });
   return {
@@ -1516,7 +1531,8 @@ export function TournamentAdmin(): JSX.Element {
   });
 
   useEffect(() => {
-    if (!wizardOpen || editingTournament === null || create.isPending) return;
+    if (!wizardOpen || editingTournament === null || create.isPending || playoffScheduleOnly)
+      return;
     setValidationNotice(null);
     let snapshot: string;
     let body: ReturnType<typeof serializeDraft>;
@@ -1541,12 +1557,12 @@ export function TournamentAdmin(): JSX.Element {
       saveQueue.current?.enqueue(body, snapshot);
     }, 600);
     return () => window.clearTimeout(saveDebounce.current);
-  }, [draft, editingTournament?.id, wizardOpen, create.isPending]);
+  }, [draft, editingTournament?.id, wizardOpen, create.isPending, playoffScheduleOnly]);
   const updatePlayoffRound = (index: number, patch: Partial<PlayoffRoundDraft>) => {
     setDraft((current) => ({
       ...current,
       playoffRounds: current.playoffRounds.map((round, roundIndex) =>
-        roundIndex === index ? { ...round, ...patch } : round,
+        roundIndex === index ? { ...round, ...patch, scheduleTouched: true } : round,
       ),
     }));
   };
@@ -1776,7 +1792,7 @@ export function TournamentAdmin(): JSX.Element {
               className="modal-card tournament-wizard"
               role="dialog"
               aria-modal="true"
-              aria-label="Создание турнира"
+              aria-label={playoffScheduleOnly ? 'Расписание плей-офф' : 'Создание турнира'}
               style={{ height: 'min(var(--app-viewport-height, 100dvh), 860px)' }}
             >
               <div className="modal-header tournament-wizard__header">
@@ -2396,6 +2412,13 @@ export function TournamentAdmin(): JSX.Element {
                 )}
                 {stage === 3 && (
                   <div className="tournament-admin-grid tournament-admin-grid--single">
+                    {playoffScheduleOnly && (
+                      <TournamentAdminGroupHelp>
+                        Массово можно изменить только раунд, который ещё не начался. Если в раунде
+                        уже подтверждали готовность или играли, переносите оставшиеся игры по одной
+                        через календарь. Изменения применятся после нажатия «Сохранить расписание».
+                      </TournamentAdminGroupHelp>
+                    )}
                     {!playoffScheduleOnly && (
                       <TournamentAdminField
                         label="Размер плей-офф"
@@ -2756,9 +2779,11 @@ export function TournamentAdmin(): JSX.Element {
                   {validationNotice === null &&
                     !finishing &&
                     saveState === 'saved' &&
-                    (editingTournament?.status === 'draft'
-                      ? 'Черновик сохранён автоматически'
-                      : 'Изменения сохранены автоматически')}
+                    (playoffScheduleOnly
+                      ? 'Расписание применится после сохранения'
+                      : editingTournament?.status === 'draft'
+                        ? 'Черновик сохранён автоматически'
+                        : 'Изменения сохранены автоматически')}
                   {validationNotice === null && !finishing && saveState === 'error' && (
                     <>
                       <span>Не удалось сохранить изменения.</span>

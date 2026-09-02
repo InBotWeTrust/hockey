@@ -28,7 +28,11 @@ import {
   loadTournamentLifecycleDTOs,
   type TournamentLifecycleDTO,
 } from './automaticLifecycle.js';
-import { rebaseRoundGameDaysAtOrAfter, type RoundGameDay } from './playoffScheduling.js';
+import {
+  rebaseRoundGameDaysAtOrAfter,
+  validateRoundGameDays,
+  type RoundGameDay,
+} from './playoffScheduling.js';
 import {
   buildPlayoffSeriesPlan,
   buildPlayoffFixtureWindows,
@@ -119,6 +123,272 @@ function isPlayoffScheduleOnlyRulesUpdate(
     stableJson(rulesWithoutPlayoffSchedule(current)) ===
     stableJson(rulesWithoutPlayoffSchedule(next))
   );
+}
+
+function playoffRoundScheduleKey(rules: TournamentRulesSnapshot, roundNumber: number): string {
+  const round = playoffRoundRules(rules, roundNumber);
+  return stableJson({
+    firstGameStartsAt: round.firstGameStartsAt?.toISOString() ?? null,
+    roundBreakMs: round.roundBreakMs,
+    scheduleDays: round.scheduleDays,
+  });
+}
+
+async function reschedulePublishedPlayoffRounds(
+  client: PoolClient,
+  input: {
+    tournamentId: string;
+    currentRules: TournamentRulesSnapshot;
+    nextRules: TournamentRulesSnapshot;
+    adminUserId: string;
+    now: Date;
+  },
+): Promise<void> {
+  const rounds = await client.query<{
+    id: string;
+    number: number;
+  }>(
+    `select id, number
+       from tournament_round
+      where tournament_id = $1 and stage in ('playoff', 'third_place')
+      order by number, stage
+      for update`,
+    [input.tournamentId],
+  );
+  for (const round of rounds.rows) {
+    const roundNumber = Number(round.number);
+    if (
+      playoffRoundScheduleKey(input.currentRules, roundNumber) ===
+      playoffRoundScheduleKey(input.nextRules, roundNumber)
+    ) {
+      continue;
+    }
+    const rules = playoffRoundRules(input.nextRules, roundNumber);
+    if (rules.scheduleDays === null || rules.duelTemplateId === null) {
+      throw new AppError('configuration_error', 'Для раунда не настроено расписание игр', 409);
+    }
+    validateRoundGameDays({
+      winsRequired: rules.winsRequired,
+      readinessMinutes: rules.readinessMinutes,
+      plannedStartIntervalMinutes: rules.plannedStartIntervalMinutes,
+      days: rules.scheduleDays,
+    });
+    const days = resolveRoundGameDays(input.nextRules.config.timezone, rules.scheduleDays);
+    const template = await loadDuelTemplateLifecycleSnapshot(client, rules.duelTemplateId);
+    await client.query(
+      `select id from tournament_fixture
+        where round_id = $1
+        order by fixture_number
+        for update`,
+      [round.id],
+    );
+    await client.query(
+      `select attempt.id
+         from tournament_fixture_attempt attempt
+         join tournament_fixture fixture on fixture.id = attempt.fixture_id
+        where fixture.round_id = $1
+        order by attempt.fixture_id, attempt.attempt_number
+        for update of attempt`,
+      [round.id],
+    );
+    const fixtures = await client.query<{
+      id: string;
+      status: string;
+      game_number: number | null;
+      attempt_id: string | null;
+      attempt_status: string | null;
+      duel_id: string | null;
+      home_ready_at: Date | null;
+      away_ready_at: Date | null;
+      attempt_count: number;
+      has_duel: boolean;
+    }>(
+      `select fixture.id, fixture.status,
+              (fixture.result_snapshot->>'gameNumber')::int as game_number,
+              attempt.id as attempt_id, attempt.status as attempt_status,
+              attempt.amateur_duel_match_id as duel_id,
+              attempt.home_ready_at, attempt.away_ready_at,
+              (select count(*)::int from tournament_fixture_attempt counted
+                where counted.fixture_id = fixture.id) as attempt_count,
+              exists (
+                select 1 from tournament_fixture_attempt linked
+                 where linked.fixture_id = fixture.id
+                   and linked.amateur_duel_match_id is not null
+              ) as has_duel
+         from tournament_fixture fixture
+         left join lateral (
+           select candidate.*
+             from tournament_fixture_attempt candidate
+            where candidate.fixture_id = fixture.id
+            order by candidate.attempt_number desc
+            limit 1
+        ) attempt on true
+        where fixture.round_id = $1
+        order by fixture.fixture_number`,
+      [round.id],
+    );
+    const blocked = fixtures.rows.some(
+      (fixture) =>
+        !['conditional', 'scheduled'].includes(fixture.status) ||
+        (fixture.attempt_id !== null &&
+          (fixture.attempt_status !== 'pending' ||
+            fixture.home_ready_at !== null ||
+            fixture.away_ready_at !== null)) ||
+        fixture.attempt_count > 1 ||
+        fixture.has_duel ||
+        fixture.duel_id !== null,
+    );
+    if (blocked) {
+      throw new AppError(
+        'conflict',
+        `Раунд ${roundNumber} уже начался. Перенесите оставшиеся игры отдельно в календаре`,
+        409,
+      );
+    }
+    const planned = fixtures.rows.map((fixture) => {
+      if (fixture.game_number === null) {
+        throw new AppError('configuration_error', 'У игры не указан номер в серии', 409);
+      }
+      const slot = scheduledStartForSeriesGame(
+        days,
+        Number(fixture.game_number),
+        rules.plannedStartIntervalMinutes,
+      );
+      if (slot.startsAt <= input.now) {
+        throw new AppError('bad_request', 'Новое время игр должно быть в будущем', 400);
+      }
+      return {
+        fixture,
+        slot,
+        hardDeadlineAt: attemptDeadline(slot.startsAt, rules.readinessMinutes, template),
+      };
+    });
+
+    await client.query(
+      `update tournament_fixture_attempt attempt
+          set round_game_day_id = null
+         from tournament_fixture fixture
+        where fixture.id = attempt.fixture_id and fixture.round_id = $1`,
+      [round.id],
+    );
+    await client.query(`delete from tournament_round_game_day where round_id = $1`, [round.id]);
+    const persistedDays = await insertRoundGameDays(client, {
+      roundId: round.id,
+      days,
+      readinessMinutes: rules.readinessMinutes,
+      plannedStartIntervalMinutes: rules.plannedStartIntervalMinutes,
+    });
+    const dayByNumber = new Map(persistedDays.map((day) => [day.dayNumber, day]));
+    let roundEnd = persistedDays[0]!.firstGameStartsAt;
+    for (const item of planned) {
+      const persistedDay = dayByNumber.get(item.slot.day.dayNumber)!;
+      const readinessExpiresAt = new Date(
+        item.slot.startsAt.getTime() + rules.readinessMinutes * 60_000,
+      );
+      if (item.fixture.attempt_id === null) {
+        await insertInitialFixtureAttempt(client, {
+          fixtureId: item.fixture.id,
+          roundGameDayId: persistedDay.id!,
+          scheduledStartsAt: item.slot.startsAt,
+          readinessMinutes: rules.readinessMinutes,
+          template,
+          rescheduledReason: 'Изменение расписания плей-офф',
+        });
+      } else {
+        await client.query(
+          `update tournament_fixture_attempt
+              set status = 'pending', round_game_day_id = $2,
+                  scheduled_starts_at = $3, readiness_expires_at = $4,
+                  hard_deadline_at = $5, amateur_duel_match_id = null,
+                  home_ready_at = null, away_ready_at = null,
+                  outcome = null, winner_participant_id = null,
+                  home_score = null, away_score = null,
+                  home_accuracy = null, away_accuracy = null,
+                  home_active_time_ms = null, away_active_time_ms = null,
+                  settled_at = null,
+                  result_snapshot = coalesce(result_snapshot, '{}'::jsonb)
+                    || $6::jsonb,
+                  updated_at = now()
+            where id = $1`,
+          [
+            item.fixture.attempt_id,
+            persistedDay.id,
+            item.slot.startsAt,
+            readinessExpiresAt,
+            item.hardDeadlineAt,
+            JSON.stringify({
+              ...template,
+              readinessMode: 'manual',
+              rescheduledReason: 'Изменение расписания плей-офф',
+            }),
+          ],
+        );
+      }
+      await client.query(
+        `update tournament_fixture
+            set scheduled_starts_at = $2, window_ends_at = $3,
+                rescheduled_reason = 'Изменение расписания плей-офф', updated_at = now()
+          where id = $1`,
+        [item.fixture.id, item.slot.startsAt, item.hardDeadlineAt],
+      );
+      await client.query(
+        `insert into tournament_adjustment
+           (tournament_id, fixture_id, kind, payload, reason, created_by)
+         values ($1, $2, 'schedule', $3, 'Изменение расписания плей-офф', $4)`,
+        [
+          input.tournamentId,
+          item.fixture.id,
+          JSON.stringify({ startsAt: item.slot.startsAt, endsAt: item.hardDeadlineAt }),
+          input.adminUserId,
+        ],
+      );
+      await enqueueTournamentSeriesNextGamePush(client, { fixtureId: item.fixture.id });
+      if (item.hardDeadlineAt > roundEnd) roundEnd = item.hardDeadlineAt;
+    }
+    await client.query(
+      `update tournament_round
+          set starts_at = $2, ends_at = $3,
+              rules_snapshot = coalesce(rules_snapshot, '{}'::jsonb) || $4::jsonb
+        where id = $1`,
+      [
+        round.id,
+        persistedDays[0]!.firstGameStartsAt,
+        roundEnd,
+        JSON.stringify({
+          firstGameStartsAt: persistedDays[0]!.firstGameStartsAt.toISOString(),
+          roundBreakMs: rules.roundBreakMs,
+          scheduleDays: rules.scheduleDays,
+        }),
+      ],
+    );
+  }
+
+  const championshipRounds = await client.query<{
+    number: number;
+    starts_at: Date;
+    ends_at: Date;
+  }>(
+    `select number, starts_at, ends_at
+       from tournament_round
+      where tournament_id = $1 and stage = 'playoff'
+      order by number`,
+    [input.tournamentId],
+  );
+  for (let index = 1; index < championshipRounds.rows.length; index += 1) {
+    const previous = championshipRounds.rows[index - 1]!;
+    const current = championshipRounds.rows[index]!;
+    const earliestStart = new Date(
+      previous.ends_at.getTime() +
+        playoffRoundRules(input.nextRules, Number(previous.number)).roundBreakMs,
+    );
+    if (current.starts_at < earliestStart) {
+      throw new AppError(
+        'bad_request',
+        `Раунд ${current.number} должен начинаться после окончания предыдущего раунда и паузы`,
+        400,
+      );
+    }
+  }
 }
 
 export interface GenerateRegularScheduleOutcome {
@@ -716,9 +986,20 @@ export async function updateTournamentDraft(
       input.registrationClosesAt?.getTime() === tournament.registration_closes_at?.getTime() &&
       input.startsAt?.getTime() === tournament.starts_at?.getTime() &&
       isPlayoffScheduleOnlyRulesUpdate(tournament.rules_snapshot, input.rules);
+    const activePlayoffScheduleUpdate =
+      ['playoff', 'paused'].includes(tournament.status) &&
+      tournament.playoff_series_exists &&
+      tournament.title === input.title &&
+      tournament.description === input.description &&
+      (input.imageUrl === undefined || input.imageUrl === tournament.image_url) &&
+      input.registrationOpensAt?.getTime() === tournament.registration_opens_at?.getTime() &&
+      input.registrationClosesAt?.getTime() === tournament.registration_closes_at?.getTime() &&
+      input.startsAt?.getTime() === tournament.starts_at?.getTime() &&
+      isPlayoffScheduleOnlyRulesUpdate(tournament.rules_snapshot, input.rules);
     const updatesPublishedRules =
       ['registration', 'registration_blocked'].includes(tournament.status) ||
-      regularScheduleRecovery;
+      regularScheduleRecovery ||
+      activePlayoffScheduleUpdate;
     if (tournament.status !== 'draft' && !updatesPublishedRules) {
       throw new AppError('conflict', 'tournament format can no longer be edited', 409);
     }
@@ -767,6 +1048,15 @@ export async function updateTournamentDraft(
         input.updatedBy,
       ],
     );
+    if (activePlayoffScheduleUpdate) {
+      await reschedulePublishedPlayoffRounds(client, {
+        tournamentId: input.tournamentId,
+        currentRules: tournament.rules_snapshot,
+        nextRules,
+        adminUserId: input.updatedBy,
+        now: new Date(),
+      });
+    }
     const updatesImage = Object.prototype.hasOwnProperty.call(input, 'imageUrl');
     await client.query(
       `update tournament
