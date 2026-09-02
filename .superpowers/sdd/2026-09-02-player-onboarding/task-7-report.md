@@ -63,3 +63,24 @@ The focused tests cover loading and pass-through, required/start, API retry, Str
 - Public entry routes are deliberately bypassed before the gate; every other authenticated direct route remains hidden as gate children.
 - A failed best-effort view is not surfaced immediately. If the server later rejects completion because evidence is absent, the completion error remains blocking and the player can reload to restart from step one, as required by the product contract.
 - Tutorial functionality and game-exit call-site wiring remain intentionally deferred to Tasks 8 and 9.
+
+## Review fix round 1
+
+Fix commit: `c0de9ba` (`fix(web): persist onboarding views before completion`)
+
+The independent review found one Important persistence deadlock and one Minor small-viewport layout risk.
+
+- Important fixed: a failed `step_viewed` request is no longer marked successful locally. The flow tracks reached steps, confirmed steps, and in-flight requests separately. Completion waits for in-flight views, retries any transiently failed reached view, and calls `/complete` only after every reached view is confirmed. Active requests are shared across effects/Strict Mode and an already successful view is never sent again.
+- Minor fixed: the full-screen flow now allows vertical scrolling, constrains media height on short viewports, and keeps the safe-area-aware action footer sticky instead of clipping controls behind `overflow: hidden`.
+
+TDD evidence for the Important fix:
+
+```text
+RED: transient final-step view failure test expected 2 view attempts, received 1.
+GREEN: focused App/onboarding suites 3 files / 16 tests PASS.
+```
+
+Post-fix verification:
+
+- Full web runner: PASS, 74 non-Daily files / 542 tests plus all 65 isolated `DailyScreen` scenarios.
+- Web typecheck, production build, root lint, scoped Prettier, and `git diff --check`: PASS.
