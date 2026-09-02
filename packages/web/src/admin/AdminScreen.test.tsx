@@ -15,6 +15,14 @@ function renderAdmin(): void {
   );
 }
 
+function deferredResponse(): {
+  promise: Promise<Response>;
+  resolve: (response: Response) => void;
+} {
+  let resolve!: (response: Response) => void;
+  return { promise: new Promise<Response>((next) => (resolve = next)), resolve };
+}
+
 function makeAdminUser() {
   return {
     id: 'u1',
@@ -103,6 +111,8 @@ it('saves onboarding flags independently and updates persisted display only from
   });
   let patchBody: Record<string, unknown> | null = null;
   let authoritativeUser = makeAdminUser();
+  const pendingDetail = deferredResponse();
+  let detailRequested = false;
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = String(input);
     if (url.includes('/admin/summary')) return new Response(JSON.stringify(makeAdminSummary()));
@@ -122,6 +132,10 @@ it('saves onboarding flags independently and updates persisted display only from
       return new Response(JSON.stringify({ user: authoritativeUser }));
     }
     if (url.endsWith('/admin/users/u1')) {
+      if (!detailRequested) {
+        detailRequested = true;
+        return pendingDetail.promise;
+      }
       return new Response(
         JSON.stringify({
           user: authoritativeUser,
@@ -173,6 +187,20 @@ it('saves onboarding flags independently and updates persisted display only from
     ),
   );
   expect(within(dialog).getByTestId('amateur-onboarding-status')).toHaveTextContent('Пройден');
+  pendingDetail.resolve(
+    new Response(
+      JSON.stringify({
+        user: makeAdminUser(),
+        purchaseSummary: { totalRubSpent: 0, purchasesCount: 0 },
+        purchases: [],
+        achievements: [],
+        shotModes: [],
+        events: [],
+      }),
+    ),
+  );
+  await Promise.resolve();
+  expect(within(dialog).getByTestId('beginner-onboarding-status')).toHaveTextContent('Не пройден');
 });
 
 it('keeps edit mode and authoritative onboarding display when player save fails', async () => {

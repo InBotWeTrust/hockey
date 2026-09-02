@@ -72,6 +72,14 @@ function renderAdmin(): void {
   );
 }
 
+function deferredResponse(): {
+  promise: Promise<Response>;
+  resolve: (response: Response) => void;
+} {
+  let resolve!: (response: Response) => void;
+  return { promise: new Promise<Response>((next) => (resolve = next)), resolve };
+}
+
 describe('onboardingApi', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -347,6 +355,124 @@ describe('OnboardingAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Статистика' }));
     expect(await screen.findByText('За выбранный период запусков нет')).toBeInTheDocument();
     expect(screen.getAllByText('0').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('never renders stale version or date statistics and ignores out-of-order responses', async () => {
+    const currentStats = deferredResponse();
+    const oldVersionStats = deferredResponse();
+    const datedStats = deferredResponse();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/admin/onboarding/chains/beginner')) {
+        return new Response(JSON.stringify({ chain }));
+      }
+      if (url.includes('from=2026-08-10')) return datedStats.promise;
+      if (url.includes('versionId=published-old')) return oldVersionStats.promise;
+      if (url.includes('/admin/onboarding/stats')) return currentStats.promise;
+      throw new Error(`Unexpected request ${url}`);
+    });
+    renderAdmin();
+    await screen.findByText('Всё начинается здесь');
+    fireEvent.click(screen.getByRole('button', { name: 'Статистика' }));
+    currentStats.resolve(
+      new Response(
+        JSON.stringify({
+          startedUsers: 22,
+          completedUsers: 11,
+          completionRate: 50,
+          averageCompletionSeconds: 10,
+          repeatStarts: 0,
+          tutorial: { averageAttemptsToGoal: null, firstAttemptGoalRate: null, maxAttempts: null },
+          steps: [],
+        }),
+      ),
+    );
+    expect(await screen.findByText('22')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Опубликованная версия' }));
+    fireEvent.click(await screen.findByRole('option', { name: /Версия 1/ }));
+    expect(screen.queryByText('22')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Загружаем статистику');
+    fireEvent.change(screen.getByLabelText('Дата начала'), { target: { value: '2026-08-10' } });
+    expect(screen.queryByText('22')).not.toBeInTheDocument();
+
+    datedStats.resolve(
+      new Response(
+        JSON.stringify({
+          startedUsers: 33,
+          completedUsers: 0,
+          completionRate: 0,
+          averageCompletionSeconds: null,
+          repeatStarts: 0,
+          tutorial: { averageAttemptsToGoal: null, firstAttemptGoalRate: null, maxAttempts: null },
+          steps: [],
+        }),
+      ),
+    );
+    expect(await screen.findByText('33')).toBeInTheDocument();
+    oldVersionStats.resolve(
+      new Response(
+        JSON.stringify({
+          startedUsers: 99,
+          completedUsers: 0,
+          completionRate: 0,
+          averageCompletionSeconds: null,
+          repeatStarts: 0,
+          tutorial: { averageAttemptsToGoal: null, firstAttemptGoalRate: null, maxAttempts: null },
+          steps: [],
+        }),
+      ),
+    );
+    await Promise.resolve();
+    expect(screen.queryByText('99')).not.toBeInTheDocument();
+    expect(screen.getByText('33')).toBeInTheDocument();
+  });
+
+  it('clears statistics when the selected chain has no published versions', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/admin/onboarding/chains/beginner')) {
+        return new Response(JSON.stringify({ chain }));
+      }
+      if (url.endsWith('/admin/onboarding/chains/amateur')) {
+        return new Response(
+          JSON.stringify({
+            chain: {
+              chainKey: 'amateur',
+              enforcementEnabled: false,
+              published: null,
+              draft: null,
+              publishedVersions: [],
+            },
+          }),
+        );
+      }
+      if (url.includes('/admin/onboarding/stats')) {
+        return new Response(
+          JSON.stringify({
+            startedUsers: 44,
+            completedUsers: 0,
+            completionRate: 0,
+            averageCompletionSeconds: null,
+            repeatStarts: 0,
+            tutorial: {
+              averageAttemptsToGoal: null,
+              firstAttemptGoalRate: null,
+              maxAttempts: null,
+            },
+            steps: [],
+          }),
+        );
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+    renderAdmin();
+    await screen.findByText('Всё начинается здесь');
+    fireEvent.click(screen.getByRole('button', { name: 'Статистика' }));
+    expect(await screen.findByText('44')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Любитель' }));
+    expect(await screen.findByText('Нет опубликованных версий')).toBeInTheDocument();
+    expect(screen.queryByText('44')).not.toBeInTheDocument();
   });
 
   it('shows fixed chains, statuses, CRUD and accessible reorder controls', async () => {

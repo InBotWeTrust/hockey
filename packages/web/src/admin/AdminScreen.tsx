@@ -2037,11 +2037,12 @@ function UserDetailsModal({
   onClose: () => void;
 }): JSX.Element {
   const queryClient = useQueryClient();
+  const [authoritativeUser, setAuthoritativeUser] = useState<AdminUser | null>(null);
   const detail = useQuery({
     queryKey: ['admin', 'user', userId],
     queryFn: () => fetchAdminUser(userId),
   });
-  const user = detail.data?.user ?? fallback;
+  const user = authoritativeUser ?? detail.data?.user ?? fallback;
   const [editMode, setEditMode] = useState(false);
   const [showPurchases, setShowPurchases] = useState(false);
   const [selectedAchievement, setSelectedAchievement] = useState<AdminUserAchievement | null>(null);
@@ -2081,6 +2082,7 @@ function UserDetailsModal({
   }, [user]);
 
   useEffect(() => {
+    setAuthoritativeUser(null);
     setShowPurchases(false);
     setSelectedAchievement(null);
   }, [user.id]);
@@ -2088,6 +2090,7 @@ function UserDetailsModal({
   const saveMutation = useMutation({
     mutationFn: () => patchAdminUser(user.id, buildUserPatch()),
     onSuccess: (response) => {
+      setAuthoritativeUser(response.user);
       queryClient.setQueryData<AdminUserDetail>(['admin', 'user', user.id], (current) =>
         current === undefined ? current : { ...current, user: response.user },
       );
@@ -2099,7 +2102,11 @@ function UserDetailsModal({
 
   const blockMutation = useMutation({
     mutationFn: () => patchAdminUser(user.id, { isBlocked: !user.isBlocked }),
-    onSuccess: () => {
+    onSuccess: (response) => {
+      setAuthoritativeUser(response.user);
+      queryClient.setQueryData<AdminUserDetail>(['admin', 'user', user.id], (current) =>
+        current === undefined ? current : { ...current, user: response.user },
+      );
       void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'user', user.id] });
       setConfirmAction(null);

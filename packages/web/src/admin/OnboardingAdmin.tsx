@@ -98,9 +98,12 @@ export function OnboardingAdmin(): JSX.Element {
   const [selectedVersionId, setSelectedVersionId] = useState('');
   const [statsFrom, setStatsFrom] = useState('');
   const [statsTo, setStatsTo] = useState('');
-  const [stats, setStats] = useState<AdminOnboardingStats | null>(null);
-  const [statsLoading, setStatsLoading] = useState(false);
-  const [statsError, setStatsError] = useState<string | null>(null);
+  const [statsSnapshot, setStatsSnapshot] = useState<{
+    key: string;
+    data: AdminOnboardingStats;
+  } | null>(null);
+  const [statsLoadingKey, setStatsLoadingKey] = useState<string | null>(null);
+  const [statsFailure, setStatsFailure] = useState<{ key: string; message: string } | null>(null);
   const [statsRetry, setStatsRetry] = useState(0);
 
   useEffect(() => {
@@ -124,25 +127,45 @@ export function OnboardingAdmin(): JSX.Element {
   }, [chainKey]);
 
   const invalidStatsDates = statsFrom !== '' && statsTo !== '' && statsFrom > statsTo;
+  const statsRequestKey =
+    section === 'statistics' && selectedVersionId !== '' && !invalidStatsDates
+      ? JSON.stringify([chainKey, selectedVersionId, statsFrom, statsTo])
+      : null;
 
   useEffect(() => {
-    if (section !== 'statistics' || selectedVersionId === '' || invalidStatsDates) return;
+    if (statsRequestKey === null) return;
     let active = true;
-    setStatsLoading(true);
-    setStatsError(null);
+    setStatsLoadingKey(statsRequestKey);
+    setStatsFailure(null);
     void fetchOnboardingStats({
       chain: chainKey,
       versionId: selectedVersionId,
       ...(statsFrom === '' ? {} : { from: `${statsFrom}T00:00:00.000Z` }),
       ...(statsTo === '' ? {} : { to: `${statsTo}T23:59:59.999Z` }),
     })
-      .then((next) => active && setStats(next))
-      .catch((nextError: unknown) => active && setStatsError(errorMessage(nextError)))
-      .finally(() => active && setStatsLoading(false));
+      .then((next) => active && setStatsSnapshot({ key: statsRequestKey, data: next }))
+      .catch(
+        (nextError: unknown) =>
+          active && setStatsFailure({ key: statsRequestKey, message: errorMessage(nextError) }),
+      )
+      .finally(() => active && setStatsLoadingKey(null));
     return () => {
       active = false;
     };
-  }, [chainKey, invalidStatsDates, section, selectedVersionId, statsFrom, statsRetry, statsTo]);
+  }, [chainKey, selectedVersionId, statsFrom, statsRequestKey, statsRetry, statsTo]);
+
+  const displayedStats =
+    statsRequestKey !== null && statsSnapshot?.key === statsRequestKey ? statsSnapshot.data : null;
+  const displayedStatsError = invalidStatsDates
+    ? 'Дата начала не может быть позже даты окончания'
+    : statsRequestKey !== null && statsFailure?.key === statsRequestKey
+      ? statsFailure.message
+      : null;
+  const displayedStatsLoading =
+    statsRequestKey !== null &&
+    displayedStats === null &&
+    displayedStatsError === null &&
+    (statsLoadingKey === statsRequestKey || statsSnapshot?.key !== statsRequestKey);
 
   const editableSteps = chain?.draft?.steps ?? chain?.published?.steps ?? [];
   const tutorialExists = editableSteps.some((step) => step.kind === 'tutorial_shot');
@@ -206,7 +229,12 @@ export function OnboardingAdmin(): JSX.Element {
             key={key}
             className={chainKey === key ? 'chip chip--active' : 'chip'}
             type="button"
-            onClick={() => setChainKey(key)}
+            onClick={() => {
+              if (key === chainKey) return;
+              setChain(null);
+              setSelectedVersionId('');
+              setChainKey(key);
+            }}
           >
             {label}
           </button>
@@ -453,9 +481,9 @@ export function OnboardingAdmin(): JSX.Element {
           to={statsTo}
           onFromChange={setStatsFrom}
           onToChange={setStatsTo}
-          stats={stats}
-          loading={statsLoading}
-          error={invalidStatsDates ? 'Дата начала не может быть позже даты окончания' : statsError}
+          stats={displayedStats}
+          loading={displayedStatsLoading}
+          error={displayedStatsError}
           onRetry={() => setStatsRetry((value) => value + 1)}
         />
       )}
