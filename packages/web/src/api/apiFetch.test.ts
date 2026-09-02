@@ -161,6 +161,10 @@ describe('apiFetch', () => {
     ['arena_not_owned', 'Эта домашняя площадка ещё не открыта.'],
     ['arena_not_selectable', 'Эту домашнюю площадку сейчас нельзя выбрать.'],
     ['arena_unavailable', 'Домашняя площадка временно недоступна.'],
+    [
+      'playoff_round_started',
+      'Раунд уже начался. Перенесите оставшиеся игры отдельно в календаре.',
+    ],
   ])('localizes the stable player error %s without replacing its code', async (code, message) => {
     // This catches leaking server copy into player UI while preserving a stable branchable code.
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(

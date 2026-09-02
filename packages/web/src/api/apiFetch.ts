@@ -7,8 +7,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   telegram_already_linked: 'Аккаунт уже занят',
   vk_already_linked: 'Аккаунт уже занят',
   unsupported_media_type: 'Это изображение не подходит. Выберите другое из галереи.',
-  FST_ERR_CTP_INVALID_MEDIA_TYPE:
-    'Это изображение не подходит. Выберите другое из галереи.',
+  FST_ERR_CTP_INVALID_MEDIA_TYPE: 'Это изображение не подходит. Выберите другое из галереи.',
   'open duel already exists for this opponent': 'С этим игроком уже есть открытая дуэль.',
   bonus_level_locked: 'Бонус-игры доступны после открытия любительского уровня.',
   bonus_previous_game_required: 'Сначала завершите предыдущую бонус-игру.',
@@ -27,6 +26,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   arena_not_owned: 'Эта домашняя площадка ещё не открыта.',
   arena_not_selectable: 'Эту домашнюю площадку сейчас нельзя выбрать.',
   arena_unavailable: 'Домашняя площадка временно недоступна.',
+  playoff_round_started: 'Раунд уже начался. Перенесите оставшиеся игры отдельно в календаре.',
 };
 
 export class ApiError extends Error {

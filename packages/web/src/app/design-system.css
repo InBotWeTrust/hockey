@@ -2008,7 +2008,8 @@
 
 .tournament-playoff-days__add {
   justify-self: start;
-  min-height: 36px;
+  min-height: 32px;
+  padding: 6px 12px;
 }
 
 .tournament-admin-field {
@@ -2095,11 +2096,19 @@
   gap: 10px 12px;
 }
 
-.tournament-playoff-round > legend,
+.tournament-playoff-round > .tournament-playoff-round__title,
 .tournament-playoff-round > .tournament-admin-field__help,
 .tournament-playoff-round > .tournament-home-sequence,
 .tournament-playoff-round > .tournament-admin-details {
   grid-column: 1 / -1;
+}
+
+.tournament-playoff-round__title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.2;
 }
 
 .tournament-admin-note,

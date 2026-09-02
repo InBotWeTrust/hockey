@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { ApiError } from '../api/apiFetch.js';
 import { GlassSelect } from '../components/GlassSelect.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
 import {
@@ -36,6 +37,17 @@ const stages = [
 ] as const;
 
 type RegularSource = 'head_to_head' | 'daily_aggregate' | 'classic';
+
+function tournamentSaveErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.code === 'playoff_round_started') {
+    const roundNumber = error.details?.roundNumber;
+    if (typeof roundNumber === 'number' && Number.isInteger(roundNumber) && roundNumber > 0) {
+      return `Раунд ${roundNumber} уже начался. Перенесите оставшиеся игры отдельно в календаре.`;
+    }
+  }
+  if (error instanceof ApiError) return error.message;
+  return 'Не удалось сохранить изменения. Проверьте соединение и попробуйте ещё раз.';
+}
 type RegistrationMode = 'open' | 'approval' | 'invite_only';
 type Visibility = 'public' | 'hidden';
 type DailyMetric = 'goals_sum' | 'accuracy_average' | 'daily_place_points';
@@ -1155,7 +1167,7 @@ function PlayoffScheduleDaysEditor(props: {
       </div>
       <button
         type="button"
-        className="btn btn--ghost tournament-playoff-days__add"
+        className="admin-compact-btn admin-compact-btn--primary tournament-playoff-days__add"
         aria-label={`Добавить день в раунд ${props.roundNumber}`}
         disabled={props.days.length >= maximumGames}
         onClick={props.onAdd}
@@ -1613,6 +1625,7 @@ export function TournamentAdmin(): JSX.Element {
   const [stage, setStage] = useState(0);
   const [maxStage, setMaxStage] = useState(0);
   const [saveState, setSaveState] = useState<TournamentDraftSaveStatus>('idle');
+  const [saveError, setSaveError] = useState<unknown>(null);
   const [finishing, setFinishing] = useState(false);
   const [validationNotice, setValidationNotice] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
@@ -1647,8 +1660,11 @@ export function TournamentAdmin(): JSX.Element {
       save: (body, expectedRevision) =>
         updateAdminTournament(tournament.id, expectedRevision, body),
       revisionOf: (result) => result.tournament.revision,
-      onStatusChange: (status) => {
-        if (saveQueueGeneration.current === generation) setSaveState(status);
+      onStatusChange: (status, error) => {
+        if (saveQueueGeneration.current === generation) {
+          setSaveState(status);
+          setSaveError(status === 'error' ? error : null);
+        }
       },
       onSaved: (result, savedSnapshot) => {
         if (saveQueueGeneration.current !== generation) return;
@@ -1740,22 +1756,32 @@ export function TournamentAdmin(): JSX.Element {
       playoffRounds: current.playoffRounds.map((round, currentRoundIndex) => {
         if (currentRoundIndex !== roundIndex) return round;
         const days = round.scheduleDays.map((day) => ({ ...day }));
-        let donorIndex = -1;
-        for (let index = days.length - 1; index >= 0; index -= 1) {
-          const day = days[index]!;
-          if (day.maxResultGames !== '' && day.maxResultGames > 1) {
-            donorIndex = index;
-            break;
+        const maximumGames = Number(round.winsRequired || 1) * 2 - 1;
+        const scheduledGames = days.reduce(
+          (total, day) => total + Number(day.maxResultGames || 0),
+          0,
+        );
+        const remainingGames = maximumGames - scheduledGames;
+        let newDayGames = remainingGames;
+        if (remainingGames <= 0) {
+          let donorIndex = -1;
+          for (let index = days.length - 1; index >= 0; index -= 1) {
+            const day = days[index]!;
+            if (day.maxResultGames !== '' && day.maxResultGames > 1) {
+              donorIndex = index;
+              break;
+            }
           }
+          if (donorIndex < 0) return round;
+          const donor = days[donorIndex]!;
+          donor.maxResultGames = Number(donor.maxResultGames) - 1;
+          newDayGames = 1;
         }
-        if (donorIndex < 0) return round;
-        const donor = days[donorIndex]!;
-        donor.maxResultGames = Number(donor.maxResultGames) - 1;
         const previous = days.at(-1)!;
         days.push({
           localDate: addDateOnlyDays(previous.localDate, 1),
           firstWaveLocalTime: previous.firstWaveLocalTime,
-          maxResultGames: 1,
+          maxResultGames: newDayGames,
         });
         return { ...round, scheduleTouched: true, scheduleDays: days };
       }),
@@ -1788,6 +1814,7 @@ export function TournamentAdmin(): JSX.Element {
     if (saveDebounce.current !== undefined) window.clearTimeout(saveDebounce.current);
     saveQueueGeneration.current += 1;
     saveQueue.current = undefined;
+    setSaveError(null);
     artworkUploadGeneration.current += 1;
     artworkUpload.reset();
     setWizardOpen(false);
@@ -1921,6 +1948,7 @@ export function TournamentAdmin(): JSX.Element {
           setMaxStage(scheduleOnly ? 3 : 7);
           setPlayoffScheduleOnly(scheduleOnly);
           setSaveState('saved');
+          setSaveError(null);
           setValidationNotice(null);
           setWizardOpen(true);
           setSelectedTournament(null);
@@ -2650,8 +2678,12 @@ export function TournamentAdmin(): JSX.Element {
                     {draft.playoffRounds
                       .slice(0, playoffRoundCount(draft.playoffSize))
                       .map((round, index) => (
-                        <fieldset key={index} className="tournament-playoff-round">
-                          <legend>Раунд {index + 1}</legend>
+                        <section
+                          key={index}
+                          className="tournament-playoff-round"
+                          aria-label={`Раунд ${index + 1}`}
+                        >
+                          <h3 className="tournament-playoff-round__title">Раунд {index + 1}</h3>
                           <TournamentAdminGroupHelp>
                             {playoffScheduleOnly
                               ? 'Укажите только время и распределение уже настроенных игр по раунду.'
@@ -2796,7 +2828,7 @@ export function TournamentAdmin(): JSX.Element {
                               </div>
                             </>
                           )}
-                        </fieldset>
+                        </section>
                       ))}
                   </div>
                 )}
@@ -2958,8 +2990,10 @@ export function TournamentAdmin(): JSX.Element {
               <div className="modal-actions">
                 <div
                   className="tournament-wizard__save-state"
-                  role={validationNotice === null ? 'status' : 'alert'}
-                  aria-live={validationNotice === null ? 'polite' : 'assertive'}
+                  role={validationNotice === null && saveState !== 'error' ? 'status' : 'alert'}
+                  aria-live={
+                    validationNotice === null && saveState !== 'error' ? 'polite' : 'assertive'
+                  }
                 >
                   {validationNotice !== null && <span>{validationNotice}</span>}
                   {validationNotice === null &&
@@ -2983,8 +3017,8 @@ export function TournamentAdmin(): JSX.Element {
                         : 'Изменения сохранены автоматически')}
                   {validationNotice === null && !finishing && saveState === 'error' && (
                     <>
-                      <span>Не удалось сохранить изменения.</span>
-                      {saveQueue.current !== undefined && (
+                      <span>{tournamentSaveErrorMessage(saveError)}</span>
+                      {!playoffScheduleOnly && saveQueue.current !== undefined && (
                         <button
                           type="button"
                           className="admin-compact-btn"
@@ -3064,7 +3098,9 @@ export function TournamentAdmin(): JSX.Element {
                           ? 'Публикуем…'
                           : 'Сохраняем и закрываем…'
                       : playoffScheduleOnly
-                        ? 'Сохранить расписание'
+                        ? saveState === 'error'
+                          ? 'Повторить сохранение'
+                          : 'Сохранить расписание'
                         : editingTournament?.status === 'draft'
                           ? 'Сохранить и опубликовать'
                           : 'Сохранить и закрыть'}

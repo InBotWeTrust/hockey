@@ -68,6 +68,21 @@ export interface TournamentRulesSnapshot {
 const PLAYOFF_SCHEDULING_FIELDS = new Set(['firstGameStartsAt', 'scheduleDays', 'roundBreakMs']);
 const DEFAULT_PLAYOFF_READINESS_MINUTES = 5;
 const DEFAULT_PLAYOFF_START_INTERVAL_MINUTES = 20;
+const LEGACY_TOURNAMENT_EDITOR_DEFAULTS: Record<string, unknown> = {
+  regularDuelTemplateId: null,
+  regularScoring: {
+    regulationWin: 3,
+    overtimeWin: 2,
+    overtimeLoss: 1,
+    draw: 1,
+    loss: 0,
+    technicalLoss: 0,
+  },
+  dailyPlacePoints: [],
+  notificationReminderOffsetsMs: [1_800_000, 300_000],
+  notificationDeadlineLeadMs: 1_800_000,
+  notificationOverrides: {},
+};
 
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
@@ -79,6 +94,26 @@ function stableJson(value: unknown): string {
       .join(',')}}`;
   }
   return JSON.stringify(value) ?? 'undefined';
+}
+
+function isJsonSubset(current: unknown, candidate: unknown): boolean {
+  if (Array.isArray(candidate)) {
+    return (
+      Array.isArray(current) &&
+      current.length === candidate.length &&
+      candidate.every((value, index) => isJsonSubset(current[index], value))
+    );
+  }
+  if (candidate !== null && typeof candidate === 'object') {
+    if (current === null || typeof current !== 'object' || Array.isArray(current)) return false;
+    const currentRecord = current as Record<string, unknown>;
+    return Object.entries(candidate as Record<string, unknown>).every(
+      ([key, value]) =>
+        Object.prototype.hasOwnProperty.call(currentRecord, key) &&
+        isJsonSubset(currentRecord[key], value),
+    );
+  }
+  return stableJson(current) === stableJson(candidate);
 }
 
 function rulesWithoutPlayoffSchedule(rules: TournamentRulesSnapshot): Record<string, unknown> {
@@ -119,10 +154,65 @@ function isPlayoffScheduleOnlyRulesUpdate(
   current: TournamentRulesSnapshot,
   next: TournamentRulesSnapshot,
 ): boolean {
-  return (
-    stableJson(rulesWithoutPlayoffSchedule(current)) ===
-    stableJson(rulesWithoutPlayoffSchedule(next))
-  );
+  const currentWithoutSchedule = rulesWithoutPlayoffSchedule(current);
+  const nextWithoutSchedule = rulesWithoutPlayoffSchedule(next);
+  for (const [key, defaultValue] of Object.entries(LEGACY_TOURNAMENT_EDITOR_DEFAULTS)) {
+    if (
+      !Object.prototype.hasOwnProperty.call(currentWithoutSchedule, key) &&
+      stableJson(nextWithoutSchedule[key]) === stableJson(defaultValue)
+    ) {
+      delete nextWithoutSchedule[key];
+    }
+  }
+  return isJsonSubset(currentWithoutSchedule, nextWithoutSchedule);
+}
+
+function mergePlayoffScheduleRules(
+  current: TournamentRulesSnapshot,
+  next: TournamentRulesSnapshot,
+): TournamentRulesSnapshot {
+  const currentRounds = Array.isArray(current.playoffRounds) ? current.playoffRounds : [];
+  const nextRounds = Array.isArray(next.playoffRounds) ? next.playoffRounds : [];
+  return {
+    ...current,
+    playoffRounds: currentRounds.map((currentRound, index) => {
+      if (
+        currentRound === null ||
+        typeof currentRound !== 'object' ||
+        Array.isArray(currentRound)
+      ) {
+        return currentRound;
+      }
+      const currentValues = currentRound as Record<string, unknown>;
+      const currentRoundNumber = currentValues.roundNumber;
+      const nextRound = nextRounds.find((candidate, candidateIndex) => {
+        if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)) {
+          return false;
+        }
+        const candidateRoundNumber = (candidate as Record<string, unknown>).roundNumber;
+        return (
+          (typeof currentRoundNumber === 'number' && candidateRoundNumber === currentRoundNumber) ||
+          (currentRoundNumber === undefined && candidateIndex === index)
+        );
+      });
+      if (nextRound === null || typeof nextRound !== 'object' || Array.isArray(nextRound)) {
+        return currentRound;
+      }
+      const nextValues = nextRound as Record<string, unknown>;
+      const merged = { ...currentValues };
+      for (const field of PLAYOFF_SCHEDULING_FIELDS) {
+        if (!Object.prototype.hasOwnProperty.call(nextValues, field)) continue;
+        if (
+          field === 'roundBreakMs' &&
+          !Object.prototype.hasOwnProperty.call(currentValues, field)
+        ) {
+          continue;
+        }
+        merged[field] = nextValues[field];
+      }
+      return merged;
+    }),
+  };
 }
 
 function playoffRoundScheduleKey(rules: TournamentRulesSnapshot, roundNumber: number): string {
@@ -200,21 +290,26 @@ async function reschedulePublishedPlayoffRounds(
       duel_id: string | null;
       home_ready_at: Date | null;
       away_ready_at: Date | null;
+      attempt_outcome: string | null;
       attempt_count: number;
-      has_duel: boolean;
+      duel_status: string | null;
+      duel_accepted_at: Date | null;
+      duel_settled_reason: string | null;
+      duel_shot_count: number;
     }>(
       `select fixture.id, fixture.status,
               (fixture.result_snapshot->>'gameNumber')::int as game_number,
               attempt.id as attempt_id, attempt.status as attempt_status,
               attempt.amateur_duel_match_id as duel_id,
-              attempt.home_ready_at, attempt.away_ready_at,
+              attempt.home_ready_at, attempt.away_ready_at, attempt.outcome as attempt_outcome,
               (select count(*)::int from tournament_fixture_attempt counted
                 where counted.fixture_id = fixture.id) as attempt_count,
-              exists (
-                select 1 from tournament_fixture_attempt linked
-                 where linked.fixture_id = fixture.id
-                   and linked.amateur_duel_match_id is not null
-              ) as has_duel
+              duel.status as duel_status, duel.accepted_at as duel_accepted_at,
+              duel.settled_reason as duel_settled_reason,
+              coalesce((
+                select count(*)::int from shot_session shot
+                 where shot.amateur_duel_match_id = attempt.amateur_duel_match_id
+              ), 0) as duel_shot_count
          from tournament_fixture fixture
          left join lateral (
            select candidate.*
@@ -223,26 +318,46 @@ async function reschedulePublishedPlayoffRounds(
             order by candidate.attempt_number desc
             limit 1
         ) attempt on true
+        left join amateur_duel_match duel on duel.id = attempt.amateur_duel_match_id
         where fixture.round_id = $1
         order by fixture.fixture_number`,
       [round.id],
     );
-    const blocked = fixtures.rows.some(
-      (fixture) =>
-        !['conditional', 'scheduled'].includes(fixture.status) ||
-        (fixture.attempt_id !== null &&
-          (fixture.attempt_status !== 'pending' ||
-            fixture.home_ready_at !== null ||
-            fixture.away_ready_at !== null)) ||
-        fixture.attempt_count > 1 ||
-        fixture.has_duel ||
-        fixture.duel_id !== null,
-    );
+    const blocked = fixtures.rows.some((fixture) => {
+      const readinessWasConfirmed =
+        fixture.home_ready_at !== null || fixture.away_ready_at !== null;
+      const unattendedReadiness =
+        fixture.attempt_status === 'ready_check' &&
+        !readinessWasConfirmed &&
+        fixture.duel_id === null;
+      const unattendedNoShow =
+        fixture.attempt_status === 'needs_reschedule' &&
+        fixture.attempt_outcome === 'both_no_show' &&
+        !readinessWasConfirmed &&
+        fixture.duel_id !== null &&
+        fixture.duel_status === 'cancelled' &&
+        fixture.duel_accepted_at === null &&
+        fixture.duel_settled_reason === 'tournament_attempt_both_no_show' &&
+        fixture.duel_shot_count === 0;
+      const attemptIsSafe =
+        fixture.attempt_id === null ||
+        (fixture.attempt_status === 'pending' &&
+          !readinessWasConfirmed &&
+          fixture.duel_id === null) ||
+        unattendedReadiness ||
+        unattendedNoShow;
+      const fixtureIsSafe =
+        ['conditional', 'scheduled'].includes(fixture.status) ||
+        (fixture.status === 'active' && unattendedReadiness) ||
+        (fixture.status === 'paused' && unattendedNoShow);
+      return !fixtureIsSafe || !attemptIsSafe || fixture.attempt_count > 1;
+    });
     if (blocked) {
       throw new AppError(
-        'conflict',
+        'playoff_round_started',
         `Раунд ${roundNumber} уже начался. Перенесите оставшиеся игры отдельно в календаре`,
         409,
+        { roundNumber },
       );
     }
     const planned = fixtures.rows.map((fixture) => {
@@ -323,10 +438,17 @@ async function reschedulePublishedPlayoffRounds(
             }),
           ],
         );
+        await client.query(
+          `update tournament_incident
+              set status = 'resolved', resolved_at = now(), resolved_by = $2, updated_at = now()
+            where fixture_attempt_id = $1 and status = 'open'`,
+          [item.fixture.attempt_id, input.adminUserId],
+        );
       }
       await client.query(
         `update tournament_fixture
             set scheduled_starts_at = $2, window_ends_at = $3,
+                status = case when status in ('active', 'paused') then 'scheduled' else status end,
                 rescheduled_reason = 'Изменение расписания плей-офф', updated_at = now()
           where id = $1`,
         [item.fixture.id, item.slot.startsAt, item.hardDeadlineAt],
@@ -345,6 +467,14 @@ async function reschedulePublishedPlayoffRounds(
       await enqueueTournamentSeriesNextGamePush(client, { fixtureId: item.fixture.id });
       if (item.hardDeadlineAt > roundEnd) roundEnd = item.hardDeadlineAt;
     }
+    await client.query(
+      `update tournament_playoff_series
+          set status = 'scheduled', updated_at = now()
+        where round_id = $1 and status in ('active', 'paused')
+          and winner_participant_id is null
+          and higher_seed_wins = 0 and lower_seed_wins = 0`,
+      [round.id],
+    );
     await client.query(
       `update tournament_round
           set starts_at = $2, ends_at = $3,
@@ -1325,7 +1455,10 @@ export async function updateTournamentDraft(
         throw new AppError('conflict', 'participant limit is below current applications', 409);
       }
     }
-    const nextRules: TournamentRulesSnapshot = { ...input.rules };
+    const nextRules: TournamentRulesSnapshot =
+      regularScheduleRecovery || activePlayoffScheduleUpdate
+        ? mergePlayoffScheduleRules(tournament.rules_snapshot, input.rules)
+        : { ...input.rules };
     delete nextRules.automaticLifecycleVersion;
     delete nextRules.duelLifecycleVersion;
     if (automaticLifecycleVersion(tournament.rules_snapshot) !== null) {
