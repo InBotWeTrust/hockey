@@ -656,8 +656,9 @@ export async function shiftTournamentSchedule(
     const firstMatchdayResult = await client.query<{
       local_date: string;
       starts_at: Date;
+      ends_at: Date;
     }>(
-      `select local_date::text, starts_at
+      `select local_date::text, starts_at, ends_at
          from tournament_matchday
         where tournament_id = $1
         order by number
@@ -683,7 +684,15 @@ export async function shiftTournamentSchedule(
       timezone,
       shiftedCalendarDays,
     );
-    if (shiftedFirstStart <= (input.now ?? new Date())) {
+    const shiftedFirstEnd = addZonedCalendarDays(
+      firstMatchday.ends_at,
+      timezone,
+      shiftedCalendarDays,
+    );
+    const regularSource = tournament.rules_snapshot.config.regularSource;
+    const shiftedPlayableBoundary =
+      regularSource === 'head_to_head' ? shiftedFirstStart : shiftedFirstEnd;
+    if (shiftedPlayableBoundary <= (input.now ?? new Date())) {
       throw new AppError(
         'tournament_schedule_date_not_future',
         'Новая дата первого тура должна быть в будущем',

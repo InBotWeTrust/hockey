@@ -44,6 +44,7 @@ function tournament(): AdminTournament {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -429,7 +430,7 @@ describe('TournamentOperations', () => {
     expect(dialog).toHaveTextContent('регулярный сезон и плей-офф');
     const newFirstMatchday = within(dialog).getByLabelText('Новая дата первого тура');
     expect(newFirstMatchday).toHaveAttribute('min');
-    expect(dialog).toHaveTextContent('Выберите будущую дату');
+    expect(dialog).toHaveTextContent('сегодняшний или будущий день');
     fireEvent.change(newFirstMatchday, {
       target: { value: '2030-09-05' },
     });
@@ -448,6 +449,50 @@ describe('TournamentOperations', () => {
     expect(
       screen.queryByRole('dialog', { name: 'Перенести регулярный сезон' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('allows selecting the current tournament date when the regular season has not started', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-09-02T09:00:00.000Z'));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ participants: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={{
+            ...tournament(),
+            status: 'scheduling',
+            regularSource: 'daily_aggregate',
+            startsAt: '2030-09-01T21:00:00.000Z',
+            lifecycle: {
+              action: 'await_manual_regular_start',
+              dueAt: null,
+              approvedParticipantCount: 4,
+              requiredParticipantCount: 2,
+              reason: null,
+            },
+          }}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Перенести регулярный сезон' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Перенести регулярный сезон' });
+    expect(within(dialog).getByLabelText('Новая дата первого тура')).toHaveAttribute(
+      'min',
+      '2030-09-02',
+    );
+    expect(dialog).toHaveTextContent('сегодняшний или будущий день');
   });
 
   it('offers the exceptional calendar action only for a blocked head-to-head tournament with two players', async () => {

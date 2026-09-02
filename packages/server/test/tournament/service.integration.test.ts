@@ -1688,6 +1688,33 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     ]);
   });
 
+  it('shifts an unstarted daily schedule to the current tournament day while it is still open', async () => {
+    await seedUsers(pool, 0);
+    const tournamentRules = dailyPlayoffTournamentRules();
+    const tournament = await createPublishedTournament(
+      pool,
+      'shift-generated-daily-schedule-to-current-day',
+      0,
+      tournamentRules,
+    );
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+    await generateRegularSchedule(pool, tournament.id, tournament.revision);
+
+    const shifted = await shiftTournamentSchedule(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: tournament.revision,
+      firstMatchdayLocalDate: '2030-09-02',
+      adminUserId: ADMIN_ID,
+      now: new Date('2030-09-02T08:00:00.000Z'),
+    });
+
+    expect(shifted.shiftedCalendarDays).toBe(1);
+    expect(await getTournamentMatchdays(pool, tournament.id)).toEqual([
+      expect.objectContaining({ number: 1, localDate: '2030-09-02' }),
+    ]);
+  });
+
   it('rejects a whole-calendar shift after a regular result exists', async () => {
     await seedUsers(pool, 0);
     const tournamentRules = dailyPlayoffTournamentRules();
