@@ -1,6 +1,7 @@
 .onboarding-flow {
   width: min(100%, 430px);
-  min-height: var(--app-viewport-height, 100dvh);
+  height: var(--app-viewport-height, 100dvh);
+  max-height: var(--app-viewport-height, 100dvh);
   margin: 0 auto;
   padding: calc(var(--app-safe-top) + 20px) 20px calc(var(--app-safe-bottom) + 20px);
   display: flex;
@@ -9,6 +10,7 @@
   background: linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%);
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 .onboarding-flow__progress {

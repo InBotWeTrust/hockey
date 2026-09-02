@@ -1,9 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OnboardingRequired, OnboardingRequiredResponse } from '../api/onboarding.js';
 import type * as OnboardingApi from '../api/onboarding.js';
 import { completeOnboarding, recordStepView } from '../api/onboarding.js';
 import { OnboardingFlow } from './OnboardingFlow.js';
+
+const onboardingCss = readFileSync(resolve(process.cwd(), 'src/onboarding/onboarding.css'), 'utf8');
 
 function deferred<T>(): {
   promise: Promise<T>;
@@ -137,5 +142,53 @@ describe('OnboardingFlow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
     expect(recordStepView).toHaveBeenCalledTimes(2);
+  });
+
+  it('shares an in-flight view request and waits for it before completing', async () => {
+    const pendingView = deferred<{ viewed: true }>();
+    vi.mocked(recordStepView).mockReturnValue(pendingView.promise);
+    vi.mocked(completeOnboarding).mockResolvedValue({ required: null });
+    render(
+      <OnboardingFlow
+        runId="run-1"
+        required={{ ...required, steps: [required.steps[2]!] }}
+        onCompleted={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(recordStepView).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+    expect(recordStepView).toHaveBeenCalledTimes(1);
+    expect(completeOnboarding).not.toHaveBeenCalled();
+
+    pendingView.resolve({ viewed: true });
+    await waitFor(() => expect(completeOnboarding).toHaveBeenCalledTimes(1));
+    expect(recordStepView).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares one active and successful view request across Strict Mode effect replay', async () => {
+    const pendingView = deferred<{ viewed: true }>();
+    vi.mocked(recordStepView).mockReturnValue(pendingView.promise);
+    const view = render(
+      <StrictMode>
+        <OnboardingFlow runId="run-1" required={required} onCompleted={vi.fn()} />
+      </StrictMode>,
+    );
+    await waitFor(() => expect(recordStepView).toHaveBeenCalledTimes(1));
+    pendingView.resolve({ viewed: true });
+    await pendingView.promise;
+
+    view.rerender(
+      <StrictMode>
+        <OnboardingFlow runId="run-1" required={required} onCompleted={vi.fn()} />
+      </StrictMode>,
+    );
+    expect(recordStepView).toHaveBeenCalledTimes(1);
+  });
+
+  it('bounds its scroll container to the viewport and contains overscroll', () => {
+    expect(onboardingCss).toMatch(/\n\s*height:\s*var\(--app-viewport-height,\s*100dvh\)/);
+    expect(onboardingCss).toMatch(/overscroll-behavior-y:\s*contain/);
+    expect(onboardingCss).toMatch(/overflow-y:\s*auto/);
   });
 });
