@@ -2031,6 +2031,7 @@ describe('TournamentAdmin', () => {
           {
             roundNumber: 1,
             winsRequired: 2,
+            roundBreakMs: 86_400_000,
             scheduleDays: [
               {
                 localDate: '2030-01-05',
@@ -2121,6 +2122,7 @@ describe('TournamentAdmin', () => {
     const savedBody = update.mock.calls[0]?.[2] as {
       rules?: {
         playoffRounds?: Array<{
+          roundBreakMs?: number;
           scheduleDays?: Array<{
             localDate: string;
             firstWaveLocalTime: string;
@@ -2133,6 +2135,7 @@ describe('TournamentAdmin', () => {
       { localDate: '2030-01-05', firstWaveLocalTime: '18:00', maxResultGames: 1 },
       { localDate: '2030-01-08', firstWaveLocalTime: '21:15', maxResultGames: 2 },
     ]);
+    expect(savedBody.rules?.playoffRounds?.[0]?.roundBreakMs).toBe(0);
   });
 
   it('explains a started-round rejection and offers one clear retry action', async () => {
