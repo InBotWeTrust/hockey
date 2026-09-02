@@ -76,6 +76,21 @@ const stepParamsSchema = z
   })
   .strict();
 const previewRunParamsSchema = z.object({ runId: z.string().uuid() }).strict();
+const statsQuerySchema = z
+  .object({
+    chain: z.enum(['beginner', 'amateur']).optional(),
+    versionId: z.string().uuid().optional(),
+    from: z.string().datetime({ offset: true }).optional(),
+    to: z.string().datetime({ offset: true }).optional(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.from === undefined ||
+      value.to === undefined ||
+      new Date(value.from).getTime() <= new Date(value.to).getTime(),
+    'from must not be after to',
+  );
 const reorderSchema = z.object({ stepIds: z.array(z.string().uuid()).max(100) }).strict();
 const tutorialShotSchema = z
   .object({
@@ -697,6 +712,131 @@ export const onboardingAdminRoutes: FastifyPluginAsync<OnboardingAdminRoutesOpti
     (_request, body, done) => done(null, body),
   );
   const adminPreHandlers = createAdminPreHandlers(app);
+
+  app.get('/admin/onboarding/stats', { preHandler: adminPreHandlers }, async (request) => {
+    const query = parse(statsQuerySchema, request.query, 'invalid onboarding statistics query');
+    const filters = [
+      query.chain ?? null,
+      query.versionId ?? null,
+      query.from ?? null,
+      query.to ?? null,
+    ];
+    const summary = await app.pg.query<{
+      started_users: string;
+      completed_users: string;
+      completed_runs: string;
+      average_completion_seconds: string | null;
+      total_runs: string;
+      tutorial_goals: string;
+      average_attempts_to_goal: string | null;
+      first_attempt_goals: string;
+      max_attempts: number | null;
+    }>(
+      `with filtered_runs as (
+         select run.*
+           from onboarding_run run
+          where run.source = 'natural'
+            and ($1::text is null or run.chain_key = $1)
+            and ($2::uuid is null or run.version_id = $2)
+            and ($3::timestamptz is null or run.started_at >= $3)
+            and ($4::timestamptz is null or run.started_at <= $4)
+       ), tutorial_goals as (
+         select event.run_id, event.attempt_number
+           from onboarding_event event
+           join filtered_runs run on run.id = event.run_id
+          where event.kind = 'tutorial_goal'
+       )
+       select count(distinct run.user_id)::text as started_users,
+              count(distinct run.user_id) filter (where run.completed_at is not null)::text
+                as completed_users,
+              count(*) filter (where run.completed_at is not null)::text as completed_runs,
+              avg(extract(epoch from (run.completed_at - run.started_at)))
+                filter (where run.completed_at is not null)::text as average_completion_seconds,
+              count(*)::text as total_runs,
+              (select count(*)::text from tutorial_goals) as tutorial_goals,
+              (select avg(attempt_number)::text from tutorial_goals)
+                as average_attempts_to_goal,
+              (select count(*)::text from tutorial_goals where attempt_number = 1)
+                as first_attempt_goals,
+              (select max(attempt_number) from tutorial_goals) as max_attempts
+         from filtered_runs run`,
+      filters,
+    );
+    const stepRows = await app.pg.query<{
+      step_id: string;
+      position: number;
+      title: string;
+      reached_users: string;
+      drop_off_users: string;
+    }>(
+      `with filtered_runs as (
+         select run.*
+           from onboarding_run run
+          where run.source = 'natural'
+            and ($1::text is null or run.chain_key = $1)
+            and ($2::uuid is null or run.version_id = $2)
+            and ($3::timestamptz is null or run.started_at >= $3)
+            and ($4::timestamptz is null or run.started_at <= $4)
+       ), reached as (
+         select event.step_id, count(distinct event.user_id)::text as reached_users
+           from onboarding_event event
+           join filtered_runs run on run.id = event.run_id
+          where event.kind = 'step_viewed'
+          group by event.step_id
+       ), last_reached as (
+         select distinct on (event.run_id)
+                event.run_id, event.user_id, event.step_id
+           from onboarding_event event
+           join filtered_runs run on run.id = event.run_id
+           join onboarding_step step on step.id = event.step_id
+          where event.kind = 'step_viewed'
+            and run.completed_at is null
+            and run.started_at <= now() - interval '30 minutes'
+          order by event.run_id, event.created_at desc, step.position desc
+       ), drop_off as (
+         select step_id, count(distinct user_id)::text as drop_off_users
+           from last_reached
+          group by step_id
+       )
+       select step.id as step_id, step.position, step.title,
+              coalesce(reached.reached_users, '0') as reached_users,
+              coalesce(drop_off.drop_off_users, '0') as drop_off_users
+         from onboarding_step step
+         join onboarding_version version on version.id = step.version_id
+         left join reached on reached.step_id = step.id
+         left join drop_off on drop_off.step_id = step.id
+        where ($1::text is null or version.chain_key = $1)
+          and ($2::uuid is null or version.id = $2)
+        order by version.created_at, step.position, step.id`,
+      filters,
+    );
+    const row = summary.rows[0]!;
+    const startedUsers = Number(row.started_users);
+    const completedUsers = Number(row.completed_users);
+    const tutorialGoals = Number(row.tutorial_goals);
+    return {
+      startedUsers,
+      completedUsers,
+      completionRate: startedUsers === 0 ? 0 : (completedUsers * 100) / startedUsers,
+      averageCompletionSeconds:
+        row.average_completion_seconds === null ? null : Number(row.average_completion_seconds),
+      repeatStarts: Number(row.total_runs) - startedUsers,
+      tutorial: {
+        averageAttemptsToGoal:
+          row.average_attempts_to_goal === null ? null : Number(row.average_attempts_to_goal),
+        firstAttemptGoalRate:
+          tutorialGoals === 0 ? null : (Number(row.first_attempt_goals) * 100) / tutorialGoals,
+        maxAttempts: row.max_attempts === null ? null : Number(row.max_attempts),
+      },
+      steps: stepRows.rows.map((step) => ({
+        stepId: step.step_id,
+        position: Number(step.position),
+        title: step.title,
+        reachedUsers: Number(step.reached_users),
+        dropOffUsers: Number(step.drop_off_users),
+      })),
+    };
+  });
 
   app.get(
     '/admin/onboarding/chains/:chainKey',

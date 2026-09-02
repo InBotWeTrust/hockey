@@ -854,4 +854,146 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
       old_status: 'published',
     });
   });
+
+  it('reports natural onboarding conversion, repeats, tutorial attempts, steps, and 30-minute drop-offs', async () => {
+    const media = await insertMedia();
+    const version = await insertVersion('beginner', 'published', [
+      { kind: 'informational', position: 1, mediaObjectId: media, title: 'Старт' },
+      { kind: 'tutorial_shot', position: 2, title: 'Бросок' },
+      { kind: 'informational', position: 3, mediaObjectId: media, title: 'Финиш' },
+    ]);
+    const users: string[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      const user = await findOrCreateTelegramUser(pool, {
+        providerUid: `stats-player-${index}`,
+        displayName: `Stats Player ${index}`,
+        timezone: 'Europe/Moscow',
+      });
+      users.push(user.id);
+    }
+    const insertRun = async (
+      userId: string,
+      source: 'natural' | 'admin_reset' | 'preview',
+      startedAgo: string,
+      completedAfterMinutes: number | null,
+      viewedPositions: number[],
+      attemptsToGoal: number | null,
+    ) => {
+      const run = await pool.query<{ id: string }>(
+        `insert into onboarding_run
+           (user_id, chain_key, version_id, client_session_id, source, started_at, completed_at)
+         values ($1, 'beginner', $2, $3, $4, now() - $5::interval,
+                 case when $6::int is null then null
+                      else now() - $5::interval + ($6::int * interval '1 minute') end)
+         returning id`,
+        [userId, version.versionId, randomUUID(), source, startedAgo, completedAfterMinutes],
+      );
+      for (const position of viewedPositions) {
+        await pool.query(
+          `insert into onboarding_event
+             (run_id, user_id, chain_key, version_id, step_id, kind, created_at)
+           values ($1, $2, 'beginner', $3, $4, 'step_viewed', now() - interval '1 hour')`,
+          [run.rows[0]!.id, userId, version.versionId, version.stepIds[position - 1]],
+        );
+      }
+      if (attemptsToGoal !== null) {
+        for (let attempt = 1; attempt <= attemptsToGoal; attempt += 1) {
+          await pool.query(
+            `insert into onboarding_event
+               (run_id, user_id, chain_key, version_id, step_id, kind, result,
+                attempt_number, created_at)
+             values ($1, $2, 'beginner', $3, $4, 'tutorial_attempt',
+                     case when $5::int = $6::int then 'goal' else 'save' end, $5::int,
+                     now() - interval '1 hour')`,
+            [
+              run.rows[0]!.id,
+              userId,
+              version.versionId,
+              version.stepIds[1],
+              attempt,
+              attemptsToGoal,
+            ],
+          );
+        }
+        await pool.query(
+          `insert into onboarding_event
+             (run_id, user_id, chain_key, version_id, step_id, kind, result,
+              attempt_number, created_at)
+           values ($1, $2, 'beginner', $3, $4, 'tutorial_goal', 'goal', $5,
+                   now() - interval '1 hour')`,
+          [run.rows[0]!.id, userId, version.versionId, version.stepIds[1], attemptsToGoal],
+        );
+      }
+      return run.rows[0]!.id;
+    };
+
+    await insertRun(users[0]!, 'natural', '120 minutes', 10, [1, 2, 3], 1);
+    await insertRun(users[0]!, 'natural', '31 minutes', null, [1, 2], null);
+    await insertRun(users[1]!, 'natural', '120 minutes', 20, [1, 2, 3], 2);
+    await insertRun(users[2]!, 'natural', '30 minutes', null, [1], null);
+    await insertRun(users[3]!, 'natural', '29 minutes', null, [1, 2], null);
+    await insertRun(users[2]!, 'preview', '180 minutes', 1, [1, 2, 3], 1);
+    await insertRun(users[3]!, 'admin_reset', '180 minutes', 1, [1, 2, 3], 1);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/admin/onboarding/stats?chain=beginner&versionId=${version.versionId}`,
+      headers: adminHeaders,
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toEqual({
+      startedUsers: 4,
+      completedUsers: 2,
+      completionRate: 50,
+      averageCompletionSeconds: 900,
+      repeatStarts: 1,
+      tutorial: {
+        averageAttemptsToGoal: 1.5,
+        firstAttemptGoalRate: 50,
+        maxAttempts: 2,
+      },
+      steps: [
+        {
+          stepId: version.stepIds[0],
+          position: 1,
+          title: 'Старт',
+          reachedUsers: 4,
+          dropOffUsers: 1,
+        },
+        {
+          stepId: version.stepIds[1],
+          position: 2,
+          title: 'Бросок',
+          reachedUsers: 3,
+          dropOffUsers: 1,
+        },
+        {
+          stepId: version.stepIds[2],
+          position: 3,
+          title: 'Финиш',
+          reachedUsers: 2,
+          dropOffUsers: 0,
+        },
+      ],
+    });
+
+    const empty = await app.inject({
+      method: 'GET',
+      url: `/admin/onboarding/stats?chain=amateur&from=2099-01-01T00:00:00.000Z&to=2099-01-02T00:00:00.000Z`,
+      headers: adminHeaders,
+    });
+    expect(empty.statusCode).toBe(200);
+    expect(empty.json()).toMatchObject({
+      startedUsers: 0,
+      completedUsers: 0,
+      completionRate: 0,
+      averageCompletionSeconds: null,
+      repeatStarts: 0,
+      tutorial: {
+        averageAttemptsToGoal: null,
+        firstAttemptGoalRate: null,
+        maxAttempts: null,
+      },
+    });
+  });
 });
