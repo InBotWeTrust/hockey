@@ -219,6 +219,17 @@ describe('AdminScreen', () => {
     vi.restoreAllMocks();
   });
 
+  it('keeps onboarding as a top-level admin tab', () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
+    renderAdmin();
+    expect(screen.getByRole('button', { name: 'Онбординг' })).toBeInTheDocument();
+  });
+
   it('starts with dashboard and renders game settings for admins', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'a',

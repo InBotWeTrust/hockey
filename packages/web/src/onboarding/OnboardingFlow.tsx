@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import {
   completeOnboarding,
   recordStepView,
@@ -12,9 +12,17 @@ interface OnboardingFlowProps {
   runId: string;
   required: OnboardingRequired;
   onCompleted: (result: OnboardingRequiredResponse) => void;
+  mode?: 'required' | 'preview';
+  tutorialApi?: ComponentProps<typeof TutorialShotStep>['tutorialApi'];
 }
 
-export function OnboardingFlow({ runId, required, onCompleted }: OnboardingFlowProps): JSX.Element {
+export function OnboardingFlow({
+  runId,
+  required,
+  onCompleted,
+  mode = 'required',
+  tutorialApi,
+}: OnboardingFlowProps): JSX.Element {
   const [stepIndex, setStepIndex] = useState(0);
   const [brokenImage, setBrokenImage] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -26,6 +34,7 @@ export function OnboardingFlow({ runId, required, onCompleted }: OnboardingFlowP
   const step = required.steps[stepIndex];
 
   function ensureStepView(stepId: string): Promise<void> {
+    if (mode === 'preview') return Promise.resolve();
     if (viewedSteps.current.has(stepId)) return Promise.resolve();
     const activeRequest = viewRequests.current.get(stepId);
     if (activeRequest) return activeRequest;
@@ -62,6 +71,10 @@ export function OnboardingFlow({ runId, required, onCompleted }: OnboardingFlowP
     setCompleting(true);
     setLifecycleError(null);
     try {
+      if (mode === 'preview') {
+        onCompleted({ required: null });
+        return;
+      }
       const reached = [...reachedSteps.current];
       await Promise.allSettled(reached.map(ensureStepView));
       try {
@@ -119,6 +132,7 @@ export function OnboardingFlow({ runId, required, onCompleted }: OnboardingFlowP
             onGoalConfirmed={() => confirmedTutorialSteps.current.add(step.id)}
             onBack={() => setStepIndex((current) => Math.max(0, current - 1))}
             onContinue={advance}
+            {...(tutorialApi ? { tutorialApi } : {})}
           />
         )}
         {step.kind === 'informational' && (

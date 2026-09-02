@@ -1,0 +1,343 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { OnboardingAdmin } from './OnboardingAdmin.js';
+import {
+  createOnboardingStep,
+  deleteOnboardingStep,
+  duplicateOnboardingStep,
+  patchOnboardingStep,
+  publishOnboardingDraft,
+  reorderOnboardingSteps,
+  startOnboardingPreviewTutorial,
+  submitOnboardingPreviewTutorialShot,
+  uploadOnboardingImage,
+} from './onboardingApi.js';
+
+const chain = {
+  chainKey: 'beginner' as const,
+  enforcementEnabled: true,
+  published: {
+    id: 'published',
+    status: 'published' as const,
+    createdAt: '2026-09-01T00:00:00.000Z',
+    publishedAt: '2026-09-01T01:00:00.000Z',
+    steps: [],
+  },
+  draft: {
+    id: 'draft',
+    status: 'draft' as const,
+    createdAt: '2026-09-02T00:00:00.000Z',
+    publishedAt: null,
+    steps: [
+      {
+        id: 'step-1',
+        position: 1,
+        kind: 'informational' as const,
+        title: 'Всё начинается здесь',
+        description: 'История игрока',
+        ctaLabel: 'Далее',
+        mediaObjectId: 'media-1',
+        imageUrl: '/media/1',
+      },
+      {
+        id: 'step-2',
+        position: 2,
+        kind: 'tutorial_shot' as const,
+        title: 'Забей первую шайбу',
+        description: 'Учебный бросок',
+        ctaLabel: 'Далее',
+        tutorial: { shooterFrequency: 0.2, goalieFrequency: 0.2, goalFrequency: 0.2 },
+      },
+    ],
+  },
+};
+
+function renderAdmin(): void {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <OnboardingAdmin />
+    </QueryClientProvider>,
+  );
+}
+
+describe('onboardingApi', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('uses the exact create and reorder contracts and returns authoritative chains', async () => {
+    const authoritative = { ...chain, draft: { ...chain.draft!, id: 'server-draft' } };
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ chain: authoritative }), { status: 201 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ chain: authoritative }), { status: 200 }),
+      );
+
+    await expect(
+      createOnboardingStep('beginner', {
+        kind: 'informational',
+        title: 'Новый шаг',
+        description: 'Текст',
+        ctaLabel: 'Далее',
+        mediaObjectId: 'media-1',
+      }),
+    ).resolves.toEqual(authoritative);
+    await expect(reorderOnboardingSteps('beginner', ['step-2', 'step-1'])).resolves.toEqual(
+      authoritative,
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining('/admin/onboarding/chains/beginner/steps'),
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('/admin/onboarding/chains/beginner/reorder'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ stepIds: ['step-2', 'step-1'] }),
+      }),
+    );
+  });
+
+  it('rejects empty and non-WebP uploads before a request', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    await expect(
+      uploadOnboardingImage(new File([], 'empty.webp', { type: 'image/webp' })),
+    ).rejects.toThrow('Файл пустой');
+    await expect(
+      uploadOnboardingImage(new File(['x'], 'image.png', { type: 'image/png' })),
+    ).rejects.toThrow('Только WebP');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('uses exact edit, duplicate, delete, publish, upload and preview tutorial contracts', async () => {
+    const tutorialSession = {
+      runId: 'preview-run',
+      seed: 'seed',
+      shotIndex: 1,
+      goalieId: 'rookie',
+      gameCoreVersion: 1,
+      speeds: { shooterFrequency: 0.2, goalieFrequency: 0.2, goalFrequency: 0.2 },
+      goalConfirmed: false,
+    } as const;
+    const shotResult = { serverResult: 'save' as const, nextShotIndex: 2, goalConfirmed: false };
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ chain })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ chain }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ chain })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ chain })))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ media: { id: 'media-2' } }), { status: 201 }),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(tutorialSession), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(shotResult)));
+    const input = {
+      kind: 'informational' as const,
+      title: 'Изменённый шаг',
+      description: 'Текст',
+      ctaLabel: 'Далее',
+      mediaObjectId: 'media-1',
+    };
+
+    await patchOnboardingStep('beginner', 'step-1', input);
+    await duplicateOnboardingStep('beginner', 'step-1');
+    await deleteOnboardingStep('beginner', 'step-1');
+    await publishOnboardingDraft('beginner');
+    await uploadOnboardingImage(new File(['webp'], 'scene.webp', { type: 'image/webp' }));
+    await startOnboardingPreviewTutorial('beginner');
+    await submitOnboardingPreviewTutorialShot('preview-run', {
+      shotIndex: 1,
+      input: { tapTime: 10, shooterTapTime: 10 },
+      claimedResult: 'save',
+    });
+
+    expect(fetchMock.mock.calls.map(([request]) => String(request))).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('/steps/step-1'),
+        expect.stringContaining('/steps/step-1/duplicate'),
+        expect.stringContaining('/publish'),
+        expect.stringContaining('/admin/onboarding/media'),
+        expect.stringContaining('/preview/tutorial/start'),
+        expect.stringContaining('/preview/runs/preview-run/tutorial/shot'),
+      ]),
+    );
+    const uploadCall = fetchMock.mock.calls[4]!;
+    expect(String(uploadCall[0])).toContain('/admin/onboarding/media');
+    expect(uploadCall[1]?.method).toBe('POST');
+    const headers = new Headers(uploadCall[1]?.headers);
+    expect(headers.get('content-type')).toBe('image/webp');
+    expect(headers.get('x-file-name')).toBe('scene.webp');
+  });
+});
+
+describe('OnboardingAdmin', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('shows fixed chains, statuses, CRUD and accessible reorder controls', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/admin/onboarding/chains/beginner')) {
+        return new Response(JSON.stringify({ chain }));
+      }
+      if (url.includes('/duplicate') || init?.method === 'DELETE' || url.endsWith('/reorder')) {
+        return new Response(JSON.stringify({ chain }));
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+    renderAdmin();
+
+    expect(await screen.findByText('Всё начинается здесь')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Новичок' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Любитель' })).toBeInTheDocument();
+    expect(screen.getByText('Опубликовано')).toBeInTheDocument();
+    expect(screen.getByText('Есть черновик')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Добавить шаг' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Редактировать.*Всё начинается здесь/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Дублировать.*Всё начинается здесь/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Удалить.*Всё начинается здесь/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Переместить вниз.*Всё начинается здесь/ }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Переместить вниз.*Всё начинается здесь/ }));
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/reorder'),
+        expect.objectContaining({ body: JSON.stringify({ stepIds: ['step-2', 'step-1'] }) }),
+      ),
+    );
+
+    const rows = screen.getAllByRole('listitem');
+    fireEvent.dragStart(rows[0]!);
+    fireEvent.dragOver(rows[1]!);
+    fireEvent.drop(rows[1]!);
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(3));
+  });
+
+  it('does not offer tutorial steps to Amateur', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const key = String(input).endsWith('/amateur') ? 'amateur' : 'beginner';
+      return new Response(
+        JSON.stringify({
+          chain: { chainKey: key, enforcementEnabled: false, published: null, draft: null },
+        }),
+      );
+    });
+    renderAdmin();
+    await screen.findByText('Не опубликовано');
+    fireEvent.click(screen.getByRole('button', { name: 'Любитель' }));
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/chains/amateur'),
+        expect.anything(),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить шаг' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Тип шага' }));
+    expect(screen.queryByRole('option', { name: 'Учебный бросок' })).not.toBeInTheDocument();
+  });
+
+  it('offers tutorial speeds only where allowed and keeps server errors visible', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/admin/onboarding/chains/beginner')) {
+        return new Response(JSON.stringify({ chain }));
+      }
+      if (url.endsWith('/publish')) {
+        return new Response(
+          JSON.stringify({
+            error: { code: 'onboarding_publish_invalid', message: 'Добавьте изображение' },
+          }),
+          { status: 409 },
+        );
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+    renderAdmin();
+    await screen.findByText('Опубликовано');
+    fireEvent.click(screen.getByRole('button', { name: /Редактировать.*Забей первую шайбу/ }));
+    expect(screen.getByLabelText('Скорость игрока')).toHaveValue(0.2);
+    expect(screen.getByLabelText('Скорость вратаря')).toHaveValue(0.2);
+    expect(screen.getByLabelText('Скорость ворот')).toHaveValue(0.2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Опубликовать' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('проверьте шаги и изображения');
+  });
+
+  it('replaces the editor state with the authoritative full-chain mutation response', async () => {
+    const authoritative = {
+      ...chain,
+      draft: {
+        ...chain.draft!,
+        steps: [{ ...chain.draft!.steps[0]!, title: 'Серверная версия шага' }],
+      },
+    };
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ chain })))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ chain: authoritative }), { status: 201 }),
+      );
+    renderAdmin();
+    await screen.findByText('Всё начинается здесь');
+    fireEvent.click(screen.getByRole('button', { name: /Дублировать.*Всё начинается здесь/ }));
+    expect(await screen.findByText('Серверная версия шага')).toBeInTheDocument();
+    expect(screen.queryByText('Всё начинается здесь')).not.toBeInTheDocument();
+  });
+
+  it('previews through admin endpoints without public lifecycle calls', async () => {
+    const preview = {
+      preview: true,
+      chain: 'beginner',
+      versionId: 'draft',
+      steps: chain.draft!.steps,
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/admin/onboarding/chains/beginner')) {
+        return new Response(JSON.stringify({ chain }));
+      }
+      if (url.endsWith('/admin/onboarding/chains/beginner/preview')) {
+        return new Response(JSON.stringify(preview));
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+    renderAdmin();
+    await screen.findByText('Опубликовано');
+    fireEvent.click(screen.getByRole('button', { name: 'Предпросмотр' }));
+    expect(
+      await screen.findByText('Предпросмотр', { selector: '[role="status"]' }),
+    ).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        /\/onboarding\/(required|start|runs)/.test(String(input)),
+      ),
+    ).toBe(false);
+  });
+
+  it('renders a truthful statistics placeholder', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ chain: { ...chain, draft: null } })),
+    );
+    renderAdmin();
+    await screen.findByText('Опубликовано');
+    fireEvent.click(screen.getByRole('button', { name: 'Статистика' }));
+    expect(screen.getByText(/появится в следующем этапе/i)).toBeInTheDocument();
+  });
+});

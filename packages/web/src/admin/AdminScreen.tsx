@@ -54,6 +54,7 @@ import { useDebouncedValue } from '../lib/useDebouncedValue.js';
 import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSections.js';
 import { WeeklyChallengesAdmin } from './WeeklyChallengesAdmin.js';
 import { BonusGamesAdmin } from './BonusGamesAdmin.js';
+import { OnboardingAdmin } from './OnboardingAdmin.js';
 import {
   createAdminInventoryItem,
   createAdminDuelTemplate,
@@ -145,6 +146,7 @@ type AdminTab =
   | 'bonus-games'
   | 'duels'
   | 'feedback'
+  | 'onboarding'
   | 'settings';
 type AdminAchievementsTab = 'achievements' | 'challenges';
 type SortField = 'name' | 'goals' | 'accuracy';
@@ -166,6 +168,7 @@ const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'bonus-games', label: 'Бонусные игры', icon: <Gamepad2 size={15} /> },
   { id: 'duels', label: 'Дуэли', icon: <Trophy size={15} /> },
   { id: 'feedback', label: 'Отзывы', icon: <MessageSquare size={15} /> },
+  { id: 'onboarding', label: 'Онбординг', icon: <UserCheck size={15} /> },
   { id: 'settings', label: 'Параметры', icon: <SlidersHorizontal size={15} /> },
 ];
 
@@ -993,6 +996,7 @@ export function AdminScreen(): JSX.Element {
           }}
         />
       )}
+      {tab === 'onboarding' && <OnboardingAdmin />}
       {tab === 'settings' && (
         <SettingsPanel
           loading={settings.isLoading}

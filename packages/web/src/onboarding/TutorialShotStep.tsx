@@ -5,6 +5,7 @@ import {
   submitOnboardingTutorialShot,
   type OnboardingStep,
   type OnboardingTutorialSession,
+  type OnboardingTutorialShotResponse,
 } from '../api/onboarding.js';
 import { PlayView } from '../game/PlayView.js';
 
@@ -23,6 +24,17 @@ interface TutorialShotStepProps {
   onGoalConfirmed: () => void;
   onBack: () => void;
   onContinue: () => void;
+  tutorialApi?: {
+    start: (runId: string) => Promise<OnboardingTutorialSession & { runId?: string }>;
+    submit: (
+      runId: string,
+      shot: {
+        shotIndex: number;
+        input: { tapTime: number; shooterTapTime: number };
+        claimedResult: 'goal' | 'save' | 'miss';
+      },
+    ) => Promise<OnboardingTutorialShotResponse>;
+  };
 }
 
 function stateFromSession(
@@ -46,6 +58,7 @@ export function TutorialShotStep({
   onGoalConfirmed,
   onBack,
   onContinue,
+  tutorialApi,
 }: TutorialShotStepProps): JSX.Element {
   const [session, setSession] = useState<OnboardingTutorialSession | null>(null);
   const [state, setState] = useState<TutorialState | null>(null);
@@ -54,6 +67,7 @@ export function TutorialShotStep({
   const [shotError, setShotError] = useState(false);
   const [recoveringShot, setRecoveringShot] = useState(false);
   const [shotNeedsResync, setShotNeedsResync] = useState(false);
+  const [tutorialRunId, setTutorialRunId] = useState(runId);
   const startedRef = useRef(false);
   const reduceMotion =
     typeof window !== 'undefined' &&
@@ -66,7 +80,9 @@ export function TutorialShotStep({
     setLoading(true);
     setError(false);
     try {
-      const nextSession = await startOnboardingTutorial(runId);
+      const nextSession = await (tutorialApi?.start(runId) ?? startOnboardingTutorial(runId));
+      const nextRunId = (nextSession as OnboardingTutorialSession & { runId?: string }).runId;
+      setTutorialRunId(nextRunId ?? runId);
       setSession(nextSession);
       setState(stateFromSession(nextSession, preservedGoal));
       if (nextSession.goalConfirmed && !preservedGoal) onGoalConfirmed();
@@ -76,7 +92,7 @@ export function TutorialShotStep({
     } finally {
       setLoading(false);
     }
-  }, [onGoalConfirmed, preservedGoal, runId]);
+  }, [onGoalConfirmed, preservedGoal, runId, tutorialApi]);
 
   useEffect(() => {
     void load();
@@ -90,7 +106,12 @@ export function TutorialShotStep({
       // POST /tutorial/start is idempotent for an existing run and returns the
       // current authoritative nextShotIndex. This safely distinguishes a request
       // that never committed from a committed response that was lost in transit.
-      const authoritativeSession = await startOnboardingTutorial(runId);
+      const authoritativeSession = await (tutorialApi?.start(tutorialRunId) ??
+        startOnboardingTutorial(tutorialRunId));
+      const authoritativeRunId = (
+        authoritativeSession as OnboardingTutorialSession & { runId?: string }
+      ).runId;
+      setTutorialRunId(authoritativeRunId ?? tutorialRunId);
       setSession(authoritativeSession);
       setState(stateFromSession(authoritativeSession, preservedGoal));
       if (authoritativeSession.goalConfirmed && !preservedGoal) onGoalConfirmed();
@@ -101,7 +122,7 @@ export function TutorialShotStep({
     } finally {
       setRecoveringShot(false);
     }
-  }, [onGoalConfirmed, preservedGoal, runId]);
+  }, [onGoalConfirmed, preservedGoal, tutorialApi, tutorialRunId]);
 
   if (loading)
     return (
@@ -150,14 +171,22 @@ export function TutorialShotStep({
             setState((current) => (current ? { ...current, shots: current.shots + 1 } : current))
           }
           submitShot={async ({ shotIndex, input, claimedResult }) => {
-            const response = await submitOnboardingTutorialShot(runId, {
+            const response = await (tutorialApi?.submit(tutorialRunId, {
               shotIndex,
               input: {
                 tapTime: input.tapTime,
                 shooterTapTime: input.shooterTapTime ?? input.tapTime,
               },
               claimedResult,
-            });
+            }) ??
+              submitOnboardingTutorialShot(tutorialRunId, {
+                shotIndex,
+                input: {
+                  tapTime: input.tapTime,
+                  shooterTapTime: input.shooterTapTime ?? input.tapTime,
+                },
+                claimedResult,
+              }));
             const nextState: TutorialState = {
               shots: response.nextShotIndex - 1,
               goals: response.goalConfirmed ? 1 : 0,

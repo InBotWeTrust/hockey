@@ -279,4 +279,23 @@ describe('OnboardingFlow', () => {
     expect(screen.queryByRole('button', { name: 'Tutorial Back' })).not.toBeInTheDocument();
     expect(screen.getByText('1 из 1')).toBeInTheDocument();
   });
+
+  it('finishes preview locally without public view or completion requests', async () => {
+    const onCompleted = vi.fn();
+    render(
+      <OnboardingFlow
+        mode="preview"
+        runId="preview-pending"
+        required={required}
+        onCompleted={onCompleted}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledWith({ required: null }));
+    expect(recordStepView).not.toHaveBeenCalled();
+    expect(completeOnboarding).not.toHaveBeenCalled();
+  });
 });

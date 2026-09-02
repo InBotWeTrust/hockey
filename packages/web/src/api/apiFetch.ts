@@ -27,6 +27,8 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   arena_not_owned: 'Эта домашняя площадка ещё не открыта.',
   arena_not_selectable: 'Эту домашнюю площадку сейчас нельзя выбрать.',
   arena_unavailable: 'Домашняя площадка временно недоступна.',
+  onboarding_publish_invalid: 'Не удалось опубликовать: проверьте шаги и изображения.',
+  onboarding_preview_unavailable: 'Предпросмотр недоступен: сначала добавьте шаги.',
 };
 
 export class ApiError extends Error {

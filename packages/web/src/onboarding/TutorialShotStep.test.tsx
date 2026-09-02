@@ -183,6 +183,40 @@ describe('TutorialShotStep', () => {
     expect(playProps?.goals).toBe(1);
   });
 
+  it('uses isolated preview tutorial adapters and the admin preview run id', async () => {
+    const previewStart = vi.fn().mockResolvedValue({ ...session, runId: 'preview-run' });
+    const previewSubmit = vi.fn().mockResolvedValue({
+      serverResult: 'save',
+      nextShotIndex: 2,
+      goalConfirmed: false,
+    });
+    const tutorialApi = { start: previewStart, submit: previewSubmit };
+    render(
+      <TutorialShotStep
+        runId="preview-pending"
+        step={step}
+        goalConfirmed={false}
+        onGoalConfirmed={vi.fn()}
+        onBack={vi.fn()}
+        onContinue={vi.fn()}
+        tutorialApi={tutorialApi}
+      />,
+    );
+    await screen.findByTestId('play-view');
+    fireEvent.click(screen.getByRole('button', { name: 'Mock shot' }));
+
+    await waitFor(() =>
+      expect(previewSubmit).toHaveBeenCalledWith('preview-run', {
+        shotIndex: 1,
+        input: { tapTime: 123, shooterTapTime: 98 },
+        claimedResult: 'goal',
+      }),
+    );
+    expect(previewStart).toHaveBeenCalledWith('preview-pending');
+    expect(startOnboardingTutorial).not.toHaveBeenCalled();
+    expect(submitOnboardingTutorialShot).not.toHaveBeenCalled();
+  });
+
   it('shows a retryable start error without mounting game progress', async () => {
     vi.mocked(startOnboardingTutorial)
       .mockRejectedValueOnce(new Error('offline'))
