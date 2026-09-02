@@ -792,6 +792,7 @@ describe.skipIf(!hasIntegrationEnv)('060 player onboarding migration', () => {
         [
           'onboarding_version_one_draft_idx',
           'onboarding_run_user_started_idx',
+          'onboarding_run_natural_version_started_idx',
           'onboarding_event_version_created_idx',
           'onboarding_event_step_viewed_once_idx',
           'onboarding_event_tutorial_goal_once_idx',
@@ -799,7 +800,7 @@ describe.skipIf(!hasIntegrationEnv)('060 player onboarding migration', () => {
         ],
       ],
     );
-    expect(indexes.rows).toHaveLength(6);
+    expect(indexes.rows).toHaveLength(7);
     expect(
       indexes.rows.find((index) => index.indexname === 'onboarding_version_one_draft_idx')
         ?.indexdef,
@@ -808,6 +809,22 @@ describe.skipIf(!hasIntegrationEnv)('060 player onboarding migration', () => {
       indexes.rows.find((index) => index.indexname === 'onboarding_event_version_created_idx')
         ?.indexdef,
     ).toContain('(version_id, created_at');
+    const naturalStatsIndex = indexes.rows.find(
+      (index) => index.indexname === 'onboarding_run_natural_version_started_idx',
+    );
+    expect(naturalStatsIndex?.indexdef).toContain('(version_id, started_at)');
+    expect(naturalStatsIndex?.indexdef).toContain("WHERE (source = 'natural'::text)");
+    await pool.query('set enable_seqscan = off');
+    const plan = await pool.query<{ 'QUERY PLAN': string }>(
+      `explain (costs off)
+       select * from onboarding_run
+        where source = 'natural' and version_id = $1 and started_at >= now() - interval '1 day'`,
+      [versionId],
+    );
+    expect(plan.rows.map((row) => row['QUERY PLAN']).join('\n')).toContain(
+      'onboarding_run_natural_version_started_idx',
+    );
+    await pool.query('reset enable_seqscan');
     expect(
       indexes.rows
         .filter((index) => index.indexname.endsWith('_once_idx'))

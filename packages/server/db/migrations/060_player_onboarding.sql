@@ -94,6 +94,10 @@ create index onboarding_run_user_started_idx
 create index onboarding_run_chain_started_idx
   on onboarding_run (chain_key, started_at desc);
 
+create index onboarding_run_natural_version_started_idx
+  on onboarding_run (version_id, started_at)
+  where source = 'natural';
+
 create table onboarding_event (
   id uuid primary key default gen_random_uuid(),
   run_id uuid not null references onboarding_run(id) on delete cascade,

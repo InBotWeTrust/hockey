@@ -977,6 +977,170 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
       ],
     });
 
+    const versionNoise = await insertVersion('beginner', 'published', [
+      { kind: 'informational', position: 1, mediaObjectId: media, title: 'Другая версия' },
+    ]);
+    const amateurNoise = await insertVersion('amateur', 'published', [
+      { kind: 'informational', position: 1, mediaObjectId: media, title: 'Любитель' },
+    ]);
+    const insertFilterFixture = async (
+      chain: ChainKey,
+      fixtureVersion: { versionId: string; stepIds: string[] },
+      providerUid: string,
+      startedAt: string,
+      attemptsToGoal: number | null,
+    ) => {
+      const user = await findOrCreateTelegramUser(pool, {
+        providerUid,
+        displayName: providerUid,
+        timezone: 'Europe/Moscow',
+      });
+      const run = await pool.query<{ id: string }>(
+        `insert into onboarding_run
+           (user_id, chain_key, version_id, client_session_id, source, started_at, completed_at)
+         values ($1, $2, $3, $4, 'natural', $5::timestamptz,
+                 $5::timestamptz + interval '1 minute')
+         returning id`,
+        [user.id, chain, fixtureVersion.versionId, randomUUID(), startedAt],
+      );
+      await pool.query(
+        `insert into onboarding_event
+           (run_id, user_id, chain_key, version_id, step_id, kind, created_at)
+         values ($1, $2, $3, $4, $5, 'step_viewed', $6::timestamptz)`,
+        [
+          run.rows[0]!.id,
+          user.id,
+          chain,
+          fixtureVersion.versionId,
+          fixtureVersion.stepIds[0],
+          startedAt,
+        ],
+      );
+      if (attemptsToGoal !== null) {
+        await pool.query(
+          `insert into onboarding_event
+             (run_id, user_id, chain_key, version_id, step_id, kind, result,
+              attempt_number, created_at)
+           values ($1, $2, $3, $4, $5, 'tutorial_goal', 'goal', $6, $7::timestamptz)`,
+          [
+            run.rows[0]!.id,
+            user.id,
+            chain,
+            fixtureVersion.versionId,
+            fixtureVersion.stepIds[0],
+            attemptsToGoal,
+            startedAt,
+          ],
+        );
+      }
+    };
+    await insertFilterFixture(
+      'beginner',
+      versionNoise,
+      'filter-version',
+      '2098-01-02T00:00:00.000Z',
+      3,
+    );
+    await insertFilterFixture(
+      'amateur',
+      amateurNoise,
+      'filter-chain',
+      '2098-01-02T00:00:01.000Z',
+      null,
+    );
+    await insertFilterFixture(
+      'beginner',
+      versionNoise,
+      'filter-from-boundary',
+      '2098-02-01T00:00:00.000Z',
+      4,
+    );
+    await insertFilterFixture(
+      'beginner',
+      versionNoise,
+      'filter-after-boundary',
+      '2098-02-01T00:00:01.000Z',
+      5,
+    );
+    await insertFilterFixture(
+      'beginner',
+      versionNoise,
+      'filter-before-to',
+      '2019-12-31T23:59:59.000Z',
+      6,
+    );
+    await insertFilterFixture(
+      'beginner',
+      versionNoise,
+      'filter-to-boundary',
+      '2020-01-01T00:00:00.000Z',
+      7,
+    );
+
+    const assertFiltered = async (
+      query: string,
+      expected: {
+        startedUsers: number;
+        averageAttempts: number | null;
+        maxAttempts: number | null;
+        stepIds: string[];
+      },
+    ) => {
+      const filtered = await app.inject({
+        method: 'GET',
+        url: `/admin/onboarding/stats?${query}`,
+        headers: adminHeaders,
+      });
+      expect(filtered.statusCode, filtered.body).toBe(200);
+      expect(filtered.json()).toMatchObject({
+        startedUsers: expected.startedUsers,
+        completedUsers: expected.startedUsers,
+        completionRate: expected.startedUsers === 0 ? 0 : 100,
+        averageCompletionSeconds: expected.startedUsers === 0 ? null : 60,
+        repeatStarts: 0,
+        tutorial: {
+          averageAttemptsToGoal: expected.averageAttempts,
+          firstAttemptGoalRate: expected.averageAttempts === null ? null : 0,
+          maxAttempts: expected.maxAttempts,
+        },
+      });
+      expect(filtered.json().steps.map((step: { stepId: string }) => step.stepId)).toEqual(
+        expected.stepIds,
+      );
+      expect(
+        filtered
+          .json()
+          .steps.every(
+            (step: { reachedUsers: number; dropOffUsers: number }) =>
+              step.reachedUsers === expected.startedUsers && step.dropOffUsers === 0,
+          ),
+      ).toBe(true);
+    };
+    await assertFiltered('chain=amateur', {
+      startedUsers: 1,
+      averageAttempts: null,
+      maxAttempts: null,
+      stepIds: amateurNoise.stepIds,
+    });
+    await assertFiltered(`versionId=${versionNoise.versionId}`, {
+      startedUsers: 5,
+      averageAttempts: 5,
+      maxAttempts: 7,
+      stepIds: versionNoise.stepIds,
+    });
+    await assertFiltered('from=2098-02-01T00%3A00%3A00.000Z', {
+      startedUsers: 2,
+      averageAttempts: 4.5,
+      maxAttempts: 5,
+      stepIds: versionNoise.stepIds,
+    });
+    await assertFiltered('to=2020-01-01T00%3A00%3A00.000Z', {
+      startedUsers: 2,
+      averageAttempts: 6.5,
+      maxAttempts: 7,
+      stepIds: versionNoise.stepIds,
+    });
+
     const empty = await app.inject({
       method: 'GET',
       url: `/admin/onboarding/stats?chain=amateur&from=2099-01-01T00:00:00.000Z&to=2099-01-02T00:00:00.000Z`,

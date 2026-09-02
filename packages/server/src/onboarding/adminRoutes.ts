@@ -807,6 +807,7 @@ export const onboardingAdminRoutes: FastifyPluginAsync<OnboardingAdminRoutesOpti
          left join drop_off on drop_off.step_id = step.id
         where ($1::text is null or version.chain_key = $1)
           and ($2::uuid is null or version.id = $2)
+          and exists (select 1 from filtered_runs run where run.version_id = version.id)
         order by version.created_at, step.position, step.id`,
       filters,
     );
