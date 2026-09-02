@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { GlassSelect } from '../components/GlassSelect.js';
+import { formatRussianCount } from '../lib/russianPlural.js';
 import {
   createAdminTournament,
   fetchAdminTournamentDuelTemplates,
@@ -49,6 +50,12 @@ interface ClassicPeriodDraft {
   puckSpeed: NumericDraftValue;
 }
 
+interface PlayoffScheduleDayDraft {
+  localDate: string;
+  firstWaveLocalTime: string;
+  maxResultGames: NumericDraftValue;
+}
+
 interface PlayoffRoundDraft {
   winsRequired: NumericDraftValue;
   duelTemplateId: string;
@@ -61,6 +68,7 @@ interface PlayoffRoundDraft {
   gameBreakMinutes: NumericDraftValue;
   roundBreakMinutes: NumericDraftValue;
   firstGameNotBefore: string;
+  scheduleDays: PlayoffScheduleDayDraft[];
   preserveLegacySchedule?: boolean;
   scheduleTouched?: boolean;
 }
@@ -134,8 +142,9 @@ const defaultPlayoffRound = (): PlayoffRoundDraft => ({
   plannedStartIntervalMinutes: 20,
   gameWindowMinutes: 60,
   gameBreakMinutes: 15,
-  roundBreakMinutes: 1_440,
+  roundBreakMinutes: 0,
   firstGameNotBefore: '',
+  scheduleDays: [],
   preserveLegacySchedule: false,
   scheduleTouched: false,
 });
@@ -452,7 +461,10 @@ function playoffRoundCount(size: PlayoffSize): number {
 function freshDraft(): TournamentDraft {
   return {
     ...defaultDraft,
-    playoffRounds: defaultDraft.playoffRounds.map((round) => ({ ...round })),
+    playoffRounds: defaultDraft.playoffRounds.map((round) => ({
+      ...round,
+      scheduleDays: round.scheduleDays.map((day) => ({ ...day })),
+    })),
     classicPeriods: defaultClassicPeriods(),
   };
 }
@@ -619,6 +631,21 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
             : '';
       const winsRequired = numberValue(configured.winsRequired, fallback.winsRequired);
       const totalGames = Math.max(1, winsRequired * 2 - 1);
+      const scheduleDayDrafts = scheduleDays.map((day) => ({
+        localDate: stringValue(day.localDate),
+        firstWaveLocalTime: stringValue(day.firstWaveLocalTime),
+        maxResultGames: numberValue(day.maxResultGames, 1),
+      }));
+      if (scheduleDayDrafts.length === 0 && firstGameStartsAt !== '') {
+        const legacyStart = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/.exec(firstGameStartsAt);
+        if (legacyStart !== null) {
+          scheduleDayDrafts.push({
+            localDate: legacyStart[1]!,
+            firstWaveLocalTime: legacyStart[2]!,
+            maxResultGames: totalGames,
+          });
+        }
+      }
       return {
         winsRequired,
         duelTemplateId: stringValue(configured.duelTemplateId),
@@ -649,6 +676,7 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
           fallback.plannedStartIntervalMinutes,
         ),
         firstGameNotBefore: firstGameStartsAt,
+        scheduleDays: scheduleDayDrafts,
         preserveLegacySchedule: scheduleDays.length === 0,
         scheduleTouched: false,
       };
@@ -786,7 +814,9 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
         scheduleDays:
           round.preserveLegacySchedule === true && round.scheduleTouched !== true
             ? undefined
-            : playoffScheduleDays(round, winsRequired, prefix),
+            : round.scheduleDays.length > 0
+              ? serializePlayoffScheduleDays(round.scheduleDays, winsRequired, prefix)
+              : playoffScheduleDays(round, winsRequired, prefix),
       };
     });
   return {
@@ -941,6 +971,41 @@ function addDateOnlyDays(localDate: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+function serializePlayoffScheduleDays(
+  days: PlayoffScheduleDayDraft[],
+  winsRequired: number,
+  prefix: string,
+): Array<{ localDate: string; firstWaveLocalTime: string; maxResultGames: number }> {
+  const serialized = days.map((day, index) => {
+    const dayPrefix = `${prefix}, день ${index + 1}`;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day.localDate)) {
+      throw new Error(`${dayPrefix}: укажите дату`);
+    }
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(day.firstWaveLocalTime)) {
+      throw new Error(`${dayPrefix}: укажите время начала`);
+    }
+    if (index > 0 && day.localDate <= days[index - 1]!.localDate) {
+      throw new Error(`${prefix}: даты дней должны идти по возрастанию`);
+    }
+    return {
+      localDate: day.localDate,
+      firstWaveLocalTime: day.firstWaveLocalTime,
+      maxResultGames: requiredInteger(
+        day.maxResultGames,
+        `${dayPrefix}: количество игр`,
+        1,
+        winsRequired * 2 - 1,
+      ),
+    };
+  });
+  const expectedGames = winsRequired * 2 - 1;
+  const scheduledGames = serialized.reduce((total, day) => total + day.maxResultGames, 0);
+  if (scheduledGames !== expectedGames) {
+    throw new Error(`${prefix}: распределите ровно ${expectedGames} игр по дням`);
+  }
+  return serialized;
+}
+
 function playoffScheduleDays(
   round: PlayoffRoundDraft,
   winsRequired: number,
@@ -1015,6 +1080,89 @@ function HomeSequenceEditor({
         ))}
       </div>
     </fieldset>
+  );
+}
+
+function PlayoffScheduleDaysEditor(props: {
+  roundNumber: number;
+  winsRequired: number;
+  days: PlayoffScheduleDayDraft[];
+  onChange: (dayIndex: number, patch: Partial<PlayoffScheduleDayDraft>) => void;
+  onAdd: () => void;
+  onRemove: (dayIndex: number) => void;
+}) {
+  const maximumGames = props.winsRequired * 2 - 1;
+  return (
+    <section className="tournament-playoff-days" aria-label={`Дни раунда ${props.roundNumber}`}>
+      <div className="tournament-playoff-days__header">
+        <strong>Дни раунда</strong>
+        <span>Распределите ровно {formatRussianCount(maximumGames, 'игру', 'игры', 'игр')}</span>
+      </div>
+      <div className="tournament-playoff-days__list">
+        {props.days.map((day, dayIndex) => (
+          <div className="tournament-playoff-day" key={dayIndex}>
+            <div className="tournament-playoff-day__title">
+              <strong>День {dayIndex + 1}</strong>
+              {props.days.length > 1 && (
+                <button
+                  type="button"
+                  className="admin-compact-btn"
+                  aria-label={`Удалить день ${dayIndex + 1} из раунда ${props.roundNumber}`}
+                  onClick={() => props.onRemove(dayIndex)}
+                >
+                  Удалить
+                </button>
+              )}
+            </div>
+            <TournamentAdminField label="Дата" help="Дата игр по часовому поясу турнира.">
+              <input
+                aria-label={`Раунд ${props.roundNumber}, день ${dayIndex + 1}: дата`}
+                type="date"
+                value={day.localDate}
+                onChange={(event) => props.onChange(dayIndex, { localDate: event.target.value })}
+              />
+            </TournamentAdminField>
+            <TournamentAdminField
+              label="Начало первой игры"
+              help="Следующие игры дня начнутся с настроенным интервалом."
+            >
+              <input
+                aria-label={`Раунд ${props.roundNumber}, день ${dayIndex + 1}: время начала`}
+                type="time"
+                value={day.firstWaveLocalTime}
+                onChange={(event) =>
+                  props.onChange(dayIndex, { firstWaveLocalTime: event.target.value })
+                }
+              />
+            </TournamentAdminField>
+            <TournamentAdminField
+              label="Количество игр"
+              help="Максимальное число игр серии в этот день."
+            >
+              <input
+                aria-label={`Раунд ${props.roundNumber}, день ${dayIndex + 1}: количество игр`}
+                type="number"
+                min="1"
+                max={maximumGames}
+                value={day.maxResultGames}
+                onChange={(event) =>
+                  props.onChange(dayIndex, { maxResultGames: editableNumber(event.target.value) })
+                }
+              />
+            </TournamentAdminField>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="btn btn--ghost tournament-playoff-days__add"
+        aria-label={`Добавить день в раунд ${props.roundNumber}`}
+        disabled={props.days.length >= maximumGames}
+        onClick={props.onAdd}
+      >
+        Добавить день
+      </button>
+    </section>
   );
 }
 
@@ -1566,6 +1714,68 @@ export function TournamentAdmin(): JSX.Element {
       ),
     }));
   };
+  const updatePlayoffScheduleDay = (
+    roundIndex: number,
+    dayIndex: number,
+    patch: Partial<PlayoffScheduleDayDraft>,
+  ) => {
+    setDraft((current) => ({
+      ...current,
+      playoffRounds: current.playoffRounds.map((round, currentRoundIndex) =>
+        currentRoundIndex === roundIndex
+          ? {
+              ...round,
+              scheduleTouched: true,
+              scheduleDays: round.scheduleDays.map((day, currentDayIndex) =>
+                currentDayIndex === dayIndex ? { ...day, ...patch } : day,
+              ),
+            }
+          : round,
+      ),
+    }));
+  };
+  const addPlayoffScheduleDay = (roundIndex: number) => {
+    setDraft((current) => ({
+      ...current,
+      playoffRounds: current.playoffRounds.map((round, currentRoundIndex) => {
+        if (currentRoundIndex !== roundIndex) return round;
+        const days = round.scheduleDays.map((day) => ({ ...day }));
+        let donorIndex = -1;
+        for (let index = days.length - 1; index >= 0; index -= 1) {
+          const day = days[index]!;
+          if (day.maxResultGames !== '' && day.maxResultGames > 1) {
+            donorIndex = index;
+            break;
+          }
+        }
+        if (donorIndex < 0) return round;
+        const donor = days[donorIndex]!;
+        donor.maxResultGames = Number(donor.maxResultGames) - 1;
+        const previous = days.at(-1)!;
+        days.push({
+          localDate: addDateOnlyDays(previous.localDate, 1),
+          firstWaveLocalTime: previous.firstWaveLocalTime,
+          maxResultGames: 1,
+        });
+        return { ...round, scheduleTouched: true, scheduleDays: days };
+      }),
+    }));
+  };
+  const removePlayoffScheduleDay = (roundIndex: number, dayIndex: number) => {
+    setDraft((current) => ({
+      ...current,
+      playoffRounds: current.playoffRounds.map((round, currentRoundIndex) => {
+        if (currentRoundIndex !== roundIndex || round.scheduleDays.length <= 1) return round;
+        const days = round.scheduleDays.map((day) => ({ ...day }));
+        const [removed] = days.splice(dayIndex, 1);
+        const recipientIndex = Math.max(0, dayIndex - 1);
+        const recipient = days[recipientIndex]!;
+        recipient.maxResultGames =
+          Number(recipient.maxResultGames || 0) + Number(removed?.maxResultGames || 0);
+        return { ...round, scheduleTouched: true, scheduleDays: days };
+      }),
+    }));
+  };
   const updateClassicPeriod = (index: number, patch: Partial<ClassicPeriodDraft>) => {
     setDraft((current) => ({
       ...current,
@@ -1789,7 +1999,7 @@ export function TournamentAdmin(): JSX.Element {
         createPortal(
           <div className="modal-backdrop admin-screen" role="presentation">
             <section
-              className="modal-card tournament-wizard"
+              className={`modal-card tournament-wizard${playoffScheduleOnly ? ' tournament-wizard--schedule-only' : ''}`}
               role="dialog"
               aria-modal="true"
               aria-label={playoffScheduleOnly ? 'Расписание плей-офф' : 'Создание турнира'}
@@ -2500,45 +2710,37 @@ export function TournamentAdmin(): JSX.Element {
                               />
                             </>
                           )}
-                          <TournamentAdminField
-                            label="Начало первой игры"
-                            help="Дата и время первой игры раунда. Остальные игры распределятся по выбранным дням."
-                          >
-                            <input
-                              aria-label={`Раунд ${index + 1}: начало первой игры`}
-                              type="datetime-local"
-                              value={round.firstGameNotBefore}
-                              onChange={(event) =>
-                                updatePlayoffRound(index, {
-                                  firstGameNotBefore: event.target.value,
-                                })
+                          {playoffScheduleOnly ? (
+                            <PlayoffScheduleDaysEditor
+                              roundNumber={index + 1}
+                              winsRequired={round.winsRequired === '' ? 1 : round.winsRequired}
+                              days={round.scheduleDays}
+                              onChange={(dayIndex, patch) =>
+                                updatePlayoffScheduleDay(index, dayIndex, patch)
                               }
+                              onAdd={() => addPlayoffScheduleDay(index)}
+                              onRemove={(dayIndex) => removePlayoffScheduleDay(index, dayIndex)}
                             />
-                          </TournamentAdminField>
-                          <div className="tournament-admin-grid">
-                            {(
-                              (playoffScheduleOnly
-                                ? [
-                                    [
-                                      'daysPerRound',
-                                      'Дней на раунд',
-                                      1,
-                                      'Сколько календарных дней отводится на всю серию.',
-                                    ],
-                                    [
-                                      'maxGamesPerDay',
-                                      'Максимум игр в день',
-                                      1,
-                                      'Ограничение на один день. В последний день система оставит только нужное число игр.',
-                                    ],
-                                    [
-                                      'roundBreakMinutes',
-                                      'Пауза после раунда, минуты',
-                                      0,
-                                      'Сколько времени будет между завершением раунда и следующим раундом.',
-                                    ],
-                                  ]
-                                : [
+                          ) : (
+                            <>
+                              <TournamentAdminField
+                                label="Начало первой игры"
+                                help="Дата и время первой игры раунда. Остальные игры распределятся по выбранным дням."
+                              >
+                                <input
+                                  aria-label={`Раунд ${index + 1}: начало первой игры`}
+                                  type="datetime-local"
+                                  value={round.firstGameNotBefore}
+                                  onChange={(event) =>
+                                    updatePlayoffRound(index, {
+                                      firstGameNotBefore: event.target.value,
+                                    })
+                                  }
+                                />
+                              </TournamentAdminField>
+                              <div className="tournament-admin-grid">
+                                {(
+                                  [
                                     [
                                       'daysPerRound',
                                       'Дней на раунд',
@@ -2563,42 +2765,37 @@ export function TournamentAdmin(): JSX.Element {
                                       1,
                                       'Через сколько минут по расписанию начинается следующая игра серии.',
                                     ],
+                                  ] as Array<
                                     [
-                                      'roundBreakMinutes',
-                                      'Пауза после раунда, минуты',
-                                      0,
-                                      'Сколько времени будет между завершением раунда и следующим раундом.',
-                                    ],
-                                  ]) as Array<
-                                [
-                                  (
-                                    | 'daysPerRound'
-                                    | 'maxGamesPerDay'
-                                    | 'readinessMinutes'
-                                    | 'plannedStartIntervalMinutes'
-                                    | 'roundBreakMinutes'
-                                  ),
-                                  string,
-                                  number,
-                                  string,
-                                ]
-                              >
-                            ).map(([field, label, min, help]) => (
-                              <TournamentAdminField key={field} label={label} help={help}>
-                                <input
-                                  aria-label={`Раунд ${index + 1}: ${label.toLowerCase()}`}
-                                  type="number"
-                                  min={min}
-                                  value={round[field]}
-                                  onChange={(event) =>
-                                    updatePlayoffRound(index, {
-                                      [field]: editableNumber(event.target.value),
-                                    })
-                                  }
-                                />
-                              </TournamentAdminField>
-                            ))}
-                          </div>
+                                      (
+                                        | 'daysPerRound'
+                                        | 'maxGamesPerDay'
+                                        | 'readinessMinutes'
+                                        | 'plannedStartIntervalMinutes'
+                                      ),
+                                      string,
+                                      number,
+                                      string,
+                                    ]
+                                  >
+                                ).map(([field, label, min, help]) => (
+                                  <TournamentAdminField key={field} label={label} help={help}>
+                                    <input
+                                      aria-label={`Раунд ${index + 1}: ${label.toLowerCase()}`}
+                                      type="number"
+                                      min={min}
+                                      value={round[field]}
+                                      onChange={(event) =>
+                                        updatePlayoffRound(index, {
+                                          [field]: editableNumber(event.target.value),
+                                        })
+                                      }
+                                    />
+                                  </TournamentAdminField>
+                                ))}
+                              </div>
+                            </>
+                          )}
                         </fieldset>
                       ))}
                   </div>

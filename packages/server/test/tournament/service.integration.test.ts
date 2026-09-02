@@ -35,6 +35,7 @@ import {
   rescheduleTournamentFixture,
   resolveTournamentNoShow,
   startTournamentPlayoffs,
+  shiftTournamentSchedule,
   updateTournamentDraft,
   updateTournamentRewards,
   type TournamentRulesSnapshot,
@@ -120,6 +121,16 @@ async function seedUsers(pool: Pool, playerBalance: number): Promise<void> {
       playerBalance,
     ]);
   }
+}
+
+async function activeTournamentDuelTemplateId(pool: Pool): Promise<string> {
+  const template = await pool.query<{ id: string }>(
+    `select id from amateur_duel_template
+      where deleted_at is null and is_active
+      order by created_at
+      limit 1`,
+  );
+  return template.rows[0]!.id;
 }
 
 async function selectHomeArena(
@@ -1485,6 +1496,267 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         where event_type = 'tournament.schedule_published'`,
     );
     expect(deliveries.rows[0]?.count).toBe(String(PLAYER_IDS.length));
+  });
+
+  it('shifts a generated regular schedule and future playoffs without changing registration', async () => {
+    await seedUsers(pool, 0);
+    const duelTemplateId = await activeTournamentDuelTemplateId(pool);
+    const tournamentRules = playoffTournamentRules(2, {
+      duelLifecycleVersion: 2,
+      regularDuelTemplateId: duelTemplateId,
+      playoffRounds: [
+        {
+          roundNumber: 1,
+          winsRequired: 2,
+          homeSequence: ['H', 'A', 'H'],
+          duelTemplateId,
+          readinessMinutes: 5,
+          plannedStartIntervalMinutes: 20,
+          roundBreakMs: 0,
+          firstGameStartsAt: '2030-09-10T08:00:00.000Z',
+          scheduleDays: [
+            { localDate: '2030-09-10', firstWaveLocalTime: '11:00', maxResultGames: 2 },
+            { localDate: '2030-09-11', firstWaveLocalTime: '11:00', maxResultGames: 1 },
+          ],
+        },
+      ],
+    });
+    const tournament = await createPublishedTournament(
+      pool,
+      'shift-generated-regular-schedule',
+      0,
+      tournamentRules,
+    );
+    for (const playerId of PLAYER_IDS) await applyToTournament(pool, tournament.id, playerId);
+    await generateRegularSchedule(pool, tournament.id, tournament.revision);
+
+    const before = await pool.query<{
+      registration_opens_at: Date;
+      registration_closes_at: Date;
+      fixture_starts_at: Date;
+      attempt_starts_at: Date;
+      readiness_expires_at: Date;
+      hard_deadline_at: Date;
+    }>(
+      `select tournament.registration_opens_at, tournament.registration_closes_at,
+              fixture.scheduled_starts_at as fixture_starts_at,
+              attempt.scheduled_starts_at as attempt_starts_at,
+              attempt.readiness_expires_at, attempt.hard_deadline_at
+         from tournament
+         join tournament_fixture fixture on fixture.tournament_id = tournament.id
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+        where tournament.id = $1
+        order by fixture.fixture_number
+        limit 1`,
+      [tournament.id],
+    );
+
+    const shifted = await shiftTournamentSchedule(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: tournament.revision,
+      firstMatchdayLocalDate: '2030-09-05',
+      adminUserId: ADMIN_ID,
+      now: new Date('2030-09-02T08:00:00.000Z'),
+    });
+
+    expect(shifted).toMatchObject({ shiftedCalendarDays: 4 });
+    expect(shifted.tournament).toMatchObject({
+      status: 'scheduling',
+      revision: tournament.revision + 1,
+      startsAt: '2030-09-05T07:00:00.000Z',
+      registrationOpensAt: before.rows[0]!.registration_opens_at.toISOString(),
+      registrationClosesAt: before.rows[0]!.registration_closes_at.toISOString(),
+    });
+    expect(await getTournamentMatchdays(pool, tournament.id)).toEqual([
+      expect.objectContaining({ number: 1, localDate: '2030-09-05' }),
+      expect.objectContaining({ number: 2, localDate: '2030-09-06' }),
+      expect.objectContaining({ number: 3, localDate: '2030-09-07' }),
+    ]);
+
+    const after = await pool.query<{
+      fixture_starts_at: Date;
+      round_starts_at: Date;
+      attempt_starts_at: Date;
+      readiness_expires_at: Date;
+      hard_deadline_at: Date;
+      rules_snapshot: TournamentRulesSnapshot;
+    }>(
+      `select fixture.scheduled_starts_at as fixture_starts_at,
+              round.starts_at as round_starts_at,
+              attempt.scheduled_starts_at as attempt_starts_at,
+              attempt.readiness_expires_at, attempt.hard_deadline_at,
+              revision.rules_snapshot
+         from tournament_fixture fixture
+         join tournament_round round on round.id = fixture.round_id
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+         join tournament tournament on tournament.id = fixture.tournament_id
+         join tournament_revision revision on revision.id = tournament.published_revision_id
+        where fixture.tournament_id = $1
+        order by fixture.fixture_number
+        limit 1`,
+      [tournament.id],
+    );
+    const offsetMs = 4 * 86_400_000;
+    expect(after.rows[0]!.fixture_starts_at.getTime()).toBe(
+      before.rows[0]!.fixture_starts_at.getTime() + offsetMs,
+    );
+    expect(after.rows[0]!.round_starts_at).toEqual(after.rows[0]!.fixture_starts_at);
+    expect(after.rows[0]!.attempt_starts_at.getTime()).toBe(
+      before.rows[0]!.attempt_starts_at.getTime() + offsetMs,
+    );
+    expect(after.rows[0]!.readiness_expires_at.getTime()).toBe(
+      before.rows[0]!.readiness_expires_at.getTime() + offsetMs,
+    );
+    expect(after.rows[0]!.hard_deadline_at.getTime()).toBe(
+      before.rows[0]!.hard_deadline_at.getTime() + offsetMs,
+    );
+    expect(after.rows[0]!.rules_snapshot.playoffRounds).toEqual([
+      expect.objectContaining({
+        firstGameStartsAt: '2030-09-14T08:00:00.000Z',
+        scheduleDays: [
+          expect.objectContaining({ localDate: '2030-09-14' }),
+          expect.objectContaining({ localDate: '2030-09-15' }),
+        ],
+      }),
+    ]);
+  });
+
+  it('shifts a generated daily schedule before the regular season starts', async () => {
+    await seedUsers(pool, 0);
+    const duelTemplateId = await activeTournamentDuelTemplateId(pool);
+    const tournamentRules = dailyPlayoffTournamentRules();
+    tournamentRules.config = parseTournamentConfig({
+      ...tournamentRules.config,
+      dailyDays: 3,
+      bestDays: 2,
+    });
+    tournamentRules.playoffRounds = [
+      {
+        roundNumber: 1,
+        winsRequired: 1,
+        homeSequence: ['H'],
+        duelTemplateId,
+        readinessMinutes: 5,
+        plannedStartIntervalMinutes: 20,
+        roundBreakMs: 0,
+        firstGameStartsAt: '2030-09-10T08:00:00.000Z',
+        scheduleDays: [{ localDate: '2030-09-10', firstWaveLocalTime: '11:00', maxResultGames: 1 }],
+      },
+    ];
+    const tournament = await createPublishedTournament(
+      pool,
+      'shift-generated-daily-schedule',
+      0,
+      tournamentRules,
+    );
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+    await generateRegularSchedule(pool, tournament.id, tournament.revision);
+
+    const shifted = await shiftTournamentSchedule(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: tournament.revision,
+      firstMatchdayLocalDate: '2030-09-04',
+      adminUserId: ADMIN_ID,
+      now: new Date('2030-09-02T08:00:00.000Z'),
+    });
+
+    expect(shifted.shiftedCalendarDays).toBe(3);
+    expect(await getTournamentMatchdays(pool, tournament.id)).toEqual([
+      expect.objectContaining({ number: 1, localDate: '2030-09-04' }),
+      expect.objectContaining({ number: 2, localDate: '2030-09-05' }),
+      expect.objectContaining({ number: 3, localDate: '2030-09-06' }),
+    ]);
+    expect(shifted.tournament.rules.playoffRounds).toEqual([
+      expect.objectContaining({
+        firstGameStartsAt: '2030-09-13T08:00:00.000Z',
+        scheduleDays: [expect.objectContaining({ localDate: '2030-09-13' })],
+      }),
+    ]);
+  });
+
+  it('rejects a whole-calendar shift after a regular result exists', async () => {
+    await seedUsers(pool, 0);
+    const tournamentRules = dailyPlayoffTournamentRules();
+    const tournament = await createPublishedTournament(
+      pool,
+      'reject-started-regular-schedule-shift',
+      0,
+      tournamentRules,
+    );
+    const first = await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+    await generateRegularSchedule(pool, tournament.id, tournament.revision);
+    await pool.query(
+      `insert into tournament_daily_result
+         (tournament_id, participant_id, tournament_day, player_local_date,
+          goals, shots, accuracy, completed, source_snapshot, finalized_at)
+       values ($1, $2, 1, '2030-09-01', 1, 1, 1, true, '{}', now())`,
+      [tournament.id, first.participantId],
+    );
+
+    await expect(
+      shiftTournamentSchedule(pool, {
+        tournamentId: tournament.id,
+        expectedRevision: tournament.revision,
+        firstMatchdayLocalDate: '2030-09-04',
+        adminUserId: ADMIN_ID,
+        now: new Date('2030-09-02T08:00:00.000Z'),
+      }),
+    ).rejects.toMatchObject({ code: 'conflict' });
+  });
+
+  it('exposes the pre-regular schedule shift through the admin API', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'admin-api-schedule-shift',
+      0,
+      dailyPlayoffTournamentRules(),
+    );
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+    await generateRegularSchedule(pool, tournament.id, tournament.revision);
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('tournaments.enabled', 'true'::jsonb, 'Турниры включены', 'schedule shift test')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    const { databaseUrl, redisUrl } = getTestUrls();
+    const app = await buildApp({
+      config: {
+        NODE_ENV: 'test',
+        HOST: '0.0.0.0',
+        PORT: 3000,
+        LOG_LEVEL: 'warn',
+        DATABASE_URL: databaseUrl,
+        REDIS_URL: redisUrl,
+        JWT_SECRET,
+        REFRESH_SECRET,
+        TELEGRAM_BOT_TOKEN: 'test-bot-token',
+        DAILY_SEED_SECRET,
+      },
+      pushSchedulerEnabled: false,
+      pushWorkerEnabled: false,
+    });
+    try {
+      const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+      const token = await jwt.issueAccessToken({ sub: ADMIN_ID });
+      const response = await app.inject({
+        method: 'POST',
+        url: `/admin/tournaments/${tournament.id}/schedule/shift`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { expectedRevision: tournament.revision, firstMatchdayLocalDate: '2030-09-04' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        shiftedCalendarDays: 3,
+        tournament: { status: 'scheduling', startsAt: '2030-09-04T07:00:00.000Z' },
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('returns generated matchdays for a daily aggregate schedule without fixtures', async () => {

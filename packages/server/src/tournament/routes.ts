@@ -35,6 +35,7 @@ import {
   rejectTournamentApplication,
   resumeTournament,
   startTournamentPlayoffs,
+  shiftTournamentSchedule,
   rescheduleTournamentFixture,
   resolveTournamentNoShow,
   updateTournamentDraft,
@@ -829,6 +830,35 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.post('/admin/tournaments/:tournamentId/schedule/publish', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     return publishRegularSchedule(app.pg, params.tournamentId);
+  });
+
+  app.post('/admin/tournaments/:tournamentId/schedule/shift', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    const body = z
+      .object({
+        expectedRevision: z.number().int().min(1),
+        firstMatchdayLocalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      })
+      .parse(req.body);
+    const result = await shiftTournamentSchedule(app.pg, {
+      tournamentId: params.tournamentId,
+      expectedRevision: body.expectedRevision,
+      firstMatchdayLocalDate: body.firstMatchdayLocalDate,
+      adminUserId: req.user.id,
+    });
+    await enqueueTournamentAudiencePush(app.pg, {
+      tournamentId: params.tournamentId,
+      eventType: 'tournament.rescheduled',
+      eventKey: `${params.tournamentId}:schedule-shift:${body.firstMatchdayLocalDate}`,
+      variables: { startsAt: result.tournament.startsAt },
+      fallback: {
+        title: 'Расписание турнира перенесено',
+        body: `Новая дата первого тура: ${body.firstMatchdayLocalDate}`,
+        url: `/?view=amateur&section=tournaments&tournament=${params.tournamentId}`,
+      },
+    });
+    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    return result;
   });
 
   app.post('/admin/tournaments/:tournamentId/playoffs/start', admin, async (req) => {

@@ -33,6 +33,7 @@ import {
   resumeAdminTournament,
   rescheduleAdminTournamentFixture,
   startAdminTournamentRegularSeason,
+  shiftAdminTournamentSchedule,
   updateAdminTournamentRewards,
   type AdminTournament,
   type AdminTournamentFixture,
@@ -516,6 +517,9 @@ export function TournamentOperations({
   const [manualPlayoffSize, setManualPlayoffSize] = useState<PlayoffSize>(() =>
     selectedManualPlayoffSize(approvedParticipantCount, configuredPlayoffSize),
   );
+  const [scheduleShiftOpen, setScheduleShiftOpen] = useState(false);
+  const [scheduleShiftDate, setScheduleShiftDate] = useState('');
+  const [scheduleShiftError, setScheduleShiftError] = useState<string | null>(null);
   useEffect(() => {
     setManualPlayoffSize(
       selectedManualPlayoffSize(approvedParticipantCount, configuredPlayoffSize),
@@ -712,6 +716,28 @@ export function TournamentOperations({
     await client.invalidateQueries({ queryKey: ['admin', 'tournaments', 'pending-applications'] });
     await onTournamentUpdated?.();
   };
+  const shiftSchedule = useMutation({
+    mutationFn: () =>
+      shiftAdminTournamentSchedule(tournament.id, {
+        expectedRevision: tournament.revision,
+        firstMatchdayLocalDate: scheduleShiftDate,
+      }),
+    onMutate: () => setScheduleShiftError(null),
+    onSuccess: async () => {
+      setScheduleShiftOpen(false);
+      setScheduleShiftDate('');
+      void client.invalidateQueries({ queryKey: scheduleKey });
+      refreshOperations();
+      await onTournamentUpdated?.();
+    },
+    onError: (error) => {
+      setScheduleShiftError(
+        error instanceof ApiError
+          ? error.message
+          : 'Не удалось перенести расписание. Обновите данные и повторите.',
+      );
+    },
+  });
   const approve = useMutation({
     mutationFn: (participantId: string) =>
       approveAdminTournamentParticipant(tournament.id, participantId),
@@ -977,7 +1003,7 @@ export function TournamentOperations({
             tournament.lifecycle.action === 'await_manual_regular_start' && (
               <button
                 type="button"
-                className="admin-compact-btn admin-compact-btn--primary"
+                className="btn tournament-lifecycle-panel__primary-action"
                 disabled={lifecycle.isPending}
                 onClick={() => lifecycle.mutate('start_regular')}
               >
@@ -1637,6 +1663,70 @@ export function TournamentOperations({
           </div>
         </AccessibleModal>
       )}
+      {scheduleShiftOpen && (
+        <AccessibleModal
+          title="Перенести регулярный сезон"
+          ariaLabel="Перенести регулярный сезон"
+          onClose={() => {
+            setScheduleShiftOpen(false);
+            setScheduleShiftError(null);
+          }}
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть перенос расписания"
+              onClick={() => {
+                setScheduleShiftOpen(false);
+                setScheduleShiftError(null);
+              }}
+            >
+              <X size={16} />
+            </button>
+          }
+        >
+          <div className="tournament-schedule-shift">
+            <p className="modal-copy">
+              Укажите новую дату первого тура. Весь регулярный сезон и плей-офф сдвинутся на
+              одинаковое число дней. Время игр и интервалы сохранятся.
+            </p>
+            <dl className="tournament-schedule-shift__summary">
+              <div>
+                <dt>Текущий первый тур</dt>
+                <dd>{tournamentDate(tournament.startsAt, tournamentTimezone)}</dd>
+              </div>
+            </dl>
+            <label className="tournament-operations__field">
+              <span>Новая дата первого тура</span>
+              <input
+                type="date"
+                aria-label="Новая дата первого тура"
+                value={scheduleShiftDate}
+                onChange={(event) => setScheduleShiftDate(event.target.value)}
+              />
+            </label>
+            <p className="tournament-schedule-shift__note">
+              Регистрация останется без изменений. Перенос доступен только до фактического старта
+              игр.
+            </p>
+            {scheduleShiftError !== null && (
+              <div className="tournament-operations__recovery-error" role="alert">
+                {scheduleShiftError}
+              </div>
+            )}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="modal-primary btn btn--cta"
+                disabled={scheduleShiftDate === '' || shiftSchedule.isPending}
+                onClick={() => shiftSchedule.mutate()}
+              >
+                {shiftSchedule.isPending ? 'Переносим…' : 'Перенести расписание'}
+              </button>
+            </div>
+          </div>
+        </AccessibleModal>
+      )}
       {actionsOpen && (
         <AccessibleModal
           title="Действия турнира"
@@ -1676,6 +1766,19 @@ export function TournamentOperations({
                 }}
               >
                 Изменить расписание плей-офф
+              </button>
+            )}
+            {status === 'scheduling' && (
+              <button
+                type="button"
+                className="admin-compact-btn"
+                onClick={() => {
+                  setActionsOpen(false);
+                  setScheduleShiftError(null);
+                  setScheduleShiftOpen(true);
+                }}
+              >
+                Перенести регулярный сезон
               </button>
             )}
             <button

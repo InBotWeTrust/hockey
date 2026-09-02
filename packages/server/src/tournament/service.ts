@@ -406,6 +406,306 @@ export interface GenerateRegularScheduleOutcome {
   fixtureCount: number;
 }
 
+function parseLocalDate(value: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new AppError(
+      'bad_request',
+      'Дата первого тура должна быть указана в формате ГГГГ-ММ-ДД',
+      400,
+    );
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new AppError('bad_request', 'Укажите корректную дату первого тура', 400);
+  }
+  return parsed;
+}
+
+function shiftLocalDate(value: string, calendarDays: number): string {
+  const shifted = parseLocalDate(value);
+  shifted.setUTCDate(shifted.getUTCDate() + calendarDays);
+  return shifted.toISOString().slice(0, 10);
+}
+
+function shiftConfiguredPostRegularSchedule(
+  rules: TournamentRulesSnapshot,
+  calendarDays: number,
+): TournamentRulesSnapshot {
+  const timezone = rules.config.timezone;
+  const shiftIso = (value: unknown): unknown => {
+    if (typeof value !== 'string') return value;
+    const date = validIsoDate(value);
+    if (date === null) {
+      throw new AppError(
+        'configuration_error',
+        'В расписании плей-офф указана некорректная дата',
+        409,
+      );
+    }
+    return addZonedCalendarDays(date, timezone, calendarDays).toISOString();
+  };
+  const next: TournamentRulesSnapshot = { ...rules };
+  for (const field of ['tieBreakFirstGameStartsAt', 'tiebreakFirstGameStartsAt'] as const) {
+    if (Object.prototype.hasOwnProperty.call(next, field)) next[field] = shiftIso(next[field]);
+  }
+  if (Array.isArray(rules.playoffRounds)) {
+    next.playoffRounds = rules.playoffRounds.map((value) => {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+      const round = value as Record<string, unknown>;
+      return {
+        ...round,
+        ...(Object.prototype.hasOwnProperty.call(round, 'firstGameStartsAt')
+          ? { firstGameStartsAt: shiftIso(round.firstGameStartsAt) }
+          : {}),
+        ...(Array.isArray(round.scheduleDays)
+          ? {
+              scheduleDays: round.scheduleDays.map((dayValue) => {
+                if (dayValue === null || typeof dayValue !== 'object' || Array.isArray(dayValue)) {
+                  return dayValue;
+                }
+                const day = dayValue as Record<string, unknown>;
+                return {
+                  ...day,
+                  ...(typeof day.localDate === 'string'
+                    ? { localDate: shiftLocalDate(day.localDate, calendarDays) }
+                    : {}),
+                };
+              }),
+            }
+          : {}),
+      };
+    });
+  }
+  return next;
+}
+
+export async function shiftTournamentSchedule(
+  pool: Pool,
+  input: {
+    tournamentId: string;
+    expectedRevision: number;
+    firstMatchdayLocalDate: string;
+    adminUserId: string;
+    now?: Date;
+  },
+) {
+  return inTransaction(pool, async (client) => {
+    await lockTournament(client, input.tournamentId);
+    const tournamentResult = await client.query<{
+      status: TournamentStatus;
+      current_revision: number;
+      starts_at: Date | null;
+      registration_opens_at: Date | null;
+      registration_closes_at: Date | null;
+      rules_snapshot: TournamentRulesSnapshot;
+    }>(
+      `select tournament.status, tournament.current_revision, tournament.starts_at,
+              tournament.registration_opens_at, tournament.registration_closes_at,
+              revision.rules_snapshot
+         from tournament tournament
+         join tournament_revision revision on revision.id = tournament.published_revision_id
+        where tournament.id = $1
+        for update of tournament`,
+      [input.tournamentId],
+    );
+    const tournament = tournamentResult.rows[0];
+    if (tournament === undefined) throw new AppError('not_found', 'tournament not found', 404);
+    if (tournament.status !== 'scheduling') {
+      throw new AppError(
+        'conflict',
+        'Перенос всего календаря доступен только до запуска регулярного сезона',
+        409,
+      );
+    }
+    if (Number(tournament.current_revision) !== input.expectedRevision) {
+      throw new AppError('revision_conflict', 'tournament was changed in another tab', 409);
+    }
+    if (tournament.starts_at === null) {
+      throw new AppError('configuration_error', 'Дата первого тура не настроена', 409);
+    }
+    const firstMatchdayResult = await client.query<{
+      local_date: string;
+      starts_at: Date;
+    }>(
+      `select local_date::text, starts_at
+         from tournament_matchday
+        where tournament_id = $1
+        order by number
+        limit 1
+        for update`,
+      [input.tournamentId],
+    );
+    const firstMatchday = firstMatchdayResult.rows[0];
+    if (firstMatchday === undefined) {
+      throw new AppError('conflict', 'Календарь регулярного сезона ещё не создан', 409);
+    }
+    const oldLocalDate = parseLocalDate(firstMatchday.local_date);
+    const newLocalDate = parseLocalDate(input.firstMatchdayLocalDate);
+    const shiftedCalendarDays = Math.round(
+      (newLocalDate.getTime() - oldLocalDate.getTime()) / 86_400_000,
+    );
+    if (shiftedCalendarDays === 0) {
+      throw new AppError('bad_request', 'Новая дата совпадает с текущей', 400);
+    }
+    const timezone = tournament.rules_snapshot.config.timezone;
+    const shiftedFirstStart = addZonedCalendarDays(
+      firstMatchday.starts_at,
+      timezone,
+      shiftedCalendarDays,
+    );
+    if (shiftedFirstStart <= (input.now ?? new Date())) {
+      throw new AppError('bad_request', 'Новая дата первого тура должна быть в будущем', 400);
+    }
+
+    const dirty = await client.query<{ dirty: boolean }>(
+      `select
+         exists (
+           select 1 from tournament_matchday matchday
+            where matchday.tournament_id = $1 and matchday.status <> 'scheduled'
+         )
+         or exists (
+           select 1 from tournament_round round
+            where round.tournament_id = $1 and round.stage = 'regular'
+              and round.status <> 'scheduled'
+         )
+         or exists (
+           select 1 from tournament_fixture fixture
+           join tournament_round round on round.id = fixture.round_id
+            where fixture.tournament_id = $1 and round.stage = 'regular'
+              and (
+                fixture.status <> 'scheduled'
+                or fixture.winner_participant_id is not null
+                or fixture.outcome is not null
+                or fixture.settled_at is not null
+              )
+         )
+         or exists (
+           select 1 from tournament_fixture_attempt attempt
+           join tournament_fixture fixture on fixture.id = attempt.fixture_id
+           join tournament_round round on round.id = fixture.round_id
+            where fixture.tournament_id = $1 and round.stage = 'regular'
+              and (
+                attempt.status <> 'pending'
+                or attempt.attempt_number <> 1
+                or attempt.home_ready_at is not null
+                or attempt.away_ready_at is not null
+                or attempt.amateur_duel_match_id is not null
+                or attempt.outcome is not null
+                or attempt.settled_at is not null
+              )
+         )
+         or exists (
+           select 1 from tournament_classic_session session where session.tournament_id = $1
+         )
+         or exists (
+           select 1 from tournament_daily_result result where result.tournament_id = $1
+         )
+         or exists (
+           select 1 from tournament_playoff_series series where series.tournament_id = $1
+         ) as dirty`,
+      [input.tournamentId],
+    );
+    if (dirty.rows[0]?.dirty === true) {
+      throw new AppError(
+        'conflict',
+        'В турнире уже есть начатые или завершённые игры. Переносите оставшиеся игры отдельно',
+        409,
+      );
+    }
+
+    const nextRules = shiftConfiguredPostRegularSchedule(
+      tournament.rules_snapshot,
+      shiftedCalendarDays,
+    );
+    const revision = input.expectedRevision + 1;
+    const insertedRevision = await client.query<{ id: string }>(
+      `insert into tournament_revision
+         (tournament_id, revision, rules_snapshot, is_published, published_at, created_by)
+       values ($1, $2, $3, true, now(), $4)
+       returning id`,
+      [input.tournamentId, revision, JSON.stringify(nextRules), input.adminUserId],
+    );
+    const intervalExpression = `make_interval(days => $2::int)`;
+    await client.query(
+      `update tournament_matchday
+          set local_date = local_date + $2::int,
+              starts_at = ((starts_at at time zone $3) + ${intervalExpression}) at time zone $3,
+              ends_at = ((ends_at at time zone $3) + ${intervalExpression}) at time zone $3
+        where tournament_id = $1`,
+      [input.tournamentId, shiftedCalendarDays, timezone],
+    );
+    await client.query(
+      `update tournament_round
+          set starts_at = case when starts_at is null then null
+                else ((starts_at at time zone $3) + ${intervalExpression}) at time zone $3 end,
+              ends_at = case when ends_at is null then null
+                else ((ends_at at time zone $3) + ${intervalExpression}) at time zone $3 end
+        where tournament_id = $1 and stage = 'regular'`,
+      [input.tournamentId, shiftedCalendarDays, timezone],
+    );
+    await client.query(
+      `update tournament_fixture fixture
+          set scheduled_starts_at = case when fixture.scheduled_starts_at is null then null
+                else ((fixture.scheduled_starts_at at time zone $3) + ${intervalExpression}) at time zone $3 end,
+              window_ends_at = case when fixture.window_ends_at is null then null
+                else ((fixture.window_ends_at at time zone $3) + ${intervalExpression}) at time zone $3 end,
+              rescheduled_reason = 'Перенос регулярного сезона',
+              updated_at = now()
+         from tournament_round round
+        where fixture.round_id = round.id
+          and fixture.tournament_id = $1 and round.stage = 'regular'`,
+      [input.tournamentId, shiftedCalendarDays, timezone],
+    );
+    await client.query(
+      `update tournament_fixture_attempt attempt
+          set scheduled_starts_at = ((attempt.scheduled_starts_at at time zone $3) + ${intervalExpression}) at time zone $3,
+              readiness_expires_at = ((attempt.readiness_expires_at at time zone $3) + ${intervalExpression}) at time zone $3,
+              hard_deadline_at = ((attempt.hard_deadline_at at time zone $3) + ${intervalExpression}) at time zone $3,
+              result_snapshot = coalesce(attempt.result_snapshot, '{}'::jsonb)
+                || jsonb_build_object('rescheduledReason', 'Перенос регулярного сезона'),
+              updated_at = now()
+         from tournament_fixture fixture
+         join tournament_round round on round.id = fixture.round_id
+        where attempt.fixture_id = fixture.id
+          and fixture.tournament_id = $1 and round.stage = 'regular'`,
+      [input.tournamentId, shiftedCalendarDays, timezone],
+    );
+    const shiftedTournamentStart = addZonedCalendarDays(
+      tournament.starts_at,
+      timezone,
+      shiftedCalendarDays,
+    );
+    await client.query(
+      `update tournament
+          set starts_at = $2, current_revision = $3, published_revision_id = $4,
+              updated_by = $5, updated_at = now()
+        where id = $1`,
+      [
+        input.tournamentId,
+        shiftedTournamentStart,
+        revision,
+        insertedRevision.rows[0]!.id,
+        input.adminUserId,
+      ],
+    );
+    await appendEvent(client, input.adminUserId, 'admin_tournament_schedule_shifted', {
+      tournament_id: input.tournamentId,
+      previous_first_matchday_local_date: firstMatchday.local_date,
+      first_matchday_local_date: input.firstMatchdayLocalDate,
+      shifted_calendar_days: shiftedCalendarDays,
+      previous_revision: input.expectedRevision,
+      revision,
+    });
+    const updated = await client.query<TournamentRow>(`${tournamentSelect} where t.id = $1`, [
+      input.tournamentId,
+    ]);
+    return {
+      shiftedCalendarDays,
+      tournament: await mapTournamentWithLifecycle(client, updated.rows[0]!),
+    };
+  });
+}
+
 async function enqueueRegistrationBlockedPushes(
   client: PoolClient,
   outcome: Pick<

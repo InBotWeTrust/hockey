@@ -1969,11 +1969,18 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Изменить расписание плей-офф' }));
 
     expect(screen.getByRole('heading', { name: 'Расписание плей-офф' })).toBeInTheDocument();
-    expect(screen.getByRole('spinbutton', { name: 'Раунд 1: максимум игр в день' })).toHaveValue(3);
+    expect(screen.getByLabelText('Раунд 1, день 1: дата')).toHaveValue('2030-01-05');
+    expect(screen.getByRole('spinbutton', { name: 'Раунд 1, день 1: количество игр' })).toHaveValue(
+      3,
+    );
+    expect(
+      screen.queryByRole('spinbutton', { name: 'Раунд 1: максимум игр в день' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Пауза после раунда, минуты')).not.toBeInTheDocument();
     expect(screen.getByText(/Изменения применятся после нажатия/)).toBeInTheDocument();
     expect(screen.getByText('Расписание применится после сохранения')).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Раунд 2: максимум игр в день' }), {
-      target: { value: '2' },
+    fireEvent.change(screen.getByLabelText('Раунд 2, день 1: дата'), {
+      target: { value: '2030-01-09' },
     });
     await act(async () => {
       await new Promise((resolve) => window.setTimeout(resolve, 700));
@@ -1987,6 +1994,132 @@ describe('TournamentAdmin', () => {
     const savedRounds = savedBody?.rules?.playoffRounds;
     expect(savedRounds?.[0]?.scheduleDays).toBeUndefined();
     expect(savedRounds?.[1]?.scheduleDays).toBeDefined();
+  });
+
+  it('edits every playoff day date, start time, and game count independently', async () => {
+    const tournament: api.AdminTournament = {
+      id: '00000000-0000-4000-8000-000000000924',
+      slug: 'configured-playoff-schedule',
+      title: 'Плей-офф с днями',
+      description: '',
+      status: 'playoff',
+      regularSource: 'head_to_head',
+      revision: 4,
+      participantCount: 4,
+      lifecycle: TEST_LIFECYCLE,
+      registrationOpensAt: '2029-12-01T09:00:00.000Z',
+      registrationClosesAt: '2029-12-02T09:00:00.000Z',
+      startsAt: '2029-12-03T09:00:00.000Z',
+      rules: {
+        config: {
+          regularSource: 'head_to_head',
+          timezone: 'Europe/Moscow',
+          participantLimit: 4,
+          playoffSize: 4,
+        },
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 2,
+            scheduleDays: [
+              {
+                localDate: '2030-01-05',
+                firstWaveLocalTime: '18:00',
+                maxResultGames: 2,
+              },
+              {
+                localDate: '2030-01-07',
+                firstWaveLocalTime: '20:30',
+                maxResultGames: 1,
+              },
+            ],
+          },
+          {
+            roundNumber: 2,
+            winsRequired: 2,
+            scheduleDays: [
+              {
+                localDate: '2030-01-10',
+                firstWaveLocalTime: '19:00',
+                maxResultGames: 3,
+              },
+            ],
+          },
+        ],
+      },
+    };
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [tournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+    const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
+      tournament: { ...tournament, revision: 5 },
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Плей-офф с днями' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Изменить расписание плей-офф' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Расписание плей-офф' });
+    expect(dialog).toHaveClass('tournament-wizard--schedule-only');
+    expect(screen.getByLabelText('Раунд 1, день 1: дата')).toHaveValue('2030-01-05');
+    expect(screen.getByLabelText('Раунд 1, день 2: дата')).toHaveValue('2030-01-07');
+    expect(screen.getByLabelText('Раунд 1, день 2: время начала')).toHaveValue('20:30');
+    expect(screen.getAllByText('Распределите ровно 3 игры')).toHaveLength(2);
+    expect(screen.getByRole('spinbutton', { name: 'Раунд 1, день 2: количество игр' })).toHaveValue(
+      1,
+    );
+    expect(screen.getByRole('button', { name: 'Добавить день в раунд 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Сохранить расписание' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить день в раунд 2' }));
+    expect(screen.getByLabelText('Раунд 2, день 2: дата')).toHaveValue('2030-01-11');
+    expect(screen.getByRole('spinbutton', { name: 'Раунд 2, день 1: количество игр' })).toHaveValue(
+      2,
+    );
+    expect(screen.getByRole('spinbutton', { name: 'Раунд 2, день 2: количество игр' })).toHaveValue(
+      1,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить день 2 из раунда 2' }));
+    expect(screen.queryByLabelText('Раунд 2, день 2: дата')).not.toBeInTheDocument();
+    expect(screen.getByRole('spinbutton', { name: 'Раунд 2, день 1: количество игр' })).toHaveValue(
+      3,
+    );
+
+    fireEvent.change(screen.getByLabelText('Раунд 1, день 2: дата'), {
+      target: { value: '2030-01-08' },
+    });
+    fireEvent.change(screen.getByLabelText('Раунд 1, день 2: время начала'), {
+      target: { value: '21:15' },
+    });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Раунд 1, день 1: количество игр' }), {
+      target: { value: '1' },
+    });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Раунд 1, день 2: количество игр' }), {
+      target: { value: '2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить расписание' }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    const savedBody = update.mock.calls[0]?.[2] as {
+      rules?: {
+        playoffRounds?: Array<{
+          scheduleDays?: Array<{
+            localDate: string;
+            firstWaveLocalTime: string;
+            maxResultGames: number;
+          }>;
+        }>;
+      };
+    };
+    expect(savedBody.rules?.playoffRounds?.[0]?.scheduleDays).toEqual([
+      { localDate: '2030-01-05', firstWaveLocalTime: '18:00', maxResultGames: 1 },
+      { localDate: '2030-01-08', firstWaveLocalTime: '21:15', maxResultGames: 2 },
+    ]);
   });
 
   it('shows the admin schedule as a monthly calendar with games below the selected day', async () => {

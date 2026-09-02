@@ -63,6 +63,9 @@ describe('TournamentOperations', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    expect(
+      screen.queryByRole('button', { name: 'Перенести регулярный сезон' }),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Изменить расписание плей-офф' }));
 
     expect(onEdit).toHaveBeenCalledWith(3, true);
@@ -260,9 +263,19 @@ describe('TournamentOperations', () => {
     expect(semifinalCard).not.toBeNull();
     expect(within(semifinalCard!).getByText('Первый игрок')).toBeInTheDocument();
     expect(within(semifinalCard!).getByText('Второй игрок')).toBeInTheDocument();
+    expect(within(semifinalCard!).queryByText(/Игра 1/)).not.toBeInTheDocument();
+    expect(
+      within(semifinalCard!).queryByRole('button', { name: 'Решить серию вручную' }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      within(semifinalCard!).getByRole('button', { name: 'Открыть серию Полуфинал 1' }),
+    );
     expect(
       within(semifinalCard!).getByText('Игра 1 · 1 сентября, 10:00–11:00'),
     ).toBeInTheDocument();
+    expect(within(semifinalCard!).getByLabelText('Посев 1')).toHaveTextContent('1');
+    expect(within(semifinalCard!).getByLabelText('2 победы в серии')).toHaveTextContent('2');
+    expect(within(semifinalCard!).getByLabelText('1 победа в серии')).toHaveTextContent('1');
     expect(screen.getByRole('tab', { name: 'Полуфиналы' })).toHaveAttribute(
       'aria-selected',
       'true',
@@ -274,6 +287,9 @@ describe('TournamentOperations', () => {
       .getByText('Полуфинал 1')
       .closest<HTMLElement>('.tournament-bracket-series');
     expect(reopenedSemifinalCard).not.toBeNull();
+    fireEvent.click(
+      within(reopenedSemifinalCard!).getByRole('button', { name: 'Открыть серию Полуфинал 1' }),
+    );
     fireEvent.click(
       await within(reopenedSemifinalCard!).findByRole('button', { name: 'Решить серию вручную' }),
     );
@@ -335,7 +351,13 @@ describe('TournamentOperations', () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getByRole('button', { name: 'Начать регулярный сезон' })).toBeInTheDocument();
+    const startRegularSeasonButton = screen.getByRole('button', {
+      name: 'Начать регулярный сезон',
+    });
+    expect(startRegularSeasonButton).toHaveClass(
+      'btn',
+      'tournament-lifecycle-panel__primary-action',
+    );
     expect(screen.queryByRole('button', { name: 'Открыть регистрацию' })).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Опубликовать календарь' }),
@@ -350,6 +372,79 @@ describe('TournamentOperations', () => {
       ),
     );
     await waitFor(() => expect(refreshSelectedTournament).toHaveBeenCalledTimes(1));
+  });
+
+  it('moves the generated regular schedule and future playoffs from tournament actions', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/schedule/shift') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            shiftedCalendarDays: 4,
+            tournament: { ...tournament(), revision: 4, startsAt: '2030-09-05T07:00:00.000Z' },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.endsWith('/schedule')) {
+        return new Response(JSON.stringify({ fixtures: [], matchdays: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ participants: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const refreshSelectedTournament = vi.fn().mockResolvedValue(undefined);
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentOperations
+          tournament={{
+            ...tournament(),
+            status: 'scheduling',
+            lifecycle: {
+              action: 'await_manual_regular_start',
+              dueAt: null,
+              approvedParticipantCount: 4,
+              requiredParticipantCount: 2,
+              reason: null,
+            },
+          }}
+          onBack={vi.fn()}
+          onEdit={vi.fn()}
+          onRemoved={vi.fn()}
+          onTournamentUpdated={refreshSelectedTournament}
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Перенести регулярный сезон' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Перенести регулярный сезон' });
+    expect(dialog).toHaveTextContent('Регистрация останется без изменений');
+    expect(dialog).toHaveTextContent('регулярный сезон и плей-офф');
+    fireEvent.change(within(dialog).getByLabelText('Новая дата первого тура'), {
+      target: { value: '2030-09-05' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Перенести расписание' }));
+
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `/api/admin/tournaments/${tournament().id}/schedule/shift`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ expectedRevision: 3, firstMatchdayLocalDate: '2030-09-05' }),
+        }),
+      ),
+    );
+    await waitFor(() => expect(refreshSelectedTournament).toHaveBeenCalledTimes(1));
+    expect(
+      screen.queryByRole('dialog', { name: 'Перенести регулярный сезон' }),
+    ).not.toBeInTheDocument();
   });
 
   it('offers the exceptional calendar action only for a blocked head-to-head tournament with two players', async () => {

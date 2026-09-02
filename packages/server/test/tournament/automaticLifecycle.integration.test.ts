@@ -1326,27 +1326,26 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
     });
     expect(bracketStarted.items[0]).toMatchObject({ action: 'start_playoff', changed: true });
 
-    await expect(
-      updateTournamentDraft(pool, {
-        tournamentId: tournament.id,
-        expectedRevision: updated.revision,
-        title: 'Автоматический кубок',
-        description: '',
-        rules: {
-          ...scheduledRules,
-          playoffRounds: [
-            {
-              ...(scheduledRules.playoffRounds as Array<Record<string, unknown>>)[0]!,
-              firstGameStartsAt: '2030-10-30T15:00:00.000Z',
-            },
-          ],
-        },
-        updatedBy: CREATOR_ID,
-        registrationOpensAt: new Date(CLOSES_AT.getTime() - 3_600_000),
-        registrationClosesAt: CLOSES_AT,
-        startsAt: new Date(CLOSES_AT.getTime() + 86_400_000),
-      }),
-    ).rejects.toMatchObject({ code: 'conflict' });
+    const rescheduledBracket = await updateTournamentDraft(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: updated.revision,
+      title: 'Автоматический кубок',
+      description: '',
+      rules: {
+        ...scheduledRules,
+        playoffRounds: [
+          {
+            ...(scheduledRules.playoffRounds as Array<Record<string, unknown>>)[0]!,
+            firstGameStartsAt: '2030-10-30T15:00:00.000Z',
+          },
+        ],
+      },
+      updatedBy: CREATOR_ID,
+      registrationOpensAt: new Date(CLOSES_AT.getTime() - 3_600_000),
+      registrationClosesAt: CLOSES_AT,
+      startsAt: new Date(CLOSES_AT.getTime() + 86_400_000),
+    });
+    expect(rescheduledBracket).toMatchObject({ status: 'playoff', revision: 3 });
   });
 
   it('accepts the schedule-only recovery through the admin route and reconciles the lifecycle', async () => {
@@ -1460,7 +1459,8 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
         startsAt: new Date(CLOSES_AT.getTime() + 86_400_000).toISOString(),
       },
     });
-    expect(afterBracket.statusCode).toBe(409);
+    expect(afterBracket.statusCode).toBe(200);
+    expect(afterBracket.json()).toMatchObject({ tournament: { status: 'playoff', revision: 3 } });
   });
 
   it('does not send a stale missing-schedule alert after the published revision adds a playoff time', async () => {

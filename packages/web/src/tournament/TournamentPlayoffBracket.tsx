@@ -432,12 +432,19 @@ function ParticipantRow(props: {
   seed: number | null;
   placeholder: string;
   winner: boolean;
+  wins: number;
 }) {
   const name = props.name ?? props.placeholder;
   return (
     <div
       className={`tournament-bracket-player${props.name ? '' : ' tournament-bracket-player--pending'}${props.winner ? ' tournament-bracket-player--winner' : ''}`}
     >
+      <span
+        className="tournament-bracket-player__seed"
+        aria-label={`Посев ${props.seed ?? 'не определён'}`}
+      >
+        {props.seed ?? '—'}
+      </span>
       <UserAvatar
         avatarUrl={props.avatarUrl}
         name={name}
@@ -446,8 +453,13 @@ function ParticipantRow(props: {
       />
       <div className="tournament-bracket-player__identity">
         <strong>{name}</strong>
-        {props.seed !== null && <span>Посев {props.seed}</span>}
       </div>
+      <strong
+        className="tournament-bracket-player__wins"
+        aria-label={`${props.wins} ${props.wins % 10 === 1 && props.wins % 100 !== 11 ? 'победа' : [2, 3, 4].includes(props.wins % 10) && ![12, 13, 14].includes(props.wins % 100) ? 'победы' : 'побед'} в серии`}
+      >
+        {props.wins}
+      </strong>
     </div>
   );
 }
@@ -463,6 +475,7 @@ function SeriesCard(props: {
   timezone: string;
   renderSeriesAction?: (series: TournamentBracketSeries) => ReactNode;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const sources = props.series.depends_on?.sources ?? [];
   const finished = ['completed', 'settled'].includes(props.series.status);
   const higherWon =
@@ -478,34 +491,41 @@ function SeriesCard(props: {
     [props.series.higher_user_id, props.series.lower_user_id].includes(props.currentUserId);
   const latestFixtureId = currentSeriesFixtureId(props.series.fixtures);
   return (
-    <article className="tournament-bracket-series">
-      <header>
-        <strong>{props.title}</strong>
-        <span>{seriesStatusLabel(props.series.status)}</span>
-      </header>
-      <div className="tournament-bracket-series__players">
-        <ParticipantRow
-          name={props.series.higher_name}
-          avatarUrl={props.series.higher_avatar_url}
-          seed={props.series.higher_seed}
-          placeholder={participantPlaceholder(sources[0], props.byKey, props.finalRound)}
-          winner={higherWon}
-        />
-        <ParticipantRow
-          name={props.series.lower_name}
-          avatarUrl={props.series.lower_avatar_url}
-          seed={props.series.lower_seed}
-          placeholder={participantPlaceholder(sources[1], props.byKey, props.finalRound)}
-          winner={lowerWon}
-        />
-      </div>
-      {props.series.higher_seed_wins + props.series.lower_seed_wins > 0 && (
-        <div className="tournament-bracket-series__score">
-          Счёт в серии {props.series.higher_seed_wins} : {props.series.lower_seed_wins}
+    <article
+      className={`tournament-bracket-series${expanded ? ' tournament-bracket-series--expanded' : ''}`}
+    >
+      <button
+        type="button"
+        className="tournament-bracket-series__summary"
+        aria-label={`${expanded ? 'Закрыть' : 'Открыть'} серию ${props.title}`}
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <header>
+          <strong>{props.title}</strong>
+          <span>{seriesStatusLabel(props.series.status)}</span>
+        </header>
+        <div className="tournament-bracket-series__players">
+          <ParticipantRow
+            name={props.series.higher_name}
+            avatarUrl={props.series.higher_avatar_url}
+            seed={props.series.higher_seed}
+            placeholder={participantPlaceholder(sources[0], props.byKey, props.finalRound)}
+            winner={higherWon}
+            wins={props.series.higher_seed_wins}
+          />
+          <ParticipantRow
+            name={props.series.lower_name}
+            avatarUrl={props.series.lower_avatar_url}
+            seed={props.series.lower_seed}
+            placeholder={participantPlaceholder(sources[1], props.byKey, props.finalRound)}
+            winner={lowerWon}
+            wins={props.series.lower_seed_wins}
+          />
         </div>
-      )}
-      {props.renderSeriesAction?.(props.series)}
-      {props.series.fixtures.length > 0 && (
+      </button>
+      {expanded && props.renderSeriesAction?.(props.series)}
+      {expanded && props.series.fixtures.length > 0 && (
         <div className="tournament-bracket-series__games">
           {props.series.fixtures.map((fixture) => (
             <div className="tournament-bracket-game" key={fixture.id}>
@@ -593,7 +613,15 @@ export function TournamentPlayoffBracket({
               type="button"
               role="tab"
               aria-selected={view.key === selectedView.key}
-              className={view.key === selectedView.key ? 'is-active' : undefined}
+              className={[
+                view.roundNumber === finalRound && !view.bronze
+                  ? 'tournament-bracket__round-tab--gold'
+                  : '',
+                view.bronze ? 'tournament-bracket__round-tab--bronze' : '',
+                view.key === selectedView.key ? 'is-active' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
               onClick={() => setSelectedKey(view.key)}
               key={view.key}
             >

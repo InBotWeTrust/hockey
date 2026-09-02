@@ -337,6 +337,16 @@ export function startAdminTournamentRegularSeason(tournamentId: string) {
   );
 }
 
+export function shiftAdminTournamentSchedule(
+  tournamentId: string,
+  input: { expectedRevision: number; firstMatchdayLocalDate: string },
+) {
+  return apiFetch<{ shiftedCalendarDays: number; tournament: AdminTournament }>(
+    `/admin/tournaments/${tournamentId}/schedule/shift`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+}
+
 export function startAdminTournamentPlayoffs(tournamentId: string) {
   return apiFetch(`/admin/tournaments/${tournamentId}/playoffs/start`, { method: 'POST' });
 }
