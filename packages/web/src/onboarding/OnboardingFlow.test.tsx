@@ -113,4 +113,29 @@ describe('OnboardingFlow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
     await waitFor(() => expect(onCompleted).toHaveBeenCalledWith({ required: null }));
   });
+
+  it('retries a transient final-step view failure before completing without duplicating success', async () => {
+    const onCompleted = vi.fn();
+    vi.mocked(recordStepView)
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ viewed: true });
+    vi.mocked(completeOnboarding).mockResolvedValue({ required: null });
+    render(
+      <OnboardingFlow
+        runId="run-1"
+        required={{ ...required, steps: [required.steps[2]!] }}
+        onCompleted={onCompleted}
+      />,
+    );
+    await waitFor(() => expect(recordStepView).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+
+    await waitFor(() => expect(recordStepView).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(completeOnboarding).toHaveBeenCalledTimes(1));
+    expect(onCompleted).toHaveBeenCalledWith({ required: null });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+    expect(recordStepView).toHaveBeenCalledTimes(2);
+  });
 });

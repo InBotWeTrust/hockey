@@ -17,16 +17,34 @@ export function OnboardingFlow({ runId, required, onCompleted }: OnboardingFlowP
   const [stepIndex, setStepIndex] = useState(0);
   const [brokenImage, setBrokenImage] = useState(false);
   const [completing, setCompleting] = useState(false);
-  const [completionError, setCompletionError] = useState(false);
+  const [lifecycleError, setLifecycleError] = useState<'view' | 'complete' | null>(null);
+  const reachedSteps = useRef(new Set<string>());
   const viewedSteps = useRef(new Set<string>());
+  const viewRequests = useRef(new Map<string, Promise<void>>());
   const step = required.steps[stepIndex];
 
+  function ensureStepView(stepId: string): Promise<void> {
+    if (viewedSteps.current.has(stepId)) return Promise.resolve();
+    const activeRequest = viewRequests.current.get(stepId);
+    if (activeRequest) return activeRequest;
+
+    const request = recordStepView(runId, stepId)
+      .then(() => {
+        viewedSteps.current.add(stepId);
+      })
+      .finally(() => {
+        viewRequests.current.delete(stepId);
+      });
+    viewRequests.current.set(stepId, request);
+    return request;
+  }
+
   useEffect(() => {
-    if (!step || viewedSteps.current.has(step.id)) return;
-    viewedSteps.current.add(step.id);
-    void recordStepView(runId, step.id).catch(() => {
+    if (!step) return;
+    reachedSteps.current.add(step.id);
+    void ensureStepView(step.id).catch(() => {
       // Viewing analytics is deliberately best-effort. The server still validates
-      // complete evidence and exposes a blocking error if recording never arrived.
+      // the evidence before completion, where this request is retried as a gate.
     });
   }, [runId, step]);
 
@@ -40,12 +58,20 @@ export function OnboardingFlow({ runId, required, onCompleted }: OnboardingFlowP
 
   async function finish(): Promise<void> {
     setCompleting(true);
-    setCompletionError(false);
+    setLifecycleError(null);
     try {
+      const reached = [...reachedSteps.current];
+      await Promise.allSettled(reached.map(ensureStepView));
+      try {
+        await Promise.all(reached.map(ensureStepView));
+      } catch {
+        setLifecycleError('view');
+        return;
+      }
       const result = await completeOnboarding(runId);
       onCompleted(result);
     } catch {
-      setCompletionError(true);
+      setLifecycleError('complete');
     } finally {
       setCompleting(false);
     }
@@ -93,9 +119,13 @@ export function OnboardingFlow({ runId, required, onCompleted }: OnboardingFlowP
         </div>
       </section>
       <div className="onboarding-flow__footer">
-        {completionError && (
+        {lifecycleError && (
           <div className="onboarding-flow__error" role="alert">
-            <span>Не удалось завершить онбординг. Проверьте соединение.</span>
+            <span>
+              {lifecycleError === 'view'
+                ? 'Не удалось сохранить прогресс. Проверьте соединение.'
+                : 'Не удалось завершить онбординг. Проверьте соединение.'}
+            </span>
             <button
               className="btn btn--ghost"
               type="button"
