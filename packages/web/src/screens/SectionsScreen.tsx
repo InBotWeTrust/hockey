@@ -121,7 +121,7 @@ export function SectionsScreen(): JSX.Element {
           <div className="sections-quick-grid">
             <QuickSectionCard
               title="Ежедневная игра"
-              meta={`${numberText(dailyData?.daily_total_shots ?? 0)}/${numberText(dailyShotsLimit)} бросков`}
+              meta={`${numberText(dailyData?.daily_total_shots ?? 0)}/${numberText(dailyShotsLimit)} бросков сегодня`}
               tone="active"
               size="wide"
               artworkSrc={SECTION_ARTWORK.daily}

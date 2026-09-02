@@ -5,6 +5,7 @@ import { Gamepad2, MessageCircle, Package, ShieldCheck, User } from 'lucide-reac
 import { apiFetch } from '../api/apiFetch.js';
 import { achievementKeys, fetchAchievements } from '../api/achievements.js';
 import { fetchAmateurEvents, type AmateurDuelMatch } from '../api/amateurDuel.js';
+import { fetchActiveClassicTournamentGames } from '../api/tournamentClassic.js';
 import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { AuthUser } from '../auth/authStore.js';
@@ -147,6 +148,12 @@ export function BottomNav(): JSX.Element | null {
     enabled: Boolean(user) && !isDemo,
     refetchInterval: 15_000,
   });
+  const { data: classicTournamentGames } = useQuery({
+    queryKey: ['tournaments', 'classic', 'active'],
+    queryFn: fetchActiveClassicTournamentGames,
+    enabled: Boolean(user) && !isDemo,
+    refetchInterval: 30_000,
+  });
   const { data: weeklyChallenge } = useQuery({
     queryKey: ['weekly-challenge', 'nav'],
     queryFn: fetchWeeklyChallenge,
@@ -218,7 +225,9 @@ export function BottomNav(): JSX.Element | null {
   const showAdmin = !isDemo && user?.role === 'admin';
   const navCount = showAdmin ? 5 : 4;
   const activeIndex = isGame ? 0 : isSections ? 1 : isChat ? 2 : isProfile ? 3 : 4;
-  const gameActionCount = (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length;
+  const gameActionCount =
+    (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length +
+    (classicTournamentGames?.games ?? []).filter((game) => game.state !== 'closed').length;
   const currentSectionActionCount =
     weeklyChallenge?.challenge?.canJoin === true ||
     weeklyChallenge?.challenge?.canClaimReward === true
