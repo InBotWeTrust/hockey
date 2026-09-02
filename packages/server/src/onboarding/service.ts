@@ -1,5 +1,17 @@
+import { createHmac } from 'node:crypto';
+import {
+  GAME_CORE_VERSION,
+  STICK_NEUTRAL,
+  deriveShotSeed,
+  getGoalie,
+  getSessionPhaseOffsets,
+  resolveShot,
+  type ShotResult,
+} from '@hockey/game-core';
 import type { Pool, PoolClient } from 'pg';
+import { z } from 'zod';
 import { getGameSettings } from '../duel/gameSettings.js';
+import { AppError } from '../plugins/errors.js';
 import { resolveCompetitionLevel } from '../profile/summary.js';
 import { createMediaProxyUrl } from '../storage/mediaAccess.js';
 import {
@@ -44,6 +56,50 @@ interface RequiredOnboardingDetails {
   row: ApplicabilityRow | undefined;
 }
 
+const tutorialRunStateSchema = z
+  .object({
+    seed: z.string().regex(/^[0-9a-f]{64}$/),
+    gameCoreVersion: z.number().int().positive(),
+    nextShotIndex: z.number().int().positive(),
+    stepId: z.string().uuid(),
+    speeds: onboardingTutorialConfigSchema,
+  })
+  .strict();
+
+export type TutorialRunState = z.infer<typeof tutorialRunStateSchema>;
+
+export interface TutorialRunIdentity {
+  id: string;
+  userId: string;
+  chainKey: OnboardingChainKey;
+  versionId: string;
+  tutorialState: unknown;
+}
+
+interface TutorialSessionDTO {
+  seed: string;
+  shotIndex: number;
+  goalieId: 'rookie';
+  gameCoreVersion: number;
+  speeds: TutorialRunState['speeds'];
+  goalConfirmed: boolean;
+}
+
+interface TutorialShotInput {
+  shotIndex: number;
+  input: {
+    tapTime: number;
+    shooterTapTime: number;
+  };
+  claimedResult: ShotResult['type'];
+}
+
+interface TutorialShotDTO {
+  serverResult: ShotResult['type'];
+  nextShotIndex: number;
+  goalConfirmed: boolean;
+}
+
 export class OnboardingNotRequiredError extends Error {
   constructor() {
     super('onboarding chain is not required');
@@ -52,6 +108,154 @@ export class OnboardingNotRequiredError extends Error {
 
 function numberValue(value: number | string): number {
   return typeof value === 'number' ? value : Number(value);
+}
+
+function deriveTutorialSeed(run: TutorialRunIdentity, secret: string): string {
+  return createHmac('sha256', secret)
+    .update(`${run.userId}:${run.id}:${run.versionId}`)
+    .digest('hex');
+}
+
+async function hasTutorialGoal(db: Queryable, runId: string): Promise<boolean> {
+  const { rows } = await db.query<{ goal_confirmed: boolean }>(
+    `select exists (
+       select 1 from onboarding_event
+        where run_id = $1 and kind = 'tutorial_goal' and result = 'goal'
+     ) as goal_confirmed`,
+    [runId],
+  );
+  return rows[0]!.goal_confirmed;
+}
+
+function tutorialSessionDto(state: TutorialRunState, goalConfirmed: boolean): TutorialSessionDTO {
+  return {
+    seed: state.seed,
+    shotIndex: state.nextShotIndex,
+    goalieId: 'rookie',
+    gameCoreVersion: state.gameCoreVersion,
+    speeds: state.speeds,
+    goalConfirmed,
+  };
+}
+
+export async function startTutorialSession(
+  db: PoolClient,
+  run: TutorialRunIdentity,
+  secret: string,
+): Promise<TutorialSessionDTO> {
+  if (run.tutorialState !== null) {
+    const state = tutorialRunStateSchema.parse(run.tutorialState);
+    return tutorialSessionDto(state, await hasTutorialGoal(db, run.id));
+  }
+
+  const { rows } = await db.query<{ id: string; tutorial_config: unknown }>(
+    `select id, tutorial_config
+       from onboarding_step
+      where version_id = $1 and kind = 'tutorial_shot'
+      order by position
+      limit 1`,
+    [run.versionId],
+  );
+  const tutorialStep = rows[0];
+  if (!tutorialStep) {
+    throw new AppError(
+      'onboarding_tutorial_unavailable',
+      'onboarding version has no tutorial step',
+      409,
+    );
+  }
+
+  const state: TutorialRunState = {
+    seed: deriveTutorialSeed(run, secret),
+    gameCoreVersion: GAME_CORE_VERSION,
+    nextShotIndex: 1,
+    stepId: tutorialStep.id,
+    speeds: onboardingTutorialConfigSchema.parse(tutorialStep.tutorial_config),
+  };
+  await db.query('update onboarding_run set tutorial_state = $2::jsonb where id = $1', [
+    run.id,
+    JSON.stringify(state),
+  ]);
+  return tutorialSessionDto(state, false);
+}
+
+export async function submitTutorialShot(
+  db: PoolClient,
+  run: TutorialRunIdentity,
+  input: TutorialShotInput,
+): Promise<TutorialShotDTO> {
+  if (run.tutorialState === null) {
+    throw new AppError(
+      'onboarding_tutorial_not_started',
+      'onboarding tutorial has not started',
+      409,
+    );
+  }
+  const state = tutorialRunStateSchema.parse(run.tutorialState);
+  if (state.gameCoreVersion !== GAME_CORE_VERSION) {
+    throw new AppError(
+      'onboarding_game_core_version_mismatch',
+      'onboarding tutorial game core version is no longer available',
+      409,
+    );
+  }
+  if (input.shotIndex !== state.nextShotIndex) {
+    throw new AppError(
+      'onboarding_tutorial_shot_index_mismatch',
+      `onboarding tutorial shot index mismatch: expected ${state.nextShotIndex}`,
+      409,
+    );
+  }
+
+  const shotInput = {
+    tapTime: input.input.tapTime,
+    shooterTapTime: input.input.shooterTapTime,
+    shooterFrequency: state.speeds.shooterFrequency,
+    goalieFrequency: state.speeds.goalieFrequency,
+    goalFrequency: state.speeds.goalFrequency,
+  };
+  const serverResult = resolveShot(
+    shotInput,
+    getGoalie('rookie'),
+    deriveShotSeed(state.seed, 1, state.nextShotIndex),
+    state.nextShotIndex,
+    STICK_NEUTRAL,
+    getSessionPhaseOffsets(state.seed),
+  ).type;
+  await db.query(
+    `insert into onboarding_event
+       (run_id, user_id, chain_key, version_id, step_id, kind, result, attempt_number)
+     values ($1, $2, $3, $4, $5, 'tutorial_attempt', $6, $7)`,
+    [
+      run.id,
+      run.userId,
+      run.chainKey,
+      run.versionId,
+      state.stepId,
+      serverResult,
+      state.nextShotIndex,
+    ],
+  );
+  if (serverResult === 'goal') {
+    await db.query(
+      `insert into onboarding_event
+         (run_id, user_id, chain_key, version_id, step_id, kind, result, attempt_number)
+       values ($1, $2, $3, $4, $5, 'tutorial_goal', 'goal', $6)
+       on conflict (run_id) where kind = 'tutorial_goal' do nothing`,
+      [run.id, run.userId, run.chainKey, run.versionId, state.stepId, state.nextShotIndex],
+    );
+  }
+
+  const nextState = { ...state, nextShotIndex: state.nextShotIndex + 1 };
+  await db.query('update onboarding_run set tutorial_state = $2::jsonb where id = $1', [
+    run.id,
+    JSON.stringify(nextState),
+  ]);
+  return {
+    serverResult,
+    nextShotIndex: nextState.nextShotIndex,
+    goalConfirmed: serverResult === 'goal' || (await hasTutorialGoal(db, run.id)),
+  };
 }
 
 function requiredChain(

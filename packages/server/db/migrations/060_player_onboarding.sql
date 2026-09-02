@@ -63,7 +63,26 @@ create table onboarding_run (
   version_id uuid not null references onboarding_version(id) on delete restrict,
   client_session_id uuid not null,
   source text not null check (source in ('natural', 'admin_reset', 'preview')),
-  tutorial_state jsonb check (tutorial_state is null or jsonb_typeof(tutorial_state) = 'object'),
+  tutorial_state jsonb check (
+    tutorial_state is null
+    or (
+      jsonb_typeof(tutorial_state) = 'object'
+      and tutorial_state ?& array[
+        'seed', 'gameCoreVersion', 'nextShotIndex', 'stepId', 'speeds'
+      ]
+      and jsonb_typeof(tutorial_state->'seed') = 'string'
+      and jsonb_typeof(tutorial_state->'gameCoreVersion') = 'number'
+      and jsonb_typeof(tutorial_state->'nextShotIndex') = 'number'
+      and jsonb_typeof(tutorial_state->'stepId') = 'string'
+      and jsonb_typeof(tutorial_state->'speeds') = 'object'
+      and (tutorial_state->'speeds') ?& array[
+        'shooterFrequency', 'goalieFrequency', 'goalFrequency'
+      ]
+      and jsonb_typeof(tutorial_state->'speeds'->'shooterFrequency') = 'number'
+      and jsonb_typeof(tutorial_state->'speeds'->'goalieFrequency') = 'number'
+      and jsonb_typeof(tutorial_state->'speeds'->'goalFrequency') = 'number'
+    )
+  ),
   started_at timestamptz not null default now(),
   completed_at timestamptz,
   unique (user_id, chain_key, version_id, client_session_id)

@@ -6,6 +6,8 @@ import {
   getRequiredOnboarding,
   OnboardingNotRequiredError,
   startOnboardingRun,
+  startTutorialSession,
+  submitTutorialShot,
 } from './service.js';
 import type { OnboardingChainKey, OnboardingRequiredDTO } from './types.js';
 
@@ -20,6 +22,7 @@ interface OnboardingRunRow {
   chain_key: OnboardingChainKey;
   version_id: string;
   completed_at: Date | null;
+  tutorial_state: unknown;
 }
 
 const startBodySchema = z
@@ -40,6 +43,15 @@ const stepParamsSchema = z
     stepId: z.string().uuid(),
   })
   .strict();
+
+const tutorialShotSchema = z.object({
+  shotIndex: z.number().int().positive(),
+  input: z.object({
+    tapTime: z.number().finite().nonnegative(),
+    shooterTapTime: z.number().finite().nonnegative(),
+  }),
+  claimedResult: z.enum(['goal', 'save', 'miss']),
+});
 
 async function withTransaction<T>(
   app: { pg: { connect: () => Promise<PoolClient> } },
@@ -65,7 +77,8 @@ async function lockOwnedRun(
   userId: string,
 ): Promise<OnboardingRunRow> {
   const { rows } = await client.query<OnboardingRunRow>(
-    `select run.id, run.user_id, run.chain_key, run.version_id, run.completed_at
+    `select run.id, run.user_id, run.chain_key, run.version_id, run.completed_at,
+            run.tutorial_state
        from onboarding_run run
        join onboarding_version version
          on version.id = run.version_id
@@ -85,7 +98,8 @@ async function lockOwnedRunAndUser(
   userId: string,
 ): Promise<OnboardingRunRow> {
   const { rows } = await client.query<OnboardingRunRow>(
-    `select run.id, run.user_id, run.chain_key, run.version_id, run.completed_at
+    `select run.id, run.user_id, run.chain_key, run.version_id, run.completed_at,
+            run.tutorial_state
        from onboarding_run run
        join onboarding_version version
          on version.id = run.version_id
@@ -225,6 +239,59 @@ export const onboardingRoutes: FastifyPluginAsync<OnboardingRoutesOptions> = asy
       throw error;
     }
   });
+
+  app.post(
+    '/onboarding/runs/:runId/tutorial/start',
+    { preHandler: [app.authenticate] },
+    async (request) => {
+      const params = runParamsSchema.parse(request.params);
+      return withTransaction(app, async (client) => {
+        const run = await lockOwnedRun(client, params.runId, request.user.id);
+        if (run.completed_at !== null) {
+          throw new AppError('onboarding_run_completed', 'onboarding run is complete', 409);
+        }
+        await requireApplicableChain(client, run, options.mediaAccessSecret);
+        return startTutorialSession(
+          client,
+          {
+            id: run.id,
+            userId: run.user_id,
+            chainKey: run.chain_key,
+            versionId: run.version_id,
+            tutorialState: run.tutorial_state,
+          },
+          options.tutorialSeedSecret,
+        );
+      });
+    },
+  );
+
+  app.post(
+    '/onboarding/runs/:runId/tutorial/shot',
+    { preHandler: [app.authenticate] },
+    async (request) => {
+      const params = runParamsSchema.parse(request.params);
+      const body = tutorialShotSchema.parse(request.body);
+      return withTransaction(app, async (client) => {
+        const run = await lockOwnedRun(client, params.runId, request.user.id);
+        if (run.completed_at !== null) {
+          throw new AppError('onboarding_run_completed', 'onboarding run is complete', 409);
+        }
+        await requireApplicableChain(client, run, options.mediaAccessSecret);
+        return submitTutorialShot(
+          client,
+          {
+            id: run.id,
+            userId: run.user_id,
+            chainKey: run.chain_key,
+            versionId: run.version_id,
+            tutorialState: run.tutorial_state,
+          },
+          body,
+        );
+      });
+    },
+  );
 
   app.post(
     '/onboarding/runs/:runId/steps/:stepId/view',

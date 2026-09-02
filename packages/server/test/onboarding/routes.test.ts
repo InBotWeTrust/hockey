@@ -1,6 +1,16 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  GAME_CORE_VERSION,
+  STICK_NEUTRAL,
+  deriveShotSeed,
+  getGoalie,
+  getSessionPhaseOffsets,
+  resolveShot,
+  type ShotInput,
+  type ShotResult,
+} from '@hockey/game-core';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -27,11 +37,59 @@ type ChainKey = 'beginner' | 'amateur';
 interface StepSpec {
   position: number;
   kind: 'informational' | 'tutorial_shot';
+  tutorial?: {
+    shooterFrequency: number;
+    goalieFrequency: number;
+    goalFrequency: number;
+  };
 }
 
 interface PublishedChain {
   versionId: string;
   stepIds: string[];
+}
+
+interface TutorialSpeeds {
+  shooterFrequency: number;
+  goalieFrequency: number;
+  goalFrequency: number;
+}
+
+function findTutorialInput(
+  seed: string,
+  shotIndex: number,
+  speeds: TutorialSpeeds,
+  wanted: ShotResult['type'],
+  rejectedSpeeds?: TutorialSpeeds,
+): ShotInput {
+  const goalie = getGoalie('rookie');
+  const shotSeed = deriveShotSeed(seed, 1, shotIndex);
+  const phaseOffsets = getSessionPhaseOffsets(seed);
+  for (let tapTime = 0; tapTime <= 60_000; tapTime += 5) {
+    const input = { tapTime, shooterTapTime: tapTime, ...speeds };
+    const serverResult = resolveShot(
+      input,
+      goalie,
+      shotSeed,
+      shotIndex,
+      STICK_NEUTRAL,
+      phaseOffsets,
+    ).type;
+    const rejectedOverrideResult = rejectedSpeeds
+      ? resolveShot(
+          { tapTime, shooterTapTime: tapTime, ...rejectedSpeeds },
+          goalie,
+          shotSeed,
+          shotIndex,
+          STICK_NEUTRAL,
+          phaseOffsets,
+        ).type
+      : undefined;
+    if (serverResult === wanted && rejectedOverrideResult !== wanted) {
+      return input;
+    }
+  }
+  throw new Error(`no ${wanted} tutorial input found`);
 }
 
 describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
@@ -157,7 +215,13 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
             step.position,
             `${chain} tutorial ${step.position}`,
             `Тренировка ${step.position}`,
-            JSON.stringify({ shooterFrequency: 0.5, goalieFrequency: 0.6, goalFrequency: 0.7 }),
+            JSON.stringify(
+              step.tutorial ?? {
+                shooterFrequency: 0.5,
+                goalieFrequency: 0.6,
+                goalFrequency: 0.7,
+              },
+            ),
           ],
         );
         stepIds.push(inserted.rows[0]!.id);
@@ -198,6 +262,71 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
     });
   }
 
+  async function startTutorial(authorization: string, runId: string) {
+    return app.inject({
+      method: 'POST',
+      url: `/onboarding/runs/${runId}/tutorial/start`,
+      headers: { authorization },
+    });
+  }
+
+  async function submitTutorialShot(
+    authorization: string,
+    runId: string,
+    payload: {
+      shotIndex: number;
+      input: ShotInput;
+      claimedResult: ShotResult['type'];
+    },
+  ) {
+    return app.inject({
+      method: 'POST',
+      url: `/onboarding/runs/${runId}/tutorial/shot`,
+      headers: { authorization },
+      payload,
+    });
+  }
+
+  async function gameStateSnapshot(userId: string) {
+    const { rows } = await pool.query(
+      `select u.level,
+              u.xp,
+              u.experience,
+              u.lifetime_shots_total,
+              u.lifetime_goals_total,
+              (select to_jsonb(wallet) - 'shots_updated_at'
+                 from user_wallet wallet where wallet.user_id = u.id) as wallet,
+              (select to_jsonb(currency) - array['created_at', 'updated_at']::text[]
+                 from user_currency_account currency where currency.user_id = u.id) as currency,
+              (select count(*)::int from goalie_progress where user_id = u.id) as goalie_progress,
+              (select count(*)::int from user_achievements where user_id = u.id) as achievements,
+              (select count(*)::int from achievement_progress where user_id = u.id) as achievement_progress,
+              (select count(*)::int from shot_session where user_id = u.id) as shots,
+              (select count(*)::int from day_pool where user_id = u.id) as daily_sessions,
+              (select count(*)::int from period_log log
+                join day_pool daily on daily.id = log.day_pool_id
+               where daily.user_id = u.id) as daily_periods,
+              (select count(*)::int from training_session where user_id = u.id) as training_sessions,
+              (select count(*)::int from bonus_game_attempt where user_id = u.id) as bonus_attempts,
+              (select count(*)::int from bonus_game_period_log log
+                join bonus_game_attempt attempt on attempt.id = log.attempt_id
+               where attempt.user_id = u.id) as bonus_periods,
+              (select count(*)::int from bonus_game_economy_event where user_id = u.id) as bonus_economy,
+              (select count(*)::int from user_bonus_game_completion where user_id = u.id) as bonus_completions,
+              (select count(*)::int from amateur_duel_match
+                where challenger_user_id = u.id or opponent_user_id = u.id) as duel_matches,
+              (select count(*)::int from amateur_duel_participant where user_id = u.id) as duel_participations,
+              (select count(*)::int from amateur_duel_period_log where user_id = u.id) as duel_periods,
+              (select count(*)::int from amateur_duel_rating where user_id = u.id) as duel_ratings,
+              (select count(*)::int from amateur_duel_matchmaking_ticket where user_id = u.id) as duel_tickets,
+              (select count(*)::int from currency_ledger where user_id = u.id) as currency_events
+         from users u
+        where u.id = $1`,
+      [userId],
+    );
+    return rows[0];
+  }
+
   async function addTutorialGoal(input: {
     runId: string;
     userId: string;
@@ -223,12 +352,147 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
         payload: { clientSessionId: randomUUID() },
       }),
       app.inject({ method: 'POST', url: `/onboarding/runs/${runId}/steps/${stepId}/view` }),
+      app.inject({ method: 'POST', url: `/onboarding/runs/${runId}/tutorial/start` }),
+      app.inject({
+        method: 'POST',
+        url: `/onboarding/runs/${runId}/tutorial/shot`,
+        payload: {
+          shotIndex: 1,
+          input: { tapTime: 0, shooterTapTime: 0 },
+          claimedResult: 'miss',
+        },
+      }),
       app.inject({ method: 'POST', url: `/onboarding/runs/${runId}/complete` }),
     ];
 
     for (const response of await Promise.all(requests)) {
       expect(response.statusCode).toBe(401);
     }
+  });
+
+  it('validates tutorial shots authoritatively without changing game progress', async () => {
+    const speeds = {
+      shooterFrequency: 0.12,
+      goalieFrequency: 0.1,
+      goalFrequency: 0.08,
+    };
+    const published = await publishChain('beginner', [
+      { position: 1, kind: 'tutorial_shot', tutorial: speeds },
+    ]);
+    const user = await createUser();
+    await pool.query(
+      `insert into user_wallet
+         (user_id, shots_current, shots_max, shots_bonus, pucks, gold_pucks, wheel_spins, training_energy)
+       values ($1, 17, 25, 3, 41, 2, 1, 4)`,
+      [user.userId],
+    );
+    await pool.query(
+      `insert into user_currency_account (user_id, balance, reserved_balance)
+       values ($1, 29, 7)`,
+      [user.userId],
+    );
+    const started = await start(user.authorization, randomUUID());
+    const runId = started.json().runId as string;
+
+    const tutorial = await startTutorial(user.authorization, runId);
+    expect(tutorial.statusCode).toBe(200);
+    expect(tutorial.json()).toMatchObject({
+      shotIndex: 1,
+      goalieId: 'rookie',
+      gameCoreVersion: GAME_CORE_VERSION,
+      speeds,
+      goalConfirmed: false,
+    });
+    expect(tutorial.json().seed).toMatch(/^[0-9a-f]{64}$/);
+    expect(tutorial.json().seed).not.toBe(DAILY_SEED_SECRET);
+    expect(tutorial.json().seed).toBe(
+      createHmac('sha256', DAILY_SEED_SECRET)
+        .update(`${user.userId}:${runId}:${published.versionId}`)
+        .digest('hex'),
+    );
+
+    await pool.query(
+      `update onboarding_step
+          set tutorial_config = $2::jsonb
+        where id = $1`,
+      [
+        published.stepIds[0],
+        JSON.stringify({ shooterFrequency: 1.9, goalieFrequency: 1.8, goalFrequency: 1.7 }),
+      ],
+    );
+    const repeatedStart = await startTutorial(user.authorization, runId);
+    expect(repeatedStart.statusCode).toBe(200);
+    expect(repeatedStart.json()).toMatchObject({
+      seed: tutorial.json().seed,
+      shotIndex: 1,
+      speeds,
+      goalConfirmed: false,
+    });
+
+    const before = await gameStateSnapshot(user.userId);
+    const rejectedSpeeds = {
+      shooterFrequency: 2,
+      goalieFrequency: 2,
+      goalFrequency: 2,
+    };
+    const missInput = findTutorialInput(tutorial.json().seed, 1, speeds, 'miss', rejectedSpeeds);
+    const miss = await submitTutorialShot(user.authorization, runId, {
+      shotIndex: 1,
+      input: {
+        tapTime: missInput.tapTime,
+        shooterTapTime: missInput.shooterTapTime!,
+        ...rejectedSpeeds,
+      },
+      claimedResult: 'goal',
+    });
+    expect(miss.statusCode).toBe(200);
+    expect(miss.json()).toEqual({
+      serverResult: 'miss',
+      nextShotIndex: 2,
+      goalConfirmed: false,
+    });
+
+    const repeatedShot = await submitTutorialShot(user.authorization, runId, {
+      shotIndex: 1,
+      input: { tapTime: missInput.tapTime, shooterTapTime: missInput.shooterTapTime! },
+      claimedResult: 'miss',
+    });
+    expect(repeatedShot.statusCode).toBe(409);
+
+    const goalInput = findTutorialInput(tutorial.json().seed, 2, speeds, 'goal', rejectedSpeeds);
+    const goal = await submitTutorialShot(user.authorization, runId, {
+      shotIndex: 2,
+      input: {
+        tapTime: goalInput.tapTime,
+        shooterTapTime: goalInput.shooterTapTime!,
+        ...rejectedSpeeds,
+      },
+      claimedResult: 'miss',
+    });
+    expect(goal.statusCode).toBe(200);
+    expect(goal.json()).toEqual({
+      serverResult: 'goal',
+      nextShotIndex: 3,
+      goalConfirmed: true,
+    });
+
+    const events = await pool.query<{
+      kind: string;
+      result: string;
+      attempt_number: number;
+    }>(
+      `select kind, result, attempt_number
+         from onboarding_event
+        where run_id = $1 and kind in ('tutorial_attempt', 'tutorial_goal')
+        order by created_at, kind`,
+      [runId],
+    );
+    expect(events.rows).toEqual([
+      { kind: 'tutorial_attempt', result: 'miss', attempt_number: 1 },
+      { kind: 'tutorial_attempt', result: 'goal', attempt_number: 2 },
+      { kind: 'tutorial_goal', result: 'goal', attempt_number: 2 },
+    ]);
+    expect(await gameStateSnapshot(user.userId)).toEqual(before);
   });
 
   it('returns the highest-priority applicable chain with ordered public steps', async () => {
