@@ -555,7 +555,9 @@ describe('BonusGamePlayScreen', () => {
 
     expect(screen.getByRole('dialog', { name: 'Попытка завершена' })).toBeInTheDocument();
     expect(refreshAfterGameExit).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
+    const exit = screen.getByRole('button', { name: 'К бонусным играм' });
+    fireEvent.click(exit);
+    fireEvent.click(exit);
     expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games');
     expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
   });
@@ -623,11 +625,11 @@ describe('BonusGamePlayScreen', () => {
     renderScreen();
 
     fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
-    fireEvent.click(
-      within(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).getByRole('button', {
-        name: 'Продолжить позже',
-      }),
-    );
+    const continueLater = within(
+      screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' }),
+    ).getByRole('button', { name: 'Продолжить позже' });
+    fireEvent.click(continueLater);
+    fireEvent.click(continueLater);
 
     expect(abandon).not.toHaveBeenCalled();
     expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games');
