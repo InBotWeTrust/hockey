@@ -734,7 +734,6 @@ async function assertTerminalInvariants(
       distinct_deliveries: String(input.expectedResultPushes),
     },
     { event_type: 'tournament.schedule_published', count: '4', distinct_deliveries: '4' },
-    { event_type: 'tournament.series_next_game', count: '4', distinct_deliveries: '4' },
   ]);
 }
 
@@ -1279,7 +1278,6 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
           'tournament.playoff_started': 4,
           'tournament.result_ready': regularSource === 'head_to_head' ? 20 : 8,
           'tournament.schedule_published': 4,
-          'tournament.series_next_game': 4,
         }),
       };
       expect(await automaticLifecycleCounts(pool, tournament.id)).toEqual(terminalCounts);

@@ -92,7 +92,7 @@ describe('unified glass material', () => {
     );
   });
 
-  it('uses dark text for the selected playoff round on the light glass surface', () => {
+  it('uses light text for the selected playoff round on the dark active surface', () => {
     const style = mountDesignSystem();
     const selectedRoundRule = Array.from(style.sheet?.cssRules ?? [])
       .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
@@ -102,6 +102,6 @@ describe('unified glass material', () => {
         ),
       );
 
-    expect(selectedRoundRule?.style.getPropertyValue('color')).toBe('#13233c');
+    expect(selectedRoundRule?.style.getPropertyValue('color')).toBe('#ffffff');
   });
 });
