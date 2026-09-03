@@ -6759,11 +6759,14 @@ button.daily-calendar__day:active {
 
 .tournament-fixture-card__meta > span:first-child {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .tournament-fixture-card__meta strong {
   color: #244d73;
+  white-space: nowrap;
 }
 
 .tournament-fixture-card__score {

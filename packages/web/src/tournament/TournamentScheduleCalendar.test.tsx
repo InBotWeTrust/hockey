@@ -593,4 +593,90 @@ describe('TournamentScheduleCalendar', () => {
     expect(playoffDay).toBeEnabled();
     expect(playoffDay).not.toHaveClass('tournament-calendar__day--outside-range');
   });
+
+  it('extends a classic tournament range to lazy playoff day summaries', () => {
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[]}
+        fixtureDays={[
+          {
+            localDate: '2030-09-10',
+            hasGames: true,
+            hasMyGame: false,
+            hasPlayoff: true,
+          },
+        ]}
+        matchdays={[]}
+        regularSource="classic"
+        tournamentStatus="playoff"
+        currentUserId="me"
+        isParticipant={false}
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-08-28T00:00:00.000Z"
+        rangeEndsAt="2030-08-31T23:59:59.000Z"
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    const playoffDay = screen.getByRole('button', { name: /10 сентября.*плей-офф/i });
+    expect(playoffDay).toBeEnabled();
+    expect(playoffDay).not.toHaveClass('tournament-calendar__day--outside-range');
+  });
+
+  it('loads the other classic playoff games on demand', () => {
+    const loadOtherGames = vi.fn();
+    const commonProps = {
+      fixtureDays: [
+        {
+          localDate: '2030-09-10',
+          hasGames: true,
+          hasMyGame: false,
+          hasPlayoff: true,
+        },
+      ],
+      matchdays: [],
+      regularSource: 'classic' as const,
+      tournamentStatus: 'playoff' as const,
+      currentUserId: 'me',
+      isParticipant: true,
+      timezone: 'Europe/Moscow',
+      rangeStartsAt: '2030-09-10T00:00:00.000Z',
+      rangeEndsAt: '2030-09-10T23:59:59.000Z',
+      renderFixture: (item: TournamentFixture) => <article key={item.id}>{item.home?.name}</article>,
+      formatDateTime: (value: string) => value,
+    };
+    const { rerender } = render(
+      <TournamentScheduleCalendar
+        {...commonProps}
+        fixtures={[]}
+        hasOtherGames
+        otherGamesLoaded={false}
+        onLoadOtherGames={loadOtherGames}
+      />,
+    );
+
+    expect(screen.queryByText('В этот день игр нет.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Посмотреть игры дня' }));
+    expect(loadOtherGames).toHaveBeenCalledOnce();
+
+    const playoffFixture = {
+      ...fixture(7),
+      stage: 'playoff' as const,
+      scheduledStartsAt: '2030-09-10T07:00:00.000Z',
+    };
+    rerender(
+      <TournamentScheduleCalendar
+        {...commonProps}
+        fixtures={[playoffFixture]}
+        hasOtherGames
+        otherGamesLoaded
+        hasMoreOtherGames
+        onLoadOtherGames={loadOtherGames}
+      />,
+    );
+
+    expect(screen.getByText('Игра 7')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Показать ещё' })).toBeInTheDocument();
+  });
 });

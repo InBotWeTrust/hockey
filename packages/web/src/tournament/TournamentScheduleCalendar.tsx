@@ -161,7 +161,10 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
       Array.from(
         new Set([
           ...(props.regularSource !== 'head_to_head'
-            ? props.matchdays.map((matchday) => matchday.localDate)
+            ? [
+                ...props.matchdays.map((matchday) => matchday.localDate),
+                ...(props.fixtureDays ?? []).map((day) => day.localDate),
+              ]
             : [
                 ...Array.from(fixturesByDate.keys()),
                 ...(props.fixtureDays ?? []).map((day) => day.localDate),
@@ -297,11 +300,11 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
               >
                 {props.otherGamesLoading
                   ? 'Загрузка…'
-                  : mySelectedFixtures.length > 0
-                    ? props.otherGamesLoaded
-                      ? 'Показать ещё'
-                      : 'Показать остальные игры'
-                    : 'Посмотреть игры дня'}
+                  : props.otherGamesLoaded
+                    ? 'Показать ещё'
+                    : mySelectedFixtures.length > 0
+                      ? 'Показать остальные игры'
+                      : 'Посмотреть игры дня'}
               </button>
             )}
           {!hasLazyOtherGames && otherSelectedFixtures.length > 4 && (
@@ -492,10 +495,12 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
                 )}
             </>
           )}
-          {showsFixturesInline && selectedFixtures.length > 0 && (
+          {showsFixturesInline && (selectedFixtures.length > 0 || hasLazyOtherGames) && (
             renderSelectedFixtureSections()
           )}
-          {selectedMatchday === undefined && selectedFixtures.length === 0 && (
+          {selectedMatchday === undefined &&
+            selectedFixtures.length === 0 &&
+            !hasLazyOtherGames && (
             <p>В этот день игр нет.</p>
           )}
         </div>
