@@ -128,6 +128,7 @@ export interface AmateurDuelRules {
   winCurrencyReward: number;
   drawCurrencyReward: number;
   winStarReward: number;
+  tournamentLoadoutLifecycleVersion?: 1;
 }
 
 export interface AmateurDuelParticipant {

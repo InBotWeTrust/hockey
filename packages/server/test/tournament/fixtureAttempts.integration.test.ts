@@ -1309,6 +1309,339 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     expect(repeatedStart.statusCode).toBe(200);
   });
 
+  it('preserves a pre-092 active tournament full-match reserve through start and terminal cleanup', async () => {
+    const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'attempt-legacy-loadout');
+    const item = await pool.query<{ id: string }>(
+      `insert into admin_inventory_items
+         (photo_url, title, description, price_rub, item_kind, charges_per_purchase,
+          duel_period_cost, power_score, rarity, resource_unit, effect_fatigue_speed_multiplier)
+       values ('', 'Legacy skates', '', 0, 'skates', 3, 1, 10, 'epic', 'period', 0.8)
+       returning id`,
+    );
+    const skatesId = item.rows[0]!.id;
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 3)`,
+      [fixture.home_user_id, skatesId],
+    );
+    await pool.query(
+      `insert into user_equipment (user_id, equipped_skates_item_id) values ($1, $2)`,
+      [fixture.home_user_id, skatesId],
+    );
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    for (const userId of [fixture.home_user_id, fixture.away_user_id]) {
+      const token = await jwt.issueAccessToken({ sub: userId });
+      const ready = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {},
+      });
+      expect(ready.statusCode).toBe(200);
+    }
+    const homeToken = await jwt.issueAccessToken({ sub: fixture.home_user_id });
+    const boundarySetup = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { loadout: {} },
+    });
+    expect(boundarySetup.statusCode).toBe(200);
+    await pool.query(
+      `update user_inventory_item
+          set charges_available = charges_available - 1,
+              charges_reserved = charges_reserved + 1
+        where user_id = $1 and inventory_item_id = $2`,
+      [fixture.home_user_id, skatesId],
+    );
+    await pool.query(
+      `update amateur_duel_participant
+          set loadout_snapshot = jsonb_set(loadout_snapshot, '{items,0,chargesReserved}', '2'::jsonb),
+              reserved_inventory_charges = 2,
+              tournament_loadout_period = null,
+              tournament_loadout_version = 0,
+              tournament_loadout_confirmed_at = null
+        where match_id = $1 and user_id = $2`,
+      [opened.duelMatchId, fixture.home_user_id],
+    );
+    await pool.query(
+      `update amateur_duel_match
+          set rules_snapshot = rules_snapshot - 'tournamentLoadoutLifecycleVersion'
+        where id = $1`,
+      [opened.duelMatchId],
+    );
+    const legacyBefore = await pool.query<{
+      loadout_snapshot: unknown;
+      inventory_effects_snapshot: unknown;
+    }>(
+      `select loadout_snapshot, inventory_effects_snapshot
+         from amateur_duel_participant
+        where match_id = $1 and user_id = $2`,
+      [opened.duelMatchId, fixture.home_user_id],
+    );
+
+    const forbiddenConfirmation = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { loadout: {} },
+    });
+    expect(forbiddenConfirmation.statusCode).toBe(409);
+
+    const started = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/period/start`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: {},
+    });
+    expect(started.statusCode).toBe(200);
+    const afterStart = await pool.query<{
+      charges_available: number;
+      charges_reserved: number;
+      reserved_inventory_charges: number;
+      consumed_inventory_charges: number;
+      tournament_loadout_period: number | null;
+      inventory_report: Array<{ consumed: Array<{ title: string; charges: number }> }>;
+    }>(
+      `select inventory.charges_available, inventory.charges_reserved,
+              participant.reserved_inventory_charges, participant.consumed_inventory_charges,
+              participant.tournament_loadout_period, participant.inventory_report
+         from amateur_duel_participant participant
+         join user_inventory_item inventory
+           on inventory.user_id = participant.user_id and inventory.inventory_item_id = $3
+        where participant.match_id = $1 and participant.user_id = $2`,
+      [opened.duelMatchId, fixture.home_user_id, skatesId],
+    );
+    expect(afterStart.rows[0]).toMatchObject({
+      charges_available: 1,
+      charges_reserved: 1,
+      reserved_inventory_charges: 2,
+      consumed_inventory_charges: 1,
+      tournament_loadout_period: null,
+    });
+    expect(afterStart.rows[0]!.inventory_report.flatMap((entry) => entry.consumed)).toMatchObject([
+      { title: 'Legacy skates', charges: 1 },
+    ]);
+
+    const terminalClient = await pool.connect();
+    try {
+      await terminalClient.query('begin');
+      expect(
+        await cancelTournamentDuel(terminalClient, {
+          duelMatchId: opened.duelMatchId,
+          reason: 'test_legacy_loadout_cleanup',
+        }),
+      ).toBe(true);
+      await terminalClient.query('commit');
+    } finally {
+      await terminalClient.query('rollback').catch(() => undefined);
+      terminalClient.release();
+    }
+    const afterTerminal = await pool.query<{
+      charges_available: number;
+      charges_reserved: number;
+      reserved_inventory_charges: number;
+      consumed_inventory_charges: number;
+      tournament_loadout_period: number | null;
+      tournament_loadout_version: number;
+      tournament_loadout_confirmed_at: Date | null;
+      loadout_snapshot: unknown;
+      inventory_effects_snapshot: unknown;
+      inventory_report: Array<{ consumed: Array<{ title: string; charges: number }> }>;
+    }>(
+      `select inventory.charges_available, inventory.charges_reserved,
+              participant.reserved_inventory_charges, participant.consumed_inventory_charges,
+              participant.tournament_loadout_period, participant.tournament_loadout_version,
+              participant.tournament_loadout_confirmed_at, participant.loadout_snapshot,
+              participant.inventory_effects_snapshot, participant.inventory_report
+         from amateur_duel_participant participant
+         join user_inventory_item inventory
+           on inventory.user_id = participant.user_id and inventory.inventory_item_id = $3
+        where participant.match_id = $1 and participant.user_id = $2`,
+      [opened.duelMatchId, fixture.home_user_id, skatesId],
+    );
+    expect(afterTerminal.rows[0]).toMatchObject({
+      charges_available: 2,
+      charges_reserved: 0,
+      reserved_inventory_charges: 2,
+      consumed_inventory_charges: 2,
+      tournament_loadout_period: null,
+      tournament_loadout_version: 0,
+      tournament_loadout_confirmed_at: null,
+      loadout_snapshot: legacyBefore.rows[0]!.loadout_snapshot,
+      inventory_effects_snapshot: legacyBefore.rows[0]!.inventory_effects_snapshot,
+    });
+    expect(afterTerminal.rows[0]!.inventory_report.flatMap((entry) => entry.consumed)).toMatchObject([
+      { title: 'Legacy skates', charges: 1 },
+    ]);
+  });
+
+  it('returns the current active tournament state when readiness is retried after activation', async () => {
+    const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'attempt-ready-retry-active');
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const homeToken = await jwt.issueAccessToken({ sub: fixture.home_user_id });
+    const awayToken = await jwt.issueAccessToken({ sub: fixture.away_user_id });
+    const firstHomeReady = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: {},
+    });
+    expect(firstHomeReady.statusCode).toBe(200);
+    const activated = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+      headers: { authorization: `Bearer ${awayToken}` },
+      payload: {},
+    });
+    expect(activated.statusCode).toBe(200);
+    const beforeRetry = await pool.query<{
+      accepted_at: Date;
+      ready_at: Date;
+      updated_at: Date;
+      home_ready_at: Date;
+      inventory_events: number;
+    }>(
+      `select match.accepted_at, participant.ready_at, participant.updated_at,
+              attempt.home_ready_at,
+              (select count(*)::int from event_log event
+                where event.user_id = participant.user_id
+                  and event.type = 'amateur_duel_inventory_reserved') as inventory_events
+         from amateur_duel_match match
+         join amateur_duel_participant participant
+           on participant.match_id = match.id and participant.user_id = $2
+         join tournament_fixture_segment segment on segment.duel_match_id = match.id
+         join tournament_fixture_attempt attempt on attempt.fixture_id = segment.fixture_id
+        where match.id = $1`,
+      [opened.duelMatchId, fixture.home_user_id],
+    );
+
+    const retried = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: {},
+    });
+    expect(retried.statusCode).toBe(200);
+    expect(retried.json().match).toMatchObject({
+      id: opened.duelMatchId,
+      status: 'active',
+      me: { state: 'accepted' },
+    });
+    const afterRetry = await pool.query<{
+      accepted_at: Date;
+      ready_at: Date;
+      updated_at: Date;
+      home_ready_at: Date;
+      inventory_events: number;
+    }>(
+      `select match.accepted_at, participant.ready_at, participant.updated_at,
+              attempt.home_ready_at,
+              (select count(*)::int from event_log event
+                where event.user_id = participant.user_id
+                  and event.type = 'amateur_duel_inventory_reserved') as inventory_events
+         from amateur_duel_match match
+         join amateur_duel_participant participant
+           on participant.match_id = match.id and participant.user_id = $2
+         join tournament_fixture_segment segment on segment.duel_match_id = match.id
+         join tournament_fixture_attempt attempt on attempt.fixture_id = segment.fixture_id
+        where match.id = $1`,
+      [opened.duelMatchId, fixture.home_user_id],
+    );
+    expect(afterRetry.rows).toEqual(beforeRetry.rows);
+  });
+
+  it('clears a confirmed zero-reserve tournament boundary during terminal cleanup', async () => {
+    const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'attempt-zero-reserve-cleanup');
+    const item = await pool.query<{ id: string }>(
+      `insert into admin_inventory_items
+         (photo_url, title, description, price_rub, item_kind, charges_per_purchase,
+          duel_period_cost, power_score, rarity, resource_unit)
+       values ('', 'Zero-reserve stick', '', 0, 'stick', 3, 0, 10, 'epic', 'shot')
+       returning id`,
+    );
+    const stickId = item.rows[0]!.id;
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 3)`,
+      [fixture.home_user_id, stickId],
+    );
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    for (const userId of [fixture.home_user_id, fixture.away_user_id]) {
+      const token = await jwt.issueAccessToken({ sub: userId });
+      const ready = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {},
+      });
+      expect(ready.statusCode).toBe(200);
+    }
+    const homeToken = await jwt.issueAccessToken({ sub: fixture.home_user_id });
+    const confirmed = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { loadout: { stick: stickId, skates: null, nutrition: null } },
+    });
+    expect(confirmed.statusCode).toBe(200);
+    const beforeTerminal = await pool.query<{
+      tournament_loadout_period: number | null;
+      tournament_loadout_confirmed_at: Date | null;
+      reserved_inventory_charges: number;
+    }>(
+      `select tournament_loadout_period, tournament_loadout_confirmed_at,
+              reserved_inventory_charges
+         from amateur_duel_participant
+        where match_id = $1 and user_id = $2`,
+      [opened.duelMatchId, fixture.home_user_id],
+    );
+    expect(beforeTerminal.rows[0]).toMatchObject({
+      tournament_loadout_period: 1,
+      tournament_loadout_confirmed_at: expect.any(Date),
+      reserved_inventory_charges: 0,
+    });
+
+    const terminalClient = await pool.connect();
+    try {
+      await terminalClient.query('begin');
+      expect(
+        await cancelTournamentDuel(terminalClient, {
+          duelMatchId: opened.duelMatchId,
+          reason: 'test_zero_reserve_cleanup',
+        }),
+      ).toBe(true);
+      await terminalClient.query('commit');
+    } finally {
+      await terminalClient.query('rollback').catch(() => undefined);
+      terminalClient.release();
+    }
+    const afterTerminal = await pool.query<{
+      tournament_loadout_period: number | null;
+      tournament_loadout_confirmed_at: Date | null;
+      reserved_inventory_charges: number;
+      charges_available: number;
+      charges_reserved: number;
+    }>(
+      `select participant.tournament_loadout_period,
+              participant.tournament_loadout_confirmed_at,
+              participant.reserved_inventory_charges,
+              inventory.charges_available, inventory.charges_reserved
+         from amateur_duel_participant participant
+         join user_inventory_item inventory
+           on inventory.user_id = participant.user_id and inventory.inventory_item_id = $3
+        where participant.match_id = $1 and participant.user_id = $2`,
+      [opened.duelMatchId, fixture.home_user_id, stickId],
+    );
+    expect(afterTerminal.rows).toEqual([{
+      tournament_loadout_period: null,
+      tournament_loadout_confirmed_at: null,
+      reserved_inventory_charges: 0,
+      charges_available: 3,
+      charges_reserved: 0,
+    }]);
+  });
+
   it('versions tournament loadout at each period boundary without releasing consumed charges', async () => {
     await pool.query(
       `update amateur_duel_template

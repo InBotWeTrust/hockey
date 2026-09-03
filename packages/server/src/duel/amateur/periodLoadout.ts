@@ -8,6 +8,15 @@ export interface PeriodReservationItem {
   chargesReserved: number;
 }
 
+export const TOURNAMENT_PERIOD_LOADOUT_LIFECYCLE_VERSION = 1 as const;
+
+export function usesTournamentPeriodLoadoutLifecycle(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  return (
+    value as { tournamentLoadoutLifecycleVersion?: unknown }
+  ).tournamentLoadoutLifecycleVersion === TOURNAMENT_PERIOD_LOADOUT_LIFECYCLE_VERSION;
+}
+
 function reservationKey(item: Pick<PeriodReservationItem, 'itemId' | 'instanceId'>): string {
   return item.instanceId ?? item.itemId;
 }

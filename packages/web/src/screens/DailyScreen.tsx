@@ -5253,15 +5253,17 @@ function AmateurDuelPlayView({
     now >= startsAt &&
     now < endsAt &&
     match.me.current_period < match.rules.totalPeriods;
+  const usesTournamentPeriodLoadout =
+    match.source === 'tournament' && match.rules.tournamentLoadoutLifecycleVersion === 1;
   const handleDirectDuelAction = async (): Promise<void> => {
     if (inFlight) return;
     const matchNow = duelMatchNowMs(match, now);
     if (match.status === 'ready_check' && match.me.state !== 'ready') {
-      await ready(match.source === 'tournament' ? {} : selectedLoadout);
+      await ready(usesTournamentPeriodLoadout ? {} : selectedLoadout);
       return;
     }
     if (canStartArenaDuelPeriod(match, matchNow)) {
-      if (match.source === 'tournament') {
+      if (usesTournamentPeriodLoadout) {
         const confirmed = await confirmTournamentLoadout(selectedLoadout);
         if (confirmed === null) return;
         await startPeriod();

@@ -4968,6 +4968,10 @@ describe('DailyScreen', () => {
     }));
     const readyCheck: AmateurDuelMatchState = {
       ...settledDuelMatch,
+      rules: {
+        ...settledDuelMatch.rules,
+        tournamentLoadoutLifecycleVersion: 1,
+      } as AmateurDuelMatchState['rules'] & { tournamentLoadoutLifecycleVersion: 1 },
       status: 'ready_check',
       source: 'tournament',
       outcome: null,
@@ -5153,10 +5157,31 @@ describe('DailyScreen', () => {
     };
     reloadRender.unmount();
 
-    renderWith(['/?view=amateur&match=match-1&play=1']);
+    const previewRender = renderWith(['/?view=amateur&match=match-1&play=1']);
     expect(
       await screen.findByRole('button', { name: /Клюшка: Турнирная клюшка/ }),
     ).toBeEnabled();
+
+    const loadoutRequestsBeforeLegacyStart = requestCounts.loadout;
+    const startRequestsBeforeLegacyStart = requestCounts.start;
+    duelState = {
+      ...duelState,
+      rules: settledDuelMatch.rules,
+      period_started_at: null,
+      me: {
+        ...duelState.me,
+        state: 'accepted',
+        current_period: 0,
+        tournament_loadout_period: null,
+        tournament_loadout_version: 0,
+      },
+    };
+    previewRender.unmount();
+
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+    fireEvent.click(await screen.findByRole('button', { name: 'НАЧАТЬ' }));
+    await waitFor(() => expect(requestCounts.start).toBe(startRequestsBeforeLegacyStart + 1));
+    expect(requestCounts.loadout).toBe(loadoutRequestsBeforeLegacyStart);
   });
 
   it('builds live opponent progress for the amateur duel scoreboard', () => {

@@ -46,7 +46,11 @@ import {
   mirrorTournamentAttemptReady,
   reconcileTournamentAttemptForDuel,
 } from '../../tournament/fixtureAttempts.js';
-import { adjustTournamentPeriodReservation } from './periodLoadout.js';
+import {
+  adjustTournamentPeriodReservation,
+  TOURNAMENT_PERIOD_LOADOUT_LIFECYCLE_VERSION,
+  usesTournamentPeriodLoadoutLifecycle,
+} from './periodLoadout.js';
 
 type MatchStatus = 'invited' | 'ready_check' | 'active' | 'settled' | 'cancelled' | 'expired';
 type ParticipantState =
@@ -568,6 +572,7 @@ interface DuelRulesSnapshot {
   winCurrencyReward: number;
   drawCurrencyReward: number;
   winStarReward: number;
+  tournamentLoadoutLifecycleVersion?: 1;
 }
 
 interface DuelParticipantDTO {
@@ -1174,20 +1179,25 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       winCurrencyReward: z.number().int().min(0).default(0),
       drawCurrencyReward: z.number().int().min(0).default(0),
       winStarReward: z.number().int().min(0).default(0),
+      tournamentLoadoutLifecycleVersion: z.literal(1).optional(),
     })
     .safeParse(value);
   if (!parsed.success) {
     throw new AppError('server_error', 'invalid duel rules snapshot', 500);
   }
+  const { tournamentLoadoutLifecycleVersion, ...rules } = parsed.data;
   return {
-    ...parsed.data,
+    ...rules,
+    ...(tournamentLoadoutLifecycleVersion === undefined
+      ? {}
+      : { tournamentLoadoutLifecycleVersion }),
     periodRules:
-      parsed.data.periodRules ??
+      rules.periodRules ??
       defaultPeriodRules({
-        duelKind: parsed.data.duelKind,
-        totalPeriods: parsed.data.totalPeriods,
-        shotsPerPeriod: parsed.data.shotsPerPeriod,
-        periodDurationMs: parsed.data.periodDurationMs,
+        duelKind: rules.duelKind,
+        totalPeriods: rules.totalPeriods,
+        shotsPerPeriod: rules.shotsPerPeriod,
+        periodDurationMs: rules.periodDurationMs,
       }),
   };
 }
@@ -2486,7 +2496,10 @@ async function settleMatchIfReady(
             metadata: { reason: 'no_play_entry_fee_refund' },
           });
         }
-        if (match.source === 'tournament') {
+        if (
+          match.source === 'tournament' &&
+          usesTournamentPeriodLoadoutLifecycle(rules)
+        ) {
           await releasePendingTournamentPeriodReservation(client, participant);
         } else {
           await releaseRemainingDuelInventoryReserve(client, {
@@ -2631,7 +2644,10 @@ async function settleMatchIfReady(
   }
 
   for (const participant of refreshed) {
-    if (match.source === 'tournament') {
+    if (
+      match.source === 'tournament' &&
+      usesTournamentPeriodLoadoutLifecycle(rules)
+    ) {
       await releasePendingTournamentPeriodReservation(client, participant);
     } else {
       await releaseRemainingDuelInventoryReserve(client, {
@@ -3044,6 +3060,7 @@ async function participantWithTournamentLoadoutPreview(
 ): Promise<DuelParticipantRow> {
   if (
     match.source !== 'tournament' ||
+    !usesTournamentPeriodLoadoutLifecycle(rules) ||
     participant.state !== 'accepted' ||
     participant.tournament_loadout_period === participant.current_period + 1
   ) {
@@ -3435,6 +3452,7 @@ async function createOpenMatch(
     opts.source === 'tournament'
       ? {
           ...baseRules,
+          tournamentLoadoutLifecycleVersion: TOURNAMENT_PERIOD_LOADOUT_LIFECYCLE_VERSION,
           rankedEnabled: false,
           matchmakingEnabled: false,
           stakeAmount: 0,
@@ -3627,10 +3645,12 @@ async function activateReadyMatch(
   const activeEndsAt = preserveEndsAt
     ? match.ends_at
     : new Date(Math.min(match.ends_at.getTime(), now.getTime() + estimateDuelPlayWindowMs(rules)));
+  const usesPeriodLoadout =
+    match.source === 'tournament' && usesTournamentPeriodLoadoutLifecycle(rules);
 
   for (const participant of participants) {
     const loadout = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
-    const totalReserved = match.source === 'tournament'
+    const totalReserved = usesPeriodLoadout
       ? 0
       : loadout.items.reduce((sum, item) => sum + item.chargesReserved, 0);
     if (rules.entryFeeAmount > 0) {
@@ -3651,7 +3671,7 @@ async function activateReadyMatch(
         matchId: match.id,
       });
     }
-    if (match.source !== 'tournament') {
+    if (!usesPeriodLoadout) {
       await reserveLoadoutInventory(client, participant.user_id, match.id, loadout);
     }
     await client.query(
@@ -3670,7 +3690,7 @@ async function activateReadyMatch(
         rules.stakeAmount,
         rules.entryFeeAmount,
         totalReserved,
-        match.source === 'tournament' ? null : JSON.stringify(combineEffects(loadout.items)),
+        usesPeriodLoadout ? null : JSON.stringify(combineEffects(loadout.items)),
       ],
     );
   }
@@ -4557,6 +4577,12 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           throw new AppError('forbidden', 'duel match access denied', 403);
         }
         if (match.status !== 'ready_check') {
+          if (match.status === 'active' && match.source === 'tournament') {
+            return {
+              kind: 'already_ready' as const,
+              match: await buildMatchStateDto(client, match, req.user.id, now),
+            };
+          }
           return {
             kind: 'terminal_conflict' as const,
             matchId: match.id,
@@ -4569,7 +4595,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         }
         const rules = parseRulesSnapshot(match.rules_snapshot);
         const loadout =
-          match.source === 'tournament'
+          match.source === 'tournament' && usesTournamentPeriodLoadoutLifecycle(rules)
             ? emptyLoadout(rules.powerCap)
             : await buildLoadoutSnapshot(client, req.user.id, parsed.data.loadout, rules);
         await client.query(
@@ -4620,6 +4646,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         }
         throw new AppError('conflict', `cannot ready in duel status '${response.status}'`, 409);
       }
+      if (response.kind === 'already_ready') {
+        return { match: response.match };
+      }
       await publishDuelFixtureProgress(app, response.match.id);
       if (response.readyNotice !== null && opts.systemUserId !== undefined) {
         const notice = response.readyNotice;
@@ -4664,7 +4693,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'duel match access denied', 403);
         }
-        if (match.source !== 'tournament' || match.status !== 'active') {
+        if (
+          match.source !== 'tournament' ||
+          match.status !== 'active' ||
+          !usesTournamentPeriodLoadoutLifecycle(match.rules_snapshot)
+        ) {
           throw new AppError('conflict', 'tournament loadout is not available', 409);
         }
         const rules = parseRulesSnapshot(match.rules_snapshot);
@@ -4983,12 +5016,16 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         }
         if (
           match.source === 'tournament' &&
+          usesTournamentPeriodLoadoutLifecycle(rules) &&
           participant.tournament_loadout_period !== participant.current_period + 1
         ) {
           throw new AppError('conflict', 'tournament loadout must be confirmed before a period', 409);
         }
         if (parsed.data.loadout !== undefined) {
-          if (match.source === 'tournament') {
+          if (
+            match.source === 'tournament' &&
+            usesTournamentPeriodLoadoutLifecycle(rules)
+          ) {
             throw new AppError('conflict', 'confirm tournament loadout before starting a period', 409);
           }
           const currentLoadout = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);

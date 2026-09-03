@@ -1,6 +1,9 @@
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
-import { adjustTournamentPeriodReservation } from './periodLoadout.js';
+import {
+  adjustTournamentPeriodReservation,
+  usesTournamentPeriodLoadoutLifecycle,
+} from './periodLoadout.js';
 
 export type AmateurDuelSource = 'challenge' | 'matchmaking' | 'tournament';
 
@@ -157,7 +160,6 @@ export async function releasePendingTournamentPeriodReservation(
     previous: reservationItemsFromSnapshot(participant.loadout_snapshot),
     next: [],
   });
-  if (delta === 0) return;
   await client.query(
     `update amateur_duel_participant
         set reserved_inventory_charges = reserved_inventory_charges + $3,
@@ -177,8 +179,8 @@ export async function cancelTournamentDuel(
   client: PoolClient,
   input: { duelMatchId: string; reason: string },
 ): Promise<boolean> {
-  const matchResult = await client.query<{ id: string; status: string }>(
-    `select id, status
+  const matchResult = await client.query<{ id: string; status: string; rules_snapshot: unknown }>(
+    `select id, status, rules_snapshot
        from amateur_duel_match
       where id = $1 and source = 'tournament'
       for update`,
@@ -197,7 +199,17 @@ export async function cancelTournamentDuel(
     [match.id],
   );
   for (const participant of participants.rows) {
-    await releasePendingTournamentPeriodReservation(client, participant);
+    if (usesTournamentPeriodLoadoutLifecycle(match.rules_snapshot)) {
+      await releasePendingTournamentPeriodReservation(client, participant);
+    } else {
+      await releaseRemainingDuelInventoryReserve(client, {
+        matchId: participant.match_id,
+        userId: participant.user_id,
+        loadoutSnapshot: participant.loadout_snapshot,
+        reservedInventoryCharges: Number(participant.reserved_inventory_charges),
+        consumedInventoryCharges: Number(participant.consumed_inventory_charges),
+      });
+    }
   }
   await client.query(
     `update amateur_duel_participant
