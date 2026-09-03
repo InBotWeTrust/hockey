@@ -222,10 +222,57 @@ export async function advanceTournamentPlayoffSeries(
 
 async function delayPastPlayoffRoundStart(
   client: PoolClient,
-  input: { roundId: string; settledAt: Date },
+  input: { roundId: string },
 ): Promise<void> {
-  const round = await client.query<{ starts_at: Date | null; timezone: string }>(
+  const sources = await client.query<{
+    source_count: number;
+    completed_source_count: number;
+    latest_settled_at: Date | null;
+  }>(
+    `select count(*)::int as source_count,
+            count(*) filter (where source_series.status = 'completed')::int as completed_source_count,
+            max(settlement.settled_at) as latest_settled_at
+       from (
+         select distinct source_series.id, source_series.status
+           from tournament_playoff_series dependent
+           cross join lateral jsonb_array_elements(
+             case when jsonb_typeof(dependent.depends_on->'sources') = 'array'
+                  then dependent.depends_on->'sources' else '[]'::jsonb end
+           ) source
+           join tournament_playoff_series source_series
+             on source_series.tournament_id = dependent.tournament_id
+            and source_series.depends_on->>'key' = source->>'seriesKey'
+          where dependent.round_id = $1
+       ) source_series
+       left join lateral (
+         select max(attempt.settled_at) as settled_at
+           from tournament_fixture fixture
+           join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+          where fixture.series_id = source_series.id
+            and attempt.is_result_bearing
+            and attempt.status in ('settled', 'technical_result')
+       ) settlement on true`,
+    [input.roundId],
+  );
+  const sourceState = sources.rows[0];
+  if (
+    sourceState === undefined ||
+    sourceState.source_count === 0 ||
+    sourceState.completed_source_count !== sourceState.source_count ||
+    sourceState.latest_settled_at === null
+  ) {
+    return;
+  }
+  const round = await client.query<{
+    starts_at: Date | null;
+    original_configured_start_at: Date | null;
+    timezone: string;
+  }>(
     `select round.starts_at,
+            coalesce(
+              (round.rules_snapshot->>'delayedFromStartAt')::timestamptz,
+              round.starts_at
+            ) as original_configured_start_at,
             coalesce(revision.rules_snapshot->'config'->>'timezone', 'UTC') as timezone
        from tournament_round round
        join tournament tournament on tournament.id = round.tournament_id
@@ -234,21 +281,31 @@ async function delayPastPlayoffRoundStart(
       for update of round`,
     [input.roundId],
   );
-  const configuredStart = round.rows[0]?.starts_at;
-  if (configuredStart === undefined || configuredStart === null || configuredStart >= input.settledAt) {
+  const row = round.rows[0];
+  if (
+    row === undefined ||
+    row.starts_at === null ||
+    row.original_configured_start_at === null
+  ) {
     return;
   }
+  const currentStart = row.starts_at;
+  const configuredStart = row.original_configured_start_at;
   const startsAt = resolveDelayedPlayoffRoundStart({
     configuredStart,
-    finalPriorSeriesSettledAt: input.settledAt,
+    finalPriorSeriesSettledAt: sourceState.latest_settled_at,
   });
-  const deltaMs = startsAt.getTime() - configuredStart.getTime();
-  const timezone = round.rows[0]!.timezone;
+  const deltaMs = startsAt.getTime() - currentStart.getTime();
+  if (deltaMs <= 0) return;
+  const timezone = row.timezone;
   await client.query(
     `update tournament_round
-        set starts_at = $2, ends_at = ends_at + $3 * interval '1 millisecond'
+        set starts_at = $2, ends_at = ends_at + $3 * interval '1 millisecond',
+            rules_snapshot = rules_snapshot || jsonb_build_object(
+              'delayedFromStartAt', $4::timestamptz
+            )
       where id = $1`,
-    [input.roundId, startsAt, deltaMs],
+    [input.roundId, startsAt, deltaMs, configuredStart],
   );
   await client.query(
     `update tournament_round_game_day
@@ -416,7 +473,7 @@ async function finalizeTournamentPlayoffSeries(
         where series_id = $1 and status in ('conditional', 'scheduled')`,
       [dependent.id, higher, lower, dependent.wins_required],
     );
-    await delayPastPlayoffRoundStart(client, { roundId: dependent.round_id, settledAt });
+    await delayPastPlayoffRoundStart(client, { roundId: dependent.round_id });
     const firstFixture = await client.query<{ id: string }>(
       `select id from tournament_fixture
         where series_id = $1 and status = 'scheduled'
