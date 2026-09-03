@@ -41,8 +41,8 @@ export function normalizePublishedTournamentLifecycleRules<T extends UnknownReco
   const playoffRounds = Array.isArray(input.playoffRounds)
     ? input.playoffRounds.map((value) => {
         const round = record(value);
-        const { plannedStartIntervalMinutes: _legacyPlannedStartIntervalMinutes, ...roundWithoutLegacyCadence } =
-          round;
+        const roundWithoutLegacyCadence = { ...round };
+        delete roundWithoutLegacyCadence.plannedStartIntervalMinutes;
         const winsRequired = explicitNumberOrDefault(round.winsRequired, 4);
         const readinessMinutes = explicitNumberOrDefault(
           round.readinessMinutes,

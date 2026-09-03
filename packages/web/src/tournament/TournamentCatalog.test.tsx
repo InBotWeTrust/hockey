@@ -655,8 +655,10 @@ describe('TournamentCatalog', () => {
     const visibleFixtures = document.querySelectorAll('.tournament-fixture-card');
     expect(visibleFixtures[0]).toHaveTextContent('Первый — Второй');
     expect(visibleFixtures[0]).not.toHaveTextContent('(1)');
-    expect(screen.getAllByText('10:00–11:00')).toHaveLength(2);
-    expect(screen.queryByText('1 сентября, 10:00–11:00')).not.toBeInTheDocument();
+    expect(
+      screen.getAllByText('Время игры появится после предыдущего результата'),
+    ).toHaveLength(2);
+    expect(screen.queryByText('10:00–11:00')).not.toBeInTheDocument();
     expect(screen.getByText('Третий — Четвёртый')).toBeInTheDocument();
     expect(screen.getByText('Можно начинать игру')).toBeInTheDocument();
     expect(screen.getByText('Запланирована')).toBeInTheDocument();
@@ -672,6 +674,115 @@ describe('TournamentCatalog', () => {
     expect(playoffCard.closest('.tournament-fixture-card')).toBeInTheDocument();
     expect(screen.getByText('(2) Второй — (3) Четвёртый')).toBeInTheDocument();
     expect(sections).toBeInTheDocument();
+  });
+
+  it('keeps date-scoped schedule caches separate and loads other games only on demand', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 'lazy-cup',
+          slug: 'lazy-cup',
+          title: 'Кубок дня',
+          description: '',
+          status: 'regular',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 8,
+          lifecycle: TEST_LIFECYCLE,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: '2030-09-01T07:00:00.000Z',
+          projectedEndsAt: '2030-09-02T18:00:00.000Z',
+          rules: {
+            config: {
+              participantLimit: 8,
+              entryFeeCoins: 0,
+              playoffSize: 4,
+              timezone: 'Europe/Moscow',
+            },
+          },
+        },
+      ],
+    });
+    const days = [
+      { localDate: '2030-09-01', hasGames: true, hasMyGame: true, hasPlayoff: false },
+      { localDate: '2030-09-02', hasGames: true, hasMyGame: false, hasPlayoff: false },
+    ];
+    const mine: api.TournamentFixture = {
+      id: 'mine-1',
+      fixtureNumber: 1,
+      stage: 'regular',
+      roundNumber: 1,
+      scheduledStartsAt: '2030-09-01T07:00:00.000Z',
+      windowEndsAt: '2030-09-01T08:00:00.000Z',
+      status: 'settled',
+      venueMode: 'home_selected',
+      home: { userId: 'u1', name: 'Первый' },
+      away: { userId: 'u2', name: 'Второй' },
+      score: { home: 2, away: 1 },
+      winnerUserId: 'u1',
+    };
+    const other = (id: string, date: string): api.TournamentFixture => ({
+      id,
+      fixtureNumber: Number(id.at(-1) ?? 2),
+      stage: 'regular',
+      roundNumber: 1,
+      scheduledStartsAt: `${date}T08:00:00.000Z`,
+      windowEndsAt: `${date}T09:00:00.000Z`,
+      status: 'settled',
+      venueMode: 'neutral_default',
+      home: { userId: `${id}-home`, name: `Чужой ${id}` },
+      away: { userId: `${id}-away`, name: `Гость ${id}` },
+      score: { home: 1, away: 0 },
+      winnerUserId: `${id}-home`,
+    });
+    const scheduleSpy = vi
+      .spyOn(api, 'fetchTournamentSchedule')
+      .mockImplementation(async (_tournamentId, date) => ({
+        days,
+        myGames: date === '2030-09-01' ? [mine] : [],
+        hasOtherGames: true,
+        matchdays: [],
+      }));
+    const othersSpy = vi
+      .spyOn(api, 'fetchTournamentScheduleOtherGames')
+      .mockImplementation(async (_tournamentId, date) => ({
+        games: [other(date === '2030-09-01' ? 'other-2' : 'other-3', date)],
+        nextCursor: null,
+      }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок дня' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
+    fireEvent.click(await screen.findByRole('button', { name: /1 сентября.*ваша игра/i }));
+
+    expect(await screen.findByText('Первый — Второй')).toBeInTheDocument();
+    expect(screen.queryByText('Чужой other-2 — Гость other-2')).not.toBeInTheDocument();
+    expect(othersSpy).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Показать остальные игры' }));
+    const foreignGame = (await screen.findByText('Чужой other-2 — Гость other-2')).closest(
+      '.tournament-fixture-card',
+    );
+    expect(foreignGame).toHaveTextContent('Счёт 1:0');
+    expect(foreignGame).not.toHaveTextContent('Победа');
+    expect(foreignGame).not.toHaveTextContent('Поражение');
+    expect(othersSpy).toHaveBeenCalledWith('lazy-cup', '2030-09-01', null);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: /^2 сентября/i }));
+    expect(await screen.findByRole('button', { name: 'Посмотреть игры дня' })).toBeInTheDocument();
+    expect(screen.queryByText('Чужой other-3 — Гость other-3')).not.toBeInTheDocument();
+    expect(scheduleSpy).toHaveBeenCalledWith('lazy-cup', '2030-09-01');
+    expect(scheduleSpy).toHaveBeenCalledWith('lazy-cup', '2030-09-02');
   });
 
   it('shows configured playoff dates in a later calendar month before fixtures exist', async () => {
@@ -804,6 +915,58 @@ describe('TournamentCatalog', () => {
 
     expect(await screen.findByText('Счёт 0:0')).toBeInTheDocument();
     expect(screen.getByText('Счёт 3:1')).toBeInTheDocument();
+  });
+
+  it('labels own results, preserves scores and hides individual times for future games', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 'result-cup', slug: 'result-cup', title: 'Кубок результатов', description: '',
+          status: 'playoff', regularSource: 'head_to_head', visibility: 'public', revision: 1,
+          participantCount: 4, lifecycle: TEST_LIFECYCLE, myParticipantState: 'approved',
+          registrationOpensAt: null, registrationClosesAt: null,
+          startsAt: '2030-09-01T07:00:00.000Z', projectedEndsAt: '2030-09-01T18:00:00.000Z',
+          rules: { config: { participantLimit: 4, entryFeeCoins: 0, playoffSize: 4, timezone: 'Europe/Moscow' } },
+        },
+      ],
+    });
+    const fixtures: api.TournamentFixture[] = [
+      {
+        id: 'own-loss', fixtureNumber: 1, stage: 'regular', roundNumber: 1,
+        scheduledStartsAt: '2030-09-01T07:00:00.000Z', actualStartsAt: '2030-09-01T07:07:00.000Z',
+        windowEndsAt: '2030-09-01T08:00:00.000Z', status: 'settled', venueMode: 'home_selected',
+        home: { userId: 'u1', name: 'Первый', seed: 1 }, away: { userId: 'u2', name: 'Второй', seed: 2 },
+        score: { home: 1, away: 2 }, winnerUserId: 'u2',
+      },
+      {
+        id: 'future-playoff', fixtureNumber: 2, stage: 'playoff', roundNumber: 1,
+        scheduledStartsAt: '2030-09-01T12:00:00.000Z', windowEndsAt: '2030-09-01T13:00:00.000Z',
+        status: 'scheduled', venueMode: 'home_selected',
+        home: { userId: 'u1', name: 'Первый', seed: 1 }, away: { userId: 'u3', name: 'Третий', seed: 4 },
+        score: { home: 0, away: 0 }, winnerUserId: null,
+      },
+    ];
+    vi.spyOn(api, 'fetchTournamentSchedule').mockResolvedValue({
+      days: [{ localDate: '2030-09-01', hasGames: true, hasMyGame: true, hasPlayoff: true }],
+      myGames: fixtures,
+      hasOtherGames: false,
+      matchdays: [],
+    });
+    vi.spyOn(api, 'fetchTournamentScheduleOtherGames').mockResolvedValue({ games: [], nextCursor: null });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<MemoryRouter><QueryClientProvider client={client}><TournamentCatalog /></QueryClientProvider></MemoryRouter>);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок результатов' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
+    fireEvent.click(await screen.findByRole('button', { name: /1 сентября.*ваша игра/i }));
+
+    expect(await screen.findByText('Поражение')).toHaveClass('tournament-fixture-result--loss');
+    expect(screen.getByText('Счёт 1:2')).toBeInTheDocument();
+    expect(screen.getByText('Первый — Второй')).not.toHaveTextContent('(1)');
+    expect(screen.getByText('(1) Первый — (4) Третий')).toBeInTheDocument();
+    expect(screen.getByText(/1 сентября.*10:07/)).toBeInTheDocument();
+    expect(screen.getByText('Время игры появится после предыдущего результата')).toBeInTheDocument();
+    expect(screen.queryByText('15:00')).not.toBeInTheDocument();
   });
 
   it('shows playoff rounds, seeds, avatars and the path to the final', async () => {
@@ -1015,8 +1178,8 @@ describe('TournamentCatalog', () => {
     );
     const dialog = screen.getByRole('dialog', { name: 'Серия 1' });
     expect(within(dialog).getByText('Игра 1 · 10 сентября, 15:00–16:00')).toBeInTheDocument();
-    expect(within(dialog).getByText('Первый 3 : 2 Четвёртый')).toHaveClass(
-      'tournament-bracket-game__result--home-won',
+    expect(within(dialog).getByLabelText('Игра 1: Первый 3:2 Четвёртый')).toContainElement(
+      within(dialog).getByText('Первый', { selector: '.tournament-bracket-game__participant' }),
     );
     fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
     expect(screen.queryByRole('dialog', { name: 'Серия 1' })).not.toBeInTheDocument();
@@ -1040,6 +1203,140 @@ describe('TournamentCatalog', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'За 3-е место' }));
     expect(screen.getByRole('heading', { name: 'За 3-е место' })).toBeInTheDocument();
     expect(screen.getByText('Проигравший 1')).toBeInTheDocument();
+  });
+
+  it('shows a complete responsive series modal with player result tones', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 'series-modal-cup',
+          slug: 'series-modal-cup',
+          title: 'Кубок серии',
+          description: '',
+          status: 'playoff',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 2,
+          participantCount: 2,
+          lifecycle: TEST_LIFECYCLE,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: '2030-09-01T07:00:00.000Z',
+          rules: { config: { participantLimit: 2, entryFeeCoins: 0, playoffSize: 2 } },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchTournamentBracket').mockResolvedValue({
+      series: [
+        {
+          id: 'final-series',
+          bracket_position: 1,
+          kind: 'championship',
+          round_number: 1,
+          round_name: 'Финал',
+          wins_required: 2,
+          status: 'completed',
+          higher_seed_wins: 1,
+          lower_seed_wins: 2,
+          winner_user_id: 'u2',
+          higher_user_id: 'u1',
+          higher_seed: 1,
+          higher_name: 'Первый',
+          higher_avatar_url: '/first.webp',
+          lower_user_id: 'u2',
+          lower_seed: 2,
+          lower_name: 'Второй',
+          lower_avatar_url: '/second.webp',
+          depends_on: { key: 'R1S1', sources: [] },
+          fixtures: [
+            {
+              id: 'game-1',
+              gameNumber: 1,
+              scheduledStartsAt: '2030-09-10T12:00:00.000Z',
+              windowEndsAt: '2030-09-10T13:00:00.000Z',
+              status: 'settled',
+              homeUserId: 'u1',
+              awayUserId: 'u2',
+              homeName: 'Первый',
+              awayName: 'Второй',
+              homeScore: 3,
+              awayScore: 1,
+              winnerSide: 'home',
+            },
+            {
+              id: 'game-2',
+              gameNumber: 2,
+              scheduledStartsAt: '2030-09-10T13:10:00.000Z',
+              windowEndsAt: '2030-09-10T14:10:00.000Z',
+              status: 'settled',
+              homeUserId: 'u2',
+              awayUserId: 'u1',
+              homeName: 'Второй',
+              awayName: 'Первый',
+              homeScore: 2,
+              awayScore: 1,
+              winnerSide: 'home',
+            },
+            {
+              id: 'game-3',
+              gameNumber: 3,
+              scheduledStartsAt: '2030-09-10T14:20:00.000Z',
+              windowEndsAt: '2030-09-10T15:20:00.000Z',
+              status: 'settled',
+              homeUserId: 'u1',
+              awayUserId: 'u2',
+              homeName: 'Первый',
+              awayName: 'Второй',
+              homeScore: 0,
+              awayScore: 1,
+              winnerSide: 'away',
+            },
+          ],
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок серии' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Плей-офф' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть серию Финал, Серия 1' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Финал · Серия 1' });
+    expect(within(dialog).getByRole('button', { name: 'Закрыть' })).toHaveClass('icon-btn');
+    const playerRows = dialog.querySelectorAll('.tournament-bracket-series-modal__player');
+    expect(playerRows).toHaveLength(2);
+    expect(within(dialog).getByText('Первый', { selector: 'strong' }).closest('.tournament-bracket-series-modal__player')).toHaveClass(
+      'tournament-bracket-series-modal__player--own-loss',
+    );
+    expect(within(dialog).getByText('Второй', { selector: 'strong' }).closest('.tournament-bracket-series-modal__player')).toHaveClass(
+      'tournament-bracket-series-modal__player--winner',
+    );
+    expect(within(dialog).getByText('Счёт серии 1:2')).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/^Игра \d/)).toHaveLength(3);
+    const finalGame = within(dialog).getByLabelText('Игра 3: Первый 0:1 Второй');
+    expect(within(finalGame).getByText('Первый')).toHaveClass(
+      'tournament-bracket-game__participant--own-loss',
+    );
+    expect(within(finalGame).getByText('Второй')).toHaveClass(
+      'tournament-bracket-game__participant--winner',
+    );
+    expect(
+      designSystemCss,
+    ).toMatch(/\.tournament-bracket-series-modal\s*\{[^}]*max-width:\s*min\(100%,\s*520px\);[^}]*overflow:\s*hidden;/s);
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-series-modal__player\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-series__games\s*\{[^}]*overflow-y:\s*auto;/s,
+    );
   });
 
   it('shows my playoff readiness and the current series score without revealing live scores', async () => {
@@ -1699,7 +1996,7 @@ describe('TournamentCatalog', () => {
 
     await waitFor(() =>
       expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent(
-        '?view=amateur&section=tournaments&tournament=t1&tab=schedule&match=duel-1&play=1',
+        '?view=amateur&section=tournaments&tournament=t1&tab=schedule&match=duel-1&fixture=f1&play=1',
       ),
     );
   });
@@ -1925,7 +2222,7 @@ describe('TournamentCatalog', () => {
     await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
     await waitFor(() =>
       expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent(
-        'match=duel-after-retry&play=1',
+        'match=duel-after-retry&fixture=f1&play=1',
       ),
     );
   });

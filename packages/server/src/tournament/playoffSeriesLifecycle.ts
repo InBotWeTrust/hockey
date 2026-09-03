@@ -323,7 +323,7 @@ async function finalizeTournamentPlayoffSeries(
   client: PoolClient,
   completedSeries: PlayoffSeriesRow,
   winnerParticipantId: string,
-  settledAt: Date,
+  _settledAt: Date,
 ): Promise<{ completed: boolean }> {
   await client.query(
     `update tournament_fixture

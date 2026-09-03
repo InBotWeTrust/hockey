@@ -122,7 +122,15 @@ import { AmateurDuelHistoryTab } from '../components/duel/AmateurDuelHistoryTab.
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 import { TournamentCatalog } from '../tournament/TournamentCatalog.js';
-import { fetchTournamentGameContext, type TournamentGameContext } from '../api/tournament.js';
+import {
+  dismissTournamentReadinessHint,
+  fetchTournamentFixtureAttempt,
+  fetchTournamentGameContext,
+  fetchTournamentReadinessHint,
+  openTournamentFixtureSegment,
+  type TournamentFixtureAttemptState,
+  type TournamentGameContext,
+} from '../api/tournament.js';
 import { venueRoleLabel, type VenueRole } from '../components/VenueBadge.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
@@ -417,6 +425,7 @@ export function DailyScreen(): JSX.Element {
   const fromSections = routeParams.get('from') === 'sections';
   const tournamentOrigin = routeParams.get('section') === 'tournaments';
   const tournamentId = routeParams.get('tournament');
+  const tournamentFixtureId = routeParams.get('fixture');
   const tournamentGameRoute =
     tournamentOrigin &&
     tournamentId !== null &&
@@ -683,6 +692,8 @@ export function DailyScreen(): JSX.Element {
         return (
           <AmateurDuelPlayView
             matchId={activeAmateurMatchId}
+            tournamentId={tournamentId}
+            tournamentFixtureId={tournamentFixtureId}
             directPlayOnly={directDuelPlay}
             playEntranceOnMount={pendingPlayEntrance === `duel:${activeAmateurMatchId}`}
             onEntranceConsumed={() => setPendingPlayEntrance(null)}
@@ -690,6 +701,14 @@ export function DailyScreen(): JSX.Element {
               pendingPlayRouteTransition === `duel:${activeAmateurMatchId}`
             }
             onRouteTransitionConsumed={() => setPendingPlayRouteTransition(null)}
+            onOpenTournamentMatch={(fixtureId, matchId) => {
+              setActiveAmateurMatchId(matchId);
+              const params = new URLSearchParams(location.search);
+              params.set('fixture', fixtureId);
+              params.set('match', matchId);
+              params.set('play', '1');
+              navigate(`/?${params.toString()}`, { replace: true });
+            }}
             onBack={() => {
               setPendingPlayEntrance(null);
               setPendingPlayRouteTransition(null);
@@ -5080,20 +5099,26 @@ function DuelListCard({
 
 function AmateurDuelPlayView({
   matchId,
+  tournamentId,
+  tournamentFixtureId,
   onBack,
   directPlayOnly = false,
   playEntranceOnMount = false,
   onEntranceConsumed,
   playRouteTransitionOnMount = false,
   onRouteTransitionConsumed,
+  onOpenTournamentMatch,
 }: {
   matchId: string;
+  tournamentId: string | null;
+  tournamentFixtureId: string | null;
   onBack: () => void;
   directPlayOnly?: boolean;
   playEntranceOnMount?: boolean;
   onEntranceConsumed?: () => void;
   playRouteTransitionOnMount?: boolean;
   onRouteTransitionConsumed?: (() => void) | undefined;
+  onOpenTournamentMatch?: (fixtureId: string, matchId: string) => void;
 }): JSX.Element {
   const match = useAmateurDuelStore((s) => s.match);
   const loading = useAmateurDuelStore((s) => s.loading);
@@ -5116,9 +5141,8 @@ function AmateurDuelPlayView({
   );
   const [playerReadyEntranceKey, setPlayerReadyEntranceKey] = useState<string | null>(null);
   const [goalieReadyEntranceKey, setGoalieReadyEntranceKey] = useState<string | null>(null);
-  const [showTournamentReadinessExplanation, setShowTournamentReadinessExplanation] = useState(
-    () => localStorage.getItem('hockey.tournamentReadinessExplanationDisabled') !== 'true',
-  );
+  const [showTournamentReadinessExplanation, setShowTournamentReadinessExplanation] =
+    useState(true);
   const [disableTournamentReadinessExplanation, setDisableTournamentReadinessExplanation] =
     useState(false);
   const previousReadyStateRef = useRef<{ me: boolean; opponent: boolean } | null>(null);
@@ -5128,6 +5152,29 @@ function AmateurDuelPlayView({
     queryFn: fetchMyInventory,
     enabled: Boolean(matchId),
   });
+  const tournamentAttempt = useQuery({
+    queryKey: ['tournaments', tournamentId, 'fixtures', tournamentFixtureId, 'attempt'],
+    queryFn: () => fetchTournamentFixtureAttempt(tournamentId!, tournamentFixtureId!),
+    enabled:
+      match?.source === 'tournament' &&
+      tournamentId !== null &&
+      tournamentFixtureId !== null,
+    refetchInterval: 1_000,
+  });
+  const tournamentReadinessHint = useQuery({
+    queryKey: ['tournaments', tournamentId, 'readiness-hint'],
+    queryFn: () => fetchTournamentReadinessHint(tournamentId!),
+    enabled: match?.source === 'tournament' && tournamentId !== null,
+  });
+  const dismissReadinessHint = useMutation({
+    mutationFn: () => dismissTournamentReadinessHint(tournamentId!),
+  });
+  const openNextTournamentGame = useMutation({
+    mutationFn: (fixtureId: string) => openTournamentFixtureSegment(tournamentId!, fixtureId),
+    onSuccess: (segment, fixtureId) => {
+      onOpenTournamentMatch?.(fixtureId, segment.duelMatchId);
+    },
+  });
 
   useEffect(() => {
     void load(matchId);
@@ -5136,9 +5183,7 @@ function AmateurDuelPlayView({
   useEffect(() => {
     setDismissedResultMatchId(null);
     setSelectedLoadout({});
-    setShowTournamentReadinessExplanation(
-      localStorage.getItem('hockey.tournamentReadinessExplanationDisabled') !== 'true',
-    );
+    setShowTournamentReadinessExplanation(true);
     setDisableTournamentReadinessExplanation(false);
     previousReadyStateRef.current = null;
     appliedTournamentLoadoutVersionRef.current = null;
@@ -5272,9 +5317,11 @@ function AmateurDuelPlayView({
       await startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout));
     }
   };
-  const dismissTournamentReadinessExplanation = (): void => {
-    if (disableTournamentReadinessExplanation) {
-      localStorage.setItem('hockey.tournamentReadinessExplanationDisabled', 'true');
+  const dismissTournamentReadinessExplanation = async (): Promise<void> => {
+    if (disableTournamentReadinessExplanation && tournamentId !== null) {
+      const result = await dismissReadinessHint.mutateAsync();
+      tournamentReadinessHint.refetch();
+      if (!result.dismissed) return;
     }
     setShowTournamentReadinessExplanation(false);
   };
@@ -5316,7 +5363,9 @@ function AmateurDuelPlayView({
       match.source === 'tournament' &&
       match.status === 'ready_check' &&
       match.me.state !== 'ready' &&
-      showTournamentReadinessExplanation;
+      showTournamentReadinessExplanation &&
+      (tournamentId === null ||
+        (tournamentReadinessHint.isSuccess && tournamentReadinessHint.data.dismissed !== true));
     return (
       <>
         <PlayView<AmateurDuelMatchState>
@@ -5368,7 +5417,17 @@ function AmateurDuelPlayView({
           scoreboardGoals={match.me.goals}
           scoreboardOpponent={duelScoreboardOpponent(match)}
         />
-        {showDirectResultModal && <DuelResultModal match={match} onClose={onBack} />}
+        {showDirectResultModal && (
+          <DuelResultModal
+            match={match}
+            {...(tournamentAttempt.data === undefined
+              ? {}
+              : { tournamentAttempt: tournamentAttempt.data })}
+            now={now}
+            onOpenNextGame={(fixtureId) => openNextTournamentGame.mutate(fixtureId)}
+            onClose={onBack}
+          />
+        )}
         {selectedLoadoutKind !== null && (
           <DuelRinkLoadoutModal
             kind={selectedLoadoutKind}
@@ -5419,7 +5478,12 @@ function AmateurDuelPlayView({
               <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>{error}</div>
             )}
             <div className="modal-actions" style={{ marginTop: 2 }}>
-              <button type="button" className="modal-primary btn btn--cta" onClick={dismissTournamentReadinessExplanation}>
+              <button
+                type="button"
+                className="modal-primary btn btn--cta"
+                disabled={dismissReadinessHint.isPending}
+                onClick={() => void dismissTournamentReadinessExplanation()}
+              >
                 Понятно
               </button>
             </div>
@@ -5610,7 +5674,17 @@ function AmateurDuelPlayView({
       >
         {startButtonLabel}
       </button>
-      {showResultModal && <DuelResultModal match={match} onClose={onBack} />}
+      {showResultModal && (
+        <DuelResultModal
+          match={match}
+          {...(tournamentAttempt.data === undefined
+            ? {}
+            : { tournamentAttempt: tournamentAttempt.data })}
+          now={now}
+          onOpenNextGame={(fixtureId) => openNextTournamentGame.mutate(fixtureId)}
+          onClose={onBack}
+        />
+      )}
     </ModeShell>
   );
 }
@@ -5620,23 +5694,51 @@ function DuelResultModal({
   onClose,
   closeLabel = 'Понятно',
   isLoadingDetails = false,
+  tournamentAttempt,
+  now = Date.now(),
+  onOpenNextGame,
 }: {
   match: AmateurDuelMatch;
   onClose: () => void;
   closeLabel?: string;
   isLoadingDetails?: boolean;
+  tournamentAttempt?: TournamentFixtureAttemptState;
+  now?: number;
+  onOpenNextGame?: (fixtureId: string) => void;
 }): JSX.Element {
+  const nextGame = tournamentAttempt?.nextGame ?? null;
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Результат дуэли">
       <DuelResultCard
         match={match}
         isLoadingDetails={isLoadingDetails}
+        {...(tournamentAttempt === undefined ? {} : { tournamentAttempt })}
         footer={
-          <div className="modal-actions">
-            <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
-              {closeLabel}
-            </button>
-          </div>
+          <>
+            {nextGame !== null && (
+              <div className="tournament-duel-result__next-game">
+                {nextGame.available ? (
+                  <button
+                    type="button"
+                    className="btn btn--cta"
+                    onClick={() => onOpenNextGame?.(nextGame.fixtureId)}
+                  >
+                    К следующей игре
+                  </button>
+                ) : (
+                  <strong>
+                    Следующая игра через{' '}
+                    {formatMs(Math.max(0, new Date(nextGame.breakEndsAt).getTime() - now))}
+                  </strong>
+                )}
+              </div>
+            )}
+            <div className="modal-actions">
+              <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
+                {closeLabel}
+              </button>
+            </div>
+          </>
         }
       />
     </div>
@@ -5648,13 +5750,15 @@ function DuelResultCard({
   isLoadingDetails = false,
   compact = false,
   footer,
+  tournamentAttempt,
 }: {
   match: AmateurDuelMatch;
   isLoadingDetails?: boolean;
   compact?: boolean;
   footer?: ReactNode;
+  tournamentAttempt?: TournamentFixtureAttemptState;
 }): JSX.Element {
-  const title =
+  const ordinaryTitle =
     match.status !== 'settled'
       ? duelOutcomeText(match)
       : match.outcome === 'draw'
@@ -5664,12 +5768,19 @@ function DuelResultCard({
           : match.winner_user_id === match.me.user_id
             ? 'Победа'
             : 'Поражение';
+  const series = tournamentAttempt?.series ?? null;
+  const title =
+    series?.status === 'completed'
+      ? series.winnerUserId === match.me.user_id
+        ? `Вы выиграли серию ${series.myWins}:${series.opponentWins}`
+        : `Вы проиграли серию ${series.myWins}:${series.opponentWins}`
+      : ordinaryTitle;
   const resultColor =
-    title === 'Победа'
+    ordinaryTitle === 'Победа'
       ? '#22c55e'
-      : title === 'Ничья'
+      : ordinaryTitle === 'Ничья'
         ? '#f59e0b'
-        : title === 'Поражение'
+        : ordinaryTitle === 'Поражение'
           ? '#ef4444'
           : 'rgba(15, 23, 42, 0.38)';
   const points = match.me.result_points;
@@ -5762,18 +5873,24 @@ function DuelResultCard({
               }}
             />
           </div>
-          <div
-            aria-label={`Итог дуэли ${match.me.goals}:${match.opponent.goals}`}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-              gap: 10,
-              marginTop: 16,
-            }}
-          >
-            <DailyStatsMetric label="Счёт" value={`${match.me.goals}:${match.opponent.goals}`} />
-            <DailyStatsMetric label="Очки" value={pointsText} />
-          </div>
+          {match.source === 'tournament' ? (
+            <div className="tournament-duel-result__score">
+              Вы {match.me.goals}:{match.opponent.goals} Соперник
+            </div>
+          ) : (
+            <div
+              aria-label={`Итог дуэли ${match.me.goals}:${match.opponent.goals}`}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                gap: 10,
+                marginTop: 16,
+              }}
+            >
+              <DailyStatsMetric label="Счёт" value={`${match.me.goals}:${match.opponent.goals}`} />
+              <DailyStatsMetric label="Очки" value={pointsText} />
+            </div>
+          )}
           <div
             style={{
               marginTop: 14,

@@ -2,10 +2,159 @@ import type { Pool } from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 import {
   getTournamentMatchdayResults,
+  getTournamentScheduleDay,
+  getTournamentScheduleOtherGames,
   getTournamentSchedule,
+  dismissTournamentReadinessHint,
+  getTournamentReadinessHint,
 } from '../../src/tournament/service.js';
 
 describe('tournament public schedule service', () => {
+  it('reads and idempotently stores a per-user per-tournament readiness hint dismissal', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ dismissed_at: new Date('2030-09-03T10:00:00.000Z') }] })
+      .mockResolvedValueOnce({ rows: [{ dismissed_at: new Date('2030-09-03T10:00:00.000Z') }] });
+    const pool = { query } as unknown as Pool;
+
+    await expect(getTournamentReadinessHint(pool, 'tournament-1', 'user-1')).resolves.toEqual({
+      dismissed: false,
+      dismissedAt: null,
+    });
+    await expect(
+      dismissTournamentReadinessHint(pool, 'tournament-1', 'user-1'),
+    ).resolves.toEqual({ dismissed: true, dismissedAt: '2030-09-03T10:00:00.000Z' });
+    await expect(
+      dismissTournamentReadinessHint(pool, 'tournament-1', 'user-1'),
+    ).resolves.toEqual({ dismissed: true, dismissedAt: '2030-09-03T10:00:00.000Z' });
+    expect(query.mock.calls[1]?.[0]).toContain('on conflict (tournament_id, user_id)');
+  });
+
+  it('returns only the selected date own games and a boolean for hidden other games', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            local_date: '2030-09-02',
+            has_games: true,
+            has_my_game: true,
+            has_playoff: false,
+          },
+          {
+            local_date: '2030-09-03',
+            has_games: true,
+            has_my_game: false,
+            has_playoff: true,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'fixture-mine',
+            fixture_number: 4,
+            stage: 'regular',
+            round_number: 2,
+            scheduled_starts_at: new Date('2030-09-02T07:00:00.000Z'),
+            window_ends_at: new Date('2030-09-02T08:00:00.000Z'),
+            settled_at: null,
+            status: 'open',
+            venue_mode: 'home_selected',
+            home_user_id: 'me',
+            home_name: 'Я',
+            home_avatar_url: null,
+            home_seed: null,
+            away_user_id: 'away-user',
+            away_name: 'Соперник',
+            away_avatar_url: null,
+            away_seed: null,
+            home_score: 0,
+            away_score: 0,
+            winner_user_id: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [{ has_other_games: true }] });
+
+    const result = await getTournamentScheduleDay(
+      { query } as unknown as Pool,
+      'tournament-1',
+      'me',
+      '2030-09-02',
+    );
+
+    expect(result).toEqual({
+      days: [
+        { localDate: '2030-09-02', hasGames: true, hasMyGame: true, hasPlayoff: false },
+        { localDate: '2030-09-03', hasGames: true, hasMyGame: false, hasPlayoff: true },
+      ],
+      myGames: [
+        expect.objectContaining({ id: 'fixture-mine', fixtureNumber: 4, actualStartsAt: null }),
+      ],
+      hasOtherGames: true,
+    });
+    expect(query).toHaveBeenCalledTimes(3);
+    expect(query.mock.calls[1]?.[0]).toContain('$3::date');
+    expect(query.mock.calls[1]?.[1]).toEqual(['tournament-1', 'me', '2030-09-02']);
+    expect(query.mock.calls[1]?.[0]).toContain('in (home_user_id, away_user_id)');
+    expect(query.mock.calls[2]?.[0]).toContain('not in (home_user_id, away_user_id)');
+  });
+
+  it('paginates selected-date other games in stable duplicate-free pages of five', async () => {
+    const rows = Array.from({ length: 6 }, (_, index) => ({
+      id: `fixture-${index + 1}`,
+      fixture_number: index + 11,
+      stage: 'playoff',
+      round_number: 1,
+      scheduled_starts_at: null,
+      window_ends_at: null,
+      settled_at: null,
+      status: 'scheduled',
+      venue_mode: 'neutral_default',
+      home_user_id: `home-${index}`,
+      home_name: `Хозяин ${index}`,
+      home_avatar_url: null,
+      home_seed: index + 1,
+      away_user_id: `away-${index}`,
+      away_name: `Гость ${index}`,
+      away_avatar_url: null,
+      away_seed: index + 2,
+      home_score: 0,
+      away_score: 0,
+      winner_user_id: null,
+    }));
+    const query = vi.fn().mockResolvedValue({ rows });
+
+    const first = await getTournamentScheduleOtherGames(
+      { query } as unknown as Pool,
+      'tournament-1',
+      'me',
+      '2030-09-03',
+      null,
+    );
+
+    expect(first.games).toHaveLength(5);
+    expect(first.games.map((game) => game.id)).toEqual([
+      'fixture-1',
+      'fixture-2',
+      'fixture-3',
+      'fixture-4',
+      'fixture-5',
+    ]);
+    expect(first.nextCursor).toEqual({ fixtureNumber: 15, id: 'fixture-5' });
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('limit 6'), [
+      'tournament-1',
+      'me',
+      '2030-09-03',
+      null,
+      null,
+    ]);
+    expect(query.mock.calls[0]?.[0]).toContain('order by fixture.fixture_number, fixture.id');
+    expect(query.mock.calls[0]?.[0]).toContain('(fixture.fixture_number, fixture.id) >');
+  });
+
   it('maps playoff and third-place seeds for both players', async () => {
     const query = vi.fn().mockResolvedValue({
       rows: [

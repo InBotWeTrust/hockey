@@ -46,6 +46,10 @@ const sequentialPlayoffScheduleMigrationUrl = new URL(
   '../../db/migrations/090_tournament_sequential_playoff_schedule.sql',
   import.meta.url,
 );
+const readinessHintPreferenceMigrationUrl = new URL(
+  '../../db/migrations/093_tournament_readiness_hint_preference.sql',
+  import.meta.url,
+);
 
 describe('tournament migration contract', () => {
   it('creates the complete tournament orchestration schema', async () => {
@@ -254,5 +258,15 @@ describe('tournament migration contract', () => {
       /and not exists \(\s*select 1\s*from tournament_fixture_attempt attempt\s*where attempt\.fixture_id = fixture\.id\s*\);/i,
     );
     expect(sql).not.toMatch(/attempt\.status in \('ready_check', 'active', 'settled', 'technical_result'\)/i);
+  });
+
+  it('persists readiness-hint dismissal per tournament and user without destructive changes', async () => {
+    const sql = await readFile(readinessHintPreferenceMigrationUrl, 'utf8');
+
+    expect(sql).toMatch(/create table if not exists tournament_readiness_hint_preference/i);
+    expect(sql).toContain('primary key (tournament_id, user_id)');
+    expect(sql).toContain('references tournament(id) on delete cascade');
+    expect(sql).toContain('references users(id) on delete cascade');
+    expect(sql).not.toMatch(/drop\s+(column|table)/i);
   });
 });

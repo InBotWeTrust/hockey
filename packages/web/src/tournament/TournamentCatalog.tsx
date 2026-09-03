@@ -1,10 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import {
   applyToTournament,
   fetchTournamentSchedule,
+  fetchTournamentScheduleOtherGames,
   fetchTournamentStandings,
   fetchTournamentBracket,
   fetchTournaments,
@@ -12,6 +13,7 @@ import {
   openTournamentFixtureSegment,
   withdrawFromTournament,
   type TournamentFixture,
+  type TournamentScheduleCursor,
   type TournamentSummary,
 } from '../api/tournament.js';
 import { useAuthStore } from '../auth/authStore.js';
@@ -111,25 +113,71 @@ function fixtureCanOpen(fixture: TournamentFixture, now = Date.now()): boolean {
   return Number.isFinite(startsAt) && startsAt <= now && now < endsAt;
 }
 
-function fixtureTimeLabel(fixture: TournamentFixture, timezone: string): string {
-  if (fixture.scheduledStartsAt === null) return 'Время ещё не назначено';
-  const startsAt = new Date(fixture.scheduledStartsAt);
+function fixtureTimeLabel(
+  fixture: TournamentFixture,
+  timezone: string,
+  finished: boolean,
+): string {
+  if (!finished) return 'Время игры появится после предыдущего результата';
+  const displayValue = fixture.actualStartsAt ?? fixture.scheduledStartsAt;
+  if (displayValue === null || displayValue === undefined) return 'Время ещё не назначено';
+  const startsAt = new Date(displayValue);
   if (!Number.isFinite(startsAt.getTime())) return 'Время ещё не назначено';
   try {
-    const timeFormatter = new Intl.DateTimeFormat('ru-RU', {
+    const formatter = new Intl.DateTimeFormat('ru-RU', {
       timeZone: timezone,
+      day: 'numeric',
+      month: 'long',
       hour: '2-digit',
       minute: '2-digit',
     });
-    const startTime = timeFormatter.format(startsAt);
-    if (fixture.windowEndsAt === null) return startTime;
-    const endsAt = new Date(fixture.windowEndsAt);
-    if (!Number.isFinite(endsAt.getTime())) return startTime;
-    const endTime = timeFormatter.format(endsAt);
-    return `${startTime}–${endTime}`;
+    return formatter.format(startsAt).replace(/ в /, ', ');
   } catch {
     return startsAt.toLocaleString('ru-RU');
   }
+}
+
+function fixtureWinnerUserId(fixture: TournamentFixture): string | null {
+  if (fixture.winnerUserId !== undefined) return fixture.winnerUserId;
+  if (fixture.score.home === fixture.score.away) return null;
+  return fixture.score.home > fixture.score.away
+    ? (fixture.home?.userId ?? null)
+    : (fixture.away?.userId ?? null);
+}
+
+function myFixtureResultLabel(
+  fixture: TournamentFixture,
+  currentUserId: string | null,
+): 'Победа' | 'Поражение' | null {
+  if (currentUserId === null) return null;
+  const winnerUserId = fixtureWinnerUserId(fixture);
+  if (winnerUserId === null) return null;
+  return winnerUserId === currentUserId ? 'Победа' : 'Поражение';
+}
+
+function localDateKey(value: string | number, timezone: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return new Date().toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const read = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return `${read('year')}-${read('month')}-${read('day')}`;
+}
+
+function initialScheduleDate(tournament: TournamentSummary): string {
+  const timezone = String(tournament.rules.config.timezone ?? 'Europe/Moscow');
+  const today = localDateKey(Date.now(), timezone);
+  const starts = tournament.startsAt === null ? today : localDateKey(tournament.startsAt, timezone);
+  const endsValue = tournament.completedAt ?? tournament.projectedEndsAt;
+  const ends = endsValue === null || endsValue === undefined ? today : localDateKey(endsValue, timezone);
+  if (today < starts) return starts;
+  if (today > ends) return ends;
+  return today;
 }
 
 function fixturePlayerLabel(
@@ -496,15 +544,29 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
   const currentUserId = useAuthStore((state) => state.user?.id ?? null);
   const [tab, setTab] = useState<TournamentTab>(() => tournamentTabFromSearch(location.search));
   const [participantsOpen, setParticipantsOpen] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState(() => initialScheduleDate(tournament));
   const activeFixtureId = useRef<string | null>(null);
   const fixtureOpeningRef = useRef(false);
   const openFixtureGeneration = useRef(0);
   const queryClient = useQueryClient();
   const registrationState = registrationWindow(tournament);
   const schedule = useQuery({
-    queryKey: ['tournaments', tournament.id, 'schedule'],
-    queryFn: () => fetchTournamentSchedule(tournament.id),
+    queryKey: ['tournaments', tournament.id, 'schedule', scheduleDate],
+    queryFn: () => fetchTournamentSchedule(tournament.id, scheduleDate),
     enabled: tab === 'schedule',
+    placeholderData: (previous) => previous,
+  });
+  const otherGames = useInfiniteQuery({
+    queryKey: ['tournaments', tournament.id, 'schedule', scheduleDate, 'other-games'],
+    queryFn: ({ pageParam }) =>
+      fetchTournamentScheduleOtherGames(
+        tournament.id,
+        scheduleDate,
+        pageParam as TournamentScheduleCursor | null,
+      ),
+    initialPageParam: null as TournamentScheduleCursor | null,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+    enabled: false,
   });
   const standings = useQuery({
     queryKey: ['tournaments', tournament.id, 'standings'],
@@ -551,6 +613,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
         params.set('from', 'sections');
       }
       params.set('match', segment.duelMatchId);
+      params.set('fixture', fixtureId);
       params.set('play', '1');
       navigate(`/?${params.toString()}`);
     },
@@ -683,10 +746,22 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
             <div role="status">Загрузка расписания…</div>
           ) : schedule.isError ? (
             <div role="status">Не удалось загрузить расписание.</div>
-          ) : schedule.data &&
-            (schedule.data.fixtures.length > 0 || (schedule.data.matchdays?.length ?? 0) > 0) ? (
+          ) : schedule.data ? (
             <TournamentScheduleCalendar
-              fixtures={schedule.data.fixtures}
+              fixtures={[
+                ...(schedule.data.myGames ??
+                  (schedule.data as unknown as { fixtures?: TournamentFixture[] }).fixtures ??
+                  []),
+                ...(otherGames.data?.pages.flatMap((page) => page.games) ?? []),
+              ]}
+              fixtureDays={schedule.data.days ?? []}
+              selectedDate={scheduleDate}
+              onSelectDate={setScheduleDate}
+              hasOtherGames={schedule.data.hasOtherGames ?? false}
+              otherGamesLoaded={otherGames.data !== undefined}
+              otherGamesLoading={otherGames.isFetching}
+              hasMoreOtherGames={otherGames.hasNextPage}
+              onLoadOtherGames={() => void otherGames.fetchNextPage()}
               matchdays={schedule.data.matchdays ?? []}
               regularSource={tournament.regularSource}
               tournamentStatus={tournament.status}
@@ -729,6 +804,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                 const finished =
                   ['completed', 'settled', 'forfeit', 'technical'].includes(fixture.status) ||
                   fixture.score.home + fixture.score.away > 0;
+                const myResult = mine ? myFixtureResultLabel(fixture, currentUserId) : null;
                 return (
                   <article
                     key={fixture.id}
@@ -739,6 +815,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                         {fixtureTimeLabel(
                           fixture,
                           String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                          finished,
                         )}
                       </span>
                       {mine && <VenueBadge role={fixtureVenueRole(fixture, currentUserId)} />}
@@ -770,9 +847,18 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                       <div className="tournament-fixture-card__footer">
                         <div>
                           {finished && (
-                            <strong className="tournament-fixture-card__score">
-                              Счёт {fixture.score.home}:{fixture.score.away}
-                            </strong>
+                            <>
+                              {myResult !== null && (
+                                <strong
+                                  className={`tournament-fixture-result tournament-fixture-result--${myResult === 'Победа' ? 'win' : 'loss'}`}
+                                >
+                                  {myResult}
+                                </strong>
+                              )}
+                              <strong className="tournament-fixture-card__score">
+                                Счёт {fixture.score.home}:{fixture.score.away}
+                              </strong>
+                            </>
                           )}
                           {mine && playable && (
                             <>

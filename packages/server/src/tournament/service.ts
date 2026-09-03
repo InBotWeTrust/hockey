@@ -2781,8 +2781,7 @@ export async function publishRegularSchedule(pool: Pool, tournamentId: string) {
   });
 }
 
-export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
-  const { rows } = await pool.query<{
+interface TournamentScheduleFixtureRow {
     id: string;
     fixture_number: number;
     stage: string;
@@ -2801,7 +2800,225 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
     away_seed: number | null;
     home_score: number;
     away_score: number;
+    settled_at?: Date | null;
+    actual_starts_at?: Date | null;
+    winner_user_id?: string | null;
+}
+
+function tournamentScheduleFixtureDto(row: TournamentScheduleFixtureRow) {
+  return {
+    id: row.id,
+    fixtureNumber: Number(row.fixture_number),
+    stage: row.stage,
+    roundNumber: Number(row.round_number),
+    scheduledStartsAt: row.scheduled_starts_at?.toISOString() ?? null,
+    windowEndsAt: row.window_ends_at?.toISOString() ?? null,
+    actualStartsAt: row.actual_starts_at?.toISOString() ?? null,
+    status: row.status,
+    venueMode: row.venue_mode,
+    home:
+      row.home_user_id === null
+        ? null
+        : {
+            userId: row.home_user_id,
+            name: row.home_name,
+            avatarUrl: row.home_avatar_url,
+            seed: row.home_seed === null ? null : Number(row.home_seed),
+          },
+    away:
+      row.away_user_id === null
+        ? null
+        : {
+            userId: row.away_user_id,
+            name: row.away_name,
+            avatarUrl: row.away_avatar_url,
+            seed: row.away_seed === null ? null : Number(row.away_seed),
+          },
+    score: { home: Number(row.home_score), away: Number(row.away_score) },
+    winnerUserId: row.winner_user_id ?? null,
+  };
+}
+
+const PUBLIC_SCHEDULE_FIXTURE_SELECT = `
+  select fixture.id, fixture.fixture_number, fixture.stage, fixture.round_number,
+         fixture.scheduled_starts_at, fixture.window_ends_at, fixture.actual_starts_at,
+         fixture.status, fixture.venue_mode,
+         fixture.home_user_id, fixture.home_name, fixture.home_avatar_url, fixture.home_seed,
+         fixture.away_user_id, fixture.away_name, fixture.away_avatar_url, fixture.away_seed,
+         fixture.home_score, fixture.away_score, fixture.winner_user_id
+    from fixture_scope fixture`;
+
+const PUBLIC_SCHEDULE_FIXTURE_SCOPE = `
+  with fixture_scope as (
+    select f.id, f.fixture_number, r.stage, r.number as round_number,
+           f.scheduled_starts_at, f.window_ends_at, f.status, f.venue_mode,
+           coalesce(game_day.local_date, (f.scheduled_starts_at at time zone
+             coalesce(revision.rules_snapshot->'config'->>'timezone', 'Europe/Moscow'))::date)
+             as local_date,
+           duel.accepted_at as actual_starts_at,
+           hp.user_id as home_user_id, hu.display_name as home_name,
+           coalesce(case
+             when hu.display_source = 'custom' then hu.custom_avatar_url
+             when hu.display_source = 'vk' then hu.vk_avatar_url
+             when hu.display_source = 'telegram' then hu.tg_avatar_url
+             else hu.avatar_url end, hu.avatar_url) as home_avatar_url,
+           case when r.stage in ('playoff', 'third_place') then hs.rank end as home_seed,
+           ap.user_id as away_user_id, au.display_name as away_name,
+           coalesce(case
+             when au.display_source = 'custom' then au.custom_avatar_url
+             when au.display_source = 'vk' then au.vk_avatar_url
+             when au.display_source = 'telegram' then au.tg_avatar_url
+             else au.avatar_url end, au.avatar_url) as away_avatar_url,
+           case when r.stage in ('playoff', 'third_place') then aws.rank end as away_seed,
+           f.home_score, f.away_score, winner.user_id as winner_user_id
+      from tournament_fixture f
+      join tournament_round r on r.id = f.round_id
+      join tournament tournament on tournament.id = f.tournament_id
+      join tournament_revision revision on revision.id = tournament.published_revision_id
+      left join tournament_participant hp on hp.id = f.home_participant_id
+      left join users hu on hu.id = hp.user_id
+      left join tournament_standing hs
+        on hs.tournament_id = f.tournament_id and hs.participant_id = hp.id
+      left join tournament_participant ap on ap.id = f.away_participant_id
+      left join users au on au.id = ap.user_id
+      left join tournament_standing aws
+        on aws.tournament_id = f.tournament_id and aws.participant_id = ap.id
+      left join tournament_participant winner on winner.id = f.winner_participant_id
+      left join lateral (
+        select attempt.round_game_day_id, attempt.amateur_duel_match_id
+          from tournament_fixture_attempt attempt
+         where attempt.fixture_id = f.id
+         order by attempt.attempt_number desc
+         limit 1
+      ) latest_attempt on true
+      left join tournament_round_game_day game_day on game_day.id = latest_attempt.round_game_day_id
+      left join amateur_duel_match duel on duel.id = latest_attempt.amateur_duel_match_id
+     where f.tournament_id = $1
+  )`;
+
+export async function getTournamentScheduleDay(
+  pool: Pool,
+  tournamentId: string,
+  userId: string,
+  localDate: string,
+) {
+  const daysResult = await pool.query<{
+    local_date: string;
+    has_games: boolean;
+    has_my_game: boolean;
+    has_playoff: boolean;
   }>(
+    `${PUBLIC_SCHEDULE_FIXTURE_SCOPE}
+     select local_date::text as local_date, true as has_games,
+            bool_or($2::uuid in (home_user_id, away_user_id)) as has_my_game,
+            bool_or(stage in ('playoff', 'third_place')) as has_playoff
+       from fixture_scope
+      where local_date is not null
+      group by local_date
+      order by local_date`,
+    [tournamentId, userId],
+  );
+  const myGamesResult = await pool.query<TournamentScheduleFixtureRow>(
+    `${PUBLIC_SCHEDULE_FIXTURE_SCOPE}
+     ${PUBLIC_SCHEDULE_FIXTURE_SELECT}
+      where fixture.local_date = $3::date
+        and $2::uuid in (home_user_id, away_user_id)
+      order by fixture.fixture_number, fixture.id`,
+    [tournamentId, userId, localDate],
+  );
+  const otherGamesResult = await pool.query<{ has_other_games: boolean }>(
+    `${PUBLIC_SCHEDULE_FIXTURE_SCOPE}
+     select exists(
+       select 1 from fixture_scope fixture
+        where fixture.local_date = $3::date
+          and $2::uuid not in (home_user_id, away_user_id)
+     ) as has_other_games`,
+    [tournamentId, userId, localDate],
+  );
+  return {
+    days: daysResult.rows.map((row) => ({
+      localDate: row.local_date,
+      hasGames: row.has_games,
+      hasMyGame: row.has_my_game,
+      hasPlayoff: row.has_playoff,
+    })),
+    myGames: myGamesResult.rows.map(tournamentScheduleFixtureDto),
+    hasOtherGames: otherGamesResult.rows[0]?.has_other_games === true,
+  };
+}
+
+export interface TournamentScheduleCursor {
+  fixtureNumber: number;
+  id: string;
+}
+
+export async function getTournamentReadinessHint(
+  pool: Pool,
+  tournamentId: string,
+  userId: string,
+) {
+  const result = await pool.query<{ dismissed_at: Date }>(
+    `select dismissed_at
+       from tournament_readiness_hint_preference
+      where tournament_id = $1 and user_id = $2`,
+    [tournamentId, userId],
+  );
+  const dismissedAt = result.rows[0]?.dismissed_at;
+  return {
+    dismissed: dismissedAt !== undefined,
+    dismissedAt: dismissedAt?.toISOString() ?? null,
+  };
+}
+
+export async function dismissTournamentReadinessHint(
+  pool: Pool,
+  tournamentId: string,
+  userId: string,
+) {
+  const result = await pool.query<{ dismissed_at: Date }>(
+    `insert into tournament_readiness_hint_preference (tournament_id, user_id)
+     values ($1, $2)
+     on conflict (tournament_id, user_id) do update
+       set dismissed_at = tournament_readiness_hint_preference.dismissed_at
+     returning dismissed_at`,
+    [tournamentId, userId],
+  );
+  return {
+    dismissed: true,
+    dismissedAt: result.rows[0]!.dismissed_at.toISOString(),
+  };
+}
+
+export async function getTournamentScheduleOtherGames(
+  pool: Pool,
+  tournamentId: string,
+  userId: string,
+  localDate: string,
+  cursor: TournamentScheduleCursor | null,
+) {
+  const result = await pool.query<TournamentScheduleFixtureRow>(
+    `${PUBLIC_SCHEDULE_FIXTURE_SCOPE}
+     ${PUBLIC_SCHEDULE_FIXTURE_SELECT}
+      where fixture.local_date = $3::date
+        and $2::uuid not in (home_user_id, away_user_id)
+        and ($4::int is null or (fixture.fixture_number, fixture.id) > ($4::int, $5::uuid))
+      order by fixture.fixture_number, fixture.id
+      limit 6`,
+    [tournamentId, userId, localDate, cursor?.fixtureNumber ?? null, cursor?.id ?? null],
+  );
+  const pageRows = result.rows.slice(0, 5);
+  const last = pageRows.at(-1);
+  return {
+    games: pageRows.map(tournamentScheduleFixtureDto),
+    nextCursor:
+      result.rows.length > 5 && last !== undefined
+        ? { fixtureNumber: Number(last.fixture_number), id: last.id }
+        : null,
+  };
+}
+
+export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
+  const { rows } = await pool.query<TournamentScheduleFixtureRow>(
     `select f.id, f.fixture_number, r.stage, r.number as round_number,
             f.scheduled_starts_at, f.window_ends_at, f.status, f.venue_mode,
             hp.user_id as home_user_id, hu.display_name as home_name,
@@ -2841,35 +3058,7 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
       order by f.fixture_number`,
     [tournamentId],
   );
-  return rows.map((row) => ({
-    id: row.id,
-    fixtureNumber: Number(row.fixture_number),
-    stage: row.stage,
-    roundNumber: Number(row.round_number),
-    scheduledStartsAt: row.scheduled_starts_at?.toISOString() ?? null,
-    windowEndsAt: row.window_ends_at?.toISOString() ?? null,
-    status: row.status,
-    venueMode: row.venue_mode,
-    home:
-      row.home_user_id === null
-        ? null
-        : {
-            userId: row.home_user_id,
-            name: row.home_name,
-            avatarUrl: row.home_avatar_url,
-            seed: row.home_seed === null ? null : Number(row.home_seed),
-          },
-    away:
-      row.away_user_id === null
-        ? null
-        : {
-            userId: row.away_user_id,
-            name: row.away_name,
-            avatarUrl: row.away_avatar_url,
-            seed: row.away_seed === null ? null : Number(row.away_seed),
-          },
-    score: { home: Number(row.home_score), away: Number(row.away_score) },
-  }));
+  return rows.map(tournamentScheduleFixtureDto);
 }
 
 export async function getTournamentMatchdays(
@@ -4298,6 +4487,8 @@ export async function getTournamentBracket(pool: Pool, tournamentId: string) {
                'scheduledStartsAt', fixture.scheduled_starts_at,
                'windowEndsAt', fixture.window_ends_at,
                'status', fixture.status,
+               'homeUserId', fixture_home.user_id,
+               'awayUserId', fixture_away.user_id,
                'homeName', fixture_home_user.display_name,
                'awayName', fixture_away_user.display_name,
                'homeScore', fixture.home_score,

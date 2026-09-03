@@ -8,6 +8,7 @@ import type {
   TournamentFixtureAttemptState,
 } from '../api/tournament.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { UserAvatar } from '../chat/components/UserAvatar.js';
 import {
   PlayoffSeriesCard,
   TournamentPlayoffOverview,
@@ -111,7 +112,6 @@ export function TournamentPlayoffAttemptView(props: {
   timezone: string;
   onOpenGame: () => void;
   onOpenNextGame?: () => void;
-  onChooseNextGame?: (choice: 'immediate' | 'scheduled') => void;
 }) {
   const state = props.state;
   const readinessRemaining = useRemaining(
@@ -391,6 +391,44 @@ function SeriesDetailsModal(props: {
     props.currentUserId !== null &&
     [series.higher_user_id, series.lower_user_id].includes(props.currentUserId);
   const latestFixtureId = currentSeriesFixtureId(series.fixtures);
+  const players = [
+    {
+      userId: series.higher_user_id,
+      name: series.higher_name,
+      avatarUrl: series.higher_avatar_url,
+      seed: series.higher_seed,
+      wins: series.higher_seed_wins,
+    },
+    {
+      userId: series.lower_user_id,
+      name: series.lower_name,
+      avatarUrl: series.lower_avatar_url,
+      seed: series.lower_seed,
+      wins: series.lower_seed_wins,
+    },
+  ];
+  const fixtureUserId = (
+    fixture: TournamentBracketFixture,
+    side: 'home' | 'away',
+  ): string | null => {
+    const explicit = side === 'home' ? fixture.homeUserId : fixture.awayUserId;
+    if (explicit !== undefined) return explicit;
+    const name = side === 'home' ? fixture.homeName : fixture.awayName;
+    if (name === series.higher_name) return series.higher_user_id;
+    if (name === series.lower_name) return series.lower_user_id;
+    return null;
+  };
+  const participantTone = (
+    fixture: TournamentBracketFixture,
+    side: 'home' | 'away',
+  ): string => {
+    const userId = fixtureUserId(fixture, side);
+    const won = fixture.winnerSide === side;
+    if (userId === props.currentUserId && !won && fixture.winnerSide !== null) {
+      return ' tournament-bracket-game__participant--own-loss';
+    }
+    return won ? ' tournament-bracket-game__participant--winner' : '';
+  };
   return (
     <AccessibleModal
       title={title}
@@ -406,6 +444,39 @@ function SeriesDetailsModal(props: {
         <strong>{seriesStatusLabel(series.status)}</strong>
         <span>{playoffSeriesScheduleLabel(series, props.timezone)}</span>
       </div>
+      <div className="tournament-bracket-series-modal__players">
+        {players.map((player, index) => {
+          const isWinner = player.userId !== null && player.userId === series.winner_user_id;
+          const isOwnLoss =
+            player.userId !== null &&
+            player.userId === props.currentUserId &&
+            series.winner_user_id !== null &&
+            !isWinner;
+          return (
+            <div
+              className={`tournament-bracket-series-modal__player${isWinner ? ' tournament-bracket-series-modal__player--winner' : ''}${isOwnLoss ? ' tournament-bracket-series-modal__player--own-loss' : ''}`}
+              key={player.userId ?? `${index}-${player.name ?? 'pending'}`}
+            >
+              <div className="tournament-bracket-series-modal__identity">
+                <UserAvatar
+                  avatarUrl={player.avatarUrl}
+                  name={player.name}
+                  size={30}
+                  alt={player.name ?? 'Участник'}
+                />
+                <span>
+                  <strong>{player.name ?? 'Участник определится позже'}</strong>
+                  {player.seed !== null && <small>Посев {player.seed}</small>}
+                </span>
+              </div>
+              <strong aria-label={`${player.wins} побед в серии`}>{player.wins}</strong>
+            </div>
+          );
+        })}
+      </div>
+      <strong className="tournament-bracket-series-modal__score">
+        Счёт серии {series.higher_seed_wins}:{series.lower_seed_wins}
+      </strong>
       <div className="tournament-bracket-series__games">
         {series.fixtures.length === 0 ? (
           <span className="tournament-bracket-series-modal__empty">
@@ -413,7 +484,18 @@ function SeriesDetailsModal(props: {
           </span>
         ) : (
           series.fixtures.map((fixture) => (
-            <div className="tournament-bracket-game" key={fixture.id}>
+            <div
+              className="tournament-bracket-game"
+              key={fixture.id}
+              aria-label={
+                fixture.homeName !== null &&
+                fixture.awayName !== null &&
+                fixture.homeScore !== null &&
+                fixture.awayScore !== null
+                  ? `Игра ${fixture.gameNumber}: ${fixture.homeName} ${fixture.homeScore}:${fixture.awayScore} ${fixture.awayName}`
+                  : undefined
+              }
+            >
               <span>
                 Игра {fixture.gameNumber} · {gameTimeLabel(fixture, props.timezone)}
               </span>
@@ -421,7 +503,13 @@ function SeriesDetailsModal(props: {
                 <strong
                   className={`tournament-bracket-game__result${fixture.winnerSide ? ` tournament-bracket-game__result--${fixture.winnerSide}-won` : ''}`}
                 >
-                  {gameResultLabel(fixture)}
+                  <span className={`tournament-bracket-game__participant${participantTone(fixture, 'home')}`}>
+                    {fixture.homeName}
+                  </span>{' '}
+                  {fixture.homeScore} : {fixture.awayScore}{' '}
+                  <span className={`tournament-bracket-game__participant${participantTone(fixture, 'away')}`}>
+                    {fixture.awayName}
+                  </span>
                 </strong>
               )}
               {isMySeries && fixture.id === latestFixtureId && (

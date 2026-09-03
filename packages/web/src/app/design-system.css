@@ -6773,6 +6773,19 @@ button.daily-calendar__day:active {
   white-space: nowrap;
 }
 
+.tournament-fixture-result {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.tournament-fixture-result--win {
+  color: #15803d;
+}
+
+.tournament-fixture-result--loss {
+  color: #b76d72;
+}
+
 .tournament-fixture-matchup {
   display: flex;
   min-width: 0;
@@ -7306,8 +7319,9 @@ button.daily-calendar__day:active {
 
 .tournament-bracket-series-modal {
   width: min(520px, calc(100vw - 28px));
+  max-width: min(100%, 520px);
   max-height: min(82dvh, 720px);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .tournament-bracket-series-modal__meta {
@@ -7329,6 +7343,65 @@ button.daily-calendar__day:active {
   color: #61788e;
   font-size: 11px;
   line-height: 1.4;
+}
+
+.tournament-bracket-series-modal__players {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.tournament-bracket-series-modal__player {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.48);
+  color: #294e70;
+}
+
+.tournament-bracket-series-modal__player--winner {
+  background: rgba(148, 219, 189, 0.34);
+  color: #1f744f;
+}
+
+.tournament-bracket-series-modal__player--own-loss {
+  background: rgba(248, 183, 183, 0.25);
+  color: #a64444;
+}
+
+.tournament-bracket-series-modal__identity {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.tournament-bracket-series-modal__identity > span {
+  display: grid;
+  min-width: 0;
+}
+
+.tournament-bracket-series-modal__identity strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tournament-bracket-series-modal__identity small {
+  color: #61788e;
+  font-size: 9px;
+}
+
+.tournament-bracket-series-modal__score {
+  display: block;
+  margin-bottom: 8px;
+  color: #173c5e;
+  font-size: 13px;
+  text-align: center;
 }
 
 .tournament-bracket__round-tabs {
@@ -7529,6 +7602,8 @@ button.daily-calendar__day:active {
 .tournament-bracket-series__games {
   display: grid;
   gap: 7px;
+  max-height: min(42dvh, 360px);
+  overflow-y: auto;
   padding-top: 6px;
   border-top: 1px solid rgba(98, 127, 153, 0.16);
 }
@@ -7562,6 +7637,39 @@ button.daily-calendar__day:active {
   box-shadow: inset -3px 0 0 rgba(43, 126, 89, 0.62);
   padding-right: 7px;
   text-align: right;
+}
+
+.tournament-bracket-game__participant {
+  color: #536d84;
+}
+
+.tournament-bracket-game__participant--winner {
+  color: #1f8a5b;
+}
+
+.tournament-bracket-game__participant--own-loss {
+  color: #bd4d4d;
+}
+
+.tournament-duel-result__score {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.52);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.tournament-duel-result__next-game {
+  display: grid;
+  margin-top: 14px;
+  color: #294e70;
+  font-size: 13px;
+  text-align: center;
 }
 
 .tournament-playoff-attempt {

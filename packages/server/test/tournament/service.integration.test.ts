@@ -1929,7 +1929,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       const authorization = { authorization: `Bearer ${token}` };
       const schedule = await app.inject({
         method: 'GET',
-        url: `/tournaments/${tournament.id}/schedule`,
+        url: `/tournaments/${tournament.id}/schedule?date=2030-09-01`,
         headers: authorization,
       });
 
@@ -1968,6 +1968,157 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       expect(secondPage.results).toHaveLength(1);
       expect(secondPage.results[0]!.id).not.toBe(firstPage.results[0]!.id);
       expect(secondPage.results[0]!.userId).not.toBe(PLAYER_IDS[0]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('serves an authenticated date-scoped schedule and isolated readiness preferences', async () => {
+    await seedUsers(pool, 0);
+    const extraPlayerIds = [
+      '00000000-0000-4000-8000-000000000715',
+      '00000000-0000-4000-8000-000000000716',
+      '00000000-0000-4000-8000-000000000717',
+      '00000000-0000-4000-8000-000000000718',
+    ];
+    for (const [index, playerId] of extraPlayerIds.entries()) {
+      await pool.query(
+        `insert into users
+           (id, display_name, timezone, level, lifetime_goals_total, experience)
+         values ($1, $2, 'Europe/Moscow', 5, 500, 500)`,
+        [playerId, `Tournament Extra Player ${index + 1}`],
+      );
+      await pool.query(`insert into user_currency_account (user_id, balance) values ($1, 0)`, [
+        playerId,
+      ]);
+    }
+    const scheduleRules = rules(0);
+    scheduleRules.config = parseTournamentConfig({
+      ...scheduleRules.config,
+      participantLimit: 8,
+      playoffSize: 2,
+      roundRobinCycles: 1,
+      roundsPerDay: 10,
+    });
+    const tournament = await createPublishedTournament(
+      pool,
+      'date-scoped-public-schedule',
+      0,
+      scheduleRules,
+    );
+    const allPlayerIds = [...PLAYER_IDS, ...extraPlayerIds];
+    for (const playerId of allPlayerIds) await applyToTournament(pool, tournament.id, playerId);
+    await generateRegularSchedule(pool, tournament.id, tournament.revision);
+    await publishRegularSchedule(pool, tournament.id);
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('tournaments.enabled', 'true'::jsonb, 'Турниры включены', 'schedule route test')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    const localDate = await pool.query<{ local_date: string }>(
+      `select min((scheduled_starts_at at time zone 'Europe/Moscow')::date)::text as local_date
+         from tournament_fixture
+        where tournament_id = $1`,
+      [tournament.id],
+    );
+
+    const { databaseUrl, redisUrl } = getTestUrls();
+    const app = await buildApp({
+      config: {
+        NODE_ENV: 'test',
+        HOST: '0.0.0.0',
+        PORT: 3000,
+        LOG_LEVEL: 'warn',
+        DATABASE_URL: databaseUrl,
+        REDIS_URL: redisUrl,
+        JWT_SECRET,
+        REFRESH_SECRET,
+        TELEGRAM_BOT_TOKEN: 'test-bot-token',
+        DAILY_SEED_SECRET,
+      },
+      pushSchedulerEnabled: false,
+      pushWorkerEnabled: false,
+    });
+    try {
+      const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+      const playerOneToken = await jwt.issueAccessToken({ sub: PLAYER_IDS[0] });
+      const playerTwoToken = await jwt.issueAccessToken({ sub: PLAYER_IDS[1] });
+      const playerOneHeaders = { authorization: `Bearer ${playerOneToken}` };
+      const playerTwoHeaders = { authorization: `Bearer ${playerTwoToken}` };
+      const date = localDate.rows[0]!.local_date;
+
+      const initial = await app.inject({
+        method: 'GET',
+        url: `/tournaments/${tournament.id}/schedule?date=${date}`,
+        headers: playerOneHeaders,
+      });
+      expect(initial.statusCode).toBe(200);
+      const initialBody = initial.json<{
+        days: Array<{ localDate: string }>;
+        myGames: Array<{ id: string; home: { userId: string }; away: { userId: string } }>;
+        hasOtherGames: boolean;
+        fixtures?: unknown;
+      }>();
+      expect(initialBody).not.toHaveProperty('fixtures');
+      expect(initialBody.days.some((day) => day.localDate === date)).toBe(true);
+      expect(initialBody.myGames.length).toBeGreaterThan(0);
+      expect(
+        initialBody.myGames.every((game) =>
+          [game.home.userId, game.away.userId].includes(PLAYER_IDS[0]),
+        ),
+      ).toBe(true);
+      expect(initialBody.hasOtherGames).toBe(true);
+
+      const firstPage = await app.inject({
+        method: 'GET',
+        url: `/tournaments/${tournament.id}/schedule/other-games?date=${date}`,
+        headers: playerOneHeaders,
+      });
+      expect(firstPage.statusCode).toBe(200);
+      const firstBody = firstPage.json<{
+        games: Array<{ id: string }>;
+        nextCursor: { fixtureNumber: number; id: string } | null;
+      }>();
+      expect(firstBody.games).toHaveLength(5);
+      expect(firstBody.nextCursor).not.toBeNull();
+      const cursor = firstBody.nextCursor!;
+      const secondPage = await app.inject({
+        method: 'GET',
+        url:
+          `/tournaments/${tournament.id}/schedule/other-games?date=${date}` +
+          `&cursorFixtureNumber=${cursor.fixtureNumber}&cursorId=${cursor.id}`,
+        headers: playerOneHeaders,
+      });
+      expect(secondPage.statusCode).toBe(200);
+      const secondBody = secondPage.json<{ games: Array<{ id: string }> }>();
+      expect(
+        secondBody.games.filter((game) => firstBody.games.some((first) => first.id === game.id)),
+      ).toHaveLength(0);
+
+      const initialHint = await app.inject({
+        method: 'GET',
+        url: `/tournaments/${tournament.id}/readiness-hint`,
+        headers: playerOneHeaders,
+      });
+      expect(initialHint.json()).toEqual({ dismissed: false, dismissedAt: null });
+      const firstDismissal = await app.inject({
+        method: 'POST',
+        url: `/tournaments/${tournament.id}/readiness-hint/dismiss`,
+        headers: playerOneHeaders,
+      });
+      const repeatedDismissal = await app.inject({
+        method: 'POST',
+        url: `/tournaments/${tournament.id}/readiness-hint/dismiss`,
+        headers: playerOneHeaders,
+      });
+      expect(firstDismissal.statusCode).toBe(200);
+      expect(repeatedDismissal.json()).toEqual(firstDismissal.json());
+      const otherPlayerHint = await app.inject({
+        method: 'GET',
+        url: `/tournaments/${tournament.id}/readiness-hint`,
+        headers: playerTwoHeaders,
+      });
+      expect(otherPlayerHint.json()).toEqual({ dismissed: false, dismissedAt: null });
     } finally {
       await app.close();
     }
@@ -3738,7 +3889,10 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(completedSemifinal.fixtures).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          gameNumber: 1,
           status: 'forfeit',
+          homeUserId: PLAYER_IDS[0],
+          awayUserId: PLAYER_IDS[3],
           homeName: expect.any(String),
           awayName: expect.any(String),
           homeScore: expect.any(Number),

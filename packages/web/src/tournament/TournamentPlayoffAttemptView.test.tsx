@@ -106,7 +106,6 @@ describe('TournamentPlayoffAttemptView', () => {
         currentUserId="u1"
         timezone="Europe/Moscow"
         onOpenGame={vi.fn()}
-        onChooseNextGame={vi.fn()}
       />,
     );
 
@@ -125,7 +124,6 @@ describe('TournamentPlayoffAttemptView', () => {
         currentUserId="u1"
         timezone="Europe/Moscow"
         onOpenGame={vi.fn()}
-        onChooseNextGame={vi.fn()}
       />,
     );
 
@@ -140,7 +138,6 @@ describe('TournamentPlayoffAttemptView', () => {
         currentUserId="u1"
         timezone="Europe/Moscow"
         onOpenGame={onOpenGame}
-        onChooseNextGame={vi.fn()}
       />,
     );
 
@@ -162,7 +159,6 @@ describe('TournamentPlayoffAttemptView', () => {
         currentUserId="u1"
         timezone="Europe/Moscow"
         onOpenGame={vi.fn()}
-        onChooseNextGame={vi.fn()}
       />,
     );
 
@@ -188,7 +184,6 @@ describe('TournamentPlayoffAttemptView', () => {
         currentUserId="u1"
         timezone="Europe/Moscow"
         onOpenGame={onOpenGame}
-        onChooseNextGame={vi.fn()}
       />,
     );
 
@@ -215,7 +210,6 @@ describe('TournamentPlayoffAttemptView', () => {
         currentUserId="u1"
         timezone="Europe/Moscow"
         onOpenGame={vi.fn()}
-        onChooseNextGame={vi.fn()}
       />,
     );
 
@@ -247,7 +241,6 @@ describe('TournamentPlayoffAttemptView', () => {
         currentUserId="u1"
         timezone="Europe/Moscow"
         onOpenGame={vi.fn()}
-        onChooseNextGame={vi.fn()}
       />,
     );
 
@@ -279,7 +272,6 @@ describe('TournamentPlayoffAttemptView', () => {
         currentUserId="u1"
         timezone="Europe/Moscow"
         onOpenGame={vi.fn()}
-        onChooseNextGame={vi.fn()}
       />,
     );
 
@@ -318,7 +310,6 @@ describe('TournamentPlayoffAttemptView', () => {
         timezone="Europe/Moscow"
         onOpenGame={vi.fn()}
         onOpenNextGame={onOpenNextGame}
-        onChooseNextGame={vi.fn()}
       />,
     );
 
@@ -331,7 +322,6 @@ describe('TournamentPlayoffAttemptView', () => {
         timezone="Europe/Moscow"
         onOpenGame={vi.fn()}
         onOpenNextGame={onOpenNextGame}
-        onChooseNextGame={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Открыть следующую игру' }));
@@ -369,7 +359,6 @@ describe('TournamentPlayoffAttemptView', () => {
         currentUserId="u1"
         timezone="Europe/Moscow"
         onOpenGame={vi.fn()}
-        onChooseNextGame={vi.fn()}
       />,
     );
 
@@ -398,7 +387,6 @@ describe('TournamentPlayoffAttemptView', () => {
         currentUserId="u1"
         timezone="Europe/Moscow"
         onOpenGame={vi.fn()}
-        onChooseNextGame={vi.fn()}
       />,
     );
 
