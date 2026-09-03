@@ -19,7 +19,11 @@ export function decideNextFixtureSegment(
   homeScore: number,
   awayScore: number,
   rules: { overtimeCount: number; shootoutInitialShots: number },
+  authoritativeWinner?: 'home' | 'away' | null,
 ): FixtureSegmentDecision {
+  if (authoritativeWinner != null) {
+    return { completed: true, winner: authoritativeWinner };
+  }
   if (homeScore !== awayScore) {
     return { completed: true, winner: homeScore > awayScore ? 'home' : 'away' };
   }

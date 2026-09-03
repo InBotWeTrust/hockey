@@ -429,6 +429,8 @@ function SeriesDetailsModal(props: {
     }
     return won ? ' tournament-bracket-game__participant--winner' : '';
   };
+  const statusLabel = seriesStatusLabel(series.status);
+  const scheduleLabel = playoffSeriesScheduleLabel(series, props.timezone);
   return (
     <AccessibleModal
       title={title}
@@ -441,8 +443,8 @@ function SeriesDetailsModal(props: {
       }
     >
       <div className="tournament-bracket-series-modal__meta">
-        <strong>{seriesStatusLabel(series.status)}</strong>
-        <span>{playoffSeriesScheduleLabel(series, props.timezone)}</span>
+        <strong>{statusLabel}</strong>
+        {scheduleLabel !== statusLabel && <span>{scheduleLabel}</span>}
       </div>
       <div className="tournament-bracket-series-modal__players">
         {players.map((player, index) => {
@@ -508,21 +510,23 @@ function SeriesDetailsModal(props: {
                   Игра {fixture.gameNumber} · {gameTimeLabel(fixture, props.timezone)}
                 </span>
                 {resultLabel !== null && (
-                  <strong
-                    className={`tournament-bracket-game__result${fixture.winnerSide ? ` tournament-bracket-game__result--${fixture.winnerSide}-won` : ''}`}
-                  >
+                  <strong className="tournament-bracket-game__result">
                     {fixture.status === 'forfeit' ? (
-                      resultLabel
+                      <span className="tournament-bracket-game__technical-result">
+                        {resultLabel}
+                      </span>
                     ) : (
                       <>
                         <span
-                          className={`tournament-bracket-game__participant${participantTone(fixture, 'home')}`}
+                          className={`tournament-bracket-game__participant tournament-bracket-game__participant--home${participantTone(fixture, 'home')}`}
                         >
                           {fixture.homeName}
-                        </span>{' '}
-                        {fixture.homeScore} : {fixture.awayScore}{' '}
+                        </span>
+                        <span className="tournament-bracket-game__score">
+                          {fixture.homeScore} : {fixture.awayScore}
+                        </span>
                         <span
-                          className={`tournament-bracket-game__participant${participantTone(fixture, 'away')}`}
+                          className={`tournament-bracket-game__participant tournament-bracket-game__participant--away${participantTone(fixture, 'away')}`}
                         >
                           {fixture.awayName}
                         </span>

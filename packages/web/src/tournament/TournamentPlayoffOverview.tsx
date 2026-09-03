@@ -413,7 +413,14 @@ export function TournamentPlayoffOverview(props: {
                   </span>
                 </header>
                 <div
-                  className="tournament-bracket-overview__series-list"
+                  className={[
+                    'tournament-bracket-overview__series-list',
+                    roundNumber === finalRound && bronze.length > 0
+                      ? 'tournament-bracket-overview__series-list--with-bronze'
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                   data-series-count={items.length}
                 >
                   {items.map((item) => {

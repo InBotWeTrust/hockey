@@ -6,7 +6,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '../auth/authStore.js';
 import * as api from '../api/tournament.js';
-import { TournamentCatalog } from './TournamentCatalog.js';
+import { fixtureCanOpen, TournamentCatalog } from './TournamentCatalog.js';
 
 const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 const TEST_LIFECYCLE: api.TournamentLifecycleDTO = {
@@ -21,6 +21,44 @@ describe('TournamentCatalog', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     useAuthStore.setState({ user: { id: 'u1', displayName: 'Первый' } });
+  });
+
+  it('never reopens a fixture that already has a result even if its cached status is active', () => {
+    expect(
+      fixtureCanOpen({
+        id: 'settled-but-stale',
+        fixtureNumber: 1,
+        stage: 'playoff',
+        roundNumber: 1,
+        scheduledStartsAt: '2030-09-04T00:30:00.000Z',
+        windowEndsAt: '2030-09-04T01:30:00.000Z',
+        status: 'active',
+        venueMode: 'home_selected',
+        home: { userId: 'u1', name: 'Первый' },
+        away: { userId: 'u2', name: 'Второй' },
+        score: { home: 21, away: 21 },
+        winnerUserId: 'u1',
+      }),
+    ).toBe(false);
+  });
+
+  it('keeps an active fixture openable when only a live score is present', () => {
+    expect(
+      fixtureCanOpen({
+        id: 'active-with-live-score',
+        fixtureNumber: 1,
+        stage: 'playoff',
+        roundNumber: 1,
+        scheduledStartsAt: '2030-09-04T00:30:00.000Z',
+        windowEndsAt: '2030-09-04T01:30:00.000Z',
+        status: 'active',
+        venueMode: 'home_selected',
+        home: { userId: 'u1', name: 'Первый' },
+        away: { userId: 'u2', name: 'Второй' },
+        score: { home: 2, away: 1 },
+        winnerUserId: null,
+      }),
+    ).toBe(true);
   });
 
   it('shows a readable empty state when there are no published tournaments', async () => {
@@ -285,7 +323,19 @@ describe('TournamentCatalog', () => {
       /\.tournament-bracket-overview\[data-layout='scroll'\]\[data-visible-columns='4'\]\s+\.tournament-bracket-overview__grid\s*\{[^}]*grid-template-columns:\s*repeat\(var\(--playoff-column-count\), minmax\(0, calc\(25cqi - 9px\)\)\);[^}]*width:\s*max-content;/s,
     );
     expect(designSystemCss).toMatch(
-      /\.tournament-bracket-overview__viewport\s*\{[^}]*container-type:\s*inline-size;[^}]*overflow-x:\s*auto;/s,
+      /\.tournament-bracket-overview__viewport\s*\{[^}]*container-type:\s*inline-size;[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*clip;[^}]*scrollbar-width:\s*none;/s,
+    );
+    expect(designSystemCss).not.toMatch(
+      /\.tournament-bracket-overview__viewport\s*\{[^}]*min-height:/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview__viewport::-webkit-scrollbar\s*\{[^}]*display:\s*none;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview__column\s*\{[^}]*grid-template-rows:\s*auto minmax\(min-content,\s*1fr\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview__series-list--with-bronze\s*\{[^}]*min-height:\s*360px;/s,
     );
     expect(designSystemCss).toMatch(
       /\.tournament-bracket-series--mine\s*\{[^}]*border-color:\s*rgba\(43, 126, 89,/s,

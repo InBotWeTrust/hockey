@@ -672,19 +672,25 @@ async function settlePlayedPlayoffFixture(
     away_user_id: string;
     scheduled_starts_at: Date;
   },
+  playedResult: { homeScore: number; awayScore: number; winnerUserId: string | null } = {
+    homeScore: 1,
+    awayScore: 0,
+    winnerUserId: null,
+  },
 ): Promise<{ duelMatchId: string; settledNow: boolean }> {
   const duel = await pool.query<{ id: string }>(
     `insert into amateur_duel_match
        (challenger_user_id, opponent_user_id, status, source, rules_snapshot,
-        match_seed, starts_at, ends_at, game_core_version)
+        match_seed, starts_at, ends_at, game_core_version, winner_user_id)
      values ($1, $2, 'active', 'tournament', '{}'::jsonb,
-             'series-notification', $3, $4, 1)
+             'series-notification', $3, $4, 1, $5)
      returning id`,
     [
       fixture.home_user_id,
       fixture.away_user_id,
       fixture.scheduled_starts_at,
       new Date(fixture.scheduled_starts_at.getTime() + 3_600_000),
+      playedResult.winnerUserId,
     ],
   );
   await pool.query(
@@ -696,14 +702,14 @@ async function settlePlayedPlayoffFixture(
   const client = await pool.connect();
   try {
     await client.query('begin');
-    const result = await settleTournamentSegmentForDuel(client, {
+    const settlement = await settleTournamentSegmentForDuel(client, {
       duelMatchId: duel.rows[0]!.id,
-      homeScore: 1,
-      awayScore: 0,
+      homeScore: playedResult.homeScore,
+      awayScore: playedResult.awayScore,
       settledAt: fixture.scheduled_starts_at,
     });
     await client.query('commit');
-    return { duelMatchId: duel.rows[0]!.id, settledNow: result?.settledNow === true };
+    return { duelMatchId: duel.rows[0]!.id, settledNow: settlement?.settledNow === true };
   } catch (error) {
     await client.query('rollback');
     throw error;
@@ -2562,8 +2568,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
             interGameBreakMinutes: 5,
             roundBreakMs: 0,
             scheduleDays: [
-              { localDate: '2030-09-05', firstWaveLocalTime: '10:00', maxResultGames: 2 },
-              { localDate: '2030-09-06', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+              { localDate: '2030-09-05', firstWaveLocalTime: '10:00', maxResultGames: 3 },
             ],
           },
         ],
@@ -2603,6 +2608,39 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       { gameNumber: 2, scheduledStart: null, windowEnd: null, hasInitialAttempt: false },
       { gameNumber: 3, scheduledStart: null, windowEnd: null, hasInitialAttempt: false },
     ]);
+
+    const player = await pool.query<{ user_id: string }>(
+      `select participant.user_id
+         from tournament_fixture fixture
+         join tournament_participant participant on participant.id = fixture.home_participant_id
+        where fixture.id = (
+          select fixture_in_series.id
+            from tournament_fixture fixture_in_series
+            join tournament_playoff_series series on series.id = fixture_in_series.series_id
+           where series.tournament_id = $1 and series.depends_on->>'key' = 'R1S1'
+           order by fixture_in_series.fixture_number
+           limit 1
+        )`,
+      [tournament.id],
+    );
+    const scheduleDay = await tournamentService.getTournamentScheduleDay(
+      pool,
+      tournament.id,
+      player.rows[0]!.user_id,
+      '2030-09-05',
+    );
+    expect(scheduleDay.myGames).toHaveLength(3);
+    expect(scheduleDay.myGames.map((fixture) => fixture.status)).toEqual([
+      'scheduled',
+      'scheduled',
+      'conditional',
+    ]);
+    expect(scheduleDay.days).toContainEqual({
+      localDate: '2030-09-05',
+      hasGames: true,
+      hasMyGame: true,
+      hasPlayoff: true,
+    });
   });
 
   it('reschedules only the first playoff game from a legacy rules snapshot', async () => {
@@ -4003,7 +4041,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
 
   it('does not notify participants before T-30 when a played series game promotes the next fixture', async () => {
     const { fixtures } = await createBestOfThreePlayoff(pool, 'played-series-next-game');
-    const [firstFixture, secondFixture, nextFixture] = fixtures;
+    const [firstFixture, secondFixture] = fixtures;
     await subscribeTournamentParticipants(pool, [
       firstFixture!.home_participant_id,
       firstFixture!.away_participant_id,
@@ -4137,6 +4175,63 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     }
   });
 
+  it('settles a playoff fixture with equal goals when the duel winner was decided by accuracy', async () => {
+    const { fixtures } = await createBestOfThreePlayoff(pool, 'accuracy-decided-playoff-fixture');
+    const fixture = fixtures[0]!;
+
+    const settlement = await settlePlayedPlayoffFixture(pool, fixture, {
+      homeScore: 21,
+      awayScore: 21,
+      winnerUserId: fixture.home_user_id,
+    });
+
+    expect(settlement.settledNow).toBe(true);
+    const repeatedClient = await pool.connect();
+    try {
+      await repeatedClient.query('begin');
+      const repeated = await settleTournamentSegmentForDuel(repeatedClient, {
+        duelMatchId: settlement.duelMatchId,
+        homeScore: 21,
+        awayScore: 21,
+        settledAt: fixture.scheduled_starts_at,
+      });
+      await repeatedClient.query('commit');
+      expect(repeated).toEqual(expect.objectContaining({ completed: true, settledNow: false }));
+    } catch (error) {
+      await repeatedClient.query('rollback');
+      throw error;
+    } finally {
+      repeatedClient.release();
+    }
+    const state = await pool.query<{
+      fixture_status: string;
+      winner_user_id: string | null;
+      higher_seed_wins: number;
+      lower_seed_wins: number;
+      next_fixture_status: string;
+    }>(
+      `select fixture.status as fixture_status,
+              winner.user_id as winner_user_id,
+              series.higher_seed_wins, series.lower_seed_wins,
+              next_fixture.status as next_fixture_status
+         from tournament_fixture fixture
+         join tournament_playoff_series series on series.id = fixture.series_id
+         left join tournament_participant winner on winner.id = fixture.winner_participant_id
+         join tournament_fixture next_fixture
+           on next_fixture.series_id = series.id
+          and (next_fixture.result_snapshot->>'gameNumber')::int = 2
+        where fixture.id = $1`,
+      [fixture.id],
+    );
+    expect(state.rows[0]).toEqual({
+      fixture_status: 'settled',
+      winner_user_id: fixture.home_user_id,
+      higher_seed_wins: 1,
+      lower_seed_wins: 0,
+      next_fixture_status: 'scheduled',
+    });
+  });
+
   it('creates a new T-30 delivery after an administrator reschedules an already reminded playoff fixture', async () => {
     const { tournament, fixtures } = await createBestOfThreePlayoff(pool, 'rescheduled-playoff-day-reminder');
     const [fixture, nextFixture] = fixtures;
@@ -4219,7 +4314,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
   });
 
   it('does not enqueue a partial playoff reminder when the system account is unavailable', async () => {
-    const { tournament, fixtures } = await createBestOfThreePlayoff(pool, 'playoff-reminder-without-system');
+    const { fixtures } = await createBestOfThreePlayoff(pool, 'playoff-reminder-without-system');
     const [fixture] = fixtures;
     await subscribeTournamentParticipants(pool, [fixture!.home_participant_id, fixture!.away_participant_id]);
     await expect(
@@ -4285,7 +4380,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       pool,
       'technical-series-next-game',
     );
-    const [firstFixture, secondFixture, nextFixture] = fixtures;
+    const [firstFixture, secondFixture] = fixtures;
     await subscribeTournamentParticipants(pool, [
       firstFixture!.home_participant_id,
       firstFixture!.away_participant_id,
@@ -4658,7 +4753,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       pool,
       'duplicate-series-next-game',
     );
-    const [firstFixture, secondFixture, nextFixture] = fixtures;
+    const [firstFixture, secondFixture] = fixtures;
     await subscribeTournamentParticipants(pool, [
       firstFixture!.home_participant_id,
       firstFixture!.away_participant_id,
@@ -4689,7 +4784,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       pool,
       'opt-out-series-next-game',
     );
-    const [firstFixture, secondFixture, nextFixture] = fixtures;
+    const [firstFixture, secondFixture] = fixtures;
     await subscribeTournamentParticipants(pool, [
       firstFixture!.home_participant_id,
       firstFixture!.away_participant_id,

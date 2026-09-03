@@ -102,7 +102,15 @@ function fixtureStatusLabel(status: string): string {
   return labels[status] ?? 'Статус уточняется';
 }
 
-function fixtureCanOpen(fixture: TournamentFixture, now = Date.now()): boolean {
+function fixtureHasResult(fixture: TournamentFixture): boolean {
+  return (
+    ['completed', 'settled', 'forfeit', 'technical'].includes(fixture.status) ||
+    fixture.winnerUserId != null
+  );
+}
+
+export function fixtureCanOpen(fixture: TournamentFixture, now = Date.now()): boolean {
+  if (fixtureHasResult(fixture)) return false;
   if (fixture.status === 'open' || fixture.status === 'active') return true;
   if (fixture.status !== 'scheduled' || fixture.scheduledStartsAt === null) return false;
   const startsAt = new Date(fixture.scheduledStartsAt).getTime();
@@ -801,9 +809,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               renderFixture={(fixture, mine) => {
                 const playable = fixtureCanOpen(fixture);
                 const showSeed = fixture.stage === 'playoff' || fixture.stage === 'third_place';
-                const finished =
-                  ['completed', 'settled', 'forfeit', 'technical'].includes(fixture.status) ||
-                  fixture.score.home + fixture.score.away > 0;
+                const finished = fixtureHasResult(fixture);
                 const myResult = mine ? myFixtureResultLabel(fixture, currentUserId) : null;
                 return (
                   <article
@@ -819,7 +825,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                         )}
                       </span>
                       {mine && <VenueBadge role={fixtureVenueRole(fixture, currentUserId)} />}
-                      <strong>{fixtureStatusLabel(fixture.status)}</strong>
+                      <strong>{finished ? 'Завершена' : fixtureStatusLabel(fixture.status)}</strong>
                     </div>
                     <div className="tournament-fixture-summary">
                       <div className="tournament-fixture-matchup">

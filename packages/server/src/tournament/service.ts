@@ -2852,8 +2852,12 @@ const PUBLIC_SCHEDULE_FIXTURE_SCOPE = `
   with fixture_scope as (
     select f.id, f.fixture_number, r.stage, r.number as round_number,
            f.scheduled_starts_at, f.window_ends_at, f.status, f.venue_mode,
-           coalesce(game_day.local_date, (f.scheduled_starts_at at time zone
-             coalesce(revision.rules_snapshot->'config'->>'timezone', 'Europe/Moscow'))::date)
+           coalesce(
+             game_day.local_date,
+             (f.scheduled_starts_at at time zone
+               coalesce(revision.rules_snapshot->'config'->>'timezone', 'Europe/Moscow'))::date,
+             planned_game_day.local_date
+           )
              as local_date,
            duel.accepted_at as actual_starts_at,
            hp.user_id as home_user_id, hu.display_name as home_name,
@@ -2890,9 +2894,27 @@ const PUBLIC_SCHEDULE_FIXTURE_SCOPE = `
          where attempt.fixture_id = f.id
          order by attempt.attempt_number desc
          limit 1
-      ) latest_attempt on true
-      left join tournament_round_game_day game_day on game_day.id = latest_attempt.round_game_day_id
-      left join amateur_duel_match duel on duel.id = latest_attempt.amateur_duel_match_id
+       ) latest_attempt on true
+       left join tournament_round_game_day game_day on game_day.id = latest_attempt.round_game_day_id
+       left join lateral (
+         select planned_day.local_date
+           from (
+             select day.local_date, day.day_number,
+                    sum(day.max_result_bearing_games) over (
+                      order by day.day_number
+                    ) as cumulative_game_capacity
+               from tournament_round_game_day day
+              where day.round_id = f.round_id and day.status <> 'cancelled'
+           ) planned_day
+          where latest_attempt.round_game_day_id is null
+            and f.series_id is not null
+            and f.status in ('conditional', 'scheduled', 'open', 'active')
+            and planned_day.cumulative_game_capacity >=
+                coalesce((f.result_snapshot->>'gameNumber')::int, 1)
+          order by planned_day.day_number
+          limit 1
+       ) planned_game_day on true
+       left join amateur_duel_match duel on duel.id = latest_attempt.amateur_duel_match_id
      where f.tournament_id = $1
   )`;
 

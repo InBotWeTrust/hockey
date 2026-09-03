@@ -5128,14 +5128,14 @@ describe('DailyScreen', () => {
 
     const firstRender = renderWith(['/?view=amateur&match=match-1&play=1']);
     fireEvent.click(await screen.findByRole('button', { name: 'Понятно' }));
+    fireEvent.click(screen.getByRole('button', { name: /Клюшка: Профильная клюшка/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Турнирная клюшка/ }));
+    expect(screen.getByRole('button', { name: /Клюшка: Турнирная клюшка/ })).toBeEnabled();
     const readyButton = await screen.findByRole('button', { name: 'ГОТОВ' });
     fireEvent.click(readyButton);
     fireEvent.click(readyButton);
     expect(await screen.findByRole('button', { name: 'НАЧАТЬ' })).toBeEnabled();
     await waitFor(() => expect(requestCounts.ready).toBe(1));
-
-    fireEvent.click(screen.getByRole('button', { name: /Клюшка: Профильная клюшка/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Турнирная клюшка/ }));
     expect(screen.getByRole('button', { name: /Клюшка: Турнирная клюшка/ })).toBeEnabled();
     const startButton = screen.getByRole('button', { name: 'НАЧАТЬ' });
     fireEvent.click(startButton);

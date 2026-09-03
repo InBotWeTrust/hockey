@@ -437,51 +437,6 @@ async function createRegularReplay(pool: Pool, app: FastifyInstance, slug: strin
   return { ...context, homeToken, replay: replay.rows[0]! };
 }
 
-async function createPlayoffReplay(pool: Pool, app: FastifyInstance, slug: string) {
-  const context = await openFirstPlayoffAttempt(pool, slug);
-  const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
-  const homeToken = await jwt.issueAccessToken({ sub: context.fixture.home_user_id });
-  for (const userId of [context.fixture.home_user_id, context.fixture.away_user_id]) {
-    const token = await jwt.issueAccessToken({ sub: userId });
-    const ready = await app.inject({
-      method: 'POST',
-      url: `/duel/amateur/matches/${context.opened.duelMatchId}/ready`,
-      headers: { authorization: `Bearer ${token}` },
-      payload: { loadout: {} },
-    });
-    expect(ready.statusCode).toBe(200);
-  }
-  await pool.query(
-    `update amateur_duel_participant
-        set state = 'completed', completed_at = now(), goals = 2, shots_taken = 4,
-            active_duration_ms = 90000
-      where match_id = $1`,
-    [context.opened.duelMatchId],
-  );
-  const settled = await app.inject({
-    method: 'GET',
-    url: `/duel/amateur/matches/${context.opened.duelMatchId}`,
-    headers: { authorization: `Bearer ${homeToken}` },
-  });
-  expect(settled.statusCode).toBe(200);
-  const replay = await pool.query<{
-    attempt_id: string;
-    scheduled_starts_at: Date;
-    readiness_expires_at: Date;
-    hard_deadline_at: Date;
-    duel_match_id: string | null;
-    snapshot: Record<string, unknown>;
-  }>(
-    `select id as attempt_id, scheduled_starts_at, readiness_expires_at,
-            hard_deadline_at, amateur_duel_match_id as duel_match_id,
-            result_snapshot as snapshot
-       from tournament_fixture_attempt
-      where fixture_id = $1 and attempt_number = 2`,
-    [context.fixture.fixture_id],
-  );
-  return { ...context, homeToken, replay: replay.rows[0]! };
-}
-
 describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', () => {
   let app: FastifyInstance;
   let pool: Pool;
@@ -3655,9 +3610,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     await pool.query(
       `update amateur_duel_participant
           set state = 'completed', completed_at = now(), current_period = 2,
-              period_started_at = null,
-              goals = case when user_id = $2 then 3 else 1 end,
-              shots_taken = 5, active_duration_ms = 90000
+              period_started_at = null, goals = 21,
+              shots_taken = case when user_id = $2 then 29 else 35 end,
+              active_duration_ms = 90000
         where match_id = $1`,
       [context.opened.duelMatchId, context.fixture.home_user_id],
     );
@@ -3675,8 +3630,38 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     });
     expect(duringBreak.statusCode).toBe(200);
     expect(duringBreak.json().nextGame).toMatchObject({ available: false });
+    expect(duringBreak.json()).toMatchObject({
+      attempt: {
+        status: 'settled',
+        result: {
+          outcome: 'home_win',
+          winnerUserId: context.fixture.home_user_id,
+          myScore: 21,
+          opponentScore: 21,
+        },
+      },
+      series: { myWins: 1, opponentWins: 0 },
+    });
     const nextFixtureId = duringBreak.json().nextGame.fixtureId as string;
     const breakEndsAt = new Date(duringBreak.json().nextGame.breakEndsAt as string);
+    expect(breakEndsAt.getTime()).toBe(
+      new Date(settled.json().match.settled_at as string).getTime() + 5 * 60_000,
+    );
+
+    const reopenSettledFixture = await app.inject({
+      method: 'POST',
+      url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/segments/open`,
+      headers: { authorization: `Bearer ${homeToken}` },
+    });
+    expect(reopenSettledFixture.statusCode).toBe(409);
+
+    const readySettledDuelAgain = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${context.opened.duelMatchId}/ready`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { loadout: {} },
+    });
+    expect(readySettledDuelAgain.statusCode).toBe(409);
 
     const beforeBreak = await app.inject({
       method: 'POST',

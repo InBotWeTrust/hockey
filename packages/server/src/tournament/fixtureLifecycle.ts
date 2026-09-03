@@ -455,18 +455,26 @@ export async function settleTournamentSegmentForDuel(
     away_participant_id: string | null;
     round_rules: Record<string, unknown>;
     tournament_rules: Record<string, unknown>;
+    home_user_id: string | null;
+    away_user_id: string | null;
+    duel_winner_user_id: string | null;
   }>(
     `select s.id, s.fixture_id, s.sequence_number, s.kind, s.pair_number, s.status,
             f.status as fixture_status,
             f.series_id, f.tournament_id, r.stage as round_stage,
             f.home_participant_id, f.away_participant_id,
             r.rules_snapshot as round_rules,
-            tr.rules_snapshot as tournament_rules
+            tr.rules_snapshot as tournament_rules,
+            home.user_id as home_user_id, away.user_id as away_user_id,
+            duel.winner_user_id as duel_winner_user_id
        from tournament_fixture_segment s
        join tournament_fixture f on f.id = s.fixture_id
        join tournament_round r on r.id = f.round_id
        join tournament t on t.id = f.tournament_id
        join tournament_revision tr on tr.id = t.published_revision_id
+       left join tournament_participant home on home.id = f.home_participant_id
+       left join tournament_participant away on away.id = f.away_participant_id
+       join amateur_duel_match duel on duel.id = s.duel_match_id
       where s.duel_match_id = $1 for update of s, f`,
     [input.duelMatchId],
   );
@@ -511,6 +519,12 @@ export async function settleTournamentSegmentForDuel(
   );
   const tournamentOvertimeRules = objectSetting(segment.tournament_rules, 'overtime');
   const roundOvertimeRules = objectSetting(segment.round_rules, 'overtime');
+  const authoritativeWinner =
+    segment.duel_winner_user_id === segment.home_user_id
+      ? 'home'
+      : segment.duel_winner_user_id === segment.away_user_id
+        ? 'away'
+        : null;
   const decision = decideNextFixtureSegment(
     {
       kind: segment.kind,
@@ -535,6 +549,7 @@ export async function settleTournamentSegmentForDuel(
         100,
       ),
     },
+    authoritativeWinner,
   );
   if (!decision.completed) {
     await client.query(

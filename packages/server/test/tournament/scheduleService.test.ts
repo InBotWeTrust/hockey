@@ -99,6 +99,8 @@ describe('tournament public schedule service', () => {
     expect(query.mock.calls[1]?.[0]).toContain('$3::date');
     expect(query.mock.calls[1]?.[1]).toEqual(['tournament-1', 'me', '2030-09-02']);
     expect(query.mock.calls[1]?.[0]).toContain('in (home_user_id, away_user_id)');
+    expect(query.mock.calls[1]?.[0]).toContain('planned_game_day.local_date');
+    expect(query.mock.calls[1]?.[0]).toContain('sum(day.max_result_bearing_games)');
     expect(query.mock.calls[2]?.[0]).toContain('not in (home_user_id, away_user_id)');
   });
 

@@ -5147,6 +5147,7 @@ function AmateurDuelPlayView({
     useState(false);
   const previousReadyStateRef = useRef<{ me: boolean; opponent: boolean } | null>(null);
   const appliedTournamentLoadoutVersionRef = useRef<string | null>(null);
+  const preserveSelectedLoadoutAfterReadyRef = useRef(false);
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
@@ -5187,6 +5188,7 @@ function AmateurDuelPlayView({
     setDisableTournamentReadinessExplanation(false);
     previousReadyStateRef.current = null;
     appliedTournamentLoadoutVersionRef.current = null;
+    preserveSelectedLoadoutAfterReadyRef.current = false;
     setPlayerReadyEntranceKey(null);
     setGoalieReadyEntranceKey(null);
   }, [matchId]);
@@ -5231,6 +5233,10 @@ function AmateurDuelPlayView({
     const versionKey = `${match.id}:${match.me.current_period + 1}:${match.me.tournament_loadout_period ?? 'preview'}:${match.me.tournament_loadout_version ?? 0}:${selectionKey}`;
     if (appliedTournamentLoadoutVersionRef.current === versionKey) return;
     appliedTournamentLoadoutVersionRef.current = versionKey;
+    if (preserveSelectedLoadoutAfterReadyRef.current) {
+      preserveSelectedLoadoutAfterReadyRef.current = false;
+      return;
+    }
     setSelectedLoadout(duelLoadoutSelectionFromMatch(match));
   }, [match]);
 
@@ -5304,7 +5310,9 @@ function AmateurDuelPlayView({
     if (inFlight) return;
     const matchNow = duelMatchNowMs(match, now);
     if (match.status === 'ready_check' && match.me.state !== 'ready') {
-      await ready(usesTournamentPeriodLoadout ? {} : selectedLoadout);
+      if (usesTournamentPeriodLoadout) preserveSelectedLoadoutAfterReadyRef.current = true;
+      const readyMatch = await ready(usesTournamentPeriodLoadout ? {} : selectedLoadout);
+      if (readyMatch === null) preserveSelectedLoadoutAfterReadyRef.current = false;
       return;
     }
     if (canStartArenaDuelPeriod(match, matchNow)) {

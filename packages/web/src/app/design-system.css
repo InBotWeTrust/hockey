@@ -6916,10 +6916,14 @@ button.daily-calendar__day:active {
   container-type: inline-size;
   max-width: 100%;
   overflow-x: auto;
+  overflow-y: clip;
   overscroll-behavior-inline: contain;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(75, 105, 132, 0.32) transparent;
+  scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+}
+
+.tournament-bracket-overview__viewport::-webkit-scrollbar {
+  display: none;
 }
 
 .tournament-bracket-overview__grid {
@@ -6958,7 +6962,7 @@ button.daily-calendar__day:active {
 .tournament-bracket-overview__column {
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(min-content, 1fr);
   min-width: 0;
   gap: 8px;
 }
@@ -6995,6 +6999,10 @@ button.daily-calendar__day:active {
   justify-content: space-around;
   min-height: 100%;
   gap: 10px;
+}
+
+.tournament-bracket-overview__series-list--with-bronze {
+  min-height: 360px;
 }
 
 .tournament-bracket-connector {
@@ -7043,7 +7051,7 @@ button.daily-calendar__day:active {
 
 .tournament-bracket-overview__bronze-lane {
   position: absolute;
-  top: calc(50% + 56px);
+  top: calc(50% + 68px);
   right: 0;
   left: 0;
   z-index: 1;
@@ -7623,27 +7631,40 @@ button.daily-calendar__day:active {
 }
 
 .tournament-bracket-game__result {
-  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   color: #294e70;
   font-size: 10px;
   font-weight: 760;
+}
+
+.tournament-bracket-game__participant {
+  min-width: 0;
+  overflow: hidden;
+  color: #536d84;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.tournament-bracket-game__result--home-won {
-  box-shadow: inset 3px 0 0 rgba(43, 126, 89, 0.62);
-  padding-left: 7px;
-}
-
-.tournament-bracket-game__result--away-won {
-  box-shadow: inset -3px 0 0 rgba(43, 126, 89, 0.62);
-  padding-right: 7px;
+.tournament-bracket-game__participant--away {
   text-align: right;
 }
 
-.tournament-bracket-game__participant {
-  color: #536d84;
+.tournament-bracket-game__score {
+  color: #294e70;
+  white-space: nowrap;
+}
+
+.tournament-bracket-game__technical-result {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tournament-bracket-game__participant--winner {

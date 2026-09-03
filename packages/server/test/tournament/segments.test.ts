@@ -10,6 +10,18 @@ describe('fixture segment progression', () => {
     ).toEqual({ completed: true, winner: 'home' });
   });
 
+  it('honours the duel winner when equal goals were resolved by accuracy', () => {
+    expect(
+      decideNextFixtureSegment(
+        { kind: 'regulation', sequenceNumber: 1, pairNumber: null },
+        21,
+        21,
+        rules,
+        'home',
+      ),
+    ).toEqual({ completed: true, winner: 'home' });
+  });
+
   it('runs configured overtimes before the initial shootout', () => {
     expect(
       decideNextFixtureSegment({ kind: 'regulation', sequenceNumber: 1, pairNumber: null }, 2, 2, rules),
