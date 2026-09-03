@@ -4533,6 +4533,7 @@ export async function resolveTournamentNoShow(
     adminUserId: string;
   },
 ) {
+  const settledAt = new Date();
   return inTransaction(pool, async (client) => {
     await lockTournamentFixture(client, input);
     const fixtureResult = await client.query<{
@@ -4706,6 +4707,7 @@ export async function resolveTournamentNoShow(
           await advanceTournamentPlayoffSeries(client, {
             seriesId: fixture.series_id,
             winnerParticipantId: winner,
+            settledAt,
           });
         }
         if (fixture.stage === 'regular')
@@ -4740,6 +4742,7 @@ export async function disqualifyTournamentParticipant(
   pool: Pool,
   input: { tournamentId: string; participantId: string; reason: string; adminUserId: string },
 ) {
+  const settledAt = new Date();
   return inTransaction(pool, async (client) => {
     await lockTournament(client, input.tournamentId);
     const participant = await client.query(
@@ -4823,6 +4826,7 @@ export async function disqualifyTournamentParticipant(
         await advanceTournamentPlayoffSeries(client, {
           seriesId: fixture.series_id,
           winnerParticipantId: fixture.winner_participant_id,
+          settledAt,
         });
       }
       if (fixture.stage === 'regular') regularFixtureChanged = true;

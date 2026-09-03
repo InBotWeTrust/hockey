@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
-import { chooseTournamentNextGame, fetchTournamentFixtureAttempt } from '../api/tournament.js';
+import { fetchTournamentFixtureAttempt } from '../api/tournament.js';
 import type {
   TournamentBracketFixture,
   TournamentBracketSeries,
@@ -111,7 +111,7 @@ export function TournamentPlayoffAttemptView(props: {
   timezone: string;
   onOpenGame: () => void;
   onOpenNextGame?: () => void;
-  onChooseNextGame: (choice: 'immediate' | 'scheduled') => void;
+  onChooseNextGame?: (choice: 'immediate' | 'scheduled') => void;
 }) {
   const state = props.state;
   const readinessRemaining = useRemaining(
@@ -122,7 +122,7 @@ export function TournamentPlayoffAttemptView(props: {
       ? state.opponentProgress.periodEndsAt
       : null,
   );
-  const nextChoiceRemaining = useRemaining(state.nextGameChoice?.expiresAt ?? null);
+  const nextGameRemaining = useRemaining(state.nextGame?.breakEndsAt ?? null);
   const replayStartRemaining = useRemaining(
     state.attempt.kind === 'replay' && state.attempt.status === 'pending'
       ? state.attempt.scheduledStart
@@ -222,44 +222,25 @@ export function TournamentPlayoffAttemptView(props: {
           <span>Администратор назначит новую дату и время игры.</span>
         </div>
       )}
-      {state.nextGameChoice?.canChoose && (
+      {state.nextGame !== null && (
         <div className="tournament-playoff-attempt__choice">
           <strong>Следующая игра</strong>
-          <span>В течение минуты выберите, готовы ли вы сыграть ещё раз сразу.</span>
-          {nextChoiceRemaining !== null && <span>Осталось на решение {nextChoiceRemaining}</span>}
-          <div>
-            <button
-              type="button"
-              className="btn btn--cta"
-              onClick={() => props.onChooseNextGame('immediate')}
-            >
-              Сыграть сразу
-            </button>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => props.onChooseNextGame('scheduled')}
-            >
-              По расписанию
-            </button>
-          </div>
-        </div>
-      )}
-      {state.nextGameChoice !== null && !state.nextGameChoice.canChoose && (
-        <>
-          <span>
-            {state.nextGameChoice.startsImmediately
-              ? 'Оба игрока готовы — следующая игра начинается.'
-              : state.nextGameChoice.myChoice === 'immediate'
-                ? 'Вы готовы сыграть сразу. Ждём решение соперника.'
-                : 'Следующая игра остаётся в расписании.'}
-          </span>
-          {state.nextGameChoice.startsImmediately && props.onOpenNextGame && (
-            <button type="button" className="btn btn--cta" onClick={props.onOpenNextGame}>
-              Открыть следующую игру
-            </button>
+          {state.nextGame.available ? (
+            <>
+              <span>Следующая игра доступна. Подтвердите готовность ещё раз.</span>
+              {props.onOpenNextGame && (
+                <button type="button" className="btn btn--cta" onClick={props.onOpenNextGame}>
+                  Открыть следующую игру
+                </button>
+              )}
+            </>
+          ) : (
+            <span>
+              Следующая игра станет доступна после перерыва
+              {nextGameRemaining === null ? '.' : ` через ${nextGameRemaining}`}
+            </span>
           )}
-        </>
+        </div>
       )}
       {wonSeries ? (
         <strong className="tournament-playoff-attempt__series-win">
@@ -289,20 +270,11 @@ function PlayerAttemptState(props: {
   timezone: string;
   onOpenFixture: (fixtureId: string) => void;
 }) {
-  const queryClient = useQueryClient();
   const queryKey = ['tournaments', props.tournamentId, 'fixtures', props.fixtureId, 'attempt'];
   const attempt = useQuery({
     queryKey,
     queryFn: () => fetchTournamentFixtureAttempt(props.tournamentId, props.fixtureId),
     refetchInterval: 5_000,
-  });
-  const choice = useMutation({
-    mutationFn: (value: 'immediate' | 'scheduled') =>
-      chooseTournamentNextGame(props.tournamentId, props.fixtureId, value),
-    onSuccess: (result) => {
-      void queryClient.invalidateQueries({ queryKey });
-      if (result.startsImmediately) props.onOpenFixture(result.nextFixtureId);
-    },
   });
   if (!attempt.data) return null;
   return (
@@ -313,17 +285,11 @@ function PlayerAttemptState(props: {
         timezone={props.timezone}
         onOpenGame={() => props.onOpenFixture(props.fixtureId)}
         onOpenNextGame={() => {
-          if (attempt.data.nextGameChoice !== null) {
-            props.onOpenFixture(attempt.data.nextGameChoice.nextFixtureId);
+          if (attempt.data.nextGame !== null) {
+            props.onOpenFixture(attempt.data.nextGame.fixtureId);
           }
         }}
-        onChooseNextGame={(value) => choice.mutate(value)}
       />
-      {choice.isError && (
-        <span className="tournament-fixture-card__error" role="alert">
-          Не удалось сохранить решение. Попробуйте ещё раз.
-        </span>
-      )}
     </>
   );
 }

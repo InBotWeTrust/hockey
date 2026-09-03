@@ -39,7 +39,7 @@ function attemptState(
       winnerUserId: null,
     },
     tournament: { status: 'playoff', winnerUserId: null },
-    nextGameChoice: null,
+    nextGame: null,
     ...patch,
   };
 }
@@ -288,79 +288,32 @@ describe('TournamentPlayoffAttemptView', () => {
     expect(screen.queryByText(/поражение в игре/i)).not.toBeInTheDocument();
   });
 
-  it('offers the one-minute next-game choice and records the selected option', () => {
-    const onChooseNextGame = vi.fn();
-    render(
-      <TournamentPlayoffAttemptView
-        state={attemptState({
-          attempt: {
-            ...attemptState().attempt,
-            status: 'settled',
-            myReady: true,
-            opponentReady: true,
-            result: {
-              outcome: 'home_win',
-              winnerUserId: 'u1',
-              myScore: 4,
-              opponentScore: 2,
-              myAccuracy: 62.5,
-              opponentAccuracy: 48.25,
-              myActiveTimeMs: 80_000,
-              opponentActiveTimeMs: 95_000,
-            },
-          },
-          nextGameChoice: {
-            nextFixtureId: 'fixture-2',
-            expiresAt: '2030-09-10T12:31:00.000Z',
-            myChoice: null,
-            opponentChoice: null,
-            canChoose: true,
-            startsImmediately: false,
-          },
-        })}
-        currentUserId="u1"
-        timezone="Europe/Moscow"
-        onOpenGame={vi.fn()}
-        onChooseNextGame={onChooseNextGame}
-      />,
-    );
-
-    expect(screen.getByText('Победа в игре · 4:2')).toBeInTheDocument();
-    expect(screen.getByText(/в течение минуты выберите/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Сыграть сразу' }));
-    expect(onChooseNextGame).toHaveBeenCalledWith('immediate');
-    fireEvent.click(screen.getByRole('button', { name: 'По расписанию' }));
-    expect(onChooseNextGame).toHaveBeenCalledWith('scheduled');
-  });
-
-  it('opens the next game after both players choose to continue immediately', () => {
+  it('shows the inter-game break and opens the next game only when available', () => {
     const onOpenNextGame = vi.fn();
-    render(
+    const state = attemptState({
+      attempt: {
+        ...attemptState().attempt,
+        status: 'settled',
+        result: {
+          outcome: 'home_win',
+          winnerUserId: 'u1',
+          myScore: 4,
+          opponentScore: 2,
+          myAccuracy: 62.5,
+          opponentAccuracy: 48.25,
+          myActiveTimeMs: 80_000,
+          opponentActiveTimeMs: 95_000,
+        },
+      },
+      nextGame: {
+        fixtureId: 'fixture-2',
+        breakEndsAt: '2030-09-10T12:31:00.000Z',
+        available: false,
+      },
+    });
+    const { rerender } = render(
       <TournamentPlayoffAttemptView
-        state={attemptState({
-          attempt: {
-            ...attemptState().attempt,
-            status: 'settled',
-            result: {
-              outcome: 'home_win',
-              winnerUserId: 'u1',
-              myScore: 4,
-              opponentScore: 2,
-              myAccuracy: 62.5,
-              opponentAccuracy: 48.25,
-              myActiveTimeMs: 80_000,
-              opponentActiveTimeMs: 95_000,
-            },
-          },
-          nextGameChoice: {
-            nextFixtureId: 'fixture-2',
-            expiresAt: '2030-09-10T12:31:00.000Z',
-            myChoice: 'immediate',
-            opponentChoice: 'immediate',
-            canChoose: false,
-            startsImmediately: true,
-          },
-        })}
+        state={state}
         currentUserId="u1"
         timezone="Europe/Moscow"
         onOpenGame={vi.fn()}
@@ -369,6 +322,18 @@ describe('TournamentPlayoffAttemptView', () => {
       />,
     );
 
+    expect(screen.getByText(/следующая игра станет доступна после перерыва/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Открыть следующую игру' })).not.toBeInTheDocument();
+    rerender(
+      <TournamentPlayoffAttemptView
+        state={{ ...state, nextGame: { ...state.nextGame!, available: true } }}
+        currentUserId="u1"
+        timezone="Europe/Moscow"
+        onOpenGame={vi.fn()}
+        onOpenNextGame={onOpenNextGame}
+        onChooseNextGame={vi.fn()}
+      />,
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Открыть следующую игру' }));
     expect(onOpenNextGame).toHaveBeenCalledTimes(1);
   });

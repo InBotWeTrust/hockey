@@ -1141,7 +1141,7 @@ describe('TournamentCatalog', () => {
             winnerUserId: null,
           },
           tournament: { status: 'playoff', winnerUserId: null },
-          nextGameChoice: null,
+          nextGame: null,
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),

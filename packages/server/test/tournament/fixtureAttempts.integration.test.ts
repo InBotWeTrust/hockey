@@ -2446,10 +2446,12 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       await advanceTournamentPlayoffSeries(client, {
         seriesId: context.fixture.series_id,
         winnerParticipantId: context.fixture.home_participant_id,
+        settledAt: new Date('2030-10-26T18:00:00.000Z'),
       });
       await advanceTournamentPlayoffSeries(client, {
         seriesId: context.fixture.series_id,
         winnerParticipantId: context.fixture.home_participant_id,
+        settledAt: new Date('2030-10-26T18:00:00.000Z'),
       });
       await client.query('commit');
     } catch (error) {
@@ -2480,6 +2482,13 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
 
   it('moves a settled series game through its break into a fresh ready check exactly once', async () => {
     const context = await openFirstPlayoffAttempt(pool, 'attempt-series-break-ready-check');
+    await pool.query(
+      `update tournament_round_game_day day
+          set first_game_starts_at = $2::timestamptz + (day.day_number - 1) * interval '1 day'
+         from tournament_fixture fixture
+        where fixture.id = $1 and day.round_id = fixture.round_id`,
+      [context.fixture.fixture_id, context.fixture.scheduled_starts_at],
+    );
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(context.fixture.scheduled_starts_at.getTime() + 1));
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
@@ -2567,6 +2576,230 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('assigns each materialized series game to the configured game day capacity', async () => {
+    const context = await openFirstPlayoffAttempt(pool, 'attempt-series-game-day-capacity');
+    const settledAt = new Date('2030-10-26T18:00:00.000Z');
+    await pool.query(
+      `update tournament_fixture_attempt
+          set status = 'technical_result', settled_at = $2
+        where fixture_id = $1`,
+      [context.fixture.fixture_id, settledAt],
+    );
+    await pool.query(
+      `update tournament_fixture set status = 'settled', settled_at = $2 where id = $1`,
+      [context.fixture.fixture_id, settledAt],
+    );
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await advanceTournamentPlayoffSeries(client, {
+        seriesId: context.fixture.series_id,
+        winnerParticipantId: context.fixture.home_participant_id,
+        settledAt,
+      });
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const secondGame = await pool.query<{
+      fixture_id: string;
+      day_number: number;
+      starts_at: Date;
+    }>(
+      `select fixture.id as fixture_id, day.day_number, attempt.scheduled_starts_at as starts_at
+         from tournament_fixture fixture
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+         join tournament_round_game_day day on day.id = attempt.round_game_day_id
+        where fixture.series_id = $1
+          and (fixture.result_snapshot->>'gameNumber')::int = 2`,
+      [context.fixture.series_id],
+    );
+    expect(secondGame.rows[0]).toEqual({
+      fixture_id: expect.any(String),
+      day_number: 1,
+      starts_at: new Date('2030-10-26T18:05:00.000Z'),
+    });
+
+    await pool.query(
+      `update tournament_fixture_attempt
+          set status = 'technical_result', settled_at = $2
+        where fixture_id = $1`,
+      [secondGame.rows[0]!.fixture_id, new Date('2030-10-26T18:30:00.000Z')],
+    );
+    await pool.query(
+      `update tournament_fixture
+          set status = 'settled', settled_at = $2
+        where id = $1`,
+      [secondGame.rows[0]!.fixture_id, new Date('2030-10-26T18:30:00.000Z')],
+    );
+    const secondClient = await pool.connect();
+    try {
+      await secondClient.query('begin');
+      await advanceTournamentPlayoffSeries(secondClient, {
+        seriesId: context.fixture.series_id,
+        winnerParticipantId: context.fixture.away_participant_id,
+        settledAt: new Date('2030-10-26T18:30:00.000Z'),
+      });
+      await secondClient.query('commit');
+    } catch (error) {
+      await secondClient.query('rollback');
+      throw error;
+    } finally {
+      secondClient.release();
+    }
+    const thirdGame = await pool.query<{ day_number: number; starts_at: Date }>(
+      `select day.day_number, attempt.scheduled_starts_at as starts_at
+         from tournament_fixture fixture
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+         join tournament_round_game_day day on day.id = attempt.round_game_day_id
+        where fixture.series_id = $1
+          and (fixture.result_snapshot->>'gameNumber')::int = 3`,
+      [context.fixture.series_id],
+    );
+    expect(thirdGame.rows[0]).toEqual({
+      day_number: 2,
+      starts_at: new Date('2030-10-27T17:00:00.000Z'),
+    });
+  });
+
+  it('does not materialize a result-bearing game without a remaining game day', async () => {
+    const context = await openFirstPlayoffAttempt(pool, 'attempt-series-no-game-day');
+    await pool.query(
+      `update tournament_round_game_day day
+          set max_result_bearing_games = 1
+         from tournament_fixture fixture
+        where fixture.id = $1 and day.round_id = fixture.round_id and day.day_number = 1`,
+      [context.fixture.fixture_id],
+    );
+    await pool.query(
+      `delete from tournament_round_game_day day
+       using tournament_fixture fixture
+       where fixture.id = $1 and day.round_id = fixture.round_id and day.day_number > 1`,
+      [context.fixture.fixture_id],
+    );
+    const settledAt = new Date('2030-10-26T18:00:00.000Z');
+    await pool.query(
+      `update tournament_fixture_attempt
+          set status = 'technical_result', settled_at = $2
+        where fixture_id = $1`,
+      [context.fixture.fixture_id, settledAt],
+    );
+    await pool.query(
+      `update tournament_fixture set status = 'settled', settled_at = $2 where id = $1`,
+      [context.fixture.fixture_id, settledAt],
+    );
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await advanceTournamentPlayoffSeries(client, {
+        seriesId: context.fixture.series_id,
+        winnerParticipantId: context.fixture.home_participant_id,
+        settledAt,
+      });
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+    const nextAttempt = await pool.query<{ attempts: number }>(
+      `select count(*)::int as attempts
+         from tournament_fixture fixture
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+        where fixture.series_id = $1
+          and (fixture.result_snapshot->>'gameNumber')::int = 2`,
+      [context.fixture.series_id],
+    );
+    expect(nextAttempt.rows[0]).toEqual({ attempts: 0 });
+  });
+
+  it('delays the next round only when its configured start has passed', async () => {
+    const tournament = await createPublished(pool, 'attempt-delayed-next-round', lifecycleRules());
+    await preparePlayoffs(pool, tournament.id);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00.000Z'));
+    const settledAt = new Date('2030-11-05T12:00:00.000Z');
+    const configuredStart = new Date('2030-11-02T17:00:00.000Z');
+    await pool.query(
+      `update tournament_round
+          set starts_at = $2
+        where tournament_id = $1 and stage = 'playoff' and number = 2`,
+      [tournament.id, configuredStart],
+    );
+    await pool.query(
+      `update tournament_round_game_day day
+          set first_game_starts_at = $2
+         from tournament_round round
+        where round.id = day.round_id
+          and round.tournament_id = $1 and round.stage = 'playoff' and round.number = 2`,
+      [tournament.id, configuredStart],
+    );
+    const semifinals = await pool.query<{
+      series_id: string;
+      winner_participant_id: string;
+    }>(
+      `select series.id as series_id, series.higher_seed_participant_id as winner_participant_id
+         from tournament_playoff_series series
+         join tournament_round round on round.id = series.round_id
+        where round.tournament_id = $1 and round.stage = 'playoff' and round.number = 1
+        order by series.bracket_position`,
+      [tournament.id],
+    );
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      for (const semifinal of semifinals.rows) {
+        await advanceTournamentPlayoffSeries(client, {
+          seriesId: semifinal.series_id,
+          winnerParticipantId: semifinal.winner_participant_id,
+          settledAt,
+        });
+        await advanceTournamentPlayoffSeries(client, {
+          seriesId: semifinal.series_id,
+          winnerParticipantId: semifinal.winner_participant_id,
+          settledAt,
+        });
+      }
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+    const finalSchedule = await pool.query<{
+      round_starts_at: Date;
+      local_date: string;
+      day_starts_at: Date;
+      fixture_starts_at: Date;
+      attempt_starts_at: Date;
+    }>(
+      `select round.starts_at as round_starts_at, day.local_date::text as local_date,
+              day.first_game_starts_at as day_starts_at,
+              fixture.scheduled_starts_at as fixture_starts_at,
+              attempt.scheduled_starts_at as attempt_starts_at
+         from tournament_round round
+         join tournament_round_game_day day on day.round_id = round.id
+         join tournament_fixture fixture on fixture.round_id = round.id
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+        where round.tournament_id = $1 and round.stage = 'playoff' and round.number = 2
+          and (fixture.result_snapshot->>'gameNumber')::int = 1`,
+      [tournament.id],
+    );
+    const expectedStart = new Date(settledAt.getTime() + 30 * 60_000);
+    expect(finalSchedule.rows[0]).toEqual({
+      round_starts_at: expectedStart,
+      local_date: '2030-11-05',
+      day_starts_at: expectedStart,
+      fixture_starts_at: expectedStart,
+      attempt_starts_at: expectedStart,
+    });
   });
 
   it('forces a series winner only after a second admin confirmation and preserves factual score', async () => {

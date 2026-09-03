@@ -586,6 +586,7 @@ export async function settleTournamentSegmentForDuel(
     await advanceTournamentPlayoffSeries(client, {
       seriesId: segment.series_id,
       winnerParticipantId,
+      settledAt: input.settledAt,
     });
   }
   if (segment.round_stage === 'regular') {

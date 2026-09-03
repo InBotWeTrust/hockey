@@ -282,13 +282,10 @@ export interface TournamentFixtureAttemptState {
     status: string;
     winnerUserId: string | null;
   };
-  nextGameChoice: {
-    nextFixtureId: string;
-    expiresAt: string;
-    myChoice: 'immediate' | 'scheduled' | null;
-    opponentChoice: 'immediate' | 'scheduled' | null;
-    canChoose: boolean;
-    startsImmediately: boolean;
+  nextGame: {
+    fixtureId: string;
+    breakEndsAt: string;
+    available: boolean;
   } | null;
 }
 
@@ -365,17 +362,6 @@ export function fetchTournamentBracket(tournamentId: string) {
 export function fetchTournamentFixtureAttempt(tournamentId: string, fixtureId: string) {
   return apiFetch<TournamentFixtureAttemptState>(
     `/tournaments/${tournamentId}/fixtures/${fixtureId}/attempt`,
-  );
-}
-
-export function chooseTournamentNextGame(
-  tournamentId: string,
-  fixtureId: string,
-  choice: 'immediate' | 'scheduled',
-) {
-  return apiFetch<NonNullable<TournamentFixtureAttemptState['nextGameChoice']>>(
-    `/tournaments/${tournamentId}/fixtures/${fixtureId}/attempt/next-game-choice`,
-    { method: 'POST', body: JSON.stringify({ choice }) },
   );
 }
 
