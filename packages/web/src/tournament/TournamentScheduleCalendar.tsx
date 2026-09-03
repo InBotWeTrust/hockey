@@ -257,10 +257,10 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
   const otherSelectedFixtures = selectedFixtures.filter(
     (fixture) => !isMine(fixture, props.currentUserId),
   );
-  const visibleOtherFixtures = selectedFixturesExpanded
+  const hasLazyOtherGames = props.hasOtherGames ?? false;
+  const visibleOtherFixtures = hasLazyOtherGames || selectedFixturesExpanded
     ? otherSelectedFixtures
     : otherSelectedFixtures.slice(0, 4);
-  const hasLazyOtherGames = props.hasOtherGames ?? false;
   const selectedMatchday = matchdaysByDate.get(selectedDate);
   const selectedMatchdayIsActive =
     selectedMatchday !== undefined &&

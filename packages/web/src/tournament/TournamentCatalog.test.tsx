@@ -676,7 +676,7 @@ describe('TournamentCatalog', () => {
     expect(sections).toBeInTheDocument();
   });
 
-  it('keeps date-scoped schedule caches separate and loads other games only on demand', async () => {
+  it('keeps date-scoped caches separate and renders every game from five-item lazy pages', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [
         {
@@ -748,10 +748,23 @@ describe('TournamentCatalog', () => {
       }));
     const othersSpy = vi
       .spyOn(api, 'fetchTournamentScheduleOtherGames')
-      .mockImplementation(async (_tournamentId, date) => ({
-        games: [other(date === '2030-09-01' ? 'other-2' : 'other-3', date)],
-        nextCursor: null,
-      }));
+      .mockImplementation(async (_tournamentId, date, cursor) => {
+        if (date === '2030-09-02') {
+          return { games: [other('other-9', date)], nextCursor: null };
+        }
+        if (cursor !== null) {
+          return {
+            games: [other('other-7', date), other('other-8', date)],
+            nextCursor: null,
+          };
+        }
+        return {
+          games: ['other-2', 'other-3', 'other-4', 'other-5', 'other-6'].map((id) =>
+            other(id, date),
+          ),
+          nextCursor: { fixtureNumber: 6, id: 'other-6' },
+        };
+      });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <MemoryRouter>
@@ -769,6 +782,9 @@ describe('TournamentCatalog', () => {
     expect(screen.queryByText('Чужой other-2 — Гость other-2')).not.toBeInTheDocument();
     expect(othersSpy).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Показать остальные игры' }));
+    for (const id of ['other-2', 'other-3', 'other-4', 'other-5', 'other-6']) {
+      expect(await screen.findByText(`Чужой ${id} — Гость ${id}`)).toBeInTheDocument();
+    }
     const foreignGame = (await screen.findByText('Чужой other-2 — Гость other-2')).closest(
       '.tournament-fixture-card',
     );
@@ -776,11 +792,18 @@ describe('TournamentCatalog', () => {
     expect(foreignGame).not.toHaveTextContent('Победа');
     expect(foreignGame).not.toHaveTextContent('Поражение');
     expect(othersSpy).toHaveBeenCalledWith('lazy-cup', '2030-09-01', null);
+    fireEvent.click(screen.getByRole('button', { name: 'Показать ещё' }));
+    expect(await screen.findByText('Чужой other-7 — Гость other-7')).toBeInTheDocument();
+    expect(screen.getByText('Чужой other-8 — Гость other-8')).toBeInTheDocument();
+    expect(othersSpy).toHaveBeenCalledWith('lazy-cup', '2030-09-01', {
+      fixtureNumber: 6,
+      id: 'other-6',
+    });
 
     fireEvent.keyDown(document, { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: /^2 сентября/i }));
     expect(await screen.findByRole('button', { name: 'Посмотреть игры дня' })).toBeInTheDocument();
-    expect(screen.queryByText('Чужой other-3 — Гость other-3')).not.toBeInTheDocument();
+    expect(screen.queryByText('Чужой other-9 — Гость other-9')).not.toBeInTheDocument();
     expect(scheduleSpy).toHaveBeenCalledWith('lazy-cup', '2030-09-01');
     expect(scheduleSpy).toHaveBeenCalledWith('lazy-cup', '2030-09-02');
   });
@@ -1283,13 +1306,13 @@ describe('TournamentCatalog', () => {
               gameNumber: 3,
               scheduledStartsAt: '2030-09-10T14:20:00.000Z',
               windowEndsAt: '2030-09-10T15:20:00.000Z',
-              status: 'settled',
+              status: 'forfeit',
               homeUserId: 'u1',
               awayUserId: 'u2',
               homeName: 'Первый',
               awayName: 'Второй',
               homeScore: 0,
-              awayScore: 1,
+              awayScore: 0,
               winnerSide: 'away',
             },
           ],
@@ -1321,13 +1344,11 @@ describe('TournamentCatalog', () => {
     );
     expect(within(dialog).getByText('Счёт серии 1:2')).toBeInTheDocument();
     expect(within(dialog).getAllByText(/^Игра \d/)).toHaveLength(3);
-    const finalGame = within(dialog).getByLabelText('Игра 3: Первый 0:1 Второй');
-    expect(within(finalGame).getByText('Первый')).toHaveClass(
-      'tournament-bracket-game__participant--own-loss',
+    const finalGame = within(dialog).getByLabelText(
+      'Игра 3: Техническая победа — Второй',
     );
-    expect(within(finalGame).getByText('Второй')).toHaveClass(
-      'tournament-bracket-game__participant--winner',
-    );
+    expect(within(finalGame).getByText('Техническая победа — Второй')).toBeInTheDocument();
+    expect(within(finalGame).queryByText(/0\s*:\s*0/)).not.toBeInTheDocument();
     expect(
       designSystemCss,
     ).toMatch(/\.tournament-bracket-series-modal\s*\{[^}]*max-width:\s*min\(100%,\s*520px\);[^}]*overflow:\s*hidden;/s);

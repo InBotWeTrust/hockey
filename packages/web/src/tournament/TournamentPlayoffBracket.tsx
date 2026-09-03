@@ -483,46 +483,65 @@ function SeriesDetailsModal(props: {
             Игры серии ещё не назначены.
           </span>
         ) : (
-          series.fixtures.map((fixture) => (
-            <div
-              className="tournament-bracket-game"
-              key={fixture.id}
-              aria-label={
-                fixture.homeName !== null &&
-                fixture.awayName !== null &&
-                fixture.homeScore !== null &&
-                fixture.awayScore !== null
-                  ? `Игра ${fixture.gameNumber}: ${fixture.homeName} ${fixture.homeScore}:${fixture.awayScore} ${fixture.awayName}`
-                  : undefined
-              }
-            >
-              <span>
-                Игра {fixture.gameNumber} · {gameTimeLabel(fixture, props.timezone)}
-              </span>
-              {gameResultLabel(fixture) !== null && (
-                <strong
-                  className={`tournament-bracket-game__result${fixture.winnerSide ? ` tournament-bracket-game__result--${fixture.winnerSide}-won` : ''}`}
-                >
-                  <span className={`tournament-bracket-game__participant${participantTone(fixture, 'home')}`}>
-                    {fixture.homeName}
-                  </span>{' '}
-                  {fixture.homeScore} : {fixture.awayScore}{' '}
-                  <span className={`tournament-bracket-game__participant${participantTone(fixture, 'away')}`}>
-                    {fixture.awayName}
-                  </span>
-                </strong>
-              )}
-              {isMySeries && fixture.id === latestFixtureId && (
-                <PlayerAttemptState
-                  tournamentId={props.tournamentId}
-                  fixtureId={fixture.id}
-                  currentUserId={props.currentUserId!}
-                  timezone={props.timezone}
-                  onOpenFixture={props.onOpenFixture}
-                />
-              )}
-            </div>
-          ))
+          series.fixtures.map((fixture) => {
+            const resultLabel = gameResultLabel(fixture);
+            const ariaResultLabel =
+              fixture.status === 'forfeit'
+                ? resultLabel
+                : fixture.homeName !== null &&
+                    fixture.awayName !== null &&
+                    fixture.homeScore !== null &&
+                    fixture.awayScore !== null
+                  ? `${fixture.homeName} ${fixture.homeScore}:${fixture.awayScore} ${fixture.awayName}`
+                  : null;
+            return (
+              <div
+                className="tournament-bracket-game"
+                key={fixture.id}
+                aria-label={
+                  ariaResultLabel === null
+                    ? undefined
+                    : `Игра ${fixture.gameNumber}: ${ariaResultLabel}`
+                }
+              >
+                <span>
+                  Игра {fixture.gameNumber} · {gameTimeLabel(fixture, props.timezone)}
+                </span>
+                {resultLabel !== null && (
+                  <strong
+                    className={`tournament-bracket-game__result${fixture.winnerSide ? ` tournament-bracket-game__result--${fixture.winnerSide}-won` : ''}`}
+                  >
+                    {fixture.status === 'forfeit' ? (
+                      resultLabel
+                    ) : (
+                      <>
+                        <span
+                          className={`tournament-bracket-game__participant${participantTone(fixture, 'home')}`}
+                        >
+                          {fixture.homeName}
+                        </span>{' '}
+                        {fixture.homeScore} : {fixture.awayScore}{' '}
+                        <span
+                          className={`tournament-bracket-game__participant${participantTone(fixture, 'away')}`}
+                        >
+                          {fixture.awayName}
+                        </span>
+                      </>
+                    )}
+                  </strong>
+                )}
+                {isMySeries && fixture.id === latestFixtureId && (
+                  <PlayerAttemptState
+                    tournamentId={props.tournamentId}
+                    fixtureId={fixture.id}
+                    currentUserId={props.currentUserId!}
+                    timezone={props.timezone}
+                    onOpenFixture={props.onOpenFixture}
+                  />
+                )}
+              </div>
+            );
+          })
         )}
       </div>
       {props.renderSeriesAction?.(series)}
