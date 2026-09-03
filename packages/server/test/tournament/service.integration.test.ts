@@ -4077,6 +4077,55 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect((await pool.query(`select id from push_delivery_log`)).rows).toEqual([]);
   });
 
+  it('keeps the rescheduled game-day reminder deduplicated when the latest attempt is a replay without a day', async () => {
+    const { tournament, fixtures } = await createBestOfThreePlayoff(pool, 'replay-game-day-reminder');
+    const [fixture] = fixtures;
+    await subscribeTournamentParticipants(pool, [fixture!.home_participant_id, fixture!.away_participant_id]);
+    await pool.query(
+      `insert into users (id, display_name, timezone, account_kind)
+       values ($1, 'Ультимейт Хоккей', 'Europe/Moscow', 'official')`,
+      [SYSTEM_SENDER_ID],
+    );
+    const round = await pool.query<{ round_id: string }>(
+      `select round_id from tournament_fixture where id = $1`, [fixture!.id],
+    );
+    const day = await pool.query<{ id: string }>(
+      `insert into tournament_round_game_day
+         (round_id, day_number, local_date, first_game_local_time, first_game_starts_at,
+          max_result_bearing_games, readiness_duration, planned_start_interval, inter_game_break_duration)
+       values ($1, 1, '2030-09-01', '13:00', $2, 3, interval '5 minutes', interval '30 minutes', interval '5 minutes')
+       returning id`,
+      [round.rows[0]!.round_id, fixture!.scheduled_starts_at],
+    );
+    const firstStart = fixture!.scheduled_starts_at;
+    await pool.query(
+      `insert into tournament_fixture_attempt
+         (fixture_id, round_game_day_id, attempt_number, kind, status, scheduled_starts_at,
+          readiness_expires_at, hard_deadline_at, is_result_bearing)
+       values ($1, $2, 1, 'initial', 'pending', $3, $4, $5, true)`,
+      [fixture!.id, day.rows[0]!.id, firstStart, new Date(firstStart.getTime() + 5 * 60_000), new Date(firstStart.getTime() + 60 * 60_000)],
+    );
+    const publisher = { publish: async () => undefined } as const;
+    await reconcilePlayoffDayStartingCommunications(pool, { now: new Date(firstStart.getTime() - 30 * 60_000), systemUserId: SYSTEM_SENDER_ID, publisher });
+    await pool.query(`update tournament_fixture_attempt set status = 'settled' where fixture_id = $1`, [fixture!.id]);
+    const replayStart = new Date(firstStart.getTime() + 5 * 60_000);
+    await pool.query(
+      `insert into tournament_fixture_attempt
+         (fixture_id, attempt_number, kind, status, scheduled_starts_at, readiness_expires_at, hard_deadline_at, is_result_bearing)
+       values ($1, 2, 'replay', 'pending', $2, $3, $4, false)`,
+      [fixture!.id, replayStart, new Date(replayStart.getTime() + 5 * 60_000), new Date(replayStart.getTime() + 60 * 60_000)],
+    );
+    const rescheduledStart = new Date(firstStart.getTime() + 3 * 60 * 60_000);
+    await rescheduleTournamentFixture(pool, {
+      tournamentId: tournament.id, fixtureId: fixture!.id, startsAt: rescheduledStart,
+      endsAt: new Date(rescheduledStart.getTime() + 60 * 60_000), reason: 'replay reschedule', adminUserId: ADMIN_ID,
+    });
+    await reconcilePlayoffDayStartingCommunications(pool, { now: new Date(rescheduledStart.getTime() - 30 * 60_000), systemUserId: SYSTEM_SENDER_ID, publisher });
+    await reconcilePlayoffDayStartingCommunications(pool, { now: new Date(rescheduledStart.getTime() - 30 * 60_000), systemUserId: SYSTEM_SENDER_ID, publisher });
+    expect((await pool.query<{ schedule_revision: number }>(`select schedule_revision from tournament_round_game_day where id = $1`, [day.rows[0]!.id])).rows).toEqual([{ schedule_revision: 1 }]);
+    expect((await pool.query<{ count: string }>(`select count(*)::text as count from push_delivery_log where event_type = 'tournament.series_next_game'`)).rows).toEqual([{ count: '4' }]);
+  });
+
   it('does not notify participants before T-30 when a technical result promotes the next fixture', async () => {
     const { tournament, fixtures } = await createBestOfThreePlayoff(
       pool,

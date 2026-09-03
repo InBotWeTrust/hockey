@@ -944,7 +944,10 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
           invalidateUnreadCache: (userId) => invalidateUnreadCache(app.redis, userId),
         })
       : null;
-    if (immediate === null || immediate.considered === 0) {
+    if (
+      (immediate === null || immediate.considered === 0) &&
+      !(combinedNotice && options.systemUserId === undefined)
+    ) {
       await enqueueTournamentFixtureRescheduledPush(app.pg, {
         fixtureId: params.fixtureId,
         startsAt: new Date(body.startsAt),

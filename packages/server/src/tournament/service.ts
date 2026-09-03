@@ -4495,12 +4495,20 @@ export async function rescheduleTournamentFixture(
     );
     if (updated.rowCount === 0)
       throw new AppError('conflict', 'fixture cannot be rescheduled', 409);
-    if (currentAttempt?.round_game_day_id !== null && currentAttempt?.round_game_day_id !== undefined) {
+    const assignedGameDay = (
+      await client.query<{ round_game_day_id: string }>(
+        `select round_game_day_id from tournament_fixture_attempt
+          where fixture_id = $1 and round_game_day_id is not null
+          order by attempt_number desc limit 1`,
+        [input.fixtureId],
+      )
+    ).rows[0]?.round_game_day_id;
+    if (assignedGameDay !== undefined) {
       await client.query(
         `update tournament_round_game_day
             set schedule_revision = schedule_revision + 1, rescheduled_starts_at = $2
           where id = $1`,
-        [currentAttempt.round_game_day_id, input.startsAt],
+        [assignedGameDay, input.startsAt],
       );
     } else {
       await client.query(

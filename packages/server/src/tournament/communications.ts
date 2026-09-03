@@ -165,7 +165,13 @@ export async function reconcilePlayoffDayStartingCommunications(
           where candidate.fixture_id = fixture.id
           order by candidate.attempt_number desc limit 1
        ) attempt on true
-       left join tournament_round_game_day round_game_day on round_game_day.id = attempt.round_game_day_id
+       left join lateral (
+         select candidate.round_game_day_id from tournament_fixture_attempt candidate
+          where candidate.fixture_id = fixture.id and candidate.round_game_day_id is not null
+          order by candidate.attempt_number desc limit 1
+       ) fixture_game_day on true
+       left join tournament_round_game_day round_game_day
+         on round_game_day.id = coalesce(attempt.round_game_day_id, fixture_game_day.round_game_day_id)
        join tournament_participant participant
          on participant.id in (fixture.home_participant_id, fixture.away_participant_id)
         and participant.state = 'approved'

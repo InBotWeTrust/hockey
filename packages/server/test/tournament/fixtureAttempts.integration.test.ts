@@ -3258,6 +3258,73 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     );
   });
 
+  it('delivers neither a push nor a DM when a T-30 reschedule has no system user', async () => {
+    const tournament = await createPublished(pool, 'attempt-reschedule-without-system-user', lifecycleRules());
+    await preparePlayoffs(pool, tournament.id);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00.000Z'));
+    const fixture = await pool.query<{
+      fixture_id: string;
+      home_user_id: string;
+      away_user_id: string;
+      scheduled_starts_at: Date;
+      hard_deadline_at: Date;
+    }>(
+      `select fixture.id as fixture_id, home.user_id as home_user_id, away.user_id as away_user_id,
+              attempt.scheduled_starts_at, attempt.hard_deadline_at
+         from tournament_fixture fixture
+         join tournament_round round on round.id = fixture.round_id
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+         join tournament_participant home on home.id = fixture.home_participant_id
+         join tournament_participant away on away.id = fixture.away_participant_id
+        where fixture.tournament_id = $1 and round.stage = 'playoff'
+          and (fixture.result_snapshot->>'gameNumber')::int = 1
+        order by fixture.fixture_number
+        limit 1`,
+      [tournament.id],
+    );
+    const row = fixture.rows[0]!;
+    for (const userId of [row.home_user_id, row.away_user_id]) {
+      await pool.query(
+        `insert into push_subscriptions (user_id, endpoint, p256dh, auth)
+         values ($1, $2, 'test-p256dh', 'test-auth')`,
+        [userId, `https://push.example.test/no-system-user/${userId}`],
+      );
+    }
+    const { databaseUrl, redisUrl } = getTestUrls();
+    const appWithoutSystemUser = await buildApp({
+      config: {
+        NODE_ENV: 'test', HOST: '0.0.0.0', PORT: 3000, LOG_LEVEL: 'warn',
+        DATABASE_URL: databaseUrl, REDIS_URL: redisUrl,
+        JWT_SECRET, REFRESH_SECRET, TELEGRAM_BOT_TOKEN: 'test-bot-token', DAILY_SEED_SECRET,
+      },
+      pushSchedulerEnabled: false,
+      pushWorkerEnabled: false,
+    });
+    try {
+      const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+      const adminToken = await jwt.issueAccessToken({ sub: ADMIN_ID });
+      const startsAt = new Date(Date.now() + 10 * 60_000);
+      const response = await appWithoutSystemUser.inject({
+        method: 'PATCH',
+        url: `/admin/tournaments/${tournament.id}/fixtures/${row.fixture_id}/schedule`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          startsAt: startsAt.toISOString(),
+          endsAt: new Date(
+            startsAt.getTime() + (row.hard_deadline_at.getTime() - row.scheduled_starts_at.getTime()),
+          ).toISOString(),
+          reason: 'Матч переносится, но системный аккаунт не настроен',
+        },
+      });
+      expect(response.statusCode, JSON.stringify(response.json())).toBe(200);
+      expect((await pool.query(`select id from push_delivery_log`)).rows).toEqual([]);
+      expect((await pool.query(`select id from chats where type = 'direct'`)).rows).toEqual([]);
+      expect((await pool.query(`select id from messages`)).rows).toEqual([]);
+    } finally {
+      await appWithoutSystemUser.close();
+    }
+  });
+
   it('keeps attempt state consistent when an admin resolves a tournament no-show', async () => {
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
     const adminToken = await jwt.issueAccessToken({ sub: ADMIN_ID });
