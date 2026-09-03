@@ -34,9 +34,18 @@
 
 ## Review round 2
 
-- `4574844986caa6dab9c888e9e122b9ee0a5801af` waits for every completed source series feeding a playoff round before shifting it. The effective start is calculated from the stable configured start and the latest result-bearing attempt settlement plus 30 minutes, so 8/16-player brackets receive one shared shift rather than an early partial-round shift.
+- `4574844986caa6dab9c888e9e122b9ee0a5801af` waits for every completed source series feeding a playoff round before shifting it. The stable configured start prevents a later invocation from treating an already shifted timestamp as configuration, so 8/16-player brackets receive one shared shift rather than an early partial-round shift.
 - The shift still updates the round, game days with timezone-aware `local_date`, and pending fixture attempts only. The original configured start is retained in the round snapshot for any later recalculation.
 - Added an 8-player integration regression: two source series settle at 12:00 and the remaining sources at 12:10; both semifinals, their pending attempts, the round, and the game day must all start at 12:40.
+- PASS: `pnpm --filter @hockey/server exec vitest run test/tournament/fixtureAttempts.integration.test.ts` (35 tests)
+- PASS: `pnpm --filter @hockey/server exec vitest run test/tournament/playoffs.test.ts` (10 tests)
+- PASS: `pnpm --filter @hockey/server exec tsc --noEmit`
+- PASS: `git diff --check`
+
+## Review round 3
+
+- `35e9524b16e5f5a14750d0fd9128d5eec2b74a99` records the explicit `settledAt` on every completed playoff series, including admin force decisions, and derives the delay from the latest completed source-series timestamp. This avoids wall-clock timestamps and excludes cancelled future attempts.
+- The 8-player integration regression now completes all four sources through the real `forceTournamentPlayoffSeriesWinner` path: after the first two force decisions at 12:00 the configured next round is unchanged; after the final two at 12:10 both semifinals, their pending attempts, the round, and its game day start at 12:40.
 - PASS: `pnpm --filter @hockey/server exec vitest run test/tournament/fixtureAttempts.integration.test.ts` (35 tests)
 - PASS: `pnpm --filter @hockey/server exec vitest run test/tournament/playoffs.test.ts` (10 tests)
 - PASS: `pnpm --filter @hockey/server exec tsc --noEmit`
