@@ -40,3 +40,16 @@
 - The full 99-test `service.integration.test.ts` run was attempted but overlapped a prior runner in
   the shared test DB and failed during reset/migration setup. The affected scenarios were rerun
   serially and passed.
+
+## Review round 1/5
+
+- Added a forward-only, game-day-scoped schedule revision. An administrator reschedule advances the
+  owning game day (or its legacy round fallback) and records the actual new start. The T-30 key and
+  content use that shared revision/start, so the next materialized game or replay on the same day
+  does not send a third reminder.
+- Paused `needs_reschedule` and `needs_admin_decision` attempts remain on the hub after their old
+  deadline with an explicit administrator-decision card.
+- T-30 reconciliation is a safe no-op when `SYSTEM_USER_ID` is unavailable; it never queues a
+  push without the paired personal system message.
+- RED/GREEN review regressions: 3 passed. The combined reschedule/materialization case proved
+  exactly four deliveries (two original plus two after admin reschedule), with no extra Game 2 push.
