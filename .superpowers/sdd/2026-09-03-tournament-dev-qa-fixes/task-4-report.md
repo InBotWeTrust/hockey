@@ -129,3 +129,73 @@ No GLM review, push, deployment, production action, or manual dev acceptance was
 performed. A previous broad web run outside the final focused gate had the two
 known unrelated failures in `TournamentOperations.test.tsx` and
 `glassMaterial.test.ts` (918/920 passed); Task 4 does not alter those files.
+
+## Review fix round 1/5 — legacy lifecycle compatibility
+
+Migration `092` added boundary state but did not identify which already-open
+tournament matches had reserved inventory through the previous full-match
+lifecycle. Applying the new confirmation gate to every tournament would block
+those legacy attempts, could reserve charges on top of their existing reserve,
+and could leave the old reserve frozen at settlement or cancellation.
+
+Newly created tournament matches now carry the explicit rules-snapshot marker
+`tournamentLoadoutLifecycleVersion: 1`. Existing matches have no marker and are
+left untouched: there is no backfill and no mutation of active attempts.
+Marked matches use period-boundary confirmation/reservation; unmarked legacy
+matches retain their original ready/start/terminal inventory lifecycle.
+
+The legacy integration fixture models a two-period pre-`092` reserve. After the
+first period starts, its accounting is `3 initial = 1 available + 1 reserved +
+1 consumed`. Terminal cancellation releases the one remaining charge and
+closes the participant ledger as `3 initial = 2 available + 0 reserved + 1
+actually consumed`, with `reserved_inventory_charges =
+consumed_inventory_charges = 2` under the legacy full-match ledger convention.
+The original loadout and effects snapshots remain unchanged, and the new
+confirmation endpoint returns `409` for that unmarked match.
+
+Readiness retry is idempotent for active tournament matches: before and after a
+repeated `POST .../ready`, the integration test compares `accepted_at`,
+participant `ready_at`/`updated_at`, attempt `home_ready_at`, and the inventory
+reservation-event count as exact DB-row equality. The response is the current
+active match (`200`) and the retry does not publish notices or perform writes.
+
+Pending-boundary cleanup now clears `tournament_loadout_period` and
+`tournament_loadout_confirmed_at` even when its reservation delta is zero. The
+regression uses a zero-cost selected stick and proves both marker fields are
+null after terminal cleanup while inventory remains `3 available, 0 reserved`.
+
+### Round 1 RED/GREEN evidence
+
+- Legacy server RED: `preserves a pre-092 active tournament full-match reserve
+  through start and terminal cleanup` expected the new confirmation endpoint to
+  reject an unmarked match with `409`, but received `200`. GREEN after gating
+  confirmation, period start, activation, preview, and terminal cleanup by the
+  explicit lifecycle marker.
+- Readiness retry RED: `returns the current active tournament state when
+  readiness is retried after activation` expected `200` and received `409`.
+  GREEN with an active-tournament read-only retry path and exact before/after DB
+  equality.
+- Zero-reserve cleanup RED: `clears a confirmed zero-reserve tournament
+  boundary during terminal cleanup` retained period marker `1` and a non-null
+  confirmation timestamp. GREEN after removing the zero-delta early return.
+- Legacy web RED: the reload-safe flow made one extra `/tournament-loadout`
+  request (`3` instead of `2`) for an unmarked active tournament. GREEN after
+  the client keyed the split lifecycle from the same rules marker and used the
+  legacy direct `period/start` request with its selected loadout.
+
+### Fresh round 1 verification
+
+- `pnpm --filter @hockey/web exec vitest run src/screens/DailyScreen.test.tsx
+  -t "keeps tournament ready, loadout confirmation"` — PASS, 1/1.
+- `pnpm --filter @hockey/web exec vitest run src/screens/DailyScreen.test.tsx` —
+  PASS, 108/108.
+- `pnpm --filter @hockey/game-core build` — PASS.
+- `pnpm --filter @hockey/server typecheck` — PASS.
+- `pnpm --filter @hockey/server exec vitest run
+  test/tournament/fixtureAttempts.integration.test.ts
+  --poolOptions.forks.singleFork` — PASS, 45/45.
+- `pnpm --filter @hockey/web typecheck` — PASS.
+- `git diff --check` — PASS.
+
+No GLM review, subagent, push, deployment, production action, or manual dev
+acceptance was performed in review fix round 1.
