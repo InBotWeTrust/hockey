@@ -1,13 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 import { chooseTournamentNextGame, fetchTournamentFixtureAttempt } from '../api/tournament.js';
 import type {
   TournamentBracketFixture,
   TournamentBracketSeries,
-  TournamentBracketSource,
   TournamentFixtureAttemptState,
 } from '../api/tournament.js';
-import { UserAvatar } from '../chat/components/UserAvatar.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
+import {
+  PlayoffSeriesCard,
+  TournamentPlayoffOverview,
+  playoffFormatLabel,
+  playoffSeriesScheduleLabel,
+  playoffStageName,
+  type PlayoffSeriesSelection,
+} from './TournamentPlayoffOverview.js';
 
 interface TournamentPlayoffBracketProps {
   tournamentId: string;
@@ -318,29 +326,6 @@ function PlayerAttemptState(props: {
   );
 }
 
-function formatLabel(kind: 'express' | 'express_plus' | 'classic'): string {
-  if (kind === 'express') return 'Экспресс';
-  if (kind === 'express_plus') return 'Микс';
-  return 'Классика';
-}
-
-function stageName(roundNumber: number, finalRound: number, plural: boolean): string {
-  const distance = finalRound - roundNumber;
-  if (distance === 0) return 'Финал';
-  if (distance === 1) return plural ? 'Полуфиналы' : 'Полуфинал';
-  if (distance === 2) return plural ? 'Четвертьфиналы' : 'Четвертьфинал';
-  if (distance === 3) return '1/8 финала';
-  return plural ? `Раунд ${roundNumber}` : `Игра раунда ${roundNumber}`;
-}
-
-function sourceStageName(roundNumber: number, finalRound: number): string {
-  const distance = finalRound - roundNumber;
-  if (distance === 1) return 'полуфинала';
-  if (distance === 2) return 'четвертьфинала';
-  if (distance === 3) return '1/8 финала';
-  return `серии раунда ${roundNumber}`;
-}
-
 function seriesStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     pending: 'Ожидает участников',
@@ -410,124 +395,55 @@ export function gameResultLabel(fixture: TournamentBracketFixture): string | nul
   return `${fixture.homeName} ${fixture.homeScore} : ${fixture.awayScore} ${fixture.awayName}`;
 }
 
-function participantPlaceholder(
-  source: TournamentBracketSource | undefined,
-  byKey: Map<string, TournamentBracketSeries>,
-  finalRound: number,
-): string {
-  if (source?.type !== 'winner' && source?.type !== 'loser') return 'Участник определится позже';
-  const sourceSeries = source.seriesKey ? byKey.get(source.seriesKey) : undefined;
-  if (!sourceSeries) {
-    return source.type === 'winner'
-      ? 'Победитель предыдущей серии'
-      : 'Проигравший предыдущей серии';
-  }
-  const prefix = source.type === 'winner' ? 'Победитель' : 'Проигравший';
-  return `${prefix} ${sourceStageName(sourceSeries.round_number, finalRound)} ${sourceSeries.bracket_position}`;
-}
-
-function ParticipantRow(props: {
-  name: string | null;
-  avatarUrl: string | null;
-  seed: number | null;
-  placeholder: string;
-  winner: boolean;
-  wins: number;
-}) {
-  const name = props.name ?? props.placeholder;
-  return (
-    <div
-      className={`tournament-bracket-player${props.name ? '' : ' tournament-bracket-player--pending'}${props.winner ? ' tournament-bracket-player--winner' : ''}`}
-    >
-      <span
-        className="tournament-bracket-player__seed"
-        aria-label={`Посев ${props.seed ?? 'не определён'}`}
-      >
-        {props.seed ?? '—'}
-      </span>
-      <UserAvatar
-        avatarUrl={props.avatarUrl}
-        name={name}
-        size={32}
-        {...(props.name !== null ? { alt: props.name } : {})}
-      />
-      <div className="tournament-bracket-player__identity">
-        <strong>{name}</strong>
-      </div>
-      <strong
-        className="tournament-bracket-player__wins"
-        aria-label={`${props.wins} ${props.wins % 10 === 1 && props.wins % 100 !== 11 ? 'победа' : [2, 3, 4].includes(props.wins % 10) && ![12, 13, 14].includes(props.wins % 100) ? 'победы' : 'побед'} в серии`}
-      >
-        {props.wins}
-      </strong>
-    </div>
-  );
-}
-
 function SeriesCard(props: {
-  tournamentId: string;
   currentUserId: string | null;
-  onOpenFixture: (fixtureId: string) => void;
   series: TournamentBracketSeries;
   title: string;
   byKey: Map<string, TournamentBracketSeries>;
   finalRound: number;
   timezone: string;
+  bronze?: boolean;
+  onOpen: () => void;
+}) {
+  return <PlayoffSeriesCard {...props} />;
+}
+
+function SeriesDetailsModal(props: {
+  selection: PlayoffSeriesSelection;
+  tournamentId: string;
+  currentUserId: string | null;
+  timezone: string;
+  onOpenFixture: (fixtureId: string) => void;
+  onClose: () => void;
   renderSeriesAction?: (series: TournamentBracketSeries) => ReactNode;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const sources = props.series.depends_on?.sources ?? [];
-  const finished = ['completed', 'settled'].includes(props.series.status);
-  const higherWon =
-    props.series.winner_user_id !== null
-      ? props.series.winner_user_id === props.series.higher_user_id
-      : finished && props.series.higher_seed_wins > props.series.lower_seed_wins;
-  const lowerWon =
-    props.series.winner_user_id !== null
-      ? props.series.winner_user_id === props.series.lower_user_id
-      : finished && props.series.lower_seed_wins > props.series.higher_seed_wins;
+  const { series, title } = props.selection;
   const isMySeries =
     props.currentUserId !== null &&
-    [props.series.higher_user_id, props.series.lower_user_id].includes(props.currentUserId);
-  const latestFixtureId = currentSeriesFixtureId(props.series.fixtures);
+    [series.higher_user_id, series.lower_user_id].includes(props.currentUserId);
+  const latestFixtureId = currentSeriesFixtureId(series.fixtures);
   return (
-    <article
-      className={`tournament-bracket-series${expanded ? ' tournament-bracket-series--expanded' : ''}`}
+    <AccessibleModal
+      title={title}
+      onClose={props.onClose}
+      cardClassName="tournament-bracket-series-modal"
+      headerAction={
+        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={props.onClose}>
+          <X size={16} aria-hidden="true" />
+        </button>
+      }
     >
-      <button
-        type="button"
-        className="tournament-bracket-series__summary"
-        aria-label={`${expanded ? 'Закрыть' : 'Открыть'} серию ${props.title}`}
-        aria-expanded={expanded}
-        onClick={() => setExpanded((current) => !current)}
-      >
-        <header>
-          <strong>{props.title}</strong>
-          <span>{seriesStatusLabel(props.series.status)}</span>
-        </header>
-        <div className="tournament-bracket-series__players">
-          <ParticipantRow
-            name={props.series.higher_name}
-            avatarUrl={props.series.higher_avatar_url}
-            seed={props.series.higher_seed}
-            placeholder={participantPlaceholder(sources[0], props.byKey, props.finalRound)}
-            winner={higherWon}
-            wins={props.series.higher_seed_wins}
-          />
-          <ParticipantRow
-            name={props.series.lower_name}
-            avatarUrl={props.series.lower_avatar_url}
-            seed={props.series.lower_seed}
-            placeholder={participantPlaceholder(sources[1], props.byKey, props.finalRound)}
-            winner={lowerWon}
-            wins={props.series.lower_seed_wins}
-          />
-        </div>
-      </button>
-      {expanded && props.renderSeriesAction?.(props.series)}
-      {expanded && props.series.fixtures.length > 0 && (
-        <div className="tournament-bracket-series__games">
-          {props.series.fixtures.map((fixture) => (
+      <div className="tournament-bracket-series-modal__meta">
+        <strong>{seriesStatusLabel(series.status)}</strong>
+        <span>{playoffSeriesScheduleLabel(series, props.timezone)}</span>
+      </div>
+      <div className="tournament-bracket-series__games">
+        {series.fixtures.length === 0 ? (
+          <span className="tournament-bracket-series-modal__empty">
+            Игры серии ещё не назначены.
+          </span>
+        ) : (
+          series.fixtures.map((fixture) => (
             <div className="tournament-bracket-game" key={fixture.id}>
               <span>
                 Игра {fixture.gameNumber} · {gameTimeLabel(fixture, props.timezone)}
@@ -549,10 +465,11 @@ function SeriesCard(props: {
                 />
               )}
             </div>
-          ))}
-        </div>
-      )}
-    </article>
+          ))
+        )}
+      </div>
+      {props.renderSeriesAction?.(series)}
+    </AccessibleModal>
   );
 }
 
@@ -580,7 +497,7 @@ export function TournamentPlayoffBracket({
     const roundSeries = championship.filter((item) => item.round_number === roundNumber);
     return {
       key: `round-${roundNumber}`,
-      label: stageName(roundNumber, finalRound, true),
+      label: playoffStageName(roundNumber, finalRound, true),
       roundNumber,
       series: roundSeries,
       bronze: false,
@@ -595,30 +512,26 @@ export function TournamentPlayoffBracket({
       bronze: true,
     });
   }
-  const recommendedView =
-    roundViews.find((view) =>
-      view.series.some((item) => ['active', 'scheduled'].includes(item.status)),
-    ) ??
-    [...roundViews].reverse().find((view) => !view.bronze) ??
-    roundViews[0]!;
-  const [selectedKey, setSelectedKey] = useState(recommendedView.key);
-  const selectedView = roundViews.find((view) => view.key === selectedKey) ?? recommendedView;
+  const [selectedKey, setSelectedKey] = useState('overview');
+  const [selectedSeries, setSelectedSeries] = useState<PlayoffSeriesSelection | null>(null);
+  const selectedView = roundViews.find((view) => view.key === selectedKey) ?? null;
+  const tabs = [{ key: 'overview', label: 'Сетка', roundNumber: 0, bronze: false }, ...roundViews];
 
   return (
     <div className="tournament-bracket">
-      {roundViews.length > 1 && (
+      {tabs.length > 1 && (
         <div className="tournament-bracket__round-tabs" role="tablist" aria-label="Раунды плей-офф">
-          {roundViews.map((view) => (
+          {tabs.map((view) => (
             <button
               type="button"
               role="tab"
-              aria-selected={view.key === selectedView.key}
+              aria-selected={view.key === selectedKey}
               className={[
                 view.roundNumber === finalRound && !view.bronze
                   ? 'tournament-bracket__round-tab--gold'
                   : '',
                 view.bronze ? 'tournament-bracket__round-tab--bronze' : '',
-                view.key === selectedView.key ? 'is-active' : '',
+                view.key === selectedKey ? 'is-active' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
@@ -630,42 +543,65 @@ export function TournamentPlayoffBracket({
           ))}
         </div>
       )}
-      <section
-        className={`tournament-bracket-round${selectedView.bronze ? ' tournament-bracket-round--bronze' : ''}`}
-      >
-        <h3>{selectedView.label}</h3>
-        <p className="tournament-rules__muted">
-          Формат игры:{' '}
-          {(() => {
-            const configured = formats?.find(
-              (format) => format.roundNumber === selectedView.roundNumber,
-            );
-            return configured === undefined
-              ? 'будет объявлен перед стартом'
-              : formatLabel(configured.duelKind);
-          })()}
-        </p>
-        <div>
-          {selectedView.series.map((item) => (
-            <SeriesCard
-              key={item.id}
-              tournamentId={tournamentId}
-              currentUserId={currentUserId}
-              onOpenFixture={onOpenFixture}
-              series={item}
-              title={
-                selectedView.bronze
+      {selectedKey === 'overview' ? (
+        <TournamentPlayoffOverview
+          series={series}
+          currentUserId={currentUserId}
+          timezone={timezone}
+          {...(formats === undefined ? {} : { formats })}
+          onOpenSeries={setSelectedSeries}
+        />
+      ) : (
+        selectedView && (
+          <section
+            className={`tournament-bracket-round${selectedView.bronze ? ' tournament-bracket-round--bronze' : ''}`}
+          >
+            <h3>{selectedView.label}</h3>
+            <p className="tournament-rules__muted">
+              Формат игры:{' '}
+              {(() => {
+                const configured = formats?.find(
+                  (format) => format.roundNumber === selectedView.roundNumber,
+                );
+                return configured === undefined
+                  ? 'будет объявлен перед стартом'
+                  : playoffFormatLabel(configured.duelKind);
+              })()}
+            </p>
+            <div>
+              {selectedView.series.map((item) => {
+                const title = selectedView.bronze
                   ? 'За 3-е место'
-                  : `${stageName(selectedView.roundNumber, finalRound, false)}${selectedView.series.length > 1 ? ` ${item.bracket_position}` : ''}`
-              }
-              byKey={byKey}
-              finalRound={finalRound}
-              timezone={timezone}
-              {...(renderSeriesAction === undefined ? {} : { renderSeriesAction })}
-            />
-          ))}
-        </div>
-      </section>
+                  : `${playoffStageName(selectedView.roundNumber, finalRound, false)}${selectedView.series.length > 1 ? ` ${item.bracket_position}` : ''}`;
+                return (
+                  <SeriesCard
+                    key={item.id}
+                    currentUserId={currentUserId}
+                    series={item}
+                    title={title}
+                    byKey={byKey}
+                    finalRound={finalRound}
+                    timezone={timezone}
+                    bronze={selectedView.bronze}
+                    onOpen={() => setSelectedSeries({ series: item, title })}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        )
+      )}
+      {selectedSeries !== null && (
+        <SeriesDetailsModal
+          selection={selectedSeries}
+          tournamentId={tournamentId}
+          currentUserId={currentUserId}
+          timezone={timezone}
+          onOpenFixture={onOpenFixture}
+          onClose={() => setSelectedSeries(null)}
+          {...(renderSeriesAction === undefined ? {} : { renderSeriesAction })}
+        />
+      )}
     </div>
   );
 }
