@@ -117,7 +117,7 @@ describe('TournamentScheduleCalendar', () => {
     expect(screen.queryByText('Игра 1')).not.toBeInTheDocument();
   });
 
-  it('renders playoff fixtures inline for a tournament with daily regular games', () => {
+  it('renders playoff fixtures inline for a tournament with daily regular games by default', () => {
     const playoffFixture = {
       ...fixture(1),
       stage: 'playoff',
@@ -134,7 +134,6 @@ describe('TournamentScheduleCalendar', () => {
         timezone="Europe/Moscow"
         rangeStartsAt="2030-09-01T00:00:00.000Z"
         rangeEndsAt="2030-09-02T23:59:59.000Z"
-        fixtureDetailsMode="inline"
         renderFixture={(item) => <article key={item.id}>{item.home?.name}</article>}
         formatDateTime={(value) => value}
       />,

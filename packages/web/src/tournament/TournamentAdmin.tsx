@@ -2839,6 +2839,9 @@ export function TournamentAdmin(): JSX.Element {
                               </div>
                             </>
                           )}
+                          <h4 className="tournament-playoff-round__timing-title">
+                            Время игр раунда {index + 1}
+                          </h4>
                           <div className="tournament-admin-grid tournament-admin-grid--playoff-timing">
                             {(
                               [

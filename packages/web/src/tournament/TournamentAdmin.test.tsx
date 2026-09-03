@@ -98,6 +98,8 @@ describe('TournamentAdmin', () => {
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1: длительность игры, минуты' })).toHaveValue(
       20,
     );
+    expect(screen.getByText('Время игр раунда 1')).toBeInTheDocument();
+    expect(screen.getByText('Время игр раунда 2')).toBeInTheDocument();
     expect(
       screen.getByRole('spinbutton', { name: 'Раунд 1: интервал стартов, минуты' }),
     ).toHaveValue(30);

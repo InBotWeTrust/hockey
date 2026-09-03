@@ -2101,6 +2101,7 @@
 }
 
 .tournament-playoff-round > .tournament-playoff-round__title,
+.tournament-playoff-round > .tournament-playoff-round__timing-title,
 .tournament-playoff-round > .tournament-admin-field__help,
 .tournament-playoff-round > .tournament-home-sequence,
 .tournament-playoff-round > .tournament-admin-details {
@@ -2111,6 +2112,14 @@
   margin: 0;
   color: var(--ink);
   font-size: 15px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.tournament-playoff-round__timing-title {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 12px;
   font-weight: 900;
   line-height: 1.2;
 }
@@ -2316,6 +2325,7 @@
   .tournament-admin-grid__wide,
   .tournament-admin-details,
   .tournament-playoff-round,
+  .tournament-playoff-round > .tournament-playoff-round__timing-title,
   .tournament-playoff-round > .tournament-admin-field__help,
   .tournament-playoff-round > .tournament-home-sequence,
   .tournament-playoff-round > .tournament-admin-details {
