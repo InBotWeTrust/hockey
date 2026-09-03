@@ -24,3 +24,10 @@
 ## Scope
 
 - No dev or production deployment was performed.
+
+## Review fixes
+
+- `d3025af1903b553d0a176cc9806dcc32d6bfb12d` assigns each new result-bearing series game to its configured game day, advances to the next day at capacity, and refuses to create an unassigned game when no day remains.
+- The same commit delays a past next-round start to the final prior-series settlement plus 30 minutes, shifts unstarted game-day/fixture/attempt timestamps, and updates `local_date` in the tournament timezone.
+- The web tournament attempt contract now consumes `nextGame { fixtureId, breakEndsAt, available }`; it no longer calls the removed next-game-choice endpoint.
+- PASS: server fixture-attempt integration 34/34; playoff unit 10/10; web attempt/catalog tests 47/47; server and web TypeScript; diff check.
