@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   dispatchTournamentCommunication,
+  formatTournamentNotificationDateTime,
   previewTournamentAudience,
 } from '../../src/tournament/communications.js';
 
@@ -121,5 +122,26 @@ describe('tournament communication audiences', () => {
     });
     expect(query).toHaveBeenCalledWith(expect.stringContaining("u.account_kind = 'player'"), []);
     expect(query).toHaveBeenCalledWith(expect.stringContaining('u.blocked_at is null'), []);
+  });
+});
+
+describe('tournament notification date formatting', () => {
+  it('renders a playoff start as a readable local date instead of an ISO timestamp', () => {
+    const formatted = formatTournamentNotificationDateTime(
+      new Date('2026-09-03T21:30:37.664Z'),
+      'Europe/Moscow',
+    );
+
+    expect(formatted).toBe('4 сентября в 00:30');
+    expect(formatted).not.toContain('2026-09-03T');
+  });
+
+  it('falls back to UTC when a legacy tournament contains an invalid timezone', () => {
+    expect(
+      formatTournamentNotificationDateTime(
+        new Date('2026-09-03T21:30:37.664Z'),
+        'invalid-timezone',
+      ),
+    ).toBe('3 сентября в 21:30');
   });
 });
