@@ -99,6 +99,8 @@ function gameWord(value: number): string {
 
 export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProps) {
   const fixtureDetailsMode = props.fixtureDetailsMode ?? 'modal';
+  const showsFixturesInline =
+    fixtureDetailsMode === 'inline' || props.regularSource !== 'head_to_head';
   const today = datePartsInTimezone(Date.now(), props.timezone) ?? {
     year: new Date().getUTCFullYear(),
     month: new Date().getUTCMonth() + 1,
@@ -274,7 +276,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
           const fixtures = fixturesByDate.get(key) ?? [];
           const matchday = matchdaysByDate.get(key);
           const hasEvents =
-            fixtureDetailsMode === 'inline'
+            showsFixturesInline
               ? matchday !== undefined || fixtures.length > 0
               : props.regularSource !== 'head_to_head'
                 ? matchday !== undefined
@@ -293,7 +295,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             descriptions.push('игровой день');
           if (
             fixtures.length > 0 &&
-            (props.regularSource === 'head_to_head' || fixtureDetailsMode === 'inline')
+            (props.regularSource === 'head_to_head' || showsFixturesInline)
           ) {
             descriptions.push(`${fixtures.length} ${gameWord(fixtures.length)}`);
           }
@@ -331,7 +333,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             className="tournament-calendar__legend-dot tournament-calendar__legend-dot--events"
             aria-hidden="true"
           />
-          {fixtureDetailsMode === 'inline' || props.regularSource === 'head_to_head'
+          {showsFixturesInline || props.regularSource === 'head_to_head'
             ? 'Есть игры'
             : 'Игровой день'}
         </li>
@@ -401,7 +403,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
                 )}
             </>
           )}
-          {fixtureDetailsMode === 'inline' && selectedFixtures.length > 0 && (
+          {showsFixturesInline && selectedFixtures.length > 0 && (
             <div className="tournament-fixture-list">
               {selectedFixtures.map((fixture) =>
                 props.renderFixture(fixture, isMine(fixture, props.currentUserId)),
