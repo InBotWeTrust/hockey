@@ -4447,6 +4447,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         );
         if (tournamentAttemptReady && match.status === 'active') {
           await markTournamentAttemptActive(client, match.id);
+          match = await fetchMatchForUpdate(client, match.id);
         }
         const readyNotice =
           tournamentAttemptReady && opts.systemUserId !== undefined

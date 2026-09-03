@@ -340,6 +340,7 @@ export async function insertInitialFixtureAttempt(
       hardDeadlineAt,
       JSON.stringify({
         ...input.template,
+        completionWindowMs: hardDeadlineAt.getTime() - readinessExpiresAt.getTime(),
         readinessMode: input.readinessMode ?? 'manual',
         ...(input.rescheduledReason === undefined
           ? {}
@@ -393,11 +394,36 @@ export async function markTournamentAttemptActive(
   duelMatchId: string,
 ): Promise<boolean> {
   const activated = await client.query(
-    `update tournament_fixture_attempt
-        set status = 'active', updated_at = now()
-      where amateur_duel_match_id = $1 and status = 'ready_check'
-        and home_ready_at is not null and away_ready_at is not null
-      returning fixture_id`,
+    `with activated as (
+       update tournament_fixture_attempt
+          set status = 'active',
+              readiness_expires_at = greatest(home_ready_at, away_ready_at),
+              hard_deadline_at = greatest(home_ready_at, away_ready_at) +
+                (
+                  case
+                    when coalesce(result_snapshot->>'completionWindowMs', '') ~ '^[1-9][0-9]*$'
+                      then (result_snapshot->>'completionWindowMs')::bigint
+                    else greatest(
+                      0,
+                      floor(extract(epoch from (hard_deadline_at - readiness_expires_at)) * 1000)
+                    )::bigint
+                  end
+                ) * interval '1 millisecond',
+              updated_at = now()
+        where amateur_duel_match_id = $1 and status = 'ready_check'
+          and home_ready_at is not null and away_ready_at is not null
+        returning fixture_id, hard_deadline_at
+     ), updated_fixture as (
+       update tournament_fixture fixture
+          set window_ends_at = activated.hard_deadline_at, updated_at = now()
+         from activated
+        where fixture.id = activated.fixture_id
+     )
+     update amateur_duel_match duel
+        set ends_at = activated.hard_deadline_at, updated_at = now()
+       from activated
+      where duel.id = $1
+      returning activated.fixture_id`,
     [duelMatchId],
   );
   if ((activated.rowCount ?? 0) === 0) return false;

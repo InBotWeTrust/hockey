@@ -1,6 +1,7 @@
 import {
   allocateSeriesGamesByDay,
   validateRoundGameDays,
+  validateRoundGameTiming,
   type RoundGameDay,
 } from './playoffScheduling.js';
 import { AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION } from './automaticLifecycle.js';
@@ -59,6 +60,13 @@ export function normalizePublishedTournamentLifecycleRules<T extends UnknownReco
           round.plannedStartIntervalMinutes,
           Number.NaN,
         );
+        validateRoundGameTiming({
+          winsRequired,
+          readinessMinutes,
+          gameDurationMinutes,
+          interGameBreakMinutes,
+          ...(Number.isNaN(plannedStartIntervalMinutes) ? {} : { plannedStartIntervalMinutes }),
+        });
         if (!Array.isArray(round.scheduleDays)) {
           return {
             ...roundWithoutLegacyCadence,

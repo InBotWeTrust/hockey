@@ -8,6 +8,16 @@ import {
 } from '../../src/tournament/playoffScheduling.js';
 
 describe('rebaseRoundGameDaysAtOrAfter', () => {
+  it('moves a start equal to now forward because a round start must be strictly future', () => {
+    const rebased = rebaseRoundGameDaysAtOrAfter(
+      'Europe/Moscow',
+      [{ localDate: '2030-10-27', firstWaveLocalTime: '10:00', maxResultGames: 1 }],
+      new Date('2030-10-27T07:00:00.000Z'),
+    );
+
+    expect(rebased[0]!.localDate).toBe('2030-10-28');
+  });
+
   it('moves a missed DST-bound round to the nearest future local slot without changing capacity', () => {
     const configuredDays = [
       { localDate: '2030-10-27', firstWaveLocalTime: '02:00', maxResultGames: 4 },

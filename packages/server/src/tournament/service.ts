@@ -218,6 +218,7 @@ function mergePlayoffScheduleRules(
         }
         merged[field] = nextValues[field];
       }
+      delete merged.plannedStartIntervalMinutes;
       return merged;
     }),
   };

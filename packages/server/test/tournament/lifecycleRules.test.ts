@@ -132,6 +132,20 @@ describe('normalizePublishedTournamentLifecycleRules', () => {
     expect(normalized.playoffRounds?.[0]).not.toHaveProperty('plannedStartIntervalMinutes');
   });
 
+  it.each([
+    [{ gameDurationMinutes: 4 }, 'game duration minutes must be between 5 and 60'],
+    [{ gameDurationMinutes: 61 }, 'game duration minutes must be between 5 and 60'],
+    [{ interGameBreakMinutes: 0 }, 'inter-game break minutes must be between 1 and 30'],
+    [{ interGameBreakMinutes: 31 }, 'inter-game break minutes must be between 1 and 30'],
+  ])('rejects invalid event timing even before a round has schedule days', (timing, message) => {
+    expect(() =>
+      normalizePublishedTournamentLifecycleRules({
+        config: { regularSource: 'head_to_head' },
+        playoffRounds: [{ roundNumber: 1, winsRequired: 1, ...timing }],
+      }),
+    ).toThrow(message);
+  });
+
   it('defaults a one-day best-of-seven capacity to all seven games', () => {
     const normalized = normalizePublishedTournamentLifecycleRules({
       config: { regularSource: 'daily_aggregate' },

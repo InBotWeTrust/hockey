@@ -32,5 +32,4 @@ update tournament_fixture fixture
      select 1
        from tournament_fixture_attempt attempt
       where attempt.fixture_id = fixture.id
-        and attempt.status in ('ready_check', 'active', 'settled', 'technical_result')
    );

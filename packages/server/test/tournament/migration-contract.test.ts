@@ -245,4 +245,14 @@ describe('tournament migration contract', () => {
     );
     expect(sql).not.toMatch(/drop\s+(column|table)/i);
   });
+
+  it('clears only unstarted later playoff fixtures and preserves every remaining attempt state', async () => {
+    const sql = await readFile(sequentialPlayoffScheduleMigrationUrl, 'utf8');
+
+    expect(sql).toMatch(/and attempt\.status = 'pending';/i);
+    expect(sql).toMatch(
+      /and not exists \(\s*select 1\s*from tournament_fixture_attempt attempt\s*where attempt\.fixture_id = fixture\.id\s*\);/i,
+    );
+    expect(sql).not.toMatch(/attempt\.status in \('ready_check', 'active', 'settled', 'technical_result'\)/i);
+  });
 });

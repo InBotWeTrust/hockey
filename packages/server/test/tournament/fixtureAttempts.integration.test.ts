@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
@@ -29,6 +30,10 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
+const SEQUENTIAL_PLAYOFF_SCHEDULE_MIGRATION_URL = new URL(
+  '../../db/migrations/090_tournament_sequential_playoff_schedule.sql',
+  import.meta.url,
+);
 const ADMIN_ID = '00000000-0000-4000-8000-000000000a01';
 const TEMPLATE_ID = '00000000-0000-4000-8000-000000000a02';
 const OFFICIAL_ID = '00000000-0000-4000-8000-000000000a03';
@@ -931,7 +936,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     expect(Object.values(unread.json() as Record<string, number>)).toContain(1);
   });
 
-  it('keeps the immutable attempt hard deadline when both players become ready', async () => {
+  it('sets the hard deadline from the second player becoming ready', async () => {
     const tournament = await createPublished(
       pool,
       'attempt-ready-deadline',
@@ -960,20 +965,22 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       [tournament.id],
     );
     const row = fixture.rows[0]!;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2030-09-03T12:00:00.000Z'));
     const scheduledStartsAt = new Date(Date.now() - 60_000);
     const readinessExpiresAt = new Date(scheduledStartsAt.getTime() + 120 * 60_000);
-    const hardDeadlineAt = new Date(readinessExpiresAt.getTime() + 210_000);
+    const initialHardDeadlineAt = new Date(readinessExpiresAt.getTime() + 20 * 60_000);
     await pool.query(
       `update tournament_fixture_attempt
           set scheduled_starts_at = $2, readiness_expires_at = $3, hard_deadline_at = $4
         where fixture_id = $1`,
-      [row.fixture_id, scheduledStartsAt, readinessExpiresAt, hardDeadlineAt],
+      [row.fixture_id, scheduledStartsAt, readinessExpiresAt, initialHardDeadlineAt],
     );
     await pool.query(
       `update tournament_fixture
           set scheduled_starts_at = $2, window_ends_at = $3
         where id = $1`,
-      [row.fixture_id, scheduledStartsAt, hardDeadlineAt],
+      [row.fixture_id, scheduledStartsAt, initialHardDeadlineAt],
     );
     const opened = await openTournamentFixtureSegment(
       pool,
@@ -988,21 +995,120 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
     const homeToken = await jwt.issueAccessToken({ sub: row.home_user_id });
     const awayToken = await jwt.issueAccessToken({ sub: row.away_user_id });
-    for (const token of [homeToken, awayToken]) {
-      const ready = await app.inject({
+    try {
+      const homeReady = await app.inject({
         method: 'POST',
         url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${homeToken}` },
         payload: { loadout: {} },
       });
-      expect(ready.statusCode).toBe(200);
+      expect(homeReady.statusCode).toBe(200);
+      vi.setSystemTime(new Date('2030-09-03T12:07:00.000Z'));
+      const awayReady = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+        headers: { authorization: `Bearer ${awayToken}` },
+        payload: { loadout: {} },
+      });
+      expect(awayReady.statusCode).toBe(200);
+
+      const expectedHardDeadlineAt = new Date('2030-09-03T12:27:00.000Z');
+      const deadlineRows = await pool.query<{
+        hard_deadline_at: Date;
+        window_ends_at: Date;
+        ends_at: Date;
+      }>(
+        `select attempt.hard_deadline_at, fixture.window_ends_at, duel.ends_at
+           from tournament_fixture_attempt attempt
+           join tournament_fixture fixture on fixture.id = attempt.fixture_id
+           join amateur_duel_match duel on duel.id = attempt.amateur_duel_match_id
+          where attempt.fixture_id = $1`,
+        [row.fixture_id],
+      );
+      expect(deadlineRows.rows[0]).toEqual({
+        hard_deadline_at: expectedHardDeadlineAt,
+        window_ends_at: expectedHardDeadlineAt,
+        ends_at: expectedHardDeadlineAt,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('migration preserves non-pending later-game attempts and their fixture slots', async () => {
+    const tournament = await createPublished(pool, 'attempt-migration-preservation', lifecycleRules());
+    await preparePlayoffs(pool, tournament.id);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00.000Z'));
+    const laterFixtures = await pool.query<{ id: string; game_number: number }>(
+      `select fixture.id, (fixture.result_snapshot->>'gameNumber')::int as game_number
+         from tournament_fixture fixture
+         join tournament_round round on round.id = fixture.round_id
+        where fixture.tournament_id = $1 and round.stage = 'playoff'
+          and (fixture.result_snapshot->>'gameNumber')::int > 1
+        order by game_number, fixture.fixture_number
+        limit 3`,
+      [tournament.id],
+    );
+    expect(laterFixtures.rows.map((fixture) => fixture.game_number)).toEqual([2, 2, 3]);
+    const startsAt = new Date('2030-09-05T07:00:00.000Z');
+    const readinessExpiresAt = new Date('2030-09-05T07:05:00.000Z');
+    const deadlineAt = new Date('2030-09-05T07:25:00.000Z');
+    for (const [index, status] of ['pending', 'active', 'needs_admin_decision'].entries()) {
+      const fixture = laterFixtures.rows[index]!;
+      await pool.query(
+        `insert into tournament_fixture_attempt
+           (fixture_id, attempt_number, kind, status, scheduled_starts_at,
+            readiness_expires_at, hard_deadline_at, is_result_bearing)
+         values ($1, 1, 'initial', $2, $3, $4, $5, true)`,
+        [fixture.id, status, startsAt, readinessExpiresAt, deadlineAt],
+      );
+      await pool.query(
+        `update tournament_fixture
+            set scheduled_starts_at = $2, window_ends_at = $3
+          where id = $1`,
+        [fixture.id, startsAt, deadlineAt],
+      );
     }
 
-    const duel = await pool.query<{ status: string; ends_at: Date }>(
-      `select status, ends_at from amateur_duel_match where id = $1`,
-      [opened.duelMatchId],
+    await pool.query(await readFile(SEQUENTIAL_PLAYOFF_SCHEDULE_MIGRATION_URL, 'utf8'));
+
+    const afterMigration = await pool.query<{
+      game_number: number;
+      attempt_status: string | null;
+      scheduled_starts_at: Date | null;
+      window_ends_at: Date | null;
+    }>(
+      `select (fixture.result_snapshot->>'gameNumber')::int as game_number,
+              attempt.status as attempt_status,
+              fixture.scheduled_starts_at,
+              fixture.window_ends_at
+         from tournament_fixture fixture
+         left join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+        where fixture.id = any($1::uuid[])
+        order by (fixture.result_snapshot->>'gameNumber')::int, fixture.id`,
+      [laterFixtures.rows.map((fixture) => fixture.id)],
     );
-    expect(duel.rows[0]).toEqual({ status: 'active', ends_at: hardDeadlineAt });
+    expect(afterMigration.rows).toHaveLength(3);
+    expect(afterMigration.rows).toEqual(expect.arrayContaining([
+      {
+        game_number: 2,
+        attempt_status: null,
+        scheduled_starts_at: null,
+        window_ends_at: null,
+      },
+      {
+        game_number: 2,
+        attempt_status: 'active',
+        scheduled_starts_at: startsAt,
+        window_ends_at: deadlineAt,
+      },
+      {
+        game_number: 3,
+        attempt_status: 'needs_admin_decision',
+        scheduled_starts_at: startsAt,
+        window_ends_at: deadlineAt,
+      },
+    ]));
   });
 
   it('marks the linked tournament attempt active after both players become ready', async () => {

@@ -2450,7 +2450,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     ]);
   });
 
-  it('reschedules every unstarted playoff game from a legacy rules snapshot', async () => {
+  it('reschedules only the first playoff game from a legacy rules snapshot', async () => {
     await seedUsers(pool, 0);
     const template = await pool.query<{ id: string }>(
       `select id from amateur_duel_template
@@ -2551,13 +2551,16 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(storedRevision.rows[0]!.rules_snapshot).toMatchObject({
       playoffRounds: [expect.objectContaining({ overtime: { count: 1, shootoutInitialShots: 3 } })],
     });
+    expect(storedRevision.rows[0]!.rules_snapshot.playoffRounds?.[0]).not.toHaveProperty(
+      'plannedStartIntervalMinutes',
+    );
     const fixtures = await pool.query<{
       game_number: number;
-      fixture_starts_at: Date;
-      attempt_starts_at: Date;
-      readiness_expires_at: Date;
-      hard_deadline_at: Date;
-      local_date: string;
+      fixture_starts_at: Date | null;
+      attempt_starts_at: Date | null;
+      readiness_expires_at: Date | null;
+      hard_deadline_at: Date | null;
+      local_date: string | null;
     }>(
       `select (fixture.result_snapshot->>'gameNumber')::int as game_number,
               fixture.scheduled_starts_at as fixture_starts_at,
@@ -2565,8 +2568,8 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
               attempt.readiness_expires_at, attempt.hard_deadline_at,
               day.local_date
          from tournament_fixture fixture
-         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
-         join tournament_round_game_day day on day.id = attempt.round_game_day_id
+         left join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+         left join tournament_round_game_day day on day.id = attempt.round_game_day_id
         where fixture.tournament_id = $1 and fixture.series_id is not null
         order by fixture.fixture_number`,
       [tournament.id],
@@ -2574,12 +2577,16 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(
       fixtures.rows.map((fixture) => ({
         gameNumber: fixture.game_number,
-        startsAt: fixture.fixture_starts_at.toISOString(),
-        attemptStartsAt: fixture.attempt_starts_at.toISOString(),
+        startsAt: fixture.fixture_starts_at?.toISOString() ?? null,
+        attemptStartsAt: fixture.attempt_starts_at?.toISOString() ?? null,
         readinessMinutes:
-          (fixture.readiness_expires_at.getTime() - fixture.attempt_starts_at.getTime()) / 60_000,
+          fixture.readiness_expires_at === null || fixture.attempt_starts_at === null
+            ? null
+            : (fixture.readiness_expires_at.getTime() - fixture.attempt_starts_at.getTime()) / 60_000,
         gameDurationMinutes:
-          (fixture.hard_deadline_at.getTime() - fixture.attempt_starts_at.getTime()) / 60_000,
+          fixture.hard_deadline_at === null || fixture.attempt_starts_at === null
+            ? null
+            : (fixture.hard_deadline_at.getTime() - fixture.attempt_starts_at.getTime()) / 60_000,
         localDate: fixture.local_date,
       })),
     ).toEqual([
@@ -2588,24 +2595,24 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         startsAt: '2030-09-10T08:00:00.000Z',
         attemptStartsAt: '2030-09-10T08:00:00.000Z',
         readinessMinutes: 5,
-        gameDurationMinutes: 20,
+        gameDurationMinutes: 25,
         localDate: '2030-09-10',
       },
       {
         gameNumber: 2,
-        startsAt: '2030-09-10T08:30:00.000Z',
-        attemptStartsAt: '2030-09-10T08:30:00.000Z',
-        readinessMinutes: 5,
-        gameDurationMinutes: 20,
-        localDate: '2030-09-10',
+        startsAt: null,
+        attemptStartsAt: null,
+        readinessMinutes: null,
+        gameDurationMinutes: null,
+        localDate: null,
       },
       {
         gameNumber: 3,
-        startsAt: '2030-09-11T08:00:00.000Z',
-        attemptStartsAt: '2030-09-11T08:00:00.000Z',
-        readinessMinutes: 5,
-        gameDurationMinutes: 20,
-        localDate: '2030-09-11',
+        startsAt: null,
+        attemptStartsAt: null,
+        readinessMinutes: null,
+        gameDurationMinutes: null,
+        localDate: null,
       },
     ]);
   });

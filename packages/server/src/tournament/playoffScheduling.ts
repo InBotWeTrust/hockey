@@ -64,7 +64,7 @@ export function rebaseRoundGameDaysAtOrAfter(
           ),
         };
       });
-      if (rebased[0]!.firstGameStartsAt.getTime() >= notBefore.getTime()) return rebased;
+      if (rebased[0]!.firstGameStartsAt.getTime() > notBefore.getTime()) return rebased;
     } catch {
       // A spring DST gap invalidates the whole shared offset. Move all game
       // days together so their configured local relationship stays intact.
@@ -110,8 +110,7 @@ function assertPositiveInteger(value: number, message: string): void {
   if (!Number.isInteger(value) || value < 1) throw new Error(message);
 }
 
-export function validateRoundGameDays(input: RoundGameDayValidationInput): void {
-  assertPositiveInteger(input.winsRequired, 'wins required must be a positive integer');
+export function validateRoundGameTiming(input: Omit<RoundGameDayValidationInput, 'days'>): void {
   if (
     !Number.isInteger(input.readinessMinutes) ||
     input.readinessMinutes < 1 ||
@@ -143,6 +142,11 @@ export function validateRoundGameDays(input: RoundGameDayValidationInput): void 
   ) {
     throw new Error('planned start interval minutes must be between 1 and 1440');
   }
+}
+
+export function validateRoundGameDays(input: RoundGameDayValidationInput): void {
+  assertPositiveInteger(input.winsRequired, 'wins required must be a positive integer');
+  validateRoundGameTiming(input);
   if (input.days.length === 0) throw new Error('at least one game day is required');
 
   let previousDate: string | null = null;
