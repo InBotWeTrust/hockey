@@ -4,6 +4,7 @@ import {
   buildPlayoffFixtureWindows,
   buildPlayoffSeriesPlan,
   expandSeriesSchedule,
+  resolveDelayedPlayoffRoundStart,
 } from '../../src/tournament/playoffs.js';
 
 describe('fixed playoff bracket', () => {
@@ -82,5 +83,14 @@ describe('fixed playoff bracket', () => {
       { gameNumber: 2, startsAt: '2030-09-01T11:30:00.000Z', endsAt: '2030-09-01T12:30:00.000Z' },
       { gameNumber: 3, startsAt: '2030-09-01T13:00:00.000Z', endsAt: '2030-09-01T14:00:00.000Z' },
     ]);
+  });
+
+  it('delays a past next-round start to thirty minutes after the final prior series settles', () => {
+    expect(
+      resolveDelayedPlayoffRoundStart({
+        configuredStart: new Date('2030-09-01T10:00:00.000Z'),
+        finalPriorSeriesSettledAt: new Date('2030-09-01T12:00:00.000Z'),
+      }),
+    ).toEqual(new Date('2030-09-01T12:30:00.000Z'));
   });
 });

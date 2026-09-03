@@ -222,6 +222,28 @@ async function preparePlayoffs(pool: Pool, tournamentId: string): Promise<void> 
   await pool.query(`update tournament set status = 'regular' where id = $1`, [tournamentId]);
 }
 
+async function alignAttemptWithTestClock<Fixture extends { fixture_id: string }>(
+  pool: Pool,
+  fixture: Fixture,
+): Promise<Fixture & { scheduled_starts_at: Date }> {
+  const scheduledStartsAt = new Date(Date.now() - 60_000);
+  const readinessExpiresAt = new Date(scheduledStartsAt.getTime() + 5 * 60_000);
+  const hardDeadlineAt = new Date(readinessExpiresAt.getTime() + 20 * 60_000);
+  await pool.query(
+    `update tournament_fixture_attempt
+        set scheduled_starts_at = $2, readiness_expires_at = $3, hard_deadline_at = $4
+      where fixture_id = $1 and attempt_number = 1`,
+    [fixture.fixture_id, scheduledStartsAt, readinessExpiresAt, hardDeadlineAt],
+  );
+  await pool.query(
+    `update tournament_fixture
+        set scheduled_starts_at = $2, window_ends_at = $3
+      where id = $1`,
+    [fixture.fixture_id, scheduledStartsAt, hardDeadlineAt],
+  );
+  return { ...fixture, scheduled_starts_at: scheduledStartsAt };
+}
+
 async function openFirstPlayoffAttempt(pool: Pool, slug: string) {
   const tournament = await createPublished(pool, slug, lifecycleRules());
   await preparePlayoffs(pool, tournament.id);
@@ -249,7 +271,7 @@ async function openFirstPlayoffAttempt(pool: Pool, slug: string) {
       order by fixture.fixture_number limit 1`,
     [tournament.id],
   );
-  const row = fixture.rows[0]!;
+  const row = await alignAttemptWithTestClock(pool, fixture.rows[0]!);
   const opened = await openTournamentFixtureSegment(
     pool,
     {
@@ -291,7 +313,7 @@ async function openFirstRegularAttempt(pool: Pool, slug: string) {
       order by fixture.fixture_number limit 1`,
     [tournament.id],
   );
-  const row = fixture.rows[0]!;
+  const row = await alignAttemptWithTestClock(pool, fixture.rows[0]!);
   const opened = await openTournamentFixtureSegment(
     pool,
     {
@@ -2135,10 +2157,13 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     });
   });
 
-  it('creates one auto-continue playoff replay without overtime or double-counting tied scores', async () => {
+  it('puts a playoff replay behind the normal break without double-counting the result', async () => {
     const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'attempt-playoff-replay');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(fixture.scheduled_starts_at.getTime() + 1));
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
     const homeToken = await jwt.issueAccessToken({ sub: fixture.home_user_id });
+    try {
     for (const userId of [fixture.home_user_id, fixture.away_user_id]) {
       const token = await jwt.issueAccessToken({ sub: userId });
       const ready = await app.inject({
@@ -2208,7 +2233,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     });
     expect(attempts.rows[1]!.snapshot).toMatchObject({
       duelTemplateId: TEMPLATE_ID,
-      readinessMode: 'auto_continue',
+      readinessMode: 'manual',
     });
 
     const lifecycle = await pool.query<{
@@ -2237,7 +2262,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     expect(
       attempts.rows[1]!.scheduled_starts_at.getTime() -
         lifecycle.rows[0]!.duel_settled_at.getTime(),
-    ).toBe(10_000);
+    ).toBe(5 * 60_000);
     expect(lifecycle.rows[0]).toMatchObject({
       fixture_status: 'scheduled',
       fixture_home_score: 0,
@@ -2246,186 +2271,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       segment_count: 1,
       overtime_count: 0,
     });
-  });
-
-  it('late-opens a playoff auto-continue replay idempotently before its hard deadline', async () => {
-    const { tournamentId, fixture, opened } = await openFirstPlayoffAttempt(
-      pool,
-      'attempt-playoff-replay-auto-continue',
-    );
-    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
-    const homeToken = await jwt.issueAccessToken({ sub: fixture.home_user_id });
-    for (const userId of [fixture.home_user_id, fixture.away_user_id]) {
-      const token = await jwt.issueAccessToken({ sub: userId });
-      const ready = await app.inject({
-        method: 'POST',
-        url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
-        headers: { authorization: `Bearer ${token}` },
-        payload: { loadout: {} },
-      });
-      expect(ready.statusCode).toBe(200);
-    }
-    await pool.query(
-      `update amateur_duel_participant
-          set state = 'completed', completed_at = now(), goals = 2, shots_taken = 4,
-              active_duration_ms = 90000
-        where match_id = $1`,
-      [opened.duelMatchId],
-    );
-    const settled = await app.inject({
-      method: 'GET',
-      url: `/duel/amateur/matches/${opened.duelMatchId}`,
-      headers: { authorization: `Bearer ${homeToken}` },
-    });
-    expect(settled.statusCode).toBe(200);
-
-    const replay = await pool.query<{
-      scheduled_starts_at: Date;
-      readiness_expires_at: Date;
-      hard_deadline_at: Date;
-    }>(
-      `select scheduled_starts_at, readiness_expires_at, hard_deadline_at
-         from tournament_fixture_attempt
-        where fixture_id = $1 and attempt_number = 2`,
-      [fixture.fixture_id],
-    );
-    const replayAttempt = replay.rows[0]!;
-    const lateOpenAt = new Date(replayAttempt.readiness_expires_at.getTime() + 1_000);
-    expect(lateOpenAt.getTime()).toBeLessThan(replayAttempt.hard_deadline_at.getTime());
-
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(lateOpenAt);
-    try {
-      const responses = [];
-      for (let request = 0; request < 2; request += 1) {
-        const replayOpen = await app.inject({
-          method: 'POST',
-          url: `/tournaments/${tournamentId}/fixtures/${fixture.fixture_id}/segments/open`,
-          headers: { authorization: `Bearer ${homeToken}` },
-        });
-        expect(replayOpen.statusCode).toBe(200);
-        responses.push(replayOpen.json());
-      }
-      expect(responses[0]).toMatchObject({
-        fixtureId: fixture.fixture_id,
-        kind: 'regulation',
-        sequenceNumber: 2,
-      });
-      expect(responses[1]).toEqual(responses[0]);
     } finally {
       vi.useRealTimers();
     }
-
-    const lifecycle = await pool.query<{
-      attempt_status: string;
-      home_ready_at: Date | null;
-      away_ready_at: Date | null;
-      duel_status: string;
-      duel_ends_at: Date;
-      participant_states: string[];
-      segment_count: number;
-      regulation_count: number;
-      active_segment_count: number;
-      incident_count: number;
-    }>(
-      `select attempt.status as attempt_status, attempt.home_ready_at, attempt.away_ready_at,
-              duel.status as duel_status, duel.ends_at as duel_ends_at,
-              array_agg(participant.state order by participant.side) as participant_states,
-              (select count(*)::int from tournament_fixture_segment segment
-                where segment.fixture_id = fixture.id) as segment_count,
-              (select count(*)::int from tournament_fixture_segment segment
-                where segment.fixture_id = fixture.id and segment.kind = 'regulation')
-                as regulation_count,
-              (select count(*)::int from tournament_fixture_segment segment
-                where segment.fixture_id = fixture.id and segment.status = 'active')
-                as active_segment_count,
-              (select count(*)::int from tournament_incident incident
-                where incident.fixture_attempt_id = attempt.id) as incident_count
-         from tournament_fixture_attempt attempt
-         join tournament_fixture fixture on fixture.id = attempt.fixture_id
-         join amateur_duel_match duel on duel.id = attempt.amateur_duel_match_id
-         join amateur_duel_participant participant on participant.match_id = duel.id
-        where attempt.fixture_id = $1 and attempt.attempt_number = 2
-        group by attempt.id, duel.id, fixture.id`,
-      [fixture.fixture_id],
-    );
-    expect(lifecycle.rows[0]).toMatchObject({
-      attempt_status: 'active',
-      duel_status: 'active',
-      participant_states: ['accepted', 'accepted'],
-      segment_count: 2,
-      regulation_count: 2,
-      active_segment_count: 1,
-      incident_count: 0,
-    });
-    expect(lifecycle.rows[0]!.home_ready_at?.toISOString()).toBe(lateOpenAt.toISOString());
-    expect(lifecycle.rows[0]!.away_ready_at?.toISOString()).toBe(lateOpenAt.toISOString());
-    expect(lifecycle.rows[0]!.duel_ends_at.toISOString()).toBe(
-      replayAttempt.hard_deadline_at.toISOString(),
-    );
-  });
-
-  it('expires an unopened playoff auto-continue replay idempotently at its hard deadline', async () => {
-    const context = await createPlayoffReplay(
-      pool,
-      app,
-      'attempt-playoff-replay-unopened-deadline',
-    );
-    expect(context.replay.duel_match_id).toBeNull();
-    expect(context.replay.snapshot).toMatchObject({ readinessMode: 'auto_continue' });
-
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(context.replay.hard_deadline_at);
-    try {
-      for (let request = 0; request < 2; request += 1) {
-        const opened = await app.inject({
-          method: 'POST',
-          url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/segments/open`,
-          headers: { authorization: `Bearer ${context.homeToken}` },
-        });
-        expect(opened.statusCode).toBe(409);
-      }
-    } finally {
-      vi.useRealTimers();
-    }
-
-    const persisted = await pool.query<{
-      attempt_status: string;
-      attempt_outcome: string | null;
-      duel_match_id: string | null;
-      fixture_status: string;
-      series_status: string;
-      tournament_status: string;
-      both_incomplete_count: number;
-      both_no_show_count: number;
-    }>(
-      `select attempt.status as attempt_status, attempt.outcome as attempt_outcome,
-              attempt.amateur_duel_match_id as duel_match_id,
-              fixture.status as fixture_status, series.status as series_status,
-              tournament.status as tournament_status,
-              (select count(*)::int from tournament_incident incident
-                where incident.fixture_attempt_id = attempt.id
-                  and incident.kind = 'both_incomplete') as both_incomplete_count,
-              (select count(*)::int from tournament_incident incident
-                where incident.fixture_attempt_id = attempt.id
-                  and incident.kind = 'both_no_show') as both_no_show_count
-         from tournament_fixture_attempt attempt
-         join tournament_fixture fixture on fixture.id = attempt.fixture_id
-         join tournament_playoff_series series on series.id = fixture.series_id
-         join tournament tournament on tournament.id = fixture.tournament_id
-        where attempt.id = $1`,
-      [context.replay.attempt_id],
-    );
-    expect(persisted.rows[0]).toEqual({
-      attempt_status: 'needs_admin_decision',
-      attempt_outcome: 'both_incomplete',
-      duel_match_id: null,
-      fixture_status: 'paused',
-      series_status: 'paused',
-      tournament_status: 'playoff',
-      both_incomplete_count: 1,
-      both_no_show_count: 0,
-    });
   });
 
   it('returns a participant-safe attempt state with series progress and terminal winners', async () => {
@@ -2590,7 +2438,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     }
   });
 
-  it('cancels every remaining open attempt when a playoff series is won', async () => {
+  it('cancels the only materialized attempt when a playoff series is won', async () => {
     const context = await openFirstPlayoffAttempt(pool, 'attempt-series-cleanup');
     const client = await pool.connect();
     try {
@@ -2624,17 +2472,20 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
         order by fixture.fixture_number, attempt.attempt_number`,
       [context.fixture.series_id],
     );
-    expect(attempts.rows).toHaveLength(3);
+    expect(attempts.rows).toHaveLength(1);
     expect(attempts.rows.every((row) => row.status === 'cancelled')).toBe(true);
     expect(attempts.rows.every((row) => row.fixture_status === 'cancelled')).toBe(true);
     expect(attempts.rows.find((row) => row.duel_status !== null)?.duel_status).toBe('cancelled');
   });
 
-  it('offers the next game only after both earned results and starts it when both choose now', async () => {
-    const context = await openFirstPlayoffAttempt(pool, 'attempt-next-game-choice');
+  it('moves a settled series game through its break into a fresh ready check exactly once', async () => {
+    const context = await openFirstPlayoffAttempt(pool, 'attempt-series-break-ready-check');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(context.fixture.scheduled_starts_at.getTime() + 1));
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
     const homeToken = await jwt.issueAccessToken({ sub: context.fixture.home_user_id });
     const awayToken = await jwt.issueAccessToken({ sub: context.fixture.away_user_id });
+    try {
     for (const token of [homeToken, awayToken]) {
       const ready = await app.inject({
         method: 'POST',
@@ -2644,34 +2495,11 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       });
       expect(ready.statusCode).toBe(200);
     }
-
-    await pool.query(
-      `update amateur_duel_participant
-          set state = case when user_id = $2 then 'completed' else 'period_active' end,
-              completed_at = case when user_id = $2 then now() else null end,
-              current_period = case when user_id = $2 then 2 else 1 end,
-              period_started_at = case when user_id = $2 then null else now() end,
-              goals = case when user_id = $2 then 3 else 1 end,
-              shots_taken = 5, active_duration_ms = 90000
-        where match_id = $1`,
-      [context.opened.duelMatchId, context.fixture.home_user_id],
-    );
-    const waiting = await app.inject({
-      method: 'GET',
-      url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/attempt`,
-      headers: { authorization: `Bearer ${homeToken}` },
-    });
-    expect(waiting.statusCode).toBe(200);
-    expect(waiting.json().nextGameChoice).toBeNull();
-    expect(waiting.json().opponentProgress).toMatchObject({
-      state: 'period_active',
-      currentPeriod: 1,
-    });
-
     await pool.query(
       `update amateur_duel_participant
           set state = 'completed', completed_at = now(), current_period = 2,
-              period_started_at = null, goals = case when user_id = $2 then 3 else 1 end,
+              period_started_at = null,
+              goals = case when user_id = $2 then 3 else 1 end,
               shots_taken = 5, active_duration_ms = 90000
         where match_id = $1`,
       [context.opened.duelMatchId, context.fixture.home_user_id],
@@ -2682,113 +2510,63 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       headers: { authorization: `Bearer ${homeToken}` },
     });
     expect(settled.statusCode).toBe(200);
-    const choiceState = await app.inject({
+
+    const duringBreak = await app.inject({
       method: 'GET',
       url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/attempt`,
       headers: { authorization: `Bearer ${homeToken}` },
     });
-    expect(choiceState.statusCode).toBe(200);
-    expect(choiceState.json().nextGameChoice).toMatchObject({
-      myChoice: null,
-      opponentChoice: null,
-      canChoose: true,
-      startsImmediately: false,
-    });
-    const nextFixtureId = choiceState.json().nextGameChoice.nextFixtureId as string;
+    expect(duringBreak.statusCode).toBe(200);
+    expect(duringBreak.json().nextGame).toMatchObject({ available: false });
+    const nextFixtureId = duringBreak.json().nextGame.fixtureId as string;
+    const breakEndsAt = new Date(duringBreak.json().nextGame.breakEndsAt as string);
 
-    const homeChoice = await app.inject({
-      method: 'POST',
-      url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/attempt/next-game-choice`,
-      headers: { authorization: `Bearer ${homeToken}` },
-      payload: { choice: 'immediate' },
-    });
-    expect(homeChoice.statusCode).toBe(200);
-    expect(homeChoice.json()).toMatchObject({
-      myChoice: 'immediate',
-      opponentChoice: null,
-      startsImmediately: false,
-    });
-    const awayChoice = await app.inject({
-      method: 'POST',
-      url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/attempt/next-game-choice`,
-      headers: { authorization: `Bearer ${awayToken}` },
-      payload: { choice: 'immediate' },
-    });
-    expect(awayChoice.statusCode).toBe(200);
-    expect(awayChoice.json()).toMatchObject({
-      myChoice: 'immediate',
-      opponentChoice: 'immediate',
-      startsImmediately: true,
-      nextFixtureId,
-    });
-
-    const nextAttempt = await pool.query<{
-      status: string;
-      scheduled_starts_at: Date;
-      readiness_expires_at: Date;
-      hard_deadline_at: Date;
-      readiness_mode: string;
-      fixture_starts_at: Date;
-    }>(
-      `select attempt.status, attempt.scheduled_starts_at, attempt.readiness_expires_at,
-              attempt.hard_deadline_at,
-              attempt.result_snapshot->>'readinessMode' as readiness_mode,
-              fixture.scheduled_starts_at as fixture_starts_at
-         from tournament_fixture_attempt attempt
-         join tournament_fixture fixture on fixture.id = attempt.fixture_id
-        where fixture.id = $1`,
-      [nextFixtureId],
-    );
-    expect(nextAttempt.rows[0]).toMatchObject({
-      status: 'pending',
-      readiness_mode: 'next_game_auto_continue',
-    });
-    expect(nextAttempt.rows[0]!.fixture_starts_at.toISOString()).toBe(
-      nextAttempt.rows[0]!.scheduled_starts_at.toISOString(),
-    );
-    expect(nextAttempt.rows[0]!.readiness_expires_at.getTime()).toBeGreaterThan(
-      nextAttempt.rows[0]!.scheduled_starts_at.getTime(),
-    );
-    expect(
-      nextAttempt.rows[0]!.readiness_expires_at.getTime() -
-        nextAttempt.rows[0]!.scheduled_starts_at.getTime(),
-    ).toBe(60_000);
-    expect(nextAttempt.rows[0]!.hard_deadline_at.getTime()).toBeGreaterThan(
-      nextAttempt.rows[0]!.readiness_expires_at.getTime(),
-    );
-
-    const openedNext = await app.inject({
+    const beforeBreak = await app.inject({
       method: 'POST',
       url: `/tournaments/${context.tournamentId}/fixtures/${nextFixtureId}/segments/open`,
       headers: { authorization: `Bearer ${homeToken}` },
     });
-    expect(openedNext.statusCode).toBe(200);
-    const activeNext = await pool.query<{
-      attempt_status: string;
-      duel_status: string;
-      ready_players: number;
-    }>(
-      `select attempt.status as attempt_status, duel.status as duel_status,
-              count(*) filter (where participant.ready_at is not null)::int as ready_players
-         from tournament_fixture_attempt attempt
-         join amateur_duel_match duel on duel.id = attempt.amateur_duel_match_id
-         join amateur_duel_participant participant on participant.match_id = duel.id
-        where attempt.fixture_id = $1
-        group by attempt.id, duel.id`,
-      [nextFixtureId],
-    );
-    expect(activeNext.rows[0]).toEqual({
-      attempt_status: 'active',
-      duel_status: 'active',
-      ready_players: 2,
-    });
-    const lateChange = await app.inject({
-      method: 'POST',
-      url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/attempt/next-game-choice`,
-      headers: { authorization: `Bearer ${awayToken}` },
-      payload: { choice: 'scheduled' },
-    });
-    expect(lateChange.statusCode).toBe(409);
+    expect(beforeBreak.statusCode).toBe(409);
+
+    vi.setSystemTime(new Date(breakEndsAt.getTime() + 1));
+      const opened = await app.inject({
+        method: 'POST',
+        url: `/tournaments/${context.tournamentId}/fixtures/${nextFixtureId}/segments/open`,
+        headers: { authorization: `Bearer ${homeToken}` },
+      });
+      expect(opened.statusCode).toBe(200);
+      const openedAgain = await app.inject({
+        method: 'POST',
+        url: `/tournaments/${context.tournamentId}/fixtures/${nextFixtureId}/segments/open`,
+        headers: { authorization: `Bearer ${homeToken}` },
+      });
+      expect(openedAgain.statusCode).toBe(200);
+      expect(openedAgain.json()).toEqual(opened.json());
+
+      const nextDuelMatchId = opened.json().duelMatchId as string;
+      for (const token of [homeToken, homeToken, awayToken]) {
+        const ready = await app.inject({
+          method: 'POST',
+          url: `/duel/amateur/matches/${nextDuelMatchId}/ready`,
+          headers: { authorization: `Bearer ${token}` },
+          payload: { loadout: {} },
+        });
+        expect(ready.statusCode).toBe(200);
+      }
+      const nextState = await app.inject({
+        method: 'GET',
+        url: `/tournaments/${context.tournamentId}/fixtures/${nextFixtureId}/attempt`,
+        headers: { authorization: `Bearer ${homeToken}` },
+      });
+      expect(nextState.statusCode).toBe(200);
+      expect(nextState.json().attempt).toMatchObject({
+        status: 'active',
+        myReady: true,
+        opponentReady: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('forces a series winner only after a second admin confirmation and preserves factual score', async () => {
@@ -2884,69 +2662,17 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     });
   });
 
-  it('keeps an admin reschedule aligned with a pending attempt and blocks player time proposals', async () => {
+  it('blocks player proposals and rescheduling after playoff readiness has begun', async () => {
     const context = await openFirstPlayoffAttempt(pool, 'attempt-admin-reschedule');
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
     const adminToken = await jwt.issueAccessToken({ sub: ADMIN_ID });
     const homeToken = await jwt.issueAccessToken({ sub: context.fixture.home_user_id });
-    const pending = await pool.query<{
-      fixture_id: string;
-      scheduled_starts_at: Date;
-      readiness_expires_at: Date;
-      hard_deadline_at: Date;
-    }>(
-      `select fixture.id as fixture_id, attempt.scheduled_starts_at,
-              attempt.readiness_expires_at, attempt.hard_deadline_at
-         from tournament_fixture fixture
-         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
-        where fixture.series_id = $1 and attempt.status = 'pending'
-        order by fixture.fixture_number
-        limit 1`,
-      [context.fixture.series_id],
-    );
-    const original = pending.rows[0]!;
-    const startsAt = new Date(original.scheduled_starts_at.getTime() + 3_600_000);
-    const endsAt = new Date(original.hard_deadline_at.getTime() + 3_600_000);
-    const rescheduled = await app.inject({
-      method: 'PATCH',
-      url: `/admin/tournaments/${context.tournamentId}/fixtures/${original.fixture_id}/schedule`,
-      headers: { authorization: `Bearer ${adminToken}` },
-      payload: {
-        startsAt: startsAt.toISOString(),
-        endsAt: endsAt.toISOString(),
-        reason: 'Перенос по решению администратора',
-      },
-    });
-    expect(rescheduled.statusCode).toBe(200);
-    const aligned = await pool.query<{
-      fixture_starts_at: Date;
-      fixture_ends_at: Date;
-      attempt_starts_at: Date;
-      attempt_readiness_at: Date;
-      attempt_deadline_at: Date;
-    }>(
-      `select fixture.scheduled_starts_at as fixture_starts_at,
-              fixture.window_ends_at as fixture_ends_at,
-              attempt.scheduled_starts_at as attempt_starts_at,
-              attempt.readiness_expires_at as attempt_readiness_at,
-              attempt.hard_deadline_at as attempt_deadline_at
-         from tournament_fixture fixture
-         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
-        where fixture.id = $1`,
-      [original.fixture_id],
-    );
-    expect(aligned.rows[0]!.fixture_starts_at.toISOString()).toBe(startsAt.toISOString());
-    expect(aligned.rows[0]!.fixture_ends_at.toISOString()).toBe(endsAt.toISOString());
-    expect(aligned.rows[0]!.attempt_starts_at.toISOString()).toBe(startsAt.toISOString());
-    expect(aligned.rows[0]!.attempt_deadline_at.toISOString()).toBe(endsAt.toISOString());
-    expect(
-      aligned.rows[0]!.attempt_readiness_at.getTime() -
-        aligned.rows[0]!.attempt_starts_at.getTime(),
-    ).toBe(original.readiness_expires_at.getTime() - original.scheduled_starts_at.getTime());
+    const startsAt = new Date(context.fixture.scheduled_starts_at.getTime() + 3_600_000);
+    const endsAt = new Date(startsAt.getTime() + 20 * 60_000);
 
     const playerProposal = await app.inject({
       method: 'POST',
-      url: `/tournaments/fixtures/${original.fixture_id}/live/proposals`,
+      url: `/tournaments/fixtures/${context.fixture.fixture_id}/live/proposals`,
       headers: { authorization: `Bearer ${homeToken}` },
       payload: { proposedAt: new Date(startsAt.getTime() + 60_000).toISOString() },
     });
@@ -3045,7 +2771,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     });
   });
 
-  it('records technical attempts and cancels only unused games after disqualification', async () => {
+  it('records only materialized technical attempts after disqualification', async () => {
     const context = await openFirstPlayoffAttempt(pool, 'attempt-admin-disqualification');
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
     const adminToken = await jwt.issueAccessToken({ sub: ADMIN_ID });
@@ -3083,12 +2809,6 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
         status: 'technical_result',
         outcome: 'home_no_show',
         winner_participant_id: context.fixture.home_participant_id,
-      },
-      {
-        attempt_number: 1,
-        status: 'cancelled',
-        outcome: 'cancelled',
-        winner_participant_id: null,
       },
     ]);
   });

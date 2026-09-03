@@ -24,9 +24,96 @@ interface PlayoffSeriesRow {
   depends_on: SeriesDependencies;
 }
 
+function snapshotInteger(snapshot: Record<string, unknown> | null, key: string, fallback: number) {
+  const value = snapshot?.[key];
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
+async function materializeNextSeriesGame(
+  client: PoolClient,
+  input: { seriesId: string; settledAt: Date },
+): Promise<string | null> {
+  const next = await client.query<{
+    fixture_id: string;
+    round_id: string;
+    result_snapshot: Record<string, unknown> | null;
+    readiness_minutes: number | null;
+    game_duration_minutes: number | null;
+    inter_game_break_minutes: number | null;
+    settled_snapshot: Record<string, unknown> | null;
+  }>(
+    `select next_fixture.id as fixture_id, next_fixture.round_id, next_fixture.result_snapshot,
+            (round.rules_snapshot->>'readinessMinutes')::int as readiness_minutes,
+            (round.rules_snapshot->>'gameDurationMinutes')::int as game_duration_minutes,
+            (
+              select extract(epoch from day.inter_game_break_duration)::int / 60
+                from tournament_round_game_day day
+               where day.round_id = next_fixture.round_id
+               order by day.day_number
+               limit 1
+            ) as inter_game_break_minutes,
+            settled_attempt.result_snapshot as settled_snapshot
+       from tournament_playoff_series series
+       join tournament_fixture next_fixture on next_fixture.series_id = series.id
+       join tournament_round round on round.id = next_fixture.round_id
+       join lateral (
+         select attempt.result_snapshot
+           from tournament_fixture fixture
+           join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+          where fixture.series_id = series.id
+            and attempt.status in ('settled', 'technical_result')
+          order by attempt.settled_at desc nulls last, attempt.attempt_number desc
+          limit 1
+       ) settled_attempt on true
+      where series.id = $1 and series.status = 'active'
+        and next_fixture.status = 'scheduled'
+        and coalesce((next_fixture.result_snapshot->>'gameNumber')::int, 1) =
+            series.higher_seed_wins + series.lower_seed_wins + 1
+      for update of next_fixture`,
+    [input.seriesId],
+  );
+  const row = next.rows[0];
+  if (row === undefined) return null;
+
+  const breakMinutes = row.inter_game_break_minutes ?? 5;
+  const readinessMinutes = row.readiness_minutes ?? 5;
+  const gameDurationMinutes = row.game_duration_minutes ?? 20;
+  const startsAt = new Date(input.settledAt.getTime() + breakMinutes * 60_000);
+  const readinessExpiresAt = new Date(startsAt.getTime() + readinessMinutes * 60_000);
+  const completionWindowMs = snapshotInteger(
+    row.settled_snapshot,
+    'completionWindowMs',
+    gameDurationMinutes * 60_000,
+  );
+  const hardDeadlineAt = new Date(readinessExpiresAt.getTime() + completionWindowMs);
+  const resultSnapshot = {
+    ...(row.settled_snapshot ?? {}),
+    ...(row.result_snapshot ?? {}),
+    completionWindowMs,
+    readinessMode: 'manual',
+  };
+  const inserted = await client.query(
+    `insert into tournament_fixture_attempt
+       (fixture_id, round_game_day_id, attempt_number, kind, status,
+        scheduled_starts_at, readiness_expires_at, hard_deadline_at,
+        is_result_bearing, result_snapshot)
+     values ($1, null, 1, 'initial', 'pending', $2, $3, $4, true, $5::jsonb)
+     on conflict (fixture_id, attempt_number) do nothing`,
+    [row.fixture_id, startsAt, readinessExpiresAt, hardDeadlineAt, JSON.stringify(resultSnapshot)],
+  );
+  if ((inserted.rowCount ?? 0) === 0) return null;
+  await client.query(
+    `update tournament_fixture
+        set scheduled_starts_at = $2, window_ends_at = $3, updated_at = now()
+      where id = $1 and status = 'scheduled'`,
+    [row.fixture_id, startsAt, hardDeadlineAt],
+  );
+  return row.fixture_id;
+}
+
 export async function advanceTournamentPlayoffSeries(
   client: PoolClient,
-  input: { seriesId: string; winnerParticipantId: string },
+  input: { seriesId: string; winnerParticipantId: string; settledAt?: Date },
 ): Promise<{ completed: boolean }> {
   const advanced = await client.query<PlayoffSeriesRow>(
     `update tournament_playoff_series
@@ -57,8 +144,16 @@ export async function advanceTournamentPlayoffSeries(
         returning id`,
       [series.id, nextGameNumber],
     );
-    for (const fixture of promoted.rows) {
-      await enqueueTournamentSeriesNextGamePush(client, { fixtureId: fixture.id });
+    const materializedFixtureId = await materializeNextSeriesGame(client, {
+      seriesId: series.id,
+      settledAt: input.settledAt ?? new Date(),
+    });
+    if (materializedFixtureId !== null) {
+      await enqueueTournamentSeriesNextGamePush(client, { fixtureId: materializedFixtureId });
+    } else {
+      for (const fixture of promoted.rows) {
+        await enqueueTournamentSeriesNextGamePush(client, { fixtureId: fixture.id });
+      }
     }
     return { completed: false };
   }

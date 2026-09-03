@@ -49,7 +49,6 @@ import {
   TournamentFixtureAttemptTerminalError,
 } from './fixtureLifecycle.js';
 import {
-  chooseTournamentNextGame,
   getTournamentFixtureAttemptStateWithReconciliation,
 } from './fixtureAttempts.js';
 import { publishTournamentFixtureProgress } from './realtimeProgress.js';
@@ -440,22 +439,6 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     }
     return result.state;
   });
-
-  app.post(
-    '/tournaments/:tournamentId/fixtures/:fixtureId/attempt/next-game-choice',
-    authenticated,
-    async (req) => {
-      await requireTournamentFeature(app);
-      const params = z.object({ tournamentId: uuid, fixtureId: uuid }).parse(req.params);
-      const body = z.object({ choice: z.enum(['immediate', 'scheduled']) }).parse(req.body);
-      return chooseTournamentNextGame(app.pg, {
-        ...params,
-        ...body,
-        userId: req.user.id,
-        now: new Date(),
-      });
-    },
-  );
 
   app.get('/admin/tournaments/:tournamentId/dispatches', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);

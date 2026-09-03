@@ -47,6 +47,14 @@ export interface SeriesScheduleGame {
   conditional: boolean;
 }
 
+export function resolveDelayedPlayoffRoundStart(input: {
+  configuredStart: Date;
+  finalPriorSeriesSettledAt: Date;
+}): Date {
+  if (input.configuredStart > input.finalPriorSeriesSettledAt) return input.configuredStart;
+  return new Date(input.finalPriorSeriesSettledAt.getTime() + 30 * 60_000);
+}
+
 export function expandSeriesSchedule(
   winsRequired: number,
   homeSequence: HomeDesignation[],
