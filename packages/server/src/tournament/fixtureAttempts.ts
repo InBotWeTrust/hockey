@@ -271,7 +271,9 @@ export async function insertRoundGameDays(
     roundId: string;
     days: ResolvedRoundGameDay[];
     readinessMinutes: number;
-    plannedStartIntervalMinutes: number;
+    /** Retained only while importing legacy slot-based schedule snapshots. */
+    plannedStartIntervalMinutes?: number;
+    interGameBreakMinutes?: number;
   },
 ): Promise<ResolvedRoundGameDay[]> {
   const persisted: ResolvedRoundGameDay[] = [];
@@ -279,9 +281,10 @@ export async function insertRoundGameDays(
     const inserted = await client.query<{ id: string }>(
       `insert into tournament_round_game_day
          (round_id, day_number, local_date, first_game_local_time, first_game_starts_at,
-          max_result_bearing_games, readiness_duration, planned_start_interval)
+          max_result_bearing_games, readiness_duration, planned_start_interval,
+          inter_game_break_duration)
        values ($1, $2, $3::date, $4::time, $5, $6, $7 * interval '1 minute',
-               $8 * interval '1 minute')
+               $8 * interval '1 minute', $9 * interval '1 minute')
        returning id`,
       [
         input.roundId,
@@ -291,7 +294,8 @@ export async function insertRoundGameDays(
         day.firstGameStartsAt,
         day.maxResultGames,
         input.readinessMinutes,
-        input.plannedStartIntervalMinutes,
+        input.plannedStartIntervalMinutes ?? 1,
+        input.interGameBreakMinutes ?? 5,
       ],
     );
     persisted.push({ ...day, id: inserted.rows[0]!.id });

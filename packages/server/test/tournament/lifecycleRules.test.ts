@@ -85,7 +85,7 @@ describe('normalizePublishedTournamentLifecycleRules', () => {
     ).toMatchObject({ duelLifecycleVersion: 2 });
   });
 
-  it('defaults readiness, cadence, and best-of-seven two-day capacities', () => {
+  it('defaults readiness, event-driven break, and best-of-seven two-day capacities', () => {
     const normalized = normalizePublishedTournamentLifecycleRules({
       config: { regularSource: 'head_to_head' },
       playoffRounds: [
@@ -103,13 +103,33 @@ describe('normalizePublishedTournamentLifecycleRules', () => {
     expect(normalized.playoffRounds).toEqual([
       expect.objectContaining({
         readinessMinutes: 5,
-        plannedStartIntervalMinutes: 30,
+        gameDurationMinutes: 20,
+        interGameBreakMinutes: 5,
         scheduleDays: [
           { localDate: '2030-10-26', firstWaveLocalTime: '20:00', maxResultGames: 4 },
           { localDate: '2030-10-27', firstWaveLocalTime: '20:00', maxResultGames: 3 },
         ],
       }),
     ]);
+  });
+
+  it('reads a legacy cadence but omits it from a newly normalized rule revision', () => {
+    const normalized = normalizePublishedTournamentLifecycleRules({
+      config: { regularSource: 'head_to_head' },
+      playoffRounds: [
+        {
+          roundNumber: 1,
+          winsRequired: 1,
+          plannedStartIntervalMinutes: 30,
+          scheduleDays: [{ localDate: '2030-10-26', firstWaveLocalTime: '20:00' }],
+        },
+      ],
+    });
+
+    expect(normalized.playoffRounds).toEqual([
+      expect.objectContaining({ gameDurationMinutes: 20, interGameBreakMinutes: 5 }),
+    ]);
+    expect(normalized.playoffRounds?.[0]).not.toHaveProperty('plannedStartIntervalMinutes');
   });
 
   it('defaults a one-day best-of-seven capacity to all seven games', () => {
@@ -151,7 +171,8 @@ describe('normalizePublishedTournamentLifecycleRules', () => {
     expect(normalized.playoffRounds).toEqual([
       expect.objectContaining({
         readinessMinutes: 5,
-        plannedStartIntervalMinutes: 30,
+        gameDurationMinutes: 20,
+        interGameBreakMinutes: 5,
         scheduleDays: [
           { localDate: '2030-10-26', firstWaveLocalTime: '20:00', maxResultGames: 1 },
           { localDate: '2030-10-27', firstWaveLocalTime: '20:00', maxResultGames: 1 },
@@ -210,7 +231,8 @@ describe('published tournament route rules', () => {
       playoffRounds: [
         {
           readinessMinutes: 5,
-          plannedStartIntervalMinutes: 30,
+          gameDurationMinutes: 20,
+          interGameBreakMinutes: 5,
           scheduleDays: [{ maxResultGames: 1 }],
         },
       ],

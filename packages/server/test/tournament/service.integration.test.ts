@@ -2388,6 +2388,68 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(fixture.rows[0]!.scheduled_starts_at.toISOString()).toBe('2030-09-03T07:00:00.000Z');
   });
 
+  it('schedules only the first game of each event-driven playoff series', async () => {
+    await seedUsers(pool, 0);
+    const templateId = await activeTournamentDuelTemplateId(pool);
+    const tournament = await createPublishedTournament(
+      pool,
+      'sequential-playoff-series-slots',
+      0,
+      playoffTournamentRules(2, {
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            winsRequired: 2,
+            homeSequence: ['H', 'A', 'H'],
+            duelTemplateId: templateId,
+            readinessMinutes: 5,
+            gameDurationMinutes: 20,
+            interGameBreakMinutes: 5,
+            roundBreakMs: 0,
+            scheduleDays: [
+              { localDate: '2030-09-05', firstWaveLocalTime: '10:00', maxResultGames: 2 },
+              { localDate: '2030-09-06', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+            ],
+          },
+        ],
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+
+    const fixtures = await pool.query<{
+      game_number: number;
+      scheduled_starts_at: Date | null;
+      window_ends_at: Date | null;
+      attempt_id: string | null;
+    }>(
+      `select (fixture.result_snapshot->>'gameNumber')::int as game_number,
+              fixture.scheduled_starts_at, fixture.window_ends_at, attempt.id as attempt_id
+         from tournament_fixture fixture
+         join tournament_playoff_series series on series.id = fixture.series_id
+         left join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+        where series.tournament_id = $1 and series.depends_on->>'key' = 'R1S1'
+        order by fixture.fixture_number`,
+      [tournament.id],
+    );
+
+    expect(fixtures.rows.map((fixture) => ({
+      gameNumber: fixture.game_number,
+      scheduledStart: fixture.scheduled_starts_at?.toISOString() ?? null,
+      windowEnd: fixture.window_ends_at?.toISOString() ?? null,
+      hasInitialAttempt: fixture.attempt_id !== null,
+    }))).toEqual([
+      {
+        gameNumber: 1,
+        scheduledStart: '2030-09-05T07:00:00.000Z',
+        windowEnd: '2030-09-05T07:25:00.000Z',
+        hasInitialAttempt: true,
+      },
+      { gameNumber: 2, scheduledStart: null, windowEnd: null, hasInitialAttempt: false },
+      { gameNumber: 3, scheduledStart: null, windowEnd: null, hasInitialAttempt: false },
+    ]);
+  });
+
   it('reschedules every unstarted playoff game from a legacy rules snapshot', async () => {
     await seedUsers(pool, 0);
     const template = await pool.query<{ id: string }>(

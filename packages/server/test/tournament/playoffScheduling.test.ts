@@ -60,7 +60,7 @@ describe('validateRoundGameDays', () => {
     ).not.toThrow();
   });
 
-  it('accepts a configurable game duration and rejects overlapping starts', () => {
+  it('accepts a legacy cadence without using it to constrain event-driven games', () => {
     const days = [
       { localDate: '2026-09-10', firstWaveLocalTime: '10:00', maxResultGames: 3 },
     ];
@@ -81,7 +81,37 @@ describe('validateRoundGameDays', () => {
         plannedStartIntervalMinutes: 20,
         days,
       }),
-    ).toThrow('planned start interval cannot be shorter than game duration');
+    ).not.toThrow();
+  });
+
+  it('accepts the event-driven completion window and inter-game break without a legacy slot cadence', () => {
+    expect(() =>
+      validateRoundGameDays({
+        winsRequired: 2,
+        readinessMinutes: 5,
+        gameDurationMinutes: 20,
+        interGameBreakMinutes: 5,
+        days: [
+          { localDate: '2026-09-10', firstWaveLocalTime: '10:00', maxResultGames: 2 },
+          { localDate: '2026-09-11', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
+  it.each([
+    [0, 'inter-game break minutes must be between 1 and 30'],
+    [31, 'inter-game break minutes must be between 1 and 30'],
+  ])('rejects an invalid event-driven inter-game break of %i minutes', (interGameBreakMinutes, message) => {
+    expect(() =>
+      validateRoundGameDays({
+        winsRequired: 1,
+        readinessMinutes: 5,
+        gameDurationMinutes: 20,
+        interGameBreakMinutes,
+        days: [{ localDate: '2026-09-10', firstWaveLocalTime: '10:00', maxResultGames: 1 }],
+      }),
+    ).toThrow(message);
   });
 
   it.each([
@@ -340,7 +370,7 @@ describe('calculateHardGameDeadline', () => {
     ).toBe('2026-09-10T10:20:15.000Z');
   });
 
-  it('uses the configured total game duration when it is longer than the template minimum', () => {
+  it('starts the configured completion window after readiness has expired', () => {
     expect(
       calculateHardGameDeadline({
         plannedStartAt: new Date('2026-09-10T10:00:00.000Z'),
@@ -351,7 +381,7 @@ describe('calculateHardGameDeadline', () => {
           breakDurationsMs: [],
         },
       }).toISOString(),
-    ).toBe('2026-09-10T10:30:00.000Z');
+    ).toBe('2026-09-10T10:35:00.000Z');
   });
 
   it.each([

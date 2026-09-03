@@ -78,14 +78,20 @@ export interface RoundGameDayValidationInput {
   winsRequired: number;
   readinessMinutes: number;
   gameDurationMinutes?: number;
-  plannedStartIntervalMinutes: number;
+  interGameBreakMinutes?: number;
+  /** Legacy snapshots may still carry this pre-event-driven field. */
+  plannedStartIntervalMinutes?: number;
   days: RoundGameDay[];
 }
 
 /** Tournament ready checks are deliberately capped to two hours. */
 export const MAX_TOURNAMENT_READINESS_MINUTES = 120;
 
-/** A planned start cadence may be as short as one minute and no longer than one local day. */
+export const MIN_TOURNAMENT_GAME_DURATION_MINUTES = 5;
+export const MAX_TOURNAMENT_GAME_DURATION_MINUTES = 60;
+export const MIN_TOURNAMENT_INTER_GAME_BREAK_MINUTES = 1;
+export const MAX_TOURNAMENT_INTER_GAME_BREAK_MINUTES = 30;
+/** Legacy snapshot cadence remains readable for compatibility. */
 export const MAX_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES = 24 * 60;
 
 function isValidLocalDate(value: string): boolean {
@@ -116,23 +122,26 @@ export function validateRoundGameDays(input: RoundGameDayValidationInput): void 
   if (
     input.gameDurationMinutes !== undefined &&
     (!Number.isInteger(input.gameDurationMinutes) ||
-      input.gameDurationMinutes < 1 ||
-      input.gameDurationMinutes > MAX_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES)
+      input.gameDurationMinutes < MIN_TOURNAMENT_GAME_DURATION_MINUTES ||
+      input.gameDurationMinutes > MAX_TOURNAMENT_GAME_DURATION_MINUTES)
   ) {
-    throw new Error('game duration minutes must be between 1 and 1440');
+    throw new Error('game duration minutes must be between 5 and 60');
   }
   if (
-    !Number.isInteger(input.plannedStartIntervalMinutes) ||
-    input.plannedStartIntervalMinutes < 1 ||
-    input.plannedStartIntervalMinutes > MAX_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES
+    input.interGameBreakMinutes !== undefined &&
+    (!Number.isInteger(input.interGameBreakMinutes) ||
+      input.interGameBreakMinutes < MIN_TOURNAMENT_INTER_GAME_BREAK_MINUTES ||
+      input.interGameBreakMinutes > MAX_TOURNAMENT_INTER_GAME_BREAK_MINUTES)
+  ) {
+    throw new Error('inter-game break minutes must be between 1 and 30');
+  }
+  if (
+    input.plannedStartIntervalMinutes !== undefined &&
+    (!Number.isInteger(input.plannedStartIntervalMinutes) ||
+      input.plannedStartIntervalMinutes < 1 ||
+      input.plannedStartIntervalMinutes > MAX_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES)
   ) {
     throw new Error('planned start interval minutes must be between 1 and 1440');
-  }
-  if (
-    input.gameDurationMinutes !== undefined &&
-    input.plannedStartIntervalMinutes < input.gameDurationMinutes
-  ) {
-    throw new Error('planned start interval cannot be shorter than game duration');
   }
   if (input.days.length === 0) throw new Error('at least one game day is required');
 
@@ -283,8 +292,7 @@ export function calculateHardGameDeadline(input: HardGameDeadlineInput): Date {
     throw new Error('template break durations must be non-negative integers');
   }
 
-  const gameDurationMs =
-    input.readyCheckDurationMs +
+  const templateGameDurationMs =
     periodDurationsMs.reduce((total, duration) => total + duration, 0) +
     breakDurationsMs.reduce((total, duration) => total + duration, 0);
   if (input.configuredGameDurationMs !== undefined) {
@@ -292,9 +300,10 @@ export function calculateHardGameDeadline(input: HardGameDeadlineInput): Date {
       input.configuredGameDurationMs,
       'configured game duration must be a positive integer',
     );
-    if (input.configuredGameDurationMs < gameDurationMs) {
+    if (input.configuredGameDurationMs < templateGameDurationMs) {
       throw new Error('configured game duration cannot be shorter than the duel template');
     }
+    return new Date(plannedStartMs + input.readyCheckDurationMs + input.configuredGameDurationMs);
   }
-  return new Date(plannedStartMs + (input.configuredGameDurationMs ?? gameDurationMs));
+  return new Date(plannedStartMs + input.readyCheckDurationMs + templateGameDurationMs);
 }

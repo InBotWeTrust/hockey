@@ -13,12 +13,12 @@ import {
   insertRoundGameDays,
   loadDuelTemplateLifecycleSnapshot,
   resolveRoundGameDays,
-  scheduledStartForSeriesGame,
   type DuelTemplateLifecycleSnapshot,
   type ResolvedRoundGameDay,
 } from './fixtureAttempts.js';
 import {
-  DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
+  DEFAULT_TOURNAMENT_GAME_DURATION_MINUTES,
+  DEFAULT_TOURNAMENT_INTER_GAME_BREAK_MINUTES,
   DEFAULT_TOURNAMENT_READINESS_MINUTES,
   normalizePublishedTournamentLifecycleRules,
 } from './lifecycleRules.js';
@@ -71,7 +71,7 @@ const PLAYOFF_SCHEDULING_FIELDS = new Set([
   'roundBreakMs',
   'readinessMinutes',
   'gameDurationMinutes',
-  'plannedStartIntervalMinutes',
+  'interGameBreakMinutes',
 ]);
 const DEFAULT_PLAYOFF_READINESS_MINUTES = 5;
 const DEFAULT_PLAYOFF_START_INTERVAL_MINUTES = 30;
@@ -231,7 +231,7 @@ function playoffRoundScheduleKey(rules: TournamentRulesSnapshot, roundNumber: nu
     scheduleDays: round.scheduleDays,
     gameDurationMinutes: round.gameDurationMinutes,
     readinessMinutes: round.readinessMinutes,
-    plannedStartIntervalMinutes: round.plannedStartIntervalMinutes,
+    interGameBreakMinutes: round.interGameBreakMinutes,
   });
 }
 
@@ -271,10 +271,11 @@ async function reschedulePublishedPlayoffRounds(
     validateRoundGameDays({
       winsRequired: rules.winsRequired,
       readinessMinutes: rules.readinessMinutes,
-      ...(rules.gameDurationMinutes === null
+      gameDurationMinutes: rules.gameDurationMinutes,
+      interGameBreakMinutes: rules.interGameBreakMinutes,
+      ...(rules.plannedStartIntervalMinutes === null
         ? {}
-        : { gameDurationMinutes: rules.gameDurationMinutes }),
-      plannedStartIntervalMinutes: rules.plannedStartIntervalMinutes,
+        : { plannedStartIntervalMinutes: rules.plannedStartIntervalMinutes }),
       days: rules.scheduleDays,
     });
     const days = resolveRoundGameDays(input.nextRules.config.timezone, rules.scheduleDays);
@@ -378,23 +379,25 @@ async function reschedulePublishedPlayoffRounds(
       if (fixture.game_number === null) {
         throw new AppError('configuration_error', 'У игры не указан номер в серии', 409);
       }
-      const slot = scheduledStartForSeriesGame(
-        days,
-        Number(fixture.game_number),
-        rules.plannedStartIntervalMinutes,
-      );
-      if (slot.startsAt <= input.now) {
+      const slot =
+        fixture.game_number === 1
+          ? { day: days[0]!, startsAt: days[0]!.firstGameStartsAt }
+          : null;
+      if (slot !== null && slot.startsAt <= input.now) {
         throw new AppError('bad_request', 'Новое время игр должно быть в будущем', 400);
       }
       return {
         fixture,
         slot,
-        hardDeadlineAt: attemptDeadline(
-          slot.startsAt,
-          rules.readinessMinutes,
-          template,
-          rules.gameDurationMinutes ?? undefined,
-        ),
+        hardDeadlineAt:
+          slot === null
+            ? null
+            : attemptDeadline(
+                slot.startsAt,
+                rules.readinessMinutes,
+                template,
+                rules.gameDurationMinutes,
+              ),
       };
     });
 
@@ -410,11 +413,43 @@ async function reschedulePublishedPlayoffRounds(
       roundId: round.id,
       days,
       readinessMinutes: rules.readinessMinutes,
-      plannedStartIntervalMinutes: rules.plannedStartIntervalMinutes,
+      interGameBreakMinutes: rules.interGameBreakMinutes,
     });
     const dayByNumber = new Map(persistedDays.map((day) => [day.dayNumber, day]));
-    let roundEnd = persistedDays[0]!.firstGameStartsAt;
+    let roundEnd = new Date(
+      Math.max(
+        ...persistedDays.map((day) =>
+          attemptDeadline(
+            new Date(
+              day.firstGameStartsAt.getTime() +
+                (day.maxResultGames - 1) *
+                  (rules.gameDurationMinutes + rules.interGameBreakMinutes) *
+                  60_000,
+            ),
+            rules.readinessMinutes,
+            template,
+            rules.gameDurationMinutes,
+          ).getTime(),
+        ),
+      ),
+    );
     for (const item of planned) {
+      if (item.slot === null) {
+        if (item.fixture.attempt_id !== null) {
+          await client.query(
+            `delete from tournament_fixture_attempt where id = $1 and status = 'pending'`,
+            [item.fixture.attempt_id],
+          );
+        }
+        await client.query(
+          `update tournament_fixture
+              set scheduled_starts_at = null, window_ends_at = null,
+                  rescheduled_reason = 'Изменение расписания плей-офф', updated_at = now()
+            where id = $1`,
+          [item.fixture.id],
+        );
+        continue;
+      }
       const persistedDay = dayByNumber.get(item.slot.day.dayNumber)!;
       const readinessExpiresAt = new Date(
         item.slot.startsAt.getTime() + rules.readinessMinutes * 60_000,
@@ -425,9 +460,7 @@ async function reschedulePublishedPlayoffRounds(
           roundGameDayId: persistedDay.id!,
           scheduledStartsAt: item.slot.startsAt,
           readinessMinutes: rules.readinessMinutes,
-          ...(rules.gameDurationMinutes === null
-            ? {}
-            : { gameDurationMinutes: rules.gameDurationMinutes }),
+          gameDurationMinutes: rules.gameDurationMinutes,
           template,
           rescheduledReason: 'Изменение расписания плей-офф',
         });
@@ -487,7 +520,7 @@ async function reschedulePublishedPlayoffRounds(
         ],
       );
       await enqueueTournamentSeriesNextGamePush(client, { fixtureId: item.fixture.id });
-      if (item.hardDeadlineAt > roundEnd) roundEnd = item.hardDeadlineAt;
+      if (item.hardDeadlineAt! > roundEnd) roundEnd = item.hardDeadlineAt!;
     }
     await client.query(
       `update tournament_playoff_series
@@ -3288,8 +3321,11 @@ interface PlayoffRoundRules {
   roundBreakMs: number;
   firstGameStartsAt: Date | null;
   readinessMinutes: number;
-  gameDurationMinutes: number | null;
-  plannedStartIntervalMinutes: number;
+  /** Completion window after both players have confirmed readiness. */
+  gameDurationMinutes: number;
+  interGameBreakMinutes: number;
+  /** Retained for old persisted snapshots only. */
+  plannedStartIntervalMinutes: number | null;
   scheduleDays: RoundGameDay[] | null;
   overtime: {
     count: number;
@@ -3441,16 +3477,22 @@ export function playoffRoundRules(
       1,
       120,
     ),
-    gameDurationMinutes:
-      record.gameDurationMinutes === undefined
-        ? null
-        : boundedInteger(record.gameDurationMinutes, 20, 1, 1440),
-    plannedStartIntervalMinutes: boundedInteger(
-      record.plannedStartIntervalMinutes,
-      DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
-      1,
-      1440,
+    gameDurationMinutes: boundedInteger(
+      record.gameDurationMinutes,
+      DEFAULT_TOURNAMENT_GAME_DURATION_MINUTES,
+      5,
+      60,
     ),
+    interGameBreakMinutes: boundedInteger(
+      record.interGameBreakMinutes,
+      DEFAULT_TOURNAMENT_INTER_GAME_BREAK_MINUTES,
+      1,
+      30,
+    ),
+    plannedStartIntervalMinutes:
+      record.plannedStartIntervalMinutes === undefined
+        ? null
+        : boundedInteger(record.plannedStartIntervalMinutes, 30, 1, 1440),
     scheduleDays,
     overtime: overtimeRules(record.overtime, defaultOvertime),
   };
@@ -3503,8 +3545,9 @@ function tieBreakRules(rules: TournamentRulesSnapshot): PlayoffRoundRules {
       ),
     ),
     readinessMinutes: DEFAULT_TOURNAMENT_READINESS_MINUTES,
-    gameDurationMinutes: null,
-    plannedStartIntervalMinutes: DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
+    gameDurationMinutes: DEFAULT_TOURNAMENT_GAME_DURATION_MINUTES,
+    interGameBreakMinutes: DEFAULT_TOURNAMENT_INTER_GAME_BREAK_MINUTES,
+    plannedStartIntervalMinutes: null,
     scheduleDays: null,
     overtime: overtimeRules(configured.overtime, defaultOvertime),
   };
@@ -4000,16 +4043,22 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         );
         const days = resolveRoundGameDays(tournament.rules_snapshot.config.timezone, rebasedDays);
         const template = await loadDuelTemplateLifecycleSnapshot(client, rules.duelTemplateId);
-        const lastGame = scheduledStartForSeriesGame(
-          days,
-          rules.winsRequired * 2 - 1,
-          rules.plannedStartIntervalMinutes,
-        );
-        const endsAt = attemptDeadline(
-          lastGame.startsAt,
-          rules.readinessMinutes,
-          template,
-          rules.gameDurationMinutes ?? undefined,
+        const endsAt = new Date(
+          Math.max(
+            ...days.map((day) =>
+              attemptDeadline(
+                new Date(
+                  day.firstGameStartsAt.getTime() +
+                    (day.maxResultGames - 1) *
+                      (rules.gameDurationMinutes + rules.interGameBreakMinutes) *
+                      60_000,
+                ),
+                rules.readinessMinutes,
+                template,
+                rules.gameDurationMinutes,
+              ).getTime(),
+            ),
+          ),
         );
         schedules.set(roundNumber, {
           rules,
@@ -4077,7 +4126,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
             roundId: round.rows[0]!.id,
             days: schedule.days,
             readinessMinutes: schedule.rules.readinessMinutes,
-            plannedStartIntervalMinutes: schedule.rules.plannedStartIntervalMinutes,
+            interGameBreakMinutes: schedule.rules.interGameBreakMinutes,
           }),
         );
       }
@@ -4123,16 +4172,16 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
       for (const game of schedule) {
         const higherIsHome = game.higherSeedIsHome;
         const modernSlot =
-          scheduleWindows.days === null
+          scheduleWindows.days === null || game.gameNumber !== 1
             ? null
-            : scheduledStartForSeriesGame(
-                roundGameDays.get(`${stage}:${item.roundNumber}`)!,
-                game.gameNumber,
-                rules.plannedStartIntervalMinutes,
-              );
+            : {
+                day: roundGameDays.get(`${stage}:${item.roundNumber}`)![0]!,
+                startsAt: scheduleWindows.days[0]!.firstGameStartsAt,
+              };
         const legacyWindow =
           scheduleWindows.windows === null ? null : scheduleWindows.windows[game.gameNumber - 1]!;
-        const scheduledStartsAt = modernSlot?.startsAt ?? legacyWindow!.startsAt;
+        const scheduledStartsAt =
+          modernSlot?.startsAt ?? (legacyWindow === null ? null : legacyWindow.startsAt);
         const windowEndsAt =
           modernSlot !== null
             ? attemptDeadline(
@@ -4141,7 +4190,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
                 scheduleWindows.template!,
                 rules.gameDurationMinutes ?? undefined,
               )
-            : legacyWindow!.endsAt;
+            : (legacyWindow?.endsAt ?? null);
         const insertedFixture = await client.query<{ id: string }>(
           `insert into tournament_fixture
              (tournament_id, round_id, series_id, fixture_number,
@@ -4174,9 +4223,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
             roundGameDayId: modernSlot.day.id!,
             scheduledStartsAt: modernSlot.startsAt,
             readinessMinutes: rules.readinessMinutes,
-            ...(rules.gameDurationMinutes === null
-              ? {}
-              : { gameDurationMinutes: rules.gameDurationMinutes }),
+            gameDurationMinutes: rules.gameDurationMinutes,
             template: scheduleWindows.template!,
           });
         }

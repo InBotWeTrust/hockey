@@ -42,6 +42,10 @@ const playoffScheduleMissingNotificationMigrationUrl = new URL(
   '../../db/migrations/088_tournament_playoff_schedule_missing_notification.sql',
   import.meta.url,
 );
+const sequentialPlayoffScheduleMigrationUrl = new URL(
+  '../../db/migrations/090_tournament_sequential_playoff_schedule.sql',
+  import.meta.url,
+);
 
 describe('tournament migration contract', () => {
   it('creates the complete tournament orchestration schema', async () => {
@@ -227,6 +231,18 @@ describe('tournament migration contract', () => {
     expect(sql).toContain('Укажите даты и время игр плей-офф');
     expect(sql).toContain("'/admin'");
     expect(sql).toContain('on conflict (key) do nothing');
+    expect(sql).not.toMatch(/drop\s+(column|table)/i);
+  });
+
+  it('adds an idempotent event-driven inter-game break without removing legacy schedule data', async () => {
+    const sql = await readFile(sequentialPlayoffScheduleMigrationUrl, 'utf8');
+
+    expect(sql).toMatch(
+      /alter table tournament_round_game_day\s+add column if not exists inter_game_break_duration interval/i,
+    );
+    expect(sql).toContain(
+      "inter_game_break_duration between interval '1 minute' and interval '30 minutes'",
+    );
     expect(sql).not.toMatch(/drop\s+(column|table)/i);
   });
 });

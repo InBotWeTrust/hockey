@@ -443,7 +443,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     await app?.close();
   });
 
-  it('materializes DST-safe playoff game days and one initial attempt for every fixture', async () => {
+  it('materializes DST-safe playoff game days and one initial attempt per series', async () => {
     const tournament = await createPublished(pool, 'attempt-playoff-schedule', lifecycleRules());
     await preparePlayoffs(pool, tournament.id);
 
@@ -470,22 +470,18 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
         order by game_number, fixture.fixture_number`,
       [tournament.id],
     );
-    expect(firstRound.rows).toHaveLength(6);
+    expect(firstRound.rows).toHaveLength(2);
     expect(
       firstRound.rows.map((row) => `${row.game_number}:${row.scheduled_starts_at.toISOString()}`),
     ).toEqual([
       '1:2030-10-26T17:00:00.000Z',
       '1:2030-10-26T17:00:00.000Z',
-      '2:2030-10-26T17:20:00.000Z',
-      '2:2030-10-26T17:20:00.000Z',
-      '3:2030-10-27T17:00:00.000Z',
-      '3:2030-10-27T17:00:00.000Z',
     ]);
     expect(firstRound.rows.every((row) => row.attempt_number === 1)).toBe(true);
     expect(firstRound.rows.every((row) => row.kind === 'initial')).toBe(true);
     expect(firstRound.rows.every((row) => row.is_result_bearing)).toBe(true);
-    expect(firstRound.rows.filter((row) => row.status === 'conditional')).toHaveLength(2);
-    expect(firstRound.rows[0]!.hard_deadline_at.toISOString()).toBe('2030-10-26T17:08:30.000Z');
+    expect(firstRound.rows.filter((row) => row.status === 'conditional')).toHaveLength(0);
+    expect(firstRound.rows[0]!.hard_deadline_at.toISOString()).toBe('2030-10-26T17:25:00.000Z');
     expect(firstRound.rows[0]!.snapshot).toMatchObject({
       duelTemplateId: TEMPLATE_ID,
       duelKind: 'classic',
@@ -538,7 +534,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
           and fixture.series_id is not null`,
       [tournament.id],
     );
-    expect(fixtureCount.rows[0]).toEqual({ fixtures: 8, attempts: 8 });
+    expect(fixtureCount.rows[0]).toEqual({ fixtures: 8, attempts: 4 });
   });
 
   it('materializes regular attempts only for the explicit lifecycle marker', async () => {

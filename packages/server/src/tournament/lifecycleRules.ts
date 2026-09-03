@@ -11,7 +11,8 @@ export {
 } from './automaticLifecycle.js';
 
 export const DEFAULT_TOURNAMENT_READINESS_MINUTES = 5;
-export const DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES = 30;
+export const DEFAULT_TOURNAMENT_GAME_DURATION_MINUTES = 20;
+export const DEFAULT_TOURNAMENT_INTER_GAME_BREAK_MINUTES = 5;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -39,21 +40,34 @@ export function normalizePublishedTournamentLifecycleRules<T extends UnknownReco
   const playoffRounds = Array.isArray(input.playoffRounds)
     ? input.playoffRounds.map((value) => {
         const round = record(value);
-        if (!Array.isArray(round.scheduleDays)) return round;
-
+        const { plannedStartIntervalMinutes: _legacyPlannedStartIntervalMinutes, ...roundWithoutLegacyCadence } =
+          round;
         const winsRequired = explicitNumberOrDefault(round.winsRequired, 4);
         const readinessMinutes = explicitNumberOrDefault(
           round.readinessMinutes,
           DEFAULT_TOURNAMENT_READINESS_MINUTES,
         );
-        const gameDurationMinutes =
-          round.gameDurationMinutes === undefined
-            ? undefined
-            : explicitNumberOrDefault(round.gameDurationMinutes, Number.NaN);
+        const gameDurationMinutes = explicitNumberOrDefault(
+          round.gameDurationMinutes,
+          DEFAULT_TOURNAMENT_GAME_DURATION_MINUTES,
+        );
+        const interGameBreakMinutes = explicitNumberOrDefault(
+          round.interGameBreakMinutes,
+          DEFAULT_TOURNAMENT_INTER_GAME_BREAK_MINUTES,
+        );
         const plannedStartIntervalMinutes = explicitNumberOrDefault(
           round.plannedStartIntervalMinutes,
-          DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
+          Number.NaN,
         );
+        if (!Array.isArray(round.scheduleDays)) {
+          return {
+            ...roundWithoutLegacyCadence,
+            winsRequired,
+            readinessMinutes,
+            gameDurationMinutes,
+            interGameBreakMinutes,
+          };
+        }
         const hasMissingCapacity = round.scheduleDays.some(
           (dayValue) => record(dayValue).maxResultGames === undefined,
         );
@@ -75,16 +89,17 @@ export function normalizePublishedTournamentLifecycleRules<T extends UnknownReco
         validateRoundGameDays({
           winsRequired,
           readinessMinutes,
-          ...(gameDurationMinutes === undefined ? {} : { gameDurationMinutes }),
-          plannedStartIntervalMinutes,
+          gameDurationMinutes,
+          interGameBreakMinutes,
+          ...(Number.isNaN(plannedStartIntervalMinutes) ? {} : { plannedStartIntervalMinutes }),
           days: scheduleDays,
         });
         return {
-          ...round,
+          ...roundWithoutLegacyCadence,
           winsRequired,
           readinessMinutes,
-          ...(gameDurationMinutes === undefined ? {} : { gameDurationMinutes }),
-          plannedStartIntervalMinutes,
+          gameDurationMinutes,
+          interGameBreakMinutes,
           scheduleDays,
         };
       })
