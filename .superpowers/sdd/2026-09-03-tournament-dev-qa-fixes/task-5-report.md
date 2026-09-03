@@ -138,3 +138,37 @@ No GLM review, subagent, push, deployment, production action, synthetic fixture,
 or manual dev acceptance was performed. Task 6 remains responsible for
 whole-branch review, browser acceptance, integration into `dev`, deployment,
 and exact-SHA runtime verification.
+
+## Reviewer fix round 1
+
+The earlier 162/162 focused web run passed, but it did not assert that the
+fifth already loaded item was rendered. Adding the reviewer regression to
+commit `92dae9b` makes that baseline RED: `other-6` is absent even though the
+server page returned five fixtures. The calendar was applying its separate
+four-item client collapse to lazy server pages, while the lazy flow never sets
+the local expanded-date state. GREEN keeps the four-item collapse for eager
+calendar data and renders every item supplied by the lazy paginated contract;
+the test also loads the next cursor page and proves `other-7` and `other-8`
+remain visible.
+
+The forfeit regression is independently RED on `92dae9b`: a completed
+technical result with authoritative winner `away` and numeric storage values
+`0:0` is rendered as `Первый 0 : 0 Второй`, so the expected accessible label
+`Игра 3: Техническая победа — Второй` cannot be found. GREEN uses the existing
+semantic result label for a forfeit and does not expose the misleading numeric
+score. Ordinary settled games retain their player-specific color spans and
+the established compact accessibility text such as
+`Игра 1: Первый 3:2 Четвёртый`.
+
+Fresh fix-round verification after commit `86d070d`:
+
+- Both focused reviewer regressions — PASS, 2/2.
+- Focused web run covering tournament API, catalog/calendar/bracket,
+  playoff-attempt view, and `DailyScreen` — PASS, 179/179.
+- `pnpm typecheck` — PASS for game-core, server, and web.
+- `pnpm lint` — PASS for all package source files.
+- `git diff --check` — PASS before the code/test commit and repeated at the
+  report commit gate.
+
+No GLM review, subagent, push, deployment, production action, synthetic
+fixture, or manual dev acceptance was performed during this fix round.
