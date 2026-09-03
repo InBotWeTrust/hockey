@@ -19,6 +19,7 @@ interface PlayoffDayStartingRow {
   rescheduled_starts_at: Date | null;
   schedule_revision: number;
   current_revision: number;
+  timezone: string;
 }
 
 export interface ReconcilePlayoffDayStartingOptions {
@@ -31,7 +32,7 @@ export interface ReconcilePlayoffDayStartingOptions {
 }
 
 function playoffDayStartingAt(row: PlayoffDayStartingRow, immediate: boolean): Date {
-  return immediate ? row.scheduled_starts_at : row.rescheduled_starts_at ?? row.day_starts_at;
+  return immediate ? row.scheduled_starts_at : (row.rescheduled_starts_at ?? row.day_starts_at);
 }
 
 function playoffDayStartingKey(row: PlayoffDayStartingRow, immediate: boolean): string {
@@ -47,19 +48,46 @@ function playoffDayStartingKey(row: PlayoffDayStartingRow, immediate: boolean): 
   ].join(':');
 }
 
+export function formatTournamentNotificationDateTime(date: Date, timezone: string): string {
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: timezone,
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  };
+  let formatter: Intl.DateTimeFormat;
+  try {
+    formatter = new Intl.DateTimeFormat('ru-RU', options);
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    formatter = new Intl.DateTimeFormat('ru-RU', { ...options, timeZone: 'UTC' });
+  }
+  const parts = formatter.formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return `${value('day')} ${value('month')} в ${value('hour')}:${value('minute')}`;
+}
+
 function playoffDayStartingContent(
   row: PlayoffDayStartingRow,
   immediate: boolean,
-): { title: string; body: string } {
-  const startsAt = playoffDayStartingAt(row, immediate).toISOString();
+): { title: string; body: string; startsAt: string } {
+  const startsAt = formatTournamentNotificationDateTime(
+    playoffDayStartingAt(row, immediate),
+    row.timezone,
+  );
   return immediate
     ? {
         title: 'Матч перенесён: начинаем скоро',
         body: `${row.tournament_title}: новая игра серии начнётся ${startsAt}.`,
+        startsAt,
       }
     : {
         title: 'Скоро начинается игровой день',
         body: `${row.tournament_title}: игра серии начнётся ${startsAt}.`,
+        startsAt,
       };
 }
 
@@ -78,7 +106,7 @@ async function dispatchPlayoffDayStartingForParticipant(
       userId: row.user_id,
       eventType: PLAYOFF_DAY_STARTING_EVENT_TYPE,
       eventKey,
-      variables: { startsAt: playoffDayStartingAt(row, immediate).toISOString() },
+      variables: { startsAt: content.startsAt },
       fallback: {
         title: content.title,
         body: content.body,
@@ -131,10 +159,7 @@ export async function reconcilePlayoffDayStartingCommunications(
 ): Promise<{ considered: number }> {
   if (options.systemUserId === undefined) return { considered: 0 };
   const fixtureClause = options.fixtureId === undefined ? '' : 'and fixture.id = $2';
-  const params =
-    options.fixtureId === undefined
-      ? [options.now]
-      : [options.now, options.fixtureId];
+  const params = options.fixtureId === undefined ? [options.now] : [options.now, options.fixtureId];
   const windowClause =
     options.immediate === true
       ? `attempt.scheduled_starts_at > $1 and attempt.scheduled_starts_at < $1 + interval '30 minutes'`
@@ -156,9 +181,11 @@ export async function reconcilePlayoffDayStartingCommunications(
               round_game_day.rescheduled_starts_at,
               round.rescheduled_starts_at
             ) as rescheduled_starts_at,
-            tournament.current_revision
+            tournament.current_revision,
+            coalesce(revision.rules_snapshot->'config'->>'timezone', 'UTC') as timezone
        from tournament_fixture fixture
        join tournament tournament on tournament.id = fixture.tournament_id
+       left join tournament_revision revision on revision.id = tournament.published_revision_id
        join tournament_round round on round.id = fixture.round_id
        left join lateral (
          select candidate.* from tournament_fixture_attempt candidate
