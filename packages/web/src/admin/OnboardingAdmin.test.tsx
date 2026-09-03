@@ -316,7 +316,7 @@ describe('OnboardingAdmin', () => {
         .map((row) => row.textContent),
     ).toEqual([expect.stringContaining('Первый'), expect.stringContaining('Второй')]);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Опубликованная версия' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Опубликованная версия' }));
     fireEvent.click(await screen.findByRole('option', { name: /Версия 1/ }));
     fireEvent.change(screen.getByLabelText('Дата начала'), { target: { value: '2026-08-10' } });
     fireEvent.change(screen.getByLabelText('Дата окончания'), { target: { value: '2026-08-12' } });
@@ -427,7 +427,7 @@ describe('OnboardingAdmin', () => {
     );
     expect(await screen.findByText('22')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Опубликованная версия' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Опубликованная версия' }));
     fireEvent.click(await screen.findByRole('option', { name: /Версия 1/ }));
     expect(screen.queryByText('22')).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('Загружаем статистику');
@@ -565,7 +565,13 @@ describe('OnboardingAdmin', () => {
       const key = String(input).endsWith('/amateur') ? 'amateur' : 'beginner';
       return new Response(
         JSON.stringify({
-          chain: { chainKey: key, enforcementEnabled: false, published: null, draft: null },
+          chain: {
+            chainKey: key,
+            enforcementEnabled: false,
+            published: null,
+            publishedVersions: [],
+            draft: null,
+          },
         }),
       );
     });
@@ -579,7 +585,7 @@ describe('OnboardingAdmin', () => {
       ),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Добавить шаг' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Тип шага' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Тип шага' }));
     expect(screen.queryByRole('option', { name: 'Учебный бросок' })).not.toBeInTheDocument();
   });
 
@@ -722,6 +728,6 @@ describe('OnboardingAdmin', () => {
     await screen.findByText('Опубликовано');
     fireEvent.click(screen.getByRole('button', { name: 'Статистика' }));
     expect(screen.queryByText(/появится в следующем этапе/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Опубликованная версия' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Опубликованная версия' })).toBeInTheDocument();
   });
 });

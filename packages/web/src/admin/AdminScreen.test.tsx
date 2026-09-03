@@ -172,7 +172,8 @@ it('saves onboarding flags independently and updates persisted display only from
   });
 
   renderAdmin();
-  fireEvent.click(await screen.findByRole('button', { name: 'Игроки' }));
+  await screen.findByText('Ультимейт Хоккей');
+  selectAdminSection('Игроки');
   fireEvent.click(await screen.findByRole('button', { name: /Regular Player/ }));
   const dialog = await screen.findByRole('dialog', { name: 'Игрок Regular Player' });
   expect(within(dialog).getByTestId('beginner-onboarding-status')).toHaveTextContent('Пройден');
@@ -261,7 +262,8 @@ it('keeps edit mode and authoritative onboarding display when player save fails'
     return new Response('{}');
   });
   renderAdmin();
-  fireEvent.click(await screen.findByRole('button', { name: 'Игроки' }));
+  await screen.findByText('Ультимейт Хоккей');
+  selectAdminSection('Игроки');
   fireEvent.click(await screen.findByRole('button', { name: /Regular Player/ }));
   const dialog = await screen.findByRole('dialog', { name: 'Игрок Regular Player' });
   fireEvent.click(within(dialog).getByRole('button', { name: 'Редактировать' }));
@@ -401,15 +403,15 @@ describe('AdminScreen', () => {
     vi.restoreAllMocks();
   });
 
-  it('keeps onboarding as a top-level admin tab', () => {
+  it('keeps onboarding as a top-level admin tab', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'a',
       refreshToken: 'r',
       user: { id: 'admin', displayName: 'Egor', role: 'admin' },
     });
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(() => undefined));
     renderAdmin();
-    expect(screen.getByRole('button', { name: 'Онбординг' })).toBeInTheDocument();
+    expect(within(openAdminMenu()).getByRole('button', { name: 'Онбординг' })).toBeInTheDocument();
   });
 
   it('starts with dashboard and renders game settings for admins', async () => {
@@ -1061,7 +1063,7 @@ describe('AdminScreen', () => {
     const adminNavigation = within(adminMenu).getByRole('navigation', {
       name: 'Разделы администратора',
     });
-    expect(within(adminNavigation).getAllByRole('button')).toHaveLength(13);
+    expect(within(adminNavigation).getAllByRole('button')).toHaveLength(14);
     expect(within(adminNavigation).getByRole('button', { name: 'Обзор' })).toHaveAttribute(
       'aria-current',
       'page',
