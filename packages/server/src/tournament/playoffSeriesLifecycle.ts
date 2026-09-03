@@ -203,11 +203,11 @@ export async function advanceTournamentPlayoffSeries(
 
   const completed = await client.query<PlayoffSeriesRow>(
     `update tournament_playoff_series
-        set status = 'completed', winner_participant_id = $2, updated_at = now()
+        set status = 'completed', winner_participant_id = $2, updated_at = $3
       where id = $1 and status = 'active'
       returning id, tournament_id, wins_required, higher_seed_participant_id,
                 lower_seed_participant_id, higher_seed_wins, lower_seed_wins, depends_on`,
-    [input.seriesId, input.winnerParticipantId],
+    [input.seriesId, input.winnerParticipantId, input.settledAt],
   );
   const completedSeries = completed.rows[0];
   if (!completedSeries) return { completed: false };
@@ -231,9 +231,9 @@ async function delayPastPlayoffRoundStart(
   }>(
     `select count(*)::int as source_count,
             count(*) filter (where source_series.status = 'completed')::int as completed_source_count,
-            max(settlement.settled_at) as latest_settled_at
+            max(source_series.updated_at) as latest_settled_at
        from (
-         select distinct source_series.id, source_series.status
+         select distinct source_series.id, source_series.status, source_series.updated_at
            from tournament_playoff_series dependent
            cross join lateral jsonb_array_elements(
              case when jsonb_typeof(dependent.depends_on->'sources') = 'array'
@@ -243,15 +243,7 @@ async function delayPastPlayoffRoundStart(
              on source_series.tournament_id = dependent.tournament_id
             and source_series.depends_on->>'key' = source->>'seriesKey'
           where dependent.round_id = $1
-       ) source_series
-       left join lateral (
-         select max(attempt.settled_at) as settled_at
-           from tournament_fixture fixture
-           join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
-          where fixture.series_id = source_series.id
-            and attempt.is_result_bearing
-            and attempt.status in ('settled', 'technical_result')
-       ) settlement on true`,
+       ) source_series`,
     [input.roundId],
   );
   const sourceState = sources.rows[0];
@@ -495,13 +487,13 @@ export async function forceTournamentPlayoffSeriesWinner(
 ): Promise<{ completed: boolean }> {
   const forced = await client.query<PlayoffSeriesRow>(
     `update tournament_playoff_series
-        set status = 'completed', winner_participant_id = $2, updated_at = now()
+        set status = 'completed', winner_participant_id = $2, updated_at = $3
       where id = $1
         and status in ('pending', 'scheduled', 'active', 'paused')
         and $2::uuid in (higher_seed_participant_id, lower_seed_participant_id)
       returning id, tournament_id, wins_required, higher_seed_participant_id,
                 lower_seed_participant_id, higher_seed_wins, lower_seed_wins, depends_on`,
-    [input.seriesId, input.winnerParticipantId],
+    [input.seriesId, input.winnerParticipantId, input.settledAt],
   );
   const completedSeries = forced.rows[0];
   if (completedSeries === undefined) return { completed: false };

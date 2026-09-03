@@ -2891,11 +2891,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     );
     const quarterfinals = await pool.query<{
       series_id: string;
-      fixture_id: string;
       winner_participant_id: string;
     }>(
-      `select series.id as series_id, fixture.id as fixture_id,
-              series.higher_seed_participant_id as winner_participant_id
+      `select series.id as series_id, series.higher_seed_participant_id as winner_participant_id
          from tournament_playoff_series series
          join tournament_round round on round.id = series.round_id
          join tournament_fixture fixture on fixture.series_id = series.id
@@ -2911,16 +2909,6 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     try {
       await client.query('begin');
       for (const quarterfinal of quarterfinals.rows.slice(0, 2)) {
-        await client.query(
-          `update tournament_fixture_attempt
-              set status = 'technical_result', settled_at = $2
-            where fixture_id = $1 and attempt_number = 1`,
-          [quarterfinal.fixture_id, firstSettlement],
-        );
-        await client.query(
-          `update tournament_fixture set status = 'settled', settled_at = $2 where id = $1`,
-          [quarterfinal.fixture_id, firstSettlement],
-        );
         await forceTournamentPlayoffSeriesWinner(client, {
           seriesId: quarterfinal.series_id,
           winnerParticipantId: quarterfinal.winner_participant_id,
@@ -2934,16 +2922,6 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       );
       expect(beforeAllSources.rows[0]!.starts_at).toEqual(configuredStart);
       for (const quarterfinal of quarterfinals.rows.slice(2)) {
-        await client.query(
-          `update tournament_fixture_attempt
-              set status = 'technical_result', settled_at = $2
-            where fixture_id = $1 and attempt_number = 1`,
-          [quarterfinal.fixture_id, finalSettlement],
-        );
-        await client.query(
-          `update tournament_fixture set status = 'settled', settled_at = $2 where id = $1`,
-          [quarterfinal.fixture_id, finalSettlement],
-        );
         await forceTournamentPlayoffSeriesWinner(client, {
           seriesId: quarterfinal.series_id,
           winnerParticipantId: quarterfinal.winner_participant_id,
