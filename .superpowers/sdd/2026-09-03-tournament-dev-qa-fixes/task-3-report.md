@@ -53,3 +53,27 @@
   push without the paired personal system message.
 - RED/GREEN review regressions: 3 passed. The combined reschedule/materialization case proved
   exactly four deliveries (two original plus two after admin reschedule), with no extra Game 2 push.
+
+## Review round 2/5
+
+- Replay attempts do not themselves carry `round_game_day_id`. Both schedule revisioning and T-30
+  communication now resolve the most recent non-null game-day assignment for the fixture, so a replay
+  preserves the original game-day key rather than falling back to the round and duplicating a paired
+  notification.
+- When a 1–29 minute admin reschedule cannot produce the paired notice because `SYSTEM_USER_ID` is
+  absent, the route records no fallback `tournament.rescheduled` push. The reschedule itself still
+  completes successfully; delivery remains all-or-nothing.
+- RED: with the old fallback condition and real participant push subscriptions, the no-system-user
+  HTTP route test returned 200 but created exactly two `push_delivery_log` rows.
+- GREEN: after restoring the guard, that same route test returned 200 with zero push rows, zero direct
+  chats, and zero messages. The replay regression passed with game-day revision 1 and exactly four
+  `tournament.series_next_game` deliveries (two original plus two after rescheduling), including a
+  repeated reconciliation.
+- Focused server verification: replay regression PASS; no-system-user route regression PASS; the
+  three previous notification/paused-board regressions plus replay PASS (4/4).
+- Focused web verification: `BottomNav.test.tsx` and `DailyScreen.test.tsx` PASS (132/132). Server
+  and web TypeScript checks PASS; `git diff --check` PASS.
+- Full web runner was not green: 918/920 passed and two pre-existing/out-of-scope expectation failures
+  remain in `TournamentOperations.test.tsx` (expects `Полуфинал 1`, UI renders `Серия 1`) and
+  `glassMaterial.test.ts` (expected selected-round color `#13233c`, received `#ffffff`). They were
+  not changed in this notification review.
