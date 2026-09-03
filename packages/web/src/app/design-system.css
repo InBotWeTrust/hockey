@@ -6509,6 +6509,27 @@ button.daily-calendar__day:active {
   font-weight: 620;
 }
 
+.tournament-fixture-sections,
+.tournament-fixture-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tournament-fixture-section > h5,
+.tournament-matchday-past > h5 {
+  margin: 0;
+  color: #17324d;
+  font-size: 11px;
+  font-weight: 820;
+}
+
+.tournament-fixture-section--others {
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(100, 116, 139, 0.18);
+}
+
 .tournament-matchday-result {
   display: grid;
   gap: 2px;
@@ -6526,6 +6547,57 @@ button.daily-calendar__day:active {
   font-size: 11px;
   font-weight: 520;
   line-height: 1.4;
+}
+
+.tournament-matchday-past {
+  display: grid;
+  gap: 7px;
+  margin-top: 3px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(100, 116, 139, 0.18);
+}
+
+.tournament-matchday-past > p {
+  margin: 0;
+  color: #58718a;
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.tournament-matchday-past__row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+}
+
+.tournament-matchday-past__row > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.tournament-matchday-past__row strong {
+  overflow: hidden;
+  color: #17324d;
+  font-size: 12px;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tournament-matchday-past__row span {
+  color: #58718a;
+  font-size: 10px;
+  font-weight: 620;
+}
+
+.tournament-matchday-past__actions {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
 }
 
 .tournament-calendar__expand {
@@ -6676,12 +6748,18 @@ button.daily-calendar__day:active {
 }
 
 .tournament-fixture-card__meta {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   color: var(--muted);
   font-size: 10px;
+}
+
+.tournament-fixture-card__meta > span:first-child {
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .tournament-fixture-card__meta strong {

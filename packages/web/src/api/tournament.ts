@@ -90,8 +90,18 @@ export interface TournamentFixture {
   windowEndsAt: string | null;
   status: string;
   venueMode: 'home_selected' | 'neutral_default';
-  home: { userId: string; name: string | null; avatarUrl?: string | null } | null;
-  away: { userId: string; name: string | null; avatarUrl?: string | null } | null;
+  home: {
+    userId: string;
+    name: string | null;
+    avatarUrl?: string | null;
+    seed?: number | null;
+  } | null;
+  away: {
+    userId: string;
+    name: string | null;
+    avatarUrl?: string | null;
+    seed?: number | null;
+  } | null;
   score: { home: number; away: number };
 }
 
@@ -107,6 +117,26 @@ export interface TournamentMatchday {
     accuracy: number;
     completed: boolean;
   } | null;
+}
+
+export interface TournamentMatchdayResult {
+  id: string;
+  userId: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  goals: number;
+  shots: number;
+  accuracy: number;
+}
+
+export interface TournamentMatchdayResultPage {
+  results: TournamentMatchdayResult[];
+  nextCursor: TournamentMatchdayResultCursor | null;
+}
+
+export interface TournamentMatchdayResultCursor {
+  finalizedAt: string;
+  id: string;
 }
 
 export type TournamentGameContextAction =
@@ -283,6 +313,22 @@ export function withdrawFromTournament(tournamentId: string) {
 export function fetchTournamentSchedule(tournamentId: string) {
   return apiFetch<{ fixtures: TournamentFixture[]; matchdays?: TournamentMatchday[] }>(
     `/tournaments/${tournamentId}/schedule`,
+  );
+}
+
+export function fetchTournamentMatchdayResults(
+  tournamentId: string,
+  matchdayNumber: number,
+  cursor: TournamentMatchdayResultCursor | null = null,
+  limit = 4,
+) {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (cursor !== null) {
+    query.set('cursorFinalizedAt', cursor.finalizedAt);
+    query.set('cursorId', cursor.id);
+  }
+  return apiFetch<TournamentMatchdayResultPage>(
+    `/tournaments/${tournamentId}/matchdays/${matchdayNumber}/results?${query.toString()}`,
   );
 }
 

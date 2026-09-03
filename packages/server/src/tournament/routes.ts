@@ -18,6 +18,7 @@ import {
   deleteEmptyDraft,
   getTournament,
   getTournamentGameContext,
+  getTournamentMatchdayResults,
   getTournamentMatchdays,
   getTournamentSchedule,
   getTournamentStandings,
@@ -325,11 +326,47 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId, req.user.id);
+    await refreshCompletedTournamentDailyResultsForTournament(app.pg, {
+      tournamentId: params.tournamentId,
+      now: new Date(),
+    });
     const [fixtures, matchdays] = await Promise.all([
       getTournamentSchedule(app.pg, params.tournamentId),
       getTournamentMatchdays(app.pg, params.tournamentId, req.user.id),
     ]);
     return { fixtures, matchdays };
+  });
+
+  app.get('/tournaments/:tournamentId/matchdays/:number/results', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z
+      .object({ tournamentId: uuid, number: z.coerce.number().int().positive() })
+      .parse(req.params);
+    const query = z
+      .object({
+        cursorFinalizedAt: z.string().datetime({ offset: true }).optional(),
+        cursorId: uuid.optional(),
+        limit: z.coerce.number().int().min(1).max(20).default(4),
+      })
+      .refine(
+        (value) =>
+          (value.cursorFinalizedAt === undefined) === (value.cursorId === undefined),
+        { message: 'cursorFinalizedAt and cursorId must be provided together' },
+      )
+      .parse(req.query);
+    await getTournament(app.pg, params.tournamentId, req.user.id);
+    await refreshCompletedTournamentDailyResultsForTournament(app.pg, {
+      tournamentId: params.tournamentId,
+      now: new Date(),
+    });
+    return getTournamentMatchdayResults(app.pg, params.tournamentId, params.number, {
+      excludeUserId: req.user.id,
+      limit: query.limit,
+      cursor:
+        query.cursorFinalizedAt === undefined || query.cursorId === undefined
+          ? null
+          : { finalizedAt: query.cursorFinalizedAt, id: query.cursorId },
+    });
   });
 
   app.get('/tournaments/:tournamentId/game-context', authenticated, async (req) => {

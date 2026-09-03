@@ -1867,6 +1867,108 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(matchdays[1]).toMatchObject({ number: 2, myResult: null });
   });
 
+  it('refreshes completed daily results before returning the public schedule and day results', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'daily-results-public-refresh',
+      0,
+      dailyPlayoffTournamentRules(),
+    );
+    for (const playerId of PLAYER_IDS) await applyToTournament(pool, tournament.id, playerId);
+    await generateRegularSchedule(pool, tournament.id, tournament.revision);
+    await publishRegularSchedule(pool, tournament.id);
+    for (const [index, playerId] of PLAYER_IDS.entries()) {
+      const dayPool = await pool.query<{ id: string }>(
+        `insert into day_pool
+           (user_id, day_date, state, current_period, closed_at, game_core_version, daily_seed)
+         values ($1, '2030-09-01', 'closed', 3, '2030-09-01T18:00:00Z', 1, $2)
+         returning id`,
+        [playerId, `public-results-${index}`],
+      );
+      await pool.query(
+        `insert into period_log
+           (day_pool_id, period_number, started_at, ended_at, shots_taken, goals, closed_reason)
+         values
+           ($1, 1, '2030-09-01T12:00:00Z', '2030-09-01T12:10:00Z', 30, $2, 'quota'),
+           ($1, 2, '2030-09-01T13:00:00Z', '2030-09-01T13:10:00Z', 30, $2, 'quota'),
+           ($1, 3, '2030-09-01T14:00:00Z', '2030-09-01T14:10:00Z', 30, $2, 'quota')`,
+        [dayPool.rows[0]!.id, index + 1],
+      );
+    }
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('tournaments.enabled', 'true'::jsonb, 'Турниры включены', 'public results test')
+       on conflict (key) do update set value = excluded.value`,
+    );
+
+    const { databaseUrl, redisUrl } = getTestUrls();
+    const app = await buildApp({
+      config: {
+        NODE_ENV: 'test',
+        HOST: '0.0.0.0',
+        PORT: 3000,
+        LOG_LEVEL: 'warn',
+        DATABASE_URL: databaseUrl,
+        REDIS_URL: redisUrl,
+        JWT_SECRET,
+        REFRESH_SECRET,
+        TELEGRAM_BOT_TOKEN: 'test-bot-token',
+        DAILY_SEED_SECRET,
+      },
+      pushSchedulerEnabled: false,
+      pushWorkerEnabled: false,
+    });
+    try {
+      const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+      const token = await jwt.issueAccessToken({ sub: PLAYER_IDS[0] });
+      const authorization = { authorization: `Bearer ${token}` };
+      const schedule = await app.inject({
+        method: 'GET',
+        url: `/tournaments/${tournament.id}/schedule`,
+        headers: authorization,
+      });
+
+      expect(schedule.statusCode).toBe(200);
+      expect(schedule.json().matchdays[0].myResult).toMatchObject({
+        goals: 3,
+        shots: 90,
+        completed: true,
+      });
+
+      const results = await app.inject({
+        method: 'GET',
+        url: `/tournaments/${tournament.id}/matchdays/1/results?limit=1`,
+        headers: authorization,
+      });
+      expect(results.statusCode).toBe(200);
+      const firstPage = results.json<{
+        results: Array<{ id: string; userId: string }>;
+        nextCursor: { finalizedAt: string; id: string } | null;
+      }>();
+      expect(firstPage.results).toHaveLength(1);
+      expect(firstPage.results[0]!.userId).not.toBe(PLAYER_IDS[0]);
+      expect(firstPage.nextCursor).not.toBeNull();
+
+      const cursor = firstPage.nextCursor!;
+      const secondResults = await app.inject({
+        method: 'GET',
+        url:
+          `/tournaments/${tournament.id}/matchdays/1/results?limit=1` +
+          `&cursorFinalizedAt=${encodeURIComponent(cursor.finalizedAt)}` +
+          `&cursorId=${cursor.id}`,
+        headers: authorization,
+      });
+      expect(secondResults.statusCode).toBe(200);
+      const secondPage = secondResults.json<{ results: Array<{ id: string; userId: string }> }>();
+      expect(secondPage.results).toHaveLength(1);
+      expect(secondPage.results[0]!.id).not.toBe(firstPage.results[0]!.id);
+      expect(secondPage.results[0]!.userId).not.toBe(PLAYER_IDS[0]);
+    } finally {
+      await app.close();
+    }
+  });
+
   describe('game context', () => {
     it('allows an approved player to open only the currently active daily matchday', async () => {
       await seedUsers(pool, 0);
@@ -2219,6 +2321,30 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       [tournament.id],
     );
     expect(series.rows[0]!.count).toBe(1);
+  });
+
+  it('includes playoff seeds in the public schedule', async () => {
+    const { tournament } = await createBestOfThreePlayoff(pool, 'schedule-playoff-seeds');
+    const standings = await getTournamentStandings(pool, tournament.id);
+    const seedByUserId = new Map(
+      standings.map((standing) => [standing.user_id, Number(standing.rank)]),
+    );
+
+    const fixtures = await getTournamentSchedule(pool, tournament.id);
+
+    const regularFixtures = fixtures.filter((fixture) => fixture.stage === 'regular');
+    const playoffFixtures = fixtures.filter((fixture) => fixture.stage === 'playoff');
+
+    expect(regularFixtures.length).toBeGreaterThan(0);
+    for (const fixture of regularFixtures) {
+      expect(fixture.home?.seed).toBeNull();
+      expect(fixture.away?.seed).toBeNull();
+    }
+    expect(playoffFixtures.length).toBeGreaterThan(0);
+    for (const fixture of playoffFixtures) {
+      expect(fixture.home?.seed).toBe(seedByUserId.get(fixture.home?.userId ?? ''));
+      expect(fixture.away?.seed).toBe(seedByUserId.get(fixture.away?.userId ?? ''));
+    }
   });
 
   it('rebases a missed playoff game day into the next future local slot', async () => {

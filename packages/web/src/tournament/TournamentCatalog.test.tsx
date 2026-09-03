@@ -502,8 +502,8 @@ describe('TournamentCatalog', () => {
           windowEndsAt: '2030-09-01T08:00:00.000Z',
           status: 'open',
           venueMode: 'home_selected',
-          home: { userId: 'u1', name: 'Первый', avatarUrl: '/first.webp' },
-          away: { userId: 'u2', name: 'Второй', avatarUrl: '/second.webp' },
+          home: { userId: 'u1', name: 'Первый', avatarUrl: '/first.webp', seed: 1 },
+          away: { userId: 'u2', name: 'Второй', avatarUrl: '/second.webp', seed: 2 },
           score: { home: 0, away: 0 },
         },
         {
@@ -515,8 +515,21 @@ describe('TournamentCatalog', () => {
           windowEndsAt: '2030-09-02T08:00:00.000Z',
           status: 'scheduled',
           venueMode: 'home_selected',
-          home: { userId: 'u1', name: 'Первый', avatarUrl: '/first.webp' },
-          away: { userId: 'u3', name: 'Третий', avatarUrl: '/third.webp' },
+          home: { userId: 'u1', name: 'Первый', avatarUrl: '/first.webp', seed: 1 },
+          away: { userId: 'u3', name: 'Третий', avatarUrl: '/third.webp', seed: 4 },
+          score: { home: 0, away: 0 },
+        },
+        {
+          id: 'f4',
+          fixtureNumber: 4,
+          stage: 'third_place',
+          roundNumber: 1,
+          scheduledStartsAt: '2030-09-02T08:00:00.000Z',
+          windowEndsAt: '2030-09-02T09:00:00.000Z',
+          status: 'scheduled',
+          venueMode: 'home_selected',
+          home: { userId: 'u2', name: 'Второй', avatarUrl: '/second.webp', seed: 2 },
+          away: { userId: 'u4', name: 'Четвёртый', avatarUrl: '/fourth.webp', seed: 3 },
           score: { home: 0, away: 0 },
         },
       ],
@@ -555,12 +568,23 @@ describe('TournamentCatalog', () => {
     expect(screen.getByRole('img', { name: 'Второй' })).toHaveAttribute('src', '/second.webp');
     const visibleFixtures = document.querySelectorAll('.tournament-fixture-card');
     expect(visibleFixtures[0]).toHaveTextContent('Первый — Второй');
-    expect(screen.getAllByText('1 сентября, 10:00–11:00')).toHaveLength(2);
+    expect(visibleFixtures[0]).not.toHaveTextContent('(1)');
+    expect(screen.getAllByText('10:00–11:00')).toHaveLength(2);
+    expect(screen.queryByText('1 сентября, 10:00–11:00')).not.toBeInTheDocument();
     expect(screen.getByText('Третий — Четвёртый')).toBeInTheDocument();
     expect(screen.getByText('Можно начинать игру')).toBeInTheDocument();
     expect(screen.getByText('Запланирована')).toBeInTheDocument();
     expect(screen.getByLabelText('Площадка: Дома')).toBeInTheDocument();
+    expect(screen.getByLabelText('Площадка: Дома').parentElement).toHaveClass(
+      'tournament-fixture-card__meta',
+    );
     expect(screen.queryByLabelText('Площадка: Нейтральное поле')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: /2 сентября.*плей-офф/i }));
+    const playoffCard = await screen.findByText('(1) Первый — (4) Третий');
+    expect(playoffCard.closest('.tournament-fixture-card')).toBeInTheDocument();
+    expect(screen.getByText('(2) Второй — (3) Четвёртый')).toBeInTheDocument();
     expect(sections).toBeInTheDocument();
   });
 
@@ -636,7 +660,7 @@ describe('TournamentCatalog', () => {
           slug: 'score-cup',
           title: 'Кубок счёта',
           description: '',
-          status: 'regular',
+          status: 'playoff',
           regularSource: 'head_to_head',
           visibility: 'public',
           revision: 1,
@@ -655,7 +679,7 @@ describe('TournamentCatalog', () => {
         {
           id: 'f1',
           fixtureNumber: 1,
-          stage: 'regular',
+          stage: 'playoff',
           roundNumber: 1,
           scheduledStartsAt: null,
           windowEndsAt: null,
@@ -668,7 +692,7 @@ describe('TournamentCatalog', () => {
         {
           id: 'f2',
           fixtureNumber: 2,
-          stage: 'regular',
+          stage: 'playoff',
           roundNumber: 2,
           scheduledStartsAt: null,
           windowEndsAt: null,
