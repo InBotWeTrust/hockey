@@ -16,6 +16,8 @@ interface PlayoffDayStartingRow {
   user_id: string;
   scheduled_starts_at: Date;
   day_starts_at: Date;
+  rescheduled_starts_at: Date | null;
+  schedule_revision: number;
   current_revision: number;
 }
 
@@ -29,7 +31,7 @@ export interface ReconcilePlayoffDayStartingOptions {
 }
 
 function playoffDayStartingAt(row: PlayoffDayStartingRow, immediate: boolean): Date {
-  return immediate ? row.scheduled_starts_at : row.day_starts_at;
+  return immediate ? row.scheduled_starts_at : row.rescheduled_starts_at ?? row.day_starts_at;
 }
 
 function playoffDayStartingKey(row: PlayoffDayStartingRow, immediate: boolean): string {
@@ -40,6 +42,7 @@ function playoffDayStartingKey(row: PlayoffDayStartingRow, immediate: boolean): 
     row.day_number,
     row.user_id,
     playoffDayStartingAt(row, immediate).toISOString(),
+    row.schedule_revision,
     row.current_revision,
   ].join(':');
 }
@@ -126,6 +129,7 @@ export async function reconcilePlayoffDayStartingCommunications(
   pool: Pool,
   options: ReconcilePlayoffDayStartingOptions,
 ): Promise<{ considered: number }> {
+  if (options.systemUserId === undefined) return { considered: 0 };
   const fixtureClause = options.fixtureId === undefined ? '' : 'and fixture.id = $2';
   const params =
     options.fixtureId === undefined
@@ -147,6 +151,11 @@ export async function reconcilePlayoffDayStartingCommunications(
               attempt.scheduled_starts_at,
               fixture.scheduled_starts_at
             ) as day_starts_at,
+            coalesce(round_game_day.schedule_revision, round.schedule_revision) as schedule_revision,
+            coalesce(
+              round_game_day.rescheduled_starts_at,
+              round.rescheduled_starts_at
+            ) as rescheduled_starts_at,
             tournament.current_revision
        from tournament_fixture fixture
        join tournament tournament on tournament.id = fixture.tournament_id

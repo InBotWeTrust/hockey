@@ -308,6 +308,7 @@ async function reschedulePublishedPlayoffRounds(
       attempt_outcome: string | null;
       attempt_count: number;
       duel_status: string | null;
+      round_game_day_id: string | null;
       duel_accepted_at: Date | null;
       duel_settled_reason: string | null;
       duel_shot_count: number;
@@ -4419,11 +4420,12 @@ export async function rescheduleTournamentFixture(
       status: string;
       amateur_duel_match_id: string | null;
       duel_status: string | null;
+      round_game_day_id: string | null;
       scheduled_starts_at: Date;
       readiness_expires_at: Date;
       hard_deadline_at: Date;
     }>(
-      `select attempt.id, attempt.status, attempt.amateur_duel_match_id,
+      `select attempt.id, attempt.status, attempt.amateur_duel_match_id, attempt.round_game_day_id,
               duel.status as duel_status, attempt.scheduled_starts_at,
               attempt.readiness_expires_at, attempt.hard_deadline_at
          from tournament_fixture_attempt attempt
@@ -4493,6 +4495,22 @@ export async function rescheduleTournamentFixture(
     );
     if (updated.rowCount === 0)
       throw new AppError('conflict', 'fixture cannot be rescheduled', 409);
+    if (currentAttempt?.round_game_day_id !== null && currentAttempt?.round_game_day_id !== undefined) {
+      await client.query(
+        `update tournament_round_game_day
+            set schedule_revision = schedule_revision + 1, rescheduled_starts_at = $2
+          where id = $1`,
+        [currentAttempt.round_game_day_id, input.startsAt],
+      );
+    } else {
+      await client.query(
+        `update tournament_round round
+            set schedule_revision = schedule_revision + 1, rescheduled_starts_at = $2
+           from tournament_fixture fixture
+          where fixture.id = $1 and fixture.round_id = round.id`,
+        [input.fixtureId, input.startsAt],
+      );
+    }
     await client.query(
       `update tournament_playoff_series series
           set status = 'scheduled', updated_at = now()

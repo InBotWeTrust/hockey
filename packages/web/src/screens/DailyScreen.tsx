@@ -1267,15 +1267,22 @@ function GameHub({
         const breakRemaining = Math.max(0, timestampMs(game.break_ends_at) - now);
         const startsAtRemaining = Math.max(0, timestampMs(game.starts_at) - now);
         const isBreak = game.state === 'inter_game_break' && game.break_ends_at !== null;
+        const isPaused = game.state === 'paused';
         return {
           id: `playoff-${game.tournament_id}-${game.tournament_day}`,
           kind: 'duel',
           eyebrow: `Турнир · ${game.tournament_day}-й игровой день`,
           title: game.tournament_title,
-          subtitle: isBreak ? 'Перерыв между играми серии' : 'Игра серии ожидает готовности.',
+          subtitle: isPaused
+            ? 'Игра ожидает решения администратора.'
+            : isBreak
+              ? 'Перерыв между играми серии'
+              : 'Игра серии ожидает готовности.',
           meta: isBreak
             ? `Следующая игра через ${formatMs(breakRemaining)}`
-            : `Старт через ${formatEventRemaining(startsAtRemaining)}`,
+            : isPaused
+              ? 'Расписание ожидает решения'
+              : `Старт через ${formatEventRemaining(startsAtRemaining)}`,
           ctaLabel: 'К расписанию',
           onEnter: () =>
             navigate(
@@ -1286,13 +1293,17 @@ function GameHub({
             <DailyHubScoreboard
               activePeriod={0}
               ariaLabel={
-                isBreak
+                isPaused
+                  ? `${game.tournament_title}. Игра ожидает решения администратора.`
+                  : isBreak
                   ? `${game.tournament_title}. Перерыв между играми серии. До конца ${formatMs(breakRemaining)}`
                   : `${game.tournament_title}. Старт через ${formatEventRemaining(startsAtRemaining)}`
               }
               periodsTotal={1}
-              timer={isBreak ? formatMs(breakRemaining) : formatEventRemaining(startsAtRemaining)}
-              timerLabel={isBreak ? 'Перерыв' : 'До старта'}
+              timer={
+                isPaused ? '—' : isBreak ? formatMs(breakRemaining) : formatEventRemaining(startsAtRemaining)
+              }
+              timerLabel={isPaused ? 'Пауза' : isBreak ? 'Перерыв' : 'До старта'}
             />
           ),
         };

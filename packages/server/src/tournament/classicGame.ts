@@ -139,7 +139,7 @@ export interface ActivePlayoffGame {
   starts_at: string;
   closes_at: string;
   break_ends_at: string | null;
-  state: 'scheduled' | 'ready_check' | 'active' | 'inter_game_break';
+  state: 'scheduled' | 'ready_check' | 'active' | 'inter_game_break' | 'paused';
   current_period: 0;
   total_shots: 0;
   total_goals: 0;
@@ -771,7 +771,7 @@ export async function listActiveClassicGames(
     tournament_day: number;
     scheduled_starts_at: Date;
     hard_deadline_at: Date;
-    attempt_status: 'pending' | 'ready_check' | 'active';
+    attempt_status: 'pending' | 'ready_check' | 'active' | 'needs_reschedule' | 'needs_admin_decision';
     attempt_number: number;
   }>(
     `select distinct on (
@@ -805,10 +805,15 @@ export async function listActiveClassicGames(
       where tournament.status = 'playoff'
         and round.stage in ('playoff', 'third_place')
         and fixture.status in ('scheduled', 'open', 'active', 'paused')
-        and (attempt.status is null or attempt.status in ('pending', 'ready_check', 'active'))
+        and (attempt.status is null or attempt.status in (
+          'pending', 'ready_check', 'active', 'needs_reschedule', 'needs_admin_decision'
+        ))
         and coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at)
               <= $2::timestamptz + interval '30 minutes'
-        and coalesce(attempt.hard_deadline_at, fixture.window_ends_at) > $2::timestamptz
+        and (
+          attempt.status in ('needs_reschedule', 'needs_admin_decision')
+          or coalesce(attempt.hard_deadline_at, fixture.window_ends_at) > $2::timestamptz
+        )
       order by fixture.tournament_id, participant.user_id,
                coalesce(
                  round_game_day.local_date,
@@ -829,7 +834,10 @@ export async function listActiveClassicGames(
       starts_at: row.scheduled_starts_at.toISOString(),
       closes_at: row.hard_deadline_at.toISOString(),
       break_ends_at: beforeStart ? row.scheduled_starts_at.toISOString() : null,
-      state: beforeStart
+      state:
+        row.attempt_status === 'needs_reschedule' || row.attempt_status === 'needs_admin_decision'
+          ? 'paused'
+          : beforeStart
         ? Number(row.attempt_number) > 1
           ? 'inter_game_break'
           : 'scheduled'

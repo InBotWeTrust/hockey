@@ -29,7 +29,7 @@ export interface ActivePlayoffTournamentGame {
   starts_at: string;
   closes_at: string;
   break_ends_at: string | null;
-  state: 'scheduled' | 'ready_check' | 'active' | 'inter_game_break';
+  state: 'scheduled' | 'ready_check' | 'active' | 'inter_game_break' | 'paused';
   current_period: 0;
   total_shots: 0;
   total_goals: 0;
