@@ -5102,6 +5102,7 @@ function AmateurDuelPlayView({
   const load = useAmateurDuelStore((s) => s.load);
   const refresh = useAmateurDuelStore((s) => s.refresh);
   const ready = useAmateurDuelStore((s) => s.ready);
+  const confirmTournamentLoadout = useAmateurDuelStore((s) => s.confirmTournamentLoadout);
   const startPeriod = useAmateurDuelStore((s) => s.startPeriod);
   const updateLoadout = useAmateurDuelStore((s) => s.updateLoadout);
   const optimisticAddShot = useAmateurDuelStore((s) => s.optimisticAddShot);
@@ -5120,8 +5121,8 @@ function AmateurDuelPlayView({
   );
   const [disableTournamentReadinessExplanation, setDisableTournamentReadinessExplanation] =
     useState(false);
-  const tournamentReadyButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousReadyStateRef = useRef<{ me: boolean; opponent: boolean } | null>(null);
+  const appliedTournamentLoadoutVersionRef = useRef<string | null>(null);
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
@@ -5140,6 +5141,7 @@ function AmateurDuelPlayView({
     );
     setDisableTournamentReadinessExplanation(false);
     previousReadyStateRef.current = null;
+    appliedTournamentLoadoutVersionRef.current = null;
     setPlayerReadyEntranceKey(null);
     setGoalieReadyEntranceKey(null);
   }, [matchId]);
@@ -5152,6 +5154,12 @@ function AmateurDuelPlayView({
   useEffect(() => {
     const inventory = inventoryQuery.data;
     if (!inventory) return;
+    if (
+      match?.source === 'tournament' &&
+      match.me.state === 'accepted'
+    ) {
+      return;
+    }
     setSelectedLoadout((current) => ({
       stick: current.stick === undefined ? duelEquipmentIdFor(inventory, 'stick') : current.stick,
       skates:
@@ -5161,7 +5169,25 @@ function AmateurDuelPlayView({
           ? duelEquipmentIdFor(inventory, 'nutrition')
           : current.nutrition,
     }));
-  }, [inventoryQuery.data, matchId]);
+  }, [inventoryQuery.data, match, matchId]);
+
+  useEffect(() => {
+    if (
+      !match ||
+      match.source !== 'tournament' ||
+      match.me.state !== 'accepted'
+    ) {
+      return;
+    }
+    const selectionKey = match.me.loadout.items
+      .map((item) => `${item.kind}:${item.id}`)
+      .sort()
+      .join('|');
+    const versionKey = `${match.id}:${match.me.current_period + 1}:${match.me.tournament_loadout_period ?? 'preview'}:${match.me.tournament_loadout_version ?? 0}:${selectionKey}`;
+    if (appliedTournamentLoadoutVersionRef.current === versionKey) return;
+    appliedTournamentLoadoutVersionRef.current = versionKey;
+    setSelectedLoadout(duelLoadoutSelectionFromMatch(match));
+  }, [match]);
 
   useEffect(() => {
     if (!match || match.id !== matchId) return;
@@ -5231,17 +5257,20 @@ function AmateurDuelPlayView({
     if (inFlight) return;
     const matchNow = duelMatchNowMs(match, now);
     if (match.status === 'ready_check' && match.me.state !== 'ready') {
-      await ready(selectedLoadout);
+      await ready(match.source === 'tournament' ? {} : selectedLoadout);
       return;
     }
     if (canStartArenaDuelPeriod(match, matchNow)) {
+      if (match.source === 'tournament') {
+        const confirmed = await confirmTournamentLoadout(selectedLoadout);
+        if (confirmed === null) return;
+        await startPeriod();
+        return;
+      }
       await startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout));
     }
   };
-  const handleTournamentReadinessConfirmation = async (): Promise<void> => {
-    if (inFlight) return;
-    const next = await ready(selectedLoadout);
-    if (next === null) return;
+  const dismissTournamentReadinessExplanation = (): void => {
     if (disableTournamentReadinessExplanation) {
       localStorage.setItem('hockey.tournamentReadinessExplanationDisabled', 'true');
     }
@@ -5355,11 +5384,10 @@ function AmateurDuelPlayView({
           title="Подтвердите участие"
           open={explainTournamentReadiness}
           closeBlocked
-          initialFocusRef={tournamentReadyButtonRef}
         >
           <div style={{ display: 'grid', gap: 14 }}>
             <p className="modal-copy" style={{ margin: 0 }}>
-              Нажмите «Готов», чтобы подтвердить участие в дуэли.
+              Нажмите «Готов» на льду, чтобы подтвердить участие в дуэли.
             </p>
             <p className="modal-copy" style={{ margin: 0, fontSize: 13 }}>
               Подтвердите готовность до конца таймера. Если соперник подтвердит участие, а вы — нет,
@@ -5389,14 +5417,8 @@ function AmateurDuelPlayView({
               <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>{error}</div>
             )}
             <div className="modal-actions" style={{ marginTop: 2 }}>
-              <button
-                ref={tournamentReadyButtonRef}
-                type="button"
-                className="modal-primary btn btn--cta"
-                disabled={inFlight}
-                onClick={() => void handleTournamentReadinessConfirmation()}
-              >
-                {inFlight ? 'Фиксируем...' : 'Готов'}
+              <button type="button" className="modal-primary btn btn--cta" onClick={dismissTournamentReadinessExplanation}>
+                Понятно
               </button>
             </div>
           </div>
@@ -6821,6 +6843,16 @@ function duelStartPeriodLoadoutSelection(
   if (selectedLoadout.stick === undefined) return undefined;
   const selectedStick = selectedDuelAvailabilityItem(match, 'stick', selectedLoadout.stick);
   return { stick: selectedStick ? selectedStick.id : null };
+}
+
+function duelLoadoutSelectionFromMatch(
+  match: AmateurDuelMatch,
+): AmateurDuelLoadoutSelection {
+  return {
+    stick: match.me.loadout.items.find((item) => item.kind === 'stick')?.id ?? null,
+    skates: match.me.loadout.items.find((item) => item.kind === 'skates')?.id ?? null,
+    nutrition: match.me.loadout.items.find((item) => item.kind === 'nutrition')?.id ?? null,
+  };
 }
 
 function duelEquipmentDisplayTitle(item: Pick<InventoryItem, 'kind' | 'rarity' | 'title'>): string {

@@ -31,6 +31,7 @@ import { resolveDefaultArena } from '../../arenas/service.js';
 import type { ArenaSnapshot, MatchmakingVenuePolicy } from '../../arenas/types.js';
 import {
   getDuelSettlementPolicy,
+  releasePendingTournamentPeriodReservation,
   releaseRemainingDuelInventoryReserve,
   type AmateurDuelSource,
 } from './lifecycle.js';
@@ -45,6 +46,7 @@ import {
   mirrorTournamentAttemptReady,
   reconcileTournamentAttemptForDuel,
 } from '../../tournament/fixtureAttempts.js';
+import { adjustTournamentPeriodReservation } from './periodLoadout.js';
 
 type MatchStatus = 'invited' | 'ready_check' | 'active' | 'settled' | 'cancelled' | 'expired';
 type ParticipantState =
@@ -419,6 +421,9 @@ interface DuelParticipantRow {
   inventory_report: unknown;
   result_points: number;
   experience_snapshot: number;
+  tournament_loadout_period: number | null;
+  tournament_loadout_version: number;
+  tournament_loadout_confirmed_at: Date | null;
 }
 
 interface PeriodLogRow {
@@ -587,6 +592,8 @@ interface DuelParticipantDTO {
   loadout: LoadoutSnapshot;
   inventory_available: InventoryAvailabilityItem[];
   inventory_report: InventoryPeriodReport[];
+  tournament_loadout_period: number | null;
+  tournament_loadout_version: number;
 }
 
 interface DuelMatchDTO {
@@ -1463,13 +1470,21 @@ async function buildLoadoutSnapshot(
   userId: string,
   selection: LoadoutSelection,
   rules: DuelRulesSnapshot,
+  options: {
+    reservationPeriods?: number;
+    reservedCredits?: ReadonlyMap<string, number>;
+    explicitSelection?: boolean;
+    requirePositiveResource?: boolean;
+  } = {},
 ): Promise<LoadoutSnapshot> {
-  const hasExplicitSelection =
+  const selectionProvided =
     selection.stick !== undefined ||
     selection.skates !== undefined ||
     selection.nutrition !== undefined;
+  const hasExplicitSelection =
+    options.explicitSelection ?? selectionProvided;
   let resolvedSelection = selection;
-  if (!hasExplicitSelection) {
+  if (!selectionProvided) {
     const { rows } = await client.query<{
       equipped_stick_item_id: string | null;
       equipped_skates_item_id: string | null;
@@ -1609,12 +1624,17 @@ async function buildLoadoutSnapshot(
       if (!hasExplicitSelection) continue;
       throw new AppError('conflict', `invalid ${requestedItem.kind} loadout item`, 409);
     }
-    const chargesReserved = Number(row.duel_period_cost) * rules.totalPeriods;
-    if (chargesReserved > 0 && Number(row.charges_available) < chargesReserved) {
+    const chargesReserved =
+      Number(row.duel_period_cost) * (options.reservationPeriods ?? rules.totalPeriods);
+    const reservationCredit = options.reservedCredits?.get(row.id) ?? 0;
+    const resourceAvailable = Number(row.charges_available) + reservationCredit;
+    if (
+      (chargesReserved > 0 && resourceAvailable < chargesReserved) ||
+      (options.requirePositiveResource === true && chargesReserved === 0 && resourceAvailable <= 0)
+    ) {
       if (!hasExplicitSelection) continue;
       throw new AppError('conflict', 'not enough inventory charges for duel loadout', 409);
     }
-    const resourceAvailable = Number(row.charges_available);
     const effectPuckSpeedDelta = numberFromUnknown(row.effect_puck_speed_delta);
     const effectPuckSpeedPoints = puckSpeedPointsFromValues(
       row.effect_puck_speed_points,
@@ -1682,6 +1702,93 @@ async function buildLoadoutSnapshot(
     throw new AppError('conflict', 'duel loadout exceeds power cap', 409);
   }
   return { items, powerScore, powerCap: rules.powerCap };
+}
+
+function loadoutSelectionFromSnapshot(loadout: LoadoutSnapshot): LoadoutSelection {
+  return {
+    stick: loadout.items.find((item) => item.kind === 'stick')?.id ?? null,
+    skates: loadout.items.find((item) => item.kind === 'skates')?.id ?? null,
+    nutrition: loadout.items.find((item) => item.kind === 'nutrition')?.id ?? null,
+  };
+}
+
+async function previousTournamentLoadoutSelection(
+  client: PoolClient,
+  matchId: string,
+  userId: string,
+  powerCap: number,
+): Promise<LoadoutSelection | null> {
+  const { rows } = await client.query<{ loadout_snapshot: unknown }>(
+    `select previous_participant.loadout_snapshot
+       from tournament_fixture_segment current_segment
+       join tournament_fixture current_fixture on current_fixture.id = current_segment.fixture_id
+       join tournament_fixture previous_fixture
+         on previous_fixture.series_id = current_fixture.series_id
+       join tournament_fixture_segment previous_segment on previous_segment.fixture_id = previous_fixture.id
+       join amateur_duel_match previous_match on previous_match.id = previous_segment.duel_match_id
+       join amateur_duel_participant previous_participant
+         on previous_participant.match_id = previous_match.id and previous_participant.user_id = $2
+      where current_segment.duel_match_id = $1
+        and current_fixture.series_id is not null
+        and previous_match.source = 'tournament'
+        and previous_participant.tournament_loadout_period is not null
+        and (
+          previous_match.id <> $1
+          or previous_participant.tournament_loadout_period <= previous_participant.current_period
+        )
+      order by previous_fixture.fixture_number desc,
+               previous_segment.sequence_number desc,
+               previous_participant.tournament_loadout_period desc
+      limit 1`,
+    [matchId, userId],
+  );
+  const row = rows[0];
+  return row ? loadoutSelectionFromSnapshot(loadoutFromUnknown(row.loadout_snapshot, powerCap)) : null;
+}
+
+async function buildTournamentLoadoutSnapshot(
+  client: PoolClient,
+  input: {
+    matchId: string;
+    userId: string;
+    selection: LoadoutSelection;
+    rules: DuelRulesSnapshot;
+    previousBoundaryLoadout: LoadoutSnapshot | null;
+  },
+): Promise<LoadoutSnapshot> {
+  const explicitlySelected =
+    input.selection.stick !== undefined ||
+    input.selection.skates !== undefined ||
+    input.selection.nutrition !== undefined;
+  const carried = explicitlySelected
+    ? input.selection
+    : await previousTournamentLoadoutSelection(
+        client,
+        input.matchId,
+        input.userId,
+        input.rules.powerCap,
+      );
+  const selected = carried ?? {};
+  const reservedCredits = new Map<string, number>();
+  for (const item of input.previousBoundaryLoadout?.items ?? []) {
+    reservedCredits.set(item.id, item.chargesReserved);
+    reservedCredits.set(item.itemId, item.chargesReserved);
+  }
+  return buildLoadoutSnapshot(client, input.userId, selected, input.rules, {
+    reservationPeriods: 1,
+    reservedCredits,
+    explicitSelection: explicitlySelected,
+    requirePositiveResource: true,
+  });
+}
+
+function sameLoadoutSelection(left: LoadoutSnapshot, right: LoadoutSnapshot): boolean {
+  const selection = (loadout: LoadoutSnapshot) =>
+    loadout.items
+      .map((item) => `${item.kind}:${item.id}`)
+      .sort()
+      .join('|');
+  return selection(left) === selection(right);
 }
 
 function loadoutWithUpdatedShotStick(
@@ -2141,7 +2248,9 @@ async function fetchParticipants(
             period_started_at, break_started_at, completed_at, shots_taken, goals, active_duration_ms,
             stake_reserved, entry_fee_paid, reserved_inventory_item_id,
             reserved_inventory_charges, consumed_inventory_charges,
-            inventory_effects_snapshot, inventory_report, result_points, experience_snapshot
+            inventory_effects_snapshot, inventory_report, result_points, experience_snapshot,
+            tournament_loadout_period, tournament_loadout_version,
+            tournament_loadout_confirmed_at
        from amateur_duel_participant
       where match_id = $1
       order by side`,
@@ -2377,13 +2486,17 @@ async function settleMatchIfReady(
             metadata: { reason: 'no_play_entry_fee_refund' },
           });
         }
-        await releaseRemainingDuelInventoryReserve(client, {
-          matchId: participant.match_id,
-          userId: participant.user_id,
-          loadoutSnapshot: participant.loadout_snapshot,
-          reservedInventoryCharges: Number(participant.reserved_inventory_charges),
-          consumedInventoryCharges: Number(participant.consumed_inventory_charges),
-        });
+        if (match.source === 'tournament') {
+          await releasePendingTournamentPeriodReservation(client, participant);
+        } else {
+          await releaseRemainingDuelInventoryReserve(client, {
+            matchId: participant.match_id,
+            userId: participant.user_id,
+            loadoutSnapshot: participant.loadout_snapshot,
+            reservedInventoryCharges: Number(participant.reserved_inventory_charges),
+            consumedInventoryCharges: Number(participant.consumed_inventory_charges),
+          });
+        }
       }
       await client.query(
         `update amateur_duel_match
@@ -2518,13 +2631,17 @@ async function settleMatchIfReady(
   }
 
   for (const participant of refreshed) {
-    await releaseRemainingDuelInventoryReserve(client, {
-      matchId: participant.match_id,
-      userId: participant.user_id,
-      loadoutSnapshot: participant.loadout_snapshot,
-      reservedInventoryCharges: Number(participant.reserved_inventory_charges),
-      consumedInventoryCharges: Number(participant.consumed_inventory_charges),
-    });
+    if (match.source === 'tournament') {
+      await releasePendingTournamentPeriodReservation(client, participant);
+    } else {
+      await releaseRemainingDuelInventoryReserve(client, {
+        matchId: participant.match_id,
+        userId: participant.user_id,
+        loadoutSnapshot: participant.loadout_snapshot,
+        reservedInventoryCharges: Number(participant.reserved_inventory_charges),
+        consumedInventoryCharges: Number(participant.consumed_inventory_charges),
+      });
+    }
   }
 
   if (settlementPolicy.grantTemplateRewards && outcome === 'draw' && rules.drawCurrencyReward > 0) {
@@ -2914,7 +3031,32 @@ function participantDto(
     loadout: loadoutFromUnknown(participant.loadout_snapshot),
     inventory_available: inventoryAvailable,
     inventory_report: inventoryReportFromUnknown(participant.inventory_report),
+    tournament_loadout_period: participant.tournament_loadout_period,
+    tournament_loadout_version: Number(participant.tournament_loadout_version),
   };
+}
+
+async function participantWithTournamentLoadoutPreview(
+  client: PoolClient,
+  match: DuelMatchRow,
+  participant: DuelParticipantRow,
+  rules: DuelRulesSnapshot,
+): Promise<DuelParticipantRow> {
+  if (
+    match.source !== 'tournament' ||
+    participant.state !== 'accepted' ||
+    participant.tournament_loadout_period === participant.current_period + 1
+  ) {
+    return participant;
+  }
+  const loadout = await buildTournamentLoadoutSnapshot(client, {
+    matchId: match.id,
+    userId: participant.user_id,
+    selection: {},
+    rules,
+    previousBoundaryLoadout: null,
+  });
+  return { ...participant, loadout_snapshot: loadout };
 }
 
 async function buildMatchDto(
@@ -2929,6 +3071,7 @@ async function buildMatchDto(
   const opponent = participants.find((participant) => participant.user_id !== currentUserId);
   if (!me || !opponent) throw new AppError('forbidden', 'duel match access denied', 403);
   const rules = parseRulesSnapshot(match.rules_snapshot);
+  const meForDto = await participantWithTournamentLoadoutPreview(client, match, me, rules);
   const periodEndsAt =
     me.state === 'period_active' && me.period_started_at !== null
       ? new Date(
@@ -2986,7 +3129,7 @@ async function buildMatchDto(
     break_ends_at: breakEndsAt,
     rules,
     me: participantDto(
-      me,
+      meForDto,
       match,
       rules,
       await fetchAvailableInventory(client, currentUserId),
@@ -3015,6 +3158,7 @@ async function buildMatchStateDto(
       ? await fetchCurrentPeriodStats(client, match.id, opponent.user_id, opponent.current_period)
       : null;
   const rules = parseRulesSnapshot(match.rules_snapshot);
+  const meForDto = await participantWithTournamentLoadoutPreview(client, match, me, rules);
   const effects = effectsFromUnknown(me.inventory_effects_snapshot);
   const loadout = loadoutFromUnknown(me.loadout_snapshot, rules.powerCap);
   const periodEndsAt =
@@ -3032,7 +3176,7 @@ async function buildMatchStateDto(
   return {
     ...dto,
     me: participantDto(
-      me,
+      meForDto,
       match,
       rules,
       await fetchAvailableInventory(client, currentUserId),
@@ -3486,7 +3630,9 @@ async function activateReadyMatch(
 
   for (const participant of participants) {
     const loadout = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
-    const totalReserved = loadout.items.reduce((sum, item) => sum + item.chargesReserved, 0);
+    const totalReserved = match.source === 'tournament'
+      ? 0
+      : loadout.items.reduce((sum, item) => sum + item.chargesReserved, 0);
     if (rules.entryFeeAmount > 0) {
       await applyCurrencyDelta(client, {
         userId: participant.user_id,
@@ -3505,7 +3651,9 @@ async function activateReadyMatch(
         matchId: match.id,
       });
     }
-    await reserveLoadoutInventory(client, participant.user_id, match.id, loadout);
+    if (match.source !== 'tournament') {
+      await reserveLoadoutInventory(client, participant.user_id, match.id, loadout);
+    }
     await client.query(
       `update amateur_duel_participant
           set state = 'accepted',
@@ -3522,7 +3670,7 @@ async function activateReadyMatch(
         rules.stakeAmount,
         rules.entryFeeAmount,
         totalReserved,
-        JSON.stringify(combineEffects(loadout.items)),
+        match.source === 'tournament' ? null : JSON.stringify(combineEffects(loadout.items)),
       ],
     );
   }
@@ -4420,7 +4568,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           };
         }
         const rules = parseRulesSnapshot(match.rules_snapshot);
-        const loadout = await buildLoadoutSnapshot(client, req.user.id, parsed.data.loadout, rules);
+        const loadout =
+          match.source === 'tournament'
+            ? emptyLoadout(rules.powerCap)
+            : await buildLoadoutSnapshot(client, req.user.id, parsed.data.loadout, rules);
         await client.query(
           `update amateur_duel_participant
               set state = 'ready',
@@ -4495,6 +4646,79 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         );
       }
       return { match: response.match };
+    },
+  );
+
+  app.post(
+    '/duel/amateur/matches/:matchId/tournament-loadout',
+    { preHandler: [app.authenticate] },
+    async (req) => {
+      const params = z.object({ matchId: uuid }).parse(req.params);
+      const parsed = readyBodySchema.safeParse(req.body ?? {});
+      if (!parsed.success) throw new AppError('bad_request', 'invalid tournament loadout payload', 400);
+      const response = await withTransaction(app, async (client) => {
+        const now = new Date();
+        let match = (
+          await reconcileMatch(client, await fetchPlayableMatchForUpdate(client, params.matchId), now)
+        ).match;
+        if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
+          throw new AppError('forbidden', 'duel match access denied', 403);
+        }
+        if (match.source !== 'tournament' || match.status !== 'active') {
+          throw new AppError('conflict', 'tournament loadout is not available', 409);
+        }
+        const rules = parseRulesSnapshot(match.rules_snapshot);
+        const participant = (await fetchParticipants(client, match.id)).find(
+          (candidate) => candidate.user_id === req.user.id,
+        );
+        if (!participant || participant.state !== 'accepted') {
+          throw new AppError('conflict', 'tournament loadout can only be confirmed before a period', 409);
+        }
+        const boundaryPeriod = participant.current_period + 1;
+        const previousBoundaryLoadout =
+          participant.tournament_loadout_period === boundaryPeriod
+            ? loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap)
+            : null;
+        const loadout = await buildTournamentLoadoutSnapshot(client, {
+          matchId: match.id,
+          userId: req.user.id,
+          selection: parsed.data.loadout,
+          rules,
+          previousBoundaryLoadout,
+        });
+        if (previousBoundaryLoadout === null || !sameLoadoutSelection(previousBoundaryLoadout, loadout)) {
+          const reservationDelta = await adjustTournamentPeriodReservation(client, {
+            userId: req.user.id,
+            matchId: match.id,
+            previous: previousBoundaryLoadout?.items ?? [],
+            next: loadout.items,
+          });
+          await client.query(
+            `update amateur_duel_participant
+                set loadout_snapshot = $3,
+                    reserved_inventory_charges = reserved_inventory_charges + $4,
+                    inventory_effects_snapshot = $5,
+                    tournament_loadout_period = $6,
+                    tournament_loadout_version = tournament_loadout_version + 1,
+                    tournament_loadout_confirmed_at = $7,
+                    updated_at = now()
+              where match_id = $1 and user_id = $2`,
+            [
+              match.id,
+              req.user.id,
+              JSON.stringify(loadout),
+              reservationDelta,
+              JSON.stringify(combineEffects(loadout.items)),
+              boundaryPeriod,
+              now,
+            ],
+          );
+        }
+        match = await fetchMatchForUpdate(client, match.id);
+        return { match: await buildMatchStateDto(client, match, req.user.id, now) };
+      });
+      await publishDuelFixtureProgress(app, response.match.id);
+      return response;
     },
   );
 
@@ -4744,6 +4968,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         const participants = await fetchParticipants(client, match.id);
         const participant = participants.find((p) => p.user_id === req.user.id);
         if (!participant) throw new AppError('forbidden', 'duel match access denied', 403);
+        if (match.source === 'tournament' && participant.state === 'period_active') {
+          return { match: await buildMatchStateDto(client, match, req.user.id, now) };
+        }
         if (participant.state !== 'accepted') {
           throw new AppError(
             'conflict',
@@ -4754,7 +4981,16 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         if (participant.current_period >= rules.totalPeriods) {
           throw new AppError('conflict', 'all duel periods completed', 409);
         }
+        if (
+          match.source === 'tournament' &&
+          participant.tournament_loadout_period !== participant.current_period + 1
+        ) {
+          throw new AppError('conflict', 'tournament loadout must be confirmed before a period', 409);
+        }
         if (parsed.data.loadout !== undefined) {
+          if (match.source === 'tournament') {
+            throw new AppError('conflict', 'confirm tournament loadout before starting a period', 409);
+          }
           const currentLoadout = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
           const stickOnly = await buildLoadoutSnapshot(
             client,

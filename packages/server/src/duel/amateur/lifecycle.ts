@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
+import { adjustTournamentPeriodReservation } from './periodLoadout.js';
 
 export type AmateurDuelSource = 'challenge' | 'matchmaking' | 'tournament';
 
@@ -32,12 +33,14 @@ interface DuelInventoryReservationParticipant {
   consumedInventoryCharges: number;
 }
 
-interface TournamentDuelReservationRow {
+export interface TournamentDuelReservationRow {
   match_id: string;
   user_id: string;
   loadout_snapshot: unknown;
   reserved_inventory_charges: number;
   consumed_inventory_charges: number;
+  current_period: number;
+  tournament_loadout_period: number | null;
 }
 
 const reservationLoadoutSchema = z.object({
@@ -143,6 +146,29 @@ export async function releaseRemainingDuelInventoryReserve(
   );
 }
 
+export async function releasePendingTournamentPeriodReservation(
+  client: PoolClient,
+  participant: TournamentDuelReservationRow,
+): Promise<void> {
+  if (participant.tournament_loadout_period !== Number(participant.current_period) + 1) return;
+  const delta = await adjustTournamentPeriodReservation(client, {
+    userId: participant.user_id,
+    matchId: participant.match_id,
+    previous: reservationItemsFromSnapshot(participant.loadout_snapshot),
+    next: [],
+  });
+  if (delta === 0) return;
+  await client.query(
+    `update amateur_duel_participant
+        set reserved_inventory_charges = reserved_inventory_charges + $3,
+            tournament_loadout_period = null,
+            tournament_loadout_confirmed_at = null,
+            updated_at = now()
+      where match_id = $1 and user_id = $2`,
+    [participant.match_id, participant.user_id, delta],
+  );
+}
+
 /**
  * Cancels an opened tournament duel without ordinary result settlement: no rating, stakes,
  * template rewards, or achievement processing. The caller must already hold the tournament boundary.
@@ -163,7 +189,7 @@ export async function cancelTournamentDuel(
 
   const participants = await client.query<TournamentDuelReservationRow>(
     `select match_id, user_id, loadout_snapshot, reserved_inventory_charges,
-            consumed_inventory_charges
+            consumed_inventory_charges, current_period, tournament_loadout_period
        from amateur_duel_participant
       where match_id = $1
       order by side
@@ -171,13 +197,7 @@ export async function cancelTournamentDuel(
     [match.id],
   );
   for (const participant of participants.rows) {
-    await releaseRemainingDuelInventoryReserve(client, {
-      matchId: participant.match_id,
-      userId: participant.user_id,
-      loadoutSnapshot: participant.loadout_snapshot,
-      reservedInventoryCharges: Number(participant.reserved_inventory_charges),
-      consumedInventoryCharges: Number(participant.consumed_inventory_charges),
-    });
+    await releasePendingTournamentPeriodReservation(client, participant);
   }
   await client.query(
     `update amateur_duel_participant

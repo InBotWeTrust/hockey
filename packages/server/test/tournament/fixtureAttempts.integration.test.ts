@@ -4,10 +4,16 @@ import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  getGoalie,
+  getSessionPhaseOffsets,
+  resolvePerspectiveCourtShot,
+} from '@hockey/game-core';
 import { buildApp } from '../../src/app.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { createTournamentDuelMatch } from '../../src/duel/amateur/routes.js';
+import { cancelTournamentDuel } from '../../src/duel/amateur/lifecycle.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
 import {
   applyToTournament,
@@ -1186,6 +1192,762 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     ]));
   });
 
+  it('keeps tournament readiness separate from local loadout confirmation', async () => {
+    const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'attempt-ready-separate-loadout');
+    const items = await pool.query<{ id: string; item_kind: 'stick' | 'skates' | 'nutrition' }>(
+      `insert into admin_inventory_items
+       (photo_url, title, description, price_rub, item_kind, charges_per_purchase,
+          duel_period_cost, power_score, rarity, resource_unit)
+       values ('', 'Tournament stick', '', 0, 'stick', 10, 0, 10, 'epic', 'shot'),
+              ('', 'Tournament skates', '', 0, 'skates', 10, 1, 10, 'epic', 'period'),
+              ('', 'Tournament nutrition', '', 0, 'nutrition', 10, 1, 10, 'epic', 'period')
+       returning id, item_kind`,
+    );
+    const idFor = (kind: 'stick' | 'skates' | 'nutrition') =>
+      items.rows.find((item) => item.item_kind === kind)!.id;
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 4), ($1, $3, 4), ($1, $4, 4)`,
+      [fixture.home_user_id, idFor('stick'), idFor('skates'), idFor('nutrition')],
+    );
+    await pool.query(
+      `insert into user_equipment
+         (user_id, equipped_stick_item_id, equipped_skates_item_id, equipped_nutrition_item_id)
+       values ($1, $2, $3, $4)`,
+      [fixture.home_user_id, idFor('stick'), idFor('skates'), idFor('nutrition')],
+    );
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const homeToken = await jwt.issueAccessToken({ sub: fixture.home_user_id });
+
+    const ready = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: {},
+    });
+
+    expect(ready.statusCode).toBe(200);
+    expect(ready.json().match.me).toMatchObject({ state: 'ready', loadout: { items: [] } });
+    const attempt = await pool.query<{ home_ready_at: Date | null; status: string }>(
+      `select home_ready_at, status from tournament_fixture_attempt where fixture_id = $1`,
+      [fixture.fixture_id],
+    );
+    expect(attempt.rows).toEqual([{ home_ready_at: expect.any(Date), status: 'ready_check' }]);
+
+    const awayToken = await jwt.issueAccessToken({ sub: fixture.away_user_id });
+    const awayReady = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+      headers: { authorization: `Bearer ${awayToken}` },
+      payload: {},
+    });
+    expect(awayReady.statusCode).toBe(200);
+
+    const confirmLoadout = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { loadout: {} },
+    });
+    expect(confirmLoadout.statusCode).toBe(200);
+    expect(confirmLoadout.json().match.me.loadout.items.map((item: { kind: string }) => item.kind))
+      .toEqual(['stick', 'skates', 'nutrition']);
+    const repeatedConfirmation = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { loadout: {} },
+    });
+    expect(repeatedConfirmation.statusCode).toBe(200);
+    const participant = await pool.query<{
+      reserved_inventory_charges: number;
+      stick: string | null;
+      skates: string | null;
+      nutrition: string | null;
+    }>(
+      `select participant.reserved_inventory_charges,
+              equipment.equipped_stick_item_id as stick,
+              equipment.equipped_skates_item_id as skates,
+              equipment.equipped_nutrition_item_id as nutrition
+         from amateur_duel_participant participant
+         join user_equipment equipment on equipment.user_id = participant.user_id
+        where participant.match_id = $1 and participant.user_id = $2`,
+      [opened.duelMatchId, fixture.home_user_id],
+    );
+    expect(participant.rows).toEqual([{
+      reserved_inventory_charges: 2,
+      stick: idFor('stick'),
+      skates: idFor('skates'),
+      nutrition: idFor('nutrition'),
+    }]);
+    const inventory = await pool.query<{ inventory_item_id: string; charges_available: number; charges_reserved: number }>(
+      `select inventory_item_id, charges_available, charges_reserved from user_inventory_item
+        where user_id = $1 order by inventory_item_id`,
+      [fixture.home_user_id],
+    );
+    expect(inventory.rows).toEqual(
+      [
+        { inventory_item_id: idFor('stick'), charges_available: 4, charges_reserved: 0 },
+        { inventory_item_id: idFor('skates'), charges_available: 3, charges_reserved: 1 },
+        { inventory_item_id: idFor('nutrition'), charges_available: 3, charges_reserved: 1 },
+      ].sort((left, right) => left.inventory_item_id.localeCompare(right.inventory_item_id)),
+    );
+
+    const started = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/period/start`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: {},
+    });
+    expect(started.statusCode).toBe(200);
+    const repeatedStart = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/period/start`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: {},
+    });
+    expect(repeatedStart.statusCode).toBe(200);
+  });
+
+  it('versions tournament loadout at each period boundary without releasing consumed charges', async () => {
+    await pool.query(
+      `update amateur_duel_template
+          set shots_per_period = 1,
+              period_rules = $2::jsonb
+        where id = $1`,
+      [
+        TEMPLATE_ID,
+        JSON.stringify([
+          { periodNumber: 1, mode: 'quota', durationMs: 60_000, shotsLimit: 1 },
+          { periodNumber: 2, mode: 'quota', durationMs: 60_000, shotsLimit: 1 },
+        ]),
+      ],
+    );
+    const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'attempt-loadout-boundaries');
+    const items = await pool.query<{
+      id: string;
+      item_kind: 'stick' | 'skates' | 'nutrition';
+      title: string;
+    }>(
+      `insert into admin_inventory_items
+         (photo_url, title, description, price_rub, item_kind, charges_per_purchase,
+          duel_period_cost, power_score, rarity, resource_unit, effect_shot_zone_multiplier)
+       values ('', 'A stick', '', 0, 'stick', 10, 0, 10, 'epic', 'shot', 1.5),
+              ('', 'A skates', '', 0, 'skates', 10, 1, 10, 'epic', 'period', 1),
+              ('', 'A nutrition', '', 0, 'nutrition', 10, 1, 10, 'epic', 'period', 1),
+              ('', 'B stick', '', 0, 'stick', 10, 0, 10, 'epic', 'shot', 1.25),
+              ('', 'B skates', '', 0, 'skates', 10, 1, 10, 'epic', 'period', 1),
+              ('', 'B nutrition', '', 0, 'nutrition', 10, 1, 10, 'epic', 'period', 1)
+       returning id, item_kind, title`,
+    );
+    const itemId = (title: string) => items.rows.find((item) => item.title === title)!.id;
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 1), ($1, $3, 1), ($1, $4, 1),
+              ($1, $5, 2), ($1, $6, 2), ($1, $7, 2)`,
+      [
+        fixture.home_user_id,
+        itemId('A stick'),
+        itemId('A skates'),
+        itemId('A nutrition'),
+        itemId('B stick'),
+        itemId('B skates'),
+        itemId('B nutrition'),
+      ],
+    );
+    await pool.query(
+      `insert into user_equipment
+         (user_id, equipped_stick_item_id, equipped_skates_item_id, equipped_nutrition_item_id)
+       values ($1, $2, $3, $4)`,
+      [
+        fixture.home_user_id,
+        itemId('A stick'),
+        itemId('A skates'),
+        itemId('A nutrition'),
+      ],
+    );
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const homeToken = await jwt.issueAccessToken({ sub: fixture.home_user_id });
+    for (const userId of [fixture.home_user_id, fixture.away_user_id]) {
+      const token = await jwt.issueAccessToken({ sub: userId });
+      const ready = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {},
+      });
+      expect(ready.statusCode).toBe(200);
+    }
+
+    const confirmDefaults = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { loadout: {} },
+    });
+    expect(confirmDefaults.statusCode).toBe(200);
+    expect(
+      confirmDefaults.json().match.me.loadout.items.map((item: { title: string }) => item.title),
+    ).toEqual(['A stick', 'A skates', 'A nutrition']);
+
+    const firstStart = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/period/start`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: {},
+    });
+    expect(firstStart.statusCode).toBe(200);
+    expect(firstStart.json().match.stick_effects).toEqual({
+      shotZoneMultiplier: 1.5,
+      rewardMultiplier: 1,
+      streakGrowthMultiplier: 1,
+    });
+    const firstShot = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/shot`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { shot_index: 1, input: { tapTime: 0 }, claimed_result: 'miss' },
+    });
+    expect(firstShot.statusCode).toBe(200);
+    const storedFirstShot = await pool.query<{
+      seed: string;
+      input_payload: {
+        tapTime: number;
+        puckSpeedPerMs: number;
+        shooterFrequency: number;
+        goalieFrequency: number;
+        goalFrequency: number;
+      };
+      server_result: 'goal' | 'save' | 'miss';
+    }>(
+      `select seed, input_payload, server_result
+         from shot_session
+        where amateur_duel_match_id = $1 and user_id = $2 and period_number = 1 and shot_index = 1`,
+      [opened.duelMatchId, fixture.home_user_id],
+    );
+    const stored = storedFirstShot.rows[0]!;
+    const clientResult = resolvePerspectiveCourtShot(
+      stored.input_payload,
+      getGoalie('rookie'),
+      stored.seed,
+      1,
+      firstStart.json().match.stick_effects,
+      getSessionPhaseOffsets(firstStart.json().match.match_seed),
+    );
+    expect(stored.server_result).toBe(clientResult.type);
+    await pool.query(
+      `update amateur_duel_participant
+          set break_started_at = now() - interval '31 seconds'
+        where match_id = $1 and user_id = $2`,
+      [opened.duelMatchId, fixture.home_user_id],
+    );
+    const afterBreak = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${opened.duelMatchId}`,
+      headers: { authorization: `Bearer ${homeToken}` },
+    });
+    expect(afterBreak.statusCode).toBe(200);
+    expect(afterBreak.json().match.me.state).toBe('accepted');
+    const boundaryAfterBreak = await pool.query<{
+      current_period: number;
+      tournament_loadout_period: number | null;
+      tournament_loadout_version: number;
+      titles: string[];
+      inventory_report: unknown[];
+    }>(
+      `select participant.current_period,
+              participant.tournament_loadout_period,
+              participant.tournament_loadout_version,
+              participant.inventory_report,
+              array(
+                select item->>'title'
+                  from jsonb_array_elements(participant.loadout_snapshot->'items') item
+              ) as titles
+         from amateur_duel_participant participant
+        where participant.match_id = $1 and participant.user_id = $2`,
+      [opened.duelMatchId, fixture.home_user_id],
+    );
+    expect(boundaryAfterBreak.rows[0]).toMatchObject({
+      current_period: 1,
+      tournament_loadout_period: 1,
+      tournament_loadout_version: 1,
+      titles: ['A stick', 'A skates', 'A nutrition'],
+    });
+    expect(boundaryAfterBreak.rows[0]!.inventory_report).toHaveLength(2);
+    const reportAfterFirstPeriod = boundaryAfterBreak.rows[0]!.inventory_report;
+    const carried = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { loadout: {} },
+    });
+    expect(carried.statusCode).toBe(200);
+    expect(carried.json().match.me.loadout.items).toEqual([]);
+
+    const selectB = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: {
+        loadout: {
+          stick: itemId('B stick'),
+          skates: itemId('B skates'),
+          nutrition: itemId('B nutrition'),
+        },
+      },
+    });
+    expect(selectB.statusCode).toBe(200);
+    expect(selectB.json().match.me.loadout.items.map((item: { title: string }) => item.title)).toEqual([
+      'B stick',
+      'B skates',
+      'B nutrition',
+    ]);
+    const clearB = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { loadout: { stick: null, skates: null, nutrition: null } },
+    });
+    expect(clearB.statusCode).toBe(200);
+    expect(clearB.json().match.me.loadout.items).toEqual([]);
+    const selectBAgain = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: {
+        loadout: {
+          stick: itemId('B stick'),
+          skates: itemId('B skates'),
+          nutrition: itemId('B nutrition'),
+        },
+      },
+    });
+    expect(selectBAgain.statusCode).toBe(200);
+    const repeatedB = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: {
+        loadout: {
+          stick: itemId('B stick'),
+          skates: itemId('B skates'),
+          nutrition: itemId('B nutrition'),
+        },
+      },
+    });
+    expect(repeatedB.statusCode).toBe(200);
+    expect(repeatedB.json().match.me).toMatchObject({
+      tournament_loadout_period: 2,
+      tournament_loadout_version: 5,
+    });
+
+    const profile = await pool.query<{
+      stick: string | null;
+      skates: string | null;
+      nutrition: string | null;
+    }>(
+      `select equipped_stick_item_id as stick,
+              equipped_skates_item_id as skates,
+              equipped_nutrition_item_id as nutrition
+         from user_equipment where user_id = $1`,
+      [fixture.home_user_id],
+    );
+    expect(profile.rows).toEqual([
+      {
+        stick: itemId('A stick'),
+        skates: itemId('A skates'),
+        nutrition: itemId('A nutrition'),
+      },
+    ]);
+    const accounting = await pool.query<{
+      title: string;
+      charges_available: number;
+      charges_reserved: number;
+    }>(
+      `select item.title, inventory.charges_available, inventory.charges_reserved
+         from user_inventory_item inventory
+         join admin_inventory_items item on item.id = inventory.inventory_item_id
+        where inventory.user_id = $1 and item.title like any(array['A %', 'B %'])
+        order by item.title`,
+      [fixture.home_user_id],
+    );
+    expect(accounting.rows).toEqual([
+      { title: 'A nutrition', charges_available: 0, charges_reserved: 0 },
+      { title: 'A skates', charges_available: 0, charges_reserved: 0 },
+      { title: 'A stick', charges_available: 0, charges_reserved: 0 },
+      { title: 'B nutrition', charges_available: 1, charges_reserved: 1 },
+      { title: 'B skates', charges_available: 1, charges_reserved: 1 },
+      { title: 'B stick', charges_available: 2, charges_reserved: 0 },
+    ]);
+    const participant = await pool.query<{
+      reserved_inventory_charges: number;
+      consumed_inventory_charges: number;
+      inventory_report: Array<{ periodNumber: number; consumed: Array<{ title: string }> }>;
+    }>(
+      `select reserved_inventory_charges, consumed_inventory_charges, inventory_report
+         from amateur_duel_participant where match_id = $1 and user_id = $2`,
+      [opened.duelMatchId, fixture.home_user_id],
+    );
+    expect(participant.rows[0]).toMatchObject({
+      reserved_inventory_charges: 4,
+      consumed_inventory_charges: 3,
+    });
+    expect(participant.rows[0]!.inventory_report).toEqual(reportAfterFirstPeriod);
+    const available = accounting.rows.reduce((sum, item) => sum + item.charges_available, 0);
+    const reserved = accounting.rows.reduce((sum, item) => sum + item.charges_reserved, 0);
+    expect(available + reserved + participant.rows[0]!.consumed_inventory_charges).toBe(9);
+
+    const terminalClient = await pool.connect();
+    try {
+      await terminalClient.query('begin');
+      expect(
+        await cancelTournamentDuel(terminalClient, {
+          duelMatchId: opened.duelMatchId,
+          reason: 'test_pending_boundary_cleanup',
+        }),
+      ).toBe(true);
+      await terminalClient.query('commit');
+    } finally {
+      await terminalClient.query('rollback').catch(() => undefined);
+      terminalClient.release();
+    }
+    const afterTerminal = await pool.query<{
+      reserved_inventory_charges: number;
+      consumed_inventory_charges: number;
+      inventory_report: unknown[];
+      b_reserved: number;
+      b_available: number;
+    }>(
+      `select participant.reserved_inventory_charges,
+              participant.consumed_inventory_charges,
+              participant.inventory_report,
+              inventory.charges_reserved as b_reserved,
+              inventory.charges_available as b_available
+         from amateur_duel_participant participant
+         join user_inventory_item inventory
+           on inventory.user_id = participant.user_id and inventory.inventory_item_id = $3
+        where participant.match_id = $1 and participant.user_id = $2`,
+      [opened.duelMatchId, fixture.home_user_id, itemId('B skates')],
+    );
+    expect(afterTerminal.rows[0]).toMatchObject({
+      reserved_inventory_charges: 2,
+      consumed_inventory_charges: 3,
+      b_reserved: 0,
+      b_available: 2,
+    });
+    expect(afterTerminal.rows[0]!.inventory_report).toEqual(reportAfterFirstPeriod);
+  });
+
+  it('debits dynamic tournament resources once when the same shot is retried', async () => {
+    const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'attempt-dynamic-resource-retry');
+    const items = await pool.query<{
+      id: string;
+      title: string;
+    }>(
+      `insert into admin_inventory_items
+         (photo_url, title, description, price_rub, item_kind, charges_per_purchase,
+          duel_period_cost, power_score, rarity, resource_unit)
+       values ('', 'Dynamic stick', '', 0, 'stick', 3, 0, 10, 'epic', 'shot'),
+              ('', 'Dynamic skates', '', 0, 'skates', 10, 0, 10, 'epic', 'distance'),
+              ('', 'Dynamic nutrition', '', 0, 'nutrition', 10000, 0, 10, 'epic', 'energy_ms')
+       returning id, title`,
+    );
+    const itemId = (title: string) => items.rows.find((item) => item.title === title)!.id;
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 3), ($1, $3, 10), ($1, $4, 10000)`,
+      [
+        fixture.home_user_id,
+        itemId('Dynamic stick'),
+        itemId('Dynamic skates'),
+        itemId('Dynamic nutrition'),
+      ],
+    );
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    for (const userId of [fixture.home_user_id, fixture.away_user_id]) {
+      const token = await jwt.issueAccessToken({ sub: userId });
+      const ready = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {},
+      });
+      expect(ready.statusCode).toBe(200);
+    }
+    const homeToken = await jwt.issueAccessToken({ sub: fixture.home_user_id });
+    const confirmed = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: {
+        loadout: {
+          stick: itemId('Dynamic stick'),
+          skates: itemId('Dynamic skates'),
+          nutrition: itemId('Dynamic nutrition'),
+        },
+      },
+    });
+    expect(confirmed.statusCode).toBe(200);
+    const started = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/period/start`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: {},
+    });
+    expect(started.statusCode).toBe(200);
+    await pool.query(
+      `update amateur_duel_participant
+          set period_started_at = now() - interval '2000 milliseconds'
+        where match_id = $1 and user_id = $2`,
+      [opened.duelMatchId, fixture.home_user_id],
+    );
+
+    const shotPayload = {
+      shot_index: 1,
+      input: { tapTime: 2000 },
+      claimed_result: 'miss',
+    };
+    const first = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/shot`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: shotPayload,
+    });
+    expect(first.statusCode).toBe(200);
+
+    const accountingAfterFirst = await pool.query<{
+      title: string;
+      charges_available: number;
+      charges_reserved: number;
+    }>(
+      `select item.title, inventory.charges_available, inventory.charges_reserved
+         from user_inventory_item inventory
+         join admin_inventory_items item on item.id = inventory.inventory_item_id
+        where inventory.user_id = $1 and item.title like 'Dynamic %'
+        order by item.title`,
+      [fixture.home_user_id],
+    );
+    expect(accountingAfterFirst.rows).toEqual([
+      { title: 'Dynamic nutrition', charges_available: 8000, charges_reserved: 0 },
+      { title: 'Dynamic skates', charges_available: 8, charges_reserved: 0 },
+      { title: 'Dynamic stick', charges_available: 2, charges_reserved: 0 },
+    ]);
+    const participantAfterFirst = await pool.query<{
+      consumed_inventory_charges: number;
+      inventory_report: Array<{
+        consumed: Array<{ title: string; charges: number }>;
+      }>;
+    }>(
+      `select consumed_inventory_charges, inventory_report
+         from amateur_duel_participant
+        where match_id = $1 and user_id = $2`,
+      [opened.duelMatchId, fixture.home_user_id],
+    );
+    const consumedAfterFirst = participantAfterFirst.rows[0]!.inventory_report
+      .flatMap((entry) => entry.consumed)
+      .map((item) => ({ title: item.title, charges: item.charges }))
+      .sort((left, right) => left.title.localeCompare(right.title));
+    expect(consumedAfterFirst).toEqual([
+      { title: 'Dynamic nutrition', charges: 2000 },
+      { title: 'Dynamic skates', charges: 2 },
+      { title: 'Dynamic stick', charges: 1 },
+    ]);
+    expect(participantAfterFirst.rows[0]!.consumed_inventory_charges).toBe(2003);
+
+    const retried = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/shot`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: shotPayload,
+    });
+    expect(retried.statusCode).toBe(409);
+    expect(retried.json().error.message).toContain('shot_index mismatch');
+
+    const accountingAfterRetry = await pool.query<{
+      title: string;
+      charges_available: number;
+      charges_reserved: number;
+    }>(
+      `select item.title, inventory.charges_available, inventory.charges_reserved
+         from user_inventory_item inventory
+         join admin_inventory_items item on item.id = inventory.inventory_item_id
+        where inventory.user_id = $1 and item.title like 'Dynamic %'
+        order by item.title`,
+      [fixture.home_user_id],
+    );
+    expect(accountingAfterRetry.rows).toEqual(accountingAfterFirst.rows);
+    const afterRetry = await pool.query<{
+      consumed_inventory_charges: number;
+      inventory_report: unknown;
+      shot_count: number;
+    }>(
+      `select participant.consumed_inventory_charges,
+              participant.inventory_report,
+              (select count(*)::int
+                 from shot_session shot
+                where shot.amateur_duel_match_id = participant.match_id
+                  and shot.user_id = participant.user_id) as shot_count
+         from amateur_duel_participant participant
+        where participant.match_id = $1 and participant.user_id = $2`,
+      [opened.duelMatchId, fixture.home_user_id],
+    );
+    expect(afterRetry.rows[0]).toEqual({
+      consumed_inventory_charges: 2003,
+      inventory_report: participantAfterFirst.rows[0]!.inventory_report,
+      shot_count: 1,
+    });
+    const initialByTitle = new Map([
+      ['Dynamic nutrition', 10000],
+      ['Dynamic skates', 10],
+      ['Dynamic stick', 3],
+    ]);
+    const consumedByTitle = new Map(consumedAfterFirst.map((item) => [item.title, item.charges]));
+    for (const row of accountingAfterRetry.rows) {
+      expect(row.charges_available + row.charges_reserved + consumedByTitle.get(row.title)!).toBe(
+        initialByTitle.get(row.title),
+      );
+    }
+  });
+
+  it('inherits the latest tournament-local selection in the next game of the same series', async () => {
+    const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'attempt-loadout-next-game');
+    const stick = await pool.query<{ id: string }>(
+      `insert into admin_inventory_items
+         (photo_url, title, description, price_rub, item_kind, charges_per_purchase,
+          duel_period_cost, power_score, rarity, resource_unit)
+       values ('', 'Series-only stick', '', 0, 'stick', 10, 0, 10, 'epic', 'shot')
+       returning id`,
+    );
+    const stickId = stick.rows[0]!.id;
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 5)`,
+      [fixture.home_user_id, stickId],
+    );
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    for (const userId of [fixture.home_user_id, fixture.away_user_id]) {
+      const token = await jwt.issueAccessToken({ sub: userId });
+      const ready = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {},
+      });
+      expect(ready.statusCode).toBe(200);
+    }
+    const homeToken = await jwt.issueAccessToken({ sub: fixture.home_user_id });
+    const firstConfirmed = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { loadout: { stick: stickId, skates: null, nutrition: null } },
+    });
+    expect(firstConfirmed.statusCode).toBe(200);
+
+    const fixtureContext = await pool.query<{
+      tournament_id: string;
+      round_id: string;
+      series_id: string;
+      home_participant_id: string;
+      away_participant_id: string;
+      arena_theme_id: string;
+      arena_snapshot: Record<string, unknown>;
+    }>(
+      `select fixture.tournament_id, fixture.round_id, fixture.series_id,
+              fixture.home_participant_id, fixture.away_participant_id,
+              duel.arena_theme_id, duel.arena_snapshot
+         from tournament_fixture fixture
+         join tournament_fixture_segment segment on segment.fixture_id = fixture.id
+         join amateur_duel_match duel on duel.id = segment.duel_match_id
+        where fixture.id = $1`,
+      [fixture.fixture_id],
+    );
+    const context = fixtureContext.rows[0]!;
+    const now = new Date();
+    const secondClient = await pool.connect();
+    let secondMatchId: string;
+    try {
+      await secondClient.query('begin');
+      const created = await createTournamentDuelMatch(
+        secondClient,
+        {
+          templateId: TEMPLATE_ID,
+          homeUserId: fixture.home_user_id,
+          awayUserId: fixture.away_user_id,
+          startsAt: new Date(now.getTime() - 1_000),
+          endsAt: new Date(now.getTime() + 60 * 60_000),
+          readyExpiresAt: new Date(now.getTime() + 5 * 60_000),
+          autoContinue: true,
+          now,
+          venue: {
+            mode: 'home_selected',
+            homeUserId: fixture.home_user_id,
+            arenaThemeId: context.arena_theme_id,
+            arena: context.arena_snapshot as Parameters<
+              typeof createTournamentDuelMatch
+            >[1]['venue']['arena'],
+          },
+        },
+        DAILY_SEED_SECRET,
+      );
+      secondMatchId = created.matchId;
+      const nextFixture = await secondClient.query<{ id: string }>(
+        `insert into tournament_fixture
+           (tournament_id, round_id, series_id, fixture_number,
+            home_participant_id, away_participant_id, scheduled_starts_at,
+            window_ends_at, status, result_snapshot)
+         select $1, $2, $3, max(fixture_number) + 1, $4, $5, $6, $7, 'active',
+                '{"gameNumber":2}'::jsonb
+           from tournament_fixture where tournament_id = $1
+         returning id`,
+        [
+          context.tournament_id,
+          context.round_id,
+          context.series_id,
+          context.home_participant_id,
+          context.away_participant_id,
+          now,
+          new Date(now.getTime() + 60 * 60_000),
+        ],
+      );
+      await secondClient.query(
+        `insert into tournament_fixture_segment
+           (fixture_id, sequence_number, kind, duel_match_id, status, rules_snapshot)
+         values ($1, 1, 'regulation', $2, 'active', '{}'::jsonb)`,
+        [nextFixture.rows[0]!.id, secondMatchId],
+      );
+      await secondClient.query('commit');
+    } finally {
+      await secondClient.query('rollback').catch(() => undefined);
+      secondClient.release();
+    }
+
+    const beforeConfirmation = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${secondMatchId!}`,
+      headers: { authorization: `Bearer ${homeToken}` },
+    });
+    expect(beforeConfirmation.statusCode).toBe(200);
+    expect(beforeConfirmation.json().match.me.loadout.items).toMatchObject([
+      { id: stickId, kind: 'stick', title: 'Series-only stick' },
+    ]);
+
+    const carried = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${secondMatchId!}/tournament-loadout`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { loadout: {} },
+    });
+    expect(carried.statusCode).toBe(200);
+    expect(carried.json().match.me.loadout.items).toMatchObject([
+      { id: stickId, kind: 'stick', title: 'Series-only stick' },
+    ]);
+    const profile = await pool.query(`select 1 from user_equipment where user_id = $1`, [
+      fixture.home_user_id,
+    ]);
+    expect(profile.rowCount).toBe(0);
+  });
+
   it('marks the linked tournament attempt active after both players become ready', async () => {
     const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'attempt-ready-active');
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
@@ -1195,7 +1957,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
         method: 'POST',
         url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
         headers: { authorization: `Bearer ${token}` },
-        payload: { loadout: {} },
+        payload: {},
       });
       expect(ready.statusCode).toBe(200);
     }
@@ -3170,6 +3932,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     await expect(
       reconcilePlayoffDayStartingCommunications(pool, {
         now: new Date(startsAt.getTime() - 30 * 60_000),
+        systemUserId: OFFICIAL_ID,
         publisher: { publish: async () => undefined },
       }),
     ).resolves.toEqual({ considered: 2 });
