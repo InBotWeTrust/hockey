@@ -179,6 +179,30 @@ describe.skipIf(!hasIntegrationEnv)('daily tournament maintenance', () => {
         rank: 2,
       },
     ]);
+
+    const firstFinalizedAt = await pool.query<{ finalized_at: Date }>(
+      `select finalized_at
+         from tournament_daily_result
+        where tournament_id = $1 and participant_id = (
+          select id from tournament_participant where tournament_id = $1 and user_id = $2
+        )`,
+      [tournamentId, completedPlayerId],
+    );
+    await refreshCompletedTournamentDailyResultsForTournament(pool, {
+      tournamentId,
+      now: new Date('2030-09-01T19:01:00.000Z'),
+    });
+    const secondFinalizedAt = await pool.query<{ finalized_at: Date }>(
+      `select finalized_at
+         from tournament_daily_result
+        where tournament_id = $1 and participant_id = (
+          select id from tournament_participant where tournament_id = $1 and user_id = $2
+        )`,
+      [tournamentId, completedPlayerId],
+    );
+    expect(secondFinalizedAt.rows[0]!.finalized_at).toEqual(
+      firstFinalizedAt.rows[0]!.finalized_at,
+    );
   });
 
   it('restores zero standings for an existing regular daily tournament before anyone plays', async () => {

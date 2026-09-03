@@ -19,6 +19,7 @@ interface TournamentScheduleCalendarProps {
   renderFixture: (fixture: TournamentFixture, mine: boolean) => ReactNode;
   formatDateTime: (value: string) => string;
   onOpenDailyGame?: () => void;
+  renderMatchdayResults?: (matchday: TournamentMatchday) => ReactNode;
 }
 
 const weekdayLabels = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -219,15 +220,18 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
   const lastMonthIndex = (rangeEndYear ?? visibleMonth.year) * 12 + (rangeEndMonth ?? 1) - 1;
 
   const fixturesDate = modalDate ?? selectedDate;
-  const selectedFixtures = [...(fixturesByDate.get(fixturesDate) ?? [])].sort(
-    (left, right) =>
-      Number(isMine(right, props.currentUserId)) - Number(isMine(left, props.currentUserId)),
-  );
+  const selectedFixtures = [...(fixturesByDate.get(fixturesDate) ?? [])];
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   const selectedFixturesExpanded = expandedDate === fixturesDate;
-  const visibleSelectedFixtures = selectedFixturesExpanded
-    ? selectedFixtures
-    : selectedFixtures.slice(0, 4);
+  const mySelectedFixtures = selectedFixtures.filter((fixture) =>
+    isMine(fixture, props.currentUserId),
+  );
+  const otherSelectedFixtures = selectedFixtures.filter(
+    (fixture) => !isMine(fixture, props.currentUserId),
+  );
+  const visibleOtherFixtures = selectedFixturesExpanded
+    ? otherSelectedFixtures
+    : otherSelectedFixtures.slice(0, 4);
   const selectedMatchday = matchdaysByDate.get(selectedDate);
   const selectedMatchdayIsActive =
     selectedMatchday !== undefined &&
@@ -235,6 +239,39 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
     Date.now() < new Date(selectedMatchday.endsAt).getTime();
   const undatedFixtures = props.fixtures.filter(
     (fixture) => fixtureDateKey(fixture, props.timezone) === null,
+  );
+  const renderSelectedFixtureSections = () => (
+    <div className="tournament-fixture-sections">
+      {mySelectedFixtures.length > 0 && (
+        <section className="tournament-fixture-section tournament-fixture-section--mine">
+          <h5>Ваши игры</h5>
+          <div className="tournament-fixture-list">
+            {mySelectedFixtures.map((fixture) => props.renderFixture(fixture, true))}
+          </div>
+        </section>
+      )}
+      {otherSelectedFixtures.length > 0 && (
+        <section
+          className={`tournament-fixture-section${mySelectedFixtures.length > 0 ? ' tournament-fixture-section--others' : ''}`}
+        >
+          <h5>{mySelectedFixtures.length > 0 ? 'Остальные игры' : 'Все игры дня'}</h5>
+          <div className="tournament-fixture-list">
+            {visibleOtherFixtures.map((fixture) => props.renderFixture(fixture, false))}
+          </div>
+          {otherSelectedFixtures.length > 4 && (
+            <button
+              type="button"
+              className="tournament-calendar__expand"
+              onClick={() => setExpandedDate(selectedFixturesExpanded ? null : fixturesDate)}
+            >
+              {selectedFixturesExpanded
+                ? 'Свернуть'
+                : `Показать ещё (${otherSelectedFixtures.length - 4})`}
+            </button>
+          )}
+        </section>
+      )}
+    </div>
   );
 
   return (
@@ -380,14 +417,17 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
                 )}
               />
               {selectedMatchday.myResult?.completed === true && (
-                <div className="tournament-matchday-result" aria-label="Ваш результат игры">
-                  <strong>Ваш результат</strong>
-                  <span>
-                    {selectedMatchday.myResult.goals} {puckWord(selectedMatchday.myResult.goals)} из{' '}
-                    {selectedMatchday.myResult.shots} · точность{' '}
-                    {Math.round(selectedMatchday.myResult.accuracy * 100)}%
-                  </span>
-                </div>
+                <>
+                  <div className="tournament-matchday-result" aria-label="Ваш результат игры">
+                    <strong>Ваш результат</strong>
+                    <span>
+                      {selectedMatchday.myResult.goals} {puckWord(selectedMatchday.myResult.goals)} из{' '}
+                      {selectedMatchday.myResult.shots} · точность{' '}
+                      {Math.round(selectedMatchday.myResult.accuracy * 100)}%
+                    </span>
+                  </div>
+                  {props.renderMatchdayResults?.(selectedMatchday)}
+                </>
               )}
               {props.isParticipant &&
                 selectedDate === today.key &&
@@ -404,11 +444,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             </>
           )}
           {showsFixturesInline && selectedFixtures.length > 0 && (
-            <div className="tournament-fixture-list">
-              {selectedFixtures.map((fixture) =>
-                props.renderFixture(fixture, isMine(fixture, props.currentUserId)),
-              )}
-            </div>
+            renderSelectedFixtureSections()
           )}
           {selectedMatchday === undefined && selectedFixtures.length === 0 && (
             <p>В этот день игр нет.</p>
@@ -422,11 +458,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             {spokenDate(...(selectedDate.split('-').map(Number) as [number, number, number]))}
           </h4>
           {selectedFixtures.length > 0 ? (
-            <div className="tournament-fixture-list">
-              {selectedFixtures.map((fixture) =>
-                props.renderFixture(fixture, isMine(fixture, props.currentUserId)),
-              )}
-            </div>
+            renderSelectedFixtureSections()
           ) : (
             <p>В этот день игр нет.</p>
           )}
@@ -445,22 +477,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             }}
           >
             {selectedFixtures.length > 0 ? (
-              <div className="tournament-fixture-list">
-                {visibleSelectedFixtures.map((fixture) =>
-                  props.renderFixture(fixture, isMine(fixture, props.currentUserId)),
-                )}
-                {selectedFixtures.length > 4 && (
-                  <button
-                    type="button"
-                    className="tournament-calendar__expand"
-                    onClick={() => setExpandedDate(selectedFixturesExpanded ? null : fixturesDate)}
-                  >
-                    {selectedFixturesExpanded
-                      ? 'Свернуть'
-                      : `Показать все игры (${selectedFixtures.length})`}
-                  </button>
-                )}
-              </div>
+              renderSelectedFixtureSections()
             ) : (
               <p className="modal-copy">В этот день игр нет.</p>
             )}

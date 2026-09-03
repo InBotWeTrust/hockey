@@ -2761,9 +2761,11 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
     home_user_id: string | null;
     home_name: string | null;
     home_avatar_url: string | null;
+    home_seed: number | null;
     away_user_id: string | null;
     away_name: string | null;
     away_avatar_url: string | null;
+    away_seed: number | null;
     home_score: number;
     away_score: number;
   }>(
@@ -2779,6 +2781,7 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
               end,
               hu.avatar_url
             ) as home_avatar_url,
+            case when r.stage in ('playoff', 'third_place') then hs.rank end as home_seed,
             ap.user_id as away_user_id, au.display_name as away_name,
             coalesce(
               case
@@ -2789,13 +2792,18 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
               end,
               au.avatar_url
             ) as away_avatar_url,
+            case when r.stage in ('playoff', 'third_place') then aws.rank end as away_seed,
             f.home_score, f.away_score
        from tournament_fixture f
        join tournament_round r on r.id = f.round_id
        left join tournament_participant hp on hp.id = f.home_participant_id
        left join users hu on hu.id = hp.user_id
+       left join tournament_standing hs
+         on hs.tournament_id = f.tournament_id and hs.participant_id = hp.id
        left join tournament_participant ap on ap.id = f.away_participant_id
        left join users au on au.id = ap.user_id
+       left join tournament_standing aws
+         on aws.tournament_id = f.tournament_id and aws.participant_id = ap.id
       where f.tournament_id = $1
       order by f.fixture_number`,
     [tournamentId],
@@ -2816,6 +2824,7 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
             userId: row.home_user_id,
             name: row.home_name,
             avatarUrl: row.home_avatar_url,
+            seed: row.home_seed === null ? null : Number(row.home_seed),
           },
     away:
       row.away_user_id === null
@@ -2824,6 +2833,7 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
             userId: row.away_user_id,
             name: row.away_name,
             avatarUrl: row.away_avatar_url,
+            seed: row.away_seed === null ? null : Number(row.away_seed),
           },
     score: { home: Number(row.home_score), away: Number(row.away_score) },
   }));
@@ -2879,6 +2889,79 @@ export async function getTournamentMatchdays(
             completed: row.result_completed === true,
           },
   }));
+}
+
+export async function getTournamentMatchdayResults(
+  pool: Pool,
+  tournamentId: string,
+  tournamentDay: number,
+  options: {
+    excludeUserId: string;
+    limit: number;
+    cursor: { finalizedAt: string; id: string } | null;
+  },
+) {
+  const { rows } = await pool.query<{
+    id: string;
+    finalized_at: Date;
+    user_id: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    goals: number;
+    shots: number;
+    accuracy: string;
+  }>(
+    `select result.id, result.finalized_at, participant.user_id, user_account.display_name,
+            coalesce(
+              case
+                when user_account.display_source = 'custom' then user_account.custom_avatar_url
+                when user_account.display_source = 'vk' then user_account.vk_avatar_url
+                when user_account.display_source = 'telegram' then user_account.tg_avatar_url
+                else user_account.avatar_url
+              end,
+              user_account.avatar_url
+            ) as avatar_url,
+            result.goals, result.shots, result.accuracy
+       from tournament_daily_result result
+       join tournament_participant participant on participant.id = result.participant_id
+       join users user_account on user_account.id = participant.user_id
+      where result.tournament_id = $1
+        and result.tournament_day = $2
+        and participant.user_id <> $3
+        and result.completed = true
+        and (
+          $4::timestamptz is null
+          or (result.finalized_at, result.id) < ($4::timestamptz, $5::uuid)
+        )
+      order by result.finalized_at desc, result.id desc
+      limit $6`,
+    [
+      tournamentId,
+      tournamentDay,
+      options.excludeUserId,
+      options.cursor?.finalizedAt ?? null,
+      options.cursor?.id ?? null,
+      options.limit + 1,
+    ],
+  );
+  const hasMore = rows.length > options.limit;
+  const visibleRows = rows.slice(0, options.limit);
+  const lastVisible = visibleRows.at(-1);
+  return {
+    results: visibleRows.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      displayName: row.display_name,
+      avatarUrl: row.avatar_url,
+      goals: Number(row.goals),
+      shots: Number(row.shots),
+      accuracy: Number(row.accuracy),
+    })),
+    nextCursor:
+      hasMore && lastVisible !== undefined
+        ? { finalizedAt: lastVisible.finalized_at.toISOString(), id: lastVisible.id }
+        : null,
+  };
 }
 
 export type TournamentGameContextAction =

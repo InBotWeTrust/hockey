@@ -339,7 +339,7 @@ async function refreshCompletedTournamentDailyResults(
            set player_local_date = excluded.player_local_date,
                goals = excluded.goals, shots = excluded.shots, accuracy = excluded.accuracy,
                completed = true, source_snapshot = excluded.source_snapshot,
-               finalized_at = excluded.finalized_at`,
+               finalized_at = tournament_daily_result.finalized_at`,
         [
           source.tournament_id,
           source.participant_id,

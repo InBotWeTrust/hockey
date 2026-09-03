@@ -24,6 +24,7 @@ import { tournamentTimezoneLabel } from './timezoneLabel.js';
 import { TournamentStandingsTable } from './TournamentStandingsTable.js';
 import { TournamentScheduleCalendar } from './TournamentScheduleCalendar.js';
 import { TournamentPlayoffBracket } from './TournamentPlayoffBracket.js';
+import { TournamentMatchdayResults } from './TournamentMatchdayResults.js';
 
 type TournamentTab = 'overview' | 'standings' | 'schedule' | 'playoff' | 'rules';
 
@@ -115,34 +116,28 @@ function fixtureTimeLabel(fixture: TournamentFixture, timezone: string): string 
   const startsAt = new Date(fixture.scheduledStartsAt);
   if (!Number.isFinite(startsAt.getTime())) return 'Время ещё не назначено';
   try {
-    const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
-      timeZone: timezone,
-      day: 'numeric',
-      month: 'long',
-    });
-    const dateKeyFormatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
     const timeFormatter = new Intl.DateTimeFormat('ru-RU', {
       timeZone: timezone,
       hour: '2-digit',
       minute: '2-digit',
     });
-    const startDate = dateFormatter.format(startsAt);
     const startTime = timeFormatter.format(startsAt);
-    if (fixture.windowEndsAt === null) return `${startDate} в ${startTime}`;
+    if (fixture.windowEndsAt === null) return startTime;
     const endsAt = new Date(fixture.windowEndsAt);
-    if (!Number.isFinite(endsAt.getTime())) return `${startDate} в ${startTime}`;
+    if (!Number.isFinite(endsAt.getTime())) return startTime;
     const endTime = timeFormatter.format(endsAt);
-    return dateKeyFormatter.format(startsAt) === dateKeyFormatter.format(endsAt)
-      ? `${startDate}, ${startTime}–${endTime}`
-      : `${startDate}, ${startTime} — ${dateFormatter.format(endsAt)}, ${endTime}`;
+    return `${startTime}–${endTime}`;
   } catch {
     return startsAt.toLocaleString('ru-RU');
   }
+}
+
+function fixturePlayerLabel(
+  participant: TournamentFixture['home'],
+  showSeed: boolean,
+): string {
+  const name = participant?.name ?? 'Участник';
+  return showSeed && participant?.seed != null ? `(${participant.seed}) ${name}` : name;
 }
 
 function registrationWindow(
@@ -713,6 +708,15 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                 }
                 navigate(`/?${params.toString()}`);
               }}
+              renderMatchdayResults={(matchday) =>
+                currentUserId === null ? null : (
+                  <TournamentMatchdayResults
+                    tournamentId={tournament.id}
+                    matchdayNumber={matchday.number}
+                    viewerUserId={currentUserId}
+                  />
+                )
+              }
               formatDateTime={(value) =>
                 tournamentDateLabel(
                   value,
@@ -721,6 +725,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               }
               renderFixture={(fixture, mine) => {
                 const playable = fixtureCanOpen(fixture);
+                const showSeed = fixture.stage === 'playoff' || fixture.stage === 'third_place';
                 const finished =
                   ['completed', 'settled', 'forfeit', 'technical'].includes(fixture.status) ||
                   fixture.score.home + fixture.score.away > 0;
@@ -736,6 +741,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                           String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
                         )}
                       </span>
+                      {mine && <VenueBadge role={fixtureVenueRole(fixture, currentUserId)} />}
                       <strong>{fixtureStatusLabel(fixture.status)}</strong>
                     </div>
                     <div className="tournament-fixture-summary">
@@ -755,7 +761,8 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                           />
                         </div>
                         <span className="tournament-fixture-matchup__names">
-                          {fixture.home?.name ?? 'Участник'} — {fixture.away?.name ?? 'Участник'}
+                          {fixturePlayerLabel(fixture.home, showSeed)} —{' '}
+                          {fixturePlayerLabel(fixture.away, showSeed)}
                         </span>
                       </div>
                     </div>
@@ -795,7 +802,6 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                             </>
                           )}
                         </div>
-                        {mine && <VenueBadge role={fixtureVenueRole(fixture, currentUserId)} />}
                       </div>
                     )}
                   </article>
