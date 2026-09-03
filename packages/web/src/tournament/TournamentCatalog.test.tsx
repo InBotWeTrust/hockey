@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -240,6 +240,27 @@ describe('TournamentCatalog', () => {
       bracket.remove();
       style.remove();
     }
+  });
+
+  it('fits small playoff brackets and scrolls large brackets without shrinking cards', () => {
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview\[data-layout='fit'\]\s+\.tournament-bracket-overview__grid\s*\{[^}]*grid-template-columns:\s*repeat\(var\(--playoff-round-count\), minmax\(0, 1\.1fr\)\) minmax\(0, 0\.9fr\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview\[data-layout='scroll'\]\s+\.tournament-bracket-overview__grid\s*\{[^}]*grid-template-columns:\s*repeat\(var\(--playoff-column-count\), minmax\(220px, 1fr\)\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview__viewport\s*\{[^}]*overflow-x:\s*auto;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-series--mine\s*\{[^}]*border-color:\s*rgba\(43, 126, 89,/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-connector\s*\{[^}]*z-index:\s*0;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview\s+\.tournament-bracket-series\s*\{[^}]*z-index:\s*1;/s,
+    );
   });
 
   it('keeps a long participation status inside the tournament card', () => {
@@ -883,44 +904,61 @@ describe('TournamentCatalog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок плей-офф' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Плей-офф' }));
 
-    expect(await screen.findByRole('heading', { name: 'Полуфиналы' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Турнирная сетка' })).toBeInTheDocument();
     expect(screen.getByRole('tablist', { name: 'Раунды плей-офф' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Сетка' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Полуфиналы' })).toHaveAttribute(
       'aria-selected',
-      'true',
+      'false',
     );
     expect(screen.getByRole('tab', { name: 'Финал' })).toHaveAttribute('aria-selected', 'false');
     expect(screen.getByRole('tab', { name: 'За 3-е место' })).toHaveAttribute(
       'aria-selected',
       'false',
     );
-    expect(screen.getByText('Полуфинал 1')).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Первый' })).toHaveAttribute('src', '/first.webp');
-    expect(screen.getByLabelText('Посев 1')).toHaveTextContent('1');
-    expect(screen.getByLabelText('Посев 4')).toHaveTextContent('4');
-    expect(screen.getByLabelText('4 победы в серии')).toHaveTextContent('4');
-    expect(screen.getByLabelText('2 победы в серии')).toHaveTextContent('2');
-    expect(screen.getAllByLabelText('0 побед в серии')).toHaveLength(2);
+    const overview = screen.getByRole('region', { name: 'Турнирная сетка' });
+    expect(overview).toHaveAttribute('data-layout', 'fit');
+    expect(within(overview).getByText('Полуфинал 1')).toBeInTheDocument();
+    expect(within(overview).getAllByText('Финал')).toHaveLength(2);
+    expect(within(overview).getByText('За 3-е место')).toBeInTheDocument();
+    expect(within(overview).getByText('Чемпион')).toBeInTheDocument();
+    expect(within(overview).getByText('Итог')).toBeInTheDocument();
+    expect(within(overview).getByText('Определится в финале')).toBeInTheDocument();
+    expect(within(overview).getByRole('img', { name: 'Первый' })).toHaveAttribute(
+      'src',
+      '/first.webp',
+    );
+    expect(within(overview).getByLabelText('Посев 1')).toHaveTextContent('1');
+    expect(within(overview).getByLabelText('Посев 4')).toHaveTextContent('4');
+    expect(within(overview).getByLabelText('4 победы в серии')).toHaveTextContent('4');
+    expect(within(overview).getByLabelText('2 победы в серии')).toHaveTextContent('2');
+    expect(within(overview).getByText('Завершена 10 сентября')).toBeInTheDocument();
+    expect(within(overview).getByText('Первый').closest('.tournament-bracket-player')).toHaveClass(
+      'tournament-bracket-player--current',
+    );
+    expect(
+      within(overview).getByText('Полуфинал 1').closest('.tournament-bracket-series'),
+    ).toHaveClass('tournament-bracket-series--mine');
     expect(screen.queryByText(/Игра 1/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Открыть серию Полуфинал 1' }));
-    expect(screen.getByText('Игра 1 · 10 сентября, 15:00–16:00')).toBeInTheDocument();
-    expect(screen.getByText('Первый 3 : 2 Четвёртый')).toBeInTheDocument();
-    expect(screen.getByText('Первый 3 : 2 Четвёртый')).toHaveClass(
+    fireEvent.click(within(overview).getByRole('button', { name: 'Открыть серию Полуфинал 1' }));
+    const dialog = screen.getByRole('dialog', { name: 'Полуфинал 1' });
+    expect(within(dialog).getByText('Игра 1 · 10 сентября, 15:00–16:00')).toBeInTheDocument();
+    expect(within(dialog).getByText('Первый 3 : 2 Четвёртый')).toHaveClass(
       'tournament-bracket-game__result--home-won',
     );
-    expect(screen.queryByText('Счёт в серии 4 : 2')).not.toBeInTheDocument();
-    expect(screen.getByText('Первый').closest('.tournament-bracket-player')).toHaveClass(
-      'tournament-bracket-player--winner',
-    );
-    expect(screen.getByText('Второй').closest('.tournament-bracket-player')).not.toHaveClass(
-      'tournament-bracket-player--winner',
-    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
+    expect(screen.queryByRole('dialog', { name: 'Полуфинал 1' })).not.toBeInTheDocument();
 
     const finalTab = screen.getByRole('tab', { name: 'Финал' });
     expect(finalTab).toHaveClass('tournament-bracket__round-tab--gold');
     expect(screen.getByRole('tab', { name: 'За 3-е место' })).toHaveClass(
       'tournament-bracket__round-tab--bronze',
     );
+    fireEvent.click(screen.getByRole('tab', { name: 'Полуфиналы' }));
+    expect(screen.getByRole('heading', { name: 'Полуфиналы' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть серию Полуфинал 1' }));
+    expect(screen.getByRole('dialog', { name: 'Полуфинал 1' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
     fireEvent.click(finalTab);
     expect(screen.getByRole('heading', { name: 'Финал' })).toBeInTheDocument();
     expect(screen.getByText('Победитель полуфинала 1')).toBeInTheDocument();
