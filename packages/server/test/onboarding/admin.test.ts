@@ -491,8 +491,8 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
     expect(chain.draft?.steps.map((step) => step.title)).toEqual(['Три', 'Один', 'Два']);
   });
 
-  it('accepts valid 2:3 onboarding image dimensions and persists the protected proxy URL', async () => {
-    const body = await webpBytes(800, 1200);
+  it('accepts valid square onboarding image dimensions and persists the protected proxy URL', async () => {
+    const body = await webpBytes(800, 800);
     const uploaded = await app.inject({
       method: 'POST',
       url: '/admin/onboarding/media',
@@ -552,13 +552,13 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
       method: 'POST',
       url: '/admin/onboarding/media',
       headers: { ...adminHeaders, 'content-type': 'image/webp' },
-      payload: await webpBytes(1, 1),
+      payload: await webpBytes(799, 799),
     });
 
     expect(response.statusCode).toBe(422);
     expect(response.json().error).toEqual({
       code: 'invalid_image_dimensions',
-      message: 'onboarding image must be portrait 2:3 and at least 800x1200 pixels',
+      message: 'onboarding image must be square 1:1 and at least 800x800 pixels',
     });
   });
 
@@ -567,13 +567,13 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
       method: 'POST',
       url: '/admin/onboarding/media',
       headers: { ...adminHeaders, 'content-type': 'image/webp' },
-      payload: await webpBytes(1200, 1200),
+      payload: await webpBytes(800, 1200),
     });
 
     expect(response.statusCode).toBe(422);
     expect(response.json().error).toEqual({
       code: 'invalid_image_dimensions',
-      message: 'onboarding image must be portrait 2:3 and at least 800x1200 pixels',
+      message: 'onboarding image must be square 1:1 and at least 800x800 pixels',
     });
   });
 
@@ -583,7 +583,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/onboarding', () => {
       method: 'POST',
       url: '/admin/onboarding/media',
       headers: { ...adminHeaders, 'content-type': 'image/webp' },
-      payload: await webpBytes(800, 1200),
+      payload: await webpBytes(800, 800),
     });
     expect(response.statusCode).toBe(502);
     expect(response.json().error.code).toBe('storage_upload_failed');

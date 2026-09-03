@@ -928,7 +928,7 @@ git commit -m "feat(web): show onboarding metrics and player controls"
 
 - [ ] **Step 1: Create exactly one story-image example**
 
-Use the existing image-generation workflow to create a WebP for `Всё начинается здесь`: winter courtyard hockey, mobile portrait composition, room for UI copy outside the image, no embedded text, consistent with the game palette. Stop and obtain explicit user approval before producing other story images.
+Use the existing image-generation workflow to create a square 1:1 WebP (minimum 800×800) for `Всё начинается здесь`: winter courtyard hockey, mobile-safe composition, room for UI copy outside the image, no embedded text, consistent with the game palette. Stop and obtain explicit user approval before producing other story images.
 
 - [ ] **Step 2: Create exactly one gameplay-frame example**
 
@@ -936,7 +936,7 @@ Capture or compose a real in-game frame for `Поймай момент` using th
 
 - [ ] **Step 3: Add asset contract test**
 
-For repository-held approved references, assert WebP and one agreed portrait dimension/aspect ratio established by the two approved examples. The test must enumerate exact filenames; no filesystem wildcard snapshot.
+For repository-held approved references, assert WebP and the agreed square 1:1 dimension/aspect contract (minimum 800×800) established by the approved examples. The test must enumerate exact filenames; no filesystem wildcard snapshot.
 
 - [ ] **Step 4: Produce the remaining approved images**
 

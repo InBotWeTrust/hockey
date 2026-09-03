@@ -748,7 +748,7 @@ function cleanFileName(value: string | string[] | undefined): string {
 }
 
 const ONBOARDING_IMAGE_MIN_WIDTH = 800;
-const ONBOARDING_IMAGE_MIN_HEIGHT = 1200;
+const ONBOARDING_IMAGE_MIN_HEIGHT = 800;
 
 async function readWebpUpload(
   body: unknown,
@@ -781,11 +781,11 @@ async function readWebpUpload(
     height === undefined ||
     width < ONBOARDING_IMAGE_MIN_WIDTH ||
     height < ONBOARDING_IMAGE_MIN_HEIGHT ||
-    width * 3 !== height * 2
+    width !== height
   ) {
     throw new AppError(
       'invalid_image_dimensions',
-      'onboarding image must be portrait 2:3 and at least 800x1200 pixels',
+      'onboarding image must be square 1:1 and at least 800x800 pixels',
       422,
     );
   }

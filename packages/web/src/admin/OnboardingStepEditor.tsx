@@ -105,7 +105,7 @@ export function OnboardingStepEditor({
       </label>
       {kind === 'informational' ? (
         <label>
-          Изображение WebP (минимум 800×1200, вертикальное 2:3)
+          Изображение WebP (минимум 800×800, квадратное 1:1)
           <input
             type="file"
             accept="image/webp,.webp"

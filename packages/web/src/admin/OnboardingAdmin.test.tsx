@@ -60,6 +60,36 @@ const chain = {
   },
 };
 const adminCss = readFileSync(resolve(process.cwd(), 'src/admin/onboarding-admin.css'), 'utf8');
+const stepEditorSource = readFileSync(
+  resolve(process.cwd(), 'src/admin/OnboardingStepEditor.tsx'),
+  'utf8',
+);
+
+function readWebpDimensions(bytes: Buffer): { width: number; height: number } {
+  expect(bytes.subarray(0, 4).toString('ascii')).toBe('RIFF');
+  expect(bytes.subarray(8, 12).toString('ascii')).toBe('WEBP');
+  const chunk = bytes.subarray(12, 16).toString('ascii');
+  if (chunk === 'VP8X') {
+    return {
+      width: 1 + bytes.readUIntLE(24, 3),
+      height: 1 + bytes.readUIntLE(27, 3),
+    };
+  }
+  if (chunk === 'VP8 ') {
+    return {
+      width: bytes.readUInt16LE(26) & 0x3fff,
+      height: bytes.readUInt16LE(28) & 0x3fff,
+    };
+  }
+  if (chunk === 'VP8L') {
+    const packed = bytes.readUInt32LE(21);
+    return {
+      width: 1 + (packed & 0x3fff),
+      height: 1 + ((packed >> 14) & 0x3fff),
+    };
+  }
+  throw new Error(`Unsupported WebP chunk ${chunk}`);
+}
 
 function renderAdmin(): void {
   const queryClient = new QueryClient({
@@ -221,6 +251,14 @@ describe('onboardingApi', () => {
 describe('OnboardingAdmin', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('documents the square upload contract and keeps the approved reference square', () => {
+    expect(stepEditorSource).toContain('минимум 800×800, квадратное 1:1');
+    const approvedReference = readFileSync(
+      resolve(process.cwd(), 'public/onboarding/reference/beginner-story-example.webp'),
+    );
+    expect(readWebpDimensions(approvedReference)).toEqual({ width: 1200, height: 1200 });
   });
 
   it('stacks tutorial speed controls at the mobile breakpoint', () => {
