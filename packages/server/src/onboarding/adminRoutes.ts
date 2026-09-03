@@ -562,7 +562,7 @@ async function mapClonedOrderIds(
   );
 }
 
-async function assertPublishable(
+export async function assertPublishable(
   client: PoolClient,
   chainKey: OnboardingChainKey,
   versionId: string,
