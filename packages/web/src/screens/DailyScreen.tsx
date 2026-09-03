@@ -65,6 +65,7 @@ import {
 } from '../stores/demoSession.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { useAmateurDuelStore } from '../stores/amateurDuelStore.js';
+import { useOnboardingGate } from '../onboarding/OnboardingGate.js';
 import { rewardColor } from '../app/rewardColors.js';
 import type { ScoreBoardOpponent } from '../components/ScoreBoard.js';
 import { GlassSelect } from '../components/GlassSelect.js';
@@ -407,6 +408,7 @@ export function tournamentDuelBackPath(
 export function DailyScreen(): JSX.Element {
   const location = useLocation();
   const navigate = useNavigate();
+  const { refreshAfterGameExit } = useOnboardingGate();
   const data = useDailyStore((s) => s.data);
   const error = useDailyStore((s) => s.error);
   const loading = useDailyStore((s) => s.loading);
@@ -436,6 +438,15 @@ export function DailyScreen(): JSX.Element {
   const [pendingPlayEntrance, setPendingPlayEntrance] = useState<PendingPlayMarker>(null);
   const [pendingPlayRouteTransition, setPendingPlayRouteTransition] =
     useState<PendingPlayMarker>(null);
+
+  const leavePlaySurface = useCallback(
+    (destination: string): void => {
+      setDailyView('arena');
+      navigate(destination, { replace: true });
+      void refreshAfterGameExit();
+    },
+    [navigate, refreshAfterGameExit],
+  );
 
   useEffect(() => {
     if (tournamentGameRoute) return;
@@ -587,6 +598,14 @@ export function DailyScreen(): JSX.Element {
     navigate('/?view=arena', { replace: true });
   };
 
+  const leavePlayForHub = (): void => {
+    setPendingPlayEntrance(null);
+    setPendingPlayRouteTransition(null);
+    setSelectedLevel('beginner');
+    setBeginnerMode('daily');
+    leavePlaySurface('/?view=arena');
+  };
+
   const openSections = (): void => {
     setPendingPlayEntrance(null);
     setPendingPlayRouteTransition(null);
@@ -644,10 +663,10 @@ export function DailyScreen(): JSX.Element {
         backLabel={tournamentOrigin ? 'К турниру' : 'К режимам'}
         onBack={() => {
           if (tournamentOrigin) {
-            navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true });
+            leavePlaySurface(tournamentDuelBackPath(fromSections, tournamentId));
             return;
           }
-          openHub();
+          leavePlayForHub();
         }}
         playEntranceOnMount={pendingPlayEntrance === 'daily'}
         onEntranceConsumed={() => setPendingPlayEntrance(null)}
@@ -678,17 +697,16 @@ export function DailyScreen(): JSX.Element {
               if (directDuelPlay) {
                 if (tournamentOrigin) {
                   setAmateurView('tournaments');
-                  navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true });
+                  leavePlaySurface(tournamentDuelBackPath(fromSections, tournamentId));
                   return;
                 }
                 setSelectedLevel('beginner');
                 setBeginnerMode('daily');
-                setDailyView('arena');
-                navigate('/?view=arena', { replace: true });
+                leavePlaySurface('/?view=arena');
                 return;
               }
               setAmateurView('duels');
-              navigate('/?view=amateur&section=duels', { replace: true });
+              leavePlaySurface('/?view=amateur&section=duels');
             }}
           />
         );
@@ -745,7 +763,7 @@ export function DailyScreen(): JSX.Element {
       <TrainingPlaceholder
         autoPlay={routeParams.get('play') === '1'}
         onBack={fromSections ? openSections : openHub}
-        onPlayHome={openHub}
+        onPlayHome={leavePlayForHub}
         playEntranceOnStart={pendingPlayEntrance === 'training'}
         onEntranceConsumed={() => setPendingPlayEntrance(null)}
         playRouteTransitionOnStart={pendingPlayRouteTransition === 'training'}

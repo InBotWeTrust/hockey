@@ -35,7 +35,7 @@ import { useAuthStore } from '../auth/authStore.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { useClassicTournamentStore } from '../stores/classicTournamentStore.js';
-import type { DailyStateResponse } from '../api/duel.js';
+import type { DailyStateResponse, PeriodLogEntry } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
 import type { AmateurDuelMatchState } from '../api/amateurDuel.js';
 import type { BonusGameCard } from '../api/bonusGames.js';
@@ -46,6 +46,12 @@ vi.mock('../game/PixiStage.js', () => ({
 }));
 vi.mock('../game/RinkSvg.js', () => ({
   RinkSvg: () => <div data-testid="rink-svg-stub" />,
+}));
+
+const refreshAfterGameExit = vi.hoisted(() => vi.fn(async () => undefined));
+
+vi.mock('../onboarding/OnboardingGate.js', () => ({
+  useOnboardingGate: () => ({ refreshAfterGameExit }),
 }));
 
 const baseState: DailyStateResponse = {
@@ -296,6 +302,11 @@ const settledDuelMatch: AmateurDuelMatchState = {
   ],
 };
 
+function LocationProbe(): JSX.Element {
+  const location = useLocation();
+  return <div aria-label="location">{`${location.pathname}${location.search}`}</div>;
+}
+
 function renderWith(initialEntries: string[] = ['/']) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
@@ -307,6 +318,7 @@ function renderWith(initialEntries: string[] = ['/']) {
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
         <DailyScreen />
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -318,6 +330,7 @@ async function findArenaCta(articleName: string): Promise<HTMLElement> {
 }
 
 beforeEach(() => {
+  refreshAfterGameExit.mockClear();
   localStorage.clear();
   useAuthStore.getState().setSession({
     accessToken: 'token',
@@ -1645,10 +1658,110 @@ describe('DailyScreen', () => {
     renderWith(['/?view=daily']);
 
     const back = await screen.findByRole('button', { name: 'К режимам' });
+    act(() => {
+      useDailyStore.setState((state) => ({
+        data: state.data ? { ...state.data, lifetime_total_goals: 1000 } : state.data,
+      }));
+    });
+    expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
+    expect(refreshAfterGameExit).not.toHaveBeenCalled();
+    fireEvent.click(back);
     fireEvent.click(back);
 
     expect(await findArenaCta('Ежедневная игра: 1-й период')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
+    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=arena');
+  });
+
+  it('refreshes onboarding once after leaving active training, never while still playing', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      return new Response(
+        JSON.stringify(url.includes('/duel/training/state') ? trainingActiveState : baseState),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    renderWith(['/?view=training&play=1']);
+
+    const back = await screen.findByRole('button', { name: 'К тренировке' });
+    expect(refreshAfterGameExit).not.toHaveBeenCalled();
+    fireEvent.click(back);
+
+    await screen.findByRole('article', { name: 'Ежедневная игра: 1-й период доступен' });
+    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes onboarding once after leaving a closed training rink', async () => {
+    const closedTraining: TrainingStateResponse = {
+      ...trainingActiveState,
+      state: 'closed',
+      shots_taken: trainingActiveState.shots_limit,
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      return new Response(
+        JSON.stringify(url.includes('/duel/training/state') ? closedTraining : baseState),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    renderWith(['/?view=training&play=1']);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'К тренировке' }));
+
+    expect(await screen.findByLabelText('location')).toHaveTextContent('/?view=arena');
+    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes onboarding once after leaving an active direct duel', async () => {
+    const now = Date.now();
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: new Date(now - 60_000).toISOString(),
+      ends_at: new Date(now + 60 * 60_000).toISOString(),
+      server_now: new Date(now).toISOString(),
+      period_started_at: new Date(now - 15_000).toISOString(),
+      period_ends_at: new Date(now + 165_000).toISOString(),
+      me: {
+        ...settledDuelMatch.me,
+        state: 'period_active',
+        current_period: 1,
+        period_started_at: new Date(now - 15_000).toISOString(),
+        period_ends_at: new Date(now + 165_000).toISOString(),
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: activeMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+
+    const back = await screen.findByRole('button', { name: 'К дуэлям' });
+    expect(refreshAfterGameExit).not.toHaveBeenCalled();
+    fireEvent.click(back);
+
+    await screen.findByRole('article', { name: /Ежедневная игра/ });
+    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
   });
 
   it('returns from a tournament daily game to that tournament schedule', async () => {
@@ -1893,6 +2006,8 @@ describe('DailyScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
 
     expect(await findArenaCta('Ежедневная игра: Перерыв')).toBeInTheDocument();
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=arena');
+    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('dialog', { name: 'Итоги ежедневной игры' })).not.toBeInTheDocument();
 
     fireEvent.click(await findArenaCta('Ежедневная игра: Перерыв'));
@@ -1901,6 +2016,62 @@ describe('DailyScreen', () => {
       await screen.findByRole('dialog', { name: 'Итоги ежедневной игры' }),
     ).toBeInTheDocument();
     expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
+  });
+
+  it('refreshes onboarding after dismissing deferred finished-game stats', async () => {
+    const activeState: DailyStateResponse = {
+      ...baseState,
+      state: 'period_active',
+      current_period: 3,
+      current_period_shots: 29,
+      current_period_goals: 14,
+      daily_total_shots: 89,
+      daily_total_goals: 41,
+      daily_seed: 'seed-abc',
+      period_ends_at: new Date(Date.now() + 60_000).toISOString(),
+    };
+    const finalPeriod: PeriodLogEntry = {
+      period_number: 3,
+      shots_taken: 30,
+      goals: 15,
+      closed_reason: 'quota',
+      duration_ms: 1_200_000,
+      ended_at: '2026-04-25T13:30:00.000Z',
+    };
+    const closedState: DailyStateResponse = {
+      ...activeState,
+      state: 'closed',
+      current_period_shots: 0,
+      current_period_goals: 0,
+      daily_total_shots: 90,
+      daily_total_goals: 42,
+      period_ends_at: null,
+      recent_periods: [finalPeriod],
+      previous_game: {
+        day_date: '2026-04-25',
+        total_shots: 90,
+        total_goals: 42,
+        total_duration_ms: 3_600_000,
+        periods: [finalPeriod],
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      return new Response(
+        JSON.stringify(url.includes('/duel/training/state') ? trainingIdleState : activeState),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    renderWith(['/?view=daily']);
+    await screen.findByRole('button', { name: 'БРОСОК' });
+
+    act(() => useDailyStore.getState().setDeferredState(closedState));
+    const dialog = await screen.findByRole('dialog', { name: 'Игра завершена' });
+    expect(refreshAfterGameExit).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Понятно' }));
+
+    expect(await screen.findByLabelText('location')).toHaveTextContent('/?view=arena');
+    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
   });
 
   it('shows the full game stats modal after the final period instead of a period-only summary', async () => {
@@ -4958,6 +5129,39 @@ describe('DailyScreen', () => {
     expect(screen.getByRole('dialog', { name: 'Результат дуэли' })).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Понятно' }));
     expect(screen.queryByRole('dialog', { name: 'Результат дуэли' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=amateur&section=duels');
+    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes onboarding once when leaving a settled direct duel result', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: settledDuelMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Результат дуэли' });
+    const exit = within(dialog).getByRole('button', { name: 'Понятно' });
+    fireEvent.click(exit);
+    fireEvent.click(exit);
+
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=arena');
+    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
   });
 
   it('explains a tied-goals duel result with the time tiebreaker', async () => {

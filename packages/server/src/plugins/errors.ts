@@ -7,14 +7,16 @@ export class AppError extends Error {
     public readonly code: string,
     message: string,
     public readonly statusCode = 400,
-    public readonly details?: Record<string, unknown>,
+    public readonly details: unknown = undefined,
   ) {
     super(message);
     this.name = 'AppError';
   }
 }
 
-function hasHttpStatus(err: unknown): err is { statusCode: number; code?: string; message: string } {
+function hasHttpStatus(
+  err: unknown,
+): err is { statusCode: number; code?: string; message: string } {
   if (err === null || typeof err !== 'object') return false;
   const maybe = err as { statusCode?: unknown; message?: unknown };
   return (
@@ -41,7 +43,7 @@ const plugin: FastifyPluginAsync = async (app) => {
         error: {
           code: err.code,
           message: err.message,
-          ...(err.details ? { details: err.details } : {}),
+          ...(err.details === undefined ? {} : { details: err.details }),
         },
       });
       return;

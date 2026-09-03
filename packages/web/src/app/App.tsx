@@ -11,6 +11,7 @@ import { DuelInviteToast } from '../components/DuelInviteToast.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
 import { OfflineBanner } from '../chat/components/OfflineBanner.js';
 import { useChatSocket } from '../chat/useChatSocket.js';
+import { OnboardingGate } from '../onboarding/OnboardingGate.js';
 
 const DailyScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DailyScreen })),
@@ -157,7 +158,7 @@ export function appSurfaceClassName(pathname: string): string {
     : 'app-shell--unified-glass';
 }
 
-function AppFrame(): JSX.Element {
+function AppExperience(): JSX.Element {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const bottomNavVisible = isBottomNavVisible(location, user);
@@ -349,6 +350,23 @@ function AppFrame(): JSX.Element {
       </div>
       <UpdatePrompt />
     </>
+  );
+}
+
+function AppFrame(): JSX.Element {
+  const location = useLocation();
+  const isAuthenticated = useAuthStore((state) => Boolean(state.accessToken));
+  const isPublicEntry =
+    location.pathname === '/login' ||
+    location.pathname === '/demo' ||
+    location.pathname === '/auth/vk/callback';
+
+  if (!isAuthenticated || isPublicEntry) return <AppExperience />;
+
+  return (
+    <OnboardingGate>
+      <AppExperience />
+    </OnboardingGate>
   );
 }
 

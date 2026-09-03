@@ -59,6 +59,7 @@ import { useDebouncedValue } from '../lib/useDebouncedValue.js';
 import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSections.js';
 import { WeeklyChallengesAdmin } from './WeeklyChallengesAdmin.js';
 import { BonusGamesAdmin } from './BonusGamesAdmin.js';
+import { OnboardingAdmin } from './OnboardingAdmin.js';
 import { TournamentAdmin } from '../tournament/TournamentAdmin.js';
 import { tournamentTimezoneLabel } from '../tournament/timezoneLabel.js';
 import {
@@ -163,6 +164,7 @@ type AdminTab =
   | 'duels'
   | 'tournaments'
   | 'feedback'
+  | 'onboarding'
   | 'settings';
 type AdminAchievementsTab = 'achievements' | 'challenges';
 type SortField = 'name' | 'goals' | 'accuracy';
@@ -185,6 +187,7 @@ const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'duels', label: 'Дуэли', icon: <Trophy size={15} /> },
   { id: 'tournaments', label: 'Турниры', icon: <Trophy size={15} /> },
   { id: 'feedback', label: 'Отзывы', icon: <MessageSquare size={15} /> },
+  { id: 'onboarding', label: 'Онбординг', icon: <UserCheck size={15} /> },
   { id: 'settings', label: 'Параметры', icon: <SlidersHorizontal size={15} /> },
 ];
 
@@ -1111,6 +1114,7 @@ export function AdminScreen(): JSX.Element {
           }}
         />
       )}
+      {tab === 'onboarding' && <OnboardingAdmin />}
       {tab === 'settings' && (
         <SettingsPanel
           loading={settings.isLoading}
@@ -2151,11 +2155,12 @@ function UserDetailsModal({
   onClose: () => void;
 }): JSX.Element {
   const queryClient = useQueryClient();
+  const [authoritativeUser, setAuthoritativeUser] = useState<AdminUser | null>(null);
   const detail = useQuery({
     queryKey: ['admin', 'user', userId],
     queryFn: () => fetchAdminUser(userId),
   });
-  const user = detail.data?.user ?? fallback;
+  const user = authoritativeUser ?? detail.data?.user ?? fallback;
   const [editMode, setEditMode] = useState(false);
   const [showPurchases, setShowPurchases] = useState(false);
   const [selectedAchievement, setSelectedAchievement] = useState<AdminUserAchievement | null>(null);
@@ -2171,6 +2176,12 @@ function UserDetailsModal({
   const [coins, setCoins] = useState(fieldNumber(user.wallet.coins));
   const [shotsCurrent, setShotsCurrent] = useState(fieldNumber(user.wallet.shotsCurrent));
   const [shotsMax, setShotsMax] = useState(fieldNumber(user.wallet.shotsMax));
+  const [beginnerOnboardingCompleted, setBeginnerOnboardingCompleted] = useState(
+    user.beginnerOnboardingCompleted,
+  );
+  const [amateurOnboardingCompleted, setAmateurOnboardingCompleted] = useState(
+    user.amateurOnboardingCompleted,
+  );
 
   useEffect(() => {
     setRole(user.role);
@@ -2184,18 +2195,24 @@ function UserDetailsModal({
     setCoins(fieldNumber(user.wallet.coins));
     setShotsCurrent(fieldNumber(user.wallet.shotsCurrent));
     setShotsMax(fieldNumber(user.wallet.shotsMax));
+    setBeginnerOnboardingCompleted(user.beginnerOnboardingCompleted);
+    setAmateurOnboardingCompleted(user.amateurOnboardingCompleted);
   }, [user]);
 
   useEffect(() => {
+    setAuthoritativeUser(null);
     setShowPurchases(false);
     setSelectedAchievement(null);
   }, [user.id]);
 
   const saveMutation = useMutation({
     mutationFn: () => patchAdminUser(user.id, buildUserPatch()),
-    onSuccess: () => {
+    onSuccess: (response) => {
+      setAuthoritativeUser(response.user);
+      queryClient.setQueryData<AdminUserDetail>(['admin', 'user', user.id], (current) =>
+        current === undefined ? current : { ...current, user: response.user },
+      );
       void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
-      void queryClient.invalidateQueries({ queryKey: ['admin', 'user', user.id] });
       setEditMode(false);
       setConfirmAction(null);
     },
@@ -2203,7 +2220,11 @@ function UserDetailsModal({
 
   const blockMutation = useMutation({
     mutationFn: () => patchAdminUser(user.id, { isBlocked: !user.isBlocked }),
-    onSuccess: () => {
+    onSuccess: (response) => {
+      setAuthoritativeUser(response.user);
+      queryClient.setQueryData<AdminUserDetail>(['admin', 'user', user.id], (current) =>
+        current === undefined ? current : { ...current, user: response.user },
+      );
       void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'user', user.id] });
       setConfirmAction(null);
@@ -2220,6 +2241,8 @@ function UserDetailsModal({
       experience: Number(experience),
       lifetimeShotsTotal: Number(lifetimeShots),
       lifetimeGoalsTotal: Number(lifetimeGoals),
+      beginnerOnboardingCompleted,
+      amateurOnboardingCompleted,
       wallet: {
         coins: Number(coins),
         shotsCurrent: Number(shotsCurrent),
@@ -2322,6 +2345,24 @@ function UserDetailsModal({
 
         <PushNotificationCard pushNotifications={user.pushNotifications} />
 
+        <section className="glass" style={{ marginTop: 10, borderRadius: 18, padding: 12 }}>
+          <strong style={{ display: 'block', marginBottom: 8 }}>Онбординг</strong>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div>
+              Новичок:{' '}
+              <span data-testid="beginner-onboarding-status">
+                {user.beginnerOnboardingCompleted ? 'Пройден' : 'Не пройден'}
+              </span>
+            </div>
+            <div>
+              Любитель:{' '}
+              <span data-testid="amateur-onboarding-status">
+                {user.amateurOnboardingCompleted ? 'Пройден' : 'Не пройден'}
+              </span>
+            </div>
+          </div>
+        </section>
+
         <section style={{ marginTop: 8, display: 'grid', gap: 8 }}>
           {user.isBlocked && (
             <InfoRow
@@ -2361,6 +2402,25 @@ function UserDetailsModal({
                 />
               </AdminField>
             </div>
+            <fieldset style={{ border: 0, margin: 0, padding: 0, display: 'grid', gap: 8 }}>
+              <legend style={{ fontWeight: 850, marginBottom: 6 }}>Прохождение онбординга</legend>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={beginnerOnboardingCompleted}
+                  onChange={(event) => setBeginnerOnboardingCompleted(event.target.checked)}
+                />{' '}
+                Онбординг новичка пройден
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={amateurOnboardingCompleted}
+                  onChange={(event) => setAmateurOnboardingCompleted(event.target.checked)}
+                />{' '}
+                Онбординг любителя пройден
+              </label>
+            </fieldset>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
               <AdminField label="Уровень">
                 <input value={level} onChange={(event) => setLevel(event.target.value)} />

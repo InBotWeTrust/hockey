@@ -26,6 +26,8 @@ import { tournamentLifecyclePlugin } from './plugins/tournamentLifecycle.js';
 import { createObjectStorageClient } from './storage/objectStorage.js';
 import { arenaRoutes } from './arenas/routes.js';
 import { bonusGameRoutes } from './bonusGames/routes.js';
+import { onboardingRoutes } from './onboarding/routes.js';
+import { onboardingAdminRoutes } from './onboarding/adminRoutes.js';
 import { tournamentRoutes } from './tournament/routes.js';
 import { tournamentWs } from './tournament/ws.js';
 import { validateOfficialAccount } from './chat/officialAccount.js';
@@ -113,6 +115,10 @@ export async function buildApp(options: BuildAppOptions = {}) {
     devLoginEnabled: config.NODE_ENV !== 'production',
     devAccessCodeLoginEnabled: config.DEV_ACCESS_CODE_LOGIN_ENABLED === true,
   });
+  await app.register(onboardingRoutes, {
+    tutorialSeedSecret: config.DAILY_SEED_SECRET,
+    mediaAccessSecret: config.JWT_SECRET,
+  });
   await app.register(achievementRoutes);
   await app.register(feedbackRoutes);
   await app.register(meRoutes);
@@ -161,6 +167,19 @@ export async function buildApp(options: BuildAppOptions = {}) {
       : {
           mediaAccessSecret: config.JWT_SECRET,
           ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
+        },
+  );
+  await app.register(
+    onboardingAdminRoutes,
+    objectStorage !== undefined
+      ? {
+          objectStorage,
+          mediaAccessSecret: config.JWT_SECRET,
+          tutorialSeedSecret: config.DAILY_SEED_SECRET,
+        }
+      : {
+          mediaAccessSecret: config.JWT_SECRET,
+          tutorialSeedSecret: config.DAILY_SEED_SECRET,
         },
   );
   await app.register(pushSchedulerPlugin, {
