@@ -14,6 +14,35 @@ describe('fixed playoff bracket', () => {
     expect(bracket.thirdPlaceRequired).toBe(size >= 4);
   });
 
+  it('keeps the top two seeds in opposite halves of an eight-player bracket', () => {
+    const seeds = Array.from({ length: 8 }, (_, index) => `p${index + 1}`);
+    expect(buildFixedPlayoffBracket(seeds).firstRound).toEqual([
+      { bracketPosition: 1, higherSeedId: 'p1', lowerSeedId: 'p8' },
+      { bracketPosition: 2, higherSeedId: 'p4', lowerSeedId: 'p5' },
+      { bracketPosition: 3, higherSeedId: 'p2', lowerSeedId: 'p7' },
+      { bracketPosition: 4, higherSeedId: 'p3', lowerSeedId: 'p6' },
+    ]);
+  });
+
+  it('uses standard seeded paths for a sixteen-player bracket', () => {
+    const seeds = Array.from({ length: 16 }, (_, index) => `p${index + 1}`);
+    expect(
+      buildFixedPlayoffBracket(seeds).firstRound.map((pairing) => [
+        pairing.higherSeedId,
+        pairing.lowerSeedId,
+      ]),
+    ).toEqual([
+      ['p1', 'p16'],
+      ['p8', 'p9'],
+      ['p4', 'p13'],
+      ['p5', 'p12'],
+      ['p2', 'p15'],
+      ['p7', 'p10'],
+      ['p3', 'p14'],
+      ['p6', 'p11'],
+    ]);
+  });
+
   it('prebuilds the maximum conditional schedule from the home pattern', () => {
     expect(expandSeriesSchedule(4, ['H', 'H', 'A', 'A', 'H', 'A', 'H'])).toEqual([
       { gameNumber: 1, higherSeedIsHome: true, conditional: false },

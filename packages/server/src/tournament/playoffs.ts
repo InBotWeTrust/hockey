@@ -11,6 +11,14 @@ export interface FixedPlayoffBracket {
   thirdPlaceRequired: boolean;
 }
 
+function standardSeedOrder(size: number): number[] {
+  let order = [1, 2];
+  for (let bracketSize = 4; bracketSize <= size; bracketSize *= 2) {
+    order = order.flatMap((seed) => [seed, bracketSize + 1 - seed]);
+  }
+  return order;
+}
+
 export function buildFixedPlayoffBracket(seedParticipantIds: string[]): FixedPlayoffBracket {
   if (![2, 4, 8, 16].includes(seedParticipantIds.length)) {
     throw new Error('playoff size must be 2, 4, 8 or 16');
@@ -18,12 +26,17 @@ export function buildFixedPlayoffBracket(seedParticipantIds: string[]): FixedPla
   if (new Set(seedParticipantIds).size !== seedParticipantIds.length) {
     throw new Error('playoff participants must be unique');
   }
+  const seedOrder = standardSeedOrder(seedParticipantIds.length);
   return {
-    firstRound: Array.from({ length: seedParticipantIds.length / 2 }, (_, index) => ({
-      bracketPosition: index + 1,
-      higherSeedId: seedParticipantIds[index]!,
-      lowerSeedId: seedParticipantIds[seedParticipantIds.length - 1 - index]!,
-    })),
+    firstRound: Array.from({ length: seedParticipantIds.length / 2 }, (_, index) => {
+      const higherSeed = seedOrder[index * 2]!;
+      const lowerSeed = seedOrder[index * 2 + 1]!;
+      return {
+        bracketPosition: index + 1,
+        higherSeedId: seedParticipantIds[higherSeed - 1]!,
+        lowerSeedId: seedParticipantIds[lowerSeed - 1]!,
+      };
+    }),
     thirdPlaceRequired: seedParticipantIds.length >= 4,
   };
 }

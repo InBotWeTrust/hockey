@@ -13,6 +13,8 @@ import {
   TournamentPlayoffOverview,
   playoffFormatLabel,
   playoffSeriesScheduleLabel,
+  playoffSeriesNumberMaps,
+  playoffSeriesTitle,
   playoffStageName,
   type PlayoffSeriesSelection,
 } from './TournamentPlayoffOverview.js';
@@ -401,6 +403,7 @@ function SeriesCard(props: {
   title: string;
   byKey: Map<string, TournamentBracketSeries>;
   finalRound: number;
+  seriesNumberByKey?: Map<string, number>;
   timezone: string;
   bronze?: boolean;
   onOpen: () => void;
@@ -483,6 +486,7 @@ export function TournamentPlayoffBracket({
   renderSeriesAction,
 }: TournamentPlayoffBracketProps) {
   const championship = series.filter((item) => item.kind === 'championship');
+  const seriesNumbers = playoffSeriesNumberMaps(championship);
   const finalRound = Math.max(...championship.map((item) => item.round_number));
   const byKey = new Map(
     series.flatMap((item) =>
@@ -572,7 +576,10 @@ export function TournamentPlayoffBracket({
               {selectedView.series.map((item) => {
                 const title = selectedView.bronze
                   ? 'За 3-е место'
-                  : `${playoffStageName(selectedView.roundNumber, finalRound, false)}${selectedView.series.length > 1 ? ` ${item.bracket_position}` : ''}`;
+                  : playoffSeriesTitle(
+                      seriesNumbers.byId.get(item.id) ?? item.bracket_position,
+                      item.wins_required,
+                    );
                 return (
                   <SeriesCard
                     key={item.id}
@@ -581,6 +588,7 @@ export function TournamentPlayoffBracket({
                     title={title}
                     byKey={byKey}
                     finalRound={finalRound}
+                    seriesNumberByKey={seriesNumbers.byKey}
                     timezone={timezone}
                     bronze={selectedView.bronze}
                     onOpen={() => setSelectedSeries({ series: item, title })}

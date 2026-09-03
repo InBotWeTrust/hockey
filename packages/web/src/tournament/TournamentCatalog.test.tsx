@@ -242,15 +242,50 @@ describe('TournamentCatalog', () => {
     }
   });
 
-  it('fits small playoff brackets and scrolls large brackets without shrinking cards', () => {
+  it('uses the same dark active state for every playoff round tab', () => {
+    const style = document.createElement('style');
+    style.textContent = designSystemCss;
+    const shell = document.createElement('div');
+    shell.className = 'app-shell--unified-glass';
+    shell.innerHTML = `
+      <div class="tournament-bracket__round-tabs">
+        <button class="is-active">Сетка</button>
+        <button class="tournament-bracket__round-tab--gold is-active">Финал</button>
+        <button class="tournament-bracket__round-tab--bronze">За 3-е место</button>
+      </div>
+    `;
+    document.head.append(style);
+    document.body.append(shell);
+    try {
+      const [overview, final, bronze] = shell.querySelectorAll<HTMLButtonElement>('button');
+      expect(getComputedStyle(overview!).color).toBe('rgb(255, 255, 255)');
+      expect(getComputedStyle(final!).color).toBe('rgb(255, 255, 255)');
+      expect(getComputedStyle(overview!).backgroundColor).toBe('rgba(15, 23, 42, 0.92)');
+      expect(getComputedStyle(final!).backgroundColor).toBe(
+        getComputedStyle(overview!).backgroundColor,
+      );
+      expect(getComputedStyle(bronze!).color).toBe('rgb(116, 69, 31)');
+    } finally {
+      shell.remove();
+      style.remove();
+    }
+  });
+
+  it('fits the selected number of playoff rounds on screen and scrolls the remaining rounds', () => {
     expect(designSystemCss).toMatch(
       /\.tournament-bracket-overview\[data-layout='fit'\]\s+\.tournament-bracket-overview__grid\s*\{[^}]*grid-template-columns:\s*repeat\(var\(--playoff-round-count\), minmax\(0, 1\.1fr\)\) minmax\(0, 0\.9fr\);/s,
     );
     expect(designSystemCss).toMatch(
-      /\.tournament-bracket-overview\[data-layout='scroll'\]\s+\.tournament-bracket-overview__grid\s*\{[^}]*grid-template-columns:\s*repeat\(var\(--playoff-column-count\), minmax\(220px, 1fr\)\);/s,
+      /\.tournament-bracket-overview\[data-layout='scroll'\]\[data-visible-columns='2'\]\s+\.tournament-bracket-overview__grid\s*\{[^}]*grid-template-columns:\s*repeat\(var\(--playoff-column-count\), minmax\(0, calc\(50cqi - 6px\)\)\);[^}]*width:\s*max-content;/s,
     );
     expect(designSystemCss).toMatch(
-      /\.tournament-bracket-overview__viewport\s*\{[^}]*overflow-x:\s*auto;/s,
+      /\.tournament-bracket-overview\[data-layout='scroll'\]\[data-visible-columns='3'\]\s+\.tournament-bracket-overview__grid\s*\{[^}]*grid-template-columns:\s*repeat\(var\(--playoff-column-count\), minmax\(0, calc\(33\.3333cqi - 8px\)\)\);[^}]*width:\s*max-content;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview\[data-layout='scroll'\]\[data-visible-columns='4'\]\s+\.tournament-bracket-overview__grid\s*\{[^}]*grid-template-columns:\s*repeat\(var\(--playoff-column-count\), minmax\(0, calc\(25cqi - 9px\)\)\);[^}]*width:\s*max-content;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview__viewport\s*\{[^}]*container-type:\s*inline-size;[^}]*overflow-x:\s*auto;/s,
     );
     expect(designSystemCss).toMatch(
       /\.tournament-bracket-series--mine\s*\{[^}]*border-color:\s*rgba\(43, 126, 89,/s,
@@ -260,6 +295,36 @@ describe('TournamentCatalog', () => {
     );
     expect(designSystemCss).toMatch(
       /\.tournament-bracket-overview\s+\.tournament-bracket-series\s*\{[^}]*z-index:\s*1;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview__grid\s*\{[^}]*--playoff-bracket-column-gap:\s*12px;[^}]*column-gap:\s*var\(--playoff-bracket-column-gap\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-connector\s*\{[^}]*left:\s*100%;[^}]*width:\s*var\(--playoff-bracket-column-gap\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview\s+\.tournament-bracket-series::after\s*\{[^}]*left:\s*calc\(100% \+ 2px\);[^}]*width:\s*calc\(var\(--playoff-bracket-column-gap\) \/ 2\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview\[data-visible-columns='3'\][^{]*\.tournament-bracket-player__seed\s*\{[^}]*font-size:\s*6px;[^}]*letter-spacing:\s*-0\.04em;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview\[data-visible-columns='4'\][^{]*\.tournament-bracket-player__seed\s*\{[^}]*font-size:\s*5px;[^}]*letter-spacing:\s*-0\.06em;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-champion\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\);[^}]*place-items:\s*center;[^}]*width:\s*100%;[^}]*text-align:\s*center;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-champion\s*>\s*span\s*\{[^}]*min-width:\s*0;[^}]*width:\s*100%;[^}]*text-align:\s*center;[^}]*transform:\s*translateX\(-2px\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-series__summary\s*>\s*header\.tournament-bracket-series__staged-header\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-series__staged-title\s*\{[^}]*min-width:\s*0;[^}]*white-space:\s*nowrap;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-player--pending\s*\{[^}]*min-width:\s*0;[^}]*width:\s*100%;[^}]*overflow:\s*hidden;/s,
     );
   });
 
@@ -917,9 +982,14 @@ describe('TournamentCatalog', () => {
       'false',
     );
     const overview = screen.getByRole('region', { name: 'Турнирная сетка' });
-    expect(overview).toHaveAttribute('data-layout', 'fit');
-    expect(within(overview).getByText('Полуфинал 1')).toBeInTheDocument();
-    expect(within(overview).getAllByText('Финал')).toHaveLength(2);
+    expect(overview).toHaveAttribute('data-layout', 'scroll');
+    expect(overview).toHaveAttribute('data-visible-columns', '2');
+    expect(within(overview).getByText('Серия 1')).toBeInTheDocument();
+    expect(
+      within(overview).getByText('Финал', {
+        selector: '.tournament-bracket-series__stage-label',
+      }),
+    ).toBeInTheDocument();
     expect(within(overview).getByText('За 3-е место')).toBeInTheDocument();
     expect(within(overview).getByText('Чемпион')).toBeInTheDocument();
     expect(within(overview).getByText('Итог')).toBeInTheDocument();
@@ -937,17 +1007,19 @@ describe('TournamentCatalog', () => {
       'tournament-bracket-player--current',
     );
     expect(
-      within(overview).getByText('Полуфинал 1').closest('.tournament-bracket-series'),
+      within(overview).getByText('Серия 1').closest('.tournament-bracket-series'),
     ).toHaveClass('tournament-bracket-series--mine');
-    expect(screen.queryByText(/Игра 1/)).not.toBeInTheDocument();
-    fireEvent.click(within(overview).getByRole('button', { name: 'Открыть серию Полуфинал 1' }));
-    const dialog = screen.getByRole('dialog', { name: 'Полуфинал 1' });
+    expect(screen.queryByText('Игра 1 · 10 сентября, 15:00–16:00')).not.toBeInTheDocument();
+    fireEvent.click(
+      within(overview).getByRole('button', { name: 'Открыть серию Серия 1' }),
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Серия 1' });
     expect(within(dialog).getByText('Игра 1 · 10 сентября, 15:00–16:00')).toBeInTheDocument();
     expect(within(dialog).getByText('Первый 3 : 2 Четвёртый')).toHaveClass(
       'tournament-bracket-game__result--home-won',
     );
     fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
-    expect(screen.queryByRole('dialog', { name: 'Полуфинал 1' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Серия 1' })).not.toBeInTheDocument();
 
     const finalTab = screen.getByRole('tab', { name: 'Финал' });
     expect(finalTab).toHaveClass('tournament-bracket__round-tab--gold');
@@ -956,18 +1028,18 @@ describe('TournamentCatalog', () => {
     );
     fireEvent.click(screen.getByRole('tab', { name: 'Полуфиналы' }));
     expect(screen.getByRole('heading', { name: 'Полуфиналы' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Открыть серию Полуфинал 1' }));
-    expect(screen.getByRole('dialog', { name: 'Полуфинал 1' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть серию Серия 1' }));
+    expect(screen.getByRole('dialog', { name: 'Серия 1' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
     fireEvent.click(finalTab);
     expect(screen.getByRole('heading', { name: 'Финал' })).toBeInTheDocument();
-    expect(screen.getByText('Победитель полуфинала 1')).toBeInTheDocument();
-    expect(screen.getByText('Победитель полуфинала 2')).toBeInTheDocument();
-    expect(screen.queryByText('Полуфинал 1')).not.toBeInTheDocument();
+    expect(screen.getByText('Победитель 1')).toBeInTheDocument();
+    expect(screen.getByText('Победитель 2')).toBeInTheDocument();
+    expect(screen.queryByText('Серия 1')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'За 3-е место' }));
     expect(screen.getByRole('heading', { name: 'За 3-е место' })).toBeInTheDocument();
-    expect(screen.getByText('Проигравший полуфинала 1')).toBeInTheDocument();
+    expect(screen.getByText('Проигравший 1')).toBeInTheDocument();
   });
 
   it('shows my playoff readiness and the current series score without revealing live scores', async () => {
@@ -1085,7 +1157,9 @@ describe('TournamentCatalog', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок готовности' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Плей-офф' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Открыть серию Финал' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Открыть серию Финал, Серия 1' }),
+    );
 
     expect(await screen.findByText('Вы готовы')).toBeInTheDocument();
     expect(screen.getByText('Ждём готовность соперника')).toBeInTheDocument();
