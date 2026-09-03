@@ -13,12 +13,12 @@ import {
   insertRoundGameDays,
   loadDuelTemplateLifecycleSnapshot,
   resolveRoundGameDays,
-  scheduledStartForSeriesGame,
   type DuelTemplateLifecycleSnapshot,
   type ResolvedRoundGameDay,
 } from './fixtureAttempts.js';
 import {
-  DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
+  DEFAULT_TOURNAMENT_GAME_DURATION_MINUTES,
+  DEFAULT_TOURNAMENT_INTER_GAME_BREAK_MINUTES,
   DEFAULT_TOURNAMENT_READINESS_MINUTES,
   normalizePublishedTournamentLifecycleRules,
 } from './lifecycleRules.js';
@@ -45,7 +45,6 @@ import { rebuildDailyAggregateStandings } from './dailyAggregate.js';
 import { advanceTournamentPlayoffSeries } from './playoffSeriesLifecycle.js';
 import {
   enqueueTournamentFixtureResultPush,
-  enqueueTournamentSeriesNextGamePush,
 } from './fixtureNotifications.js';
 import { lockTournament, lockTournamentFixture } from './locks.js';
 import { canTransitionTournament } from './lifecycle.js';
@@ -71,7 +70,7 @@ const PLAYOFF_SCHEDULING_FIELDS = new Set([
   'roundBreakMs',
   'readinessMinutes',
   'gameDurationMinutes',
-  'plannedStartIntervalMinutes',
+  'interGameBreakMinutes',
 ]);
 const DEFAULT_PLAYOFF_READINESS_MINUTES = 5;
 const DEFAULT_PLAYOFF_START_INTERVAL_MINUTES = 30;
@@ -218,6 +217,7 @@ function mergePlayoffScheduleRules(
         }
         merged[field] = nextValues[field];
       }
+      delete merged.plannedStartIntervalMinutes;
       return merged;
     }),
   };
@@ -231,7 +231,7 @@ function playoffRoundScheduleKey(rules: TournamentRulesSnapshot, roundNumber: nu
     scheduleDays: round.scheduleDays,
     gameDurationMinutes: round.gameDurationMinutes,
     readinessMinutes: round.readinessMinutes,
-    plannedStartIntervalMinutes: round.plannedStartIntervalMinutes,
+    interGameBreakMinutes: round.interGameBreakMinutes,
   });
 }
 
@@ -271,10 +271,11 @@ async function reschedulePublishedPlayoffRounds(
     validateRoundGameDays({
       winsRequired: rules.winsRequired,
       readinessMinutes: rules.readinessMinutes,
-      ...(rules.gameDurationMinutes === null
+      gameDurationMinutes: rules.gameDurationMinutes,
+      interGameBreakMinutes: rules.interGameBreakMinutes,
+      ...(rules.plannedStartIntervalMinutes === null
         ? {}
-        : { gameDurationMinutes: rules.gameDurationMinutes }),
-      plannedStartIntervalMinutes: rules.plannedStartIntervalMinutes,
+        : { plannedStartIntervalMinutes: rules.plannedStartIntervalMinutes }),
       days: rules.scheduleDays,
     });
     const days = resolveRoundGameDays(input.nextRules.config.timezone, rules.scheduleDays);
@@ -307,6 +308,7 @@ async function reschedulePublishedPlayoffRounds(
       attempt_outcome: string | null;
       attempt_count: number;
       duel_status: string | null;
+      round_game_day_id: string | null;
       duel_accepted_at: Date | null;
       duel_settled_reason: string | null;
       duel_shot_count: number;
@@ -378,23 +380,25 @@ async function reschedulePublishedPlayoffRounds(
       if (fixture.game_number === null) {
         throw new AppError('configuration_error', 'У игры не указан номер в серии', 409);
       }
-      const slot = scheduledStartForSeriesGame(
-        days,
-        Number(fixture.game_number),
-        rules.plannedStartIntervalMinutes,
-      );
-      if (slot.startsAt <= input.now) {
+      const slot =
+        fixture.game_number === 1
+          ? { day: days[0]!, startsAt: days[0]!.firstGameStartsAt }
+          : null;
+      if (slot !== null && slot.startsAt <= input.now) {
         throw new AppError('bad_request', 'Новое время игр должно быть в будущем', 400);
       }
       return {
         fixture,
         slot,
-        hardDeadlineAt: attemptDeadline(
-          slot.startsAt,
-          rules.readinessMinutes,
-          template,
-          rules.gameDurationMinutes ?? undefined,
-        ),
+        hardDeadlineAt:
+          slot === null
+            ? null
+            : attemptDeadline(
+                slot.startsAt,
+                rules.readinessMinutes,
+                template,
+                rules.gameDurationMinutes,
+              ),
       };
     });
 
@@ -410,11 +414,43 @@ async function reschedulePublishedPlayoffRounds(
       roundId: round.id,
       days,
       readinessMinutes: rules.readinessMinutes,
-      plannedStartIntervalMinutes: rules.plannedStartIntervalMinutes,
+      interGameBreakMinutes: rules.interGameBreakMinutes,
     });
     const dayByNumber = new Map(persistedDays.map((day) => [day.dayNumber, day]));
-    let roundEnd = persistedDays[0]!.firstGameStartsAt;
+    let roundEnd = new Date(
+      Math.max(
+        ...persistedDays.map((day) =>
+          attemptDeadline(
+            new Date(
+              day.firstGameStartsAt.getTime() +
+                (day.maxResultGames - 1) *
+                  (rules.gameDurationMinutes + rules.interGameBreakMinutes) *
+                  60_000,
+            ),
+            rules.readinessMinutes,
+            template,
+            rules.gameDurationMinutes,
+          ).getTime(),
+        ),
+      ),
+    );
     for (const item of planned) {
+      if (item.slot === null) {
+        if (item.fixture.attempt_id !== null) {
+          await client.query(
+            `delete from tournament_fixture_attempt where id = $1 and status = 'pending'`,
+            [item.fixture.attempt_id],
+          );
+        }
+        await client.query(
+          `update tournament_fixture
+              set scheduled_starts_at = null, window_ends_at = null,
+                  rescheduled_reason = 'Изменение расписания плей-офф', updated_at = now()
+            where id = $1`,
+          [item.fixture.id],
+        );
+        continue;
+      }
       const persistedDay = dayByNumber.get(item.slot.day.dayNumber)!;
       const readinessExpiresAt = new Date(
         item.slot.startsAt.getTime() + rules.readinessMinutes * 60_000,
@@ -425,9 +461,7 @@ async function reschedulePublishedPlayoffRounds(
           roundGameDayId: persistedDay.id!,
           scheduledStartsAt: item.slot.startsAt,
           readinessMinutes: rules.readinessMinutes,
-          ...(rules.gameDurationMinutes === null
-            ? {}
-            : { gameDurationMinutes: rules.gameDurationMinutes }),
+          gameDurationMinutes: rules.gameDurationMinutes,
           template,
           rescheduledReason: 'Изменение расписания плей-офф',
         });
@@ -486,8 +520,7 @@ async function reschedulePublishedPlayoffRounds(
           input.adminUserId,
         ],
       );
-      await enqueueTournamentSeriesNextGamePush(client, { fixtureId: item.fixture.id });
-      if (item.hardDeadlineAt > roundEnd) roundEnd = item.hardDeadlineAt;
+      if (item.hardDeadlineAt! > roundEnd) roundEnd = item.hardDeadlineAt!;
     }
     await client.query(
       `update tournament_playoff_series
@@ -2748,8 +2781,7 @@ export async function publishRegularSchedule(pool: Pool, tournamentId: string) {
   });
 }
 
-export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
-  const { rows } = await pool.query<{
+interface TournamentScheduleFixtureRow {
     id: string;
     fixture_number: number;
     stage: string;
@@ -2768,7 +2800,225 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
     away_seed: number | null;
     home_score: number;
     away_score: number;
+    settled_at?: Date | null;
+    actual_starts_at?: Date | null;
+    winner_user_id?: string | null;
+}
+
+function tournamentScheduleFixtureDto(row: TournamentScheduleFixtureRow) {
+  return {
+    id: row.id,
+    fixtureNumber: Number(row.fixture_number),
+    stage: row.stage,
+    roundNumber: Number(row.round_number),
+    scheduledStartsAt: row.scheduled_starts_at?.toISOString() ?? null,
+    windowEndsAt: row.window_ends_at?.toISOString() ?? null,
+    actualStartsAt: row.actual_starts_at?.toISOString() ?? null,
+    status: row.status,
+    venueMode: row.venue_mode,
+    home:
+      row.home_user_id === null
+        ? null
+        : {
+            userId: row.home_user_id,
+            name: row.home_name,
+            avatarUrl: row.home_avatar_url,
+            seed: row.home_seed === null ? null : Number(row.home_seed),
+          },
+    away:
+      row.away_user_id === null
+        ? null
+        : {
+            userId: row.away_user_id,
+            name: row.away_name,
+            avatarUrl: row.away_avatar_url,
+            seed: row.away_seed === null ? null : Number(row.away_seed),
+          },
+    score: { home: Number(row.home_score), away: Number(row.away_score) },
+    winnerUserId: row.winner_user_id ?? null,
+  };
+}
+
+const PUBLIC_SCHEDULE_FIXTURE_SELECT = `
+  select fixture.id, fixture.fixture_number, fixture.stage, fixture.round_number,
+         fixture.scheduled_starts_at, fixture.window_ends_at, fixture.actual_starts_at,
+         fixture.status, fixture.venue_mode,
+         fixture.home_user_id, fixture.home_name, fixture.home_avatar_url, fixture.home_seed,
+         fixture.away_user_id, fixture.away_name, fixture.away_avatar_url, fixture.away_seed,
+         fixture.home_score, fixture.away_score, fixture.winner_user_id
+    from fixture_scope fixture`;
+
+const PUBLIC_SCHEDULE_FIXTURE_SCOPE = `
+  with fixture_scope as (
+    select f.id, f.fixture_number, r.stage, r.number as round_number,
+           f.scheduled_starts_at, f.window_ends_at, f.status, f.venue_mode,
+           coalesce(game_day.local_date, (f.scheduled_starts_at at time zone
+             coalesce(revision.rules_snapshot->'config'->>'timezone', 'Europe/Moscow'))::date)
+             as local_date,
+           duel.accepted_at as actual_starts_at,
+           hp.user_id as home_user_id, hu.display_name as home_name,
+           coalesce(case
+             when hu.display_source = 'custom' then hu.custom_avatar_url
+             when hu.display_source = 'vk' then hu.vk_avatar_url
+             when hu.display_source = 'telegram' then hu.tg_avatar_url
+             else hu.avatar_url end, hu.avatar_url) as home_avatar_url,
+           case when r.stage in ('playoff', 'third_place') then hs.rank end as home_seed,
+           ap.user_id as away_user_id, au.display_name as away_name,
+           coalesce(case
+             when au.display_source = 'custom' then au.custom_avatar_url
+             when au.display_source = 'vk' then au.vk_avatar_url
+             when au.display_source = 'telegram' then au.tg_avatar_url
+             else au.avatar_url end, au.avatar_url) as away_avatar_url,
+           case when r.stage in ('playoff', 'third_place') then aws.rank end as away_seed,
+           f.home_score, f.away_score, winner.user_id as winner_user_id
+      from tournament_fixture f
+      join tournament_round r on r.id = f.round_id
+      join tournament tournament on tournament.id = f.tournament_id
+      join tournament_revision revision on revision.id = tournament.published_revision_id
+      left join tournament_participant hp on hp.id = f.home_participant_id
+      left join users hu on hu.id = hp.user_id
+      left join tournament_standing hs
+        on hs.tournament_id = f.tournament_id and hs.participant_id = hp.id
+      left join tournament_participant ap on ap.id = f.away_participant_id
+      left join users au on au.id = ap.user_id
+      left join tournament_standing aws
+        on aws.tournament_id = f.tournament_id and aws.participant_id = ap.id
+      left join tournament_participant winner on winner.id = f.winner_participant_id
+      left join lateral (
+        select attempt.round_game_day_id, attempt.amateur_duel_match_id
+          from tournament_fixture_attempt attempt
+         where attempt.fixture_id = f.id
+         order by attempt.attempt_number desc
+         limit 1
+      ) latest_attempt on true
+      left join tournament_round_game_day game_day on game_day.id = latest_attempt.round_game_day_id
+      left join amateur_duel_match duel on duel.id = latest_attempt.amateur_duel_match_id
+     where f.tournament_id = $1
+  )`;
+
+export async function getTournamentScheduleDay(
+  pool: Pool,
+  tournamentId: string,
+  userId: string,
+  localDate: string,
+) {
+  const daysResult = await pool.query<{
+    local_date: string;
+    has_games: boolean;
+    has_my_game: boolean;
+    has_playoff: boolean;
   }>(
+    `${PUBLIC_SCHEDULE_FIXTURE_SCOPE}
+     select local_date::text as local_date, true as has_games,
+            bool_or($2::uuid in (home_user_id, away_user_id)) as has_my_game,
+            bool_or(stage in ('playoff', 'third_place')) as has_playoff
+       from fixture_scope
+      where local_date is not null
+      group by local_date
+      order by local_date`,
+    [tournamentId, userId],
+  );
+  const myGamesResult = await pool.query<TournamentScheduleFixtureRow>(
+    `${PUBLIC_SCHEDULE_FIXTURE_SCOPE}
+     ${PUBLIC_SCHEDULE_FIXTURE_SELECT}
+      where fixture.local_date = $3::date
+        and $2::uuid in (home_user_id, away_user_id)
+      order by fixture.fixture_number, fixture.id`,
+    [tournamentId, userId, localDate],
+  );
+  const otherGamesResult = await pool.query<{ has_other_games: boolean }>(
+    `${PUBLIC_SCHEDULE_FIXTURE_SCOPE}
+     select exists(
+       select 1 from fixture_scope fixture
+        where fixture.local_date = $3::date
+          and $2::uuid not in (home_user_id, away_user_id)
+     ) as has_other_games`,
+    [tournamentId, userId, localDate],
+  );
+  return {
+    days: daysResult.rows.map((row) => ({
+      localDate: row.local_date,
+      hasGames: row.has_games,
+      hasMyGame: row.has_my_game,
+      hasPlayoff: row.has_playoff,
+    })),
+    myGames: myGamesResult.rows.map(tournamentScheduleFixtureDto),
+    hasOtherGames: otherGamesResult.rows[0]?.has_other_games === true,
+  };
+}
+
+export interface TournamentScheduleCursor {
+  fixtureNumber: number;
+  id: string;
+}
+
+export async function getTournamentReadinessHint(
+  pool: Pool,
+  tournamentId: string,
+  userId: string,
+) {
+  const result = await pool.query<{ dismissed_at: Date }>(
+    `select dismissed_at
+       from tournament_readiness_hint_preference
+      where tournament_id = $1 and user_id = $2`,
+    [tournamentId, userId],
+  );
+  const dismissedAt = result.rows[0]?.dismissed_at;
+  return {
+    dismissed: dismissedAt !== undefined,
+    dismissedAt: dismissedAt?.toISOString() ?? null,
+  };
+}
+
+export async function dismissTournamentReadinessHint(
+  pool: Pool,
+  tournamentId: string,
+  userId: string,
+) {
+  const result = await pool.query<{ dismissed_at: Date }>(
+    `insert into tournament_readiness_hint_preference (tournament_id, user_id)
+     values ($1, $2)
+     on conflict (tournament_id, user_id) do update
+       set dismissed_at = tournament_readiness_hint_preference.dismissed_at
+     returning dismissed_at`,
+    [tournamentId, userId],
+  );
+  return {
+    dismissed: true,
+    dismissedAt: result.rows[0]!.dismissed_at.toISOString(),
+  };
+}
+
+export async function getTournamentScheduleOtherGames(
+  pool: Pool,
+  tournamentId: string,
+  userId: string,
+  localDate: string,
+  cursor: TournamentScheduleCursor | null,
+) {
+  const result = await pool.query<TournamentScheduleFixtureRow>(
+    `${PUBLIC_SCHEDULE_FIXTURE_SCOPE}
+     ${PUBLIC_SCHEDULE_FIXTURE_SELECT}
+      where fixture.local_date = $3::date
+        and $2::uuid not in (home_user_id, away_user_id)
+        and ($4::int is null or (fixture.fixture_number, fixture.id) > ($4::int, $5::uuid))
+      order by fixture.fixture_number, fixture.id
+      limit 6`,
+    [tournamentId, userId, localDate, cursor?.fixtureNumber ?? null, cursor?.id ?? null],
+  );
+  const pageRows = result.rows.slice(0, 5);
+  const last = pageRows.at(-1);
+  return {
+    games: pageRows.map(tournamentScheduleFixtureDto),
+    nextCursor:
+      result.rows.length > 5 && last !== undefined
+        ? { fixtureNumber: Number(last.fixture_number), id: last.id }
+        : null,
+  };
+}
+
+export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
+  const { rows } = await pool.query<TournamentScheduleFixtureRow>(
     `select f.id, f.fixture_number, r.stage, r.number as round_number,
             f.scheduled_starts_at, f.window_ends_at, f.status, f.venue_mode,
             hp.user_id as home_user_id, hu.display_name as home_name,
@@ -2808,35 +3058,7 @@ export async function getTournamentSchedule(pool: Pool, tournamentId: string) {
       order by f.fixture_number`,
     [tournamentId],
   );
-  return rows.map((row) => ({
-    id: row.id,
-    fixtureNumber: Number(row.fixture_number),
-    stage: row.stage,
-    roundNumber: Number(row.round_number),
-    scheduledStartsAt: row.scheduled_starts_at?.toISOString() ?? null,
-    windowEndsAt: row.window_ends_at?.toISOString() ?? null,
-    status: row.status,
-    venueMode: row.venue_mode,
-    home:
-      row.home_user_id === null
-        ? null
-        : {
-            userId: row.home_user_id,
-            name: row.home_name,
-            avatarUrl: row.home_avatar_url,
-            seed: row.home_seed === null ? null : Number(row.home_seed),
-          },
-    away:
-      row.away_user_id === null
-        ? null
-        : {
-            userId: row.away_user_id,
-            name: row.away_name,
-            avatarUrl: row.away_avatar_url,
-            seed: row.away_seed === null ? null : Number(row.away_seed),
-          },
-    score: { home: Number(row.home_score), away: Number(row.away_score) },
-  }));
+  return rows.map(tournamentScheduleFixtureDto);
 }
 
 export async function getTournamentMatchdays(
@@ -3288,8 +3510,11 @@ interface PlayoffRoundRules {
   roundBreakMs: number;
   firstGameStartsAt: Date | null;
   readinessMinutes: number;
-  gameDurationMinutes: number | null;
-  plannedStartIntervalMinutes: number;
+  /** Completion window after both players have confirmed readiness. */
+  gameDurationMinutes: number;
+  interGameBreakMinutes: number;
+  /** Retained for old persisted snapshots only. */
+  plannedStartIntervalMinutes: number | null;
   scheduleDays: RoundGameDay[] | null;
   overtime: {
     count: number;
@@ -3441,16 +3666,22 @@ export function playoffRoundRules(
       1,
       120,
     ),
-    gameDurationMinutes:
-      record.gameDurationMinutes === undefined
-        ? null
-        : boundedInteger(record.gameDurationMinutes, 20, 1, 1440),
-    plannedStartIntervalMinutes: boundedInteger(
-      record.plannedStartIntervalMinutes,
-      DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
-      1,
-      1440,
+    gameDurationMinutes: boundedInteger(
+      record.gameDurationMinutes,
+      DEFAULT_TOURNAMENT_GAME_DURATION_MINUTES,
+      5,
+      60,
     ),
+    interGameBreakMinutes: boundedInteger(
+      record.interGameBreakMinutes,
+      DEFAULT_TOURNAMENT_INTER_GAME_BREAK_MINUTES,
+      1,
+      30,
+    ),
+    plannedStartIntervalMinutes:
+      record.plannedStartIntervalMinutes === undefined
+        ? null
+        : boundedInteger(record.plannedStartIntervalMinutes, 30, 1, 1440),
     scheduleDays,
     overtime: overtimeRules(record.overtime, defaultOvertime),
   };
@@ -3503,8 +3734,9 @@ function tieBreakRules(rules: TournamentRulesSnapshot): PlayoffRoundRules {
       ),
     ),
     readinessMinutes: DEFAULT_TOURNAMENT_READINESS_MINUTES,
-    gameDurationMinutes: null,
-    plannedStartIntervalMinutes: DEFAULT_TOURNAMENT_PLANNED_START_INTERVAL_MINUTES,
+    gameDurationMinutes: DEFAULT_TOURNAMENT_GAME_DURATION_MINUTES,
+    interGameBreakMinutes: DEFAULT_TOURNAMENT_INTER_GAME_BREAK_MINUTES,
+    plannedStartIntervalMinutes: null,
     scheduleDays: null,
     overtime: overtimeRules(configured.overtime, defaultOvertime),
   };
@@ -4000,16 +4232,22 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         );
         const days = resolveRoundGameDays(tournament.rules_snapshot.config.timezone, rebasedDays);
         const template = await loadDuelTemplateLifecycleSnapshot(client, rules.duelTemplateId);
-        const lastGame = scheduledStartForSeriesGame(
-          days,
-          rules.winsRequired * 2 - 1,
-          rules.plannedStartIntervalMinutes,
-        );
-        const endsAt = attemptDeadline(
-          lastGame.startsAt,
-          rules.readinessMinutes,
-          template,
-          rules.gameDurationMinutes ?? undefined,
+        const endsAt = new Date(
+          Math.max(
+            ...days.map((day) =>
+              attemptDeadline(
+                new Date(
+                  day.firstGameStartsAt.getTime() +
+                    (day.maxResultGames - 1) *
+                      (rules.gameDurationMinutes + rules.interGameBreakMinutes) *
+                      60_000,
+                ),
+                rules.readinessMinutes,
+                template,
+                rules.gameDurationMinutes,
+              ).getTime(),
+            ),
+          ),
         );
         schedules.set(roundNumber, {
           rules,
@@ -4077,7 +4315,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
             roundId: round.rows[0]!.id,
             days: schedule.days,
             readinessMinutes: schedule.rules.readinessMinutes,
-            plannedStartIntervalMinutes: schedule.rules.plannedStartIntervalMinutes,
+            interGameBreakMinutes: schedule.rules.interGameBreakMinutes,
           }),
         );
       }
@@ -4123,16 +4361,16 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
       for (const game of schedule) {
         const higherIsHome = game.higherSeedIsHome;
         const modernSlot =
-          scheduleWindows.days === null
+          scheduleWindows.days === null || game.gameNumber !== 1
             ? null
-            : scheduledStartForSeriesGame(
-                roundGameDays.get(`${stage}:${item.roundNumber}`)!,
-                game.gameNumber,
-                rules.plannedStartIntervalMinutes,
-              );
+            : {
+                day: roundGameDays.get(`${stage}:${item.roundNumber}`)![0]!,
+                startsAt: scheduleWindows.days[0]!.firstGameStartsAt,
+              };
         const legacyWindow =
           scheduleWindows.windows === null ? null : scheduleWindows.windows[game.gameNumber - 1]!;
-        const scheduledStartsAt = modernSlot?.startsAt ?? legacyWindow!.startsAt;
+        const scheduledStartsAt =
+          modernSlot?.startsAt ?? (legacyWindow === null ? null : legacyWindow.startsAt);
         const windowEndsAt =
           modernSlot !== null
             ? attemptDeadline(
@@ -4141,7 +4379,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
                 scheduleWindows.template!,
                 rules.gameDurationMinutes ?? undefined,
               )
-            : legacyWindow!.endsAt;
+            : (legacyWindow?.endsAt ?? null);
         const insertedFixture = await client.query<{ id: string }>(
           `insert into tournament_fixture
              (tournament_id, round_id, series_id, fixture_number,
@@ -4174,9 +4412,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
             roundGameDayId: modernSlot.day.id!,
             scheduledStartsAt: modernSlot.startsAt,
             readinessMinutes: rules.readinessMinutes,
-            ...(rules.gameDurationMinutes === null
-              ? {}
-              : { gameDurationMinutes: rules.gameDurationMinutes }),
+            gameDurationMinutes: rules.gameDurationMinutes,
             template: scheduleWindows.template!,
           });
         }
@@ -4251,6 +4487,8 @@ export async function getTournamentBracket(pool: Pool, tournamentId: string) {
                'scheduledStartsAt', fixture.scheduled_starts_at,
                'windowEndsAt', fixture.window_ends_at,
                'status', fixture.status,
+               'homeUserId', fixture_home.user_id,
+               'awayUserId', fixture_away.user_id,
                'homeName', fixture_home_user.display_name,
                'awayName', fixture_away_user.display_name,
                'homeScore', fixture.home_score,
@@ -4373,11 +4611,12 @@ export async function rescheduleTournamentFixture(
       status: string;
       amateur_duel_match_id: string | null;
       duel_status: string | null;
+      round_game_day_id: string | null;
       scheduled_starts_at: Date;
       readiness_expires_at: Date;
       hard_deadline_at: Date;
     }>(
-      `select attempt.id, attempt.status, attempt.amateur_duel_match_id,
+      `select attempt.id, attempt.status, attempt.amateur_duel_match_id, attempt.round_game_day_id,
               duel.status as duel_status, attempt.scheduled_starts_at,
               attempt.readiness_expires_at, attempt.hard_deadline_at
          from tournament_fixture_attempt attempt
@@ -4447,6 +4686,30 @@ export async function rescheduleTournamentFixture(
     );
     if (updated.rowCount === 0)
       throw new AppError('conflict', 'fixture cannot be rescheduled', 409);
+    const assignedGameDay = (
+      await client.query<{ round_game_day_id: string }>(
+        `select round_game_day_id from tournament_fixture_attempt
+          where fixture_id = $1 and round_game_day_id is not null
+          order by attempt_number desc limit 1`,
+        [input.fixtureId],
+      )
+    ).rows[0]?.round_game_day_id;
+    if (assignedGameDay !== undefined) {
+      await client.query(
+        `update tournament_round_game_day
+            set schedule_revision = schedule_revision + 1, rescheduled_starts_at = $2
+          where id = $1`,
+        [assignedGameDay, input.startsAt],
+      );
+    } else {
+      await client.query(
+        `update tournament_round round
+            set schedule_revision = schedule_revision + 1, rescheduled_starts_at = $2
+           from tournament_fixture fixture
+          where fixture.id = $1 and fixture.round_id = round.id`,
+        [input.fixtureId, input.startsAt],
+      );
+    }
     await client.query(
       `update tournament_playoff_series series
           set status = 'scheduled', updated_at = now()
@@ -4466,7 +4729,6 @@ export async function rescheduleTournamentFixture(
         input.adminUserId,
       ],
     );
-    await enqueueTournamentSeriesNextGamePush(client, { fixtureId: input.fixtureId });
     return {
       fixtureId: input.fixtureId,
       startsAt: input.startsAt.toISOString(),
@@ -4485,6 +4747,7 @@ export async function resolveTournamentNoShow(
     adminUserId: string;
   },
 ) {
+  const settledAt = new Date();
   return inTransaction(pool, async (client) => {
     await lockTournamentFixture(client, input);
     const fixtureResult = await client.query<{
@@ -4658,6 +4921,7 @@ export async function resolveTournamentNoShow(
           await advanceTournamentPlayoffSeries(client, {
             seriesId: fixture.series_id,
             winnerParticipantId: winner,
+            settledAt,
           });
         }
         if (fixture.stage === 'regular')
@@ -4692,6 +4956,7 @@ export async function disqualifyTournamentParticipant(
   pool: Pool,
   input: { tournamentId: string; participantId: string; reason: string; adminUserId: string },
 ) {
+  const settledAt = new Date();
   return inTransaction(pool, async (client) => {
     await lockTournament(client, input.tournamentId);
     const participant = await client.query(
@@ -4775,6 +5040,7 @@ export async function disqualifyTournamentParticipant(
         await advanceTournamentPlayoffSeries(client, {
           seriesId: fixture.series_id,
           winnerParticipantId: fixture.winner_participant_id,
+          settledAt,
         });
       }
       if (fixture.stage === 'regular') regularFixtureChanged = true;

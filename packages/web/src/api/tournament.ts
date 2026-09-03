@@ -88,6 +88,7 @@ export interface TournamentFixture {
   roundNumber: number;
   scheduledStartsAt: string | null;
   windowEndsAt: string | null;
+  actualStartsAt?: string | null;
   status: string;
   venueMode: 'home_selected' | 'neutral_default';
   home: {
@@ -103,6 +104,33 @@ export interface TournamentFixture {
     seed?: number | null;
   } | null;
   score: { home: number; away: number };
+  winnerUserId?: string | null;
+}
+
+export interface TournamentScheduleDay {
+  localDate: string;
+  hasGames: boolean;
+  hasMyGame: boolean;
+  hasPlayoff: boolean;
+}
+
+export interface TournamentScheduleCursor {
+  fixtureNumber: number;
+  id: string;
+}
+
+export interface TournamentScheduleResponse {
+  days?: TournamentScheduleDay[];
+  myGames?: TournamentFixture[];
+  hasOtherGames?: boolean;
+  matchdays?: TournamentMatchday[];
+  /** Test/legacy response compatibility; the authenticated server never returns this field. */
+  fixtures?: TournamentFixture[];
+}
+
+export interface TournamentScheduleOtherGamesPage {
+  games: TournamentFixture[];
+  nextCursor: TournamentScheduleCursor | null;
 }
 
 export interface TournamentMatchday {
@@ -173,6 +201,8 @@ export interface TournamentBracketFixture {
   scheduledStartsAt: string | null;
   windowEndsAt: string | null;
   status: string;
+  homeUserId?: string | null;
+  awayUserId?: string | null;
   homeName: string | null;
   awayName: string | null;
   homeScore: number | null;
@@ -282,13 +312,10 @@ export interface TournamentFixtureAttemptState {
     status: string;
     winnerUserId: string | null;
   };
-  nextGameChoice: {
-    nextFixtureId: string;
-    expiresAt: string;
-    myChoice: 'immediate' | 'scheduled' | null;
-    opponentChoice: 'immediate' | 'scheduled' | null;
-    canChoose: boolean;
-    startsImmediately: boolean;
+  nextGame: {
+    fixtureId: string;
+    breakEndsAt: string;
+    available: boolean;
   } | null;
 }
 
@@ -310,9 +337,38 @@ export function withdrawFromTournament(tournamentId: string) {
   );
 }
 
-export function fetchTournamentSchedule(tournamentId: string) {
-  return apiFetch<{ fixtures: TournamentFixture[]; matchdays?: TournamentMatchday[] }>(
-    `/tournaments/${tournamentId}/schedule`,
+export function fetchTournamentSchedule(tournamentId: string, localDate: string) {
+  const query = new URLSearchParams({ date: localDate });
+  return apiFetch<TournamentScheduleResponse>(
+    `/tournaments/${tournamentId}/schedule?${query.toString()}`,
+  );
+}
+
+export function fetchTournamentScheduleOtherGames(
+  tournamentId: string,
+  localDate: string,
+  cursor: TournamentScheduleCursor | null = null,
+) {
+  const query = new URLSearchParams({ date: localDate });
+  if (cursor !== null) {
+    query.set('cursorFixtureNumber', String(cursor.fixtureNumber));
+    query.set('cursorId', cursor.id);
+  }
+  return apiFetch<TournamentScheduleOtherGamesPage>(
+    `/tournaments/${tournamentId}/schedule/other-games?${query.toString()}`,
+  );
+}
+
+export function fetchTournamentReadinessHint(tournamentId: string) {
+  return apiFetch<{ dismissed: boolean; dismissedAt: string | null }>(
+    `/tournaments/${tournamentId}/readiness-hint`,
+  );
+}
+
+export function dismissTournamentReadinessHint(tournamentId: string) {
+  return apiFetch<{ dismissed: true; dismissedAt: string }>(
+    `/tournaments/${tournamentId}/readiness-hint/dismiss`,
+    { method: 'POST' },
   );
 }
 
@@ -365,17 +421,6 @@ export function fetchTournamentBracket(tournamentId: string) {
 export function fetchTournamentFixtureAttempt(tournamentId: string, fixtureId: string) {
   return apiFetch<TournamentFixtureAttemptState>(
     `/tournaments/${tournamentId}/fixtures/${fixtureId}/attempt`,
-  );
-}
-
-export function chooseTournamentNextGame(
-  tournamentId: string,
-  fixtureId: string,
-  choice: 'immediate' | 'scheduled',
-) {
-  return apiFetch<NonNullable<TournamentFixtureAttemptState['nextGameChoice']>>(
-    `/tournaments/${tournamentId}/fixtures/${fixtureId}/attempt/next-game-choice`,
-    { method: 'POST', body: JSON.stringify({ choice }) },
   );
 }
 

@@ -51,7 +51,7 @@ import { useDailyStore } from '../stores/dailyStore.js';
 import { useClassicTournamentStore } from '../stores/classicTournamentStore.js';
 import {
   fetchActiveClassicTournamentGames,
-  type ActiveClassicTournamentGame,
+  type ActiveTournamentGame,
   type ClassicTournamentState,
 } from '../api/tournamentClassic.js';
 import {
@@ -122,7 +122,15 @@ import { AmateurDuelHistoryTab } from '../components/duel/AmateurDuelHistoryTab.
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 import { TournamentCatalog } from '../tournament/TournamentCatalog.js';
-import { fetchTournamentGameContext, type TournamentGameContext } from '../api/tournament.js';
+import {
+  dismissTournamentReadinessHint,
+  fetchTournamentFixtureAttempt,
+  fetchTournamentGameContext,
+  fetchTournamentReadinessHint,
+  openTournamentFixtureSegment,
+  type TournamentFixtureAttemptState,
+  type TournamentGameContext,
+} from '../api/tournament.js';
 import { venueRoleLabel, type VenueRole } from '../components/VenueBadge.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
@@ -417,6 +425,7 @@ export function DailyScreen(): JSX.Element {
   const fromSections = routeParams.get('from') === 'sections';
   const tournamentOrigin = routeParams.get('section') === 'tournaments';
   const tournamentId = routeParams.get('tournament');
+  const tournamentFixtureId = routeParams.get('fixture');
   const tournamentGameRoute =
     tournamentOrigin &&
     tournamentId !== null &&
@@ -683,6 +692,8 @@ export function DailyScreen(): JSX.Element {
         return (
           <AmateurDuelPlayView
             matchId={activeAmateurMatchId}
+            tournamentId={tournamentId}
+            tournamentFixtureId={tournamentFixtureId}
             directPlayOnly={directDuelPlay}
             playEntranceOnMount={pendingPlayEntrance === `duel:${activeAmateurMatchId}`}
             onEntranceConsumed={() => setPendingPlayEntrance(null)}
@@ -690,6 +701,14 @@ export function DailyScreen(): JSX.Element {
               pendingPlayRouteTransition === `duel:${activeAmateurMatchId}`
             }
             onRouteTransitionConsumed={() => setPendingPlayRouteTransition(null)}
+            onOpenTournamentMatch={(fixtureId, matchId) => {
+              setActiveAmateurMatchId(matchId);
+              const params = new URLSearchParams(location.search);
+              params.set('fixture', fixtureId);
+              params.set('match', matchId);
+              params.set('play', '1');
+              navigate(`/?${params.toString()}`, { replace: true });
+            }}
             onBack={() => {
               setPendingPlayEntrance(null);
               setPendingPlayRouteTransition(null);
@@ -1247,7 +1266,10 @@ function GameHub({
   });
   const classicArenaEntries = [...(classicTournamentGames.data?.games ?? [])]
     .sort((left, right) => {
-      const priority = (game: ActiveClassicTournamentGame): number => {
+      const priority = (game: ActiveTournamentGame): number => {
+        if (game.kind === 'playoff') {
+          return game.state === 'active' || game.state === 'ready_check' ? 0 : 1;
+        }
         if (
           game.state === 'period_active' ||
           game.state === 'break_active' ||
@@ -1260,6 +1282,51 @@ function GameHub({
       return priority(left) - priority(right);
     })
     .map<ArenaEntry>((game) => {
+      if (game.kind === 'playoff') {
+        const breakRemaining = Math.max(0, timestampMs(game.break_ends_at) - now);
+        const startsAtRemaining = Math.max(0, timestampMs(game.starts_at) - now);
+        const isBreak = game.state === 'inter_game_break' && game.break_ends_at !== null;
+        const isPaused = game.state === 'paused';
+        return {
+          id: `playoff-${game.tournament_id}-${game.tournament_day}`,
+          kind: 'duel',
+          eyebrow: `Турнир · ${game.tournament_day}-й игровой день`,
+          title: game.tournament_title,
+          subtitle: isPaused
+            ? 'Игра ожидает решения администратора.'
+            : isBreak
+              ? 'Перерыв между играми серии'
+              : 'Игра серии ожидает готовности.',
+          meta: isBreak
+            ? `Следующая игра через ${formatMs(breakRemaining)}`
+            : isPaused
+              ? 'Расписание ожидает решения'
+              : `Старт через ${formatEventRemaining(startsAtRemaining)}`,
+          ctaLabel: 'К расписанию',
+          onEnter: () =>
+            navigate(
+              `/?view=amateur&section=tournaments&tournament=${encodeURIComponent(game.tournament_id)}&tab=schedule`,
+              { replace: true },
+            ),
+          scoreboard: (
+            <DailyHubScoreboard
+              activePeriod={0}
+              ariaLabel={
+                isPaused
+                  ? `${game.tournament_title}. Игра ожидает решения администратора.`
+                  : isBreak
+                  ? `${game.tournament_title}. Перерыв между играми серии. До конца ${formatMs(breakRemaining)}`
+                  : `${game.tournament_title}. Старт через ${formatEventRemaining(startsAtRemaining)}`
+              }
+              periodsTotal={1}
+              timer={
+                isPaused ? '—' : isBreak ? formatMs(breakRemaining) : formatEventRemaining(startsAtRemaining)
+              }
+              timerLabel={isPaused ? 'Пауза' : isBreak ? 'Перерыв' : 'До старта'}
+            />
+          ),
+        };
+      }
       const deadlineRemaining = Math.max(0, timestampMs(game.closes_at) - now);
       const breakRemaining = Math.max(0, timestampMs(game.break_ends_at) - now);
       const isBreak = game.state === 'break_active' && game.break_ends_at !== null;
@@ -5032,20 +5099,26 @@ function DuelListCard({
 
 function AmateurDuelPlayView({
   matchId,
+  tournamentId,
+  tournamentFixtureId,
   onBack,
   directPlayOnly = false,
   playEntranceOnMount = false,
   onEntranceConsumed,
   playRouteTransitionOnMount = false,
   onRouteTransitionConsumed,
+  onOpenTournamentMatch,
 }: {
   matchId: string;
+  tournamentId: string | null;
+  tournamentFixtureId: string | null;
   onBack: () => void;
   directPlayOnly?: boolean;
   playEntranceOnMount?: boolean;
   onEntranceConsumed?: () => void;
   playRouteTransitionOnMount?: boolean;
   onRouteTransitionConsumed?: (() => void) | undefined;
+  onOpenTournamentMatch?: (fixtureId: string, matchId: string) => void;
 }): JSX.Element {
   const match = useAmateurDuelStore((s) => s.match);
   const loading = useAmateurDuelStore((s) => s.loading);
@@ -5054,6 +5127,7 @@ function AmateurDuelPlayView({
   const load = useAmateurDuelStore((s) => s.load);
   const refresh = useAmateurDuelStore((s) => s.refresh);
   const ready = useAmateurDuelStore((s) => s.ready);
+  const confirmTournamentLoadout = useAmateurDuelStore((s) => s.confirmTournamentLoadout);
   const startPeriod = useAmateurDuelStore((s) => s.startPeriod);
   const updateLoadout = useAmateurDuelStore((s) => s.updateLoadout);
   const optimisticAddShot = useAmateurDuelStore((s) => s.optimisticAddShot);
@@ -5067,17 +5141,39 @@ function AmateurDuelPlayView({
   );
   const [playerReadyEntranceKey, setPlayerReadyEntranceKey] = useState<string | null>(null);
   const [goalieReadyEntranceKey, setGoalieReadyEntranceKey] = useState<string | null>(null);
-  const [showTournamentReadinessExplanation, setShowTournamentReadinessExplanation] = useState(
-    () => localStorage.getItem('hockey.tournamentReadinessExplanationDisabled') !== 'true',
-  );
+  const [showTournamentReadinessExplanation, setShowTournamentReadinessExplanation] =
+    useState(true);
   const [disableTournamentReadinessExplanation, setDisableTournamentReadinessExplanation] =
     useState(false);
-  const tournamentReadyButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousReadyStateRef = useRef<{ me: boolean; opponent: boolean } | null>(null);
+  const appliedTournamentLoadoutVersionRef = useRef<string | null>(null);
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
     enabled: Boolean(matchId),
+  });
+  const tournamentAttempt = useQuery({
+    queryKey: ['tournaments', tournamentId, 'fixtures', tournamentFixtureId, 'attempt'],
+    queryFn: () => fetchTournamentFixtureAttempt(tournamentId!, tournamentFixtureId!),
+    enabled:
+      match?.source === 'tournament' &&
+      tournamentId !== null &&
+      tournamentFixtureId !== null,
+    refetchInterval: 1_000,
+  });
+  const tournamentReadinessHint = useQuery({
+    queryKey: ['tournaments', tournamentId, 'readiness-hint'],
+    queryFn: () => fetchTournamentReadinessHint(tournamentId!),
+    enabled: match?.source === 'tournament' && tournamentId !== null,
+  });
+  const dismissReadinessHint = useMutation({
+    mutationFn: () => dismissTournamentReadinessHint(tournamentId!),
+  });
+  const openNextTournamentGame = useMutation({
+    mutationFn: (fixtureId: string) => openTournamentFixtureSegment(tournamentId!, fixtureId),
+    onSuccess: (segment, fixtureId) => {
+      onOpenTournamentMatch?.(fixtureId, segment.duelMatchId);
+    },
   });
 
   useEffect(() => {
@@ -5087,11 +5183,10 @@ function AmateurDuelPlayView({
   useEffect(() => {
     setDismissedResultMatchId(null);
     setSelectedLoadout({});
-    setShowTournamentReadinessExplanation(
-      localStorage.getItem('hockey.tournamentReadinessExplanationDisabled') !== 'true',
-    );
+    setShowTournamentReadinessExplanation(true);
     setDisableTournamentReadinessExplanation(false);
     previousReadyStateRef.current = null;
+    appliedTournamentLoadoutVersionRef.current = null;
     setPlayerReadyEntranceKey(null);
     setGoalieReadyEntranceKey(null);
   }, [matchId]);
@@ -5104,6 +5199,12 @@ function AmateurDuelPlayView({
   useEffect(() => {
     const inventory = inventoryQuery.data;
     if (!inventory) return;
+    if (
+      match?.source === 'tournament' &&
+      match.me.state === 'accepted'
+    ) {
+      return;
+    }
     setSelectedLoadout((current) => ({
       stick: current.stick === undefined ? duelEquipmentIdFor(inventory, 'stick') : current.stick,
       skates:
@@ -5113,7 +5214,25 @@ function AmateurDuelPlayView({
           ? duelEquipmentIdFor(inventory, 'nutrition')
           : current.nutrition,
     }));
-  }, [inventoryQuery.data, matchId]);
+  }, [inventoryQuery.data, match, matchId]);
+
+  useEffect(() => {
+    if (
+      !match ||
+      match.source !== 'tournament' ||
+      match.me.state !== 'accepted'
+    ) {
+      return;
+    }
+    const selectionKey = match.me.loadout.items
+      .map((item) => `${item.kind}:${item.id}`)
+      .sort()
+      .join('|');
+    const versionKey = `${match.id}:${match.me.current_period + 1}:${match.me.tournament_loadout_period ?? 'preview'}:${match.me.tournament_loadout_version ?? 0}:${selectionKey}`;
+    if (appliedTournamentLoadoutVersionRef.current === versionKey) return;
+    appliedTournamentLoadoutVersionRef.current = versionKey;
+    setSelectedLoadout(duelLoadoutSelectionFromMatch(match));
+  }, [match]);
 
   useEffect(() => {
     if (!match || match.id !== matchId) return;
@@ -5179,23 +5298,30 @@ function AmateurDuelPlayView({
     now >= startsAt &&
     now < endsAt &&
     match.me.current_period < match.rules.totalPeriods;
+  const usesTournamentPeriodLoadout =
+    match.source === 'tournament' && match.rules.tournamentLoadoutLifecycleVersion === 1;
   const handleDirectDuelAction = async (): Promise<void> => {
     if (inFlight) return;
     const matchNow = duelMatchNowMs(match, now);
     if (match.status === 'ready_check' && match.me.state !== 'ready') {
-      await ready(selectedLoadout);
+      await ready(usesTournamentPeriodLoadout ? {} : selectedLoadout);
       return;
     }
     if (canStartArenaDuelPeriod(match, matchNow)) {
+      if (usesTournamentPeriodLoadout) {
+        const confirmed = await confirmTournamentLoadout(selectedLoadout);
+        if (confirmed === null) return;
+        await startPeriod();
+        return;
+      }
       await startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout));
     }
   };
-  const handleTournamentReadinessConfirmation = async (): Promise<void> => {
-    if (inFlight) return;
-    const next = await ready(selectedLoadout);
-    if (next === null) return;
-    if (disableTournamentReadinessExplanation) {
-      localStorage.setItem('hockey.tournamentReadinessExplanationDisabled', 'true');
+  const dismissTournamentReadinessExplanation = async (): Promise<void> => {
+    if (disableTournamentReadinessExplanation && tournamentId !== null) {
+      const result = await dismissReadinessHint.mutateAsync();
+      tournamentReadinessHint.refetch();
+      if (!result.dismissed) return;
     }
     setShowTournamentReadinessExplanation(false);
   };
@@ -5237,7 +5363,9 @@ function AmateurDuelPlayView({
       match.source === 'tournament' &&
       match.status === 'ready_check' &&
       match.me.state !== 'ready' &&
-      showTournamentReadinessExplanation;
+      showTournamentReadinessExplanation &&
+      (tournamentId === null ||
+        (tournamentReadinessHint.isSuccess && tournamentReadinessHint.data.dismissed !== true));
     return (
       <>
         <PlayView<AmateurDuelMatchState>
@@ -5289,7 +5417,17 @@ function AmateurDuelPlayView({
           scoreboardGoals={match.me.goals}
           scoreboardOpponent={duelScoreboardOpponent(match)}
         />
-        {showDirectResultModal && <DuelResultModal match={match} onClose={onBack} />}
+        {showDirectResultModal && (
+          <DuelResultModal
+            match={match}
+            {...(tournamentAttempt.data === undefined
+              ? {}
+              : { tournamentAttempt: tournamentAttempt.data })}
+            now={now}
+            onOpenNextGame={(fixtureId) => openNextTournamentGame.mutate(fixtureId)}
+            onClose={onBack}
+          />
+        )}
         {selectedLoadoutKind !== null && (
           <DuelRinkLoadoutModal
             kind={selectedLoadoutKind}
@@ -5307,11 +5445,10 @@ function AmateurDuelPlayView({
           title="Подтвердите участие"
           open={explainTournamentReadiness}
           closeBlocked
-          initialFocusRef={tournamentReadyButtonRef}
         >
           <div style={{ display: 'grid', gap: 14 }}>
             <p className="modal-copy" style={{ margin: 0 }}>
-              Нажмите «Готов», чтобы подтвердить участие в дуэли.
+              Нажмите «Готов» на льду, чтобы подтвердить участие в дуэли.
             </p>
             <p className="modal-copy" style={{ margin: 0, fontSize: 13 }}>
               Подтвердите готовность до конца таймера. Если соперник подтвердит участие, а вы — нет,
@@ -5342,13 +5479,12 @@ function AmateurDuelPlayView({
             )}
             <div className="modal-actions" style={{ marginTop: 2 }}>
               <button
-                ref={tournamentReadyButtonRef}
                 type="button"
                 className="modal-primary btn btn--cta"
-                disabled={inFlight}
-                onClick={() => void handleTournamentReadinessConfirmation()}
+                disabled={dismissReadinessHint.isPending}
+                onClick={() => void dismissTournamentReadinessExplanation()}
               >
-                {inFlight ? 'Фиксируем...' : 'Готов'}
+                Понятно
               </button>
             </div>
           </div>
@@ -5538,7 +5674,17 @@ function AmateurDuelPlayView({
       >
         {startButtonLabel}
       </button>
-      {showResultModal && <DuelResultModal match={match} onClose={onBack} />}
+      {showResultModal && (
+        <DuelResultModal
+          match={match}
+          {...(tournamentAttempt.data === undefined
+            ? {}
+            : { tournamentAttempt: tournamentAttempt.data })}
+          now={now}
+          onOpenNextGame={(fixtureId) => openNextTournamentGame.mutate(fixtureId)}
+          onClose={onBack}
+        />
+      )}
     </ModeShell>
   );
 }
@@ -5548,23 +5694,51 @@ function DuelResultModal({
   onClose,
   closeLabel = 'Понятно',
   isLoadingDetails = false,
+  tournamentAttempt,
+  now = Date.now(),
+  onOpenNextGame,
 }: {
   match: AmateurDuelMatch;
   onClose: () => void;
   closeLabel?: string;
   isLoadingDetails?: boolean;
+  tournamentAttempt?: TournamentFixtureAttemptState;
+  now?: number;
+  onOpenNextGame?: (fixtureId: string) => void;
 }): JSX.Element {
+  const nextGame = tournamentAttempt?.nextGame ?? null;
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Результат дуэли">
       <DuelResultCard
         match={match}
         isLoadingDetails={isLoadingDetails}
+        {...(tournamentAttempt === undefined ? {} : { tournamentAttempt })}
         footer={
-          <div className="modal-actions">
-            <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
-              {closeLabel}
-            </button>
-          </div>
+          <>
+            {nextGame !== null && (
+              <div className="tournament-duel-result__next-game">
+                {nextGame.available ? (
+                  <button
+                    type="button"
+                    className="btn btn--cta"
+                    onClick={() => onOpenNextGame?.(nextGame.fixtureId)}
+                  >
+                    К следующей игре
+                  </button>
+                ) : (
+                  <strong>
+                    Следующая игра через{' '}
+                    {formatMs(Math.max(0, new Date(nextGame.breakEndsAt).getTime() - now))}
+                  </strong>
+                )}
+              </div>
+            )}
+            <div className="modal-actions">
+              <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
+                {closeLabel}
+              </button>
+            </div>
+          </>
         }
       />
     </div>
@@ -5576,13 +5750,15 @@ function DuelResultCard({
   isLoadingDetails = false,
   compact = false,
   footer,
+  tournamentAttempt,
 }: {
   match: AmateurDuelMatch;
   isLoadingDetails?: boolean;
   compact?: boolean;
   footer?: ReactNode;
+  tournamentAttempt?: TournamentFixtureAttemptState;
 }): JSX.Element {
-  const title =
+  const ordinaryTitle =
     match.status !== 'settled'
       ? duelOutcomeText(match)
       : match.outcome === 'draw'
@@ -5592,12 +5768,19 @@ function DuelResultCard({
           : match.winner_user_id === match.me.user_id
             ? 'Победа'
             : 'Поражение';
+  const series = tournamentAttempt?.series ?? null;
+  const title =
+    series?.status === 'completed'
+      ? series.winnerUserId === match.me.user_id
+        ? `Вы выиграли серию ${series.myWins}:${series.opponentWins}`
+        : `Вы проиграли серию ${series.myWins}:${series.opponentWins}`
+      : ordinaryTitle;
   const resultColor =
-    title === 'Победа'
+    ordinaryTitle === 'Победа'
       ? '#22c55e'
-      : title === 'Ничья'
+      : ordinaryTitle === 'Ничья'
         ? '#f59e0b'
-        : title === 'Поражение'
+        : ordinaryTitle === 'Поражение'
           ? '#ef4444'
           : 'rgba(15, 23, 42, 0.38)';
   const points = match.me.result_points;
@@ -5690,18 +5873,24 @@ function DuelResultCard({
               }}
             />
           </div>
-          <div
-            aria-label={`Итог дуэли ${match.me.goals}:${match.opponent.goals}`}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-              gap: 10,
-              marginTop: 16,
-            }}
-          >
-            <DailyStatsMetric label="Счёт" value={`${match.me.goals}:${match.opponent.goals}`} />
-            <DailyStatsMetric label="Очки" value={pointsText} />
-          </div>
+          {match.source === 'tournament' ? (
+            <div className="tournament-duel-result__score">
+              Вы {match.me.goals}:{match.opponent.goals} Соперник
+            </div>
+          ) : (
+            <div
+              aria-label={`Итог дуэли ${match.me.goals}:${match.opponent.goals}`}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                gap: 10,
+                marginTop: 16,
+              }}
+            >
+              <DailyStatsMetric label="Счёт" value={`${match.me.goals}:${match.opponent.goals}`} />
+              <DailyStatsMetric label="Очки" value={pointsText} />
+            </div>
+          )}
           <div
             style={{
               marginTop: 14,
@@ -6773,6 +6962,16 @@ function duelStartPeriodLoadoutSelection(
   if (selectedLoadout.stick === undefined) return undefined;
   const selectedStick = selectedDuelAvailabilityItem(match, 'stick', selectedLoadout.stick);
   return { stick: selectedStick ? selectedStick.id : null };
+}
+
+function duelLoadoutSelectionFromMatch(
+  match: AmateurDuelMatch,
+): AmateurDuelLoadoutSelection {
+  return {
+    stick: match.me.loadout.items.find((item) => item.kind === 'stick')?.id ?? null,
+    skates: match.me.loadout.items.find((item) => item.kind === 'skates')?.id ?? null,
+    nutrition: match.me.loadout.items.find((item) => item.kind === 'nutrition')?.id ?? null,
+  };
 }
 
 function duelEquipmentDisplayTitle(item: Pick<InventoryItem, 'kind' | 'rarity' | 'title'>): string {

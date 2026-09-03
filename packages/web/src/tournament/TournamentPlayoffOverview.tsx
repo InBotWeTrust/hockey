@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { TournamentBracketSeries, TournamentBracketSource } from '../api/tournament.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
 
@@ -24,21 +24,37 @@ export function playoffStageName(roundNumber: number, finalRound: number, plural
   if (distance === 1) return plural ? 'Полуфиналы' : 'Полуфинал';
   if (distance === 2) return plural ? 'Четвертьфиналы' : 'Четвертьфинал';
   if (distance === 3) return '1/8 финала';
-  return plural ? `Раунд ${roundNumber}` : `Игра раунда ${roundNumber}`;
+  if (distance === 4) return '1/16 финала';
+  return `Раунд ${roundNumber}`;
 }
 
-function sourceStageName(roundNumber: number, finalRound: number): string {
-  const distance = finalRound - roundNumber;
-  if (distance === 1) return 'полуфинала';
-  if (distance === 2) return 'четвертьфинала';
-  if (distance === 3) return '1/8 финала';
-  return `серии раунда ${roundNumber}`;
+export function playoffSeriesTitle(gameNumber: number, winsRequired: number): string {
+  return `${winsRequired > 1 ? 'Серия' : 'Игра'} ${gameNumber}`;
+}
+
+export function playoffSeriesNumberMaps(series: TournamentBracketSeries[]): {
+  byId: Map<string, number>;
+  byKey: Map<string, number>;
+} {
+  const ordered = [...series].sort(
+    (left, right) =>
+      left.round_number - right.round_number || left.bracket_position - right.bracket_position,
+  );
+  const byId = new Map<string, number>();
+  const byKey = new Map<string, number>();
+  ordered.forEach((item, index) => {
+    const gameNumber = index + 1;
+    byId.set(item.id, gameNumber);
+    if (item.depends_on?.key) byKey.set(item.depends_on.key, gameNumber);
+  });
+  return { byId, byKey };
 }
 
 export function playoffParticipantPlaceholder(
   source: TournamentBracketSource | undefined,
   byKey: Map<string, TournamentBracketSeries>,
   finalRound: number,
+  seriesNumberByKey?: Map<string, number>,
 ): string {
   if (source?.type !== 'winner' && source?.type !== 'loser') return 'Участник определится позже';
   const sourceSeries = source.seriesKey ? byKey.get(source.seriesKey) : undefined;
@@ -48,7 +64,20 @@ export function playoffParticipantPlaceholder(
       : 'Проигравший предыдущей серии';
   }
   const prefix = source.type === 'winner' ? 'Победитель' : 'Проигравший';
-  return `${prefix} ${sourceStageName(sourceSeries.round_number, finalRound)} ${sourceSeries.bracket_position}`;
+  const gameNumber = source.seriesKey ? seriesNumberByKey?.get(source.seriesKey) : undefined;
+  if (gameNumber !== undefined) return `${prefix} ${gameNumber}`;
+  const distance = finalRound - sourceSeries.round_number;
+  const sourceStage =
+    distance === 1
+      ? 'полуфинала'
+      : distance === 2
+        ? 'четвертьфинала'
+        : distance === 3
+          ? '1/8 финала'
+          : distance === 4
+            ? '1/16 финала'
+            : `серии раунда ${sourceSeries.round_number}`;
+  return `${prefix} ${sourceStage} ${sourceSeries.bracket_position}`;
 }
 
 function dateParts(value: Date, timezone: string): { day: string; month: string; key: string } {
@@ -72,6 +101,12 @@ function dateLabel(value: Date, timezone: string): string {
   }).format(value);
 }
 
+function shortMonthLabel(value: Date, timezone: string): string {
+  return new Intl.DateTimeFormat('ru-RU', { timeZone: timezone, month: 'short' })
+    .format(value)
+    .replace(/^сент\.$/, 'сен.');
+}
+
 function nextGameLabel(value: Date, timezone: string, now: Date): string {
   const target = dateParts(value, timezone);
   const today = dateParts(now, timezone);
@@ -88,6 +123,7 @@ export function playoffSeriesScheduleLabel(
   series: TournamentBracketSeries,
   timezone: string,
   now = new Date(),
+  compact = false,
 ): string {
   const scheduled = series.fixtures
     .map((fixture) => ({ fixture, date: new Date(fixture.scheduledStartsAt ?? '') }))
@@ -117,8 +153,12 @@ export function playoffSeriesScheduleLabel(
   const lastParts = dateParts(last, timezone);
   if (firstParts.key === lastParts.key) return dateLabel(first, timezone);
   if (firstParts.month === lastParts.month) {
+    if (compact) return `${firstParts.day}–${lastParts.day} ${shortMonthLabel(last, timezone)}`;
     const inflectedMonth = dateLabel(last, timezone).replace(/^\d+\s+/, '');
     return `${firstParts.day}–${lastParts.day} ${inflectedMonth}`;
+  }
+  if (compact) {
+    return `${firstParts.day} ${shortMonthLabel(first, timezone)} – ${lastParts.day} ${shortMonthLabel(last, timezone)}`;
   }
   return `${dateLabel(first, timezone)} — ${dateLabel(last, timezone)}`;
 }
@@ -138,13 +178,20 @@ export function PlayoffParticipantRow(props: {
   current: boolean;
   wins: number;
   compact: boolean;
+  density?: 2 | 3 | 4;
 }) {
   const name = props.name ?? props.placeholder;
+  if (props.name === null) {
+    return (
+      <div className="tournament-bracket-player tournament-bracket-player--pending">
+        <strong className="tournament-bracket-player__placeholder">{props.placeholder}</strong>
+      </div>
+    );
+  }
   return (
     <div
       className={[
         'tournament-bracket-player',
-        props.name ? '' : 'tournament-bracket-player--pending',
         props.winner ? 'tournament-bracket-player--winner' : '',
         props.current ? 'tournament-bracket-player--current' : '',
       ]
@@ -160,8 +207,8 @@ export function PlayoffParticipantRow(props: {
       <UserAvatar
         avatarUrl={props.avatarUrl}
         name={name}
-        size={props.compact ? 22 : 32}
-        {...(props.name !== null ? { alt: props.name } : {})}
+        size={props.compact ? (props.density === 4 ? 16 : props.density === 3 ? 18 : 22) : 32}
+        alt={props.name}
       />
       <div className="tournament-bracket-player__identity">
         <strong>{name}</strong>
@@ -179,12 +226,15 @@ export function PlayoffParticipantRow(props: {
 export function PlayoffSeriesCard(props: {
   series: TournamentBracketSeries;
   title: string;
+  stageLabel?: string;
   byKey: Map<string, TournamentBracketSeries>;
   finalRound: number;
+  seriesNumberByKey?: Map<string, number>;
   currentUserId: string | null;
   timezone: string;
   bronze?: boolean;
   compact?: boolean;
+  density?: 2 | 3 | 4;
   onOpen: () => void;
 }) {
   const sources = props.series.depends_on?.sources ?? [];
@@ -214,33 +264,59 @@ export function PlayoffSeriesCard(props: {
       <button
         type="button"
         className="tournament-bracket-series__summary"
-        aria-label={`Открыть серию ${props.title}`}
+        aria-label={`Открыть серию ${props.stageLabel ? `${props.stageLabel}, ` : ''}${props.title}`}
         onClick={props.onOpen}
       >
-        <header>
-          <strong>{props.title}</strong>
-          <span>{playoffSeriesScheduleLabel(props.series, props.timezone)}</span>
+        <header className={props.stageLabel ? 'tournament-bracket-series__staged-header' : ''}>
+          <strong className={props.stageLabel ? 'tournament-bracket-series__staged-title' : ''}>
+            {props.stageLabel ? (
+              <small className="tournament-bracket-series__stage-label">
+                {props.stageLabel}
+              </small>
+            ) : null}
+            {props.title}
+          </strong>
+          <span>
+            {playoffSeriesScheduleLabel(
+              props.series,
+              props.timezone,
+              new Date(),
+              props.compact === true,
+            )}
+          </span>
         </header>
         <div className="tournament-bracket-series__players">
           <PlayoffParticipantRow
             name={props.series.higher_name}
             avatarUrl={props.series.higher_avatar_url}
             seed={props.series.higher_seed}
-            placeholder={playoffParticipantPlaceholder(sources[0], props.byKey, props.finalRound)}
+            placeholder={playoffParticipantPlaceholder(
+              sources[0],
+              props.byKey,
+              props.finalRound,
+              props.seriesNumberByKey,
+            )}
             winner={higherWon}
             current={props.series.higher_user_id === props.currentUserId}
             wins={props.series.higher_seed_wins}
             compact={props.compact === true}
+            {...(props.density === undefined ? {} : { density: props.density })}
           />
           <PlayoffParticipantRow
             name={props.series.lower_name}
             avatarUrl={props.series.lower_avatar_url}
             seed={props.series.lower_seed}
-            placeholder={playoffParticipantPlaceholder(sources[1], props.byKey, props.finalRound)}
+            placeholder={playoffParticipantPlaceholder(
+              sources[1],
+              props.byKey,
+              props.finalRound,
+              props.seriesNumberByKey,
+            )}
             winner={lowerWon}
             current={props.series.lower_user_id === props.currentUserId}
             wins={props.series.lower_seed_wins}
             compact={props.compact === true}
+            {...(props.density === undefined ? {} : { density: props.density })}
           />
         </div>
       </button>
@@ -274,7 +350,9 @@ export function TournamentPlayoffOverview(props: {
   formats?: PlayoffFormat[];
   onOpenSeries: (selection: PlayoffSeriesSelection) => void;
 }) {
+  const [visibleColumns, setVisibleColumns] = useState<2 | 3 | 4>(2);
   const championship = props.series.filter((item) => item.kind === 'championship');
+  const seriesNumbers = playoffSeriesNumberMaps(championship);
   const rounds = [...new Set(championship.map((item) => item.round_number))].sort(
     (left, right) => left - right,
   );
@@ -288,7 +366,7 @@ export function TournamentPlayoffOverview(props: {
   const finalSeries = championship.find((item) => item.round_number === finalRound);
   const champion = championFrom(finalSeries);
   const columnCount = rounds.length + 1;
-  const layout = columnCount <= 3 ? 'fit' : 'scroll';
+  const layout = columnCount <= visibleColumns ? 'fit' : 'scroll';
   const style = {
     '--playoff-column-count': columnCount,
     '--playoff-round-count': rounds.length,
@@ -300,8 +378,27 @@ export function TournamentPlayoffOverview(props: {
       role="region"
       aria-label="Турнирная сетка"
       data-layout={layout}
+      data-visible-columns={visibleColumns}
     >
-      <h3>Турнирная сетка</h3>
+      <div className="tournament-bracket-overview__heading-row">
+        <h3>Турнирная сетка</h3>
+        <div
+          className="tournament-bracket-overview__density"
+          role="group"
+          aria-label="Раундов на экране"
+        >
+          {([2, 3, 4] as const).map((count) => (
+            <button
+              type="button"
+              aria-pressed={visibleColumns === count}
+              onClick={() => setVisibleColumns(count)}
+              key={count}
+            >
+              {count}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="tournament-bracket-overview__viewport">
         <div className="tournament-bracket-overview__grid" style={style}>
           {rounds.map((roundNumber) => {
@@ -320,18 +417,30 @@ export function TournamentPlayoffOverview(props: {
                   data-series-count={items.length}
                 >
                   {items.map((item) => {
-                    const title = `${playoffStageName(roundNumber, finalRound, false)}${items.length > 1 ? ` ${item.bracket_position}` : ''}`;
+                    const title = playoffSeriesTitle(
+                      seriesNumbers.byId.get(item.id) ?? item.bracket_position,
+                      item.wins_required,
+                    );
+                    const stageLabel = roundNumber === finalRound ? 'Финал' : undefined;
                     return (
                       <PlayoffSeriesCard
                         key={item.id}
                         series={item}
                         title={title}
+                        {...(stageLabel === undefined ? {} : { stageLabel })}
                         byKey={byKey}
                         finalRound={finalRound}
+                        seriesNumberByKey={seriesNumbers.byKey}
                         currentUserId={props.currentUserId}
                         timezone={props.timezone}
-                        compact={layout === 'fit'}
-                        onOpen={() => props.onOpenSeries({ series: item, title })}
+                        compact
+                        density={visibleColumns}
+                        onOpen={() =>
+                          props.onOpenSeries({
+                            series: item,
+                            title: stageLabel ? `${stageLabel} · ${title}` : title,
+                          })
+                        }
                       />
                     );
                   })}
@@ -346,6 +455,33 @@ export function TournamentPlayoffOverview(props: {
                           key={`connector-${pairIndex}`}
                           style={{ top: `${top}%`, height: `${height}%` }}
                         />
+                      );
+                    })}
+                  {roundNumber === finalRound &&
+                    bronze.map((item, index) => {
+                      const title = playoffSeriesTitle(
+                        championship.length + index + 1,
+                        item.wins_required,
+                      );
+                      return (
+                      <div className="tournament-bracket-overview__bronze-lane" key={item.id}>
+                        <PlayoffSeriesCard
+                          series={item}
+                          title={title}
+                          stageLabel="За 3-е место"
+                          byKey={byKey}
+                          finalRound={finalRound}
+                          seriesNumberByKey={seriesNumbers.byKey}
+                          currentUserId={props.currentUserId}
+                          timezone={props.timezone}
+                          bronze
+                          compact
+                          density={visibleColumns}
+                          onOpen={() =>
+                            props.onOpenSeries({ series: item, title: `За 3-е место · ${title}` })
+                          }
+                        />
+                      </div>
                       );
                     })}
                 </div>
@@ -377,25 +513,6 @@ export function TournamentPlayoffOverview(props: {
               )}
             </article>
           </section>
-          {bronze.map((item) => (
-            <div
-              className="tournament-bracket-overview__bronze-lane"
-              key={item.id}
-              style={{ gridColumn: rounds.length }}
-            >
-              <PlayoffSeriesCard
-                series={item}
-                title="За 3-е место"
-                byKey={byKey}
-                finalRound={finalRound}
-                currentUserId={props.currentUserId}
-                timezone={props.timezone}
-                bronze
-                compact={layout === 'fit'}
-                onOpen={() => props.onOpenSeries({ series: item, title: 'За 3-е место' })}
-              />
-            </div>
-          ))}
         </div>
       </div>
     </section>

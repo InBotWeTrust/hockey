@@ -87,14 +87,16 @@ export async function buildApp(options: BuildAppOptions = {}) {
     await validateOfficialAccount(app.pg, config.SYSTEM_USER_ID);
   }
   await app.register(redisPlugin, { url: config.REDIS_URL });
+  await app.register(realtimePlugin);
   await app.register(tournamentLifecyclePlugin, {
     enabled: options.tournamentLifecycleEnabled ?? (config.NODE_ENV === 'test' ? false : true),
     ...(options.tournamentLifecycleIntervalMs === undefined
       ? {}
       : { intervalMs: options.tournamentLifecycleIntervalMs }),
     classicSeedSecret: config.DAILY_SEED_SECRET,
+    publisher: app.realtime,
+    ...(config.SYSTEM_USER_ID === undefined ? {} : { systemUserId: config.SYSTEM_USER_ID }),
   });
-  await app.register(realtimePlugin);
   await app.register(authPlugin, { accessSecret: config.JWT_SECRET });
   await app.register(lastSeenPlugin);
   await app.register(healthRoutes);

@@ -1,11 +1,24 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import type { TournamentFixture, TournamentMatchday, TournamentStatus } from '../api/tournament.js';
+import type {
+  TournamentFixture,
+  TournamentMatchday,
+  TournamentScheduleDay,
+  TournamentStatus,
+} from '../api/tournament.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { TournamentMatchdayRow } from './TournamentMatchdayTimes.js';
 
 interface TournamentScheduleCalendarProps {
   fixtures: TournamentFixture[];
+  fixtureDays?: TournamentScheduleDay[];
+  selectedDate?: string;
+  onSelectDate?: (date: string) => void;
+  hasOtherGames?: boolean;
+  otherGamesLoaded?: boolean;
+  otherGamesLoading?: boolean;
+  hasMoreOtherGames?: boolean;
+  onLoadOtherGames?: () => void;
   matchdays: TournamentMatchday[];
   regularSource: 'head_to_head' | 'daily_aggregate' | 'classic';
   tournamentStatus: TournamentStatus;
@@ -148,13 +161,26 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
       Array.from(
         new Set([
           ...(props.regularSource !== 'head_to_head'
-            ? props.matchdays.map((matchday) => matchday.localDate)
-            : Array.from(fixturesByDate.keys())),
+            ? [
+                ...props.matchdays.map((matchday) => matchday.localDate),
+                ...(props.fixtureDays ?? []).map((day) => day.localDate),
+              ]
+            : [
+                ...Array.from(fixturesByDate.keys()),
+                ...(props.fixtureDays ?? []).map((day) => day.localDate),
+              ]),
           ...playoffDateKeys,
           ...playoffFixtureDateKeys,
         ]),
       ).sort(),
-    [fixturesByDate, playoffDateKeys, playoffFixtureDateKeys, props.matchdays, props.regularSource],
+    [
+      fixturesByDate,
+      playoffDateKeys,
+      playoffFixtureDateKeys,
+      props.fixtureDays,
+      props.matchdays,
+      props.regularSource,
+    ],
   );
   const rangeStart =
     (props.rangeStartsAt === null
@@ -175,7 +201,12 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
         : requestedRangeEnd;
   const rangeEnd = rangeEndCandidate < rangeStart ? rangeStart : rangeEndCandidate;
   const preferredDate = initialDateKey(eventKeys, today.key);
-  const [selectedDate, setSelectedDate] = useState(preferredDate);
+  const [internalSelectedDate, setInternalSelectedDate] = useState(preferredDate);
+  const selectedDate = props.selectedDate ?? internalSelectedDate;
+  const selectDate = (date: string): void => {
+    setInternalSelectedDate(date);
+    props.onSelectDate?.(date);
+  };
   const [modalDate, setModalDate] = useState<string | null>(null);
   const preferredParts = preferredDate.split('-').map(Number);
   const [visibleMonth, setVisibleMonth] = useState({
@@ -187,7 +218,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
     if (selectedDate >= rangeStart && selectedDate <= rangeEnd) return;
     const next = initialDateKey(eventKeys, today.key);
     const [year, month] = next.split('-').map(Number);
-    setSelectedDate(next);
+    selectDate(next);
     if (year !== undefined && month !== undefined) setVisibleMonth({ year, month });
   }, [eventKeys, rangeEnd, rangeStart, selectedDate, today.key]);
 
@@ -207,7 +238,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
     const prefix = `${year}-${String(month).padStart(2, '0')}-`;
     const firstDay = `${prefix}01`;
     const lastDay = dateKeyFromParts(year, month, new Date(Date.UTC(year, month, 0)).getUTCDate());
-    setSelectedDate(
+    selectDate(
       eventKeys.find((key) => key.startsWith(prefix)) ??
         (rangeStart > firstDay ? rangeStart : rangeEnd < lastDay ? rangeEnd : firstDay),
     );
@@ -229,7 +260,8 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
   const otherSelectedFixtures = selectedFixtures.filter(
     (fixture) => !isMine(fixture, props.currentUserId),
   );
-  const visibleOtherFixtures = selectedFixturesExpanded
+  const hasLazyOtherGames = props.hasOtherGames ?? false;
+  const visibleOtherFixtures = hasLazyOtherGames || selectedFixturesExpanded
     ? otherSelectedFixtures
     : otherSelectedFixtures.slice(0, 4);
   const selectedMatchday = matchdaysByDate.get(selectedDate);
@@ -250,7 +282,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
           </div>
         </section>
       )}
-      {otherSelectedFixtures.length > 0 && (
+      {(otherSelectedFixtures.length > 0 || hasLazyOtherGames) && (
         <section
           className={`tournament-fixture-section${mySelectedFixtures.length > 0 ? ' tournament-fixture-section--others' : ''}`}
         >
@@ -258,7 +290,24 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
           <div className="tournament-fixture-list">
             {visibleOtherFixtures.map((fixture) => props.renderFixture(fixture, false))}
           </div>
-          {otherSelectedFixtures.length > 4 && (
+          {hasLazyOtherGames && props.onLoadOtherGames &&
+            (!props.otherGamesLoaded || props.hasMoreOtherGames) && (
+              <button
+                type="button"
+                className="tournament-calendar__expand"
+                disabled={props.otherGamesLoading}
+                onClick={props.onLoadOtherGames}
+              >
+                {props.otherGamesLoading
+                  ? 'Загрузка…'
+                  : props.otherGamesLoaded
+                    ? 'Показать ещё'
+                    : mySelectedFixtures.length > 0
+                      ? 'Показать остальные игры'
+                      : 'Посмотреть игры дня'}
+              </button>
+            )}
+          {!hasLazyOtherGames && otherSelectedFixtures.length > 4 && (
             <button
               type="button"
               className="tournament-calendar__expand"
@@ -311,22 +360,25 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
           const key = dateKeyFromParts(visibleMonth.year, visibleMonth.month, day);
           const inRange = key >= rangeStart && key <= rangeEnd;
           const fixtures = fixturesByDate.get(key) ?? [];
+          const daySummary = props.fixtureDays?.find((day) => day.localDate === key);
           const matchday = matchdaysByDate.get(key);
           const hasEvents =
             showsFixturesInline
               ? matchday !== undefined || fixtures.length > 0
               : props.regularSource !== 'head_to_head'
                 ? matchday !== undefined
-                : fixtures.length > 0;
+                : (daySummary?.hasGames ?? fixtures.length > 0);
           const hasPlayoff =
             playoffDateKeys.includes(key) ||
+            daySummary?.hasPlayoff === true ||
             fixtures.some(
               (fixture) => fixture.stage === 'playoff' || fixture.stage === 'third_place',
             );
           const mine =
             props.regularSource !== 'head_to_head'
               ? hasEvents && props.isParticipant
-              : fixtures.some((fixture) => isMine(fixture, props.currentUserId));
+              : (daySummary?.hasMyGame ??
+                fixtures.some((fixture) => isMine(fixture, props.currentUserId)));
           const descriptions = [spokenDate(visibleMonth.year, visibleMonth.month, day)];
           if (props.regularSource !== 'head_to_head' && matchday !== undefined)
             descriptions.push('игровой день');
@@ -348,7 +400,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
               disabled={!inRange}
               className={`tournament-calendar__day${!inRange ? ' tournament-calendar__day--outside-range' : ''}${hasEvents ? ' tournament-calendar__day--has-events' : ''}${hasPlayoff ? ' tournament-calendar__day--playoff' : ''}${mine ? ' tournament-calendar__day--mine' : ''}${today.key === key ? ' tournament-calendar__day--today' : ''}${selectedDate === key ? ' tournament-calendar__day--selected' : ''}`}
               onClick={() => {
-                setSelectedDate(key);
+                selectDate(key);
                 if (props.regularSource === 'head_to_head' && fixtureDetailsMode === 'modal') {
                   setModalDate(key);
                 }
@@ -443,10 +495,12 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
                 )}
             </>
           )}
-          {showsFixturesInline && selectedFixtures.length > 0 && (
+          {showsFixturesInline && (selectedFixtures.length > 0 || hasLazyOtherGames) && (
             renderSelectedFixtureSections()
           )}
-          {selectedMatchday === undefined && selectedFixtures.length === 0 && (
+          {selectedMatchday === undefined &&
+            selectedFixtures.length === 0 &&
+            !hasLazyOtherGames && (
             <p>В этот день игр нет.</p>
           )}
         </div>
@@ -457,7 +511,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
           <h4>
             {spokenDate(...(selectedDate.split('-').map(Number) as [number, number, number]))}
           </h4>
-          {selectedFixtures.length > 0 ? (
+          {selectedFixtures.length > 0 || hasLazyOtherGames ? (
             renderSelectedFixtureSections()
           ) : (
             <p>В этот день игр нет.</p>
@@ -476,7 +530,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
               setExpandedDate(null);
             }}
           >
-            {selectedFixtures.length > 0 ? (
+            {selectedFixtures.length > 0 || hasLazyOtherGames ? (
               renderSelectedFixtureSections()
             ) : (
               <p className="modal-copy">В этот день игр нет.</p>

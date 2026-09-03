@@ -530,6 +530,10 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '087_tournament_admin_attention_notification.sql',
       '088_tournament_playoff_schedule_missing_notification.sql',
       '089_player_onboarding.sql',
+      '090_tournament_sequential_playoff_schedule.sql',
+      '091_tournament_fixture_schedule_revision.sql',
+      '092_tournament_period_loadout_state.sql',
+      '093_tournament_readiness_hint_preference.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -1227,6 +1231,10 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '087_tournament_admin_attention_notification.sql',
       '088_tournament_playoff_schedule_missing_notification.sql',
       '089_player_onboarding.sql',
+      '090_tournament_sequential_playoff_schedule.sql',
+      '091_tournament_fixture_schedule_revision.sql',
+      '092_tournament_period_loadout_state.sql',
+      '093_tournament_readiness_hint_preference.sql',
     ]);
 
     const activeInventory = await pool.query<{

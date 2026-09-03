@@ -1,18 +1,21 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
-import { chooseTournamentNextGame, fetchTournamentFixtureAttempt } from '../api/tournament.js';
+import { fetchTournamentFixtureAttempt } from '../api/tournament.js';
 import type {
   TournamentBracketFixture,
   TournamentBracketSeries,
   TournamentFixtureAttemptState,
 } from '../api/tournament.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { UserAvatar } from '../chat/components/UserAvatar.js';
 import {
   PlayoffSeriesCard,
   TournamentPlayoffOverview,
   playoffFormatLabel,
   playoffSeriesScheduleLabel,
+  playoffSeriesNumberMaps,
+  playoffSeriesTitle,
   playoffStageName,
   type PlayoffSeriesSelection,
 } from './TournamentPlayoffOverview.js';
@@ -109,7 +112,6 @@ export function TournamentPlayoffAttemptView(props: {
   timezone: string;
   onOpenGame: () => void;
   onOpenNextGame?: () => void;
-  onChooseNextGame: (choice: 'immediate' | 'scheduled') => void;
 }) {
   const state = props.state;
   const readinessRemaining = useRemaining(
@@ -120,7 +122,7 @@ export function TournamentPlayoffAttemptView(props: {
       ? state.opponentProgress.periodEndsAt
       : null,
   );
-  const nextChoiceRemaining = useRemaining(state.nextGameChoice?.expiresAt ?? null);
+  const nextGameRemaining = useRemaining(state.nextGame?.breakEndsAt ?? null);
   const replayStartRemaining = useRemaining(
     state.attempt.kind === 'replay' && state.attempt.status === 'pending'
       ? state.attempt.scheduledStart
@@ -220,44 +222,25 @@ export function TournamentPlayoffAttemptView(props: {
           <span>Администратор назначит новую дату и время игры.</span>
         </div>
       )}
-      {state.nextGameChoice?.canChoose && (
+      {state.nextGame !== null && (
         <div className="tournament-playoff-attempt__choice">
           <strong>Следующая игра</strong>
-          <span>В течение минуты выберите, готовы ли вы сыграть ещё раз сразу.</span>
-          {nextChoiceRemaining !== null && <span>Осталось на решение {nextChoiceRemaining}</span>}
-          <div>
-            <button
-              type="button"
-              className="btn btn--cta"
-              onClick={() => props.onChooseNextGame('immediate')}
-            >
-              Сыграть сразу
-            </button>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => props.onChooseNextGame('scheduled')}
-            >
-              По расписанию
-            </button>
-          </div>
-        </div>
-      )}
-      {state.nextGameChoice !== null && !state.nextGameChoice.canChoose && (
-        <>
-          <span>
-            {state.nextGameChoice.startsImmediately
-              ? 'Оба игрока готовы — следующая игра начинается.'
-              : state.nextGameChoice.myChoice === 'immediate'
-                ? 'Вы готовы сыграть сразу. Ждём решение соперника.'
-                : 'Следующая игра остаётся в расписании.'}
-          </span>
-          {state.nextGameChoice.startsImmediately && props.onOpenNextGame && (
-            <button type="button" className="btn btn--cta" onClick={props.onOpenNextGame}>
-              Открыть следующую игру
-            </button>
+          {state.nextGame.available ? (
+            <>
+              <span>Следующая игра доступна. Подтвердите готовность ещё раз.</span>
+              {props.onOpenNextGame && (
+                <button type="button" className="btn btn--cta" onClick={props.onOpenNextGame}>
+                  Открыть следующую игру
+                </button>
+              )}
+            </>
+          ) : (
+            <span>
+              Следующая игра станет доступна после перерыва
+              {nextGameRemaining === null ? '.' : ` через ${nextGameRemaining}`}
+            </span>
           )}
-        </>
+        </div>
       )}
       {wonSeries ? (
         <strong className="tournament-playoff-attempt__series-win">
@@ -287,20 +270,11 @@ function PlayerAttemptState(props: {
   timezone: string;
   onOpenFixture: (fixtureId: string) => void;
 }) {
-  const queryClient = useQueryClient();
   const queryKey = ['tournaments', props.tournamentId, 'fixtures', props.fixtureId, 'attempt'];
   const attempt = useQuery({
     queryKey,
     queryFn: () => fetchTournamentFixtureAttempt(props.tournamentId, props.fixtureId),
     refetchInterval: 5_000,
-  });
-  const choice = useMutation({
-    mutationFn: (value: 'immediate' | 'scheduled') =>
-      chooseTournamentNextGame(props.tournamentId, props.fixtureId, value),
-    onSuccess: (result) => {
-      void queryClient.invalidateQueries({ queryKey });
-      if (result.startsImmediately) props.onOpenFixture(result.nextFixtureId);
-    },
   });
   if (!attempt.data) return null;
   return (
@@ -311,17 +285,11 @@ function PlayerAttemptState(props: {
         timezone={props.timezone}
         onOpenGame={() => props.onOpenFixture(props.fixtureId)}
         onOpenNextGame={() => {
-          if (attempt.data.nextGameChoice !== null) {
-            props.onOpenFixture(attempt.data.nextGameChoice.nextFixtureId);
+          if (attempt.data.nextGame !== null) {
+            props.onOpenFixture(attempt.data.nextGame.fixtureId);
           }
         }}
-        onChooseNextGame={(value) => choice.mutate(value)}
       />
-      {choice.isError && (
-        <span className="tournament-fixture-card__error" role="alert">
-          Не удалось сохранить решение. Попробуйте ещё раз.
-        </span>
-      )}
     </>
   );
 }
@@ -401,6 +369,7 @@ function SeriesCard(props: {
   title: string;
   byKey: Map<string, TournamentBracketSeries>;
   finalRound: number;
+  seriesNumberByKey?: Map<string, number>;
   timezone: string;
   bronze?: boolean;
   onOpen: () => void;
@@ -422,6 +391,44 @@ function SeriesDetailsModal(props: {
     props.currentUserId !== null &&
     [series.higher_user_id, series.lower_user_id].includes(props.currentUserId);
   const latestFixtureId = currentSeriesFixtureId(series.fixtures);
+  const players = [
+    {
+      userId: series.higher_user_id,
+      name: series.higher_name,
+      avatarUrl: series.higher_avatar_url,
+      seed: series.higher_seed,
+      wins: series.higher_seed_wins,
+    },
+    {
+      userId: series.lower_user_id,
+      name: series.lower_name,
+      avatarUrl: series.lower_avatar_url,
+      seed: series.lower_seed,
+      wins: series.lower_seed_wins,
+    },
+  ];
+  const fixtureUserId = (
+    fixture: TournamentBracketFixture,
+    side: 'home' | 'away',
+  ): string | null => {
+    const explicit = side === 'home' ? fixture.homeUserId : fixture.awayUserId;
+    if (explicit !== undefined) return explicit;
+    const name = side === 'home' ? fixture.homeName : fixture.awayName;
+    if (name === series.higher_name) return series.higher_user_id;
+    if (name === series.lower_name) return series.lower_user_id;
+    return null;
+  };
+  const participantTone = (
+    fixture: TournamentBracketFixture,
+    side: 'home' | 'away',
+  ): string => {
+    const userId = fixtureUserId(fixture, side);
+    const won = fixture.winnerSide === side;
+    if (userId === props.currentUserId && !won && fixture.winnerSide !== null) {
+      return ' tournament-bracket-game__participant--own-loss';
+    }
+    return won ? ' tournament-bracket-game__participant--winner' : '';
+  };
   return (
     <AccessibleModal
       title={title}
@@ -437,35 +444,104 @@ function SeriesDetailsModal(props: {
         <strong>{seriesStatusLabel(series.status)}</strong>
         <span>{playoffSeriesScheduleLabel(series, props.timezone)}</span>
       </div>
+      <div className="tournament-bracket-series-modal__players">
+        {players.map((player, index) => {
+          const isWinner = player.userId !== null && player.userId === series.winner_user_id;
+          const isOwnLoss =
+            player.userId !== null &&
+            player.userId === props.currentUserId &&
+            series.winner_user_id !== null &&
+            !isWinner;
+          return (
+            <div
+              className={`tournament-bracket-series-modal__player${isWinner ? ' tournament-bracket-series-modal__player--winner' : ''}${isOwnLoss ? ' tournament-bracket-series-modal__player--own-loss' : ''}`}
+              key={player.userId ?? `${index}-${player.name ?? 'pending'}`}
+            >
+              <div className="tournament-bracket-series-modal__identity">
+                <UserAvatar
+                  avatarUrl={player.avatarUrl}
+                  name={player.name}
+                  size={30}
+                  alt={player.name ?? 'Участник'}
+                />
+                <span>
+                  <strong>{player.name ?? 'Участник определится позже'}</strong>
+                  {player.seed !== null && <small>Посев {player.seed}</small>}
+                </span>
+              </div>
+              <strong aria-label={`${player.wins} побед в серии`}>{player.wins}</strong>
+            </div>
+          );
+        })}
+      </div>
+      <strong className="tournament-bracket-series-modal__score">
+        Счёт серии {series.higher_seed_wins}:{series.lower_seed_wins}
+      </strong>
       <div className="tournament-bracket-series__games">
         {series.fixtures.length === 0 ? (
           <span className="tournament-bracket-series-modal__empty">
             Игры серии ещё не назначены.
           </span>
         ) : (
-          series.fixtures.map((fixture) => (
-            <div className="tournament-bracket-game" key={fixture.id}>
-              <span>
-                Игра {fixture.gameNumber} · {gameTimeLabel(fixture, props.timezone)}
-              </span>
-              {gameResultLabel(fixture) !== null && (
-                <strong
-                  className={`tournament-bracket-game__result${fixture.winnerSide ? ` tournament-bracket-game__result--${fixture.winnerSide}-won` : ''}`}
-                >
-                  {gameResultLabel(fixture)}
-                </strong>
-              )}
-              {isMySeries && fixture.id === latestFixtureId && (
-                <PlayerAttemptState
-                  tournamentId={props.tournamentId}
-                  fixtureId={fixture.id}
-                  currentUserId={props.currentUserId!}
-                  timezone={props.timezone}
-                  onOpenFixture={props.onOpenFixture}
-                />
-              )}
-            </div>
-          ))
+          series.fixtures.map((fixture) => {
+            const resultLabel = gameResultLabel(fixture);
+            const ariaResultLabel =
+              fixture.status === 'forfeit'
+                ? resultLabel
+                : fixture.homeName !== null &&
+                    fixture.awayName !== null &&
+                    fixture.homeScore !== null &&
+                    fixture.awayScore !== null
+                  ? `${fixture.homeName} ${fixture.homeScore}:${fixture.awayScore} ${fixture.awayName}`
+                  : null;
+            return (
+              <div
+                className="tournament-bracket-game"
+                key={fixture.id}
+                aria-label={
+                  ariaResultLabel === null
+                    ? undefined
+                    : `Игра ${fixture.gameNumber}: ${ariaResultLabel}`
+                }
+              >
+                <span>
+                  Игра {fixture.gameNumber} · {gameTimeLabel(fixture, props.timezone)}
+                </span>
+                {resultLabel !== null && (
+                  <strong
+                    className={`tournament-bracket-game__result${fixture.winnerSide ? ` tournament-bracket-game__result--${fixture.winnerSide}-won` : ''}`}
+                  >
+                    {fixture.status === 'forfeit' ? (
+                      resultLabel
+                    ) : (
+                      <>
+                        <span
+                          className={`tournament-bracket-game__participant${participantTone(fixture, 'home')}`}
+                        >
+                          {fixture.homeName}
+                        </span>{' '}
+                        {fixture.homeScore} : {fixture.awayScore}{' '}
+                        <span
+                          className={`tournament-bracket-game__participant${participantTone(fixture, 'away')}`}
+                        >
+                          {fixture.awayName}
+                        </span>
+                      </>
+                    )}
+                  </strong>
+                )}
+                {isMySeries && fixture.id === latestFixtureId && (
+                  <PlayerAttemptState
+                    tournamentId={props.tournamentId}
+                    fixtureId={fixture.id}
+                    currentUserId={props.currentUserId!}
+                    timezone={props.timezone}
+                    onOpenFixture={props.onOpenFixture}
+                  />
+                )}
+              </div>
+            );
+          })
         )}
       </div>
       {props.renderSeriesAction?.(series)}
@@ -483,6 +559,7 @@ export function TournamentPlayoffBracket({
   renderSeriesAction,
 }: TournamentPlayoffBracketProps) {
   const championship = series.filter((item) => item.kind === 'championship');
+  const seriesNumbers = playoffSeriesNumberMaps(championship);
   const finalRound = Math.max(...championship.map((item) => item.round_number));
   const byKey = new Map(
     series.flatMap((item) =>
@@ -572,7 +649,10 @@ export function TournamentPlayoffBracket({
               {selectedView.series.map((item) => {
                 const title = selectedView.bronze
                   ? 'За 3-е место'
-                  : `${playoffStageName(selectedView.roundNumber, finalRound, false)}${selectedView.series.length > 1 ? ` ${item.bracket_position}` : ''}`;
+                  : playoffSeriesTitle(
+                      seriesNumbers.byId.get(item.id) ?? item.bracket_position,
+                      item.wins_required,
+                    );
                 return (
                   <SeriesCard
                     key={item.id}
@@ -581,6 +661,7 @@ export function TournamentPlayoffBracket({
                     title={title}
                     byKey={byKey}
                     finalRound={finalRound}
+                    seriesNumberByKey={seriesNumbers.byKey}
                     timezone={timezone}
                     bronze={selectedView.bronze}
                     onOpen={() => setSelectedSeries({ series: item, title })}

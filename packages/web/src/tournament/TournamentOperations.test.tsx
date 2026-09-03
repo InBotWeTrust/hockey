@@ -266,7 +266,7 @@ describe('TournamentOperations', () => {
     );
     const bracketOverview = screen.getByRole('region', { name: 'Турнирная сетка' });
     const semifinalCard = within(bracketOverview)
-      .getByText('Полуфинал 1')
+      .getByText('Серия 1')
       .closest<HTMLElement>('.tournament-bracket-series');
     expect(semifinalCard).not.toBeNull();
     expect(within(semifinalCard!).getByText('Первый игрок')).toBeInTheDocument();
@@ -276,9 +276,9 @@ describe('TournamentOperations', () => {
       within(semifinalCard!).queryByRole('button', { name: 'Решить серию вручную' }),
     ).not.toBeInTheDocument();
     fireEvent.click(
-      within(semifinalCard!).getByRole('button', { name: 'Открыть серию Полуфинал 1' }),
+      within(semifinalCard!).getByRole('button', { name: 'Открыть серию Серия 1' }),
     );
-    let dialog = screen.getByRole('dialog', { name: 'Полуфинал 1' });
+    let dialog = screen.getByRole('dialog', { name: 'Серия 1' });
     expect(within(dialog).getByText('Игра 1 · 1 сентября, 10:00–11:00')).toBeInTheDocument();
     expect(
       within(dialog).getByRole('button', { name: 'Решить серию вручную' }),
@@ -290,13 +290,13 @@ describe('TournamentOperations', () => {
       'true',
     );
     const reopenedSemifinalCard = screen
-      .getByText('Полуфинал 1')
+      .getByText('Серия 1')
       .closest<HTMLElement>('.tournament-bracket-series');
     expect(reopenedSemifinalCard).not.toBeNull();
     fireEvent.click(
-      within(reopenedSemifinalCard!).getByRole('button', { name: 'Открыть серию Полуфинал 1' }),
+      within(reopenedSemifinalCard!).getByRole('button', { name: 'Открыть серию Серия 1' }),
     );
-    dialog = screen.getByRole('dialog', { name: 'Полуфинал 1' });
+    dialog = screen.getByRole('dialog', { name: 'Серия 1' });
     fireEvent.click(await within(dialog).findByRole('button', { name: 'Решить серию вручную' }));
     expect(screen.getByRole('button', { name: 'Подготовить решение' })).toBeDisabled();
     fireEvent.change(screen.getByRole('textbox', { name: 'Причина решения' }), {

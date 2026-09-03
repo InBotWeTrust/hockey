@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   fetchAmateurMatch,
+  confirmTournamentDuelLoadout,
   readyAmateurDuel,
   startAmateurDuelPeriod,
   submitAmateurDuelShot,
@@ -22,6 +23,9 @@ interface AmateurDuelStoreState {
   load: (matchId: string) => Promise<AmateurDuelMatchState | null>;
   refresh: () => Promise<void>;
   ready: (loadout?: AmateurDuelLoadoutSelection) => Promise<AmateurDuelMatchState | null>;
+  confirmTournamentLoadout: (
+    loadout: AmateurDuelLoadoutSelection,
+  ) => Promise<AmateurDuelMatchState | null>;
   startPeriod: (loadout?: AmateurDuelLoadoutSelection) => Promise<AmateurDuelMatchState | null>;
   updateLoadout: (
     loadout: Pick<AmateurDuelLoadoutSelection, 'stick'>,
@@ -79,6 +83,23 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
       set({
         inFlight: false,
         error: err instanceof Error ? err.message : 'failed to ready duel',
+      });
+      return null;
+    }
+  },
+
+  confirmTournamentLoadout: async (loadout) => {
+    const current = get().match;
+    if (!current || get().inFlight) return null;
+    set({ inFlight: true, error: null });
+    try {
+      const { match } = await confirmTournamentDuelLoadout(current.id, loadout);
+      set({ match, inFlight: false, error: null });
+      return match;
+    } catch (err) {
+      set({
+        inFlight: false,
+        error: err instanceof Error ? err.message : 'failed to confirm tournament loadout',
       });
       return null;
     }

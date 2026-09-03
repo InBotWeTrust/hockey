@@ -118,6 +118,7 @@ export interface ClassicGameState {
 }
 
 export interface ActiveClassicGame {
+  kind: 'classic';
   tournament_id: string;
   tournament_title: string;
   tournament_day: number;
@@ -129,6 +130,22 @@ export interface ActiveClassicGame {
   total_shots: number;
   total_goals: number;
 }
+
+export interface ActivePlayoffGame {
+  kind: 'playoff';
+  tournament_id: string;
+  tournament_title: string;
+  tournament_day: number;
+  starts_at: string;
+  closes_at: string;
+  break_ends_at: string | null;
+  state: 'scheduled' | 'ready_check' | 'active' | 'inter_game_break' | 'paused';
+  current_period: 0;
+  total_shots: 0;
+  total_goals: 0;
+}
+
+export type ActiveTournamentGame = ActiveClassicGame | ActivePlayoffGame;
 
 export interface ClassicShotInput {
   tapTime: number;
@@ -673,7 +690,7 @@ async function buildState(
 export async function listActiveClassicGames(
   pool: Pool,
   input: { userId: string; now: Date },
-): Promise<ActiveClassicGame[]> {
+): Promise<ActiveTournamentGame[]> {
   const { rows } = await pool.query<{
     tournament_id: string;
     tournament_title: string;
@@ -722,7 +739,7 @@ export async function listActiveClassicGames(
         matchday.ends_at, t.title`,
     [input.userId, input.now],
   );
-  return rows.map((row) => {
+  const classicGames: ActiveClassicGame[] = rows.map((row) => {
     const breakEndsAt =
       row.state === 'break_active' &&
       row.break_started_at !== null &&
@@ -735,6 +752,7 @@ export async function listActiveClassicGames(
           ).toISOString()
         : null;
     return {
+      kind: 'classic',
       tournament_id: row.tournament_id,
       tournament_title: row.tournament_title,
       tournament_day: Number(row.tournament_day),
@@ -747,6 +765,91 @@ export async function listActiveClassicGames(
       total_goals: Number(row.total_goals),
     };
   });
+  const playoff = await pool.query<{
+    tournament_id: string;
+    tournament_title: string;
+    tournament_day: number;
+    scheduled_starts_at: Date;
+    hard_deadline_at: Date;
+    attempt_status: 'pending' | 'ready_check' | 'active' | 'needs_reschedule' | 'needs_admin_decision';
+    attempt_number: number;
+  }>(
+    `select distinct on (
+              fixture.tournament_id,
+              participant.user_id,
+              coalesce(
+                round_game_day.local_date,
+                (coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at)
+                  at time zone coalesce(revision.rules_snapshot->'config'->>'timezone', 'UTC'))::date
+              )
+            )
+            tournament.id as tournament_id, tournament.title as tournament_title,
+            coalesce(round_game_day.day_number, round.number) as tournament_day,
+            coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at) as scheduled_starts_at,
+            coalesce(attempt.hard_deadline_at, fixture.window_ends_at) as hard_deadline_at,
+            coalesce(attempt.status, 'pending') as attempt_status,
+            coalesce(attempt.attempt_number, 1) as attempt_number
+       from tournament_fixture fixture
+       join tournament tournament on tournament.id = fixture.tournament_id
+       join tournament_revision revision on revision.id = tournament.published_revision_id
+       join tournament_round round on round.id = fixture.round_id
+       left join lateral (
+         select candidate.* from tournament_fixture_attempt candidate
+          where candidate.fixture_id = fixture.id
+          order by candidate.attempt_number desc limit 1
+       ) attempt on true
+       left join tournament_round_game_day round_game_day on round_game_day.id = attempt.round_game_day_id
+       join tournament_participant participant
+         on participant.id in (fixture.home_participant_id, fixture.away_participant_id)
+        and participant.user_id = $1 and participant.state = 'approved'
+      where tournament.status = 'playoff'
+        and round.stage in ('playoff', 'third_place')
+        and fixture.status in ('scheduled', 'open', 'active', 'paused')
+        and (attempt.status is null or attempt.status in (
+          'pending', 'ready_check', 'active', 'needs_reschedule', 'needs_admin_decision'
+        ))
+        and coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at)
+              <= $2::timestamptz + interval '30 minutes'
+        and (
+          attempt.status in ('needs_reschedule', 'needs_admin_decision')
+          or coalesce(attempt.hard_deadline_at, fixture.window_ends_at) > $2::timestamptz
+        )
+      order by fixture.tournament_id, participant.user_id,
+               coalesce(
+                 round_game_day.local_date,
+                 (coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at)
+                   at time zone coalesce(revision.rules_snapshot->'config'->>'timezone', 'UTC'))::date
+               ),
+               coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at),
+               coalesce(attempt.attempt_number, 1)`,
+    [input.userId, input.now],
+  );
+  const playoffGames: ActivePlayoffGame[] = playoff.rows.map((row) => {
+    const beforeStart = input.now < row.scheduled_starts_at;
+    return {
+      kind: 'playoff',
+      tournament_id: row.tournament_id,
+      tournament_title: row.tournament_title,
+      tournament_day: Number(row.tournament_day),
+      starts_at: row.scheduled_starts_at.toISOString(),
+      closes_at: row.hard_deadline_at.toISOString(),
+      break_ends_at: beforeStart ? row.scheduled_starts_at.toISOString() : null,
+      state:
+        row.attempt_status === 'needs_reschedule' || row.attempt_status === 'needs_admin_decision'
+          ? 'paused'
+          : beforeStart
+        ? Number(row.attempt_number) > 1
+          ? 'inter_game_break'
+          : 'scheduled'
+        : row.attempt_status === 'active'
+          ? 'active'
+          : 'ready_check',
+      current_period: 0,
+      total_shots: 0,
+      total_goals: 0,
+    };
+  });
+  return [...playoffGames, ...classicGames];
 }
 
 export async function getClassicGameState(

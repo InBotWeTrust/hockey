@@ -296,6 +296,15 @@ describe.skipIf(!hasIntegrationEnv)('tournament duel realtime progress', () => {
       payload: { loadout: {} },
     });
     expect(away.statusCode).toBe(200);
+    for (const userId of [duel.homeUserId, duel.awayUserId]) {
+      const confirmed = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${duel.duelMatchId}/tournament-loadout`,
+        headers: auth(tokenFor(userId)),
+        payload: { loadout: {} },
+      });
+      expect(confirmed.statusCode).toBe(200);
+    }
   }
 
   it('publishes canonical tournament readiness, period, and shot progress after the route commits', async () => {
@@ -327,6 +336,13 @@ describe.skipIf(!hasIntegrationEnv)('tournament duel realtime progress', () => {
       headers: auth(tokenFor(duel.awayUserId)),
       payload: { loadout: {} },
     });
+    const confirmed = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${duel.duelMatchId}/tournament-loadout`,
+      headers: auth(tokenFor(duel.homeUserId)),
+      payload: { loadout: {} },
+    });
+    expect(confirmed.statusCode).toBe(200);
     const started = await app.inject({
       method: 'POST',
       url: `/duel/amateur/matches/${duel.duelMatchId}/period/start`,

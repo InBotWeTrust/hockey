@@ -6,6 +6,191 @@ import { enqueueTournamentPush } from '../push/tournament.js';
 
 export type TournamentAudience = 'approved' | 'all_participants' | 'all_players';
 
+const PLAYOFF_DAY_STARTING_EVENT_TYPE = 'tournament.series_next_game' as const;
+
+interface PlayoffDayStartingRow {
+  tournament_id: string;
+  tournament_title: string;
+  round_id: string;
+  day_number: number;
+  user_id: string;
+  scheduled_starts_at: Date;
+  day_starts_at: Date;
+  rescheduled_starts_at: Date | null;
+  schedule_revision: number;
+  current_revision: number;
+}
+
+export interface ReconcilePlayoffDayStartingOptions {
+  now: Date;
+  systemUserId?: string;
+  publisher: EventPublisher;
+  fixtureId?: string;
+  immediate?: boolean;
+  invalidateUnreadCache?: (userId: string) => Promise<void>;
+}
+
+function playoffDayStartingAt(row: PlayoffDayStartingRow, immediate: boolean): Date {
+  return immediate ? row.scheduled_starts_at : row.rescheduled_starts_at ?? row.day_starts_at;
+}
+
+function playoffDayStartingKey(row: PlayoffDayStartingRow, immediate: boolean): string {
+  return [
+    row.tournament_id,
+    'playoff-day-starting',
+    row.round_id,
+    row.day_number,
+    row.user_id,
+    playoffDayStartingAt(row, immediate).toISOString(),
+    row.schedule_revision,
+    row.current_revision,
+  ].join(':');
+}
+
+function playoffDayStartingContent(
+  row: PlayoffDayStartingRow,
+  immediate: boolean,
+): { title: string; body: string } {
+  const startsAt = playoffDayStartingAt(row, immediate).toISOString();
+  return immediate
+    ? {
+        title: 'Матч перенесён: начинаем скоро',
+        body: `${row.tournament_title}: новая игра серии начнётся ${startsAt}.`,
+      }
+    : {
+        title: 'Скоро начинается игровой день',
+        body: `${row.tournament_title}: игра серии начнётся ${startsAt}.`,
+      };
+}
+
+async function dispatchPlayoffDayStartingForParticipant(
+  pool: Pool,
+  row: PlayoffDayStartingRow,
+  options: ReconcilePlayoffDayStartingOptions,
+): Promise<void> {
+  const immediate = options.immediate === true;
+  const eventKey = playoffDayStartingKey(row, immediate);
+  const lockClient = await acquireDispatchLock(pool, `tournament-playoff-day:${eventKey}`);
+  try {
+    const content = playoffDayStartingContent(row, immediate);
+    await enqueueTournamentPush(pool, {
+      tournamentId: row.tournament_id,
+      userId: row.user_id,
+      eventType: PLAYOFF_DAY_STARTING_EVENT_TYPE,
+      eventKey,
+      variables: { startsAt: playoffDayStartingAt(row, immediate).toISOString() },
+      fallback: {
+        title: content.title,
+        body: content.body,
+        url: `/?view=amateur&section=tournaments&tournament=${encodeURIComponent(row.tournament_id)}&tab=schedule`,
+      },
+    });
+    if (options.systemUserId === undefined) return;
+    const existing = await pool.query<{ id: string }>(
+      `select id from messages
+        where sender_id = $1
+          and metadata->>'playoffDayStartingKey' = $2
+          and metadata->>'recipientUserId' = $3
+        limit 1`,
+      [options.systemUserId, eventKey, row.user_id],
+    );
+    if (existing.rows[0] !== undefined) return;
+    const dm = await findOrCreateDM(pool, options.systemUserId, row.user_id);
+    const message = await sendMessage(pool, {
+      chatId: dm.chatId,
+      senderId: options.systemUserId,
+      content: content.body,
+      metadata: {
+        type: 'tournament_playoff_day_starting',
+        title: content.title,
+        tournamentId: row.tournament_id,
+        recipientUserId: row.user_id,
+        playoffDayStartingKey: eventKey,
+        action: tournamentAnnouncementAction(row.tournament_id),
+      },
+    });
+    await publishMessageNew(pool, options.publisher, dm.chatId, 'direct', message);
+    if (options.invalidateUnreadCache !== undefined) {
+      await options.invalidateUnreadCache(row.user_id);
+    }
+  } finally {
+    await lockClient
+      .query(`select pg_advisory_unlock(hashtext($1))`, [`tournament-playoff-day:${eventKey}`])
+      .catch(() => undefined);
+    lockClient.release();
+  }
+}
+
+/**
+ * The lifecycle timer is authoritative for the T-30 reminder. The same query also drives the
+ * main-screen active-game board, so a player cannot receive a reminder for a hidden game.
+ */
+export async function reconcilePlayoffDayStartingCommunications(
+  pool: Pool,
+  options: ReconcilePlayoffDayStartingOptions,
+): Promise<{ considered: number }> {
+  if (options.systemUserId === undefined) return { considered: 0 };
+  const fixtureClause = options.fixtureId === undefined ? '' : 'and fixture.id = $2';
+  const params =
+    options.fixtureId === undefined
+      ? [options.now]
+      : [options.now, options.fixtureId];
+  const windowClause =
+    options.immediate === true
+      ? `attempt.scheduled_starts_at > $1 and attempt.scheduled_starts_at < $1 + interval '30 minutes'`
+      : `attempt.scheduled_starts_at >= $1 and attempt.scheduled_starts_at <= $1 + interval '30 minutes'`;
+  const { rows } = await pool.query<PlayoffDayStartingRow>(
+    `select distinct on (fixture.tournament_id, round.id, coalesce(round_game_day.day_number, round.number), participant.user_id)
+            tournament.id as tournament_id, tournament.title as tournament_title,
+            round.id as round_id, coalesce(round_game_day.day_number, round.number) as day_number,
+            participant.user_id, coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at)
+              as scheduled_starts_at,
+            coalesce(
+              round_game_day.first_game_starts_at,
+              round.starts_at,
+              attempt.scheduled_starts_at,
+              fixture.scheduled_starts_at
+            ) as day_starts_at,
+            coalesce(round_game_day.schedule_revision, round.schedule_revision) as schedule_revision,
+            coalesce(
+              round_game_day.rescheduled_starts_at,
+              round.rescheduled_starts_at
+            ) as rescheduled_starts_at,
+            tournament.current_revision
+       from tournament_fixture fixture
+       join tournament tournament on tournament.id = fixture.tournament_id
+       join tournament_round round on round.id = fixture.round_id
+       left join lateral (
+         select candidate.* from tournament_fixture_attempt candidate
+          where candidate.fixture_id = fixture.id
+          order by candidate.attempt_number desc limit 1
+       ) attempt on true
+       left join lateral (
+         select candidate.round_game_day_id from tournament_fixture_attempt candidate
+          where candidate.fixture_id = fixture.id and candidate.round_game_day_id is not null
+          order by candidate.attempt_number desc limit 1
+       ) fixture_game_day on true
+       left join tournament_round_game_day round_game_day
+         on round_game_day.id = coalesce(attempt.round_game_day_id, fixture_game_day.round_game_day_id)
+       join tournament_participant participant
+         on participant.id in (fixture.home_participant_id, fixture.away_participant_id)
+        and participant.state = 'approved'
+      where tournament.status = 'playoff'
+        and round.stage in ('playoff', 'third_place')
+        and fixture.status in ('scheduled', 'open', 'active', 'paused')
+        and (attempt.status is null or attempt.status in ('pending', 'ready_check', 'active'))
+        and ${windowClause.replaceAll('attempt.scheduled_starts_at', 'coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at)')}
+        ${fixtureClause}
+      order by fixture.tournament_id, round.id, coalesce(round_game_day.day_number, round.number), participant.user_id,
+               coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at)`,
+    params,
+  );
+  for (const row of rows) {
+    await dispatchPlayoffDayStartingForParticipant(pool, row, options);
+  }
+  return { considered: rows.length };
+}
+
 interface TournamentAnnouncementAction {
   type: 'tournament';
   label: 'Перейти в турнир';
