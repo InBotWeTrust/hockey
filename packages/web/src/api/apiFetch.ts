@@ -6,9 +6,8 @@ const GENERIC_SERVER_ERROR_MESSAGE = 'Не удалось выполнить з�
 const SERVER_ERROR_MESSAGES: Record<string, string> = {
   telegram_already_linked: 'Аккаунт уже занят',
   vk_already_linked: 'Аккаунт уже занят',
-  unsupported_media_type: 'Формат файла не поддерживается. Загрузите JPG, PNG, WebP или GIF.',
-  FST_ERR_CTP_INVALID_MEDIA_TYPE:
-    'Формат файла не поддерживается. Загрузите JPG, PNG, WebP или GIF.',
+  unsupported_media_type: 'Это изображение не подходит. Выберите другое из галереи.',
+  FST_ERR_CTP_INVALID_MEDIA_TYPE: 'Это изображение не подходит. Выберите другое из галереи.',
   'open duel already exists for this opponent': 'С этим игроком уже есть открытая дуэль.',
   bonus_level_locked: 'Бонус-игры доступны после открытия любительского уровня.',
   bonus_previous_game_required: 'Сначала завершите предыдущую бонус-игру.',
@@ -29,6 +28,10 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   arena_unavailable: 'Домашняя площадка временно недоступна.',
   onboarding_publish_invalid: 'Не удалось опубликовать: проверьте шаги и изображения.',
   onboarding_preview_unavailable: 'Предпросмотр недоступен: сначала добавьте шаги.',
+  playoff_round_started: 'Раунд уже начался. Перенесите оставшиеся игры отдельно в календаре.',
+  playoff_round_schedule_order:
+    'Следующий раунд начинается раньше окончания предыдущего. Перенесите его даты вперёд.',
+  tournament_schedule_date_not_future: 'Выберите будущую дату первого тура.',
 };
 
 export class ApiError extends Error {
@@ -36,7 +39,7 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly code: string,
     message: string,
-    public readonly details: unknown = undefined,
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -57,8 +60,8 @@ export function __resetRefreshStateForTests(): void {
 
 async function parseError(res: Response): Promise<ApiError> {
   let code = 'http_error';
-  let message = `HTTP ${res.status}`;
-  let details: unknown;
+  let message = GENERIC_SERVER_ERROR_MESSAGE;
+  let details: Record<string, unknown> | undefined;
   try {
     // Server (errorsPlugin) sends `{ error: { code, message } }`. Older
     // callers/tests may still send the flat `{ error, message }` shape, so
@@ -72,7 +75,13 @@ async function parseError(res: Response): Promise<ApiError> {
     } else if (body.error && typeof body.error === 'object') {
       if (body.error.code) code = body.error.code;
       if (body.error.message) message = body.error.message;
-      details = body.error.details;
+      if (
+        body.error.details &&
+        typeof body.error.details === 'object' &&
+        !Array.isArray(body.error.details)
+      ) {
+        details = body.error.details as Record<string, unknown>;
+      }
     }
     if (body.message) message = body.message;
   } catch {

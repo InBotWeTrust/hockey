@@ -19,10 +19,12 @@ import {
   ChevronRight,
   CreditCard,
   Dumbbell,
+  FileText,
   Gamepad2,
   Heart,
   Megaphone,
   Medal,
+  Menu,
   MessageSquare,
   Package,
   Pencil,
@@ -45,6 +47,9 @@ import { ApiError } from '../api/apiFetch.js';
 import { rewardColor } from '../app/rewardColors.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { ChannelPostEditorSheet } from '../chat/components/ChannelPostEditorSheet.js';
+import { ChatInput } from '../chat/components/ChatInput.js';
+import { UserAvatar as ChatUserAvatar } from '../chat/components/UserAvatar.js';
+import type { ChatAttachmentDTO } from '../chat/api.js';
 import { RichText } from '../chat/richText.js';
 import { GlassSelect, type GlassSelectOption } from '../components/GlassSelect.js';
 import { ADMIN_NAV_HOME_EVENT } from '../components/BottomNav.js';
@@ -55,6 +60,8 @@ import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSect
 import { WeeklyChallengesAdmin } from './WeeklyChallengesAdmin.js';
 import { BonusGamesAdmin } from './BonusGamesAdmin.js';
 import { OnboardingAdmin } from './OnboardingAdmin.js';
+import { TournamentAdmin } from '../tournament/TournamentAdmin.js';
+import { tournamentTimezoneLabel } from '../tournament/timezoneLabel.js';
 import {
   createAdminInventoryItem,
   createAdminDuelTemplate,
@@ -62,6 +69,9 @@ import {
   deleteAdminChannelPost,
   deleteAdminInventoryItem,
   fetchAdminChannelNews,
+  fetchAdminOfficialAccount,
+  fetchAdminOfficialDialogMessages,
+  fetchAdminOfficialDialogs,
   fetchAdminDuelHistory,
   fetchAdminDuelTemplates,
   fetchAdminFeedback,
@@ -73,9 +83,11 @@ import {
   fetchAdminPayments,
   fetchAdminPushMonitoring,
   fetchAdminSummary,
+  fetchAdminTournamentPendingApplications,
   fetchAdminUser,
   fetchAdminUsers,
   patchAdminChannelPost,
+  patchAdminOfficialDialog,
   patchAdminChatProfile,
   resetAdminChatAvatar,
   patchAdminFeedback,
@@ -87,6 +99,9 @@ import {
   patchAdminNotification,
   patchAdminUser,
   uploadAdminChatAvatar,
+  uploadAdminOfficialAccountAvatar,
+  uploadAdminOfficialDialogAttachment,
+  sendAdminOfficialDialogMessage,
   type AdminDashboard,
   type AdminDashboardPeriod,
   type AdminDashboardSeriesPoint,
@@ -103,6 +118,8 @@ import {
   type AdminChannelPeriod,
   type AdminChannelPost,
   type AdminChannelResponse,
+  type AdminOfficialDialog,
+  type AdminOfficialDialogFilter,
   type AdminFeedback,
   type AdminFeedbackKind,
   type AdminFeedbackQuery,
@@ -145,6 +162,7 @@ type AdminTab =
   | 'achievements'
   | 'bonus-games'
   | 'duels'
+  | 'tournaments'
   | 'feedback'
   | 'onboarding'
   | 'settings';
@@ -157,16 +175,17 @@ type SettingsSectionId = 'daily' | 'training' | 'amateur' | 'pro';
 type AdminFeedbackStatus = AdminFeedbackQuery['status'];
 
 const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
-  { id: 'dashboard', label: 'Дашборд', icon: <BarChart3 size={15} /> },
+  { id: 'dashboard', label: 'Обзор', icon: <BarChart3 size={15} /> },
   { id: 'users', label: 'Игроки', icon: <Users size={15} /> },
   { id: 'notifications', label: 'Уведомления', icon: <Bell size={15} /> },
-  { id: 'channel', label: 'Канал', icon: <Megaphone size={15} /> },
+  { id: 'channel', label: 'Коммуникации', icon: <Megaphone size={15} /> },
   { id: 'anticheat', label: 'Античит', icon: <ShieldAlert size={15} /> },
   { id: 'payments', label: 'Платежи', icon: <CreditCard size={15} /> },
   { id: 'inventory', label: 'Инвентарь', icon: <Package size={15} /> },
   { id: 'achievements', label: 'Задания', icon: <Medal size={15} /> },
   { id: 'bonus-games', label: 'Бонусные игры', icon: <Gamepad2 size={15} /> },
   { id: 'duels', label: 'Дуэли', icon: <Trophy size={15} /> },
+  { id: 'tournaments', label: 'Турниры', icon: <Trophy size={15} /> },
   { id: 'feedback', label: 'Отзывы', icon: <MessageSquare size={15} /> },
   { id: 'onboarding', label: 'Онбординг', icon: <UserCheck size={15} /> },
   { id: 'settings', label: 'Параметры', icon: <SlidersHorizontal size={15} /> },
@@ -176,6 +195,12 @@ const channelPeriodOptions: Array<GlassSelectOption<AdminChannelPeriod>> = [
   { value: '7d', label: '7 дней' },
   { value: '30d', label: '30 дней' },
   { value: '90d', label: '90 дней' },
+];
+
+const officialDialogFilterOptions: Array<GlassSelectOption<AdminOfficialDialogFilter>> = [
+  { value: 'new', label: 'Новые' },
+  { value: 'open', label: 'Открытые' },
+  { value: 'closed', label: 'Закрытые' },
 ];
 
 const dashboardPeriodOptions: Array<GlassSelectOption<AdminDashboardPeriod>> = [
@@ -209,6 +234,7 @@ const pushNotificationCategoryLabels: Record<AdminPushNotificationCategory, stri
   daily: 'Ежедневная игра',
   training: 'Тренировка',
   duel: 'Дуэли',
+  tournament: 'Турниры',
   news: 'Новости',
 };
 
@@ -342,6 +368,7 @@ const pushNotificationTypeItems: Array<{
   { key: 'dailyGame', label: 'Ежедневная игра', shortLabel: 'Дневная' },
   { key: 'trainingAvailable', label: 'Тренировка доступна', shortLabel: 'Тренировка' },
   { key: 'duelEvents', label: 'Дуэли', shortLabel: 'Дуэли' },
+  { key: 'tournamentEvents', label: 'Турниры', shortLabel: 'Турниры' },
   { key: 'gameNews', label: 'Новости игры', shortLabel: 'Новости' },
 ];
 
@@ -648,6 +675,9 @@ export function AdminScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const [tab, setTab] = useState<AdminTab>('dashboard');
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
+  const adminMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const adminDrawerRef = useRef<HTMLElement>(null);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 250);
   const [roleFilter, setRoleFilter] = useState<'all' | AdminRole>('all');
@@ -667,14 +697,32 @@ export function AdminScreen(): JSX.Element {
   const [dashboardPeriod, setDashboardPeriod] = useState<AdminDashboardPeriod>('30d');
   const [mismatchPeriod, setMismatchPeriod] = useState<AdminMismatchPeriod>('30d');
   const [channelPeriod, setChannelPeriod] = useState<AdminChannelPeriod>('30d');
+  const [communicationsTab, setCommunicationsTab] = useState<
+    'news' | 'dialogs' | 'official-account'
+  >('news');
 
   useEffect(() => {
     const resetToDashboard = (): void => {
       setTab('dashboard');
+      setAdminMenuOpen(false);
     };
     window.addEventListener(ADMIN_NAV_HOME_EVENT, resetToDashboard);
     return () => window.removeEventListener(ADMIN_NAV_HOME_EVENT, resetToDashboard);
   }, []);
+
+  useEffect(() => {
+    if (!adminMenuOpen) return;
+    const firstControl = adminDrawerRef.current?.querySelector<HTMLButtonElement>('button');
+    firstControl?.focus();
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setAdminMenuOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      adminMenuButtonRef.current?.focus();
+    };
+  }, [adminMenuOpen]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const filtersChanged =
     search !== '' ||
@@ -759,6 +807,11 @@ export function AdminScreen(): JSX.Element {
     queryFn: () => fetchAdminFeedback(feedbackQuery),
     enabled: canTryAdmin,
   });
+  const pendingTournamentApplications = useQuery({
+    queryKey: ['admin', 'tournaments', 'pending-applications'],
+    queryFn: fetchAdminTournamentPendingApplications,
+    enabled: canTryAdmin,
+  });
   const mismatches = useQuery({
     queryKey: ['admin', 'mismatches', mismatchPeriod],
     queryFn: () => fetchAdminMismatches(mismatchPeriod),
@@ -809,6 +862,7 @@ export function AdminScreen(): JSX.Element {
 
   const selectedUser = users.data?.users.find((item) => item.id === selectedUserId) ?? null;
   const feedbackUnreadCount = feedback.data?.unreadCount ?? 0;
+  const pendingTournamentApplicationCount = pendingTournamentApplications.data?.count ?? 0;
 
   if (denied) {
     return (
@@ -834,36 +888,82 @@ export function AdminScreen(): JSX.Element {
         gap: 12,
       }}
     >
-      <nav
-        className="glass no-scrollbar"
-        style={{
-          borderRadius: 999,
-          padding: 4,
-          display: 'flex',
-          alignItems: 'center',
-          minHeight: 52,
-          flex: '0 0 auto',
-          overflowX: 'auto',
-          overscrollBehaviorX: 'contain',
-          gap: 4,
-        }}
-      >
-        {tabs.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setTab(item.id)}
-            className={tab === item.id ? 'chip chip--active' : 'chip'}
-            style={{
-              flex: '0 0 auto',
-              minWidth: 112,
-              height: 42,
+      <header className="admin-screen__toolbar">
+        <div className="section-label admin-screen__current-section">
+          Админ · {tabs.find((item) => item.id === tab)?.label ?? 'Обзор'}
+        </div>
+        <button
+          ref={adminMenuButtonRef}
+          type="button"
+          className="icon-btn icon-btn--dark admin-screen__menu-button"
+          aria-label="Открыть меню администратора"
+          aria-expanded={adminMenuOpen}
+          aria-controls="admin-navigation-drawer"
+          onClick={() => setAdminMenuOpen(true)}
+        >
+          <Menu size={19} />
+        </button>
+      </header>
+
+      {adminMenuOpen &&
+        createPortal(
+          <div
+            className="admin-drawer-backdrop"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setAdminMenuOpen(false);
             }}
           >
-            {item.id === 'feedback' ? `${item.label} (${feedbackUnreadCount})` : item.label}
-          </button>
-        ))}
-      </nav>
+            <aside
+              ref={adminDrawerRef}
+              id="admin-navigation-drawer"
+              className="admin-drawer"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Меню администратора"
+            >
+              <div className="admin-drawer__header">
+                <h2>Разделы</h2>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Закрыть меню администратора"
+                  onClick={() => setAdminMenuOpen(false)}
+                >
+                  <X size={17} />
+                </button>
+              </div>
+              <nav className="admin-drawer__navigation" aria-label="Разделы администратора">
+                {tabs.map((item) => {
+                  const label =
+                    item.id === 'feedback'
+                      ? `${item.label} (${feedbackUnreadCount})`
+                      : item.id === 'tournaments' && pendingTournamentApplicationCount > 0
+                        ? `${item.label} (${pendingTournamentApplicationCount})`
+                        : item.label;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={
+                        tab === item.id
+                          ? 'admin-drawer__item admin-drawer__item--active'
+                          : 'admin-drawer__item'
+                      }
+                      aria-current={tab === item.id ? 'page' : undefined}
+                      onClick={() => {
+                        setTab(item.id);
+                        setAdminMenuOpen(false);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </nav>
+            </aside>
+          </div>,
+          document.body,
+        )}
 
       {tab === 'dashboard' && (
         <DashboardPanel
@@ -913,15 +1013,32 @@ export function AdminScreen(): JSX.Element {
         />
       )}
       {tab === 'channel' && (
-        <ChannelPanel
-          loading={channel.isLoading}
-          data={channel.data}
-          period={channelPeriod}
-          onPeriod={setChannelPeriod}
-          onChanged={() => {
-            void queryClient.invalidateQueries({ queryKey: ['admin', 'channel'] });
-          }}
-        />
+        <>
+          <SegmentedTabs
+            items={[
+              { id: 'news', label: 'Новости' },
+              { id: 'dialogs', label: 'Диалоги' },
+              { id: 'official-account', label: 'Официальный аккаунт' },
+            ]}
+            activeTab={communicationsTab}
+            ariaLabel="Раздел коммуникаций"
+            onChange={setCommunicationsTab}
+            scrollable
+          />
+          {communicationsTab === 'news' && (
+            <ChannelPanel
+              loading={channel.isLoading}
+              data={channel.data}
+              period={channelPeriod}
+              onPeriod={setChannelPeriod}
+              onChanged={() => {
+                void queryClient.invalidateQueries({ queryKey: ['admin', 'channel'] });
+              }}
+            />
+          )}
+          {communicationsTab === 'dialogs' && <OfficialDialogsPanel />}
+          {communicationsTab === 'official-account' && <OfficialAccountPanel />}
+        </>
       )}
       {tab === 'anticheat' && (
         <AnticheatPanel
@@ -980,6 +1097,7 @@ export function AdminScreen(): JSX.Element {
           }}
         />
       )}
+      {tab === 'tournaments' && <TournamentAdmin />}
       {tab === 'feedback' && (
         <FeedbackPanel
           loading={feedback.isLoading}
@@ -1033,13 +1151,13 @@ function DashboardPanel({
       }}
     >
       <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
-        Дашборд
+        Обзор
       </div>
       <GlassSelect
         value={period}
         options={dashboardPeriodOptions}
         onChange={onPeriod}
-        ariaLabel="Период дашборда"
+        ariaLabel="Период обзора"
       />
     </div>
   );
@@ -1064,21 +1182,21 @@ function DashboardPanel({
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="activeUsers"
-        color="#1d4ed8"
+        color="#2f7dd3"
       />
       <DashboardChartCard
         title="Новые пользователи"
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="newUsers"
-        color="#0f766e"
+        color="#149aa4"
       />
       <DashboardChartCard
         title="Выручка"
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="revenueRub"
-        color="#7c2d12"
+        color="#d78332"
         formatValue={moneyText}
         formatAxisValue={compactMoneyText}
       />
@@ -1087,14 +1205,14 @@ function DashboardPanel({
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="shots"
-        color="#4338ca"
+        color="#4057c9"
       />
       <DashboardChartCard
         title="Сообщения"
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="messages"
-        color="#047857"
+        color="#197c70"
       />
     </>
   );
@@ -1237,17 +1355,17 @@ function DashboardMetricGrid({
     {
       label: 'Активные',
       value: numberText(dashboard.users.activeInPeriod),
-      note: `7д ${numberText(dashboard.users.active7d)} · год ${numberText(dashboard.users.active365d)}`,
+      note: `За 7 дней: ${numberText(dashboard.users.active7d)} · за год: ${numberText(dashboard.users.active365d)}`,
     },
     {
-      label: 'DAU / WAU',
+      label: 'Активность за день и неделю',
       value: percentText(dashboard.engagement.dauWauPercent),
-      note: `WAU / MAU ${percentText(dashboard.engagement.wauMauPercent)}`,
+      note: `За неделю и месяц ${percentText(dashboard.engagement.wauMauPercent)}`,
     },
     {
       label: 'Время в приложении',
       value: minutesText(dashboard.engagement.avgDailyActivitySpanMinutes),
-      note: 'среднее окно активности',
+      note: 'От первого до последнего входа за день',
     },
     {
       label: 'Платящие',
@@ -1255,9 +1373,9 @@ function DashboardMetricGrid({
       note: `${percentText(dashboard.payments.payerConversionPercent)} от игроков`,
     },
     {
-      label: 'ARPU',
+      label: 'Выручка на игрока',
       value: moneyText(dashboard.payments.arpuPeriodRub),
-      note: `${periodLabel} · ARPPU ${moneyText(dashboard.payments.arppuPeriodRub)}`,
+      note: `${periodLabel} · на платящего игрока ${moneyText(dashboard.payments.arppuPeriodRub)}`,
     },
     {
       label: 'Броски',
@@ -1272,10 +1390,10 @@ function DashboardMetricGrid({
     {
       label: 'Чат',
       value: numberText(dashboard.chat.messagesPeriod),
-      note: `${numberText(dashboard.chat.activeUsersPeriod)} авторов за ${periodLabel}`,
+      note: `${pluralText(dashboard.chat.activeUsersPeriod, 'автор', 'автора', 'авторов')} за ${periodLabel}`,
     },
     {
-      label: 'Фидбек',
+      label: 'Отзывы',
       value: numberText(dashboard.feedback.unread),
       note: `${numberText(dashboard.feedback.total)} всего`,
     },
@@ -1680,7 +1798,7 @@ function UsersPanel({
           type="search"
           value={search}
           onChange={(event) => onSearch(event.target.value)}
-          placeholder="Имя, username или tg id"
+          placeholder="Имя, ник или номер профиля"
           aria-label="Поиск игроков"
           style={{
             flex: 1,
@@ -2221,7 +2339,7 @@ function UserDetailsModal({
         <IdentityCards identities={user.identities} />
 
         <MetaPair
-          left={{ label: 'Часовой пояс', value: user.timezone }}
+          left={{ label: 'Часовой пояс', value: tournamentTimezoneLabel(user.timezone) }}
           right={{ label: 'Последний визит', value: dateText(user.lastSeenAt) }}
         />
 
@@ -3054,7 +3172,7 @@ function PushMonitoringPanel({
               <DashboardMiniStat
                 label="Клики"
                 value={numberText(overview?.clickCount ?? 0)}
-                note={`CTR ${percentText(overview?.deliveryClickRate ?? 0)}`}
+                note={`Переходы ${percentText(overview?.deliveryClickRate ?? 0)}`}
               />
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -3586,6 +3704,434 @@ function AdminChatAvatarControl({
         </button>
       </div>
     </div>
+  );
+}
+
+const OFFICIAL_VOICE_MAX_DURATION_MS = 120_000;
+
+function preferredOfficialVoiceMimeType(): string {
+  if (
+    typeof MediaRecorder !== 'undefined' &&
+    MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+  ) {
+    return 'audio/webm;codecs=opus';
+  }
+  if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/webm')) {
+    return 'audio/webm';
+  }
+  return '';
+}
+
+function officialMessageAttachments(
+  metadata: Record<string, unknown> | undefined,
+): ChatAttachmentDTO[] {
+  if (!metadata || !Array.isArray(metadata.attachments)) return [];
+  return metadata.attachments.filter((item): item is ChatAttachmentDTO => {
+    if (typeof item !== 'object' || item === null) return false;
+    const attachment = item as Partial<ChatAttachmentDTO>;
+    return typeof attachment.id === 'string' && typeof attachment.url === 'string';
+  });
+}
+
+export function OfficialDialogModal({
+  dialog,
+  onClose,
+  onChanged,
+}: {
+  dialog: AdminOfficialDialog;
+  onClose: () => void;
+  onChanged: () => void;
+}): JSX.Element {
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceTimeoutRef = useRef<number | null>(null);
+  const [pendingAttachment, setPendingAttachment] = useState<ChatAttachmentDTO | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [voiceState, setVoiceState] = useState<'idle' | 'recording' | 'uploading'>('idle');
+  const messages = useQuery({
+    queryKey: ['admin', 'communications', 'dialogs', dialog.chatId, 'messages'],
+    queryFn: () => fetchAdminOfficialDialogMessages(dialog.chatId),
+    refetchInterval: 5_000,
+  });
+  const sendMutation = useMutation({
+    mutationFn: ({ content, attachmentIds }: { content: string; attachmentIds: string[] }) =>
+      sendAdminOfficialDialogMessage(dialog.chatId, content, attachmentIds),
+    onSuccess: () => {
+      setPendingAttachment(null);
+      setAttachmentError(null);
+      void messages.refetch();
+      onChanged();
+    },
+  });
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => uploadAdminOfficialDialogAttachment(dialog.chatId, file),
+    onMutate: () => setAttachmentError(null),
+    onSuccess: ({ media }) => setPendingAttachment(media),
+    onError: (error) =>
+      setAttachmentError(error instanceof Error ? error.message : 'Не удалось загрузить файл'),
+  });
+  const stateMutation = useMutation({
+    mutationFn: (status: 'open' | 'closed') =>
+      patchAdminOfficialDialog(dialog.chatId, { status, markRead: true }),
+    onSuccess: () => {
+      onChanged();
+      onClose();
+    },
+  });
+
+  const stopVoiceTracks = (): void => {
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+    voiceStreamRef.current = null;
+    if (voiceTimeoutRef.current !== null) {
+      window.clearTimeout(voiceTimeoutRef.current);
+      voiceTimeoutRef.current = null;
+    }
+  };
+  const stopVoiceRecording = (): void => {
+    const recorder = voiceRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+  };
+  const handleVoice = (): void => {
+    if (voiceState === 'recording') {
+      stopVoiceRecording();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setAttachmentError('Запись голоса недоступна в этом браузере');
+      return;
+    }
+    setAttachmentError(null);
+    void navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        const mimeType = preferredOfficialVoiceMimeType();
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        voiceStreamRef.current = stream;
+        voiceChunksRef.current = [];
+        voiceRecorderRef.current = recorder;
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) voiceChunksRef.current.push(event.data);
+        };
+        recorder.onerror = () => {
+          setAttachmentError('Не удалось записать голосовое');
+          setVoiceState('idle');
+          stopVoiceTracks();
+        };
+        recorder.onstop = () => {
+          const chunks = voiceChunksRef.current;
+          voiceRecorderRef.current = null;
+          stopVoiceTracks();
+          if (chunks.length === 0) {
+            setVoiceState('idle');
+            setAttachmentError('Голосовое получилось пустым');
+            return;
+          }
+          const blobType = recorder.mimeType || 'audio/webm';
+          const file = new File([new Blob(chunks, { type: blobType })], 'voice-message.webm', {
+            type: blobType,
+          });
+          setVoiceState('uploading');
+          uploadAdminOfficialDialogAttachment(dialog.chatId, file)
+            .then(({ media }) => sendAdminOfficialDialogMessage(dialog.chatId, '', [media.id]))
+            .then(() => {
+              void messages.refetch();
+              onChanged();
+            })
+            .catch((error: unknown) =>
+              setAttachmentError(
+                error instanceof Error ? error.message : 'Не удалось отправить голосовое',
+              ),
+            )
+            .finally(() => setVoiceState('idle'));
+        };
+        recorder.start();
+        setVoiceState('recording');
+        voiceTimeoutRef.current = window.setTimeout(
+          stopVoiceRecording,
+          OFFICIAL_VOICE_MAX_DURATION_MS,
+        );
+      })
+      .catch(() => {
+        stopVoiceTracks();
+        setAttachmentError('Не удалось получить доступ к микрофону');
+      });
+  };
+
+  useEffect(() => {
+    return () => {
+      if (voiceRecorderRef.current?.state === 'recording') voiceRecorderRef.current.stop();
+      stopVoiceTracks();
+    };
+  }, []);
+
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="modal-card admin-official-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Диалог с ${dialog.player.displayName}`}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <input
+          ref={imageInputRef}
+          hidden
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = '';
+            if (file) uploadMutation.mutate(file);
+          }}
+        />
+        <input
+          ref={fileInputRef}
+          hidden
+          type="file"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = '';
+            if (file) uploadMutation.mutate(file);
+          }}
+        />
+        <header className="admin-official-dialog__header">
+          <div className="admin-official-dialog__person">
+            <ChatUserAvatar
+              avatarUrl={dialog.player.avatarUrl}
+              name={dialog.player.displayName}
+              size={40}
+            />
+            <div>
+              <h2 className="modal-title">{dialog.player.displayName}</h2>
+              <div className="admin-official-dialog__identity">
+                {dialog.player.telegramId ? `Telegram: ${dialog.player.telegramId}` : ''}
+                {dialog.player.telegramId && dialog.player.vkId ? ' · ' : ''}
+                {dialog.player.vkId ? `VK: ${dialog.player.vkId}` : ''}
+              </div>
+            </div>
+          </div>
+          <button type="button" className="icon-btn" aria-label="Закрыть окно" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </header>
+        <div className="admin-official-dialog__messages" aria-live="polite">
+          {messages.isLoading && <AdminPlainState>Загрузка сообщений...</AdminPlainState>}
+          {!messages.isLoading && (messages.data?.length ?? 0) === 0 && (
+            <AdminPlainState>Сообщений пока нет</AdminPlainState>
+          )}
+          {messages.data?.map((item) => (
+            <div
+              key={item.id}
+              className={`admin-official-dialog__message${item.senderId === dialog.player.userId ? '' : ' admin-official-dialog__message--official'}`}
+            >
+              {item.content && <div>{item.content}</div>}
+              {officialMessageAttachments(item.metadata).map((attachment) =>
+                attachment.kind === 'voice' ? (
+                  <audio key={attachment.id} controls preload="metadata" src={attachment.url} />
+                ) : (
+                  <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer">
+                    {attachment.originalName || 'Открыть вложение'}
+                  </a>
+                ),
+              )}
+              <time>{dateTimeText(item.createdAt)}</time>
+            </div>
+          ))}
+        </div>
+        <div className="admin-official-dialog__composer">
+          <ChatInput
+            replyTo={null}
+            placeholder="Сообщение от Ультимейт Хоккей"
+            attachmentPreview={
+              pendingAttachment ? (
+                <div className="admin-official-dialog__attachment">
+                  <FileText size={15} />
+                  <span>{pendingAttachment.originalName || 'Вложение'}</span>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label="Убрать вложение"
+                    onClick={() => setPendingAttachment(null)}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : null
+            }
+            canSendEmpty={pendingAttachment !== null}
+            onAttachImage={() => imageInputRef.current?.click()}
+            onAttachFile={() => fileInputRef.current?.click()}
+            onVoice={handleVoice}
+            voiceState={voiceState}
+            onClearReply={() => undefined}
+            disabled={
+              sendMutation.isPending || uploadMutation.isPending || voiceState === 'uploading'
+            }
+            onSend={async (content) => {
+              await sendMutation.mutateAsync({
+                content,
+                attachmentIds: pendingAttachment ? [pendingAttachment.id] : [],
+              });
+            }}
+          />
+        </div>
+        {(sendMutation.error || stateMutation.error || attachmentError) && (
+          <div role="alert" className="admin-official-dialog__error">
+            {attachmentError ?? 'Не удалось выполнить действие. Попробуйте ещё раз.'}
+          </div>
+        )}
+        <button
+          type="button"
+          className={dialog.status === 'closed' ? 'btn btn--ghost' : 'admin-danger-text-btn'}
+          disabled={stateMutation.isPending}
+          onClick={() => stateMutation.mutate(dialog.status === 'closed' ? 'open' : 'closed')}
+        >
+          {dialog.status === 'closed' ? 'Открыть диалог' : 'Закрыть диалог'}
+        </button>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
+function OfficialDialogsPanel(): JSX.Element {
+  const queryClient = useQueryClient();
+  const [filter, setFilter] = useState<AdminOfficialDialogFilter>('new');
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
+  const [selected, setSelected] = useState<AdminOfficialDialog | null>(null);
+  const dialogs = useQuery({
+    queryKey: ['admin', 'communications', 'dialogs', filter, debouncedSearch],
+    queryFn: () => fetchAdminOfficialDialogs(filter, debouncedSearch),
+    refetchInterval: 8_000,
+  });
+  const invalidate = (): void => {
+    void queryClient.invalidateQueries({ queryKey: ['admin', 'communications', 'dialogs'] });
+  };
+
+  return (
+    <>
+      <section className="admin-communications-toolbar">
+        <div className="admin-search-row">
+          <Search size={15} />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Имя, Telegram ID или VK ID"
+            aria-label="Поиск официальных диалогов"
+          />
+        </div>
+        <GlassSelect
+          value={filter}
+          options={officialDialogFilterOptions}
+          onChange={setFilter}
+          ariaLabel="Статус официальных диалогов"
+        />
+      </section>
+      <div className="section-label admin-section-label">
+        Диалоги{dialogs.data ? ` · новых ${dialogs.data.unreadCount}` : ''}
+      </div>
+      <section className="admin-official-dialog-list">
+        {dialogs.isLoading && <AdminPlainState>Загрузка диалогов...</AdminPlainState>}
+        {!dialogs.isLoading && (dialogs.data?.dialogs.length ?? 0) === 0 && (
+          <AdminPlainState>Здесь пока нет диалогов</AdminPlainState>
+        )}
+        {dialogs.data?.dialogs.map((dialog) => (
+          <button
+            key={dialog.chatId}
+            type="button"
+            className="glass admin-official-dialog-row"
+            onClick={() => setSelected(dialog)}
+          >
+            <ChatUserAvatar
+              avatarUrl={dialog.player.avatarUrl}
+              name={dialog.player.displayName}
+              size={42}
+            />
+            <span className="admin-official-dialog-row__body">
+              <span className="admin-official-dialog-row__title">
+                {dialog.player.displayName}
+                {dialog.isNew && <span className="admin-official-dialog-row__new">Новое</span>}
+              </span>
+              <span className="admin-official-dialog-row__preview">
+                {dialog.lastMessage.fromOfficial ? 'Вы: ' : ''}
+                {dialog.lastMessage.content || 'Вложение'}
+              </span>
+            </span>
+            <time>{dateTimeText(dialog.lastMessage.createdAt)}</time>
+          </button>
+        ))}
+      </section>
+      {selected && (
+        <OfficialDialogModal
+          dialog={selected}
+          onClose={() => setSelected(null)}
+          onChanged={invalidate}
+        />
+      )}
+    </>
+  );
+}
+
+function OfficialAccountPanel(): JSX.Element {
+  const queryClient = useQueryClient();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const account = useQuery({
+    queryKey: ['admin', 'communications', 'official-account'],
+    queryFn: fetchAdminOfficialAccount,
+  });
+  const upload = useMutation({
+    mutationFn: async (file: File) =>
+      uploadAdminOfficialAccountAvatar(await convertChatAvatarToWebp(file)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['admin', 'communications', 'official-account'],
+      });
+    },
+  });
+  return (
+    <>
+      <input
+        ref={inputRef}
+        hidden
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = '';
+          if (file) upload.mutate(file);
+        }}
+      />
+      <div className="section-label admin-section-label">Официальный аккаунт</div>
+      <section className="glass admin-official-account-card">
+        <ChatUserAvatar
+          avatarUrl={account.data?.avatarUrl ?? '/icons/official-account.webp'}
+          name={account.data?.displayName ?? 'Ультимейт Хоккей'}
+          size={72}
+        />
+        <div>
+          <div className="admin-official-account-card__title">
+            {account.data?.displayName ?? 'Ультимейт Хоккей'}
+          </div>
+          <div className="admin-official-account-card__copy">
+            Все администраторы отвечают игрокам от имени игры. Имя конкретного администратора
+            сохраняется только в журнале действий.
+          </div>
+        </div>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={upload.isPending}
+          onClick={() => inputRef.current?.click()}
+        >
+          Сменить аватар
+        </button>
+      </section>
+      {upload.error && <AdminPlainState>Не удалось загрузить аватар</AdminPlainState>}
+    </>
   );
 }
 

@@ -5,6 +5,7 @@ import type { ProfileAchievementDTO } from '../achievements/service.js';
 import type { CompetitionLevel, ProfileStatsDTO } from '../profile/summary.js';
 
 export type ChatType = 'direct' | 'group' | 'system' | 'channel';
+export type AccountKind = 'player' | 'official';
 export type ChatMemberRole = 'admin' | 'member';
 export type EntityType = 'team' | 'tournament';
 
@@ -101,6 +102,7 @@ export interface ChatDTO {
     // ISO timestamp of the counterpart's last read marker for this DM.
     // Used by the client to render delivered/read ticks on outgoing messages.
     lastReadAt: string | null;
+    accountKind: AccountKind;
   } | null;
   // For system chats — total active users (everyone has access).
   // For group/direct — count of chat_members rows.

@@ -4,7 +4,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
 import { verifyAccessToken } from '../auth/jwt.js';
 import type { ChatEvent, ChatEventFrame } from './types.js';
-import type { Unsubscribe } from '../plugins/realtime.js';
+import type { RealtimeEvent, Unsubscribe } from '../plugins/realtime.js';
 import { DEFAULT_NEWS_CHANNEL_SLUG, ensureDefaultNewsChannel } from './service.js';
 import { getPushPreferences } from '../push/preferences.js';
 
@@ -115,12 +115,14 @@ const plugin: FastifyPluginAsync<ChatWsOptions> = async (app, opts) => {
     let cleanedUp = false;
     const isNewsChannelByChatId = new Map<string, boolean>();
 
-    const deliver = (event: ChatEvent): void => {
-      void withUserDeliveryFlags(app, userId, event, isNewsChannelByChatId)
+    const deliver = (event: RealtimeEvent): void => {
+      if (event.type.startsWith('tournament:')) return;
+      const chatEvent = event as ChatEvent;
+      void withUserDeliveryFlags(app, userId, chatEvent, isNewsChannelByChatId)
         .then((outgoing) => send(socket, outgoing))
         .catch((err) => {
           app.log.warn({ err, userId }, 'ws: delivery flags failed');
-          send(socket, event);
+          send(socket, chatEvent);
         });
     };
 

@@ -14,12 +14,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
+  Check,
   ChevronRight,
   Crosshair,
   Info,
   Search,
   SlidersHorizontal,
-  Swords,
   X,
 } from 'lucide-react';
 import {
@@ -48,6 +48,12 @@ import { startVkOAuth } from '../auth/vkAuth.js';
 import { detectTimezone } from '../auth/timezone.js';
 import { apiFetch, ApiError } from '../api/apiFetch.js';
 import { useDailyStore } from '../stores/dailyStore.js';
+import { useClassicTournamentStore } from '../stores/classicTournamentStore.js';
+import {
+  fetchActiveClassicTournamentGames,
+  type ActiveClassicTournamentGame,
+  type ClassicTournamentState,
+} from '../api/tournamentClassic.js';
 import {
   DEMO_GOALIE_ID,
   DEMO_PERIOD_NUMBER,
@@ -66,6 +72,7 @@ import { GlassSelect } from '../components/GlassSelect.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 import type { UserPickerItem } from '../chat/api.js';
 import type {
   DailyGameStats,
@@ -75,6 +82,8 @@ import type {
   ShotResultType,
 } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
+import { fetchBonusGames } from '../api/bonusGames.js';
+import type { ProfileData } from './profileTypes.js';
 import {
   fetchMyInventory,
   patchEquipment,
@@ -88,7 +97,6 @@ import {
   cancelAmateurDuel,
   declineAmateurDuel,
   fetchAmateurEvents,
-  fetchAmateurHistory,
   fetchAmateurMatch,
   fetchAmateurMatches,
   fetchAmateurRating,
@@ -109,8 +117,13 @@ import {
   type AmateurDuelTemplate,
   type AmateurOpponent,
 } from '../api/amateurDuel.js';
+import { AmateurDuelRatingTab } from '../components/duel/AmateurDuelRatingTab.js';
+import { AmateurDuelHistoryTab } from '../components/duel/AmateurDuelHistoryTab.js';
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
+import { TournamentCatalog } from '../tournament/TournamentCatalog.js';
+import { fetchTournamentGameContext, type TournamentGameContext } from '../api/tournament.js';
+import { venueRoleLabel, type VenueRole } from '../components/VenueBadge.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
   formatInventoryBadgeAmount,
@@ -118,23 +131,22 @@ import {
   formatInventoryStockLabel,
 } from './inventoryResourceLabels.js';
 const HUB_PERIOD_DURATION_MS = 20 * 60 * 1000;
-const MODE_ARTWORK_SIZE = 104;
 
 type GameLevel = 'beginner' | 'amateur' | 'pro';
 type BeginnerMode = 'daily' | 'training';
 type DailyView = 'arena' | 'play';
-type AmateurView = 'home' | 'duels' | 'tournaments';
+type AmateurView = 'hub' | 'duels' | 'tournaments';
 type AmateurDuelTab = 'game' | 'locker' | 'rating' | 'history';
-type DuelHistoryFilter = 'current' | 'all' | string;
-type LevelArtwork = 'beginner' | 'amateur' | 'pro';
 type ModeInfoModalContent = { title: string; text: string };
-type ArenaEntryKind = 'daily' | 'training' | 'duel';
+type ArenaEntryKind = 'daily' | 'training' | 'duel' | 'classic';
 interface ArenaEntry {
   id: string;
   kind: ArenaEntryKind;
   eyebrow: string;
+  eyebrowStatus?: string;
   title: string;
   subtitle: string;
+  subtitleLines?: [string, string];
   meta: string;
   ctaLabel: string;
   disabled?: boolean;
@@ -142,15 +154,11 @@ interface ArenaEntry {
   opponentName?: string;
   opponentAvatarUrl?: string | null;
   typeLabel?: string;
+  venueRole?: VenueRole;
   secondaryActions?: ReactNode;
   onEnter: () => void;
 }
 
-const MODE_ARTWORK_IMAGES: Record<LevelArtwork, string | null> = {
-  beginner: '/modes/beginner.webp',
-  amateur: '/modes/amateur.webp',
-  pro: '/modes/pro.webp',
-};
 const DUEL_KIND_ARTWORK_IMAGES: Record<AmateurDuelKind, string> = {
   express: '/modes/amateur-duel-steal-clean.webp',
   express_plus: '/modes/amateur-duel-card.webp',
@@ -220,11 +228,22 @@ function readTrainingSpeedOverrides(): SpeedOverrides | null {
     return null;
   }
 }
-const TOURNAMENT_LED_TABLEAU_IMAGE = '/sprites/tournament-tableau.webp';
+
 const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
 const AMATEUR_TOURNAMENT_COURT_BACKGROUND = '/sprites/amateur-tournament-court.webp';
-const ARENA_ICE_COURT_BACKGROUND = '/sprites/arena-ice-court-v2.webp';
-const ARENA_ICE_TABLEAU_IMAGE = '/sprites/arena-ice-tableau-v2.webp';
+const ARENA_ICE_COURT_BACKGROUND = '/sprites/app-arena-ice.webp';
+const ARENA_CUBE_IMAGE = '/sprites/app-arena-cube.webp';
+const LEGACY_STANDARD_ARENA_BACKGROUNDS = new Set([
+  '/sprites/arena-ice-court.webp',
+  '/sprites/arena-ice-court-v2.webp',
+]);
+
+function tournamentDuelCourtBackground(match: AmateurDuelMatchState): string | undefined {
+  if (match.source !== 'tournament') return undefined;
+  return LEGACY_STANDARD_ARENA_BACKGROUNDS.has(match.arena.artwork_url)
+    ? AMATEUR_TOURNAMENT_COURT_BACKGROUND
+    : match.arena.artwork_url;
+}
 
 function saveTrainingHitboxesVisible(value: boolean): void {
   if (typeof window === 'undefined') return;
@@ -246,6 +265,16 @@ function saveTrainingSpeedOverrides(value: SpeedOverrides | null): void {
   } catch {
     // Speed controls are a local training aid; storage failure should not block gameplay.
   }
+}
+
+function isDevTrainingDebugHost(hostname: string): boolean {
+  const normalizedHostname = hostname.trim().toLowerCase();
+  return (
+    normalizedHostname === 'dev.hockey.inbotwetrust.ru' ||
+    normalizedHostname === 'localhost' ||
+    normalizedHostname === '127.0.0.1' ||
+    normalizedHostname === '::1'
+  );
 }
 
 function movementDistancePxForElapsed(elapsedMs: number, shooterFrequency: number): number {
@@ -330,6 +359,52 @@ type PlayOpenOptions = {
 
 type PendingPlayMarker = 'daily' | 'training' | `duel:${string}` | null;
 
+export function initialGameRouteState(search: string): {
+  selectedLevel: GameLevel;
+  activeAmateurMatchId: string | null;
+  amateurView: AmateurView;
+  beginnerMode: BeginnerMode;
+  dailyView: DailyView;
+} {
+  const params = new URLSearchParams(search);
+  const view = params.get('view');
+  const amateurSection = params.get('section');
+  const activeAmateurMatchId = view === 'amateur' ? params.get('match') : null;
+  return {
+    selectedLevel: view === 'amateur' ? 'amateur' : view === 'pro' ? 'pro' : 'beginner',
+    activeAmateurMatchId,
+    amateurView:
+      amateurSection === 'tournaments'
+        ? 'tournaments'
+        : amateurSection === 'duels'
+          ? 'duels'
+          : 'hub',
+    beginnerMode: view === 'training' ? 'training' : 'daily',
+    dailyView: view === 'daily' ? 'play' : 'arena',
+  };
+}
+
+export function duelBackLabel(
+  source: 'challenge' | 'matchmaking' | 'tournament',
+  directPlayOnly: boolean,
+): string {
+  if (source === 'tournament') return 'К турниру';
+  return directPlayOnly ? 'К арене' : 'К дуэлям';
+}
+
+export function tournamentDuelBackPath(
+  fromSections: boolean,
+  tournamentId: string | null = null,
+): string {
+  const params = new URLSearchParams({ view: 'amateur', section: 'tournaments' });
+  if (tournamentId) {
+    params.set('tournament', tournamentId);
+    params.set('tab', 'schedule');
+  }
+  if (fromSections) params.set('from', 'sections');
+  return `/?${params.toString()}`;
+}
+
 export function DailyScreen(): JSX.Element {
   const location = useLocation();
   const navigate = useNavigate();
@@ -340,17 +415,26 @@ export function DailyScreen(): JSX.Element {
   const refresh = useDailyStore((s) => s.refresh);
   const routeParams = new URLSearchParams(location.search);
   const fromSections = routeParams.get('from') === 'sections';
-  const [selectedLevel, setSelectedLevel] = useState<GameLevel>('beginner');
-  const [activeAmateurMatchId, setActiveAmateurMatchId] = useState<string | null>(null);
-  const [amateurView, setAmateurView] = useState<AmateurView>('home');
-  const [beginnerMode, setBeginnerMode] = useState<BeginnerMode>(() => {
-    const view = new URLSearchParams(location.search).get('view');
-    return view === 'training' ? 'training' : 'daily';
+  const tournamentOrigin = routeParams.get('section') === 'tournaments';
+  const tournamentId = routeParams.get('tournament');
+  const tournamentGameRoute =
+    tournamentOrigin &&
+    tournamentId !== null &&
+    (routeParams.get('view') === 'daily' || routeParams.get('view') === 'classic');
+  const tournamentGameContext = useQuery({
+    queryKey: ['tournament-game-context', tournamentId],
+    queryFn: () => fetchTournamentGameContext(tournamentId!),
+    enabled: tournamentGameRoute,
+    retry: false,
   });
-  const [dailyView, setDailyView] = useState<DailyView>(() => {
-    const view = new URLSearchParams(location.search).get('view');
-    return view === 'daily' ? 'play' : 'arena';
-  });
+  const initialRouteState = initialGameRouteState(location.search);
+  const [selectedLevel, setSelectedLevel] = useState<GameLevel>(initialRouteState.selectedLevel);
+  const [activeAmateurMatchId, setActiveAmateurMatchId] = useState<string | null>(
+    initialRouteState.activeAmateurMatchId,
+  );
+  const [amateurView, setAmateurView] = useState<AmateurView>(initialRouteState.amateurView);
+  const [beginnerMode, setBeginnerMode] = useState<BeginnerMode>(initialRouteState.beginnerMode);
+  const [dailyView, setDailyView] = useState<DailyView>(initialRouteState.dailyView);
   const [pendingPlayEntrance, setPendingPlayEntrance] = useState<PendingPlayMarker>(null);
   const [pendingPlayRouteTransition, setPendingPlayRouteTransition] =
     useState<PendingPlayMarker>(null);
@@ -365,8 +449,14 @@ export function DailyScreen(): JSX.Element {
   );
 
   useEffect(() => {
+    if (tournamentGameRoute) return;
     void refresh();
-  }, [refresh]);
+  }, [refresh, tournamentGameRoute]);
+
+  useEffect(() => {
+    if (tournamentGameContext.data?.action !== 'play_daily') return;
+    void refresh();
+  }, [refresh, tournamentGameContext.data?.action]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -397,7 +487,9 @@ export function DailyScreen(): JSX.Element {
         setActiveAmateurMatchId(matchId);
       } else {
         setActiveAmateurMatchId(null);
-        setAmateurView(section === 'duels' || section === 'tournaments' ? section : 'home');
+        setAmateurView(
+          section === 'tournaments' ? 'tournaments' : section === 'duels' ? 'duels' : 'hub',
+        );
       }
     }
     if (view === 'pro') {
@@ -407,6 +499,56 @@ export function DailyScreen(): JSX.Element {
       setActiveAmateurMatchId(null);
     }
   }, [location.search]);
+
+  if (tournamentGameRoute) {
+    if (tournamentGameContext.isLoading) {
+      return <TournamentGameContextLoading />;
+    }
+    if (tournamentGameContext.isError || tournamentGameContext.data === undefined) {
+      return (
+        <TournamentGameContextCard
+          context={null}
+          onBack={() =>
+            navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true })
+          }
+        />
+      );
+    }
+    if (
+      tournamentGameContext.data.action !== 'play_daily' &&
+      tournamentGameContext.data.action !== 'play_classic'
+    ) {
+      return (
+        <TournamentGameContextCard
+          context={tournamentGameContext.data}
+          onBack={() =>
+            navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true })
+          }
+        />
+      );
+    }
+    if (tournamentGameContext.data.action === 'play_classic') {
+      return (
+        <ClassicTournamentPlayView
+          tournamentId={tournamentId}
+          onBack={() =>
+            navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true })
+          }
+        />
+      );
+    }
+  }
+
+  if (!tournamentGameRoute && routeParams.get('view') === 'classic' && tournamentId !== null) {
+    return (
+      <ClassicTournamentPlayView
+        tournamentId={tournamentId}
+        onBack={() =>
+          navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true })
+        }
+      />
+    );
+  }
 
   if (!data) {
     return (
@@ -423,11 +565,9 @@ export function DailyScreen(): JSX.Element {
         }}
       >
         {error ? (
-          <>
-            <div style={{ color: 'var(--red-deep, #b91c1c)', fontWeight: 600 }}>
-              Не удалось загрузить
-            </div>
-            <div style={{ color: 'var(--muted)', fontSize: 13, maxWidth: 280 }}>{error}</div>
+          <div className="arena-error-state" role="alert">
+            <div className="arena-error-state__title">Не удалось загрузить</div>
+            <div className="arena-error-state__copy">{error}</div>
             <button
               type="button"
               className="btn btn--cta"
@@ -436,12 +576,14 @@ export function DailyScreen(): JSX.Element {
             >
               Повторить
             </button>
-            <div style={{ color: 'var(--muted)', fontSize: 11 }}>
+            <div className="arena-error-state__hint">
               Если ошибка повторяется — выйди и зайди заново через /login.
             </div>
-          </>
+          </div>
         ) : (
-          <div style={{ color: 'var(--muted)' }}>Загрузка…</div>
+          <div className="route-loading" role="status">
+            Загрузка…
+          </div>
         )}
       </main>
     );
@@ -471,7 +613,7 @@ export function DailyScreen(): JSX.Element {
     setSelectedLevel('beginner');
     setBeginnerMode('daily');
     setActiveAmateurMatchId(null);
-    setAmateurView('home');
+    setAmateurView('duels');
     navigate('/sections', { replace: true });
   };
 
@@ -504,10 +646,28 @@ export function DailyScreen(): JSX.Element {
     navigate('/?view=training&play=1', { replace: true });
   };
 
-  if (selectedLevel === 'beginner' && beginnerMode === 'daily' && dailyView === 'play') {
+  const openAmateurHub = (): void => {
+    setPendingPlayEntrance(null);
+    setPendingPlayRouteTransition(null);
+    setActiveAmateurMatchId(null);
+    setAmateurView('hub');
+    navigate('/?view=amateur&from=sections', { replace: true });
+  };
+
+  if (
+    (selectedLevel === 'beginner' && beginnerMode === 'daily' && dailyView === 'play') ||
+    tournamentGameContext.data?.action === 'play_daily'
+  ) {
     return (
       <DailyPlayView
-        onBack={leavePlayForHub}
+        backLabel={tournamentOrigin ? 'К турниру' : 'К режимам'}
+        onBack={() => {
+          if (tournamentOrigin) {
+            leavePlaySurface(tournamentDuelBackPath(fromSections, tournamentId));
+            return;
+          }
+          leavePlayForHub();
+        }}
         playEntranceOnMount={pendingPlayEntrance === 'daily'}
         onEntranceConsumed={() => setPendingPlayEntrance(null)}
         playRouteTransitionOnMount={pendingPlayRouteTransition === 'daily'}
@@ -535,6 +695,11 @@ export function DailyScreen(): JSX.Element {
               setPendingPlayRouteTransition(null);
               setActiveAmateurMatchId(null);
               if (directDuelPlay) {
+                if (tournamentOrigin) {
+                  setAmateurView('tournaments');
+                  leavePlaySurface(tournamentDuelBackPath(fromSections, tournamentId));
+                  return;
+                }
                 setSelectedLevel('beginner');
                 setBeginnerMode('daily');
                 leavePlaySurface('/?view=arena');
@@ -546,18 +711,28 @@ export function DailyScreen(): JSX.Element {
           />
         );
       }
+      if (amateurView === 'hub') {
+        return (
+          <AmateurHubPage
+            onBack={openSections}
+            onOpenSection={(section) => {
+              if (section === 'bonus-games') {
+                navigate('/bonus-games?from=sections');
+                return;
+              }
+              setAmateurView(section);
+              navigate(`/?view=amateur&section=${section}&from=sections`, { replace: true });
+            }}
+          />
+        );
+      }
       if (amateurView === 'duels') {
         return (
           <AmateurDuelsPage
-            onBack={() => {
-              setAmateurView('home');
-              navigate(fromSections ? '/?view=amateur&from=sections' : '/?view=amateur', {
-                replace: true,
-              });
-            }}
+            onBack={openAmateurHub}
             onOpenMatch={(matchId) => {
               setActiveAmateurMatchId(matchId);
-              navigate(`/?view=amateur&match=${encodeURIComponent(matchId)}&play=1`, {
+              navigate(`/?view=amateur&match=${encodeURIComponent(matchId)}&play=1&from=sections`, {
                 replace: true,
               });
             }}
@@ -565,49 +740,8 @@ export function DailyScreen(): JSX.Element {
         );
       }
       if (amateurView === 'tournaments') {
-        return (
-          <AmateurTournamentsPage
-            onBack={() => {
-              setAmateurView('home');
-              navigate(fromSections ? '/?view=amateur&from=sections' : '/?view=amateur', {
-                replace: true,
-              });
-            }}
-          />
-        );
+        return <AmateurTournamentsPage onBack={openAmateurHub} />;
       }
-      return (
-        <AmateurHub
-          onBack={() => {
-            if (fromSections) {
-              openSections();
-              return;
-            }
-            setSelectedLevel('beginner');
-            setBeginnerMode('daily');
-            setAmateurView('home');
-            navigate('/?view=arena', { replace: true });
-          }}
-          onOpenDuels={() => {
-            setAmateurView('duels');
-            navigate(
-              fromSections
-                ? '/?view=amateur&section=duels&from=sections'
-                : '/?view=amateur&section=duels',
-              { replace: true },
-            );
-          }}
-          onOpenTournaments={() => {
-            setAmateurView('tournaments');
-            navigate(
-              fromSections
-                ? '/?view=amateur&section=tournaments&from=sections'
-                : '/?view=amateur&section=tournaments',
-              { replace: true },
-            );
-          }}
-        />
-      );
     }
     return (
       <LevelPlaceholder
@@ -665,6 +799,80 @@ export function DailyScreen(): JSX.Element {
   );
 }
 
+function tournamentGameResultLabel(result: NonNullable<TournamentGameContext['result']>): string {
+  const lastTwo = Math.abs(result.goals) % 100;
+  const last = lastTwo % 10;
+  const puckWord =
+    lastTwo >= 11 && lastTwo <= 14
+      ? 'шайб'
+      : last === 1
+        ? 'шайба'
+        : last >= 2 && last <= 4
+          ? 'шайбы'
+          : 'шайб';
+  const shotsLastTwo = Math.abs(result.shots) % 100;
+  const shotsLast = shotsLastTwo % 10;
+  const shotsWord =
+    shotsLastTwo >= 11 && shotsLastTwo <= 14
+      ? 'бросков'
+      : shotsLast === 1
+        ? 'бросок'
+        : shotsLast >= 2 && shotsLast <= 4
+          ? 'броска'
+          : 'бросков';
+  return `${result.goals} ${puckWord} · ${result.shots} ${shotsWord} · точность ${new Intl.NumberFormat(
+    'ru-RU',
+    {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    },
+  ).format(result.accuracy * 100)}%`;
+}
+
+function TournamentGameContextLoading(): JSX.Element {
+  return (
+    <main className="screen route-loading" role="status">
+      Проверяем турнирную игру…
+    </main>
+  );
+}
+
+function TournamentGameContextCard({
+  context,
+  onBack,
+}: {
+  context: TournamentGameContext | null;
+  onBack: () => void;
+}): JSX.Element {
+  const message = context?.message ?? 'Не удалось проверить доступ к турнирной игре.';
+  return (
+    <main className="screen" style={{ display: 'grid', placeItems: 'center', padding: 20 }}>
+      <section
+        className="glass"
+        style={{ width: 'min(100%, 420px)', padding: 24, textAlign: 'center' }}
+      >
+        <h1 className="modal-title">Турнирная игра</h1>
+        <p className="modal-copy">{message}</p>
+        {context !== null && context.result !== null && (
+          <>
+            {context.result.completed === false && (
+              <p className="modal-copy">Незавершённая игра зачтена по правилам турнира.</p>
+            )}
+            <p className="modal-copy" aria-label="Результат турнирной игры">
+              {tournamentGameResultLabel(context.result)}
+            </p>
+          </>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-primary btn--cta" onClick={onBack}>
+            Вернуться к турниру
+          </button>
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function GameHub({
   onOpenDailyPlay,
   onOpenTraining,
@@ -676,6 +884,7 @@ function GameHub({
   onOpenTrainingPlay: (options?: PlayOpenOptions) => void;
   onOpenAmateurMatch: (matchId: string, options?: PlayOpenOptions) => void;
 }): JSX.Element {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const data = useDailyStore((s) => s.data)!;
   const refresh = useDailyStore((s) => s.refresh);
@@ -718,6 +927,11 @@ function GameHub({
     enabled: data.lifetime_total_goals >= amateurUnlockGoalsRequired,
     refetchInterval: 30_000,
   });
+  const classicTournamentGames = useQuery({
+    queryKey: ['tournaments', 'classic', 'active'],
+    queryFn: fetchActiveClassicTournamentGames,
+    refetchInterval: 30_000,
+  });
   const amateurEventItems = amateurEvents.data?.events ?? [];
   const duelStatsCurrentMatch = duelStatsMatch
     ? (amateurEventItems.find((event) => event.id === duelStatsMatch.id) ?? duelStatsMatch)
@@ -734,13 +948,19 @@ function GameHub({
       data.state !== 'break_active' &&
       data.state !== 'closed' &&
       !isDailyLockedByTraining &&
-      activeDuelEvents.length === 0
+      activeDuelEvents.length === 0 &&
+      (classicTournamentGames.data?.games?.length ?? 0) === 0
     ) {
       return undefined;
     }
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [activeDuelEvents.length, data.state, isDailyLockedByTraining]);
+  }, [
+    activeDuelEvents.length,
+    classicTournamentGames.data?.games?.length,
+    data.state,
+    isDailyLockedByTraining,
+  ]);
 
   useEffect(() => {
     if (data.state === 'period_active' && periodEndsAt > 0 && periodRemaining === 0) void refresh();
@@ -796,7 +1016,7 @@ function GameHub({
               timerLabel: 'До обновления',
               timer: formatHms(nextDayRemaining),
               activePeriod: null,
-              ariaLabel: `Завершена. До обновления ${formatHms(nextDayRemaining)}. Периоды не активны`,
+              ariaLabel: `Завершена. До обновления ${formatHms(nextDayRemaining)}`,
             }
           : isDailyLockedByTraining
             ? {
@@ -944,6 +1164,7 @@ function GameHub({
         periodsTotal={data.total_periods}
         timer={dailyHubScoreboard.timer}
         timerLabel={dailyHubScoreboard.timerLabel}
+        timerOnly={data.state === 'closed'}
       />
     ),
   };
@@ -968,8 +1189,9 @@ function GameHub({
       id: `duel-${event.id}`,
       kind: 'duel',
       eyebrow: 'Активная дуэль',
+      eyebrowStatus: duelOutcomeText(event),
       title: event.opponent.display_name,
-      subtitle: duelOutcomeText(event),
+      subtitle: '',
       meta: `${timing.label}: ${timing.value}`,
       ctaLabel: arenaDuelCtaLabel(event, now),
       disabled:
@@ -980,6 +1202,7 @@ function GameHub({
       opponentName: event.opponent.display_name,
       opponentAvatarUrl: event.opponent.avatar_url,
       typeLabel: duelKindText(event.rules.duelKind),
+      venueRole: event.venue_role,
       secondaryActions: isIncomingInvite ? (
         <div
           style={{
@@ -992,7 +1215,7 @@ function GameHub({
         >
           <button
             type="button"
-            className="btn btn--ghost"
+            className="btn arena-duel-invite-action arena-duel-invite-action--decline"
             disabled={invitePending}
             onClick={() => declineArenaDuelMut.mutate(event.id)}
             style={{ minHeight: 34, fontSize: 'clamp(10px, 1.45vh, 12px)', padding: '0 10px' }}
@@ -1001,7 +1224,7 @@ function GameHub({
           </button>
           <button
             type="button"
-            className="btn btn--cta"
+            className="btn arena-duel-invite-action arena-duel-invite-action--accept"
             disabled={invitePending}
             onClick={() => acceptArenaDuelMut.mutate(event.id)}
             style={{ minHeight: 34, fontSize: 'clamp(10px, 1.45vh, 12px)', padding: '0 10px' }}
@@ -1022,10 +1245,94 @@ function GameHub({
       ),
     };
   });
-  const arenaEntries: ArenaEntry[] =
-    duelArenaEntries.length > 0
-      ? [...duelArenaEntries, dailyArenaEntry, trainingArenaEntry]
-      : [dailyArenaEntry, trainingArenaEntry];
+  const classicArenaEntries = [...(classicTournamentGames.data?.games ?? [])]
+    .sort((left, right) => {
+      const priority = (game: ActiveClassicTournamentGame): number => {
+        if (
+          game.state === 'period_active' ||
+          game.state === 'break_active' ||
+          (game.state === 'idle' && game.current_period > 0)
+        ) {
+          return 0;
+        }
+        return game.state === 'closed' ? 2 : 1;
+      };
+      return priority(left) - priority(right);
+    })
+    .map<ArenaEntry>((game) => {
+      const deadlineRemaining = Math.max(0, timestampMs(game.closes_at) - now);
+      const breakRemaining = Math.max(0, timestampMs(game.break_ends_at) - now);
+      const isBreak = game.state === 'break_active' && game.break_ends_at !== null;
+      const started =
+        game.state === 'period_active' ||
+        game.state === 'break_active' ||
+        (game.state === 'idle' && game.current_period > 0);
+      const completed = game.state === 'closed';
+      const accuracy = formatGoalRate(game.total_goals, game.total_shots);
+      return {
+        id: `classic-${game.tournament_id}`,
+        kind: 'classic',
+        eyebrow: `Турнир · ${game.tournament_day}-й тур`,
+        title: game.tournament_title,
+        subtitle: completed
+          ? 'Игра завершена, результат сохранён.'
+          : started
+            ? 'Турнирная игра уже начата.'
+            : 'Отдельная игра по правилам турнира',
+        ...(!completed && !started
+          ? { subtitleLines: ['Отдельная игра', 'по правилам турнира'] as [string, string] }
+          : {}),
+        meta: completed
+          ? `${game.total_goals} шайб · точность ${accuracy}`
+          : `${game.current_period > 0 ? `${game.current_period}-й период` : 'Три периода'} · до ${formatEventRemaining(deadlineRemaining)}`,
+        ctaLabel: started ? 'Продолжить' : 'Начать',
+        disabled: completed,
+        secondaryActions: completed ? (
+          <div
+            aria-label={`Результат: ${game.total_goals} шайб, точность ${accuracy}`}
+            style={{
+              color: '#e9fbff',
+              fontSize: 'clamp(12px, 1.7vh, 15px)',
+              fontWeight: 900,
+              textAlign: 'center',
+            }}
+          >
+            {game.total_goals} шайб · точность {accuracy}
+          </div>
+        ) : undefined,
+        onEnter: () =>
+          navigate(`/?view=classic&tournament=${encodeURIComponent(game.tournament_id)}`, {
+            replace: true,
+          }),
+        ...(completed
+          ? {}
+          : {
+              scoreboard: (
+                <DailyHubScoreboard
+                  activePeriod={
+                    game.state === 'period_active'
+                      ? game.current_period
+                      : Math.min(3, game.current_period + 1)
+                  }
+                  ariaLabel={
+                    isBreak
+                      ? `${game.tournament_title}. ${game.tournament_day}-й тур. Перерыв. До конца ${formatMs(breakRemaining)}. Период ${Math.min(3, game.current_period + 1)}`
+                      : `${game.tournament_title}. ${game.tournament_day}-й тур. До закрытия ${formatEventRemaining(deadlineRemaining)}`
+                  }
+                  periodsTotal={3}
+                  timer={isBreak ? formatMs(breakRemaining) : formatEventRemaining(deadlineRemaining)}
+                  timerLabel={isBreak ? 'Перерыв' : 'До закрытия'}
+                />
+              ),
+            }),
+      };
+    });
+  const arenaEntries: ArenaEntry[] = [
+    ...duelArenaEntries,
+    ...classicArenaEntries,
+    dailyArenaEntry,
+    trainingArenaEntry,
+  ];
   const duelArenaEntryIds = duelArenaEntries.map((entry) => entry.id).join('|');
   const firstDuelArenaEntryId = duelArenaEntries[0]?.id ?? null;
 
@@ -1188,54 +1495,27 @@ function ArenaVideoCube({
         alt=""
         aria-hidden="true"
       />
-      <div
-        aria-label="Разделы на табло"
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerEnd}
-        onPointerCancel={handlePointerCancel}
-        style={{
-          position: 'absolute',
-          left: '50%',
-          top: 'calc((100dvh - 92px - var(--bottom-nav-bottom-gap) - var(--app-safe-bottom) + var(--app-safe-top)) / 2)',
-          width: 'min(100%, 620px)',
-          aspectRatio: '1024 / 1536',
-          overflow: 'hidden',
-          transform: 'translate3d(-50%, -74%, 0)',
-          touchAction: 'pan-y',
-        }}
-      >
-        <img
-          src={ARENA_ICE_TABLEAU_IMAGE}
-          alt=""
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'fill',
-          }}
-        />
+      <div className="arena-video-cube__plate">
+        <img className="arena-video-cube__cube" src={ARENA_CUBE_IMAGE} alt="" aria-hidden="true" />
         <div
+          className="arena-video-cube__screen"
+          aria-label="Разделы на табло"
+          onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerEnd}
+          onPointerCancel={handlePointerCancel}
           style={{
-            position: 'absolute',
-            left: '8.3%',
-            right: '8.3%',
-            top: '50.8%',
-            bottom: '5.4%',
-            zIndex: 2,
             display: 'grid',
             gridTemplateRows: 'auto minmax(0, 1fr) auto',
-            rowGap: 'clamp(18px, 2.6vh, 24px)',
-            padding: 'clamp(30px, 4.2vh, 36px) 0 clamp(15px, 2.3vh, 20px)',
+            rowGap: 'clamp(5px, 0.8vh, 8px)',
+            padding: 'clamp(10px, 1.6vh, 14px) 0 clamp(9px, 1.4vh, 13px)',
             boxSizing: 'border-box',
           }}
         >
           <div
             style={{
               position: 'absolute',
-              left: '1.2%',
-              right: '1.2%',
+              left: '4%',
+              right: '4%',
               top: '50%',
               transform: 'translateY(-50%)',
               zIndex: 4,
@@ -1391,7 +1671,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
         minHeight: 0,
         display: 'grid',
         alignItems: 'stretch',
-        padding: '0 clamp(8px, 1.6vw, 12px)',
+        padding: '0 clamp(38px, 11vw, 46px)',
         boxSizing: 'border-box',
         color: '#e9fbff',
         fontFamily: 'var(--font-mono)',
@@ -1406,31 +1686,48 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
           gridTemplateRows: 'auto auto auto auto',
           alignContent: 'space-evenly',
           justifyItems: 'center',
-          gap: 'clamp(5px, 0.9vh, 8px)',
+          gap: 'clamp(4px, 0.7vh, 6px)',
           textAlign: 'center',
           padding: 0,
         }}
       >
-        <div
-          style={{
-            color: 'rgba(205, 246, 255, 0.88)',
-            fontSize: 'clamp(7px, 1.08vh, 9px)',
-            fontWeight: 950,
-            letterSpacing: '0.16em',
-            textTransform: 'uppercase',
-            lineHeight: 1.05,
-            textShadow: '0 0 8px rgba(99, 218, 255, 0.44)',
-          }}
-        >
-          {entry.eyebrow}
+        <div style={{ display: 'grid', justifyItems: 'center', gap: 2 }}>
+          <div
+            style={{
+              color: 'rgba(205, 246, 255, 0.88)',
+              fontSize: 'clamp(7px, 1.08vh, 9px)',
+              fontWeight: 950,
+              letterSpacing: showDuelIdentity ? '0.08em' : '0.16em',
+              textTransform: 'uppercase',
+              lineHeight: 1.05,
+              textShadow: '0 0 8px rgba(99, 218, 255, 0.44)',
+            }}
+          >
+            {entry.eyebrow}
+            {entry.eyebrowStatus ? ` (${entry.eyebrowStatus})` : ''}
+          </div>
+          {showDuelIdentity && entry.typeLabel && (
+            <div
+              className="arena-duel-format-heading"
+              style={{
+                color: 'rgba(247, 254, 255, 0.92)',
+                marginTop: 3,
+                textAlign: 'center',
+                textShadow: '0 0 9px rgba(144, 231, 255, 0.58)',
+              }}
+            >
+              {entry.typeLabel}
+            </div>
+          )}
         </div>
         {showDuelIdentity ? (
           <div
+            className="arena-duel-identity"
             style={{
               display: 'grid',
               gridTemplateColumns: 'clamp(38px, 6vh, 54px) minmax(0, 1fr)',
               alignItems: 'center',
-              gap: 'clamp(8px, 1.8vh, 14px)',
+              gap: 'clamp(5px, 1vh, 8px)',
               textAlign: 'left',
               minWidth: 0,
               maxWidth: 'min(100%, 340px)',
@@ -1449,9 +1746,9 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
             />
             <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
               <div
+                className="arena-duel-opponent-name"
                 style={{
                   color: '#f7feff',
-                  fontSize: 'clamp(14px, 2.46vh, 21px)',
                   lineHeight: 0.95,
                   fontWeight: 950,
                   overflow: 'hidden',
@@ -1461,29 +1758,34 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
               >
                 {entry.title}
               </div>
-              {entry.typeLabel && (
-                <div
-                  style={{
-                    color: 'rgba(196, 242, 255, 0.82)',
-                    fontSize: 'clamp(8px, 1.16vh, 10px)',
-                    fontWeight: 900,
-                    lineHeight: 1,
-                  }}
+              {entry.venueRole && (
+                <span
+                  className="arena-duel-venue-label"
+                  aria-label={`Площадка: ${venueRoleLabel(entry.venueRole)}`}
                 >
-                  {entry.typeLabel}
-                </div>
+                  {venueRoleLabel(entry.venueRole)}
+                </span>
               )}
             </div>
           </div>
         ) : (
           <div
+            className={`arena-cube-title${entry.title.length > 28 ? ' arena-cube-title--long' : ''}`}
             style={{
               color: '#f7feff',
-              fontSize: 'clamp(16px, 2.65vh, 22px)',
-              lineHeight: 0.95,
+              fontSize:
+                entry.title.length > 28
+                  ? 'clamp(13px, 2.05vh, 17px)'
+                  : 'clamp(16px, 2.65vh, 22px)',
+              lineHeight: entry.title.length > 28 ? 1.02 : 0.95,
               fontWeight: 950,
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 3,
+              overflow: 'hidden',
               overflowWrap: 'break-word',
               textTransform: 'uppercase',
+              maxWidth: '100%',
             }}
           >
             {entry.title}
@@ -1500,7 +1802,15 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
             textShadow: '0 0 7px rgba(0, 12, 24, 0.88)',
           }}
         >
-          {entry.subtitle}
+          {entry.subtitleLines ? (
+            <span aria-label={entry.subtitle}>
+              {entry.subtitleLines[0]}
+              <br />
+              {entry.subtitleLines[1]}
+            </span>
+          ) : (
+            entry.subtitle
+          )}
         </div>
         <div
           style={{
@@ -1547,6 +1857,7 @@ function DailyHubScoreboard({
   periodsTotal,
   timer,
   timerLabel,
+  timerOnly = false,
 }: {
   activePeriod: number | null;
   align?: 'center' | 'left';
@@ -1554,37 +1865,44 @@ function DailyHubScoreboard({
   periodsTotal: number;
   timer: string;
   timerLabel: string;
+  timerOnly?: boolean;
 }): JSX.Element {
   return (
     <div
       aria-label={ariaLabel}
+      className={timerOnly ? 'daily-hub-scoreboard--timer-only' : undefined}
       style={{
         width: align === 'left' ? 'auto' : '100%',
         maxWidth: align === 'left' ? 'none' : 306,
         padding: 0,
         display: 'grid',
-        gridTemplateColumns:
-          align === 'left' ? 'max-content max-content' : 'minmax(0, 1fr) minmax(0, 1fr)',
+        gridTemplateColumns: timerOnly
+          ? 'minmax(0, 1fr)'
+          : align === 'left'
+            ? 'max-content max-content'
+            : 'max-content max-content',
         alignItems: 'center',
-        justifyItems: align === 'left' ? 'start' : 'center',
-        gap: align === 'left' ? 36 : 'clamp(6px, 1.1vh, 10px)',
+        justifyItems: timerOnly ? 'center' : align === 'left' ? 'start' : 'center',
+        gap: align === 'left' ? 36 : 'clamp(14px, 2.2vh, 18px)',
         margin: '0 auto',
       }}
     >
       <DailyEventScoreboardColumn align={align} label={timerLabel} value={timer} />
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: align === 'left' ? 'flex-start' : 'center',
-          gap: 5,
-          minWidth: 0,
-          lineHeight: 1,
-        }}
-      >
-        <DailyEventScoreboardLabel>Период</DailyEventScoreboardLabel>
-        <DailyPeriodTabs activePeriod={activePeriod} align={align} periodsTotal={periodsTotal} />
-      </div>
+      {!timerOnly && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: align === 'left' ? 'flex-start' : 'center',
+            gap: 5,
+            minWidth: 0,
+            lineHeight: 1,
+          }}
+        >
+          <DailyEventScoreboardLabel>Период</DailyEventScoreboardLabel>
+          <DailyPeriodTabs activePeriod={activePeriod} align={align} periodsTotal={periodsTotal} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1893,9 +2211,9 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
 
   return {
     activePeriod: duelNextPeriod(match),
-    ariaLabel: `Счёт ${score}`,
-    label: 'Счёт',
-    value: score,
+    ariaLabel: `Время игрока ${formatDurationMs(match.me.active_duration_ms)}. Счёт ${score}`,
+    label: 'Время',
+    value: formatDurationMs(match.me.active_duration_ms),
   };
 }
 
@@ -2016,127 +2334,6 @@ function DailyEventScoreboardLabel({ children }: { children: React.ReactNode }):
     >
       {children}
     </span>
-  );
-}
-
-function LevelHubCard({
-  title,
-  description,
-  meta,
-  artwork,
-  tone = 'default',
-  progress,
-  onClick,
-}: {
-  title: string;
-  description: string;
-  meta: string;
-  artwork: LevelArtwork;
-  tone?: 'active' | 'default' | 'muted';
-  progress?: number;
-  onClick: () => void;
-}): JSX.Element {
-  const isLocked = tone === 'muted';
-  return (
-    <button
-      type="button"
-      aria-label={title}
-      onClick={onClick}
-      style={{
-        position: 'relative',
-        overflow: 'hidden',
-        borderRadius: 22,
-        padding: 12,
-        display: 'grid',
-        gridTemplateColumns: `${MODE_ARTWORK_SIZE}px minmax(0, 1fr) 18px`,
-        gap: 12,
-        alignItems: 'center',
-        background: tone === 'active' ? 'rgba(255, 255, 255, 0.64)' : 'rgba(255, 255, 255, 0.48)',
-        border: '1px solid rgba(255,255,255,0.66)',
-        boxShadow: '0 8px 22px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.78)',
-        width: '100%',
-        textAlign: 'left',
-        color: 'inherit',
-        appearance: 'none',
-        WebkitAppearance: 'none',
-        cursor: 'pointer',
-      }}
-    >
-      {progress !== undefined && (
-        <div
-          aria-label={`Прогресс до любителей ${progress}%`}
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: 3,
-            background: 'rgba(15,23,42,0.08)',
-          }}
-        >
-          <div
-            style={{
-              width: `${progress}%`,
-              height: '100%',
-              background: 'linear-gradient(90deg, rgba(34, 158, 217, 0.72), var(--blue-accent))',
-            }}
-          />
-        </div>
-      )}
-      <ModeArtwork label={title} tone={artwork} muted={isLocked} />
-      <div
-        style={{
-          minWidth: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          gap: 8,
-        }}
-      >
-        <h2
-          style={{
-            margin: 0,
-            minWidth: 0,
-            fontSize: 18,
-            lineHeight: 1.05,
-            fontWeight: 900,
-            color: 'var(--ink)',
-          }}
-        >
-          {title}
-        </h2>
-        <div
-          style={{
-            color: 'rgba(15, 23, 42, 0.64)',
-            fontSize: 12,
-            fontWeight: 700,
-            lineHeight: 1.25,
-          }}
-        >
-          {description}
-        </div>
-        <div
-          style={{
-            color: 'rgba(15, 23, 42, 0.54)',
-            fontSize: 12,
-            fontWeight: 800,
-            lineHeight: 1.2,
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {meta}
-        </div>
-      </div>
-      <ChevronRight
-        aria-hidden="true"
-        size={19}
-        strokeWidth={2.7}
-        style={{
-          justifySelf: 'end',
-          color: 'rgba(15, 23, 42, 0.56)',
-        }}
-      />
-    </button>
   );
 }
 
@@ -2771,120 +2968,25 @@ function DailyStatsPeriodRow({
   );
 }
 
-function ModeArtwork({
-  label,
-  tone,
-  muted,
-}: {
-  label: string;
-  tone: LevelArtwork;
-  muted: boolean;
-}): JSX.Element {
-  const imageSrc = MODE_ARTWORK_IMAGES[tone];
-  const palette =
-    tone === 'beginner'
-      ? {
-          bg: 'linear-gradient(145deg, #dbeafe 0%, #f8fafc 48%, #bfdbfe 100%)',
-          line: 'rgba(220, 38, 38, 0.34)',
-        }
-      : tone === 'amateur'
-        ? {
-            bg: 'linear-gradient(145deg, #d1fae5 0%, #fefce8 52%, #bbf7d0 100%)',
-            line: 'rgba(217, 119, 6, 0.36)',
-          }
-        : {
-            bg: 'linear-gradient(145deg, #e2e8f0 0%, #f8fafc 52%, #cbd5e1 100%)',
-            line: 'rgba(71, 85, 105, 0.32)',
-          };
-
-  return (
-    <div
-      aria-label={`Изображение режима ${label}`}
-      style={{
-        position: 'relative',
-        width: MODE_ARTWORK_SIZE,
-        height: MODE_ARTWORK_SIZE,
-        aspectRatio: '1 / 1',
-        alignSelf: 'center',
-        justifySelf: 'center',
-        borderRadius: 22,
-        overflow: 'hidden',
-        background: palette.bg,
-        border: '1px solid rgba(255,255,255,0.82)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 8px 18px rgba(15,23,42,0.12)',
-        opacity: 1,
-      }}
-    >
-      {imageSrc && (
-        <img
-          src={imageSrc}
-          alt=""
-          style={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            filter: muted ? 'grayscale(1) saturate(0.1)' : 'none',
-            opacity: muted ? 0.58 : 1,
-          }}
-        />
-      )}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'linear-gradient(90deg, transparent 0 46%, rgba(255,255,255,0.55) 46% 54%, transparent 54% 100%)',
-          opacity: imageSrc ? 0 : 1,
-        }}
-      />
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          left: '50%',
-          top: '50%',
-          width: 68,
-          height: 68,
-          borderRadius: '50%',
-          border: `7px solid ${palette.line}`,
-          transform: 'translate(-50%, -50%)',
-          opacity: imageSrc ? 0 : 1,
-        }}
-      />
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: '50%',
-          height: 4,
-          transform: 'translateY(-50%)',
-          background: palette.line,
-          opacity: imageSrc ? 0 : 1,
-        }}
-      />
-    </div>
-  );
-}
-
 function ModeShell({
   title,
   onBack,
   children,
+  variant = 'default',
 }: {
   title: string;
   onBack: () => void;
   children: React.ReactNode;
+  variant?: 'default' | 'section-hub';
 }): JSX.Element {
+  const isSectionHub = variant === 'section-hub';
   return (
     <main
-      className="screen"
+      className={`screen mode-shell${isSectionHub ? ' mode-shell--section-hub' : ''}`}
       style={{
-        padding: 'calc(22px + var(--app-safe-top)) 24px 24px',
+        padding: isSectionHub
+          ? 'calc(18px + var(--app-safe-top)) 14px 24px'
+          : 'calc(22px + var(--app-safe-top)) 24px 24px',
         gap: 14,
       }}
     >
@@ -2898,29 +3000,51 @@ function ModeShell({
           gap: 14,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div
+          className={isSectionHub ? 'bonus-games-catalog__header' : 'mode-shell__header'}
+          style={isSectionHub ? undefined : { display: 'flex', alignItems: 'center', gap: 10 }}
+        >
           <button
             type="button"
-            className="icon-btn"
+            className={
+              isSectionHub
+                ? 'icon-btn icon-btn--page-back catalog-header-back'
+                : 'icon-btn icon-btn--page-back'
+            }
             onClick={onBack}
             aria-label="Назад"
             title="Назад"
-            style={{
-              width: 40,
-              height: 40,
-              minWidth: 40,
-              minHeight: 40,
-              borderRadius: 999,
-              padding: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
+            style={
+              isSectionHub
+                ? undefined
+                : {
+                    width: 40,
+                    height: 40,
+                    minWidth: 40,
+                    minHeight: 40,
+                    borderRadius: 999,
+                    padding: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }
+            }
           >
             <ArrowLeft size={16} />
           </button>
-          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>{title}</h1>
+          <h1
+            className={
+              isSectionHub
+                ? 'bonus-games-catalog__title screen-title-on-arena'
+                : 'mode-shell__title'
+            }
+            style={
+              isSectionHub ? undefined : { margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }
+            }
+          >
+            {title}
+          </h1>
         </div>
         {children}
       </section>
@@ -2952,6 +3076,7 @@ function TrainingPlaceholder({
   const error = useTrainingSessionStore((s) => s.error);
   const inFlight = useTrainingSessionStore((s) => s.inFlight);
   const refresh = useTrainingSessionStore((s) => s.refresh);
+  const start = useTrainingSessionStore((s) => s.start);
   const [selectedPeriod, setSelectedPeriod] = useState<1 | 2 | 3>(1);
   const [playTraining, setPlayTraining] = useState(() => autoPlay);
   const [localPlayEntrance, setLocalPlayEntrance] = useState(false);
@@ -3002,6 +3127,10 @@ function TrainingPlaceholder({
 
   const handleTrainingAction = async (): Promise<void> => {
     setLocalPlayEntrance(false);
+    if (data?.state === 'active' && data.selected_period !== selectedPeriod) {
+      const switched = await start(selectedPeriod);
+      if (switched === null) return;
+    }
     setPlayTraining(true);
     onPlayStart?.();
   };
@@ -3028,64 +3157,72 @@ function TrainingPlaceholder({
   }
 
   return (
-    <ModeShell title="Тренировка" onBack={onBack}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-        <TotalCell label="ЛИМИТ" value={`${shotsTaken}/${shotsLimit}`} />
-        <TotalCell label="ЧАСТОТА" value="24ч" />
-        <TotalCell label="ДО ОБНОВЛЕНИЯ" value={data ? formatHms(nextDayRemaining) : '--:--:--'} />
-      </div>
-      {loading && !data ? (
-        <div style={{ color: 'var(--muted)', fontSize: 14 }}>Загрузка...</div>
-      ) : (
-        <>
-          {error && (
-            <div style={{ color: 'var(--red-deep, #b91c1c)', fontSize: 13, fontWeight: 700 }}>
-              {error}
-            </div>
-          )}
-          {canConfigureTraining && (
-            <>
-              <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-                Выбери модель периода. Скорости игрока, ворот, шайбы и вратаря будут такими же, как
-                в дневной игре выбранного периода.
-              </div>
-              <SegmentedTabs
-                ariaLabel="Период тренировки"
-                items={[
-                  { id: '1', label: '1 период' },
-                  { id: '2', label: '2 период' },
-                  { id: '3', label: '3 период' },
-                ]}
-                activeTab={String(selectedPeriod)}
-                onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
-              />
-              <PeriodSpeedSummary
-                periodNumber={selectedPeriod}
-                presets={data?.period_speed_presets}
-              />
-              <button
-                type="button"
-                className="btn btn--cta"
-                disabled={inFlight}
-                onClick={() => void handleTrainingAction()}
-              >
-                {trainingActionLabel}
-              </button>
-            </>
-          )}
-          {data?.state === 'closed' && (
-            <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                <TotalCell label="ГОЛЫ" value={String(goals)} />
-                <TotalCell label="БРОСКИ" value={`${shotsTaken}/${shotsLimit}`} />
-                <TotalCell label="ТОЧНОСТЬ" value={`${accuracy}%`} />
-              </div>
-              <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-                Тренировка на сегодня завершена. Новая откроется завтра.
-              </div>
-            </>
-          )}
-        </>
+    <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
+      <section className="mode-info-card training-info-card" aria-label="Информация о тренировке">
+        <div className="training-info-overview">
+          <div className="training-info-artwork">
+            <img src="/modes/beginner.webp" alt="Тренировка" draggable={false} />
+          </div>
+          <div className="training-info-overview__copy">
+            {loading && !data ? (
+              <div className="training-info-copy">Загрузка...</div>
+            ) : (
+              <>
+                {error && <div className="training-info-error">{error}</div>}
+                {canConfigureTraining && (
+                  <div className="training-info-copy">
+                    Выбери модель периода. Скорости игрока, ворот, шайбы и вратаря будут такими же,
+                    как в дневной игре выбранного периода.
+                  </div>
+                )}
+                {data?.state === 'closed' && (
+                  <div className="training-info-copy">
+                    Тренировка на сегодня завершена. Новая откроется завтра.
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+        <div className="training-summary-grid">
+          <TotalCell label="ЛИМИТ" value={`${shotsTaken}/${shotsLimit}`} />
+          <TotalCell label="ЧАСТОТА" value="24ч" />
+          <TotalCell
+            label="ДО ОБНОВЛЕНИЯ"
+            value={data ? formatHms(nextDayRemaining) : '--:--:--'}
+          />
+        </div>
+        {!loading && data?.state === 'closed' && (
+          <div className="training-summary-grid">
+            <TotalCell label="ГОЛЫ" value={String(goals)} />
+            <TotalCell label="БРОСКИ" value={`${shotsTaken}/${shotsLimit}`} />
+            <TotalCell label="ТОЧНОСТЬ" value={`${accuracy}%`} />
+          </div>
+        )}
+      </section>
+      {!loading && canConfigureTraining && (
+        <section className="mode-setup-card training-config-card" aria-label="Настройка тренировки">
+          <SegmentedTabs
+            ariaLabel="Период тренировки"
+            items={[
+              { id: '1', label: '1 период' },
+              { id: '2', label: '2 период' },
+              { id: '3', label: '3 период' },
+            ]}
+            activeTab={String(selectedPeriod)}
+            disabled={inFlight}
+            onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
+          />
+          <PeriodSpeedSummary periodNumber={selectedPeriod} presets={data?.period_speed_presets} />
+          <button
+            type="button"
+            className="btn btn--cta"
+            disabled={inFlight}
+            onClick={() => void handleTrainingAction()}
+          >
+            {trainingActionLabel}
+          </button>
+        </section>
       )}
     </ModeShell>
   );
@@ -3131,7 +3268,7 @@ function formatRuCount(value: number, one: string, few: string, many: string): s
 
 function duelKindText(kind: AmateurDuelKind): string {
   if (kind === 'express') return 'Экспресс';
-  if (kind === 'express_plus') return 'Экспресс+';
+  if (kind === 'express_plus') return 'Микс';
   return 'Классика';
 }
 
@@ -3195,6 +3332,23 @@ function duelTemplateSummaryParts(template: AmateurDuelTemplate): string[] {
       })
       .join(' + '),
   ];
+}
+
+function duelTemplateOptionLabel(template: AmateurDuelTemplate): string {
+  return `${template.title} (${duelTemplateSummaryParts(template).join(' · ')})`;
+}
+
+const DUEL_TEMPLATE_KIND_ORDER: Record<AmateurDuelKind, number> = {
+  express: 0,
+  express_plus: 1,
+  classic: 2,
+};
+
+function sortDuelTemplates(templates: AmateurDuelTemplate[]): AmateurDuelTemplate[] {
+  return [...templates].sort(
+    (left, right) =>
+      DUEL_TEMPLATE_KIND_ORDER[left.duel_kind] - DUEL_TEMPLATE_KIND_ORDER[right.duel_kind],
+  );
 }
 
 function duelPeriodStartText(rule: AmateurDuelPeriodRule): string {
@@ -3385,229 +3539,83 @@ function currentMoscowSeasonKey(): string {
   return `${year}-${month}`;
 }
 
-function formatSeasonKeyLabel(seasonKey: string): string {
-  const match = /^(\d{4})-(\d{2})$/.exec(seasonKey);
-  if (!match) return seasonKey;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  if (!Number.isFinite(year) || !Number.isFinite(month)) return seasonKey;
-  return new Intl.DateTimeFormat('ru-RU', {
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(Date.UTC(year, month - 1, 1)));
-}
-
-function duelHistoryStats(matches: AmateurDuelMatch[]): {
-  duels: number;
-  wins: number;
-  points: number;
-} {
-  return matches.reduce(
-    (acc, match) => ({
-      duels: acc.duels + 1,
-      wins: acc.wins + (match.winner_user_id === match.me.user_id ? 1 : 0),
-      points: acc.points + match.me.result_points,
-    }),
-    { duels: 0, wins: 0, points: 0 },
-  );
-}
-
 function DuelStatusBadge({ match }: { match: AmateurDuelMatch }): JSX.Element {
   const status = duelOutcomeText(match);
-  const dotColor =
-    match.status === 'settled' && match.outcome === 'draw'
-      ? '#f59e0b'
-      : match.status === 'settled' && match.winner_user_id === match.me.user_id
-        ? '#22c55e'
-        : match.status === 'settled' && match.winner_user_id === match.opponent.user_id
-          ? '#ef4444'
-          : match.status === 'active'
-            ? 'var(--red)'
-            : match.status === 'ready_check'
-              ? 'var(--blue-accent)'
-              : match.status === 'invited'
-                ? '#f59e0b'
-                : 'rgba(15,23,42,0.38)';
 
   return (
-    <span
-      aria-label={`Статус: ${status}`}
-      style={{
-        gridColumn: '2 / 3',
-        gridRow: '2',
-        justifySelf: 'start',
-        maxWidth: '100%',
-        minHeight: 30,
-        borderRadius: 999,
-        padding: '0 10px',
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 7,
-        background: 'rgba(255,255,255,0.48)',
-        border: '1px solid rgba(255,255,255,0.68)',
-        color: 'rgba(15,23,42,0.68)',
-        fontSize: 12,
-        fontWeight: 900,
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
-      }}
-    >
-      <span
-        aria-hidden="true"
-        style={{
-          width: 7,
-          height: 7,
-          borderRadius: 999,
-          background: dotColor,
-          boxShadow: match.status === 'active' ? '0 0 8px rgba(225, 29, 72, 0.45)' : 'none',
-          flex: '0 0 auto',
-        }}
-      />
-      <span
-        style={{
-          minWidth: 0,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {status}
-      </span>
+    <span className="duel-card-status" aria-label={`Статус: ${status}`}>
+      {status}
     </span>
-  );
-}
-
-function AmateurHub({
-  onBack,
-  onOpenDuels,
-  onOpenTournaments,
-}: {
-  onBack: () => void;
-  onOpenDuels: () => void;
-  onOpenTournaments: () => void;
-}): JSX.Element {
-  const matches = useQuery({
-    queryKey: ['amateur-duel', 'matches'],
-    queryFn: fetchAmateurMatches,
-  });
-
-  const allMatches = matches.data?.matches ?? [];
-  const activeMatches = allMatches.filter(
-    (match) =>
-      match.status === 'invited' || match.status === 'ready_check' || match.status === 'active',
-  );
-
-  return (
-    <ModeShell title="Любители" onBack={onBack}>
-      <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div className="section-label section-label--page">Разделы</div>
-        <LevelHubCard
-          title="Дуэли"
-          description="Игры 1 на 1 и отбор к турнирам"
-          meta={
-            activeMatches.length > 0
-              ? formatRuCount(
-                  activeMatches.length,
-                  'текущая дуэль',
-                  'текущие дуэли',
-                  'текущих дуэлей',
-                )
-              : 'Лёгкая, средняя и сложная дуэль'
-          }
-          artwork="amateur"
-          tone="active"
-          onClick={onOpenDuels}
-        />
-        <LevelHubCard
-          title="Турниры"
-          description="Соревнования лучших и ценные призы"
-          meta="Раздел в разработке"
-          artwork="pro"
-          tone="muted"
-          onClick={onOpenTournaments}
-        />
-      </section>
-    </ModeShell>
   );
 }
 
 function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element {
   return (
-    <ModeShell title="Турниры" onBack={onBack}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-        <TotalCell label="СТАТУС" value="скоро" />
-        <TotalCell label="МЕСТА" value="топ" />
+    <ModeShell title="Турниры" onBack={onBack} variant="section-hub">
+      <TournamentCatalog />
+    </ModeShell>
+  );
+}
+
+function AmateurHubPage({
+  onBack,
+  onOpenSection,
+}: {
+  onBack: () => void;
+  onOpenSection: (section: 'duels' | 'bonus-games' | 'tournaments') => void;
+}): JSX.Element {
+  const bonusCatalog = useQuery({
+    queryKey: ['bonus-games'],
+    queryFn: fetchBonusGames,
+  });
+  const bonusProgress = bonusCatalog.isError
+    ? 'Прогресс недоступен'
+    : bonusCatalog.data
+      ? `${bonusCatalog.data.games.filter((game) => game.is_completed).length}/${bonusCatalog.data.games.length} пройдено`
+      : '—/— пройдено';
+  const sections = [
+    {
+      id: 'duels' as const,
+      title: 'Дуэли',
+      description: 'Матчи один на один',
+      artwork: '/modes/amateur-duel-card.webp',
+    },
+    {
+      id: 'bonus-games' as const,
+      title: 'Бонусные игры',
+      description: bonusProgress,
+      artwork: '/bonus-games/section-card.webp',
+    },
+    {
+      id: 'tournaments' as const,
+      title: 'Турниры',
+      description: 'Соревнования и турнирная сетка',
+      artwork: '/modes/tournaments.webp',
+    },
+  ];
+
+  return (
+    <ModeShell title="Любители" onBack={onBack} variant="section-hub">
+      <div className="amateur-hub-grid" aria-label="Разделы любителей">
+        {sections.map((section) => (
+          <button
+            key={section.id}
+            type="button"
+            className="section-card-surface amateur-hub-card"
+            aria-label={section.title}
+            onClick={() => onOpenSection(section.id)}
+          >
+            <span className="amateur-hub-card__art" aria-hidden="true">
+              <img src={section.artwork} alt="" draggable={false} />
+            </span>
+            <span className="amateur-hub-card__copy">
+              <strong>{section.title}</strong>
+              <span>{section.description}</span>
+            </span>
+            <ChevronRight className="card-chevron" size={20} strokeWidth={2.7} aria-hidden="true" />
+          </button>
+        ))}
       </div>
-
-      <section
-        className="glass"
-        aria-label="Площадка любительских турниров"
-        style={{
-          borderRadius: 22,
-          padding: 10,
-          overflow: 'hidden',
-          border: '1px solid rgba(255,255,255,0.76)',
-        }}
-      >
-        <div
-          style={{
-            position: 'relative',
-            aspectRatio: '1212 / 2000',
-            borderRadius: 18,
-            overflow: 'hidden',
-            background: '#dceaf5',
-            boxShadow: 'inset 0 0 0 1px rgba(15, 23, 42, 0.08)',
-          }}
-        >
-          <img
-            src={AMATEUR_TOURNAMENT_COURT_BACKGROUND}
-            alt=""
-            aria-hidden="true"
-            style={{
-              display: 'block',
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-            }}
-          />
-          <img
-            src={TOURNAMENT_LED_TABLEAU_IMAGE}
-            alt=""
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: 0,
-              width: '76%',
-              maxWidth: 456,
-              height: 'auto',
-              transform: 'translateX(-50%)',
-              filter: 'drop-shadow(0 18px 24px rgba(3, 10, 18, 0.34))',
-            }}
-          />
-        </div>
-      </section>
-
-      <section
-        className="glass"
-        style={{ borderRadius: 22, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}
-      >
-        <div className="section-label" style={{ margin: 0 }}>
-          Турнирный путь
-        </div>
-        <div style={{ color: 'var(--ink)', fontSize: 18, fontWeight: 900 }}>
-          Лидеры дуэлей попадут в турнир бесплатно
-        </div>
-        <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45, fontWeight: 700 }}>
-          Здесь позже появятся сетки, регламент месяца и список квалифицированных игроков. Сейчас
-          рейтинг дуэлей уже готовится под этот сценарий.
-        </div>
-      </section>
-
-      <button type="button" className="btn btn--cta" disabled>
-        Турниры скоро
-      </button>
     </ModeShell>
   );
 }
@@ -3632,7 +3640,7 @@ function DuelKindPreferencePicker({
   };
 
   return (
-    <div className="glass" style={{ borderRadius: 16, padding: '10px 10px 12px' }}>
+    <div className="glass duel-kind-picker" style={{ borderRadius: 16, padding: '10px 10px 12px' }}>
       <div
         style={{
           display: 'flex',
@@ -3651,7 +3659,7 @@ function DuelKindPreferencePicker({
           onClick={onInfo}
           aria-label="Правила поиска соперника"
         >
-          <Info size={12} color="var(--muted)" />
+          <Info className="duel-kind-picker__info-icon" size={12} />
         </button>
       </div>
       <div
@@ -3720,7 +3728,7 @@ function MatchmakingRulesContent(): JSX.Element {
   const ruleItems: Array<{ title: string; text: string }> = [
     { title: 'Экспресс', text: '1 период, 3 минуты. Нужно забить как можно больше шайб.' },
     {
-      title: 'Экспресс+',
+      title: 'Микс',
       text: '2 периода: первый до 30 бросков, второй 3 минуты на скорость.',
     },
     {
@@ -3784,7 +3792,6 @@ function AmateurDuelsPage({
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
   const queryClient = useQueryClient();
   const [duelTab, setDuelTab] = useState<AmateurDuelTab>('game');
-  const [historyFilter, setHistoryFilter] = useState<DuelHistoryFilter>('current');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [duelCreationMode, setDuelCreationMode] = useState<'matchmaking' | 'challenge'>(
     'matchmaking',
@@ -3798,7 +3805,7 @@ function AmateurDuelsPage({
   const [quickPickInfoOpen, setQuickPickInfoOpen] = useState(false);
   const [opponentSearchInfoOpen, setOpponentSearchInfoOpen] = useState(false);
   const [lockerInfoOpen, setLockerInfoOpen] = useState(false);
-  const [historyResultMatch, setHistoryResultMatch] = useState<AmateurDuelMatch | null>(null);
+  const [historyResultMatchId, setHistoryResultMatchId] = useState<string | null>(null);
   const [ratingProfile, setRatingProfile] = useState<UserPickerItem | null>(null);
   const [opponentQuery, setOpponentQuery] = useState('');
   const [selectedOpponent, setSelectedOpponent] = useState<AmateurOpponent | null>(null);
@@ -3823,26 +3830,16 @@ function AmateurDuelsPage({
     enabled: duelCreationMode === 'challenge',
   });
   const rating = useQuery({
-    queryKey: ['amateur-duel', 'rating'],
+    queryKey: ['amateur-duel', 'rating', 'current'],
     queryFn: () => fetchAmateurRating(),
   });
   const currentSeasonKey = rating.data?.season_key ?? currentMoscowSeasonKey();
-  const selectedHistorySeasonKey =
-    historyFilter === 'current'
-      ? currentSeasonKey
-      : historyFilter === 'all'
-        ? undefined
-        : historyFilter;
-  const historyQuery = useQuery({
-    queryKey: ['amateur-duel', 'history', selectedHistorySeasonKey ?? 'all'],
-    queryFn: () => fetchAmateurHistory(selectedHistorySeasonKey),
-    enabled: duelTab === 'history',
-  });
   const historyResultDetails = useQuery({
-    queryKey: ['amateur-duel', 'matches', historyResultMatch?.id],
-    queryFn: () => fetchAmateurMatch(historyResultMatch?.id ?? ''),
-    enabled: historyResultMatch !== null,
+    queryKey: ['amateur-duel', 'matches', historyResultMatchId],
+    queryFn: () => fetchAmateurMatch(historyResultMatchId ?? ''),
+    enabled: historyResultMatchId !== null,
   });
+  const closeHistoryResult = useCallback(() => setHistoryResultMatchId(null), []);
 
   const matchmakingMut = useMutation({
     mutationFn: (duelKinds: AmateurDuelKind[]) => joinAmateurMatchmaking(duelKinds),
@@ -3886,33 +3883,27 @@ function AmateurDuelsPage({
     },
   });
 
-  const templateItems = templates.data?.templates ?? [];
+  const rawTemplateItems = templates.data?.templates;
+  const templateItems = useMemo(
+    () => sortDuelTemplates(rawTemplateItems ?? []),
+    [rawTemplateItems],
+  );
   const activeMatches = (matches.data?.matches ?? []).filter(
     (match) =>
       match.status === 'invited' || match.status === 'ready_check' || match.status === 'active',
   );
   const openDuelSlotsUsed = activeMatches.length;
   const hasOpenDuelSlot = openDuelSlotsUsed < 5;
-  const filteredHistory = historyQuery.data?.matches ?? [];
-  const historyStats = historyQuery.data?.stats ?? duelHistoryStats(filteredHistory);
-  const historySeasons = Array.from(
-    new Set([currentSeasonKey, ...(historyQuery.data?.seasons ?? [])]),
+  const currentMatches = activeMatches.filter((match) => match.status !== 'invited');
+  const incomingInvites = activeMatches.filter(
+    (match) => match.status === 'invited' && match.me.side === 'opponent',
   );
-  const historyFilterItems = [
-    { id: 'current', label: 'Текущий месяц' },
-    ...historySeasons
-      .filter((seasonKey) => seasonKey !== currentSeasonKey)
-      .map((seasonKey) => ({ id: seasonKey, label: formatSeasonKeyLabel(seasonKey) })),
-    { id: 'all', label: 'Всё время' },
-  ];
-  const historyRatingPlace =
-    selectedHistorySeasonKey !== undefined ? (historyQuery.data?.rating_place ?? null) : null;
+  const outgoingInvites = activeMatches.filter(
+    (match) => match.status === 'invited' && match.me.side === 'challenger',
+  );
   const selectedTemplate = selectedTemplateId
     ? (templateItems.find((item) => item.id === selectedTemplateId) ?? null)
     : (templateItems[0] ?? null);
-  const selectedTemplateSummaryParts = selectedTemplate
-    ? duelTemplateSummaryParts(selectedTemplate)
-    : [];
   const opponentOptions = opponentQuery.trim().length > 0 ? (opponents.data?.users ?? []) : [];
   const onlineOpponentOptions = (onlineOpponents.data?.users ?? []).filter((opponent) => {
     return isOpponentRecentlySeen(opponent.lastSeenAt);
@@ -3948,386 +3939,334 @@ function AmateurDuelsPage({
     selectedOpponent !== null &&
     !challengeMut.isPending;
 
+  useEffect(() => {
+    if (rating.data?.rating_visible === false && duelTab === 'rating') setDuelTab('game');
+  }, [duelTab, rating.data?.rating_visible]);
+
+  const renderDuelCards = (items: AmateurDuelMatch[]) =>
+    items.map((match) => {
+      const canCancelInvite =
+        match.status === 'invited' &&
+        match.source === 'challenge' &&
+        match.me.side === 'challenger';
+      const canAnswerInvite = isDuelInviteForMe(match);
+      return (
+        <DuelListCard
+          key={match.id}
+          match={match}
+          onOpen={() => onOpenMatch(match.id)}
+          {...(canAnswerInvite
+            ? {
+                onAcceptInvite: () => acceptInviteMut.mutate(match.id),
+                onDeclineInvite: () => declineInviteMut.mutate(match.id),
+                inviteAnswerPending:
+                  (acceptInviteMut.isPending && acceptInviteMut.variables === match.id) ||
+                  (declineInviteMut.isPending && declineInviteMut.variables === match.id),
+              }
+            : {})}
+          {...(canCancelInvite
+            ? {
+                onCancelInvite: () => cancelChallengeMut.mutate(match.id),
+                cancelInvitePending:
+                  cancelChallengeMut.isPending && cancelChallengeMut.variables === match.id,
+              }
+            : {})}
+        />
+      );
+    });
+
   return (
-    <ModeShell title="Дуэли" onBack={onBack}>
+    <ModeShell title="Дуэли" onBack={onBack} variant="section-hub">
       <SegmentedTabs
         ariaLabel="Разделы дуэлей"
         activeTab={duelTab}
         items={[
           { id: 'game', label: 'Игра' },
           { id: 'locker', label: 'Раздевалка' },
-          { id: 'rating', label: 'Рейтинг' },
+          ...(rating.data?.rating_visible === false ? [] : [{ id: 'rating', label: 'Рейтинг' }]),
           { id: 'history', label: 'История' },
         ]}
         onChange={(id) => setDuelTab(id as AmateurDuelTab)}
       />
 
       {duelTab === 'game' && (
-        <>
-          <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div className="section-label section-label--page">Новая дуэль</div>
-            <SegmentedTabs
-              ariaLabel="Сценарий новой дуэли"
-              activeTab={duelCreationMode}
-              items={[
-                { id: 'matchmaking', label: 'Найти' },
-                { id: 'challenge', label: 'Вызвать' },
-              ]}
-              onChange={(id) => setDuelCreationMode(id as 'matchmaking' | 'challenge')}
-            />
-            {duelCreationMode === 'matchmaking' ? (
-              <>
-                <DuelKindPreferencePicker
-                  selected={matchmakingKinds}
-                  onChange={setMatchmakingKinds}
-                  onInfo={() => setMatchmakingRulesOpen(true)}
-                />
-                <button
-                  type="button"
-                  className="btn btn--cta"
-                  disabled={!canStartMatchmaking}
-                  onClick={() => {
-                    setMatchmakingNow(Date.now());
-                    matchmakingMut.mutate(matchmakingKinds);
-                  }}
-                >
-                  {matchmakingMut.isPending
-                    ? 'Запускаем поиск...'
-                    : isMatchmakingActive
-                      ? 'Поиск запущен'
-                      : isMatchmakingExpired
-                        ? 'Искать снова'
-                        : 'Начать поиск'}
-                </button>
-                {matchmakingTicket && (
-                  <div
-                    className="glass"
-                    style={{
-                      borderRadius: 18,
-                      padding: 12,
-                      display: 'grid',
-                      gridTemplateColumns: 'minmax(0, 1fr) auto',
-                      alignItems: 'center',
-                      gap: 10,
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 900 }}>
-                        {isMatchmakingExpired
-                          ? 'Соперник не найден'
-                          : `Ищем соперника... ${formatMs(matchmakingRemaining)}`}
-                      </div>
-                      <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 700 }}>
-                        {isMatchmakingExpired
-                          ? 'Можно запустить поиск ещё раз.'
-                          : 'Подберём игрока с пересекающимися форматами. Поиск длится 2 минуты.'}
-                      </div>
-                    </div>
-                    {isMatchmakingActive && (
-                      <button
-                        type="button"
-                        className="btn btn--ghost"
-                        disabled={leaveMatchmakingMut.isPending}
-                        onClick={() => {
-                          leaveMatchmakingMut.mutate();
-                        }}
-                        style={{ minHeight: 38, padding: '0 14px', fontSize: 12 }}
-                      >
-                        {leaveMatchmakingMut.isPending ? 'Отмена...' : 'Отменить'}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </>
+        <div className="duel-game-layout">
+          <section className="duel-section" aria-label="Текущие дуэли">
+            <div className="section-label duel-section-title">
+              Текущие дуэли ({openDuelSlotsUsed}/5)
+            </div>
+            {currentMatches.length === 0 ? (
+              <div role="status" className="duel-empty-current">
+                Активных матчей пока нет
+              </div>
             ) : (
-              <>
-                {templateItems.length > 0 && selectedTemplate ? (
-                  <>
-                    <GlassSelect
-                      ariaLabel="Шаблон дуэли"
-                      value={selectedTemplate.id}
-                      options={templateItems.map((template) => ({
-                        value: template.id,
-                        label: template.title,
-                      }))}
-                      onChange={setSelectedTemplateId}
-                    />
-                    <div
-                      aria-label="Параметры дуэли"
-                      style={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        alignItems: 'center',
-                        gap: 7,
-                        padding: '0 4px',
-                        color: 'var(--muted)',
-                        fontSize: 13,
-                        fontWeight: 800,
-                        lineHeight: 1.25,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {selectedTemplateSummaryParts.map((part, index) => (
-                        <span key={`${part}-${index}`} style={{ display: 'inline-flex', gap: 7 }}>
-                          {index > 0 && (
-                            <span aria-hidden="true" style={{ opacity: 0.55 }}>
-                              ·
-                            </span>
-                          )}
-                          <span>{part}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ color: 'var(--muted)', fontSize: 14 }}>Нет активных шаблонов</div>
-                )}
-                <div
-                  className="section-label section-label--page"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 8,
-                    marginBottom: -4,
-                    paddingRight: 0,
-                  }}
-                >
-                  <span>Быстрый выбор</span>
-                  <button
-                    type="button"
-                    className="section-info-btn"
-                    onClick={() => setQuickPickInfoOpen(true)}
-                    aria-label="Что такое быстрый выбор"
-                  >
-                    <Info size={12} color="var(--muted)" />
-                  </button>
-                </div>
-                <div className="glass" style={{ borderRadius: 18, padding: 12 }}>
-                  <div
-                    aria-label="Быстрый выбор соперника"
-                    className="no-scrollbar"
-                    style={{
-                      display: 'flex',
-                      gap: 10,
-                      overflowX: 'auto',
-                      paddingTop: 2,
-                      paddingBottom: 2,
-                    }}
-                  >
-                    {suggestedOpponentOptions.length > 0 ? (
-                      suggestedOpponentOptions.map((opponent) => {
-                        const active = selectedOpponent?.userId === opponent.userId;
-                        return (
-                          <button
-                            key={opponent.userId}
-                            type="button"
-                            aria-label={`Выбрать соперника ${opponent.displayName}`}
-                            onClick={() => {
-                              setSelectedOpponent(opponent);
-                              setOpponentQuery('');
-                            }}
-                            style={{
-                              width: 58,
-                              flex: '0 0 auto',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                              gap: 6,
-                              color: active ? 'var(--ink)' : 'var(--muted)',
-                              fontSize: 10,
-                              fontWeight: 900,
-                              lineHeight: 1.05,
-                              background: 'transparent',
-                              border: 'none',
-                              padding: 0,
-                              textAlign: 'center',
-                            }}
-                          >
-                            <span style={{ position: 'relative', display: 'inline-flex' }}>
-                              <UserAvatar
-                                avatarUrl={opponent.avatarUrl}
-                                name={opponent.displayName}
-                                size={44}
-                                fontSize={16}
-                                style={{
-                                  boxShadow: active
-                                    ? '0 0 0 3px #f59e0b, 0 10px 18px rgba(15, 23, 42, 0.18)'
-                                    : '0 8px 16px rgba(15, 23, 42, 0.12)',
-                                }}
-                              />
-                              <span
-                                aria-hidden="true"
-                                style={{
-                                  position: 'absolute',
-                                  right: 1,
-                                  bottom: 1,
-                                  width: 11,
-                                  height: 11,
-                                  borderRadius: 999,
-                                  background: isOpponentOnlineNow(opponent.lastSeenAt)
-                                    ? '#22c55e'
-                                    : '#94a3b8',
-                                  border: '2px solid rgba(226, 240, 252, 0.98)',
-                                }}
-                              />
-                            </span>
-                            <span
-                              style={{
-                                width: '100%',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {opponent.displayName}
-                            </span>
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 700 }}>
-                        Игроков пока не видно. Можно найти по имени.
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div
-                  className="section-label section-label--page"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 8,
-                    marginBottom: -4,
-                    paddingRight: 0,
-                  }}
-                >
-                  <span>Поиск</span>
-                  <button
-                    type="button"
-                    className="section-info-btn"
-                    onClick={() => setOpponentSearchInfoOpen(true)}
-                    aria-label="Как работает поиск соперника"
-                  >
-                    <Info size={12} color="var(--muted)" />
-                  </button>
-                </div>
-                <div className="glass-dock-field" style={{ minHeight: 48 }}>
-                  <Search size={14} color="var(--muted)" aria-hidden />
-                  <input
-                    aria-label="Поиск соперника"
-                    value={opponentQuery}
-                    onChange={(event) => {
-                      setOpponentQuery(event.target.value);
-                      setSelectedOpponent(null);
-                    }}
-                    placeholder="Имя или фамилия"
-                    type="search"
-                    style={{
-                      flex: 1,
-                      border: 'none',
-                      outline: 'none',
-                      background: 'transparent',
-                      color: 'var(--ink)',
-                      fontSize: 14,
-                      fontWeight: 800,
-                      fontFamily: 'inherit',
-                    }}
+              renderDuelCards(currentMatches)
+            )}
+          </section>
+          {incomingInvites.length > 0 && (
+            <section className="duel-section" aria-label="Входящие приглашения">
+              <div className="section-label duel-section-title">Входящие приглашения</div>
+              {renderDuelCards(incomingInvites)}
+            </section>
+          )}
+          {outgoingInvites.length > 0 && (
+            <section className="duel-section" aria-label="Отправленные вызовы">
+              <div className="section-label duel-section-title">Отправленные вызовы</div>
+              {renderDuelCards(outgoingInvites)}
+            </section>
+          )}
+          <div className="duel-section">
+            <div className="section-label duel-section-title">Новая дуэль</div>
+            <section className="duel-creation-card" aria-label="Новая дуэль">
+              <SegmentedTabs
+                ariaLabel="Сценарий новой дуэли"
+                activeTab={duelCreationMode}
+                items={[
+                  { id: 'matchmaking', label: 'Найти' },
+                  { id: 'challenge', label: 'Вызвать' },
+                ]}
+                onChange={(id) => setDuelCreationMode(id as 'matchmaking' | 'challenge')}
+              />
+              {duelCreationMode === 'matchmaking' ? (
+                <>
+                  <DuelKindPreferencePicker
+                    selected={matchmakingKinds}
+                    onChange={setMatchmakingKinds}
+                    onInfo={() => setMatchmakingRulesOpen(true)}
                   />
-                </div>
-                {selectedOpponent && (
-                  <div
-                    className="glass"
-                    style={{
-                      borderRadius: 16,
-                      padding: '10px 12px',
-                      display: 'grid',
-                      gridTemplateColumns: 'minmax(0, 1fr) 34px',
-                      gap: 10,
-                      alignItems: 'center',
+                  <button
+                    type="button"
+                    className="btn btn--cta"
+                    disabled={!canStartMatchmaking}
+                    onClick={() => {
+                      setMatchmakingNow(Date.now());
+                      matchmakingMut.mutate(matchmakingKinds);
                     }}
                   >
-                    <div style={{ minWidth: 0 }}>
-                      <div className="section-label" style={{ margin: 0, padding: 0 }}>
-                        Соперник
-                      </div>
-                      <div
-                        style={{
-                          color: 'var(--ink)',
-                          fontSize: 16,
-                          fontWeight: 900,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {selectedOpponent.displayName}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      aria-label="Убрать соперника"
-                      title="Убрать соперника"
-                      onClick={() => setSelectedOpponent(null)}
-                    >
-                      <X size={15} />
-                    </button>
-                  </div>
-                )}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {opponentOptions.slice(0, 4).map((opponent) => (
-                    <button
-                      key={opponent.userId}
-                      type="button"
-                      onClick={() => {
-                        setSelectedOpponent(opponent);
-                        setOpponentQuery('');
-                      }}
+                    {matchmakingMut.isPending
+                      ? 'Запускаем поиск...'
+                      : isMatchmakingActive
+                        ? 'Поиск запущен'
+                        : isMatchmakingExpired
+                          ? 'Искать снова'
+                          : 'Начать поиск'}
+                  </button>
+                  {matchmakingTicket && (
+                    <div
                       className="glass"
                       style={{
-                        minHeight: 58,
-                        borderRadius: 20,
-                        padding: '8px 12px',
+                        borderRadius: 18,
+                        padding: 12,
                         display: 'grid',
-                        gridTemplateColumns: '42px minmax(0, 1fr)',
+                        gridTemplateColumns: 'minmax(0, 1fr) auto',
                         alignItems: 'center',
-                        gap: 12,
-                        textAlign: 'left',
-                        border:
-                          selectedOpponent?.userId === opponent.userId
-                            ? '2px solid #f59e0b'
-                            : '1px solid rgba(255,255,255,0.8)',
+                        gap: 10,
                       }}
                     >
-                      <span style={{ position: 'relative', display: 'inline-flex' }}>
-                        <UserAvatar
-                          avatarUrl={opponent.avatarUrl}
-                          name={opponent.displayName}
-                          size={42}
-                          fontSize={15}
-                        />
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            position: 'absolute',
-                            right: 0,
-                            bottom: 0,
-                            width: 11,
-                            height: 11,
-                            borderRadius: 999,
-                            background: isOpponentOnlineNow(opponent.lastSeenAt)
-                              ? '#22c55e'
-                              : '#94a3b8',
-                            border: '2px solid rgba(226, 240, 252, 0.98)',
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 900 }}>
+                          {isMatchmakingExpired
+                            ? 'Соперник не найден'
+                            : `Ищем соперника... ${formatMs(matchmakingRemaining)}`}
+                        </div>
+                        <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 700 }}>
+                          {isMatchmakingExpired
+                            ? 'Можно запустить поиск ещё раз.'
+                            : 'Подберём игрока с пересекающимися форматами. Поиск длится 2 минуты.'}
+                        </div>
+                      </div>
+                      {isMatchmakingActive && (
+                        <button
+                          type="button"
+                          className="btn btn--ghost"
+                          disabled={leaveMatchmakingMut.isPending}
+                          onClick={() => {
+                            leaveMatchmakingMut.mutate();
                           }}
-                        />
-                      </span>
-                      <span style={{ minWidth: 0 }}>
-                        <span
+                          style={{ minHeight: 38, padding: '0 14px', fontSize: 12 }}
+                        >
+                          {leaveMatchmakingMut.isPending ? 'Отмена...' : 'Отменить'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {templateItems.length > 0 && selectedTemplate ? (
+                    <>
+                      <GlassSelect
+                        ariaLabel="Шаблон дуэли"
+                        buttonClassName="duel-template-select"
+                        value={selectedTemplate.id}
+                        options={templateItems.map((template) => ({
+                          value: template.id,
+                          label: duelTemplateOptionLabel(template),
+                        }))}
+                        onChange={setSelectedTemplateId}
+                      />
+                    </>
+                  ) : (
+                    <div style={{ color: 'var(--muted)', fontSize: 14 }}>Нет активных шаблонов</div>
+                  )}
+                  <div className="section-label duel-form-section-title">
+                    <span>Быстрый выбор</span>
+                    <button
+                      type="button"
+                      className="section-info-btn duel-form-section-info-btn"
+                      onClick={() => setQuickPickInfoOpen(true)}
+                      aria-label="Что такое быстрый выбор"
+                    >
+                      <Info size={12} color="var(--muted)" />
+                    </button>
+                  </div>
+                  <div className="glass duel-quick-pick" style={{ borderRadius: 18, padding: 12 }}>
+                    <div
+                      aria-label="Быстрый выбор соперника"
+                      className="no-scrollbar"
+                      style={{
+                        display: 'flex',
+                        gap: 10,
+                        overflowX: 'auto',
+                        paddingTop: 2,
+                        paddingBottom: 2,
+                      }}
+                    >
+                      {suggestedOpponentOptions.length > 0 ? (
+                        suggestedOpponentOptions.map((opponent) => {
+                          const active = selectedOpponent?.userId === opponent.userId;
+                          return (
+                            <button
+                              key={opponent.userId}
+                              type="button"
+                              className={`duel-quick-pick__opponent${
+                                active ? ' duel-quick-pick__opponent--active' : ''
+                              }`}
+                              aria-label={`Выбрать соперника ${opponent.displayName}`}
+                              onClick={() => {
+                                setSelectedOpponent(opponent);
+                                setOpponentQuery('');
+                              }}
+                              style={{
+                                width: 58,
+                                flex: '0 0 auto',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                gap: 6,
+                                fontSize: 10,
+                                fontWeight: 900,
+                                lineHeight: 1.05,
+                                background: 'transparent',
+                                border: 'none',
+                                padding: 0,
+                                textAlign: 'center',
+                              }}
+                            >
+                              <span style={{ position: 'relative', display: 'inline-flex' }}>
+                                <UserAvatar
+                                  avatarUrl={opponent.avatarUrl}
+                                  name={opponent.displayName}
+                                  size={44}
+                                  fontSize={16}
+                                  style={{
+                                    boxShadow: active
+                                      ? '0 0 0 3px #f59e0b, 0 10px 18px rgba(15, 23, 42, 0.18)'
+                                      : '0 8px 16px rgba(15, 23, 42, 0.12)',
+                                  }}
+                                />
+                                <span
+                                  aria-hidden="true"
+                                  style={{
+                                    position: 'absolute',
+                                    right: 1,
+                                    bottom: 1,
+                                    width: 11,
+                                    height: 11,
+                                    borderRadius: 999,
+                                    background: isOpponentOnlineNow(opponent.lastSeenAt)
+                                      ? '#22c55e'
+                                      : '#94a3b8',
+                                    border: '2px solid rgba(226, 240, 252, 0.98)',
+                                  }}
+                                />
+                              </span>
+                              <span
+                                className="duel-quick-pick__name"
+                                style={{
+                                  width: '100%',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {opponent.displayName}
+                              </span>
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div
+                          className="duel-quick-pick__empty"
+                          style={{ fontSize: 13, fontWeight: 700 }}
+                        >
+                          Игроков пока не видно. Можно найти по имени.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="section-label duel-form-section-title">
+                    <span>Поиск</span>
+                    <button
+                      type="button"
+                      className="section-info-btn duel-form-section-info-btn"
+                      onClick={() => setOpponentSearchInfoOpen(true)}
+                      aria-label="Как работает поиск соперника"
+                    >
+                      <Info size={12} color="var(--muted)" />
+                    </button>
+                  </div>
+                  <div className="glass-dock-field duel-opponent-search" style={{ minHeight: 48 }}>
+                    <Search className="duel-opponent-search__icon" size={14} aria-hidden />
+                    <input
+                      className="duel-opponent-search__input"
+                      aria-label="Поиск соперника"
+                      value={opponentQuery}
+                      onChange={(event) => {
+                        setOpponentQuery(event.target.value);
+                        setSelectedOpponent(null);
+                      }}
+                      placeholder="Имя или фамилия"
+                      type="search"
+                      style={{
+                        flex: 1,
+                        border: 'none',
+                        outline: 'none',
+                        background: 'transparent',
+                        fontSize: 14,
+                        fontWeight: 800,
+                        fontFamily: 'inherit',
+                      }}
+                    />
+                  </div>
+                  {selectedOpponent && (
+                    <div
+                      className="glass"
+                      style={{
+                        borderRadius: 16,
+                        padding: '10px 12px',
+                        display: 'grid',
+                        gridTemplateColumns: 'minmax(0, 1fr) 34px',
+                        gap: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div className="section-label" style={{ margin: 0, padding: 0 }}>
+                          Соперник
+                        </div>
+                        <div
                           style={{
-                            display: 'block',
                             color: 'var(--ink)',
                             fontSize: 16,
                             fontWeight: 900,
@@ -4336,135 +4275,128 @@ function AmateurDuelsPage({
                             whiteSpace: 'nowrap',
                           }}
                         >
-                          {opponent.displayName}
+                          {selectedOpponent.displayName}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label="Убрать соперника"
+                        title="Убрать соперника"
+                        onClick={() => setSelectedOpponent(null)}
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {opponentOptions.slice(0, 4).map((opponent) => (
+                      <button
+                        key={opponent.userId}
+                        type="button"
+                        onClick={() => {
+                          setSelectedOpponent(opponent);
+                          setOpponentQuery('');
+                        }}
+                        className="glass"
+                        style={{
+                          minHeight: 58,
+                          borderRadius: 20,
+                          padding: '8px 12px',
+                          display: 'grid',
+                          gridTemplateColumns: '42px minmax(0, 1fr)',
+                          alignItems: 'center',
+                          gap: 12,
+                          textAlign: 'left',
+                          border:
+                            selectedOpponent?.userId === opponent.userId
+                              ? '2px solid #f59e0b'
+                              : '1px solid rgba(255,255,255,0.8)',
+                        }}
+                      >
+                        <span style={{ position: 'relative', display: 'inline-flex' }}>
+                          <UserAvatar
+                            avatarUrl={opponent.avatarUrl}
+                            name={opponent.displayName}
+                            size={42}
+                            fontSize={15}
+                          />
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              position: 'absolute',
+                              right: 0,
+                              bottom: 0,
+                              width: 11,
+                              height: 11,
+                              borderRadius: 999,
+                              background: isOpponentOnlineNow(opponent.lastSeenAt)
+                                ? '#22c55e'
+                                : '#94a3b8',
+                              border: '2px solid rgba(226, 240, 252, 0.98)',
+                            }}
+                          />
                         </span>
-                        <span
-                          style={{
-                            display: 'block',
-                            color: 'var(--muted)',
-                            fontSize: 11,
-                            fontWeight: 800,
-                          }}
-                        >
-                          {isOpponentOnlineNow(opponent.lastSeenAt)
-                            ? 'сейчас в игре'
-                            : isOpponentRecentlySeen(opponent.lastSeenAt)
-                              ? 'недавно был'
-                              : 'доступен для вызова'}
+                        <span style={{ minWidth: 0 }}>
+                          <span
+                            style={{
+                              display: 'block',
+                              color: 'var(--ink)',
+                              fontSize: 16,
+                              fontWeight: 900,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {opponent.displayName}
+                          </span>
+                          <span
+                            style={{
+                              display: 'block',
+                              color: 'var(--muted)',
+                              fontSize: 11,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {isOpponentOnlineNow(opponent.lastSeenAt)
+                              ? 'сейчас в игре'
+                              : isOpponentRecentlySeen(opponent.lastSeenAt)
+                                ? 'недавно был'
+                                : 'доступен для вызова'}
+                          </span>
                         </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  className="btn btn--cta"
-                  disabled={!canChallenge}
-                  onClick={() => {
-                    if (!selectedTemplate || !selectedOpponent) return;
-                    challengeMut.mutate({
-                      template_id: selectedTemplate.id,
-                      opponent_user_id: selectedOpponent.userId,
-                    });
-                  }}
-                >
-                  {challengeMut.isPending
-                    ? 'Отправляем...'
-                    : selectedOpponent
-                      ? 'Вызвать игрока'
-                      : 'Выберите соперника'}
-                </button>
-                {challengeMut.error && (
-                  <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>
-                    {challengeMut.error.message}
+                      </button>
+                    ))}
                   </div>
-                )}
-              </>
-            )}
-          </section>
-
-          <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div
-              className="section-label section-label--page"
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
-              <span>Текущие дуэли ({openDuelSlotsUsed}/5)</span>
-            </div>
-            {activeMatches.length === 0 && (
-              <div
-                role="status"
-                style={{
-                  minHeight: 132,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  textAlign: 'center',
-                  color: 'var(--muted)',
-                }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 46,
-                    height: 46,
-                    borderRadius: 999,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: 'rgba(226, 240, 252, 0.52)',
-                    border: '1px solid rgba(255, 255, 255, 0.76)',
-                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9)',
-                  }}
-                >
-                  <Swords size={20} strokeWidth={2.2} />
-                </span>
-                <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.35 }}>
-                  Пока нет приглашений и текущих дуэлей
-                </div>
-                <div style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.35, opacity: 0.78 }}>
-                  Начните поиск или вызовите игрока выше.
-                </div>
-              </div>
-            )}
-            {activeMatches.map((match) => {
-              const canCancelInvite =
-                match.status === 'invited' &&
-                match.source === 'challenge' &&
-                match.me.side === 'challenger';
-              const canAnswerInvite = isDuelInviteForMe(match);
-              return (
-                <DuelListCard
-                  key={match.id}
-                  match={match}
-                  onOpen={() => onOpenMatch(match.id)}
-                  {...(canAnswerInvite
-                    ? {
-                        onAcceptInvite: () => acceptInviteMut.mutate(match.id),
-                        onDeclineInvite: () => declineInviteMut.mutate(match.id),
-                        inviteAnswerPending:
-                          (acceptInviteMut.isPending && acceptInviteMut.variables === match.id) ||
-                          (declineInviteMut.isPending && declineInviteMut.variables === match.id),
-                      }
-                    : {})}
-                  {...(canCancelInvite
-                    ? {
-                        onCancelInvite: () => cancelChallengeMut.mutate(match.id),
-                        cancelInvitePending:
-                          cancelChallengeMut.isPending && cancelChallengeMut.variables === match.id,
-                      }
-                    : {})}
-                />
-              );
-            })}
-          </section>
-        </>
+                  <button
+                    type="button"
+                    className="btn btn--cta duel-challenge-submit"
+                    disabled={!canChallenge}
+                    onClick={() => {
+                      if (!selectedTemplate || !selectedOpponent) return;
+                      challengeMut.mutate({
+                        template_id: selectedTemplate.id,
+                        opponent_user_id: selectedOpponent.userId,
+                      });
+                    }}
+                  >
+                    {challengeMut.isPending
+                      ? 'Отправляем...'
+                      : selectedOpponent
+                        ? 'Вызвать игрока'
+                        : 'Выберите соперника'}
+                  </button>
+                  {challengeMut.error && (
+                    <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>
+                      {challengeMut.error.message}
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+          </div>
+        </div>
       )}
 
       {duelTab === 'locker' && (
@@ -4475,188 +4407,52 @@ function AmateurDuelsPage({
       )}
 
       {duelTab === 'rating' && (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div className="section-label section-label--page">Рейтинг</div>
-          {(rating.data?.rating ?? []).length === 0 ? (
-            <div className="glass" style={{ borderRadius: 18, padding: 14, color: 'var(--muted)' }}>
-              Рейтинг появится после первых завершённых дуэлей.
-            </div>
-          ) : (
-            <>
-              <div
-                aria-hidden="true"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '24px minmax(0, 1fr) auto',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '0 14px 0',
-                  color: 'rgba(15, 23, 42, 0.55)',
-                  fontSize: 10,
-                  fontWeight: 900,
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                <span>#</span>
-                <span>Игрок</span>
-                <span>Очки</span>
-              </div>
-              {(rating.data?.rating ?? []).map((row, index) => {
-                const isMe = currentUserId === row.user_id;
-                return (
-                  <button
-                    type="button"
-                    key={row.user_id}
-                    className="glass"
-                    aria-label={`Открыть профиль ${row.display_name}`}
-                    onClick={() =>
-                      setRatingProfile({
-                        userId: row.user_id,
-                        displayName: row.display_name,
-                        avatarUrl: row.avatar_url,
-                      })
-                    }
-                    style={{
-                      width: '100%',
-                      borderRadius: 16,
-                      padding: '10px 14px',
-                      display: 'grid',
-                      gridTemplateColumns: '24px minmax(0, 1fr) auto',
-                      alignItems: 'center',
-                      gap: 8,
-                      minHeight: 48,
-                      color: isMe ? '#ffffff' : 'var(--ink)',
-                      fontSize: 14,
-                      fontWeight: 800,
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      border: isMe
-                        ? '1px solid rgba(255,255,255,0.22)'
-                        : '1px solid rgba(255,255,255,0.8)',
-                      background: isMe
-                        ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.94))'
-                        : undefined,
-                      boxShadow: isMe ? '0 12px 24px rgba(15, 23, 42, 0.2)' : undefined,
-                    }}
-                  >
-                    <span>{index + 1}</span>
-                    <span
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        minWidth: 0,
-                      }}
-                    >
-                      <UserAvatar
-                        avatarUrl={row.avatar_url}
-                        name={row.display_name}
-                        size={34}
-                        fontSize={14}
-                        alt={`Аватар ${row.display_name}`}
-                      />
-                      <span
-                        style={{
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {row.display_name}
-                      </span>
-                    </span>
-                    <span
-                      style={{
-                        justifySelf: 'end',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {row.points}
-                    </span>
-                  </button>
-                );
-              })}
-            </>
-          )}
-        </section>
+        <AmateurDuelRatingTab
+          currentUserId={currentUserId}
+          initialSeasonKey={currentSeasonKey}
+          onOpenProfile={setRatingProfile}
+        />
       )}
 
       {duelTab === 'history' && (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div className="section-label section-label--page">История</div>
-          <GlassSelect
-            ariaLabel="Месяц истории дуэлей"
-            value={historyFilter}
-            options={historyFilterItems.map((item) => ({
-              value: item.id,
-              label: item.label,
-            }))}
-            onChange={setHistoryFilter}
-          />
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns:
-                selectedHistorySeasonKey !== undefined ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
-              gap: 8,
-            }}
-          >
-            <TotalCell label="ДУЭЛИ" value={String(historyStats.duels)} />
-            <TotalCell label="ПОБЕДЫ" value={String(historyStats.wins)} />
-            <TotalCell label="ОЧКИ" value={String(historyStats.points)} />
-            {selectedHistorySeasonKey !== undefined && (
-              <TotalCell
-                label="МЕСТО"
-                value={historyRatingPlace !== null ? `#${historyRatingPlace}` : '—'}
-              />
-            )}
-          </div>
-          {historyQuery.isLoading ? (
-            <div
-              style={{
-                color: 'rgba(15, 23, 42, 0.68)',
-                fontSize: 16,
-                fontWeight: 700,
-                lineHeight: 1.35,
-              }}
-            >
-              Загрузка истории...
-            </div>
-          ) : filteredHistory.length === 0 ? (
-            <div
-              style={{
-                color: 'rgba(15, 23, 42, 0.68)',
-                fontSize: 16,
-                fontWeight: 700,
-                lineHeight: 1.35,
-              }}
-            >
-              {selectedHistorySeasonKey
-                ? `За ${formatSeasonKeyLabel(selectedHistorySeasonKey)} сыгранных дуэлей пока нет.`
-                : 'Архив появится после первых завершённых дуэлей.'}
-            </div>
-          ) : (
-            filteredHistory
-              .slice(0, 12)
-              .map((match) => (
-                <DuelListCard
-                  key={match.id}
-                  match={match}
-                  onOpen={() => setHistoryResultMatch(match)}
-                />
-              ))
-          )}
-        </section>
-      )}
-      {historyResultMatch && (
-        <DuelResultModal
-          match={historyResultDetails.data?.match ?? historyResultMatch}
-          isLoadingDetails={historyResultDetails.isFetching && !historyResultDetails.data}
-          closeLabel="Понятно"
-          onClose={() => setHistoryResultMatch(null)}
+        <AmateurDuelHistoryTab
+          initialMonthKey={currentSeasonKey}
+          onOpenMatch={setHistoryResultMatchId}
+          onCloseMatch={closeHistoryResult}
+          expandedMatchId={historyResultMatchId}
+          expandedContent={
+            historyResultMatchId ? (
+              historyResultDetails.data?.match ? (
+                <section
+                  className="duel-inline-result"
+                  aria-label={`Подробности дуэли с ${historyResultDetails.data.match.opponent.display_name || 'соперником'}`}
+                >
+                  <DuelResultCard
+                    match={historyResultDetails.data.match}
+                    isLoadingDetails={historyResultDetails.isFetching && !historyResultDetails.data}
+                    compact
+                  />
+                </section>
+              ) : (
+                <div className="duel-inline-result__status" role="status">
+                  {historyResultDetails.isError ? (
+                    <>
+                      <span>Не удалось загрузить подробности дуэли.</span>
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() => void historyResultDetails.refetch()}
+                      >
+                        Повторить
+                      </button>
+                    </>
+                  ) : (
+                    'Загружаем подробности дуэли…'
+                  )}
+                </div>
+              )
+            ) : null
+          }
         />
       )}
       {matchmakingRulesOpen && (
@@ -4717,41 +4513,33 @@ function DuelLockerTab({
 
   return (
     <>
-      <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div
-          className="section-label section-label--page"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8,
-            paddingRight: 0,
-          }}
-        >
-          <span>Раздевалка</span>
-          <button
-            type="button"
-            className="section-info-btn"
-            onClick={onInfo}
-            aria-label="Что такое раздевалка"
-          >
-            <Info size={12} color="var(--muted)" />
-          </button>
-        </div>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-            gap: 8,
-          }}
-        >
+      <section className="duel-section">
+        <div className="duel-locker-kind-list">
           {DUEL_INVENTORY_SLOTS.map((slot) => (
-            <DuelLockerSlotButton
-              key={slot.kind}
-              kind={slot.kind}
-              inventory={inventoryQuery.data}
-              onOpen={() => setSelectedKind(slot.kind)}
-            />
+            <section className="duel-locker-kind-section" key={slot.kind}>
+              <div
+                className={`section-label duel-section-title duel-locker-kind-section__title${
+                  slot.kind === 'skates' ? ' duel-section-title--with-action' : ''
+                }`}
+              >
+                {DUEL_EQUIPMENT_META[slot.kind].title}
+                {slot.kind === 'skates' && (
+                  <button
+                    type="button"
+                    className="section-info-btn duel-section-info-btn"
+                    onClick={onInfo}
+                    aria-label="Что такое раздевалка"
+                  >
+                    <Info size={12} color="rgba(240, 248, 255, 0.92)" />
+                  </button>
+                )}
+              </div>
+              <DuelLockerSlotButton
+                kind={slot.kind}
+                inventory={inventoryQuery.data}
+                onOpen={() => setSelectedKind(slot.kind)}
+              />
+            </section>
           ))}
         </div>
       </section>
@@ -4798,62 +4586,21 @@ function DuelLockerSlotButton({
   onOpen: () => void;
 }): JSX.Element {
   const meta = DUEL_EQUIPMENT_META[kind];
-  const items = (inventory?.items[kind] ?? []).filter(isDuelLockerItemAvailable);
   const activeItem = duelEquippedItem(inventory, kind);
-  const hasBaseEquipment = isDuelRequiredEquipment(kind);
-  const hasOwnedItems = items.length > 0;
-  const title = activeItem
-    ? duelEquipmentDisplayTitle(activeItem)
-    : hasBaseEquipment
-      ? duelBaseEquipmentTitle(kind)
-      : meta.empty;
-  const status = activeItem
-    ? formatInventoryStockLabel(activeItem)
-    : hasBaseEquipment
-      ? 'Базовая'
-      : hasOwnedItems
-        ? 'Выбрать'
-        : 'Нет купленных';
+  const title = activeItem ? duelEquipmentDisplayTitle(activeItem) : duelBaseEquipmentTitle(kind);
+  const status = activeItem ? formatInventoryStockLabel(activeItem) : 'Базовый вариант';
   const artwork = activeItem
     ? artworkForInventoryItem(activeItem)
     : placeholderArtworkForKind(kind);
-  const hasVisibleEquipment = activeItem !== null || hasBaseEquipment;
 
   return (
     <button
       type="button"
-      className="glass"
+      className="glass duel-locker-slot"
       onClick={onOpen}
       aria-label={`${meta.title}: ${title}. ${status}`}
-      style={{
-        minWidth: 0,
-        minHeight: 158,
-        borderRadius: 22,
-        padding: 10,
-        border: hasVisibleEquipment
-          ? '1px solid rgba(255,255,255,0.82)'
-          : '1px solid rgba(255,255,255,0.62)',
-        display: 'grid',
-        gridTemplateRows: '1fr auto',
-        gap: 8,
-        color: 'var(--ink)',
-        textAlign: 'left',
-        cursor: 'pointer',
-        overflow: 'hidden',
-      }}
     >
-      <span
-        aria-hidden="true"
-        style={{
-          width: '100%',
-          aspectRatio: '1 / 1',
-          borderRadius: 18,
-          overflow: 'hidden',
-          border: '1px solid rgba(255,255,255,0.78)',
-          background: 'rgba(255,255,255,0.28)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.78), 0 10px 18px rgba(15,23,42,0.1)',
-        }}
-      >
+      <span className="duel-locker-slot__artwork" aria-hidden="true">
         <img
           src={artwork}
           alt=""
@@ -4862,37 +4609,16 @@ function DuelLockerSlotButton({
             height: '100%',
             display: 'block',
             objectFit: 'cover',
-            filter: hasVisibleEquipment ? 'none' : 'grayscale(1)',
-            opacity: hasVisibleEquipment ? 1 : 0.46,
+            filter: 'none',
+            opacity: 1,
           }}
         />
       </span>
-      <span style={{ minWidth: 0, display: 'grid', gap: 4 }}>
-        <span
-          style={{
-            minWidth: 0,
-            color: 'var(--ink)',
-            fontSize: 12,
-            fontWeight: 950,
-            lineHeight: 1.08,
-            overflowWrap: 'break-word',
-          }}
-        >
-          {title}
-        </span>
-        <span
-          style={{
-            color: 'rgba(15, 23, 42, 0.6)',
-            fontSize: 10,
-            fontWeight: 850,
-            lineHeight: 1.1,
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}
-        >
-          {status}
-        </span>
+      <span className="duel-locker-slot__copy amateur-hub-card__copy">
+        <strong className="duel-locker-slot__title">{title}</strong>
+        <span className="duel-locker-slot__status">{status}</span>
       </span>
+      <ChevronRight className="card-chevron" size={19} strokeWidth={2.7} aria-hidden="true" />
     </button>
   );
 }
@@ -4901,18 +4627,10 @@ function DuelEquipmentSelectionRadio({ selected }: { selected: boolean }): JSX.E
   return (
     <span
       aria-hidden="true"
-      style={{
-        width: 18,
-        height: 18,
-        borderRadius: 999,
-        border: selected ? '5px solid rgba(255,255,255,0.92)' : '2px solid rgba(15,23,42,0.34)',
-        background: selected ? '#1f2a3d' : 'rgba(255,255,255,0.36)',
-        boxShadow: selected
-          ? '0 0 0 1px rgba(15,23,42,0.2)'
-          : 'inset 0 1px 0 rgba(255,255,255,0.62)',
-        justifySelf: 'end',
-      }}
-    />
+      className={`duel-equipment-option__check${selected ? ' duel-equipment-option__check--selected' : ''}`}
+    >
+      {selected ? <Check size={11} strokeWidth={3} /> : null}
+    </span>
   );
 }
 
@@ -4936,7 +4654,7 @@ function DuelEquipmentDetailsModal({
   const meta = DUEL_EQUIPMENT_META[kind];
   const items = (inventory?.items[kind] ?? []).filter(isDuelLockerItemAvailable);
   const activeId = duelEquipmentIdFor(inventory, kind);
-  const showBaseEquipment = kind !== 'stick';
+  const showBaseEquipment = true;
 
   return (
     <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
@@ -4986,27 +4704,14 @@ function DuelEquipmentDetailsModal({
               data-no-drag-scroll="true"
               disabled={isSaving}
               onClick={() => onSelect(null)}
-              className="glass"
+              className={`glass duel-equipment-option${activeId === null ? ' duel-equipment-option--selected' : ''}`}
               aria-pressed={activeId === null}
               style={{
-                minHeight: 74,
+                minHeight: 78,
                 borderRadius: 16,
                 padding: 10,
-                color: activeId === null ? '#fff' : 'var(--ink)',
-                border:
-                  activeId === null
-                    ? '1px solid rgba(255,255,255,0.24)'
-                    : '1px solid rgba(255,255,255,0.76)',
-                background:
-                  activeId === null
-                    ? 'linear-gradient(180deg, rgba(15,23,42,0.92), rgba(30,41,59,0.86))'
-                    : 'rgba(255,255,255,0.22)',
-                boxShadow:
-                  activeId === null
-                    ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 22px rgba(15,23,42,0.22)'
-                    : undefined,
                 display: 'grid',
-                gridTemplateColumns: '54px minmax(0, 1fr) 22px',
+                gridTemplateColumns: '56px minmax(0, 1fr) 22px',
                 alignItems: 'center',
                 gap: 10,
                 textAlign: 'left',
@@ -5016,14 +4721,11 @@ function DuelEquipmentDetailsModal({
               <span
                 aria-hidden="true"
                 style={{
-                  width: 54,
-                  height: 54,
+                  width: 56,
+                  height: 56,
                   borderRadius: 14,
                   overflow: 'hidden',
-                  border:
-                    activeId === null
-                      ? '1px solid rgba(255,255,255,0.34)'
-                      : '1px solid rgba(255,255,255,0.78)',
+                  border: '1px solid rgba(255,255,255,0.78)',
                   background: 'rgba(255,255,255,0.28)',
                 }}
               >
@@ -5046,7 +4748,7 @@ function DuelEquipmentDetailsModal({
                 </span>
                 <span
                   style={{
-                    color: activeId === null ? 'rgba(255,255,255,0.76)' : 'rgba(15, 23, 42, 0.62)',
+                    color: 'rgba(15, 23, 42, 0.62)',
                     fontSize: 12,
                     fontWeight: 760,
                     lineHeight: 1.28,
@@ -5069,23 +4771,13 @@ function DuelEquipmentDetailsModal({
                 disabled={isSaving || item.chargesAvailable <= 0}
                 onClick={() => onSelect(item.id)}
                 aria-pressed={selected}
-                className="glass"
+                className={`glass duel-equipment-option${selected ? ' duel-equipment-option--selected' : ''}`}
                 style={{
-                  minHeight: 94,
-                  borderRadius: 18,
+                  minHeight: 78,
+                  borderRadius: 16,
                   padding: 10,
-                  color: selected ? '#fff' : 'var(--ink)',
-                  border: selected
-                    ? '1px solid rgba(255,255,255,0.24)'
-                    : '1px solid rgba(255,255,255,0.76)',
-                  background: selected
-                    ? 'linear-gradient(180deg, rgba(15,23,42,0.92), rgba(30,41,59,0.86))'
-                    : 'rgba(255,255,255,0.22)',
-                  boxShadow: selected
-                    ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 22px rgba(15,23,42,0.22)'
-                    : undefined,
                   display: 'grid',
-                  gridTemplateColumns: '64px minmax(0, 1fr) 22px',
+                  gridTemplateColumns: '56px minmax(0, 1fr) 22px',
                   alignItems: 'center',
                   gap: 10,
                   textAlign: 'left',
@@ -5096,9 +4788,9 @@ function DuelEquipmentDetailsModal({
                 <span
                   aria-hidden="true"
                   style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 16,
+                    width: 56,
+                    height: 56,
+                    borderRadius: 14,
                     overflow: 'hidden',
                     border: '1px solid rgba(255,255,255,0.8)',
                     background: 'rgba(255,255,255,0.28)',
@@ -5116,7 +4808,7 @@ function DuelEquipmentDetailsModal({
                   <span
                     style={{
                       minWidth: 0,
-                      color: selected ? '#fff' : 'var(--ink)',
+                      color: 'var(--ink)',
                       fontSize: 15,
                       fontWeight: 950,
                       lineHeight: 1.12,
@@ -5129,7 +4821,7 @@ function DuelEquipmentDetailsModal({
                     style={{
                       display: 'grid',
                       gap: 2,
-                      color: selected ? 'rgba(255,255,255,0.76)' : 'rgba(15, 23, 42, 0.62)',
+                      color: 'rgba(15, 23, 42, 0.62)',
                       fontSize: 12,
                       fontWeight: 760,
                       lineHeight: 1.25,
@@ -5143,7 +4835,7 @@ function DuelEquipmentDetailsModal({
                         item.resourceUnit,
                       )}
                     </span>
-                    <span style={duelEquipmentStockLineStyle(selected)}>
+                    <span style={duelEquipmentStockLineStyle()}>
                       {formatInventoryStockLabel(item)}
                     </span>
                   </span>
@@ -5154,24 +4846,23 @@ function DuelEquipmentDetailsModal({
           })}
 
           {items.length === 0 && (
-            <div
-              className="glass"
-              style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 10 }}
-            >
-              <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 800 }}>
-                Купленных предметов этого типа пока нет.
+            <div className="duel-equipment-empty">
+              <div className="duel-equipment-empty__message">
+                {duelEquipmentEmptyPurchaseLabel(kind)}
               </div>
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={onOpenShop}
-                style={{ width: '100%', minHeight: 46, fontSize: 13, fontWeight: 850 }}
-              >
-                В магазин
-              </button>
             </div>
           )}
         </div>
+
+        {items.length === 0 && (
+          <button
+            type="button"
+            className="btn btn--cta duel-equipment-empty__action"
+            onClick={onOpenShop}
+          >
+            В магазин
+          </button>
+        )}
 
         {error !== null && (
           <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}>
@@ -5248,8 +4939,9 @@ function DuelListCard({
           boxShadow: '0 10px 18px rgba(15,23,42,0.16)',
         }}
       />
-      <div style={{ gridColumn: '2 / 3', gridRow: '1', minWidth: 0 }}>
+      <div className="duel-card-heading" style={{ gridColumn: '2 / 3', gridRow: '1', minWidth: 0 }}>
         <div
+          className="duel-card-opponent-name"
           style={{
             fontWeight: 900,
             color: 'var(--ink)',
@@ -5261,22 +4953,22 @@ function DuelListCard({
         >
           {match.opponent.display_name}
         </div>
-        <div
-          style={{
-            color: 'var(--muted)',
-            fontSize: 12,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
+        <DuelStatusBadge match={match} />
+      </div>
+      <div className="duel-card-meta" style={{ gridColumn: '2 / 3', gridRow: '2' }}>
+        <span>
           {duelKindText(match.rules.duelKind)}
           {opensOnCardClick
             ? ` · ${formatShortDateTime(historyDate)}`
             : ` · ${match.me.goals}:${match.opponent.goals}`}
-        </div>
+        </span>
+        <span
+          className="duel-card-venue"
+          aria-label={`Площадка: ${venueRoleLabel(match.venue_role)}`}
+        >
+          {venueRoleLabel(match.venue_role)}
+        </span>
       </div>
-      <DuelStatusBadge match={match} />
       {onAcceptInvite && onDeclineInvite && (
         <div
           onClick={(event) => event.stopPropagation()}
@@ -5290,7 +4982,7 @@ function DuelListCard({
         >
           <button
             type="button"
-            className="btn btn--ghost"
+            className="btn duel-invite-action duel-invite-action--decline"
             disabled={inviteAnswerPending}
             onClick={onDeclineInvite}
             style={{ minHeight: 36, fontSize: 12 }}
@@ -5299,7 +4991,7 @@ function DuelListCard({
           </button>
           <button
             type="button"
-            className="btn btn--cta"
+            className="btn duel-invite-action duel-invite-action--accept"
             disabled={inviteAnswerPending}
             onClick={onAcceptInvite}
             style={{ minHeight: 36, fontSize: 12 }}
@@ -5375,6 +5067,12 @@ function AmateurDuelPlayView({
   );
   const [playerReadyEntranceKey, setPlayerReadyEntranceKey] = useState<string | null>(null);
   const [goalieReadyEntranceKey, setGoalieReadyEntranceKey] = useState<string | null>(null);
+  const [showTournamentReadinessExplanation, setShowTournamentReadinessExplanation] = useState(
+    () => localStorage.getItem('hockey.tournamentReadinessExplanationDisabled') !== 'true',
+  );
+  const [disableTournamentReadinessExplanation, setDisableTournamentReadinessExplanation] =
+    useState(false);
+  const tournamentReadyButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousReadyStateRef = useRef<{ me: boolean; opponent: boolean } | null>(null);
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
@@ -5389,6 +5087,10 @@ function AmateurDuelPlayView({
   useEffect(() => {
     setDismissedResultMatchId(null);
     setSelectedLoadout({});
+    setShowTournamentReadinessExplanation(
+      localStorage.getItem('hockey.tournamentReadinessExplanationDisabled') !== 'true',
+    );
+    setDisableTournamentReadinessExplanation(false);
     previousReadyStateRef.current = null;
     setPlayerReadyEntranceKey(null);
     setGoalieReadyEntranceKey(null);
@@ -5488,6 +5190,15 @@ function AmateurDuelPlayView({
       await startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout));
     }
   };
+  const handleTournamentReadinessConfirmation = async (): Promise<void> => {
+    if (inFlight) return;
+    const next = await ready(selectedLoadout);
+    if (next === null) return;
+    if (disableTournamentReadinessExplanation) {
+      localStorage.setItem('hockey.tournamentReadinessExplanationDisabled', 'true');
+    }
+    setShowTournamentReadinessExplanation(false);
+  };
   const nextPeriod =
     match.me.state === 'period_active'
       ? match.me.current_period
@@ -5522,6 +5233,11 @@ function AmateurDuelPlayView({
       canStartArenaDuelPeriod(match, duelMatchNowMs(match, now));
     const { playerReady: meReady, goalieReady: opponentReady } =
       duelRinkReadyPresenceForMatch(match);
+    const explainTournamentReadiness =
+      match.source === 'tournament' &&
+      match.status === 'ready_check' &&
+      match.me.state !== 'ready' &&
+      showTournamentReadinessExplanation;
     return (
       <>
         <PlayView<AmateurDuelMatchState>
@@ -5556,12 +5272,12 @@ function AmateurDuelPlayView({
             playerEntranceKey: playerReadyEntranceKey,
             goalieEntranceKey: goalieReadyEntranceKey,
           }}
-          backLabel="К арене"
+          backLabel={duelBackLabel(match.source, true)}
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}
           duelCondition={duelCondition}
-          longCourtBackground={match.arena.artwork_url}
+          longCourtBackground={tournamentDuelCourtBackground(match)}
           hudAddon={
             <DuelRinkLoadoutHud
               match={match}
@@ -5587,6 +5303,56 @@ function AmateurDuelPlayView({
             }}
           />
         )}
+        <AccessibleModal
+          title="Подтвердите участие"
+          open={explainTournamentReadiness}
+          closeBlocked
+          initialFocusRef={tournamentReadyButtonRef}
+        >
+          <div style={{ display: 'grid', gap: 14 }}>
+            <p className="modal-copy" style={{ margin: 0 }}>
+              Нажмите «Готов», чтобы подтвердить участие в дуэли.
+            </p>
+            <p className="modal-copy" style={{ margin: 0, fontSize: 13 }}>
+              Подтвердите готовность до конца таймера. Если соперник подтвердит участие, а вы — нет,
+              вам будет засчитано техническое поражение. Если не подтвердит никто, игра закроется.
+            </p>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                color: 'var(--ink)',
+                fontSize: 14,
+                fontWeight: 750,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={disableTournamentReadinessExplanation}
+                onChange={(event) =>
+                  setDisableTournamentReadinessExplanation(event.currentTarget.checked)
+                }
+                style={{ width: 18, height: 18, margin: 0, accentColor: '#16263a' }}
+              />
+              Не показывать снова
+            </label>
+            {error && (
+              <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>{error}</div>
+            )}
+            <div className="modal-actions" style={{ marginTop: 2 }}>
+              <button
+                ref={tournamentReadyButtonRef}
+                type="button"
+                className="modal-primary btn btn--cta"
+                disabled={inFlight}
+                onClick={() => void handleTournamentReadinessConfirmation()}
+              >
+                {inFlight ? 'Фиксируем...' : 'Готов'}
+              </button>
+            </div>
+          </div>
+        </AccessibleModal>
         <DuelDevStatePanel match={match} now={now} />
       </>
     );
@@ -5676,12 +5442,12 @@ function AmateurDuelPlayView({
           }
           periodEndsAt={periodEndsAt}
           onTimerExpired={refresh}
-          backLabel="К дуэлям"
+          backLabel={duelBackLabel(match.source, false)}
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}
           duelCondition={duelCondition}
-          longCourtBackground={match.arena.artwork_url}
+          longCourtBackground={tournamentDuelCourtBackground(match)}
           hudAddon={
             <DuelInventoryMiniHud
               match={match}
@@ -5788,6 +5554,34 @@ function DuelResultModal({
   closeLabel?: string;
   isLoadingDetails?: boolean;
 }): JSX.Element {
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Результат дуэли">
+      <DuelResultCard
+        match={match}
+        isLoadingDetails={isLoadingDetails}
+        footer={
+          <div className="modal-actions">
+            <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
+              {closeLabel}
+            </button>
+          </div>
+        }
+      />
+    </div>
+  );
+}
+
+function DuelResultCard({
+  match,
+  isLoadingDetails = false,
+  compact = false,
+  footer,
+}: {
+  match: AmateurDuelMatch;
+  isLoadingDetails?: boolean;
+  compact?: boolean;
+  footer?: ReactNode;
+}): JSX.Element {
   const title =
     match.status !== 'settled'
       ? duelOutcomeText(match)
@@ -5815,90 +5609,138 @@ function DuelResultModal({
   const tiebreaker = duelTiebreakerExplanation(match);
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Результат дуэли">
-      <div
-        className="modal-card"
-        style={{
-          maxHeight: 'calc(100dvh - 64px)',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        <div className="section-label" style={{ margin: 0, padding: 0 }}>
-          Результат
-        </div>
-        <div
-          style={{
-            marginTop: 8,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-          }}
-        >
-          <h2 className="modal-title" style={{ margin: 0, fontSize: 26, lineHeight: 1.08 }}>
-            {title}
-          </h2>
-          <span
-            aria-hidden="true"
-            style={{
-              width: 16,
-              height: 16,
-              borderRadius: 999,
-              background: resultColor,
-              boxShadow: `0 0 0 5px ${resultColor}24, 0 0 18px ${resultColor}66`,
-              flexShrink: 0,
-            }}
-          />
-        </div>
-        <div
-          aria-label={`Итог дуэли ${match.me.goals}:${match.opponent.goals}`}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-            gap: 10,
-            marginTop: 16,
-          }}
-        >
-          <DailyStatsMetric label="Счёт" value={`${match.me.goals}:${match.opponent.goals}`} />
-          <DailyStatsMetric label="Очки" value={pointsText} />
-        </div>
-        <div
-          style={{
-            marginTop: 14,
-            display: 'grid',
-            gap: 8,
-          }}
-        >
-          <DuelResultDetailRow label="Тип" value={duelKindText(match.rules.duelKind)} />
-          <DuelResultDetailRow label="Соперник" value={match.opponent.display_name || 'Игрок'} />
-          {tiebreaker && (
-            <>
-              <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
-              <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
-            </>
-          )}
-          {match.rules.winStarReward > 0 && (
-            <DuelResultDetailRow
-              label="Звёзды за победу"
-              value={`+${match.rules.winStarReward}`}
-              tone="star"
+    <div
+      className={`modal-card duel-result-card${compact ? ' duel-result-card--compact' : ''}`}
+      style={{
+        maxHeight: 'calc(100dvh - 64px)',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      {compact ? (
+        <>
+          <div className="duel-result-card__compact-meta">
+            <DuelResultCompactFact label="Очки" value={pointsText} />
+            <DuelResultCompactFact label="Начало" value={formatShortDateTime(match.starts_at)} />
+          </div>
+          <section className="duel-result-card__compact-summary">
+            <div className="section-label" style={{ margin: 0, padding: 0 }}>
+              Итоговый результат
+            </div>
+            <DuelResultCompactStatsTable
+              label="Итоговый результат"
+              me={{
+                goals: match.me.goals,
+                shots: match.me.shots_taken,
+                durationMs: match.me.active_duration_ms,
+              }}
+              opponentName={match.opponent.display_name || 'Соперник'}
+              opponent={{
+                goals: match.opponent.goals,
+                shots: match.opponent.shots_taken,
+                durationMs: match.opponent.active_duration_ms,
+              }}
             />
+          </section>
+          {(tiebreaker || match.rules.winStarReward > 0) && (
+            <div className="duel-result-card__compact-details">
+              {tiebreaker && (
+                <>
+                  <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
+                  <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
+                </>
+              )}
+              {match.rules.winStarReward > 0 && (
+                <DuelResultDetailRow
+                  label="Звёзды за победу"
+                  value={`+${match.rules.winStarReward}`}
+                  tone="star"
+                />
+              )}
+            </div>
           )}
-          <DuelResultDetailRow label="Начало" value={formatShortDateTime(match.starts_at)} />
-        </div>
-        <DuelInventoryUsageSummary
-          match={match}
-          title="Общий расход инвентаря"
-          label="Общий расход инвентаря"
-          style={{ marginTop: 14 }}
-        />
+        </>
+      ) : (
+        <>
+          <div className="section-label" style={{ margin: 0, padding: 0 }}>
+            Результат
+          </div>
+          <div
+            style={{
+              marginTop: 8,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <h2 className="modal-title" style={{ margin: 0, fontSize: 26, lineHeight: 1.08 }}>
+              {title}
+            </h2>
+            <span
+              aria-hidden="true"
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: 999,
+                background: resultColor,
+                boxShadow: `0 0 0 5px ${resultColor}24, 0 0 18px ${resultColor}66`,
+                flexShrink: 0,
+              }}
+            />
+          </div>
+          <div
+            aria-label={`Итог дуэли ${match.me.goals}:${match.opponent.goals}`}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              gap: 10,
+              marginTop: 16,
+            }}
+          >
+            <DailyStatsMetric label="Счёт" value={`${match.me.goals}:${match.opponent.goals}`} />
+            <DailyStatsMetric label="Очки" value={pointsText} />
+          </div>
+          <div
+            style={{
+              marginTop: 14,
+              display: 'grid',
+              gap: 8,
+            }}
+          >
+            <DuelResultDetailRow label="Тип" value={duelKindText(match.rules.duelKind)} />
+            <DuelResultDetailRow label="Соперник" value={match.opponent.display_name || 'Игрок'} />
+            {tiebreaker && (
+              <>
+                <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
+                <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
+              </>
+            )}
+            {match.rules.winStarReward > 0 && (
+              <DuelResultDetailRow
+                label="Звёзды за победу"
+                value={`+${match.rules.winStarReward}`}
+                tone="star"
+              />
+            )}
+            <DuelResultDetailRow label="Начало" value={formatShortDateTime(match.starts_at)} />
+          </div>
+        </>
+      )}
+      <DuelInventoryUsageSummary
+        match={match}
+        title={compact ? 'Расход инвентаря' : 'Общий расход инвентаря'}
+        label="Общий расход инвентаря"
+        compact={compact}
+        style={{ marginTop: compact ? 10 : 14 }}
+      />
+      {hasMultiplePeriods && (
         <div
           style={{
-            marginTop: 16,
+            marginTop: compact ? 12 : 16,
             minHeight: 0,
-            flex: hasMultiplePeriods ? '1 1 auto' : '0 0 auto',
+            flex: '1 1 auto',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
@@ -5911,18 +5753,20 @@ function DuelResultModal({
             <div
               style={{
                 minHeight: 0,
-                flex: hasMultiplePeriods ? '1 1 auto' : undefined,
-                maxHeight: hasMultiplePeriods ? 'min(38dvh, 330px)' : undefined,
-                overflowY: hasMultiplePeriods ? 'auto' : undefined,
-                paddingRight: hasMultiplePeriods ? 2 : 0,
+                flex: '1 1 auto',
+                maxHeight: 'min(38dvh, 330px)',
+                overflowY: 'auto',
+                paddingRight: 2,
               }}
             >
               <DuelResultPeriodComparison
+                key={match.id}
                 match={match}
                 totalPeriods={match.rules.totalPeriods}
                 mePeriods={mePeriods}
                 opponentPeriods={opponentPeriods}
                 opponentName={match.opponent.display_name || 'Соперник'}
+                compact={compact}
               />
             </div>
           ) : (
@@ -5945,12 +5789,8 @@ function DuelResultModal({
             </div>
           )}
         </div>
-        <div className="modal-actions">
-          <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
-            {closeLabel}
-          </button>
-        </div>
-      </div>
+      )}
+      {footer}
     </div>
   );
 }
@@ -6026,20 +5866,20 @@ function DuelResultPeriodComparison({
   mePeriods,
   opponentPeriods,
   opponentName,
+  compact = false,
 }: {
   match: AmateurDuelMatch;
   totalPeriods: number;
   mePeriods: AmateurDuelPeriodLog[];
   opponentPeriods: AmateurDuelPeriodLog[];
   opponentName: string;
+  compact?: boolean;
 }): JSX.Element {
   const meByPeriod = new Map(mePeriods.map((period) => [period.period_number, period]));
   const opponentByPeriod = new Map(opponentPeriods.map((period) => [period.period_number, period]));
   const periodNumbers = Array.from({ length: totalPeriods }, (_, index) => index + 1);
   const hasMultiplePeriods = totalPeriods > 1;
-  const [openPeriods, setOpenPeriods] = useState<ReadonlySet<number>>(
-    () => new Set(hasMultiplePeriods ? [periodNumbers.at(-1) ?? 1] : periodNumbers),
-  );
+  const [openPeriods, setOpenPeriods] = useState<ReadonlySet<number>>(() => new Set());
   const togglePeriod = useCallback((periodNumber: number) => {
     setOpenPeriods((current) => {
       const next = new Set(current);
@@ -6053,12 +5893,92 @@ function DuelResultPeriodComparison({
   }, []);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: compact ? 6 : 8,
+        marginTop: compact ? 6 : 8,
+      }}
+    >
       {periodNumbers.map((periodNumber) => {
         const mePeriod = meByPeriod.get(periodNumber);
         const opponentPeriod = opponentByPeriod.get(periodNumber);
         const isOpen = openPeriods.has(periodNumber);
         const summary = `${mePeriod?.goals ?? 0}:${opponentPeriod?.goals ?? 0}`;
+
+        if (compact) {
+          const heading = (
+            <>
+              <strong>{periodNumber}-й период</strong>
+              <span>{summary}</span>
+            </>
+          );
+
+          return (
+            <section
+              key={periodNumber}
+              className="duel-result-compact-period"
+              aria-label={`${periodNumber}-й период: ваша статистика и статистика соперника`}
+            >
+              {hasMultiplePeriods ? (
+                <button
+                  type="button"
+                  className="duel-result-compact-period__toggle"
+                  aria-expanded={isOpen}
+                  aria-controls={`duel-result-period-${periodNumber}`}
+                  onClick={() => togglePeriod(periodNumber)}
+                >
+                  {heading}
+                  <ChevronRight
+                    size={15}
+                    strokeWidth={2.4}
+                    aria-hidden="true"
+                    style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
+                  />
+                </button>
+              ) : (
+                <div className="duel-result-compact-period__heading">{heading}</div>
+              )}
+              {isOpen && (
+                <div id={`duel-result-period-${periodNumber}`}>
+                  <DuelResultCompactStatsTable
+                    label={`${periodNumber}-й период`}
+                    me={
+                      mePeriod
+                        ? {
+                            goals: mePeriod.goals,
+                            shots: mePeriod.shots_taken,
+                            durationMs: mePeriod.duration_ms,
+                          }
+                        : null
+                    }
+                    opponentName={opponentName}
+                    opponent={
+                      opponentPeriod
+                        ? {
+                            goals: opponentPeriod.goals,
+                            shots: opponentPeriod.shots_taken,
+                            durationMs: opponentPeriod.duration_ms,
+                          }
+                        : null
+                    }
+                  />
+                  {hasMultiplePeriods && (
+                    <DuelInventoryUsageSummary
+                      match={match}
+                      periodNumber={periodNumber}
+                      title="Расход за период"
+                      label={`${periodNumber}-й период: расход инвентаря`}
+                      compact
+                      style={{ marginTop: 7 }}
+                    />
+                  )}
+                </div>
+              )}
+            </section>
+          );
+        }
 
         return (
           <div
@@ -6171,6 +6091,62 @@ function DuelResultPeriodComparison({
   );
 }
 
+interface DuelResultCompactStats {
+  goals: number;
+  shots: number;
+  durationMs: number;
+}
+
+function DuelResultCompactStatsTable({
+  label,
+  me,
+  opponentName,
+  opponent,
+}: {
+  label: string;
+  me: DuelResultCompactStats | null;
+  opponentName: string;
+  opponent: DuelResultCompactStats | null;
+}): JSX.Element {
+  return (
+    <table className="duel-result-compact-period__table" aria-label={label}>
+      <thead>
+        <tr>
+          <th scope="col">Игрок</th>
+          <th scope="col">Голы</th>
+          <th scope="col">Броски</th>
+          <th scope="col">%</th>
+          <th scope="col">Время</th>
+        </tr>
+      </thead>
+      <tbody>
+        <DuelResultCompactStatsRow title="Вы" stats={me} />
+        <DuelResultCompactStatsRow title={opponentName} stats={opponent} />
+      </tbody>
+    </table>
+  );
+}
+
+function DuelResultCompactStatsRow({
+  title,
+  stats,
+}: {
+  title: string;
+  stats: DuelResultCompactStats | null;
+}): JSX.Element {
+  return (
+    <tr>
+      <th scope="row" title={title}>
+        {title}
+      </th>
+      <td>{stats ? stats.goals : '—'}</td>
+      <td>{stats ? stats.shots : '—'}</td>
+      <td>{stats ? formatGoalRate(stats.goals, stats.shots) : '—'}</td>
+      <td>{stats ? formatDurationMs(stats.durationMs) : '—'}</td>
+    </tr>
+  );
+}
+
 function DuelResultParticipantPeriodStats({
   title,
   period,
@@ -6259,6 +6235,15 @@ function DuelResultTinyStat({ label, value }: { label: string; value: string }):
       >
         {value}
       </div>
+    </div>
+  );
+}
+
+function DuelResultCompactFact({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div className="duel-result-card__compact-fact">
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }
@@ -6558,7 +6543,16 @@ function DuelInventoryUsageSummary({
   if (usage.length === 0) return null;
   return (
     <div aria-label={label ?? title} style={{ display: 'grid', gap: compact ? 5 : 6, ...style }}>
-      <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 900 }}>{title}</div>
+      <div
+        className={compact ? 'section-label' : undefined}
+        style={
+          compact
+            ? { margin: 0, padding: 0 }
+            : { color: 'var(--muted)', fontSize: 11, fontWeight: 900 }
+        }
+      >
+        {title}
+      </div>
       <div style={{ display: 'grid', gap: 5 }}>
         {usage.map((item) => (
           <div
@@ -6683,6 +6677,12 @@ function duelBaseEquipmentTitle(kind: InventoryEquipmentKind): string {
   return 'Без питания';
 }
 
+function duelEquipmentEmptyPurchaseLabel(kind: InventoryEquipmentKind): string {
+  if (kind === 'stick') return 'Купленных клюшек пока нет';
+  if (kind === 'skates') return 'Купленных коньков пока нет';
+  return 'Купленного питания пока нет';
+}
+
 function duelInventoryStockLabel(item: AmateurDuelInventoryAvailabilityItem): string {
   if (item.chargesAvailable <= 0) return 'Нет запаса';
   return `Осталось ${formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}`;
@@ -6692,14 +6692,14 @@ function duelEquipmentModalCopy(kind: InventoryEquipmentKind): string {
   if (kind === 'stick') {
     return 'Выберите клюшку, с которой будете начинать матчи. Перед стартом игры выбор можно изменить';
   }
-  return 'Выберите купленный предмет для активного слота.';
+  return 'Выберите предмет для этого слота.';
 }
 
-function duelEquipmentStockLineStyle(selected: boolean): CSSProperties {
+function duelEquipmentStockLineStyle(): CSSProperties {
   return {
     display: 'inline-block',
     marginTop: 3,
-    color: selected ? 'rgba(255,255,255,0.92)' : '#334155',
+    color: '#334155',
     fontSize: 12,
     fontWeight: 920,
     lineHeight: 1.15,
@@ -7055,7 +7055,7 @@ function DuelRinkLoadoutModal({
 }): JSX.Element {
   const meta = DUEL_EQUIPMENT_META[kind];
   const items = availableDuelItemsForKind(match, kind);
-  const canUseBase = kind !== 'stick' && (isDuelRequiredEquipment(kind) || kind === 'nutrition');
+  const canUseBase = true;
 
   return (
     <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
@@ -7096,44 +7096,28 @@ function DuelRinkLoadoutModal({
           {canUseBase && (
             <button
               type="button"
-              className="glass"
+              className={`glass duel-equipment-option${selectedId === null ? ' duel-equipment-option--selected' : ''}`}
               aria-pressed={selectedId === null}
               onClick={() => onSelect(null)}
               style={{
-                minHeight: 74,
+                minHeight: 78,
                 borderRadius: 16,
                 padding: 10,
                 display: 'grid',
-                gridTemplateColumns: '54px minmax(0, 1fr) 22px',
+                gridTemplateColumns: '56px minmax(0, 1fr) 22px',
                 alignItems: 'center',
                 gap: 10,
-                color: selectedId === null ? '#fff' : 'var(--ink)',
                 textAlign: 'left',
-                border:
-                  selectedId === null
-                    ? '1px solid rgba(255,255,255,0.24)'
-                    : '1px solid rgba(255,255,255,0.76)',
-                background:
-                  selectedId === null
-                    ? 'linear-gradient(180deg, rgba(15,23,42,0.92), rgba(30,41,59,0.86))'
-                    : undefined,
-                boxShadow:
-                  selectedId === null
-                    ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 22px rgba(15,23,42,0.22)'
-                    : undefined,
               }}
             >
               <span
                 aria-hidden="true"
                 style={{
-                  width: 54,
-                  height: 54,
+                  width: 56,
+                  height: 56,
                   borderRadius: 14,
                   overflow: 'hidden',
-                  border:
-                    selectedId === null
-                      ? '1px solid rgba(255,255,255,0.34)'
-                      : '1px solid rgba(255,255,255,0.78)',
+                  border: '1px solid rgba(255,255,255,0.78)',
                   background: 'rgba(255,255,255,0.28)',
                 }}
               >
@@ -7157,7 +7141,7 @@ function DuelRinkLoadoutModal({
                 <span
                   style={{
                     display: 'block',
-                    color: selectedId === null ? 'rgba(255,255,255,0.76)' : 'var(--muted)',
+                    color: 'var(--muted)',
                     fontSize: 12,
                     fontWeight: 760,
                     lineHeight: 1.25,
@@ -7175,41 +7159,29 @@ function DuelRinkLoadoutModal({
               <button
                 key={item.id}
                 type="button"
-                className="glass"
+                className={`glass duel-equipment-option${selected ? ' duel-equipment-option--selected' : ''}`}
                 aria-pressed={selected}
                 onClick={() => onSelect(item.id)}
                 style={{
-                  minHeight: 94,
-                  borderRadius: 18,
+                  minHeight: 78,
+                  borderRadius: 16,
                   padding: 10,
                   display: 'grid',
-                  gridTemplateColumns: '64px minmax(0, 1fr) 22px',
+                  gridTemplateColumns: '56px minmax(0, 1fr) 22px',
                   alignItems: 'center',
                   gap: 10,
-                  color: selected ? '#fff' : 'var(--ink)',
                   textAlign: 'left',
-                  border: selected
-                    ? '1px solid rgba(255,255,255,0.24)'
-                    : '1px solid rgba(255,255,255,0.76)',
-                  background: selected
-                    ? 'linear-gradient(180deg, rgba(15,23,42,0.92), rgba(30,41,59,0.86))'
-                    : undefined,
-                  boxShadow: selected
-                    ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 22px rgba(15,23,42,0.22)'
-                    : undefined,
                 }}
               >
                 <img
                   src={artworkForInventoryItem(item)}
                   alt=""
                   style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 16,
+                    width: 56,
+                    height: 56,
+                    borderRadius: 14,
                     objectFit: 'cover',
-                    border: selected
-                      ? '1px solid rgba(255,255,255,0.34)'
-                      : '1px solid rgba(255,255,255,0.78)',
+                    border: '1px solid rgba(255,255,255,0.78)',
                   }}
                 />
                 <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
@@ -7229,7 +7201,7 @@ function DuelRinkLoadoutModal({
                     style={{
                       display: 'grid',
                       gap: 2,
-                      color: selected ? 'rgba(255,255,255,0.76)' : 'var(--muted)',
+                      color: 'var(--muted)',
                       fontSize: 12,
                       fontWeight: 760,
                       lineHeight: 1.25,
@@ -7243,7 +7215,7 @@ function DuelRinkLoadoutModal({
                         item.resourceUnit,
                       )}
                     </span>
-                    <span style={duelEquipmentStockLineStyle(selected)}>
+                    <span style={duelEquipmentStockLineStyle()}>
                       {duelInventoryStockLabel(item)}
                     </span>
                   </span>
@@ -7566,26 +7538,9 @@ function LevelPlaceholder({
   level: Exclude<GameLevel, 'beginner'>;
   onBack: () => void;
 }): JSX.Element {
-  const isAmateur = level === 'amateur';
   return (
-    <ModeShell title={isAmateur ? 'Любители' : 'Профессионалы'} onBack={onBack}>
-      {isAmateur ? (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
-            <TotalCell label="ДОСТУП" value="1000" />
-          </div>
-          <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-            Раздел откроется после 1000 голов в дневной игре начального уровня.
-          </div>
-        </>
-      ) : (
-        <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-          Профессиональный раздел в разработке.
-        </div>
-      )}
-      <button type="button" className="btn btn--cta" disabled>
-        {isAmateur ? 'Закрыто' : 'В разработке'}
-      </button>
+    <ModeShell title={level === 'amateur' ? 'Любители' : 'Профессионалы'} onBack={onBack}>
+      <div className="level-placeholder-copy">Раздел в разработке</div>
     </ModeShell>
   );
 }
@@ -7713,12 +7668,14 @@ interface DailyStatsModalState {
 
 function DailyPlayView({
   onBack,
+  backLabel = 'К режимам',
   playEntranceOnMount = false,
   onEntranceConsumed,
   playRouteTransitionOnMount = false,
   onRouteTransitionConsumed,
 }: {
   onBack: () => void;
+  backLabel?: string;
   playEntranceOnMount?: boolean;
   onEntranceConsumed?: () => void;
   playRouteTransitionOnMount?: boolean;
@@ -7728,6 +7685,7 @@ function DailyPlayView({
   const deferredState = useDailyStore((s) => s.deferredState);
   const startPeriod = useDailyStore((s) => s.startPeriod);
   const pending = useDailyStore((s) => s.inFlight);
+  const needsReconcile = useDailyStore((s) => s.needsReconcile);
   const optimisticAddShot = useDailyStore((s) => s.optimisticAddShot);
   const submitShot = useDailyStore((s) => s.submitShot);
   const refresh = useDailyStore((s) => s.refresh);
@@ -7735,6 +7693,10 @@ function DailyPlayView({
   const setDeferredState = useDailyStore((s) => s.setDeferredState);
   const applyDeferredState = useDailyStore((s) => s.applyDeferredState);
   const userId = useAuthStore((s) => s.user?.id ?? '');
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiFetch<ProfileData>('/me'),
+  });
   const isBreak = data.state === 'break_active';
   const isClosed = data.state === 'closed';
   const rawCanStartPeriod = data.state === 'idle' && data.current_period < data.total_periods;
@@ -7800,6 +7762,16 @@ function DailyPlayView({
   }, [applyDeferredState, onBack, statsModal, userId]);
 
   const hasStatsModal = statsModal !== null;
+  const amateurUnlockGoalsRequired = Math.max(
+    0,
+    data.amateur_unlock_goals_required ?? DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED,
+  );
+  const dailyCourtBackground =
+    profileQuery.data?.competitionLevel === 'amateur' ||
+    profileQuery.data?.competitionLevel === 'professional' ||
+    data.lifetime_total_goals >= amateurUnlockGoalsRequired
+      ? AMATEUR_DAILY_COURT_BACKGROUND
+      : undefined;
   const trainingCooldownEndsAt = data.training_cooldown_ends_at
     ? new Date(data.training_cooldown_ends_at).getTime()
     : 0;
@@ -7843,6 +7815,23 @@ function DailyPlayView({
     refresh,
   ]);
 
+  useEffect(() => {
+    if (!needsReconcile) return undefined;
+    let cancelled = false;
+    let retryId: number | undefined;
+    const reconcile = async (): Promise<void> => {
+      await refresh();
+      if (!cancelled && useDailyStore.getState().needsReconcile) {
+        retryId = window.setTimeout(() => void reconcile(), 1_500);
+      }
+    };
+    void reconcile();
+    return () => {
+      cancelled = true;
+      if (retryId !== undefined) window.clearTimeout(retryId);
+    };
+  }, [needsReconcile, refresh]);
+
   return (
     <>
       <PlayView<DailyStateResponse>
@@ -7853,6 +7842,7 @@ function DailyPlayView({
         playRouteTransitionOnMount={playRouteTransitionOnMount}
         onRouteTransitionConsumed={onRouteTransitionConsumed}
         onBack={onBack}
+        backLabel={backLabel}
         active={data.state === 'period_active'}
         seed={data.daily_seed}
         goalieId={data.goalie_id}
@@ -7886,19 +7876,28 @@ function DailyPlayView({
                 ? 'ДО ИГРЫ'
                 : undefined
         }
-        scoreboardNotice={isDailyLockedByTraining ? 'Нужно восстановиться' : undefined}
+        scoreboardNotice={
+          needsReconcile
+            ? 'Проверяем результат'
+            : isDailyLockedByTraining
+              ? 'Нужно восстановиться'
+              : undefined
+        }
         shotButtonLabel={
-          canStartPeriod
-            ? pending
-              ? 'НАЧИНАЕМ...'
-              : 'НАЧАТЬ'
-            : isBreak || isDailyLockedByTraining
-              ? 'ЛЁД ГОТОВИТСЯ'
-              : isClosed
-                ? 'ИГРА ЗАВЕРШЕНА'
-                : undefined
+          needsReconcile
+            ? 'ПРОВЕРЯЕМ...'
+            : canStartPeriod
+              ? pending
+                ? 'НАЧИНАЕМ...'
+                : 'НАЧАТЬ'
+              : isBreak || isDailyLockedByTraining
+                ? 'ЛЁД ГОТОВИТСЯ'
+                : isClosed
+                  ? 'ИГРА ЗАВЕРШЕНА'
+                  : undefined
         }
         inactiveAction={canStartPeriod ? handleStartPeriod : undefined}
+        primaryActionBlocked={needsReconcile}
         entranceBeforeInactiveAction={true}
         periodEndsAt={data.state === 'period_active' ? periodEndsAt : undefined}
         onTimerExpired={refresh}
@@ -7906,7 +7905,7 @@ function DailyPlayView({
         submitShot={submitShot}
         applyState={applyState}
         applyResolvedState={applyDailyResolvedState}
-        longCourtBackground={AMATEUR_DAILY_COURT_BACKGROUND}
+        longCourtBackground={dailyCourtBackground}
       />
       {statsModal && (
         <DailyGameStatsModal
@@ -7914,6 +7913,216 @@ function DailyPlayView({
           totalPeriods={data.total_periods}
           title={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
           ariaLabel={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
+          closeLabel="Понятно"
+          onClose={handleStatsModalClose}
+        />
+      )}
+    </>
+  );
+}
+
+function ClassicTournamentPlayView({
+  tournamentId,
+  onBack,
+}: {
+  tournamentId: string;
+  onBack: () => void;
+}): JSX.Element {
+  const data = useClassicTournamentStore((state) => state.data);
+  const loading = useClassicTournamentStore((state) => state.loading);
+  const error = useClassicTournamentStore((state) => state.error);
+  const inFlight = useClassicTournamentStore((state) => state.inFlight);
+  const refresh = useClassicTournamentStore((state) => state.refresh);
+  const startPeriod = useClassicTournamentStore((state) => state.startPeriod);
+  const optimisticAddShot = useClassicTournamentStore((state) => state.optimisticAddShot);
+  const submitShot = useClassicTournamentStore((state) => state.submitShot);
+  const applyState = useClassicTournamentStore((state) => state.applyState);
+  const [now, setNow] = useState(Date.now());
+  const [deferredState, setDeferredState] = useState<ClassicTournamentState | null>(null);
+  const [statsModalState, setStatsModalState] = useState<ClassicTournamentState | null>(null);
+
+  const summaryCandidate = deferredState ?? data;
+  const summaryKey = summaryCandidate ? `classic:${summaryCandidate.session_id}` : '';
+  const unseenPeriod =
+    summaryCandidate &&
+    (summaryCandidate.state === 'break_active' || summaryCandidate.state === 'closed')
+      ? findUnseenPeriodSummary(summaryCandidate, summaryKey)
+      : null;
+
+  useEffect(() => {
+    void refresh(tournamentId);
+  }, [refresh, tournamentId]);
+
+  useEffect(() => {
+    if (data?.state !== 'break_active' && data?.state !== 'closed') return undefined;
+    const timer = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [data?.state]);
+
+  useEffect(() => {
+    if (statsModalState !== null || summaryCandidate === null || unseenPeriod === null) return;
+    setStatsModalState(summaryCandidate);
+  }, [statsModalState, summaryCandidate, unseenPeriod]);
+
+  useEffect(() => {
+    if (data?.state !== 'break_active' || loading) return;
+    const breakDeadline = data.break_ends_at ? timestampMs(data.break_ends_at) : 0;
+    if (breakDeadline <= 0 || breakDeadline > now) return;
+    void refresh(tournamentId);
+  }, [data?.break_ends_at, data?.state, loading, now, refresh, tournamentId]);
+
+  const applyClassicResolvedState = useCallback(
+    (next: ClassicTournamentState): void => {
+      if (
+        (next.state === 'break_active' || next.state === 'closed') &&
+        next.recent_periods.length > 0
+      ) {
+        setDeferredState(next);
+        return;
+      }
+      applyState(next);
+    },
+    [applyState],
+  );
+
+  const handleStatsModalClose = useCallback((): void => {
+    const latestPeriod = statsModalState?.recent_periods.at(-1);
+    if (statsModalState && latestPeriod) {
+      setLastSeenAt(`classic:${statsModalState.session_id}`, latestPeriod.ended_at);
+    }
+    setStatsModalState(null);
+    if (deferredState !== null) {
+      applyState(deferredState);
+      setDeferredState(null);
+    }
+  }, [applyState, deferredState, statsModalState]);
+
+  if (data === null) {
+    return (
+      <main className="screen arena-error-state">
+        {error ? (
+          <>
+            <div className="arena-error-state__title">Не удалось открыть игру</div>
+            <div className="arena-error-state__copy">{error}</div>
+            <button
+              type="button"
+              className="btn btn--cta"
+              disabled={loading}
+              onClick={() => void refresh(tournamentId)}
+            >
+              Повторить
+            </button>
+            <button type="button" className="btn btn--ghost" onClick={onBack}>
+              К турниру
+            </button>
+          </>
+        ) : (
+          <div className="route-loading" role="status">
+            Загружаем турнирную игру…
+          </div>
+        )}
+      </main>
+    );
+  }
+
+  const active = data.state === 'period_active';
+  const breakEndsAt = data.break_ends_at ? timestampMs(data.break_ends_at) : 0;
+  const periodEndsAt = data.period_ends_at ? timestampMs(data.period_ends_at) : 0;
+  const closesAt = timestampMs(data.closes_at);
+  const breakRemaining = Math.max(0, breakEndsAt - now);
+  const closesRemaining = Math.max(0, closesAt - now);
+  const canStart = data.state === 'idle' && data.current_period < data.total_periods;
+  const nextPeriod = Math.min(data.total_periods, data.current_period + 1);
+  const periodNumber = active ? data.current_period : canStart ? nextPeriod : data.current_period;
+  const completedResult = data.result;
+  const shouldShowSummary = statsModalState !== null || unseenPeriod !== null;
+  const stats = statsModalState ? dailyGameStatsFromState(statsModalState) : null;
+
+  return (
+    <>
+      <PlayView<ClassicTournamentState>
+        suppressedByModal={!active || shouldShowSummary}
+        showIceCar={data.state === 'break_active' && !shouldShowSummary}
+        onBack={onBack}
+        backLabel="К турниру"
+        active={active}
+        seed={data.daily_seed}
+        goalieId={data.goalie_id}
+        periodNumber={Math.max(1, periodNumber)}
+        periodSpeedPresets={data.period_speed_presets}
+        sessionStartedAt={data.period_started_at}
+        serverNow={data.server_now}
+        receivedAtPerformanceMs={data.received_at_performance_ms}
+        goals={active ? data.current_period_goals : data.daily_total_goals}
+        scoreboardGoals={data.daily_total_goals}
+        shots={active ? data.current_period_shots : data.daily_total_shots}
+        shotsTotal={active ? data.shots_per_period : data.shots_per_period * data.total_periods}
+        periodsTotal={data.total_periods}
+        scoreboardPeriodsTotal={data.total_periods}
+        timer={
+          data.state === 'break_active'
+            ? formatMs(breakRemaining)
+            : data.state === 'closed'
+              ? formatEventRemaining(closesRemaining)
+              : canStart
+                ? formatMs(data.period_duration_ms)
+                : undefined
+        }
+        timerLabel={
+          data.state === 'break_active'
+            ? 'ПЕРЕРЫВ'
+            : data.state === 'closed'
+              ? 'ДО ЗАКРЫТИЯ'
+              : canStart
+                ? 'ВРЕМЯ'
+                : undefined
+        }
+        scoreboardNotice={
+          data.state === 'closed' && completedResult !== null
+            ? `${completedResult.goals} шайб · точность ${Math.round(completedResult.accuracy * 100)}%`
+            : `${data.tournament_title} · ${data.tournament_day}-й тур`
+        }
+        shotButtonLabel={
+          canStart
+            ? inFlight
+              ? 'НАЧИНАЕМ...'
+              : data.current_period === 0
+                ? 'НАЧАТЬ'
+                : 'ПРОДОЛЖИТЬ'
+            : data.state === 'break_active'
+              ? 'ЛЁД ГОТОВИТСЯ'
+              : data.state === 'closed'
+                ? 'ИГРА ЗАВЕРШЕНА'
+                : undefined
+        }
+        inactiveAction={canStart ? startPeriod : undefined}
+        entranceBeforeInactiveAction
+        periodEndsAt={active && periodEndsAt > 0 ? periodEndsAt : undefined}
+        onTimerExpired={() => refresh(tournamentId)}
+        optimisticAddShot={optimisticAddShot}
+        submitShot={submitShot}
+        applyState={applyState}
+        applyResolvedState={applyClassicResolvedState}
+        longCourtBackground={AMATEUR_DAILY_COURT_BACKGROUND}
+      />
+      {statsModalState && stats && (
+        <DailyGameStatsModal
+          stats={stats}
+          totalPeriods={
+            statsModalState.state === 'closed'
+              ? statsModalState.total_periods
+              : statsModalState.current_period
+          }
+          title={
+            statsModalState.state === 'closed'
+              ? 'Игра завершена'
+              : `${statsModalState.current_period}-й период завершён`
+          }
+          ariaLabel={
+            statsModalState.state === 'closed'
+              ? 'Игра завершена'
+              : `${statsModalState.current_period}-й период завершён`
+          }
           closeLabel="Понятно"
           onClose={handleStatsModalClose}
         />
@@ -8021,40 +8230,37 @@ function TrainingSpeedControls({
     (field) => Math.abs(value[field.key] - defaults[field.key]) > 0.001,
   );
 
-  const button = (
-    <button
-      type="button"
-      aria-label="Скорости"
-      title="Скорости"
-      onClick={onOpen}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: 34,
-        height: 34,
-        padding: 0,
-        borderRadius: 999,
-        background: hasCustomSpeeds ? 'rgba(8, 24, 43, 0.86)' : 'rgba(255, 255, 255, 0.82)',
-        border: hasCustomSpeeds
-          ? '1px solid rgba(255, 255, 255, 0.34)'
-          : '1px solid rgba(15, 23, 42, 0.12)',
-        boxShadow: hasCustomSpeeds
-          ? '0 10px 22px rgba(7, 19, 33, 0.22)'
-          : '0 8px 18px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255,255,255,0.86)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        color: hasCustomSpeeds ? '#ffffff' : 'rgba(15, 23, 42, 0.68)',
-        cursor: 'pointer',
-      }}
-    >
-      <SlidersHorizontal aria-hidden="true" size={17} strokeWidth={2.4} />
-    </button>
-  );
-
   return (
     <>
-      {button}
+      <button
+        type="button"
+        className="icon-btn"
+        aria-label="Скорости"
+        title="Скорости"
+        onClick={onOpen}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 34,
+          height: 34,
+          padding: 0,
+          borderRadius: 999,
+          background: hasCustomSpeeds ? 'rgba(8, 24, 43, 0.86)' : 'rgba(255, 255, 255, 0.82)',
+          border: hasCustomSpeeds
+            ? '1px solid rgba(255, 255, 255, 0.34)'
+            : '1px solid rgba(15, 23, 42, 0.12)',
+          boxShadow: hasCustomSpeeds
+            ? '0 10px 22px rgba(7, 19, 33, 0.22)'
+            : '0 8px 18px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255,255,255,0.86)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          color: hasCustomSpeeds ? '#ffffff' : 'rgba(15, 23, 42, 0.68)',
+          cursor: 'pointer',
+        }}
+      >
+        <SlidersHorizontal aria-hidden="true" size={17} strokeWidth={2.4} />
+      </button>
       {open &&
         createPortal(
           <div className="modal-backdrop" style={{ zIndex: 520 }} onClick={onClose}>
@@ -8075,13 +8281,7 @@ function TrainingSpeedControls({
                 }}
               >
                 <h2 className="modal-title">Скорости тренировки</h2>
-                <button
-                  type="button"
-                  className="icon-btn"
-                  aria-label="Закрыть"
-                  onClick={onClose}
-                  style={{ width: 34, height: 34, flex: '0 0 auto' }}
-                >
+                <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
                   <X size={16} />
                 </button>
               </div>
@@ -8112,6 +8312,7 @@ function TrainingSpeedControls({
                     </span>
                     <input
                       type="range"
+                      aria-label={field.label}
                       min={field.min}
                       max={field.max}
                       step={field.step}
@@ -8128,20 +8329,10 @@ function TrainingSpeedControls({
                 ))}
               </div>
               <div className="modal-actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  onClick={onReset}
-                  style={{ minHeight: 50, fontSize: 12, letterSpacing: 0 }}
-                >
+                <button type="button" className="btn btn--ghost" onClick={onReset}>
                   Сбросить
                 </button>
-                <button
-                  type="button"
-                  className="btn btn--cta"
-                  onClick={onClose}
-                  style={{ minHeight: 50, fontSize: 12, letterSpacing: 0 }}
-                >
+                <button type="button" className="btn btn--cta" onClick={onClose}>
                   Готово
                 </button>
               </div>
@@ -8183,16 +8374,16 @@ function TrainingPlayView({
     readTrainingSpeedOverrides(),
   );
   const [now, setNow] = useState(Date.now());
-  const canShowTrainingDebugControls = userRole === 'admin' || experimentalTrainingCourt === true;
+  const canShowTrainingDebugControls =
+    isDevTrainingDebugHost(window.location.hostname) ||
+    userRole === 'admin' ||
+    experimentalTrainingCourt === true;
   const trainingPeriodNumber = data?.selected_period ?? selectedPeriod;
   const trainingDefaultSpeeds = useMemo(
     () => speedOverridesForPeriod(trainingPeriodNumber, data?.period_speed_presets),
     [data?.period_speed_presets, trainingPeriodNumber],
   );
-  const effectiveTrainingSpeeds = useMemo(
-    () => trainingSpeedOverrides ?? trainingDefaultSpeeds,
-    [trainingDefaultSpeeds, trainingSpeedOverrides],
-  );
+  const effectiveTrainingSpeeds = trainingSpeedOverrides ?? trainingDefaultSpeeds;
   const isTrainingLockedByDaily =
     dailyData?.state === 'period_active' ||
     dailyData?.state === 'break_active' ||

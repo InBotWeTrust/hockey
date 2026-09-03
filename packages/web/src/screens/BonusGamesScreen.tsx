@@ -1,19 +1,40 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  CircleDollarSign,
+  Info,
+  LockKeyhole,
+  Star,
+  TrendingUp,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import {
   fetchBonusGames,
+  abandonBonusAttempt,
   purchaseBonusGame,
   startBonusAttempt,
   type BonusGameCard,
+  type BonusSkillCode,
 } from '../api/bonusGames.js';
 import { ApiError } from '../api/apiFetch.js';
 import { fetchMyInventory } from '../api/inventory.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
+import { qualificationDescription } from '../game/bonusGameQualification.js';
+import { versionBonusGameArtwork } from '../game/bonusGameArtwork.js';
 
 const SAFE_UI_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
+const LAST_SKILL_STORAGE_KEY = 'bonus-games:last-skill';
+
+const skillLabels: Record<BonusSkillCode, string> = {
+  speed: 'Скорость',
+  accuracy: 'Точность',
+};
 
 function safeUiError(error: unknown): string {
   return error instanceof ApiError ? error.message : SAFE_UI_ERROR_MESSAGE;
@@ -23,26 +44,12 @@ function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU', { useGrouping: false }).format(value);
 }
 
-function cardStatusText(game: BonusGameCard): string {
-  if (game.state === 'level_locked') return 'Нужен любительский уровень';
-  if (game.state === 'sequence_locked') {
-    return game.prerequisite ? `Нужно пройти: ${game.prerequisite.title}` : 'Обновите каталог.';
-  }
-  if (game.state === 'purchase_required') {
-    return `Открытие: ${formatRussianCount(game.unlock_price_stars, 'звезда', 'звезды', 'звёзд')}`;
-  }
-  if (game.state === 'in_progress') return 'Попытка в процессе';
-  if (game.state === 'completed') return 'Пройдено · повтор без награды';
-  if (game.state === 'archived') return 'Недоступна для новых попыток';
-  return 'Готова к игре';
-}
-
 function actionLabel(game: BonusGameCard): string {
   if (game.state === 'purchase_required') {
     return `Открыть за ${formatRussianCount(game.unlock_price_stars, 'звезду', 'звезды', 'звёзд')}`;
   }
   if (game.state === 'in_progress' || game.active_attempt !== null) return 'Продолжить';
-  if (game.state === 'completed') return 'Играть снова';
+  if (game.state === 'completed') return 'Повторить';
   if (game.state === 'available') return 'Играть';
   return game.state === 'archived' ? 'Недоступна' : 'Закрыта';
 }
@@ -56,6 +63,12 @@ export function BonusGamesScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const [purchaseGame, setPurchaseGame] = useState<BonusGameCard | null>(null);
   const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
+  const [switchGame, setSwitchGame] = useState<BonusGameCard | null>(null);
+  const switchAttemptRequestRef = useRef(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() =>
+    localStorage.getItem(LAST_SKILL_STORAGE_KEY) === 'accuracy' ? 'accuracy' : 'speed',
+  );
   const catalogQuery = useQuery({ queryKey: ['bonus-games'], queryFn: fetchBonusGames });
   const inventoryQuery = useQuery({ queryKey: ['inventory', 'me'], queryFn: fetchMyInventory });
   const startMutation = useMutation({
@@ -85,7 +98,15 @@ export function BonusGamesScreen(): JSX.Element {
     },
   });
 
-  const openGame = (game: BonusGameCard): void => {
+  const activeAttempt = catalogQuery.data?.active_attempt ?? null;
+  const allGames = catalogQuery.data?.games ?? [];
+  const activeGame = allGames.find((game) => game.active_attempt?.id === activeAttempt?.id);
+  const continueActiveAttempt = (): void => {
+    if (activeAttempt === null || activeGame === undefined) return;
+    navigate(`/bonus-games/${activeGame.id}/play?attempt=${encodeURIComponent(activeAttempt.id)}`);
+  };
+
+  const performGameAction = (game: BonusGameCard): void => {
     if (game.state === 'purchase_required') {
       purchaseMutation.reset();
       setPurchaseGame(game);
@@ -100,6 +121,55 @@ export function BonusGamesScreen(): JSX.Element {
     if (isPlayable(game)) startMutation.mutate(game.id);
   };
 
+  const switchAttemptMutation = useMutation({
+    mutationFn: async ({ attemptId }: { attemptId: string; game: BonusGameCard }) =>
+      await abandonBonusAttempt(attemptId),
+    onSuccess: async (_response, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['bonus-games'] });
+      setSwitchGame(null);
+      performGameAction(variables.game);
+    },
+    onSettled: () => {
+      switchAttemptRequestRef.current = false;
+    },
+  });
+
+  const abandonAndOpenGame = (): void => {
+    if (switchAttemptRequestRef.current || activeAttempt === null || switchGame === null) return;
+    switchAttemptRequestRef.current = true;
+    switchAttemptMutation.mutate({ attemptId: activeAttempt.id, game: switchGame });
+  };
+
+  const openGame = (game: BonusGameCard): void => {
+    if (activeAttempt !== null && game.active_attempt === null) {
+      switchAttemptMutation.reset();
+      setSwitchGame(game);
+      return;
+    }
+    performGameAction(game);
+  };
+  const games = allGames.filter((game) => game.skill_code === selectedSkill);
+  const selectSkill = (skill: BonusSkillCode): void => {
+    setSelectedSkill(skill);
+    localStorage.setItem(LAST_SKILL_STORAGE_KEY, skill);
+  };
+  const focusGame =
+    games.find((game) => game.active_attempt !== null) ??
+    games.find((game) => game.state === 'in_progress') ??
+    games.find((game) => game.state === 'available' || game.state === 'purchase_required') ??
+    (games.every((game) => game.state === 'completed') ? null : (games[0] ?? null));
+  const completedGames = games.filter(
+    (game) => game.state === 'completed' && game.id !== focusGame?.id,
+  );
+  const futureGames = games.filter(
+    (game) =>
+      game.id !== focusGame?.id &&
+      game.state !== 'completed' &&
+      game.state !== 'available' &&
+      game.state !== 'purchase_required' &&
+      game.state !== 'in_progress',
+  );
+
   return (
     <main
       className="screen"
@@ -113,42 +183,111 @@ export function BonusGamesScreen(): JSX.Element {
           <button
             type="button"
             className="icon-btn"
-            onClick={() => navigate('/sections')}
+            onClick={() => navigate('/?view=amateur&from=sections')}
             aria-label="Назад"
             title="Назад"
           >
             <ArrowLeft size={16} aria-hidden="true" />
           </button>
-          <div>
-            <h1 id="bonus-games-title" className="bonus-games-catalog__title">
+          <div className="bonus-games-catalog__heading">
+            <h1 id="bonus-games-title" className="bonus-games-catalog__title screen-title-on-arena">
               Бонусные игры
             </h1>
+            <button
+              type="button"
+              className="section-info-btn"
+              onClick={() => setRulesOpen(true)}
+              aria-label="Правила бонусных игр"
+            >
+              <Info size={12} aria-hidden="true" />
+            </button>
           </div>
         </header>
+
+        <div className="bonus-games-skill-tabs">
+          <SegmentedTabs
+            items={(Object.keys(skillLabels) as BonusSkillCode[]).map((skill) => ({
+              id: skill,
+              label: skillLabels[skill],
+            }))}
+            activeTab={selectedSkill}
+            ariaLabel="Навык"
+            onChange={selectSkill}
+          />
+        </div>
 
         {catalogQuery.isLoading ? (
           <div className="bonus-games-catalog__notice" role="status">
             Загружаем бонусные игры…
           </div>
         ) : catalogQuery.isError ? (
-          <div className="bonus-games-catalog__notice" role="alert">
+          <div
+            className="bonus-games-catalog__notice bonus-games-catalog__notice--error"
+            role="alert"
+          >
             {safeUiError(catalogQuery.error)}
           </div>
         ) : catalogQuery.data?.games.length === 0 ? (
           <div className="bonus-games-catalog__notice">Сейчас нет доступных бонусных игр.</div>
-        ) : (
-          <div className="bonus-games-catalog__grid">
-            {catalogQuery.data?.games.map((game) => (
-              <BonusGameCard
-                key={game.id}
-                game={game}
-                actionLabel={actionLabel(game)}
-                isStarting={startMutation.isPending && startMutation.variables === game.id}
-                onAction={() => openGame(game)}
-              />
-            ))}
+        ) : games.length > 0 ? (
+          <div className="bonus-games-catalog__groups">
+            {focusGame !== null ? (
+              <section className="bonus-games-focus" aria-labelledby="bonus-games-current-title">
+                <h2 id="bonus-games-current-title" className="section-label sections-group__title">
+                  Текущая игра
+                </h2>
+                <BonusGameCard
+                  game={focusGame}
+                  actionLabel={actionLabel(focusGame)}
+                  isStarting={startMutation.isPending && startMutation.variables === focusGame.id}
+                  onAction={() => openGame(focusGame)}
+                  featured={true}
+                />
+              </section>
+            ) : null}
+            {completedGames.length > 0 ? (
+              <section className="bonus-games-group" aria-labelledby="bonus-games-completed-title">
+                <h2
+                  id="bonus-games-completed-title"
+                  className="section-label sections-group__title"
+                >
+                  Пройденные · {completedGames.length}
+                </h2>
+                <div className="bonus-games-catalog__grid">
+                  {completedGames.map((game) => (
+                    <BonusGameCard
+                      key={game.id}
+                      game={game}
+                      actionLabel={actionLabel(game)}
+                      isStarting={startMutation.isPending && startMutation.variables === game.id}
+                      onAction={() => openGame(game)}
+                      compact={true}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            {futureGames.length > 0 ? (
+              <section className="bonus-games-group" aria-labelledby="bonus-games-next-title">
+                <h2 id="bonus-games-next-title" className="section-label sections-group__title">
+                  Дальше
+                </h2>
+                <div className="bonus-games-catalog__grid bonus-games-catalog__grid--compact">
+                  {futureGames.map((game) => (
+                    <BonusGameCard
+                      key={game.id}
+                      game={game}
+                      actionLabel={actionLabel(game)}
+                      isStarting={false}
+                      onAction={() => openGame(game)}
+                      compact={true}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </div>
-        )}
+        ) : null}
 
         {startMutation.isError && (
           <div className="bonus-games-catalog__notice" role="alert">
@@ -183,7 +322,64 @@ export function BonusGamesScreen(): JSX.Element {
           }
         />
       )}
+      {rulesOpen && <BonusGamesRulesModal onClose={() => setRulesOpen(false)} />}
+      {switchGame !== null && activeAttempt !== null && activeGame !== undefined ? (
+        <AccessibleModal
+          title="Уже идёт другая игра"
+          copy={`${skillLabels[activeGame.skill_code]} · ${activeGame.title}. Можно продолжить её или завершить попытку и начать выбранную игру.`}
+          closeBlocked={switchAttemptMutation.isPending}
+          onClose={() => {
+            if (switchAttemptMutation.isPending) return;
+            switchAttemptRequestRef.current = false;
+            switchAttemptMutation.reset();
+            setSwitchGame(null);
+          }}
+        >
+          {switchAttemptMutation.isError ? (
+            <p role="alert" className="bonus-game-abandon-error">
+              {safeUiError(switchAttemptMutation.error)}
+            </p>
+          ) : null}
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={switchAttemptMutation.isPending}
+              onClick={continueActiveAttempt}
+            >
+              Продолжить текущую
+            </button>
+            <button
+              type="button"
+              className="modal-primary btn btn--cta"
+              disabled={switchAttemptMutation.isPending}
+              onClick={abandonAndOpenGame}
+            >
+              {switchAttemptMutation.isPending ? 'Завершаем…' : 'Завершить и начать эту'}
+            </button>
+          </div>
+        </AccessibleModal>
+      ) : null}
     </main>
+  );
+}
+
+function BonusGamesRulesModal({ onClose }: { onClose: () => void }): JSX.Element {
+  return (
+    <AccessibleModal title="Правила бонусных игр" onClose={onClose}>
+      <ol className="bonus-games-rules">
+        <li>Игры открываются последовательно: сначала нужно пройти предыдущую.</li>
+        <li>Некоторые игры бесплатные, другие нужно один раз открыть за звёзды.</li>
+        <li>Для прохождения выполните указанную цель за доступные периоды и броски.</li>
+        <li>Монеты, звёзды и опыт начисляются только за первое прохождение.</li>
+        <li>Пройденные игры можно повторять, но без повторной награды.</li>
+      </ol>
+      <div className="modal-actions">
+        <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
+          Понятно
+        </button>
+      </div>
+    </AccessibleModal>
   );
 }
 
@@ -192,65 +388,158 @@ function BonusGameCard({
   actionLabel: label,
   isStarting,
   onAction,
+  featured = false,
+  compact = false,
 }: {
   game: BonusGameCard;
   actionLabel: string;
   isStarting: boolean;
   onAction: () => void;
+  featured?: boolean;
+  compact?: boolean;
 }): JSX.Element {
   const canAct =
     game.state === 'purchase_required' || game.active_attempt !== null || isPlayable(game);
-  const firstReward =
-    game.state === 'completed'
-      ? 'Повторная игра без награды'
-      : `За первое прохождение: ${formatRussianCount(
-          game.reward.coins,
-          'монета',
-          'монеты',
-          'монет',
-        )} · ${formatRussianCount(
-          game.reward.stars,
-          'звезда',
-          'звезды',
-          'звёзд',
-        )} · ${formatRussianCount(
-          game.reward.experience,
-          'очко опыта',
-          'очка опыта',
-          'очков опыта',
-        )}`;
-  const totalShots = game.period_rules.reduce((total, period) => total + period.shots_limit, 0);
+  const firstClearRewards = [
+    {
+      label: 'Монеты',
+      value: game.reward.coins,
+      tone: 'coin' as const,
+      icon: <CircleDollarSign size={15} strokeWidth={2.55} />,
+    },
+    {
+      label: 'Звёзды',
+      value: game.reward.stars,
+      tone: 'star' as const,
+      icon: <Star size={15} strokeWidth={2.55} fill="currentColor" />,
+    },
+    {
+      label: 'Опыт',
+      value: game.reward.experience,
+      tone: 'experience' as const,
+      icon: <TrendingUp size={15} strokeWidth={2.55} />,
+    },
+  ].filter((reward) => reward.value > 0);
+  const totalShots = game.period_rules.reduce(
+    (total, period) => total + (period.shots_limit ?? 0),
+    0,
+  );
+  const artworkIsLocked =
+    compact &&
+    (game.state === 'level_locked' ||
+      game.state === 'sequence_locked' ||
+      game.state === 'archived');
+  const isWorldTourArtwork = game.arena.thumbnail_url.includes('/bonus-games/world-tour/');
+  const featuredArtworkPosition =
+    featured && isWorldTourArtwork
+      ? game.arena.slug === 'accuracy-world-tour-moscow'
+        ? 'center 50%'
+        : 'center 43%'
+      : 'center top';
 
   return (
-    <article className="bonus-game-card">
-      <img
-        className="bonus-game-card__artwork"
-        src={game.arena.thumbnail_url}
-        alt={`Площадка «${game.arena.title}»`}
-        style={{ objectPosition: 'center top' }}
-      />
+    <article
+      className={`bonus-game-card${featured ? ' bonus-game-card--featured' : ''}${featured && isWorldTourArtwork ? ' bonus-game-card--world-tour' : ''}${compact ? ' bonus-game-card--compact' : ''}${game.state === 'completed' ? ' bonus-game-card--completed' : ''}`}
+    >
+      {canAct && (
+        <button
+          type="button"
+          className="bonus-game-card__hit-area"
+          disabled={isStarting}
+          onClick={onAction}
+          aria-label={isStarting ? 'Подготавливаем…' : label}
+        />
+      )}
+      <div className="bonus-game-card__artwork-frame">
+        <img
+          className={`bonus-game-card__artwork${game.state === 'completed' ? ' bonus-game-card__artwork--completed' : ''}${artworkIsLocked ? ' bonus-game-card__artwork--locked' : ''}`}
+          src={versionBonusGameArtwork(game.arena.thumbnail_url)}
+          alt={`Площадка «${game.arena.title}»`}
+          style={{
+            objectPosition: featuredArtworkPosition,
+          }}
+        />
+      </div>
+      {compact && game.state === 'completed' && (
+        <span className="bonus-game-card__completed-pill" aria-label="Игра пройдена">
+          <Check size={13} strokeWidth={3} aria-hidden="true" />
+        </span>
+      )}
+      {compact && !canAct && (
+        <span className="bonus-game-card__completed-pill" aria-label="Игра закрыта">
+          <LockKeyhole size={13} strokeWidth={2.6} aria-hidden="true" />
+        </span>
+      )}
       <div className="bonus-game-card__content">
         <div className="bonus-game-card__eyebrow">Игра {numberText(game.sort_order)}</div>
         <h2 className="bonus-game-card__title">{game.title}</h2>
         {game.description && <p className="bonus-game-card__description">{game.description}</p>}
-        <p className="bonus-game-card__status">{cardStatusText(game)}</p>
         <p className="bonus-game-card__details">
-          Цель: {formatRussianCount(game.target_goals, 'шайба', 'шайбы', 'шайб')} ·{' '}
-          {formatRussianCount(game.total_periods, 'период', 'периода', 'периодов')} ·{' '}
-          {formatRussianCount(totalShots, 'бросок', 'броска', 'бросков')}
+          <span className="bonus-game-card__details-primary">
+            {qualificationDescription(game.qualification_rules)}
+          </span>
+          <span className="bonus-game-card__details-secondary">
+            {formatRussianCount(game.total_periods, 'период', 'периода', 'периодов')} ·{' '}
+            {game.qualification_rules.type === 'goals_from_shots'
+              ? formatRussianCount(totalShots, 'бросок', 'броска', 'бросков')
+              : 'без лимита бросков'}
+          </span>
         </p>
-        <p className="bonus-game-card__reward">{firstReward}</p>
-        <p className="bonus-game-card__arena">Новая домашняя площадка: {game.arena.title}</p>
-        <button
-          type="button"
-          className="btn btn--cta bonus-game-card__action"
-          disabled={!canAct || isStarting}
-          onClick={onAction}
+        {game.state === 'completed' && !compact ? (
+          <p className="bonus-game-card__reward-note">Повторная игра без награды</p>
+        ) : firstClearRewards.length > 0 ? (
+          <div
+            className={`bonus-game-card__reward${game.state === 'completed' ? ' bonus-game-card__reward--muted' : ''}`}
+          >
+            {!compact && (
+              <span className="bonus-game-card__reward-title">За первое прохождение</span>
+            )}
+            <div className="bonus-game-card__reward-list">
+              {firstClearRewards.map((reward) => (
+                <BonusGameReward
+                  key={reward.tone}
+                  label={reward.label}
+                  value={reward.value}
+                  tone={reward.tone}
+                  icon={reward.icon}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <span
+          className={`card-chevron bonus-game-card__chevron${canAct ? '' : ' bonus-game-card__chevron--hidden'}`}
+          aria-hidden="true"
         >
-          {isStarting ? 'Подготавливаем…' : label}
-        </button>
+          <ChevronRight size={19} strokeWidth={2.7} />
+        </span>
       </div>
     </article>
+  );
+}
+
+function BonusGameReward({
+  label,
+  value,
+  tone,
+  icon,
+}: {
+  label: string;
+  value: number;
+  tone: RewardTone;
+  icon: JSX.Element;
+}): JSX.Element {
+  return (
+    <span className="bonus-game-card__reward-item" aria-label={`${label}: ${value}`}>
+      <span
+        className="bonus-game-card__reward-icon"
+        style={{ color: rewardColor(tone) }}
+        aria-hidden="true"
+      >
+        {icon}
+      </span>
+      <span>{numberText(value)}</span>
+    </span>
   );
 }
 

@@ -34,7 +34,7 @@
 
 ### Server and database
 
-- Create `packages/server/db/migrations/060_player_onboarding.sql` — completion-флаги, цепочки, версии, шаги, прохождения, события, media purpose и фиксированные выключенные цепочки.
+- Create `packages/server/db/migrations/089_player_onboarding.sql` — completion-флаги, цепочки, версии, шаги, прохождения, события, media purpose и фиксированные выключенные цепочки.
 - Modify `packages/server/test/db/migrations.test.ts` — номер миграции, constraints, defaults и backfill существующих пользователей.
 - Create `packages/server/src/onboarding/types.ts` — общие server DTO/domain types и Zod-ограничения конфигурации.
 - Create `packages/server/src/onboarding/service.ts` — применимость, загрузка снимка версии, старт/завершение прохождения и агрегация событий.
@@ -77,7 +77,7 @@
 
 **Files:**
 
-- Create: `packages/server/db/migrations/060_player_onboarding.sql`
+- Create: `packages/server/db/migrations/089_player_onboarding.sql`
 - Modify: `packages/server/test/db/migrations.test.ts`
 
 **Interfaces:**
@@ -87,7 +87,7 @@
 
 - [ ] **Step 1: Write failing migration assertions**
 
-Extend the ordered migration list with `060_player_onboarding.sql`. Add a test that inserts a user before applying migration 060, applies it, then inserts a user after it and asserts:
+Extend the ordered migration list with `089_player_onboarding.sql`. Add a test that inserts a user before applying migration 089, applies it, then inserts a user after it and asserts:
 
 ```ts
 expect(existing.rows[0]).toMatchObject({
@@ -106,9 +106,9 @@ Assert partial unique indexes for one draft per chain, unique `(version_id, posi
 
 Run: `pnpm --filter @hockey/server exec vitest run test/db/migrations.test.ts`
 
-Expected: FAIL because migration 060 and columns/tables do not exist.
+Expected: FAIL because migration 089 and columns/tables do not exist.
 
-- [ ] **Step 3: Create migration 060**
+- [ ] **Step 3: Create migration 089**
 
 Use this schema shape:
 
@@ -180,7 +180,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit schema**
 
 ```bash
-git add packages/server/db/migrations/060_player_onboarding.sql packages/server/test/db/migrations.test.ts
+git add packages/server/db/migrations/089_player_onboarding.sql packages/server/test/db/migrations.test.ts
 git commit -m "feat(server): add player onboarding schema"
 ```
 
@@ -387,7 +387,7 @@ Expected: FAIL with missing tutorial routes.
 
 - [ ] **Step 3: Implement deterministic session state**
 
-Store a tutorial session snapshot in the run, either with explicit columns or a constrained `tutorial_state jsonb` added to migration 060 before it ships:
+Store a tutorial session snapshot in the run, either with explicit columns or a constrained `tutorial_state jsonb` added to migration 089 before it ships:
 
 ```ts
 interface TutorialRunState {
@@ -435,7 +435,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit tutorial validation**
 
 ```bash
-git add packages/server/src/onboarding/routes.ts packages/server/src/onboarding/service.ts packages/server/test/onboarding/routes.test.ts packages/server/db/migrations/060_player_onboarding.sql
+git add packages/server/src/onboarding/routes.ts packages/server/src/onboarding/service.ts packages/server/test/onboarding/routes.test.ts packages/server/db/migrations/089_player_onboarding.sql
 git commit -m "feat(server): validate onboarding tutorial shots"
 ```
 
@@ -1058,7 +1058,7 @@ Reset each checkbox independently with server read-back. Create a draft edit and
 
 - [ ] **Step 9: Record exact evidence**
 
-Record local command results, commit SHA, integrated dev SHA, deploy workflow URL, migration 060 presence, published version IDs, role/scenario and PASS/FAIL/BLOCKED for every manual scenario. Do not call the feature production-complete without a separate production release and acceptance.
+Record local command results, commit SHA, integrated dev SHA, deploy workflow URL, migration 089 presence, published version IDs, role/scenario and PASS/FAIL/BLOCKED for every manual scenario. Do not call the feature production-complete without a separate production release and acceptance.
 
 - [ ] **Step 10: Commit verified acceptance fixes**
 

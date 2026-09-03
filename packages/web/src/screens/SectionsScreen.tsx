@@ -8,7 +8,6 @@ import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import type { ProfileData } from './profileTypes.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
-import { BONUS_GAME_SECTION_ARTWORK } from '../game/bonusGameAssets.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
@@ -27,22 +26,6 @@ type SectionTone = 'active' | 'default' | 'muted';
 
 function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU', { useGrouping: false }).format(value);
-}
-
-function waitingActionText(value: number): string {
-  if (value === 1) return '1 действие ждёт';
-  const mod10 = value % 10;
-  const mod100 = value % 100;
-  const noun = mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'действия' : 'действий';
-  return `${numberText(value)} ${noun} ждут`;
-}
-
-function waitingRewardText(value: number): string {
-  if (value === 1) return '1 награда ждёт';
-  const mod10 = value % 10;
-  const mod100 = value % 100;
-  const noun = mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'награды' : 'наград';
-  return `${numberText(value)} ${noun} ждут`;
 }
 
 export function SectionsScreen(): JSX.Element {
@@ -82,6 +65,11 @@ export function SectionsScreen(): JSX.Element {
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
   const dailyShotsLimit = (dailyData?.shots_per_period ?? 30) * (dailyData?.total_periods ?? 3);
+  const achievements = achievementsQuery.data?.achievements ?? [];
+  const achievementsCompletedCount = achievements.filter(
+    (achievement) =>
+      achievement.status === 'claimed' || achievement.status === 'completed_unclaimed',
+  ).length;
   const achievementsUnclaimedCount = achievementsQuery.data?.unclaimedCount ?? 0;
   const weeklyCanClaimReward =
     weeklyChallenge.data?.challenge?.canClaimReward === true ||
@@ -95,12 +83,7 @@ export function SectionsScreen(): JSX.Element {
       ? 1
       : 0) +
     (weeklyChallenge.data?.pendingRewards?.length ?? 0);
-  const achievementsMeta =
-    sectionTasksActionCount > achievementsUnclaimedCount
-      ? waitingActionText(sectionTasksActionCount)
-      : achievementsUnclaimedCount > 0
-        ? waitingRewardText(achievementsUnclaimedCount)
-        : 'Награды, серии и будущие цели';
+  const achievementsMeta = `${numberText(achievementsCompletedCount)}/${numberText(achievements.length)} наград`;
 
   const openAmateurs = (): void => {
     if (!isAmateurUnlocked) {
@@ -111,17 +94,6 @@ export function SectionsScreen(): JSX.Element {
       return;
     }
     navigate('/?view=amateur&from=sections');
-  };
-
-  const openBonusGames = (): void => {
-    if (!isAmateurUnlocked) {
-      setLockedInfo({
-        title: 'Нужен любительский уровень',
-        text: 'Бонусные игры доступны после открытия любительского уровня.',
-      });
-      return;
-    }
-    navigate('/bonus-games');
   };
 
   return (
@@ -142,80 +114,77 @@ export function SectionsScreen(): JSX.Element {
           gap: 16,
         }}
       >
-        <div className="section-label section-label--page">Разделы</div>
+        <section className="sections-group" aria-labelledby="sections-quick-access-title">
+          <h2 id="sections-quick-access-title" className="section-label sections-group__title">
+            Быстрый доступ
+          </h2>
+          <div className="sections-quick-grid">
+            <QuickSectionCard
+              title="Ежедневная игра"
+              meta={`${numberText(dailyData?.daily_total_shots ?? 0)}/${numberText(dailyShotsLimit)} бросков сегодня`}
+              tone="active"
+              size="wide"
+              artworkSrc={SECTION_ARTWORK.daily}
+              onClick={() => navigate('/daily')}
+            />
+            <QuickSectionCard
+              title="Тренировка"
+              meta={`${trainingShotsTaken}/${trainingShotsLimit} бросков`}
+              tone="active"
+              artworkSrc={SECTION_ARTWORK.training}
+              onClick={() => navigate('/?view=training&from=sections')}
+            />
+            <QuickSectionCard
+              title="Задания"
+              meta={achievementsMeta}
+              tone={sectionTasksActionCount > 0 ? 'active' : 'default'}
+              artworkSrc={SECTION_ARTWORK.achievements}
+              attention={sectionTasksActionCount > 0 || weeklyNeedsDecision}
+              onClick={() => navigate('/achievements')}
+            />
+            <QuickSectionCard
+              title="Магазин"
+              meta="Инвентарь и предметы"
+              tone="default"
+              size="wide"
+              artworkSrc={SECTION_ARTWORK.shop}
+              onClick={() => navigate('/inventory')}
+            />
+          </div>
+        </section>
 
-        <SectionCard
-          title="Задания"
-          description="Полный список целей и наград"
-          meta={achievementsMeta}
-          tone={sectionTasksActionCount > 0 ? 'active' : 'default'}
-          artworkSrc={SECTION_ARTWORK.achievements}
-          attention={sectionTasksActionCount > 0 || weeklyNeedsDecision}
-          onClick={() => navigate('/achievements')}
-        />
-        <SectionCard
-          title="Ежедневная игра"
-          description="Сегодняшняя игра и статистика прошедших дней"
-          meta={`${numberText(dailyData?.daily_total_shots ?? 0)}/${numberText(dailyShotsLimit)} бросков сегодня`}
-          tone="active"
-          artworkSrc={SECTION_ARTWORK.daily}
-          onClick={() => navigate('/daily')}
-        />
-        <SectionCard
-          title="Тренировка"
-          description="Периоды на выбор, броски без риска для дневной игры"
-          meta={`${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`}
-          tone="active"
-          artworkSrc={SECTION_ARTWORK.training}
-          onClick={() => navigate('/?view=training&from=sections')}
-        />
-        <SectionCard
-          title="Любители"
-          description="Дуэли, турниры и соревновательные форматы"
-          meta={
-            isAmateurUnlocked
-              ? 'Раздел открыт'
-              : `${numberText(amateurGoals)}/${numberText(amateurUnlockGoalsRequired)} шайб для открытия`
-          }
-          tone={isAmateurUnlocked ? 'default' : 'muted'}
-          artworkSrc={SECTION_ARTWORK.amateur}
-          progress={
-            isAmateurUnlocked
-              ? undefined
-              : amateurUnlockGoalsRequired > 0
-                ? Math.round((amateurGoals / amateurUnlockGoalsRequired) * 100)
-                : 100
-          }
-          onClick={openAmateurs}
-        />
-        <SectionCard
-          title="Бонусные игры"
-          description="Серия тематических матчей и новые домашние площадки"
-          meta={
-            isAmateurUnlocked
-              ? 'Игры и награды за первое прохождение'
-              : 'Нужен любительский уровень'
-          }
-          tone={isAmateurUnlocked ? 'default' : 'muted'}
-          artworkSrc={BONUS_GAME_SECTION_ARTWORK}
-          onClick={openBonusGames}
-        />
-        <SectionCard
-          title="Профессионалы"
-          description="Игры самого высокого уровня"
-          meta="Раздел в разработке"
-          tone="muted"
-          artworkSrc={SECTION_ARTWORK.pro}
-          onClick={() => navigate('/?view=pro&from=sections')}
-        />
-        <SectionCard
-          title="Магазин"
-          description="Валюта, инвентарь и предметы"
-          meta="Монеты, звёзды и экипировка"
-          tone="default"
-          artworkSrc={SECTION_ARTWORK.shop}
-          onClick={() => navigate('/inventory')}
-        />
+        <section className="sections-group" aria-labelledby="sections-modes-title">
+          <h2 id="sections-modes-title" className="section-label sections-group__title">
+            Игровые режимы
+          </h2>
+          <div className="sections-mode-list">
+            <SectionCard
+              title="Любители"
+              supportingText={
+                isAmateurUnlocked
+                  ? 'Дуэли, бонусные игры и турниры'
+                  : `${numberText(amateurGoals)}/${numberText(amateurUnlockGoalsRequired)} до открытия`
+              }
+              tone={isAmateurUnlocked ? 'default' : 'muted'}
+              artworkSrc={SECTION_ARTWORK.amateur}
+              progress={
+                isAmateurUnlocked
+                  ? undefined
+                  : amateurUnlockGoalsRequired > 0
+                    ? Math.round((amateurGoals / amateurUnlockGoalsRequired) * 100)
+                    : 100
+              }
+              onClick={openAmateurs}
+            />
+            <SectionCard
+              title="Профессионалы"
+              supportingText="Игры самого высокого уровня"
+              tone="muted"
+              artworkSrc={SECTION_ARTWORK.pro}
+              onClick={() => navigate('/?view=pro&from=sections')}
+            />
+          </div>
+        </section>
       </section>
 
       {lockedInfo && (
@@ -239,29 +208,72 @@ export function SectionsScreen(): JSX.Element {
   );
 }
 
-function SectionCard({
+function QuickSectionCard({
   title,
-  description,
   meta,
   tone,
+  size = 'compact',
   artworkSrc,
-  progress,
   attention,
   onClick,
 }: {
   title: string;
-  description: string;
   meta: string;
+  tone: Exclude<SectionTone, 'muted'>;
+  size?: 'compact' | 'wide' | undefined;
+  artworkSrc: string;
+  attention?: boolean | undefined;
+  onClick: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      className={`section-card-surface sections-quick-card sections-quick-card--${tone}${size === 'wide' ? ' sections-quick-card--wide' : ''}`}
+      aria-label={title}
+      onClick={onClick}
+    >
+      <span className="sections-quick-card__art" aria-hidden="true">
+        <img src={artworkSrc} alt="" draggable={false} />
+      </span>
+      <span className="sections-quick-card__content">
+        <span className="sections-quick-card__title">{title}</span>
+        <span className="sections-quick-card__meta">
+          {attention && <span className="sections-quick-card__attention" aria-label="Требуется действие" />}
+          {meta}
+        </span>
+      </span>
+      {size === 'wide' && (
+        <ChevronRight
+          className="card-chevron"
+          aria-hidden="true"
+          size={19}
+          strokeWidth={2.7}
+        />
+      )}
+    </button>
+  );
+}
+
+function SectionCard({
+  title,
+  supportingText,
+  tone,
+  artworkSrc,
+  progress,
+  onClick,
+}: {
+  title: string;
+  supportingText: string;
   tone: SectionTone;
   artworkSrc: string;
   progress?: number | undefined;
-  attention?: boolean | undefined;
   onClick: () => void;
 }): JSX.Element {
   const muted = tone === 'muted';
   return (
     <button
       type="button"
+      className={`section-card-surface section-card-surface--${tone}`}
       onClick={onClick}
       aria-label={title}
       style={{
@@ -280,12 +292,6 @@ function SectionCard({
         cursor: 'pointer',
         appearance: 'none',
         WebkitAppearance: 'none',
-        background:
-          tone === 'active'
-            ? 'rgba(255, 255, 255, 0.66)'
-            : muted
-              ? 'rgba(255, 255, 255, 0.34)'
-              : 'rgba(255, 255, 255, 0.5)',
         border: '1px solid rgba(255,255,255,0.68)',
         boxShadow: '0 8px 22px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.78)',
       }}
@@ -350,42 +356,23 @@ function SectionCard({
         >
           {title}
         </span>
-        <span style={{ color: 'rgba(15,23,42,0.62)', fontSize: 12, fontWeight: 750 }}>
-          {description}
-        </span>
         <span
           style={{
-            color: 'rgba(15,23,42,0.54)',
+            color: 'rgba(15,23,42,0.62)',
             fontSize: 12,
             fontWeight: 850,
             fontVariantNumeric: 'tabular-nums',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            minWidth: 0,
           }}
         >
-          {attention && (
-            <span
-              aria-label="Требуется действие"
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: 999,
-                background: 'rgba(220, 38, 38, 0.92)',
-                boxShadow: '0 0 0 3px rgba(220, 38, 38, 0.14)',
-                flex: '0 0 7px',
-              }}
-            />
-          )}
-          {meta}
+          {supportingText}
         </span>
       </span>
       <ChevronRight
+        className="card-chevron"
         aria-hidden="true"
         size={19}
         strokeWidth={2.7}
-        style={{ justifySelf: 'end', color: 'rgba(15,23,42,0.54)' }}
+        style={{ justifySelf: 'end' }}
       />
     </button>
   );

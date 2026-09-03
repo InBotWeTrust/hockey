@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { triggerHaptic } from '../feedback/haptics.js';
 import {
   ArrowLeft,
   Check,
@@ -9,6 +10,7 @@ import {
   Sparkles,
   Star,
   TrendingUp,
+  X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -20,6 +22,7 @@ import {
 import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 
 type AchievementFilter =
   | 'all'
@@ -148,7 +151,9 @@ function rewardPartItems(
 ): Array<{ tone: RewardTone; text: string }> {
   const prefix = opts.plus === true ? '+' : '';
   return [
-    rewards.currency > 0 ? { tone: 'coin' as const, text: `${prefix}${rewards.currency} монет` } : null,
+    rewards.currency > 0
+      ? { tone: 'coin' as const, text: `${prefix}${rewards.currency} монет` }
+      : null,
     rewards.stars > 0 ? { tone: 'star' as const, text: `${prefix}${rewards.stars} зв.` } : null,
     rewards.experience > 0
       ? { tone: 'experience' as const, text: `${prefix}${rewards.experience} опыта` }
@@ -188,8 +193,7 @@ export function AchievementsScreen(): JSX.Element {
   const achievementsAttention = (achievementsQuery.data?.unclaimedCount ?? 0) > 0;
   const hasClaimableAchievements = achievements.some((achievement) => achievement.isClaimable);
   const visibleFilters = useMemo(
-    () =>
-      FILTERS.filter((item) => item.id !== 'claimable' || hasClaimableAchievements),
+    () => FILTERS.filter((item) => item.id !== 'claimable' || hasClaimableAchievements),
     [hasClaimableAchievements],
   );
   const challengeAttention =
@@ -220,6 +224,7 @@ export function AchievementsScreen(): JSX.Element {
   const claimMutation = useMutation({
     mutationFn: (achievementId: string) => claimAchievement(achievementId),
     onSuccess: (response) => {
+      triggerHaptic('success');
       queryClient.setQueryData(achievementKeys.all, {
         achievements: achievements.map((achievement) =>
           achievement.id === response.achievement.id ? response.achievement : achievement,
@@ -237,6 +242,7 @@ export function AchievementsScreen(): JSX.Element {
       });
       window.setTimeout(() => setClaimedReward(null), 2800);
     },
+    onError: () => triggerHaptic('error'),
   });
 
   return (
@@ -280,7 +286,12 @@ export function AchievementsScreen(): JSX.Element {
           >
             <ArrowLeft size={16} />
           </button>
-          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>Задания</h1>
+          <h1
+            className="screen-title-on-arena"
+            style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}
+          >
+            Задания
+          </h1>
         </div>
         <SegmentedTabs
           items={ACHIEVEMENT_PAGE_TABS.map((tab) => ({
@@ -294,7 +305,7 @@ export function AchievementsScreen(): JSX.Element {
           }}
         />
         <div className="section-label section-label--page">
-          Задания ({countText(selectedFilterCounts.completed, selectedFilterCounts.total)})
+          Задания · {countText(selectedFilterCounts.completed, selectedFilterCounts.total)}
         </div>
         <div
           role="tablist"
@@ -354,60 +365,58 @@ export function AchievementsScreen(): JSX.Element {
       </section>
 
       {selected && (
-        <div
-          className="modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label={selected.title}
-          onClick={() => setSelected(null)}
+        <AccessibleModal
+          title={selected.title}
+          copy={selected.requirement}
+          onRequestClose={() => setSelected(null)}
+          closeBlocked={claimMutation.isPending}
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть окно"
+              disabled={claimMutation.isPending}
+              onClick={() => setSelected(null)}
+            >
+              <X size={15} />
+            </button>
+          }
         >
-          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
-            <h2 className="modal-title">{selected.title}</h2>
-            <p className="modal-copy">{selected.requirement}</p>
-            <div style={{ marginTop: 12, color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>
-              {selected.description}
-            </div>
-            {rewardText(selected) && (
-              <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <RewardChip
-                  icon={<CircleDollarSign size={13} />}
-                  value={selected.rewardCurrency}
-                  tone="coin"
-                />
-                <RewardChip
-                  icon={<Star size={13} fill="currentColor" />}
-                  value={selected.rewardStars}
-                  tone="star"
-                />
-                <RewardChip
-                  icon={<TrendingUp size={13} />}
-                  value={selected.rewardExperience}
-                  tone="experience"
-                />
-              </div>
-            )}
-            <div className="modal-actions">
-              {selected.isClaimable ? (
-                <button
-                  type="button"
-                  className="modal-primary btn btn--cta"
-                  disabled={claimMutation.isPending}
-                  onClick={() => claimMutation.mutate(selected.id)}
-                >
-                  Забрать
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="modal-primary btn btn--cta"
-                  onClick={() => setSelected(null)}
-                >
-                  Закрыть
-                </button>
-              )}
-            </div>
+          <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>
+            {selected.description}
           </div>
-        </div>
+          {rewardText(selected) && (
+            <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <RewardChip
+                icon={<CircleDollarSign size={13} />}
+                value={selected.rewardCurrency}
+                tone="coin"
+              />
+              <RewardChip
+                icon={<Star size={13} fill="currentColor" />}
+                value={selected.rewardStars}
+                tone="star"
+              />
+              <RewardChip
+                icon={<TrendingUp size={13} />}
+                value={selected.rewardExperience}
+                tone="experience"
+              />
+            </div>
+          )}
+          {selected.isClaimable && (
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="modal-primary btn--cta"
+                disabled={claimMutation.isPending}
+                onClick={() => claimMutation.mutate(selected.id)}
+              >
+                Забрать
+              </button>
+            </div>
+          )}
+        </AccessibleModal>
       )}
 
       {claimedReward && (
@@ -514,6 +523,7 @@ function AchievementCard({
   return (
     <button
       type="button"
+      className={`achievement-card${claimable ? ' achievement-card--claimable' : ''}`}
       disabled={claimable && claimDisabled}
       onClick={() => {
         if (claimable) {
@@ -530,7 +540,6 @@ function AchievementCard({
         display: 'grid',
         gridTemplateRows: 'auto 88px',
         alignSelf: 'stretch',
-        background: claimable ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.52)',
         color: 'var(--ink)',
         textAlign: 'left',
         boxShadow: claimable
@@ -597,6 +606,7 @@ function AchievementCard({
         )}
       </div>
       <div
+        className="achievement-card__body"
         style={{
           minHeight: 0,
           padding: '8px 10px 9px',
@@ -608,11 +618,11 @@ function AchievementCard({
         <FitOneLineTitle text={achievement.title} />
         <div
           data-achievement-requirement
+          className="achievement-card__requirement"
           style={{
             fontSize: 11,
             lineHeight: '14px',
             maxHeight: 42,
-            color: 'var(--muted)',
             fontWeight: 700,
             display: '-webkit-box',
             WebkitLineClamp: 3,

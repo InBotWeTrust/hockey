@@ -15,11 +15,23 @@ import { deriveBonusAttemptSeed, deriveShotSeed } from '../duel/seed.js';
 import { AppError } from '../plugins/errors.js';
 import { resolveCompetitionLevel } from '../profile/summary.js';
 import {
+  consumePeriodLoadout,
+  hasPeriodLoadoutSelection,
+  type PeriodLoadoutSelection,
+  type PeriodLoadoutSnapshot,
+} from '../inventory/periodLoadout.js';
+import {
   grantFirstClearReward,
   lockBonusEconomyBalances,
   type BalanceSnapshot,
 } from './economy.js';
 import { closeBonusPeriod, reconcileBonusAttempt } from './reconcile.js';
+import {
+  advanceGoalStreak,
+  evaluateBonusQualification,
+  normalizeBonusQualificationRules,
+  type BonusQualificationRules,
+} from './qualification.js';
 import {
   buildBonusGoalieConfig,
   parseBonusPeriodRules,
@@ -29,6 +41,7 @@ import {
   type BonusGameAttemptRow,
   type BonusRewardSnapshot,
   type BonusGameStatus,
+  type BonusSkillCode,
   type BonusPeriodRule,
 } from './types.js';
 
@@ -102,11 +115,18 @@ interface StartableGameRow {
   id: string;
   slug: string;
   title: string;
+  skill_code: BonusSkillCode;
   status: BonusGameStatus;
   access_type: BonusGameAccessType;
   target_goals: number;
+  qualification_rules: unknown | null;
   total_periods: number;
   break_duration_ms: number;
+  use_inventory: boolean;
+  preview_title: string;
+  preview_story: string;
+  preview_artwork_url: string;
+  preview_revision: number;
   period_rules: unknown;
   reward_coins: number;
   reward_stars: number;
@@ -123,6 +143,7 @@ interface StartableGameRow {
   predecessor_completed: boolean;
   unlock_id: string | null;
   completion_id: string | null;
+  preview_dismissed_revision: number | null;
 }
 
 const EXPECTED_START_ERROR_CODES_AFTER_RECONCILE = new Set([
@@ -143,6 +164,7 @@ function toIso(value: Date | null): string | null {
 interface BonusAttemptDerivedState {
   currentPeriodShotsTaken: number;
   rewardGranted: boolean;
+  currentLoadout: PeriodLoadoutSnapshot | null;
 }
 
 export function toBonusAttemptDto(
@@ -161,6 +183,10 @@ export function toBonusAttemptDto(
     shotsTaken: Number(attempt.shots_taken),
     currentPeriodShotsTaken: derived.currentPeriodShotsTaken,
     goals: Number(attempt.goals),
+    currentGoalStreak: Number(attempt.current_goal_streak),
+    bestGoalStreak: Number(attempt.best_goal_streak),
+    previewRequired: attempt.preview_acknowledged_at === null,
+    currentLoadout: derived.currentLoadout,
     rewardGranted: derived.rewardGranted,
     attemptSeed: attempt.attempt_seed,
     gameCoreVersion: Number(attempt.game_core_version),
@@ -176,6 +202,7 @@ export async function loadBonusAttemptDto(
   const { rows } = await client.query<{
     current_period_shots_taken: number;
     reward_granted: boolean;
+    current_loadout: PeriodLoadoutSnapshot | null;
   }>(
     `select
        (select count(*)::int
@@ -185,15 +212,20 @@ export async function loadBonusAttemptDto(
            and period_number = $2) as current_period_shots_taken,
        exists(
          select 1
-           from user_bonus_game_completion
+           from bonus_game_economy_event
           where attempt_id = $1
-       ) as reward_granted`,
+            and kind = 'first_clear_reward'
+       ) as reward_granted,
+       (select loadout.snapshot
+          from bonus_game_period_loadout loadout
+         where loadout.attempt_id = $1 and loadout.period_number = $2) as current_loadout`,
     [attempt.id, attempt.current_period],
   );
   const derived = rows[0]!;
   return toBonusAttemptDto(attempt, {
     currentPeriodShotsTaken: Number(derived.current_period_shots_taken),
     rewardGranted: derived.reward_granted,
+    currentLoadout: derived.current_loadout,
   });
 }
 
@@ -275,7 +307,9 @@ async function fetchStartableGame(
 ): Promise<StartableGameRow> {
   const { rows } = await client.query<StartableGameRow>(
     `select game.id, game.slug, game.title, game.status, game.access_type,
-            game.target_goals, game.total_periods, game.break_duration_ms,
+            game.skill_code, game.target_goals, game.qualification_rules, game.total_periods,
+            game.break_duration_ms, game.use_inventory, game.preview_title,
+            game.preview_story, game.preview_artwork_url, game.preview_revision,
             game.period_rules, game.reward_coins, game.reward_stars,
             game.reward_experience, game.arena_theme_id,
             game.goalkeeper_ready_url, game.goalkeeper_save_url, game.revision,
@@ -284,13 +318,15 @@ async function fetchStartableGame(
             arena.thumbnail_url as arena_thumbnail_url,
             predecessor.id as predecessor_id,
             (predecessor_completion.id is not null) as predecessor_completed,
-            unlock.id as unlock_id, completion.id as completion_id
+            unlock.id as unlock_id, completion.id as completion_id,
+            preview_preference.dismissed_revision as preview_dismissed_revision
        from bonus_game game
        join arena_theme arena on arena.id = game.arena_theme_id
        left join lateral (
          select previous.id
            from bonus_game previous
           where previous.status = 'active'
+            and previous.skill_code = game.skill_code
             and previous.sort_order < game.sort_order
           order by previous.sort_order desc, previous.id desc
           limit 1
@@ -302,6 +338,8 @@ async function fetchStartableGame(
          on unlock.user_id = $1 and unlock.bonus_game_id = game.id
        left join user_bonus_game_completion completion
          on completion.user_id = $1 and completion.bonus_game_id = game.id
+       left join user_bonus_game_preview_preference preview_preference
+         on preview_preference.user_id = $1 and preview_preference.bonus_game_id = game.id
       where game.id = $2
       for share of game, arena`,
     [userId, gameId],
@@ -387,6 +425,10 @@ export async function startOrResumeBonusAttempt(
       }
 
       const periods = parseGameRules(game);
+      const qualificationRules = normalizeBonusQualificationRules(game.qualification_rules, {
+        targetGoals: Number(game.target_goals),
+        shotsLimit: periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
+      });
       const arena: BonusArenaSnapshot = {
         id: game.arena_theme_id,
         slug: game.arena_slug,
@@ -398,10 +440,17 @@ export async function startOrResumeBonusAttempt(
         gameId: game.id,
         slug: game.slug,
         title: game.title,
+        skillCode: game.skill_code,
         revision: Number(game.revision),
         targetGoals: Number(game.target_goals),
+        qualificationRules,
         totalPeriods: Number(game.total_periods),
         breakDurationMs: Number(game.break_duration_ms),
+        useInventory: game.use_inventory,
+        previewTitle: game.preview_title,
+        previewStory: game.preview_story,
+        previewArtworkUrl: game.preview_artwork_url,
+        previewRevision: Number(game.preview_revision),
         periods,
         goalkeeperReadyUrl: game.goalkeeper_ready_url,
         goalkeeperSaveUrl: game.goalkeeper_save_url,
@@ -425,11 +474,11 @@ export async function startOrResumeBonusAttempt(
             shots_taken, goals, attempt_seed, game_core_version,
             definition_revision, rules_snapshot, reward_snapshot,
             arena_theme_id_snapshot, arena_snapshot, goalkeeper_ready_url,
-            goalkeeper_save_url, created_at, updated_at)
+            goalkeeper_save_url, preview_acknowledged_at, created_at, updated_at)
          values ($1, $2, $3, 'active', 'idle', 0,
                  0, 0, $4, $5,
                  $6, $7::jsonb, $8::jsonb,
-                 $9, $10::jsonb, $11, $12, $13, $13)
+                 $9, $10::jsonb, $11, $12, $13, $14, $14)
          returning *`,
         [
           attemptId,
@@ -444,6 +493,10 @@ export async function startOrResumeBonusAttempt(
           JSON.stringify(arena),
           game.goalkeeper_ready_url,
           game.goalkeeper_save_url,
+          game.preview_dismissed_revision !== null &&
+          Number(game.preview_dismissed_revision) >= Number(game.preview_revision)
+            ? input.now
+            : null,
           input.now,
         ],
       );
@@ -469,7 +522,12 @@ export async function startOrResumeBonusAttempt(
 
 export async function startBonusPeriod(
   pool: Pool,
-  input: { userId: string; attemptId: string; now: Date },
+  input: {
+    userId: string;
+    attemptId: string;
+    now: Date;
+    loadout?: PeriodLoadoutSelection;
+  },
 ): Promise<BonusGameAttemptDTO> {
   const client = await begin(pool);
   let deferredError: AppError | null = null;
@@ -480,12 +538,34 @@ export async function startBonusPeriod(
     const attempt = await reconcileBonusAttempt(client, owned, input.now);
     if (attempt.status !== 'active') {
       deferredError = new AppError('bonus_attempt_not_active', 'bonus attempt is not active', 409);
+    } else if (attempt.preview_acknowledged_at === null) {
+      deferredError = new AppError(
+        'bonus_preview_required',
+        'bonus game preview must be acknowledged',
+        409,
+      );
+    } else if (!attempt.rules_snapshot.useInventory && hasPeriodLoadoutSelection(input.loadout)) {
+      deferredError = new AppError(
+        'bonus_inventory_disabled',
+        'inventory is disabled for this bonus game',
+        409,
+      );
     } else if (
       attempt.state !== 'idle' ||
       attempt.current_period >= attempt.rules_snapshot.totalPeriods
     ) {
       deferredError = new AppError('bonus_period_not_ready', 'bonus period is not ready', 409);
     } else {
+      const nextPeriod = Number(attempt.current_period) + 1;
+      if (attempt.rules_snapshot.useInventory) {
+        await consumePeriodLoadout(client, {
+          userId: input.userId,
+          attemptId: attempt.id,
+          periodNumber: nextPeriod,
+          selection: input.loadout ?? {},
+          now: input.now,
+        });
+      }
       const { rows } = await client.query<BonusGameAttemptRow>(
         `update bonus_game_attempt
             set state = 'period_active', current_period = current_period + 1,
@@ -504,6 +584,50 @@ export async function startBonusPeriod(
   client.release();
   if (deferredError !== null) throw deferredError;
   return result!;
+}
+
+export async function acknowledgeBonusPreview(
+  pool: Pool,
+  input: { userId: string; attemptId: string; dismissFuture: boolean; now: Date },
+): Promise<BonusGameAttemptDTO> {
+  const client = await begin(pool);
+  try {
+    await lockUser(client, input.userId);
+    const attempt = await fetchOwnedAttempt(client, input.userId, input.attemptId);
+    if (attempt.status !== 'active') {
+      throw new AppError('bonus_attempt_not_active', 'bonus attempt is not active', 409);
+    }
+    if (input.dismissFuture) {
+      await client.query(
+        `insert into user_bonus_game_preview_preference
+           (user_id, bonus_game_id, dismissed_revision, updated_at)
+         values ($1, $2, $3, $4)
+         on conflict (user_id, bonus_game_id) do update
+           set dismissed_revision = greatest(
+                 user_bonus_game_preview_preference.dismissed_revision,
+                 excluded.dismissed_revision
+               ),
+               updated_at = excluded.updated_at`,
+        [input.userId, attempt.bonus_game_id, attempt.rules_snapshot.previewRevision, input.now],
+      );
+    }
+    const { rows } = await client.query<BonusGameAttemptRow>(
+      `update bonus_game_attempt
+          set preview_acknowledged_at = coalesce(preview_acknowledged_at, $1),
+              updated_at = $1
+        where id = $2
+      returning *`,
+      [input.now, attempt.id],
+    );
+    const result = await loadBonusAttemptDto(client, rows[0]!);
+    await client.query('commit');
+    return result;
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function abandonBonusAttempt(
@@ -563,20 +687,44 @@ async function fetchAcceptedBonusShot(
   return rows[0] ?? null;
 }
 
-async function countBonusPeriodShots(
+interface BonusPeriodShotState {
+  count: number;
+  lastTapTime: number | null;
+  lastShooterTapTime: number | null;
+}
+
+async function fetchBonusPeriodShotState(
   client: PoolClient,
   attemptId: string,
   periodNumber: number,
-): Promise<number> {
-  const { rows } = await client.query<{ count: number }>(
-    `select count(*)::int as count
+): Promise<BonusPeriodShotState> {
+  const { rows } = await client.query<{
+    count: number;
+    last_tap_time: number | null;
+    last_shooter_tap_time: number | null;
+  }>(
+    `select count(*)::int as count,
+            (array_agg(
+              (input_payload->>'tapTime')::double precision
+              order by shot_index desc
+            ))[1] as last_tap_time,
+            (array_agg(
+              (input_payload->>'shooterTapTime')::double precision
+              order by shot_index desc
+            ))[1] as last_shooter_tap_time
        from shot_session
       where mode = 'bonus'
         and bonus_game_attempt_id = $1
         and period_number = $2`,
     [attemptId, periodNumber],
   );
-  return Number(rows[0]!.count);
+  const row = rows[0]!;
+  return {
+    count: Number(row.count),
+    lastTapTime: row.last_tap_time === null ? null : Number(row.last_tap_time),
+    lastShooterTapTime:
+      row.last_shooter_tap_time === null ? null : Number(row.last_shooter_tap_time),
+  };
 }
 
 function periodRuleForAttempt(attempt: BonusGameAttemptRow): BonusPeriodRule {
@@ -597,6 +745,35 @@ function periodRuleForAttempt(attempt: BonusGameAttemptRow): BonusPeriodRule {
   return period;
 }
 
+function qualificationForAttempt(attempt: BonusGameAttemptRow): BonusQualificationRules {
+  return normalizeBonusQualificationRules(attempt.rules_snapshot.qualificationRules, {
+    targetGoals: attempt.rules_snapshot.targetGoals,
+    shotsLimit: attempt.rules_snapshot.periods.reduce(
+      (sum, period) => sum + (period.shotsLimit ?? 0),
+      0,
+    ),
+  });
+}
+
+async function activeElapsedMs(
+  client: PoolClient,
+  attempt: BonusGameAttemptRow,
+  now: Date,
+): Promise<number> {
+  const { rows } = await client.query<{ elapsed_ms: number }>(
+    `select coalesce(sum(duration_ms), 0)::int as elapsed_ms
+       from bonus_game_period_log
+      where attempt_id = $1`,
+    [attempt.id],
+  );
+  const archivedMs = Number(rows[0]?.elapsed_ms ?? 0);
+  const currentMs =
+    attempt.state === 'period_active' && attempt.period_started_at !== null
+      ? Math.max(0, now.getTime() - attempt.period_started_at.getTime())
+      : 0;
+  return archivedMs + currentMs;
+}
+
 function authoritativeShotInput(
   input: SubmitBonusShotInput['input'],
   rule: BonusPeriodRule,
@@ -611,10 +788,14 @@ function authoritativeShotInput(
   };
 }
 
-const BONUS_SHOT_RESULT_PAUSE_MS = 1_000;
-const BONUS_SHOT_NETWORK_LAG_TOLERANCE_MS = 2_500;
-const BONUS_SHOT_FUTURE_TOLERANCE_MS = 250;
+// Keep bonus play as resilient to browser/main-thread stalls as daily play.
+// These are wall-clock freshness bounds, not game-rule constants, so they must
+// remain independent of an admin-edited target, quota, period count, or skill.
+const BONUS_SHOT_STALE_TOLERANCE_MS = 12_000;
+const BONUS_SHOT_FUTURE_TOLERANCE_MS = 2_500;
 const BONUS_SHOT_CLOCK_RELATION_TOLERANCE_MS = 100;
+const BONUS_SHOT_TIMER_DRIFT_ALLOWANCE_PER_SHOT_MS = 2_000;
+const BONUS_SHOT_RESULT_PAUSE_MS = 1_000;
 
 function invalidBonusShotTime(): AppError {
   return new AppError(BONUS_SHOT_TIME_INVALID_CODE, 'bonus shot timing is invalid', 400);
@@ -642,6 +823,7 @@ function assertBonusShotInputClockBase(
 function assertBonusShotTimeFresh(
   attempt: BonusGameAttemptRow,
   previousShots: number,
+  previousInput: { tapTime: number; shooterTapTime: number } | null,
   input: SubmitBonusShotInput['input'],
   rule: BonusPeriodRule,
   now: Date,
@@ -652,13 +834,17 @@ function assertBonusShotTimeFresh(
 
   const elapsedMs = Math.max(0, now.getTime() - attempt.period_started_at.getTime());
   const flightMs = (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs;
-  // PlayView freezes the scene for the fixed result display and freezes the
-  // shooter for that display plus puck flight. Task 13 resume must restore
-  // these continuous period clocks from server elapsed time and accepted shots.
-  const expectedSceneTime = elapsedMs - previousShots * BONUS_SHOT_RESULT_PAUSE_MS;
+  // Period expiry remains wall-clock based, while the deterministic scene uses
+  // the same one-second result pause as the daily game after every accepted shot.
+  const expectedSceneTime = Math.max(
+    0,
+    elapsedMs - previousShots * BONUS_SHOT_RESULT_PAUSE_MS,
+  );
   const expectedShooterTime = expectedSceneTime - previousShots * flightMs;
+  const accumulatedTimerDrift =
+    previousShots * BONUS_SHOT_TIMER_DRIFT_ALLOWANCE_PER_SHOT_MS;
   const isNearAuthoritativeClock = (actual: number, expected: number): boolean =>
-    actual >= expected - BONUS_SHOT_NETWORK_LAG_TOLERANCE_MS &&
+    actual >= expected - BONUS_SHOT_STALE_TOLERANCE_MS - accumulatedTimerDrift &&
     actual <= expected + BONUS_SHOT_FUTURE_TOLERANCE_MS;
 
   if (
@@ -669,8 +855,16 @@ function assertBonusShotTimeFresh(
   }
 
   const shooterLag = input.tapTime - input.shooterTapTime;
-  const expectedShooterLag = previousShots * flightMs;
-  if (Math.abs(shooterLag - expectedShooterLag) > BONUS_SHOT_CLOCK_RELATION_TOLERANCE_MS) {
+  const previousShooterLag =
+    previousInput === null ? 0 : previousInput.tapTime - previousInput.shooterTapTime;
+  const expectedLagIncrease = previousInput === null ? 0 : flightMs;
+  // Validate one rendered flight at a time. Comparing against a theoretical
+  // zero-drift total made a harmless few milliseconds per animation accumulate
+  // until a later shot was rejected solely because its index was high.
+  if (
+    Math.abs(shooterLag - previousShooterLag - expectedLagIncrease) >
+    BONUS_SHOT_CLOCK_RELATION_TOLERANCE_MS
+  ) {
     throw invalidBonusShotTime();
   }
 }
@@ -724,11 +918,12 @@ export async function submitBonusShot(
       }
     } else {
       const rule = periodRuleForAttempt(attempt);
-      const acceptedShotCount = await countBonusPeriodShots(
+      const periodShotState = await fetchBonusPeriodShotState(
         client,
         attempt.id,
         attempt.current_period,
       );
+      const acceptedShotCount = periodShotState.count;
       const expectedShotIndex = acceptedShotCount + 1;
       if (input.claimedShotIndex !== expectedShotIndex) {
         deferredError = new AppError(
@@ -736,14 +931,28 @@ export async function submitBonusShot(
           `bonus shot index mismatch: expected ${expectedShotIndex}`,
           409,
         );
-      } else if (acceptedShotCount >= rule.shotsLimit) {
+      } else if (rule.shotsLimit !== null && acceptedShotCount >= rule.shotsLimit) {
         deferredError = new AppError(
           'bonus_period_not_ready',
           'bonus period shot quota is exhausted',
           409,
         );
       } else {
-        assertBonusShotTimeFresh(attempt, acceptedShotCount, input.input, rule, input.now);
+        const previousInput =
+          periodShotState.lastTapTime === null || periodShotState.lastShooterTapTime === null
+            ? null
+            : {
+                tapTime: periodShotState.lastTapTime,
+                shooterTapTime: periodShotState.lastShooterTapTime,
+              };
+        assertBonusShotTimeFresh(
+          attempt,
+          acceptedShotCount,
+          previousInput,
+          input.input,
+          rule,
+          input.now,
+        );
         const shotSeed = deriveShotSeed(
           attempt.attempt_seed,
           attempt.current_period,
@@ -803,26 +1012,46 @@ export async function submitBonusShot(
               input.now,
             ],
           );
+          const nextStreak = advanceGoalStreak(
+            {
+              current: Number(attempt.current_goal_streak),
+              best: Number(attempt.best_goal_streak),
+            },
+            serverResult,
+          );
           const updated = await client.query<BonusGameAttemptRow>(
             `update bonus_game_attempt
                 set shots_taken = shots_taken + 1,
                     goals = goals + $2,
-                    updated_at = $3
+                    current_goal_streak = $3,
+                    best_goal_streak = $4,
+                    updated_at = $5
               where id = $1
               returning *`,
-            [attempt.id, serverResult === 'goal' ? 1 : 0, input.now],
+            [
+              attempt.id,
+              serverResult === 'goal' ? 1 : 0,
+              nextStreak.current,
+              nextStreak.best,
+              input.now,
+            ],
           );
           attempt = updated.rows[0]!;
 
           let rewardGranted: BonusRewardSnapshot | null = null;
-          if (attempt.goals >= attempt.rules_snapshot.targetGoals) {
+          const qualification = evaluateBonusQualification(qualificationForAttempt(attempt), {
+            goals: Number(attempt.goals),
+            shotsTaken: Number(attempt.shots_taken),
+            bestGoalStreak: Number(attempt.best_goal_streak),
+            activeElapsedMs: await activeElapsedMs(client, attempt, input.now),
+          });
+          if (qualification.passed) {
             await closeBonusPeriod(client, attempt, input.now, 'target_reached');
             const reward = await grantFirstClearReward(client, {
               userId: input.userId,
               gameId: attempt.bonus_game_id,
               attemptId: attempt.id,
               reward: attempt.reward_snapshot,
-              arenaThemeId: attempt.arena_theme_id_snapshot,
               now: input.now,
             });
             balances = reward.balances;
@@ -836,7 +1065,7 @@ export async function submitBonusShot(
               [input.now, attempt.id],
             );
             attempt = completed.rows[0]!;
-          } else if (expectedShotIndex >= rule.shotsLimit) {
+          } else if (rule.shotsLimit !== null && expectedShotIndex >= rule.shotsLimit) {
             attempt = await reconcileBonusAttempt(client, attempt, input.now);
           }
 

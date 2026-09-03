@@ -8,6 +8,7 @@ import { reconcileBonusAttempt } from '../../src/bonusGames/reconcile.js';
 import {
   BONUS_GAME_CATALOG_LOCK_CLASS_ID,
   BONUS_GAME_CATALOG_LOCK_OBJECT_ID,
+  acknowledgeBonusPreview,
   abandonBonusAttempt,
   lockBonusGameCatalogForMutation,
   startBonusPeriod,
@@ -111,6 +112,9 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     periods = PERIODS,
     breakDurationMs = 30_000,
     arenaId = defaultArenaId,
+    useInventory = false,
+    previewRevision = 1,
+    skillCode = 'accuracy',
   }: {
     sortOrder: number;
     status?: 'draft' | 'active' | 'archived';
@@ -120,37 +124,87 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     periods?: BonusPeriodRule[];
     breakDurationMs?: number;
     arenaId?: string;
+    useInventory?: boolean;
+    previewRevision?: number;
+    skillCode?: 'speed' | 'accuracy';
   }): Promise<TestGame> {
     gameSequence += 1;
     const slug = `attempt-game-${gameSequence}`;
     const game = await pool.query<{ id: string }>(
       `insert into bonus_game
-         (slug, title, description, sort_order, status, access_type, unlock_price_stars,
-          target_goals, total_periods, break_duration_ms, period_rules,
+         (slug, title, skill_code, description, sort_order, status, access_type, unlock_price_stars,
+          target_goals, qualification_rules, total_periods, break_duration_ms, period_rules,
+          use_inventory, preview_revision,
           reward_coins, reward_stars, reward_experience, arena_theme_id,
           goalkeeper_ready_url, goalkeeper_save_url, revision)
-       values ($1, $2, $3, $4, $5, $6, $7,
-               $8, $9, $10, $11::jsonb,
-               100, 1, 50, $12, $13, $14, 3)
+       values ($1, $2, $3, $4, $5, $6, $7, $8,
+               $9, $10::jsonb, $11, $12, $13::jsonb,
+               $14, $15,
+               100, 1, 50, $16, $17, $18, 3)
        returning id`,
       [
         slug,
         `Игра ${gameSequence}`,
+        skillCode,
         `Описание ${gameSequence}`,
         sortOrder,
         status,
         accessType,
         price,
         targetGoals,
+        JSON.stringify(
+          skillCode === 'speed'
+            ? {
+                type: 'goals_in_time',
+                targetGoals,
+                activeTimeMs: periods.reduce((sum, period) => sum + period.durationMs, 0),
+              }
+            : {
+                type: 'goals_from_shots',
+                targetGoals,
+                shotsLimit: periods.reduce(
+                  (sum, period) => sum + (period.shotsLimit ?? 0),
+                  0,
+                ),
+              },
+        ),
         periods.length,
         breakDurationMs,
         JSON.stringify(periods),
+        useInventory,
+        previewRevision,
         arenaId,
         `/goalies/${slug}-ready.webp`,
         `/goalies/${slug}-save.webp`,
       ],
     );
     return { id: game.rows[0]!.id, slug, arenaId };
+  }
+
+  async function createInventoryItem(kind: 'stick' | 'skates' | 'nutrition'): Promise<string> {
+    const { rows } = await pool.query<{ id: string }>(
+      `insert into admin_inventory_items
+         (photo_url, title, description, price_rub, item_kind, charges_per_purchase,
+          duel_period_cost, power_score, rarity)
+       values ('', $1, '', 0, $1, 10, 1, 10, 'epic')
+       returning id`,
+      [kind],
+    );
+    return rows[0]!.id;
+  }
+
+  async function createInventoryInstance(
+    userId: string,
+    itemId: string,
+    chargesAvailable: number,
+  ): Promise<string> {
+    const { rows } = await pool.query<{ id: string }>(
+      `insert into user_inventory_instance (user_id, inventory_item_id, charges_available)
+       values ($1, $2, $3)
+       returning id`,
+      [userId, itemId, chargesAvailable],
+    );
+    return rows[0]!.id;
   }
 
   async function fetchAttempt(attemptId: string): Promise<BonusGameAttemptRow> {
@@ -174,6 +228,20 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     } finally {
       client.release();
     }
+  }
+
+  async function startAcknowledgedPeriod(
+    userId: string,
+    attemptId: string,
+    now: Date,
+  ) {
+    await acknowledgeBonusPreview(pool, {
+      userId,
+      attemptId,
+      dismissFuture: false,
+      now,
+    });
+    return startBonusPeriod(pool, { userId, attemptId, now });
   }
 
   async function insertShot(
@@ -255,6 +323,140 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     expect(second.attempt.id).toBe(first.attempt.id);
   });
 
+  it('reuses a dismissed preview only until the game preview revision changes', async () => {
+    const userId = await createUser();
+    const game = await createGame({ sortOrder: 1, previewRevision: 4 });
+    const first = await startOrResumeBonusAttempt(pool, {
+      userId,
+      gameId: game.id,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    expect(first.attempt.previewRequired).toBe(true);
+
+    const acknowledged = await acknowledgeBonusPreview(pool, {
+      userId,
+      attemptId: first.attempt.id,
+      dismissFuture: true,
+      now: NOW,
+    });
+    expect(acknowledged.previewRequired).toBe(false);
+    await abandonBonusAttempt(pool, {
+      userId,
+      attemptId: first.attempt.id,
+      now: new Date('2026-08-23T12:00:01Z'),
+    });
+
+    const second = await startOrResumeBonusAttempt(pool, {
+      userId,
+      gameId: game.id,
+      now: new Date('2026-08-23T12:00:02Z'),
+      seedSecret: SEED_SECRET,
+    });
+    expect(second.attempt.previewRequired).toBe(false);
+    await abandonBonusAttempt(pool, {
+      userId,
+      attemptId: second.attempt.id,
+      now: new Date('2026-08-23T12:00:03Z'),
+    });
+    await pool.query('update bonus_game set preview_revision = 5 where id = $1', [game.id]);
+
+    const revised = await startOrResumeBonusAttempt(pool, {
+      userId,
+      gameId: game.id,
+      now: new Date('2026-08-23T12:00:04Z'),
+      seedSecret: SEED_SECRET,
+    });
+    expect(revised.attempt.previewRequired).toBe(true);
+  });
+
+  it('consumes an owned period loadout once and returns its immutable snapshot', async () => {
+    const userId = await createUser();
+    const game = await createGame({ sortOrder: 1, useInventory: true });
+    const stickId = await createInventoryItem('stick');
+    const instanceId = await createInventoryInstance(userId, stickId, 2);
+    const created = await startOrResumeBonusAttempt(pool, {
+      userId,
+      gameId: game.id,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    await acknowledgeBonusPreview(pool, {
+      userId,
+      attemptId: created.attempt.id,
+      dismissFuture: false,
+      now: NOW,
+    });
+
+    const started = await startBonusPeriod(pool, {
+      userId,
+      attemptId: created.attempt.id,
+      loadout: { stick: instanceId },
+      now: NOW,
+    });
+    expect(started.currentLoadout).toMatchObject({
+      items: [{ instanceId, itemId: stickId, kind: 'stick', chargesConsumed: 1 }],
+    });
+    await expect(
+      startBonusPeriod(pool, {
+        userId,
+        attemptId: created.attempt.id,
+        loadout: { stick: instanceId },
+        now: new Date('2026-08-23T12:00:01Z'),
+      }),
+    ).rejects.toMatchObject({ code: 'bonus_period_not_ready' });
+
+    const inventory = await pool.query<{ charges: number; loadouts: number }>(
+      `select instance.charges_available::int as charges,
+              (select count(*)::int from bonus_game_period_loadout
+                where attempt_id = $2) as loadouts
+         from user_inventory_instance instance
+        where instance.id = $1`,
+      [instanceId, created.attempt.id],
+    );
+    expect(inventory.rows[0]).toEqual({ charges: 1, loadouts: 1 });
+  });
+
+  it('rejects a period loadout owned by another player without consuming it', async () => {
+    const userId = await createUser();
+    const otherUserId = await createUser();
+    const game = await createGame({ sortOrder: 1, useInventory: true });
+    const stickId = await createInventoryItem('stick');
+    const otherInstanceId = await createInventoryInstance(otherUserId, stickId, 2);
+    const created = await startOrResumeBonusAttempt(pool, {
+      userId,
+      gameId: game.id,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    await acknowledgeBonusPreview(pool, {
+      userId,
+      attemptId: created.attempt.id,
+      dismissFuture: false,
+      now: NOW,
+    });
+
+    await expect(
+      startBonusPeriod(pool, {
+        userId,
+        attemptId: created.attempt.id,
+        loadout: { stick: otherInstanceId },
+        now: NOW,
+      }),
+    ).rejects.toMatchObject({ code: 'bonus_inventory_invalid' });
+
+    const state = await pool.query<{ state: string; charges: number; loadouts: number }>(
+      `select attempt.state, instance.charges_available::int as charges,
+              (select count(*)::int from bonus_game_period_loadout
+                where attempt_id = attempt.id) as loadouts
+         from bonus_game_attempt attempt
+         cross join user_inventory_instance instance
+        where attempt.id = $1 and instance.id = $2`,
+      [created.attempt.id, otherInstanceId],
+    );
+    expect(state.rows[0]).toEqual({ state: 'idle', charges: 2, loadouts: 0 });
+  });
+
   it('runs attempt-start transaction queries sequentially on its PoolClient', async () => {
     const userId = await createUser();
     const game = await createGame({ sortOrder: 1 });
@@ -279,7 +481,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
       now: NOW,
       seedSecret: SEED_SECRET,
     });
-    await startBonusPeriod(pool, { userId, attemptId: created.attempt.id, now: NOW });
+    await startAcknowledgedPeriod(userId, created.attempt.id, NOW);
 
     const next = await reconcile(created.attempt.id, new Date('2026-08-23T12:05:00Z'));
     expect(next.state).toBe('break_active');
@@ -566,7 +768,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
       now: NOW,
       seedSecret: SEED_SECRET,
     });
-    await startBonusPeriod(pool, { userId, attemptId: created.attempt.id, now: NOW });
+    await startAcknowledgedPeriod(userId, created.attempt.id, NOW);
     await pool.query(
       `update bonus_game
           set status = 'archived', archived_at = $2
@@ -703,16 +905,62 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
       current_period: 0,
       period_started_at: null,
     });
-    const started = await startBonusPeriod(pool, {
+    const started = await startAcknowledgedPeriod(
       userId,
-      attemptId: created.attempt.id,
-      now: new Date('2026-08-23T12:01:00Z'),
-    });
+      created.attempt.id,
+      new Date('2026-08-23T12:01:00Z'),
+    );
     expect(started).toMatchObject({
       state: 'period_active',
       currentPeriod: 1,
       periodStartedAt: '2026-08-23T12:01:00.000Z',
     });
+  });
+
+  it('keeps a speed period active regardless of shot count until its timer expires', async () => {
+    const userId = await createUser();
+    const speedPeriod: BonusPeriodRule = {
+      ...PERIODS[0]!,
+      durationMs: 120_000,
+      shotsLimit: null,
+    };
+    const game = await createGame({
+      sortOrder: 1,
+      skillCode: 'speed',
+      targetGoals: 200,
+      periods: [speedPeriod],
+    });
+    const created = await startOrResumeBonusAttempt(pool, {
+      userId,
+      gameId: game.id,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    await startAcknowledgedPeriod(userId, created.attempt.id, NOW);
+    for (let shotIndex = 1; shotIndex <= 5; shotIndex += 1) {
+      await insertShot(pool, {
+        userId,
+        attemptId: created.attempt.id,
+        periodNumber: 1,
+        shotIndex,
+        result: 'save',
+        createdAt: new Date(NOW.getTime() + shotIndex * 1_000),
+      });
+    }
+
+    const beforeTimeout = await reconcile(
+      created.attempt.id,
+      new Date('2026-08-23T12:01:00Z'),
+    );
+    expect(beforeTimeout).toMatchObject({
+      status: 'active',
+      state: 'period_active',
+      shots_taken: 5,
+    });
+    expect(await periodLogs(created.attempt.id)).toEqual([]);
+
+    const timedOut = await reconcile(created.attempt.id, new Date('2026-08-23T12:02:00Z'));
+    expect(timedOut).toMatchObject({ status: 'failed', state: 'closed', shots_taken: 5 });
   });
 
   it('closes a shot quota once and enters intermission', async () => {
@@ -724,7 +972,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
       now: NOW,
       seedSecret: SEED_SECRET,
     });
-    await startBonusPeriod(pool, { userId, attemptId: created.attempt.id, now: NOW });
+    await startAcknowledgedPeriod(userId, created.attempt.id, NOW);
     await insertShot(pool, {
       userId,
       attemptId: created.attempt.id,
@@ -761,14 +1009,14 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
       now: NOW,
       seedSecret: SEED_SECRET,
     });
-    await startBonusPeriod(pool, { userId, attemptId: created.attempt.id, now: NOW });
+    await startAcknowledgedPeriod(userId, created.attempt.id, NOW);
     await reconcile(created.attempt.id, new Date('2026-08-23T12:05:00Z'));
     await reconcile(created.attempt.id, new Date('2026-08-23T12:05:31Z'));
-    await startBonusPeriod(pool, {
+    await startAcknowledgedPeriod(
       userId,
-      attemptId: created.attempt.id,
-      now: new Date('2026-08-23T12:06:00Z'),
-    });
+      created.attempt.id,
+      new Date('2026-08-23T12:06:00Z'),
+    );
 
     const failed = await reconcile(created.attempt.id, new Date('2026-08-23T12:11:00Z'));
 
@@ -789,7 +1037,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
       now: NOW,
       seedSecret: SEED_SECRET,
     });
-    await startBonusPeriod(pool, { userId, attemptId: created.attempt.id, now: NOW });
+    await startAcknowledgedPeriod(userId, created.attempt.id, NOW);
     await insertShot(pool, {
       userId,
       attemptId: created.attempt.id,

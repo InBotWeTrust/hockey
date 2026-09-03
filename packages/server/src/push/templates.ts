@@ -2,7 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import type { PushEventType } from './preferences.js';
 import type { WebPushPayload } from './service.js';
 
-export type PushNotificationCategory = 'chat' | 'daily' | 'training' | 'duel' | 'news';
+export type PushNotificationCategory = 'chat' | 'daily' | 'training' | 'duel' | 'tournament' | 'news';
 
 export interface PushNotificationTemplateRow {
   key: PushEventType;
@@ -55,6 +55,22 @@ const TEMPLATE_ORDER: PushEventType[] = [
   'training.available',
   'duel.challenge_received',
   'duel.result_ready',
+  'tournament.application_approved',
+  'tournament.registration_blocked',
+  'tournament.schedule_published',
+  'tournament.fixture_opened',
+  'tournament.live_soon',
+  'tournament.fixture_deadline',
+  'tournament.opponent_ready',
+  'tournament.readiness_ending',
+  'tournament.result_ready',
+  'tournament.rescheduled',
+  'tournament.playoff_started',
+  'tournament.playoff_blocked',
+  'tournament.playoff_schedule_missing',
+  'tournament.series_next_game',
+  'tournament.completed',
+  'tournament.manual',
   'news.posted',
 ];
 
@@ -130,6 +146,46 @@ const DEFAULT_PUSH_NOTIFICATION_TEMPLATES: Array<{
     body: '{{resultText}}',
     trigger: 'Дуэль получила итог: победа, поражение, ничья или двойная неявка.',
     clickUrl: '/?view=amateur',
+  },
+  {
+    key: 'tournament.registration_blocked',
+    category: 'tournament',
+    title: 'Турнир требует внимания',
+    body: 'В турнире «{{tournamentTitle}}» подтверждено {{approvedCount}} из {{requiredCount}} участников.',
+    trigger: 'Регистрация завершилась, но участников недостаточно для выбранного плей-офф.',
+    clickUrl: '/admin',
+  },
+  {
+    key: 'tournament.playoff_blocked',
+    category: 'tournament',
+    title: 'Плей-офф ожидает результатов',
+    body: 'В турнире «{{tournamentTitle}}» ещё не завершены все игры регулярного сезона.',
+    trigger: 'Время старта плей-офф наступило, но результаты регулярного сезона неполны.',
+    clickUrl: '/admin',
+  },
+  {
+    key: 'tournament.playoff_schedule_missing',
+    category: 'tournament',
+    title: 'Настройте расписание плей-офф',
+    body: 'В турнире «{{tournamentTitle}}» завершён регулярный сезон. Укажите даты и время игр плей-офф.',
+    trigger: 'Регулярный сезон завершён, но даты и время игр плей-офф не заданы.',
+    clickUrl: '/admin',
+  },
+  {
+    key: 'tournament.opponent_ready',
+    category: 'tournament',
+    title: 'Соперник готов',
+    body: '{{opponentName}} подтвердил готовность к игре.',
+    trigger: 'Один игрок подтвердил готовность к матчу плей-офф.',
+    clickUrl: '/?view=amateur&section=tournaments',
+  },
+  {
+    key: 'tournament.readiness_ending',
+    category: 'tournament',
+    title: 'Осталась минута',
+    body: 'Подтвердите готовность, иначе будет засчитано техническое поражение.',
+    trigger: 'За минуту до закрытия подтверждения готовности.',
+    clickUrl: '/?view=amateur&section=tournaments',
   },
   {
     key: 'news.posted',
@@ -265,6 +321,7 @@ export async function renderPushNotificationPayload(
   key: PushEventType,
   variables: PushTemplateVariables,
   fallback: PushTemplateFallback,
+  override?: PushTemplateFallback | null,
 ): Promise<WebPushPayload | null> {
   await ensurePushNotificationTemplates(client);
   const { rows } = await client.query<{
@@ -280,7 +337,7 @@ export async function renderPushNotificationPayload(
   );
   const row = rows[0];
   if (row && !row.is_enabled) return null;
-  const source = row ? { title: row.title, body: row.body, url: row.click_url } : fallback;
+  const source = override ?? (row ? { title: row.title, body: row.body, url: row.click_url } : fallback);
   return {
     title: interpolate(source.title, variables),
     body: interpolate(source.body, variables),

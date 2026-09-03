@@ -248,8 +248,22 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
           clickUrl: '/chat/{{chatId}}',
           isEnabled: true,
         }),
+        expect.objectContaining({ key: 'tournament.registration_blocked' }),
+        expect.objectContaining({ key: 'tournament.playoff_blocked' }),
+        expect.objectContaining({ key: 'tournament.playoff_schedule_missing' }),
       ]),
     );
+
+    const playoffTemplatePatch = await app.inject({
+      method: 'PATCH',
+      url: '/admin/notifications/tournament.playoff_schedule_missing',
+      headers: auth(adminToken),
+      payload: { isEnabled: false },
+    });
+    expect(playoffTemplatePatch.statusCode).toBe(200);
+    expect(playoffTemplatePatch.json()).toMatchObject({
+      notification: { key: 'tournament.playoff_schedule_missing', isEnabled: false },
+    });
 
     const patch = await app.inject({
       method: 'PATCH',

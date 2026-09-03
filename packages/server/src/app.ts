@@ -22,16 +22,22 @@ import { chatWs } from './chat/ws.js';
 import { adminRoutes } from './admin/routes.js';
 import { pushRoutes } from './push/routes.js';
 import { pushSchedulerPlugin } from './plugins/pushScheduler.js';
+import { tournamentLifecyclePlugin } from './plugins/tournamentLifecycle.js';
 import { createObjectStorageClient } from './storage/objectStorage.js';
 import { arenaRoutes } from './arenas/routes.js';
 import { bonusGameRoutes } from './bonusGames/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
 import { onboardingAdminRoutes } from './onboarding/adminRoutes.js';
+import { tournamentRoutes } from './tournament/routes.js';
+import { tournamentWs } from './tournament/ws.js';
+import { validateOfficialAccount } from './chat/officialAccount.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
   pushSchedulerEnabled?: boolean;
   pushWorkerEnabled?: boolean;
+  tournamentLifecycleEnabled?: boolean;
+  tournamentLifecycleIntervalMs?: number;
 }
 
 export async function buildApp(options: BuildAppOptions = {}) {
@@ -77,7 +83,17 @@ export async function buildApp(options: BuildAppOptions = {}) {
 
   await app.register(errorsPlugin);
   await app.register(dbPlugin, { connectionString: config.DATABASE_URL });
+  if (config.SYSTEM_USER_ID !== undefined) {
+    await validateOfficialAccount(app.pg, config.SYSTEM_USER_ID);
+  }
   await app.register(redisPlugin, { url: config.REDIS_URL });
+  await app.register(tournamentLifecyclePlugin, {
+    enabled: options.tournamentLifecycleEnabled ?? (config.NODE_ENV === 'test' ? false : true),
+    ...(options.tournamentLifecycleIntervalMs === undefined
+      ? {}
+      : { intervalMs: options.tournamentLifecycleIntervalMs }),
+    classicSeedSecret: config.DAILY_SEED_SECRET,
+  });
   await app.register(realtimePlugin);
   await app.register(authPlugin, { accessSecret: config.JWT_SECRET });
   await app.register(lastSeenPlugin);
@@ -112,21 +128,46 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(
     mediaRoutes,
     objectStorage !== undefined
-      ? { objectStorage, mediaAccessSecret: config.JWT_SECRET }
-      : { mediaAccessSecret: config.JWT_SECRET },
+      ? {
+          objectStorage,
+          mediaAccessSecret: config.JWT_SECRET,
+          ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
+        }
+      : {
+          mediaAccessSecret: config.JWT_SECRET,
+          ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
+        },
   );
   await app.register(dailyRoutes, { dailySeedSecret: config.DAILY_SEED_SECRET });
   await app.register(trainingRoutes, { trainingSeedSecret: config.DAILY_SEED_SECRET });
-  await app.register(amateurDuelRoutes, { duelSeedSecret: config.DAILY_SEED_SECRET });
+  await app.register(amateurDuelRoutes, {
+    duelSeedSecret: config.DAILY_SEED_SECRET,
+    ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
+  });
+  await app.register(tournamentRoutes, {
+    mediaAccessSecret: config.JWT_SECRET,
+    tournamentGameSeedSecret: config.DAILY_SEED_SECRET,
+    duelSeedSecret: config.DAILY_SEED_SECRET,
+    ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
+    ...(objectStorage !== undefined ? { objectStorage } : {}),
+  });
   await app.register(weeklyChallengeRoutes);
   await app.register(chatRoutes, { ...pushVapidOptions, mediaAccessSecret: config.JWT_SECRET });
   await app.register(chatWs, { accessSecret: config.JWT_SECRET });
+  await app.register(tournamentWs, { accessSecret: config.JWT_SECRET });
   await app.register(pushRoutes, pushVapidOptions);
   await app.register(
     adminRoutes,
     objectStorage !== undefined
-      ? { objectStorage, mediaAccessSecret: config.JWT_SECRET }
-      : { mediaAccessSecret: config.JWT_SECRET },
+      ? {
+          objectStorage,
+          mediaAccessSecret: config.JWT_SECRET,
+          ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
+        }
+      : {
+          mediaAccessSecret: config.JWT_SECRET,
+          ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
+        },
   );
   await app.register(
     onboardingAdminRoutes,
@@ -151,6 +192,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
       options.pushWorkerEnabled ?? config.PUSH_WORKER_ENABLED ?? config.NODE_ENV === 'production',
     workerConcurrency: config.PUSH_WORKER_CONCURRENCY,
     workerBatchSize: config.PUSH_WORKER_BATCH_SIZE,
+    tournamentGameSeedSecret: config.DAILY_SEED_SECRET,
   });
 
   return app;

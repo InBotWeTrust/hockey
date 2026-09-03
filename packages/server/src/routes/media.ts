@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import { assertCanAccessChat } from '../chat/guards.js';
+import { assertAdminUser } from '../chat/channel.js';
 import { appendEvent } from '../duel/eventLog.js';
 import { createMediaObjectKey, type ObjectStorageClient } from '../storage/objectStorage.js';
 import { createMediaProxyUrl, verifyMediaAccessToken } from '../storage/mediaAccess.js';
@@ -13,6 +14,7 @@ type MediaKind = 'image' | 'voice' | 'file';
 interface MediaRoutesOptions {
   objectStorage?: ObjectStorageClient;
   mediaAccessSecret: string;
+  systemUserId?: string;
 }
 
 interface MediaObjectRow {
@@ -369,4 +371,68 @@ export const mediaRoutes: FastifyPluginAsync<MediaRoutesOptions> = async (app, o
 
     return { media };
   });
+
+  app.post(
+    '/admin/communications/dialogs/:chatId/uploads',
+    { preHandler: [app.authenticate] },
+    async (req) => {
+      if (options.objectStorage === undefined) {
+        throw new AppError('storage_not_configured', 'object storage is not configured', 503);
+      }
+      if (options.systemUserId === undefined) {
+        throw new AppError('configuration_error', 'SYSTEM_USER_ID is required', 409);
+      }
+
+      const { chatId } = z.object({ chatId: uuid }).parse(req.params);
+      await assertAdminUser(app.pg, req.user.id);
+      const officialDialog = await app.pg.query<{ id: string }>(
+        `select c.id
+           from chats c
+           join chat_members official_member
+             on official_member.chat_id = c.id and official_member.user_id = $2
+           join users official on official.id = official_member.user_id
+           join chat_members player_member
+             on player_member.chat_id = c.id and player_member.user_id <> $2
+           join users player on player.id = player_member.user_id
+          where c.id = $1
+            and c.type = 'direct'
+            and c.is_active = true
+            and official.account_kind = 'official'
+            and player.account_kind = 'player'
+          limit 1`,
+        [chatId, options.systemUserId],
+      );
+      if (officialDialog.rows[0] === undefined) {
+        throw new AppError('not_found', 'official dialog not found', 404);
+      }
+
+      const contentType = normalizeContentType(req.headers['content-type']);
+      const body = assertUploadBody(
+        req.body,
+        contentType,
+        chatContentTypes,
+        Math.min(chatUploadLimit(contentType), options.objectStorage.maxUploadBytes),
+      );
+      const media = await uploadMedia({
+        app,
+        objectStorage: options.objectStorage,
+        userId: req.user.id,
+        purpose: 'chat_attachment',
+        prefix: `official-dialog/${chatId}/${req.user.id}`,
+        body,
+        contentType,
+        originalName: cleanOriginalName(req.headers['x-file-name']),
+        mediaAccessSecret: options.mediaAccessSecret,
+      });
+      await appendEvent(app.pg, req.user.id, 'admin_official_dialog_attachment_uploaded', {
+        chat_id: chatId,
+        media_id: media.id,
+        key: media.key,
+        size: media.size,
+        content_type: media.contentType,
+      });
+
+      return { media };
+    },
+  );
 };

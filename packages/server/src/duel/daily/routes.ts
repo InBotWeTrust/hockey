@@ -11,8 +11,9 @@ import {
 } from '@hockey/game-core';
 import {
   evaluateDailyClosedAchievements,
-  evaluateDailyPeriodClosedAchievements,
+  evaluatePendingDailyPeriodClosedAchievements,
   evaluateDailyShotAchievements,
+  type DailyClosedAchievementEvent,
 } from '../../achievements/engine.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
@@ -28,6 +29,8 @@ import {
   getGameSettings,
   type GameSettings,
 } from '../gameSettings.js';
+import { refreshCompletedTournamentDailyResultsForUser } from '../../tournament/dailyAggregate.js';
+import { scheduleDailyCompletionSideEffect } from './completionSideEffects.js';
 
 const shotBodySchema = z.object({
   shot_index: z.number().int().min(1),
@@ -48,8 +51,6 @@ const historyQuerySchema = z.object({
 });
 
 const TAP_TIME_FUTURE_TOLERANCE_MS = 2500;
-const TAP_TIME_STALE_TOLERANCE_MS = 12_000;
-const TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS = 2_000;
 
 type DailyShotRejectReason =
   | 'no_active_day_pool'
@@ -342,10 +343,18 @@ async function aggregateCurrentPeriod(
   client: PoolClient,
   dayPoolId: string,
   periodNumber: number,
-): Promise<{ shots: number; goals: number }> {
-  const { rows } = await client.query<{ shots: string; goals: string }>(
+): Promise<{ shots: number; goals: number; lastTapTime: number | null }> {
+  const { rows } = await client.query<{
+    shots: string;
+    goals: string;
+    last_tap_time: string | null;
+  }>(
     `select count(*)::int as shots,
-            count(*) filter (where server_result = 'goal')::int as goals
+            count(*) filter (where server_result = 'goal')::int as goals,
+            (array_agg(
+              (input_payload->>'tapTime')::double precision
+              order by shot_index desc
+            ))[1] as last_tap_time
        from shot_session
       where mode = 'daily' and day_pool_id = $1 and period_number = $2`,
     [dayPoolId, periodNumber],
@@ -353,6 +362,8 @@ async function aggregateCurrentPeriod(
   return {
     shots: Number(rows[0]!.shots),
     goals: Number(rows[0]!.goals),
+    lastTapTime:
+      rows[0]!.last_tap_time === null ? null : Number(rows[0]!.last_tap_time),
   };
 }
 
@@ -476,7 +487,7 @@ async function buildState(
 
 function validateDailyTapTimeFresh(
   pool: DayPoolRow,
-  previousShots: number,
+  previousTapTime: number | null,
   tapTime: number,
   now: Date,
 ): DailyTapTimeReject | null {
@@ -497,10 +508,7 @@ function validateDailyTapTimeFresh(
 
   const elapsedMs = Math.max(0, now.getTime() - pool.period_started_at.getTime());
   const futureLimit = elapsedMs + TAP_TIME_FUTURE_TOLERANCE_MS;
-  const staleLimit = Math.max(
-    0,
-    elapsedMs - TAP_TIME_STALE_TOLERANCE_MS - previousShots * TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS,
-  );
+  const staleLimit = previousTapTime ?? 0;
 
   if (tapTime > futureLimit || tapTime < staleLimit) {
     return {
@@ -534,22 +542,38 @@ async function withTransaction<T>(
 }
 
 export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = async (app, opts) => {
+  const schedulePendingAchievementRecovery = (userId: string): void => {
+    scheduleDailyCompletionSideEffect(
+      () => evaluatePendingDailyPeriodClosedAchievements(app.pg, userId),
+      (error) => {
+        app.log.warn(
+          { err: error, userId },
+          'failed to recover pending daily period achievements',
+        );
+      },
+    );
+  };
+
   app.get('/duel/daily/state', { preHandler: [app.authenticate] }, async (req) => {
-    return withTransaction(app, async (client) => {
+    const state = await withTransaction(app, async (client) => {
       const now = new Date();
       const settings = await getGameSettings(client);
-      const { pool, localToday } = await reconcileDayPool(client, req.user.id, now, settings.daily);
+      const reconciled = await reconcileDayPool(client, req.user.id, now, settings.daily);
+      const { pool, localToday } = reconciled;
       return buildState(client, pool, localToday, req.user.id, settings, now);
     });
+    schedulePendingAchievementRecovery(req.user.id);
+    return state;
   });
 
   app.get('/duel/daily/history', { preHandler: [app.authenticate] }, async (req) => {
     const parsed = historyQuerySchema.safeParse(req.query);
     if (!parsed.success) throw new AppError('bad_request', 'invalid daily history query', 400);
-    return withTransaction(app, async (client) => {
+    const history = await withTransaction(app, async (client) => {
       const now = new Date();
       const settings = await getGameSettings(client);
-      const { localToday } = await reconcileDayPool(client, req.user.id, now, settings.daily);
+      const reconciled = await reconcileDayPool(client, req.user.id, now, settings.daily);
+      const { localToday } = reconciled;
       return fetchDailyHistoryStats(
         client,
         req.user.id,
@@ -559,18 +583,21 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
         settings.daily.totalPeriods,
       );
     });
+    schedulePendingAchievementRecovery(req.user.id);
+    return history;
   });
 
   app.post('/duel/daily/period/start', { preHandler: [app.authenticate] }, async (req) => {
-    return withTransaction(app, async (client) => {
+    const state = await withTransaction(app, async (client) => {
       const now = new Date();
       const settings = await getGameSettings(client);
-      const { pool, timezone, localToday } = await reconcileDayPool(
+      const reconciled = await reconcileDayPool(
         client,
         req.user.id,
         now,
         settings.daily,
       );
+      const { pool, timezone, localToday } = reconciled;
       const isFirstDailyPeriod = pool === null || pool.current_period === 0;
       if (isFirstDailyPeriod) {
         await assertTrainingCooldownExpired(
@@ -619,6 +646,8 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
       });
       return buildState(client, rows[0]!, localToday, req.user.id, settings, now);
     });
+    schedulePendingAchievementRecovery(req.user.id);
+    return state;
   });
 
   app.post('/duel/daily/shot', { preHandler: [app.authenticate] }, async (req) => {
@@ -627,11 +656,13 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
       throw new AppError('bad_request', 'invalid shot payload', 400);
     }
     const body = parsed.data;
+    let closedAchievementEvent: DailyClosedAchievementEvent | null = null;
 
-    return withTransaction(app, async (client): Promise<ShotSubmitResponse> => {
+    const response = await withTransaction(app, async (client): Promise<ShotSubmitResponse> => {
       const now = new Date();
       const settings = await getGameSettings(client);
-      const { pool, localToday } = await reconcileDayPool(client, req.user.id, now, settings.daily);
+      const reconciled = await reconcileDayPool(client, req.user.id, now, settings.daily);
+      const { pool, localToday } = reconciled;
       if (pool === null) {
         return rejectDailyShot(
           app,
@@ -700,7 +731,12 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
           new AppError('conflict', 'shot quota for this period exhausted', 409),
         );
       }
-      const tapTimeReject = validateDailyTapTimeFresh(pool, cur.shots, body.input.tapTime, now);
+      const tapTimeReject = validateDailyTapTimeFresh(
+        pool,
+        cur.lastTapTime,
+        body.input.tapTime,
+        now,
+      );
       if (tapTimeReject) {
         await rejectDailyShot(
           app,
@@ -821,11 +857,6 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
           shots_taken: settings.daily.shotsPerPeriod,
           goals,
         });
-        await evaluateDailyPeriodClosedAchievements(client, {
-          userId: req.user.id,
-          dayPoolId: pool.id,
-          periodNumber: pool.current_period,
-        });
         // After the LAST period — close the day directly. Otherwise enter
         // the regular break.
         const isFinalPeriod = pool.current_period >= settings.daily.totalPeriods;
@@ -849,18 +880,48 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
             day_pool_id: pool.id,
             reason: 'completed',
           });
-          await evaluateDailyClosedAchievements(client, {
+          closedAchievementEvent = {
             userId: req.user.id,
             dayPoolId: pool.id,
             dayDate: pool.day_date,
             totalPeriods: settings.daily.totalPeriods,
             shotsPerPeriod: settings.daily.shotsPerPeriod,
-          });
+          };
         }
       }
 
       const state = await buildState(client, currentPool, localToday, req.user.id, settings, now);
       return { server_result: serverResult, state };
     });
+    schedulePendingAchievementRecovery(req.user.id);
+    if (closedAchievementEvent !== null) {
+      const event: DailyClosedAchievementEvent = closedAchievementEvent;
+      scheduleDailyCompletionSideEffect(
+        () => evaluateDailyClosedAchievements(app.pg, event),
+        (error) => {
+          app.log.warn(
+            { err: error, userId: req.user.id, dayPoolId: event.dayPoolId },
+            'failed to evaluate achievements after daily completion',
+          );
+        },
+      );
+    }
+    if (response.state.state === 'closed') {
+      scheduleDailyCompletionSideEffect(
+        async () => {
+          await refreshCompletedTournamentDailyResultsForUser(app.pg, {
+            userId: req.user.id,
+            now: new Date(),
+          });
+        },
+        (error) => {
+          app.log.warn(
+            { err: error, userId: req.user.id },
+            'failed to refresh tournament standings after daily completion',
+          );
+        },
+      );
+    }
+    return response;
   });
 };

@@ -1,14 +1,20 @@
 import { create } from 'zustand';
 import {
   abandonBonusAttempt,
+  acknowledgeBonusPreview,
   fetchBonusAttempt,
   fetchCurrentBonusAttempt,
   startBonusPeriod,
   submitBonusShot,
   type BonusGameAttempt,
+  type BonusPeriodLoadoutSelection,
   type BonusShotRequest,
 } from '../api/bonusGames.js';
 import { ApiError } from '../api/apiFetch.js';
+import {
+  isDefinitiveGameRequestError,
+  withGameRequestReconciliation,
+} from '../api/requestTimeout.js';
 import type { ShotResultType } from '../api/duel.js';
 
 interface PendingBonusShot {
@@ -19,6 +25,7 @@ interface PendingBonusShot {
 interface BonusGameStoreState {
   attempt: BonusGameAttempt | null;
   pendingShot: PendingBonusShot | null;
+  optimisticShotBase: BonusGameAttempt | null;
   loading: boolean;
   error: string | null;
   errorCode: string | null;
@@ -29,9 +36,10 @@ interface BonusGameStoreState {
   loadCurrent: () => Promise<BonusGameAttempt | null>;
   loadAttempt: (attemptId: string) => Promise<BonusGameAttempt | null>;
   applyState: (next: BonusGameAttempt | null) => void;
-  applyPendingShot: () => BonusGameAttempt | null;
+  applyPendingShot: (fallback?: BonusGameAttempt) => BonusGameAttempt | null;
   optimisticAddShot: (claimed: ShotResultType) => void;
-  startPeriod: () => Promise<BonusGameAttempt | null>;
+  startPeriod: (loadout?: BonusPeriodLoadoutSelection) => Promise<BonusGameAttempt | null>;
+  acknowledgePreview: (dismissFuture: boolean) => Promise<BonusGameAttempt | null>;
   submitShot: (
     body: BonusShotRequest,
     options?: { deferApply?: boolean },
@@ -39,6 +47,7 @@ interface BonusGameStoreState {
     serverResult: ShotResultType;
     attempt: BonusGameAttempt;
     rewardGranted: boolean;
+    isCurrent?: (() => boolean) | undefined;
   } | null>;
   abandon: () => Promise<BonusGameAttempt | null>;
   refresh: () => Promise<BonusGameAttempt | null>;
@@ -61,6 +70,7 @@ function applyServerAttempt(
   set({
     attempt,
     pendingShot: null,
+    optimisticShotBase: null,
     loading: false,
     error: null,
     errorCode: null,
@@ -95,12 +105,14 @@ function recordMutationFailure(
   // Reads may have been issued after beginMutation. Invalidate them atomically
   // with the ambiguity lock so none can clear this failure before a fresh read.
   set({
+    attempt: get().optimisticShotBase ?? get().attempt,
     inFlight: false,
     loading: false,
     error: details.message,
     errorCode: details.code,
     needsReconcile: true,
     pendingShot: null,
+    optimisticShotBase: null,
     requestEpoch: get().requestEpoch + 1,
   });
 }
@@ -108,6 +120,7 @@ function recordMutationFailure(
 export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   attempt: null,
   pendingShot: null,
+  optimisticShotBase: null,
   loading: false,
   error: null,
   errorCode: null,
@@ -162,42 +175,67 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
 
   applyState: (next) => applyServerAttempt(set, get, next),
 
-  applyPendingShot: () => {
+  applyPendingShot: (fallback) => {
     const pendingShot = get().pendingShot;
-    if (pendingShot === null) return null;
+    const resolvedAttempt = pendingShot?.attempt ?? fallback ?? null;
+    if (resolvedAttempt === null) return null;
     set({
-      attempt: pendingShot.attempt,
+      attempt: resolvedAttempt,
       pendingShot: null,
+      optimisticShotBase: null,
       loading: false,
       error: null,
       errorCode: null,
       inFlight: false,
       needsReconcile: false,
       requestEpoch: get().requestEpoch + 1,
-      receivedAtPerformanceMs: pendingShot.receivedAtPerformanceMs,
+      receivedAtPerformanceMs: pendingShot?.receivedAtPerformanceMs ?? performance.now(),
     });
-    return pendingShot.attempt;
+    return resolvedAttempt;
   },
 
   optimisticAddShot: (claimed) => {
     const attempt = get().attempt;
     if (!attempt || attempt.status !== 'active' || attempt.state !== 'period_active') return;
     set({
+      optimisticShotBase: attempt,
       attempt: {
         ...attempt,
         shots_taken: attempt.shots_taken + 1,
         current_period_shots_taken: attempt.current_period_shots_taken + 1,
         goals: attempt.goals + (claimed === 'goal' ? 1 : 0),
+        current_goal_streak:
+          claimed === 'goal' ? attempt.current_goal_streak + 1 : 0,
+        best_goal_streak:
+          claimed === 'goal'
+            ? Math.max(attempt.best_goal_streak, attempt.current_goal_streak + 1)
+            : attempt.best_goal_streak,
       },
     });
   },
 
-  startPeriod: async () => {
+  acknowledgePreview: async (dismissFuture) => {
     const attempt = get().attempt;
     if (!attempt || get().inFlight || get().needsReconcile) return null;
     beginMutation(set, get);
     try {
-      const response = await startBonusPeriod(attempt.id);
+      const response = await acknowledgeBonusPreview(attempt.id, dismissFuture);
+      applyServerAttempt(set, get, response.attempt);
+      set({ inFlight: false });
+      return response.attempt;
+    } catch (error) {
+      const details = errorDetails(error, 'Не удалось сохранить просмотр превью.');
+      recordMutationFailure(set, get, details);
+      return null;
+    }
+  },
+
+  startPeriod: async (loadout) => {
+    const attempt = get().attempt;
+    if (!attempt || get().inFlight || get().needsReconcile) return null;
+    beginMutation(set, get);
+    try {
+      const response = await startBonusPeriod(attempt.id, loadout);
       applyServerAttempt(set, get, response.attempt);
       set({ inFlight: false });
       return response.attempt;
@@ -213,12 +251,37 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
     if (!attempt || !get().canSubmitShot() || shotInFlight) return null;
     shotInFlight = true;
     beginMutation(set, get);
-    let keepLockedForDeferredApply = false;
+    // Starting a read only bumps requestEpoch; it must not invalidate the shot.
+    // An applied read/new attempt replaces the object reference and does.
+    const requestIsCurrent = (): boolean => get().attempt === attempt;
     try {
-      const response = await submitBonusShot(attempt.id, body);
+      const outcome = await withGameRequestReconciliation({
+        request: (signal) => submitBonusShot(attempt.id, body, { signal }),
+        reconcile: async (signal) => (await fetchBonusAttempt(attempt.id, { signal })).attempt,
+        isReconciled: (candidate) =>
+          candidate.id === attempt.id &&
+          (candidate.status !== 'active' ||
+            candidate.state !== 'period_active' ||
+            candidate.current_period_shots_taken >= body.claimed_shot_index),
+        isRequestErrorDefinitive: isDefinitiveGameRequestError,
+      });
+      if (!requestIsCurrent()) return null;
+      if (outcome.kind === 'unreconciled') {
+        applyServerAttempt(set, get, outcome.value);
+        set({ inFlight: false });
+        return null;
+      }
+      const response =
+        outcome.kind === 'request'
+          ? outcome.value
+          : {
+              server_result: body.claimed_result,
+              attempt: outcome.value,
+              reward_granted: outcome.value.reward_granted,
+              balances: { coins: 0, stars: 0, experience: 0 },
+            };
       const receivedAtPerformanceMs = performance.now();
       if (options?.deferApply) {
-        keepLockedForDeferredApply = true;
         set({
           pendingShot: {
             attempt: response.attempt,
@@ -232,19 +295,25 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
         });
       } else {
         applyServerAttempt(set, get, response.attempt, receivedAtPerformanceMs);
+        set({ inFlight: false });
       }
+      const pendingAttempt = response.attempt;
       return {
         serverResult: response.server_result,
         attempt: response.attempt,
         rewardGranted: response.reward_granted,
+        isCurrent: () =>
+          options?.deferApply === true
+            ? get().pendingShot?.attempt === pendingAttempt
+            : get().attempt === pendingAttempt,
       };
     } catch (error) {
+      if (!requestIsCurrent()) return null;
       const details = errorDetails(error, 'Не удалось отправить бросок.');
       recordMutationFailure(set, get, details);
       return null;
     } finally {
       shotInFlight = false;
-      if (!keepLockedForDeferredApply) set({ inFlight: false });
     }
   },
 

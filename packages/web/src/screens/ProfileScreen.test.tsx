@@ -324,10 +324,12 @@ describe('ProfileScreen', () => {
     expect(within(statsDialog).getByText('Дней подряд')).toBeInTheDocument();
     expect(within(statsDialog).getByText('7')).toBeInTheDocument();
     expect(within(statsDialog).getByText('(12)')).toBeInTheDocument();
-    fireEvent.click(within(statsDialog).getByRole('button', { name: 'Закрыть' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Статистика' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Достижения.*получено/i }));
     const achievementsDialog = screen.getByRole('dialog', { name: 'Достижения' });
+    expect(document.body.firstElementChild).toHaveAttribute('inert');
     expect(within(achievementsDialog).getByText('Достижения (2)')).toBeInTheDocument();
     expect(within(achievementsDialog).queryByText(/Всего достижений/i)).not.toBeInTheDocument();
     expect(
@@ -618,7 +620,8 @@ describe('ProfileScreen', () => {
       'aria-pressed',
       'true',
     );
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Клюшка' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Коньки.*Обычные коньки/i }));
     const skatesDialog = screen.getByRole('dialog', { name: 'Коньки' });

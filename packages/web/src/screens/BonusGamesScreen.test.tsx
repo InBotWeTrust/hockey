@@ -14,13 +14,20 @@ function card(overrides: Record<string, unknown>) {
     id: '00000000-0000-4000-8000-000000000601',
     slug: 'beach',
     title: 'Пляж',
+    skill_code: 'speed',
     description: 'Солнечная арена у моря',
     sort_order: 1,
     access_type: 'free',
     unlock_price_stars: 0,
     target_goals: 18,
+    qualification_rules: { type: 'goals_from_shots', targetGoals: 18, shotsLimit: 30 },
     total_periods: 1,
     break_duration_ms: 30000,
+    use_inventory: false,
+    preview_title: 'Первая квалификация',
+    preview_story: 'История',
+    preview_artwork_url: '/bonus-games/previews/beach.webp',
+    preview_revision: 1,
     period_rules: [
       {
         period_number: 1,
@@ -63,6 +70,7 @@ function mockCatalog(
     unlockFailure?: unknown;
     unlockResponse?: Response;
     startFailure?: unknown;
+    abandonFailure?: unknown;
   } = {},
 ): void {
   const {
@@ -72,6 +80,7 @@ function mockCatalog(
     unlockFailure,
     unlockResponse,
     startFailure,
+    abandonFailure,
   } = options;
   vi.spyOn(globalThis, 'fetch').mockImplementation(
     (input: RequestInfo | URL, init?: RequestInit) => {
@@ -79,10 +88,19 @@ function mockCatalog(
       if (url.endsWith('/api/bonus-games')) {
         if (catalogFailure !== undefined) return Promise.reject(catalogFailure);
         return Promise.resolve(
-          new Response(JSON.stringify({ games, active_attempt: null }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
+          new Response(
+            JSON.stringify({
+              games,
+              active_attempt:
+                games
+                  .map((game) => (game as { active_attempt?: unknown }).active_attempt)
+                  .find((attempt) => attempt != null) ?? null,
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          ),
         );
       }
       if (url.endsWith('/api/inventory/me')) {
@@ -109,17 +127,50 @@ function mockCatalog(
         );
       }
       if (
+        url.includes('/api/bonus-games/attempts/') &&
+        url.endsWith('/abandon') &&
+        init?.method === 'POST'
+      ) {
+        if (abandonFailure !== undefined) return Promise.reject(abandonFailure);
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              attempt: {
+                id: 'attempt-speed',
+                game_id: 'speed-beach',
+                game_title: 'Скоростной пляж',
+                status: 'abandoned',
+                rules: {
+                  target_goals: 18,
+                  periods: [],
+                  skill_code: 'speed',
+                  qualification_rules: {
+                    type: 'goals_in_time',
+                    targetGoals: 18,
+                  },
+                },
+                arena: {
+                  artwork_url: '/bonus-games/arenas/beach.webp',
+                },
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      if (
         url.includes('/api/bonus-games/') &&
         url.endsWith('/attempts') &&
         init?.method === 'POST'
       ) {
         if (startFailure !== undefined) return Promise.reject(startFailure);
+        const gameId = url.match(/\/api\/bonus-games\/([^/]+)\/attempts$/)?.[1] ?? 'unknown';
         return Promise.resolve(
           new Response(
             JSON.stringify({
               attempt: {
                 id: 'attempt-new',
-                game_id: '00000000-0000-4000-8000-000000000601',
+                game_id: gameId,
               },
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -148,6 +199,110 @@ function renderCatalog(): void {
 describe('BonusGamesScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('switches independent skill tabs and remembers the last selected skill', async () => {
+    mockCatalog([
+      card({ id: 'speed-beach', title: 'Скоростной пляж' }),
+      card({ id: 'accuracy-beach', title: 'Точный пляж', skill_code: 'accuracy' }),
+    ]);
+    renderCatalog();
+
+    expect(await screen.findByRole('tab', { name: 'Скорость' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByRole('tablist', { name: 'Навык' })).toHaveClass('segmented-tabs');
+    expect(screen.getByRole('tab', { name: 'Скорость' })).toHaveClass(
+      'segmented-tabs__item--active',
+    );
+    expect(await screen.findByText('Скоростной пляж')).toBeInTheDocument();
+    expect(screen.queryByText('Точный пляж')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Точность' }));
+    expect(screen.getByText('Точный пляж')).toBeInTheDocument();
+    expect(screen.queryByText('Скоростной пляж')).not.toBeInTheDocument();
+    expect(localStorage.getItem('bonus-games:last-skill')).toBe('accuracy');
+  });
+
+  it('offers to continue the active attempt when starting a game in another skill', async () => {
+    mockCatalog([
+      card({
+        id: 'speed-beach',
+        title: 'Скоростной пляж',
+        state: 'in_progress',
+        active_attempt: {
+          id: 'attempt-speed',
+          game_id: 'speed-beach',
+          state: 'period_active',
+          current_period: 1,
+          period_started_at: '2026-08-26T12:00:00.000Z',
+          break_started_at: null,
+          shots_taken: 4,
+          goals: 2,
+        },
+      }),
+      card({ id: 'accuracy-beach', title: 'Точный пляж', skill_code: 'accuracy' }),
+    ]);
+    localStorage.setItem('bonus-games:last-skill', 'accuracy');
+    renderCatalog();
+
+    const play = await screen.findByRole('button', { name: 'Играть' });
+    expect(play).toBeEnabled();
+    fireEvent.click(play);
+
+    const dialog = screen.getByRole('dialog', { name: 'Уже идёт другая игра' });
+    expect(dialog).toHaveTextContent('Скорость · Скоростной пляж');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Продолжить текущую' }));
+
+    expect(screen.getByLabelText('location')).toHaveTextContent(
+      '/bonus-games/speed-beach/play?attempt=attempt-speed',
+    );
+  });
+
+  it('abandons the active attempt before starting the selected game', async () => {
+    mockCatalog([
+      card({
+        id: 'speed-beach',
+        title: 'Скоростной пляж',
+        state: 'in_progress',
+        active_attempt: {
+          id: 'attempt-speed',
+          game_id: 'speed-beach',
+          state: 'period_active',
+          current_period: 1,
+          period_started_at: '2026-08-26T12:00:00.000Z',
+          break_started_at: null,
+          shots_taken: 4,
+          goals: 2,
+        },
+      }),
+      card({ id: 'accuracy-beach', title: 'Точный пляж', skill_code: 'accuracy' }),
+    ]);
+    localStorage.setItem('bonus-games:last-skill', 'accuracy');
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    const switchButton = within(
+      screen.getByRole('dialog', { name: 'Уже идёт другая игра' }),
+    ).getByRole('button', { name: 'Завершить и начать эту' });
+    fireEvent.click(switchButton);
+    fireEvent.click(switchButton);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('location')).toHaveTextContent(
+        '/bonus-games/accuracy-beach/play?attempt=attempt-new',
+      ),
+    );
+    const postUrls = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.filter(([, init]) => init?.method === 'POST')
+      .map(([input]) => String(input));
+    expect(postUrls).toEqual([
+      '/api/bonus-games/attempts/attempt-speed/abandon',
+      '/api/bonus-games/accuracy-beach/attempts',
+    ]);
   });
 
   it('shows the subsection title without repeating the parent sections label', async () => {
@@ -155,11 +310,49 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     expect(await screen.findByRole('heading', { name: 'Бонусные игры' })).toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Разделы любителей' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Назад' })).toBeInTheDocument();
     expect(screen.queryByText('Разделы')).not.toBeInTheDocument();
   });
 
-  it('renders server-provided sequence and paid states without deriving availability', async () => {
+  it('returns a legacy bonus catalog route to the amateur Sections stack', async () => {
+    mockCatalog([]);
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Назад' }));
+
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=amateur&from=sections');
+  });
+
+  it('explains the bonus game rules in an accessible modal', async () => {
+    mockCatalog([card({})]);
+    renderCatalog();
+
+    const infoButton = await screen.findByRole('button', { name: 'Правила бонусных игр' });
+    infoButton.focus();
+    fireEvent.click(infoButton);
+
+    const dialog = screen.getByRole('dialog', { name: 'Правила бонусных игр' });
+    expect(dialog).toHaveTextContent('Игры открываются последовательно');
+    expect(dialog).toHaveTextContent('начисляются только за первое прохождение');
+    expect(dialog).not.toHaveTextContent('площадка открывается для домашних матчей');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
+    expect(screen.queryByRole('dialog', { name: 'Правила бонусных игр' })).not.toBeInTheDocument();
+    expect(infoButton).toHaveFocus();
+  });
+
+  it('marks a failed catalog request as a high-contrast arena notice', async () => {
+    mockCatalog([], { catalogFailure: new TypeError('Network unavailable') });
+    renderCatalog();
+
+    expect(await screen.findByRole('alert')).toHaveClass(
+      'bonus-games-catalog__notice',
+      'bonus-games-catalog__notice--error',
+    );
+  });
+
+  it('uses card-wide controls for actionable games and a lock marker for closed games', async () => {
     mockCatalog([
       card({ id: 'beach', title: 'Пляж', state: 'completed', is_completed: true }),
       card({
@@ -182,18 +375,181 @@ describe('BonusGamesScreen', () => {
     ]);
     renderCatalog();
 
-    expect(await screen.findByText('Нужно пройти: Пляж')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Открыть за 1 звезду' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Играть снова' })).toBeInTheDocument();
+    const purchaseControl = await screen.findByRole('button', { name: 'Открыть за 1 звезду' });
+    const repeatControl = screen.getByRole('button', { name: 'Повторить' });
+    expect(purchaseControl).toHaveClass('bonus-game-card__hit-area');
+    expect(repeatControl).toHaveClass('bonus-game-card__hit-area');
+    expect(screen.queryByRole('button', { name: 'Закрыта' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Дальше' })).toHaveClass(
+      'section-label',
+      'sections-group__title',
+    );
+    expect(screen.getByLabelText('Игра пройдена')).toBeInTheDocument();
+    expect(screen.getByLabelText('Игра закрыта')).toBeInTheDocument();
+    expect(screen.queryByText('Нужно пройти: Пляж')).not.toBeInTheDocument();
+    expect(screen.queryByText('Готова к игре')).not.toBeInTheDocument();
   });
 
-  it('focuses arena thumbnails on the location above the ice', async () => {
+  it('renders completed games as compact cards with a completion marker', async () => {
+    mockCatalog([
+      card({
+        id: 'beach',
+        title: 'Пляж',
+        state: 'completed',
+        is_completed: true,
+      }),
+      card({ id: 'resort', title: 'Курорт', sort_order: 2, state: 'available' }),
+    ]);
+    renderCatalog();
+
+    const completedCard = (await screen.findByRole('heading', { name: 'Пляж' })).closest('article');
+    expect(screen.getByRole('heading', { name: 'Пройденные · 1' })).toBeInTheDocument();
+    expect(document.querySelector('details.bonus-games-group')).toBeNull();
+    expect(completedCard).not.toBeNull();
+    expect(completedCard).toHaveClass('bonus-game-card--compact', 'bonus-game-card--completed');
+    const completionMarker = within(completedCard!).getByLabelText('Игра пройдена');
+    expect(completionMarker).toHaveClass('bonus-game-card__completed-pill');
+    expect(completionMarker.parentElement).toBe(completedCard);
+    expect(completionMarker).not.toHaveTextContent('Пройдено');
+    expect(completedCard!.querySelector('.bonus-game-card__completion')).toBeNull();
+    expect(within(completedCard!).getByRole('button', { name: 'Повторить' })).toHaveClass(
+      'bonus-game-card__hit-area',
+    );
+    expect(completedCard!.querySelector('.bonus-game-card__action')).toBeNull();
+    expect(within(completedCard!).getByLabelText('Монеты: 100')).toBeInTheDocument();
+    expect(completedCard!.querySelector('.bonus-game-card__reward')).toHaveClass(
+      'bonus-game-card__reward--muted',
+    );
+  });
+
+  it('shows every completed game in the compact list when the skill has no current game', async () => {
+    mockCatalog(
+      Array.from({ length: 10 }, (_, index) =>
+        card({
+          id: `completed-${index + 1}`,
+          slug: `completed-${index + 1}`,
+          title: index === 9 ? 'Космос' : `Игра ${index + 1}`,
+          sort_order: index + 1,
+          state: 'completed',
+          is_completed: true,
+        }),
+      ),
+    );
+    renderCatalog();
+
+    expect(await screen.findByRole('heading', { name: 'Пройденные · 10' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Текущая игра' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Повторить' })).toHaveLength(10);
+    expect(screen.getByRole('heading', { name: 'Космос' }).closest('article')).toHaveClass(
+      'bonus-game-card--compact',
+      'bonus-game-card--completed',
+    );
+  });
+
+  it('keeps a reserved chevron slot and splits compact game rules into two lines', async () => {
+    mockCatalog([
+      card({ id: 'beach', title: 'Пляж', state: 'completed', is_completed: true }),
+      card({
+        id: 'resort',
+        title: 'Курорт',
+        sort_order: 2,
+        state: 'available',
+      }),
+      card({
+        id: 'locked-resort',
+        title: 'Закрытый курорт',
+        sort_order: 3,
+        state: 'sequence_locked',
+        is_unlocked: false,
+      }),
+    ]);
+    renderCatalog();
+
+    const compactCard = (await screen.findByRole('heading', { name: 'Пляж' })).closest('article');
+    const availableCard = screen.getByRole('heading', { name: 'Курорт' }).closest('article');
+    const lockedCard = screen.getByRole('heading', { name: 'Закрытый курорт' }).closest('article');
+    expect(compactCard).not.toBeNull();
+    expect(compactCard).toHaveClass('bonus-game-card--compact');
+    expect(within(compactCard!).getByText('18 голов из 30 бросков')).toHaveClass(
+      'bonus-game-card__details-primary',
+    );
+    expect(within(compactCard!).getByText('1 период · 30 бросков')).toHaveClass(
+      'bonus-game-card__details-secondary',
+    );
+    expect(availableCard!.querySelector('.bonus-game-card__chevron')).toHaveClass('card-chevron');
+    expect(availableCard!.querySelector('.bonus-game-card__chevron')).not.toHaveClass(
+      'bonus-game-card__chevron--hidden',
+    );
+    expect(lockedCard!.querySelector('.bonus-game-card__chevron')).toHaveClass(
+      'bonus-game-card__chevron--hidden',
+    );
+    expect(lockedCard!.querySelector('.bonus-game-card__chevron')).toBeInTheDocument();
+    expect(within(lockedCard!).getByLabelText('Игра закрыта')).toBeInTheDocument();
+  });
+
+  it('keeps a conflicting repeat card actionable through the card-wide control', async () => {
+    mockCatalog([
+      card({ id: 'speed-beach', state: 'completed', is_completed: true }),
+      card({
+        id: 'accuracy-beach',
+        skill_code: 'accuracy',
+        state: 'in_progress',
+        active_attempt: {
+          id: 'attempt-accuracy',
+          game_id: 'accuracy-beach',
+          state: 'period_active',
+          current_period: 1,
+          period_started_at: '2026-08-26T12:00:00.000Z',
+          break_started_at: null,
+          shots_taken: 4,
+          goals: 2,
+        },
+      }),
+    ]);
+    renderCatalog();
+
+    const repeatButton = await screen.findByRole('button', { name: 'Повторить' });
+    expect(repeatButton).toBeEnabled();
+    expect(repeatButton).toHaveClass('bonus-game-card__hit-area');
+    fireEvent.click(repeatButton);
+    expect(screen.getByRole('dialog', { name: 'Уже идёт другая игра' })).toBeInTheDocument();
+  });
+
+  it('keeps the featured card artwork wide and focused on the upper location', async () => {
     mockCatalog([card({ id: 'north-pole', slug: 'north-pole', title: 'Северный полюс' })]);
     renderCatalog();
 
-    expect(await screen.findByAltText('Площадка «Пляж»')).toHaveStyle({
-      objectPosition: 'center top',
-    });
+    const artwork = await screen.findByAltText('Площадка «Пляж»');
+    expect(artwork).toHaveAttribute(
+      'src',
+      '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
+    );
+    expect(artwork).toHaveStyle({ objectPosition: 'center top' });
+    expect(artwork.parentElement).toHaveClass('bonus-game-card__artwork-frame');
+  });
+
+  it('gives the featured World Tour card a landmark-forward crop', async () => {
+    localStorage.setItem('bonus-games:last-skill', 'accuracy');
+    mockCatalog([
+      card({
+        id: 'accuracy-moscow',
+        slug: 'accuracy-moscow',
+        title: 'Москва',
+        skill_code: 'accuracy',
+        arena: {
+          id: 'arena-moscow',
+          slug: 'accuracy-world-tour-moscow',
+          title: 'Москва',
+          artwork_url: '/bonus-games/world-tour/arenas/moscow.webp',
+          thumbnail_url: '/bonus-games/world-tour/previews/moscow.webp',
+        },
+      }),
+    ]);
+    renderCatalog();
+
+    const artwork = await screen.findByAltText('Площадка «Москва»');
+    expect(artwork.closest('article')).toHaveClass('bonus-game-card--world-tour');
+    expect(artwork).toHaveStyle({ objectPosition: 'center 50%' });
   });
 
   it('opens the server-reported active attempt when continuing a game', async () => {
@@ -248,9 +604,44 @@ describe('BonusGamesScreen', () => {
     );
   });
 
-  it('uses the authoritative arena thumbnail even when a seeded slug has a bundled asset', async () => {
+  it('keeps an active snapshotted attempt as the focus after switching to its skill', async () => {
     mockCatalog([
       card({
+        id: 'archived-beach',
+        title: 'Архивный пляж',
+        skill_code: 'accuracy',
+        state: 'archived',
+        active_attempt: {
+          id: 'attempt-archived',
+          game_id: 'archived-beach',
+          state: 'period_active',
+          current_period: 1,
+          period_started_at: '2026-08-26T12:00:00.000Z',
+          break_started_at: null,
+          shots_taken: 4,
+          goals: 2,
+        },
+      }),
+      card({
+        id: 'available-resort',
+        title: 'Доступный курорт',
+        skill_code: 'accuracy',
+        sort_order: 2,
+        state: 'available',
+      }),
+    ]);
+    localStorage.setItem('bonus-games:last-skill', 'accuracy');
+    renderCatalog();
+
+    const focus = await screen.findByRole('region', { name: 'Текущая игра' });
+    expect(within(focus).getByRole('heading', { name: 'Архивный пляж' })).toBeInTheDocument();
+    expect(within(focus).getByRole('button', { name: 'Продолжить' })).toBeInTheDocument();
+  });
+
+  it('uses the authoritative arena thumbnail for the featured card', async () => {
+    mockCatalog([
+      card({
+        preview_artwork_url: 'https://media.example.test/beach-preview.webp?generation=9',
         arena: {
           id: 'arena-beach',
           slug: 'beach',
@@ -268,13 +659,81 @@ describe('BonusGamesScreen', () => {
     );
   });
 
-  it('uses Russian plural forms for price, periods, shots, and first-clear rewards', async () => {
+  it('cache-busts bundled arena artwork so newly deployed ice textures are visible', async () => {
+    mockCatalog([card({})]);
+    renderCatalog();
+
+    expect(await screen.findByAltText('Площадка «Пляж»')).toHaveAttribute(
+      'src',
+      '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
+    );
+  });
+
+  it('uses square goalie-free arena artwork for compact future cards', async () => {
+    mockCatalog([
+      card({ id: 'beach', title: 'Пляж' }),
+      card({
+        id: 'resort',
+        title: 'Курорт',
+        sort_order: 2,
+        state: 'sequence_locked',
+        preview_artwork_url: 'https://media.example.test/resort-preview.webp',
+        arena: {
+          id: 'arena-resort',
+          slug: 'resort',
+          title: 'Курорт',
+          artwork_url: 'https://media.example.test/resort.webp',
+          thumbnail_url: 'https://media.example.test/resort-thumb.webp',
+        },
+      }),
+    ]);
+    renderCatalog();
+
+    const artwork = await screen.findByAltText('Площадка «Курорт»');
+    expect(artwork).toHaveAttribute('src', 'https://media.example.test/resort-thumb.webp');
+    expect(artwork).toHaveStyle({ objectPosition: 'center top' });
+    expect(artwork).toHaveClass('bonus-game-card__artwork--locked');
+  });
+
+  it('labels the featured qualification as the current game', async () => {
+    mockCatalog([card({})]);
+    renderCatalog();
+
+    expect(await screen.findByRole('heading', { name: 'Текущая игра' })).toHaveClass(
+      'section-label',
+      'sections-group__title',
+    );
+  });
+
+  it('shows only non-zero first-clear rewards in compact future cards', async () => {
+    mockCatalog([
+      card({ id: 'beach', title: 'Пляж', reward: { coins: 0, stars: 0, experience: 0 } }),
+      card({
+        id: 'resort',
+        title: 'Курорт',
+        sort_order: 2,
+        state: 'sequence_locked',
+        reward: { coins: 21, stars: 0, experience: 25 },
+      }),
+    ]);
+    renderCatalog();
+
+    const compactCard = (await screen.findByRole('heading', { name: 'Курорт' })).closest('article');
+    expect(compactCard).not.toBeNull();
+    expect(within(compactCard!).getByLabelText('Монеты: 21')).toHaveTextContent('21');
+    expect(within(compactCard!).getByLabelText('Опыт: 25')).toHaveTextContent('25');
+    expect(within(compactCard!).queryByLabelText('Звёзды: 0')).not.toBeInTheDocument();
+    expect(within(compactCard!).queryByText('За первое прохождение')).not.toBeInTheDocument();
+  });
+
+  it('renders first-clear rewards as accessible resource icons', async () => {
     mockCatalog([
       card({
         state: 'purchase_required',
         access_type: 'paid',
         unlock_price_stars: 22,
         target_goals: 21,
+        qualification_rules: { type: 'goals_from_shots', targetGoals: 21, shotsLimit: 21 },
         total_periods: 2,
         period_rules: [
           { ...card({}).period_rules[0], shots_limit: 5 },
@@ -285,11 +744,34 @@ describe('BonusGamesScreen', () => {
     ]);
     renderCatalog();
 
-    expect(await screen.findByText('Открытие: 22 звезды')).toBeInTheDocument();
-    expect(screen.getByText('Цель: 21 шайба · 2 периода · 21 бросок')).toBeInTheDocument();
-    expect(
-      screen.getByText('За первое прохождение: 21 монета · 22 звезды · 25 очков опыта'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('21 голов из 21 бросков')).toHaveClass(
+      'bonus-game-card__details-primary',
+    );
+    expect(screen.getByText('2 периода · 21 бросок')).toHaveClass(
+      'bonus-game-card__details-secondary',
+    );
+    expect(screen.getByText('За первое прохождение')).toBeInTheDocument();
+    expect(screen.getByLabelText('Монеты: 21')).toHaveTextContent('21');
+    expect(screen.getByLabelText('Звёзды: 22')).toHaveTextContent('22');
+    expect(screen.getByLabelText('Опыт: 25')).toHaveTextContent('25');
+    expect(screen.queryByText(/Новая домашняя площадка:/)).not.toBeInTheDocument();
+  });
+
+  it('omits zero first-clear rewards and the whole reward block when all values are zero', async () => {
+    mockCatalog([
+      card({ id: 'some-rewards', reward: { coins: 0, stars: 3, experience: 0 } }),
+      card({
+        id: 'no-rewards',
+        title: 'Без награды',
+        reward: { coins: 0, stars: 0, experience: 0 },
+      }),
+    ]);
+    renderCatalog();
+
+    expect(await screen.findByLabelText('Звёзды: 3')).toHaveTextContent('3');
+    expect(screen.queryByLabelText('Монеты: 0')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Опыт: 0')).not.toBeInTheDocument();
+    expect(screen.getAllByText('За первое прохождение')).toHaveLength(1);
   });
 
   it('keeps the created attempt id in the play URL for durable reload', async () => {

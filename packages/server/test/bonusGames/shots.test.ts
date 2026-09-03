@@ -3,7 +3,9 @@ import { fileURLToPath } from 'node:url';
 import {
   deriveShotSeed,
   GAME_CORE_VERSION,
+  GOAL_OPENING,
   getSessionPhaseOffsets,
+  PUCK_START,
   resolvePerspectiveCourtShot,
   STICK_NEUTRAL,
   type ShotInput,
@@ -12,12 +14,16 @@ import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import {
+  acknowledgeBonusPreview,
   startBonusPeriod,
   startOrResumeBonusAttempt,
   submitBonusShot,
   type SubmitBonusShotInput,
 } from '../../src/bonusGames/service.js';
-import type { BonusPeriodRule } from '../../src/bonusGames/types.js';
+import {
+  buildBonusGoalieConfig,
+  type BonusPeriodRule,
+} from '../../src/bonusGames/types.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
 
@@ -69,6 +75,12 @@ const THIRD_SHOT_INPUT: ShotInput = {
   shooterTapTime: 2_133.333_333_333_333,
 };
 
+const FOURTH_SHOT_INPUT: ShotInput = {
+  ...GOAL_INPUT,
+  tapTime: 4_000,
+  shooterTapTime: 2_700,
+};
+
 const RECORDED_CLIENT_SAVE_INPUT: ShotInput = {
   tapTime: 105_815.999_999_880_79,
   shooterTapTime: 105_815.999_999_880_79,
@@ -80,6 +92,7 @@ const RECORDED_CLIENT_SAVE_INPUT: ShotInput = {
 
 const SECOND_SHOT_AT = new Date('2026-08-23T12:00:03.000Z');
 const THIRD_SHOT_AT = new Date('2026-08-23T12:00:05.000Z');
+const FOURTH_SHOT_AT = new Date('2026-08-23T12:00:07.000Z');
 
 function withoutShooterTime(): SubmitBonusShotInput['input'] {
   const { shooterTapTime: _omitted, ...input } = GOAL_INPUT;
@@ -167,27 +180,35 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
   async function createGame({
     targetGoals,
     periods = PERIODS,
+    requiredGoalStreak = 0,
   }: {
     targetGoals: number;
     periods?: BonusPeriodRule[];
+    requiredGoalStreak?: number;
   }): Promise<TestGame> {
     gameSequence += 1;
     const slug = `shot-game-${gameSequence}`;
     const game = await pool.query<{ id: string }>(
       `insert into bonus_game
-         (slug, title, description, sort_order, status, access_type, unlock_price_stars,
-          target_goals, total_periods, break_duration_ms, period_rules,
+         (slug, title, skill_code, description, sort_order, status, access_type, unlock_price_stars,
+          target_goals, qualification_rules, total_periods, break_duration_ms, period_rules,
           reward_coins, reward_stars, reward_experience, arena_theme_id,
           goalkeeper_ready_url, goalkeeper_save_url, revision)
-       values ($1, $2, '', $3, 'active', 'free', 0,
-               $4, $5, 30000, $6::jsonb,
-               100, 1, 50, $7, $8, $9, 3)
+       values ($1, $2, 'accuracy', '', $3, 'active', 'free', 0,
+               $4, $5::jsonb, $6, 30000, $7::jsonb,
+               100, 1, 50, $8, $9, $10, 3)
        returning id`,
       [
         slug,
         `Игра ${gameSequence}`,
         gameSequence,
         targetGoals,
+        JSON.stringify({
+          type: 'goals_from_shots',
+          targetGoals,
+          shotsLimit: periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
+          ...(requiredGoalStreak > 0 ? { requiredGoalStreak } : {}),
+        }),
         periods.length,
         JSON.stringify(periods),
         defaultArenaId,
@@ -216,6 +237,12 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
         where id = $1`,
       [created.attempt.id, attemptSeed],
     );
+    await acknowledgeBonusPreview(pool, {
+      userId,
+      attemptId: created.attempt.id,
+      dismissFuture: false,
+      now: startedAt,
+    });
     await startBonusPeriod(pool, { userId, attemptId: created.attempt.id, now: startedAt });
     return created.attempt.id;
   }
@@ -585,7 +612,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
         claimedShotIndex: 1,
         input: { ...GOAL_INPUT, tapTime: 730, shooterTapTime: 730 },
         claimedResult: 'goal',
-        now: new Date('2026-08-23T12:00:10.000Z'),
+        now: new Date('2026-08-23T12:00:30.000Z'),
       }),
     ).rejects.toMatchObject({ code: 'bonus_shot_time_stale', statusCode: 409 });
 
@@ -646,6 +673,200 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       serverResult: 'miss',
       attempt: { status: 'active', state: 'period_active', shotsTaken: 2, goals: 1 },
     });
+  });
+
+  it('accepts the fourth shot after three daily-style result pauses', async () => {
+    const userId = await createUser();
+    const period = { ...PERIODS[0]!, shotsLimit: 10 };
+    const game = await createGame({ targetGoals: 10, periods: [period] });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: GOAL_INPUT,
+      claimedResult: 'goal',
+      now: SHOT_AT,
+    });
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 2,
+      input: SECOND_SHOT_INPUT,
+      claimedResult: 'miss',
+      now: SECOND_SHOT_AT,
+    });
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 3,
+      input: THIRD_SHOT_INPUT,
+      claimedResult: 'miss',
+      now: THIRD_SHOT_AT,
+    });
+    const fourthResult = resolvePerspectiveCourtShot(
+      FOURTH_SHOT_INPUT,
+      buildBonusGoalieConfig('shot-game-1', 'Игра 1', period),
+      deriveShotSeed(ATTEMPT_SEED, 1, 4),
+      4,
+      STICK_NEUTRAL,
+      getSessionPhaseOffsets(ATTEMPT_SEED),
+    ).type;
+
+    const response = await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 4,
+      input: FOURTH_SHOT_INPUT,
+      claimedResult: fourthResult,
+      now: FOURTH_SHOT_AT,
+    });
+
+    expect(response.attempt).toMatchObject({
+      status: 'active',
+      state: 'period_active',
+      shotsTaken: 4,
+    });
+  });
+
+  it('accepts thirty shots when real browser result pauses run slightly longer than one second', async () => {
+    const userId = await createUser();
+    const period = { ...PERIODS[0]!, shotsLimit: 40 };
+    const game = await createGame({ targetGoals: 40, periods: [period] });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / period.puckSpeedPerMs;
+
+    for (let shotIndex = 1; shotIndex <= 30; shotIndex += 1) {
+      const previousShots = shotIndex - 1;
+      const wallElapsedMs = shotIndex * 3_000;
+      const tapTime = wallElapsedMs - previousShots * 1_150;
+      const input: ShotInput = {
+        tapTime,
+        shooterTapTime: tapTime - previousShots * (flightMs + 10),
+        puckSpeedPerMs: period.puckSpeedPerMs,
+        shooterFrequency: period.shooterFrequency,
+        goalieFrequency: period.goalieFrequency,
+        goalFrequency: period.goalFrequency,
+      };
+      const claimedResult = resolvePerspectiveCourtShot(
+        input,
+        buildBonusGoalieConfig('shot-game-1', 'Игра 1', period),
+        deriveShotSeed(ATTEMPT_SEED, 1, shotIndex),
+        shotIndex,
+        STICK_NEUTRAL,
+        getSessionPhaseOffsets(ATTEMPT_SEED),
+      ).type;
+
+      await submitBonusShot(pool, {
+        userId,
+        attemptId,
+        claimedShotIndex: shotIndex,
+        input,
+        claimedResult,
+        now: new Date(NOW.getTime() + wallElapsedMs),
+      });
+    }
+
+    const attempt = await pool.query<{ shots_taken: number }>(
+      'select shots_taken::int from bonus_game_attempt where id = $1',
+      [attemptId],
+    );
+    expect(attempt.rows[0]?.shots_taken).toBe(30);
+  });
+
+  it('keeps accepting an admin-sized period when browser rendering delays accumulate like daily play', async () => {
+    // A location image decode, background tab, or slow phone may stretch the visual result pause.
+    // Daily play tolerates that drift; bonus rules edited to longer periods must not become
+    // unplayable only because the client clock falls behind the wall clock over many shots.
+    const userId = await createUser();
+    const period = { ...PERIODS[0]!, durationMs: 300_000, shotsLimit: 50 };
+    const game = await createGame({ targetGoals: 50, periods: [period] });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / period.puckSpeedPerMs;
+
+    for (let shotIndex = 1; shotIndex <= 30; shotIndex += 1) {
+      const previousShots = shotIndex - 1;
+      const wallElapsedMs = shotIndex * 3_000;
+      const tapTime = wallElapsedMs - previousShots * 1_600;
+      const input: ShotInput = {
+        tapTime,
+        shooterTapTime: tapTime - previousShots * flightMs,
+        puckSpeedPerMs: period.puckSpeedPerMs,
+        shooterFrequency: period.shooterFrequency,
+        goalieFrequency: period.goalieFrequency,
+        goalFrequency: period.goalFrequency,
+      };
+      const claimedResult = resolvePerspectiveCourtShot(
+        input,
+        buildBonusGoalieConfig('shot-game-1', 'Игра 1', period),
+        deriveShotSeed(ATTEMPT_SEED, 1, shotIndex),
+        shotIndex,
+        STICK_NEUTRAL,
+        getSessionPhaseOffsets(ATTEMPT_SEED),
+      ).type;
+
+      await submitBonusShot(pool, {
+        userId,
+        attemptId,
+        claimedShotIndex: shotIndex,
+        input,
+        claimedResult,
+        now: new Date(NOW.getTime() + wallElapsedMs),
+      });
+    }
+
+    const attempt = await pool.query<{ shots_taken: number }>(
+      'select shots_taken::int from bonus_game_attempt where id = $1',
+      [attemptId],
+    );
+    expect(attempt.rows[0]?.shots_taken).toBe(30);
+  });
+
+  it('keeps accepting any admin-sized shot count with small per-shot renderer drift', async () => {
+    const userId = await createUser();
+    const period = { ...PERIODS[0]!, durationMs: 600_000, shotsLimit: 100 };
+    const game = await createGame({ targetGoals: 100, periods: [period] });
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / period.puckSpeedPerMs;
+
+    for (let shotIndex = 1; shotIndex <= 100; shotIndex += 1) {
+      const previousShots = shotIndex - 1;
+      const wallElapsedMs = shotIndex * 3_000;
+      const tapTime = wallElapsedMs - previousShots * 1_000;
+      const input: ShotInput = {
+        tapTime,
+        // A late animation frame adds a few milliseconds to every rendered
+        // flight. That drift must not become an index-dependent rejection.
+        shooterTapTime: tapTime - previousShots * (flightMs + 25),
+        puckSpeedPerMs: period.puckSpeedPerMs,
+        shooterFrequency: period.shooterFrequency,
+        goalieFrequency: period.goalieFrequency,
+        goalFrequency: period.goalFrequency,
+      };
+      const claimedResult = resolvePerspectiveCourtShot(
+        input,
+        buildBonusGoalieConfig('shot-game-1', 'Игра 1', period),
+        deriveShotSeed(ATTEMPT_SEED, 1, shotIndex),
+        shotIndex,
+        STICK_NEUTRAL,
+        getSessionPhaseOffsets(ATTEMPT_SEED),
+      ).type;
+
+      await submitBonusShot(pool, {
+        userId,
+        attemptId,
+        claimedShotIndex: shotIndex,
+        input,
+        claimedResult,
+        now: new Date(NOW.getTime() + wallElapsedMs),
+      });
+    }
+
+    const attempt = await pool.query<{ shots_taken: number }>(
+      'select shots_taken::int from bonus_game_attempt where id = $1',
+      [attemptId],
+    );
+    expect(attempt.rows[0]?.shots_taken).toBe(100);
   });
 
   it('accepts resumed clocks derived from authoritative elapsed time and accepted pauses', async () => {
@@ -754,6 +975,42 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       attempt: { status: 'active', state: 'break_active', currentPeriodShotsTaken: 3 },
     });
     expect(await mutationSnapshot(userId, attemptId)).toEqual(beforeDuplicate);
+  });
+
+  it('keeps the current and best goal streak when the next period starts', async () => {
+    const userId = await createUser();
+    const periods: BonusPeriodRule[] = [
+      { ...PERIODS[0]!, shotsLimit: 1 },
+      { ...PERIODS[0]!, periodNumber: 2, shotsLimit: 1 },
+    ];
+    const game = await createGame({ targetGoals: 2, periods, requiredGoalStreak: 2 });
+    const attemptId = await createActiveAttempt(userId, game.id);
+
+    const firstPeriod = await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: GOAL_INPUT,
+      claimedResult: 'goal',
+      now: SHOT_AT,
+    });
+    expect(firstPeriod.attempt).toMatchObject({
+      state: 'break_active',
+      currentGoalStreak: 1,
+      bestGoalStreak: 1,
+    });
+
+    const secondPeriod = await startBonusPeriod(pool, {
+      userId,
+      attemptId,
+      now: new Date('2026-08-23T12:00:32.000Z'),
+    });
+    expect(secondPeriod).toMatchObject({
+      state: 'period_active',
+      currentPeriod: 2,
+      currentGoalStreak: 1,
+      bestGoalStreak: 1,
+    });
   });
 
   it('fails the attempt at final-period quota in the accepted-shot transaction and keeps duplicate retry idempotent', async () => {
@@ -950,7 +1207,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     expect(audit.rows[0]?.created_at).toEqual(SHOT_AT);
   });
 
-  it('completes immediately at the target and grants every first-clear value atomically', async () => {
+  it('grants first-clear currencies atomically without unlocking a home arena', async () => {
     const userId = await createUser();
     const game = await createGame({ targetGoals: 1 });
     const attemptId = await createActiveAttempt(userId, game.id);
@@ -987,7 +1244,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
         userId,
         game.arenaId,
       ]),
-    ).toBe(1);
+    ).toBe(0);
     expect(
       await countRows('currency_ledger', "user_id = $1 and reason = 'bonus_game_reward'", [userId]),
     ).toBe(1);
@@ -1085,6 +1342,76 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
         "user_id = $1 and bonus_game_id = $2 and kind = 'first_clear_reward'",
         [userId, game.id],
       ),
+    ).toBe(1);
+  });
+
+  it('completes after a catalogue reset preserved the reward event but removed completion', async () => {
+    const userId = await createUser();
+    const game = await createGame({ targetGoals: 1 });
+    await pool.query(
+      `update users
+          set xp = 6, experience = 60
+        where id = $1`,
+      [userId],
+    );
+    await pool.query(
+      `update user_currency_account
+          set balance = 120
+        where user_id = $1`,
+      [userId],
+    );
+    await pool.query(
+      `insert into currency_ledger
+         (user_id, reason, available_delta, reserved_delta,
+          balance_after, reserved_after, metadata, created_at)
+       values ($1, 'bonus_game_reward', 100, 0, 120, 0,
+               jsonb_build_object('bonus_game_id', $2::text), $3)`,
+      [userId, game.id, NOW],
+    );
+    await pool.query(
+      `insert into bonus_game_economy_event
+         (user_id, bonus_game_id, attempt_id, kind,
+          coins_delta, stars_delta, experience_delta,
+          coins_after, stars_after, experience_after, snapshot, created_at)
+       values ($1, $2, null, 'first_clear_reward',
+               100, 1, 50, 120, 6, 60,
+               '{"coins":100,"stars":1,"experience":50}'::jsonb, $3)`,
+      [userId, game.id, NOW],
+    );
+    const attemptId = await createActiveAttempt(userId, game.id);
+
+    const response = await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: GOAL_INPUT,
+      claimedResult: 'goal',
+      now: SHOT_AT,
+    });
+
+    expect(response).toMatchObject({
+      serverResult: 'goal',
+      rewardGranted: null,
+      attempt: {
+        status: 'completed',
+        state: 'closed',
+        rewardGranted: false,
+        shotsTaken: 1,
+        goals: 1,
+      },
+    });
+    expect(await balances(userId)).toEqual({ coins: 120, stars: 6, experience: 60 });
+    expect(await countRows('shot_session', 'bonus_game_attempt_id = $1', [attemptId])).toBe(1);
+    expect(await countRows('user_bonus_game_completion', 'attempt_id = $1', [attemptId])).toBe(1);
+    expect(
+      await countRows(
+        'bonus_game_economy_event',
+        "user_id = $1 and bonus_game_id = $2 and kind = 'first_clear_reward'",
+        [userId, game.id],
+      ),
+    ).toBe(1);
+    expect(
+      await countRows('currency_ledger', "user_id = $1 and reason = 'bonus_game_reward'", [userId]),
     ).toBe(1);
   });
 

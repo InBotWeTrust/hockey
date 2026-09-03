@@ -111,9 +111,36 @@ describe('AchievementsScreen', () => {
     renderAchievements();
 
     expect(await screen.findByRole('tab', { name: 'Задания', selected: true })).toBeInTheDocument();
-    expect(await screen.findByText('Задания (1/1)')).toBeInTheDocument();
+    expect(await screen.findByText('Задания · 1/1')).toBeInTheDocument();
     expect((await screen.findAllByLabelText('Требуется действие')).length).toBeGreaterThanOrEqual(
       1,
+    );
+  });
+
+  it('opens achievement details in the shared accessible modal', async () => {
+    mockAchievementsApi([makeAchievement({ title: 'Первая шайба' })]);
+    renderAchievements();
+
+    const card = (await screen.findByText('Первая шайба')).closest('button');
+    expect(card).not.toBeNull();
+    fireEvent.click(card!);
+
+    expect(screen.getByRole('dialog', { name: 'Первая шайба' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Закрыть окно' })).toBeInTheDocument();
+    expect(document.body.firstElementChild).toHaveAttribute('inert');
+  });
+
+  it('uses a dense text surface for achievement card copy', async () => {
+    mockAchievementsApi([
+      makeAchievement({ title: 'Первая шайба', requirement: 'Забросить первую шайбу в игре.' }),
+    ]);
+    renderAchievements();
+
+    const title = await screen.findByText('Первая шайба');
+    expect(title.closest('button')).toHaveClass('achievement-card');
+    expect(title.closest('.achievement-card__body')).not.toBeNull();
+    expect(screen.getByText('Забросить первую шайбу в игре.')).toHaveClass(
+      'achievement-card__requirement',
     );
   });
 
@@ -144,7 +171,7 @@ describe('AchievementsScreen', () => {
     ]);
     renderAchievements();
 
-    expect(await screen.findByText('Задания (2/5)')).toBeInTheDocument();
+    expect(await screen.findByText('Задания · 2/5')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Все' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Получить' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Ежедневная' })).toBeInTheDocument();
@@ -155,21 +182,21 @@ describe('AchievementsScreen', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Ежедневная' }));
 
     expect(screen.getByRole('tab', { name: 'Ежедневная', selected: true })).toBeInTheDocument();
-    expect(screen.getByText('Задания (2/3)')).toBeInTheDocument();
+    expect(screen.getByText('Задания · 2/3')).toBeInTheDocument();
     expect(screen.getByText('День 1')).toBeInTheDocument();
     expect(screen.queryByText('Тренировочная цель')).toBeNull();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Получить' }));
 
     expect(screen.getByRole('tab', { name: 'Получить', selected: true })).toBeInTheDocument();
-    expect(screen.getByText('Задания (1/1)')).toBeInTheDocument();
+    expect(screen.getByText('Задания · 1/1')).toBeInTheDocument();
     expect(screen.getByText('День 2')).toBeInTheDocument();
     expect(screen.queryByText('День 1')).toBeNull();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Тренировка' }));
 
     expect(screen.getByRole('tab', { name: 'Тренировка', selected: true })).toBeInTheDocument();
-    expect(screen.getByText('Задания (0/1)')).toBeInTheDocument();
+    expect(screen.getByText('Задания · 0/1')).toBeInTheDocument();
     expect(screen.getByText('Тренировочная цель')).toBeInTheDocument();
     expect(screen.queryByText('День 1')).toBeNull();
   });
@@ -214,6 +241,8 @@ describe('AchievementsScreen', () => {
   });
 
   it('claims a ready achievement directly from the card', async () => {
+    const vibrate = vi.fn(() => true);
+    Object.defineProperty(window.navigator, 'vibrate', { configurable: true, value: vibrate });
     const readyAchievement = makeAchievement({
       id: 'daily-ready',
       title: 'Награда ждёт',
@@ -275,5 +304,6 @@ describe('AchievementsScreen', () => {
     expect(await screen.findByText('+10 монет')).toBeInTheDocument();
     expect(screen.queryByText('+0 зв.', { exact: false })).toBeNull();
     expect(screen.queryByText('+0 опыта', { exact: false })).toBeNull();
+    expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
   });
 });

@@ -85,7 +85,7 @@ function attachmentKind(contentType: string): 'image' | 'voice' | 'file' {
   return 'file';
 }
 
-async function loadChatAttachments(
+export async function loadChatAttachments(
   app: Parameters<FastifyPluginAsync>[0],
   userId: string,
   ids: string[],
@@ -118,7 +118,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function signMessageAttachmentUrls(
+export function signMessageAttachmentUrls(
   message: ChatMessageDTO,
   mediaAccessSecret: string,
 ): ChatMessageDTO {

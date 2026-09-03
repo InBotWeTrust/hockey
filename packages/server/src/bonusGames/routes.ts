@@ -7,6 +7,7 @@ import { purchaseBonusGame } from './economy.js';
 import { reconcileBonusAttempt } from './reconcile.js';
 import {
   abandonBonusAttempt,
+  acknowledgeBonusPreview,
   BonusAttemptAlreadyActiveError,
   loadBonusAttemptDto,
   startBonusPeriod,
@@ -24,6 +25,19 @@ const gameParamsSchema = z.object({ gameId: z.string().uuid() }).strict();
 const attemptParamsSchema = z.object({ attemptId: z.string().uuid() }).strict();
 const unlockBodySchema = z
   .object({ expected_price_stars: z.number().int().min(0).max(10_000_000) })
+  .strict();
+const previewAcknowledgeBodySchema = z
+  .object({ dismiss_future: z.boolean().optional() })
+  .strict();
+const loadoutSchema = z
+  .object({
+    stick: z.string().uuid().nullable().optional(),
+    skates: z.string().uuid().nullable().optional(),
+    nutrition: z.string().uuid().nullable().optional(),
+  })
+  .strict();
+const periodStartBodySchema = z
+  .object({ loadout: loadoutSchema.optional() })
   .strict();
 const shotBodySchema = z
   .object({
@@ -80,6 +94,22 @@ const SAFE_BONUS_ERRORS: Readonly<
   bonus_period_not_ready: {
     statusCode: 409,
     message: 'this bonus period is not ready',
+  },
+  bonus_preview_required: {
+    statusCode: 409,
+    message: 'view the qualification preview before starting',
+  },
+  bonus_inventory_disabled: {
+    statusCode: 409,
+    message: 'inventory is disabled for this bonus game',
+  },
+  bonus_inventory_invalid: {
+    statusCode: 409,
+    message: 'selected inventory is unavailable',
+  },
+  bonus_inventory_insufficient: {
+    statusCode: 409,
+    message: 'not enough inventory charges',
   },
   bonus_shot_index_mismatch: {
     statusCode: 409,
@@ -219,6 +249,7 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
     game_id: attempt.gameId,
     game_slug: attempt.rules.slug,
     game_title: attempt.rules.title,
+    skill_code: attempt.rules.skillCode,
     status: attempt.status,
     state: attempt.state,
     current_period: attempt.currentPeriod,
@@ -230,6 +261,10 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
     shots_taken: attempt.shotsTaken,
     current_period_shots_taken: attempt.currentPeriodShotsTaken,
     goals: attempt.goals,
+    current_goal_streak: attempt.currentGoalStreak,
+    best_goal_streak: attempt.bestGoalStreak,
+    preview_required: attempt.previewRequired,
+    current_loadout: attempt.currentLoadout,
     reward_granted: attempt.rewardGranted,
     attempt_seed: attempt.attemptSeed,
     game_core_version: attempt.gameCoreVersion,
@@ -239,10 +274,17 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
       game_id: attempt.rules.gameId,
       slug: attempt.rules.slug,
       title: attempt.rules.title,
+      skill_code: attempt.rules.skillCode,
       revision: attempt.rules.revision,
       target_goals: attempt.rules.targetGoals,
+      qualification_rules: attempt.rules.qualificationRules,
       total_periods: attempt.rules.totalPeriods,
       break_duration_ms: attempt.rules.breakDurationMs,
+      use_inventory: attempt.rules.useInventory,
+      preview_title: attempt.rules.previewTitle,
+      preview_story: attempt.rules.previewStory,
+      preview_artwork_url: attempt.rules.previewArtworkUrl,
+      preview_revision: attempt.rules.previewRevision,
       periods: attempt.rules.periods.map(toPeriodRuleDto),
     },
     reward: attempt.reward,
@@ -390,16 +432,46 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
   );
 
   app.post(
+    '/bonus-games/attempts/:attemptId/preview/acknowledge',
+    { preHandler: [app.authenticate] },
+    async (request) =>
+      runBonusRoute(async () => {
+        const params = parseRequest(attemptParamsSchema, request.params);
+        const body = parseRequest(previewAcknowledgeBodySchema, request.body ?? {});
+        const now = new Date();
+        const attempt = await acknowledgeBonusPreview(app.pg, {
+          userId: request.user.id,
+          attemptId: params.attemptId,
+          dismissFuture: body.dismiss_future ?? false,
+          now,
+        });
+        return { attempt: toAttemptHttpDto(attempt, now) };
+      }),
+  );
+
+  app.post(
     '/bonus-games/attempts/:attemptId/period/start',
     { preHandler: [app.authenticate] },
     async (request) =>
       runBonusRoute(async () => {
         const params = parseRequest(attemptParamsSchema, request.params);
+        const body = parseRequest(periodStartBodySchema, request.body ?? {});
         const now = new Date();
         const attempt = await startBonusPeriod(app.pg, {
           userId: request.user.id,
           attemptId: params.attemptId,
           now,
+          ...(body.loadout !== undefined
+            ? {
+                loadout: {
+                  ...(body.loadout.stick !== undefined ? { stick: body.loadout.stick } : {}),
+                  ...(body.loadout.skates !== undefined ? { skates: body.loadout.skates } : {}),
+                  ...(body.loadout.nutrition !== undefined
+                    ? { nutrition: body.loadout.nutrition }
+                    : {}),
+                },
+              }
+            : {}),
         });
         return { attempt: toAttemptHttpDto(attempt, now) };
       }),

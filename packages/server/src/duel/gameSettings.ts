@@ -51,6 +51,7 @@ export interface GameSettings {
   };
   amateur: {
     unlockGoalsRequired: number;
+    ratingVisibility: 'enabled' | 'disabled';
     noInventoryTiming: {
       skates: DuelInventoryTiming;
       nutrition: DuelInventoryTiming;
@@ -59,7 +60,6 @@ export interface GameSettings {
 }
 
 const goalieOptions = GOALIES.map((goalie) => ({ value: goalie.id, label: goalie.name }));
-const goalieIds = new Set(GOALIES.map((goalie) => goalie.id));
 
 type DailySpeedField = keyof Omit<DailyPeriodSpeedPreset, 'periodNumber'>;
 
@@ -405,6 +405,18 @@ export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
     min: 0,
     max: 1_000_000,
   },
+  {
+    key: 'amateur.rating_visibility',
+    label: 'Видимость рейтинга любителей',
+    description:
+      'Показывать или скрывать вкладку рейтинга любительских дуэлей. Начисление очков не меняется.',
+    type: 'select',
+    defaultValue: 'enabled',
+    options: [
+      { value: 'enabled', label: 'Включён' },
+      { value: 'disabled', label: 'Выключен' },
+    ],
+  },
   ...noInventorySkatesDefinitions,
   ...noInventoryNutritionDefinitions,
 ];
@@ -453,7 +465,10 @@ export function validateGameSettingValue(
     throw new Error(`Unknown game setting: ${key}`);
   }
   const normalized = normalizeValue(value, definition);
-  if (definition.type === 'select' && !goalieIds.has(String(normalized))) {
+  if (
+    definition.type === 'select' &&
+    !(definition.options?.some((option) => option.value === String(normalized)) ?? false)
+  ) {
     throw new Error(`Invalid option for game setting: ${key}`);
   }
   return { definition, value: normalized };
@@ -491,6 +506,7 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
   const trainingShotsLimit = Number(values.get('training.shots_limit'));
   const trainingDailyCooldownMinutes = Number(values.get('training.daily_cooldown_minutes'));
   const amateurUnlockGoalsRequired = Number(values.get('amateur.unlock_goals_required'));
+  const amateurRatingVisibility = String(values.get('amateur.rating_visibility'));
   const noInventorySkatesTiming = noInventorySkatesFields.reduce<DuelInventoryTiming>(
     (timing, field) => ({
       ...timing,
@@ -559,6 +575,7 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
       unlockGoalsRequired: Number.isFinite(amateurUnlockGoalsRequired)
         ? Math.max(0, Math.trunc(amateurUnlockGoalsRequired))
         : 300,
+      ratingVisibility: amateurRatingVisibility === 'disabled' ? 'disabled' : 'enabled',
       noInventoryTiming: {
         skates: noInventorySkatesTiming,
         nutrition: noInventoryNutritionTiming,

@@ -3,6 +3,9 @@ import { loadConfig } from '../config.js';
 import { loadDotEnv } from '../env.js';
 import { cleanupPushDeliveryLog, processPushDeliveryQueue } from './queue.js';
 import { runScheduledPushes } from './scheduled.js';
+import { finalizeDueTournamentDailyDays } from '../tournament/dailyAggregate.js';
+import { finalizeDueClassicTournamentDays } from '../tournament/classicGame.js';
+import { isTournamentFeatureEnabled } from '../tournament/service.js';
 
 const DEFAULT_TICK_MS = 60 * 1000;
 const CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -34,6 +37,22 @@ const pushOptions = {
 };
 
 async function tick(): Promise<void> {
+  const tournamentMaintenance = (await isTournamentFeatureEnabled(pool))
+    ? await (async () => {
+        const now = new Date();
+        const [daily, classic] = await Promise.all([
+          finalizeDueTournamentDailyDays(pool, now),
+          finalizeDueClassicTournamentDays(pool, {
+            now,
+            seedSecret: config.DAILY_SEED_SECRET,
+          }),
+        ]);
+        return {
+          finalizedDays: daily.finalizedDays + classic.finalizedDays,
+          finalizedParticipants: daily.finalizedParticipants + classic.finalizedParticipants,
+        };
+      })()
+    : { finalizedDays: 0, finalizedParticipants: 0 };
   const scheduled = await runScheduledPushes(pool, {
     ...pushOptions,
     workerBatchSize: config.PUSH_WORKER_BATCH_SIZE,
@@ -53,6 +72,8 @@ async function tick(): Promise<void> {
         cleaned = await cleanupPushDeliveryLog(pool);
       }
       const touched =
+        tournamentMaintenance.finalizedDays +
+        tournamentMaintenance.finalizedParticipants +
         scheduled.events.reduce((sum, event) => sum + event.claimed + event.skipped, 0) +
         processed.claimed +
         processed.retried +
@@ -61,6 +82,7 @@ async function tick(): Promise<void> {
         console.info(
           JSON.stringify({
             msg: 'push worker tick completed',
+            tournamentMaintenance,
             scheduled,
             processed,
             cleanupDeleted: cleaned,

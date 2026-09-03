@@ -92,33 +92,42 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     accessType = 'free',
     price = accessType === 'paid' ? 1 : 0,
     status = 'active',
+    skillCode = 'accuracy',
   }: {
     sortOrder: number;
     accessType?: 'free' | 'paid';
     price?: number;
     status?: 'draft' | 'active' | 'archived';
+    skillCode?: 'speed' | 'accuracy';
   }): Promise<TestGame> {
     gameSequence += 1;
     const slug = `bonus-${gameSequence}`;
+    const periodRule = skillCode === 'speed' ? { ...PERIOD_RULE, shotsLimit: null } : PERIOD_RULE;
+    const qualificationRules =
+      skillCode === 'speed'
+        ? { type: 'goals_in_time', targetGoals: 18, activeTimeMs: PERIOD_RULE.durationMs }
+        : { type: 'goals_from_shots', targetGoals: 18, shotsLimit: 30 };
     const game = await pool.query<{ id: string }>(
       `insert into bonus_game
-         (slug, title, description, sort_order, status, access_type, unlock_price_stars,
-          target_goals, total_periods, break_duration_ms, period_rules,
+         (slug, title, skill_code, description, sort_order, status, access_type, unlock_price_stars,
+          target_goals, qualification_rules, total_periods, break_duration_ms, period_rules,
           reward_coins, reward_stars, reward_experience, arena_theme_id,
           goalkeeper_ready_url, goalkeeper_save_url)
-       values ($1, $2, $3, $4, $5, $6, $7,
-               18, 1, 0, $8::jsonb,
-               100, 1, 50, $9, $10, $11)
+       values ($1, $2, $3, $4, $5, $6, $7, $8,
+               18, $9::jsonb, 1, 0, $10::jsonb,
+               100, 1, 50, $11, $12, $13)
        returning id`,
       [
         slug,
         `Игра ${gameSequence}`,
+        skillCode,
         `Описание ${gameSequence}`,
         sortOrder,
         status,
         accessType,
         price,
-        JSON.stringify([PERIOD_RULE]),
+        JSON.stringify(qualificationRules),
+        JSON.stringify([periodRule]),
         arenaId,
         `/goalies/${slug}-ready.webp`,
         `/goalies/${slug}-save.webp`,
@@ -143,10 +152,17 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
       gameId: game.id,
       slug: game.slug,
       title: `Игра ${game.slug}`,
+      skillCode: 'accuracy',
       revision: 1,
       targetGoals: 18,
+      qualificationRules: { type: 'goals_from_shots', targetGoals: 18, shotsLimit: 30 },
       totalPeriods: 1,
       breakDurationMs: 0,
+      useInventory: false,
+      previewTitle: 'Старое превью',
+      previewStory: 'Старая история',
+      previewArtworkUrl: '/previews/old.webp',
+      previewRevision: 1,
       periods: [PERIOD_RULE],
       goalkeeperReadyUrl: `/goalies/${game.slug}-ready.webp`,
       goalkeeperSaveUrl: `/goalies/${game.slug}-save.webp`,
@@ -223,6 +239,48 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     expect(events.rows[0]?.count).toBe(0);
   });
 
+  it('opens and sells the speed and accuracy chains independently', async () => {
+    const userId = await createUser({ stars: 10 });
+    const accuracyFirst = await createGame({ sortOrder: 1, skillCode: 'accuracy' });
+    const accuracyPaid = await createGame({
+      sortOrder: 2,
+      skillCode: 'accuracy',
+      accessType: 'paid',
+      price: 2,
+    });
+    const speedFirst = await createGame({ sortOrder: 1, skillCode: 'speed' });
+    const speedPaid = await createGame({
+      sortOrder: 2,
+      skillCode: 'speed',
+      accessType: 'paid',
+      price: 3,
+    });
+    await completeGame(userId, speedFirst);
+
+    let cards = await listBonusGameCards(pool, userId);
+    expect(Object.fromEntries(cards.map((card) => [card.id, card.state]))).toEqual({
+      [accuracyFirst.id]: 'available',
+      [accuracyPaid.id]: 'sequence_locked',
+      [speedFirst.id]: 'completed',
+      [speedPaid.id]: 'purchase_required',
+    });
+
+    await purchaseBonusGame(pool, {
+      userId,
+      gameId: speedPaid.id,
+      expectedPriceStars: 3,
+      now: NOW,
+    });
+    await completeGame(userId, accuracyFirst);
+    cards = await listBonusGameCards(pool, userId);
+    expect(Object.fromEntries(cards.map((card) => [card.id, card.state]))).toEqual({
+      [accuracyFirst.id]: 'completed',
+      [accuracyPaid.id]: 'purchase_required',
+      [speedFirst.id]: 'completed',
+      [speedPaid.id]: 'available',
+    });
+  });
+
   it('derives paid, available, active, and completed states on the server', async () => {
     const userId = await createUser({ stars: 5 });
     const first = await createGame({ sortOrder: 1 });
@@ -293,6 +351,53 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
       [userId, game.id],
     );
     expect(sideEffects.rows[0]).toEqual({ xp: 10, unlocks: 0, events: 0 });
+  });
+
+  it('keeps an active attempt card consistent with its immutable snapshot', async () => {
+    const userId = await createUser();
+    const game = await createGame({ sortOrder: 1 });
+    const attemptId = await createAttempt(userId, game);
+    await pool.query(
+      `update bonus_game
+          set slug = 'accuracy-moscow', title = 'Москва', target_goals = 25,
+              qualification_rules = '{"type":"goals_from_shots","targetGoals":25,"shotsLimit":40}'::jsonb,
+              preview_title = 'Новое превью', preview_story = 'Новая история',
+              preview_artwork_url = '/world-tour/moscow-preview.webp', preview_revision = 2,
+              goalkeeper_ready_url = '/world-tour/moscow-ready.webp',
+              goalkeeper_save_url = '/world-tour/moscow-save.webp'
+        where id = $1`,
+      [game.id],
+    );
+    await pool.query(
+      `update arena_theme
+          set slug = 'accuracy-world-tour-moscow', title = 'Москва',
+              artwork_url = '/world-tour/moscow.webp',
+              thumbnail_url = '/world-tour/moscow-preview.webp'
+        where id = $1`,
+      [arenaId],
+    );
+
+    const card = (await listBonusGameCards(pool, userId))[0]!;
+
+    expect(card).toMatchObject({
+      slug: game.slug,
+      title: `Игра ${game.slug}`,
+      target_goals: 18,
+      preview_title: 'Старое превью',
+      preview_story: 'Старая история',
+      preview_artwork_url: '/previews/old.webp',
+      preview_revision: 1,
+      goalkeeper_ready_url: `/goalies/${game.slug}-ready.webp`,
+      goalkeeper_save_url: `/goalies/${game.slug}-save.webp`,
+      arena: {
+        slug: 'default',
+        title: 'Стандартная',
+        artwork_url: '/arenas/default.webp',
+        thumbnail_url: '/arenas/default-thumb.webp',
+      },
+      state: 'in_progress',
+      active_attempt: { id: attemptId },
+    });
   });
 
   it('does not charge or create a paid unlock when a completed free game becomes paid', async () => {
@@ -461,6 +566,77 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     });
 
     expect(tracked.tracker.maxConcurrentQueries).toBe(1);
+  });
+
+  it('allows a repurchase after a catalogue reset refunded and removed the old unlock', async () => {
+    const userId = await createUser({ stars: 10 });
+    const paid = await createGame({ sortOrder: 1, accessType: 'paid', price: 1 });
+    const historicalPurchase = await pool.query<{ id: string }>(
+      `insert into bonus_game_economy_event
+         (user_id, bonus_game_id, kind,
+          coins_delta, stars_delta, experience_delta,
+          coins_after, stars_after, experience_after, snapshot, created_at)
+       values ($1, $2, 'unlock_purchase',
+               0, -1, 0, 0, 9, 0,
+               '{"priceStars":1,"reason":"historical_purchase"}'::jsonb, $3)
+       returning id`,
+      [userId, paid.id, NOW],
+    );
+    await pool.query(
+      `insert into bonus_game_economy_event
+         (user_id, bonus_game_id, kind,
+          coins_delta, stars_delta, experience_delta,
+          coins_after, stars_after, experience_after, snapshot, created_at)
+       values ($1, $2, 'unlock_refund',
+               0, 1, 0, 0, 10, 0,
+               jsonb_build_object(
+                 'reason', 'bonus_skill_catalog_reset',
+                 'originalEconomyEventId', $3::text
+               ), $4)`,
+      [userId, paid.id, historicalPurchase.rows[0]!.id, new Date(NOW.getTime() + 1)],
+    );
+
+    const result = await purchaseBonusGame(pool, {
+      userId,
+      gameId: paid.id,
+      expectedPriceStars: 1,
+      now: new Date(NOW.getTime() + 2),
+    });
+
+    expect(result).toEqual({ unlocked: true, starBalance: 9 });
+    const state = await pool.query<{
+      xp: number;
+      purchases: number;
+      refunds: number;
+      unlocks: number;
+      current_event_id: string;
+      current_event_kind: string;
+    }>(
+      `select users.xp::int,
+              count(distinct event.id) filter (where event.kind = 'unlock_purchase')::int as purchases,
+              count(distinct event.id) filter (where event.kind = 'unlock_refund')::int as refunds,
+              count(distinct unlock.id)::int as unlocks,
+              min(unlock.economy_event_id::text) as current_event_id,
+              min(current_event.kind) as current_event_kind
+         from users
+         left join bonus_game_economy_event event
+           on event.user_id = users.id and event.bonus_game_id = $2
+         left join user_bonus_game_unlock unlock
+           on unlock.user_id = users.id and unlock.bonus_game_id = $2
+         left join bonus_game_economy_event current_event
+           on current_event.id = unlock.economy_event_id
+        where users.id = $1
+        group by users.id`,
+      [userId, paid.id],
+    );
+    expect(state.rows[0]).toEqual({
+      xp: 9,
+      purchases: 2,
+      refunds: 1,
+      unlocks: 1,
+      current_event_id: expect.not.stringMatching(historicalPurchase.rows[0]!.id),
+      current_event_kind: 'unlock_purchase',
+    });
   });
 
   it('debits a paid unlock once under concurrent requests and returns the committed balance', async () => {

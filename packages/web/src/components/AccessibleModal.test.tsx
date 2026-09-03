@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AccessibleModal } from './AccessibleModal.js';
 
 function Harness({ closeBlocked = false }: { closeBlocked?: boolean }): JSX.Element {
@@ -67,5 +67,21 @@ describe('AccessibleModal', () => {
     fireEvent.mouseDown(document.querySelector('.modal-backdrop') as HTMLElement);
 
     expect(screen.getByRole('dialog', { name: 'Доступный диалог' })).toBeInTheDocument();
+  });
+
+  it('reports whether Escape or backdrop requested dismissal', async () => {
+    const onRequestClose = vi.fn();
+    render(
+      <AccessibleModal title="Причина закрытия" onRequestClose={onRequestClose}>
+        <button type="button">Действие</button>
+      </AccessibleModal>,
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Причина закрытия' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Действие' })).toHaveFocus());
+
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    fireEvent.mouseDown(document.querySelector('.modal-backdrop') as HTMLElement);
+
+    expect(onRequestClose.mock.calls).toEqual([['escape'], ['backdrop']]);
   });
 });

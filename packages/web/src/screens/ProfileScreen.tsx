@@ -14,6 +14,7 @@ import { apiFetch } from '../api/apiFetch.js';
 import { fetchHomeArenas, type HomeArena, type HomeArenasResponse } from '../api/arenas.js';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { HomeArenaModal } from '../components/HomeArenaModal.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 import {
   fetchMyInventory,
   patchEquipment,
@@ -499,28 +500,20 @@ function ProfileStatsModal({
   onClose: () => void;
 }): JSX.Element {
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
-      <section
-        role="dialog"
-        aria-label="Статистика"
-        className="modal-card profile-locker-modal-card"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <button
-          type="button"
-          className="icon-btn profile-locker-modal-close"
-          aria-label="Закрыть"
-          onClick={onClose}
-        >
+    <AccessibleModal
+      title="Статистика"
+      copy="Основные показатели игрока."
+      onRequestClose={onClose}
+      cardClassName="profile-locker-modal-card"
+      backdropStyle={{ zIndex: 420 }}
+      headerAction={
+        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
           <X size={15} />
         </button>
-        <div className="profile-locker-modal-header">
-          <div className="modal-title">Статистика</div>
-          <div className="modal-copy">Основные показатели игрока.</div>
-        </div>
-        <ProfileStatsGrid stats={stats} columns={2} style={{ margin: 0 }} />
-      </section>
-    </div>
+      }
+    >
+      <ProfileStatsGrid stats={stats} columns={2} style={{ margin: 0 }} />
+    </AccessibleModal>
   );
 }
 
@@ -538,49 +531,42 @@ function ProfileAchievementsModal({
   onClose: () => void;
 }): JSX.Element {
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
-      <section
-        role="dialog"
-        aria-label="Достижения"
-        className="modal-card profile-locker-modal-card"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <button
-          type="button"
-          className="icon-btn profile-locker-modal-close"
-          aria-label="Закрыть"
-          onClick={onClose}
-        >
+    <AccessibleModal
+      title={`Достижения (${achievements.length})`}
+      ariaLabel="Достижения"
+      onRequestClose={onClose}
+      cardClassName="profile-locker-modal-card"
+      backdropStyle={{ zIndex: 420 }}
+      headerAction={
+        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
           <X size={15} />
         </button>
-        <div className="profile-locker-modal-header">
-          <div className="modal-title">Достижения ({achievements.length})</div>
+      }
+    >
+      {achievements.length > 0 ? (
+        <div className="profile-locker-achievement-grid">
+          {achievements.map((achievement) => (
+            <AchievementTile
+              key={achievement.id}
+              achievement={achievement}
+              onOpen={() => onOpenAchievement(achievement)}
+            />
+          ))}
         </div>
-        {achievements.length > 0 ? (
-          <div className="profile-locker-achievement-grid">
-            {achievements.map((achievement) => (
-              <AchievementTile
-                key={achievement.id}
-                achievement={achievement}
-                onOpen={() => onOpenAchievement(achievement)}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="profile-locker-empty-copy">Достижений пока нет.</div>
-        )}
-        {unclaimedCount > 0 && (
-          <button
-            type="button"
-            className="btn btn--cta modal-primary"
-            data-no-drag-scroll="true"
-            onClick={onOpenAchievementsPage}
-          >
-            Награды ждут получения: {unclaimedCount}
-          </button>
-        )}
-      </section>
-    </div>
+      ) : (
+        <div className="profile-locker-empty-copy">Достижений пока нет.</div>
+      )}
+      {unclaimedCount > 0 && (
+        <button
+          type="button"
+          className="btn btn--cta modal-primary"
+          data-no-drag-scroll="true"
+          onClick={onOpenAchievementsPage}
+        >
+          Награды ждут получения: {unclaimedCount}
+        </button>
+      )}
+    </AccessibleModal>
   );
 }
 
@@ -607,36 +593,30 @@ function EquipmentDetailsModal({
   const baseSelected = activeId === null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
-      <section
-        role="dialog"
-        aria-label={meta.title}
-        className="modal-card"
-        onClick={(event) => event.stopPropagation()}
-        style={{
-          width: 'min(430px, calc(100vw - 28px))',
-          maxHeight: 'calc(100dvh - 112px - var(--app-safe-top) - var(--app-safe-bottom))',
-          display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr) auto',
-          gap: 10,
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
+    <AccessibleModal
+      title={meta.title}
+      copy={equipmentModalCopy(kind)}
+      onRequestClose={onClose}
+      closeBlocked={isSaving}
+      backdropStyle={{ zIndex: 420 }}
+      cardStyle={{
+        width: 'min(430px, calc(100vw - 28px))',
+        maxHeight: 'calc(100dvh - 112px - var(--app-safe-top) - var(--app-safe-bottom))',
+        overflow: 'hidden',
+      }}
+      headerAction={
         <button
           type="button"
           className="icon-btn"
           aria-label="Закрыть"
+          disabled={isSaving}
           onClick={onClose}
-          style={{ position: 'absolute', top: 14, right: 14 }}
         >
           <X size={15} />
         </button>
-        <div style={{ minWidth: 0, paddingRight: 42 }}>
-          <div className="modal-title">{meta.title}</div>
-          <div className="modal-copy">{equipmentModalCopy(kind)}</div>
-        </div>
-
+      }
+    >
+      <div style={{ minHeight: 0, display: 'grid', gap: 10 }}>
         <div
           className="no-scrollbar"
           style={{
@@ -841,8 +821,8 @@ function EquipmentDetailsModal({
             {error}
           </div>
         )}
-      </section>
-    </div>
+      </div>
+    </AccessibleModal>
   );
 }
 

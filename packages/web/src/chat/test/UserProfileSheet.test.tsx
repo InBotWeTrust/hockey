@@ -193,6 +193,12 @@ describe('UserProfileSheet', () => {
     expect(screen.getByText('(12)')).toBeInTheDocument();
     expect(screen.getByText('Выполненные задания (1)')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toHaveClass('sheet-card');
+    expect(
+      screen
+        .getByRole('heading', { name: 'Профиль игрока' })
+        .parentElement?.querySelector(':scope > button[aria-label="Закрыть"]'),
+    ).toBeInTheDocument();
   });
 
   it('clicking "Написать в личку" calls findOrCreateDM and closes the sheet', async () => {
@@ -305,6 +311,35 @@ describe('UserProfileSheet', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it('closes the duel type modal with Escape without closing the profile sheet', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'rtok',
+      user: { id: 'me', displayName: 'Me' },
+    });
+    vi.mocked(api.fetchUserProfile).mockImplementation(async (userId) =>
+      userId === 'me' ? { ...publicProfile, id: 'me' } : publicProfile,
+    );
+    const onClose = vi.fn();
+
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
+      onClose,
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /вызвать на дуэль/i }));
+    expect(await screen.findByRole('dialog', { name: 'Выбор типа дуэли' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(
+      consoleError.mock.calls.some(([message]) => String(message).includes('not wrapped in act')),
+    ).toBe(false);
+  });
+
   it('clicking the backdrop calls onClose', () => {
     const onClose = vi.fn();
     render(
@@ -317,11 +352,9 @@ describe('UserProfileSheet', () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    const backdrop = document.body.querySelector<HTMLElement>(
-      '[data-testid="profile-sheet-backdrop"]',
-    );
+    const backdrop = document.body.querySelector<HTMLElement>('.modal-backdrop--sheet');
     expect(backdrop).not.toBeNull();
-    fireEvent.click(backdrop!);
+    fireEvent.mouseDown(backdrop!);
     expect(onClose).toHaveBeenCalled();
   });
 });

@@ -11,19 +11,26 @@ const bonusGame: AdminBonusGame = {
   id: '11111111-1111-4111-8111-111111111111',
   slug: 'beach',
   title: 'Пляжный хоккей',
+  skillCode: 'speed',
   description: 'Забейте 18 голов на пляже.',
   sortOrder: 1,
   status: 'active',
   accessType: 'paid',
   unlockPriceStars: 5,
   targetGoals: 18,
+  qualificationRules: { type: 'goals_in_time', targetGoals: 18, activeTimeMs: 240_000 },
   totalPeriods: 1,
   breakDurationMs: 30_000,
+  useInventory: false,
+  previewTitle: 'Первая квалификация',
+  previewStory: 'История',
+  previewArtworkUrl: '/bonus-games/previews/beach.webp',
+  previewRevision: 1,
   periods: [
     {
       periodNumber: 1,
       durationMs: 240_000,
-      shotsLimit: 30,
+      shotsLimit: null,
       goalFrequency: 0.45,
       goalieFrequency: 0.5,
       shooterFrequency: 0.65,
@@ -154,6 +161,26 @@ describe('bonus games admin', () => {
     vi.restoreAllMocks();
   });
 
+  it('keeps all active game actions in one compact row', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ games: [bonusGame] }));
+    renderBonusGames();
+    await screen.findByText(bonusGame.title);
+
+    const actions = screen.getByTestId(`bonus-game-actions-${bonusGame.id}`);
+    expect(actions).toHaveClass('admin-card-actions--single-row');
+    for (const name of [
+      `Редактировать ${bonusGame.title}`,
+      'Выше',
+      'Ниже',
+      `Архивировать ${bonusGame.title}`,
+    ]) {
+      expect(within(actions).getByRole('button', { name })).toHaveClass('admin-compact-btn');
+    }
+    expect(within(actions).getByText('В архив')).toBeInTheDocument();
+    expect(screen.getByText('1 период')).toBeInTheDocument();
+    expect(screen.queryByText(/ревизи/i)).not.toBeInTheDocument();
+  });
+
   it('fetches the bonus catalog only on its tab and exposes the complete editor and archive copy', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
@@ -185,12 +212,14 @@ describe('bonus games admin', () => {
 
     renderAdmin();
 
-    expect(screen.getByRole('button', { name: 'Бонусные игры' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть меню администратора' }));
+    const adminMenu = screen.getByRole('dialog', { name: 'Меню администратора' });
+    expect(within(adminMenu).getByRole('button', { name: 'Бонусные игры' })).toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes('/admin/bonus-games')),
     ).toBe(false);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Бонусные игры' }));
+    fireEvent.click(within(adminMenu).getByRole('button', { name: 'Бонусные игры' }));
 
     expect(await screen.findByText('Пляжный хоккей')).toBeInTheDocument();
     await waitFor(() => {
@@ -205,6 +234,11 @@ describe('bonus games admin', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать Пляжный хоккей' }));
     const editor = await screen.findByRole('dialog', { name: 'Редактирование бонусной игры' });
+    expect(editor).toHaveClass('bonus-game-editor-modal');
+    expect(within(editor).getByRole('form', { name: 'Параметры бонусной игры' })).toHaveClass(
+      'bonus-game-editor',
+    );
+    expect(within(editor).getByRole('button', { name: 'Закрыть редактор' })).toBeInTheDocument();
     for (const label of [
       'Название',
       'Описание',
@@ -212,7 +246,10 @@ describe('bonus games admin', () => {
       'Статус',
       'Доступ',
       'Цена в звёздах',
-      'Цель по голам',
+      'Нужно голов',
+      'Навык',
+      'Активное время, мс',
+      'Обязательная серия (0 — нет)',
       'Периодов',
       'Перерыв, мс',
       'Частота ворот',
@@ -231,6 +268,11 @@ describe('bonus games admin', () => {
       'Миниатюра площадки',
       'Вратарь: готов',
       'Вратарь: сейв',
+      'Заголовок превью',
+      'История',
+      'Иллюстрация превью 1200×800',
+      'Ревизия превью',
+      'Использовать инвентарь',
     ]) {
       expect(within(editor).getByLabelText(label)).toBeInTheDocument();
     }
@@ -242,6 +284,10 @@ describe('bonus games admin', () => {
     ]) {
       expect(within(editor).getByLabelText(uploadLabel)).toBeInTheDocument();
     }
+    expect(editor.querySelectorAll('.bonus-game-editor__section').length).toBeGreaterThanOrEqual(6);
+    expect(
+      editor.querySelectorAll('.bonus-game-editor__upload-button').length,
+    ).toBeGreaterThanOrEqual(4);
 
     fireEvent.click(within(editor).getByRole('button', { name: 'Отмена' }));
     fireEvent.click(screen.getByRole('button', { name: 'Архивировать Пляжный хоккей' }));
@@ -332,13 +378,20 @@ describe('bonus games admin', () => {
         accessType: 'paid',
         unlockPriceStars: 0,
         targetGoals: 18,
+        skillCode: 'speed',
+        qualificationRules: { type: 'goals_in_time', targetGoals: 18, activeTimeMs: 240_000 },
         totalPeriods: 1,
         breakDurationMs: 0,
+        useInventory: false,
+        previewTitle: '',
+        previewStory: '',
+        previewArtworkUrl: '',
+        previewRevision: 1,
         periods: [
           {
             periodNumber: 1,
             durationMs: 240_000,
-            shotsLimit: 30,
+            shotsLimit: null,
             goalFrequency: 0.45,
             goalieFrequency: 0.5,
             shooterFrequency: 0.65,
@@ -359,7 +412,7 @@ describe('bonus games admin', () => {
           artworkUrl: '',
           thumbnailUrl: '',
           status: 'active',
-          isSelectable: true,
+          isSelectable: false,
         },
       },
     });
@@ -383,8 +436,14 @@ describe('bonus games admin', () => {
         accessType: 'paid',
         unlockPriceStars: 0,
         targetGoals: 18,
+        qualificationRules: { type: 'goals_in_time', targetGoals: 18, activeTimeMs: 240_000 },
         totalPeriods: 1,
         breakDurationMs: 30_000,
+        useInventory: false,
+        previewTitle: 'Первая квалификация',
+        previewStory: 'История',
+        previewArtworkUrl: '/bonus-games/previews/beach.webp',
+        previewRevision: 1,
         periods: bonusGame.periods,
         rewardCoins: 100,
         rewardStars: 1,
@@ -445,6 +504,15 @@ describe('bonus games admin', () => {
     });
     fireEvent.change(within(dialog).getByLabelText('Вратарь: сейв'), {
       target: { value: '  /bonus-games/goalkeepers/beach-save.webp  ' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Заголовок превью'), {
+      target: { value: '  Первая квалификация  ' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('История'), {
+      target: { value: '  Первый шаг к большому хоккею.  ' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Иллюстрация превью 1200×800'), {
+      target: { value: '  /bonus-games/previews/beach.webp  ' },
     });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
 
@@ -561,6 +629,7 @@ describe('bonus games admin', () => {
     fireEvent.click(within(confirmation).getByRole('button', { name: 'Изменить порядок' }));
     await waitFor(() =>
       expect(reorderBody).toEqual({
+        skillCode: 'speed',
         gameIds: ['44444444-4444-4444-8444-444444444444', '11111111-1111-4111-8111-111111111111'],
       }),
     );
@@ -585,13 +654,17 @@ describe('bonus games admin', () => {
       target: { files: [new File([new Uint8Array([1])], 'goalie.png', { type: 'image/png' })] },
     });
     expect(
-      await within(editor).findByText('Можно загрузить только файл WebP.'),
+      await within(editor).findByText(
+        'Этот формат изображения не поддерживается. Выберите другой файл.',
+      ),
     ).toBeInTheDocument();
     expect(uploadCalls).toHaveLength(0);
     fireEvent.change(picker, {
       target: { files: [new File([], 'empty.webp', { type: 'image/webp' })] },
     });
-    expect(await within(editor).findByText('Файл WebP пустой.')).toBeInTheDocument();
+    expect(
+      await within(editor).findByText('Выбранное изображение пустое. Выберите другой файл.'),
+    ).toBeInTheDocument();
     expect(uploadCalls).toHaveLength(0);
 
     fireEvent.change(picker, {

@@ -188,6 +188,11 @@ jobs:
           export STAGING_OBJECT_STORAGE_TENANT_ID STAGING_OBJECT_STORAGE_ACCESS_KEY_ID
           export STAGING_OBJECT_STORAGE_SECRET_ACCESS_KEY STAGING_OBJECT_STORAGE_PUBLIC_BASE_URL
 
+          # SHA-tagged deploy images accumulate on the shared VPS and are not
+          # removed by the dangling-only prune at the end of the workflow.
+          # Running containers keep their images, and older images remain in GHCR.
+          docker image prune -af
+
           for i in 1 2 3 4 5; do
             if echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin; then
               break
@@ -208,6 +213,20 @@ jobs:
 
           docker compose -f docker-compose.yml -f docker-compose.staging.yml \
             run --rm -T server-dev node packages/server/dist/db/migrate-cli.js < /dev/null
+
+          # Dev has its own database, so the production SYSTEM_USER_ID cannot be reused here.
+          # Keep a dedicated non-login sender for tournament participant DMs.
+          STAGING_SYSTEM_USER_ID="00000000-0000-4000-8000-000000000099"
+          export STAGING_SYSTEM_USER_ID
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+            exec -T postgres-dev psql -v ON_ERROR_STOP=1 \
+              -U "$STAGING_POSTGRES_USER" -d "$STAGING_POSTGRES_DB" \
+              -c "insert into users (id, display_name, timezone, account_kind, avatar_url) values ('$STAGING_SYSTEM_USER_ID', 'Ультимейт Хоккей', 'Europe/Moscow', 'official', '/icons/official-account.webp') on conflict (id) do update set display_name = excluded.display_name, account_kind = excluded.account_kind, avatar_url = excluded.avatar_url" < /dev/null
+
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+            run --rm -T -e TOURNAMENT_LIFECYCLE_RECONCILE=1 server-dev \
+              node packages/server/dist/tournament/automaticLifecycleAuditCli.js \
+              --completed-daily --apply < /dev/null
 
           if [ "$RESET_STAGING_ACHIEVEMENTS" = "true" ]; then
             docker compose -f docker-compose.yml -f docker-compose.staging.yml \

@@ -193,4 +193,33 @@ describe('ChatInfoScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Удалить Player 12 из чата' }));
     await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('chat-1', 'user-12'));
   });
+
+  it('closes group management modals with Escape', async () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'rtok',
+      user: { id: 'admin-1', displayName: 'Admin', role: 'admin', grip: 'right' },
+    });
+    vi.spyOn(api, 'fetchChatInfo').mockResolvedValue({
+      id: 'chat-1',
+      type: 'group',
+      name: 'Командный чат',
+      description: null,
+      avatarUrl: null,
+      memberCount: 1,
+      members: [{ userId: 'admin-1', displayName: 'Admin', avatarUrl: null, role: 'admin' }],
+    });
+
+    renderScreen();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Редактировать чат' }));
+    expect(screen.getByRole('dialog', { name: 'Настройки чата' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Настройки чата' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить участников' }));
+    expect(screen.getByRole('dialog', { name: 'Участники' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Участники' })).not.toBeInTheDocument();
+  });
 });

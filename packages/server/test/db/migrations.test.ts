@@ -42,6 +42,19 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     const second = await applyMigrations(pool, MIGRATIONS_DIR);
     expect(second.applied).toEqual([]);
 
+    const achievementIndexes = await pool.query<{ indexdef: string }>(
+      `select indexdef
+         from pg_indexes
+        where schemaname = 'public'
+          and indexname in (
+            'event_log_daily_period_closed_achievement_idx',
+            'event_log_daily_period_achievements_evaluated_idx'
+          )
+        order by indexname`,
+    );
+    expect(achievementIndexes.rows).toHaveLength(2);
+    expect(achievementIndexes.rows.every(({ indexdef }) => indexdef.includes('CREATE'))).toBe(true);
+
     const { rows } = await pool.query<{ table_name: string }>(
       "select table_name from information_schema.tables where table_schema = 'public' order by table_name",
     );
@@ -89,43 +102,134 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         'user_bonus_game_completion',
         'user_arena_unlock',
         'bonus_game_economy_event',
+        'user_bonus_game_preview_preference',
+        'bonus_game_period_loadout',
       ]),
     );
     expect(names).toContain('_migrations');
 
     const seededBonusGames = await pool.query<{
       slug: string;
+      title: string;
+      skill_code: 'speed' | 'accuracy';
       sort_order: number;
       unlock_price_stars: number;
       reward_stars: number;
+      qualification_rules: {
+        type: string;
+        targetGoals?: number;
+        shotsLimit?: number;
+        activeTimeMs?: number;
+        requiredGoalStreak?: number;
+      };
+      period_rules: Array<{ durationMs: number; shotsLimit: number | null }>;
+      preview_artwork_url: string;
+      goalkeeper_ready_url: string;
+      goalkeeper_save_url: string;
+      arena_slug: string;
+      arena_artwork_url: string;
+      arena_thumbnail_url: string;
     }>(
-      `select slug, sort_order, unlock_price_stars, reward_stars
-         from bonus_game
-        where status = 'active'
-        order by sort_order`,
+      `select game.slug, game.title, game.skill_code, game.sort_order,
+              game.unlock_price_stars, game.reward_stars, game.qualification_rules,
+              game.period_rules,
+              game.preview_artwork_url, game.goalkeeper_ready_url, game.goalkeeper_save_url,
+              arena.slug as arena_slug, arena.artwork_url as arena_artwork_url,
+              arena.thumbnail_url as arena_thumbnail_url
+         from bonus_game game
+         join arena_theme arena on arena.id = game.arena_theme_id
+        where game.status = 'active'
+        order by game.skill_code, game.sort_order`,
     );
-    expect(seededBonusGames.rows).toEqual([
-      { slug: 'beach', sort_order: 1, unlock_price_stars: 0, reward_stars: 1 },
-      { slug: 'ski-resort', sort_order: 2, unlock_price_stars: 1, reward_stars: 1 },
-      { slug: 'cyberpunk-yard', sort_order: 3, unlock_price_stars: 0, reward_stars: 1 },
-      {
-        slug: 'abandoned-waterpark',
-        sort_order: 4,
-        unlock_price_stars: 2,
-        reward_stars: 2,
-      },
-      { slug: 'pirate-bay', sort_order: 5, unlock_price_stars: 0, reward_stars: 2 },
-      { slug: 'north-pole', sort_order: 6, unlock_price_stars: 3, reward_stars: 3 },
-      { slug: 'desert', sort_order: 7, unlock_price_stars: 0, reward_stars: 3 },
-      { slug: 'volcanic-ice', sort_order: 8, unlock_price_stars: 5, reward_stars: 4 },
-      { slug: 'castle', sort_order: 9, unlock_price_stars: 0, reward_stars: 5 },
-      { slug: 'space', sort_order: 10, unlock_price_stars: 8, reward_stars: 8 },
+    expect(seededBonusGames.rows).toHaveLength(23);
+    const speedTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'speed');
+    const accuracyTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'accuracy');
+    expect(speedTrack).toHaveLength(10);
+    expect(accuracyTrack).toHaveLength(13);
+    expect(speedTrack.map((game) => game.sort_order)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(accuracyTrack.map((game) => game.sort_order)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
     ]);
-
-    expect(seededBonusGames.rows.reduce((total, game) => total + game.unlock_price_stars, 0)).toBe(
-      19,
+    expect(speedTrack.map((game) => game.slug)).toEqual([
+      'speed-beach',
+      'speed-ski-resort',
+      'speed-cyberpunk-yard',
+      'speed-abandoned-waterpark',
+      'speed-pirate-bay',
+      'speed-north-pole',
+      'speed-desert',
+      'speed-volcanic-ice',
+      'speed-castle',
+      'speed-space',
+    ]);
+    expect(accuracyTrack.map((game) => game.slug)).toEqual([
+      'accuracy-moscow',
+      'accuracy-istanbul',
+      'accuracy-rome',
+      'accuracy-paris',
+      'accuracy-london',
+      'accuracy-new-york',
+      'accuracy-rio-de-janeiro',
+      'accuracy-cape-town',
+      'accuracy-dubai',
+      'accuracy-mumbai',
+      'accuracy-singapore',
+      'accuracy-beijing',
+      'accuracy-tokyo',
+    ]);
+    expect(speedTrack.every((game) => game.qualification_rules.type === 'goals_in_time')).toBe(
+      true,
     );
-    expect(seededBonusGames.rows.reduce((total, game) => total + game.reward_stars, 0)).toBe(30);
+    expect(
+      accuracyTrack.every((game) => game.qualification_rules.type === 'goals_from_shots'),
+    ).toBe(true);
+    expect(
+      accuracyTrack.map((game) => ({
+        title: game.title,
+        targetGoals: game.qualification_rules.targetGoals,
+        shotsLimit: game.qualification_rules.shotsLimit,
+        requiredGoalStreak: game.qualification_rules.requiredGoalStreak ?? 0,
+      })),
+    ).toEqual([
+      { title: 'Москва', targetGoals: 18, shotsLimit: 30, requiredGoalStreak: 0 },
+      { title: 'Стамбул', targetGoals: 21, shotsLimit: 30, requiredGoalStreak: 0 },
+      { title: 'Рим', targetGoals: 23, shotsLimit: 30, requiredGoalStreak: 3 },
+      { title: 'Париж', targetGoals: 30, shotsLimit: 45, requiredGoalStreak: 0 },
+      { title: 'Лондон', targetGoals: 36, shotsLimit: 50, requiredGoalStreak: 3 },
+      { title: 'Нью-Йорк', targetGoals: 40, shotsLimit: 50, requiredGoalStreak: 4 },
+      { title: 'Рио-де-Жанейро', targetGoals: 42, shotsLimit: 50, requiredGoalStreak: 4 },
+      { title: 'Кейптаун', targetGoals: 47, shotsLimit: 55, requiredGoalStreak: 4 },
+      { title: 'Дубай', targetGoals: 49, shotsLimit: 60, requiredGoalStreak: 5 },
+      { title: 'Мумбаи', targetGoals: 52, shotsLimit: 60, requiredGoalStreak: 6 },
+      { title: 'Сингапур', targetGoals: 66, shotsLimit: 80, requiredGoalStreak: 6 },
+      { title: 'Пекин', targetGoals: 76, shotsLimit: 90, requiredGoalStreak: 7 },
+      { title: 'Токио', targetGoals: 90, shotsLimit: 90, requiredGoalStreak: 7 },
+    ]);
+    for (const game of accuracyTrack) {
+      const citySlug = game.slug.replace('accuracy-', '');
+      expect(game.period_rules.reduce((total, period) => total + (period.shotsLimit ?? 0), 0)).toBe(
+        game.qualification_rules.shotsLimit,
+      );
+      expect(game.period_rules.every((period) => period.durationMs === 240_000)).toBe(true);
+      expect(game.preview_artwork_url).toBe(`/bonus-games/world-tour/previews/${citySlug}.webp`);
+      expect(game.goalkeeper_ready_url).toBe(
+        `/bonus-games/world-tour/goalkeepers/${citySlug}-ready.webp`,
+      );
+      expect(game.goalkeeper_save_url).toBe(
+        `/bonus-games/world-tour/goalkeepers/${citySlug}-save.webp`,
+      );
+      expect(game.arena_slug).toBe(`accuracy-world-tour-${citySlug}`);
+      expect(game.arena_artwork_url).toBe(`/bonus-games/world-tour/arenas/${citySlug}.webp`);
+      expect(game.arena_thumbnail_url).toBe(`/bonus-games/world-tour/previews/${citySlug}.webp`);
+    }
+
+    const nonLinearBonusPeriods = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from bonus_game
+         cross join lateral jsonb_array_elements(period_rules) as period
+        where period->>'goaliePattern' <> 'linear'`,
+    );
+    expect(nonLinearBonusPeriods.rows[0]?.count).toBe('0');
 
     const attemptColumns = await pool.query<{ column_name: string }>(
       `select column_name from information_schema.columns
@@ -139,6 +243,9 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         'game_core_version',
         'period_started_at',
         'break_started_at',
+        'current_goal_streak',
+        'best_goal_streak',
+        'preview_acknowledged_at',
       ]),
     );
 
@@ -392,8 +499,120 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '057_amateur_no_inventory_penalty_settings.sql',
       '058_bonus_games_and_home_arenas.sql',
       '059_seed_bonus_games.sql',
-      '060_player_onboarding.sql',
+      '060_bonus_games_linear_goalies.sql',
+      '061_tournaments.sql',
+      '062_tournament_duel_concurrency.sql',
+      '063_tournament_manual_push.sql',
+      '064_tournament_live_proposal_active.sql',
+      '065_tournament_fixture_venue.sql',
+      '066_enable_tournaments.sql',
+      '067_tournament_artwork.sql',
+      '068_tournament_revision_history.sql',
+      '069_bonus_game_qualifications.sql',
+      '069_official_dialogs.sql',
+      '070_bonus_game_preview_location_cards.sql',
+      '071_bonus_game_accuracy_world_tour.sql',
+      '072_tournament_fixture_series_lookup.sql',
+      '073_backfill_first_daily_game.sql',
+      '074_allow_bonus_repurchase_after_refund.sql',
+      '075_tournament_classic.sql',
+      '076_speed_bonus_game_balance.sql',
+      '077_accuracy_world_tour_movement_balance.sql',
+      '078_amateur_rating_visibility.sql',
+      '079_rename_express_plus_to_mix.sql',
+      '080_sync_mix_period_speeds.sql',
+      '081_daily_period_achievement_event_indexes.sql',
+      '082_tournament_playoff_scheduling.sql',
+      '083_tournament_playoff_notifications.sql',
+      '084_tournament_series_notification_url.sql',
+      '085_accuracy_world_tour_uniform_balance.sql',
+      '086_repair_event_log_sequence.sql',
+      '087_tournament_admin_attention_notification.sql',
+      '088_tournament_playoff_schedule_missing_notification.sql',
+      '089_player_onboarding.sql',
     ]);
+    const achievementEventIndexes = await pool.query<{
+      indexname: string;
+      indexdef: string;
+    }>(
+      `select indexname, indexdef
+         from pg_indexes
+        where schemaname = 'public'
+          and indexname in (
+            'event_log_daily_period_closed_achievement_idx',
+            'event_log_daily_period_achievements_evaluated_idx'
+          )
+        order by indexname`,
+    );
+    expect(achievementEventIndexes.rows).toHaveLength(2);
+    for (const index of achievementEventIndexes.rows) {
+      expect(index.indexdef).toContain('(user_id, ((payload ->>');
+      expect(index.indexdef).toContain("'day_pool_id'::text");
+      expect(index.indexdef).toContain("'period_number'::text");
+      expect(index.indexdef).toContain('WHERE (type =');
+    }
+    const ratingVisibility = await pool.query<{ value: string }>(
+      `select value #>> '{}' as value from game_settings where key = 'amateur.rating_visibility'`,
+    );
+    expect(ratingVisibility.rows[0]?.value).toBe('enabled');
+
+    const mixTemplate = await pool.query<{ period_speed_presets: unknown }>(
+      `select period_speed_presets
+         from amateur_duel_template
+        where duel_kind = 'express_plus'
+          and deleted_at is null`,
+    );
+    expect(mixTemplate.rows).toHaveLength(1);
+    expect(mixTemplate.rows[0]?.period_speed_presets).toEqual([
+      {
+        periodNumber: 1,
+        goalFrequency: 0.5,
+        goalieFrequency: 0.6,
+        shooterFrequency: 0.75,
+        puckSpeedPerMs: 1.25,
+      },
+      {
+        periodNumber: 2,
+        goalFrequency: 0.5,
+        goalieFrequency: 0.6,
+        shooterFrequency: 0.7,
+        puckSpeedPerMs: 1.25,
+      },
+    ]);
+
+    const customPresets = [
+      {
+        periodNumber: 1,
+        goalFrequency: 0.41,
+        goalieFrequency: 0.52,
+        shooterFrequency: 0.63,
+        puckSpeedPerMs: 1.14,
+      },
+    ];
+    const migration080 = await fs.readFile(
+      path.join(MIGRATIONS_DIR, '080_sync_mix_period_speeds.sql'),
+      'utf8',
+    );
+    await pool.query('begin');
+    try {
+      await pool.query(
+        `update amateur_duel_template
+            set period_speed_presets = $1::jsonb
+          where duel_kind = 'express_plus'
+            and deleted_at is null`,
+        [JSON.stringify(customPresets)],
+      );
+      await pool.query(migration080);
+      const customisedMix = await pool.query<{ period_speed_presets: unknown }>(
+        `select period_speed_presets
+           from amateur_duel_template
+          where duel_kind = 'express_plus'
+            and deleted_at is null`,
+      );
+      expect(customisedMix.rows[0]?.period_speed_presets).toEqual(customPresets);
+    } finally {
+      await pool.query('rollback');
+    }
   });
 
   it('enforces the bonus snapshot, index, and enum constraint contract', async () => {
@@ -456,13 +675,15 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     );
     await pool.query(
       `insert into bonus_game
-         (id, slug, title, sort_order, target_goals, total_periods, break_duration_ms,
-          period_rules, arena_theme_id, goalkeeper_ready_url, goalkeeper_save_url)
-       values ($1, $2, $3, 1, 18, 1, 30000, $4::jsonb, $5, $6, $7)`,
+         (id, slug, title, skill_code, sort_order, target_goals, qualification_rules,
+          total_periods, break_duration_ms, period_rules, arena_theme_id,
+          goalkeeper_ready_url, goalkeeper_save_url)
+       values ($1, $2, $3, 'accuracy', 1, 18, $4::jsonb, 1, 30000, $5::jsonb, $6, $7, $8)`,
       [
         bonusGameId,
         rulesSnapshot.slug,
         rulesSnapshot.title,
+        JSON.stringify({ type: 'goals_from_shots', targetGoals: 18, shotsLimit: 30 }),
         JSON.stringify([periodRule]),
         arenaThemeId,
         rulesSnapshot.goalkeeperReadyUrl,
@@ -537,19 +758,27 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         where schemaname = 'public'
           and indexname = any($1::text[])
         order by indexname`,
-      [
-        [
-          'bonus_game_attempt_one_active_user_idx',
-          'bonus_game_economy_one_unlock_purchase_idx',
-          'bonus_game_economy_one_first_clear_reward_idx',
-        ],
-      ],
+      [['bonus_game_attempt_one_active_user_idx', 'bonus_game_economy_one_first_clear_reward_idx']],
     );
-    expect(partialUniqueIndexes.rows).toHaveLength(3);
+    expect(partialUniqueIndexes.rows).toHaveLength(2);
     for (const index of partialUniqueIndexes.rows) {
       expect(index.indexdef).toContain('CREATE UNIQUE INDEX');
       expect(index.indexdef).toContain(' WHERE ');
     }
+
+    const unlockPurchaseIndex = await pool.query<{ indexdef: string }>(
+      `select indexdef
+         from pg_indexes
+        where schemaname = 'public'
+          and indexname = 'bonus_game_economy_unlock_purchase_idx'`,
+    );
+    expect(unlockPurchaseIndex.rows).toHaveLength(1);
+    expect(unlockPurchaseIndex.rows[0]?.indexdef).toContain('CREATE INDEX');
+    expect(unlockPurchaseIndex.rows[0]?.indexdef).not.toContain('CREATE UNIQUE INDEX');
+    expect(unlockPurchaseIndex.rows[0]?.indexdef).toContain('(user_id, bonus_game_id)');
+    expect(unlockPurchaseIndex.rows[0]?.indexdef).toContain(
+      "WHERE (kind = 'unlock_purchase'::text)",
+    );
 
     const bonusShotIndex = await pool.query<{ indexdef: string }>(
       `select indexdef
@@ -589,25 +818,25 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
   });
 });
 
-describe.skipIf(!hasIntegrationEnv)('060 player onboarding migration', () => {
+describe.skipIf(!hasIntegrationEnv)('089 player onboarding migration', () => {
   let pool: Pool;
-  let migrationsBefore060Dir: string | undefined;
+  let migrationsBefore089Dir: string | undefined;
 
   beforeAll(async () => {
     pool = createTestPool();
     await resetDatabase(pool);
-    migrationsBefore060Dir = await createMigrationsDirBefore('060_player_onboarding.sql');
+    migrationsBefore089Dir = await createMigrationsDirBefore('089_player_onboarding.sql');
   });
 
   afterAll(async () => {
     await pool.end();
-    if (migrationsBefore060Dir) {
-      await fs.rm(migrationsBefore060Dir, { recursive: true, force: true });
+    if (migrationsBefore089Dir) {
+      await fs.rm(migrationsBefore089Dir, { recursive: true, force: true });
     }
   });
 
   it('preserves existing users and defaults onboarding state for new users', async () => {
-    await applyMigrations(pool, migrationsBefore060Dir!);
+    await applyMigrations(pool, migrationsBefore089Dir!);
 
     const existingUserId = '00000000-0000-4060-8060-000000000001';
     const createdUserId = '00000000-0000-4060-8060-000000000002';
@@ -967,7 +1196,37 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '057_amateur_no_inventory_penalty_settings.sql',
       '058_bonus_games_and_home_arenas.sql',
       '059_seed_bonus_games.sql',
-      '060_player_onboarding.sql',
+      '060_bonus_games_linear_goalies.sql',
+      '061_tournaments.sql',
+      '062_tournament_duel_concurrency.sql',
+      '063_tournament_manual_push.sql',
+      '064_tournament_live_proposal_active.sql',
+      '065_tournament_fixture_venue.sql',
+      '066_enable_tournaments.sql',
+      '067_tournament_artwork.sql',
+      '068_tournament_revision_history.sql',
+      '069_bonus_game_qualifications.sql',
+      '069_official_dialogs.sql',
+      '070_bonus_game_preview_location_cards.sql',
+      '071_bonus_game_accuracy_world_tour.sql',
+      '072_tournament_fixture_series_lookup.sql',
+      '073_backfill_first_daily_game.sql',
+      '074_allow_bonus_repurchase_after_refund.sql',
+      '075_tournament_classic.sql',
+      '076_speed_bonus_game_balance.sql',
+      '077_accuracy_world_tour_movement_balance.sql',
+      '078_amateur_rating_visibility.sql',
+      '079_rename_express_plus_to_mix.sql',
+      '080_sync_mix_period_speeds.sql',
+      '081_daily_period_achievement_event_indexes.sql',
+      '082_tournament_playoff_scheduling.sql',
+      '083_tournament_playoff_notifications.sql',
+      '084_tournament_series_notification_url.sql',
+      '085_accuracy_world_tour_uniform_balance.sql',
+      '086_repair_event_log_sequence.sql',
+      '087_tournament_admin_attention_notification.sql',
+      '088_tournament_playoff_schedule_missing_notification.sql',
+      '089_player_onboarding.sql',
     ]);
 
     const activeInventory = await pool.query<{

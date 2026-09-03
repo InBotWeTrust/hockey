@@ -5,6 +5,7 @@ import { Gamepad2, MessageCircle, Package, ShieldCheck, User } from 'lucide-reac
 import { apiFetch } from '../api/apiFetch.js';
 import { achievementKeys, fetchAchievements } from '../api/achievements.js';
 import { fetchAmateurEvents, type AmateurDuelMatch } from '../api/amateurDuel.js';
+import { fetchActiveClassicTournamentGames } from '../api/tournamentClassic.js';
 import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { AuthUser } from '../auth/authStore.js';
@@ -102,19 +103,20 @@ function isOpenRinkRoute(location: NavLocation): boolean {
   const params = new URLSearchParams(location.search);
   const view = params.get('view');
   if (view === 'daily') return true;
+  if (view === 'classic') return true;
   if (view === 'training' && params.get('play') === '1') return true;
   return view === 'amateur' && params.has('match') && params.get('play') === '1';
 }
 
 export function isBottomNavVisible(location: string | NavLocation, user: AuthUser | null): boolean {
   const { pathname } = normalizeNavLocation(location);
-  const isDemo = pathname === '/demo';
   const isInChatRoom = /^\/chat\/[^/]+(?:\/posts\/[^/]+\/comments)?$/.test(pathname);
   return (
     pathname !== '/login' &&
+    pathname !== '/demo' &&
     !isInChatRoom &&
     !isOpenRinkRoute(normalizeNavLocation(location)) &&
-    (Boolean(user) || isDemo)
+    Boolean(user)
   );
 }
 
@@ -145,6 +147,12 @@ export function BottomNav(): JSX.Element | null {
     queryFn: fetchAmateurEvents,
     enabled: Boolean(user) && !isDemo,
     refetchInterval: 15_000,
+  });
+  const { data: classicTournamentGames } = useQuery({
+    queryKey: ['tournaments', 'classic', 'active'],
+    queryFn: fetchActiveClassicTournamentGames,
+    enabled: Boolean(user) && !isDemo,
+    refetchInterval: 30_000,
   });
   const { data: weeklyChallenge } = useQuery({
     queryKey: ['weekly-challenge', 'nav'],
@@ -215,7 +223,11 @@ export function BottomNav(): JSX.Element | null {
   const isAdmin = location.pathname.startsWith('/admin');
   const isChat = !isDemo && isChatRoute(location.pathname);
   const showAdmin = !isDemo && user?.role === 'admin';
-  const gameActionCount = (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length;
+  const navCount = showAdmin ? 5 : 4;
+  const activeIndex = isGame ? 0 : isSections ? 1 : isChat ? 2 : isProfile ? 3 : 4;
+  const gameActionCount =
+    (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length +
+    (classicTournamentGames?.games ?? []).filter((game) => game.state !== 'closed').length;
   const currentSectionActionCount =
     weeklyChallenge?.challenge?.canJoin === true ||
     weeklyChallenge?.challenge?.canClaimReward === true
@@ -295,13 +307,21 @@ export function BottomNav(): JSX.Element | null {
           height: 54,
           borderRadius: 999,
           display: 'grid',
-          gridTemplateColumns: `repeat(${showAdmin ? 5 : 4}, 1fr)`,
+          gridTemplateColumns: `repeat(${navCount}, 1fr)`,
           alignItems: 'center',
           padding: '0 6px',
           zIndex: 500,
           pointerEvents: isDemo ? 'none' : 'auto',
         }}
       >
+        <span
+          className="bottom-nav__active-glow"
+          aria-hidden="true"
+          style={{
+            width: `calc((100% - 12px) / ${navCount})`,
+            transform: `translateX(${activeIndex * 100}%)`,
+          }}
+        />
         <NavTab
           label="Игра"
           disabled={isDemo}
@@ -314,6 +334,7 @@ export function BottomNav(): JSX.Element | null {
                   aria-label={`События игры: ${gameActionCount}`}
                   style={{
                     position: 'absolute',
+                    zIndex: 2,
                     top: -4,
                     right: -6,
                     minWidth: 16,
@@ -349,6 +370,7 @@ export function BottomNav(): JSX.Element | null {
                   aria-label={`События разделов: ${sectionActionCount}`}
                   style={{
                     position: 'absolute',
+                    zIndex: 2,
                     top: -4,
                     right: -6,
                     minWidth: 16,
@@ -384,6 +406,7 @@ export function BottomNav(): JSX.Element | null {
                   aria-label={`Непрочитанные: ${totalUnread}`}
                   style={{
                     position: 'absolute',
+                    zIndex: 2,
                     top: -4,
                     right: -6,
                     minWidth: 16,
@@ -436,10 +459,14 @@ interface NavTabProps {
 }
 
 function NavTab({ label, active, icon, onClick, disabled = false }: NavTabProps): JSX.Element {
+  const handleClick = (): void => {
+    onClick();
+  };
+
   return (
     <button
       type="button"
-      onClick={disabled ? undefined : onClick}
+      onClick={disabled ? undefined : handleClick}
       disabled={disabled}
       aria-label={label}
       aria-current={active ? 'page' : undefined}
@@ -447,7 +474,6 @@ function NavTab({ label, active, icon, onClick, disabled = false }: NavTabProps)
     >
       <span className={`bottom-nav__icon-wrap${active ? ' bottom-nav__icon-wrap--active' : ''}`}>
         {icon}
-        {active && <span className="bottom-nav__active-indicator" aria-hidden="true" />}
       </span>
     </button>
   );

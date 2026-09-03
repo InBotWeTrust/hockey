@@ -3,6 +3,9 @@ import fp from 'fastify-plugin';
 import { cleanupPushDeliveryLog, processPushDeliveryQueue } from '../push/queue.js';
 import { runScheduledPushes } from '../push/scheduled.js';
 import type { PushVapidOptions } from '../push/service.js';
+import { finalizeDueTournamentDailyDays } from '../tournament/dailyAggregate.js';
+import { finalizeDueClassicTournamentDays } from '../tournament/classicGame.js';
+import { isTournamentFeatureEnabled } from '../tournament/service.js';
 
 export interface PushSchedulerPluginOptions extends PushVapidOptions {
   scheduleEnabled?: boolean;
@@ -10,6 +13,7 @@ export interface PushSchedulerPluginOptions extends PushVapidOptions {
   intervalMs?: number;
   workerBatchSize?: number;
   workerConcurrency?: number;
+  tournamentGameSeedSecret?: string;
 }
 
 const DEFAULT_INTERVAL_MS = 60 * 1000;
@@ -25,6 +29,26 @@ const plugin: FastifyPluginAsync<PushSchedulerPluginOptions> = async (app, opts)
     if (running) return;
     running = true;
     try {
+      const tournamentMaintenance =
+        opts.scheduleEnabled === false || !(await isTournamentFeatureEnabled(app.pg))
+          ? { finalizedDays: 0, finalizedParticipants: 0 }
+          : await (async () => {
+              const now = new Date();
+              const [daily, classic] = await Promise.all([
+                finalizeDueTournamentDailyDays(app.pg, now),
+                opts.tournamentGameSeedSecret === undefined
+                  ? Promise.resolve({ finalizedDays: 0, finalizedParticipants: 0 })
+                  : finalizeDueClassicTournamentDays(app.pg, {
+                      now,
+                      seedSecret: opts.tournamentGameSeedSecret,
+                    }),
+              ]);
+              return {
+                finalizedDays: daily.finalizedDays + classic.finalizedDays,
+                finalizedParticipants:
+                  daily.finalizedParticipants + classic.finalizedParticipants,
+              };
+            })();
       const result =
         opts.scheduleEnabled === false
           ? {
@@ -67,11 +91,18 @@ const plugin: FastifyPluginAsync<PushSchedulerPluginOptions> = async (app, opts)
           workerResult.sent +
           workerResult.failed +
           workerResult.retried +
+          tournamentMaintenance.finalizedDays +
+          tournamentMaintenance.finalizedParticipants +
           cleaned,
       );
       if (touched > 0) {
         app.log.info(
-          { pushScheduler: result, pushWorker: workerResult, pushCleanupDeleted: cleaned },
+          {
+            tournamentMaintenance,
+            pushScheduler: result,
+            pushWorker: workerResult,
+            pushCleanupDeleted: cleaned,
+          },
           'push tick completed',
         );
       }

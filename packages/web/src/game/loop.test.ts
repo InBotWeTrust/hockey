@@ -156,6 +156,29 @@ describe('createGameLoop', () => {
     nowSpy.mockRestore();
   });
 
+  it('accounts for the intended flight pause instead of accumulated timer delay', () => {
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(1_000);
+    const loop = makeLoop({ getGoalieConfig: () => stationaryCustomGoalie });
+    const ticker = makeTicker();
+    loop.attach(ticker);
+    const onTick = ticker.add.mock.calls[0]?.[0] as ((ticker: Ticker) => void) | undefined;
+
+    nowSpy.mockReturnValue(1_100);
+    onTick?.(ticker);
+    loop.beginShooterPause();
+
+    // The browser delivered a nominal 433 ms flight timer late. Bonus-game
+    // anti-cheat validates the nominal flight pause, not event-loop jitter.
+    nowSpy.mockReturnValue(1_700);
+    onTick?.(ticker);
+    (loop.endShooterPause as (expectedDurationMs?: number) => void)(433);
+
+    expect(loop.getSceneT()).toBe(700);
+    expect(loop.getShooterT()).toBe(267);
+    nowSpy.mockRestore();
+  });
+
   it('rebases scene and shooter clocks independently after reconciliation', () => {
     const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1_000);
     const loop = makeLoop({ getInitialElapsedMs: () => 500 });

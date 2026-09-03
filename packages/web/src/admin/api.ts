@@ -1,4 +1,5 @@
 import { apiFetch } from '../api/apiFetch.js';
+import type { ChatAttachmentDTO } from '../chat/api.js';
 
 export type AdminRole = 'player' | 'admin';
 export type AdminIdentitySource = 'custom' | 'telegram' | 'vk';
@@ -16,8 +17,17 @@ export type AdminPushNotificationKey =
   | 'training.available'
   | 'duel.challenge_received'
   | 'duel.result_ready'
+  | 'tournament.registration_blocked'
+  | 'tournament.playoff_blocked'
+  | 'tournament.playoff_schedule_missing'
   | 'news.posted';
-export type AdminPushNotificationCategory = 'chat' | 'daily' | 'training' | 'duel' | 'news';
+export type AdminPushNotificationCategory =
+  | 'chat'
+  | 'daily'
+  | 'training'
+  | 'duel'
+  | 'tournament'
+  | 'news';
 export type AdminPushDeliveryStatus =
   | 'queued'
   | 'processing'
@@ -60,6 +70,10 @@ export interface AdminSummary {
   last24h: { shots: number; goals: number; mismatches: number };
   dashboard: AdminDashboard;
   gameCoreVersion: number;
+}
+
+export function fetchAdminTournamentPendingApplications(): Promise<{ count: number }> {
+  return apiFetch<{ count: number }>('/admin/tournaments/pending-applications');
 }
 
 export interface AdminDashboardSeriesPoint {
@@ -160,6 +174,7 @@ export interface AdminNotificationStats {
     dailyGame: { count: number; percent: number };
     trainingAvailable: { count: number; percent: number };
     duelEvents: { count: number; percent: number };
+    tournamentEvents: { count: number; percent: number };
     gameNews: { count: number; percent: number };
   };
 }
@@ -282,6 +297,7 @@ export interface AdminUser {
       dailyGame: boolean;
       trainingAvailable: boolean;
       duelEvents: boolean;
+      tournamentEvents: boolean;
       gameNews: boolean;
     };
   };
@@ -415,12 +431,26 @@ export interface AdminDuelPeriodSpeedPreset {
 
 export type AdminBonusGameStatus = 'draft' | 'active' | 'archived';
 export type AdminBonusGameAccessType = 'free' | 'paid';
+export type AdminBonusSkillCode = 'speed' | 'accuracy';
 export type AdminBonusGoaliePattern = 'linear' | 'sine' | 'dash';
+export type AdminBonusQualificationRules =
+  | {
+      type: 'goals_from_shots';
+      targetGoals: number;
+      shotsLimit: number;
+      requiredGoalStreak?: number;
+    }
+  | {
+      type: 'goals_in_time';
+      targetGoals: number;
+      activeTimeMs: number;
+      requiredGoalStreak?: number;
+    };
 
 export interface AdminBonusPeriodRule {
   periodNumber: number;
   durationMs: number;
-  shotsLimit: number;
+  shotsLimit: number | null;
   goalFrequency: number;
   goalieFrequency: number;
   shooterFrequency: number;
@@ -444,14 +474,21 @@ export interface AdminBonusGame {
   id: string;
   slug: string;
   title: string;
+  skillCode: AdminBonusSkillCode;
   description: string;
   sortOrder: number;
   status: AdminBonusGameStatus;
   accessType: AdminBonusGameAccessType;
   unlockPriceStars: number;
   targetGoals: number;
+  qualificationRules: AdminBonusQualificationRules;
   totalPeriods: number;
   breakDurationMs: number;
+  useInventory: boolean;
+  previewTitle: string;
+  previewStory: string;
+  previewArtworkUrl: string;
+  previewRevision: number;
   periods: AdminBonusPeriodRule[];
   rewardCoins: number;
   rewardStars: number;
@@ -476,6 +513,7 @@ export interface AdminBonusArenaInput {
 }
 
 export interface AdminBonusGameDefinitionInput {
+  skillCode: AdminBonusSkillCode;
   slug: string;
   title: string;
   description: string;
@@ -484,8 +522,14 @@ export interface AdminBonusGameDefinitionInput {
   accessType: AdminBonusGameAccessType;
   unlockPriceStars: number;
   targetGoals: number;
+  qualificationRules: AdminBonusQualificationRules;
   totalPeriods: number;
   breakDurationMs: number;
+  useInventory: boolean;
+  previewTitle: string;
+  previewStory: string;
+  previewArtworkUrl: string;
+  previewRevision: number;
   periods: AdminBonusPeriodRule[];
   rewardCoins: number;
   rewardStars: number;
@@ -497,13 +541,18 @@ export interface AdminBonusGameDefinitionInput {
 export type AdminBonusGameInput = AdminBonusGameDefinitionInput &
   ({ arena: AdminBonusArenaInput; arenaThemeId?: never } | { arenaThemeId: string; arena?: never });
 
-export type AdminBonusGamePatch = Partial<AdminBonusGameDefinitionInput> &
+export type AdminBonusGamePatch = Partial<Omit<AdminBonusGameDefinitionInput, 'skillCode'>> &
   (
     | { arena?: Partial<AdminBonusArenaInput>; arenaThemeId?: never }
     | { arenaThemeId: string; arena?: never }
   );
 
-export type AdminBonusMediaKind = 'arena' | 'thumbnail' | 'goalkeeper_ready' | 'goalkeeper_save';
+export type AdminBonusMediaKind =
+  | 'arena'
+  | 'thumbnail'
+  | 'goalkeeper_ready'
+  | 'goalkeeper_save'
+  | 'preview';
 
 export interface AdminBonusMedia {
   id: string;
@@ -517,6 +566,7 @@ export interface AdminBonusMedia {
 }
 
 export interface AdminBonusGameReorderRequest {
+  skillCode: AdminBonusSkillCode;
   gameIds: string[];
 }
 
@@ -825,6 +875,55 @@ export interface AdminChannelResponse {
   posts: AdminChannelPost[];
 }
 
+export type AdminOfficialDialogFilter = 'new' | 'open' | 'closed';
+
+export interface AdminOfficialDialog {
+  chatId: string;
+  status: 'open' | 'closed';
+  isNew: boolean;
+  player: {
+    userId: string;
+    displayName: string;
+    avatarUrl: string | null;
+    telegramId: string | null;
+    vkId: string | null;
+  };
+  lastMessage: {
+    id: string;
+    content: string;
+    createdAt: string;
+    fromOfficial: boolean;
+  };
+}
+
+export interface AdminOfficialDialogMessage {
+  id: string;
+  chatId: string;
+  senderId: string;
+  senderDisplayName: string | null;
+  senderAvatarUrl: string | null;
+  content: string;
+  replyToId: string | null;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  isEdited: boolean;
+  reactions: Array<{ emoji: string; count: number; reactedByMe: boolean }>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AdminOfficialDialogsResponse {
+  unreadCount: number;
+  dialogs: AdminOfficialDialog[];
+  nextOffset: number | null;
+}
+
+export interface AdminOfficialAccount {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
 export interface AdminInventoryItemPatch {
   photoUrl?: string;
   title?: string;
@@ -1035,6 +1134,71 @@ export function fetchAdminChannelNews(period: AdminChannelPeriod): Promise<Admin
   return apiFetch<AdminChannelResponse>(`/admin/channel/news?${params.toString()}`);
 }
 
+export function fetchAdminOfficialDialogs(
+  status: AdminOfficialDialogFilter,
+  q = '',
+): Promise<AdminOfficialDialogsResponse> {
+  const params = new URLSearchParams({ status, q });
+  return apiFetch<AdminOfficialDialogsResponse>(
+    `/admin/communications/dialogs?${params.toString()}`,
+  );
+}
+
+export function fetchAdminOfficialDialogMessages(
+  chatId: string,
+): Promise<AdminOfficialDialogMessage[]> {
+  return apiFetch<AdminOfficialDialogMessage[]>(
+    `/admin/communications/dialogs/${encodeURIComponent(chatId)}/messages`,
+  );
+}
+
+export function sendAdminOfficialDialogMessage(
+  chatId: string,
+  content: string,
+  attachmentIds: string[] = [],
+): Promise<AdminOfficialDialogMessage> {
+  return apiFetch<AdminOfficialDialogMessage>(
+    `/admin/communications/dialogs/${encodeURIComponent(chatId)}/messages`,
+    { method: 'POST', body: JSON.stringify({ content, attachmentIds }) },
+  );
+}
+
+export function uploadAdminOfficialDialogAttachment(
+  chatId: string,
+  file: File,
+): Promise<{ media: ChatAttachmentDTO }> {
+  return apiFetch(`/admin/communications/dialogs/${encodeURIComponent(chatId)}/uploads`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'X-File-Name': file.name,
+    },
+    body: file,
+  });
+}
+
+export function patchAdminOfficialDialog(
+  chatId: string,
+  body: { status?: 'open' | 'closed'; markRead?: boolean },
+): Promise<{ status: 'open' | 'closed'; lastAdminReadAt: string | null }> {
+  return apiFetch(`/admin/communications/dialogs/${encodeURIComponent(chatId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+export function fetchAdminOfficialAccount(): Promise<AdminOfficialAccount> {
+  return apiFetch<AdminOfficialAccount>('/admin/communications/official-account');
+}
+
+export function uploadAdminOfficialAccountAvatar(file: File): Promise<{ avatarUrl: string }> {
+  return apiFetch('/admin/communications/official-account/avatar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'image/webp', 'X-File-Name': file.name },
+    body: file,
+  });
+}
+
 export function patchAdminChatProfile(
   chatId: string,
   body: { name?: string; description?: string },
@@ -1180,10 +1344,12 @@ export function uploadAdminBonusGameMedia(
   file: File,
 ): Promise<{ media: AdminBonusMedia }> {
   if (file.type !== 'image/webp') {
-    return Promise.reject(new Error('Можно загрузить только файл WebP.'));
+    return Promise.reject(
+      new Error('Этот формат изображения не поддерживается. Выберите другой файл.'),
+    );
   }
   if (file.size === 0) {
-    return Promise.reject(new Error('Файл WebP пустой.'));
+    return Promise.reject(new Error('Выбранное изображение пустое. Выберите другой файл.'));
   }
   return apiFetch<{ media: AdminBonusMedia }>(`/admin/bonus-games/media/${kind}`, {
     method: 'POST',

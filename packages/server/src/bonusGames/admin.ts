@@ -12,16 +12,33 @@ import {
 } from '../storage/objectStorage.js';
 import { lockBonusGameCatalogForMutation } from './service.js';
 import {
+  normalizeBonusQualificationRules,
+  validateBonusSkillRules,
+  type BonusQualificationRules,
+} from './qualification.js';
+import {
   parseBonusPeriodRules,
   type BonusGameAccessType,
   type BonusGameStatus,
+  type BonusSkillCode,
   type BonusPeriodRule,
 } from './types.js';
 
 const uuid = z.string().uuid();
-const mediaKinds = ['arena', 'thumbnail', 'goalkeeper_ready', 'goalkeeper_save'] as const;
+const mediaKinds = [
+  'arena',
+  'thumbnail',
+  'goalkeeper_ready',
+  'goalkeeper_save',
+  'preview',
+] as const;
 type BonusMediaKind = (typeof mediaKinds)[number];
-type BonusMediaReferenceField = 'arena' | 'goalkeeper_ready' | 'goalkeeper_save';
+type BonusMediaReferenceField =
+  | 'arena_artwork'
+  | 'arena_thumbnail'
+  | 'goalkeeper_ready'
+  | 'goalkeeper_save'
+  | 'preview';
 const BONUS_MEDIA_MAX_PIXELS = 2048 * 2048;
 
 const approvedStaticMediaSlugs = [
@@ -37,14 +54,50 @@ const approvedStaticMediaSlugs = [
   'space',
 ] as const;
 
+const approvedWorldTourMediaSlugs = [
+  'moscow',
+  'istanbul',
+  'rome',
+  'paris',
+  'london',
+  'new-york',
+  'rio-de-janeiro',
+  'cape-town',
+  'dubai',
+  'mumbai',
+  'singapore',
+  'beijing',
+  'tokyo',
+] as const;
+
 const approvedStaticMediaPaths = {
-  arena: new Set(approvedStaticMediaSlugs.map((slug) => `/bonus-games/arenas/${slug}.webp`)),
-  goalkeeper_ready: new Set(
-    approvedStaticMediaSlugs.map((slug) => `/bonus-games/goalkeepers/${slug}-ready.webp`),
-  ),
-  goalkeeper_save: new Set(
-    approvedStaticMediaSlugs.map((slug) => `/bonus-games/goalkeepers/${slug}-save.webp`),
-  ),
+  arena_artwork: new Set([
+    ...approvedStaticMediaSlugs.map((slug) => `/bonus-games/arenas/${slug}.webp`),
+    ...approvedWorldTourMediaSlugs.map((slug) => `/bonus-games/world-tour/arenas/${slug}.webp`),
+  ]),
+  arena_thumbnail: new Set([
+    ...approvedStaticMediaSlugs.map((slug) => `/bonus-games/arenas/${slug}.webp`),
+    ...approvedWorldTourMediaSlugs.map((slug) => `/bonus-games/world-tour/previews/${slug}.webp`),
+  ]),
+  goalkeeper_ready: new Set([
+    ...approvedStaticMediaSlugs.map((slug) => `/bonus-games/goalkeepers/${slug}-ready.webp`),
+    ...approvedWorldTourMediaSlugs.map(
+      (slug) => `/bonus-games/world-tour/goalkeepers/${slug}-ready.webp`,
+    ),
+  ]),
+  goalkeeper_save: new Set([
+    ...approvedStaticMediaSlugs.map((slug) => `/bonus-games/goalkeepers/${slug}-save.webp`),
+    ...approvedWorldTourMediaSlugs.map(
+      (slug) => `/bonus-games/world-tour/goalkeepers/${slug}-save.webp`,
+    ),
+  ]),
+  preview: new Set([
+    ...approvedStaticMediaSlugs.flatMap((slug) => [
+      `/bonus-games/location-cards/${slug}.webp`,
+      `/bonus-games/previews/${slug}.webp`,
+    ]),
+    ...approvedWorldTourMediaSlugs.map((slug) => `/bonus-games/world-tour/previews/${slug}.webp`),
+  ]),
 } satisfies Record<BonusMediaReferenceField, ReadonlySet<string>>;
 
 const slug = z
@@ -57,6 +110,7 @@ const title = z.string().trim().min(1).max(120);
 const mediaUrl = z.string().trim().max(2048);
 const statusSchema = z.enum(['draft', 'active', 'archived']);
 const accessTypeSchema = z.enum(['free', 'paid']);
+const skillCodeSchema = z.enum(['speed', 'accuracy']);
 
 const arenaCreateSchema = z
   .object({
@@ -90,8 +144,14 @@ const definitionFields = {
   accessType: accessTypeSchema,
   unlockPriceStars: z.number().int().min(0).max(10_000_000),
   targetGoals: z.number().int().min(1).max(1_000_000),
+  qualificationRules: z.unknown(),
   totalPeriods: z.number().int().min(1).max(9),
   breakDurationMs: z.number().int().min(0).max(10_800_000),
+  useInventory: z.boolean(),
+  previewTitle: z.string().trim().max(120),
+  previewStory: z.string().trim().max(2_000),
+  previewArtworkUrl: mediaUrl,
+  previewRevision: z.number().int().min(1).max(1_000_000),
   periods: z.unknown(),
   rewardCoins: z.number().int().min(0).max(10_000_000),
   rewardStars: z.number().int().min(0).max(10_000_000),
@@ -103,11 +163,18 @@ const definitionFields = {
 const createGameSchema = z
   .object({
     ...definitionFields,
+    skillCode: skillCodeSchema,
     description: definitionFields.description.default(''),
     status: definitionFields.status.default('draft'),
     accessType: definitionFields.accessType.default('free'),
     unlockPriceStars: definitionFields.unlockPriceStars.default(0),
     breakDurationMs: definitionFields.breakDurationMs.default(0),
+    qualificationRules: definitionFields.qualificationRules.optional(),
+    useInventory: definitionFields.useInventory.default(false),
+    previewTitle: definitionFields.previewTitle.default(''),
+    previewStory: definitionFields.previewStory.default(''),
+    previewArtworkUrl: definitionFields.previewArtworkUrl.default(''),
+    previewRevision: definitionFields.previewRevision.default(1),
     rewardCoins: definitionFields.rewardCoins.default(0),
     rewardStars: definitionFields.rewardStars.default(0),
     rewardExperience: definitionFields.rewardExperience.default(0),
@@ -132,8 +199,14 @@ const patchGameSchema = z
     accessType: definitionFields.accessType.optional(),
     unlockPriceStars: definitionFields.unlockPriceStars.optional(),
     targetGoals: definitionFields.targetGoals.optional(),
+    qualificationRules: definitionFields.qualificationRules.optional(),
     totalPeriods: definitionFields.totalPeriods.optional(),
     breakDurationMs: definitionFields.breakDurationMs.optional(),
+    useInventory: definitionFields.useInventory.optional(),
+    previewTitle: definitionFields.previewTitle.optional(),
+    previewStory: definitionFields.previewStory.optional(),
+    previewArtworkUrl: definitionFields.previewArtworkUrl.optional(),
+    previewRevision: definitionFields.previewRevision.optional(),
     periods: definitionFields.periods.optional(),
     rewardCoins: definitionFields.rewardCoins.optional(),
     rewardStars: definitionFields.rewardStars.optional(),
@@ -152,6 +225,7 @@ const patchGameSchema = z
 
 const reorderSchema = z
   .object({
+    skillCode: skillCodeSchema,
     gameIds: z.array(uuid).max(1_000),
   })
   .strict()
@@ -182,14 +256,21 @@ interface AdminGameRow {
   id: string;
   slug: string;
   title: string;
+  skill_code: BonusSkillCode;
   description: string;
   sort_order: number;
   status: BonusGameStatus;
   access_type: BonusGameAccessType;
   unlock_price_stars: number;
   target_goals: number;
+  qualification_rules: unknown | null;
   total_periods: number;
   break_duration_ms: number;
+  use_inventory: boolean;
+  preview_title: string;
+  preview_story: string;
+  preview_artwork_url: string;
+  preview_revision: number;
   period_rules: BonusPeriodRule[];
   reward_coins: number;
   reward_stars: number;
@@ -214,14 +295,21 @@ interface MutableDefinition {
   id: string;
   slug: string;
   title: string;
+  skillCode: BonusSkillCode;
   description: string;
   sortOrder: number;
   status: BonusGameStatus;
   accessType: BonusGameAccessType;
   unlockPriceStars: number;
   targetGoals: number;
+  qualificationRules: BonusQualificationRules;
   totalPeriods: number;
   breakDurationMs: number;
+  useInventory: boolean;
+  previewTitle: string;
+  previewStory: string;
+  previewArtworkUrl: string;
+  previewRevision: number;
   periods: BonusPeriodRule[];
   rewardCoins: number;
   rewardStars: number;
@@ -325,14 +413,24 @@ function mapGame(row: AdminGameRow) {
     id: row.id,
     slug: row.slug,
     title: row.title,
+    skillCode: row.skill_code,
     description: row.description,
     sortOrder: Number(row.sort_order),
     status: row.status,
     accessType: row.access_type,
     unlockPriceStars: Number(row.unlock_price_stars),
     targetGoals: Number(row.target_goals),
+    qualificationRules: normalizeBonusQualificationRules(row.qualification_rules, {
+      targetGoals: Number(row.target_goals),
+      shotsLimit: row.period_rules.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
+    }),
     totalPeriods: Number(row.total_periods),
     breakDurationMs: Number(row.break_duration_ms),
+    useInventory: row.use_inventory,
+    previewTitle: row.preview_title,
+    previewStory: row.preview_story,
+    previewArtworkUrl: row.preview_artwork_url,
+    previewRevision: Number(row.preview_revision),
     periods: row.period_rules,
     rewardCoins: Number(row.reward_coins),
     rewardStars: Number(row.reward_stars),
@@ -481,18 +579,29 @@ async function assertArenaIsExclusive(
 }
 
 function toDefinition(row: AdminGameRow, periods: BonusPeriodRule[]): MutableDefinition {
+  const qualificationRules = normalizeBonusQualificationRules(row.qualification_rules, {
+    targetGoals: Number(row.target_goals),
+    shotsLimit: periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
+  });
   return {
     id: row.id,
     slug: row.slug,
     title: row.title,
+    skillCode: row.skill_code,
     description: row.description,
     sortOrder: Number(row.sort_order),
     status: row.status,
     accessType: row.access_type,
     unlockPriceStars: Number(row.unlock_price_stars),
     targetGoals: Number(row.target_goals),
+    qualificationRules,
     totalPeriods: Number(row.total_periods),
     breakDurationMs: Number(row.break_duration_ms),
+    useInventory: row.use_inventory,
+    previewTitle: row.preview_title,
+    previewStory: row.preview_story,
+    previewArtworkUrl: row.preview_artwork_url,
+    previewRevision: Number(row.preview_revision),
     periods,
     rewardCoins: Number(row.reward_coins),
     rewardStars: Number(row.reward_stars),
@@ -517,6 +626,16 @@ function applyPatch(
     targetGoals,
     activation,
   );
+  const qualificationRules = normalizeBonusQualificationRules(
+    input.qualificationRules ??
+      (input.targetGoals === undefined
+        ? current.qualificationRules
+        : { ...current.qualificationRules, targetGoals }),
+    {
+      targetGoals,
+      shotsLimit: periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
+    },
+  );
   return {
     ...current,
     ...(input.slug !== undefined ? { slug: input.slug } : {}),
@@ -527,8 +646,16 @@ function applyPatch(
     ...(input.accessType !== undefined ? { accessType: input.accessType } : {}),
     ...(input.unlockPriceStars !== undefined ? { unlockPriceStars: input.unlockPriceStars } : {}),
     targetGoals,
+    qualificationRules,
     totalPeriods,
     ...(input.breakDurationMs !== undefined ? { breakDurationMs: input.breakDurationMs } : {}),
+    ...(input.useInventory !== undefined ? { useInventory: input.useInventory } : {}),
+    ...(input.previewTitle !== undefined ? { previewTitle: input.previewTitle } : {}),
+    ...(input.previewStory !== undefined ? { previewStory: input.previewStory } : {}),
+    ...(input.previewArtworkUrl !== undefined
+      ? { previewArtworkUrl: input.previewArtworkUrl }
+      : {}),
+    ...(input.previewRevision !== undefined ? { previewRevision: input.previewRevision } : {}),
     periods,
     ...(input.rewardCoins !== undefined ? { rewardCoins: input.rewardCoins } : {}),
     ...(input.rewardStars !== undefined ? { rewardStars: input.rewardStars } : {}),
@@ -548,8 +675,14 @@ function revisionFingerprint(definition: MutableDefinition, arena: ArenaRow): st
     accessType: definition.accessType,
     unlockPriceStars: definition.unlockPriceStars,
     targetGoals: definition.targetGoals,
+    qualificationRules: definition.qualificationRules,
     totalPeriods: definition.totalPeriods,
     breakDurationMs: definition.breakDurationMs,
+    useInventory: definition.useInventory,
+    previewTitle: definition.previewTitle,
+    previewStory: definition.previewStory,
+    previewArtworkUrl: definition.previewArtworkUrl,
+    previewRevision: definition.previewRevision,
     periods: definition.periods,
     rewardCoins: definition.rewardCoins,
     rewardStars: definition.rewardStars,
@@ -606,7 +739,6 @@ async function assertActiveDefinitionComplete(
 ): Promise<void> {
   if (
     arena.status !== 'active' ||
-    !arena.is_selectable ||
     (definition.accessType === 'free' && definition.unlockPriceStars !== 0) ||
     (definition.accessType === 'paid' && definition.unlockPriceStars < 1)
   ) {
@@ -614,12 +746,23 @@ async function assertActiveDefinitionComplete(
   }
 
   parsePeriods(definition.periods, definition.totalPeriods, definition.targetGoals, true);
+  try {
+    validateBonusSkillRules(
+      definition.skillCode,
+      definition.qualificationRules,
+      definition.periods,
+    );
+  } catch {
+    throw incompleteDefinition();
+  }
   const mediaReferences: Array<[string, BonusMediaReferenceField]> = [
-    [arena.artwork_url, 'arena'],
-    [arena.thumbnail_url, 'arena'],
+    [arena.artwork_url, 'arena_artwork'],
+    [arena.thumbnail_url, 'arena_thumbnail'],
     [definition.goalkeeperReadyUrl, 'goalkeeper_ready'],
     [definition.goalkeeperSaveUrl, 'goalkeeper_save'],
+    [definition.previewArtworkUrl, 'preview'],
   ];
+  if (!definition.previewTitle || !definition.previewStory) throw incompleteDefinition();
   for (const [reference, field] of mediaReferences) {
     if (!(await isValidMediaReference(client, reference, mediaAccessSecret, field))) {
       throw incompleteDefinition();
@@ -628,9 +771,9 @@ async function assertActiveDefinitionComplete(
 
   const activeOrders = await client.query<{ sort_order: number }>(
     `select sort_order from bonus_game
-      where status = 'active' and id <> $1
+      where status = 'active' and skill_code = $2 and id <> $1
       order by sort_order`,
-    [definition.id],
+    [definition.id, definition.skillCode],
   );
   const proposed = [
     ...activeOrders.rows.map((row) => Number(row.sort_order)),
@@ -639,29 +782,38 @@ async function assertActiveDefinitionComplete(
   if (proposed.some((order, index) => order !== index + 1)) throw incompleteDefinition();
 }
 
-async function writeActiveOrder(client: PoolClient, gameIds: string[]): Promise<void> {
+async function writeActiveOrder(
+  client: PoolClient,
+  skillCode: BonusSkillCode,
+  gameIds: string[],
+): Promise<void> {
   if (gameIds.length === 0) return;
   await client.query(
     `update bonus_game
         set sort_order = sort_order + 1000000,
             updated_at = now()
-      where status = 'active'`,
+      where status = 'active' and skill_code = $1`,
+    [skillCode],
   );
   for (const [index, gameId] of gameIds.entries()) {
     await client.query(
       `update bonus_game set sort_order = $2, updated_at = now()
-        where id = $1 and status = 'active'`,
-      [gameId, index + 1],
+        where id = $1 and status = 'active' and skill_code = $3`,
+      [gameId, index + 1, skillCode],
     );
   }
 }
 
-async function compactActiveOrder(client: PoolClient): Promise<void> {
+async function compactActiveOrder(client: PoolClient, skillCode: BonusSkillCode): Promise<void> {
   const { rows } = await client.query<{ id: string }>(
-    `select id from bonus_game where status = 'active' order by sort_order, id for update`,
+    `select id from bonus_game
+      where status = 'active' and skill_code = $1
+      order by sort_order, id for update`,
+    [skillCode],
   );
   await writeActiveOrder(
     client,
+    skillCode,
     rows.map((row) => row.id),
   );
 }
@@ -678,6 +830,10 @@ async function createGame(
     input.targetGoals,
     input.status === 'active',
   );
+  const qualificationRules = normalizeBonusQualificationRules(input.qualificationRules, {
+    targetGoals: input.targetGoals,
+    shotsLimit: periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
+  });
   const arena =
     input.arena !== undefined
       ? await createArena(client, input.arena)
@@ -687,14 +843,21 @@ async function createGame(
     id: '00000000-0000-4000-8000-000000000000',
     slug: input.slug,
     title: input.title,
+    skillCode: input.skillCode,
     description: input.description,
     sortOrder: input.sortOrder,
     status: input.status,
     accessType: input.accessType,
     unlockPriceStars: input.unlockPriceStars,
     targetGoals: input.targetGoals,
+    qualificationRules,
     totalPeriods: input.totalPeriods,
     breakDurationMs: input.breakDurationMs,
+    useInventory: input.useInventory,
+    previewTitle: input.previewTitle,
+    previewStory: input.previewStory,
+    previewArtworkUrl: input.previewArtworkUrl,
+    previewRevision: input.previewRevision,
     periods,
     rewardCoins: input.rewardCoins,
     rewardStars: input.rewardStars,
@@ -709,27 +872,36 @@ async function createGame(
 
   const { rows } = await client.query<{ id: string }>(
     `insert into bonus_game
-       (slug, title, description, sort_order, status, access_type, unlock_price_stars,
-        target_goals, total_periods, break_duration_ms, period_rules,
+       (slug, title, skill_code, description, sort_order, status, access_type, unlock_price_stars,
+        target_goals, qualification_rules, total_periods, break_duration_ms, period_rules,
+        use_inventory, preview_title, preview_story, preview_artwork_url, preview_revision,
         reward_coins, reward_stars, reward_experience, arena_theme_id,
         goalkeeper_ready_url, goalkeeper_save_url, created_by, archived_at)
-     values ($1, $2, $3, $4, $5, $6, $7,
-             $8, $9, $10, $11::jsonb,
-             $12, $13, $14, $15, $16, $17, $18,
-             case when $5::text = 'archived' then now() else null end)
+     values ($1, $2, $3, $4, $5, $6, $7, $8,
+             $9, $10::jsonb, $11, $12, $13::jsonb,
+             $14, $15, $16, $17, $18,
+             $19, $20, $21, $22, $23, $24, $25,
+             case when $6::text = 'archived' then now() else null end)
      returning id`,
     [
       definition.slug,
       definition.title,
+      definition.skillCode,
       definition.description,
       definition.sortOrder,
       definition.status,
       definition.accessType,
       definition.unlockPriceStars,
       definition.targetGoals,
+      JSON.stringify(definition.qualificationRules),
       definition.totalPeriods,
       definition.breakDurationMs,
       JSON.stringify(definition.periods),
+      definition.useInventory,
+      definition.previewTitle,
+      definition.previewStory,
+      definition.previewArtworkUrl,
+      definition.previewRevision,
       definition.rewardCoins,
       definition.rewardStars,
       definition.rewardExperience,
@@ -800,9 +972,28 @@ async function patchGame(
     add('unlock_price_stars', nextDefinition.unlockPriceStars);
   }
   if (input.targetGoals !== undefined) add('target_goals', nextDefinition.targetGoals);
+  if (input.qualificationRules !== undefined || input.targetGoals !== undefined) {
+    add('qualification_rules', JSON.stringify(nextDefinition.qualificationRules));
+  }
   if (input.totalPeriods !== undefined) add('total_periods', nextDefinition.totalPeriods);
   if (input.breakDurationMs !== undefined) {
     add('break_duration_ms', nextDefinition.breakDurationMs);
+  }
+  if (input.useInventory !== undefined) add('use_inventory', nextDefinition.useInventory);
+  if (input.previewTitle !== undefined) add('preview_title', nextDefinition.previewTitle);
+  if (input.previewStory !== undefined) add('preview_story', nextDefinition.previewStory);
+  if (input.previewArtworkUrl !== undefined) {
+    add('preview_artwork_url', nextDefinition.previewArtworkUrl);
+  }
+  if (input.previewRevision !== undefined) {
+    add('preview_revision', nextDefinition.previewRevision);
+  } else if (
+    input.qualificationRules !== undefined ||
+    input.previewTitle !== undefined ||
+    input.previewStory !== undefined ||
+    input.previewArtworkUrl !== undefined
+  ) {
+    assignments.push('preview_revision = preview_revision + 1');
   }
   if (input.periods !== undefined) add('period_rules', JSON.stringify(nextDefinition.periods));
   if (input.rewardCoins !== undefined) add('reward_coins', nextDefinition.rewardCoins);
@@ -831,7 +1022,7 @@ async function patchGame(
   );
 
   if (currentDefinition.status === 'active' && nextDefinition.status !== 'active') {
-    await compactActiveOrder(client);
+    await compactActiveOrder(client, currentDefinition.skillCode);
   }
   return fetchGame(client, gameId);
 }
@@ -845,7 +1036,7 @@ async function archiveGame(client: PoolClient, gameId: string) {
         where id = $1`,
       [gameId],
     );
-    if (current.status === 'active') await compactActiveOrder(client);
+    if (current.status === 'active') await compactActiveOrder(client, current.skill_code);
   }
   return fetchGame(client, gameId);
 }
@@ -900,6 +1091,7 @@ const mediaPrefix: Record<BonusMediaKind, string> = {
   thumbnail: 'thumbnail',
   goalkeeper_ready: 'goalkeeper-ready',
   goalkeeper_save: 'goalkeeper-save',
+  preview: 'preview',
 };
 
 async function cleanupUpload(
@@ -935,7 +1127,10 @@ export async function registerBonusGameAdminRoutes(
     const input = parseBody(reorderSchema, request.body, 'invalid bonus game reorder payload');
     const games = await withCatalogMutation(app, async (client) => {
       const active = await client.query<{ id: string }>(
-        `select id from bonus_game where status = 'active' order by sort_order, id for update`,
+        `select id from bonus_game
+          where status = 'active' and skill_code = $1
+          order by sort_order, id for update`,
+        [input.skillCode],
       );
       const activeIds = active.rows.map((row) => row.id);
       if (
@@ -944,7 +1139,7 @@ export async function registerBonusGameAdminRoutes(
       ) {
         throw invalidOrder();
       }
-      await writeActiveOrder(client, input.gameIds);
+      await writeActiveOrder(client, input.skillCode, input.gameIds);
       return listGames(client);
     });
     return { games };

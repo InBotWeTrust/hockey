@@ -6,7 +6,7 @@ import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
-import { App } from './App.js';
+import { App, RouteLoading, appBackdropClassName, appSurfaceClassName } from './App.js';
 import { fetchRequiredOnboarding, recordStepView, startOnboarding } from '../api/onboarding.js';
 import type * as OnboardingApi from '../api/onboarding.js';
 
@@ -200,6 +200,9 @@ describe('App routing + auth', () => {
     render(<App />);
 
     expect(await screen.findByRole('heading', { name: 'Бонусные игры' })).toBeInTheDocument();
+    const ambientLights = screen.getByTestId('arena-ambient-lights');
+    expect(ambientLights).toHaveAttribute('aria-hidden', 'true');
+    expect(ambientLights.children).toHaveLength(10);
   });
 
   it('loads a bonus attempt detail on the authenticated play route', async () => {
@@ -285,5 +288,64 @@ describe('App routing + auth', () => {
     render(<App />);
 
     expect(await screen.findByTestId('play-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('arena-ambient-lights')).toBeNull();
+  });
+});
+
+describe('app backdrop variants', () => {
+  it('renders lazy route loading text with a high-contrast arena treatment', () => {
+    render(<RouteLoading />);
+
+    expect(screen.getByRole('status')).toHaveClass('route-loading');
+  });
+
+  it('uses the dedicated login rink background on the sign-in screen', () => {
+    expect(appBackdropClassName('/login')).toBe('app-shell--login');
+  });
+
+  it('keeps the chat list on the standard arena and lightens only nested chat routes', () => {
+    expect(appBackdropClassName('/chat')).toBe('app-shell--arena');
+    expect(appBackdropClassName('/chat/conversation-1')).toBe(
+      'app-shell--arena app-shell--arena-chat',
+    );
+  });
+
+  it('uses the arena backdrop in admin while keeping it off full-rink utility routes', () => {
+    expect(appBackdropClassName('/admin')).toBe('app-shell--arena app-shell--arena-admin');
+    expect(appBackdropClassName('/test-court')).toBe('');
+  });
+
+  it('uses the standard arena backdrop for user-facing screens', () => {
+    expect(appBackdropClassName('/sections')).toBe('app-shell--arena');
+    expect(appBackdropClassName('/profile')).toBe('app-shell--arena');
+    expect(appBackdropClassName('/inventory')).toBe('app-shell--arena');
+  });
+
+  it('keeps the arena hub background but removes it from ordinary gameplay', () => {
+    expect(appBackdropClassName('/', '')).toBe('app-shell--arena');
+    expect(appBackdropClassName('/', '?view=daily')).toBe('');
+    expect(appBackdropClassName('/', '?view=training')).toBe('app-shell--arena');
+    expect(appBackdropClassName('/', '?view=training&play=1')).toBe('');
+    expect(appBackdropClassName('/', '?view=amateur&match=m1&play=1')).toBe('');
+    expect(appBackdropClassName('/', '?view=classic&tournament=t1')).toBe('');
+  });
+});
+
+describe('app surface variants', () => {
+  it('uses unified glass outside the personal profile tab', () => {
+    expect(appSurfaceClassName('/sections')).toBe('app-shell--unified-glass');
+    expect(appSurfaceClassName('/users/user-1')).toBe('app-shell--unified-glass');
+    expect(appSurfaceClassName('/bonus-games')).toBe('app-shell--unified-glass');
+  });
+
+  it('preserves the personal profile tab and every nested profile screen', () => {
+    expect(appSurfaceClassName('/profile')).toBe('app-shell--profile-tab');
+    expect(appSurfaceClassName('/profile/settings')).toBe('app-shell--profile-tab');
+    expect(appSurfaceClassName('/profile/support')).toBe('app-shell--profile-tab');
+  });
+
+  it('preserves the dedicated dark authentication treatment', () => {
+    expect(appSurfaceClassName('/login')).toBe('app-shell--auth-surfaces');
+    expect(appSurfaceClassName('/auth/vk/callback')).toBe('app-shell--auth-surfaces');
   });
 });

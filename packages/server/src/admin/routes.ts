@@ -15,6 +15,11 @@ import { buildProfileProgress } from '../profile/summary.js';
 import { deleteChannelPost, updateChannelPostContent } from '../chat/channel.js';
 import { publishMessageDeleted, publishMessageUpdated } from '../chat/events.js';
 import { DEFAULT_NEWS_CHANNEL_SLUG } from '../chat/service.js';
+import { getMessages, sendMessage } from '../chat/service.js';
+import { loadChatAttachments, signMessageAttachmentUrls } from '../chat/routes.js';
+import { publishMessageNew } from '../chat/events.js';
+import { invalidateUnreadCache } from '../chat/cache.js';
+import { enqueueDialogMessagePush } from '../push/chat.js';
 import { registerWeeklyChallengeAdminRoutes } from '../weeklyChallenge/admin.js';
 import { registerBonusGameAdminRoutes } from '../bonusGames/admin.js';
 import { createMediaObjectKey, type ObjectStorageClient } from '../storage/objectStorage.js';
@@ -38,6 +43,7 @@ type PushDeliveryStatus = 'queued' | 'processing' | 'sent' | 'partial' | 'failed
 interface AdminRoutesOptions {
   objectStorage?: ObjectStorageClient;
   mediaAccessSecret: string;
+  systemUserId?: string;
 }
 
 const uuid = z.string().uuid();
@@ -61,6 +67,7 @@ interface AdminPushNotificationStatsRow {
   daily_game_users: string;
   training_available_users: string;
   duel_events_users: string;
+  tournament_events_users: string;
   game_news_users: string;
 }
 
@@ -254,6 +261,7 @@ interface AdminUserRow {
   push_daily_game: boolean;
   push_training_available: boolean;
   push_duel_events: boolean;
+  push_tournament_events: boolean;
   push_game_news: boolean;
   beginner_onboarding_completed: boolean;
   amateur_onboarding_completed: boolean;
@@ -604,6 +612,9 @@ const pushEventTypeSchema = z.enum([
   'training.available',
   'duel.challenge_received',
   'duel.result_ready',
+  'tournament.registration_blocked',
+  'tournament.playoff_blocked',
+  'tournament.playoff_schedule_missing',
   'news.posted',
 ]);
 
@@ -732,6 +743,7 @@ function mapPushNotificationStats(row: AdminPushNotificationStatsRow) {
   const dailyGame = Number(row.daily_game_users);
   const trainingAvailable = Number(row.training_available_users);
   const duelEvents = Number(row.duel_events_users);
+  const tournamentEvents = Number(row.tournament_events_users);
   const gameNews = Number(row.game_news_users);
   return {
     totalUsers,
@@ -755,6 +767,10 @@ function mapPushNotificationStats(row: AdminPushNotificationStatsRow) {
       duelEvents: {
         count: duelEvents,
         percent: percent(duelEvents, totalUsers),
+      },
+      tournamentEvents: {
+        count: tournamentEvents,
+        percent: percent(tournamentEvents, totalUsers),
       },
       gameNews: {
         count: gameNews,
@@ -1240,6 +1256,7 @@ function mapUser(row: AdminUserRow) {
         dailyGame: row.push_daily_game,
         trainingAvailable: row.push_training_available,
         duelEvents: row.push_duel_events,
+        tournamentEvents: row.push_tournament_events,
         gameNews: row.push_game_news,
       },
     },
@@ -1440,6 +1457,8 @@ async function fetchPushNotificationStats(
               coalesce(s.subscription_count, 0) > 0
                 and coalesce(pref.duel_events, true) as duel_events,
               coalesce(s.subscription_count, 0) > 0
+                and coalesce(pref.tournament_events, true) as tournament_events,
+              coalesce(s.subscription_count, 0) > 0
                 and coalesce(pref.game_news, true) as game_news
          from users u
          left join subscribed s on s.user_id = u.id
@@ -1451,6 +1470,7 @@ async function fetchPushNotificationStats(
             count(*) filter (where daily_game)::int as daily_game_users,
             count(*) filter (where training_available)::int as training_available_users,
             count(*) filter (where duel_events)::int as duel_events_users,
+            count(*) filter (where tournament_events)::int as tournament_events_users,
             count(*) filter (where game_news)::int as game_news_users
        from prepared`,
   );
@@ -1462,6 +1482,7 @@ async function fetchPushNotificationStats(
       daily_game_users: '0',
       training_available_users: '0',
       duel_events_users: '0',
+      tournament_events_users: '0',
       game_news_users: '0',
     }
   );
@@ -1853,6 +1874,8 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
             coalesce(push.subscription_count, 0) > 0
               and coalesce(pref.duel_events, true) as push_duel_events,
             coalesce(push.subscription_count, 0) > 0
+              and coalesce(pref.tournament_events, true) as push_tournament_events,
+            coalesce(push.subscription_count, 0) > 0
               and coalesce(pref.game_news, true) as push_game_news
        from users u
        left join user_wallet w on w.user_id = u.id
@@ -1946,6 +1969,318 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
           mediaAccessSecret: opts.mediaAccessSecret,
         }
       : { preHandlers: adminPreHandlers, mediaAccessSecret: opts.mediaAccessSecret },
+  );
+
+  const requireOfficialAccountId = (): string => {
+    if (opts.systemUserId === undefined) {
+      throw new AppError('configuration_error', 'SYSTEM_USER_ID is required', 409);
+    }
+    return opts.systemUserId;
+  };
+
+  const requireOfficialDialog = async (chatId: string) => {
+    const officialUserId = requireOfficialAccountId();
+    const result = await app.pg.query<{ player_user_id: string }>(
+      `select player.id as player_user_id
+         from chats c
+         join chat_members official_member
+           on official_member.chat_id = c.id and official_member.user_id = $2
+         join users official on official.id = official_member.user_id
+         join chat_members player_member
+           on player_member.chat_id = c.id and player_member.user_id <> $2
+         join users player on player.id = player_member.user_id
+        where c.id = $1
+          and c.type = 'direct'
+          and c.is_active = true
+          and official.account_kind = 'official'
+          and player.account_kind = 'player'
+        limit 1`,
+      [chatId, officialUserId],
+    );
+    const playerUserId = result.rows[0]?.player_user_id;
+    if (playerUserId === undefined) {
+      throw new AppError('not_found', 'official dialog not found', 404);
+    }
+    return { officialUserId, playerUserId };
+  };
+
+  app.get('/admin/communications/dialogs', { preHandler: adminPreHandlers }, async (req) => {
+    const officialUserId = requireOfficialAccountId();
+    const query = z
+      .object({
+        status: z.enum(['new', 'open', 'closed']).default('new'),
+        q: z.string().max(100).default(''),
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+        offset: z.coerce.number().int().min(0).default(0),
+      })
+      .parse(req.query);
+    const search = query.q.trim();
+    const result = await app.pg.query<{
+      chat_id: string;
+      status: 'open' | 'closed';
+      player_user_id: string;
+      display_name: string;
+      avatar_url: string | null;
+      telegram_id: string | null;
+      vk_id: string | null;
+      last_message_id: string;
+      last_message_content: string;
+      last_message_at: Date;
+      last_message_sender_id: string;
+      is_new: boolean;
+    }>(
+      `select c.id as chat_id,
+              state.status,
+              player.id as player_user_id,
+              player.display_name,
+              player.avatar_url,
+              identities.telegram_id,
+              identities.vk_id,
+              last_message.id as last_message_id,
+              last_message.content as last_message_content,
+              last_message.created_at as last_message_at,
+              last_message.sender_id as last_message_sender_id,
+              (last_message.sender_id <> $1
+                and last_message.created_at > coalesce(state.last_admin_read_at, '-infinity')) as is_new
+         from official_dialog_state state
+         join chats c on c.id = state.chat_id and c.type = 'direct' and c.is_active = true
+         join chat_members official_member
+           on official_member.chat_id = c.id and official_member.user_id = $1
+         join chat_members player_member
+           on player_member.chat_id = c.id and player_member.user_id <> $1
+         join users player on player.id = player_member.user_id and player.account_kind = 'player'
+         join lateral (
+           select id, sender_id, content, created_at
+             from messages
+            where chat_id = c.id and is_deleted = false
+            order by created_at desc
+            limit 1
+         ) last_message on true
+         left join lateral (
+           select max(provider_uid) filter (where provider = 'telegram') as telegram_id,
+                  max(provider_uid) filter (where provider = 'vk') as vk_id
+             from auth_providers
+            where user_id = player.id
+         ) identities on true
+        where ($2 = '' or player.display_name ilike '%' || $2 || '%'
+               or identities.telegram_id = $2 or identities.vk_id = $2)
+          and (
+            ($3 = 'new' and last_message.sender_id <> $1
+              and last_message.created_at > coalesce(state.last_admin_read_at, '-infinity'))
+            or ($3 = 'open' and state.status = 'open')
+            or ($3 = 'closed' and state.status = 'closed')
+          )
+        order by is_new desc, last_message.created_at desc
+        limit $4 offset $5`,
+      [officialUserId, search, query.status, query.limit, query.offset],
+    );
+    const unread = await app.pg.query<{ count: string }>(
+      `select count(*)::bigint as count
+         from official_dialog_state state
+         join messages last_message on last_message.id = (
+           select id from messages
+            where chat_id = state.chat_id and is_deleted = false
+            order by created_at desc limit 1
+         )
+        where last_message.sender_id <> $1
+          and last_message.created_at > coalesce(state.last_admin_read_at, '-infinity')`,
+      [officialUserId],
+    );
+    return {
+      unreadCount: Number(unread.rows[0]?.count ?? 0),
+      dialogs: result.rows.map((row) => ({
+        chatId: row.chat_id,
+        status: row.status,
+        isNew: row.is_new,
+        player: {
+          userId: row.player_user_id,
+          displayName: row.display_name,
+          avatarUrl: row.avatar_url,
+          telegramId: row.telegram_id,
+          vkId: row.vk_id,
+        },
+        lastMessage: {
+          id: row.last_message_id,
+          content: row.last_message_content,
+          createdAt: row.last_message_at.toISOString(),
+          fromOfficial: row.last_message_sender_id === officialUserId,
+        },
+      })),
+      nextOffset: result.rows.length === query.limit ? query.offset + query.limit : null,
+    };
+  });
+
+  app.get(
+    '/admin/communications/dialogs/:chatId/messages',
+    { preHandler: adminPreHandlers },
+    async (req) => {
+      const { chatId } = z.object({ chatId: uuid }).parse(req.params);
+      const query = z
+        .object({
+          before: z.string().datetime({ offset: true }).optional(),
+          limit: z.coerce.number().int().min(1).max(100).default(50),
+        })
+        .parse(req.query);
+      const { officialUserId } = await requireOfficialDialog(chatId);
+      const messages = await getMessages(app.pg, chatId, officialUserId, {
+        limit: query.limit,
+        ...(query.before !== undefined ? { before: query.before } : {}),
+      });
+      await app.pg.query(
+        `update official_dialog_state
+            set last_admin_read_at = now(), updated_at = now()
+          where chat_id = $1`,
+        [chatId],
+      );
+      return messages.map((message) => signMessageAttachmentUrls(message, opts.mediaAccessSecret));
+    },
+  );
+
+  app.post(
+    '/admin/communications/dialogs/:chatId/messages',
+    { preHandler: adminPreHandlers },
+    async (req, reply) => {
+      const { chatId } = z.object({ chatId: uuid }).parse(req.params);
+      const body = z
+        .object({
+          content: z.string().max(4000).default(''),
+          attachmentIds: z.array(uuid).max(10).default([]),
+        })
+        .refine((value) => value.content.trim().length > 0 || value.attachmentIds.length > 0, {
+          message: 'message is empty',
+        })
+        .parse(req.body);
+      const { officialUserId, playerUserId } = await requireOfficialDialog(chatId);
+      const attachments = await loadChatAttachments(
+        app,
+        req.user.id,
+        body.attachmentIds,
+        opts.mediaAccessSecret,
+      );
+      const message = await sendMessage(app.pg, {
+        chatId,
+        senderId: officialUserId,
+        content: body.content.trim(),
+        ...(attachments.length > 0 ? { metadata: { attachments } } : {}),
+      });
+      await app.pg.query(
+        `update official_dialog_state
+            set last_admin_read_at = now(), updated_at = now()
+          where chat_id = $1`,
+        [chatId],
+      );
+      await invalidateUnreadCache(app.redis, playerUserId);
+      await publishMessageNew(app.pg, app.realtime, chatId, 'direct', message);
+      void enqueueDialogMessagePush(app.pg, {
+        chatId,
+        senderId: officialUserId,
+        messageId: message.id,
+        content: message.content,
+      }).catch((err) => app.log.warn({ err, chatId }, 'official dialog push failed'));
+      await appendEvent(app.pg, req.user.id, 'admin_official_dialog_message_sent', {
+        chat_id: chatId,
+        message_id: message.id,
+        player_user_id: playerUserId,
+      });
+      reply.code(201);
+      return signMessageAttachmentUrls(message, opts.mediaAccessSecret);
+    },
+  );
+
+  app.patch(
+    '/admin/communications/dialogs/:chatId',
+    { preHandler: adminPreHandlers },
+    async (req) => {
+      const { chatId } = z.object({ chatId: uuid }).parse(req.params);
+      const body = z
+        .object({ status: z.enum(['open', 'closed']).optional(), markRead: z.boolean().optional() })
+        .refine((value) => value.status !== undefined || value.markRead === true, {
+          message: 'empty dialog patch',
+        })
+        .parse(req.body);
+      await requireOfficialDialog(chatId);
+      const result = await app.pg.query<{
+        status: 'open' | 'closed';
+        last_admin_read_at: Date | null;
+      }>(
+        `update official_dialog_state
+            set status = coalesce($2, status),
+                last_admin_read_at = case when $3 then now() else last_admin_read_at end,
+                closed_at = case when $2 = 'closed' then now()
+                                 when $2 = 'open' then null else closed_at end,
+                closed_by = case when $2 = 'closed' then $4
+                                 when $2 = 'open' then null else closed_by end,
+                updated_at = now()
+          where chat_id = $1
+          returning status, last_admin_read_at`,
+        [chatId, body.status ?? null, body.markRead === true, req.user.id],
+      );
+      await appendEvent(app.pg, req.user.id, 'admin_official_dialog_updated', {
+        chat_id: chatId,
+        ...(body.status !== undefined ? { status: body.status } : {}),
+        mark_read: body.markRead === true,
+      });
+      const row = result.rows[0]!;
+      return {
+        status: row.status,
+        lastAdminReadAt: row.last_admin_read_at?.toISOString() ?? null,
+      };
+    },
+  );
+
+  app.get('/admin/communications/official-account', { preHandler: adminPreHandlers }, async () => {
+    const officialUserId = requireOfficialAccountId();
+    const result = await app.pg.query<{
+      id: string;
+      display_name: string;
+      avatar_url: string | null;
+    }>(
+      `select id, display_name, avatar_url
+         from users where id = $1 and account_kind = 'official' limit 1`,
+      [officialUserId],
+    );
+    const account = result.rows[0];
+    if (account === undefined) throw new AppError('not_found', 'official account not found', 404);
+    return {
+      id: account.id,
+      displayName: account.display_name,
+      avatarUrl: account.avatar_url,
+    };
+  });
+
+  app.post(
+    '/admin/communications/official-account/avatar',
+    { preHandler: adminPreHandlers },
+    async (req) => {
+      if (opts.objectStorage === undefined) {
+        throw new AppError('storage_not_configured', 'object storage is not configured', 503);
+      }
+      const officialUserId = requireOfficialAccountId();
+      const contentType = normalizeUploadContentType(req.headers['content-type']);
+      const body = assertAdminChatAvatarBody(req.body, contentType);
+      const uploaded = await opts.objectStorage.uploadObject({
+        key: createMediaObjectKey({ prefix: `official-account/${officialUserId}`, contentType }),
+        body,
+        contentType,
+      });
+      const media = await app.pg.query<{ id: string }>(
+        `insert into media_objects
+           (owner_user_id, purpose, object_key, url, content_type, size_bytes, original_name)
+         values ($1, 'chat_avatar', $2, $3, $4, $5, 'official-account.webp')
+         returning id`,
+        [req.user.id, uploaded.key, uploaded.url, uploaded.contentType, uploaded.size],
+      );
+      const avatarUrl = createMediaProxyUrl(opts.mediaAccessSecret, media.rows[0]!.id);
+      await app.pg.query(`update users set avatar_url = $1 where id = $2`, [
+        avatarUrl,
+        officialUserId,
+      ]);
+      await appendEvent(app.pg, req.user.id, 'admin_official_account_avatar_updated', {
+        official_user_id: officialUserId,
+        media_id: media.rows[0]!.id,
+      });
+      return { avatarUrl };
+    },
   );
 
   app.get('/admin/summary', { preHandler: adminPreHandlers }, async (req) => {
@@ -3160,6 +3495,8 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                         and coalesce(pref.training_available, true) as push_training_available,
                       coalesce(push.subscription_count, 0) > 0
                         and coalesce(pref.duel_events, true) as push_duel_events,
+                      coalesce(push.subscription_count, 0) > 0
+                        and coalesce(pref.tournament_events, true) as push_tournament_events,
                       coalesce(push.subscription_count, 0) > 0
                         and coalesce(pref.game_news, true) as push_game_news
                  from users u

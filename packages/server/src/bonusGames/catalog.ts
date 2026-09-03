@@ -1,10 +1,13 @@
 import type { Pool, PoolClient } from 'pg';
 import { getGameSettings } from '../duel/gameSettings.js';
 import { resolveCompetitionLevel } from '../profile/summary.js';
+import { normalizeBonusQualificationRules, type BonusQualificationRules } from './qualification.js';
 import type {
   BonusGameAccessType,
+  BonusSkillCode,
   BonusGameAttemptState,
   BonusPeriodRule,
+  BonusRulesSnapshot,
   BonusRewardSnapshot,
 } from './types.js';
 
@@ -34,13 +37,20 @@ export interface BonusGameCardDto {
   id: string;
   slug: string;
   title: string;
+  skill_code: BonusSkillCode;
   description: string;
   sort_order: number;
   access_type: BonusGameAccessType;
   unlock_price_stars: number;
   target_goals: number;
+  qualification_rules: BonusQualificationRules;
   total_periods: number;
   break_duration_ms: number;
+  use_inventory: boolean;
+  preview_title: string;
+  preview_story: string;
+  preview_artwork_url: string;
+  preview_revision: number;
   period_rules: BonusPeriodRule[];
   reward: BonusRewardSnapshot;
   goalkeeper_ready_url: string;
@@ -68,14 +78,21 @@ interface CatalogRow {
   id: string;
   slug: string;
   title: string;
+  skill_code: BonusSkillCode;
   description: string;
   sort_order: number;
   status: 'active' | 'archived';
   access_type: BonusGameAccessType;
   unlock_price_stars: number;
   target_goals: number;
+  qualification_rules: unknown | null;
   total_periods: number;
   break_duration_ms: number;
+  use_inventory: boolean;
+  preview_title: string;
+  preview_story: string;
+  preview_artwork_url: string;
+  preview_revision: number;
   period_rules: BonusPeriodRule[];
   reward_coins: number;
   reward_stars: number;
@@ -99,6 +116,8 @@ interface CatalogRow {
   attempt_break_started_at: Date | null;
   attempt_shots_taken: number | null;
   attempt_goals: number | null;
+  attempt_rules_snapshot: BonusRulesSnapshot | null;
+  attempt_reward_snapshot: BonusRewardSnapshot | null;
 }
 
 function toIso(value: Date | null): string | null {
@@ -166,6 +185,7 @@ export async function listBonusGameCards(
                 select previous.id
                   from bonus_game previous
                  where previous.status = 'active'
+                   and previous.skill_code = bg.skill_code
                    and previous.sort_order < bg.sort_order
                  order by previous.sort_order desc, previous.id desc
                  limit 1
@@ -174,6 +194,7 @@ export async function listBonusGameCards(
                 select previous.title
                   from bonus_game previous
                  where previous.status = 'active'
+                   and previous.skill_code = bg.skill_code
                    and previous.sort_order < bg.sort_order
                  order by previous.sort_order desc, previous.id desc
                  limit 1
@@ -191,9 +212,12 @@ export async function listBonusGameCards(
              )
            )
      )
-     select game.id, game.slug, game.title, game.description, game.sort_order, game.status,
-            game.access_type, game.unlock_price_stars, game.target_goals, game.total_periods,
-            game.break_duration_ms, game.period_rules,
+     select game.id, game.slug, game.title, game.skill_code, game.description, game.sort_order, game.status,
+            game.access_type, game.unlock_price_stars, game.target_goals,
+            game.qualification_rules, game.total_periods,
+            game.break_duration_ms, game.use_inventory, game.preview_title,
+            game.preview_story, game.preview_artwork_url, game.preview_revision,
+            game.period_rules,
             game.reward_coins, game.reward_stars, game.reward_experience,
             game.goalkeeper_ready_url, game.goalkeeper_save_url,
             arena.id as arena_id, arena.slug as arena_slug, arena.title as arena_title,
@@ -210,7 +234,9 @@ export async function listBonusGameCards(
             attempt.period_started_at as attempt_period_started_at,
             attempt.break_started_at as attempt_break_started_at,
             attempt.shots_taken as attempt_shots_taken,
-            attempt.goals as attempt_goals
+            attempt.goals as attempt_goals,
+            attempt.rules_snapshot as attempt_rules_snapshot,
+            attempt.reward_snapshot as attempt_reward_snapshot
        from catalog_games game
        join arena_theme arena on arena.id = game.arena_theme_id
        left join user_bonus_game_completion predecessor_completion
@@ -224,38 +250,65 @@ export async function listBonusGameCards(
          on attempt.user_id = $1
         and attempt.bonus_game_id = game.id
         and attempt.status = 'active'
-      order by game.sort_order, game.id`,
+      order by game.skill_code, game.sort_order, game.id`,
     [userId],
   );
 
   return rows.map((row) => {
     const state = deriveCardState(row, hasAmateurAccess);
+    const activeRules = row.attempt_id === null ? null : row.attempt_rules_snapshot;
+    const periodRules = activeRules?.periods ?? row.period_rules;
+    const targetGoals = activeRules?.targetGoals ?? Number(row.target_goals);
+    const qualificationRules = normalizeBonusQualificationRules(
+      activeRules?.qualificationRules ?? row.qualification_rules,
+      {
+        targetGoals,
+        shotsLimit: periodRules.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
+      },
+    );
+    const activeArena = activeRules?.arena;
+    const reward = row.attempt_reward_snapshot ?? {
+      coins: Number(row.reward_coins),
+      stars: Number(row.reward_stars),
+      experience: Number(row.reward_experience),
+    };
     return {
       id: row.id,
-      slug: row.slug,
-      title: row.title,
+      slug: activeRules?.slug ?? row.slug,
+      title: activeRules?.title ?? row.title,
+      skill_code: activeRules?.skillCode ?? row.skill_code,
       description: row.description,
       sort_order: Number(row.sort_order),
       access_type: row.access_type,
       unlock_price_stars: Number(row.unlock_price_stars),
-      target_goals: Number(row.target_goals),
-      total_periods: Number(row.total_periods),
-      break_duration_ms: Number(row.break_duration_ms),
-      period_rules: row.period_rules,
-      reward: {
-        coins: Number(row.reward_coins),
-        stars: Number(row.reward_stars),
-        experience: Number(row.reward_experience),
-      },
-      goalkeeper_ready_url: row.goalkeeper_ready_url,
-      goalkeeper_save_url: row.goalkeeper_save_url,
-      arena: {
-        id: row.arena_id,
-        slug: row.arena_slug,
-        title: row.arena_title,
-        artwork_url: row.arena_artwork_url,
-        thumbnail_url: row.arena_thumbnail_url,
-      },
+      target_goals: targetGoals,
+      qualification_rules: qualificationRules,
+      total_periods: activeRules?.totalPeriods ?? Number(row.total_periods),
+      break_duration_ms: activeRules?.breakDurationMs ?? Number(row.break_duration_ms),
+      use_inventory: activeRules?.useInventory ?? row.use_inventory,
+      preview_title: activeRules?.previewTitle ?? row.preview_title,
+      preview_story: activeRules?.previewStory ?? row.preview_story,
+      preview_artwork_url: activeRules?.previewArtworkUrl ?? row.preview_artwork_url,
+      preview_revision: activeRules?.previewRevision ?? Number(row.preview_revision),
+      period_rules: periodRules,
+      reward,
+      goalkeeper_ready_url: activeRules?.goalkeeperReadyUrl ?? row.goalkeeper_ready_url,
+      goalkeeper_save_url: activeRules?.goalkeeperSaveUrl ?? row.goalkeeper_save_url,
+      arena: activeArena
+        ? {
+            id: activeArena.id,
+            slug: activeArena.slug,
+            title: activeArena.title,
+            artwork_url: activeArena.artworkUrl,
+            thumbnail_url: activeArena.thumbnailUrl,
+          }
+        : {
+            id: row.arena_id,
+            slug: row.arena_slug,
+            title: row.arena_title,
+            artwork_url: row.arena_artwork_url,
+            thumbnail_url: row.arena_thumbnail_url,
+          },
       is_unlocked: row.access_type === 'free' || row.unlock_id !== null,
       is_completed: row.completion_id !== null,
       state,

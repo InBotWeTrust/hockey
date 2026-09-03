@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STICK_NEUTRAL } from '@hockey/game-core';
@@ -21,11 +22,16 @@ vi.mock('../game/PlayView.js', () => ({
     periodNumber: number;
     timer?: string;
     shotButtonLabel?: string;
+    primaryActionBlocked?: boolean;
+    overlayControls?: JSX.Element;
     inactiveAction?: () => unknown | Promise<unknown>;
     entranceBeforeInactiveAction?: boolean;
+    goalsOnlyWhileInactive?: boolean;
+    continuousClockDuringResult?: boolean;
     onBack: () => void;
     backLabel?: string;
     optimisticAddShot: (result: 'goal' | 'save' | 'miss') => void;
+    shotIndexBase?: number;
     submitShot: (args: {
       shotIndex: number;
       input: {
@@ -50,7 +56,7 @@ vi.mock('../game/PlayView.js', () => ({
         </button>
         <button
           type="button"
-          disabled={!props.active}
+          disabled={!props.active || props.primaryActionBlocked}
           onClick={() => {
             props.optimisticAddShot('goal');
             void props.submitShot({
@@ -69,6 +75,7 @@ vi.mock('../game/PlayView.js', () => ({
         >
           Тестовый бросок
         </button>
+        {props.overlayControls}
         {!props.active && props.inactiveAction ? (
           <button type="button" onClick={() => void props.inactiveAction?.()}>
             {props.shotButtonLabel}
@@ -98,6 +105,10 @@ function attempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAttempt {
     shots_taken: 28,
     current_period_shots_taken: 3,
     goals: 18,
+    current_goal_streak: 2,
+    best_goal_streak: 4,
+    preview_required: false,
+    current_loadout: null,
     reward_granted: false,
     attempt_seed: 'bonus-seed',
     game_core_version: 1,
@@ -107,10 +118,17 @@ function attempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAttempt {
       game_id: 'game-1',
       slug: 'beach',
       title: 'Пляж',
+      skill_code: 'accuracy',
       revision: 4,
       target_goals: 20,
+      qualification_rules: { type: 'goals_from_shots', targetGoals: 20, shotsLimit: 50 },
       total_periods: 2,
       break_duration_ms: 30_000,
+      use_inventory: false,
+      preview_title: 'Первая квалификация',
+      preview_story: 'История',
+      preview_artwork_url: '/bonus-games/location-cards/beach.webp',
+      preview_revision: 1,
       periods: [
         {
           period_number: 1,
@@ -157,16 +175,35 @@ function LocationProbe(): JSX.Element {
   return <div aria-label="location">{`${location.pathname}${location.search}`}</div>;
 }
 
-function renderScreen(path = '/bonus-games/game-1/play?attempt=attempt-1') {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/bonus-games/:gameId/play" element={<BonusGamePlayScreen />} />
-        <Route path="/bonus-games" element={<main>Каталог бонусных игр</main>} />
-      </Routes>
-      <LocationProbe />
-    </MemoryRouter>,
-  );
+function CatalogProbe({ loadCatalog }: { loadCatalog: () => Promise<string> }): JSX.Element {
+  const catalog = useQuery({ queryKey: ['bonus-games'], queryFn: loadCatalog });
+  return <main>{catalog.data ?? 'Загружаем каталог'}</main>;
+}
+
+function renderScreen(
+  path = '/bonus-games/game-1/play?attempt=attempt-1',
+  options: { queryClient?: QueryClient; loadCatalog?: () => Promise<string> } = {},
+) {
+  const queryClient =
+    options.queryClient ??
+    new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+  const loadCatalog = options.loadCatalog ?? vi.fn(async () => 'Каталог бонусных игр');
+  return {
+    queryClient,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/bonus-games/:gameId/play" element={<BonusGamePlayScreen />} />
+            <Route path="/bonus-games" element={<CatalogProbe loadCatalog={loadCatalog} />} />
+          </Routes>
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 function setStore(overrides: Partial<ReturnType<typeof useBonusGameStore.getState>> = {}): void {
@@ -186,6 +223,7 @@ function setStore(overrides: Partial<ReturnType<typeof useBonusGameStore.getStat
     applyPendingShot: vi.fn(() => null),
     optimisticAddShot: vi.fn(),
     startPeriod: vi.fn(async () => null),
+    acknowledgePreview: vi.fn(async () => null),
     submitShot: vi.fn(async () => null),
     abandon: vi.fn(async () => null),
     refresh: vi.fn(async () => null),
@@ -220,12 +258,48 @@ describe('BonusGamePlayScreen', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Загружаем бонусную игру…');
   });
 
+  it('shows the qualification preview over the mounted ice without a dismissal checkbox', async () => {
+    const acknowledgePreview = vi.fn(async () => attempt({ preview_required: false }));
+    setStore({
+      attempt: attempt({
+        state: 'idle',
+        current_period: 0,
+        period_started_at: null,
+        period_ends_at: null,
+        shots_taken: 0,
+        current_period_shots_taken: 0,
+        goals: 0,
+        current_goal_streak: 0,
+        best_goal_streak: 0,
+        preview_required: true,
+      }),
+      acknowledgePreview,
+    });
+
+    renderScreen();
+
+    expect(screen.getByTestId('bonus-play-view')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Первая квалификация' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Локация «Пляж» и её вратарь' })).toHaveAttribute(
+      'src',
+      '/bonus-games/location-cards/beach.webp?v=20260829-world-tour-user-pngs-v10',
+    );
+    const qualification = screen.getByText('20 голов из 50 бросков');
+    expect(qualification).toBeInTheDocument();
+    expect(qualification.querySelector('.bonus-game-preview-modal__condition-icon')).not.toBeNull();
+    const acknowledgeButton = screen.getByRole('button', { name: 'К игре' });
+    expect(screen.queryByRole('checkbox', { name: 'Больше не показывать' })).not.toBeInTheDocument();
+    fireEvent.click(acknowledgeButton);
+
+    await waitFor(() => expect(acknowledgePreview).toHaveBeenCalledWith(false));
+  });
+
   it('shows the idle period on the rink and starts it through the primary button', () => {
     const startPeriod = vi.fn(async () => attempt());
     setStore({
       attempt: attempt({
         state: 'idle',
-        current_period: 1,
+        current_period: 0,
         period_started_at: null,
         period_ends_at: null,
         current_period_shots_taken: 0,
@@ -240,13 +314,16 @@ describe('BonusGamePlayScreen', () => {
     const props = playViewProbe.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     expect(props).toMatchObject({
       active: false,
-      suppressedByModal: true,
+      suppressedByModal: false,
       showIceCar: false,
-      periodNumber: 2,
+      periodNumber: 1,
       timer: '04:00',
       shotButtonLabel: 'НАЧАТЬ',
       entranceBeforeInactiveAction: true,
+      goalsOnlyWhileInactive: true,
     });
+    expect(props).not.toHaveProperty('continuousClockDuringResult');
+    expect(props).not.toHaveProperty('freezeRenderingDuringResult');
 
     fireEvent.click(screen.getByRole('button', { name: 'НАЧАТЬ' }));
 
@@ -258,22 +335,25 @@ describe('BonusGamePlayScreen', () => {
 
     expect(screen.getByTestId('bonus-rink-background')).toHaveAttribute(
       'src',
-      '/bonus-games/arenas/beach.webp',
+      '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
     );
     const props = playViewProbe.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     expect(props).toMatchObject({
       goalieId: null,
       periodNumber: 2,
-      shots: 3,
+      shots: 28,
       goals: 18,
-      shotsTotal: 25,
+      shotsTotal: 50,
       stickEffects: STICK_NEUTRAL,
-      longCourtBackground: '/bonus-games/arenas/beach.webp',
+      longCourtBackground:
+        '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
       initialSceneElapsedMs: 6_000,
       initialShooterElapsedMs: 4_800,
       goalieOptions: {
-        idleSpriteUrl: '/bonus-games/goalkeepers/beach-ready.webp',
-        saveSpriteUrl: '/bonus-games/goalkeepers/beach-save.webp',
+        idleSpriteUrl:
+          '/bonus-games/goalkeepers/beach-ready.webp?v=20260831-goalkeeper-framing-v1',
+        saveSpriteUrl:
+          '/bonus-games/goalkeepers/beach-save.webp?v=20260831-goalkeeper-framing-v1',
         visualYScale: 0.72,
         visualYOffset: 62,
         visualXScale: 0.9,
@@ -292,13 +372,60 @@ describe('BonusGamePlayScreen', () => {
         goalFrequency: 0.5,
       },
       preloadAssets: [
-        '/bonus-games/arenas/beach.webp',
-        '/bonus-games/goalkeepers/beach-ready.webp',
-        '/bonus-games/goalkeepers/beach-save.webp',
+        '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
+        '/bonus-games/goalkeepers/beach-ready.webp?v=20260831-goalkeeper-framing-v1',
+        '/bonus-games/goalkeepers/beach-save.webp?v=20260831-goalkeeper-framing-v1',
       ],
     });
     expect(props).not.toHaveProperty('rinkAspectRatio');
     expect(props).not.toHaveProperty('gameLayerStyle');
+  });
+
+  it('matches World Tour save-pose framing to the training goalkeeper', () => {
+    setStore({
+      attempt: attempt({
+        arena: {
+          id: 'world-tour-arena-1',
+          slug: 'moscow',
+          title: 'Москва',
+          artwork_url: '/bonus-games/world-tour/arenas/moscow.webp',
+          thumbnail_url: '/bonus-games/world-tour/previews/moscow.webp',
+        },
+        goalkeeper_ready_url: '/bonus-games/world-tour/goalkeepers/moscow-ready.webp',
+        goalkeeper_save_url: '/bonus-games/world-tour/goalkeepers/moscow-save.webp',
+      }),
+    });
+
+    renderScreen();
+
+    const props = playViewProbe.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(props).toMatchObject({
+      goalieOptions: {
+        idleSizeScale: 1.22,
+        saveSizeScale: 0.96,
+      },
+    });
+  });
+
+  it('keeps the scoreboard cumulative while restarting the server shot index each period', () => {
+    setStore({
+      attempt: attempt({
+        current_period: 2,
+        goals: 18,
+        shots_taken: 28,
+        current_period_shots_taken: 3,
+      }),
+    });
+
+    renderScreen();
+
+    expect(playViewProbe.mock.calls.at(-1)?.[0]).toMatchObject({
+      periodNumber: 2,
+      goals: 18,
+      shots: 28,
+      shotIndexBase: 3,
+      shotsTotal: 50,
+    });
   });
 
   it('defers the shot DTO until PlayView reaches its visual boundary', async () => {
@@ -319,13 +446,13 @@ describe('BonusGamePlayScreen', () => {
       attempt: completedAttempt,
       rewardGranted: true,
     }));
-    const applyPendingShot = vi.fn(() => {
+    const applyPendingShot = vi.fn((next?: BonusGameAttempt) => {
       useBonusGameStore.setState({
-        attempt: completedAttempt,
+        attempt: next ?? completedAttempt,
         pendingShot: null,
         inFlight: false,
       });
-      return completedAttempt;
+      return next ?? completedAttempt;
     });
     setStore({
       submitShot,
@@ -351,6 +478,7 @@ describe('BonusGamePlayScreen', () => {
     act(() => props.applyResolvedState?.(completedAttempt));
 
     expect(applyPendingShot).toHaveBeenCalledTimes(1);
+    expect(applyPendingShot).toHaveBeenCalledWith(completedAttempt);
     expect(screen.getByRole('dialog', { name: 'Игра пройдена' })).toHaveTextContent(
       'Награда за первое прохождение',
     );
@@ -363,6 +491,43 @@ describe('BonusGamePlayScreen', () => {
       shots: 29,
       shotsTotal: 50,
     });
+  });
+
+  it('applies the terminal DTO supplied by PlayView even when the pending store slot was cleared', async () => {
+    // PlayView owns the visual boundary and passes the authoritative DTO back after the
+    // puck flight/result pause. The screen must not depend on a second, lossy store lookup.
+    const completedAttempt = attempt({
+      status: 'completed',
+      state: 'closed',
+      period_started_at: null,
+      period_ends_at: null,
+      closed_at: '2026-08-24T10:01:00.000Z',
+      reward_granted: true,
+      goals: 20,
+      shots_taken: 29,
+      current_period_shots_taken: 4,
+    });
+    const submitShot = vi.fn(async () => ({
+      serverResult: 'goal' as const,
+      attempt: completedAttempt,
+      rewardGranted: true,
+    }));
+    const applyPendingShot = vi.fn((next?: BonusGameAttempt) => {
+      useBonusGameStore.setState({ attempt: next ?? null, pendingShot: null, inFlight: false });
+      return next ?? null;
+    });
+    setStore({ submitShot, applyPendingShot, pendingShot: null, inFlight: true });
+    renderScreen();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Тестовый бросок' }));
+    await waitFor(() => expect(submitShot).toHaveBeenCalledTimes(1));
+
+    const props = playViewProbe.mock.calls.at(-1)?.[0] as {
+      applyResolvedState?: (next: BonusGameAttempt) => void;
+    };
+    act(() => props.applyResolvedState?.(completedAttempt));
+
+    expect(screen.getByRole('dialog', { name: 'Игра пройдена' })).toBeInTheDocument();
   });
 
   it('applies a deferred response that arrives after the play route unmounts', async () => {
@@ -427,6 +592,65 @@ describe('BonusGamePlayScreen', () => {
     });
   });
 
+  it('releases an accepted shot when the visual completion callback is lost', async () => {
+    // Dev evidence: the server accepted the shot that brought Beach to 17/18,
+    // but the client kept the deferred store lock and never sent the qualifying shot.
+    vi.useFakeTimers();
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    const acceptedAttempt = attempt({
+      current_period: 1,
+      shots_taken: 18,
+      current_period_shots_taken: 18,
+      goals: 17,
+      current_goal_streak: 7,
+      best_goal_streak: 10,
+      rules: {
+        ...attempt().rules,
+        skill_code: 'speed',
+        qualification_rules: {
+          type: 'goals_in_time',
+          targetGoals: 18,
+          activeTimeMs: 120_000,
+        },
+        periods: [
+          {
+            ...attempt().rules.periods[0]!,
+            shots_limit: null,
+            duration_ms: 120_000,
+          },
+        ],
+      },
+    });
+    const applyPendingShot = vi.fn(() => {
+      useBonusGameStore.setState({
+        attempt: acceptedAttempt,
+        pendingShot: null,
+        inFlight: false,
+      });
+      return acceptedAttempt;
+    });
+    setStore({
+      attempt: acceptedAttempt,
+      pendingShot: { attempt: acceptedAttempt, receivedAtPerformanceMs: 1_000 },
+      inFlight: true,
+      applyPendingShot,
+    });
+
+    renderScreen();
+
+    expect(applyPendingShot).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+
+    expect(applyPendingShot).toHaveBeenCalledTimes(1);
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: acceptedAttempt,
+      pendingShot: null,
+      inFlight: false,
+    });
+  });
+
   it('uses the deferred response receipt when rendering the break countdown', () => {
     vi.useFakeTimers();
     vi.spyOn(performance, 'now').mockReturnValue(4_321);
@@ -444,7 +668,17 @@ describe('BonusGamePlayScreen', () => {
 
     renderScreen();
 
+    expect(screen.getByTestId('bonus-play-view')).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Перерыв' });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveTextContent('До следующего периода');
+    expect(dialog).not.toHaveTextContent('серверной проверки таймера');
     expect(screen.getByRole('timer')).toHaveTextContent('00:02');
+    expect(playViewProbe.mock.calls.at(-1)?.[0]).toMatchObject({
+      active: false,
+      suppressedByModal: true,
+      showIceCar: true,
+    });
   });
 
   it('blocks play and requests authoritative detail during reconciliation', () => {
@@ -453,7 +687,12 @@ describe('BonusGamePlayScreen', () => {
     renderScreen();
 
     expect(screen.getByRole('status')).toHaveTextContent('Проверяем результат броска…');
-    expect(screen.queryByTestId('bonus-play-view')).toBeNull();
+    expect(screen.getByTestId('bonus-play-view')).toBeInTheDocument();
+    expect(playViewProbe.mock.calls.at(-1)?.[0]).toMatchObject({
+      active: true,
+      primaryActionBlocked: true,
+      shotButtonLabel: 'ПРОВЕРЯЕМ...',
+    });
     expect(loadAttempt).toHaveBeenCalledWith('attempt-1');
   });
 
@@ -471,7 +710,7 @@ describe('BonusGamePlayScreen', () => {
 
     expect(loadAttempt).toHaveBeenCalledTimes(2);
     expect(loadAttempt).toHaveBeenLastCalledWith('attempt-1');
-    expect(screen.queryByTestId('bonus-play-view')).toBeNull();
+    expect(screen.getByTestId('bonus-play-view')).toBeInTheDocument();
   });
 
   it('refreshes authoritative detail when the break countdown elapses', async () => {
@@ -502,6 +741,31 @@ describe('BonusGamePlayScreen', () => {
 
     expect(loadAttempt).toHaveBeenCalledTimes(1);
     expect(loadAttempt).toHaveBeenCalledWith('attempt-1');
+  });
+
+  it('replaces an open exit prompt with the mandatory break modal', async () => {
+    renderScreen();
+    fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
+    expect(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).toBeInTheDocument();
+
+    act(() => {
+      useBonusGameStore.setState({
+        attempt: attempt({
+          state: 'break_active',
+          period_started_at: null,
+          period_ends_at: null,
+          break_started_at: '2026-08-24T10:00:00.000Z',
+          break_ends_at: '2026-08-24T10:00:30.000Z',
+          server_now: '2026-08-24T10:00:00.000Z',
+        }),
+      });
+    });
+
+    expect(screen.getByRole('dialog', { name: 'Перерыв' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('dialog', { name: 'Выйти из бонусной игры?', hidden: true }),
+    ).toBeNull();
+    expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games/game-1/play');
   });
 
   it.each([
@@ -577,7 +841,7 @@ describe('BonusGamePlayScreen', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Игра пройдена' });
     expect(within(dialog).getByText('21 монета · 25 очков опыта · 22 звезды')).toBeInTheDocument();
-    expect(within(dialog).getByText('Площадка «Пляж» открыта')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Площадка «Пляж» открыта')).not.toBeInTheDocument();
   });
 
   it('keeps the attempt active until the exit prompt is explicitly confirmed', async () => {
@@ -596,9 +860,7 @@ describe('BonusGamePlayScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
     expect(abandon).not.toHaveBeenCalled();
     const dialog = screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' });
-    expect(dialog).toHaveTextContent(
-      'Попытка сохранится, если продолжить позже. Завершение удалит текущий прогресс.',
-    );
+    expect(dialog).toHaveTextContent('При выходе текущая попытка завершится, а прогресс потеряется.');
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(abandon).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog', { name: 'Выйти из бонусной игры?' })).toBeNull();
@@ -606,7 +868,7 @@ describe('BonusGamePlayScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
     const confirm = within(
       screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' }),
-    ).getByRole('button', { name: 'Завершить попытку' });
+    ).getByRole('button', { name: 'Выйти' });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
     expect(abandon).toHaveBeenCalledTimes(1);
@@ -619,21 +881,47 @@ describe('BonusGamePlayScreen', () => {
     expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
   });
 
-  it('returns to the catalog without abandoning when continuing later', () => {
+  it('refreshes the catalog after abandoning so another game can start immediately', async () => {
+    const abandoned = attempt({
+      status: 'abandoned',
+      state: 'closed',
+      period_started_at: null,
+      period_ends_at: null,
+    });
+    const loadCatalog = vi.fn(async () => 'Можно начать другую игру');
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    });
+    queryClient.setQueryData(['bonus-games'], 'Активная попытка блокирует другие игры');
+    setStore({ abandon: vi.fn(async () => abandoned) });
+    renderScreen('/bonus-games/game-1/play?attempt=attempt-1', { queryClient, loadCatalog });
+
+    fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).getByRole('button', {
+        name: 'Выйти',
+      }),
+    );
+
+    expect(await screen.findByText('Можно начать другую игру')).toBeInTheDocument();
+  });
+
+  it('stays in the game without abandoning when exit is cancelled', () => {
     const abandon = vi.fn(async () => null);
     setStore({ abandon });
     renderScreen();
 
     fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
-    const continueLater = within(
-      screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' }),
-    ).getByRole('button', { name: 'Продолжить позже' });
-    fireEvent.click(continueLater);
-    fireEvent.click(continueLater);
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).getByRole('button', {
+        name: 'Остаться',
+      }),
+    );
 
     expect(abandon).not.toHaveBeenCalled();
-    expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games');
-    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games/game-1/play');
+    expect(screen.queryByRole('dialog', { name: 'Выйти из бонусной игры?' })).toBeNull();
+    expect(refreshAfterGameExit).not.toHaveBeenCalled();
   });
 
   it('keeps the active rink simulation running while the exit prompt is open', () => {
@@ -655,8 +943,8 @@ describe('BonusGamePlayScreen', () => {
     fireEvent.click(trigger);
 
     const dialog = screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' });
-    const cancel = within(dialog).getByRole('button', { name: 'Продолжить позже' });
-    const confirm = within(dialog).getByRole('button', { name: 'Завершить попытку' });
+    const cancel = within(dialog).getByRole('button', { name: 'Остаться' });
+    const confirm = within(dialog).getByRole('button', { name: 'Выйти' });
     await waitFor(() => expect(cancel).toHaveFocus());
     confirm.focus();
     fireEvent.keyDown(dialog, { key: 'Tab' });
@@ -677,7 +965,7 @@ describe('BonusGamePlayScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
     fireEvent.click(
       within(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).getByRole('button', {
-        name: 'Завершить попытку',
+        name: 'Выйти',
       }),
     );
 

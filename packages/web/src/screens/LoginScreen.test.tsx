@@ -2,8 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { LoginScreen } from './LoginScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
+
+const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 
 type AuthCallback = (payload: Record<string, unknown>) => void;
 type WindowWithCallbacks = typeof window & Record<string, AuthCallback | undefined>;
@@ -37,6 +41,7 @@ function renderWith(): { client: QueryClient } {
 
 describe('LoginScreen', () => {
   beforeEach(() => {
+    vi.unstubAllGlobals();
     localStorage.clear();
     useAuthStore.getState().clearSession();
     delete (window as TelegramWebAppWindow).Telegram;
@@ -47,14 +52,65 @@ describe('LoginScreen', () => {
 
   it('renders the Telegram button', () => {
     renderWith();
-    expect(screen.getByRole('heading', { name: 'Ультимейт Хоккей' })).toBeInTheDocument();
-    expect(screen.getByAltText('Ультимейт Хоккей')).toBeInTheDocument();
+    const heading = screen.getByRole('heading', { name: 'Ультимейт Хоккей' });
+    expect(heading).toHaveClass('login-screen__title');
+    expect(screen.getByAltText('Ультимейт Хоккей')).toHaveClass('login-screen__logo');
+    expect(heading.closest('main')).toHaveClass('login-screen');
+    expect(screen.getByText(/Нажимая «Войти»/)).toHaveClass('login-screen__terms');
+    expect(screen.getByText('Живи жизнью профессионального хоккеиста')).toHaveClass(
+      'login-screen__tagline',
+    );
+    for (const benefit of ['тренировки', 'игры', 'соревнования', 'призы']) {
+      expect(screen.getByText(benefit)).toHaveClass('login-screen__benefit');
+    }
     expect(screen.getByTestId('telegram-login-container')).toBeInTheDocument();
     const vkButton = screen.getByRole('button', { name: /войти через вконтакте/i });
     expect(vkButton).toBeInTheDocument();
-    expect(vkButton).toHaveStyle({ width: '242px', height: '40px', background: '#0077ff' });
-    expect(screen.getByRole('button', { name: /демо-режим/i })).toBeInTheDocument();
-    expect(vkButton.closest('main')).toHaveStyle({ height: '100dvh', overflow: 'hidden' });
+    expect(vkButton).toHaveClass('login-screen__auth-button');
+    expect(vkButton).toHaveStyle({ background: '#0077ff' });
+    expect(screen.getByRole('button', { name: /демо-режим/i })).toHaveClass(
+      'login-screen__auth-button',
+    );
+    expect(screen.getByRole('button', { name: /войти как dev/i })).toHaveClass(
+      'login-screen__auth-button',
+    );
+    expect(vkButton.closest('main')).toHaveStyle({
+      height: 'var(--app-viewport-height, 100dvh)',
+      overflow: 'hidden',
+    });
+  });
+
+  it('keeps the brand compact so benefit pills stay above the rink safety net', () => {
+    expect(designSystemCss).toMatch(
+      /\.login-screen__logo\s*{[^}]*width:\s*clamp\(76px,\s*12dvh,\s*96px\);[^}]*height:\s*clamp\(76px,\s*12dvh,\s*96px\);/s,
+    );
+  });
+
+  it('keeps the dev-code form inside the visual viewport when the soft keyboard opens', () => {
+    vi.stubEnv('VITE_DEV_ACCESS_CODE_LOGIN_ENABLED', 'true');
+    renderWith();
+
+    expect(screen.getByRole('textbox', { name: 'Код доступа' }).closest('main')).toHaveStyle({
+      height: 'var(--app-viewport-height, 100dvh)',
+      overflow: 'hidden',
+    });
+  });
+
+  it('hides secondary dev-code actions in a keyboard-sized visual viewport', () => {
+    vi.stubGlobal('visualViewport', {
+      height: 330,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+    vi.stubEnv('VITE_DEV_ACCESS_CODE_LOGIN_ENABLED', 'true');
+    renderWith();
+
+    expect(screen.getByRole('textbox', { name: 'Код доступа' }).closest('main')).toHaveClass(
+      'login-screen--compact-code',
+    );
+    expect(designSystemCss).toMatch(
+      /\.login-screen--compact-code \.login-screen__actions > \.btn--ghost,[\s\S]*?\.login-screen--compact-code \.login-screen__terms\s*{[^}]*display:\s*none;/,
+    );
   });
 
   it('opens demo mode without creating an auth session', () => {

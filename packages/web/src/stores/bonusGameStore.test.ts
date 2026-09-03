@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   BonusAttemptResponse,
   BonusGameAttempt,
@@ -7,6 +7,7 @@ import type {
 } from '../api/bonusGames.js';
 import {
   abandonBonusAttempt,
+  acknowledgeBonusPreview,
   fetchBonusAttempt,
   fetchCurrentBonusAttempt,
   startBonusPeriod,
@@ -17,6 +18,7 @@ import { useBonusGameStore } from './bonusGameStore.js';
 
 vi.mock('../api/bonusGames.js', () => ({
   abandonBonusAttempt: vi.fn(),
+  acknowledgeBonusPreview: vi.fn(),
   fetchBonusAttempt: vi.fn(),
   fetchCurrentBonusAttempt: vi.fn(),
   startBonusPeriod: vi.fn(),
@@ -39,6 +41,10 @@ const initialAttempt: BonusGameAttempt = {
   shots_taken: 2,
   current_period_shots_taken: 2,
   goals: 1,
+  current_goal_streak: 1,
+  best_goal_streak: 1,
+  preview_required: false,
+  current_loadout: null,
   reward_granted: false,
   attempt_seed: 'bonus:attempt-1',
   game_core_version: 1,
@@ -48,10 +54,17 @@ const initialAttempt: BonusGameAttempt = {
     game_id: 'game-1',
     slug: 'beach',
     title: 'Пляжный бросок',
+    skill_code: 'accuracy',
     revision: 3,
     target_goals: 3,
+    qualification_rules: { type: 'goals_from_shots', targetGoals: 3, shotsLimit: 3 },
     total_periods: 1,
     break_duration_ms: 30_000,
+    use_inventory: false,
+    preview_title: 'Первая квалификация',
+    preview_story: 'История',
+    preview_artwork_url: '/bonus-games/previews/beach.webp',
+    preview_revision: 1,
     periods: [
       {
         period_number: 1,
@@ -103,6 +116,10 @@ function deferred<T>() {
   };
 }
 
+function neverSettles<T>(): Promise<T> {
+  return new Promise<T>(() => undefined);
+}
+
 describe('bonusGameStore', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -119,6 +136,11 @@ describe('bonusGameStore', () => {
     });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   it('captures the client receipt clock when an authoritative response is installed', async () => {
     const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(4_321);
     vi.mocked(fetchCurrentBonusAttempt).mockResolvedValueOnce(response(initialAttempt));
@@ -127,6 +149,18 @@ describe('bonusGameStore', () => {
 
     expect(useBonusGameStore.getState().receivedAtPerformanceMs).toBe(4_321);
     nowSpy.mockRestore();
+  });
+
+  it('acknowledges the preview and installs the returned attempt', async () => {
+    const previewAttempt = { ...initialAttempt, preview_required: true };
+    const acknowledged = { ...previewAttempt, preview_required: false };
+    vi.mocked(acknowledgeBonusPreview).mockResolvedValueOnce(response(acknowledged));
+    useBonusGameStore.getState().applyState(previewAttempt);
+
+    await useBonusGameStore.getState().acknowledgePreview(true);
+
+    expect(acknowledgeBonusPreview).toHaveBeenCalledWith(previewAttempt.id, true);
+    expect(useBonusGameStore.getState().attempt).toEqual(acknowledged);
   });
 
   it('loads a terminal attempt by id so timer reconciliation cannot discard the result', async () => {
@@ -524,6 +558,94 @@ describe('bonusGameStore', () => {
     expect(useBonusGameStore.getState().receivedAtPerformanceMs).toBe(1_000);
   });
 
+  it('silently restores authoritative state when a shot request is rejected', async () => {
+    const staleError = new ApiError(
+      409,
+      'bonus_shot_time_stale',
+      'Бросок уже обработан. Обновляем состояние попытки.',
+    );
+    vi.mocked(submitBonusShot).mockRejectedValueOnce(staleError);
+    vi.mocked(fetchBonusAttempt).mockResolvedValueOnce(response(initialAttempt));
+    useBonusGameStore.getState().applyState(initialAttempt);
+    useBonusGameStore.getState().optimisticAddShot('goal');
+
+    await useBonusGameStore.getState().submitShot(shot);
+
+    expect(fetchBonusAttempt).toHaveBeenCalledWith(initialAttempt.id, {
+      signal: expect.any(AbortSignal),
+    });
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: initialAttempt,
+      error: null,
+      errorCode: null,
+      needsReconcile: false,
+      inFlight: false,
+      pendingShot: null,
+    });
+  });
+
+  it('recovers a completed attempt when the final-shot response stalls', async () => {
+    vi.useFakeTimers();
+    const completedAttempt: BonusGameAttempt = {
+      ...initialAttempt,
+      status: 'completed',
+      state: 'closed',
+      period_started_at: null,
+      period_ends_at: null,
+      closed_at: '2026-08-24T10:01:01.000Z',
+      shots_taken: 3,
+      current_period_shots_taken: 3,
+      goals: 3,
+      current_goal_streak: 3,
+      best_goal_streak: 3,
+      reward_granted: true,
+    };
+    vi.mocked(submitBonusShot).mockImplementation(() => neverSettles<BonusShotResponse>());
+    vi.mocked(fetchBonusAttempt).mockResolvedValueOnce(response(completedAttempt));
+    useBonusGameStore.getState().applyState(initialAttempt);
+
+    const submit = useBonusGameStore.getState().submitShot(shot, { deferApply: true });
+    await vi.advanceTimersByTimeAsync(12_000);
+    await submit;
+
+    expect(fetchBonusAttempt).toHaveBeenCalledWith(initialAttempt.id, {
+      signal: expect.any(AbortSignal),
+    });
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: initialAttempt,
+      pendingShot: { attempt: completedAttempt },
+      inFlight: true,
+      needsReconcile: false,
+    });
+    useBonusGameStore.getState().applyPendingShot();
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: completedAttempt,
+      pendingShot: null,
+      inFlight: false,
+    });
+  });
+
+  it('releases a stalled final shot when both submission and reconciliation time out', async () => {
+    vi.useFakeTimers();
+    vi.mocked(submitBonusShot).mockImplementation(() => neverSettles<BonusShotResponse>());
+    vi.mocked(fetchBonusAttempt).mockImplementation(() => neverSettles<BonusAttemptResponse>());
+    useBonusGameStore.getState().applyState(initialAttempt);
+    useBonusGameStore.getState().optimisticAddShot('goal');
+
+    const submit = useBonusGameStore.getState().submitShot(shot, { deferApply: true });
+    await vi.advanceTimersByTimeAsync(12_000);
+    await submit;
+
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: initialAttempt,
+      pendingShot: null,
+      inFlight: false,
+      needsReconcile: true,
+      error: 'Не удалось отправить бросок.',
+    });
+    expect(useBonusGameStore.getState().canSubmitShot()).toBe(false);
+  });
+
   it('defers an authoritative shot response until the visual boundary applies it once', async () => {
     // This catches terminal or break state replacing the play screen while the puck is still flying.
     let performanceNow = 1_000;
@@ -589,6 +711,64 @@ describe('bonusGameStore', () => {
     });
     expect(useBonusGameStore.getState().applyPendingShot()).toBeNull();
     expect(useBonusGameStore.getState()).toEqual(stateAfterBoundary);
+  });
+
+  it('unlocks every deferred response so a speed attempt accepts more than three shots', async () => {
+    const speedAttempt: BonusGameAttempt = {
+      ...initialAttempt,
+      shots_taken: 0,
+      current_period_shots_taken: 0,
+      goals: 0,
+      current_goal_streak: 0,
+      best_goal_streak: 0,
+      rules: {
+        ...initialAttempt.rules,
+        skill_code: 'speed',
+        target_goals: 18,
+        qualification_rules: {
+          type: 'goals_in_time',
+          targetGoals: 18,
+          activeTimeMs: 120_000,
+        },
+        periods: [
+          {
+            ...initialAttempt.rules.periods[0]!,
+            duration_ms: 120_000,
+            shots_limit: null,
+          },
+        ],
+      },
+    };
+    vi.mocked(submitBonusShot).mockImplementation(async (_attemptId, body) => ({
+      server_result: 'goal',
+      attempt: {
+        ...speedAttempt,
+        shots_taken: body.claimed_shot_index,
+        current_period_shots_taken: body.claimed_shot_index,
+        goals: body.claimed_shot_index,
+        current_goal_streak: body.claimed_shot_index,
+        best_goal_streak: body.claimed_shot_index,
+      },
+      reward_granted: false,
+      balances: { coins: 10, stars: 2, experience: 7 },
+    }));
+    useBonusGameStore.getState().applyState(speedAttempt);
+
+    for (let shotIndex = 1; shotIndex <= 4; shotIndex += 1) {
+      expect(useBonusGameStore.getState().canSubmitShot()).toBe(true);
+      const result = await useBonusGameStore.getState().submitShot(
+        { ...shot, claimed_shot_index: shotIndex },
+        { deferApply: true },
+      );
+
+      expect(result?.attempt.shots_taken).toBe(shotIndex);
+      expect(useBonusGameStore.getState().canSubmitShot()).toBe(false);
+      useBonusGameStore.getState().applyPendingShot();
+      expect(useBonusGameStore.getState().attempt?.shots_taken).toBe(shotIndex);
+    }
+
+    expect(submitBonusShot).toHaveBeenCalledTimes(4);
+    expect(useBonusGameStore.getState().canSubmitShot()).toBe(true);
   });
 
   it('invalidates a read started during a deferred shot before applying the pending result', async () => {
@@ -659,6 +839,33 @@ describe('bonusGameStore', () => {
     expect(useBonusGameStore.getState()).toMatchObject({
       attempt: initialAttempt,
       pendingShot: null,
+    });
+  });
+
+  it('applies PlayView authoritative fallback when the deferred slot is no longer available', () => {
+    const completedAttempt = {
+      ...initialAttempt,
+      status: 'completed' as const,
+      state: 'closed' as const,
+      period_started_at: null,
+      period_ends_at: null,
+      closed_at: '2026-08-24T10:01:01.000Z',
+      shots_taken: 3,
+      current_period_shots_taken: 3,
+      goals: 3,
+      reward_granted: true,
+    };
+    vi.spyOn(performance, 'now').mockReturnValue(2_000);
+    useBonusGameStore.setState({ pendingShot: null, inFlight: true });
+
+    const applied = useBonusGameStore.getState().applyPendingShot(completedAttempt);
+
+    expect(applied).toEqual(completedAttempt);
+    expect(useBonusGameStore.getState()).toMatchObject({
+      attempt: completedAttempt,
+      pendingShot: null,
+      inFlight: false,
+      receivedAtPerformanceMs: 2_000,
     });
   });
 

@@ -105,25 +105,73 @@ function ChatRealtime(): JSX.Element {
   return <OfflineBanner status={status} />;
 }
 
-function RouteLoading(): JSX.Element {
+export function RouteLoading(): JSX.Element {
   return (
     <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ color: 'var(--muted)', fontSize: 14 }}>Загрузка…</div>
+      <div className="route-loading" role="status">
+        Загрузка…
+      </div>
     </main>
   );
+}
+
+export function appBackdropClassName(pathname: string, search = ''): string {
+  if (pathname === '/login') {
+    return 'app-shell--login';
+  }
+
+  if (pathname === '/admin') {
+    return 'app-shell--arena app-shell--arena-admin';
+  }
+
+  if (
+    (pathname === '/' && new URLSearchParams(search).get('view') === 'daily') ||
+    (pathname === '/' && new URLSearchParams(search).get('view') === 'classic') ||
+    (pathname === '/' &&
+      new URLSearchParams(search).get('view') === 'training' &&
+      new URLSearchParams(search).get('play') === '1') ||
+    (pathname === '/' &&
+      new URLSearchParams(search).get('view') === 'amateur' &&
+      new URLSearchParams(search).has('match') &&
+      new URLSearchParams(search).get('play') === '1') ||
+    pathname === '/test-court' ||
+    pathname === '/demo' ||
+    pathname.startsWith('/duel/') ||
+    /^\/bonus-games\/[^/]+\/play$/.test(pathname)
+  ) {
+    return '';
+  }
+
+  if (pathname.startsWith('/chat/')) {
+    return 'app-shell--arena app-shell--arena-chat';
+  }
+
+  return 'app-shell--arena';
+}
+
+export function appSurfaceClassName(pathname: string): string {
+  if (pathname === '/login' || pathname.startsWith('/auth/')) {
+    return 'app-shell--auth-surfaces';
+  }
+  return pathname === '/profile' || pathname.startsWith('/profile/')
+    ? 'app-shell--profile-tab'
+    : 'app-shell--unified-glass';
 }
 
 function AppExperience(): JSX.Element {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const bottomNavVisible = isBottomNavVisible(location, user);
+  const backdropClassName = appBackdropClassName(location.pathname, location.search);
+  const surfaceClassName = appSurfaceClassName(location.pathname);
+  const hasArenaBackdrop = backdropClassName.split(' ').includes('app-shell--arena');
 
   return (
     <>
       <ChatRealtime />
       <DuelInviteToast />
       <div
-        className={`app-shell${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}`}
+        className={`app-shell ${surfaceClassName}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}`}
         style={{
           maxWidth: 430,
           margin: '0 auto',
@@ -133,10 +181,20 @@ function AppExperience(): JSX.Element {
           position: 'relative',
           transform: 'translateZ(0)',
           overflow: 'hidden',
-          background: 'linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%)',
           boxShadow: '0 0 0 1px rgba(15,23,42,0.08), 0 8px 48px rgba(15,23,42,0.14)',
         }}
       >
+        {hasArenaBackdrop && (
+          <div
+            className="arena-ambient-lights"
+            data-testid="arena-ambient-lights"
+            aria-hidden="true"
+          >
+            {Array.from({ length: 10 }, (_, index) => (
+              <span key={index} />
+            ))}
+          </div>
+        )}
         <div className="app-content">
           <Suspense fallback={<RouteLoading />}>
             <Routes>

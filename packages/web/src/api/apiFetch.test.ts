@@ -53,6 +53,36 @@ describe('apiFetch', () => {
     await expect(apiFetch('/x')).rejects.toBeInstanceOf(ApiError);
   });
 
+  it('preserves public error details for client-side recovery copy', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJson(
+        {
+          error: {
+            code: 'capacity_reached',
+            message: 'capacity reached',
+            details: {
+              approvedCount: 14,
+              participantLimit: 16,
+              availableSlots: 2,
+              pendingCount: 3,
+            },
+          },
+        },
+        { status: 409 },
+      ),
+    );
+
+    await expect(apiFetch('/x')).rejects.toMatchObject({
+      code: 'capacity_reached',
+      details: {
+        approvedCount: 14,
+        participantLimit: 16,
+        availableSlots: 2,
+        pendingCount: 3,
+      },
+    });
+  });
+
   it.each(['bad_request', 'unexpected_internal_code'])(
     'keeps unknown server code %s but never exposes its internal message',
     async (code) => {
@@ -97,7 +127,16 @@ describe('apiFetch', () => {
     await expect(apiFetch('/chat/c/uploads')).rejects.toMatchObject({
       status: 415,
       code: 'FST_ERR_CTP_INVALID_MEDIA_TYPE',
-      message: 'Формат файла не поддерживается. Загрузите JPG, PNG, WebP или GIF.',
+      message: 'Это изображение не подходит. Выберите другое из галереи.',
+    });
+  });
+
+  it('does not expose a technical status when an error has no readable body', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 503 }));
+
+    await expect(apiFetch('/x')).rejects.toMatchObject({
+      status: 503,
+      message: 'Не удалось выполнить запрос. Попробуйте ещё раз.',
     });
   });
 
@@ -122,6 +161,15 @@ describe('apiFetch', () => {
     ['arena_not_owned', 'Эта домашняя площадка ещё не открыта.'],
     ['arena_not_selectable', 'Эту домашнюю площадку сейчас нельзя выбрать.'],
     ['arena_unavailable', 'Домашняя площадка временно недоступна.'],
+    [
+      'playoff_round_started',
+      'Раунд уже начался. Перенесите оставшиеся игры отдельно в календаре.',
+    ],
+    [
+      'playoff_round_schedule_order',
+      'Следующий раунд начинается раньше окончания предыдущего. Перенесите его даты вперёд.',
+    ],
+    ['tournament_schedule_date_not_future', 'Выберите будущую дату первого тура.'],
   ])('localizes the stable player error %s without replacing its code', async (code, message) => {
     // This catches leaking server copy into player UI while preserving a stable branchable code.
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(

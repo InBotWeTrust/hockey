@@ -101,6 +101,7 @@ export interface ChatDTO {
     avatarUrl: string | null;
     lastSeenAt: string | null;
     lastReadAt: string | null;
+    accountKind?: 'player' | 'official';
   } | null;
   memberCount: number;
   pinnedAt: string | null;

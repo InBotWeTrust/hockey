@@ -54,6 +54,22 @@ const APPROVED_STATIC_SLUGS = [
   'space',
 ] as const;
 
+const WORLD_TOUR_STATIC_SLUGS = [
+  'moscow',
+  'istanbul',
+  'rome',
+  'paris',
+  'london',
+  'new-york',
+  'rio-de-janeiro',
+  'cape-town',
+  'dubai',
+  'mumbai',
+  'singapore',
+  'beijing',
+  'tokyo',
+] as const;
+
 type ApprovedStaticSlug = (typeof APPROVED_STATIC_SLUGS)[number];
 
 function committedMedia(slug: ApprovedStaticSlug) {
@@ -66,6 +82,9 @@ function committedMedia(slug: ApprovedStaticSlug) {
     },
     goalkeeperReadyUrl: `/bonus-games/goalkeepers/${slug}-ready.webp`,
     goalkeeperSaveUrl: `/bonus-games/goalkeepers/${slug}-save.webp`,
+    previewTitle: `${slug} preview`,
+    previewStory: `${slug} preview story`,
+    previewArtworkUrl: `/bonus-games/location-cards/${slug}.webp`,
   };
 }
 
@@ -112,6 +131,14 @@ interface AdminGameDto {
   slug: string;
   sortOrder: number;
   status: 'draft' | 'active' | 'archived';
+  targetGoals: number;
+  qualificationRules: {
+    type: 'goals_from_shots' | 'goals_in_time';
+    targetGoals: number;
+    shotsLimit?: number;
+    activeTimeMs?: number;
+    requiredGoalStreak?: number;
+  };
   rewardStars: number;
   revision: number;
   arena: {
@@ -213,6 +240,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     return {
       slug,
       title: `Игра ${sequence}`,
+      skillCode: 'accuracy',
       description: `Описание ${sequence}`,
       sortOrder: sequence,
       status: 'draft',
@@ -282,7 +310,11 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       { method: 'POST', url: '/admin/bonus-games', payload: {} },
       { method: 'PATCH', url: `/admin/bonus-games/${id}`, payload: {} },
       { method: 'DELETE', url: `/admin/bonus-games/${id}` },
-      { method: 'POST', url: '/admin/bonus-games/reorder', payload: { gameIds: [] } },
+      {
+        method: 'POST',
+        url: '/admin/bonus-games/reorder',
+        payload: { skillCode: 'accuracy', gameIds: [] },
+      },
       {
         method: 'POST',
         url: '/admin/bonus-games/media/arena',
@@ -460,6 +492,90 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     }
   });
 
+  it('keeps migrated World Tour games editable with their committed static media', async () => {
+    for (const [index, slug] of WORLD_TOUR_STATIC_SLUGS.entries()) {
+      const game = await createGame({
+        sortOrder: index + 1,
+        skillCode: 'accuracy',
+        arena: {
+          slug: `accuracy-world-tour-${slug}`,
+          title: slug,
+          artworkUrl: `/bonus-games/world-tour/arenas/${slug}.webp`,
+          thumbnailUrl: `/bonus-games/world-tour/previews/${slug}.webp`,
+        },
+        goalkeeperReadyUrl: `/bonus-games/world-tour/goalkeepers/${slug}-ready.webp`,
+        goalkeeperSaveUrl: `/bonus-games/world-tour/goalkeepers/${slug}-save.webp`,
+        previewTitle: slug,
+        previewStory: `World Tour ${slug}`,
+        previewArtworkUrl: `/bonus-games/world-tour/previews/${slug}.webp`,
+      });
+      await pool.query("update bonus_game set status = 'active' where id = $1", [game.id]);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/admin/bonus-games/${game.id}`,
+        headers: adminHeaders,
+        payload: { rewardStars: index + 1 },
+      });
+
+      expect(response.statusCode, `${slug}: ${response.body}`).toBe(200);
+      expect(response.json().game).toMatchObject({
+        id: game.id,
+        status: 'active',
+        rewardStars: index + 1,
+      });
+    }
+  });
+
+  it('rejects swapped World Tour arena artwork and thumbnail paths', async () => {
+    for (const [index, slug] of WORLD_TOUR_STATIC_SLUGS.entries()) {
+      const base = {
+        sortOrder: 1,
+        skillCode: 'accuracy' as const,
+        goalkeeperReadyUrl: `/bonus-games/world-tour/goalkeepers/${slug}-ready.webp`,
+        goalkeeperSaveUrl: `/bonus-games/world-tour/goalkeepers/${slug}-save.webp`,
+        previewTitle: slug,
+        previewStory: `World Tour ${slug}`,
+        previewArtworkUrl: `/bonus-games/world-tour/previews/${slug}.webp`,
+      };
+      const variants = [
+        {
+          label: 'preview used as artwork',
+          artworkUrl: `/bonus-games/world-tour/previews/${slug}.webp`,
+          thumbnailUrl: `/bonus-games/world-tour/previews/${slug}.webp`,
+        },
+        {
+          label: 'arena used as thumbnail',
+          artworkUrl: `/bonus-games/world-tour/arenas/${slug}.webp`,
+          thumbnailUrl: `/bonus-games/world-tour/arenas/${slug}.webp`,
+        },
+      ];
+
+      for (const [variantIndex, variant] of variants.entries()) {
+        const game = await createGame({
+          ...base,
+          arena: {
+            slug: `world-tour-swap-${index}-${variantIndex}`,
+            title: slug,
+            artworkUrl: variant.artworkUrl,
+            thumbnailUrl: variant.thumbnailUrl,
+          },
+        });
+        const response = await app.inject({
+          method: 'PATCH',
+          url: `/admin/bonus-games/${game.id}`,
+          headers: adminHeaders,
+          payload: { status: 'active' },
+        });
+
+        expect(response.statusCode, `${slug}: ${variant.label}`).toBe(409);
+        expect(response.json().error.code, `${slug}: ${variant.label}`).toBe(
+          'bonus_game_incomplete',
+        );
+      }
+    }
+  });
+
   it('accepts only canonical signed media paths during activation', async () => {
     const uploaded = await uploadMedia('arena');
     const safeMedia = committedMedia('beach');
@@ -512,6 +628,9 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       },
       goalkeeperReadyUrl: uploaded.url,
       goalkeeperSaveUrl: uploaded.url,
+      previewTitle: safeMedia.previewTitle,
+      previewStory: safeMedia.previewStory,
+      previewArtworkUrl: uploaded.url,
     });
     const signedActivation = await patchGame(signed.id, { status: 'active' });
     expect(signedActivation.status).toBe('active');
@@ -622,6 +741,68 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     });
   });
 
+  it('synchronizes returned and persisted qualification targets when only target goals change', async () => {
+    const game = await createGame({
+      qualificationRules: {
+        type: 'goals_from_shots',
+        targetGoals: 18,
+        shotsLimit: 30,
+        requiredGoalStreak: 3,
+      },
+    });
+
+    const updated = await patchGame(game.id, { targetGoals: 17 });
+    expect(updated.qualificationRules).toEqual({
+      type: 'goals_from_shots',
+      targetGoals: 17,
+      shotsLimit: 30,
+      requiredGoalStreak: 3,
+    });
+
+    const stored = await pool.query<{ qualification_rules: AdminGameDto['qualificationRules'] }>(
+      'select qualification_rules from bonus_game where id = $1',
+      [game.id],
+    );
+    expect(stored.rows[0]?.qualification_rules).toEqual({
+      type: 'goals_from_shots',
+      targetGoals: 17,
+      shotsLimit: 30,
+      requiredGoalStreak: 3,
+    });
+  });
+
+  it('synchronizes time qualification targets without changing their time or streak rules', async () => {
+    const game = await createGame({
+      skillCode: 'speed',
+      periods: [{ ...PERIODS[0]!, shotsLimit: null }],
+      qualificationRules: {
+        type: 'goals_in_time',
+        targetGoals: 18,
+        activeTimeMs: 240_000,
+        requiredGoalStreak: 3,
+      },
+    });
+
+    const updated = await patchGame(game.id, { targetGoals: 17 });
+    expect(updated.qualificationRules).toEqual({
+      type: 'goals_in_time',
+      targetGoals: 17,
+      activeTimeMs: 240_000,
+      requiredGoalStreak: 3,
+    });
+
+    const stored = await pool.query<{ qualification_rules: AdminGameDto['qualificationRules'] }>(
+      'select qualification_rules from bonus_game where id = $1',
+      [game.id],
+    );
+    expect(stored.rows[0]?.qualification_rules).toEqual({
+      type: 'goals_in_time',
+      targetGoals: 17,
+      activeTimeMs: 240_000,
+      requiredGoalStreak: 3,
+    });
+  });
+
   it('increments revision only for effective price, gameplay, reward, or media changes', async () => {
     const game = await createGame();
 
@@ -664,7 +845,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     expect(switched.arena.id).toBe(other.arena.id);
   });
 
-  it('rejects incomplete price, target, and arena activation states', async () => {
+  it('rejects incomplete price, target, and archived arena states but allows bonus-only arenas', async () => {
     const cases = [
       { accessType: 'free', unlockPriceStars: 1, ...committedMedia('beach') },
       { accessType: 'paid', unlockPriceStars: 0, ...committedMedia('ski-resort') },
@@ -718,7 +899,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       headers: adminHeaders,
       payload: { status: 'active' },
     });
-    expect(unselectableResponse.statusCode).toBe(409);
+    expect(unselectableResponse.statusCode).toBe(200);
   });
 
   it('reorders the exact active set atomically and compacts order on archive', async () => {
@@ -730,7 +911,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       method: 'POST',
       url: '/admin/bonus-games/reorder',
       headers: adminHeaders,
-      payload: { gameIds: [three.id, one.id] },
+      payload: { skillCode: 'accuracy', gameIds: [three.id, one.id] },
     });
     expect(invalid.statusCode).toBe(409);
     expect(invalid.json().error.code).toBe('bonus_game_order_invalid');
@@ -748,7 +929,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       method: 'POST',
       url: '/admin/bonus-games/reorder',
       headers: adminHeaders,
-      payload: { gameIds: [three.id, one.id, two.id] },
+      payload: { skillCode: 'accuracy', gameIds: [three.id, one.id, two.id] },
     });
     expect(reordered.statusCode, reordered.body).toBe(200);
     expect(
