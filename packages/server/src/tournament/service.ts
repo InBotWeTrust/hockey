@@ -45,7 +45,6 @@ import { rebuildDailyAggregateStandings } from './dailyAggregate.js';
 import { advanceTournamentPlayoffSeries } from './playoffSeriesLifecycle.js';
 import {
   enqueueTournamentFixtureResultPush,
-  enqueueTournamentSeriesNextGamePush,
 } from './fixtureNotifications.js';
 import { lockTournament, lockTournamentFixture } from './locks.js';
 import { canTransitionTournament } from './lifecycle.js';
@@ -520,7 +519,6 @@ async function reschedulePublishedPlayoffRounds(
           input.adminUserId,
         ],
       );
-      await enqueueTournamentSeriesNextGamePush(client, { fixtureId: item.fixture.id });
       if (item.hardDeadlineAt! > roundEnd) roundEnd = item.hardDeadlineAt!;
     }
     await client.query(
@@ -4514,7 +4512,6 @@ export async function rescheduleTournamentFixture(
         input.adminUserId,
       ],
     );
-    await enqueueTournamentSeriesNextGamePush(client, { fixtureId: input.fixtureId });
     return {
       fixtureId: input.fixtureId,
       startsAt: input.startsAt.toISOString(),

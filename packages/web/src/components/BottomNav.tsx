@@ -227,7 +227,9 @@ export function BottomNav(): JSX.Element | null {
   const activeIndex = isGame ? 0 : isSections ? 1 : isChat ? 2 : isProfile ? 3 : 4;
   const gameActionCount =
     (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length +
-    (classicTournamentGames?.games ?? []).filter((game) => game.state !== 'closed').length;
+    (classicTournamentGames?.games ?? []).filter(
+      (game) => game.state !== 'closed' && String(game.state) !== 'completed',
+    ).length;
   const currentSectionActionCount =
     weeklyChallenge?.challenge?.canJoin === true ||
     weeklyChallenge?.challenge?.canClaimReward === true

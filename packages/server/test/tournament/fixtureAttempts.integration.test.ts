@@ -24,6 +24,7 @@ import {
   advanceTournamentPlayoffSeries,
   forceTournamentPlayoffSeriesWinner,
 } from '../../src/tournament/playoffSeriesLifecycle.js';
+import { reconcilePlayoffDayStartingCommunications } from '../../src/tournament/communications.js';
 import {
   createTestPool,
   getTestUrls,
@@ -905,6 +906,8 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       fixture_id: string;
       home_user_id: string;
       away_user_id: string;
+      scheduled_starts_at: Date;
+      hard_deadline_at: Date;
       scheduled_starts_at: Date;
     }>(
       `select fixture.id as fixture_id, home.user_id as home_user_id,
@@ -3100,6 +3103,159 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       },
     });
     expect(activeReschedule.statusCode).toBe(409);
+  });
+
+  it('notifies only the fixture participants on a normal playoff reschedule, then reminds them at T-30', async () => {
+    const tournament = await createPublished(pool, 'attempt-reschedule-notifications', lifecycleRules());
+    await preparePlayoffs(pool, tournament.id);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00.000Z'));
+    const fixture = await pool.query<{
+      fixture_id: string;
+      home_user_id: string;
+      away_user_id: string;
+      scheduled_starts_at: Date;
+      hard_deadline_at: Date;
+    }>(
+      `select fixture.id as fixture_id, home.user_id as home_user_id, away.user_id as away_user_id,
+              attempt.scheduled_starts_at, attempt.hard_deadline_at
+         from tournament_fixture fixture
+         join tournament_round round on round.id = fixture.round_id
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+         join tournament_participant home on home.id = fixture.home_participant_id
+         join tournament_participant away on away.id = fixture.away_participant_id
+        where fixture.tournament_id = $1 and round.stage = 'playoff'
+          and (fixture.result_snapshot->>'gameNumber')::int = 1
+        order by fixture.fixture_number
+        limit 1`,
+      [tournament.id],
+    );
+    const row = fixture.rows[0]!;
+    for (const userId of PLAYER_IDS) {
+      await pool.query(
+        `insert into push_subscriptions (user_id, endpoint, p256dh, auth)
+         values ($1, $2, 'test-p256dh', 'test-auth')`,
+        [userId, `https://push.example.test/reschedule/${userId}`],
+      );
+    }
+    const startsAt = new Date('2031-01-15T12:00:00.000Z');
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const adminToken = await jwt.issueAccessToken({ sub: ADMIN_ID });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/admin/tournaments/${tournament.id}/fixtures/${row.fixture_id}/schedule`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: {
+        startsAt: startsAt.toISOString(),
+        endsAt: new Date(
+          startsAt.getTime() + (row.hard_deadline_at.getTime() - row.scheduled_starts_at.getTime()),
+        ).toISOString(),
+        reason: 'Переносим матч на согласованное время',
+      },
+    });
+
+    expect(response.statusCode, JSON.stringify(response.json())).toBe(200);
+    expect(
+      (
+        await pool.query<{ user_id: string; event_type: string }>(
+          `select user_id, event_type from push_delivery_log order by event_type, user_id`,
+        )
+      ).rows,
+    ).toEqual(
+      [row.home_user_id, row.away_user_id]
+        .sort()
+        .map((user_id) => ({ user_id, event_type: 'tournament.rescheduled' })),
+    );
+
+    await expect(
+      reconcilePlayoffDayStartingCommunications(pool, {
+        now: new Date(startsAt.getTime() - 30 * 60_000),
+        publisher: { publish: async () => undefined },
+      }),
+    ).resolves.toEqual({ considered: 2 });
+    expect(
+      (
+        await pool.query<{ user_id: string; event_key: string }>(
+          `select user_id, event_key from push_delivery_log
+            where event_type = 'tournament.series_next_game'
+            order by user_id`,
+        )
+      ).rows,
+    ).toEqual(
+      [row.home_user_id, row.away_user_id]
+        .sort()
+        .map((user_id) => ({
+          user_id,
+          event_key: expect.stringContaining(`${tournament.id}:playoff-day-starting:`),
+        })),
+    );
+  });
+
+  it('sends one combined notice to the fixture participants when a playoff match moves inside T-30', async () => {
+    const tournament = await createPublished(pool, 'attempt-reschedule-combined-notice', lifecycleRules());
+    await preparePlayoffs(pool, tournament.id);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00.000Z'));
+    const fixture = await pool.query<{
+      fixture_id: string;
+      home_user_id: string;
+      away_user_id: string;
+      scheduled_starts_at: Date;
+      hard_deadline_at: Date;
+    }>(
+      `select fixture.id as fixture_id, home.user_id as home_user_id, away.user_id as away_user_id,
+              attempt.scheduled_starts_at, attempt.hard_deadline_at
+         from tournament_fixture fixture
+         join tournament_round round on round.id = fixture.round_id
+         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+         join tournament_participant home on home.id = fixture.home_participant_id
+         join tournament_participant away on away.id = fixture.away_participant_id
+        where fixture.tournament_id = $1 and round.stage = 'playoff'
+          and (fixture.result_snapshot->>'gameNumber')::int = 1
+        order by fixture.fixture_number
+        limit 1`,
+      [tournament.id],
+    );
+    const row = fixture.rows[0]!;
+    for (const userId of PLAYER_IDS) {
+      await pool.query(
+        `insert into push_subscriptions (user_id, endpoint, p256dh, auth)
+         values ($1, $2, 'test-p256dh', 'test-auth')`,
+        [userId, `https://push.example.test/reschedule-combined/${userId}`],
+      );
+    }
+    const startsAt = new Date(Date.now() + 10 * 60_000);
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const adminToken = await jwt.issueAccessToken({ sub: ADMIN_ID });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/admin/tournaments/${tournament.id}/fixtures/${row.fixture_id}/schedule`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: {
+        startsAt: startsAt.toISOString(),
+        endsAt: new Date(
+          startsAt.getTime() + (row.hard_deadline_at.getTime() - row.scheduled_starts_at.getTime()),
+        ).toISOString(),
+        reason: 'Матч переносится, начинаем почти сразу',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(
+      (
+        await pool.query<{ user_id: string; event_type: string; event_key: string }>(
+          `select user_id, event_type, event_key from push_delivery_log order by user_id`,
+        )
+      ).rows,
+    ).toEqual(
+      [row.home_user_id, row.away_user_id]
+        .sort()
+        .map((user_id) => ({
+          user_id,
+          event_type: 'tournament.series_next_game',
+          event_key: expect.stringContaining(`${tournament.id}:playoff-day-starting:`),
+        })),
+    );
   });
 
   it('keeps attempt state consistent when an admin resolves a tournament no-show', async () => {

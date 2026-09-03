@@ -8,6 +8,7 @@ import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { createTournamentDuelMatch } from '../../src/duel/amateur/routes.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
+import { listActiveClassicGames } from '../../src/tournament/classicGame.js';
 import {
   getFixtureLiveState,
   proposeFixtureLiveTime,
@@ -45,7 +46,10 @@ import {
   openTournamentFixtureSegment,
   settleTournamentSegmentForDuel,
 } from '../../src/tournament/fixtureLifecycle.js';
-import { dispatchTournamentCommunication } from '../../src/tournament/communications.js';
+import {
+  dispatchTournamentCommunication,
+  reconcilePlayoffDayStartingCommunications,
+} from '../../src/tournament/communications.js';
 import { enqueueTournamentPush } from '../../src/push/tournament.js';
 import { backfillPlayoffScheduling } from '../../src/tournament/playoffScheduleBackfill.js';
 import { grantTournamentStageRewards } from '../../src/tournament/rewards.js';
@@ -3843,7 +3847,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     });
   });
 
-  it('notifies both active participants when a played series game promotes the next fixture', async () => {
+  it('does not notify participants before T-30 when a played series game promotes the next fixture', async () => {
     const { fixtures } = await createBestOfThreePlayoff(pool, 'played-series-next-game');
     const [firstFixture, secondFixture, nextFixture] = fixtures;
     await subscribeTournamentParticipants(pool, [
@@ -3854,21 +3858,105 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     await settlePlayedPlayoffFixture(pool, firstFixture!);
     await settlePlayedPlayoffFixture(pool, secondFixture!);
 
-    const startsAt = nextFixture!.scheduled_starts_at.toISOString();
-    expect((await seriesNextGameDeliveries(pool)).rows).toEqual([
-      {
-        user_id: nextFixture!.home_user_id,
-        event_key: `${nextFixture!.id}:series-next-game:${startsAt}`,
-        body: `Следующий матч откроется ${startsAt}.`,
-        url: '/?view=amateur&section=tournaments',
-      },
-      {
-        user_id: nextFixture!.away_user_id,
-        event_key: `${nextFixture!.id}:series-next-game:${startsAt}`,
-        body: `Следующий матч откроется ${startsAt}.`,
-        url: '/?view=amateur&section=tournaments',
-      },
+    expect((await seriesNextGameDeliveries(pool)).rows).toEqual([]);
+  });
+
+  it('notifies only today\'s playoff participants at T-30 with one push and one personal system message', async () => {
+    const { tournament, fixtures } = await createBestOfThreePlayoff(pool, 'playoff-day-starting');
+    const [fixture, nextFixture] = fixtures;
+    await subscribeTournamentParticipants(pool, [
+      fixture!.home_participant_id,
+      fixture!.away_participant_id,
     ]);
+    await pool.query(
+      `insert into users (id, display_name, timezone, account_kind)
+       values ($1, 'Ультимейт Хоккей', 'Europe/Moscow', 'official')`,
+      [SYSTEM_SENDER_ID],
+    );
+    const options = {
+      now: new Date(fixture!.scheduled_starts_at.getTime() - 30 * 60_000),
+      systemUserId: SYSTEM_SENDER_ID,
+      publisher: { publish: async () => undefined },
+    } as const;
+
+    await expect(reconcilePlayoffDayStartingCommunications(pool, options)).resolves.toEqual({
+      considered: 2,
+    });
+    await reconcilePlayoffDayStartingCommunications(pool, options);
+
+    expect(
+      await listActiveClassicGames(pool, { userId: fixture!.home_user_id, now: options.now }),
+    ).toEqual([
+      expect.objectContaining({
+        kind: 'playoff',
+        tournament_id: tournament.id,
+        state: 'scheduled',
+      }),
+    ]);
+
+    const deliveries = await pool.query<{ user_id: string; event_key: string }>(
+      `select user_id, event_key from push_delivery_log
+        where event_type = 'tournament.series_next_game'
+          and event_key like $1
+        order by user_id`,
+      [`${tournament.id}:playoff-day-starting:%`],
+    );
+    expect(deliveries.rows).toEqual(
+      [fixture!.home_user_id, fixture!.away_user_id]
+        .sort()
+        .map((user_id) => ({
+          user_id,
+          event_key: expect.stringContaining(
+            `${tournament.id}:playoff-day-starting:`,
+          ),
+        })),
+    );
+    const messages = await pool.query<{ user_id: string; count: string }>(
+      `select member.user_id, count(*)::text as count
+         from messages message
+         join chats chat on chat.id = message.chat_id
+         join chat_members member on member.chat_id = chat.id and member.user_id <> $1
+        where message.sender_id = $1
+          and message.metadata->>'playoffDayStartingKey' like $2
+        group by member.user_id
+        order by member.user_id`,
+      [SYSTEM_SENDER_ID, `${tournament.id}:playoff-day-starting:%`],
+    );
+    expect(messages.rows).toEqual(
+      [fixture!.home_user_id, fixture!.away_user_id]
+        .sort()
+        .map((user_id) => ({ user_id, count: '1' })),
+    );
+    await settlePlayedPlayoffFixture(pool, fixture!);
+    await expect(
+      reconcilePlayoffDayStartingCommunications(pool, {
+        ...options,
+        now: new Date(nextFixture!.scheduled_starts_at.getTime() - 30 * 60_000),
+      }),
+    ).resolves.toEqual({ considered: 2 });
+    expect(
+      (
+        await pool.query<{ count: string }>(
+          `select count(*)::text as count from push_delivery_log
+            where event_type = 'tournament.series_next_game'
+              and event_key like $1`,
+          [`${tournament.id}:playoff-day-starting:%`],
+        )
+      ).rows,
+    ).toEqual([{ count: '2' }]);
+    expect(
+      (
+        await pool.query<{ count: string }>(
+          `select count(*)::text as count from messages
+            where sender_id = $1 and metadata->>'playoffDayStartingKey' like $2`,
+          [SYSTEM_SENDER_ID, `${tournament.id}:playoff-day-starting:%`],
+        )
+      ).rows,
+    ).toEqual([{ count: '2' }]);
+    await pool.query(`update tournament_fixture set status = 'settled' where id = $1`, [fixture!.id]);
+    await expect(
+      listActiveClassicGames(pool, { userId: fixture!.home_user_id, now: options.now }),
+    ).resolves.toEqual([]);
   });
 
   it('reports a regular fixture completion only for the transaction that settles it', async () => {
@@ -3895,7 +3983,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     }
   });
 
-  it('notifies both active participants when a technical result promotes the next fixture', async () => {
+  it('does not notify participants before T-30 when a technical result promotes the next fixture', async () => {
     const { tournament, fixtures } = await createBestOfThreePlayoff(
       pool,
       'technical-series-next-game',
@@ -3921,11 +4009,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       adminUserId: ADMIN_ID,
     });
 
-    const startsAt = nextFixture!.scheduled_starts_at.toISOString();
-    expect((await seriesNextGameDeliveries(pool)).rows.map((row) => row.event_key)).toEqual([
-      `${nextFixture!.id}:series-next-game:${startsAt}`,
-      `${nextFixture!.id}:series-next-game:${startsAt}`,
-    ]);
+    expect((await seriesNextGameDeliveries(pool)).rows).toEqual([]);
   });
 
   it('backfills a future best-of-seven playoff into four games on day one and three on day two', async () => {
@@ -4102,7 +4186,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(days.rowCount).toBe(0);
   });
 
-  it('notifies the first scheduled final and bronze fixtures after both source series resolve', async () => {
+  it('does not notify final and bronze participants before T-30 after source series resolve', async () => {
     await seedUsers(pool, 0);
     const tournament = await createPublishedTournament(
       pool,
@@ -4186,25 +4270,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       [tournament.id],
     );
     expect(dependents.rows).toHaveLength(2);
-    const expectedDeliveries = dependents.rows
-      .flatMap((fixture) => {
-        const eventKey = `${fixture.fixture_id}:series-next-game:${fixture.scheduled_starts_at.toISOString()}`;
-        return [
-          { user_id: fixture.away_user_id, event_key: eventKey },
-          { user_id: fixture.home_user_id, event_key: eventKey },
-        ];
-      })
-      .sort((left, right) =>
-        left.event_key === right.event_key
-          ? left.user_id.localeCompare(right.user_id)
-          : left.event_key.localeCompare(right.event_key),
-      );
-    expect(
-      (await seriesNextGameDeliveries(pool)).rows.map(({ user_id, event_key }) => ({
-        user_id,
-        event_key,
-      })),
-    ).toEqual(expectedDeliveries);
+    expect((await seriesNextGameDeliveries(pool)).rows).toEqual([]);
   });
 
   it('keeps the better original seed as higher seed after a dependent-round upset', async () => {
@@ -4290,7 +4356,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     ]);
   });
 
-  it('does not duplicate a series-next-game notification when a technical fixture is resolved twice', async () => {
+  it('does not send an early next-game notification when a technical fixture is resolved twice', async () => {
     const { tournament, fixtures } = await createBestOfThreePlayoff(
       pool,
       'duplicate-series-next-game',
@@ -4318,14 +4384,10 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     await resolveTournamentNoShow(pool, secondNoShow);
     await resolveTournamentNoShow(pool, secondNoShow);
 
-    const startsAt = nextFixture!.scheduled_starts_at.toISOString();
-    expect((await seriesNextGameDeliveries(pool)).rows.map((row) => row.event_key)).toEqual([
-      `${nextFixture!.id}:series-next-game:${startsAt}`,
-      `${nextFixture!.id}:series-next-game:${startsAt}`,
-    ]);
+    expect((await seriesNextGameDeliveries(pool)).rows).toEqual([]);
   });
 
-  it('notifies only the active participant who has tournament notifications enabled', async () => {
+  it('does not send an early next-game notification regardless of player push preferences', async () => {
     const { tournament, fixtures } = await createBestOfThreePlayoff(
       pool,
       'opt-out-series-next-game',
@@ -4356,16 +4418,10 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       adminUserId: ADMIN_ID,
     });
 
-    const startsAt = nextFixture!.scheduled_starts_at.toISOString();
-    expect((await seriesNextGameDeliveries(pool)).rows.map((row) => row.user_id)).toEqual([
-      nextFixture!.away_user_id,
-    ]);
-    expect((await seriesNextGameDeliveries(pool)).rows.map((row) => row.event_key)).toEqual([
-      `${nextFixture!.id}:series-next-game:${startsAt}`,
-    ]);
+    expect((await seriesNextGameDeliveries(pool)).rows).toEqual([]);
   });
 
-  it('uses a new timestamped series-next-game key when a promoted fixture is rescheduled', async () => {
+  it('does not send an early next-game notification when a promoted fixture is rescheduled', async () => {
     const { tournament, fixtures } = await createBestOfThreePlayoff(
       pool,
       'rescheduled-series-next-game',
@@ -4389,7 +4445,6 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       reason: 'integration promote then reschedule',
       adminUserId: ADMIN_ID,
     });
-    const originalStartsAt = nextFixture!.scheduled_starts_at.toISOString();
     const rescheduledStartsAt = new Date('2030-09-01T16:00:00.000Z');
     await rescheduleTournamentFixture(pool, {
       tournamentId: tournament.id,
@@ -4400,12 +4455,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       adminUserId: ADMIN_ID,
     });
 
-    expect((await seriesNextGameDeliveries(pool)).rows.map((row) => row.event_key)).toEqual([
-      `${nextFixture!.id}:series-next-game:${originalStartsAt}`,
-      `${nextFixture!.id}:series-next-game:${originalStartsAt}`,
-      `${nextFixture!.id}:series-next-game:${rescheduledStartsAt.toISOString()}`,
-      `${nextFixture!.id}:series-next-game:${rescheduledStartsAt.toISOString()}`,
-    ]);
+    expect((await seriesNextGameDeliveries(pool)).rows).toEqual([]);
   });
 
   it('propagates a playoff disqualification through the newly resolved third-place series', async () => {

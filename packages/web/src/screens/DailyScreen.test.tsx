@@ -693,6 +693,57 @@ describe('DailyScreen', () => {
     expect(screen.queryByText('До закрытия')).not.toBeInTheDocument();
   });
 
+  it('keeps a playoff tournament visible during its inter-game break and opens its schedule', async () => {
+    const breakEndsAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/classic/active')
+        ? {
+            games: [
+              {
+                tournament_id: 'playoff-break',
+                tournament_title: 'Кубок серии',
+                tournament_day: 1,
+                kind: 'playoff',
+                starts_at: '2030-09-01T10:00:00.000Z',
+                closes_at: '2030-09-01T11:00:00.000Z',
+                break_ends_at: breakEndsAt,
+                state: 'inter_game_break',
+                current_period: 0,
+                total_shots: 0,
+                total_goals: 0,
+              },
+            ],
+          }
+        : url.includes('/duel/training/state')
+          ? trainingIdleState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    function LocationProbe() {
+      return <output aria-label="Текущий адрес">{useLocation().search}</output>;
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/?view=arena']}>
+          <DailyScreen />
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('Перерыв между играми серии')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'К расписанию' }));
+
+    expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent(
+      'view=amateur&section=tournaments&tournament=playoff-break&tab=schedule',
+    );
+  });
+
   it('returns from a classic tournament game to its schedule', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);

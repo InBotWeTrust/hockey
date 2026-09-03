@@ -59,10 +59,12 @@ import {
 import { grantTournamentStageRewards } from './rewards.js';
 import { getFixtureLiveState, proposeFixtureLiveTime, respondFixtureLiveProposal } from './live.js';
 import { enqueueTournamentAudiencePush } from '../push/tournament.js';
+import { enqueueTournamentFixtureRescheduledPush } from './fixtureNotifications.js';
 import {
   dispatchTournamentCommunication,
   listTournamentDispatches,
   previewTournamentAudience,
+  reconcilePlayoffDayStartingCommunications,
 } from './communications.js';
 import { createMediaProxyUrl } from '../storage/mediaAccess.js';
 import { invalidateUnreadCache } from '../chat/cache.js';
@@ -241,8 +243,15 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
 
   app.get('/tournaments/classic/active', authenticated, async (req) => {
     await requireTournamentFeature(app);
+    const now = new Date();
+    await reconcilePlayoffDayStartingCommunications(app.pg, {
+      now,
+      publisher: app.realtime,
+      ...(options.systemUserId === undefined ? {} : { systemUserId: options.systemUserId }),
+      invalidateUnreadCache: (userId) => invalidateUnreadCache(app.redis, userId),
+    });
     return {
-      games: await listActiveClassicGames(app.pg, { userId: req.user.id, now: new Date() }),
+      games: await listActiveClassicGames(app.pg, { userId: req.user.id, now }),
     };
   });
 
@@ -922,17 +931,25 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       reason: body.reason,
       adminUserId: req.user.id,
     });
-    await enqueueTournamentAudiencePush(app.pg, {
-      tournamentId: params.tournamentId,
-      eventType: 'tournament.rescheduled',
-      eventKey: `${params.fixtureId}:rescheduled:${body.startsAt}`,
-      variables: { startsAt: body.startsAt },
-      fallback: {
-        title: 'Матч перенесён',
-        body: `Новое время: ${body.startsAt}`,
-        url: '/?view=amateur&section=tournaments',
-      },
-    });
+    const now = new Date();
+    const startsInMs = new Date(body.startsAt).getTime() - now.getTime();
+    const combinedNotice = startsInMs > 0 && startsInMs < 30 * 60_000;
+    const immediate = combinedNotice
+      ? await reconcilePlayoffDayStartingCommunications(app.pg, {
+          now,
+          fixtureId: params.fixtureId,
+          immediate: true,
+          publisher: app.realtime,
+          ...(options.systemUserId === undefined ? {} : { systemUserId: options.systemUserId }),
+          invalidateUnreadCache: (userId) => invalidateUnreadCache(app.redis, userId),
+        })
+      : null;
+    if (immediate === null || immediate.considered === 0) {
+      await enqueueTournamentFixtureRescheduledPush(app.pg, {
+        fixtureId: params.fixtureId,
+        startsAt: new Date(body.startsAt),
+      });
+    }
     await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     return result;
   });

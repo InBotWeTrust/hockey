@@ -51,7 +51,7 @@ import { useDailyStore } from '../stores/dailyStore.js';
 import { useClassicTournamentStore } from '../stores/classicTournamentStore.js';
 import {
   fetchActiveClassicTournamentGames,
-  type ActiveClassicTournamentGame,
+  type ActiveTournamentGame,
   type ClassicTournamentState,
 } from '../api/tournamentClassic.js';
 import {
@@ -1247,7 +1247,10 @@ function GameHub({
   });
   const classicArenaEntries = [...(classicTournamentGames.data?.games ?? [])]
     .sort((left, right) => {
-      const priority = (game: ActiveClassicTournamentGame): number => {
+      const priority = (game: ActiveTournamentGame): number => {
+        if (game.kind === 'playoff') {
+          return game.state === 'active' || game.state === 'ready_check' ? 0 : 1;
+        }
         if (
           game.state === 'period_active' ||
           game.state === 'break_active' ||
@@ -1260,6 +1263,40 @@ function GameHub({
       return priority(left) - priority(right);
     })
     .map<ArenaEntry>((game) => {
+      if (game.kind === 'playoff') {
+        const breakRemaining = Math.max(0, timestampMs(game.break_ends_at) - now);
+        const startsAtRemaining = Math.max(0, timestampMs(game.starts_at) - now);
+        const isBreak = game.state === 'inter_game_break' && game.break_ends_at !== null;
+        return {
+          id: `playoff-${game.tournament_id}-${game.tournament_day}`,
+          kind: 'duel',
+          eyebrow: `Турнир · ${game.tournament_day}-й игровой день`,
+          title: game.tournament_title,
+          subtitle: isBreak ? 'Перерыв между играми серии' : 'Игра серии ожидает готовности.',
+          meta: isBreak
+            ? `Следующая игра через ${formatMs(breakRemaining)}`
+            : `Старт через ${formatEventRemaining(startsAtRemaining)}`,
+          ctaLabel: 'К расписанию',
+          onEnter: () =>
+            navigate(
+              `/?view=amateur&section=tournaments&tournament=${encodeURIComponent(game.tournament_id)}&tab=schedule`,
+              { replace: true },
+            ),
+          scoreboard: (
+            <DailyHubScoreboard
+              activePeriod={0}
+              ariaLabel={
+                isBreak
+                  ? `${game.tournament_title}. Перерыв между играми серии. До конца ${formatMs(breakRemaining)}`
+                  : `${game.tournament_title}. Старт через ${formatEventRemaining(startsAtRemaining)}`
+              }
+              periodsTotal={1}
+              timer={isBreak ? formatMs(breakRemaining) : formatEventRemaining(startsAtRemaining)}
+              timerLabel={isBreak ? 'Перерыв' : 'До старта'}
+            />
+          ),
+        };
+      }
       const deadlineRemaining = Math.max(0, timestampMs(game.closes_at) - now);
       const breakRemaining = Math.max(0, timestampMs(game.break_ends_at) - now);
       const isBreak = game.state === 'break_active' && game.break_ends_at !== null;

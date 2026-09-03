@@ -8,6 +8,7 @@ import type {
 } from './duel.js';
 
 export interface ActiveClassicTournamentGame {
+  kind: 'classic';
   tournament_id: string;
   tournament_title: string;
   tournament_day: number;
@@ -19,6 +20,22 @@ export interface ActiveClassicTournamentGame {
   total_shots: number;
   total_goals: number;
 }
+
+export interface ActivePlayoffTournamentGame {
+  kind: 'playoff';
+  tournament_id: string;
+  tournament_title: string;
+  tournament_day: number;
+  starts_at: string;
+  closes_at: string;
+  break_ends_at: string | null;
+  state: 'scheduled' | 'ready_check' | 'active' | 'inter_game_break';
+  current_period: 0;
+  total_shots: 0;
+  total_goals: 0;
+}
+
+export type ActiveTournamentGame = ActiveClassicTournamentGame | ActivePlayoffTournamentGame;
 
 export interface ClassicTournamentState extends DailyStateResponse {
   tournament_id: string;
@@ -48,7 +65,7 @@ function stampState(state: ClassicTournamentState): ClassicTournamentState {
 }
 
 export function fetchActiveClassicTournamentGames(): Promise<{
-  games: ActiveClassicTournamentGame[];
+  games: ActiveTournamentGame[];
 }> {
   return apiFetch('/tournaments/classic/active');
 }

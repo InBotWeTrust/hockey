@@ -1,6 +1,5 @@
 import type { PoolClient } from 'pg';
 import { cancelTournamentDuel } from '../duel/amateur/lifecycle.js';
-import { enqueueTournamentSeriesNextGamePush } from './fixtureNotifications.js';
 import { resolveDelayedPlayoffRoundStart } from './playoffs.js';
 import { grantPlayoffRewardsIfComplete } from './rewards.js';
 
@@ -179,7 +178,7 @@ export async function advanceTournamentPlayoffSeries(
     Number(series.lower_seed_wins) < Number(series.wins_required)
   ) {
     const nextGameNumber = Number(series.higher_seed_wins) + Number(series.lower_seed_wins) + 1;
-    const promoted = await client.query<{ id: string }>(
+    await client.query(
       `update tournament_fixture
           set status = 'scheduled', updated_at = now()
         where series_id = $1 and status = 'conditional'
@@ -187,17 +186,10 @@ export async function advanceTournamentPlayoffSeries(
         returning id`,
       [series.id, nextGameNumber],
     );
-    const materializedFixtureId = await materializeNextSeriesGame(client, {
+    await materializeNextSeriesGame(client, {
       seriesId: series.id,
       settledAt: input.settledAt,
     });
-    if (materializedFixtureId !== null) {
-      await enqueueTournamentSeriesNextGamePush(client, { fixtureId: materializedFixtureId });
-    } else {
-      for (const fixture of promoted.rows) {
-        await enqueueTournamentSeriesNextGamePush(client, { fixtureId: fixture.id });
-      }
-    }
     return { completed: false };
   }
 
@@ -466,16 +458,6 @@ async function finalizeTournamentPlayoffSeries(
       [dependent.id, higher, lower, dependent.wins_required],
     );
     await delayPastPlayoffRoundStart(client, { roundId: dependent.round_id });
-    const firstFixture = await client.query<{ id: string }>(
-      `select id from tournament_fixture
-        where series_id = $1 and status = 'scheduled'
-          and coalesce((result_snapshot->>'gameNumber')::int, 1) = 1`,
-      [dependent.id],
-    );
-    const fixtureId = firstFixture.rows[0]?.id;
-    if (fixtureId !== undefined) {
-      await enqueueTournamentSeriesNextGamePush(client, { fixtureId });
-    }
   }
 
   return { completed: true };
