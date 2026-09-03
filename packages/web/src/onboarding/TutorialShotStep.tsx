@@ -197,7 +197,7 @@ export function TutorialShotStep({
             return { serverResult: response.serverResult, state: nextState };
           }}
           applyState={setState}
-          longCourtBackground="/sprites/new-light-court.webp"
+          longCourtBackground="/sprites/test-court-bg-outdoor-v8.png"
           hideScoreboard
           resultCopy={{
             save: 'Ещё раз',

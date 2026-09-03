@@ -705,7 +705,7 @@ Assert existing callers retain current strings and tutorial override appears onl
 
 - [ ] **Step 2: Add failing tutorial component tests**
 
-Mock `PlayView` as a shot callback surface. Assert start snapshot uses `rookie`, `/sprites/new-light-court.webp`, normal perspective geometry, configured speed overrides, unlimited shot count, no reward/stat API, and Next disabled until `goalConfirmed=true`. Verify miss/save immediately update state for another shot.
+Mock `PlayView` as a shot callback surface. Assert start snapshot uses `rookie`, `/sprites/test-court-bg-outdoor-v8.png`, normal perspective geometry, configured speed overrides, unlimited shot count, no reward/stat API, and Next disabled until `goalConfirmed=true`. Verify miss/save immediately update state for another shot.
 
 - [ ] **Step 3: Run and verify failures**
 
@@ -730,7 +730,7 @@ interface TutorialState {
 }
 ```
 
-Pass `speedOverrides={{ shooterFreq, goalieFreq, goalFreq, puckSpeed: PUCK_SPEED_PER_MS }}`, `goalieId="rookie"`, `longCourtBackground="/sprites/new-light-court.webp"`, existing perspective options, `shotsTotal={undefined}`, and `resultCopy={{ save: 'Ещё раз', miss: 'Ещё раз', goal: 'Первая шайба!' }}`. `submitShot` sends only timing + claimed result, reconciles with `serverResult`, and sets `goalConfirmed` only from server response.
+Pass `speedOverrides={{ shooterFreq, goalieFreq, goalFreq, puckSpeed: PUCK_SPEED_PER_MS }}`, `goalieId="rookie"`, `longCourtBackground="/sprites/test-court-bg-outdoor-v8.png"`, existing perspective options, `shotsTotal={undefined}`, and `resultCopy={{ save: 'Ещё раз', miss: 'Ещё раз', goal: 'Первая шайба!' }}`. `submitShot` sends only timing + claimed result, reconciles with `serverResult`, and sets `goalConfirmed` only from server response.
 
 Render the instruction above the rink and a CTA below it. After a confirmed goal, respect reduced motion and enable the configured `ctaLabel`.
 
@@ -936,7 +936,7 @@ Capture or compose a real in-game frame for `Поймай момент` using th
 
 - [ ] **Step 3: Add asset contract test**
 
-For repository-held approved references, assert WebP and the agreed square 1:1 dimension/aspect contract (minimum 800×800) established by the approved examples. The test must enumerate exact filenames; no filesystem wildcard snapshot.
+For repository-held approved references, enumerate exactly the 14 approved filenames and assert each file decodes as WebP at exactly 1200×1200. Do not use a filesystem wildcard snapshot.
 
 - [ ] **Step 4: Produce the remaining approved images**
 

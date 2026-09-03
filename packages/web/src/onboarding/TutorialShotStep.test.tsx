@@ -104,7 +104,7 @@ describe('TutorialShotStep', () => {
         goalieId: 'rookie',
         periodNumber: 1,
         shotsTotal: undefined,
-        longCourtBackground: '/sprites/new-light-court.webp',
+        longCourtBackground: '/sprites/test-court-bg-outdoor-v8.png',
         hideScoreboard: true,
         speedOverrides: {
           shooterFreq: 0.23,
