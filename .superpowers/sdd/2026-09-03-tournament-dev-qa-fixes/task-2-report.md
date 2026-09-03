@@ -31,3 +31,13 @@
 - The same commit delays a past next-round start to the final prior-series settlement plus 30 minutes, shifts unstarted game-day/fixture/attempt timestamps, and updates `local_date` in the tournament timezone.
 - The web tournament attempt contract now consumes `nextGame { fixtureId, breakEndsAt, available }`; it no longer calls the removed next-game-choice endpoint.
 - PASS: server fixture-attempt integration 34/34; playoff unit 10/10; web attempt/catalog tests 47/47; server and web TypeScript; diff check.
+
+## Review round 2
+
+- `4574844986caa6dab9c888e9e122b9ee0a5801af` waits for every completed source series feeding a playoff round before shifting it. The effective start is calculated from the stable configured start and the latest result-bearing attempt settlement plus 30 minutes, so 8/16-player brackets receive one shared shift rather than an early partial-round shift.
+- The shift still updates the round, game days with timezone-aware `local_date`, and pending fixture attempts only. The original configured start is retained in the round snapshot for any later recalculation.
+- Added an 8-player integration regression: two source series settle at 12:00 and the remaining sources at 12:10; both semifinals, their pending attempts, the round, and the game day must all start at 12:40.
+- PASS: `pnpm --filter @hockey/server exec vitest run test/tournament/fixtureAttempts.integration.test.ts` (35 tests)
+- PASS: `pnpm --filter @hockey/server exec vitest run test/tournament/playoffs.test.ts` (10 tests)
+- PASS: `pnpm --filter @hockey/server exec tsc --noEmit`
+- PASS: `git diff --check`
