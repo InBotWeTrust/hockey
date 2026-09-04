@@ -4,20 +4,14 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PUCK_SPEED_PER_MS } from '@hockey/game-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  TRAINING_AMATEUR_GOALIE_OPTIONS,
-  TRAINING_STREET_PLAYER_OPTIONS,
-  type PlayViewProps,
-} from '../game/PlayView.js';
-import type * as PlayViewModule from '../game/PlayView.js';
+import type { PlayViewProps } from '../game/PlayView.js';
 import type * as OnboardingApi from '../api/onboarding.js';
 import { startOnboardingTutorial, submitOnboardingTutorialShot } from '../api/onboarding.js';
 import { TutorialShotStep } from './TutorialShotStep.js';
 
 let playProps: PlayViewProps<unknown> | null = null;
 
-vi.mock('../game/PlayView.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof PlayViewModule>()),
+vi.mock('../game/PlayView.js', () => ({
   PlayView: (props: PlayViewProps<unknown>) => {
     playProps = props;
     return (
@@ -50,9 +44,6 @@ vi.mock('../game/PlayView.js', async (importOriginal) => ({
           }}
         >
           Mock shot
-        </button>
-        <button type="button" onClick={() => void props.inactiveAction?.()}>
-          {props.shotButtonLabel ?? 'БРОСОК'}
         </button>
       </div>
     );
@@ -113,22 +104,22 @@ describe('TutorialShotStep', () => {
         goalieId: 'rookie',
         periodNumber: 1,
         shotsTotal: undefined,
+        longCourtBackground: '/sprites/test-court-bg-outdoor-v8.png',
         hideScoreboard: true,
-        playerOptions: TRAINING_STREET_PLAYER_OPTIONS,
-        goalieOptions: TRAINING_AMATEUR_GOALIE_OPTIONS,
         speedOverrides: {
           shooterFreq: 0.23,
           goalieFreq: 0.32,
           goalFreq: 0.19,
           puckSpeed: PUCK_SPEED_PER_MS,
         },
-        resultCopy: { save: 'Ещё раз', miss: 'Ещё раз', post: 'Ещё раз', goal: 'Гол' },
+        resultCopy: { save: 'Ещё раз', miss: 'Ещё раз', post: 'Ещё раз', goal: 'Первая шайба!' },
       }),
     );
-    expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeEnabled();
-    expect(playProps?.playerOptions).toBe(TRAINING_STREET_PLAYER_OPTIONS);
+    expect(screen.getByText('Поймай момент и забей шайбу')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Далее' })).toBeDisabled();
+    expect(playProps?.playerOptions).toBeUndefined();
     expect(playProps?.goalOptions).toBeUndefined();
-    expect(playProps?.goalieOptions).toBe(TRAINING_AMATEUR_GOALIE_OPTIONS);
+    expect(playProps?.goalieOptions).toBeUndefined();
     expect(playProps?.shotsTotal).toBeUndefined();
   });
 
@@ -176,7 +167,7 @@ describe('TutorialShotStep', () => {
       }),
     );
     expect(onGoalConfirmed).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Далее' })).toBeDisabled();
     expect(playProps?.shots).toBe(1);
     expect(playProps?.goals).toBe(0);
 
@@ -188,9 +179,6 @@ describe('TutorialShotStep', () => {
       expect.objectContaining({ shotIndex: 2 }),
     );
     expect(screen.getByRole('button', { name: 'Далее' })).toBeEnabled();
-    expect(playProps).toEqual(
-      expect.objectContaining({ active: false, shotButtonLabel: 'Далее' }),
-    );
     expect(playProps?.shots).toBe(2);
     expect(playProps?.goals).toBe(1);
   });
@@ -295,8 +283,10 @@ describe('TutorialShotStep', () => {
     expect(startOnboardingTutorial).toHaveBeenCalledTimes(2);
   });
 
-  it('does not clip the fixed gameplay screen inside a short rink wrapper', () => {
-    expect(onboardingCss).not.toMatch(/\.onboarding-tutorial__rink\s*>\s*main/);
+  it('contains the fixed PlayView inside the tutorial rink', () => {
+    expect(onboardingCss).toMatch(
+      /\.onboarding-tutorial__rink\s*>\s*main\s*\{[^}]*position:\s*absolute\s*!important/s,
+    );
   });
 
   it('shows exactly one outer Back later in the flow and hides PlayView navigation', async () => {
@@ -313,7 +303,8 @@ describe('TutorialShotStep', () => {
     );
     await screen.findByTestId('play-view');
 
-    expect(playProps?.hideBackAction).toBe(false);
+    expect(screen.getAllByRole('button', { name: 'Назад' })).toHaveLength(1);
+    expect(playProps?.hideBackAction).toBe(true);
   });
 
   it('has no Back when the server publishes the tutorial as the first step', async () => {
@@ -331,33 +322,6 @@ describe('TutorialShotStep', () => {
     await screen.findByTestId('play-view');
 
     expect(screen.queryByRole('button', { name: 'Назад' })).not.toBeInTheDocument();
-    expect(playProps?.hideBackAction).toBe(true);
-  });
-
-  it('continues from the gameplay button after the server confirms the goal', async () => {
-    const onContinue = vi.fn();
-    vi.mocked(submitOnboardingTutorialShot).mockResolvedValue({
-      serverResult: 'goal',
-      nextShotIndex: 2,
-      goalConfirmed: true,
-    });
-    render(
-      <TutorialShotStep
-        runId="run-1"
-        step={step}
-        goalConfirmed={false}
-        onGoalConfirmed={vi.fn()}
-        onBack={vi.fn()}
-        onContinue={onContinue}
-      />,
-    );
-    await screen.findByTestId('play-view');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Mock shot' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Далее' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
-
-    expect(onContinue).toHaveBeenCalledTimes(1);
   });
 
   it('detects reduced motion before mounting the shot surface', async () => {

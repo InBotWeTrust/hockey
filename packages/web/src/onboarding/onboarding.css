@@ -106,9 +106,27 @@
 }
 
 .onboarding-tutorial {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
+  display: grid;
+  gap: 16px;
+  min-height: 0;
+}
+.onboarding-tutorial__instruction {
+  margin: 0;
+  text-align: center;
+  font-weight: 800;
+}
+.onboarding-tutorial__rink {
+  position: relative;
+  width: 100%;
+  min-height: 420px;
+  overflow: hidden;
+  border-radius: var(--r-xl);
+}
+.onboarding-tutorial__rink > main {
+  position: absolute !important;
+  inset: 0 !important;
+  min-height: 420px;
+  height: 70vh;
 }
 .onboarding-flow__tutorial-status {
   display: grid;
@@ -117,18 +135,8 @@
   min-height: 320px;
   text-align: center;
 }
-.onboarding-tutorial > .onboarding-flow__error {
-  position: fixed;
-  left: 20px;
-  right: 20px;
-  bottom: calc(var(--app-safe-bottom) + 92px);
-  z-index: 540;
-  max-width: 390px;
-  margin: 0 auto;
-  padding: 14px;
-  border-radius: var(--r-lg);
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: var(--shadow-glass);
+.onboarding-tutorial .onboarding-flow__actions .btn {
+  flex: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {

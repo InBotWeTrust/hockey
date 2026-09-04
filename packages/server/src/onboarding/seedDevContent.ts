@@ -136,9 +136,9 @@ function beginnerSteps(unlockGoalsRequired: number): SeedStep[] {
         'Поймай момент и забей свою первую шайбу. После промаха можно сразу бросить ещё раз.',
       ctaLabel: 'Далее',
       tutorial: {
-        shooterFrequency: 0.75,
-        goalieFrequency: 0.6,
-        goalFrequency: 0.5,
+        shooterFrequency: 0.12,
+        goalieFrequency: 0.1,
+        goalFrequency: 0.08,
       },
     },
     {
