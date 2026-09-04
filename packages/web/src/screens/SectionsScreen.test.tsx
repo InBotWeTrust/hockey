@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AchievementDto } from '../api/achievements.js';
+import type { RegularSeasonPodiumCongratulation } from '../api/tournament.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { SectionsScreen } from './SectionsScreen.js';
@@ -17,6 +18,8 @@ interface MockSectionsData {
   dailyTotalShots?: number;
   profileCompetitionLevel?: 'beginner' | 'amateur' | 'professional';
   profileRequest?: 'error' | 'loading';
+  pendingTournamentCongratulations?: RegularSeasonPodiumCongratulation[];
+  acknowledgementRequest?: 'error';
 }
 
 function renderSections(): void {
@@ -48,6 +51,8 @@ function mockSectionsApi({
   dailyTotalShots = 0,
   profileCompetitionLevel,
   profileRequest,
+  pendingTournamentCongratulations = [],
+  acknowledgementRequest,
 }: MockSectionsData = {}): void {
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
     const url = String(input);
@@ -88,7 +93,7 @@ function mockSectionsApi({
         ),
       );
     }
-    if (url.endsWith('/api/me')) {
+    if (url.includes('/api/me')) {
       if (profileRequest === 'loading') return new Promise<Response>(() => undefined);
       if (profileRequest === 'error') {
         return Promise.resolve(
@@ -99,10 +104,31 @@ function mockSectionsApi({
         );
       }
       return Promise.resolve(
-        new Response(JSON.stringify({ competitionLevel: profileCompetitionLevel }), {
+        new Response(
+          JSON.stringify({
+            competitionLevel: profileCompetitionLevel,
+            pendingTournamentCongratulations,
+          }),
+          {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
-        }),
+          },
+        ),
+      );
+    }
+    if (url.includes('/api/tournaments/congratulations/') && url.endsWith('/read')) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify(
+            acknowledgementRequest === 'error'
+              ? { error: { code: 'internal', message: 'failed' } }
+              : { acknowledged: true },
+          ),
+          {
+            status: acknowledgementRequest === 'error' ? 500 : 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
       );
     }
     if (url.endsWith('/api/duel/training/state')) {
@@ -156,6 +182,65 @@ describe('SectionsScreen', () => {
     renderSections();
 
     expect(await screen.findByText('50/90 бросков сегодня')).toBeInTheDocument();
+  });
+
+  it('shows pending podium congratulations oldest first and advances after acknowledgement', async () => {
+    mockSectionsApi({
+      pendingTournamentCongratulations: [
+        {
+          id: '00000000-0000-4000-8000-000000000951',
+          tournamentId: '00000000-0000-4000-8000-000000000961',
+          tournamentTitle: 'Первый турнир',
+          place: 1,
+          reward: { coins: 5000, stars: 25, experience: 1500 },
+          createdAt: '2026-09-02T21:00:00.000Z',
+        },
+        {
+          id: '00000000-0000-4000-8000-000000000952',
+          tournamentId: '00000000-0000-4000-8000-000000000962',
+          tournamentTitle: 'Второй турнир',
+          place: 2,
+          reward: { coins: 3000, stars: 15, experience: 900 },
+          createdAt: '2026-09-03T21:00:00.000Z',
+        },
+      ],
+    });
+    renderSections();
+
+    expect(await screen.findByText('Первый турнир')).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/me?includeTournamentCongratulations=true',
+      expect.anything(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+
+    expect(await screen.findByText('Второй турнир')).toBeInTheDocument();
+    expect(screen.queryByText('Первый турнир')).toBeNull();
+  });
+
+  it('keeps the same congratulation open when acknowledgement fails', async () => {
+    mockSectionsApi({
+      acknowledgementRequest: 'error',
+      pendingTournamentCongratulations: [
+        {
+          id: '00000000-0000-4000-8000-000000000953',
+          tournamentId: '00000000-0000-4000-8000-000000000963',
+          tournamentTitle: 'Турнир с ошибкой сети',
+          place: 3,
+          reward: { coins: 0, stars: 0, experience: 0 },
+          createdAt: '2026-09-03T21:00:00.000Z',
+        },
+      ],
+    });
+    renderSections();
+
+    expect(await screen.findByText('Турнир с ошибкой сети')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не удалось закрыть. Попробуйте ещё раз.',
+    );
+    expect(screen.getByText('Турнир с ошибкой сети')).toBeInTheDocument();
   });
 
   it('marks the achievements section when an achievement reward is waiting', async () => {

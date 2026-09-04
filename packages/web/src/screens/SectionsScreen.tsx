@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { fetchAchievements } from '../api/achievements.js';
@@ -9,6 +9,8 @@ import type { ProfileData } from './profileTypes.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { acknowledgeRegularSeasonPodiumCongratulation } from '../api/tournament.js';
+import { RegularSeasonPodiumModal } from '../tournament/RegularSeasonPodiumModal.js';
 
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
 const SECTION_ARTWORK_SIZE = 86;
@@ -30,11 +32,13 @@ function numberText(value: number): string {
 
 export function SectionsScreen(): JSX.Element {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const dailyData = useDailyStore((s) => s.data);
   const refreshDaily = useDailyStore((s) => s.refresh);
   const trainingData = useTrainingSessionStore((s) => s.data);
   const refreshTraining = useTrainingSessionStore((s) => s.refresh);
   const [lockedInfo, setLockedInfo] = useState<{ title: string; text: string } | null>(null);
+  const [podiumAckError, setPodiumAckError] = useState<string | null>(null);
   const weeklyChallenge = useQuery({
     queryKey: ['weekly-challenge', 'section'],
     queryFn: fetchWeeklyChallenge,
@@ -44,8 +48,30 @@ export function SectionsScreen(): JSX.Element {
     queryFn: fetchAchievements,
   });
   const profileQuery = useQuery<ProfileData>({
-    queryKey: ['profile'],
-    queryFn: () => apiFetch<ProfileData>('/me'),
+    queryKey: ['profile', 'sections'],
+    queryFn: () => apiFetch<ProfileData>('/me?includeTournamentCongratulations=true'),
+  });
+
+  const pendingCongratulations = profileQuery.data?.pendingTournamentCongratulations ?? [];
+  const activeCongratulation = pendingCongratulations[0] ?? null;
+  const acknowledgePodium = useMutation({
+    mutationFn: acknowledgeRegularSeasonPodiumCongratulation,
+    onMutate: () => setPodiumAckError(null),
+    onSuccess: (_response, congratulationId) => {
+      setPodiumAckError(null);
+      queryClient.setQueryData<ProfileData>(['profile', 'sections'], (current) =>
+        current === undefined
+          ? current
+          : {
+              ...current,
+              pendingTournamentCongratulations:
+                current.pendingTournamentCongratulations?.filter(
+                  (item) => item.id !== congratulationId,
+                ) ?? [],
+            },
+      );
+    },
+    onError: () => setPodiumAckError('Не удалось закрыть. Попробуйте ещё раз.'),
   });
 
   useEffect(() => {
@@ -203,6 +229,15 @@ export function SectionsScreen(): JSX.Element {
             </button>
           </div>
         </AccessibleModal>
+      )}
+
+      {activeCongratulation !== null && (
+        <RegularSeasonPodiumModal
+          congratulation={activeCongratulation}
+          pending={acknowledgePodium.isPending}
+          error={podiumAckError}
+          onConfirm={() => acknowledgePodium.mutate(activeCongratulation.id)}
+        />
       )}
     </main>
   );
