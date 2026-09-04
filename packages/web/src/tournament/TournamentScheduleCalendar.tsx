@@ -128,11 +128,15 @@ function scheduleDayTitle(fixture: TournamentFixture, timezone: string): string 
   }).format(date)}`;
 }
 
-function seriesScore(fixtures: TournamentFixture[]): { home: number; away: number } {
+function seriesScore(
+  fixtures: TournamentFixture[],
+  leftUserId: string | null,
+  rightUserId: string | null,
+): { home: number; away: number } {
   return fixtures.reduce(
     (score, fixture) => {
-      if (fixture.winnerUserId === fixture.home?.userId) score.home += 1;
-      if (fixture.winnerUserId === fixture.away?.userId) score.away += 1;
+      if (leftUserId !== null && fixture.winnerUserId === leftUserId) score.home += 1;
+      if (rightUserId !== null && fixture.winnerUserId === rightUserId) score.away += 1;
       return score;
     },
     { home: 0, away: 0 },
@@ -320,7 +324,11 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             (left, right) => (left.gameNumber ?? 0) - (right.gameNumber ?? 0),
           );
           const first = ordered[0]!;
-          const score = seriesScore(ordered);
+          const score = seriesScore(
+            ordered,
+            first.home?.userId ?? null,
+            first.away?.userId ?? null,
+          );
           const expanded = expandedSeriesId === key;
           const noun = (first.seriesWinsRequired ?? 1) > 1 ? 'серию' : 'игру';
           return (

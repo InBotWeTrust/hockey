@@ -695,8 +695,10 @@ describe('TournamentScheduleCalendar', () => {
         localDate: '2030-09-04',
         startsAt: '2030-09-04T10:00:00.000Z',
       },
+      home: { userId: 'me', name: 'Моя игра' },
+      away: { userId: 'opponent', name: 'Соперник' },
       status: gameNumber < 3 ? 'settled' : 'conditional',
-      winnerUserId: gameNumber === 1 ? 'me' : gameNumber === 2 ? 'away-2' : null,
+      winnerUserId: gameNumber === 1 ? 'me' : gameNumber === 2 ? 'opponent' : null,
       score: gameNumber < 3 ? { home: 54, away: 50 } : { home: 0, away: 0 },
     } satisfies TournamentFixture));
 
@@ -733,5 +735,65 @@ describe('TournamentScheduleCalendar', () => {
     expect(screen.getByText('Детали игры 2')).toBeInTheDocument();
     expect(screen.getByText('Детали игры 3')).toBeInTheDocument();
     expect(screen.queryByText(/индивидуальное время/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps the series score attached to players when home and away sides alternate', () => {
+    const common = {
+      ...fixture(1, true),
+      stage: 'playoff' as const,
+      scheduledStartsAt: null,
+      seriesId: 'series-1',
+      seriesWinsRequired: 4,
+      gameDay: {
+        id: 'day-1',
+        dayNumber: 1,
+        localDate: '2030-09-04',
+        startsAt: '2030-09-04T10:00:00.000Z',
+      },
+      status: 'settled' as const,
+    };
+    const games: TournamentFixture[] = [
+      {
+        ...common,
+        id: 'game-1',
+        gameNumber: 1,
+        home: { userId: 'me', name: 'Sirius' },
+        away: { userId: 'opponent', name: 'Aleksandra' },
+        winnerUserId: 'me',
+      },
+      {
+        ...common,
+        id: 'game-2',
+        gameNumber: 2,
+        home: { userId: 'opponent', name: 'Aleksandra' },
+        away: { userId: 'me', name: 'Sirius' },
+        winnerUserId: 'opponent',
+      },
+    ];
+
+    render(
+      <TournamentScheduleCalendar
+        fixtures={games}
+        fixtureDays={[
+          { localDate: '2030-09-04', hasGames: true, hasMyGame: true, hasPlayoff: true },
+        ]}
+        selectedDate="2030-09-04"
+        matchdays={[]}
+        regularSource="classic"
+        tournamentStatus="playoff"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-10T23:59:59.000Z"
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    const series = screen.getByRole('button', { name: /открыть серию/i });
+    expect(series).toHaveTextContent('Sirius');
+    expect(series).toHaveTextContent('1:1');
+    expect(series).toHaveTextContent('Aleksandra');
   });
 });

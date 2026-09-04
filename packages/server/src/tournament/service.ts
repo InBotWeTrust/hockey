@@ -2810,6 +2810,7 @@ interface TournamentScheduleFixtureRow {
     settled_at?: Date | null;
     actual_starts_at?: Date | null;
     winner_user_id?: string | null;
+    technical_result: boolean;
 }
 
 function tournamentScheduleFixtureDto(row: TournamentScheduleFixtureRow) {
@@ -2856,6 +2857,7 @@ function tournamentScheduleFixtureDto(row: TournamentScheduleFixtureRow) {
           },
     score: { home: Number(row.home_score), away: Number(row.away_score) },
     winnerUserId: row.winner_user_id ?? null,
+    technicalResult: row.technical_result,
   };
 }
 
@@ -2868,7 +2870,8 @@ const PUBLIC_SCHEDULE_FIXTURE_SELECT = `
          fixture.status, fixture.venue_mode,
          fixture.home_user_id, fixture.home_name, fixture.home_avatar_url, fixture.home_seed,
          fixture.away_user_id, fixture.away_name, fixture.away_avatar_url, fixture.away_seed,
-         fixture.home_score, fixture.away_score, fixture.winner_user_id
+         fixture.home_score, fixture.away_score, fixture.winner_user_id,
+         fixture.technical_result
     from fixture_scope fixture`;
 
 const PUBLIC_SCHEDULE_FIXTURE_SCOPE = `
@@ -2909,7 +2912,8 @@ const PUBLIC_SCHEDULE_FIXTURE_SCOPE = `
              when au.display_source = 'telegram' then au.tg_avatar_url
              else au.avatar_url end, au.avatar_url) as away_avatar_url,
            case when r.stage in ('playoff', 'third_place') then aws.rank end as away_seed,
-           f.home_score, f.away_score, winner.user_id as winner_user_id
+           f.home_score, f.away_score, winner.user_id as winner_user_id,
+           coalesce((f.result_snapshot->>'technical')::boolean, false) as technical_result
       from tournament_fixture f
       join tournament_round r on r.id = f.round_id
       join tournament tournament on tournament.id = f.tournament_id
