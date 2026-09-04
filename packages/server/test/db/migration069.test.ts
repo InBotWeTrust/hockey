@@ -232,6 +232,7 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
       '092_tournament_period_loadout_state.sql',
       '093_tournament_readiness_hint_preference.sql',
       '094_balance_ultimate_one_puck_speed.sql',
+      '095_tournament_regular_podium_congratulation.sql',
     ]);
 
     const accuracy = await pool.query<{

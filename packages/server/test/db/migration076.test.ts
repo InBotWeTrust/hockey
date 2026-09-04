@@ -275,6 +275,7 @@ describe.skipIf(!hasIntegrationEnv)('076 speed bonus game balance', () => {
       '092_tournament_period_loadout_state.sql',
       '093_tournament_readiness_hint_preference.sql',
       '094_balance_ultimate_one_puck_speed.sql',
+      '095_tournament_regular_podium_congratulation.sql',
     ]);
     const attempt = await pool.query<{
       status: string;
