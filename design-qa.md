@@ -251,3 +251,30 @@ The combined comparison confirms the intended density change: the original full 
 - None required for this iteration.
 
 final result: passed
+
+---
+
+# Design QA — поздравление призёров регулярного чемпионата
+
+## Evidence
+
+- Rendered local preview at `323 × 844`, `340 × 844`, `360 × 844`, and `390 × 844`.
+- Screenshots: `output/playwright/regular-podium-323.webp`, `regular-podium-340.webp`, `regular-podium-360.webp`, and `regular-podium-390.webp`.
+- Placement variants 2 and 3 additionally checked at `323 × 844`: `output/playwright/regular-podium-place-2-323.webp` and `regular-podium-place-3-323.webp`.
+
+## Checks
+
+- All three placement headings wrap without clipping at 323 px.
+- The tournament title stays on one line and truncates with an ellipsis.
+- Artwork remains square and uses the gold, silver, or bronze cup variant.
+- Reward values wrap at the narrowest width without overlapping or widening the modal.
+- The close button remains fully visible and reachable.
+- At 323 px, document `scrollWidth` and viewport width are both `323px`; no horizontal overflow.
+- Browser console errors: 0.
+- The preview harness was local-only and removed after capture; it is not part of the product bundle.
+
+## Findings
+
+- No actionable layout issues found at the requested narrow widths.
+
+final result: passed

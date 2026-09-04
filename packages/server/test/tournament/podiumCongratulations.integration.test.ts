@@ -7,11 +7,7 @@ import {
   acknowledgeRegularSeasonPodiumCongratulation,
   listPendingRegularSeasonPodiumCongratulations,
 } from '../../src/tournament/podiumCongratulations.js';
-import {
-  createTestPool,
-  hasIntegrationEnv,
-  resetDatabase,
-} from '../helpers/testDb.js';
+import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');

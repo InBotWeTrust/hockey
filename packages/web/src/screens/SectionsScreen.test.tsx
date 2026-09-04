@@ -110,8 +110,8 @@ function mockSectionsApi({
             pendingTournamentCongratulations,
           }),
           {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
           },
         ),
       );
