@@ -1387,7 +1387,7 @@ function GameHub({
                           ? `${game.tournament_title}. Время подтверждения истекло.`
                           : `${game.tournament_title}. Старт через ${formatEventRemaining(startsAtRemaining)}`
               }
-              periodsTotal={1}
+              periodsTotal={game.total_periods}
               timer={
                 isPaused
                   ? '—'
@@ -1486,13 +1486,13 @@ function GameHub({
                   ariaLabel={
                     isBreak
                       ? `${game.tournament_title}. ${game.tournament_day}-й тур. Перерыв. До конца ${formatMs(breakRemaining)}. Период ${Math.min(3, game.current_period + 1)}`
-                      : `${game.tournament_title}. ${game.tournament_day}-й тур. До закрытия ${formatEventRemaining(deadlineRemaining)}`
+                      : `${game.tournament_title}. ${game.tournament_day}-й тур. До конца дня ${formatEventRemaining(deadlineRemaining)}`
                   }
                   periodsTotal={3}
                   timer={
                     isBreak ? formatMs(breakRemaining) : formatEventRemaining(deadlineRemaining)
                   }
-                  timerLabel={isBreak ? 'Перерыв' : 'До закрытия'}
+                  timerLabel={isBreak ? 'Перерыв' : 'До конца дня'}
                 />
               ),
             }),
@@ -2042,19 +2042,17 @@ function DailyHubScoreboard({
       className={timerOnly ? 'daily-hub-scoreboard--timer-only' : undefined}
       style={{
         width: align === 'left' ? 'auto' : '100%',
-        maxWidth: align === 'left' ? 'none' : 306,
+        maxWidth: align === 'left' ? 'none' : 340,
         padding: 0,
         display: 'grid',
         gridTemplateColumns: timerOnly
           ? 'minmax(0, 1fr)'
           : align === 'left'
             ? 'max-content max-content'
-            : timerLabel.length > 20
-              ? 'minmax(0, 1fr) auto'
-              : 'minmax(0, 1fr) minmax(0, 1fr)',
+            : 'minmax(0, 1fr) auto',
         alignItems: 'center',
         justifyItems: timerOnly ? 'center' : align === 'left' ? 'start' : 'center',
-        gap: align === 'left' ? 36 : timerLabel.length > 20 ? 'clamp(14px, 2.2vh, 18px)' : 8,
+        gap: align === 'left' ? 36 : 'clamp(18px, 3vw, 28px)',
         margin: '0 auto',
       }}
     >
