@@ -50,12 +50,15 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
   inFlight: false,
 
   load: async (matchId) => {
+    const startedFromMatch = get().match;
     set({ loading: true, error: null });
     try {
       const { match } = await fetchAmateurMatch(matchId);
+      if (get().match !== startedFromMatch) return match;
       set({ match, loading: false, error: null });
       return match;
     } catch (err) {
+      if (get().match !== startedFromMatch) return null;
       set({
         loading: false,
         error: err instanceof Error ? err.message : 'failed to load duel',
@@ -159,7 +162,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     }
   },
 
-  applyState: (next) => set({ match: next, error: null }),
+  applyState: (next) => set({ match: next, loading: false, error: null }),
 
   optimisticAddShot: (claimed) => {
     const cur = get().match;
@@ -185,14 +188,14 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
       const outcome = await withGameRequestReconciliation({
         request: (signal) =>
           submitAmateurDuelShot(
-          current.id,
-          {
-            shot_index: shotIndex,
-            input,
-            claimed_result: claimedResult,
-          },
-          { signal },
-        ),
+            current.id,
+            {
+              shot_index: shotIndex,
+              input,
+              claimed_result: claimedResult,
+            },
+            { signal },
+          ),
         reconcile: async (signal) => (await fetchAmateurMatch(current.id, { signal })).match,
         isReconciled: (match) =>
           match.id === current.id &&
@@ -203,8 +206,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
         if (get().match === current) {
           set({
             match: outcome.value,
-            error:
-              outcome.error instanceof Error ? outcome.error.message : 'duel shot failed',
+            error: outcome.error instanceof Error ? outcome.error.message : 'duel shot failed',
           });
         }
         return null;

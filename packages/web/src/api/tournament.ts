@@ -83,6 +83,15 @@ export interface TournamentParticipant {
 
 export interface TournamentFixture {
   id: string;
+  seriesId?: string | null;
+  gameNumber?: number | null;
+  seriesWinsRequired?: number | null;
+  gameDay?: {
+    id: string;
+    dayNumber: number;
+    localDate: string;
+    startsAt: string;
+  } | null;
   fixtureNumber: number;
   stage: string;
   roundNumber: number;
@@ -214,6 +223,7 @@ export interface TournamentBracketFixture {
   homeScore: number | null;
   awayScore: number | null;
   winnerSide: 'home' | 'away' | null;
+  technicalResult?: boolean;
 }
 
 export interface TournamentBracketSeries {

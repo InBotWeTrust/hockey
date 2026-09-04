@@ -323,7 +323,7 @@ function groupFixturesByGameDay(fixtures: TournamentBracketFixture[], timezone: 
 
 export function gameResultLabel(fixture: TournamentBracketFixture): string | null {
   if (!['settled', 'forfeit'].includes(fixture.status)) return null;
-  if (fixture.status === 'forfeit') {
+  if (fixture.technicalResult === true || fixture.status === 'forfeit') {
     const winnerName =
       fixture.winnerSide === 'home'
         ? fixture.homeName
@@ -456,7 +456,7 @@ function SeriesDetailsModal(props: {
                 {group.fixtures.map((fixture) => {
                   const resultLabel = gameResultLabel(fixture);
                   const ariaResultLabel =
-                    fixture.status === 'forfeit'
+                    fixture.technicalResult === true || fixture.status === 'forfeit'
                       ? resultLabel
                       : fixture.homeName !== null &&
                           fixture.awayName !== null &&
@@ -477,7 +477,7 @@ function SeriesDetailsModal(props: {
                       <span>Игра {fixture.gameNumber}</span>
                       {resultLabel !== null && (
                         <strong className="tournament-bracket-game__result">
-                          {fixture.status === 'forfeit' ? (
+                          {fixture.technicalResult === true || fixture.status === 'forfeit' ? (
                             <span className="tournament-bracket-game__technical-result">
                               {resultLabel}
                             </span>

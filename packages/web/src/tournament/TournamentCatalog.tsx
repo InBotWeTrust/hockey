@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import {
@@ -13,6 +13,7 @@ import {
   openTournamentFixtureSegment,
   withdrawFromTournament,
   type TournamentFixture,
+  type TournamentScheduleDay,
   type TournamentScheduleCursor,
   type TournamentSummary,
 } from '../api/tournament.js';
@@ -196,6 +197,17 @@ export function scheduleDateForTabChange(
   currentDate: string,
 ): string {
   return nextTab === 'schedule' ? initialScheduleDate(tournament) : currentDate;
+}
+
+export function scheduleDateAfterDaysLoad(
+  currentDate: string,
+  days: TournamentScheduleDay[],
+  timezone: string,
+  manuallySelected: boolean,
+): string {
+  if (manuallySelected) return currentDate;
+  const today = localDateKey(Date.now(), timezone);
+  return days.some((day) => day.localDate === today) ? today : currentDate;
 }
 
 function fixturePlayerLabel(participant: TournamentFixture['home'], showSeed: boolean): string {
@@ -560,6 +572,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
   const [tab, setTab] = useState<TournamentTab>(() => tournamentTabFromSearch(location.search));
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [scheduleDate, setScheduleDate] = useState(() => initialScheduleDate(tournament));
+  const scheduleDateManuallySelected = useRef(false);
   const activeFixtureId = useRef<string | null>(null);
   const fixtureOpeningRef = useRef(false);
   const openFixtureGeneration = useRef(0);
@@ -608,6 +621,19 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tournaments'] }),
   });
+
+  useEffect(() => {
+    const days = schedule.data?.days;
+    if (tab !== 'schedule' || days === undefined) return;
+    setScheduleDate((currentDate) =>
+      scheduleDateAfterDaysLoad(
+        currentDate,
+        days,
+        String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+        scheduleDateManuallySelected.current,
+      ),
+    );
+  }, [schedule.data?.days, tab, tournament.id, tournament.rules.config.timezone]);
   const openFixture = useMutation({
     mutationFn: async ({ fixtureId, generation }: { fixtureId: string; generation: number }) => ({
       fixtureId,
@@ -657,6 +683,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
         activeTab={tab}
         items={tabs.map((item) => ({ id: item.key, label: item.label }))}
         onChange={(nextTab) => {
+          if (nextTab === 'schedule') scheduleDateManuallySelected.current = false;
           setScheduleDate((currentDate) =>
             scheduleDateForTabChange(nextTab, tournament, currentDate),
           );
@@ -776,7 +803,10 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               ]}
               fixtureDays={schedule.data.days ?? []}
               selectedDate={scheduleDate}
-              onSelectDate={setScheduleDate}
+              onSelectDate={(date) => {
+                scheduleDateManuallySelected.current = true;
+                setScheduleDate(date);
+              }}
               hasOtherGames={schedule.data.hasOtherGames ?? false}
               otherGamesLoaded={otherGames.data !== undefined}
               otherGamesLoading={otherGames.isFetching}
@@ -818,7 +848,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                   String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
                 )
               }
-              renderFixture={(fixture, mine) => {
+              renderFixture={(fixture, mine, inSeries = false) => {
                 const playable = fixtureCanOpen(fixture);
                 const showSeed = fixture.stage === 'playoff' || fixture.stage === 'third_place';
                 const finished = fixtureHasResult(fixture);
@@ -829,13 +859,15 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                     className={`tournament-fixture-card${mine ? ' tournament-fixture-card--mine' : ''}`}
                   >
                     <div className="tournament-fixture-card__meta">
-                      <span>
-                        {fixtureTimeLabel(
-                          fixture,
-                          String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
-                          finished,
-                        )}
-                      </span>
+                      {!inSeries && (
+                        <span>
+                          {fixtureTimeLabel(
+                            fixture,
+                            String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                            finished,
+                          )}
+                        </span>
+                      )}
                       {mine && <VenueBadge role={fixtureVenueRole(fixture, currentUserId)} />}
                       <strong>{finished ? 'Завершена' : fixtureStatusLabel(fixture.status)}</strong>
                     </div>

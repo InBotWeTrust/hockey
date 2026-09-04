@@ -24,9 +24,15 @@ export interface ActiveClassicTournamentGame {
 export interface ActivePlayoffTournamentGame {
   kind: 'playoff';
   tournament_id: string;
+  fixture_id: string;
+  duel_match_id: string | null;
   tournament_title: string;
   tournament_day: number;
+  round_stage: 'playoff' | 'third_place';
+  round_number: number;
+  final_round_number: number;
   starts_at: string;
+  readiness_ends_at: string;
   closes_at: string;
   break_ends_at: string | null;
   state: 'scheduled' | 'ready_check' | 'active' | 'inter_game_break' | 'paused';

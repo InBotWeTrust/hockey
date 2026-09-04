@@ -107,6 +107,34 @@ describe('game session stores', () => {
     expect(useAmateurDuelStore.getState().error).toBeNull();
   });
 
+  it('does not replace a newer duel state with a late polling response', async () => {
+    const playing = {
+      ...amateurDuelState,
+      me: { state: 'period_active' },
+    } as AmateurDuelMatchState;
+    const completed = {
+      ...playing,
+      status: 'settled' as const,
+      me: { ...playing.me, state: 'completed' as const },
+    } as AmateurDuelMatchState;
+    let resolveRefresh: ((value: { match: AmateurDuelMatchState }) => void) | undefined;
+    vi.mocked(fetchAmateurMatch).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRefresh = resolve;
+        }),
+    );
+    useAmateurDuelStore.setState({ match: playing });
+
+    const refresh = useAmateurDuelStore.getState().refresh();
+    await vi.waitFor(() => expect(resolveRefresh).toBeTypeOf('function'));
+    useAmateurDuelStore.getState().applyState(completed);
+    resolveRefresh?.({ match: playing });
+    await refresh;
+
+    expect(useAmateurDuelStore.getState().match).toBe(completed);
+  });
+
   it('does not start a second daily period request while one is already in flight', async () => {
     useDailyStore.setState({ inFlight: true });
 
@@ -153,9 +181,12 @@ describe('game session stores', () => {
     useDailyStore.setState({ data: idleState, error: null });
 
     let result: DailyStateResponse | null | undefined;
-    void useDailyStore.getState().startPeriod().then((value) => {
-      result = value;
-    });
+    void useDailyStore
+      .getState()
+      .startPeriod()
+      .then((value) => {
+        result = value;
+      });
     await vi.advanceTimersByTimeAsync(2_000);
 
     expect(fetchDailyState).toHaveBeenCalledWith({ signal: expect.any(AbortSignal) });
@@ -420,9 +451,12 @@ describe('game session stores', () => {
     useAmateurDuelStore.setState({ match: accepted });
 
     let result: AmateurDuelMatchState | null | undefined;
-    void useAmateurDuelStore.getState().startPeriod({}).then((value) => {
-      result = value;
-    });
+    void useAmateurDuelStore
+      .getState()
+      .startPeriod({})
+      .then((value) => {
+        result = value;
+      });
     await vi.advanceTimersByTimeAsync(2_000);
 
     expect(fetchAmateurMatch).toHaveBeenCalledWith(accepted.id, {
@@ -442,9 +476,7 @@ describe('game session stores', () => {
       ...accepted,
       me: { state: 'period_active', current_period: 1 },
     } as AmateurDuelMatchState;
-    let resolveStart:
-      | ((value: { match: AmateurDuelMatchState }) => void)
-      | undefined;
+    let resolveStart: ((value: { match: AmateurDuelMatchState }) => void) | undefined;
     vi.mocked(startAmateurDuelPeriod).mockImplementation(
       () => new Promise((resolve) => (resolveStart = resolve)),
     );

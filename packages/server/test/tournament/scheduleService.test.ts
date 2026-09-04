@@ -54,6 +54,13 @@ describe('tournament public schedule service', () => {
         rows: [
           {
             id: 'fixture-mine',
+            series_id: 'series-1',
+            game_number: 2,
+            series_wins_required: 2,
+            game_day_id: 'game-day-1',
+            game_day_number: 1,
+            game_day_local_date: '2030-09-02',
+            game_day_starts_at: new Date('2030-09-02T07:00:00.000Z'),
             fixture_number: 4,
             stage: 'regular',
             round_number: 2,
@@ -91,7 +98,20 @@ describe('tournament public schedule service', () => {
         { localDate: '2030-09-03', hasGames: true, hasMyGame: false, hasPlayoff: true },
       ],
       myGames: [
-        expect.objectContaining({ id: 'fixture-mine', fixtureNumber: 4, actualStartsAt: null }),
+        expect.objectContaining({
+          id: 'fixture-mine',
+          fixtureNumber: 4,
+          actualStartsAt: null,
+          seriesId: 'series-1',
+          gameNumber: 2,
+          seriesWinsRequired: 2,
+          gameDay: {
+            id: 'game-day-1',
+            dayNumber: 1,
+            localDate: '2030-09-02',
+            startsAt: '2030-09-02T07:00:00.000Z',
+          },
+        }),
       ],
       hasOtherGames: true,
     });
@@ -104,7 +124,7 @@ describe('tournament public schedule service', () => {
     expect(query.mock.calls[2]?.[0]).toContain('not in (home_user_id, away_user_id)');
   });
 
-  it('paginates selected-date other games in stable duplicate-free pages of five', async () => {
+  it('returns complete selected-date series after the user asks for other games', async () => {
     const rows = Array.from({ length: 6 }, (_, index) => ({
       id: `fixture-${index + 1}`,
       fixture_number: index + 11,
@@ -137,24 +157,23 @@ describe('tournament public schedule service', () => {
       null,
     );
 
-    expect(first.games).toHaveLength(5);
+    expect(first.games).toHaveLength(6);
     expect(first.games.map((game) => game.id)).toEqual([
       'fixture-1',
       'fixture-2',
       'fixture-3',
       'fixture-4',
       'fixture-5',
+      'fixture-6',
     ]);
-    expect(first.nextCursor).toEqual({ fixtureNumber: 15, id: 'fixture-5' });
-    expect(query).toHaveBeenCalledWith(expect.stringContaining('limit 6'), [
+    expect(first.nextCursor).toBeNull();
+    expect(query).toHaveBeenCalledWith(expect.not.stringContaining('limit 6'), [
       'tournament-1',
       'me',
       '2030-09-03',
-      null,
-      null,
     ]);
     expect(query.mock.calls[0]?.[0]).toContain('order by fixture.fixture_number, fixture.id');
-    expect(query.mock.calls[0]?.[0]).toContain('(fixture.fixture_number, fixture.id) >');
+    expect(query.mock.calls[0]?.[0]).not.toContain('(fixture.fixture_number, fixture.id) >');
   });
 
   it('maps playoff and third-place seeds for both players', async () => {

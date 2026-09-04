@@ -8,6 +8,7 @@ import { useAuthStore } from '../auth/authStore.js';
 import * as api from '../api/tournament.js';
 import {
   fixtureCanOpen,
+  scheduleDateAfterDaysLoad,
   scheduleDateForTabChange,
   TournamentCatalog,
 } from './TournamentCatalog.js';
@@ -46,6 +47,29 @@ describe('TournamentCatalog', () => {
 
     expect(scheduleDateForTabChange('schedule', tournament, '2030-09-01')).toBe('2030-09-04');
     expect(scheduleDateForTabChange('overview', tournament, '2030-09-01')).toBe('2030-09-01');
+    vi.useRealTimers();
+  });
+
+  it('moves an initially clamped schedule date to today when the loaded playoff days include it', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-09-04T08:00:00.000Z'));
+
+    expect(
+      scheduleDateAfterDaysLoad(
+        '2030-09-02',
+        [{ localDate: '2030-09-04', hasGames: true, hasMyGame: true, hasPlayoff: true }],
+        'Europe/Moscow',
+        false,
+      ),
+    ).toBe('2030-09-04');
+    expect(
+      scheduleDateAfterDaysLoad(
+        '2030-09-02',
+        [{ localDate: '2030-09-04', hasGames: true, hasMyGame: true, hasPlayoff: true }],
+        'Europe/Moscow',
+        true,
+      ),
+    ).toBe('2030-09-02');
     vi.useRealTimers();
   });
 
@@ -361,7 +385,10 @@ describe('TournamentCatalog', () => {
       /\.tournament-bracket-overview__column\s*\{[^}]*grid-template-rows:\s*auto minmax\(min-content,\s*1fr\);/s,
     );
     expect(designSystemCss).toMatch(
-      /\.tournament-bracket-overview__series-list--with-bronze\s*\{[^}]*min-height:\s*360px;/s,
+      /\.tournament-bracket-overview__series-list--with-bronze\s*\{[^}]*min-height:\s*392px;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview__bronze-lane\s*\{[^}]*top:\s*calc\(50% \+ 100px\);/s,
     );
     expect(designSystemCss).toMatch(
       /\.tournament-bracket-series--mine\s*\{[^}]*border-color:\s*rgba\(43, 126, 89,/s,

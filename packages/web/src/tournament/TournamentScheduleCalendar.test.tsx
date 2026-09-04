@@ -679,4 +679,59 @@ describe('TournamentScheduleCalendar', () => {
     expect(screen.getByText('Игра 7')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Показать ещё' })).toBeInTheDocument();
   });
+
+  it('groups playoff fixtures into an expandable series with one day start time', () => {
+    const playoffGames = [1, 2, 3].map((gameNumber) => ({
+      ...fixture(gameNumber, true),
+      stage: 'playoff',
+      roundNumber: 2,
+      scheduledStartsAt: null,
+      seriesId: 'series-1',
+      gameNumber,
+      seriesWinsRequired: 2,
+      gameDay: {
+        id: 'day-1',
+        dayNumber: 1,
+        localDate: '2030-09-04',
+        startsAt: '2030-09-04T10:00:00.000Z',
+      },
+      status: gameNumber < 3 ? 'settled' : 'conditional',
+      winnerUserId: gameNumber === 1 ? 'me' : gameNumber === 2 ? 'away-2' : null,
+      score: gameNumber < 3 ? { home: 54, away: 50 } : { home: 0, away: 0 },
+    } satisfies TournamentFixture));
+
+    render(
+      <TournamentScheduleCalendar
+        fixtures={playoffGames}
+        fixtureDays={[{ localDate: '2030-09-04', hasGames: true, hasMyGame: true, hasPlayoff: true }]}
+        selectedDate="2030-09-04"
+        matchdays={[]}
+        regularSource="classic"
+        tournamentStatus="playoff"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-10T23:59:59.000Z"
+        renderFixture={(item, _mine, inSeries) => (
+          <article key={item.id}>
+            Детали игры {item.gameNumber}{inSeries ? '' : ' · индивидуальное время'}
+          </article>
+        )}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    const series = screen.getByRole('button', { name: /открыть серию/i });
+    expect(series).toHaveTextContent('4 сентября, начало в 13:00');
+    expect(series).toHaveTextContent('1:1');
+    expect(screen.queryByText('Время ещё не назначено')).not.toBeInTheDocument();
+    expect(screen.queryByText('Детали игры 1')).not.toBeInTheDocument();
+
+    fireEvent.click(series);
+    expect(screen.getByText('Детали игры 1')).toBeInTheDocument();
+    expect(screen.getByText('Детали игры 2')).toBeInTheDocument();
+    expect(screen.getByText('Детали игры 3')).toBeInTheDocument();
+    expect(screen.queryByText(/индивидуальное время/i)).not.toBeInTheDocument();
+  });
 });

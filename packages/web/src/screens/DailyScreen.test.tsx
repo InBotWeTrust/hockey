@@ -705,6 +705,9 @@ describe('DailyScreen', () => {
                 tournament_title: 'Кубок серии',
                 tournament_day: 1,
                 kind: 'playoff',
+                round_stage: 'playoff',
+                round_number: 2,
+                final_round_number: 3,
                 starts_at: '2030-09-01T10:00:00.000Z',
                 closes_at: '2030-09-01T11:00:00.000Z',
                 break_ends_at: breakEndsAt,
@@ -737,10 +740,71 @@ describe('DailyScreen', () => {
     );
 
     expect(await screen.findByText('Перерыв между играми серии')).toBeInTheDocument();
+    expect(screen.getByText('Турнир · Полуфинал')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'К расписанию' }));
 
     expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent(
       'view=amateur&section=tournaments&tournament=playoff-break&tab=schedule',
+    );
+  });
+
+  it('opens a started playoff fixture from the arena during its server readiness window', async () => {
+    const readinessEndsAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/classic/active')
+        ? {
+            games: [
+              {
+                tournament_id: 'playoff-ready',
+                tournament_title: 'Кубок готовности',
+                tournament_day: 1,
+                kind: 'playoff',
+                fixture_id: 'fixture-ready',
+                duel_match_id: 'match-ready',
+                round_stage: 'playoff',
+                round_number: 2,
+                final_round_number: 3,
+                starts_at: new Date(Date.now() - 60_000).toISOString(),
+                readiness_ends_at: readinessEndsAt,
+                closes_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+                break_ends_at: null,
+                state: 'ready_check',
+                current_period: 0,
+                total_shots: 0,
+                total_goals: 0,
+              },
+            ],
+          }
+        : url.includes('/duel/training/state')
+          ? trainingIdleState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    function LocationProbe() {
+      return <output aria-label="Текущий адрес">{useLocation().search}</output>;
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/?view=arena']}>
+          <DailyScreen />
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('Игра серии ожидает подтверждения.')).toBeInTheDocument();
+    expect(screen.getByText('До подтверждения')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'На лёд' }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent(
+        'view=amateur&section=tournaments&tournament=playoff-ready&tab=schedule&fixture=fixture-ready&match=match-ready&play=1',
+      ),
     );
   });
 
@@ -1536,10 +1600,18 @@ describe('DailyScreen', () => {
     renderWith(['/?view=arena']);
 
     await screen.findByRole('article', { name: 'Активная дуэль: Duel Opponent' });
+    expect(screen.getByLabelText(/Ждём завершения игры соперника .*Счёт/)).toHaveStyle({
+      gridTemplateColumns: 'minmax(0, 1fr) auto',
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Вы сыграли' }));
 
     expect(await screen.findByRole('button', { name: 'К арене' })).toBeInTheDocument();
-    expect(screen.getByText('До поражения соперника')).toBeInTheDocument();
+    const waitingLabel = screen.getByText('Ждём завершения игры соперника');
+    expect(waitingLabel).toHaveStyle({
+      whiteSpace: 'normal',
+      textAlign: 'center',
+      overflowWrap: 'anywhere',
+    });
     expect(screen.queryByRole('heading', { name: 'Дуэль' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Эта дуэль сейчас не на площадке/)).not.toBeInTheDocument();
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
@@ -4863,7 +4935,9 @@ describe('DailyScreen', () => {
     renderWith(['/?view=amateur&match=match-1&play=1']);
 
     expect(await screen.findByRole('dialog', { name: 'Подтвердите участие' })).toBeInTheDocument();
-    expect(screen.getByText('Нажмите «Готов» на льду, чтобы подтвердить участие в дуэли.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Нажмите «Готов» на льду, чтобы подтвердить участие в дуэли.'),
+    ).toBeInTheDocument();
     expect(screen.getByText(/техническое поражение/i)).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Не показывать снова' })).not.toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
@@ -4871,9 +4945,7 @@ describe('DailyScreen', () => {
       expect(screen.queryByRole('dialog', { name: 'Подтвердите участие' })).not.toBeInTheDocument();
     });
     expect(screen.getByRole('button', { name: 'ГОТОВ' })).toBeEnabled();
-    expect(
-      fetchMock.mock.calls.some(([input]) => String(input).includes('/ready')),
-    ).toBe(false);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/ready'))).toBe(false);
   });
 
   it('keeps the tournament readiness explanation disabled after opting out', async () => {
@@ -5161,9 +5233,7 @@ describe('DailyScreen', () => {
     firstRender.unmount();
 
     const reloadRender = renderWith(['/?view=amateur&match=match-1&play=1']);
-    expect(
-      await screen.findByRole('button', { name: /Клюшка: Турнирная клюшка/ }),
-    ).toBeEnabled();
+    expect(await screen.findByRole('button', { name: /Клюшка: Турнирная клюшка/ })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: 'НАЧАТЬ' }));
     await waitFor(() => expect(requestCounts.start).toBe(2));
     expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
@@ -5182,9 +5252,7 @@ describe('DailyScreen', () => {
     reloadRender.unmount();
 
     const previewRender = renderWith(['/?view=amateur&match=match-1&play=1']);
-    expect(
-      await screen.findByRole('button', { name: /Клюшка: Турнирная клюшка/ }),
-    ).toBeEnabled();
+    expect(await screen.findByRole('button', { name: /Клюшка: Турнирная клюшка/ })).toBeEnabled();
 
     const loadoutRequestsBeforeLegacyStart = requestCounts.loadout;
     const startRequestsBeforeLegacyStart = requestCounts.start;
@@ -5362,7 +5430,7 @@ describe('DailyScreen', () => {
     expect(within(opponentLine).getByText('07/30 · ИГРАЕТ 2/3')).toBeInTheDocument();
   });
 
-  it('shows five minutes to forfeit after an intermission period is ready', () => {
+  it('shows five minutes to a technical forfeit after an intermission period is ready', () => {
     const now = Date.parse('2026-05-16T10:10:00.000Z');
     const activeMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
@@ -5387,7 +5455,37 @@ describe('DailyScreen', () => {
     };
 
     expect(duelEventTiming(activeMatch, now)).toMatchObject({
-      label: 'До поражения',
+      label: 'До технического поражения',
+      value: '05:00',
+    });
+  });
+
+  it('says that the finished player is waiting for the opponent instead of threatening a loss', () => {
+    const now = Date.parse('2026-05-16T10:10:00.000Z');
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      ends_at: '2026-05-16T10:25:00.000Z',
+      server_now: '2026-05-16T10:10:00.000Z',
+      me: {
+        ...settledDuelMatch.me,
+        state: 'completed',
+        current_period: 2,
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'accepted',
+        current_period: 1,
+        ready_at: '2026-05-16T10:10:00.000Z',
+      },
+    };
+
+    expect(duelEventTiming(activeMatch, now)).toMatchObject({
+      label: 'Ждём завершения игры соперника',
       value: '05:00',
     });
   });
@@ -5487,23 +5585,40 @@ describe('DailyScreen', () => {
         return new Response(
           JSON.stringify({
             attempt: {
-              id: 'attempt-1', number: 1, kind: 'initial', status: 'settled',
+              id: 'attempt-1',
+              number: 1,
+              kind: 'initial',
+              status: 'settled',
               scheduledStart: tournamentMatch.starts_at,
               readinessExpiresAt: tournamentMatch.starts_at,
               hardDeadlineAt: tournamentMatch.ends_at,
-              myReady: true, opponentReady: true, duelMatchId: tournamentMatch.id,
+              myReady: true,
+              opponentReady: true,
+              duelMatchId: tournamentMatch.id,
               result: {
-                outcome: 'opponent_win', winnerUserId: 'u2', myScore: 1, opponentScore: 2,
-                myAccuracy: 25, opponentAccuracy: 50, myActiveTimeMs: 180000,
+                outcome: 'opponent_win',
+                winnerUserId: 'u2',
+                myScore: 1,
+                opponentScore: 2,
+                myAccuracy: 25,
+                opponentAccuracy: 50,
+                myActiveTimeMs: 180000,
                 opponentActiveTimeMs: 180000,
               },
               incidentType: null,
             },
             opponentProgress: null,
             series: {
-              id: 'series-1', winsRequired: 2, myWins: 1, opponentWins: 2,
-              higherSeedWins: 2, lowerSeedWins: 1, higherSeedUserId: 'u2',
-              lowerSeedUserId: 'u1', status: 'completed', winnerUserId: 'u2',
+              id: 'series-1',
+              winsRequired: 2,
+              myWins: 1,
+              opponentWins: 2,
+              higherSeedWins: 2,
+              lowerSeedWins: 1,
+              higherSeedUserId: 'u2',
+              lowerSeedUserId: 'u1',
+              status: 'completed',
+              winnerUserId: 'u2',
             },
             tournament: { status: 'playoff', winnerUserId: null },
             nextGame: { fixtureId: 'f2', breakEndsAt, available: false },
@@ -5522,10 +5637,15 @@ describe('DailyScreen', () => {
     ]);
 
     const dialog = await screen.findByRole('dialog', { name: 'Результат дуэли' });
-    expect(within(dialog).getByRole('heading', { name: 'Вы проиграли серию 1:2' })).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('heading', { name: 'Вы проиграли серию 1:2' }),
+    ).toBeInTheDocument();
     expect(within(dialog).getByText('Вы 1:2 Соперник')).toBeInTheDocument();
+    expect(within(dialog).getByText('Счёт в серии')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Счёт в серии 1:2')).toHaveTextContent('1:2');
     expect(within(dialog).queryByText('Очки')).not.toBeInTheDocument();
-    expect(within(dialog).getByText(/Следующая игра через 0[34]:\d{2}/)).toBeInTheDocument();
+    expect(within(dialog).getByText('Следующая игра через:')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('До следующей игры')).toHaveTextContent(/0[34]:\d{2}/);
   });
 
   it('opens the next tournament game when its readiness window becomes available', async () => {
@@ -5574,18 +5694,31 @@ describe('DailyScreen', () => {
         return new Response(
           JSON.stringify({
             attempt: {
-              id: 'attempt-1', number: 1, kind: 'initial', status: 'settled',
+              id: 'attempt-1',
+              number: 1,
+              kind: 'initial',
+              status: 'settled',
               scheduledStart: tournamentResult.starts_at,
               readinessExpiresAt: tournamentResult.starts_at,
               hardDeadlineAt: tournamentResult.ends_at,
-              myReady: true, opponentReady: true, duelMatchId: tournamentResult.id,
-              result: null, incidentType: null,
+              myReady: true,
+              opponentReady: true,
+              duelMatchId: tournamentResult.id,
+              result: null,
+              incidentType: null,
             },
             opponentProgress: null,
             series: {
-              id: 'series-1', winsRequired: 2, myWins: 1, opponentWins: 1,
-              higherSeedWins: 1, lowerSeedWins: 1, higherSeedUserId: 'u1',
-              lowerSeedUserId: 'u2', status: 'active', winnerUserId: null,
+              id: 'series-1',
+              winsRequired: 2,
+              myWins: 1,
+              opponentWins: 1,
+              higherSeedWins: 1,
+              lowerSeedWins: 1,
+              higherSeedUserId: 'u1',
+              lowerSeedUserId: 'u2',
+              status: 'active',
+              winnerUserId: null,
             },
             tournament: { status: 'playoff', winnerUserId: null },
             nextGame: {
@@ -5601,8 +5734,11 @@ describe('DailyScreen', () => {
         openedNext += 1;
         return new Response(
           JSON.stringify({
-            fixtureId: 'f2', segmentId: 'segment-2', duelMatchId: 'match-2',
-            kind: 'initial', sequenceNumber: 1,
+            fixtureId: 'f2',
+            segmentId: 'segment-2',
+            duelMatchId: 'match-2',
+            kind: 'initial',
+            sequenceNumber: 1,
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
@@ -5624,6 +5760,7 @@ describe('DailyScreen', () => {
     ]);
 
     const dialog = await screen.findByRole('dialog', { name: 'Результат дуэли' });
+    expect(within(dialog).getByLabelText('Счёт в серии 1:1')).toHaveTextContent('1:1');
     fireEvent.click(within(dialog).getByRole('button', { name: 'К следующей игре' }));
 
     await waitFor(() => expect(openedNext).toBe(1));

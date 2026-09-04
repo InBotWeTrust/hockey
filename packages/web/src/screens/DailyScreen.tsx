@@ -848,6 +848,17 @@ function tournamentGameResultLabel(result: NonNullable<TournamentGameContext['re
   ).format(result.accuracy * 100)}%`;
 }
 
+function playoffArenaStageLabel(game: Extract<ActiveTournamentGame, { kind: 'playoff' }>): string {
+  if (game.round_stage === 'third_place') return 'Матч за 3-е место';
+  const distance = game.final_round_number - game.round_number;
+  if (distance === 0) return 'Финал';
+  if (distance === 1) return 'Полуфинал';
+  if (distance === 2) return 'Четвертьфинал';
+  if (distance === 3) return '1/8 финала';
+  if (distance === 4) return '1/16 финала';
+  return `${game.round_number}-й раунд`;
+}
+
 function TournamentGameContextLoading(): JSX.Element {
   return (
     <main className="screen route-loading" role="status">
@@ -1154,6 +1165,34 @@ function GameHub({
     },
   });
 
+  const openArenaTournamentGame = useMutation({
+    mutationFn: async (game: Extract<ActiveTournamentGame, { kind: 'playoff' }>) => ({
+      game,
+      duelMatchId:
+        game.duel_match_id ??
+        (await openTournamentFixtureSegment(game.tournament_id, game.fixture_id)).duelMatchId,
+    }),
+    onSuccess: ({ game, duelMatchId }) => {
+      const params = new URLSearchParams({
+        view: 'amateur',
+        section: 'tournaments',
+        tournament: game.tournament_id,
+        tab: 'schedule',
+        fixture: game.fixture_id,
+        match: duelMatchId,
+        play: '1',
+      });
+      navigate(`/?${params.toString()}`, { replace: true });
+    },
+    onError: (err) => {
+      setModeInfoModal({
+        title: 'Не удалось открыть игру',
+        text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
+      });
+      void queryClient.invalidateQueries({ queryKey: ['tournaments', 'classic', 'active'] });
+    },
+  });
+
   const dailyArenaEntry: ArenaEntry = {
     id: 'daily',
     kind: 'daily',
@@ -1285,29 +1324,53 @@ function GameHub({
       if (game.kind === 'playoff') {
         const breakRemaining = Math.max(0, timestampMs(game.break_ends_at) - now);
         const startsAtRemaining = Math.max(0, timestampMs(game.starts_at) - now);
+        const readinessRemaining = Math.max(0, timestampMs(game.readiness_ends_at) - now);
+        const closesAtRemaining = Math.max(0, timestampMs(game.closes_at) - now);
         const isBreak = game.state === 'inter_game_break' && game.break_ends_at !== null;
         const isPaused = game.state === 'paused';
+        const isReady = game.state === 'ready_check' && readinessRemaining > 0;
+        const isExpiredReadyCheck = game.state === 'ready_check' && readinessRemaining === 0;
+        const isActive = game.state === 'active';
+        const canEnterGame = isReady || isActive;
         return {
           id: `playoff-${game.tournament_id}-${game.tournament_day}`,
           kind: 'duel',
-          eyebrow: `Турнир · ${game.tournament_day}-й игровой день`,
+          eyebrow: `Турнир · ${playoffArenaStageLabel(game)}`,
           title: game.tournament_title,
           subtitle: isPaused
             ? 'Игра ожидает решения администратора.'
             : isBreak
               ? 'Перерыв между играми серии'
-              : 'Игра серии ожидает готовности.',
+              : isReady
+                ? 'Игра серии ожидает подтверждения.'
+                : isActive
+                  ? 'Игра серии уже началась.'
+                  : isExpiredReadyCheck
+                    ? 'Время подтверждения истекло.'
+                    : 'Игра серии ожидает готовности.',
           meta: isBreak
             ? `Следующая игра через ${formatMs(breakRemaining)}`
             : isPaused
               ? 'Расписание ожидает решения'
-              : `Старт через ${formatEventRemaining(startsAtRemaining)}`,
-          ctaLabel: 'К расписанию',
-          onEnter: () =>
+              : isReady
+                ? `Подтвердите участие за ${formatMs(readinessRemaining)}`
+                : isActive
+                  ? `До конца игры ${formatMs(closesAtRemaining)}`
+                  : isExpiredReadyCheck
+                    ? 'Ожидаем результат проверки готовности'
+                    : `Старт через ${formatEventRemaining(startsAtRemaining)}`,
+          ctaLabel: canEnterGame ? 'На лёд' : 'К расписанию',
+          disabled: canEnterGame && openArenaTournamentGame.isPending,
+          onEnter: () => {
+            if (canEnterGame) {
+              openArenaTournamentGame.mutate(game);
+              return;
+            }
             navigate(
               `/?view=amateur&section=tournaments&tournament=${encodeURIComponent(game.tournament_id)}&tab=schedule`,
               { replace: true },
-            ),
+            );
+          },
           scoreboard: (
             <DailyHubScoreboard
               activePeriod={0}
@@ -1315,14 +1378,42 @@ function GameHub({
                 isPaused
                   ? `${game.tournament_title}. Игра ожидает решения администратора.`
                   : isBreak
-                  ? `${game.tournament_title}. Перерыв между играми серии. До конца ${formatMs(breakRemaining)}`
-                  : `${game.tournament_title}. Старт через ${formatEventRemaining(startsAtRemaining)}`
+                    ? `${game.tournament_title}. Перерыв между играми серии. До конца ${formatMs(breakRemaining)}`
+                    : isReady
+                      ? `${game.tournament_title}. До подтверждения ${formatMs(readinessRemaining)}`
+                      : isActive
+                        ? `${game.tournament_title}. Игра идёт. До конца ${formatMs(closesAtRemaining)}`
+                        : isExpiredReadyCheck
+                          ? `${game.tournament_title}. Время подтверждения истекло.`
+                          : `${game.tournament_title}. Старт через ${formatEventRemaining(startsAtRemaining)}`
               }
               periodsTotal={1}
               timer={
-                isPaused ? '—' : isBreak ? formatMs(breakRemaining) : formatEventRemaining(startsAtRemaining)
+                isPaused
+                  ? '—'
+                  : isBreak
+                    ? formatMs(breakRemaining)
+                    : isReady
+                      ? formatMs(readinessRemaining)
+                      : isActive
+                        ? formatMs(closesAtRemaining)
+                        : isExpiredReadyCheck
+                          ? '—'
+                          : formatEventRemaining(startsAtRemaining)
               }
-              timerLabel={isPaused ? 'Пауза' : isBreak ? 'Перерыв' : 'До старта'}
+              timerLabel={
+                isPaused
+                  ? 'Пауза'
+                  : isBreak
+                    ? 'Перерыв'
+                    : isReady
+                      ? 'До подтверждения'
+                      : isActive
+                        ? 'До конца'
+                        : isExpiredReadyCheck
+                          ? 'Проверка'
+                          : 'До старта'
+              }
             />
           ),
         };
@@ -1387,7 +1478,9 @@ function GameHub({
                       : `${game.tournament_title}. ${game.tournament_day}-й тур. До закрытия ${formatEventRemaining(deadlineRemaining)}`
                   }
                   periodsTotal={3}
-                  timer={isBreak ? formatMs(breakRemaining) : formatEventRemaining(deadlineRemaining)}
+                  timer={
+                    isBreak ? formatMs(breakRemaining) : formatEventRemaining(deadlineRemaining)
+                  }
                   timerLabel={isBreak ? 'Перерыв' : 'До закрытия'}
                 />
               ),
@@ -1841,9 +1934,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
             style={{
               color: '#f7feff',
               fontSize:
-                entry.title.length > 28
-                  ? 'clamp(13px, 2.05vh, 17px)'
-                  : 'clamp(16px, 2.65vh, 22px)',
+                entry.title.length > 28 ? 'clamp(13px, 2.05vh, 17px)' : 'clamp(16px, 2.65vh, 22px)',
               lineHeight: entry.title.length > 28 ? 1.02 : 0.95,
               fontWeight: 950,
               display: '-webkit-box',
@@ -1947,7 +2038,9 @@ function DailyHubScoreboard({
           ? 'minmax(0, 1fr)'
           : align === 'left'
             ? 'max-content max-content'
-            : 'max-content max-content',
+            : timerLabel.length > 20
+              ? 'minmax(0, 1fr) auto'
+              : 'max-content max-content',
         alignItems: 'center',
         justifyItems: timerOnly ? 'center' : align === 'left' ? 'start' : 'center',
         gap: align === 'left' ? 36 : 'clamp(14px, 2.2vh, 18px)',
@@ -2236,8 +2329,8 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
       const value = formatMs(myContinueDeadline - now);
       return {
         activePeriod: duelNextPeriod(match),
-        ariaLabel: `До поражения ${value}. Счёт ${score}`,
-        label: 'До поражения',
+        ariaLabel: `До технического поражения ${value}. Счёт ${score}`,
+        label: 'До технического поражения',
         value,
       };
     }
@@ -2249,8 +2342,8 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
       const value = formatMs(opponentContinueDeadline - now);
       return {
         activePeriod: duelNextPeriod(match),
-        ariaLabel: `До поражения соперника ${value}. Счёт ${score}`,
-        label: 'До поражения соперника',
+        ariaLabel: `Ждём завершения игры соперника ${value}. Счёт ${score}`,
+        label: 'Ждём завершения игры соперника',
         value,
       };
     }
@@ -2258,15 +2351,12 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
 
   if (match.status === 'active' && endsAt > now) {
     const value = formatMs(endsAt - now);
-    const waitingForOpponent =
-      match.me.state === 'completed' ||
-      match.me.state === 'forfeit' ||
-      match.opponent.state === 'accepted';
+    const waitingForOpponent = match.me.state === 'completed' || match.me.state === 'forfeit';
     const label =
       match.me.state === 'accepted'
-        ? 'До поражения'
+        ? 'До технического поражения'
         : waitingForOpponent
-          ? 'До поражения соперника'
+          ? 'Ждём завершения игры соперника'
           : 'До таймаута';
     return {
       activePeriod: match.rules.totalPeriods,
@@ -2366,7 +2456,7 @@ function DailyEventScoreboardColumn({
         width: '100%',
       }}
     >
-      <DailyEventScoreboardLabel>{label}</DailyEventScoreboardLabel>
+      <DailyEventScoreboardLabel align={align}>{label}</DailyEventScoreboardLabel>
       <span
         style={{
           color: '#e9fbff',
@@ -2386,7 +2476,13 @@ function DailyEventScoreboardColumn({
   );
 }
 
-function DailyEventScoreboardLabel({ children }: { children: React.ReactNode }): JSX.Element {
+function DailyEventScoreboardLabel({
+  align = 'center',
+  children,
+}: {
+  align?: 'center' | 'left';
+  children: React.ReactNode;
+}): JSX.Element {
   return (
     <span
       style={{
@@ -2395,7 +2491,10 @@ function DailyEventScoreboardLabel({ children }: { children: React.ReactNode }):
         fontWeight: 900,
         letterSpacing: '0.16em',
         textTransform: 'uppercase',
-        whiteSpace: 'nowrap',
+        maxWidth: '100%',
+        overflowWrap: 'anywhere',
+        textAlign: align,
+        whiteSpace: 'normal',
         textShadow: '0 0 7px rgba(88, 207, 255, 0.36)',
       }}
     >
@@ -5157,9 +5256,7 @@ function AmateurDuelPlayView({
     queryKey: ['tournaments', tournamentId, 'fixtures', tournamentFixtureId, 'attempt'],
     queryFn: () => fetchTournamentFixtureAttempt(tournamentId!, tournamentFixtureId!),
     enabled:
-      match?.source === 'tournament' &&
-      tournamentId !== null &&
-      tournamentFixtureId !== null,
+      match?.source === 'tournament' && tournamentId !== null && tournamentFixtureId !== null,
     refetchInterval: 1_000,
   });
   const tournamentReadinessHint = useQuery({
@@ -5201,10 +5298,7 @@ function AmateurDuelPlayView({
   useEffect(() => {
     const inventory = inventoryQuery.data;
     if (!inventory) return;
-    if (
-      match?.source === 'tournament' &&
-      match.me.state === 'accepted'
-    ) {
+    if (match?.source === 'tournament' && match.me.state === 'accepted') {
       return;
     }
     setSelectedLoadout((current) => ({
@@ -5219,11 +5313,7 @@ function AmateurDuelPlayView({
   }, [inventoryQuery.data, match, matchId]);
 
   useEffect(() => {
-    if (
-      !match ||
-      match.source !== 'tournament' ||
-      match.me.state !== 'accepted'
-    ) {
+    if (!match || match.source !== 'tournament' || match.me.state !== 'accepted') {
       return;
     }
     const selectionKey = match.me.loadout.items
@@ -5449,11 +5539,7 @@ function AmateurDuelPlayView({
             }}
           />
         )}
-        <AccessibleModal
-          title="Подтвердите участие"
-          open={explainTournamentReadiness}
-          closeBlocked
-        >
+        <AccessibleModal title="Подтвердите участие" open={explainTournamentReadiness} closeBlocked>
           <div style={{ display: 'grid', gap: 14 }}>
             <p className="modal-copy" style={{ margin: 0 }}>
               Нажмите «Готов» на льду, чтобы подтвердить участие в дуэли.
@@ -5734,10 +5820,12 @@ function DuelResultModal({
                     К следующей игре
                   </button>
                 ) : (
-                  <strong>
-                    Следующая игра через{' '}
-                    {formatMs(Math.max(0, new Date(nextGame.breakEndsAt).getTime() - now))}
-                  </strong>
+                  <div className="tournament-duel-result__countdown">
+                    <span>Следующая игра через:</span>
+                    <strong aria-label="До следующей игры">
+                      {formatMs(Math.max(0, new Date(nextGame.breakEndsAt).getTime() - now))}
+                    </strong>
+                  </div>
                 )}
               </div>
             )}
@@ -5882,9 +5970,19 @@ function DuelResultCard({
             />
           </div>
           {match.source === 'tournament' ? (
-            <div className="tournament-duel-result__score">
-              Вы {match.me.goals}:{match.opponent.goals} Соперник
-            </div>
+            <>
+              <div className="tournament-duel-result__score">
+                Вы {match.me.goals}:{match.opponent.goals} Соперник
+              </div>
+              {series !== null && (
+                <div className="tournament-duel-result__series-score">
+                  <span>Счёт в серии</span>
+                  <strong aria-label={`Счёт в серии ${series.myWins}:${series.opponentWins}`}>
+                    {series.myWins}:{series.opponentWins}
+                  </strong>
+                </div>
+              )}
+            </>
           ) : (
             <div
               aria-label={`Итог дуэли ${match.me.goals}:${match.opponent.goals}`}
@@ -6972,9 +7070,7 @@ function duelStartPeriodLoadoutSelection(
   return { stick: selectedStick ? selectedStick.id : null };
 }
 
-function duelLoadoutSelectionFromMatch(
-  match: AmateurDuelMatch,
-): AmateurDuelLoadoutSelection {
+function duelLoadoutSelectionFromMatch(match: AmateurDuelMatch): AmateurDuelLoadoutSelection {
   return {
     stick: match.me.loadout.items.find((item) => item.kind === 'stick')?.id ?? null,
     skates: match.me.loadout.items.find((item) => item.kind === 'skates')?.id ?? null,

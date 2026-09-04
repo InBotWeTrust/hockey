@@ -81,6 +81,38 @@ describe('TournamentPlayoffBracket series modal', () => {
     expect(dialog.querySelectorAll('.tournament-bracket-game--played')).toHaveLength(2);
   });
 
+  it('shows a settled technical win instead of its stored 0:0 score', () => {
+    const technicalSeries = {
+      ...ACTIVE_SERIES,
+      fixtures: [
+        {
+          ...ACTIVE_SERIES.fixtures[0]!,
+          id: 'game-technical',
+          homeScore: 0,
+          awayScore: 0,
+          winnerSide: 'away',
+          technicalResult: true,
+        },
+      ],
+    } satisfies TournamentBracketSeries;
+
+    render(
+      <TournamentPlayoffBracket
+        tournamentId="cup"
+        currentUserId={null}
+        onOpenFixture={vi.fn()}
+        series={[technicalSeries]}
+        timezone="Europe/Moscow"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Открыть серию/ }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Техническая победа — Aleksandra')).toBeInTheDocument();
+    expect(within(dialog).queryByText(/0:0/)).not.toBeInTheDocument();
+  });
+
   it('places a muted seed number before the avatar and vertically centers the player name', () => {
     render(
       <TournamentPlayoffBracket
