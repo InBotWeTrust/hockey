@@ -1,4 +1,4 @@
-import type { PoolClient } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { cancelTournamentDuel } from '../duel/amateur/lifecycle.js';
 import { resolveDelayedPlayoffRoundStart } from './playoffs.js';
 import { grantPlayoffRewardsIfComplete } from './rewards.js';
@@ -153,6 +153,63 @@ async function materializeNextSeriesGame(
   return row.fixture_id;
 }
 
+export async function reconcileMissingPlayoffSeriesGames(
+  pool: Pool,
+  options: { tournamentId?: string } = {},
+): Promise<{ recovered: number }> {
+  const params = options.tournamentId === undefined ? [] : [options.tournamentId];
+  const tournamentClause =
+    options.tournamentId === undefined ? '' : 'and series.tournament_id = $1';
+  const candidates = await pool.query<{ series_id: string; settled_at: Date }>(
+    `select series.id as series_id, settled_attempt.settled_at
+       from tournament_playoff_series series
+       join tournament tournament on tournament.id = series.tournament_id
+       join tournament_fixture next_fixture on next_fixture.series_id = series.id
+       join lateral (
+         select attempt.settled_at
+           from tournament_fixture fixture
+           join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
+          where fixture.series_id = series.id
+            and attempt.status in ('settled', 'technical_result')
+            and attempt.is_result_bearing
+            and attempt.settled_at is not null
+          order by attempt.settled_at desc, attempt.attempt_number desc
+          limit 1
+       ) settled_attempt on true
+      where tournament.status = 'playoff'
+        and series.status = 'active'
+        and next_fixture.status = 'scheduled'
+        and coalesce((next_fixture.result_snapshot->>'gameNumber')::int, 1) =
+            series.higher_seed_wins + series.lower_seed_wins + 1
+        and not exists (
+          select 1 from tournament_fixture_attempt attempt
+           where attempt.fixture_id = next_fixture.id
+        )
+        ${tournamentClause}
+      order by series.id`,
+    params,
+  );
+  let recovered = 0;
+  for (const candidate of candidates.rows) {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const fixtureId = await materializeNextSeriesGame(client, {
+        seriesId: candidate.series_id,
+        settledAt: candidate.settled_at,
+      });
+      await client.query('commit');
+      if (fixtureId !== null) recovered += 1;
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+  return { recovered };
+}
+
 export async function advanceTournamentPlayoffSeries(
   client: PoolClient,
   input: { seriesId: string; winnerParticipantId: string; settledAt: Date },
@@ -266,11 +323,7 @@ async function delayPastPlayoffRoundStart(
     [input.roundId],
   );
   const row = round.rows[0];
-  if (
-    row === undefined ||
-    row.starts_at === null ||
-    row.original_configured_start_at === null
-  ) {
+  if (row === undefined || row.starts_at === null || row.original_configured_start_at === null) {
     return;
   }
   const currentStart = row.starts_at;

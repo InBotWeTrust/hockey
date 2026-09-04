@@ -1,7 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
-import { fetchTournamentFixtureAttempt } from '../api/tournament.js';
 import type {
   TournamentBracketFixture,
   TournamentBracketSeries,
@@ -263,37 +261,6 @@ export function TournamentPlayoffAttemptView(props: {
   );
 }
 
-function PlayerAttemptState(props: {
-  tournamentId: string;
-  fixtureId: string;
-  currentUserId: string;
-  timezone: string;
-  onOpenFixture: (fixtureId: string) => void;
-}) {
-  const queryKey = ['tournaments', props.tournamentId, 'fixtures', props.fixtureId, 'attempt'];
-  const attempt = useQuery({
-    queryKey,
-    queryFn: () => fetchTournamentFixtureAttempt(props.tournamentId, props.fixtureId),
-    refetchInterval: 5_000,
-  });
-  if (!attempt.data) return null;
-  return (
-    <>
-      <TournamentPlayoffAttemptView
-        state={attempt.data}
-        currentUserId={props.currentUserId}
-        timezone={props.timezone}
-        onOpenGame={() => props.onOpenFixture(props.fixtureId)}
-        onOpenNextGame={() => {
-          if (attempt.data.nextGame !== null) {
-            props.onOpenFixture(attempt.data.nextGame.fixtureId);
-          }
-        }}
-      />
-    </>
-  );
-}
-
 function seriesStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     pending: 'Ожидает участников',
@@ -306,39 +273,52 @@ function seriesStatusLabel(status: string): string {
   return labels[status] ?? 'Статус уточняется';
 }
 
-function gameTimeLabel(fixture: TournamentBracketFixture, timezone: string): string {
-  if (fixture.scheduledStartsAt === null) return 'Время ещё не назначено';
-  const startsAt = new Date(fixture.scheduledStartsAt);
-  if (!Number.isFinite(startsAt.getTime())) return 'Время ещё не назначено';
+function gameDayLabel(startsAtValue: string | null, timezone: string): string {
+  if (startsAtValue === null) return 'Дата игрового дня ещё не назначена';
+  const startsAt = new Date(startsAtValue);
+  if (!Number.isFinite(startsAt.getTime())) return 'Дата игрового дня ещё не назначена';
   const date = new Intl.DateTimeFormat('ru-RU', {
     timeZone: timezone,
     day: 'numeric',
     month: 'long',
   }).format(startsAt);
-  const time = new Intl.DateTimeFormat('ru-RU', {
+  const startTime = new Intl.DateTimeFormat('ru-RU', {
     timeZone: timezone,
     hour: '2-digit',
     minute: '2-digit',
-  });
-  const startTime = time.format(startsAt);
-  if (fixture.windowEndsAt === null) return `${date} в ${startTime}`;
-  const endsAt = new Date(fixture.windowEndsAt);
-  if (!Number.isFinite(endsAt.getTime())) return `${date} в ${startTime}`;
-  const dateKey = new Intl.DateTimeFormat('en-CA', {
+  }).format(startsAt);
+  return `${date}, начало в ${startTime}`;
+}
+
+function localDateKey(value: string | null, timezone: string): string | null {
+  if (value === null) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  });
-  if (dateKey.format(startsAt) === dateKey.format(endsAt)) {
-    return `${date}, ${startTime}–${time.format(endsAt)}`;
+  }).format(date);
+}
+
+function groupFixturesByGameDay(fixtures: TournamentBracketFixture[], timezone: string) {
+  const groups = new Map<
+    string,
+    { startsAt: string | null; fixtures: TournamentBracketFixture[] }
+  >();
+  for (const fixture of fixtures) {
+    const fallbackDate = localDateKey(fixture.scheduledStartsAt, timezone);
+    const key = fixture.gameDay?.id ?? fallbackDate ?? 'unassigned';
+    const startsAt = fixture.gameDay?.startsAt ?? fixture.scheduledStartsAt;
+    const group = groups.get(key);
+    if (group) {
+      group.fixtures.push(fixture);
+    } else {
+      groups.set(key, { startsAt, fixtures: [fixture] });
+    }
   }
-  const endDate = new Intl.DateTimeFormat('ru-RU', {
-    timeZone: timezone,
-    day: 'numeric',
-    month: 'long',
-  }).format(endsAt);
-  return `${date}, ${startTime} — ${endDate}, ${time.format(endsAt)}`;
+  return [...groups.values()];
 }
 
 export function gameResultLabel(fixture: TournamentBracketFixture): string | null {
@@ -387,10 +367,6 @@ function SeriesDetailsModal(props: {
   renderSeriesAction?: (series: TournamentBracketSeries) => ReactNode;
 }) {
   const { series, title } = props.selection;
-  const isMySeries =
-    props.currentUserId !== null &&
-    [series.higher_user_id, series.lower_user_id].includes(props.currentUserId);
-  const latestFixtureId = currentSeriesFixtureId(series.fixtures);
   const players = [
     {
       userId: series.higher_user_id,
@@ -407,30 +383,15 @@ function SeriesDetailsModal(props: {
       wins: series.lower_seed_wins,
     },
   ];
-  const fixtureUserId = (
-    fixture: TournamentBracketFixture,
-    side: 'home' | 'away',
-  ): string | null => {
-    const explicit = side === 'home' ? fixture.homeUserId : fixture.awayUserId;
-    if (explicit !== undefined) return explicit;
-    const name = side === 'home' ? fixture.homeName : fixture.awayName;
-    if (name === series.higher_name) return series.higher_user_id;
-    if (name === series.lower_name) return series.lower_user_id;
-    return null;
-  };
-  const participantTone = (
-    fixture: TournamentBracketFixture,
-    side: 'home' | 'away',
-  ): string => {
-    const userId = fixtureUserId(fixture, side);
-    const won = fixture.winnerSide === side;
-    if (userId === props.currentUserId && !won && fixture.winnerSide !== null) {
-      return ' tournament-bracket-game__participant--own-loss';
-    }
-    return won ? ' tournament-bracket-game__participant--winner' : '';
-  };
   const statusLabel = seriesStatusLabel(series.status);
   const scheduleLabel = playoffSeriesScheduleLabel(series, props.timezone);
+  const visibleFixtures = series.fixtures.filter((fixture) =>
+    ['completed', 'settled'].includes(series.status)
+      ? ['settled', 'forfeit'].includes(fixture.status)
+      : fixture.status !== 'cancelled',
+  );
+  const fixtureGroups = groupFixturesByGameDay(visibleFixtures, props.timezone);
+  const isCompleted = ['completed', 'settled'].includes(series.status);
   return (
     <AccessibleModal
       title={title}
@@ -443,33 +404,34 @@ function SeriesDetailsModal(props: {
       }
     >
       <div className="tournament-bracket-series-modal__meta">
-        <strong>{statusLabel}</strong>
-        {scheduleLabel !== statusLabel && <span>{scheduleLabel}</span>}
+        <strong>{isCompleted ? scheduleLabel : statusLabel}</strong>
+        {!isCompleted && scheduleLabel !== statusLabel && <span>{scheduleLabel}</span>}
       </div>
       <div className="tournament-bracket-series-modal__players">
         {players.map((player, index) => {
-          const isWinner = player.userId !== null && player.userId === series.winner_user_id;
-          const isOwnLoss =
-            player.userId !== null &&
-            player.userId === props.currentUserId &&
-            series.winner_user_id !== null &&
-            !isWinner;
           return (
             <div
-              className={`tournament-bracket-series-modal__player${isWinner ? ' tournament-bracket-series-modal__player--winner' : ''}${isOwnLoss ? ' tournament-bracket-series-modal__player--own-loss' : ''}`}
+              className="tournament-bracket-series-modal__player"
               key={player.userId ?? `${index}-${player.name ?? 'pending'}`}
             >
               <div className="tournament-bracket-series-modal__identity">
+                {player.seed !== null && (
+                  <span
+                    className="tournament-bracket-series-modal__seed"
+                    aria-label={`Посев ${player.seed}`}
+                  >
+                    {player.seed}
+                  </span>
+                )}
                 <UserAvatar
                   avatarUrl={player.avatarUrl}
                   name={player.name}
                   size={30}
                   alt={player.name ?? 'Участник'}
                 />
-                <span>
-                  <strong>{player.name ?? 'Участник определится позже'}</strong>
-                  {player.seed !== null && <small>Посев {player.seed}</small>}
-                </span>
+                <strong className="tournament-bracket-series-modal__name">
+                  {player.name ?? 'Участник определится позже'}
+                </strong>
               </div>
               <strong aria-label={`${player.wins} побед в серии`}>{player.wins}</strong>
             </div>
@@ -480,72 +442,59 @@ function SeriesDetailsModal(props: {
         Счёт серии {series.higher_seed_wins}:{series.lower_seed_wins}
       </strong>
       <div className="tournament-bracket-series__games">
-        {series.fixtures.length === 0 ? (
+        {visibleFixtures.length === 0 ? (
           <span className="tournament-bracket-series-modal__empty">
             Игры серии ещё не назначены.
           </span>
         ) : (
-          series.fixtures.map((fixture) => {
-            const resultLabel = gameResultLabel(fixture);
-            const ariaResultLabel =
-              fixture.status === 'forfeit'
-                ? resultLabel
-                : fixture.homeName !== null &&
-                    fixture.awayName !== null &&
-                    fixture.homeScore !== null &&
-                    fixture.awayScore !== null
-                  ? `${fixture.homeName} ${fixture.homeScore}:${fixture.awayScore} ${fixture.awayName}`
-                  : null;
-            return (
-              <div
-                className="tournament-bracket-game"
-                key={fixture.id}
-                aria-label={
-                  ariaResultLabel === null
-                    ? undefined
-                    : `Игра ${fixture.gameNumber}: ${ariaResultLabel}`
-                }
-              >
-                <span>
-                  Игра {fixture.gameNumber} · {gameTimeLabel(fixture, props.timezone)}
-                </span>
-                {resultLabel !== null && (
-                  <strong className="tournament-bracket-game__result">
-                    {fixture.status === 'forfeit' ? (
-                      <span className="tournament-bracket-game__technical-result">
-                        {resultLabel}
-                      </span>
-                    ) : (
-                      <>
-                        <span
-                          className={`tournament-bracket-game__participant tournament-bracket-game__participant--home${participantTone(fixture, 'home')}`}
-                        >
-                          {fixture.homeName}
-                        </span>
-                        <span className="tournament-bracket-game__score">
-                          {fixture.homeScore} : {fixture.awayScore}
-                        </span>
-                        <span
-                          className={`tournament-bracket-game__participant tournament-bracket-game__participant--away${participantTone(fixture, 'away')}`}
-                        >
-                          {fixture.awayName}
-                        </span>
-                      </>
-                    )}
-                  </strong>
-                )}
-                {isMySeries && fixture.id === latestFixtureId && (
-                  <PlayerAttemptState
-                    tournamentId={props.tournamentId}
-                    fixtureId={fixture.id}
-                    currentUserId={props.currentUserId!}
-                    timezone={props.timezone}
-                    onOpenFixture={props.onOpenFixture}
-                  />
-                )}
+          fixtureGroups.map((group, groupIndex) => (
+            <section className="tournament-bracket-game-day" key={`${group.startsAt}-${groupIndex}`}>
+              <strong className="tournament-bracket-game-day__title">
+                {gameDayLabel(group.startsAt, props.timezone)}
+              </strong>
+              <div className="tournament-bracket-game-day__fixtures">
+                {group.fixtures.map((fixture) => {
+                  const resultLabel = gameResultLabel(fixture);
+                  const ariaResultLabel =
+                    fixture.status === 'forfeit'
+                      ? resultLabel
+                      : fixture.homeName !== null &&
+                          fixture.awayName !== null &&
+                          fixture.homeScore !== null &&
+                          fixture.awayScore !== null
+                        ? `${fixture.homeName} ${fixture.homeScore}:${fixture.awayScore} ${fixture.awayName}`
+                        : null;
+                  return (
+                    <div
+                      className={`tournament-bracket-game${resultLabel === null ? '' : ' tournament-bracket-game--played'}`}
+                      key={fixture.id}
+                      aria-label={
+                        ariaResultLabel === null
+                          ? undefined
+                          : `Игра ${fixture.gameNumber}: ${ariaResultLabel}`
+                      }
+                    >
+                      <span>Игра {fixture.gameNumber}</span>
+                      {resultLabel !== null && (
+                        <strong className="tournament-bracket-game__result">
+                          {fixture.status === 'forfeit' ? (
+                            <span className="tournament-bracket-game__technical-result">
+                              {resultLabel}
+                            </span>
+                          ) : (
+                            <span className="tournament-bracket-game__matchup">
+                              {fixture.homeName} — {fixture.awayName} {fixture.homeScore}:
+                              {fixture.awayScore}
+                            </span>
+                          )}
+                        </strong>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })
+            </section>
+          ))
         )}
       </div>
       {props.renderSeriesAction?.(series)}

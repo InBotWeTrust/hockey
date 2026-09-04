@@ -4506,6 +4506,19 @@ export async function getTournamentBracket(pool: Pool, tournamentId: string) {
              jsonb_build_object(
                'id', fixture.id,
                'gameNumber', coalesce((fixture.result_snapshot->>'gameNumber')::int, 1),
+               'gameDay', case
+                 when coalesce(game_day.id, planned_game_day.id) is null then null
+                 else jsonb_build_object(
+                   'id', coalesce(game_day.id, planned_game_day.id),
+                   'dayNumber', coalesce(game_day.day_number, planned_game_day.day_number),
+                   'localDate', coalesce(game_day.local_date, planned_game_day.local_date),
+                   'startsAt', coalesce(
+                     (to_jsonb(game_day)->>'rescheduled_starts_at')::timestamptz,
+                     game_day.first_game_starts_at,
+                     planned_game_day.starts_at
+                   )
+                 )
+               end,
                'scheduledStartsAt', fixture.scheduled_starts_at,
                'windowEndsAt', fixture.window_ends_at,
                'status', fixture.status,
@@ -4531,6 +4544,36 @@ export async function getTournamentBracket(pool: Pool, tournamentId: string) {
            left join tournament_participant fixture_away
              on fixture_away.id = fixture.away_participant_id
            left join users fixture_away_user on fixture_away_user.id = fixture_away.user_id
+           left join lateral (
+             select attempt.round_game_day_id
+               from tournament_fixture_attempt attempt
+              where attempt.fixture_id = fixture.id
+              order by attempt.attempt_number desc
+              limit 1
+           ) latest_attempt on true
+           left join tournament_round_game_day game_day
+             on game_day.id = latest_attempt.round_game_day_id
+           left join lateral (
+             select day.id, day.day_number, day.local_date,
+                    coalesce(
+                      (to_jsonb(day)->>'rescheduled_starts_at')::timestamptz,
+                      day.first_game_starts_at
+                    ) as starts_at
+               from (
+                 select candidate.*,
+                        sum(candidate.max_result_bearing_games) over (
+                          order by candidate.day_number
+                        ) as cumulative_game_capacity
+                   from tournament_round_game_day candidate
+                  where candidate.round_id = fixture.round_id
+                    and candidate.status <> 'cancelled'
+               ) day
+              where latest_attempt.round_game_day_id is null
+                and day.cumulative_game_capacity >=
+                    coalesce((fixture.result_snapshot->>'gameNumber')::int, 1)
+              order by day.day_number
+              limit 1
+           ) planned_game_day on true
           where fixture.series_id = s.id
        ) fixture_schedule on true
       where s.tournament_id = $1

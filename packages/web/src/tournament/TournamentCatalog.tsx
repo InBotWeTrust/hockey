@@ -121,11 +121,7 @@ export function fixtureCanOpen(fixture: TournamentFixture, now = Date.now()): bo
   return Number.isFinite(startsAt) && startsAt <= now && now < endsAt;
 }
 
-function fixtureTimeLabel(
-  fixture: TournamentFixture,
-  timezone: string,
-  finished: boolean,
-): string {
+function fixtureTimeLabel(fixture: TournamentFixture, timezone: string, finished: boolean): string {
   if (!finished) return 'Время игры появится после предыдущего результата';
   const displayValue = fixture.actualStartsAt ?? fixture.scheduledStartsAt;
   if (displayValue === null || displayValue === undefined) return 'Время ещё не назначено';
@@ -177,21 +173,32 @@ function localDateKey(value: string | number, timezone: string): string {
   return `${read('year')}-${read('month')}-${read('day')}`;
 }
 
-function initialScheduleDate(tournament: TournamentSummary): string {
+type ScheduleDateTournament = Pick<
+  TournamentSummary,
+  'startsAt' | 'completedAt' | 'projectedEndsAt' | 'rules'
+>;
+
+function initialScheduleDate(tournament: ScheduleDateTournament): string {
   const timezone = String(tournament.rules.config.timezone ?? 'Europe/Moscow');
   const today = localDateKey(Date.now(), timezone);
   const starts = tournament.startsAt === null ? today : localDateKey(tournament.startsAt, timezone);
   const endsValue = tournament.completedAt ?? tournament.projectedEndsAt;
-  const ends = endsValue === null || endsValue === undefined ? today : localDateKey(endsValue, timezone);
+  const ends =
+    endsValue === null || endsValue === undefined ? today : localDateKey(endsValue, timezone);
   if (today < starts) return starts;
   if (today > ends) return ends;
   return today;
 }
 
-function fixturePlayerLabel(
-  participant: TournamentFixture['home'],
-  showSeed: boolean,
+export function scheduleDateForTabChange(
+  nextTab: TournamentTab,
+  tournament: ScheduleDateTournament,
+  currentDate: string,
 ): string {
+  return nextTab === 'schedule' ? initialScheduleDate(tournament) : currentDate;
+}
+
+function fixturePlayerLabel(participant: TournamentFixture['home'], showSeed: boolean): string {
   const name = participant?.name ?? 'Участник';
   return showSeed && participant?.seed != null ? `(${participant.seed}) ${name}` : name;
 }
@@ -649,7 +656,12 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
         ariaLabel="Разделы турнира"
         activeTab={tab}
         items={tabs.map((item) => ({ id: item.key, label: item.label }))}
-        onChange={setTab}
+        onChange={(nextTab) => {
+          setScheduleDate((currentDate) =>
+            scheduleDateForTabChange(nextTab, tournament, currentDate),
+          );
+          setTab(nextTab);
+        }}
         scrollable
       />
       <section className="glass tournament-details__content">

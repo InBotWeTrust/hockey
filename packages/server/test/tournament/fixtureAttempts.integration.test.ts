@@ -4,11 +4,7 @@ import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  getGoalie,
-  getSessionPhaseOffsets,
-  resolvePerspectiveCourtShot,
-} from '@hockey/game-core';
+import { getGoalie, getSessionPhaseOffsets, resolvePerspectiveCourtShot } from '@hockey/game-core';
 import { buildApp } from '../../src/app.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
@@ -29,6 +25,7 @@ import { openTournamentFixtureSegment } from '../../src/tournament/fixtureLifecy
 import {
   advanceTournamentPlayoffSeries,
   forceTournamentPlayoffSeriesWinner,
+  reconcileMissingPlayoffSeriesGames,
 } from '../../src/tournament/playoffSeriesLifecycle.js';
 import { reconcilePlayoffDayStartingCommunications } from '../../src/tournament/communications.js';
 import {
@@ -512,10 +509,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     expect(firstRound.rows).toHaveLength(2);
     expect(
       firstRound.rows.map((row) => `${row.game_number}:${row.scheduled_starts_at.toISOString()}`),
-    ).toEqual([
-      '1:2030-10-26T17:00:00.000Z',
-      '1:2030-10-26T17:00:00.000Z',
-    ]);
+    ).toEqual(['1:2030-10-26T17:00:00.000Z', '1:2030-10-26T17:00:00.000Z']);
     expect(firstRound.rows.every((row) => row.attempt_number === 1)).toBe(true);
     expect(firstRound.rows.every((row) => row.kind === 'initial')).toBe(true);
     expect(firstRound.rows.every((row) => row.is_result_bearing)).toBe(true);
@@ -1072,7 +1066,11 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
   });
 
   it('migration preserves non-pending later-game attempts and their fixture slots', async () => {
-    const tournament = await createPublished(pool, 'attempt-migration-preservation', lifecycleRules());
+    const tournament = await createPublished(
+      pool,
+      'attempt-migration-preservation',
+      lifecycleRules(),
+    );
     await preparePlayoffs(pool, tournament.id);
     await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00.000Z'));
     const laterFixtures = await pool.query<{ id: string; game_number: number }>(
@@ -1125,30 +1123,35 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       [laterFixtures.rows.map((fixture) => fixture.id)],
     );
     expect(afterMigration.rows).toHaveLength(3);
-    expect(afterMigration.rows).toEqual(expect.arrayContaining([
-      {
-        game_number: 2,
-        attempt_status: null,
-        scheduled_starts_at: null,
-        window_ends_at: null,
-      },
-      {
-        game_number: 2,
-        attempt_status: 'active',
-        scheduled_starts_at: startsAt,
-        window_ends_at: deadlineAt,
-      },
-      {
-        game_number: 3,
-        attempt_status: 'needs_admin_decision',
-        scheduled_starts_at: startsAt,
-        window_ends_at: deadlineAt,
-      },
-    ]));
+    expect(afterMigration.rows).toEqual(
+      expect.arrayContaining([
+        {
+          game_number: 2,
+          attempt_status: null,
+          scheduled_starts_at: null,
+          window_ends_at: null,
+        },
+        {
+          game_number: 2,
+          attempt_status: 'active',
+          scheduled_starts_at: startsAt,
+          window_ends_at: deadlineAt,
+        },
+        {
+          game_number: 3,
+          attempt_status: 'needs_admin_decision',
+          scheduled_starts_at: startsAt,
+          window_ends_at: deadlineAt,
+        },
+      ]),
+    );
   });
 
   it('keeps tournament readiness separate from local loadout confirmation', async () => {
-    const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'attempt-ready-separate-loadout');
+    const { fixture, opened } = await openFirstPlayoffAttempt(
+      pool,
+      'attempt-ready-separate-loadout',
+    );
     const items = await pool.query<{ id: string; item_kind: 'stick' | 'skates' | 'nutrition' }>(
       `insert into admin_inventory_items
        (photo_url, title, description, price_rub, item_kind, charges_per_purchase,
@@ -1205,8 +1208,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       payload: { loadout: {} },
     });
     expect(confirmLoadout.statusCode).toBe(200);
-    expect(confirmLoadout.json().match.me.loadout.items.map((item: { kind: string }) => item.kind))
-      .toEqual(['stick', 'skates', 'nutrition']);
+    expect(
+      confirmLoadout.json().match.me.loadout.items.map((item: { kind: string }) => item.kind),
+    ).toEqual(['stick', 'skates', 'nutrition']);
     const repeatedConfirmation = await app.inject({
       method: 'POST',
       url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
@@ -1229,13 +1233,19 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
         where participant.match_id = $1 and participant.user_id = $2`,
       [opened.duelMatchId, fixture.home_user_id],
     );
-    expect(participant.rows).toEqual([{
-      reserved_inventory_charges: 2,
-      stick: idFor('stick'),
-      skates: idFor('skates'),
-      nutrition: idFor('nutrition'),
-    }]);
-    const inventory = await pool.query<{ inventory_item_id: string; charges_available: number; charges_reserved: number }>(
+    expect(participant.rows).toEqual([
+      {
+        reserved_inventory_charges: 2,
+        stick: idFor('stick'),
+        skates: idFor('skates'),
+        nutrition: idFor('nutrition'),
+      },
+    ]);
+    const inventory = await pool.query<{
+      inventory_item_id: string;
+      charges_available: number;
+      charges_reserved: number;
+    }>(
       `select inventory_item_id, charges_available, charges_reserved from user_inventory_item
         where user_id = $1 order by inventory_item_id`,
       [fixture.home_user_id],
@@ -1426,9 +1436,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       loadout_snapshot: legacyBefore.rows[0]!.loadout_snapshot,
       inventory_effects_snapshot: legacyBefore.rows[0]!.inventory_effects_snapshot,
     });
-    expect(afterTerminal.rows[0]!.inventory_report.flatMap((entry) => entry.consumed)).toMatchObject([
-      { title: 'Legacy skates', charges: 1 },
-    ]);
+    expect(
+      afterTerminal.rows[0]!.inventory_report.flatMap((entry) => entry.consumed),
+    ).toMatchObject([{ title: 'Legacy skates', charges: 1 }]);
   });
 
   it('returns the current active tournament state when readiness is retried after activation', async () => {
@@ -1588,13 +1598,15 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
         where participant.match_id = $1 and participant.user_id = $2`,
       [opened.duelMatchId, fixture.home_user_id, stickId],
     );
-    expect(afterTerminal.rows).toEqual([{
-      tournament_loadout_period: null,
-      tournament_loadout_confirmed_at: null,
-      reserved_inventory_charges: 0,
-      charges_available: 3,
-      charges_reserved: 0,
-    }]);
+    expect(afterTerminal.rows).toEqual([
+      {
+        tournament_loadout_period: null,
+        tournament_loadout_confirmed_at: null,
+        reserved_inventory_charges: 0,
+        charges_available: 3,
+        charges_reserved: 0,
+      },
+    ]);
   });
 
   it('versions tournament loadout at each period boundary without releasing consumed charges', async () => {
@@ -1647,12 +1659,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       `insert into user_equipment
          (user_id, equipped_stick_item_id, equipped_skates_item_id, equipped_nutrition_item_id)
        values ($1, $2, $3, $4)`,
-      [
-        fixture.home_user_id,
-        itemId('A stick'),
-        itemId('A skates'),
-        itemId('A nutrition'),
-      ],
+      [fixture.home_user_id, itemId('A stick'), itemId('A skates'), itemId('A nutrition')],
     );
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
     const homeToken = await jwt.issueAccessToken({ sub: fixture.home_user_id });
@@ -1785,11 +1792,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       },
     });
     expect(selectB.statusCode).toBe(200);
-    expect(selectB.json().match.me.loadout.items.map((item: { title: string }) => item.title)).toEqual([
-      'B stick',
-      'B skates',
-      'B nutrition',
-    ]);
+    expect(
+      selectB.json().match.me.loadout.items.map((item: { title: string }) => item.title),
+    ).toEqual(['B stick', 'B skates', 'B nutrition']);
     const clearB = await app.inject({
       method: 'POST',
       url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
@@ -1927,7 +1932,10 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
   });
 
   it('debits dynamic tournament resources once when the same shot is retried', async () => {
-    const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'attempt-dynamic-resource-retry');
+    const { fixture, opened } = await openFirstPlayoffAttempt(
+      pool,
+      'attempt-dynamic-resource-retry',
+    );
     const items = await pool.query<{
       id: string;
       title: string;
@@ -2031,8 +2039,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
         where match_id = $1 and user_id = $2`,
       [opened.duelMatchId, fixture.home_user_id],
     );
-    const consumedAfterFirst = participantAfterFirst.rows[0]!.inventory_report
-      .flatMap((entry) => entry.consumed)
+    const consumedAfterFirst = participantAfterFirst.rows[0]!.inventory_report.flatMap(
+      (entry) => entry.consumed,
+    )
       .map((item) => ({ title: item.title, charges: item.charges }))
       .sort((left, right) => left.title.localeCompare(right.title));
     expect(consumedAfterFirst).toEqual([
@@ -3267,88 +3276,88 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
     const homeToken = await jwt.issueAccessToken({ sub: fixture.home_user_id });
     try {
-    for (const userId of [fixture.home_user_id, fixture.away_user_id]) {
-      const token = await jwt.issueAccessToken({ sub: userId });
-      const ready = await app.inject({
-        method: 'POST',
-        url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
-        headers: { authorization: `Bearer ${token}` },
-        payload: { loadout: {} },
-      });
-      expect(ready.statusCode).toBe(200);
-    }
-    await pool.query(
-      `update amateur_duel_participant
+      for (const userId of [fixture.home_user_id, fixture.away_user_id]) {
+        const token = await jwt.issueAccessToken({ sub: userId });
+        const ready = await app.inject({
+          method: 'POST',
+          url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+          headers: { authorization: `Bearer ${token}` },
+          payload: { loadout: {} },
+        });
+        expect(ready.statusCode).toBe(200);
+      }
+      await pool.query(
+        `update amateur_duel_participant
           set state = 'completed', completed_at = now(), goals = 2, shots_taken = 4,
               active_duration_ms = 90000
         where match_id = $1`,
-      [opened.duelMatchId],
-    );
-    for (let request = 0; request < 2; request += 1) {
-      const state = await app.inject({
-        method: 'GET',
-        url: `/duel/amateur/matches/${opened.duelMatchId}`,
-        headers: { authorization: `Bearer ${homeToken}` },
-      });
-      expect(state.statusCode).toBe(200);
-    }
+        [opened.duelMatchId],
+      );
+      for (let request = 0; request < 2; request += 1) {
+        const state = await app.inject({
+          method: 'GET',
+          url: `/duel/amateur/matches/${opened.duelMatchId}`,
+          headers: { authorization: `Bearer ${homeToken}` },
+        });
+        expect(state.statusCode).toBe(200);
+      }
 
-    const attempts = await pool.query<{
-      attempt_number: number;
-      kind: string;
-      status: string;
-      outcome: string | null;
-      home_score: number | null;
-      away_score: number | null;
-      scheduled_starts_at: Date;
-      is_result_bearing: boolean;
-      round_game_day_id: string | null;
-      snapshot: Record<string, unknown>;
-    }>(
-      `select attempt_number, kind, status, outcome, home_score, away_score,
+      const attempts = await pool.query<{
+        attempt_number: number;
+        kind: string;
+        status: string;
+        outcome: string | null;
+        home_score: number | null;
+        away_score: number | null;
+        scheduled_starts_at: Date;
+        is_result_bearing: boolean;
+        round_game_day_id: string | null;
+        snapshot: Record<string, unknown>;
+      }>(
+        `select attempt_number, kind, status, outcome, home_score, away_score,
               scheduled_starts_at, is_result_bearing, round_game_day_id,
               result_snapshot as snapshot
          from tournament_fixture_attempt
         where fixture_id = $1
         order by attempt_number`,
-      [fixture.fixture_id],
-    );
-    expect(attempts.rows).toHaveLength(2);
-    expect(attempts.rows[0]).toMatchObject({
-      attempt_number: 1,
-      kind: 'initial',
-      status: 'settled',
-      outcome: 'replay',
-      home_score: 2,
-      away_score: 2,
-      is_result_bearing: true,
-    });
-    expect(attempts.rows[0]!.snapshot).toMatchObject({ homeShots: 4, awayShots: 4 });
-    expect(attempts.rows[1]).toMatchObject({
-      attempt_number: 2,
-      kind: 'replay',
-      status: 'pending',
-      outcome: null,
-      home_score: null,
-      away_score: null,
-      is_result_bearing: false,
-      round_game_day_id: null,
-    });
-    expect(attempts.rows[1]!.snapshot).toMatchObject({
-      duelTemplateId: TEMPLATE_ID,
-      readinessMode: 'manual',
-    });
+        [fixture.fixture_id],
+      );
+      expect(attempts.rows).toHaveLength(2);
+      expect(attempts.rows[0]).toMatchObject({
+        attempt_number: 1,
+        kind: 'initial',
+        status: 'settled',
+        outcome: 'replay',
+        home_score: 2,
+        away_score: 2,
+        is_result_bearing: true,
+      });
+      expect(attempts.rows[0]!.snapshot).toMatchObject({ homeShots: 4, awayShots: 4 });
+      expect(attempts.rows[1]).toMatchObject({
+        attempt_number: 2,
+        kind: 'replay',
+        status: 'pending',
+        outcome: null,
+        home_score: null,
+        away_score: null,
+        is_result_bearing: false,
+        round_game_day_id: null,
+      });
+      expect(attempts.rows[1]!.snapshot).toMatchObject({
+        duelTemplateId: TEMPLATE_ID,
+        readinessMode: 'manual',
+      });
 
-    const lifecycle = await pool.query<{
-      duel_settled_at: Date;
-      fixture_status: string;
-      fixture_home_score: number;
-      fixture_away_score: number;
-      series_wins: number;
-      segment_count: number;
-      overtime_count: number;
-    }>(
-      `select duel.settled_at as duel_settled_at, fixture.status as fixture_status,
+      const lifecycle = await pool.query<{
+        duel_settled_at: Date;
+        fixture_status: string;
+        fixture_home_score: number;
+        fixture_away_score: number;
+        series_wins: number;
+        segment_count: number;
+        overtime_count: number;
+      }>(
+        `select duel.settled_at as duel_settled_at, fixture.status as fixture_status,
               fixture.home_score as fixture_home_score,
               fixture.away_score as fixture_away_score,
               (series.higher_seed_wins + series.lower_seed_wins)::int as series_wins,
@@ -3360,20 +3369,20 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
          join tournament_playoff_series series on series.id = fixture.series_id
          join amateur_duel_match duel on duel.id = $2
         where fixture.id = $1`,
-      [fixture.fixture_id, opened.duelMatchId],
-    );
-    expect(
-      attempts.rows[1]!.scheduled_starts_at.getTime() -
-        lifecycle.rows[0]!.duel_settled_at.getTime(),
-    ).toBe(5 * 60_000);
-    expect(lifecycle.rows[0]).toMatchObject({
-      fixture_status: 'scheduled',
-      fixture_home_score: 0,
-      fixture_away_score: 0,
-      series_wins: 0,
-      segment_count: 1,
-      overtime_count: 0,
-    });
+        [fixture.fixture_id, opened.duelMatchId],
+      );
+      expect(
+        attempts.rows[1]!.scheduled_starts_at.getTime() -
+          lifecycle.rows[0]!.duel_settled_at.getTime(),
+      ).toBe(5 * 60_000);
+      expect(lifecycle.rows[0]).toMatchObject({
+        fixture_status: 'scheduled',
+        fixture_home_score: 0,
+        fixture_away_score: 0,
+        series_wins: 0,
+        segment_count: 1,
+        overtime_count: 0,
+      });
     } finally {
       vi.useRealTimers();
     }
@@ -3598,79 +3607,79 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     const homeToken = await jwt.issueAccessToken({ sub: context.fixture.home_user_id });
     const awayToken = await jwt.issueAccessToken({ sub: context.fixture.away_user_id });
     try {
-    for (const token of [homeToken, awayToken]) {
-      const ready = await app.inject({
-        method: 'POST',
-        url: `/duel/amateur/matches/${context.opened.duelMatchId}/ready`,
-        headers: { authorization: `Bearer ${token}` },
-        payload: { loadout: {} },
-      });
-      expect(ready.statusCode).toBe(200);
-    }
-    await pool.query(
-      `update amateur_duel_participant
+      for (const token of [homeToken, awayToken]) {
+        const ready = await app.inject({
+          method: 'POST',
+          url: `/duel/amateur/matches/${context.opened.duelMatchId}/ready`,
+          headers: { authorization: `Bearer ${token}` },
+          payload: { loadout: {} },
+        });
+        expect(ready.statusCode).toBe(200);
+      }
+      await pool.query(
+        `update amateur_duel_participant
           set state = 'completed', completed_at = now(), current_period = 2,
               period_started_at = null, goals = 21,
               shots_taken = case when user_id = $2 then 29 else 35 end,
-              active_duration_ms = 90000
+              active_duration_ms = case when user_id = $2 then 90000 else 95000 end
         where match_id = $1`,
-      [context.opened.duelMatchId, context.fixture.home_user_id],
-    );
-    const settled = await app.inject({
-      method: 'GET',
-      url: `/duel/amateur/matches/${context.opened.duelMatchId}`,
-      headers: { authorization: `Bearer ${homeToken}` },
-    });
-    expect(settled.statusCode).toBe(200);
+        [context.opened.duelMatchId, context.fixture.home_user_id],
+      );
+      const settled = await app.inject({
+        method: 'GET',
+        url: `/duel/amateur/matches/${context.opened.duelMatchId}`,
+        headers: { authorization: `Bearer ${homeToken}` },
+      });
+      expect(settled.statusCode).toBe(200);
 
-    const duringBreak = await app.inject({
-      method: 'GET',
-      url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/attempt`,
-      headers: { authorization: `Bearer ${homeToken}` },
-    });
-    expect(duringBreak.statusCode).toBe(200);
-    expect(duringBreak.json().nextGame).toMatchObject({ available: false });
-    expect(duringBreak.json()).toMatchObject({
-      attempt: {
-        status: 'settled',
-        result: {
-          outcome: 'home_win',
-          winnerUserId: context.fixture.home_user_id,
-          myScore: 21,
-          opponentScore: 21,
+      const duringBreak = await app.inject({
+        method: 'GET',
+        url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/attempt`,
+        headers: { authorization: `Bearer ${homeToken}` },
+      });
+      expect(duringBreak.statusCode).toBe(200);
+      expect(duringBreak.json().nextGame).toMatchObject({ available: false });
+      expect(duringBreak.json()).toMatchObject({
+        attempt: {
+          status: 'settled',
+          result: {
+            outcome: 'home_win',
+            winnerUserId: context.fixture.home_user_id,
+            myScore: 21,
+            opponentScore: 21,
+          },
         },
-      },
-      series: { myWins: 1, opponentWins: 0 },
-    });
-    const nextFixtureId = duringBreak.json().nextGame.fixtureId as string;
-    const breakEndsAt = new Date(duringBreak.json().nextGame.breakEndsAt as string);
-    expect(breakEndsAt.getTime()).toBe(
-      new Date(settled.json().match.settled_at as string).getTime() + 5 * 60_000,
-    );
+        series: { myWins: 1, opponentWins: 0 },
+      });
+      const nextFixtureId = duringBreak.json().nextGame.fixtureId as string;
+      const breakEndsAt = new Date(duringBreak.json().nextGame.breakEndsAt as string);
+      expect(breakEndsAt.getTime()).toBe(
+        new Date(settled.json().match.settled_at as string).getTime() + 5 * 60_000,
+      );
 
-    const reopenSettledFixture = await app.inject({
-      method: 'POST',
-      url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/segments/open`,
-      headers: { authorization: `Bearer ${homeToken}` },
-    });
-    expect(reopenSettledFixture.statusCode).toBe(409);
+      const reopenSettledFixture = await app.inject({
+        method: 'POST',
+        url: `/tournaments/${context.tournamentId}/fixtures/${context.fixture.fixture_id}/segments/open`,
+        headers: { authorization: `Bearer ${homeToken}` },
+      });
+      expect(reopenSettledFixture.statusCode).toBe(409);
 
-    const readySettledDuelAgain = await app.inject({
-      method: 'POST',
-      url: `/duel/amateur/matches/${context.opened.duelMatchId}/ready`,
-      headers: { authorization: `Bearer ${homeToken}` },
-      payload: { loadout: {} },
-    });
-    expect(readySettledDuelAgain.statusCode).toBe(409);
+      const readySettledDuelAgain = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${context.opened.duelMatchId}/ready`,
+        headers: { authorization: `Bearer ${homeToken}` },
+        payload: { loadout: {} },
+      });
+      expect(readySettledDuelAgain.statusCode).toBe(409);
 
-    const beforeBreak = await app.inject({
-      method: 'POST',
-      url: `/tournaments/${context.tournamentId}/fixtures/${nextFixtureId}/segments/open`,
-      headers: { authorization: `Bearer ${homeToken}` },
-    });
-    expect(beforeBreak.statusCode).toBe(409);
+      const beforeBreak = await app.inject({
+        method: 'POST',
+        url: `/tournaments/${context.tournamentId}/fixtures/${nextFixtureId}/segments/open`,
+        headers: { authorization: `Bearer ${homeToken}` },
+      });
+      expect(beforeBreak.statusCode).toBe(409);
 
-    vi.setSystemTime(new Date(breakEndsAt.getTime() + 1));
+      vi.setSystemTime(new Date(breakEndsAt.getTime() + 1));
       const opened = await app.inject({
         method: 'POST',
         url: `/tournaments/${context.tournamentId}/fixtures/${nextFixtureId}/segments/open`,
@@ -3798,6 +3807,74 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     expect(thirdGame.rows[0]).toEqual({
       day_number: 2,
       starts_at: new Date('2030-10-27T17:00:00.000Z'),
+    });
+  });
+
+  it('recovers the current series game when a previous deployment left it without an attempt', async () => {
+    const context = await openFirstPlayoffAttempt(pool, 'attempt-series-missing-recovery');
+    const settledAt = new Date('2030-10-26T18:00:00.000Z');
+    await pool.query(
+      `update tournament_fixture_attempt
+          set status = 'settled', settled_at = $2, winner_participant_id = $3
+        where fixture_id = $1`,
+      [context.fixture.fixture_id, settledAt, context.fixture.home_participant_id],
+    );
+    await pool.query(
+      `update tournament_fixture
+          set status = 'settled', settled_at = $2, winner_participant_id = $3
+        where id = $1`,
+      [context.fixture.fixture_id, settledAt, context.fixture.home_participant_id],
+    );
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await advanceTournamentPlayoffSeries(client, {
+        seriesId: context.fixture.series_id,
+        winnerParticipantId: context.fixture.home_participant_id,
+        settledAt,
+      });
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+    const current = await pool.query<{ fixture_id: string }>(
+      `select fixture.id as fixture_id
+         from tournament_fixture fixture
+        where fixture.series_id = $1
+          and (fixture.result_snapshot->>'gameNumber')::int = 2`,
+      [context.fixture.series_id],
+    );
+    await pool.query(`delete from tournament_fixture_attempt where fixture_id = $1`, [
+      current.rows[0]!.fixture_id,
+    ]);
+    await pool.query(
+      `update tournament_fixture
+          set scheduled_starts_at = null, window_ends_at = null
+        where id = $1`,
+      [current.rows[0]!.fixture_id],
+    );
+
+    await expect(
+      reconcileMissingPlayoffSeriesGames(pool, { tournamentId: context.tournamentId }),
+    ).resolves.toEqual({ recovered: 1 });
+
+    const restored = await pool.query<{
+      status: string;
+      scheduled_starts_at: Date;
+      round_game_day_id: string;
+    }>(
+      `select attempt.status, attempt.scheduled_starts_at, attempt.round_game_day_id
+         from tournament_fixture_attempt attempt
+        where attempt.fixture_id = $1`,
+      [current.rows[0]!.fixture_id],
+    );
+    expect(restored.rows[0]).toMatchObject({
+      status: 'pending',
+      scheduled_starts_at: expect.any(Date),
+      round_game_day_id: expect.any(String),
     });
   });
 
@@ -4186,7 +4263,11 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
   });
 
   it('notifies only the fixture participants on a normal playoff reschedule, then reminds them at T-30', async () => {
-    const tournament = await createPublished(pool, 'attempt-reschedule-notifications', lifecycleRules());
+    const tournament = await createPublished(
+      pool,
+      'attempt-reschedule-notifications',
+      lifecycleRules(),
+    );
     await preparePlayoffs(pool, tournament.id);
     await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00.000Z'));
     const fixture = await pool.query<{
@@ -4263,17 +4344,19 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
         )
       ).rows,
     ).toEqual(
-      [row.home_user_id, row.away_user_id]
-        .sort()
-        .map((user_id) => ({
-          user_id,
-          event_key: expect.stringContaining(`${tournament.id}:playoff-day-starting:`),
-        })),
+      [row.home_user_id, row.away_user_id].sort().map((user_id) => ({
+        user_id,
+        event_key: expect.stringContaining(`${tournament.id}:playoff-day-starting:`),
+      })),
     );
   });
 
   it('sends one combined notice to the fixture participants when a playoff match moves inside T-30', async () => {
-    const tournament = await createPublished(pool, 'attempt-reschedule-combined-notice', lifecycleRules());
+    const tournament = await createPublished(
+      pool,
+      'attempt-reschedule-combined-notice',
+      lifecycleRules(),
+    );
     await preparePlayoffs(pool, tournament.id);
     await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00.000Z'));
     const fixture = await pool.query<{
@@ -4329,18 +4412,20 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
         )
       ).rows,
     ).toEqual(
-      [row.home_user_id, row.away_user_id]
-        .sort()
-        .map((user_id) => ({
-          user_id,
-          event_type: 'tournament.series_next_game',
-          event_key: expect.stringContaining(`${tournament.id}:playoff-day-starting:`),
-        })),
+      [row.home_user_id, row.away_user_id].sort().map((user_id) => ({
+        user_id,
+        event_type: 'tournament.series_next_game',
+        event_key: expect.stringContaining(`${tournament.id}:playoff-day-starting:`),
+      })),
     );
   });
 
   it('delivers neither a push nor a DM when a T-30 reschedule has no system user', async () => {
-    const tournament = await createPublished(pool, 'attempt-reschedule-without-system-user', lifecycleRules());
+    const tournament = await createPublished(
+      pool,
+      'attempt-reschedule-without-system-user',
+      lifecycleRules(),
+    );
     await preparePlayoffs(pool, tournament.id);
     await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00.000Z'));
     const fixture = await pool.query<{
@@ -4374,9 +4459,16 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     const { databaseUrl, redisUrl } = getTestUrls();
     const appWithoutSystemUser = await buildApp({
       config: {
-        NODE_ENV: 'test', HOST: '0.0.0.0', PORT: 3000, LOG_LEVEL: 'warn',
-        DATABASE_URL: databaseUrl, REDIS_URL: redisUrl,
-        JWT_SECRET, REFRESH_SECRET, TELEGRAM_BOT_TOKEN: 'test-bot-token', DAILY_SEED_SECRET,
+        NODE_ENV: 'test',
+        HOST: '0.0.0.0',
+        PORT: 3000,
+        LOG_LEVEL: 'warn',
+        DATABASE_URL: databaseUrl,
+        REDIS_URL: redisUrl,
+        JWT_SECRET,
+        REFRESH_SECRET,
+        TELEGRAM_BOT_TOKEN: 'test-bot-token',
+        DAILY_SEED_SECRET,
       },
       pushSchedulerEnabled: false,
       pushWorkerEnabled: false,
@@ -4392,7 +4484,8 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
         payload: {
           startsAt: startsAt.toISOString(),
           endsAt: new Date(
-            startsAt.getTime() + (row.hard_deadline_at.getTime() - row.scheduled_starts_at.getTime()),
+            startsAt.getTime() +
+              (row.hard_deadline_at.getTime() - row.scheduled_starts_at.getTime()),
           ).toISOString(),
           reason: 'Матч переносится, но системный аккаунт не настроен',
         },

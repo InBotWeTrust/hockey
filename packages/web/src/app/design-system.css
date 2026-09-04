@@ -7374,16 +7374,6 @@ button.daily-calendar__day:active {
   color: #294e70;
 }
 
-.tournament-bracket-series-modal__player--winner {
-  background: rgba(148, 219, 189, 0.34);
-  color: #1f744f;
-}
-
-.tournament-bracket-series-modal__player--own-loss {
-  background: rgba(248, 183, 183, 0.25);
-  color: #a64444;
-}
-
 .tournament-bracket-series-modal__identity {
   display: flex;
   align-items: center;
@@ -7391,20 +7381,24 @@ button.daily-calendar__day:active {
   gap: 8px;
 }
 
-.tournament-bracket-series-modal__identity > span {
-  display: grid;
-  min-width: 0;
+.tournament-bracket-series-modal__seed {
+  width: 12px;
+  flex: 0 0 12px;
+  color: #7a8b9b;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1;
+  text-align: center;
 }
 
-.tournament-bracket-series-modal__identity strong {
+.tournament-bracket-series-modal__name {
+  display: flex;
+  min-width: 0;
+  min-height: 30px;
+  align-items: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.tournament-bracket-series-modal__identity small {
-  color: #61788e;
-  font-size: 9px;
 }
 
 .tournament-bracket-series-modal__score {
@@ -7612,16 +7606,36 @@ button.daily-calendar__day:active {
 
 .tournament-bracket-series__games {
   display: grid;
-  gap: 7px;
+  gap: 14px;
   max-height: min(42dvh, 360px);
   overflow-y: auto;
   padding-top: 6px;
   border-top: 1px solid rgba(98, 127, 153, 0.16);
 }
 
+.tournament-bracket-game-day {
+  display: grid;
+  gap: 7px;
+}
+
+.tournament-bracket-game-day__title {
+  color: #294e70;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tournament-bracket-game-day__fixtures {
+  display: grid;
+  gap: 10px;
+}
+
 .tournament-bracket-game {
   display: grid;
-  gap: 2px;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 1px solid rgba(98, 127, 153, 0.16);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .tournament-bracket-game > span {
@@ -7631,14 +7645,18 @@ button.daily-calendar__day:active {
 }
 
 .tournament-bracket-game__result {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
+  display: block;
   min-width: 0;
   color: #294e70;
   font-size: 10px;
   font-weight: 760;
+}
+
+.tournament-bracket-game__matchup {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tournament-bracket-game__participant {

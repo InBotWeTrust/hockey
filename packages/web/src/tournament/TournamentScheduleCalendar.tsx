@@ -261,6 +261,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
     (fixture) => !isMine(fixture, props.currentUserId),
   );
   const hasLazyOtherGames = props.hasOtherGames ?? false;
+  const lazyOtherGamesHidden = hasLazyOtherGames && !props.otherGamesLoaded;
   const visibleOtherFixtures = hasLazyOtherGames || selectedFixturesExpanded
     ? otherSelectedFixtures
     : otherSelectedFixtures.slice(0, 4);
@@ -286,7 +287,9 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
         <section
           className={`tournament-fixture-section${mySelectedFixtures.length > 0 ? ' tournament-fixture-section--others' : ''}`}
         >
-          <h5>{mySelectedFixtures.length > 0 ? 'Остальные игры' : 'Все игры дня'}</h5>
+          {!lazyOtherGamesHidden && (
+            <h5>{mySelectedFixtures.length > 0 ? 'Другие игры дня' : 'Все игры дня'}</h5>
+          )}
           <div className="tournament-fixture-list">
             {visibleOtherFixtures.map((fixture) => props.renderFixture(fixture, false))}
           </div>
@@ -303,7 +306,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
                   : props.otherGamesLoaded
                     ? 'Показать ещё'
                     : mySelectedFixtures.length > 0
-                      ? 'Показать остальные игры'
+                      ? 'Посмотреть другие игры дня'
                       : 'Посмотреть игры дня'}
               </button>
             )}

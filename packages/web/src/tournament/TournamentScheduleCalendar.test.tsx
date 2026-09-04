@@ -46,7 +46,7 @@ describe('TournamentScheduleCalendar', () => {
 
     expect(screen.getByRole('dialog', { name: 'Игры выбранного дня' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Ваши игры' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Остальные игры' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Другие игры дня' })).toBeInTheDocument();
     expect(screen.getByText('Моя игра')).toBeInTheDocument();
     expect(screen.getByText('Игра 1')).toBeInTheDocument();
     expect(screen.getByText('Игра 2')).toBeInTheDocument();
@@ -81,7 +81,7 @@ describe('TournamentScheduleCalendar', () => {
 
     const headings = screen.getAllByRole('heading').map((heading) => heading.textContent);
     expect(headings).toContain('Ваши игры');
-    expect(headings).toContain('Остальные игры');
+    expect(headings).toContain('Другие игры дня');
     expect(screen.getByText('Моя игра').compareDocumentPosition(screen.getByText('Игра 1'))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
