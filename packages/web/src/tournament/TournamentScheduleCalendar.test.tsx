@@ -44,7 +44,8 @@ describe('TournamentScheduleCalendar', () => {
 
     const regularDay = screen.getByRole('button', { name: /^1 сентября,/i });
     expect(regularDay).toHaveClass('tournament-calendar__day--regular');
-    expect(regularDay.querySelector('i')).not.toBeInTheDocument();
+    expect(regularDay).toHaveAccessibleName(/ваша игра/i);
+    expect(regularDay.querySelector('i')).toBeInTheDocument();
     fireEvent.click(regularDay);
 
     expect(screen.getByRole('dialog', { name: 'Игры выбранного дня' })).toBeInTheDocument();
@@ -273,6 +274,47 @@ describe('TournamentScheduleCalendar', () => {
     expect(
       screen.getByRole('button', { name: /3 сентября.*плей-офф/i }).querySelector('i'),
     ).not.toBeInTheDocument();
+  });
+
+  it('marks every regular daily matchday for a participating user', () => {
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[]}
+        matchdays={[
+          {
+            id: 'day-1',
+            number: 1,
+            localDate: '2030-09-01',
+            startsAt: '2030-09-01T00:00:00.000Z',
+            endsAt: '2030-09-02T00:00:00.000Z',
+            myResult: null,
+          },
+          {
+            id: 'day-2',
+            number: 2,
+            localDate: '2030-09-02',
+            startsAt: '2030-09-02T00:00:00.000Z',
+            endsAt: '2030-09-03T00:00:00.000Z',
+            myResult: null,
+          },
+        ]}
+        regularSource="daily_aggregate"
+        tournamentStatus="regular"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-02T23:59:59.000Z"
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    for (const date of ['1 сентября', '2 сентября']) {
+      const day = screen.getByRole('button', { name: new RegExp(`${date}.*ваша игра`, 'i') });
+      expect(day).toHaveClass('tournament-calendar__day--regular');
+      expect(day.querySelector('i')).toBeInTheDocument();
+    }
   });
 
   it('shows a completed daily result instead of the open-game button', () => {

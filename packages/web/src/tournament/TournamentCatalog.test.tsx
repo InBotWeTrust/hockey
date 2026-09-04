@@ -1960,8 +1960,10 @@ describe('TournamentCatalog', () => {
       'tournament-calendar__day--selected',
     );
     expect(
-      screen.getByRole('button', { name: /2 сентября.*игровой день/i }).querySelector('i'),
-    ).not.toBeInTheDocument();
+      screen
+        .getByRole('button', { name: /2 сентября.*игровой день.*ваша игра/i })
+        .querySelector('i'),
+    ).toBeInTheDocument();
     expect(screen.queryByText('1-й тур')).not.toBeInTheDocument();
     expect(screen.getByText('2-й тур')).toBeInTheDocument();
     expect(screen.queryByText('3-й тур')).not.toBeInTheDocument();

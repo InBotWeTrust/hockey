@@ -467,9 +467,10 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             );
           const hasRegular = hasEvents && !hasPlayoff;
           const mine =
-            hasPlayoff &&
-            (daySummary?.hasMyGame ??
-              fixtures.some((fixture) => isMine(fixture, props.currentUserId)));
+            props.regularSource !== 'head_to_head' && !hasPlayoff
+              ? hasEvents && props.isParticipant
+              : (daySummary?.hasMyGame ??
+                fixtures.some((fixture) => isMine(fixture, props.currentUserId)));
           const descriptions = [spokenDate(visibleMonth.year, visibleMonth.month, day)];
           if (props.regularSource !== 'head_to_head' && matchday !== undefined)
             descriptions.push('игровой день');
