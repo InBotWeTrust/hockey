@@ -6628,19 +6628,15 @@ button.daily-calendar__day:active {
   font-weight: 780;
 }
 
-.tournament-calendar__day--mine {
+.tournament-calendar__day--regular {
   background: rgba(162, 216, 248, 0.72);
   color: #103f68;
 }
 
 .tournament-calendar__day--playoff {
   border-color: rgba(112, 74, 179, 0.42);
-  background: linear-gradient(145deg, rgba(216, 205, 246, 0.92), rgba(184, 222, 246, 0.82));
+  background: rgba(210, 199, 244, 0.9);
   color: #44306f;
-}
-
-.tournament-calendar__day--playoff.tournament-calendar__day--mine {
-  background: linear-gradient(145deg, rgba(191, 211, 250, 0.96), rgba(202, 183, 241, 0.92));
 }
 
 .tournament-calendar__day--today {
@@ -6722,13 +6718,19 @@ button.daily-calendar__day:active {
   background: rgba(255, 255, 255, 0.64);
 }
 
-.tournament-calendar__legend-dot--mine {
+.tournament-calendar__legend-dot--regular {
   background: rgba(162, 216, 248, 0.72);
 }
 
 .tournament-calendar__legend-dot--playoff {
   border-color: rgba(112, 74, 179, 0.42);
-  background: linear-gradient(145deg, rgba(216, 205, 246, 0.92), rgba(184, 222, 246, 0.82));
+  background: rgba(210, 199, 244, 0.9);
+}
+
+.tournament-calendar__legend-dot--mine {
+  width: 5px;
+  height: 5px;
+  background: #173c5e;
 }
 
 .tournament-calendar__legend-dot--selected {

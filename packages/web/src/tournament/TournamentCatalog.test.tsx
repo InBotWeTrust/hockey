@@ -749,8 +749,8 @@ describe('TournamentCatalog', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
     expect(await screen.findByRole('grid', { name: 'Календарь турнира' })).toBeInTheDocument();
     expect(screen.getByText('Сентябрь 2030')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /1 сентября.*ваша игра/i })).toHaveClass(
-      'tournament-calendar__day--mine',
+    expect(screen.getByRole('button', { name: /^1 сентября,/i })).toHaveClass(
+      'tournament-calendar__day--regular',
     );
     expect(screen.getByRole('button', { name: /2 сентября.*плей-офф/i })).toHaveClass(
       'tournament-calendar__day--playoff',
@@ -758,7 +758,7 @@ describe('TournamentCatalog', () => {
     expect(screen.getByRole('button', { name: /^3 сентября.*вне дат турнира/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Предыдущий месяц' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Следующий месяц' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: /1 сентября.*ваша игра/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^1 сентября,/i }));
 
     const openGameButtons = await screen.findAllByRole('button', { name: 'Открыть игру' });
     expect(openGameButtons).toHaveLength(1);
@@ -887,7 +887,7 @@ describe('TournamentCatalog', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок дня' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
-    fireEvent.click(await screen.findByRole('button', { name: /1 сентября.*ваша игра/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^1 сентября,/i }));
 
     expect(await screen.findByText('Первый — Второй')).toBeInTheDocument();
     expect(screen.queryByText('Чужой other-2 — Гость other-2')).not.toBeInTheDocument();
@@ -1157,7 +1157,7 @@ describe('TournamentCatalog', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок результатов' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
-    fireEvent.click(await screen.findByRole('button', { name: /1 сентября.*ваша игра/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^1 сентября,/i }));
 
     expect(await screen.findByText('Поражение')).toHaveClass('tournament-fixture-result--loss');
     expect(screen.getByText('Счёт 1:2')).toBeInTheDocument();
@@ -1768,7 +1768,7 @@ describe('TournamentCatalog', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Выездной кубок' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
-    fireEvent.click(await screen.findByRole('button', { name: /1 сентября.*ваша игра/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^1 сентября,/i }));
 
     expect(await screen.findByLabelText('Площадка: В гостях')).toBeInTheDocument();
   });
@@ -1956,9 +1956,12 @@ describe('TournamentCatalog', () => {
 
     expect(await screen.findByRole('grid', { name: 'Календарь турнира' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /2 сентября.*игровой день/i })).toHaveClass(
-      'tournament-calendar__day--mine',
+      'tournament-calendar__day--regular',
       'tournament-calendar__day--selected',
     );
+    expect(
+      screen.getByRole('button', { name: /2 сентября.*игровой день/i }).querySelector('i'),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText('1-й тур')).not.toBeInTheDocument();
     expect(screen.getByText('2-й тур')).toBeInTheDocument();
     expect(screen.queryByText('3-й тур')).not.toBeInTheDocument();

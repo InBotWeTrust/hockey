@@ -465,11 +465,11 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             fixtures.some(
               (fixture) => fixture.stage === 'playoff' || fixture.stage === 'third_place',
             );
+          const hasRegular = hasEvents && !hasPlayoff;
           const mine =
-            props.regularSource !== 'head_to_head'
-              ? hasEvents && props.isParticipant
-              : (daySummary?.hasMyGame ??
-                fixtures.some((fixture) => isMine(fixture, props.currentUserId)));
+            hasPlayoff &&
+            (daySummary?.hasMyGame ??
+              fixtures.some((fixture) => isMine(fixture, props.currentUserId)));
           const descriptions = [spokenDate(visibleMonth.year, visibleMonth.month, day)];
           if (props.regularSource !== 'head_to_head' && matchday !== undefined)
             descriptions.push('игровой день');
@@ -480,7 +480,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             descriptions.push(`${fixtures.length} ${gameWord(fixtures.length)}`);
           }
           if (hasPlayoff) descriptions.push('плей-офф');
-          if (mine && props.regularSource === 'head_to_head') descriptions.push('ваша игра');
+          if (mine) descriptions.push('ваша игра');
           if (!inRange) descriptions.push('вне дат турнира');
           return (
             <button
@@ -489,7 +489,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
               aria-label={descriptions.join(', ')}
               aria-selected={selectedDate === key}
               disabled={!inRange}
-              className={`tournament-calendar__day${!inRange ? ' tournament-calendar__day--outside-range' : ''}${hasEvents ? ' tournament-calendar__day--has-events' : ''}${hasPlayoff ? ' tournament-calendar__day--playoff' : ''}${mine ? ' tournament-calendar__day--mine' : ''}${today.key === key ? ' tournament-calendar__day--today' : ''}${selectedDate === key ? ' tournament-calendar__day--selected' : ''}`}
+              className={`tournament-calendar__day${!inRange ? ' tournament-calendar__day--outside-range' : ''}${hasEvents ? ' tournament-calendar__day--has-events' : ''}${hasRegular ? ' tournament-calendar__day--regular' : ''}${hasPlayoff ? ' tournament-calendar__day--playoff' : ''}${mine ? ' tournament-calendar__day--mine' : ''}${today.key === key ? ' tournament-calendar__day--today' : ''}${selectedDate === key ? ' tournament-calendar__day--selected' : ''}`}
               onClick={() => {
                 selectDate(key);
                 if (props.regularSource === 'head_to_head' && fixtureDetailsMode === 'modal') {
@@ -505,22 +505,26 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
       </div>
 
       <ul className="tournament-calendar__legend" aria-label="Обозначения календаря">
-        {(props.currentUserId !== null ||
-          (props.regularSource !== 'head_to_head' && props.isParticipant)) && (
-          <li>
-            <span
-              className="tournament-calendar__legend-dot tournament-calendar__legend-dot--mine"
-              aria-hidden="true"
-            />
-            Ваша игра
-          </li>
-        )}
+        <li>
+          <span
+            className="tournament-calendar__legend-dot tournament-calendar__legend-dot--regular"
+            aria-hidden="true"
+          />
+          Регулярный сезон
+        </li>
         <li>
           <span
             className="tournament-calendar__legend-dot tournament-calendar__legend-dot--playoff"
             aria-hidden="true"
           />
           Плей-офф
+        </li>
+        <li>
+          <span
+            className="tournament-calendar__legend-dot tournament-calendar__legend-dot--mine"
+            aria-hidden="true"
+          />
+          У вас есть игра
         </li>
         <li>
           <span

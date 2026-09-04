@@ -42,7 +42,10 @@ describe('TournamentScheduleCalendar', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /1 сентября.*ваша игра/i }));
+    const regularDay = screen.getByRole('button', { name: /^1 сентября,/i });
+    expect(regularDay).toHaveClass('tournament-calendar__day--regular');
+    expect(regularDay.querySelector('i')).not.toBeInTheDocument();
+    fireEvent.click(regularDay);
 
     expect(screen.getByRole('dialog', { name: 'Игры выбранного дня' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Ваши игры' })).toBeInTheDocument();
@@ -220,13 +223,14 @@ describe('TournamentScheduleCalendar', () => {
     );
 
     const legend = screen.getByRole('list', { name: 'Обозначения календаря' });
-    expect(legend).toHaveTextContent('Ваша игра');
+    expect(legend).toHaveTextContent('Регулярный сезон');
     expect(legend).toHaveTextContent('Плей-офф');
+    expect(legend).toHaveTextContent('У вас есть игра');
     expect(legend).toHaveTextContent('Выбранный день');
-    expect(legend.querySelectorAll('.tournament-calendar__legend-dot')).toHaveLength(3);
+    expect(legend.querySelectorAll('.tournament-calendar__legend-dot')).toHaveLength(4);
   });
 
-  it('keeps the my-game marker on my head-to-head playoff date', () => {
+  it('marks only assigned playoff games of the current user', () => {
     const opponentPlayoff = {
       ...fixture(1),
       stage: 'playoff' as const,
@@ -236,6 +240,7 @@ describe('TournamentScheduleCalendar', () => {
       ...fixture(2, true),
       stage: 'playoff' as const,
       scheduledStartsAt: '2030-09-02T07:00:00.000Z',
+      status: 'completed',
     };
 
     render(
@@ -248,7 +253,8 @@ describe('TournamentScheduleCalendar', () => {
         isParticipant
         timezone="Europe/Moscow"
         rangeStartsAt="2030-09-01T00:00:00.000Z"
-        rangeEndsAt="2030-09-02T23:59:59.000Z"
+        rangeEndsAt="2030-09-03T23:59:59.000Z"
+        playoffStartsAt={['2030-09-03T07:00:00.000Z']}
         renderFixture={() => null}
         formatDateTime={(value) => value}
       />,
@@ -264,6 +270,9 @@ describe('TournamentScheduleCalendar', () => {
         .getByRole('button', { name: /2 сентября.*плей-офф.*ваша игра/i })
         .querySelector('i'),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /3 сентября.*плей-офф/i }).querySelector('i'),
+    ).not.toBeInTheDocument();
   });
 
   it('shows a completed daily result instead of the open-game button', () => {
