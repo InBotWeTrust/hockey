@@ -1267,6 +1267,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       playoffRounds: [
         {
           ...(current.rows[0]!.rules_snapshot.playoffRounds as Array<Record<string, unknown>>)[0]!,
+          gameDurationMinutes: 60,
           firstGameStartsAt: '2030-10-28T15:00:00.000Z',
           scheduleDays: [
             { localDate: '2030-10-28', firstWaveLocalTime: '18:00', maxResultGames: 1 },
@@ -1400,6 +1401,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       playoffRounds: [
         {
           ...(current.rows[0]!.rules_snapshot.playoffRounds as Array<Record<string, unknown>>)[0]!,
+          gameDurationMinutes: 60,
           firstGameStartsAt: '2030-10-28T15:00:00.000Z',
           scheduleDays: [
             { localDate: '2030-10-28', firstWaveLocalTime: '18:00', maxResultGames: 1 },

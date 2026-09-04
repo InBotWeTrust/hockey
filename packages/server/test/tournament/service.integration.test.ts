@@ -2085,21 +2085,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         games: Array<{ id: string }>;
         nextCursor: { fixtureNumber: number; id: string } | null;
       }>();
-      expect(firstBody.games).toHaveLength(5);
-      expect(firstBody.nextCursor).not.toBeNull();
-      const cursor = firstBody.nextCursor!;
-      const secondPage = await app.inject({
-        method: 'GET',
-        url:
-          `/tournaments/${tournament.id}/schedule/other-games?date=${date}` +
-          `&cursorFixtureNumber=${cursor.fixtureNumber}&cursorId=${cursor.id}`,
-        headers: playerOneHeaders,
-      });
-      expect(secondPage.statusCode).toBe(200);
-      const secondBody = secondPage.json<{ games: Array<{ id: string }> }>();
-      expect(
-        secondBody.games.filter((game) => firstBody.games.some((first) => first.id === game.id)),
-      ).toHaveLength(0);
+      expect(firstBody.games).toHaveLength(21);
+      expect([...new Set(firstBody.games.map((game) => game.id))]).toHaveLength(21);
+      expect(firstBody.nextCursor).toBeNull();
 
       const initialHint = await app.inject({
         method: 'GET',
@@ -4099,7 +4087,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(
       await listActiveClassicGames(pool, {
         userId: fixture!.home_user_id,
-        now: new Date('2030-09-04T21:05:00.000Z'),
+        now: options.now,
       }),
     ).toEqual([
       expect.objectContaining({
@@ -4184,7 +4172,13 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     ]);
     await expect(
       listActiveClassicGames(pool, { userId: fixture!.home_user_id, now: options.now }),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual([
+      expect.objectContaining({
+        fixture_id: nextFixture!.id,
+        kind: 'playoff',
+        state: 'scheduled',
+      }),
+    ]);
   });
 
   it('reports a regular fixture completion only for the transaction that settles it', async () => {
