@@ -711,6 +711,7 @@ describe('DailyScreen', () => {
                 round_stage: 'playoff',
                 round_number: 2,
                 final_round_number: 3,
+                total_periods: 2,
                 starts_at: '2030-09-01T10:00:00.000Z',
                 closes_at: '2030-09-01T11:00:00.000Z',
                 break_ends_at: breakEndsAt,
@@ -744,6 +745,9 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByText('Перерыв между играми серии')).toBeInTheDocument();
     expect(screen.getByText('Турнир · Полуфинал')).toBeInTheDocument();
+    const scoreboard = screen.getByLabelText(/Кубок серии\. Перерыв между играми серии/);
+    expect(within(scoreboard).getByText('2')).toBeInTheDocument();
+    expect(within(scoreboard).queryByText('3')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'К расписанию' }));
 
     expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent(

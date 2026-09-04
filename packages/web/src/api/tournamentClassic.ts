@@ -31,6 +31,7 @@ export interface ActivePlayoffTournamentGame {
   round_stage: 'playoff' | 'third_place';
   round_number: number;
   final_round_number: number;
+  total_periods: number;
   starts_at: string;
   readiness_ends_at: string;
   closes_at: string;

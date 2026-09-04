@@ -1387,7 +1387,7 @@ function GameHub({
                           ? `${game.tournament_title}. Время подтверждения истекло.`
                           : `${game.tournament_title}. Старт через ${formatEventRemaining(startsAtRemaining)}`
               }
-              periodsTotal={1}
+              periodsTotal={game.total_periods}
               timer={
                 isPaused
                   ? '—'

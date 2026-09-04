@@ -16,6 +16,41 @@ describe('active tournament game board', () => {
     expect(playoffQuery).toMatch(/<= \(\$2::timestamptz\s+at time zone/);
     expect(playoffQuery).not.toContain("$2::timestamptz + interval '30 minutes'");
   });
+
+  it('returns the snapshotted period count for a playoff game', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            tournament_id: 'tournament-1',
+            fixture_id: 'fixture-1',
+            duel_match_id: null,
+            tournament_title: 'Кубок микса',
+            tournament_day: 2,
+            round_stage: 'playoff',
+            round_number: 2,
+            final_round_number: 2,
+            scheduled_starts_at: new Date('2030-09-05T10:00:00.000Z'),
+            readiness_expires_at: new Date('2030-09-05T10:05:00.000Z'),
+            hard_deadline_at: new Date('2030-09-05T11:00:00.000Z'),
+            attempt_status: 'pending',
+            attempt_number: 1,
+            total_periods: 2,
+          },
+        ],
+      });
+
+    const games = await listActiveClassicGames(queryPool(query), {
+      userId: 'player-1',
+      now: new Date('2030-09-05T00:00:00.000Z'),
+    });
+
+    expect(games).toEqual([
+      expect.objectContaining({ kind: 'playoff', fixture_id: 'fixture-1', total_periods: 2 }),
+    ]);
+  });
 });
 
 function queryPool(query: ReturnType<typeof vi.fn>): Pool {

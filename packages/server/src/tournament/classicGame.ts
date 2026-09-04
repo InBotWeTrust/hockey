@@ -135,6 +135,7 @@ export interface ActivePlayoffGame {
   round_stage: 'playoff' | 'third_place';
   round_number: number;
   final_round_number: number;
+  total_periods: number;
   starts_at: string;
   readiness_ends_at: string;
   closes_at: string;
@@ -774,6 +775,7 @@ export async function listActiveClassicGames(
     round_stage: 'playoff' | 'third_place';
     round_number: number;
     final_round_number: number;
+    total_periods: number | null;
     scheduled_starts_at: Date;
     readiness_expires_at: Date;
     hard_deadline_at: Date;
@@ -803,6 +805,7 @@ export async function listActiveClassicGames(
                from tournament_round final_round
               where final_round.tournament_id = tournament.id
                 and final_round.stage = 'playoff') as final_round_number,
+            (attempt.result_snapshot->'templateSnapshot'->>'totalPeriods')::int as total_periods,
             coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at) as scheduled_starts_at,
             coalesce(attempt.readiness_expires_at, fixture.scheduled_starts_at) as readiness_expires_at,
             coalesce(attempt.hard_deadline_at, fixture.window_ends_at) as hard_deadline_at,
@@ -859,6 +862,7 @@ export async function listActiveClassicGames(
       round_stage: row.round_stage,
       round_number: Number(row.round_number),
       final_round_number: Number(row.final_round_number),
+      total_periods: Math.max(1, Number(row.total_periods ?? 1)),
       starts_at: row.scheduled_starts_at.toISOString(),
       readiness_ends_at: row.readiness_expires_at.toISOString(),
       closes_at: row.hard_deadline_at.toISOString(),
