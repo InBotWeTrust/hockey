@@ -155,6 +155,8 @@ interface ArenaEntry {
   title: string;
   subtitle: string;
   subtitleLines?: [string, string];
+  compactTitle?: boolean;
+  compactSubtitle?: boolean;
   meta: string;
   ctaLabel: string;
   disabled?: boolean;
@@ -1198,6 +1200,8 @@ function GameHub({
     kind: 'daily',
     eyebrow: 'Ежедневная игра',
     title: dailyEventTitle,
+    compactTitle: isDailyLockedByTraining,
+    compactSubtitle: isDailyLockedByTraining,
     subtitle:
       data.state === 'closed'
         ? 'День завершён, следующий старт после обновления.'
@@ -1222,7 +1226,7 @@ function GameHub({
         periodsTotal={data.total_periods}
         timer={dailyHubScoreboard.timer}
         timerLabel={dailyHubScoreboard.timerLabel}
-        timerOnly={data.state === 'closed'}
+        timerOnly={data.state === 'closed' || isDailyLockedByTraining}
       />
     ),
   };
@@ -1489,6 +1493,7 @@ function GameHub({
                       : `${game.tournament_title}. ${game.tournament_day}-й тур. До конца дня ${formatEventRemaining(deadlineRemaining)}`
                   }
                   periodsTotal={3}
+                  spacious
                   timer={
                     isBreak ? formatMs(breakRemaining) : formatEventRemaining(deadlineRemaining)
                   }
@@ -1941,18 +1946,22 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
           </div>
         ) : (
           <div
-            className={`arena-cube-title${entry.title.length > 28 ? ' arena-cube-title--long' : ''}`}
+            className={`arena-cube-title${entry.title.length > 28 ? ' arena-cube-title--long' : ''}${entry.compactTitle ? ' arena-cube-title--compact' : ''}`}
             style={{
               color: '#f7feff',
-              fontSize:
-                entry.title.length > 28 ? 'clamp(13px, 2.05vh, 17px)' : 'clamp(16px, 2.65vh, 22px)',
-              lineHeight: entry.title.length > 28 ? 1.02 : 0.95,
+              fontSize: entry.compactTitle
+                ? 'clamp(13px, 2vh, 17px)'
+                : entry.title.length > 28
+                  ? 'clamp(13px, 2.05vh, 17px)'
+                  : 'clamp(16px, 2.65vh, 22px)',
+              lineHeight: entry.compactTitle ? 1 : entry.title.length > 28 ? 1.02 : 0.95,
               fontWeight: 950,
-              display: '-webkit-box',
+              display: entry.compactTitle ? 'block' : '-webkit-box',
               WebkitBoxOrient: 'vertical',
-              WebkitLineClamp: 3,
+              WebkitLineClamp: entry.compactTitle ? 1 : 3,
               overflow: 'hidden',
               overflowWrap: 'break-word',
+              whiteSpace: entry.compactTitle ? 'nowrap' : undefined,
               textTransform: 'uppercase',
               maxWidth: '100%',
             }}
@@ -1961,13 +1970,16 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
           </div>
         )}
         <div
+          className={entry.compactSubtitle ? 'arena-cube-subtitle--compact' : undefined}
           style={{
-            maxWidth: 'min(72%, 280px)',
+            maxWidth: entry.compactSubtitle ? 'min(84%, 300px)' : 'min(72%, 280px)',
             margin: '0 auto',
             color: 'rgba(234, 246, 255, 0.9)',
-            fontSize: 'clamp(9px, 1.24vh, 10px)',
+            fontSize: entry.compactSubtitle
+              ? 'clamp(8px, 1.12vh, 9px)'
+              : 'clamp(9px, 1.24vh, 10px)',
             fontWeight: 850,
-            lineHeight: 1.12,
+            lineHeight: entry.compactSubtitle ? 1.08 : 1.12,
             textShadow: '0 0 7px rgba(0, 12, 24, 0.88)',
           }}
         >
@@ -2027,6 +2039,7 @@ function DailyHubScoreboard({
   timer,
   timerLabel,
   timerOnly = false,
+  spacious = false,
 }: {
   activePeriod: number | null;
   align?: 'center' | 'left';
@@ -2035,6 +2048,7 @@ function DailyHubScoreboard({
   timer: string;
   timerLabel: string;
   timerOnly?: boolean;
+  spacious?: boolean;
 }): JSX.Element {
   return (
     <div
@@ -2042,17 +2056,26 @@ function DailyHubScoreboard({
       className={timerOnly ? 'daily-hub-scoreboard--timer-only' : undefined}
       style={{
         width: align === 'left' ? 'auto' : '100%',
-        maxWidth: align === 'left' ? 'none' : 340,
+        maxWidth: align === 'left' ? 'none' : spacious ? 360 : 340,
         padding: 0,
         display: 'grid',
         gridTemplateColumns: timerOnly
           ? 'minmax(0, 1fr)'
           : align === 'left'
             ? 'max-content max-content'
-            : 'minmax(0, 1fr) auto',
+            : spacious
+              ? 'max-content max-content'
+              : 'minmax(0, 1fr) auto',
         alignItems: 'center',
         justifyItems: timerOnly ? 'center' : align === 'left' ? 'start' : 'center',
-        gap: align === 'left' ? 36 : 'clamp(18px, 3vw, 28px)',
+        gap:
+          align === 'left'
+            ? 36
+            : timerOnly
+              ? 0
+              : spacious
+                ? 'clamp(28px, 5vw, 40px)'
+                : 'clamp(18px, 3vw, 28px)',
         margin: '0 auto',
       }}
     >
