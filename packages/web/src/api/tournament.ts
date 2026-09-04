@@ -114,6 +114,7 @@ export interface TournamentFixture {
   } | null;
   score: { home: number; away: number };
   winnerUserId?: string | null;
+  technicalResult?: boolean;
 }
 
 export interface TournamentScheduleDay {

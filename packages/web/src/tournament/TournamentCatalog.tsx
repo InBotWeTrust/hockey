@@ -150,6 +150,18 @@ function fixtureWinnerUserId(fixture: TournamentFixture): string | null {
     : (fixture.away?.userId ?? null);
 }
 
+function fixtureTechnicalResultLabel(fixture: TournamentFixture): string | null {
+  if (fixture.technicalResult !== true) return null;
+  const winnerUserId = fixtureWinnerUserId(fixture);
+  const winnerName =
+    winnerUserId === fixture.home?.userId
+      ? fixture.home.name
+      : winnerUserId === fixture.away?.userId
+        ? fixture.away.name
+        : null;
+  return winnerName ? `Техническая победа — ${winnerName}` : 'Технический результат';
+}
+
 function myFixtureResultLabel(
   fixture: TournamentFixture,
   currentUserId: string | null,
@@ -853,6 +865,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                 const showSeed = fixture.stage === 'playoff' || fixture.stage === 'third_place';
                 const finished = fixtureHasResult(fixture);
                 const myResult = mine ? myFixtureResultLabel(fixture, currentUserId) : null;
+                const technicalResultLabel = fixtureTechnicalResultLabel(fixture);
                 return (
                   <article
                     key={fixture.id}
@@ -906,7 +919,8 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                                 </strong>
                               )}
                               <strong className="tournament-fixture-card__score">
-                                Счёт {fixture.score.home}:{fixture.score.away}
+                                {technicalResultLabel ??
+                                  `Счёт ${fixture.score.home}:${fixture.score.away}`}
                               </strong>
                             </>
                           )}

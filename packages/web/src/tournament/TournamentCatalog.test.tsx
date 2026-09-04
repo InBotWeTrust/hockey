@@ -979,7 +979,7 @@ describe('TournamentCatalog', () => {
     );
   });
 
-  it('shows a settled zero-zero fixture score', async () => {
+  it('shows an ordinary zero-zero score but labels a technical winner', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [
         {
@@ -1029,6 +1029,21 @@ describe('TournamentCatalog', () => {
           away: { userId: 'u4', name: 'Четвёртый' },
           score: { home: 3, away: 1 },
         },
+        {
+          id: 'f3',
+          fixtureNumber: 3,
+          stage: 'playoff',
+          roundNumber: 3,
+          scheduledStartsAt: null,
+          windowEndsAt: null,
+          status: 'settled',
+          venueMode: 'neutral_default',
+          home: { userId: 'u5', name: 'Пятый' },
+          away: { userId: 'u6', name: 'Шестой' },
+          score: { home: 0, away: 0 },
+          technicalResult: true,
+          winnerUserId: 'u6',
+        },
       ],
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -1043,8 +1058,9 @@ describe('TournamentCatalog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок счёта' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
 
-    expect(await screen.findByText('Счёт 0:0')).toBeInTheDocument();
+    expect(await screen.findAllByText('Счёт 0:0')).toHaveLength(1);
     expect(screen.getByText('Счёт 3:1')).toBeInTheDocument();
+    expect(screen.getByText('Техническая победа — Шестой')).toBeInTheDocument();
   });
 
   it('labels own results, preserves scores and hides individual times for future games', async () => {

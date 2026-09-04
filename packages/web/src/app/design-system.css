@@ -6828,6 +6828,10 @@ button.daily-calendar__day:active {
   white-space: nowrap;
 }
 
+.tournament-fixture-card__meta > .venue-badge {
+  justify-self: start;
+}
+
 .tournament-fixture-card__score {
   color: #183f63;
   font-size: 12px;
