@@ -6,7 +6,11 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '../auth/authStore.js';
 import * as api from '../api/tournament.js';
-import { fixtureCanOpen, TournamentCatalog } from './TournamentCatalog.js';
+import {
+  fixtureCanOpen,
+  scheduleDateForTabChange,
+  TournamentCatalog,
+} from './TournamentCatalog.js';
 
 const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 const TEST_LIFECYCLE: api.TournamentLifecycleDTO = {
@@ -21,6 +25,28 @@ describe('TournamentCatalog', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     useAuthStore.setState({ user: { id: 'u1', displayName: 'Первый' } });
+  });
+
+  it('resets the schedule to today whenever the schedule tab is opened', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-09-04T08:00:00.000Z'));
+    const tournament = {
+      startsAt: '2030-09-01T07:00:00.000Z',
+      projectedEndsAt: '2030-09-06T18:00:00.000Z',
+      completedAt: null,
+      rules: {
+        config: {
+          timezone: 'Europe/Moscow',
+          participantLimit: 8,
+          entryFeeCoins: 0,
+          playoffSize: 8,
+        },
+      },
+    };
+
+    expect(scheduleDateForTabChange('schedule', tournament, '2030-09-01')).toBe('2030-09-04');
+    expect(scheduleDateForTabChange('overview', tournament, '2030-09-01')).toBe('2030-09-01');
+    vi.useRealTimers();
   });
 
   it('never reopens a fixture that already has a result even if its cached status is active', () => {
@@ -340,9 +366,7 @@ describe('TournamentCatalog', () => {
     expect(designSystemCss).toMatch(
       /\.tournament-bracket-series--mine\s*\{[^}]*border-color:\s*rgba\(43, 126, 89,/s,
     );
-    expect(designSystemCss).toMatch(
-      /\.tournament-bracket-connector\s*\{[^}]*z-index:\s*0;/s,
-    );
+    expect(designSystemCss).toMatch(/\.tournament-bracket-connector\s*\{[^}]*z-index:\s*0;/s);
     expect(designSystemCss).toMatch(
       /\.tournament-bracket-overview\s+\.tournament-bracket-series\s*\{[^}]*z-index:\s*1;/s,
     );
@@ -705,9 +729,7 @@ describe('TournamentCatalog', () => {
     const visibleFixtures = document.querySelectorAll('.tournament-fixture-card');
     expect(visibleFixtures[0]).toHaveTextContent('Первый — Второй');
     expect(visibleFixtures[0]).not.toHaveTextContent('(1)');
-    expect(
-      screen.getAllByText('Время игры появится после предыдущего результата'),
-    ).toHaveLength(2);
+    expect(screen.getAllByText('Время игры появится после предыдущего результата')).toHaveLength(2);
     expect(screen.queryByText('10:00–11:00')).not.toBeInTheDocument();
     expect(screen.getByText('Третий — Четвёртый')).toBeInTheDocument();
     expect(screen.getByText('Можно начинать игру')).toBeInTheDocument();
@@ -831,13 +853,21 @@ describe('TournamentCatalog', () => {
     expect(await screen.findByText('Первый — Второй')).toBeInTheDocument();
     expect(screen.queryByText('Чужой other-2 — Гость other-2')).not.toBeInTheDocument();
     expect(othersSpy).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Показать остальные игры' }));
+    const otherGamesButton = screen.getByRole('button', {
+      name: 'Посмотреть другие игры дня',
+    });
+    expect(screen.queryByRole('heading', { name: 'Другие игры дня' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Первый — Второй').compareDocumentPosition(otherGamesButton),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    fireEvent.click(otherGamesButton);
     for (const id of ['other-2', 'other-3', 'other-4', 'other-5', 'other-6']) {
       expect(await screen.findByText(`Чужой ${id} — Гость ${id}`)).toBeInTheDocument();
     }
     const foreignGame = (await screen.findByText('Чужой other-2 — Гость other-2')).closest(
       '.tournament-fixture-card',
     );
+    expect(screen.getByRole('heading', { name: 'Другие игры дня' })).toBeInTheDocument();
     expect(foreignGame).toHaveTextContent('Счёт 1:0');
     expect(foreignGame).not.toHaveTextContent('Победа');
     expect(foreignGame).not.toHaveTextContent('Поражение');
@@ -994,29 +1024,61 @@ describe('TournamentCatalog', () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [
         {
-          id: 'result-cup', slug: 'result-cup', title: 'Кубок результатов', description: '',
-          status: 'playoff', regularSource: 'head_to_head', visibility: 'public', revision: 1,
-          participantCount: 4, lifecycle: TEST_LIFECYCLE, myParticipantState: 'approved',
-          registrationOpensAt: null, registrationClosesAt: null,
-          startsAt: '2030-09-01T07:00:00.000Z', projectedEndsAt: '2030-09-01T18:00:00.000Z',
-          rules: { config: { participantLimit: 4, entryFeeCoins: 0, playoffSize: 4, timezone: 'Europe/Moscow' } },
+          id: 'result-cup',
+          slug: 'result-cup',
+          title: 'Кубок результатов',
+          description: '',
+          status: 'playoff',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 4,
+          lifecycle: TEST_LIFECYCLE,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: '2030-09-01T07:00:00.000Z',
+          projectedEndsAt: '2030-09-01T18:00:00.000Z',
+          rules: {
+            config: {
+              participantLimit: 4,
+              entryFeeCoins: 0,
+              playoffSize: 4,
+              timezone: 'Europe/Moscow',
+            },
+          },
         },
       ],
     });
     const fixtures: api.TournamentFixture[] = [
       {
-        id: 'own-loss', fixtureNumber: 1, stage: 'regular', roundNumber: 1,
-        scheduledStartsAt: '2030-09-01T07:00:00.000Z', actualStartsAt: '2030-09-01T07:07:00.000Z',
-        windowEndsAt: '2030-09-01T08:00:00.000Z', status: 'settled', venueMode: 'home_selected',
-        home: { userId: 'u1', name: 'Первый', seed: 1 }, away: { userId: 'u2', name: 'Второй', seed: 2 },
-        score: { home: 1, away: 2 }, winnerUserId: 'u2',
+        id: 'own-loss',
+        fixtureNumber: 1,
+        stage: 'regular',
+        roundNumber: 1,
+        scheduledStartsAt: '2030-09-01T07:00:00.000Z',
+        actualStartsAt: '2030-09-01T07:07:00.000Z',
+        windowEndsAt: '2030-09-01T08:00:00.000Z',
+        status: 'settled',
+        venueMode: 'home_selected',
+        home: { userId: 'u1', name: 'Первый', seed: 1 },
+        away: { userId: 'u2', name: 'Второй', seed: 2 },
+        score: { home: 1, away: 2 },
+        winnerUserId: 'u2',
       },
       {
-        id: 'future-playoff', fixtureNumber: 2, stage: 'playoff', roundNumber: 1,
-        scheduledStartsAt: '2030-09-01T12:00:00.000Z', windowEndsAt: '2030-09-01T13:00:00.000Z',
-        status: 'scheduled', venueMode: 'home_selected',
-        home: { userId: 'u1', name: 'Первый', seed: 1 }, away: { userId: 'u3', name: 'Третий', seed: 4 },
-        score: { home: 0, away: 0 }, winnerUserId: null,
+        id: 'future-playoff',
+        fixtureNumber: 2,
+        stage: 'playoff',
+        roundNumber: 1,
+        scheduledStartsAt: '2030-09-01T12:00:00.000Z',
+        windowEndsAt: '2030-09-01T13:00:00.000Z',
+        status: 'scheduled',
+        venueMode: 'home_selected',
+        home: { userId: 'u1', name: 'Первый', seed: 1 },
+        away: { userId: 'u3', name: 'Третий', seed: 4 },
+        score: { home: 0, away: 0 },
+        winnerUserId: null,
       },
     ];
     vi.spyOn(api, 'fetchTournamentSchedule').mockResolvedValue({
@@ -1025,9 +1087,18 @@ describe('TournamentCatalog', () => {
       hasOtherGames: false,
       matchdays: [],
     });
-    vi.spyOn(api, 'fetchTournamentScheduleOtherGames').mockResolvedValue({ games: [], nextCursor: null });
+    vi.spyOn(api, 'fetchTournamentScheduleOtherGames').mockResolvedValue({
+      games: [],
+      nextCursor: null,
+    });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<MemoryRouter><QueryClientProvider client={client}><TournamentCatalog /></QueryClientProvider></MemoryRouter>);
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок результатов' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
@@ -1038,7 +1109,9 @@ describe('TournamentCatalog', () => {
     expect(screen.getByText('Первый — Второй')).not.toHaveTextContent('(1)');
     expect(screen.getByText('(1) Первый — (4) Третий')).toBeInTheDocument();
     expect(screen.getByText(/1 сентября.*10:07/)).toBeInTheDocument();
-    expect(screen.getByText('Время игры появится после предыдущего результата')).toBeInTheDocument();
+    expect(
+      screen.getByText('Время игры появится после предыдущего результата'),
+    ).toBeInTheDocument();
     expect(screen.queryByText('15:00')).not.toBeInTheDocument();
   });
 
@@ -1242,17 +1315,16 @@ describe('TournamentCatalog', () => {
     expect(within(overview).getByText('Первый').closest('.tournament-bracket-player')).toHaveClass(
       'tournament-bracket-player--current',
     );
-    expect(
-      within(overview).getByText('Серия 1').closest('.tournament-bracket-series'),
-    ).toHaveClass('tournament-bracket-series--mine');
-    expect(screen.queryByText('Игра 1 · 10 сентября, 15:00–16:00')).not.toBeInTheDocument();
-    fireEvent.click(
-      within(overview).getByRole('button', { name: 'Открыть серию Серия 1' }),
+    expect(within(overview).getByText('Серия 1').closest('.tournament-bracket-series')).toHaveClass(
+      'tournament-bracket-series--mine',
     );
+    expect(screen.queryByText('Игра 1 · 10 сентября, 15:00–16:00')).not.toBeInTheDocument();
+    fireEvent.click(within(overview).getByRole('button', { name: 'Открыть серию Серия 1' }));
     const dialog = screen.getByRole('dialog', { name: 'Серия 1' });
-    expect(within(dialog).getByText('Игра 1 · 10 сентября, 15:00–16:00')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('Игра 1: Первый 3:2 Четвёртый')).toContainElement(
-      within(dialog).getByText('Первый', { selector: '.tournament-bracket-game__participant' }),
+    expect(within(dialog).getByText('10 сентября, начало в 15:00')).toBeInTheDocument();
+    expect(within(dialog).getByText('Игра 1')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Игра 1: Первый 3:2 Четвёртый')).toHaveTextContent(
+      'Первый — Четвёртый 3:2',
     );
     fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
     expect(screen.queryByRole('dialog', { name: 'Серия 1' })).not.toBeInTheDocument();
@@ -1278,7 +1350,7 @@ describe('TournamentCatalog', () => {
     expect(screen.getByText('Проигравший 1')).toBeInTheDocument();
   });
 
-  it('shows a complete responsive series modal with player result tones', async () => {
+  it('shows a complete responsive series modal with neutral game rows', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [
         {
@@ -1386,22 +1458,18 @@ describe('TournamentCatalog', () => {
     expect(within(dialog).getByRole('button', { name: 'Закрыть' })).toHaveClass('icon-btn');
     const playerRows = dialog.querySelectorAll('.tournament-bracket-series-modal__player');
     expect(playerRows).toHaveLength(2);
-    expect(within(dialog).getByText('Первый', { selector: 'strong' }).closest('.tournament-bracket-series-modal__player')).toHaveClass(
-      'tournament-bracket-series-modal__player--own-loss',
-    );
-    expect(within(dialog).getByText('Второй', { selector: 'strong' }).closest('.tournament-bracket-series-modal__player')).toHaveClass(
-      'tournament-bracket-series-modal__player--winner',
-    );
     expect(within(dialog).getByText('Счёт серии 1:2')).toBeInTheDocument();
     expect(within(dialog).getAllByText(/^Игра \d/)).toHaveLength(3);
-    const finalGame = within(dialog).getByLabelText(
-      'Игра 3: Техническая победа — Второй',
-    );
+    expect(within(dialog).getByText('Первый — Второй 3:1')).toBeInTheDocument();
+    expect(within(dialog).getByText('Второй — Первый 2:1')).toBeInTheDocument();
+    expect(dialog.querySelector('.tournament-bracket-game__participant--winner')).toBeNull();
+    expect(dialog.querySelector('.tournament-bracket-game__participant--own-loss')).toBeNull();
+    const finalGame = within(dialog).getByLabelText('Игра 3: Техническая победа — Второй');
     expect(within(finalGame).getByText('Техническая победа — Второй')).toBeInTheDocument();
     expect(within(finalGame).queryByText(/0\s*:\s*0/)).not.toBeInTheDocument();
-    expect(
-      designSystemCss,
-    ).toMatch(/\.tournament-bracket-series-modal\s*\{[^}]*max-width:\s*min\(100%,\s*520px\);[^}]*overflow:\s*hidden;/s);
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-series-modal\s*\{[^}]*max-width:\s*min\(100%,\s*520px\);[^}]*overflow:\s*hidden;/s,
+    );
     expect(designSystemCss).toMatch(
       /\.tournament-bracket-series-modal__player\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;/s,
     );
@@ -1410,7 +1478,7 @@ describe('TournamentCatalog', () => {
     );
   });
 
-  it('shows my playoff readiness and the current series score without revealing live scores', async () => {
+  it('does not add the current-player attempt panel to the series modal', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [
         {
@@ -1525,14 +1593,13 @@ describe('TournamentCatalog', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок готовности' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Плей-офф' }));
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Открыть серию Финал, Серия 1' }),
-    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть серию Финал, Серия 1' }));
 
-    expect(await screen.findByText('Вы готовы')).toBeInTheDocument();
-    expect(screen.getByText('Ждём готовность соперника')).toBeInTheDocument();
-    expect(screen.getByText('Серия: вы ведёте 1 : 0')).toBeInTheDocument();
-    expect(screen.getByText('До победы в 4 играх')).toBeInTheDocument();
+    expect(screen.queryByText('Вы готовы')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ждём готовность соперника')).not.toBeInTheDocument();
+    expect(screen.queryByText('Серия: вы ведёте 1 : 0')).not.toBeInTheDocument();
+    expect(screen.queryByText('До победы в 4 играх')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Поражение в игре/)).not.toBeInTheDocument();
     expect(screen.queryByText(/текущий счёт/i)).not.toBeInTheDocument();
   });
 

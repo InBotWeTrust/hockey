@@ -3929,6 +3929,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         expect.objectContaining({
           gameNumber: 1,
           status: 'forfeit',
+          gameDay: null,
           homeUserId: PLAYER_IDS[0],
           awayUserId: PLAYER_IDS[3],
           homeName: expect.any(String),

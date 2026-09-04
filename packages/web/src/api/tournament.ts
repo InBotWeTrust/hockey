@@ -198,6 +198,12 @@ export interface TournamentBracketSource {
 export interface TournamentBracketFixture {
   id: string;
   gameNumber: number;
+  gameDay?: {
+    id: string;
+    dayNumber: number;
+    localDate: string;
+    startsAt: string;
+  } | null;
   scheduledStartsAt: string | null;
   windowEndsAt: string | null;
   status: string;
