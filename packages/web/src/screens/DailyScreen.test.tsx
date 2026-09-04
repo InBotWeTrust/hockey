@@ -643,11 +643,14 @@ describe('DailyScreen', () => {
     const classicDescription = screen.getByLabelText('Отдельная игра по правилам турнира');
     expect(classicDescription.querySelectorAll('br')).toHaveLength(1);
     expect(
-      screen.getByLabelText(/Турнир с новой ежедневной игрой\. 1-й тур\. До закрытия/),
+      screen.getByLabelText(/Турнир с новой ежедневной игрой\. 1-й тур\. До конца дня/),
     ).toHaveStyle({
-      gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
-      gap: '8px',
+      gridTemplateColumns: 'minmax(0, 1fr) auto',
+      gap: 'clamp(18px, 3vw, 28px)',
+      maxWidth: '340px',
     });
+    expect(screen.getByText('До конца дня')).toBeInTheDocument();
+    expect(screen.queryByText('До закрытия')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Начать' }));
 
     expect(await screen.findByText('Кубок классики · 1-й тур')).toBeInTheDocument();
