@@ -3748,9 +3748,24 @@ function DuelStatusBadge({ match }: { match: AmateurDuelMatch }): JSX.Element {
 }
 
 function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element {
+  const location = useLocation();
+  const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(() =>
+    new URLSearchParams(location.search).get('tournament'),
+  );
+  const handleBack = (): void => {
+    if (selectedTournamentId !== null) {
+      setSelectedTournamentId(null);
+      return;
+    }
+    onBack();
+  };
+
   return (
-    <ModeShell title="Турниры" onBack={onBack} variant="section-hub">
-      <TournamentCatalog />
+    <ModeShell title="Турниры" onBack={handleBack} variant="section-hub">
+      <TournamentCatalog
+        selectedTournamentId={selectedTournamentId}
+        onSelectedTournamentIdChange={setSelectedTournamentId}
+      />
     </ModeShell>
   );
 }

@@ -1068,11 +1068,24 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
   );
 }
 
-export function TournamentCatalog(): JSX.Element {
+type TournamentCatalogProps = {
+  selectedTournamentId?: string | null;
+  onSelectedTournamentIdChange?: (tournamentId: string | null) => void;
+};
+
+export function TournamentCatalog({
+  selectedTournamentId,
+  onSelectedTournamentIdChange,
+}: TournamentCatalogProps = {}): JSX.Element {
   const location = useLocation();
-  const [selectedId, setSelectedId] = useState<string | null>(() =>
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(() =>
     new URLSearchParams(location.search).get('tournament'),
   );
+  const selectedId = selectedTournamentId === undefined ? internalSelectedId : selectedTournamentId;
+  const setSelectedId = (tournamentId: string | null): void => {
+    setInternalSelectedId(tournamentId);
+    onSelectedTournamentIdChange?.(tournamentId);
+  };
   const catalog = useQuery({ queryKey: ['tournaments'], queryFn: fetchTournaments });
   const tournaments = catalog.data?.tournaments ?? [];
   const selected = tournaments.find((tournament) => tournament.id === selectedId);

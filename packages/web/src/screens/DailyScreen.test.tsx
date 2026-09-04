@@ -3147,6 +3147,67 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('tablist', { name: 'Разделы любителей' })).not.toBeInTheDocument();
   });
 
+  it('returns from tournament details to the tournament list before leaving the section', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/tournaments') && !url.includes('/classic/active')) {
+        return new Response(
+          JSON.stringify({
+            tournaments: [
+              {
+                id: 't1',
+                slug: 'return-cup',
+                title: 'Кубок возврата',
+                description: 'Проверка возврата',
+                status: 'regular',
+                regularSource: 'head_to_head',
+                visibility: 'public',
+                revision: 1,
+                participantCount: 2,
+                lifecycle: {
+                  action: 'unchanged',
+                  dueAt: null,
+                  approvedParticipantCount: 2,
+                  requiredParticipantCount: 2,
+                  reason: null,
+                },
+                myParticipantState: 'approved',
+                registrationOpensAt: null,
+                registrationClosesAt: null,
+                startsAt: null,
+                rules: {
+                  config: { participantLimit: 2, entryFeeCoins: 0, playoffSize: 2 },
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&section=tournaments&from=sections']);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок возврата' }));
+    expect(await screen.findByText('Проверка возврата')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
+
+    expect(await screen.findByRole('button', { name: 'Открыть Кубок возврата' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Турниры' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Любители' })).not.toBeInTheDocument();
+  });
+
   it('shows one readable development message on the professional page', async () => {
     renderWith(['/?view=pro&from=sections']);
 
