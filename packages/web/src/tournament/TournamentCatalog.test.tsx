@@ -429,6 +429,18 @@ describe('TournamentCatalog', () => {
     );
   });
 
+  it('uses compact two-column playoff cards and safe bottom spacing on narrow screens', () => {
+    expect(designSystemCss).toMatch(
+      /@media \(max-width:\s*360px\)[\s\S]*?\.tournament-bracket-overview__grid\s*\{[^}]*--playoff-bracket-column-gap:\s*8px;[^}]*padding-bottom:\s*calc\(20px \+ var\(--app-safe-bottom\)\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /@media \(max-width:\s*360px\)[\s\S]*?\.tournament-bracket-series--compact\s+\.tournament-bracket-player\s*\{[^}]*grid-template-columns:\s*8px auto minmax\(0,\s*1fr\) 10px;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /@media \(max-width:\s*360px\)[\s\S]*?\.segmented-tabs--scrollable\s*\{[^}]*padding-right:\s*28px;/s,
+    );
+  });
+
   it('keeps a long participation status inside the tournament card', () => {
     expect(designSystemCss).toMatch(
       /\.tournament-catalog-card__topline\s*\{[^}]*flex-wrap:\s*wrap;/s,

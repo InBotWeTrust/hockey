@@ -328,6 +328,7 @@ export interface TournamentFixtureAttemptState {
   } | null;
   series: {
     id: string;
+    kind?: 'championship' | 'third_place';
     winsRequired: number;
     myWins: number;
     opponentWins: number;
@@ -335,6 +336,8 @@ export interface TournamentFixtureAttemptState {
     lowerSeedWins: number;
     higherSeedUserId: string;
     lowerSeedUserId: string;
+    higherSeed?: number | null;
+    lowerSeed?: number | null;
     status: string;
     winnerUserId: string | null;
   } | null;

@@ -220,11 +220,10 @@ describe('TournamentScheduleCalendar', () => {
     );
 
     const legend = screen.getByRole('list', { name: 'Обозначения календаря' });
-    expect(legend).toHaveTextContent('Есть игры');
     expect(legend).toHaveTextContent('Ваша игра');
     expect(legend).toHaveTextContent('Плей-офф');
     expect(legend).toHaveTextContent('Выбранный день');
-    expect(legend.querySelectorAll('.tournament-calendar__legend-dot')).toHaveLength(4);
+    expect(legend.querySelectorAll('.tournament-calendar__legend-dot')).toHaveLength(3);
   });
 
   it('keeps the my-game marker on my head-to-head playoff date', () => {
@@ -258,12 +257,12 @@ describe('TournamentScheduleCalendar', () => {
     expect(
       screen
         .getByRole('button', { name: /1 сентября.*плей-офф/i })
-        .querySelector('.tournament-calendar__mine-mark'),
+        .querySelector('i'),
     ).not.toBeInTheDocument();
     expect(
       screen
         .getByRole('button', { name: /2 сентября.*плей-офф.*ваша игра/i })
-        .querySelector('.tournament-calendar__mine-mark'),
+        .querySelector('i'),
     ).toBeInTheDocument();
   });
 

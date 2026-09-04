@@ -204,6 +204,13 @@ describe('InventoryScreen', () => {
     expect(screen.queryByText('-120')).not.toBeInTheDocument();
     expect(document.querySelector('img[src^="/inventory/stick-bronze.webp"]')).toBeInTheDocument();
     expect(document.querySelector('img[src="/inventory/sticks.webp"]')).not.toBeInTheDocument();
+    expect(document.querySelector('.inventory-shop-grid')).toBeInTheDocument();
+    expect(document.querySelector('.inventory-shop-header')).toBeInTheDocument();
+    expect(document.querySelector('.inventory-shop-balance')).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: 'Клюшки' })).getByText('Бронзовая клюшка')
+        .closest('.inventory-product-card'),
+    ).toBeInTheDocument();
   });
 
   it('shows only one shop card per equipment rarity', async () => {

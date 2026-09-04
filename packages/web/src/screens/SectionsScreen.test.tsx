@@ -1,5 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AchievementDto } from '../api/achievements.js';
@@ -7,6 +9,8 @@ import type { RegularSeasonPodiumCongratulation } from '../api/tournament.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { SectionsScreen } from './SectionsScreen.js';
+
+const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 
 interface MockSectionsData {
   achievements?: AchievementDto[];
@@ -58,13 +62,10 @@ function mockSectionsApi({
     const url = String(input);
     if (url.endsWith('/api/achievements')) {
       return Promise.resolve(
-        new Response(
-          JSON.stringify({ achievements, unclaimedCount: achievementsUnclaimedCount }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          },
-        ),
+        new Response(JSON.stringify({ achievements, unclaimedCount: achievementsUnclaimedCount }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
       );
     }
     if (url.endsWith('/api/weekly-challenge/current')) {
@@ -148,10 +149,7 @@ function mockSectionsApi({
   });
 }
 
-function sectionAchievement(
-  id: string,
-  status: AchievementDto['status'],
-): AchievementDto {
+function sectionAchievement(id: string, status: AchievementDto['status']): AchievementDto {
   return {
     id,
     photoUrl: '/achievements/first-goal.webp',
@@ -171,6 +169,14 @@ function sectionAchievement(
 }
 
 describe('SectionsScreen', () => {
+  it('keeps the two quick cards readable on screens up to 360px wide', () => {
+    expect(designSystemCss).toMatch(
+      /@media \(max-width:\s*360px\)[\s\S]*?\.sections-quick-card\s*\{[^}]*grid-template-columns:\s*46px minmax\(0,\s*1fr\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /@media \(max-width:\s*360px\)[\s\S]*?\.sections-quick-card__title\s*\{[^}]*font-size:\s*11px;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s,
+    );
+  });
   beforeEach(() => {
     vi.restoreAllMocks();
     useDailyStore.setState({ data: null, loading: false, error: null, inFlight: false });
@@ -275,14 +281,17 @@ describe('SectionsScreen', () => {
 
     const quickAccess = await screen.findByRole('region', { name: 'Быстрый доступ' });
     expect(
-      within(quickAccess).getAllByRole('button').map((button) => button.getAttribute('aria-label')),
+      within(quickAccess)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label')),
     ).toEqual(['Ежедневная игра', 'Тренировка', 'Задания', 'Магазин']);
 
     const modes = screen.getByRole('region', { name: 'Игровые режимы' });
-    expect(within(modes).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
-      'Любители',
-      'Профессионалы',
-    ]);
+    expect(
+      within(modes)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual(['Любители', 'Профессионалы']);
     within(quickAccess)
       .getAllByRole('button')
       .forEach((button) => expect(button).toHaveClass('section-card-surface'));
@@ -376,9 +385,7 @@ describe('SectionsScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Любители' }));
 
-    expect(screen.getByTestId('location')).toHaveTextContent(
-      '/?view=amateur&from=sections',
-    );
+    expect(screen.getByTestId('location')).toHaveTextContent('/?view=amateur&from=sections');
   });
 
   it('keeps the amateur parent locked until the amateur level is available', async () => {
@@ -397,9 +404,7 @@ describe('SectionsScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Любители' }));
 
-    expect(screen.getByTestId('location')).toHaveTextContent(
-      '/?view=amateur&from=sections',
-    );
+    expect(screen.getByTestId('location')).toHaveTextContent('/?view=amateur&from=sections');
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
@@ -429,9 +434,7 @@ describe('SectionsScreen', () => {
 
       fireEvent.click(await screen.findByRole('button', { name: 'Любители' }));
 
-      expect(screen.getByTestId('location')).toHaveTextContent(
-        '/?view=amateur&from=sections',
-      );
+      expect(screen.getByTestId('location')).toHaveTextContent('/?view=amateur&from=sections');
       expect(screen.queryByRole('dialog')).toBeNull();
     },
   );

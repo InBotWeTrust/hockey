@@ -273,17 +273,14 @@ function QuickSectionCard({
       <span className="sections-quick-card__content">
         <span className="sections-quick-card__title">{title}</span>
         <span className="sections-quick-card__meta">
-          {attention && <span className="sections-quick-card__attention" aria-label="Требуется действие" />}
+          {attention && (
+            <span className="sections-quick-card__attention" aria-label="Требуется действие" />
+          )}
           {meta}
         </span>
       </span>
       {size === 'wide' && (
-        <ChevronRight
-          className="card-chevron"
-          aria-hidden="true"
-          size={19}
-          strokeWidth={2.7}
-        />
+        <ChevronRight className="card-chevron" aria-hidden="true" size={19} strokeWidth={2.7} />
       )}
     </button>
   );

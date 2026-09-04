@@ -2040,10 +2040,10 @@ function DailyHubScoreboard({
             ? 'max-content max-content'
             : timerLabel.length > 20
               ? 'minmax(0, 1fr) auto'
-              : 'max-content max-content',
+              : 'minmax(0, 1fr) minmax(0, 1fr)',
         alignItems: 'center',
         justifyItems: timerOnly ? 'center' : align === 'left' ? 'start' : 'center',
-        gap: align === 'left' ? 36 : 'clamp(14px, 2.2vh, 18px)',
+        gap: align === 'left' ? 36 : timerLabel.length > 20 ? 'clamp(14px, 2.2vh, 18px)' : 8,
         margin: '0 auto',
       }}
     >
@@ -5841,6 +5841,37 @@ function DuelResultModal({
   );
 }
 
+interface TournamentSeriesResultArtwork {
+  src: string;
+  alt: string;
+}
+
+function tournamentSeriesResultArtwork(
+  match: AmateurDuelMatch,
+  tournamentAttempt?: TournamentFixtureAttemptState,
+): TournamentSeriesResultArtwork | null {
+  const series = tournamentAttempt?.series;
+  if (series?.status !== 'completed' || series.winnerUserId === null) return null;
+  const won = series.winnerUserId === match.me.user_id;
+  if (!won) {
+    return {
+      src: '/tournament-results/series-loss.webp',
+      alt:
+        series.kind === 'third_place' ? 'Поражение в матче за третье место' : 'Поражение в серии',
+    };
+  }
+  if (series.kind === 'third_place') {
+    return {
+      src: '/tournament-results/third-place-win.webp',
+      alt: 'Победа в матче за третье место',
+    };
+  }
+  if (tournamentAttempt?.tournament.winnerUserId === match.me.user_id) {
+    return { src: '/tournament-results/final-win.webp', alt: 'Победа в турнире' };
+  }
+  return { src: '/tournament-results/series-win.webp', alt: 'Победа в серии' };
+}
+
 function DuelResultCard({
   match,
   isLoadingDetails = false,
@@ -5865,12 +5896,39 @@ function DuelResultCard({
             ? 'Победа'
             : 'Поражение';
   const series = tournamentAttempt?.series ?? null;
-  const title =
-    series?.status === 'completed'
-      ? series.winnerUserId === match.me.user_id
-        ? `Вы выиграли серию ${series.myWins}:${series.opponentWins}`
-        : `Вы проиграли серию ${series.myWins}:${series.opponentWins}`
-      : ordinaryTitle;
+  const mySeed =
+    series === null
+      ? null
+      : series.higherSeedUserId === match.me.user_id
+        ? (series.higherSeed ?? null)
+        : series.lowerSeedUserId === match.me.user_id
+          ? (series.lowerSeed ?? null)
+          : null;
+  const opponentSeed =
+    series === null
+      ? null
+      : series.higherSeedUserId === match.opponent.user_id
+        ? (series.higherSeed ?? null)
+        : series.lowerSeedUserId === match.opponent.user_id
+          ? (series.lowerSeed ?? null)
+          : null;
+  const seriesResultArtwork = tournamentSeriesResultArtwork(match, tournamentAttempt);
+  const seriesWon = series?.winnerUserId === match.me.user_id;
+  const completedSeriesTitle =
+    series?.status !== 'completed'
+      ? null
+      : series.kind === 'third_place'
+        ? seriesWon
+          ? 'Вы заняли 3-е место'
+          : 'Вы проиграли матч за 3-е место'
+        : tournamentAttempt?.tournament.winnerUserId !== null
+          ? seriesWon
+            ? 'Вы выиграли финал'
+            : 'Вы проиграли финал'
+          : seriesWon
+            ? 'Вы выиграли серию'
+            : 'Вы проиграли серию';
+  const title = completedSeriesTitle ?? ordinaryTitle;
   const resultColor =
     ordinaryTitle === 'Победа'
       ? '#22c55e'
@@ -5886,6 +5944,10 @@ function DuelResultCard({
   const hasPeriodDetails = mePeriods.length > 0 || opponentPeriods.length > 0;
   const hasMultiplePeriods = match.rules.totalPeriods > 1;
   const tiebreaker = duelTiebreakerExplanation(match);
+  const hasSupplementalDetails =
+    tiebreaker !== null ||
+    match.rules.winStarReward > 0 ||
+    (match.source !== 'tournament' && points > 0);
 
   return (
     <div
@@ -5954,7 +6016,16 @@ function DuelResultCard({
               gap: 12,
             }}
           >
-            <h2 className="modal-title" style={{ margin: 0, fontSize: 26, lineHeight: 1.08 }}>
+            <h2
+              className="modal-title"
+              style={{
+                margin: 0,
+                fontSize: title.length > 30 ? 16 : title.length > 22 ? 19 : 24,
+                lineHeight: 1.08,
+                letterSpacing: '-0.02em',
+                whiteSpace: 'nowrap',
+              }}
+            >
               {title}
             </h2>
             <span
@@ -5969,43 +6040,85 @@ function DuelResultCard({
               }}
             />
           </div>
-          {match.source === 'tournament' ? (
-            <>
-              <div className="tournament-duel-result__score">
-                Вы {match.me.goals}:{match.opponent.goals} Соперник
-              </div>
-              {series !== null && (
-                <div className="tournament-duel-result__series-score">
-                  <span>Счёт в серии</span>
-                  <strong aria-label={`Счёт в серии ${series.myWins}:${series.opponentWins}`}>
-                    {series.myWins}:{series.opponentWins}
-                  </strong>
-                </div>
-              )}
-            </>
-          ) : (
-            <div
-              aria-label={`Итог дуэли ${match.me.goals}:${match.opponent.goals}`}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                gap: 10,
-                marginTop: 16,
-              }}
-            >
-              <DailyStatsMetric label="Счёт" value={`${match.me.goals}:${match.opponent.goals}`} />
-              <DailyStatsMetric label="Очки" value={pointsText} />
-            </div>
+          {seriesResultArtwork !== null && (
+            <img
+              className="tournament-duel-result__artwork"
+              src={seriesResultArtwork.src}
+              alt={seriesResultArtwork.alt}
+            />
           )}
           <div
-            style={{
-              marginTop: 14,
-              display: 'grid',
-              gap: 8,
-            }}
+            className="tournament-duel-result__matchup"
+            aria-label={`Итог игры: ${match.me.display_name} — ${match.opponent.display_name}, ${match.me.goals}:${match.opponent.goals}`}
           >
-            <DuelResultDetailRow label="Тип" value={duelKindText(match.rules.duelKind)} />
-            <DuelResultDetailRow label="Соперник" value={match.opponent.display_name || 'Игрок'} />
+            <div className="tournament-duel-result__matchup-main">
+              <div className="tournament-duel-result__player">
+                <UserAvatar
+                  avatarUrl={match.me.avatar_url}
+                  name={match.me.display_name}
+                  size={30}
+                  fontSize={12}
+                />
+                <span className="tournament-duel-result__player-name">
+                  {match.me.display_name || 'Игрок'}
+                </span>
+                {mySeed !== null && (
+                  <span
+                    className="tournament-duel-result__seed"
+                    aria-label={`Посев ${match.me.display_name}: ${mySeed}`}
+                  >
+                    ({mySeed})
+                  </span>
+                )}
+              </div>
+              <span className="tournament-duel-result__separator" aria-hidden="true">
+                —
+              </span>
+              <div className="tournament-duel-result__player">
+                <UserAvatar
+                  avatarUrl={match.opponent.avatar_url}
+                  name={match.opponent.display_name}
+                  size={30}
+                  fontSize={12}
+                />
+                <span className="tournament-duel-result__player-name">
+                  {match.opponent.display_name || 'Игрок'}
+                </span>
+                {opponentSeed !== null && (
+                  <span
+                    className="tournament-duel-result__seed"
+                    aria-label={`Посев ${match.opponent.display_name}: ${opponentSeed}`}
+                  >
+                    ({opponentSeed})
+                  </span>
+                )}
+              </div>
+              <strong className="tournament-duel-result__game-score">
+                {match.me.goals}:{match.opponent.goals}
+              </strong>
+            </div>
+            <div className="tournament-duel-result__meta">
+              <span>
+                <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
+              </span>
+              {series !== null && series.winsRequired > 1 && (
+                <span>
+                  <strong>Счёт в серии:</strong>{' '}
+                  <b aria-label={`Счёт в серии ${series.myWins}:${series.opponentWins}`}>
+                    {series.myWins}:{series.opponentWins}
+                  </b>
+                </span>
+              )}
+            </div>
+          </div>
+          {hasSupplementalDetails && (
+            <div
+              style={{
+                marginTop: 10,
+                display: 'grid',
+                gap: 8,
+              }}
+            >
             {tiebreaker && (
               <>
                 <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
@@ -6019,8 +6132,11 @@ function DuelResultCard({
                 tone="star"
               />
             )}
-            <DuelResultDetailRow label="Начало" value={formatShortDateTime(match.starts_at)} />
-          </div>
+            {match.source !== 'tournament' && points > 0 && (
+              <DuelResultDetailRow label="Очки" value={pointsText} />
+            )}
+            </div>
+          )}
         </>
       )}
       <DuelInventoryUsageSummary
@@ -6028,7 +6144,7 @@ function DuelResultCard({
         title={compact ? 'Расход инвентаря' : 'Общий расход инвентаря'}
         label="Общий расход инвентаря"
         compact={compact}
-        style={{ marginTop: compact ? 10 : 14 }}
+        style={{ marginTop: compact ? 10 : 16 }}
       />
       {hasMultiplePeriods && (
         <div
@@ -6086,6 +6202,236 @@ function DuelResultCard({
         </div>
       )}
       {footer}
+    </div>
+  );
+}
+
+type TournamentResultPreviewVariant =
+  | 'duel-win'
+  | 'series-win'
+  | 'final-win'
+  | 'final-loss'
+  | 'third-place-win'
+  | 'third-place-loss';
+
+export function TournamentResultPreviewScreen(): JSX.Element {
+  const location = useLocation();
+  const requested = new URLSearchParams(location.search).get('variant');
+  const variant: TournamentResultPreviewVariant = [
+    'duel-win',
+    'series-win',
+    'final-win',
+    'final-loss',
+    'third-place-win',
+    'third-place-loss',
+  ].includes(requested ?? '')
+    ? (requested as TournamentResultPreviewVariant)
+    : 'final-win';
+  const won = variant.endsWith('win');
+  const thirdPlace = variant.startsWith('third-place');
+  const final = variant.startsWith('final');
+  const ordinaryDuel = variant === 'duel-win';
+  const meWins = won ? 2 : 1;
+  const opponentWins = won ? 0 : 2;
+  const now = new Date().toISOString();
+  const participant = (userId: string, displayName: string, goals: number, shots: number) => ({
+    user_id: userId,
+    display_name: displayName,
+    avatar_url: null,
+    side: userId === 'preview-me' ? 'challenger' : 'opponent',
+    state: 'completed',
+    current_period: 3,
+    shots_taken: shots,
+    goals,
+    accuracy: Math.round((goals / shots) * 100),
+    active_duration_ms: 274_000,
+    active_duration_seconds: 274,
+    result_points: 0,
+    current_period_shots: 0,
+    current_period_goals: 0,
+    ready_at: now,
+    period_started_at: null,
+    period_ends_at: null,
+    break_ends_at: null,
+    loadout: { items: [], powerScore: 0, powerCap: 100 },
+    inventory_report: [],
+  });
+  const match = {
+    id: 'preview-match',
+    template_id: null,
+    status: 'settled',
+    source: ordinaryDuel ? 'challenge' : 'tournament',
+    ranked: false,
+    season_key: 'preview',
+    duel_kind: 'classic',
+    home_user_id: 'preview-me',
+    venue_role: 'home',
+    venue_policy: 'neutral',
+    arena: { id: 'preview', title: 'Арена', imageUrl: null },
+    starts_at: '2026-09-04T10:00:00.000Z',
+    ends_at: '2026-09-04T11:00:00.000Z',
+    ready_expires_at: null,
+    cooldown_user_id: null,
+    cooldown_until: null,
+    stake_amount: 0,
+    entry_fee_amount: 0,
+    bank_amount: 0,
+    winner_user_id: won ? 'preview-me' : 'preview-opponent',
+    outcome: won ? 'challenger_win' : 'opponent_win',
+    settled_reason: 'completed',
+    accepted_at: now,
+    settled_at: now,
+    created_at: now,
+    server_now: now,
+    period_started_at: null,
+    period_ends_at: null,
+    break_ends_at: null,
+    rules: {
+      title: 'Классика',
+      duelKind: 'classic',
+      duelVariant: 'classic',
+      totalPeriods: 3,
+      shotsPerPeriod: 30,
+      winStarReward: 0,
+    },
+    me: {
+      ...participant('preview-me', 'Вы', 54, 84),
+      inventory_report: [
+        {
+          periodNumber: 1,
+          consumed: [
+            {
+              id: 'preview-stick',
+              kind: 'stick',
+              title: 'Клюшка Ультимейт Ван',
+              charges: 28,
+              remainingReserved: 72,
+            },
+            {
+              id: 'preview-skates',
+              kind: 'skates',
+              title: 'Коньки Профи',
+              charges: 4,
+              remainingReserved: 46,
+            },
+          ],
+        },
+      ],
+    },
+    opponent: participant('preview-opponent', 'Александра', 50, 82),
+    match_seed: null,
+    current_period_shots: 0,
+    current_period_goals: 0,
+    period_speed_presets: [],
+    stick_effects: {},
+    recent_periods: [
+      {
+        period_number: 1,
+        shots_taken: 28,
+        goals: 19,
+        duration_ms: 91_000,
+        closed_reason: 'quota',
+        ended_at: now,
+      },
+      {
+        period_number: 2,
+        shots_taken: 28,
+        goals: 18,
+        duration_ms: 89_000,
+        closed_reason: 'quota',
+        ended_at: now,
+      },
+      {
+        period_number: 3,
+        shots_taken: 28,
+        goals: 17,
+        duration_ms: 94_000,
+        closed_reason: 'quota',
+        ended_at: now,
+      },
+    ],
+    opponent_recent_periods: [
+      {
+        period_number: 1,
+        shots_taken: 27,
+        goals: 17,
+        duration_ms: 95_000,
+        closed_reason: 'quota',
+        ended_at: now,
+      },
+      {
+        period_number: 2,
+        shots_taken: 27,
+        goals: 17,
+        duration_ms: 92_000,
+        closed_reason: 'quota',
+        ended_at: now,
+      },
+      {
+        period_number: 3,
+        shots_taken: 28,
+        goals: 16,
+        duration_ms: 96_000,
+        closed_reason: 'quota',
+        ended_at: now,
+      },
+    ],
+  } as unknown as AmateurDuelMatchState;
+  const tournamentAttempt = {
+    series: {
+      id: 'preview-series',
+      kind: thirdPlace ? 'third_place' : 'championship',
+      winsRequired: 2,
+      myWins: meWins,
+      opponentWins,
+      higherSeedWins: won ? meWins : opponentWins,
+      lowerSeedWins: won ? opponentWins : meWins,
+      higherSeedUserId: won ? 'preview-me' : 'preview-opponent',
+      lowerSeedUserId: won ? 'preview-opponent' : 'preview-me',
+      higherSeed: 2,
+      lowerSeed: 7,
+      status: 'completed',
+      winnerUserId: won ? 'preview-me' : 'preview-opponent',
+    },
+    tournament: {
+      status: final ? 'completed' : 'playoff',
+      winnerUserId: final ? (won ? 'preview-me' : 'preview-opponent') : null,
+    },
+  } as TournamentFixtureAttemptState;
+  const variants: Array<[TournamentResultPreviewVariant, string]> = [
+    ['duel-win', 'Дуэль: победа'],
+    ['series-win', 'Серия: победа'],
+    ['final-win', 'Финал: победа'],
+    ['final-loss', 'Финал: поражение'],
+    ['third-place-win', '3-е место: победа'],
+    ['third-place-loss', '3-е место: поражение'],
+  ];
+  return (
+    <div className="modal-backdrop" style={{ position: 'absolute' }}>
+      <nav className="tournament-result-preview-switcher" aria-label="Варианты результата">
+        {variants.map(([value, label]) => (
+          <a
+            key={value}
+            className={value === variant ? 'is-active' : ''}
+            href={`/dev/tournament-result-preview?variant=${value}`}
+          >
+            {label}
+          </a>
+        ))}
+      </nav>
+      <DuelResultCard
+        match={match}
+        {...(ordinaryDuel ? {} : { tournamentAttempt })}
+        footer={
+          <>
+            <div className="modal-actions">
+              <button type="button" className="modal-primary btn btn--cta">
+                Понятно
+              </button>
+            </div>
+          </>
+        }
+      />
     </div>
   );
 }
@@ -6836,12 +7182,13 @@ function DuelInventoryUsageSummary({
 }): JSX.Element | null {
   const usage = duelInventoryUsageRows(match, periodNumber);
   if (usage.length === 0) return null;
+  const useSectionHeading = compact || title === 'Общий расход инвентаря';
   return (
     <div aria-label={label ?? title} style={{ display: 'grid', gap: compact ? 5 : 6, ...style }}>
       <div
-        className={compact ? 'section-label' : undefined}
+        className={useSectionHeading ? 'section-label' : undefined}
         style={
-          compact
+          useSectionHeading
             ? { margin: 0, padding: 0 }
             : { color: 'var(--muted)', fontSize: 11, fontWeight: 900 }
         }

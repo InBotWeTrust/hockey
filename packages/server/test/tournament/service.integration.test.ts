@@ -4141,6 +4141,17 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         .sort()
         .map((user_id) => ({ user_id, count: '1' })),
     );
+    const reminderContent = await pool.query<{ content: string }>(
+      `select message.content
+         from messages message
+        where message.sender_id = $1
+          and message.metadata->>'playoffDayStartingKey' like $2
+        order by message.created_at
+        limit 1`,
+      [SYSTEM_SENDER_ID, `${tournament.id}:playoff-day-starting:%`],
+    );
+    expect(reminderContent.rows[0]?.content).toContain('серия игр начнётся');
+    expect(reminderContent.rows[0]?.content).not.toContain('игра серии начнётся');
     await settlePlayedPlayoffFixture(pool, fixture!);
     await expect(
       reconcilePlayoffDayStartingCommunications(pool, {

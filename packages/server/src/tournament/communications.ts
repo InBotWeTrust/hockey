@@ -20,6 +20,7 @@ interface PlayoffDayStartingRow {
   schedule_revision: number;
   current_revision: number;
   timezone: string;
+  wins_required: number;
 }
 
 export interface ReconcilePlayoffDayStartingOptions {
@@ -70,6 +71,14 @@ export function formatTournamentNotificationDateTime(date: Date, timezone: strin
   return `${value('day')} ${value('month')} в ${value('hour')}:${value('minute')}`;
 }
 
+export function playoffDayStartingEventPhrase(
+  winsRequired: number,
+  immediate: boolean,
+): string {
+  const eventLabel = winsRequired > 1 ? 'серия игр' : 'игра';
+  return immediate ? `новая ${eventLabel}` : eventLabel;
+}
+
 function playoffDayStartingContent(
   row: PlayoffDayStartingRow,
   immediate: boolean,
@@ -78,15 +87,16 @@ function playoffDayStartingContent(
     playoffDayStartingAt(row, immediate),
     row.timezone,
   );
+  const eventLabel = playoffDayStartingEventPhrase(row.wins_required, immediate);
   return immediate
     ? {
         title: 'Матч перенесён: начинаем скоро',
-        body: `${row.tournament_title}: новая игра серии начнётся ${startsAt}.`,
+        body: `${row.tournament_title}: ${eventLabel} начнётся ${startsAt}.`,
         startsAt,
       }
     : {
         title: 'Скоро начинается игровой день',
-        body: `${row.tournament_title}: игра серии начнётся ${startsAt}.`,
+        body: `${row.tournament_title}: ${eventLabel} начнётся ${startsAt}.`,
         startsAt,
       };
 }
@@ -182,11 +192,13 @@ export async function reconcilePlayoffDayStartingCommunications(
               round.rescheduled_starts_at
             ) as rescheduled_starts_at,
             tournament.current_revision,
-            coalesce(revision.rules_snapshot->'config'->>'timezone', 'UTC') as timezone
+            coalesce(revision.rules_snapshot->'config'->>'timezone', 'UTC') as timezone,
+            coalesce(series.wins_required, 1) as wins_required
        from tournament_fixture fixture
        join tournament tournament on tournament.id = fixture.tournament_id
        left join tournament_revision revision on revision.id = tournament.published_revision_id
        join tournament_round round on round.id = fixture.round_id
+       left join tournament_playoff_series series on series.id = fixture.series_id
        left join lateral (
          select candidate.* from tournament_fixture_attempt candidate
           where candidate.fixture_id = fixture.id

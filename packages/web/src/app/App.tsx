@@ -19,6 +19,11 @@ const DailyScreen = lazy(() =>
 const DemoScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DemoScreen })),
 );
+const TournamentResultPreviewScreen = lazy(() =>
+  import('../screens/DailyScreen.js').then((module) => ({
+    default: module.TournamentResultPreviewScreen,
+  })),
+);
 const InventoryScreen = lazy(() =>
   import('../screens/InventoryScreen.js').then((module) => ({ default: module.InventoryScreen })),
 );
@@ -161,7 +166,8 @@ export function appSurfaceClassName(pathname: string): string {
 function AppExperience(): JSX.Element {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
-  const bottomNavVisible = isBottomNavVisible(location, user);
+  const bottomNavVisible =
+    location.pathname !== '/dev/tournament-result-preview' && isBottomNavVisible(location, user);
   const backdropClassName = appBackdropClassName(location.pathname, location.search);
   const surfaceClassName = appSurfaceClassName(location.pathname);
   const hasArenaBackdrop = backdropClassName.split(' ').includes('app-shell--arena');
@@ -200,6 +206,14 @@ function AppExperience(): JSX.Element {
             <Routes>
               <Route path="/login" element={<LoginScreen />} />
               <Route path="/demo" element={<DemoScreen />} />
+              <Route
+                path="/dev/tournament-result-preview"
+                element={
+                  <PrivateRoute>
+                    <TournamentResultPreviewScreen />
+                  </PrivateRoute>
+                }
+              />
               <Route path="/auth/vk/callback" element={<VkAuthCallbackScreen />} />
               <Route
                 path="/"
