@@ -7202,4 +7202,78 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       },
     });
   });
+
+  it('creates regular podium congratulations only when the regular season is finalized', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'regular-podium-congratulations',
+      0,
+      playoffTournamentRules(4, {
+        stageRewards: {
+          regular: [
+            { place: 1, coins: 5000, stars: 25, experience: 1500 },
+            { place: 2, coins: 3000, stars: 15, experience: 900 },
+          ],
+          playoff: [],
+        },
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [40, 30, 20, 10]);
+
+    await grantTournamentStageRewards(pool, tournament.id, 'regular');
+    expect(
+      await pool.query(
+        `select id from tournament_regular_podium_congratulation where tournament_id = $1`,
+        [tournament.id],
+      ),
+    ).toHaveProperty('rowCount', 0);
+
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+
+    const congratulations = await pool.query<{
+      place: number;
+      tournament_title: string;
+      reward_coins: number;
+      reward_stars: number;
+      reward_experience: number;
+    }>(
+      `select place, tournament_title, reward_coins, reward_stars, reward_experience
+         from tournament_regular_podium_congratulation
+        where tournament_id = $1
+        order by place`,
+      [tournament.id],
+    );
+    expect(congratulations.rows).toEqual([
+      {
+        place: 1,
+        tournament_title: 'Integration Championship',
+        reward_coins: 5000,
+        reward_stars: 25,
+        reward_experience: 1500,
+      },
+      {
+        place: 2,
+        tournament_title: 'Integration Championship',
+        reward_coins: 3000,
+        reward_stars: 15,
+        reward_experience: 900,
+      },
+      {
+        place: 3,
+        tournament_title: 'Integration Championship',
+        reward_coins: 0,
+        reward_stars: 0,
+        reward_experience: 0,
+      },
+    ]);
+
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:01:00.000Z'));
+    expect(
+      await pool.query(
+        `select id from tournament_regular_podium_congratulation where tournament_id = $1`,
+        [tournament.id],
+      ),
+    ).toHaveProperty('rowCount', 3);
+  });
 });
