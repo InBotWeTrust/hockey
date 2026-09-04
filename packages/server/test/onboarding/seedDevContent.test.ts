@@ -175,9 +175,9 @@ describe.skipIf(!hasIntegrationEnv)('seedDevOnboarding', () => {
       title: 'Забей первую шайбу',
       object_key: null,
       tutorial_config: {
-        shooterFrequency: 0.12,
-        goalieFrequency: 0.1,
-        goalFrequency: 0.08,
+        shooterFrequency: 0.75,
+        goalieFrequency: 0.6,
+        goalFrequency: 0.5,
       },
     });
     expect(beginner[5]!.description).toContain('4321');

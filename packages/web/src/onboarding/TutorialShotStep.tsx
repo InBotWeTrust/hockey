@@ -7,7 +7,11 @@ import {
   type OnboardingTutorialSession,
   type OnboardingTutorialShotResponse,
 } from '../api/onboarding.js';
-import { PlayView } from '../game/PlayView.js';
+import {
+  PlayView,
+  TRAINING_AMATEUR_GOALIE_OPTIONS,
+  TRAINING_STREET_PLAYER_OPTIONS,
+} from '../game/PlayView.js';
 
 interface TutorialState {
   shots: number;
@@ -146,15 +150,15 @@ export function TutorialShotStep({
       className={`onboarding-tutorial${state.goalConfirmed ? ' onboarding-tutorial--confirmed' : ''}`}
       aria-label={step.title}
     >
-      <p className="onboarding-tutorial__instruction">Поймай момент и забей шайбу</p>
-      <div className="onboarding-tutorial__rink">
-        <PlayView<TutorialState>
+      <PlayView<TutorialState>
           suppressedByModal={false}
           showIceCar={false}
           onBack={onBack}
-          hideBackAction
+          hideBackAction={!canGoBack}
           reduceMotion={reduceMotion}
-          active={!recoveringShot && !shotError}
+          active={!state.goalConfirmed && !recoveringShot && !shotError}
+          shotButtonLabel={state.goalConfirmed ? step.ctaLabel : undefined}
+          inactiveAction={state.goalConfirmed ? onContinue : undefined}
           seed={session.seed}
           goalieId={session.goalieId}
           periodNumber={1}
@@ -197,17 +201,17 @@ export function TutorialShotStep({
             return { serverResult: response.serverResult, state: nextState };
           }}
           applyState={setState}
-          longCourtBackground="/sprites/test-court-bg-outdoor-v8.png"
           hideScoreboard
+          playerOptions={TRAINING_STREET_PLAYER_OPTIONS}
+          goalieOptions={TRAINING_AMATEUR_GOALIE_OPTIONS}
           resultCopy={{
             save: 'Ещё раз',
             miss: 'Ещё раз',
             post: 'Ещё раз',
-            goal: 'Первая шайба!',
+            goal: 'Гол',
           }}
           onSubmitError={() => void recoverRejectedShot()}
-        />
-      </div>
+      />
       {shotError && (
         <div className="onboarding-flow__error" role="alert">
           <span>Не удалось отправить бросок. Проверьте соединение.</span>
@@ -224,25 +228,6 @@ export function TutorialShotStep({
           </button>
         </div>
       )}
-      <div className="onboarding-flow__copy">
-        <h1>{step.title}</h1>
-        <p>{step.description}</p>
-      </div>
-      <div className="onboarding-flow__actions">
-        {canGoBack && (
-          <button className="btn btn--ghost" type="button" onClick={onBack}>
-            Назад
-          </button>
-        )}
-        <button
-          className="btn btn--cta"
-          type="button"
-          onClick={onContinue}
-          disabled={!state.goalConfirmed}
-        >
-          {step.ctaLabel}
-        </button>
-      </div>
     </section>
   );
 }
