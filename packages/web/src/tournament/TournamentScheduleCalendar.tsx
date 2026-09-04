@@ -29,7 +29,7 @@ interface TournamentScheduleCalendarProps {
   rangeEndsAt: string | null;
   playoffStartsAt?: string[];
   fixtureDetailsMode?: 'modal' | 'inline';
-  renderFixture: (fixture: TournamentFixture, mine: boolean) => ReactNode;
+  renderFixture: (fixture: TournamentFixture, mine: boolean, inSeries?: boolean) => ReactNode;
   formatDateTime: (value: string) => string;
   onOpenDailyGame?: () => void;
   renderMatchdayResults?: (matchday: TournamentMatchday) => ReactNode;
@@ -64,6 +64,7 @@ function datePartsInTimezone(value: string | number, timezone: string) {
 }
 
 function fixtureDateKey(fixture: TournamentFixture, timezone: string): string | null {
+  if (fixture.gameDay?.localDate) return fixture.gameDay.localDate;
   if (fixture.scheduledStartsAt === null) return null;
   return datePartsInTimezone(fixture.scheduledStartsAt, timezone)?.key ?? null;
 }
@@ -109,6 +110,33 @@ function gameWord(value: number): string {
   if (last === 1) return 'игра';
   if (last >= 2 && last <= 4) return 'игры';
   return 'игр';
+}
+
+function scheduleDayTitle(fixture: TournamentFixture, timezone: string): string | null {
+  const startsAt = fixture.gameDay?.startsAt;
+  if (!startsAt) return null;
+  const date = new Date(startsAt);
+  if (!Number.isFinite(date.getTime())) return null;
+  return `${new Intl.DateTimeFormat('ru-RU', {
+    timeZone: timezone,
+    day: 'numeric',
+    month: 'long',
+  }).format(date)}, начало в ${new Intl.DateTimeFormat('ru-RU', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)}`;
+}
+
+function seriesScore(fixtures: TournamentFixture[]): { home: number; away: number } {
+  return fixtures.reduce(
+    (score, fixture) => {
+      if (fixture.winnerUserId === fixture.home?.userId) score.home += 1;
+      if (fixture.winnerUserId === fixture.away?.userId) score.away += 1;
+      return score;
+    },
+    { home: 0, away: 0 },
+  );
 }
 
 export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProps) {
@@ -208,6 +236,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
     props.onSelectDate?.(date);
   };
   const [modalDate, setModalDate] = useState<string | null>(null);
+  const [expandedSeriesId, setExpandedSeriesId] = useState<string | null>(null);
   const preferredParts = preferredDate.split('-').map(Number);
   const [visibleMonth, setVisibleMonth] = useState({
     year: preferredParts[0] ?? today.year,
@@ -273,13 +302,64 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
   const undatedFixtures = props.fixtures.filter(
     (fixture) => fixtureDateKey(fixture, props.timezone) === null,
   );
+  const renderFixtureCollection = (fixtures: TournamentFixture[], mine: boolean) => {
+    const groups = new Map<string, TournamentFixture[]>();
+    const standalone: TournamentFixture[] = [];
+    for (const fixture of fixtures) {
+      if (fixture.seriesId && fixture.gameDay) {
+        const key = `${fixture.seriesId}:${fixture.gameDay.id}`;
+        groups.set(key, [...(groups.get(key) ?? []), fixture]);
+      } else {
+        standalone.push(fixture);
+      }
+    }
+    return (
+      <>
+        {[...groups.entries()].map(([key, games]) => {
+          const ordered = [...games].sort(
+            (left, right) => (left.gameNumber ?? 0) - (right.gameNumber ?? 0),
+          );
+          const first = ordered[0]!;
+          const score = seriesScore(ordered);
+          const expanded = expandedSeriesId === key;
+          const noun = (first.seriesWinsRequired ?? 1) > 1 ? 'серию' : 'игру';
+          return (
+            <article className="tournament-schedule-series" key={key}>
+              <button
+                type="button"
+                className="tournament-schedule-series__summary"
+                aria-label={`${expanded ? 'Закрыть' : 'Открыть'} ${noun}`}
+                aria-expanded={expanded}
+                onClick={() => setExpandedSeriesId(expanded ? null : key)}
+              >
+                <span className="tournament-schedule-series__time">
+                  {scheduleDayTitle(first, props.timezone)}
+                </span>
+                <span className="tournament-schedule-series__matchup">
+                  <strong>{first.home?.name ?? 'Участник'}</strong>
+                  <b>{score.home}:{score.away}</b>
+                  <strong>{first.away?.name ?? 'Участник'}</strong>
+                </span>
+              </button>
+              {expanded && (
+                <div className="tournament-schedule-series__games">
+                  {ordered.map((fixture) => props.renderFixture(fixture, mine, true))}
+                </div>
+              )}
+            </article>
+          );
+        })}
+        {standalone.map((fixture) => props.renderFixture(fixture, mine))}
+      </>
+    );
+  };
   const renderSelectedFixtureSections = () => (
     <div className="tournament-fixture-sections">
       {mySelectedFixtures.length > 0 && (
         <section className="tournament-fixture-section tournament-fixture-section--mine">
           <h5>Ваши игры</h5>
           <div className="tournament-fixture-list">
-            {mySelectedFixtures.map((fixture) => props.renderFixture(fixture, true))}
+            {renderFixtureCollection(mySelectedFixtures, true)}
           </div>
         </section>
       )}
@@ -291,7 +371,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             <h5>{mySelectedFixtures.length > 0 ? 'Другие игры дня' : 'Все игры дня'}</h5>
           )}
           <div className="tournament-fixture-list">
-            {visibleOtherFixtures.map((fixture) => props.renderFixture(fixture, false))}
+            {renderFixtureCollection(visibleOtherFixtures, false)}
           </div>
           {hasLazyOtherGames && props.onLoadOtherGames &&
             (!props.otherGamesLoaded || props.hasMoreOtherGames) && (

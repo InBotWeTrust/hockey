@@ -865,6 +865,13 @@
     0 0 18px rgba(55, 147, 230, 0.18);
 }
 
+.game-scoreboard__metric--timer .game-scoreboard__label {
+  overflow-wrap: anywhere;
+  text-align: center;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .game-scoreboard__metric--muted .game-scoreboard__value {
   color: rgba(222, 235, 248, 0.72);
 }
@@ -6530,6 +6537,58 @@ button.daily-calendar__day:active {
   border-top: 1px solid rgba(100, 116, 139, 0.18);
 }
 
+.tournament-schedule-series {
+  overflow: hidden;
+  border: 1px solid rgba(100, 116, 139, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.tournament-schedule-series__summary {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+  padding: 10px 11px;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  text-align: left;
+}
+
+.tournament-schedule-series__time {
+  color: #58718a;
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.tournament-schedule-series__matchup {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.tournament-schedule-series__matchup strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tournament-schedule-series__matchup strong:last-child {
+  text-align: right;
+}
+
+.tournament-schedule-series__matchup b {
+  font-size: 15px;
+}
+
+.tournament-schedule-series__games {
+  display: grid;
+  gap: 7px;
+  padding: 0 8px 8px;
+}
+
 .tournament-matchday-result {
   display: grid;
   gap: 2px;
@@ -7002,7 +7061,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-bracket-overview__series-list--with-bronze {
-  min-height: 360px;
+  min-height: 392px;
 }
 
 .tournament-bracket-connector {
@@ -7051,7 +7110,7 @@ button.daily-calendar__day:active {
 
 .tournament-bracket-overview__bronze-lane {
   position: absolute;
-  top: calc(50% + 68px);
+  top: calc(50% + 100px);
   right: 0;
   left: 0;
   z-index: 1;
@@ -7248,18 +7307,20 @@ button.daily-calendar__day:active {
 
 .tournament-bracket-overview[data-visible-columns='3']
   .tournament-bracket-series--compact
-  .tournament-bracket-series__summary > header strong,
+  .tournament-bracket-series__summary
+  > header
+  strong,
 .tournament-bracket-overview[data-visible-columns='3']
   .tournament-bracket-series--compact
-  .tournament-bracket-player__identity strong,
+  .tournament-bracket-player__identity
+  strong,
 .tournament-bracket-overview[data-visible-columns='3']
   .tournament-bracket-series--compact
   .tournament-bracket-player__placeholder {
   font-size: 8px;
 }
 
-.tournament-bracket-overview[data-visible-columns='3']
-  .tournament-bracket-series__stage-label {
+.tournament-bracket-overview[data-visible-columns='3'] .tournament-bracket-series__stage-label {
   font-size: 7px;
 }
 
@@ -7287,27 +7348,33 @@ button.daily-calendar__day:active {
 
 .tournament-bracket-overview[data-visible-columns='4']
   .tournament-bracket-series--compact
-  .tournament-bracket-series__summary > header strong,
+  .tournament-bracket-series__summary
+  > header
+  strong,
 .tournament-bracket-overview[data-visible-columns='4']
   .tournament-bracket-series--compact
-  .tournament-bracket-player__identity strong,
+  .tournament-bracket-player__identity
+  strong,
 .tournament-bracket-overview[data-visible-columns='4']
   .tournament-bracket-series--compact
   .tournament-bracket-player__placeholder {
   font-size: 7px;
 }
 
-.tournament-bracket-overview[data-visible-columns='4']
-  .tournament-bracket-series__stage-label {
+.tournament-bracket-overview[data-visible-columns='4'] .tournament-bracket-series__stage-label {
   font-size: 6px;
 }
 
 .tournament-bracket-overview[data-visible-columns='4']
   .tournament-bracket-series--compact
-  .tournament-bracket-series__summary > header span,
+  .tournament-bracket-series__summary
+  > header
+  span,
 .tournament-bracket-overview[data-visible-columns='3']
   .tournament-bracket-series--compact
-  .tournament-bracket-series__summary > header span {
+  .tournament-bracket-series__summary
+  > header
+  span {
   font-size: 6px;
 }
 
@@ -7712,6 +7779,46 @@ button.daily-calendar__day:active {
   color: #294e70;
   font-size: 13px;
   text-align: center;
+}
+
+.tournament-duel-result__series-score {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+  color: #526277;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.tournament-duel-result__series-score strong {
+  color: #173c5e;
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tournament-duel-result__countdown {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.tournament-duel-result__countdown > span {
+  color: #526277;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.tournament-duel-result__countdown > strong {
+  color: #1677bd;
+  font-family: var(--font-mono);
+  font-size: clamp(28px, 8vw, 36px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  line-height: 1;
 }
 
 .tournament-playoff-attempt {

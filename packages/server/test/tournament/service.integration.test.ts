@@ -2593,12 +2593,14 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       [tournament.id],
     );
 
-    expect(fixtures.rows.map((fixture) => ({
-      gameNumber: fixture.game_number,
-      scheduledStart: fixture.scheduled_starts_at?.toISOString() ?? null,
-      windowEnd: fixture.window_ends_at?.toISOString() ?? null,
-      hasInitialAttempt: fixture.attempt_id !== null,
-    }))).toEqual([
+    expect(
+      fixtures.rows.map((fixture) => ({
+        gameNumber: fixture.game_number,
+        scheduledStart: fixture.scheduled_starts_at?.toISOString() ?? null,
+        windowEnd: fixture.window_ends_at?.toISOString() ?? null,
+        hasInitialAttempt: fixture.attempt_id !== null,
+      })),
+    ).toEqual([
       {
         gameNumber: 1,
         scheduledStart: '2030-09-05T07:00:00.000Z',
@@ -2635,12 +2637,32 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       'scheduled',
       'conditional',
     ]);
+    expect(scheduleDay.myGames.map((fixture) => fixture.gameNumber)).toEqual([1, 2, 3]);
+    expect(new Set(scheduleDay.myGames.map((fixture) => fixture.seriesId)).size).toBe(1);
+    expect(scheduleDay.myGames.every((fixture) => fixture.seriesWinsRequired === 2)).toBe(true);
+    expect(
+      scheduleDay.myGames.every((fixture) => fixture.gameDay?.localDate === '2030-09-05'),
+    ).toBe(true);
+    expect(scheduleDay.myGames[0]?.gameDay?.startsAt).toBe('2030-09-05T07:00:00.000Z');
     expect(scheduleDay.days).toContainEqual({
       localDate: '2030-09-05',
       hasGames: true,
       hasMyGame: true,
       hasPlayoff: true,
     });
+
+    const activeGames = await listActiveClassicGames(pool, {
+      userId: player.rows[0]!.user_id,
+      now: new Date('2030-09-05T06:40:00.000Z'),
+    });
+    expect(activeGames).toContainEqual(
+      expect.objectContaining({
+        kind: 'playoff',
+        round_stage: 'playoff',
+        round_number: 1,
+        final_round_number: 1,
+      }),
+    );
   });
 
   it('reschedules only the first playoff game from a legacy rules snapshot', async () => {
@@ -2775,7 +2797,8 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         readinessMinutes:
           fixture.readiness_expires_at === null || fixture.attempt_starts_at === null
             ? null
-            : (fixture.readiness_expires_at.getTime() - fixture.attempt_starts_at.getTime()) / 60_000,
+            : (fixture.readiness_expires_at.getTime() - fixture.attempt_starts_at.getTime()) /
+              60_000,
         gameDurationMinutes:
           fixture.hard_deadline_at === null || fixture.attempt_starts_at === null
             ? null
@@ -3936,6 +3959,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
           awayName: expect.any(String),
           homeScore: expect.any(Number),
           awayScore: expect.any(Number),
+          technicalResult: true,
           winnerSide: expect.stringMatching(/^(home|away)$/),
         }),
       ]),
@@ -4054,7 +4078,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect((await seriesNextGameDeliveries(pool)).rows).toEqual([]);
   });
 
-  it('notifies only today\'s playoff participants at T-30 with one push and one personal system message', async () => {
+  it("notifies only today's playoff participants at T-30 with one push and one personal system message", async () => {
     const { tournament, fixtures } = await createBestOfThreePlayoff(pool, 'playoff-day-starting');
     const [fixture, nextFixture] = fixtures;
     await subscribeTournamentParticipants(pool, [
@@ -4071,6 +4095,19 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       systemUserId: SYSTEM_SENDER_ID,
       publisher: { publish: async () => undefined },
     } as const;
+
+    expect(
+      await listActiveClassicGames(pool, {
+        userId: fixture!.home_user_id,
+        now: new Date('2030-09-04T21:05:00.000Z'),
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        kind: 'playoff',
+        tournament_id: tournament.id,
+        state: 'scheduled',
+      }),
+    ]);
 
     await expect(reconcilePlayoffDayStartingCommunications(pool, options)).resolves.toEqual({
       considered: 2,
@@ -4095,14 +4132,10 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       [`${tournament.id}:playoff-day-starting:%`],
     );
     expect(deliveries.rows).toEqual(
-      [fixture!.home_user_id, fixture!.away_user_id]
-        .sort()
-        .map((user_id) => ({
-          user_id,
-          event_key: expect.stringContaining(
-            `${tournament.id}:playoff-day-starting:`,
-          ),
-        })),
+      [fixture!.home_user_id, fixture!.away_user_id].sort().map((user_id) => ({
+        user_id,
+        event_key: expect.stringContaining(`${tournament.id}:playoff-day-starting:`),
+      })),
     );
     const messages = await pool.query<{ user_id: string; count: string }>(
       `select member.user_id, count(*)::text as count
@@ -4146,7 +4179,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         )
       ).rows,
     ).toEqual([{ count: '2' }]);
-    await pool.query(`update tournament_fixture set status = 'settled' where id = $1`, [fixture!.id]);
+    await pool.query(`update tournament_fixture set status = 'settled' where id = $1`, [
+      fixture!.id,
+    ]);
     await expect(
       listActiveClassicGames(pool, { userId: fixture!.home_user_id, now: options.now }),
     ).resolves.toEqual([]);
@@ -4234,9 +4269,15 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
   });
 
   it('creates a new T-30 delivery after an administrator reschedules an already reminded playoff fixture', async () => {
-    const { tournament, fixtures } = await createBestOfThreePlayoff(pool, 'rescheduled-playoff-day-reminder');
+    const { tournament, fixtures } = await createBestOfThreePlayoff(
+      pool,
+      'rescheduled-playoff-day-reminder',
+    );
     const [fixture, nextFixture] = fixtures;
-    await subscribeTournamentParticipants(pool, [fixture!.home_participant_id, fixture!.away_participant_id]);
+    await subscribeTournamentParticipants(pool, [
+      fixture!.home_participant_id,
+      fixture!.away_participant_id,
+    ]);
     await pool.query(
       `insert into users (id, display_name, timezone, account_kind)
        values ($1, 'Ультимейт Хоккей', 'Europe/Moscow', 'official')`,
@@ -4263,12 +4304,14 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       now: new Date(rescheduledStartsAt.getTime() - 30 * 60_000),
     });
     expect(
-      (await pool.query<{ count: string }>(
-        `select count(*)::text as count from push_delivery_log
+      (
+        await pool.query<{ count: string }>(
+          `select count(*)::text as count from push_delivery_log
           where event_type = 'tournament.series_next_game'
             and event_key like $1`,
-        [`${tournament.id}:playoff-day-starting:%`],
-      )).rows,
+          [`${tournament.id}:playoff-day-starting:%`],
+        )
+      ).rows,
     ).toEqual([{ count: '4' }]);
     await settlePlayedPlayoffFixture(pool, fixture!);
     await reconcilePlayoffDayStartingCommunications(pool, {
@@ -4276,19 +4319,23 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       now: new Date(nextFixture!.scheduled_starts_at.getTime() - 30 * 60_000),
     });
     expect(
-      (await pool.query<{ count: string }>(
-        `select count(*)::text as count from push_delivery_log
+      (
+        await pool.query<{ count: string }>(
+          `select count(*)::text as count from push_delivery_log
           where event_type = 'tournament.series_next_game'
             and event_key like $1`,
-        [`${tournament.id}:playoff-day-starting:%`],
-      )).rows,
+          [`${tournament.id}:playoff-day-starting:%`],
+        )
+      ).rows,
     ).toEqual([{ count: '4' }]);
     expect(
-      (await pool.query<{ count: string }>(
-        `select count(*)::text as count from messages
+      (
+        await pool.query<{ count: string }>(
+          `select count(*)::text as count from messages
           where sender_id = $1 and metadata->>'playoffDayStartingKey' like $2`,
-        [SYSTEM_SENDER_ID, `${tournament.id}:playoff-day-starting:%`],
-      )).rows,
+          [SYSTEM_SENDER_ID, `${tournament.id}:playoff-day-starting:%`],
+        )
+      ).rows,
     ).toEqual([{ count: '4' }]);
   });
 
@@ -4296,7 +4343,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     const { fixtures } = await createBestOfThreePlayoff(pool, 'paused-playoff-active-board');
     const [fixture] = fixtures;
     const now = new Date(fixture!.scheduled_starts_at.getTime() + 2 * 60 * 60_000);
-    await pool.query(`update tournament_fixture set status = 'paused' where id = $1`, [fixture!.id]);
+    await pool.query(`update tournament_fixture set status = 'paused' where id = $1`, [
+      fixture!.id,
+    ]);
     await pool.query(
       `insert into tournament_fixture_attempt
          (fixture_id, attempt_number, kind, status, scheduled_starts_at,
@@ -4309,15 +4358,28 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         new Date(fixture!.scheduled_starts_at.getTime() + 60 * 60_000),
       ],
     );
-    await expect(listActiveClassicGames(pool, { userId: fixture!.home_user_id, now })).resolves.toEqual([
-      expect.objectContaining({ kind: 'playoff', state: 'paused' }),
+    await expect(
+      listActiveClassicGames(pool, { userId: fixture!.home_user_id, now }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        kind: 'playoff',
+        state: 'paused',
+        fixture_id: fixture!.id,
+        duel_match_id: null,
+        readiness_ends_at: new Date(
+          fixture!.scheduled_starts_at.getTime() + 5 * 60_000,
+        ).toISOString(),
+      }),
     ]);
   });
 
   it('does not enqueue a partial playoff reminder when the system account is unavailable', async () => {
     const { fixtures } = await createBestOfThreePlayoff(pool, 'playoff-reminder-without-system');
     const [fixture] = fixtures;
-    await subscribeTournamentParticipants(pool, [fixture!.home_participant_id, fixture!.away_participant_id]);
+    await subscribeTournamentParticipants(pool, [
+      fixture!.home_participant_id,
+      fixture!.away_participant_id,
+    ]);
     await expect(
       reconcilePlayoffDayStartingCommunications(pool, {
         now: new Date(fixture!.scheduled_starts_at.getTime() - 30 * 60_000),
@@ -4328,16 +4390,23 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
   });
 
   it('keeps the rescheduled game-day reminder deduplicated when the latest attempt is a replay without a day', async () => {
-    const { tournament, fixtures } = await createBestOfThreePlayoff(pool, 'replay-game-day-reminder');
+    const { tournament, fixtures } = await createBestOfThreePlayoff(
+      pool,
+      'replay-game-day-reminder',
+    );
     const [fixture] = fixtures;
-    await subscribeTournamentParticipants(pool, [fixture!.home_participant_id, fixture!.away_participant_id]);
+    await subscribeTournamentParticipants(pool, [
+      fixture!.home_participant_id,
+      fixture!.away_participant_id,
+    ]);
     await pool.query(
       `insert into users (id, display_name, timezone, account_kind)
        values ($1, 'Ультимейт Хоккей', 'Europe/Moscow', 'official')`,
       [SYSTEM_SENDER_ID],
     );
     const round = await pool.query<{ round_id: string }>(
-      `select round_id from tournament_fixture where id = $1`, [fixture!.id],
+      `select round_id from tournament_fixture where id = $1`,
+      [fixture!.id],
     );
     const day = await pool.query<{ id: string }>(
       `insert into tournament_round_game_day
@@ -4353,27 +4422,70 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
          (fixture_id, round_game_day_id, attempt_number, kind, status, scheduled_starts_at,
           readiness_expires_at, hard_deadline_at, is_result_bearing)
        values ($1, $2, 1, 'initial', 'pending', $3, $4, $5, true)`,
-      [fixture!.id, day.rows[0]!.id, firstStart, new Date(firstStart.getTime() + 5 * 60_000), new Date(firstStart.getTime() + 60 * 60_000)],
+      [
+        fixture!.id,
+        day.rows[0]!.id,
+        firstStart,
+        new Date(firstStart.getTime() + 5 * 60_000),
+        new Date(firstStart.getTime() + 60 * 60_000),
+      ],
     );
     const publisher = { publish: async () => undefined } as const;
-    await reconcilePlayoffDayStartingCommunications(pool, { now: new Date(firstStart.getTime() - 30 * 60_000), systemUserId: SYSTEM_SENDER_ID, publisher });
-    await pool.query(`update tournament_fixture_attempt set status = 'settled' where fixture_id = $1`, [fixture!.id]);
+    await reconcilePlayoffDayStartingCommunications(pool, {
+      now: new Date(firstStart.getTime() - 30 * 60_000),
+      systemUserId: SYSTEM_SENDER_ID,
+      publisher,
+    });
+    await pool.query(
+      `update tournament_fixture_attempt set status = 'settled' where fixture_id = $1`,
+      [fixture!.id],
+    );
     const replayStart = new Date(firstStart.getTime() + 5 * 60_000);
     await pool.query(
       `insert into tournament_fixture_attempt
          (fixture_id, attempt_number, kind, status, scheduled_starts_at, readiness_expires_at, hard_deadline_at, is_result_bearing)
        values ($1, 2, 'replay', 'pending', $2, $3, $4, false)`,
-      [fixture!.id, replayStart, new Date(replayStart.getTime() + 5 * 60_000), new Date(replayStart.getTime() + 60 * 60_000)],
+      [
+        fixture!.id,
+        replayStart,
+        new Date(replayStart.getTime() + 5 * 60_000),
+        new Date(replayStart.getTime() + 60 * 60_000),
+      ],
     );
     const rescheduledStart = new Date(firstStart.getTime() + 3 * 60 * 60_000);
     await rescheduleTournamentFixture(pool, {
-      tournamentId: tournament.id, fixtureId: fixture!.id, startsAt: rescheduledStart,
-      endsAt: new Date(rescheduledStart.getTime() + 60 * 60_000), reason: 'replay reschedule', adminUserId: ADMIN_ID,
+      tournamentId: tournament.id,
+      fixtureId: fixture!.id,
+      startsAt: rescheduledStart,
+      endsAt: new Date(rescheduledStart.getTime() + 60 * 60_000),
+      reason: 'replay reschedule',
+      adminUserId: ADMIN_ID,
     });
-    await reconcilePlayoffDayStartingCommunications(pool, { now: new Date(rescheduledStart.getTime() - 30 * 60_000), systemUserId: SYSTEM_SENDER_ID, publisher });
-    await reconcilePlayoffDayStartingCommunications(pool, { now: new Date(rescheduledStart.getTime() - 30 * 60_000), systemUserId: SYSTEM_SENDER_ID, publisher });
-    expect((await pool.query<{ schedule_revision: number }>(`select schedule_revision from tournament_round_game_day where id = $1`, [day.rows[0]!.id])).rows).toEqual([{ schedule_revision: 1 }]);
-    expect((await pool.query<{ count: string }>(`select count(*)::text as count from push_delivery_log where event_type = 'tournament.series_next_game'`)).rows).toEqual([{ count: '4' }]);
+    await reconcilePlayoffDayStartingCommunications(pool, {
+      now: new Date(rescheduledStart.getTime() - 30 * 60_000),
+      systemUserId: SYSTEM_SENDER_ID,
+      publisher,
+    });
+    await reconcilePlayoffDayStartingCommunications(pool, {
+      now: new Date(rescheduledStart.getTime() - 30 * 60_000),
+      systemUserId: SYSTEM_SENDER_ID,
+      publisher,
+    });
+    expect(
+      (
+        await pool.query<{ schedule_revision: number }>(
+          `select schedule_revision from tournament_round_game_day where id = $1`,
+          [day.rows[0]!.id],
+        )
+      ).rows,
+    ).toEqual([{ schedule_revision: 1 }]);
+    expect(
+      (
+        await pool.query<{ count: string }>(
+          `select count(*)::text as count from push_delivery_log where event_type = 'tournament.series_next_game'`,
+        )
+      ).rows,
+    ).toEqual([{ count: '4' }]);
   });
 
   it('does not notify participants before T-30 when a technical result promotes the next fixture', async () => {

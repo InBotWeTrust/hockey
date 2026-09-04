@@ -279,7 +279,8 @@ describe('TournamentOperations', () => {
       within(semifinalCard!).getByRole('button', { name: 'Открыть серию Серия 1' }),
     );
     let dialog = screen.getByRole('dialog', { name: 'Серия 1' });
-    expect(within(dialog).getByText('Игра 1 · 1 сентября, 10:00–11:00')).toBeInTheDocument();
+    expect(within(dialog).getByText('1 сентября, начало в 10:00')).toBeInTheDocument();
+    expect(within(dialog).getByText('Игра 1')).toBeInTheDocument();
     expect(
       within(dialog).getByRole('button', { name: 'Решить серию вручную' }),
     ).toBeInTheDocument();

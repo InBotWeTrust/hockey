@@ -2783,6 +2783,13 @@ export async function publishRegularSchedule(pool: Pool, tournamentId: string) {
 
 interface TournamentScheduleFixtureRow {
     id: string;
+    series_id: string | null;
+    game_number: number | null;
+    series_wins_required: number | null;
+    game_day_id: string | null;
+    game_day_number: number | null;
+    game_day_local_date: string | null;
+    game_day_starts_at: Date | null;
     fixture_number: number;
     stage: string;
     round_number: number;
@@ -2808,6 +2815,19 @@ interface TournamentScheduleFixtureRow {
 function tournamentScheduleFixtureDto(row: TournamentScheduleFixtureRow) {
   return {
     id: row.id,
+    seriesId: row.series_id ?? null,
+    gameNumber: row.game_number == null ? null : Number(row.game_number),
+    seriesWinsRequired:
+      row.series_wins_required == null ? null : Number(row.series_wins_required),
+    gameDay:
+      row.game_day_id == null || row.game_day_local_date == null || row.game_day_starts_at == null
+        ? null
+        : {
+            id: row.game_day_id,
+            dayNumber: Number(row.game_day_number),
+            localDate: row.game_day_local_date,
+            startsAt: row.game_day_starts_at.toISOString(),
+          },
     fixtureNumber: Number(row.fixture_number),
     stage: row.stage,
     roundNumber: Number(row.round_number),
@@ -2840,7 +2860,10 @@ function tournamentScheduleFixtureDto(row: TournamentScheduleFixtureRow) {
 }
 
 const PUBLIC_SCHEDULE_FIXTURE_SELECT = `
-  select fixture.id, fixture.fixture_number, fixture.stage, fixture.round_number,
+  select fixture.id, fixture.series_id, fixture.game_number, fixture.series_wins_required,
+         fixture.game_day_id, fixture.game_day_number, fixture.game_day_local_date,
+         fixture.game_day_starts_at,
+         fixture.fixture_number, fixture.stage, fixture.round_number,
          fixture.scheduled_starts_at, fixture.window_ends_at, fixture.actual_starts_at,
          fixture.status, fixture.venue_mode,
          fixture.home_user_id, fixture.home_name, fixture.home_avatar_url, fixture.home_seed,
@@ -2850,7 +2873,19 @@ const PUBLIC_SCHEDULE_FIXTURE_SELECT = `
 
 const PUBLIC_SCHEDULE_FIXTURE_SCOPE = `
   with fixture_scope as (
-    select f.id, f.fixture_number, r.stage, r.number as round_number,
+    select f.id, f.series_id,
+           (f.result_snapshot->>'gameNumber')::int as game_number,
+           series.wins_required as series_wins_required,
+           coalesce(game_day.id, planned_game_day.id) as game_day_id,
+           coalesce(game_day.day_number, planned_game_day.day_number) as game_day_number,
+           coalesce(game_day.local_date, planned_game_day.local_date)::text as game_day_local_date,
+           coalesce(
+             (to_jsonb(game_day)->>'rescheduled_starts_at')::timestamptz,
+             game_day.first_game_starts_at,
+             planned_game_day.rescheduled_starts_at,
+             planned_game_day.first_game_starts_at
+           ) as game_day_starts_at,
+           f.fixture_number, r.stage, r.number as round_number,
            f.scheduled_starts_at, f.window_ends_at, f.status, f.venue_mode,
            coalesce(
              game_day.local_date,
@@ -2879,6 +2914,7 @@ const PUBLIC_SCHEDULE_FIXTURE_SCOPE = `
       join tournament_round r on r.id = f.round_id
       join tournament tournament on tournament.id = f.tournament_id
       join tournament_revision revision on revision.id = tournament.published_revision_id
+      left join tournament_playoff_series series on series.id = f.series_id
       left join tournament_participant hp on hp.id = f.home_participant_id
       left join users hu on hu.id = hp.user_id
       left join tournament_standing hs
@@ -2897,9 +2933,12 @@ const PUBLIC_SCHEDULE_FIXTURE_SCOPE = `
        ) latest_attempt on true
        left join tournament_round_game_day game_day on game_day.id = latest_attempt.round_game_day_id
        left join lateral (
-         select planned_day.local_date
+         select planned_day.id, planned_day.local_date, planned_day.day_number,
+                planned_day.first_game_starts_at, planned_day.rescheduled_starts_at
            from (
-             select day.local_date, day.day_number,
+             select day.id, day.local_date, day.day_number, day.first_game_starts_at,
+                    (to_jsonb(day)->>'rescheduled_starts_at')::timestamptz
+                      as rescheduled_starts_at,
                     sum(day.max_result_bearing_games) over (
                       order by day.day_number
                     ) as cumulative_game_capacity
@@ -3016,26 +3055,19 @@ export async function getTournamentScheduleOtherGames(
   tournamentId: string,
   userId: string,
   localDate: string,
-  cursor: TournamentScheduleCursor | null,
+  _cursor: TournamentScheduleCursor | null,
 ) {
   const result = await pool.query<TournamentScheduleFixtureRow>(
     `${PUBLIC_SCHEDULE_FIXTURE_SCOPE}
      ${PUBLIC_SCHEDULE_FIXTURE_SELECT}
       where fixture.local_date = $3::date
         and $2::uuid not in (home_user_id, away_user_id)
-        and ($4::int is null or (fixture.fixture_number, fixture.id) > ($4::int, $5::uuid))
-      order by fixture.fixture_number, fixture.id
-      limit 6`,
-    [tournamentId, userId, localDate, cursor?.fixtureNumber ?? null, cursor?.id ?? null],
+      order by fixture.fixture_number, fixture.id`,
+    [tournamentId, userId, localDate],
   );
-  const pageRows = result.rows.slice(0, 5);
-  const last = pageRows.at(-1);
   return {
-    games: pageRows.map(tournamentScheduleFixtureDto),
-    nextCursor:
-      result.rows.length > 5 && last !== undefined
-        ? { fixtureNumber: Number(last.fixture_number), id: last.id }
-        : null,
+    games: result.rows.map(tournamentScheduleFixtureDto),
+    nextCursor: null,
   };
 }
 
@@ -4528,6 +4560,7 @@ export async function getTournamentBracket(pool: Pool, tournamentId: string) {
                'awayName', fixture_away_user.display_name,
                'homeScore', fixture.home_score,
                'awayScore', fixture.away_score,
+               'technicalResult', coalesce((fixture.result_snapshot->>'technical')::boolean, false),
                'winnerSide', case
                  when fixture.winner_participant_id = fixture.home_participant_id then 'home'
                  when fixture.winner_participant_id = fixture.away_participant_id then 'away'

@@ -12,14 +12,8 @@ import { AppError } from '../plugins/errors.js';
 import { appendEvent } from '../duel/eventLog.js';
 import { parseTournamentConfig } from './config.js';
 import { resolveClassicResult } from './classic.js';
-import {
-  rebuildDailyAggregateStandings,
-  refreshDailyDayPlacements,
-} from './dailyAggregate.js';
-import type {
-  ClassicTournamentConfig,
-  TournamentClassicRules,
-} from './types.js';
+import { rebuildDailyAggregateStandings, refreshDailyDayPlacements } from './dailyAggregate.js';
+import type { ClassicTournamentConfig, TournamentClassicRules } from './types.js';
 
 type ClassicSessionState = 'idle' | 'period_active' | 'break_active' | 'closed' | 'expired';
 type ShotResult = 'goal' | 'save' | 'miss';
@@ -134,9 +128,15 @@ export interface ActiveClassicGame {
 export interface ActivePlayoffGame {
   kind: 'playoff';
   tournament_id: string;
+  fixture_id: string;
+  duel_match_id: string | null;
   tournament_title: string;
   tournament_day: number;
+  round_stage: 'playoff' | 'third_place';
+  round_number: number;
+  final_round_number: number;
   starts_at: string;
+  readiness_ends_at: string;
   closes_at: string;
   break_ends_at: string | null;
   state: 'scheduled' | 'ready_check' | 'active' | 'inter_game_break' | 'paused';
@@ -767,11 +767,22 @@ export async function listActiveClassicGames(
   });
   const playoff = await pool.query<{
     tournament_id: string;
+    fixture_id: string;
+    duel_match_id: string | null;
     tournament_title: string;
     tournament_day: number;
+    round_stage: 'playoff' | 'third_place';
+    round_number: number;
+    final_round_number: number;
     scheduled_starts_at: Date;
+    readiness_expires_at: Date;
     hard_deadline_at: Date;
-    attempt_status: 'pending' | 'ready_check' | 'active' | 'needs_reschedule' | 'needs_admin_decision';
+    attempt_status:
+      | 'pending'
+      | 'ready_check'
+      | 'active'
+      | 'needs_reschedule'
+      | 'needs_admin_decision';
     attempt_number: number;
   }>(
     `select distinct on (
@@ -783,9 +794,17 @@ export async function listActiveClassicGames(
                   at time zone coalesce(revision.rules_snapshot->'config'->>'timezone', 'UTC'))::date
               )
             )
-            tournament.id as tournament_id, tournament.title as tournament_title,
+            tournament.id as tournament_id, fixture.id as fixture_id,
+            attempt.amateur_duel_match_id as duel_match_id,
+            tournament.title as tournament_title,
             coalesce(round_game_day.day_number, round.number) as tournament_day,
+            round.stage as round_stage, round.number as round_number,
+            (select max(final_round.number)
+               from tournament_round final_round
+              where final_round.tournament_id = tournament.id
+                and final_round.stage = 'playoff') as final_round_number,
             coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at) as scheduled_starts_at,
+            coalesce(attempt.readiness_expires_at, fixture.scheduled_starts_at) as readiness_expires_at,
             coalesce(attempt.hard_deadline_at, fixture.window_ends_at) as hard_deadline_at,
             coalesce(attempt.status, 'pending') as attempt_status,
             coalesce(attempt.attempt_number, 1) as attempt_number
@@ -808,8 +827,12 @@ export async function listActiveClassicGames(
         and (attempt.status is null or attempt.status in (
           'pending', 'ready_check', 'active', 'needs_reschedule', 'needs_admin_decision'
         ))
-        and coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at)
-              <= $2::timestamptz + interval '30 minutes'
+        and coalesce(
+              round_game_day.local_date,
+              (coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at)
+                at time zone coalesce(revision.rules_snapshot->'config'->>'timezone', 'UTC'))::date
+            ) <= ($2::timestamptz
+              at time zone coalesce(revision.rules_snapshot->'config'->>'timezone', 'UTC'))::date
         and (
           attempt.status in ('needs_reschedule', 'needs_admin_decision')
           or coalesce(attempt.hard_deadline_at, fixture.window_ends_at) > $2::timestamptz
@@ -829,21 +852,27 @@ export async function listActiveClassicGames(
     return {
       kind: 'playoff',
       tournament_id: row.tournament_id,
+      fixture_id: row.fixture_id,
+      duel_match_id: row.duel_match_id,
       tournament_title: row.tournament_title,
       tournament_day: Number(row.tournament_day),
+      round_stage: row.round_stage,
+      round_number: Number(row.round_number),
+      final_round_number: Number(row.final_round_number),
       starts_at: row.scheduled_starts_at.toISOString(),
+      readiness_ends_at: row.readiness_expires_at.toISOString(),
       closes_at: row.hard_deadline_at.toISOString(),
       break_ends_at: beforeStart ? row.scheduled_starts_at.toISOString() : null,
       state:
         row.attempt_status === 'needs_reschedule' || row.attempt_status === 'needs_admin_decision'
           ? 'paused'
           : beforeStart
-        ? Number(row.attempt_number) > 1
-          ? 'inter_game_break'
-          : 'scheduled'
-        : row.attempt_status === 'active'
-          ? 'active'
-          : 'ready_check',
+            ? Number(row.attempt_number) > 1
+              ? 'inter_game_break'
+              : 'scheduled'
+            : row.attempt_status === 'active'
+              ? 'active'
+              : 'ready_check',
       current_period: 0,
       total_shots: 0,
       total_goals: 0,
