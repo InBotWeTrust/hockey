@@ -96,6 +96,110 @@
   opacity: 1;
   background: rgba(2, 10, 24, 0.1);
 }
+
+.tournament-duel-result__artwork {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  margin: 14px auto 0;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.18);
+  flex: 0 0 auto;
+}
+
+.modal-card.duel-result-card:not(.duel-result-card--compact) {
+  width: min(100%, 380px);
+}
+
+.regular-podium-modal .modal-copy {
+  margin-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.regular-podium-modal .tournament-duel-result__artwork {
+  margin-top: 0;
+}
+
+.regular-podium-modal__rewards {
+  margin-top: 16px;
+}
+
+.regular-podium-modal__rewards .section-label {
+  margin: 0;
+  padding: 2px 0;
+}
+
+.regular-podium-modal__reward-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  margin-top: 10px;
+}
+
+.regular-podium-modal__reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 18px;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.regular-podium-modal__reward > span:first-child {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+}
+
+.regular-podium-modal__error {
+  margin: 14px 0 0;
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.tournament-result-preview-switcher {
+  position: fixed;
+  z-index: 2;
+  top: 6px;
+  left: 50%;
+  width: min(410px, calc(100vw - 20px));
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  padding-bottom: 2px;
+  overflow-x: auto;
+}
+
+.tournament-result-preview-switcher a {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.46);
+  font-size: 10px;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.tournament-result-preview-switcher a.is-active {
+  color: #ffffff;
+  background: #18293e;
+}
+
+.app-shell:has(.tournament-result-preview-switcher) .bottom-nav-shell {
+  display: none;
+}
 .visually-hidden {
   position: absolute !important;
   width: 1px !important;
