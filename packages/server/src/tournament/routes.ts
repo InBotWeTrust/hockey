@@ -87,6 +87,7 @@ import {
   confirmTournamentSeriesWinnerDecision,
   requestTournamentSeriesWinnerDecision,
 } from './seriesAdminDecisions.js';
+import { acknowledgeRegularSeasonPodiumCongratulation } from './podiumCongratulations.js';
 
 const uuid = z.string().uuid();
 const nullableDate = z.string().datetime({ offset: true }).nullable().default(null);
@@ -256,6 +257,14 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     await requireTournamentFeature(app);
     await app.reconcileTournamentLifecycleBestEffort();
     return { tournaments: await listPlayerTournaments(app.pg, req.user.id) };
+  });
+
+  app.post('/tournaments/congratulations/:congratulationId/read', authenticated, async (req) => {
+    const params = z.object({ congratulationId: uuid }).parse(req.params);
+    return acknowledgeRegularSeasonPodiumCongratulation(app.pg, {
+      congratulationId: params.congratulationId,
+      userId: req.user.id,
+    });
   });
 
   app.get('/tournaments/classic/active', authenticated, async (req) => {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '../auth/authStore.js';
 import {
+  acknowledgeRegularSeasonPodiumCongratulation,
   dismissTournamentReadinessHint,
   fetchTournamentReadinessHint,
   fetchTournamentSchedule,
@@ -48,6 +49,17 @@ describe('tournament public API', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       2,
       '/api/tournaments/tournament-1/readiness-hint/dismiss',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('acknowledges a regular season podium congratulation', async () => {
+    await acknowledgeRegularSeasonPodiumCongratulation(
+      '00000000-0000-4000-8000-000000000951',
+    );
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/tournaments/congratulations/00000000-0000-4000-8000-000000000951/read',
       expect.objectContaining({ method: 'POST' }),
     );
   });
