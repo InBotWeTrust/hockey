@@ -9,6 +9,7 @@ const paramsSchema = z.object({
 
 interface ClaimableAchievementRow {
   achievement_id: string;
+  title: string;
   claimed_at: Date | null;
   reward_currency: number | string;
   reward_stars: number | string;
@@ -48,7 +49,7 @@ export const achievementRoutes: FastifyPluginAsync = async (app) => {
         ]);
         if (lockedUser.rowCount === 0) throw new AppError('not_found', 'user not found', 404);
         const { rows } = await client.query<ClaimableAchievementRow>(
-          `select ua.achievement_id, ua.claimed_at,
+          `select ua.achievement_id, ua.claimed_at, a.title,
                 a.reward_currency, a.reward_stars, a.reward_experience
            from user_achievements ua
            join achievements a on a.id = ua.achievement_id
@@ -74,11 +75,34 @@ export const achievementRoutes: FastifyPluginAsync = async (app) => {
          on conflict do nothing`,
           [req.user.id],
         );
-        await client.query(
+        const accountResult = await client.query<{
+          balance: number | string;
+          reserved_balance: number | string;
+        }>(
           `update user_currency_account
             set balance = balance + $2, updated_at = now()
-          where user_id = $1`,
+          where user_id = $1
+          returning balance, reserved_balance`,
           [req.user.id, row.reward_currency],
+        );
+        const account = accountResult.rows[0];
+        if (!account) throw new AppError('server_error', 'currency account missing', 500);
+        await client.query(
+          `insert into currency_ledger
+             (user_id, reason, available_delta, reserved_delta, balance_after, reserved_after, metadata)
+           values ($1, 'achievement_reward', $2, 0, $3, $4, $5)`,
+          [
+            req.user.id,
+            row.reward_currency,
+            Number(account.balance),
+            Number(account.reserved_balance),
+            JSON.stringify({
+              achievement_id: row.achievement_id,
+              title: `Награда за достижение «${row.title}»`,
+              stars: Number(row.reward_stars),
+              experience: Number(row.reward_experience),
+            }),
+          ],
         );
         await client.query(
           `update user_achievements

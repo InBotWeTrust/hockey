@@ -114,6 +114,50 @@ describe.skipIf(!hasIntegrationEnv)('achievement claim routes', () => {
       [userId],
     );
     expect(userRows.rows[0]).toMatchObject({ xp: 3, experience: 40 });
+
+    const ledgerRows = await app.pg.query<{
+      available_delta: number;
+      balance_after: number;
+      metadata: Record<string, unknown>;
+    }>(
+      `select available_delta, balance_after, metadata
+         from currency_ledger
+        where user_id = $1 and reason = 'achievement_reward'`,
+      [userId],
+    );
+    expect(ledgerRows.rows).toEqual([
+      {
+        available_delta: 12,
+        balance_after: 12,
+        metadata: {
+          achievement_id: 'first-goal',
+          experience: 40,
+          stars: 3,
+          title: 'Награда за достижение «Первая шайба»',
+        },
+      },
+    ]);
+
+    const inventory = await app.inject({
+      method: 'GET',
+      url: '/inventory/me',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(inventory.statusCode).toBe(200);
+    expect(inventory.json().transactionHistory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Награда за достижение «Первая шайба»',
+          category: 'reward',
+          flow: 'credit',
+          amounts: [
+            { currency: 'coin', value: 12 },
+            { currency: 'star', value: 3 },
+            { currency: 'experience', value: 40 },
+          ],
+        }),
+      ]),
+    );
   });
 
   it('waits for the users row before taking a currency-account write lock', async () => {

@@ -191,7 +191,12 @@ function transactionFlow(amounts: InventoryTransactionAmountDto[]): TransactionF
 
 function transactionCategory(reason: string): TransactionCategory {
   if (reason === 'inventory_purchase') return 'inventory';
-  if (reason === 'weekly_challenge_reward' || reason === 'duel_reward') return 'reward';
+  if (
+    reason === 'weekly_challenge_reward' ||
+    reason === 'duel_reward' ||
+    reason === 'achievement_reward'
+  )
+    return 'reward';
   if (reason.startsWith('duel_')) return 'duel';
   if (reason === 'admin_adjustment') return 'adjustment';
   return 'other';
@@ -203,6 +208,7 @@ function transactionTitle(reason: string, metadata: Record<string, unknown>): st
   if (reason === 'inventory_purchase') return 'Покупка инвентаря';
   if (reason === 'weekly_challenge_reward') return 'Недельная награда';
   if (reason === 'duel_reward') return 'Награда за дуэль';
+  if (reason === 'achievement_reward') return 'Награда за достижение';
   if (reason === 'duel_stake_hold') return 'Ставка дуэли заморожена';
   if (reason === 'duel_entry_fee') return 'Взнос за дуэль';
   if (reason === 'duel_stake_refund') return 'Возврат ставки';
@@ -226,7 +232,7 @@ function transactionSubtitle(
     if (resourceUnit && chargesAdded > 0) {
       parts.push(resourceLabel(resourceUnit, chargesAdded));
     }
-  } else if (reason === 'weekly_challenge_reward') {
+  } else if (reason === 'weekly_challenge_reward' || reason === 'achievement_reward') {
     parts.push('награда');
   } else if (reason.startsWith('duel_')) {
     parts.push('дуэль');

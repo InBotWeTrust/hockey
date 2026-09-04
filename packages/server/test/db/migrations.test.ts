@@ -537,6 +537,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '094_balance_ultimate_one_puck_speed.sql',
       '095_tournament_regular_podium_congratulation.sql',
       '097_revert_beginner_tutorial_gameplay_speed.sql',
+      '098_achievement_reward_ledger.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -821,6 +822,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(constraints.get('shot_session_check')).toContain('bonus_game_attempt_id');
     expect(constraints.get('shot_session_check')).toContain('period_number');
     expect(constraints.get('currency_ledger_reason_check')).toContain("'bonus_game_reward'::text");
+    expect(constraints.get('currency_ledger_reason_check')).toContain("'achievement_reward'::text");
     expect(constraints.get('media_objects_purpose_check')).toContain("'bonus_game_media'::text");
   });
 });
@@ -1241,6 +1243,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '094_balance_ultimate_one_puck_speed.sql',
       '095_tournament_regular_podium_congratulation.sql',
       '097_revert_beginner_tutorial_gameplay_speed.sql',
+      '098_achievement_reward_ledger.sql',
     ]);
 
     const activeInventory = await pool.query<{
