@@ -1463,7 +1463,18 @@ function GameHub({
             replace: true,
           }),
         ...(completed
-          ? {}
+          ? {
+              scoreboard: (
+                <DailyHubScoreboard
+                  activePeriod={null}
+                  ariaLabel={`Завершена. До обновления ${formatHms(deadlineRemaining)}`}
+                  periodsTotal={3}
+                  timer={formatHms(deadlineRemaining)}
+                  timerLabel="До обновления"
+                  timerOnly
+                />
+              ),
+            }
           : {
               scoreboard: (
                 <DailyHubScoreboard

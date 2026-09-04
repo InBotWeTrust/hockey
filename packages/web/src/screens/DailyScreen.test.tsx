@@ -908,6 +908,7 @@ describe('DailyScreen', () => {
   });
 
   it('shows a completed classic result without an action button', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(new Date('2030-09-01T20:00:00.000Z').getTime());
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       const body = url.includes('/tournaments/classic/active')
@@ -938,6 +939,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=arena']);
 
     expect(await screen.findByLabelText('Результат: 36 шайб, точность 40%')).toBeInTheDocument();
+    expect(screen.getByLabelText('Завершена. До обновления 01:00:00')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Начать|Продолжить/ })).toBeNull();
   });
 
