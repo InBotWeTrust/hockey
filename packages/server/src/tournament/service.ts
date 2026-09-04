@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
 import { appendEvent } from '../duel/eventLog.js';
 import { grantTournamentStageRewardsWithClient, resolvePlayoffPlacements } from './rewards.js';
+import { createRegularSeasonPodiumCongratulations } from './podiumCongratulations.js';
 import { cancelTournamentDuel } from '../duel/amateur/lifecycle.js';
 import { enqueueTournamentAudiencePush, enqueueTournamentPush } from '../push/tournament.js';
 import { decideTournamentApplication, evaluateTournamentEligibility } from './registration.js';
@@ -4478,6 +4479,7 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
       }
     }
     await grantTournamentStageRewardsWithClient(client, tournamentId, 'regular');
+    await createRegularSeasonPodiumCongratulations(client, tournamentId);
     await client.query(
       `update tournament set status = 'playoff', updated_at = now() where id = $1`,
       [tournamentId],

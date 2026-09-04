@@ -2085,21 +2085,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         games: Array<{ id: string }>;
         nextCursor: { fixtureNumber: number; id: string } | null;
       }>();
-      expect(firstBody.games).toHaveLength(5);
-      expect(firstBody.nextCursor).not.toBeNull();
-      const cursor = firstBody.nextCursor!;
-      const secondPage = await app.inject({
-        method: 'GET',
-        url:
-          `/tournaments/${tournament.id}/schedule/other-games?date=${date}` +
-          `&cursorFixtureNumber=${cursor.fixtureNumber}&cursorId=${cursor.id}`,
-        headers: playerOneHeaders,
-      });
-      expect(secondPage.statusCode).toBe(200);
-      const secondBody = secondPage.json<{ games: Array<{ id: string }> }>();
-      expect(
-        secondBody.games.filter((game) => firstBody.games.some((first) => first.id === game.id)),
-      ).toHaveLength(0);
+      expect(firstBody.games).toHaveLength(21);
+      expect([...new Set(firstBody.games.map((game) => game.id))]).toHaveLength(21);
+      expect(firstBody.nextCursor).toBeNull();
 
       const initialHint = await app.inject({
         method: 'GET',
@@ -4099,7 +4087,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(
       await listActiveClassicGames(pool, {
         userId: fixture!.home_user_id,
-        now: new Date('2030-09-04T21:05:00.000Z'),
+        now: options.now,
       }),
     ).toEqual([
       expect.objectContaining({
@@ -4153,6 +4141,17 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         .sort()
         .map((user_id) => ({ user_id, count: '1' })),
     );
+    const reminderContent = await pool.query<{ content: string }>(
+      `select message.content
+         from messages message
+        where message.sender_id = $1
+          and message.metadata->>'playoffDayStartingKey' like $2
+        order by message.created_at
+        limit 1`,
+      [SYSTEM_SENDER_ID, `${tournament.id}:playoff-day-starting:%`],
+    );
+    expect(reminderContent.rows[0]?.content).toContain('серия игр начнётся');
+    expect(reminderContent.rows[0]?.content).not.toContain('игра серии начнётся');
     await settlePlayedPlayoffFixture(pool, fixture!);
     await expect(
       reconcilePlayoffDayStartingCommunications(pool, {
@@ -4184,7 +4183,13 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     ]);
     await expect(
       listActiveClassicGames(pool, { userId: fixture!.home_user_id, now: options.now }),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual([
+      expect.objectContaining({
+        fixture_id: nextFixture!.id,
+        kind: 'playoff',
+        state: 'scheduled',
+      }),
+    ]);
   });
 
   it('reports a regular fixture completion only for the transaction that settles it', async () => {
@@ -7201,5 +7206,79 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         roundBreakMs: 0,
       },
     });
+  });
+
+  it('creates regular podium congratulations only when the regular season is finalized', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'regular-podium-congratulations',
+      0,
+      playoffTournamentRules(4, {
+        stageRewards: {
+          regular: [
+            { place: 1, coins: 5000, stars: 25, experience: 1500 },
+            { place: 2, coins: 3000, stars: 15, experience: 900 },
+          ],
+          playoff: [],
+        },
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [40, 30, 20, 10]);
+
+    await grantTournamentStageRewards(pool, tournament.id, 'regular');
+    expect(
+      await pool.query(
+        `select id from tournament_regular_podium_congratulation where tournament_id = $1`,
+        [tournament.id],
+      ),
+    ).toHaveProperty('rowCount', 0);
+
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00.000Z'));
+
+    const congratulations = await pool.query<{
+      place: number;
+      tournament_title: string;
+      reward_coins: number;
+      reward_stars: number;
+      reward_experience: number;
+    }>(
+      `select place, tournament_title, reward_coins, reward_stars, reward_experience
+         from tournament_regular_podium_congratulation
+        where tournament_id = $1
+        order by place`,
+      [tournament.id],
+    );
+    expect(congratulations.rows).toEqual([
+      {
+        place: 1,
+        tournament_title: 'Integration Championship',
+        reward_coins: 5000,
+        reward_stars: 25,
+        reward_experience: 1500,
+      },
+      {
+        place: 2,
+        tournament_title: 'Integration Championship',
+        reward_coins: 3000,
+        reward_stars: 15,
+        reward_experience: 900,
+      },
+      {
+        place: 3,
+        tournament_title: 'Integration Championship',
+        reward_coins: 0,
+        reward_stars: 0,
+        reward_experience: 0,
+      },
+    ]);
+
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:01:00.000Z'));
+    expect(
+      await pool.query(
+        `select id from tournament_regular_podium_congratulation where tournament_id = $1`,
+        [tournament.id],
+      ),
+    ).toHaveProperty('rowCount', 3);
   });
 });

@@ -498,26 +498,15 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
               }}
             >
               <span>{day}</span>
-              {hasEvents && <i aria-hidden="true" />}
-              {hasPlayoff && mine && props.regularSource === 'head_to_head' && (
-                <em className="tournament-calendar__mine-mark" aria-hidden="true" />
-              )}
+              {mine && <i aria-hidden="true" />}
             </button>
           );
         })}
       </div>
 
       <ul className="tournament-calendar__legend" aria-label="Обозначения календаря">
-        <li>
-          <span
-            className="tournament-calendar__legend-dot tournament-calendar__legend-dot--events"
-            aria-hidden="true"
-          />
-          {showsFixturesInline || props.regularSource === 'head_to_head'
-            ? 'Есть игры'
-            : 'Игровой день'}
-        </li>
-        {props.regularSource === 'head_to_head' && props.currentUserId !== null && (
+        {(props.currentUserId !== null ||
+          (props.regularSource !== 'head_to_head' && props.isParticipant)) && (
           <li>
             <span
               className="tournament-calendar__legend-dot tournament-calendar__legend-dot--mine"

@@ -1,3 +1,5 @@
+import type { RegularSeasonPodiumCongratulation } from '../api/tournament.js';
+
 export type CompetitionLevel = 'beginner' | 'amateur' | 'professional';
 
 export interface ProfileStats {
@@ -57,4 +59,5 @@ export interface ProfileData {
   vkLastName?: string | null;
   vkAvatarUrl?: string | null;
   vkUsername?: string | null;
+  pendingTournamentCongratulations?: RegularSeasonPodiumCongratulation[];
 }

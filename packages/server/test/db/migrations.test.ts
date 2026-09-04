@@ -396,7 +396,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         resource_unit: 'shot',
         currency_price: 1490,
         charges_per_purchase: 1300,
-        effect_puck_speed_points: 10,
+        effect_puck_speed_points: 40,
       },
       {
         title: 'Ультимейт Ван 2',
@@ -404,7 +404,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         resource_unit: 'shot',
         currency_price: 2490,
         charges_per_purchase: 1950,
-        effect_puck_speed_points: 10,
+        effect_puck_speed_points: 40,
       },
       {
         title: 'Ультимейт Ван 3',
@@ -412,7 +412,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         resource_unit: 'shot',
         currency_price: 3740,
         charges_per_purchase: 2500,
-        effect_puck_speed_points: 10,
+        effect_puck_speed_points: 40,
       },
     ]);
 
@@ -535,6 +535,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '092_tournament_period_loadout_state.sql',
       '093_tournament_readiness_hint_preference.sql',
       '094_balance_ultimate_one_puck_speed.sql',
+      '095_tournament_regular_podium_congratulation.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -1237,6 +1238,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '092_tournament_period_loadout_state.sql',
       '093_tournament_readiness_hint_preference.sql',
       '094_balance_ultimate_one_puck_speed.sql',
+      '095_tournament_regular_podium_congratulation.sql',
     ]);
 
     const activeInventory = await pool.query<{

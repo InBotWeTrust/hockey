@@ -35,6 +35,56 @@ final result: passed
 
 ---
 
+# Design QA — узкие экраны 323–360 px
+
+## Evidence
+
+- Source visual truth:
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-de2917bf-ae03-46d0-9e13-c9e659ae919d.png` — главная, 323 CSS px.
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-772dc373-a8d3-49a1-969c-9ad9a706c75e.png` — магазин, узкий мобильный экран.
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-2d713c28-194f-4d0f-b79d-baffd9868191.png` — турнирная сетка, 323 CSS px.
+- Browser-rendered implementation: live in-app Browser captures from `http://127.0.0.1:5183` at 323 × 700, 340 × 700, and 360 × 740 CSS px; deviceScaleFactor 1. The browser capture API did not expose persistent screenshot paths.
+- State: authenticated local player; Sections screen, populated Inventory shop, and a 32-player playoff overview with two visible rounds.
+- Source pixel dimensions include surrounding DevTools chrome and therefore were normalized by comparing the 323 px application content region. Implementation captures used an explicit 323/340/360 px viewport at density 1.
+
+## Full-view comparison
+
+At 323 px the two compact quick-access cards remain in one row and `Тренировка` is fully visible on one line. The shop now uses two product columns, with complete item names, quantities, prices, and CTA text. The tournament keeps two rounds visible, clips no player row, and exposes the next upper tab as a horizontal-scroll affordance. At 340 and 360 px the same structure remains stable without breakpoint jumps.
+
+## Focused comparison
+
+Focused browser measurements confirmed that the quick cards are 142.5 px wide at the narrowest viewport and that their image/text tracks remain inside those bounds. The playoff viewport is 310 px wide at 360 px while its wider grid remains intentionally contained by the horizontal scroller; player rows stay inside their round columns. A separate focused check found and fixed the shop balance pill accidentally inheriting product-card height before the final capture.
+
+## Required fidelity surfaces
+
+- Fonts and typography: compact quick-card titles stay on one line with an ellipsis fallback; product names retain two readable lines; bracket names truncate without displacing seeds or series scores.
+- Spacing and layout rhythm: compact cards use smaller art, padding, and gaps only up to 360 px; shop cards use an even two-column rhythm; the bracket has an 8 px column gap and safe bottom reserve.
+- Colors and visual tokens: all existing glass, ink, muted, CTA, and tournament state tokens are unchanged.
+- Image quality and asset fidelity: original section and inventory WebP artwork is preserved without stretching; object-fit behavior is unchanged.
+- Copy and content: no labels were removed or rewritten; only responsive layout changed.
+
+## Interaction and console checks
+
+- Opened Sections, Inventory, the tournament details, and the playoff tab at 323 px.
+- Switched the tournament details from Overview to Playoffs and verified both horizontal tab strips.
+- Repeated the playoff view at 340 and 360 px.
+- Browser console warnings/errors checked after the flow: none.
+
+## Comparison history
+
+1. P1: `Тренировка` left its compact card in the 323 px source. Fixed by reducing the compact image/spacing and fitting the title on one line; post-fix capture shows the full word inside the card.
+2. P1: the shop forced three unreadable product columns. Fixed with a two-column narrow grid and compact product sizing; post-fix capture shows complete names, quantities, prices, and buttons.
+3. P1: playoff player rows overlapped narrow columns. Fixed with narrower bracket gaps, padding, avatars/text tracks, and contained horizontal scrolling; post-fix captures at 323/340/360 px show no overlap.
+4. P2: the shop header title and balance pill competed for width; an intermediate class placement also stretched the balance pill vertically. Fixed by scoping product-card classes correctly and compacting only the header at 360 px and below.
+
+## Findings
+
+No actionable P0, P1, or P2 responsive differences remain in the three requested screens. Horizontal overflow in both tournament tab strips and the bracket grid is intentional and contained by their own scrollers.
+
+final result: passed
+
+---
+
 # Design QA — история любительских дуэлей
 
 ## Evidence
@@ -249,5 +299,32 @@ The combined comparison confirms the intended density change: the original full 
 ## Follow-up polish
 
 - None required for this iteration.
+
+final result: passed
+
+---
+
+# Design QA — поздравление призёров регулярного чемпионата
+
+## Evidence
+
+- Rendered local preview at `323 × 844`, `340 × 844`, `360 × 844`, and `390 × 844`.
+- Screenshots: `output/playwright/regular-podium-323.webp`, `regular-podium-340.webp`, `regular-podium-360.webp`, and `regular-podium-390.webp`.
+- Placement variants 2 and 3 additionally checked at `323 × 844`: `output/playwright/regular-podium-place-2-323.webp` and `regular-podium-place-3-323.webp`.
+
+## Checks
+
+- All three placement headings wrap without clipping at 323 px.
+- The tournament title stays on one line and truncates with an ellipsis.
+- Artwork remains square and uses the gold, silver, or bronze cup variant.
+- Reward values wrap at the narrowest width without overlapping or widening the modal.
+- The close button remains fully visible and reachable.
+- At 323 px, document `scrollWidth` and viewport width are both `323px`; no horizontal overflow.
+- Browser console errors: 0.
+- The preview harness was local-only and removed after capture; it is not part of the product bundle.
+
+## Findings
+
+- No actionable layout issues found at the requested narrow widths.
 
 final result: passed

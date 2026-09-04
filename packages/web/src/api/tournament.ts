@@ -10,6 +10,19 @@ export type TournamentStatus =
   | 'completed'
   | 'cancelled';
 
+export interface RegularSeasonPodiumCongratulation {
+  id: string;
+  tournamentId: string;
+  tournamentTitle: string;
+  place: 1 | 2 | 3;
+  reward: {
+    coins: number;
+    stars: number;
+    experience: number;
+  };
+  createdAt: string;
+}
+
 export type TournamentLifecycleAction =
   | 'legacy_requires_audit'
   | 'registration_waiting'
@@ -315,6 +328,7 @@ export interface TournamentFixtureAttemptState {
   } | null;
   series: {
     id: string;
+    kind?: 'championship' | 'third_place';
     winsRequired: number;
     myWins: number;
     opponentWins: number;
@@ -322,6 +336,8 @@ export interface TournamentFixtureAttemptState {
     lowerSeedWins: number;
     higherSeedUserId: string;
     lowerSeedUserId: string;
+    higherSeed?: number | null;
+    lowerSeed?: number | null;
     status: string;
     winnerUserId: string | null;
   } | null;
@@ -468,4 +484,11 @@ export function respondFixtureLiveProposal(fixtureId: string, proposalId: string
     method: 'POST',
     body: JSON.stringify({ accept }),
   });
+}
+
+export function acknowledgeRegularSeasonPodiumCongratulation(congratulationId: string) {
+  return apiFetch<{ acknowledged: true }>(
+    `/tournaments/congratulations/${congratulationId}/read`,
+    { method: 'POST' },
+  );
 }

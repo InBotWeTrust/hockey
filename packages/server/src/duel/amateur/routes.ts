@@ -19,8 +19,8 @@ import {
 } from '@hockey/game-core';
 import { assertAdminUser } from '../../chat/channel.js';
 import { invalidateUnreadCache } from '../../chat/cache.js';
-import { publishMessageNew } from '../../chat/events.js';
-import { findOrCreateDM, sendMessage } from '../../chat/service.js';
+import { publishChatRead, publishMessageNew } from '../../chat/events.js';
+import { findOrCreateDM, markChatAsRead, sendMessage } from '../../chat/service.js';
 import { evaluateDuelSettledAchievements } from '../../achievements/engine.js';
 import { AppError } from '../../plugins/errors.js';
 import { enqueueDuelPush } from '../../push/duel.js';
@@ -3248,6 +3248,21 @@ async function notifyDuelMessage(
   });
 }
 
+async function markTournamentReadinessMessagesAsRead(
+  app: Parameters<FastifyPluginAsync>[0],
+  systemUserId: string,
+  userIds: readonly string[],
+): Promise<void> {
+  await Promise.all(
+    userIds.map(async (userId) => {
+      const dm = await findOrCreateDM(app.pg, systemUserId, userId);
+      await markChatAsRead(app.pg, dm.chatId, userId);
+      await invalidateUnreadCache(app.redis, userId);
+      await publishChatRead(app.pg, app.realtime, dm.chatId, 'direct', userId, new Date().toISOString());
+    }),
+  );
+}
+
 async function fetchDisplayName(
   client: { query: PoolClient['query'] },
   userId: string,
@@ -4637,6 +4652,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           kind: 'ready' as const,
           match: await buildMatchStateDto(client, match, req.user.id, now),
           readyNotice,
+          bothReady: tournamentAttemptReady && match.status === 'active',
+          participantUserIds: [match.challenger_user_id, match.opponent_user_id] as const,
         };
       });
       if (response.kind === 'terminal_conflict') {
@@ -4672,6 +4689,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             { err, matchId: response.match.id },
             'tournament readiness DM notification failed',
           ),
+        );
+      }
+      if (response.bothReady && opts.systemUserId !== undefined) {
+        await markTournamentReadinessMessagesAsRead(
+          app,
+          opts.systemUserId,
+          response.participantUserIds,
         );
       }
       return { match: response.match };

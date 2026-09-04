@@ -645,8 +645,8 @@ describe('DailyScreen', () => {
     expect(
       screen.getByLabelText(/Турнир с новой ежедневной игрой\. 1-й тур\. До закрытия/),
     ).toHaveStyle({
-      gridTemplateColumns: 'max-content max-content',
-      gap: 'clamp(14px, 2.2vh, 18px)',
+      gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+      gap: '8px',
     });
     fireEvent.click(screen.getByRole('button', { name: 'Начать' }));
 
@@ -5544,7 +5544,13 @@ describe('DailyScreen', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Результат дуэли' });
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByText('Победа')).toBeInTheDocument();
-    expect(within(dialog).getByText('3:1')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Итог игры: Tester — Duel Opponent, 3:1')).toHaveTextContent(
+      '3:1',
+    );
+    expect(within(dialog).getByText('Формат:')).toBeInTheDocument();
+    expect(within(dialog).getByText('Экспресс')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Соперник')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Начало')).not.toBeInTheDocument();
     expect(within(dialog).getByText('+3')).toBeInTheDocument();
     expect(within(dialog).queryByText('1-й период')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('25%')).not.toBeInTheDocument();
@@ -5610,6 +5616,7 @@ describe('DailyScreen', () => {
             opponentProgress: null,
             series: {
               id: 'series-1',
+              kind: 'third_place',
               winsRequired: 2,
               myWins: 1,
               opponentWins: 2,
@@ -5617,6 +5624,8 @@ describe('DailyScreen', () => {
               lowerSeedWins: 1,
               higherSeedUserId: 'u2',
               lowerSeedUserId: 'u1',
+              higherSeed: 7,
+              lowerSeed: 4,
               status: 'completed',
               winnerUserId: 'u2',
             },
@@ -5637,12 +5646,28 @@ describe('DailyScreen', () => {
     ]);
 
     const dialog = await screen.findByRole('dialog', { name: 'Результат дуэли' });
-    expect(
-      within(dialog).getByRole('heading', { name: 'Вы проиграли серию 1:2' }),
-    ).toBeInTheDocument();
-    expect(within(dialog).getByText('Вы 1:2 Соперник')).toBeInTheDocument();
-    expect(within(dialog).getByText('Счёт в серии')).toBeInTheDocument();
+    const resultHeading = within(dialog).getByRole('heading', {
+      name: 'Вы проиграли матч за 3-е место',
+    });
+    expect(resultHeading.getAttribute('style')).toContain('white-space: nowrap');
+    expect(resultHeading.getAttribute('style')).toContain('font-size: 19px');
+    const gameScore = within(dialog).getByLabelText('Итог игры: Tester — Duel Opponent, 1:2');
+    expect(gameScore).toHaveTextContent('Tester');
+    expect(gameScore).toHaveTextContent('Duel Opponent');
+    expect(gameScore).toHaveTextContent('1:2');
+    expect(within(gameScore).getByLabelText('Посев Tester: 4')).toBeInTheDocument();
+    expect(within(gameScore).getByLabelText('Посев Duel Opponent: 7')).toBeInTheDocument();
+    expect(within(dialog).getByText('Счёт в серии:')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('Счёт в серии 1:2')).toHaveTextContent('1:2');
+    expect(
+      within(dialog).getByRole('img', { name: 'Поражение в матче за третье место' }),
+    ).toHaveAttribute('src', '/tournament-results/series-loss.webp');
+    expect(within(dialog).getByText('Формат:')).toBeInTheDocument();
+    expect(within(dialog).getByText('Экспресс')).toBeInTheDocument();
+    expect(gameScore).toContainElement(within(dialog).getByText('Формат:'));
+    expect(gameScore).toContainElement(within(dialog).getByLabelText('Счёт в серии 1:2'));
+    expect(within(dialog).queryByText('Соперник')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Начало')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Очки')).not.toBeInTheDocument();
     expect(within(dialog).getByText('Следующая игра через:')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('До следующей игры')).toHaveTextContent(/0[34]:\d{2}/);
@@ -5710,6 +5735,7 @@ describe('DailyScreen', () => {
             opponentProgress: null,
             series: {
               id: 'series-1',
+              kind: 'championship',
               winsRequired: 2,
               myWins: 1,
               opponentWins: 1,

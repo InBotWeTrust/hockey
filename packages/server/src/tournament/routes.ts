@@ -52,9 +52,7 @@ import {
   openTournamentFixtureSegment,
   TournamentFixtureAttemptTerminalError,
 } from './fixtureLifecycle.js';
-import {
-  getTournamentFixtureAttemptStateWithReconciliation,
-} from './fixtureAttempts.js';
+import { getTournamentFixtureAttemptStateWithReconciliation } from './fixtureAttempts.js';
 import { publishTournamentFixtureProgress } from './realtimeProgress.js';
 import {
   finalizeTournamentDailyDay,
@@ -87,6 +85,7 @@ import {
   confirmTournamentSeriesWinnerDecision,
   requestTournamentSeriesWinnerDecision,
 } from './seriesAdminDecisions.js';
+import { acknowledgeRegularSeasonPodiumCongratulation } from './podiumCongratulations.js';
 
 const uuid = z.string().uuid();
 const nullableDate = z.string().datetime({ offset: true }).nullable().default(null);
@@ -100,11 +99,9 @@ export const tournamentScheduleOtherGamesQuerySchema = z
     cursorFixtureNumber: z.coerce.number().int().positive().optional(),
     cursorId: uuid.optional(),
   })
-  .refine(
-    (value) =>
-      (value.cursorFixtureNumber === undefined) === (value.cursorId === undefined),
-    { message: 'cursorFixtureNumber and cursorId must be provided together' },
-  );
+  .refine((value) => (value.cursorFixtureNumber === undefined) === (value.cursorId === undefined), {
+    message: 'cursorFixtureNumber and cursorId must be provided together',
+  });
 const TOURNAMENT_ARTWORK_MAX_PIXELS = 2048 * 2048;
 const classicShotSchema = z.object({
   shot_index: z.number().int().min(1),
@@ -258,6 +255,14 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     return { tournaments: await listPlayerTournaments(app.pg, req.user.id) };
   });
 
+  app.post('/tournaments/congratulations/:congratulationId/read', authenticated, async (req) => {
+    const params = z.object({ congratulationId: uuid }).parse(req.params);
+    return acknowledgeRegularSeasonPodiumCongratulation(app.pg, {
+      congratulationId: params.congratulationId,
+      userId: req.user.id,
+    });
+  });
+
   app.get('/tournaments/classic/active', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const now = new Date();
@@ -405,8 +410,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
         limit: z.coerce.number().int().min(1).max(20).default(4),
       })
       .refine(
-        (value) =>
-          (value.cursorFinalizedAt === undefined) === (value.cursorId === undefined),
+        (value) => (value.cursorFinalizedAt === undefined) === (value.cursorId === undefined),
         { message: 'cursorFinalizedAt and cursorId must be provided together' },
       )
       .parse(req.query);

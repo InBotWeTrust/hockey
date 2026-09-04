@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   dispatchTournamentCommunication,
   formatTournamentNotificationDateTime,
+  playoffDayStartingEventPhrase,
   previewTournamentAudience,
 } from '../../src/tournament/communications.js';
 
@@ -143,5 +144,17 @@ describe('tournament notification date formatting', () => {
         'invalid-timezone',
       ),
     ).toBe('3 сентября в 21:30');
+  });
+});
+
+describe('playoff day starting notification copy', () => {
+  it('calls a best-of-one fixture a game', () => {
+    expect(playoffDayStartingEventPhrase(1, false)).toBe('игра');
+    expect(playoffDayStartingEventPhrase(1, true)).toBe('новая игра');
+  });
+
+  it('calls a multi-win fixture a series of games', () => {
+    expect(playoffDayStartingEventPhrase(2, false)).toBe('серия игр');
+    expect(playoffDayStartingEventPhrase(4, true)).toBe('новая серия игр');
   });
 });

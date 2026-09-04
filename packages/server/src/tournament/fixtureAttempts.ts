@@ -63,6 +63,7 @@ export interface TournamentFixtureAttemptStateDTO {
   } | null;
   series: {
     id: string;
+    kind: 'championship' | 'third_place';
     winsRequired: number;
     myWins: number;
     opponentWins: number;
@@ -70,6 +71,8 @@ export interface TournamentFixtureAttemptStateDTO {
     lowerSeedWins: number;
     higherSeedUserId: string;
     lowerSeedUserId: string;
+    higherSeed: number | null;
+    lowerSeed: number | null;
     status: string;
     winnerUserId: string | null;
   } | null;
@@ -1203,11 +1206,14 @@ interface PlayerAttemptStateRow {
   opponent_current_period: number | null;
   opponent_period_started_at: Date | null;
   series_id: string | null;
+  series_kind: 'championship' | 'third_place' | null;
   wins_required: number | null;
   higher_seed_wins: number | null;
   lower_seed_wins: number | null;
   higher_seed_user_id: string | null;
   lower_seed_user_id: string | null;
+  higher_seed: number | null;
+  lower_seed: number | null;
   series_status: string | null;
   series_winner_user_id: string | null;
   tournament_status: string;
@@ -1256,10 +1262,12 @@ async function fetchPlayerAttemptStateRow(
             opponent_duel.state as opponent_state,
             opponent_duel.current_period as opponent_current_period,
             opponent_duel.period_started_at as opponent_period_started_at,
-            series.id as series_id, series.wins_required,
+            series.id as series_id, series.kind as series_kind, series.wins_required,
             series.higher_seed_wins, series.lower_seed_wins,
             higher_seed.user_id as higher_seed_user_id,
             lower_seed.user_id as lower_seed_user_id,
+            higher_seed.seed as higher_seed,
+            lower_seed.seed as lower_seed,
             series.status as series_status,
             series_winner.user_id as series_winner_user_id,
             tournament.status as tournament_status,
@@ -1420,6 +1428,7 @@ export async function getTournamentFixtureAttemptStateWithReconciliation(
           ? null
           : {
               id: row.series_id,
+              kind: row.series_kind!,
               winsRequired: Number(row.wins_required),
               myWins: Number(isHigherSeed ? row.higher_seed_wins : row.lower_seed_wins),
               opponentWins: Number(isHigherSeed ? row.lower_seed_wins : row.higher_seed_wins),
@@ -1427,6 +1436,8 @@ export async function getTournamentFixtureAttemptStateWithReconciliation(
               lowerSeedWins: Number(row.lower_seed_wins),
               higherSeedUserId: row.higher_seed_user_id,
               lowerSeedUserId: row.lower_seed_user_id,
+              higherSeed: row.higher_seed === null ? null : Number(row.higher_seed),
+              lowerSeed: row.lower_seed === null ? null : Number(row.lower_seed),
               status: row.series_status!,
               winnerUserId: row.series_winner_user_id,
             },

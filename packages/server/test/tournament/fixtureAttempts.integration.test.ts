@@ -1042,6 +1042,16 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       });
       expect(awayReady.statusCode).toBe(200);
 
+      for (const userId of [row.home_user_id, row.away_user_id]) {
+        const unread = await app.inject({
+          method: 'GET',
+          url: '/chat/unread',
+          headers: { authorization: `Bearer ${await jwt.issueAccessToken({ sub: userId })}` },
+        });
+        expect(unread.statusCode).toBe(200);
+        expect(Object.values(unread.json() as Record<string, number>)).not.toContain(1);
+      }
+
       const expectedHardDeadlineAt = new Date('2030-09-03T12:27:00.000Z');
       const deadlineRows = await pool.query<{
         hard_deadline_at: Date;
