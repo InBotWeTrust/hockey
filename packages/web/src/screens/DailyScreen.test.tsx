@@ -592,7 +592,14 @@ describe('DailyScreen', () => {
       expect(baseImage?.parentElement).toHaveStyle({ width: '56px', height: '56px' });
       expect(purchasedImage?.parentElement).toHaveStyle({ width: '56px', height: '56px' });
       expect(purchasedTitle).toHaveStyle({ fontSize: '15px', fontWeight: '950' });
-      expect(purchasedCopy).toHaveStyle({ fontSize: '12px', fontWeight: '500' });
+      expect(purchasedCopy).toHaveStyle({ fontSize: '12px', fontWeight: '760' });
+      expect(option).toHaveStyle({ boxShadow: 'none' });
+      expect(
+        option.querySelector('.duel-equipment-option__check--selected svg'),
+      ).toBeInTheDocument();
+      expect(
+        purchasedOption.querySelector('.duel-equipment-option__check:not(.duel-equipment-option__check--selected)'),
+      ).toBeInTheDocument();
       fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
     }
   });

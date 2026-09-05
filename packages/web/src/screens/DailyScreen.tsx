@@ -8946,10 +8946,11 @@ function ClassicRinkLoadoutModal({
               borderRadius: 16,
               padding: 10,
               display: 'grid',
-              gridTemplateColumns: '56px minmax(0, 1fr)',
+              gridTemplateColumns: '56px minmax(0, 1fr) 22px',
               alignItems: 'center',
               gap: 10,
               textAlign: 'left',
+              boxShadow: 'none',
             }}
           >
             <span
@@ -8984,13 +8985,14 @@ function ClassicRinkLoadoutModal({
                 style={{
                   color: 'rgba(15, 23, 42, 0.62)',
                   fontSize: 12,
-                  fontWeight: 500,
-                  lineHeight: 1.28,
+                  fontWeight: 760,
+                  lineHeight: 1.25,
                 }}
               >
                 {duelBaseEquipmentDrawback(kind)}
               </span>
             </span>
+            <DuelEquipmentSelectionRadio selected={selectedId === null} />
           </button>
           {items.map((item) => (
             <button
@@ -9004,10 +9006,11 @@ function ClassicRinkLoadoutModal({
                 borderRadius: 16,
                 padding: 10,
                 display: 'grid',
-                gridTemplateColumns: '56px minmax(0, 1fr)',
+                gridTemplateColumns: '56px minmax(0, 1fr) 22px',
                 alignItems: 'center',
                 gap: 10,
                 textAlign: 'left',
+                boxShadow: 'none',
               }}
             >
               <span
@@ -9044,8 +9047,8 @@ function ClassicRinkLoadoutModal({
                   style={{
                     color: 'rgba(15, 23, 42, 0.62)',
                     fontSize: 12,
-                    fontWeight: 500,
-                    lineHeight: 1.28,
+                    fontWeight: 760,
+                    lineHeight: 1.25,
                   }}
                 >
                   {formatInventoryResourceAmount(
@@ -9055,6 +9058,7 @@ function ClassicRinkLoadoutModal({
                   )}
                 </span>
               </span>
+              <DuelEquipmentSelectionRadio selected={selectedId === item.id} />
             </button>
           ))}
         </div>
