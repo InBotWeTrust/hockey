@@ -8971,8 +8971,8 @@ function ClassicRinkLoadoutModal({
                   height: '100%',
                   display: 'block',
                   objectFit: 'cover',
-                  filter: 'grayscale(0.45)',
-                  opacity: 0.72,
+                  filter: 'none',
+                  opacity: 1,
                 }}
               />
             </span>
@@ -8998,12 +8998,62 @@ function ClassicRinkLoadoutModal({
               type="button"
               className={`glass duel-equipment-option${selectedId === item.id ? ' duel-equipment-option--selected' : ''}`}
               onClick={() => onSelect(item.id)}
-              style={{ minHeight: 64, borderRadius: 16, padding: 10, display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left' }}
+              aria-pressed={selectedId === item.id}
+              style={{
+                minHeight: 78,
+                borderRadius: 16,
+                padding: 10,
+                display: 'grid',
+                gridTemplateColumns: '56px minmax(0, 1fr)',
+                alignItems: 'center',
+                gap: 10,
+                textAlign: 'left',
+              }}
             >
-              <img src={item.imageUrl || placeholderArtworkForKind(kind)} alt="" style={{ width: 46, height: 46, borderRadius: 12, objectFit: 'cover' }} />
-              <span style={{ display: 'grid', gap: 3 }}>
-                <strong>{item.title}</strong>
-                <span>{formatInventoryResourceAmount(item.kind, item.resourceAvailable, item.resourceUnit)}</span>
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 14,
+                  overflow: 'hidden',
+                  border: '1px solid rgba(255,255,255,0.78)',
+                  background: 'rgba(255,255,255,0.28)',
+                }}
+              >
+                <img
+                  src={item.imageUrl || placeholderArtworkForKind(kind)}
+                  alt=""
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    display: 'block',
+                    objectFit: 'cover',
+                    filter: 'none',
+                    opacity: 1,
+                  }}
+                />
+              </span>
+              <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
+                <strong
+                  style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}
+                >
+                  {item.title}
+                </strong>
+                <span
+                  style={{
+                    color: 'rgba(15, 23, 42, 0.62)',
+                    fontSize: 12,
+                    fontWeight: 500,
+                    lineHeight: 1.28,
+                  }}
+                >
+                  {formatInventoryResourceAmount(
+                    item.kind,
+                    item.resourceAvailable,
+                    item.resourceUnit,
+                  )}
+                </span>
               </span>
             </button>
           ))}

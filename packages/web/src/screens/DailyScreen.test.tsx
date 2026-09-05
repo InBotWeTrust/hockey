@@ -517,8 +517,28 @@ describe('DailyScreen', () => {
   });
 
   it('shows artwork and drawback copy for every base classic tournament item', async () => {
+    const inventoryAvailable: ClassicTournamentState['inventory_available'] = [
+      {
+        id: 'classic-stick', itemId: 'classic-stick', instanceId: null, kind: 'stick',
+        title: 'Клюшка Профи', imageUrl: '/inventory/stick-gold.webp', resourceUnit: 'shot',
+        resourceAvailable: 20, effectPuckSpeedPoints: 40, effectShooterFrequencyDelta: 0,
+        effectGoalieFrequencyDelta: 0, effectGoalFrequencyDelta: 0,
+      },
+      {
+        id: 'classic-skates', itemId: 'classic-skates', instanceId: null, kind: 'skates',
+        title: 'Коньки Профи', imageUrl: '/inventory/skates-gold.webp', resourceUnit: 'distance',
+        resourceAvailable: 20, effectPuckSpeedPoints: 0, effectShooterFrequencyDelta: 0,
+        effectGoalieFrequencyDelta: 0, effectGoalFrequencyDelta: 0,
+      },
+      {
+        id: 'classic-nutrition', itemId: 'classic-nutrition', instanceId: null, kind: 'nutrition',
+        title: 'Энерго-комплекс', imageUrl: '/inventory/nutrition-gold.webp', resourceUnit: 'energy_ms',
+        resourceAvailable: 20, effectPuckSpeedPoints: 0, effectShooterFrequencyDelta: 0,
+        effectGoalieFrequencyDelta: 0, effectGoalFrequencyDelta: 0,
+      },
+    ];
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify(classicIdleState), {
+      new Response(JSON.stringify({ ...classicIdleState, inventory_available: inventoryAvailable }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
@@ -533,6 +553,7 @@ describe('DailyScreen', () => {
         title: 'Обычные коньки',
         copy: 'Возможны спотыкания',
         artwork: '/inventory/skates-base.webp',
+        purchasedTitle: 'Коньки Профи',
       },
       {
         slot: /Энергия: Без питания/,
@@ -540,6 +561,7 @@ describe('DailyScreen', () => {
         title: 'Без питания',
         copy: 'Игрок будет уставать',
         artwork: '/inventory/nutrition-none.webp',
+        purchasedTitle: 'Энерго-комплекс',
       },
       {
         slot: /Клюшка: Обычная клюшка/,
@@ -547,6 +569,7 @@ describe('DailyScreen', () => {
         title: 'Обычная клюшка',
         copy: 'Шайба будет лететь медленно',
         artwork: '/inventory/stick-base.webp',
+        purchasedTitle: 'Клюшка Профи',
       },
     ];
 
@@ -560,6 +583,16 @@ describe('DailyScreen', () => {
         'src',
         expect.stringContaining(item.artwork),
       );
+      const purchasedOption = within(dialog).getByRole('button', { name: new RegExp(item.purchasedTitle) });
+      const baseImage = option.querySelector('img');
+      const purchasedImage = purchasedOption.querySelector('img');
+      const purchasedTitle = within(purchasedOption).getByText(item.purchasedTitle);
+      const purchasedCopy = purchasedTitle.nextElementSibling;
+      expect(baseImage).toHaveStyle({ filter: 'none', opacity: '1' });
+      expect(baseImage?.parentElement).toHaveStyle({ width: '56px', height: '56px' });
+      expect(purchasedImage?.parentElement).toHaveStyle({ width: '56px', height: '56px' });
+      expect(purchasedTitle).toHaveStyle({ fontSize: '15px', fontWeight: '950' });
+      expect(purchasedCopy).toHaveStyle({ fontSize: '12px', fontWeight: '500' });
       fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
     }
   });
