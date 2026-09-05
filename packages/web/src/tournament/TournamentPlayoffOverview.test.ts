@@ -310,4 +310,44 @@ describe('playoffSeriesScheduleLabel', () => {
         ?.closest('.tournament-bracket-overview__series-list'),
     ).toBe(finalList);
   });
+
+  it('highlights only the third-place winner row with bronze after the series is completed', () => {
+    const final = {
+      ...series('scheduled', []),
+      id: 'final',
+      round_number: 2,
+      depends_on: { key: 'R2S1', sources: [] },
+    };
+    const bronze = {
+      ...series('completed', []),
+      id: 'bronze',
+      kind: 'third_place' as const,
+      round_number: 2,
+      higher_seed_wins: 0,
+      lower_seed_wins: 4,
+      winner_user_id: 'u2',
+      depends_on: { key: 'BRONZE', sources: [] },
+    };
+
+    render(
+      createElement(TournamentPlayoffOverview, {
+        series: [final, bronze],
+        currentUserId: null,
+        timezone: 'Europe/Moscow',
+        onOpenSeries: vi.fn(),
+      }),
+    );
+
+    const bronzeButton = screen.getByRole('button', {
+      name: 'Открыть серию За 3-е место, Серия 2',
+    });
+    const firstRow = within(bronzeButton).getByText('Первый').closest('.tournament-bracket-player');
+    const secondRow = within(bronzeButton).getByText('Второй').closest('.tournament-bracket-player');
+
+    expect(firstRow).not.toHaveClass('tournament-bracket-player--bronze-winner');
+    expect(secondRow).toHaveClass('tournament-bracket-player--bronze-winner');
+    expect(bronzeButton.closest('.tournament-bracket-series')).not.toHaveClass(
+      'tournament-bracket-series--bronze',
+    );
+  });
 });

@@ -175,6 +175,7 @@ export function PlayoffParticipantRow(props: {
   seed: number | null;
   placeholder: string;
   winner: boolean;
+  bronzeWinner?: boolean;
   current: boolean;
   wins: number;
   compact: boolean;
@@ -193,6 +194,7 @@ export function PlayoffParticipantRow(props: {
       className={[
         'tournament-bracket-player',
         props.winner ? 'tournament-bracket-player--winner' : '',
+        props.bronzeWinner ? 'tournament-bracket-player--bronze-winner' : '',
         props.current ? 'tournament-bracket-player--current' : '',
       ]
         .filter(Boolean)
@@ -255,7 +257,6 @@ export function PlayoffSeriesCard(props: {
       className={[
         'tournament-bracket-series',
         isMySeries ? 'tournament-bracket-series--mine' : '',
-        props.bronze ? 'tournament-bracket-series--bronze' : '',
         props.compact ? 'tournament-bracket-series--compact' : '',
       ]
         .filter(Boolean)
@@ -297,6 +298,7 @@ export function PlayoffSeriesCard(props: {
               props.seriesNumberByKey,
             )}
             winner={higherWon}
+            bronzeWinner={props.bronze === true && higherWon}
             current={props.series.higher_user_id === props.currentUserId}
             wins={props.series.higher_seed_wins}
             compact={props.compact === true}
@@ -313,6 +315,7 @@ export function PlayoffSeriesCard(props: {
               props.seriesNumberByKey,
             )}
             winner={lowerWon}
+            bronzeWinner={props.bronze === true && lowerWon}
             current={props.series.lower_user_id === props.currentUserId}
             wins={props.series.lower_seed_wins}
             compact={props.compact === true}
