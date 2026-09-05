@@ -5,6 +5,7 @@ import type { ProfileAchievementDTO } from '../achievements/service.js';
 import type {
   CompetitionLevel,
   ProfileStatsDTO,
+  TrophyDetailsDTO,
   TrophySummaryDTO,
 } from '../profile/summary.js';
 
@@ -234,6 +235,7 @@ export interface UserPublicProfileDTO {
   starBalance: number;
   experienceBalance: number;
   trophySummary: TrophySummaryDTO;
+  trophyDetails: TrophyDetailsDTO;
   // ISO; surface "joined at" on the profile screen.
   createdAt: string;
   // ISO; surface "last seen" subtitle on the public profile / DM header.

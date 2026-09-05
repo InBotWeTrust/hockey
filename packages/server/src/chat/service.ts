@@ -16,7 +16,11 @@ import {
   MessageNotFoundError,
   PinLimitExceededError,
 } from './errors.js';
-import { buildProfileProgress, fetchTrophySummary } from '../profile/summary.js';
+import {
+  buildProfileProgress,
+  fetchTrophyDetails,
+  fetchTrophySummary,
+} from '../profile/summary.js';
 
 export const PIN_LIMIT = 3;
 
@@ -428,7 +432,10 @@ export async function getUserPublicProfile(
   if (r.rowCount === 0) return null;
   const row = r.rows[0]!;
   const profileProgress = await buildProfileProgress(pool, row);
-  const trophySummary = await fetchTrophySummary(pool, row.id);
+  const [trophySummary, trophyDetails] = await Promise.all([
+    fetchTrophySummary(pool, row.id),
+    fetchTrophyDetails(pool, row.id),
+  ]);
 
   return {
     id: row.id,
@@ -441,6 +448,7 @@ export async function getUserPublicProfile(
     starBalance: Number(row.star_balance),
     experienceBalance: Number(row.experience_balance),
     trophySummary,
+    trophyDetails,
     createdAt: row.created_at.toISOString(),
     lastSeenAt: row.last_seen_at !== null ? row.last_seen_at.toISOString() : null,
   };

@@ -26,10 +26,39 @@ import { placeholderArtworkForKind } from './inventoryArtwork.js';
 import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
 import {
   AchievementDetailsSheet,
+  FittedOneLineText,
   formatProfileNumber,
   getLevelLabel,
 } from './profileSections.js';
 import type { ProfileData } from './profileTypes.js';
+
+export type TrophySectionKey = keyof NonNullable<ProfileData['trophyDetails']>;
+
+const TROPHY_SECTION_TITLES: Record<TrophySectionKey, string> = {
+  regularSeasonWins: 'Победы в регулярке',
+  tournamentChampionships: 'Чемпионства',
+  tournamentPodiums: 'Призовые места',
+  completedChallenges: 'Пройденные челленджи',
+};
+
+function formatTrophyDateRange(startsAt: string | null, endsAt: string | null): string {
+  const format = (value: string | null): string | null => {
+    if (value === null) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? null
+      : date.toLocaleDateString('ru-RU', {
+          timeZone: 'UTC',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        });
+  };
+  const start = format(startsAt);
+  const end = format(endsAt);
+  if (start !== null && end !== null) return `${start} — ${end}`;
+  return start ?? end ?? 'Дата проведения не указана';
+}
 
 function ProfileBalance({
   label,
@@ -48,7 +77,7 @@ function ProfileBalance({
       <span className={`profile-balance__amount profile-balance__amount--${tone}`}>
         {icon}
         <strong className="profile-balance__value" aria-label={`${label}: ${value}`}>
-          {formatProfileNumber(value)}
+          <FittedOneLineText maxFontSize={18}>{formatProfileNumber(value)}</FittedOneLineText>
         </strong>
       </span>
     </div>
@@ -79,9 +108,9 @@ function EquipmentPanel({
   onChoose: (kind: keyof InventoryState['equipped']) => void;
 }): JSX.Element {
   const slots = [
-    ['stickItemId', 'Клюшка', 'клюшку'],
-    ['skatesItemId', 'Коньки', 'коньки'],
-    ['nutritionItemId', 'Питание', 'питание'],
+    ['stickItemId', 'Клюшка', 'клюшку', 'Базовая клюшка', 'stick'],
+    ['skatesItemId', 'Коньки', 'коньки', 'Базовые коньки', 'skates'],
+    ['nutritionItemId', 'Питание', 'питание', 'Базовое питание', 'nutrition'],
   ] as const;
   return (
     <section className="profile-equipment-section" aria-label="Активная экипировка">
@@ -95,7 +124,7 @@ function EquipmentPanel({
       </button>
       <div className="profile-equipment-panel glass">
         <span className="profile-loadout" aria-label="Выбранная экипировка">
-          {slots.map(([kind, label, actionLabel]) => {
+          {slots.map(([kind, label, actionLabel, baseImageAlt, equipmentKind]) => {
             const item = inventory === undefined ? null : findEquippedItem(inventory, kind);
             return (
               <button
@@ -106,10 +135,17 @@ function EquipmentPanel({
                 onClick={() => onChoose(kind)}
               >
                 <span className="profile-loadout-slot__image">
-                  {item?.imageUrl ? <img src={item.imageUrl} alt={item.title} /> : null}
-                  <strong>
-                    {item === null ? '—' : formatProfileNumber(item.chargesAvailable)}
-                  </strong>
+                  <img
+                    src={item?.imageUrl ?? placeholderArtworkForKind(equipmentKind)}
+                    alt={item?.title ?? baseImageAlt}
+                  />
+                  {item !== null ? (
+                    <strong>
+                      <FittedOneLineText maxFontSize={9} minFontSize={5}>
+                        {formatProfileNumber(item.chargesAvailable)}
+                      </FittedOneLineText>
+                    </strong>
+                  ) : null}
                 </span>
                 <span className="profile-loadout-slot__kind">{label}</span>
                 <span className="profile-loadout-slot__title">{item?.title ?? 'Не выбрано'}</span>
@@ -219,11 +255,7 @@ function EquipmentPickerModal({
               <strong>{item.title}</strong>
               <small>
                 Осталось:{' '}
-                {formatInventoryResourceAmount(
-                  item.kind,
-                  item.chargesAvailable,
-                  item.resourceUnit,
-                )}
+                {formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}
               </small>
             </span>
           </button>
@@ -233,7 +265,70 @@ function EquipmentPickerModal({
   );
 }
 
-function TrophyShowcase({ profile }: { profile: ProfileData }): JSX.Element {
+export function TrophyHistoryModal({
+  section,
+  details,
+  onClose,
+}: {
+  section: TrophySectionKey;
+  details: NonNullable<ProfileData['trophyDetails']>;
+  onClose: () => void;
+}): JSX.Element {
+  const title = TROPHY_SECTION_TITLES[section];
+  const isChallenge = section === 'completedChallenges';
+  const challengeItems = details.completedChallenges;
+  const tournamentItems = section === 'completedChallenges' ? [] : details[section];
+  const itemCount = isChallenge ? challengeItems.length : tournamentItems.length;
+  return (
+    <AccessibleModal
+      title={`${title} (${itemCount})`}
+      ariaLabel={`${title} (${itemCount})`}
+      onRequestClose={onClose}
+      cardClassName="profile-trophy-history-modal"
+      cardStyle={{
+        width: 'min(560px, calc(100vw - 32px))',
+        maxHeight: 'calc(100dvh - 32px - var(--app-safe-top) - var(--app-safe-bottom))',
+        overflowY: 'auto',
+      }}
+      headerAction={
+        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+          <X size={16} />
+        </button>
+      }
+    >
+      <div
+        className={`profile-trophy-history${isChallenge ? ' profile-trophy-history--challenges' : ''}`}
+      >
+        {isChallenge
+          ? challengeItems.map((item) => (
+              <article className="profile-trophy-history__challenge" key={item.id}>
+                <strong>{item.title}</strong>
+                <span>{formatTrophyDateRange(item.startsAt, item.endsAt)}</span>
+                <p>{item.tasks.join(' · ')}</p>
+              </article>
+            ))
+          : tournamentItems.map((item) => (
+              <article className="profile-trophy-history__tournament" key={item.id}>
+                {item.imageUrl ? <img src={item.imageUrl} alt={item.title} /> : null}
+                <span className="profile-trophy-history__tournament-copy">
+                  <strong>{item.title}</strong>
+                  <small>{formatTrophyDateRange(item.startsAt, item.endsAt)}</small>
+                  <em>{item.result}</em>
+                </span>
+              </article>
+            ))}
+      </div>
+    </AccessibleModal>
+  );
+}
+
+function TrophyShowcase({
+  profile,
+  onOpen,
+}: {
+  profile: ProfileData;
+  onOpen: (section: TrophySectionKey) => void;
+}): JSX.Element {
   const summary = profile.trophySummary ?? {
     regularSeasonWins: 0,
     tournamentChampionships: 0,
@@ -241,20 +336,43 @@ function TrophyShowcase({ profile }: { profile: ProfileData }): JSX.Element {
     completedChallenges: 0,
   };
   const items = [
-    ['Победы в регулярке', summary.regularSeasonWins, Trophy],
-    ['Чемпионства', summary.tournamentChampionships, Award],
-    ['Призовые места', summary.tournamentPodiums, Medal],
-    ['Челленджи', summary.completedChallenges, Target],
+    ['regularSeasonWins', 'Победы в регулярке', summary.regularSeasonWins, Trophy],
+    ['tournamentChampionships', 'Чемпионства', summary.tournamentChampionships, Award],
+    ['tournamentPodiums', 'Призовые места', summary.tournamentPodiums, Medal],
+    ['completedChallenges', 'Пройденные челленджи', summary.completedChallenges, Target],
   ] as const;
   return (
     <section className="profile-trophy-showcase" aria-label="Витрина наград">
-      {items.map(([label, value, Icon]) => (
-        <div className="profile-trophy-showcase__item" key={label}>
-          <Icon aria-hidden="true" />
-          <strong>{formatProfileNumber(value)}</strong>
-          <span>{label}</span>
-        </div>
-      ))}
+      {items.map(([key, label, value, Icon]) => {
+        const content = (
+          <>
+            <Icon aria-hidden="true" />
+            <strong>
+              <FittedOneLineText className="profile-trophy-showcase__number" maxFontSize={18}>
+                {formatProfileNumber(value)}
+              </FittedOneLineText>
+            </strong>
+            <span>{label}</span>
+          </>
+        );
+        return value > 0 ? (
+          <button
+            type="button"
+            className="profile-trophy-showcase__item"
+            key={key}
+            onClick={() => onOpen(key)}
+          >
+            {content}
+          </button>
+        ) : (
+          <div
+            className="profile-trophy-showcase__item profile-trophy-showcase__item--empty"
+            key={key}
+          >
+            {content}
+          </div>
+        );
+      })}
     </section>
   );
 }
@@ -267,10 +385,10 @@ function SportingMetrics({ profile }: { profile: ProfileData }): JSX.Element {
         timeZone: 'UTC',
         day: '2-digit',
         month: '2-digit',
-        year: 'numeric',
+        year: '2-digit',
       });
   const items: Array<{ value: ReactNode; label: string }> = [
-    { value: formatProfileNumber(profile.stats.goals), label: 'Голы' },
+    { value: formatProfileNumber(profile.stats.goals), label: 'Шайбы' },
     { value: `${formatProfileNumber(profile.stats.accuracy)}%`, label: 'Точность' },
     {
       value: (
@@ -290,7 +408,8 @@ function SportingMetrics({ profile }: { profile: ProfileData }): JSX.Element {
           registeredLabel
         ) : (
           <span className="profile-registration-date">
-            <span className="profile-registration-date__prefix">с</span> {registeredLabel}
+            <span className="profile-registration-date__prefix">с</span>
+            {registeredLabel}
           </span>
         ),
       label: 'В игре',
@@ -300,7 +419,9 @@ function SportingMetrics({ profile }: { profile: ProfileData }): JSX.Element {
     <div className="profile-sporting-metrics" aria-label="Главные показатели">
       {items.map(({ value, label }) => (
         <div className="profile-sporting-metrics__item" key={label}>
-          <strong>{value}</strong>
+          <strong>
+            <FittedOneLineText maxFontSize={17}>{value}</FittedOneLineText>
+          </strong>
           <span>{label}</span>
         </div>
       ))}
@@ -329,6 +450,7 @@ export function ProfileScreen(): JSX.Element {
   const [selectedAchievement, setSelectedAchievement] = useState<
     ProfileData['achievements'][number] | null
   >(null);
+  const [selectedTrophySection, setSelectedTrophySection] = useState<TrophySectionKey | null>(null);
   const updateUser = useAuthStore((state) => state.updateUser);
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -417,7 +539,7 @@ export function ProfileScreen(): JSX.Element {
               label="Звёзды"
               value={starBalance}
               tone="stars"
-              icon={<Star data-testid="profile-balance-icon-stars" aria-hidden="true" />}
+              icon={<Star data-testid="profile-balance-icon-stars" aria-hidden="true" fill="currentColor" />}
             />
             <ProfileBalance
               label="Опыт"
@@ -428,7 +550,7 @@ export function ProfileScreen(): JSX.Element {
           </div>
         </div>
         <SportingMetrics profile={profile} />
-        <TrophyShowcase profile={profile} />
+        <TrophyShowcase profile={profile} onOpen={setSelectedTrophySection} />
       </section>
 
       <section className="profile-sports-data" aria-label="Спортивные данные игрока">
@@ -454,7 +576,9 @@ export function ProfileScreen(): JSX.Element {
             </span>
             <span className="profile-utility-card__copy">
               <strong>Настройки</strong>
-              <small>Профиль и аккаунт</small>
+              <span className="profile-utility-card__subtitle profile-loadout-slot__kind">
+                Профиль и аккаунт
+              </span>
             </span>
             <ChevronRight aria-hidden="true" />
           </button>
@@ -474,6 +598,13 @@ export function ProfileScreen(): JSX.Element {
         <AchievementDetailsSheet
           achievement={selectedAchievement}
           onClose={() => setSelectedAchievement(null)}
+        />
+      ) : null}
+      {selectedTrophySection !== null && profile.trophyDetails !== undefined ? (
+        <TrophyHistoryModal
+          section={selectedTrophySection}
+          details={profile.trophyDetails}
+          onClose={() => setSelectedTrophySection(null)}
         />
       ) : null}
     </main>

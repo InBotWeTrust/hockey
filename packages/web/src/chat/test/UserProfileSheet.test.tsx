@@ -22,6 +22,21 @@ const publicProfile: api.UserPublicProfileDTO = {
     tournamentPodiums: 3,
     completedChallenges: 4,
   },
+  trophyDetails: {
+    regularSeasonWins: [
+      {
+        id: 'r1',
+        title: 'Кубок открытия',
+        imageUrl: '/cup.webp',
+        startsAt: '2026-08-01T10:00:00.000Z',
+        endsAt: '2026-08-08T10:00:00.000Z',
+        result: 'Победа в регулярном чемпионате',
+      },
+    ],
+    tournamentChampionships: [],
+    tournamentPodiums: [],
+    completedChallenges: [],
+  },
   stats: {
     shots: 128,
     goals: 64,
@@ -156,6 +171,19 @@ describe('UserProfileSheet', () => {
       match: {} as amateurDuelApi.AmateurDuelMatch,
     });
   });
+
+  it('opens the same tournament history modal from a public profile', async () => {
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+      onClose: vi.fn(),
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /победы в регулярке/i }));
+
+    expect(await screen.findByRole('dialog', { name: 'Победы в регулярке (1)' })).toHaveTextContent(
+      'Кубок открытия',
+    );
+  });
   afterEach(() => {
     vi.restoreAllMocks();
     act(() => {
@@ -195,7 +223,7 @@ describe('UserProfileSheet', () => {
     expect(await screen.findByText('Иван Петров')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
     expect(await screen.findByText('Любитель')).toBeInTheDocument();
-    expect(screen.getByText('Голы')).toBeInTheDocument();
+    expect(screen.getByText('Шайбы')).toBeInTheDocument();
     expect(screen.getByText('64')).toBeInTheDocument();
     expect(screen.getByText('(12)')).toBeInTheDocument();
     expect(screen.getByText('Выполненные задания (1)')).toBeInTheDocument();

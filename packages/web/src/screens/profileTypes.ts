@@ -46,6 +46,12 @@ export interface ProfileData {
     tournamentPodiums: number;
     completedChallenges: number;
   };
+  trophyDetails?: {
+    regularSeasonWins: TournamentTrophyDetail[];
+    tournamentChampionships: TournamentTrophyDetail[];
+    tournamentPodiums: TournamentTrophyDetail[];
+    completedChallenges: ChallengeTrophyDetail[];
+  };
   unclaimedAchievementsCount?: number;
   currencyBalance?: number;
   starBalance?: number;
@@ -69,4 +75,21 @@ export interface ProfileData {
   vkAvatarUrl?: string | null;
   vkUsername?: string | null;
   pendingTournamentCongratulations?: RegularSeasonPodiumCongratulation[];
+}
+
+export interface TournamentTrophyDetail {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  result: string;
+}
+
+export interface ChallengeTrophyDetail {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  tasks: string[];
 }

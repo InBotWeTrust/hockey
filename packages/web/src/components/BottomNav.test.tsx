@@ -71,6 +71,17 @@ describe('BottomNav remembered navigation', () => {
     });
   });
 
+  it('uses the same rounded-card radius as profile settings', () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      user: { id: 'u1', displayName: 'Player' },
+    });
+    renderBottomNav('/profile');
+
+    expect(screen.getByLabelText('Навигация')).toHaveStyle({ borderRadius: '19px' });
+  });
+
   it('resets the active game section to the arena', () => {
     renderBottomNav('/?view=amateur&match=m1');
 

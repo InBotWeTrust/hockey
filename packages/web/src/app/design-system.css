@@ -3338,9 +3338,15 @@
 
 .profile-balance__value {
   min-width: 0;
-  overflow: hidden;
   font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
+}
+
+.profile-fitted-number {
+  width: 100%;
+  min-width: 0;
+  display: block;
+  overflow: hidden;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
@@ -3389,12 +3395,83 @@
 }
 
 .profile-trophy-showcase__item {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  padding: 0;
   min-width: 0;
   display: grid;
   justify-items: center;
   align-content: start;
   gap: 3px;
   text-align: center;
+}
+
+.profile-trophy-showcase button.profile-trophy-showcase__item {
+  cursor: pointer;
+}
+.profile-trophy-showcase button.profile-trophy-showcase__item:active {
+  transform: scale(0.97);
+}
+.profile-trophy-history {
+  display: grid;
+  gap: 10px;
+}
+.profile-trophy-history__tournament {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+.profile-trophy-history__tournament img {
+  width: 72px;
+  height: 72px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+.profile-trophy-history__tournament-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  align-content: center;
+}
+.profile-trophy-history__tournament strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+.profile-trophy-history__tournament small,
+.profile-trophy-history__challenge > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.profile-trophy-history__tournament em,
+.profile-trophy-history__challenge p {
+  color: var(--ink);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.25;
+}
+.profile-trophy-history__challenge {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+.profile-trophy-history__challenge strong {
+  color: var(--ink);
+}
+.profile-trophy-history__challenge p {
+  margin: 2px 0 0;
 }
 
 .profile-trophy-showcase__item svg {
@@ -3405,13 +3482,23 @@
 }
 
 .profile-trophy-showcase__item strong {
+  width: 100%;
+  min-width: 0;
+  color: var(--ink);
   font-size: 18px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
-.profile-trophy-showcase__item span {
-  color: var(--muted-soft);
+.profile-trophy-showcase__number {
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: inherit;
+  line-height: inherit;
+}
+
+.profile-trophy-showcase__item > span {
+  color: var(--muted);
   font-size: 9px;
   line-height: 1.12;
   font-weight: 800;
@@ -3443,13 +3530,16 @@
 }
 
 .profile-sporting-metrics__item strong {
+  width: 100%;
   max-width: 100%;
-  overflow: hidden;
+  color: #fff;
   font-size: 17px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.profile-sporting-metrics__item .profile-fitted-number {
+  color: #fff;
 }
 
 .profile-sporting-metrics__item .profile-streak-record {
@@ -3465,6 +3555,8 @@
 }
 
 .profile-sporting-metrics__item .profile-registration-date__prefix {
+  display: inline-block;
+  margin-right: 4px;
   color: rgba(230, 242, 250, 0.58);
   font-size: 0.72em;
   font-weight: 500;
@@ -3856,6 +3948,13 @@
   color: var(--muted);
   font-size: 8px;
   font-weight: 750;
+}
+
+.profile-utility-card__copy .profile-utility-card__subtitle {
+  color: var(--muted-soft);
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: 0.05em;
 }
 
 .profile-utility-card > svg {

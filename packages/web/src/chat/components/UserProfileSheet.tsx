@@ -21,6 +21,7 @@ import {
 import { useAuthStore } from '../../auth/authStore.js';
 import { DuelChallengeModal, hasOpenDuelWithUser } from './DuelChallengeModal.js';
 import { Sheet } from '../../components/Sheet.js';
+import { TrophyHistoryModal, type TrophySectionKey } from '../../screens/ProfileScreen.js';
 
 interface UserProfileSheetProps {
   sender: UserPickerItem | null;
@@ -55,10 +56,12 @@ function PublicSportingPassport({
   profile,
   displayName,
   avatarUrl,
+  onOpenTrophy,
 }: {
   profile: UserPublicProfileDTO;
   displayName: string;
   avatarUrl: string | null;
+  onOpenTrophy: (section: TrophySectionKey) => void;
 }): JSX.Element {
   const registeredDate = new Date(profile.createdAt);
   const registeredLabel = Number.isNaN(registeredDate.getTime())
@@ -67,7 +70,7 @@ function PublicSportingPassport({
         timeZone: 'UTC',
         day: '2-digit',
         month: '2-digit',
-        year: 'numeric',
+        year: '2-digit',
       });
   const trophySummary = profile.trophySummary ?? {
     regularSeasonWins: 0,
@@ -76,10 +79,10 @@ function PublicSportingPassport({
     completedChallenges: 0,
   };
   const trophies = [
-    ['Победы в регулярке', trophySummary.regularSeasonWins, Trophy],
-    ['Чемпионства', trophySummary.tournamentChampionships, Award],
-    ['Призовые места', trophySummary.tournamentPodiums, Medal],
-    ['Челленджи', trophySummary.completedChallenges, Target],
+    ['regularSeasonWins', 'Победы в регулярке', trophySummary.regularSeasonWins, Trophy],
+    ['tournamentChampionships', 'Чемпионства', trophySummary.tournamentChampionships, Award],
+    ['tournamentPodiums', 'Призовые места', trophySummary.tournamentPodiums, Medal],
+    ['completedChallenges', 'Пройденные челленджи', trophySummary.completedChallenges, Target],
   ] as const;
 
   return (
@@ -123,7 +126,7 @@ function PublicSportingPassport({
       <div className="profile-sporting-metrics" aria-label="Главные показатели">
         <div className="profile-sporting-metrics__item">
           <strong>{formatProfileNumber(profile.stats.goals)}</strong>
-          <span>Голы</span>
+          <span>Шайбы</span>
         </div>
         <div className="profile-sporting-metrics__item">
           <strong>{formatProfileNumber(profile.stats.accuracy)}%</strong>
@@ -148,7 +151,8 @@ function PublicSportingPassport({
               registeredLabel
             ) : (
               <span className="profile-registration-date">
-                <span className="profile-registration-date__prefix">с</span> {registeredLabel}
+                <span className="profile-registration-date__prefix">с</span>
+                {registeredLabel}
               </span>
             )}
           </strong>
@@ -156,13 +160,29 @@ function PublicSportingPassport({
         </div>
       </div>
       <section className="profile-trophy-showcase" aria-label="Витрина наград">
-        {trophies.map(([label, value, Icon]) => (
-          <div className="profile-trophy-showcase__item" key={label}>
-            <Icon aria-hidden="true" />
-            <strong>{formatProfileNumber(value)}</strong>
-            <span>{label}</span>
-          </div>
-        ))}
+        {trophies.map(([section, label, value, Icon]) => {
+          const content = (
+            <>
+              <Icon aria-hidden="true" />
+              <strong className="profile-trophy-showcase__number">{formatProfileNumber(value)}</strong>
+              <span>{label}</span>
+            </>
+          );
+          return value > 0 ? (
+            <button
+              type="button"
+              className="profile-trophy-showcase__item"
+              key={section}
+              onClick={() => onOpenTrophy(section)}
+            >
+              {content}
+            </button>
+          ) : (
+            <div className="profile-trophy-showcase__item" key={section}>
+              {content}
+            </div>
+          );
+        })}
       </section>
     </section>
   );
@@ -185,6 +205,7 @@ function UserProfileSheetContent({
   const meId = useAuthStore((s) => s.user?.id ?? null);
   const senderId = sender.userId;
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
+  const [selectedTrophy, setSelectedTrophy] = useState<TrophySectionKey | null>(null);
   const [duelPickerOpen, setDuelPickerOpen] = useState(false);
 
   const { mutate, isPending } = useMutation({
@@ -259,6 +280,7 @@ function UserProfileSheetContent({
             profile={profile}
             displayName={displayName}
             avatarUrl={avatarUrl}
+            onOpenTrophy={setSelectedTrophy}
           />
         ) : (
           <div
@@ -332,6 +354,13 @@ function UserProfileSheetContent({
           <AchievementDetailsSheet
             achievement={selectedAchievement}
             onClose={() => setSelectedAchievement(null)}
+          />
+        )}
+        {selectedTrophy !== null && profile?.trophyDetails !== undefined && (
+          <TrophyHistoryModal
+            section={selectedTrophy}
+            details={profile.trophyDetails}
+            onClose={() => setSelectedTrophy(null)}
           />
         )}
         {duelPickerOpen && (

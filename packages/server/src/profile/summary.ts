@@ -32,6 +32,30 @@ export interface TrophySummaryDTO {
   completedChallenges: number;
 }
 
+export interface TournamentTrophyDetailDTO {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  result: string;
+}
+
+export interface ChallengeTrophyDetailDTO {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  tasks: string[];
+}
+
+export interface TrophyDetailsDTO {
+  regularSeasonWins: TournamentTrophyDetailDTO[];
+  tournamentChampionships: TournamentTrophyDetailDTO[];
+  tournamentPodiums: TournamentTrophyDetailDTO[];
+  completedChallenges: ChallengeTrophyDetailDTO[];
+}
+
 export async function fetchTrophySummary(db: Queryable, userId: string): Promise<TrophySummaryDTO> {
   const { rows } = await db.query<{
     regular_season_wins: number;
@@ -90,7 +114,13 @@ export async function fetchTrophySummary(db: Queryable, userId: string): Promise
           from completed_playoff_finals final
           join tournament_participant winner on winner.id = final.winner_participant_id
          where winner.user_id = $1) as tournament_championships,
-       (select count(distinct podium.tournament_id)::int
+       (select count(*)::int
+          from tournament_standing standing
+          join tournament_participant participant on participant.id = standing.participant_id
+          join tournament tournament_record on tournament_record.id = standing.tournament_id
+         where participant.user_id = $1 and standing.rank in (2, 3)
+           and tournament_record.status = 'completed') +
+       (select count(*)::int
           from playoff_podiums podium
           join tournament_participant participant on participant.id = podium.participant_id
          where participant.user_id = $1) as tournament_podiums,
@@ -105,6 +135,122 @@ export async function fetchTrophySummary(db: Queryable, userId: string): Promise
     tournamentPodiums: Number(row.tournament_podiums),
     completedChallenges: Number(row.completed_challenges),
   };
+}
+
+export async function fetchTrophyDetails(db: Queryable, userId: string): Promise<TrophyDetailsDTO> {
+  const { rows: tournamentRows } = await db.query<{
+    category: 'regularSeasonWins' | 'tournamentChampionships' | 'tournamentPodiums';
+    id: string;
+    title: string;
+    image_url: string | null;
+    starts_at: Date | null;
+    ends_at: Date | null;
+    result: string;
+  }>(
+    `with playoff_finals as (
+       select distinct on (series.tournament_id)
+              series.tournament_id, series.higher_seed_participant_id,
+              series.lower_seed_participant_id, series.winner_participant_id,
+              series.status, round_record.ends_at
+         from tournament_playoff_series series
+         join tournament_round round_record on round_record.id = series.round_id
+        where series.kind = 'championship'
+          and round_record.stage = 'playoff'
+          and round_record.number = (
+            select max(final_round.number)
+              from tournament_round final_round
+             where final_round.tournament_id = series.tournament_id
+               and final_round.stage = 'playoff'
+          )
+        order by series.tournament_id, series.bracket_position, series.id
+     ), awards as (
+       select standing.tournament_id, participant.user_id, 'regularSeasonWins'::text as category,
+              'Победа в регулярном чемпионате'::text as result
+         from tournament_standing standing
+         join tournament_participant participant on participant.id = standing.participant_id
+         join tournament tournament_record on tournament_record.id = standing.tournament_id
+        where standing.rank = 1 and tournament_record.status = 'completed'
+       union all
+       select standing.tournament_id, participant.user_id, 'tournamentPodiums'::text,
+              case standing.rank when 2 then '2-е место в регулярном чемпионате'
+                                 else '3-е место в регулярном чемпионате' end
+         from tournament_standing standing
+         join tournament_participant participant on participant.id = standing.participant_id
+         join tournament tournament_record on tournament_record.id = standing.tournament_id
+        where standing.rank in (2, 3) and tournament_record.status = 'completed'
+       union all
+       select final.tournament_id, winner.user_id, 'tournamentChampionships'::text, 'Победа в финале'
+         from playoff_finals final
+         join tournament_participant winner on winner.id = final.winner_participant_id
+        where final.status = 'completed'
+       union all
+       select final.tournament_id, finalist.user_id, 'tournamentPodiums'::text, '2-е место'
+         from playoff_finals final
+         join tournament_participant finalist on finalist.id = case
+           when final.winner_participant_id = final.higher_seed_participant_id
+             then final.lower_seed_participant_id else final.higher_seed_participant_id end
+        where final.status = 'completed'
+       union all
+       select series.tournament_id, participant.user_id, 'tournamentPodiums'::text, '3-е место'
+         from tournament_playoff_series series
+         join tournament_participant participant on participant.id = series.winner_participant_id
+        where series.kind = 'third_place' and series.status = 'completed'
+     )
+     select awards.category, tournament_record.id, tournament_record.title, tournament_record.image_url,
+            tournament_record.starts_at, tournament_record.completed_at as ends_at, awards.result
+       from awards
+       join tournament tournament_record on tournament_record.id = awards.tournament_id
+      where awards.user_id = $1
+      order by tournament_record.completed_at desc nulls last, tournament_record.starts_at desc nulls last,
+               tournament_record.id desc`,
+    [userId],
+  );
+  const { rows: challengeRows } = await db.query<{
+    id: string;
+    title: string;
+    start_at: Date;
+    end_at: Date;
+    tasks: string[];
+  }>(
+    `select challenge.id, challenge.title, challenge.start_at, challenge.end_at,
+            array_agg(coalesce(nullif(task.title, ''), case task.type
+              when 'goals_scored' then 'Забросить ' || task.target || ' шайб'
+              when 'duels_played' then 'Сыграть ' || task.target || ' дуэлей'
+              when 'duels_won' then 'Победить в ' || task.target || ' дуэлях'
+              when 'duel_invites_sent' then 'Пригласить ' || task.target || ' соперников'
+              else 'Завершить ' || task.target || ' тренировок' end)
+              order by task.sort_order asc, task.created_at asc) as tasks
+       from weekly_challenge_reward_claims claim
+       join weekly_challenges challenge on challenge.id = claim.challenge_id
+       join weekly_challenge_tasks task on task.challenge_id = challenge.id
+      where claim.user_id = $1
+      group by challenge.id
+      order by challenge.end_at desc, challenge.start_at desc`,
+    [userId],
+  );
+  const details: TrophyDetailsDTO = {
+    regularSeasonWins: [],
+    tournamentChampionships: [],
+    tournamentPodiums: [],
+    completedChallenges: challengeRows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      startsAt: row.start_at.toISOString(),
+      endsAt: row.end_at.toISOString(),
+      tasks: row.tasks,
+    })),
+  };
+  for (const row of tournamentRows) {
+    details[row.category].push({
+      id: `${row.id}:${row.result}`,
+      title: row.title,
+      imageUrl: row.image_url,
+      startsAt: row.starts_at?.toISOString() ?? null,
+      endsAt: row.ends_at?.toISOString() ?? null,
+      result: row.result,
+    });
+  }
+  return details;
 }
 
 export interface ProfileProgressRow {

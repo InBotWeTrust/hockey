@@ -3,7 +3,11 @@ import { z } from 'zod';
 import { recomputeEffectiveProfile, type DisplaySource } from '../auth/profile.js';
 import { canUseExperimentalTrainingCourt } from '../auth/featureAccess.js';
 import { AppError } from '../plugins/errors.js';
-import { buildProfileProgress, fetchTrophySummary } from '../profile/summary.js';
+import {
+  buildProfileProgress,
+  fetchTrophyDetails,
+  fetchTrophySummary,
+} from '../profile/summary.js';
 import { listPendingRegularSeasonPodiumCongratulations } from '../tournament/podiumCongratulations.js';
 
 interface MeRow {
@@ -78,7 +82,10 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
   }
   const row = rows[0]!;
   const profileProgress = await buildProfileProgress(app.pg, row);
-  const trophySummary = await fetchTrophySummary(app.pg, row.id);
+  const [trophySummary, trophyDetails] = await Promise.all([
+    fetchTrophySummary(app.pg, row.id),
+    fetchTrophyDetails(app.pg, row.id),
+  ]);
   const experimentalTrainingCourt = await canUseExperimentalTrainingCourt(app.pg, {
     id: row.id,
     role: row.role,
@@ -96,6 +103,7 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
     stats: profileProgress.stats,
     achievements: profileProgress.achievements,
     trophySummary,
+    trophyDetails,
     unclaimedAchievementsCount: profileProgress.unclaimedAchievementsCount,
     currencyBalance: Number(row.currency_balance),
     starBalance: Number(row.star_balance),

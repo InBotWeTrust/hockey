@@ -477,6 +477,39 @@ export interface UserPublicProfileDTO {
     tournamentPodiums: number;
     completedChallenges: number;
   };
+  trophyDetails?: {
+    regularSeasonWins: Array<{
+      id: string;
+      title: string;
+      imageUrl: string | null;
+      startsAt: string | null;
+      endsAt: string | null;
+      result: string;
+    }>;
+    tournamentChampionships: Array<{
+      id: string;
+      title: string;
+      imageUrl: string | null;
+      startsAt: string | null;
+      endsAt: string | null;
+      result: string;
+    }>;
+    tournamentPodiums: Array<{
+      id: string;
+      title: string;
+      imageUrl: string | null;
+      startsAt: string | null;
+      endsAt: string | null;
+      result: string;
+    }>;
+    completedChallenges: Array<{
+      id: string;
+      title: string;
+      startsAt: string;
+      endsAt: string;
+      tasks: string[];
+    }>;
+  };
   createdAt: string; // ISO
   lastSeenAt: string | null; // ISO; null = never recorded
 }

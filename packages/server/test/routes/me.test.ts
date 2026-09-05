@@ -480,6 +480,18 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
       tournamentChampionships: 0,
       tournamentPodiums: 0,
     });
+
+    const championProfile = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { authorization: `Bearer ${champion.accessToken}` },
+    });
+    expect(championProfile.statusCode).toBe(200);
+    expect(championProfile.json()).toMatchObject({
+      trophyDetails: {
+        tournamentChampionships: [{ title: 'Profile trophy summary', result: 'Победа в финале' }],
+      },
+    });
   });
 
   it('counts only completed final and bronze series, never completed semi-finals', async () => {

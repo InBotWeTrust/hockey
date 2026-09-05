@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import type { CompetitionLevel, ProfileAchievement, ProfileStats } from './profileTypes.js';
@@ -19,6 +19,59 @@ export const EMPTY_PROFILE_STATS: ProfileStats = {
 
 export function formatProfileNumber(value: number): string {
   return new Intl.NumberFormat('ru-RU').format(value);
+}
+
+export function FittedOneLineText({
+  children,
+  className,
+  maxFontSize,
+  minFontSize = 6,
+}: {
+  children: ReactNode;
+  className?: string;
+  maxFontSize: number;
+  minFontSize?: number;
+}): JSX.Element {
+  const textRef = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    const text = textRef.current;
+    if (!text) return;
+
+    let frame = 0;
+    const fit = (): void => {
+      text.style.fontSize = `${maxFontSize}px`;
+      const availableWidth = text.clientWidth;
+      const textWidth = text.scrollWidth;
+      const nextFontSize =
+        availableWidth > 0 && textWidth > availableWidth
+          ? Math.max(minFontSize, Math.floor(((maxFontSize * availableWidth) / textWidth) * 10) / 10)
+          : maxFontSize;
+      text.style.fontSize = `${nextFontSize}px`;
+    };
+    const scheduleFit = (): void => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(fit);
+    };
+
+    scheduleFit();
+    void document.fonts?.ready.then(scheduleFit).catch(() => undefined);
+    window.addEventListener('resize', scheduleFit);
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleFit);
+    resizeObserver?.observe(text);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', scheduleFit);
+      resizeObserver?.disconnect();
+    };
+  }, [children, maxFontSize, minFontSize]);
+
+  return (
+    <span className={className ? `profile-fitted-number ${className}` : 'profile-fitted-number'} ref={textRef}>
+      {children}
+    </span>
+  );
 }
 
 export function getLevelLabel(level: CompetitionLevel | undefined): string {

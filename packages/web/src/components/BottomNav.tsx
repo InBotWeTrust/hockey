@@ -307,7 +307,7 @@ export function BottomNav(): JSX.Element | null {
           maxWidth: 406,
           margin: '0 auto',
           height: 54,
-          borderRadius: 999,
+          borderRadius: 19,
           display: 'grid',
           gridTemplateColumns: `repeat(${navCount}, 1fr)`,
           alignItems: 'center',
