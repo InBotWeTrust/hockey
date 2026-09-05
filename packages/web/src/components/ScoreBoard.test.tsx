@@ -140,6 +140,26 @@ describe('ScoreBoard', () => {
     expect(label).toHaveStyle({ whiteSpace: 'nowrap' });
   });
 
+  it('uses compact typography for the duel readiness label', () => {
+    render(
+      <ScoreBoard
+        period={1}
+        periodsTotal={2}
+        timer="14:45"
+        timerLabel="Готовность"
+        goals={0}
+        shots={0}
+        shotsTotal={30}
+      />,
+    );
+
+    const label = screen.getByText('Готовность');
+    expect(label.closest('.game-scoreboard__metric')).toHaveClass(
+      'game-scoreboard__metric--small',
+    );
+    expect(label).toHaveStyle({ whiteSpace: 'nowrap' });
+  });
+
   it('builds the existing duel order and opponent status notice', () => {
     const model = buildGameScoreboardModel({
       period: 1,

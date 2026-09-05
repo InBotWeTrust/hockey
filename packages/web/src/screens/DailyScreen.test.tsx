@@ -1643,7 +1643,7 @@ describe('DailyScreen', () => {
     });
   });
 
-  it('renders the immutable amateur duel arena snapshot on the rink', async () => {
+  it('renders a regular amateur duel on the amateur daily rink', async () => {
     const waitingMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
       status: 'active',
@@ -1713,7 +1713,10 @@ describe('DailyScreen', () => {
     );
     expect(screen.queryByRole('heading', { name: 'Дуэль' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Эта дуэль сейчас не на площадке/)).not.toBeInTheDocument();
-    expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
+    expect(
+      document.querySelector('img[src="/sprites/amateur-daily-court.webp"]'),
+    ).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeFalsy();
     expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeFalsy();
   });
 
@@ -4927,7 +4930,10 @@ describe('DailyScreen', () => {
 
     const startButton = await screen.findByRole('button', { name: 'НАЧАТЬ' });
     expect(startButton).toBeEnabled();
-    expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
+    expect(
+      document.querySelector('img[src="/sprites/amateur-daily-court.webp"]'),
+    ).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeFalsy();
     expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeFalsy();
     expect(screen.getByLabelText('Игровое табло')).toBeInTheDocument();
     expect(document.querySelector('img[src="/sprites/duel-tableau.webp"]')).toBeFalsy();

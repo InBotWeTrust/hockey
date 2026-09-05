@@ -85,7 +85,9 @@ export function buildGameScoreboardModel({
     label: timerLabel,
     value: timer,
     tone: 'timer',
-    ...(timer.length >= 6 || timerLabel.length >= 18 ? { emphasis: 'small' as const } : {}),
+    ...(timer.length >= 6 || timerLabel.length >= 18 || timerLabel === 'Готовность'
+      ? { emphasis: 'small' as const }
+      : {}),
   };
   const shotsMetric: GameScoreboardMetric = {
     id: 'shots',

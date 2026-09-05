@@ -248,8 +248,8 @@ const LEGACY_STANDARD_ARENA_BACKGROUNDS = new Set([
   '/sprites/arena-ice-court-v2.webp',
 ]);
 
-function tournamentDuelCourtBackground(match: AmateurDuelMatchState): string | undefined {
-  if (match.source !== 'tournament') return undefined;
+function amateurDuelCourtBackground(match: AmateurDuelMatchState): string {
+  if (match.source !== 'tournament') return AMATEUR_DAILY_COURT_BACKGROUND;
   return LEGACY_STANDARD_ARENA_BACKGROUNDS.has(match.arena.artwork_url)
     ? AMATEUR_TOURNAMENT_COURT_BACKGROUND
     : match.arena.artwork_url;
@@ -5608,7 +5608,7 @@ function AmateurDuelPlayView({
           submitShot={submitShot}
           applyState={applyState}
           duelCondition={duelCondition}
-          longCourtBackground={tournamentDuelCourtBackground(match)}
+          longCourtBackground={amateurDuelCourtBackground(match)}
           hudAddon={
             <DuelRinkLoadoutHud
               match={match}
@@ -5782,7 +5782,7 @@ function AmateurDuelPlayView({
           submitShot={submitShot}
           applyState={applyState}
           duelCondition={duelCondition}
-          longCourtBackground={tournamentDuelCourtBackground(match)}
+          longCourtBackground={amateurDuelCourtBackground(match)}
           hudAddon={
             <DuelInventoryMiniHud
               match={match}
