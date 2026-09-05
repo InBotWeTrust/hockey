@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import type { FastifyPluginAsync } from 'fastify';
 import { Buffer } from 'node:buffer';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
@@ -32,6 +32,7 @@ import {
 } from '../push/templates.js';
 import type { PushEventType } from '../push/preferences.js';
 import { PUSH_QUEUE_PROCESSING_STALE_MS } from '../push/queue.js';
+import { createAdminPreHandlers } from './guards.js';
 
 type UserRole = 'player' | 'admin';
 type DisplaySource = 'custom' | 'telegram' | 'vk';
@@ -262,6 +263,8 @@ interface AdminUserRow {
   push_duel_events: boolean;
   push_tournament_events: boolean;
   push_game_news: boolean;
+  beginner_onboarding_completed: boolean;
+  amateur_onboarding_completed: boolean;
   total_count?: string;
 }
 
@@ -492,6 +495,8 @@ const userPatchSchema = z
     lifetimeShotsTotal: z.number().int().min(0).max(2_147_483_647).optional(),
     lifetimeGoalsTotal: z.number().int().min(0).max(2_147_483_647).optional(),
     isBlocked: z.boolean().optional(),
+    beginnerOnboardingCompleted: z.boolean().optional(),
+    amateurOnboardingCompleted: z.boolean().optional(),
     wallet: z
       .object({
         shotsCurrent: z.number().int().min(0).max(100_000).optional(),
@@ -517,6 +522,8 @@ const userPatchSchema = z
       value.lifetimeShotsTotal !== undefined ||
       value.lifetimeGoalsTotal !== undefined ||
       value.isBlocked !== undefined ||
+      value.beginnerOnboardingCompleted !== undefined ||
+      value.amateurOnboardingCompleted !== undefined ||
       (value.wallet !== undefined && Object.keys(value.wallet).length > 0),
     'no changes',
   );
@@ -1180,6 +1187,8 @@ function mapUser(row: AdminUserRow) {
     createdAt: row.created_at.toISOString(),
     lastSeenAt: row.last_seen_at?.toISOString() ?? null,
     isBlocked: row.blocked_at !== null,
+    beginnerOnboardingCompleted: row.beginner_onboarding_completed,
+    amateurOnboardingCompleted: row.amateur_onboarding_completed,
     blockedAt: row.blocked_at?.toISOString() ?? null,
     blockedBy: row.blocked_by,
     blockedByDisplayName: row.blocked_by_display_name,
@@ -1425,15 +1434,6 @@ function mapChannelPost(row: AdminChannelPostRow) {
       count: Number(reaction.count),
     })),
   };
-}
-
-async function requireAdmin(app: Parameters<FastifyPluginAsync>[0], req: FastifyRequest) {
-  const { rows } = await app.pg.query<{ role: UserRole }>('select role from users where id = $1', [
-    req.user.id,
-  ]);
-  if (rows[0]?.role !== 'admin') {
-    throw new AppError('forbidden', 'admin role required', 403);
-  }
 }
 
 async function fetchPushNotificationStats(
@@ -1827,6 +1827,7 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
               else u.avatar_url
             end as active_avatar_url,
             u.timezone, u.created_at, u.last_seen_at,
+            u.beginner_onboarding_completed, u.amateur_onboarding_completed,
             u.blocked_at, u.blocked_by, blocker.display_name as blocked_by_display_name,
             u.lifetime_shots_total, u.lifetime_goals_total,
             case
@@ -1956,10 +1957,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
     (_req, body, done) => done(null, body),
   );
 
-  const adminPreHandlers = [
-    app.authenticate,
-    async (req: FastifyRequest) => requireAdmin(app, req),
-  ];
+  const adminPreHandlers = createAdminPreHandlers(app);
 
   await registerWeeklyChallengeAdminRoutes(app);
   await registerBonusGameAdminRoutes(
@@ -3451,6 +3449,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                         else u.avatar_url
                       end as active_avatar_url,
                       u.timezone, u.created_at, u.last_seen_at,
+                      u.beginner_onboarding_completed, u.amateur_onboarding_completed,
                       u.blocked_at, u.blocked_by, blocker.display_name as blocked_by_display_name,
                       u.lifetime_shots_total, u.lifetime_goals_total,
                       case
@@ -3635,7 +3634,8 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
     }
 
     return withTransaction(app, async (client) => {
-      await fetchAdminUser(client, params.userId);
+      await client.query('select id from users where id = $1 for update', [params.userId]);
+      const previousUser = await fetchAdminUser(client, params.userId);
       if (params.userId === req.user.id && body.data.role === 'player') {
         throw new AppError('conflict', 'cannot demote yourself', 409);
       }
@@ -3699,12 +3699,68 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
         }
         changed.push('isBlocked');
       }
+      const onboardingChanges: Array<{
+        field: 'beginnerOnboardingCompleted' | 'amateurOnboardingCompleted';
+        previous: boolean;
+        next: boolean;
+      }> = [];
+      if (
+        body.data.beginnerOnboardingCompleted !== undefined &&
+        body.data.beginnerOnboardingCompleted !== previousUser.beginner_onboarding_completed
+      ) {
+        addAssignment(
+          userAssignments,
+          userValues,
+          'beginner_onboarding_completed',
+          body.data.beginnerOnboardingCompleted,
+        );
+        userAssignments.push(
+          body.data.beginnerOnboardingCompleted
+            ? 'beginner_onboarding_reset_at = null'
+            : 'beginner_onboarding_reset_at = now()',
+        );
+        changed.push('beginnerOnboardingCompleted');
+        onboardingChanges.push({
+          field: 'beginnerOnboardingCompleted',
+          previous: previousUser.beginner_onboarding_completed,
+          next: body.data.beginnerOnboardingCompleted,
+        });
+      }
+      if (
+        body.data.amateurOnboardingCompleted !== undefined &&
+        body.data.amateurOnboardingCompleted !== previousUser.amateur_onboarding_completed
+      ) {
+        addAssignment(
+          userAssignments,
+          userValues,
+          'amateur_onboarding_completed',
+          body.data.amateurOnboardingCompleted,
+        );
+        userAssignments.push(
+          body.data.amateurOnboardingCompleted
+            ? 'amateur_onboarding_reset_at = null'
+            : 'amateur_onboarding_reset_at = now()',
+        );
+        changed.push('amateurOnboardingCompleted');
+        onboardingChanges.push({
+          field: 'amateurOnboardingCompleted',
+          previous: previousUser.amateur_onboarding_completed,
+          next: body.data.amateurOnboardingCompleted,
+        });
+      }
       if (userAssignments.length > 0) {
         userValues.push(params.userId);
         await client.query(
           `update users set ${userAssignments.join(', ')} where id = $${userValues.length}`,
           userValues,
         );
+      }
+
+      for (const onboardingChange of onboardingChanges) {
+        await appendEvent(client, params.userId, 'admin_user_updated', {
+          ...onboardingChange,
+          administratorId: req.user.id,
+        });
       }
 
       const wallet = body.data.wallet;
@@ -3763,10 +3819,16 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
         }
       }
 
-      await appendEvent(client, params.userId, 'admin_user_updated', {
-        admin_user_id: req.user.id,
-        fields: changed,
-      });
+      const generalChanged = changed.filter(
+        (field) =>
+          field !== 'beginnerOnboardingCompleted' && field !== 'amateurOnboardingCompleted',
+      );
+      if (generalChanged.length > 0) {
+        await appendEvent(client, params.userId, 'admin_user_updated', {
+          admin_user_id: req.user.id,
+          fields: generalChanged,
+        });
+      }
       const updated = await fetchAdminUser(client, params.userId);
       return { user: mapUser(updated) };
     });

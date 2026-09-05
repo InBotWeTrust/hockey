@@ -1926,6 +1926,12 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   });
 
   it('settles a player as forfeit five minutes after intermission is ready', async () => {
+    await pool.query(
+      `update users
+          set avatar_url = case when id = $1 then 'https://example.test/a.webp' else 'https://example.test/b.webp' end
+        where id = any($2::uuid[])`,
+      [userA, [userA, userB]],
+    );
     const templateId = await createTemplate({
       totalPeriods: 2,
       periodDurationMs: 1200000,
@@ -1992,6 +1998,14 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(settled.statusCode).toBe(200);
     expect(settled.json().match.status).toBe('settled');
     expect(settled.json().match.winner_user_id).toBe(userA);
+    expect(settled.json().match.me).toMatchObject({
+      display_name: 'Player A',
+      avatar_url: 'https://example.test/a.webp',
+    });
+    expect(settled.json().match.opponent).toMatchObject({
+      display_name: 'Player B',
+      avatar_url: 'https://example.test/b.webp',
+    });
     expect(settled.json().match.opponent.state).toBe('forfeit');
   });
 
@@ -2716,6 +2730,110 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(settled.json().match.winner_user_id).toBe(userB);
     expect(settled.json().match.me.result_points).toBe(0);
     expect(settled.json().match.opponent.result_points).toBe(3);
+  });
+
+  it.each([
+    {
+      label: 'ordinary classic',
+      source: 'challenge' as const,
+      duelKind: 'classic' as const,
+      totalPeriods: 3,
+      periodRules: undefined,
+    },
+    {
+      label: 'ordinary mix',
+      source: 'challenge' as const,
+      duelKind: 'express_plus' as const,
+      totalPeriods: 2,
+      periodRules: [
+        { periodNumber: 1, mode: 'quota' as const, durationMs: 180000, shotsLimit: 30 },
+        { periodNumber: 2, mode: 'time_attack' as const, durationMs: 180000, shotsLimit: null },
+      ],
+    },
+    {
+      label: 'tournament classic',
+      source: 'tournament' as const,
+      duelKind: 'classic' as const,
+      totalPeriods: 3,
+      periodRules: undefined,
+    },
+    {
+      label: 'tournament mix',
+      source: 'tournament' as const,
+      duelKind: 'express_plus' as const,
+      totalPeriods: 2,
+      periodRules: [
+        { periodNumber: 1, mode: 'quota' as const, durationMs: 180000, shotsLimit: 30 },
+        { periodNumber: 2, mode: 'time_attack' as const, durationMs: 180000, shotsLimit: null },
+      ],
+    },
+  ])('keeps a $label duel playable after a started quota period times out', async (scenario) => {
+    const templateId = await createTemplate({
+      duelKind: scenario.duelKind,
+      totalPeriods: scenario.totalPeriods,
+      periodDurationMs: 180000,
+      breakDurationMs: 120000,
+      ...(scenario.periodRules === undefined ? {} : { periodRules: scenario.periodRules }),
+    });
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenA),
+      payload: { loadout: {} },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenB),
+      payload: { loadout: {} },
+    });
+    await pool.query(
+      `update amateur_duel_participant
+          set state = 'period_active',
+              current_period = 1,
+              period_started_at = now() - interval '4 minutes'
+        where match_id = $1 and user_id = $2`,
+      [matchId, userA],
+    );
+    if (scenario.source === 'tournament') {
+      await pool.query(
+        `update game_settings set value = 'true'::jsonb where key = 'tournaments.enabled'`,
+      );
+      await pool.query(`update amateur_duel_match set source = 'tournament' where id = $1`, [
+        matchId,
+      ]);
+      await attachTournamentHierarchy(matchId, {
+        slug: `timeout-${scenario.duelKind}`,
+        tournamentStatus: 'regular',
+        fixtureStatus: 'active',
+        segmentStatus: 'active',
+      });
+    }
+
+    const reconciled = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${matchId}`,
+      headers: auth(tokenA),
+    });
+
+    expect(reconciled.statusCode).toBe(200);
+    expect(reconciled.json().match.status).toBe('active');
+    expect(reconciled.json().match.me.state).toBe('break_active');
+    expect(reconciled.json().match.me.current_period).toBe(1);
+    expect(reconciled.json().match.recent_periods[0]).toMatchObject({
+      period_number: 1,
+      shots_taken: 0,
+      goals: 0,
+      closed_reason: 'timeout',
+      duration_ms: 180000,
+    });
   });
 
   it('snapshots express plus with mixed period rules and completes time attack on timeout', async () => {

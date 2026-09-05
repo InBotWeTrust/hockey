@@ -81,8 +81,10 @@ describe('DuelInviteToast', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Принять' }));
 
     await waitFor(() => expect(accept).toHaveBeenCalledWith(matchId));
-    expect(screen.getByLabelText('location')).toHaveTextContent(
-      `/?view=amateur&match=${matchId}&play=1`,
+    await waitFor(() =>
+      expect(screen.getByLabelText('location')).toHaveTextContent(
+        `/?view=amateur&match=${matchId}&play=1`,
+      ),
     );
   });
 

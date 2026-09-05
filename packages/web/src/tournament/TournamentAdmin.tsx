@@ -74,6 +74,7 @@ interface PlayoffRoundDraft {
   daysPerRound: NumericDraftValue;
   maxGamesPerDay: NumericDraftValue;
   readinessMinutes: NumericDraftValue;
+  gameDurationMinutes: NumericDraftValue;
   plannedStartIntervalMinutes: NumericDraftValue;
   gameWindowMinutes: NumericDraftValue;
   gameBreakMinutes: NumericDraftValue;
@@ -150,7 +151,8 @@ const defaultPlayoffRound = (): PlayoffRoundDraft => ({
   daysPerRound: 2,
   maxGamesPerDay: 4,
   readinessMinutes: 5,
-  plannedStartIntervalMinutes: 20,
+  gameDurationMinutes: 20,
+  plannedStartIntervalMinutes: 30,
   gameWindowMinutes: 60,
   gameBreakMinutes: 15,
   roundBreakMinutes: 0,
@@ -682,6 +684,10 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
                 0,
               ),
         readinessMinutes: numberValue(configured.readinessMinutes, fallback.readinessMinutes),
+        gameDurationMinutes: numberValue(
+          configured.gameDurationMinutes,
+          fallback.gameDurationMinutes,
+        ),
         plannedStartIntervalMinutes: numberValue(
           configured.plannedStartIntervalMinutes,
           fallback.plannedStartIntervalMinutes,
@@ -796,6 +802,21 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
     .map((round, index) => {
       const prefix = `Раунд ${index + 1}`;
       const winsRequired = requiredInteger(round.winsRequired, `${prefix}: побед для серии`, 1, 20);
+      const gameDurationMinutes = requiredInteger(
+        round.gameDurationMinutes,
+        `${prefix}: длительность игры, минуты`,
+        1,
+        1_440,
+      );
+      const plannedStartIntervalMinutes = requiredInteger(
+        round.plannedStartIntervalMinutes,
+        `${prefix}: интервал стартов, минуты`,
+        1,
+        1_440,
+      );
+      if (plannedStartIntervalMinutes < gameDurationMinutes) {
+        throw new Error(`${prefix}: интервал стартов не может быть короче длительности игры`);
+      }
       return {
         roundNumber: index + 1,
         winsRequired,
@@ -807,8 +828,13 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
           requiredInteger(round.gameBreakMinutes, `${prefix}: пауза между играми, минуты`, 0) *
           60_000,
         roundBreakMs:
-          requiredInteger(round.roundBreakMinutes, `${prefix}: пауза после раунда, минуты`, 0) *
-          60_000,
+          round.preserveLegacySchedule === true && round.scheduleTouched !== true
+            ? requiredInteger(
+                round.roundBreakMinutes,
+                `${prefix}: пауза после раунда, минуты`,
+                0,
+              ) * 60_000
+            : 0,
         firstGameStartsAt: dateOrNull(round.firstGameNotBefore, draft.timezone),
         readinessMinutes: requiredInteger(
           round.readinessMinutes,
@@ -816,12 +842,8 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
           1,
           120,
         ),
-        plannedStartIntervalMinutes: requiredInteger(
-          round.plannedStartIntervalMinutes,
-          `${prefix}: интервал стартов, минуты`,
-          1,
-          1_440,
-        ),
+        gameDurationMinutes,
+        plannedStartIntervalMinutes,
         scheduleDays:
           round.preserveLegacySchedule === true && round.scheduleTouched !== true
             ? undefined
@@ -1125,7 +1147,10 @@ function PlayoffScheduleDaysEditor(props: {
                 </button>
               )}
             </div>
-            <TournamentAdminField label="Дата" help="Дата игр по часовому поясу турнира.">
+            <TournamentAdminField
+              label="Дата"
+              help="Дата игр по часовому поясу турнира. Сегодняшнюю дату можно выбрать, если время первой игры ещё не наступило."
+            >
               <input
                 aria-label={`Раунд ${props.roundNumber}, день ${dayIndex + 1}: дата`}
                 type="date"
@@ -2069,10 +2094,11 @@ export function TournamentAdmin(): JSX.Element {
                   <div className="tournament-admin-grid tournament-admin-grid--single">
                     <TournamentAdminField
                       label="Название"
-                      help="Так турнир будет называться в каталоге, календаре и уведомлениях."
+                      help="Так турнир будет называться в каталоге, календаре и уведомлениях. До 60 символов."
                     >
                       <input
                         aria-label="Название"
+                        maxLength={60}
                         value={draft.title}
                         onChange={(event) => setDraft({ ...draft, title: event.target.value })}
                       />
@@ -2784,25 +2810,11 @@ export function TournamentAdmin(): JSX.Element {
                                       1,
                                       'Ограничение на один день. В последний день система оставит только нужное число игр.',
                                     ],
-                                    [
-                                      'readinessMinutes',
-                                      'Минут на готовность',
-                                      1,
-                                      'Столько времени есть у обоих игроков, чтобы подтвердить готовность.',
-                                    ],
-                                    [
-                                      'plannedStartIntervalMinutes',
-                                      'Интервал стартов, минуты',
-                                      1,
-                                      'Через сколько минут по расписанию начинается следующая игра серии.',
-                                    ],
                                   ] as Array<
                                     [
                                       (
                                         | 'daysPerRound'
                                         | 'maxGamesPerDay'
-                                        | 'readinessMinutes'
-                                        | 'plannedStartIntervalMinutes'
                                       ),
                                       string,
                                       number,
@@ -2827,6 +2839,53 @@ export function TournamentAdmin(): JSX.Element {
                               </div>
                             </>
                           )}
+                          <h4 className="tournament-playoff-round__timing-title">
+                            Время игр раунда {index + 1}
+                          </h4>
+                          <div className="tournament-admin-grid tournament-admin-grid--playoff-timing">
+                            {(
+                              [
+                                [
+                                  'readinessMinutes',
+                                  'Минут на готовность',
+                                  'Столько времени есть у обоих игроков, чтобы подтвердить готовность.',
+                                ],
+                                [
+                                  'gameDurationMinutes',
+                                  'Длительность игры, минуты',
+                                  'Общее окно игры от старта готовности до закрытия. Интервал стартов не может быть короче.',
+                                ],
+                                [
+                                  'plannedStartIntervalMinutes',
+                                  'Интервал стартов, минуты',
+                                  'Через сколько минут по расписанию начинается следующая игра серии.',
+                                ],
+                              ] as Array<
+                                [
+                                  | 'readinessMinutes'
+                                  | 'gameDurationMinutes'
+                                  | 'plannedStartIntervalMinutes',
+                                  string,
+                                  string,
+                                ]
+                              >
+                            ).map(([field, label, help]) => (
+                              <TournamentAdminField key={field} label={label} help={help}>
+                                <input
+                                  aria-label={`Раунд ${index + 1}: ${label.toLowerCase()}`}
+                                  type="number"
+                                  min={1}
+                                  max={field === 'readinessMinutes' ? 120 : 1_440}
+                                  value={round[field]}
+                                  onChange={(event) =>
+                                    updatePlayoffRound(index, {
+                                      [field]: editableNumber(event.target.value),
+                                    })
+                                  }
+                                />
+                              </TournamentAdminField>
+                            ))}
+                          </div>
                         </section>
                       ))}
                   </div>

@@ -1,12 +1,19 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '../auth/authStore.js';
 import * as api from '../api/tournament.js';
-import { TournamentCatalog } from './TournamentCatalog.js';
+import {
+  fixtureCanOpen,
+  scheduleDateAfterDaysLoad,
+  scheduleDateForTabChange,
+  tournamentInitialTab,
+  tournamentTabs,
+  TournamentCatalog,
+} from './TournamentCatalog.js';
 
 const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 const TEST_LIFECYCLE: api.TournamentLifecycleDTO = {
@@ -21,6 +28,118 @@ describe('TournamentCatalog', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     useAuthStore.setState({ user: { id: 'u1', displayName: 'Первый' } });
+  });
+
+  it('puts the combined rules tab first and opens it before the tournament starts', () => {
+    const startsAt = '2099-09-11T07:00:00.000Z';
+
+    expect(tournamentTabs(startsAt, new Date('2099-09-10T07:00:00.000Z').getTime())).toEqual([
+      { key: 'rules', label: 'Правила' },
+      { key: 'standings', label: 'Таблица' },
+      { key: 'schedule', label: 'Расписание' },
+      { key: 'playoff', label: 'Плей-офф' },
+    ]);
+    expect(tournamentInitialTab('', startsAt, new Date('2099-09-10T07:00:00.000Z').getTime())).toBe(
+      'rules',
+    );
+    expect(tournamentInitialTab('?tab=overview', startsAt, 0)).toBe('rules');
+  });
+
+  it('puts the combined rules tab last and opens standings after the tournament starts', () => {
+    const startsAt = '2030-09-01T07:00:00.000Z';
+    const now = new Date('2030-09-02T07:00:00.000Z').getTime();
+
+    expect(tournamentTabs(startsAt, now)).toEqual([
+      { key: 'standings', label: 'Таблица' },
+      { key: 'schedule', label: 'Расписание' },
+      { key: 'playoff', label: 'Плей-офф' },
+      { key: 'rules', label: 'Правила' },
+    ]);
+    expect(tournamentInitialTab('', startsAt, now)).toBe('standings');
+    expect(tournamentInitialTab('?tab=rules', startsAt, now)).toBe('rules');
+  });
+
+  it('resets the schedule to today whenever the schedule tab is opened', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-09-04T08:00:00.000Z'));
+    const tournament = {
+      startsAt: '2030-09-01T07:00:00.000Z',
+      projectedEndsAt: '2030-09-06T18:00:00.000Z',
+      completedAt: null,
+      rules: {
+        config: {
+          timezone: 'Europe/Moscow',
+          participantLimit: 8,
+          entryFeeCoins: 0,
+          playoffSize: 8,
+        },
+      },
+    };
+
+    expect(scheduleDateForTabChange('schedule', tournament, '2030-09-01')).toBe('2030-09-04');
+    expect(scheduleDateForTabChange('rules', tournament, '2030-09-01')).toBe('2030-09-01');
+    vi.useRealTimers();
+  });
+
+  it('moves an initially clamped schedule date to today when the loaded playoff days include it', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-09-04T08:00:00.000Z'));
+
+    expect(
+      scheduleDateAfterDaysLoad(
+        '2030-09-02',
+        [{ localDate: '2030-09-04', hasGames: true, hasMyGame: true, hasPlayoff: true }],
+        'Europe/Moscow',
+        false,
+      ),
+    ).toBe('2030-09-04');
+    expect(
+      scheduleDateAfterDaysLoad(
+        '2030-09-02',
+        [{ localDate: '2030-09-04', hasGames: true, hasMyGame: true, hasPlayoff: true }],
+        'Europe/Moscow',
+        true,
+      ),
+    ).toBe('2030-09-02');
+    vi.useRealTimers();
+  });
+
+  it('never reopens a fixture that already has a result even if its cached status is active', () => {
+    expect(
+      fixtureCanOpen({
+        id: 'settled-but-stale',
+        fixtureNumber: 1,
+        stage: 'playoff',
+        roundNumber: 1,
+        scheduledStartsAt: '2030-09-04T00:30:00.000Z',
+        windowEndsAt: '2030-09-04T01:30:00.000Z',
+        status: 'active',
+        venueMode: 'home_selected',
+        home: { userId: 'u1', name: 'Первый' },
+        away: { userId: 'u2', name: 'Второй' },
+        score: { home: 21, away: 21 },
+        winnerUserId: 'u1',
+      }),
+    ).toBe(false);
+  });
+
+  it('keeps an active fixture openable when only a live score is present', () => {
+    expect(
+      fixtureCanOpen({
+        id: 'active-with-live-score',
+        fixtureNumber: 1,
+        stage: 'playoff',
+        roundNumber: 1,
+        scheduledStartsAt: '2030-09-04T00:30:00.000Z',
+        windowEndsAt: '2030-09-04T01:30:00.000Z',
+        status: 'active',
+        venueMode: 'home_selected',
+        home: { userId: 'u1', name: 'Первый' },
+        away: { userId: 'u2', name: 'Второй' },
+        score: { home: 2, away: 1 },
+        winnerUserId: null,
+      }),
+    ).toBe(true);
   });
 
   it('shows a readable empty state when there are no published tournaments', async () => {
@@ -213,6 +332,19 @@ describe('TournamentCatalog', () => {
     );
   });
 
+  it('stretches scrollable tournament tabs evenly when all four labels fit', () => {
+    expect(designSystemCss).toMatch(
+      /\.tournament-details > \.segmented-tabs--scrollable \.segmented-tabs__item\s*\{[^}]*flex:\s*1 1 0;[^}]*min-width:\s*max-content;/s,
+    );
+  });
+
+  it('keeps the same section rhythm before regular-season and playoff rules', () => {
+    expect(designSystemCss).toMatch(
+      /\.tournament-overview-layout \+ \.tournament-rules\s*\{[^}]*margin-top:\s*18px;/s,
+    );
+    expect(designSystemCss).toMatch(/\.tournament-rules\s*\{[^}]*gap:\s*18px;/s);
+  });
+
   it('keeps the shared playoff round heading rhythm compact and even', () => {
     const style = document.createElement('style');
     style.textContent = designSystemCss;
@@ -240,6 +372,117 @@ describe('TournamentCatalog', () => {
       bracket.remove();
       style.remove();
     }
+  });
+
+  it('uses the same dark active state for every playoff round tab', () => {
+    const style = document.createElement('style');
+    style.textContent = designSystemCss;
+    const shell = document.createElement('div');
+    shell.className = 'app-shell--unified-glass';
+    shell.innerHTML = `
+      <div class="tournament-bracket__round-tabs">
+        <button class="is-active">Сетка</button>
+        <button class="tournament-bracket__round-tab--gold is-active">Финал</button>
+        <button class="tournament-bracket__round-tab--bronze">За 3-е место</button>
+      </div>
+    `;
+    document.head.append(style);
+    document.body.append(shell);
+    try {
+      const [overview, final, bronze] = shell.querySelectorAll<HTMLButtonElement>('button');
+      expect(getComputedStyle(overview!).color).toBe('rgb(255, 255, 255)');
+      expect(getComputedStyle(final!).color).toBe('rgb(255, 255, 255)');
+      expect(getComputedStyle(overview!).backgroundColor).toBe('rgba(15, 23, 42, 0.92)');
+      expect(getComputedStyle(final!).backgroundColor).toBe(
+        getComputedStyle(overview!).backgroundColor,
+      );
+      expect(getComputedStyle(bronze!).color).toBe('rgb(116, 69, 31)');
+    } finally {
+      shell.remove();
+      style.remove();
+    }
+  });
+
+  it('fits the selected number of playoff rounds on screen and scrolls the remaining rounds', () => {
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview\[data-layout='fit'\]\s+\.tournament-bracket-overview__grid\s*\{[^}]*grid-template-columns:\s*repeat\(var\(--playoff-round-count\), minmax\(0, 1\.1fr\)\) minmax\(0, 0\.9fr\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview\[data-layout='scroll'\]\[data-visible-columns='2'\]\s+\.tournament-bracket-overview__grid\s*\{[^}]*grid-template-columns:\s*repeat\(var\(--playoff-column-count\), minmax\(0, calc\(50cqi - 6px\)\)\);[^}]*width:\s*max-content;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview\[data-layout='scroll'\]\[data-visible-columns='3'\]\s+\.tournament-bracket-overview__grid\s*\{[^}]*grid-template-columns:\s*repeat\(var\(--playoff-column-count\), minmax\(0, calc\(33\.3333cqi - 8px\)\)\);[^}]*width:\s*max-content;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview\[data-layout='scroll'\]\[data-visible-columns='4'\]\s+\.tournament-bracket-overview__grid\s*\{[^}]*grid-template-columns:\s*repeat\(var\(--playoff-column-count\), minmax\(0, calc\(25cqi - 9px\)\)\);[^}]*width:\s*max-content;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview__viewport\s*\{[^}]*container-type:\s*inline-size;[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*clip;[^}]*scrollbar-width:\s*none;/s,
+    );
+    expect(designSystemCss).not.toMatch(
+      /\.tournament-bracket-overview__viewport\s*\{[^}]*min-height:/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview__viewport::-webkit-scrollbar\s*\{[^}]*display:\s*none;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview__column\s*\{[^}]*grid-template-rows:\s*auto minmax\(min-content,\s*1fr\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview__series-list--with-bronze\s*\{[^}]*min-height:\s*392px;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview__bronze-lane\s*\{[^}]*top:\s*calc\(50% \+ 100px\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-series--mine\s*\{[^}]*border-color:\s*rgba\(43, 126, 89,/s,
+    );
+    expect(designSystemCss).toMatch(/\.tournament-bracket-connector\s*\{[^}]*z-index:\s*0;/s);
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview\s+\.tournament-bracket-series\s*\{[^}]*z-index:\s*1;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview__grid\s*\{[^}]*--playoff-bracket-column-gap:\s*12px;[^}]*column-gap:\s*var\(--playoff-bracket-column-gap\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-connector\s*\{[^}]*left:\s*100%;[^}]*width:\s*var\(--playoff-bracket-column-gap\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview\s+\.tournament-bracket-series::after\s*\{[^}]*left:\s*calc\(100% \+ 2px\);[^}]*width:\s*calc\(var\(--playoff-bracket-column-gap\) \/ 2\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview\[data-visible-columns='3'\][^{]*\.tournament-bracket-player__seed\s*\{[^}]*font-size:\s*6px;[^}]*letter-spacing:\s*-0\.04em;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview\[data-visible-columns='4'\][^{]*\.tournament-bracket-player__seed\s*\{[^}]*font-size:\s*5px;[^}]*letter-spacing:\s*-0\.06em;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-champion\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\);[^}]*place-items:\s*center;[^}]*width:\s*100%;[^}]*text-align:\s*center;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-champion\s*>\s*span\s*\{[^}]*min-width:\s*0;[^}]*width:\s*100%;[^}]*text-align:\s*center;[^}]*transform:\s*translateX\(-2px\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-series__summary\s*>\s*header\.tournament-bracket-series__staged-header\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-series__staged-title\s*\{[^}]*min-width:\s*0;[^}]*white-space:\s*nowrap;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-player--pending\s*\{[^}]*min-width:\s*0;[^}]*width:\s*100%;[^}]*overflow:\s*hidden;/s,
+    );
+  });
+
+  it('uses compact two-column playoff cards and safe bottom spacing on narrow screens', () => {
+    expect(designSystemCss).toMatch(
+      /@media \(max-width:\s*360px\)[\s\S]*?\.tournament-bracket-overview__grid\s*\{[^}]*--playoff-bracket-column-gap:\s*8px;[^}]*padding-bottom:\s*calc\(20px \+ var\(--app-safe-bottom\)\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /@media \(max-width:\s*360px\)[\s\S]*?\.tournament-bracket-series--compact\s+\.tournament-bracket-player\s*\{[^}]*grid-template-columns:\s*8px auto minmax\(0,\s*1fr\) 10px;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /@media \(max-width:\s*360px\)[\s\S]*?\.segmented-tabs--scrollable\s*\{[^}]*padding-right:\s*28px;/s,
+    );
   });
 
   it('keeps a long participation status inside the tournament card', () => {
@@ -502,8 +745,8 @@ describe('TournamentCatalog', () => {
           windowEndsAt: '2030-09-01T08:00:00.000Z',
           status: 'open',
           venueMode: 'home_selected',
-          home: { userId: 'u1', name: 'Первый', avatarUrl: '/first.webp' },
-          away: { userId: 'u2', name: 'Второй', avatarUrl: '/second.webp' },
+          home: { userId: 'u1', name: 'Первый', avatarUrl: '/first.webp', seed: 1 },
+          away: { userId: 'u2', name: 'Второй', avatarUrl: '/second.webp', seed: 2 },
           score: { home: 0, away: 0 },
         },
         {
@@ -515,8 +758,21 @@ describe('TournamentCatalog', () => {
           windowEndsAt: '2030-09-02T08:00:00.000Z',
           status: 'scheduled',
           venueMode: 'home_selected',
-          home: { userId: 'u1', name: 'Первый', avatarUrl: '/first.webp' },
-          away: { userId: 'u3', name: 'Третий', avatarUrl: '/third.webp' },
+          home: { userId: 'u1', name: 'Первый', avatarUrl: '/first.webp', seed: 1 },
+          away: { userId: 'u3', name: 'Третий', avatarUrl: '/third.webp', seed: 4 },
+          score: { home: 0, away: 0 },
+        },
+        {
+          id: 'f4',
+          fixtureNumber: 4,
+          stage: 'third_place',
+          roundNumber: 1,
+          scheduledStartsAt: '2030-09-02T08:00:00.000Z',
+          windowEndsAt: '2030-09-02T09:00:00.000Z',
+          status: 'scheduled',
+          venueMode: 'home_selected',
+          home: { userId: 'u2', name: 'Второй', avatarUrl: '/second.webp', seed: 2 },
+          away: { userId: 'u4', name: 'Четвёртый', avatarUrl: '/fourth.webp', seed: 3 },
           score: { home: 0, away: 0 },
         },
       ],
@@ -533,12 +789,12 @@ describe('TournamentCatalog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок льда' }));
     expect(screen.getByText('Вы участвуете')).toBeInTheDocument();
     const sections = screen.getByRole('tablist', { name: 'Разделы турнира' });
-    expect(screen.getAllByRole('tab')).toHaveLength(5);
+    expect(screen.getAllByRole('tab')).toHaveLength(4);
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
     expect(await screen.findByRole('grid', { name: 'Календарь турнира' })).toBeInTheDocument();
     expect(screen.getByText('Сентябрь 2030')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /1 сентября.*ваша игра/i })).toHaveClass(
-      'tournament-calendar__day--mine',
+    expect(screen.getByRole('button', { name: /^1 сентября,/i })).toHaveClass(
+      'tournament-calendar__day--regular',
     );
     expect(screen.getByRole('button', { name: /2 сентября.*плей-офф/i })).toHaveClass(
       'tournament-calendar__day--playoff',
@@ -546,7 +802,7 @@ describe('TournamentCatalog', () => {
     expect(screen.getByRole('button', { name: /^3 сентября.*вне дат турнира/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Предыдущий месяц' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Следующий месяц' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: /1 сентября.*ваша игра/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^1 сентября,/i }));
 
     const openGameButtons = await screen.findAllByRole('button', { name: 'Открыть игру' });
     expect(openGameButtons).toHaveLength(1);
@@ -555,13 +811,164 @@ describe('TournamentCatalog', () => {
     expect(screen.getByRole('img', { name: 'Второй' })).toHaveAttribute('src', '/second.webp');
     const visibleFixtures = document.querySelectorAll('.tournament-fixture-card');
     expect(visibleFixtures[0]).toHaveTextContent('Первый — Второй');
-    expect(screen.getAllByText('1 сентября, 10:00–11:00')).toHaveLength(2);
+    expect(visibleFixtures[0]).not.toHaveTextContent('(1)');
+    expect(screen.getAllByText('Время игры появится после предыдущего результата')).toHaveLength(2);
+    expect(screen.queryByText('10:00–11:00')).not.toBeInTheDocument();
     expect(screen.getByText('Третий — Четвёртый')).toBeInTheDocument();
     expect(screen.getByText('Можно начинать игру')).toBeInTheDocument();
     expect(screen.getByText('Запланирована')).toBeInTheDocument();
     expect(screen.getByLabelText('Площадка: Дома')).toBeInTheDocument();
+    expect(screen.getByLabelText('Площадка: Дома').parentElement).toHaveClass(
+      'tournament-fixture-card__meta',
+    );
     expect(screen.queryByLabelText('Площадка: Нейтральное поле')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: /2 сентября.*плей-офф/i }));
+    const playoffCard = await screen.findByText('(1) Первый — (4) Третий');
+    expect(playoffCard.closest('.tournament-fixture-card')).toBeInTheDocument();
+    expect(screen.getByText('(2) Второй — (3) Четвёртый')).toBeInTheDocument();
     expect(sections).toBeInTheDocument();
+  });
+
+  it('keeps date-scoped caches separate and renders every game from five-item lazy pages', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 'lazy-cup',
+          slug: 'lazy-cup',
+          title: 'Кубок дня',
+          description: '',
+          status: 'regular',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 8,
+          lifecycle: TEST_LIFECYCLE,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: '2030-09-01T07:00:00.000Z',
+          projectedEndsAt: '2030-09-02T18:00:00.000Z',
+          rules: {
+            config: {
+              participantLimit: 8,
+              entryFeeCoins: 0,
+              playoffSize: 4,
+              timezone: 'Europe/Moscow',
+            },
+          },
+        },
+      ],
+    });
+    const days = [
+      { localDate: '2030-09-01', hasGames: true, hasMyGame: true, hasPlayoff: false },
+      { localDate: '2030-09-02', hasGames: true, hasMyGame: false, hasPlayoff: false },
+    ];
+    const mine: api.TournamentFixture = {
+      id: 'mine-1',
+      fixtureNumber: 1,
+      stage: 'regular',
+      roundNumber: 1,
+      scheduledStartsAt: '2030-09-01T07:00:00.000Z',
+      windowEndsAt: '2030-09-01T08:00:00.000Z',
+      status: 'settled',
+      venueMode: 'home_selected',
+      home: { userId: 'u1', name: 'Первый' },
+      away: { userId: 'u2', name: 'Второй' },
+      score: { home: 2, away: 1 },
+      winnerUserId: 'u1',
+    };
+    const other = (id: string, date: string): api.TournamentFixture => ({
+      id,
+      fixtureNumber: Number(id.at(-1) ?? 2),
+      stage: 'regular',
+      roundNumber: 1,
+      scheduledStartsAt: `${date}T08:00:00.000Z`,
+      windowEndsAt: `${date}T09:00:00.000Z`,
+      status: 'settled',
+      venueMode: 'neutral_default',
+      home: { userId: `${id}-home`, name: `Чужой ${id}` },
+      away: { userId: `${id}-away`, name: `Гость ${id}` },
+      score: { home: 1, away: 0 },
+      winnerUserId: `${id}-home`,
+    });
+    const scheduleSpy = vi
+      .spyOn(api, 'fetchTournamentSchedule')
+      .mockImplementation(async (_tournamentId, date) => ({
+        days,
+        myGames: date === '2030-09-01' ? [mine] : [],
+        hasOtherGames: true,
+        matchdays: [],
+      }));
+    const othersSpy = vi
+      .spyOn(api, 'fetchTournamentScheduleOtherGames')
+      .mockImplementation(async (_tournamentId, date, cursor) => {
+        if (date === '2030-09-02') {
+          return { games: [other('other-9', date)], nextCursor: null };
+        }
+        if (cursor !== null) {
+          return {
+            games: [other('other-7', date), other('other-8', date)],
+            nextCursor: null,
+          };
+        }
+        return {
+          games: ['other-2', 'other-3', 'other-4', 'other-5', 'other-6'].map((id) =>
+            other(id, date),
+          ),
+          nextCursor: { fixtureNumber: 6, id: 'other-6' },
+        };
+      });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок дня' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^1 сентября,/i }));
+
+    expect(await screen.findByText('Первый — Второй')).toBeInTheDocument();
+    expect(screen.queryByText('Чужой other-2 — Гость other-2')).not.toBeInTheDocument();
+    expect(othersSpy).not.toHaveBeenCalled();
+    const otherGamesButton = screen.getByRole('button', {
+      name: 'Посмотреть другие игры дня',
+    });
+    expect(screen.queryByRole('heading', { name: 'Другие игры дня' })).not.toBeInTheDocument();
+    expect(screen.getByText('Первый — Второй').compareDocumentPosition(otherGamesButton)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    fireEvent.click(otherGamesButton);
+    for (const id of ['other-2', 'other-3', 'other-4', 'other-5', 'other-6']) {
+      expect(await screen.findByText(`Чужой ${id} — Гость ${id}`)).toBeInTheDocument();
+    }
+    const foreignGame = (await screen.findByText('Чужой other-2 — Гость other-2')).closest(
+      '.tournament-fixture-card',
+    );
+    expect(screen.getByRole('heading', { name: 'Другие игры дня' })).toBeInTheDocument();
+    expect(foreignGame).toHaveTextContent('Счёт 1:0');
+    expect(foreignGame).not.toHaveTextContent('Победа');
+    expect(foreignGame).not.toHaveTextContent('Поражение');
+    expect(othersSpy).toHaveBeenCalledWith('lazy-cup', '2030-09-01', null);
+    fireEvent.click(screen.getByRole('button', { name: 'Показать ещё' }));
+    expect(await screen.findByText('Чужой other-7 — Гость other-7')).toBeInTheDocument();
+    expect(screen.getByText('Чужой other-8 — Гость other-8')).toBeInTheDocument();
+    expect(othersSpy).toHaveBeenCalledWith('lazy-cup', '2030-09-01', {
+      fixtureNumber: 6,
+      id: 'other-6',
+    });
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: /^2 сентября/i }));
+    expect(await screen.findByRole('button', { name: 'Посмотреть игры дня' })).toBeInTheDocument();
+    expect(screen.queryByText('Чужой other-9 — Гость other-9')).not.toBeInTheDocument();
+    expect(scheduleSpy).toHaveBeenCalledWith('lazy-cup', '2030-09-01');
+    expect(scheduleSpy).toHaveBeenCalledWith('lazy-cup', '2030-09-02');
   });
 
   it('shows configured playoff dates in a later calendar month before fixtures exist', async () => {
@@ -628,7 +1035,7 @@ describe('TournamentCatalog', () => {
     );
   });
 
-  it('shows a settled zero-zero fixture score', async () => {
+  it('shows an ordinary zero-zero score but labels a technical winner', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [
         {
@@ -636,7 +1043,7 @@ describe('TournamentCatalog', () => {
           slug: 'score-cup',
           title: 'Кубок счёта',
           description: '',
-          status: 'regular',
+          status: 'playoff',
           regularSource: 'head_to_head',
           visibility: 'public',
           revision: 1,
@@ -655,7 +1062,7 @@ describe('TournamentCatalog', () => {
         {
           id: 'f1',
           fixtureNumber: 1,
-          stage: 'regular',
+          stage: 'playoff',
           roundNumber: 1,
           scheduledStartsAt: null,
           windowEndsAt: null,
@@ -668,7 +1075,7 @@ describe('TournamentCatalog', () => {
         {
           id: 'f2',
           fixtureNumber: 2,
-          stage: 'regular',
+          stage: 'playoff',
           roundNumber: 2,
           scheduledStartsAt: null,
           windowEndsAt: null,
@@ -677,6 +1084,21 @@ describe('TournamentCatalog', () => {
           home: { userId: 'u3', name: 'Третий' },
           away: { userId: 'u4', name: 'Четвёртый' },
           score: { home: 3, away: 1 },
+        },
+        {
+          id: 'f3',
+          fixtureNumber: 3,
+          stage: 'playoff',
+          roundNumber: 3,
+          scheduledStartsAt: null,
+          windowEndsAt: null,
+          status: 'settled',
+          venueMode: 'neutral_default',
+          home: { userId: 'u5', name: 'Пятый' },
+          away: { userId: 'u6', name: 'Шестой' },
+          score: { home: 0, away: 0 },
+          technicalResult: true,
+          winnerUserId: 'u6',
         },
       ],
     });
@@ -692,8 +1114,104 @@ describe('TournamentCatalog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок счёта' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
 
-    expect(await screen.findByText('Счёт 0:0')).toBeInTheDocument();
+    expect(await screen.findAllByText('Счёт 0:0')).toHaveLength(1);
     expect(screen.getByText('Счёт 3:1')).toBeInTheDocument();
+    expect(screen.getByText('Техническая победа — Шестой')).toBeInTheDocument();
+  });
+
+  it('labels own results, preserves scores and hides individual times for future games', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 'result-cup',
+          slug: 'result-cup',
+          title: 'Кубок результатов',
+          description: '',
+          status: 'playoff',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 4,
+          lifecycle: TEST_LIFECYCLE,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: '2030-09-01T07:00:00.000Z',
+          projectedEndsAt: '2030-09-01T18:00:00.000Z',
+          rules: {
+            config: {
+              participantLimit: 4,
+              entryFeeCoins: 0,
+              playoffSize: 4,
+              timezone: 'Europe/Moscow',
+            },
+          },
+        },
+      ],
+    });
+    const fixtures: api.TournamentFixture[] = [
+      {
+        id: 'own-loss',
+        fixtureNumber: 1,
+        stage: 'regular',
+        roundNumber: 1,
+        scheduledStartsAt: '2030-09-01T07:00:00.000Z',
+        actualStartsAt: '2030-09-01T07:07:00.000Z',
+        windowEndsAt: '2030-09-01T08:00:00.000Z',
+        status: 'settled',
+        venueMode: 'home_selected',
+        home: { userId: 'u1', name: 'Первый', seed: 1 },
+        away: { userId: 'u2', name: 'Второй', seed: 2 },
+        score: { home: 1, away: 2 },
+        winnerUserId: 'u2',
+      },
+      {
+        id: 'future-playoff',
+        fixtureNumber: 2,
+        stage: 'playoff',
+        roundNumber: 1,
+        scheduledStartsAt: '2030-09-01T12:00:00.000Z',
+        windowEndsAt: '2030-09-01T13:00:00.000Z',
+        status: 'scheduled',
+        venueMode: 'home_selected',
+        home: { userId: 'u1', name: 'Первый', seed: 1 },
+        away: { userId: 'u3', name: 'Третий', seed: 4 },
+        score: { home: 0, away: 0 },
+        winnerUserId: null,
+      },
+    ];
+    vi.spyOn(api, 'fetchTournamentSchedule').mockResolvedValue({
+      days: [{ localDate: '2030-09-01', hasGames: true, hasMyGame: true, hasPlayoff: true }],
+      myGames: fixtures,
+      hasOtherGames: false,
+      matchdays: [],
+    });
+    vi.spyOn(api, 'fetchTournamentScheduleOtherGames').mockResolvedValue({
+      games: [],
+      nextCursor: null,
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок результатов' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^1 сентября,/i }));
+
+    expect(await screen.findByText('Поражение')).toHaveClass('tournament-fixture-result--loss');
+    expect(screen.getByText('Счёт 1:2')).toBeInTheDocument();
+    expect(screen.getByText('Первый — Второй')).not.toHaveTextContent('(1)');
+    expect(screen.getByText('(1) Первый — (4) Третий')).toBeInTheDocument();
+    expect(screen.getByText(/1 сентября.*10:07/)).toBeInTheDocument();
+    expect(
+      screen.getByText('Время игры появится после предыдущего результата'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('15:00')).not.toBeInTheDocument();
   });
 
   it('shows playoff rounds, seeds, avatars and the path to the final', async () => {
@@ -859,56 +1377,207 @@ describe('TournamentCatalog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок плей-офф' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Плей-офф' }));
 
-    expect(await screen.findByRole('heading', { name: 'Полуфиналы' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Турнирная сетка' })).toBeInTheDocument();
     expect(screen.getByRole('tablist', { name: 'Раунды плей-офф' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Сетка' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Полуфиналы' })).toHaveAttribute(
       'aria-selected',
-      'true',
+      'false',
     );
     expect(screen.getByRole('tab', { name: 'Финал' })).toHaveAttribute('aria-selected', 'false');
     expect(screen.getByRole('tab', { name: 'За 3-е место' })).toHaveAttribute(
       'aria-selected',
       'false',
     );
-    expect(screen.getByText('Полуфинал 1')).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Первый' })).toHaveAttribute('src', '/first.webp');
-    expect(screen.getByLabelText('Посев 1')).toHaveTextContent('1');
-    expect(screen.getByLabelText('Посев 4')).toHaveTextContent('4');
-    expect(screen.getByLabelText('4 победы в серии')).toHaveTextContent('4');
-    expect(screen.getByLabelText('2 победы в серии')).toHaveTextContent('2');
-    expect(screen.getAllByLabelText('0 побед в серии')).toHaveLength(2);
-    expect(screen.queryByText(/Игра 1/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Открыть серию Полуфинал 1' }));
-    expect(screen.getByText('Игра 1 · 10 сентября, 15:00–16:00')).toBeInTheDocument();
-    expect(screen.getByText('Первый 3 : 2 Четвёртый')).toBeInTheDocument();
-    expect(screen.getByText('Первый 3 : 2 Четвёртый')).toHaveClass(
-      'tournament-bracket-game__result--home-won',
+    const overview = screen.getByRole('region', { name: 'Турнирная сетка' });
+    expect(overview).toHaveAttribute('data-layout', 'scroll');
+    expect(overview).toHaveAttribute('data-visible-columns', '2');
+    expect(within(overview).getByText('Серия 1')).toBeInTheDocument();
+    expect(
+      within(overview).getByText('Финал', {
+        selector: '.tournament-bracket-series__stage-label',
+      }),
+    ).toBeInTheDocument();
+    expect(within(overview).getByText('За 3-е место')).toBeInTheDocument();
+    expect(within(overview).getByText('Чемпион')).toBeInTheDocument();
+    expect(within(overview).getByText('Итог')).toBeInTheDocument();
+    expect(within(overview).getByText('Определится в финале')).toBeInTheDocument();
+    expect(within(overview).getByRole('img', { name: 'Первый' })).toHaveAttribute(
+      'src',
+      '/first.webp',
     );
-    expect(screen.queryByText('Счёт в серии 4 : 2')).not.toBeInTheDocument();
-    expect(screen.getByText('Первый').closest('.tournament-bracket-player')).toHaveClass(
-      'tournament-bracket-player--winner',
+    expect(within(overview).getByLabelText('Посев 1')).toHaveTextContent('1');
+    expect(within(overview).getByLabelText('Посев 4')).toHaveTextContent('4');
+    expect(within(overview).getByLabelText('4 победы в серии')).toHaveTextContent('4');
+    expect(within(overview).getByLabelText('2 победы в серии')).toHaveTextContent('2');
+    expect(within(overview).getByText('Завершена 10 сентября')).toBeInTheDocument();
+    expect(within(overview).getByText('Первый').closest('.tournament-bracket-player')).toHaveClass(
+      'tournament-bracket-player--current',
     );
-    expect(screen.getByText('Второй').closest('.tournament-bracket-player')).not.toHaveClass(
-      'tournament-bracket-player--winner',
+    expect(within(overview).getByText('Серия 1').closest('.tournament-bracket-series')).toHaveClass(
+      'tournament-bracket-series--mine',
     );
+    expect(screen.queryByText('Игра 1 · 10 сентября, 15:00–16:00')).not.toBeInTheDocument();
+    fireEvent.click(within(overview).getByRole('button', { name: 'Открыть серию Серия 1' }));
+    const dialog = screen.getByRole('dialog', { name: 'Серия 1' });
+    expect(within(dialog).getByText('10 сентября, начало в 15:00')).toBeInTheDocument();
+    expect(within(dialog).getByText('Игра 1')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Игра 1: Первый 3:2 Четвёртый')).toHaveTextContent(
+      'Первый — Четвёртый 3:2',
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
+    expect(screen.queryByRole('dialog', { name: 'Серия 1' })).not.toBeInTheDocument();
 
     const finalTab = screen.getByRole('tab', { name: 'Финал' });
     expect(finalTab).toHaveClass('tournament-bracket__round-tab--gold');
     expect(screen.getByRole('tab', { name: 'За 3-е место' })).toHaveClass(
       'tournament-bracket__round-tab--bronze',
     );
+    fireEvent.click(screen.getByRole('tab', { name: 'Полуфиналы' }));
+    expect(screen.getByRole('heading', { name: 'Полуфиналы' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть серию Серия 1' }));
+    expect(screen.getByRole('dialog', { name: 'Серия 1' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
     fireEvent.click(finalTab);
     expect(screen.getByRole('heading', { name: 'Финал' })).toBeInTheDocument();
-    expect(screen.getByText('Победитель полуфинала 1')).toBeInTheDocument();
-    expect(screen.getByText('Победитель полуфинала 2')).toBeInTheDocument();
-    expect(screen.queryByText('Полуфинал 1')).not.toBeInTheDocument();
+    expect(screen.getByText('Победитель 1')).toBeInTheDocument();
+    expect(screen.getByText('Победитель 2')).toBeInTheDocument();
+    expect(screen.queryByText('Серия 1')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'За 3-е место' }));
     expect(screen.getByRole('heading', { name: 'За 3-е место' })).toBeInTheDocument();
-    expect(screen.getByText('Проигравший полуфинала 1')).toBeInTheDocument();
+    expect(screen.getByText('Проигравший 1')).toBeInTheDocument();
   });
 
-  it('shows my playoff readiness and the current series score without revealing live scores', async () => {
+  it('shows a complete responsive series modal with neutral game rows', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 'series-modal-cup',
+          slug: 'series-modal-cup',
+          title: 'Кубок серии',
+          description: '',
+          status: 'playoff',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 2,
+          participantCount: 2,
+          lifecycle: TEST_LIFECYCLE,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: '2030-09-01T07:00:00.000Z',
+          rules: { config: { participantLimit: 2, entryFeeCoins: 0, playoffSize: 2 } },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchTournamentBracket').mockResolvedValue({
+      series: [
+        {
+          id: 'final-series',
+          bracket_position: 1,
+          kind: 'championship',
+          round_number: 1,
+          round_name: 'Финал',
+          wins_required: 2,
+          status: 'completed',
+          higher_seed_wins: 1,
+          lower_seed_wins: 2,
+          winner_user_id: 'u2',
+          higher_user_id: 'u1',
+          higher_seed: 1,
+          higher_name: 'Первый',
+          higher_avatar_url: '/first.webp',
+          lower_user_id: 'u2',
+          lower_seed: 2,
+          lower_name: 'Второй',
+          lower_avatar_url: '/second.webp',
+          depends_on: { key: 'R1S1', sources: [] },
+          fixtures: [
+            {
+              id: 'game-1',
+              gameNumber: 1,
+              scheduledStartsAt: '2030-09-10T12:00:00.000Z',
+              windowEndsAt: '2030-09-10T13:00:00.000Z',
+              status: 'settled',
+              homeUserId: 'u1',
+              awayUserId: 'u2',
+              homeName: 'Первый',
+              awayName: 'Второй',
+              homeScore: 3,
+              awayScore: 1,
+              winnerSide: 'home',
+            },
+            {
+              id: 'game-2',
+              gameNumber: 2,
+              scheduledStartsAt: '2030-09-10T13:10:00.000Z',
+              windowEndsAt: '2030-09-10T14:10:00.000Z',
+              status: 'settled',
+              homeUserId: 'u2',
+              awayUserId: 'u1',
+              homeName: 'Второй',
+              awayName: 'Первый',
+              homeScore: 2,
+              awayScore: 1,
+              winnerSide: 'home',
+            },
+            {
+              id: 'game-3',
+              gameNumber: 3,
+              scheduledStartsAt: '2030-09-10T14:20:00.000Z',
+              windowEndsAt: '2030-09-10T15:20:00.000Z',
+              status: 'forfeit',
+              homeUserId: 'u1',
+              awayUserId: 'u2',
+              homeName: 'Первый',
+              awayName: 'Второй',
+              homeScore: 0,
+              awayScore: 0,
+              winnerSide: 'away',
+            },
+          ],
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок серии' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Плей-офф' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть серию Финал, Серия 1' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Финал · Серия 1' });
+    expect(within(dialog).getByRole('button', { name: 'Закрыть' })).toHaveClass('icon-btn');
+    const playerRows = dialog.querySelectorAll('.tournament-bracket-series-modal__player');
+    expect(playerRows).toHaveLength(2);
+    expect(within(dialog).getByText('Счёт серии 1:2')).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/^Игра \d/)).toHaveLength(3);
+    expect(within(dialog).getByText('Первый — Второй 3:1')).toBeInTheDocument();
+    expect(within(dialog).getByText('Второй — Первый 2:1')).toBeInTheDocument();
+    expect(dialog.querySelector('.tournament-bracket-game__participant--winner')).toBeNull();
+    expect(dialog.querySelector('.tournament-bracket-game__participant--own-loss')).toBeNull();
+    const finalGame = within(dialog).getByLabelText('Игра 3: Техническая победа — Второй');
+    expect(within(finalGame).getByText('Техническая победа — Второй')).toBeInTheDocument();
+    expect(within(finalGame).queryByText(/0\s*:\s*0/)).not.toBeInTheDocument();
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-series-modal\s*\{[^}]*max-width:\s*min\(100%,\s*520px\);[^}]*overflow:\s*hidden;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-series-modal__player\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-series__games\s*\{[^}]*overflow-y:\s*auto;/s,
+    );
+  });
+
+  it('does not add the current-player attempt panel to the series modal', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [
         {
@@ -1007,7 +1676,7 @@ describe('TournamentCatalog', () => {
             winnerUserId: null,
           },
           tournament: { status: 'playoff', winnerUserId: null },
-          nextGameChoice: null,
+          nextGame: null,
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
@@ -1023,12 +1692,13 @@ describe('TournamentCatalog', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок готовности' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Плей-офф' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Открыть серию Финал' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть серию Финал, Серия 1' }));
 
-    expect(await screen.findByText('Вы готовы')).toBeInTheDocument();
-    expect(screen.getByText('Ждём готовность соперника')).toBeInTheDocument();
-    expect(screen.getByText('Серия: вы ведёте 1 : 0')).toBeInTheDocument();
-    expect(screen.getByText('До победы в 4 играх')).toBeInTheDocument();
+    expect(screen.queryByText('Вы готовы')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ждём готовность соперника')).not.toBeInTheDocument();
+    expect(screen.queryByText('Серия: вы ведёте 1 : 0')).not.toBeInTheDocument();
+    expect(screen.queryByText('До победы в 4 играх')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Поражение в игре/)).not.toBeInTheDocument();
     expect(screen.queryByText(/текущий счёт/i)).not.toBeInTheDocument();
   });
 
@@ -1142,7 +1812,7 @@ describe('TournamentCatalog', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Выездной кубок' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
-    fireEvent.click(await screen.findByRole('button', { name: /1 сентября.*ваша игра/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^1 сентября,/i }));
 
     expect(await screen.findByLabelText('Площадка: В гостях')).toBeInTheDocument();
   });
@@ -1330,9 +2000,14 @@ describe('TournamentCatalog', () => {
 
     expect(await screen.findByRole('grid', { name: 'Календарь турнира' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /2 сентября.*игровой день/i })).toHaveClass(
-      'tournament-calendar__day--mine',
+      'tournament-calendar__day--regular',
       'tournament-calendar__day--selected',
     );
+    expect(
+      screen
+        .getByRole('button', { name: /2 сентября.*игровой день.*ваша игра/i })
+        .querySelector('i'),
+    ).toBeInTheDocument();
     expect(screen.queryByText('1-й тур')).not.toBeInTheDocument();
     expect(screen.getByText('2-й тур')).toBeInTheDocument();
     expect(screen.queryByText('3-й тур')).not.toBeInTheDocument();
@@ -1413,7 +2088,9 @@ describe('TournamentCatalog', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок правил' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Правила и призы' }));
+    expect(screen.getByRole('tab', { name: 'Правила' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('heading', { name: 'Сроки' })).toBeInTheDocument();
+    expect(screen.getByText('4 / 8')).toBeInTheDocument();
 
     expect(
       screen.getByText(
@@ -1563,7 +2240,7 @@ describe('TournamentCatalog', () => {
 
     await waitFor(() =>
       expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent(
-        '?view=amateur&section=tournaments&tournament=t1&tab=schedule&match=duel-1&play=1',
+        '?view=amateur&section=tournaments&tournament=t1&tab=schedule&match=duel-1&fixture=f1&play=1',
       ),
     );
   });
@@ -1789,7 +2466,7 @@ describe('TournamentCatalog', () => {
     await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
     await waitFor(() =>
       expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent(
-        'match=duel-after-retry&play=1',
+        'match=duel-after-retry&fixture=f1&play=1',
       ),
     );
   });

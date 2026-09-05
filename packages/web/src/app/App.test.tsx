@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LoginScreen } from '../screens/LoginScreen.js';
@@ -7,9 +7,35 @@ import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
 import { App, RouteLoading, appBackdropClassName, appSurfaceClassName } from './App.js';
+import { fetchRequiredOnboarding, recordStepView, startOnboarding } from '../api/onboarding.js';
+import type * as OnboardingApi from '../api/onboarding.js';
 
 vi.mock('../game/PlayView.js', () => ({
   PlayView: () => <div data-testid="play-view" />,
+}));
+
+vi.mock('../components/DuelInviteToast.js', () => ({
+  DuelInviteToast: () => <div data-testid="duel-invite-toast" />,
+}));
+
+vi.mock('../components/UpdatePrompt.js', () => ({
+  UpdatePrompt: () => <div data-testid="update-prompt" />,
+}));
+
+vi.mock('../chat/components/OfflineBanner.js', () => ({
+  OfflineBanner: () => <div data-testid="chat-realtime" />,
+}));
+
+vi.mock('../chat/useChatSocket.js', () => ({
+  useChatSocket: () => 'online',
+}));
+
+vi.mock('../api/onboarding.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof OnboardingApi>()),
+  fetchRequiredOnboarding: vi.fn(),
+  startOnboarding: vi.fn(),
+  recordStepView: vi.fn().mockResolvedValue({ viewed: true }),
+  completeOnboarding: vi.fn(),
 }));
 
 function renderAt(path: string): void {
@@ -49,6 +75,9 @@ describe('App routing + auth', () => {
     window.history.replaceState({}, '', '/');
     vi.restoreAllMocks();
     useAuthStore.getState().clearSession();
+    vi.mocked(fetchRequiredOnboarding).mockReset().mockResolvedValue({ required: null });
+    vi.mocked(startOnboarding).mockReset();
+    vi.mocked(recordStepView).mockReset().mockResolvedValue({ viewed: true });
     useBonusGameStore.setState({
       attempt: null,
       loading: false,
@@ -59,6 +88,78 @@ describe('App routing + auth', () => {
       requestEpoch: 0,
       receivedAtPerformanceMs: null,
     });
+  });
+
+  it('gates a direct authenticated URL and hides routed content and app chrome', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    const required = {
+      chain: 'amateur' as const,
+      versionId: 'version-1',
+      steps: [
+        {
+          id: 'step-1',
+          position: 1,
+          kind: 'informational' as const,
+          title: 'Ты в любительской лиге',
+          description: 'Новый этап',
+          ctaLabel: 'Далее',
+          imageUrl: '/amateur.webp',
+        },
+      ],
+    };
+    vi.mocked(fetchRequiredOnboarding).mockResolvedValue({ required });
+    vi.mocked(startOnboarding).mockResolvedValue({ runId: 'run-1', required });
+    window.history.replaceState({}, '', '/profile');
+
+    render(<App />);
+
+    expect(await screen.findByText('Ты в любительской лиге')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('chat-realtime')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('duel-invite-toast')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('update-prompt')).not.toBeInTheDocument();
+    expect(screen.queryByText('Профиль')).not.toBeInTheDocument();
+  });
+
+  it('keeps mandatory onboarding visible when browser Back changes the URL', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    const required = {
+      chain: 'amateur' as const,
+      versionId: 'version-1',
+      steps: [
+        {
+          id: 'step-1',
+          position: 1,
+          kind: 'informational' as const,
+          title: 'Обязательный шаг',
+          description: 'Нельзя пропустить',
+          ctaLabel: 'Далее',
+          imageUrl: '/step.webp',
+        },
+      ],
+    };
+    vi.mocked(fetchRequiredOnboarding).mockResolvedValue({ required });
+    vi.mocked(startOnboarding).mockResolvedValue({ runId: 'run-1', required });
+    window.history.replaceState({}, '', '/profile');
+    window.history.pushState({}, '', '/inventory');
+    render(<App />);
+    await screen.findByText('Обязательный шаг');
+
+    await act(async () => {
+      window.history.replaceState({}, '', '/profile');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    expect(screen.getByText('Обязательный шаг')).toBeInTheDocument();
+    expect(screen.queryByText('Инвентарь')).not.toBeInTheDocument();
   });
 
   it('redirects unauthenticated users from / to /login', () => {

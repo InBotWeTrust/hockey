@@ -28,6 +28,7 @@ import type { SpeedOverrides } from '../game/loop.js';
 import type { GoalieOptions } from '../game/renderer/Goalie.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
+import { useOnboardingGate } from '../onboarding/OnboardingGate.js';
 import {
   qualificationDescription,
   qualificationProgress,
@@ -448,6 +449,7 @@ function BonusInventoryPicker({
 
 export function BonusGamePlayScreen(): JSX.Element {
   const navigate = useNavigate();
+  const { refreshAfterGameExit } = useOnboardingGate();
   const queryClient = useQueryClient();
   const { gameId } = useParams<{ gameId: string }>();
   const [searchParams] = useSearchParams();
@@ -533,12 +535,16 @@ export function BonusGamePlayScreen(): JSX.Element {
     void reconcileAttempt();
   }, [needsReconcile, reconcileAttempt]);
 
+  const navigateToCatalog = useCallback(() => navigate('/bonus-games'), [navigate]);
+  const leavePlaySurface = useCallback(() => {
+    navigate('/bonus-games');
+    void refreshAfterGameExit();
+  }, [navigate, refreshAfterGameExit]);
   useEffect(() => {
     if (!isAuthoritativeBreak) return;
     setConfirmAbandon(false);
   }, [isAuthoritativeBreak]);
 
-  const goToCatalog = useCallback(() => navigate('/bonus-games'), [navigate]);
   const refreshAttempt = useCallback(async (): Promise<void> => {
     if (attempt) await loadAttempt(attempt.id);
   }, [attempt, loadAttempt]);
@@ -563,12 +569,12 @@ export function BonusGamePlayScreen(): JSX.Element {
     const result = await abandon();
     if (result?.status === 'abandoned') {
       await queryClient.invalidateQueries({ queryKey: ['bonus-games'] });
-      navigate('/bonus-games');
+      leavePlaySurface();
       return;
     }
     abandonRequestRef.current = false;
     setIsConfirmingAbandon(false);
-  }, [abandon, navigate, queryClient]);
+  }, [abandon, leavePlaySurface, queryClient]);
 
   if (needsReconcile && attempt === null) {
     return (
@@ -593,7 +599,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         {...(error ? { role: 'alert' as const } : {})}
         text={error ?? 'Активная попытка не найдена.'}
         actionLabel="К бонусным играм"
-        onAction={goToCatalog}
+        onAction={navigateToCatalog}
       />
     );
   }
@@ -603,7 +609,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         role="alert"
         text="Открыта другая бонусная попытка. Вернитесь в каталог."
         actionLabel="К бонусным играм"
-        onAction={goToCatalog}
+        onAction={navigateToCatalog}
       />
     );
   }
@@ -764,7 +770,7 @@ export function BonusGamePlayScreen(): JSX.Element {
       />
 
       {terminalKind ? (
-        <BonusResult kind={terminalKind} attempt={attempt} onCatalog={goToCatalog} />
+        <BonusResult kind={terminalKind} attempt={attempt} onCatalog={leavePlaySurface} />
       ) : null}
 
       {previewRequired ? (

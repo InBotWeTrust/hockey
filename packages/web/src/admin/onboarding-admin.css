@@ -1,0 +1,56 @@
+.onboarding-admin__step {
+  grid-template-columns: 68px minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.onboarding-admin__thumbnail,
+.onboarding-admin__thumbnail-fallback {
+  width: 68px;
+  height: 92px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.onboarding-admin__thumbnail-fallback {
+  display: grid;
+  place-items: center;
+  padding: 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.onboarding-admin__field-error {
+  margin-top: 6px;
+  color: #9f1239;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.onboarding-step-editor__speeds {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .onboarding-step-editor__speeds {
+    grid-template-columns: 1fr;
+  }
+
+  .onboarding-admin__step {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+
+  .onboarding-admin__thumbnail,
+  .onboarding-admin__thumbnail-fallback {
+    width: 56px;
+    height: 76px;
+  }
+
+  .onboarding-admin__step-actions {
+    grid-column: 1 / -1;
+  }
+}

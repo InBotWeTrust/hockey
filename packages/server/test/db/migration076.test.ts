@@ -269,6 +269,16 @@ describe.skipIf(!hasIntegrationEnv)('076 speed bonus game balance', () => {
       '086_repair_event_log_sequence.sql',
       '087_tournament_admin_attention_notification.sql',
       '088_tournament_playoff_schedule_missing_notification.sql',
+      '089_player_onboarding.sql',
+      '090_tournament_sequential_playoff_schedule.sql',
+      '091_tournament_fixture_schedule_revision.sql',
+      '092_tournament_period_loadout_state.sql',
+      '093_tournament_readiness_hint_preference.sql',
+      '094_balance_ultimate_one_puck_speed.sql',
+      '095_tournament_regular_podium_congratulation.sql',
+      '097_revert_beginner_tutorial_gameplay_speed.sql',
+      '098_achievement_reward_ledger.sql',
+      '099_tournament_classic_period_loadout.sql',
     ]);
     const attempt = await pool.query<{
       status: string;

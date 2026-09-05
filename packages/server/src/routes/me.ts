@@ -4,6 +4,7 @@ import { recomputeEffectiveProfile, type DisplaySource } from '../auth/profile.j
 import { canUseExperimentalTrainingCourt } from '../auth/featureAccess.js';
 import { AppError } from '../plugins/errors.js';
 import { buildProfileProgress, fetchTrophySummary } from '../profile/summary.js';
+import { listPendingRegularSeasonPodiumCongratulations } from '../tournament/podiumCongratulations.js';
 
 interface MeRow {
   id: string;
@@ -123,7 +124,21 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
 
 export const meRoutes: FastifyPluginAsync = async (app) => {
   app.get('/me', { preHandler: [app.authenticate] }, async (req) => {
-    return getMe(app, req.user.id);
+    const query = z
+      .object({ includeTournamentCongratulations: z.enum(['true', 'false']).optional() })
+      .safeParse(req.query);
+    if (!query.success) {
+      throw new AppError('bad_request', 'invalid query', 400);
+    }
+    const profile = await getMe(app, req.user.id);
+    if (query.data.includeTournamentCongratulations !== 'true') return profile;
+    return {
+      ...profile,
+      pendingTournamentCongratulations: await listPendingRegularSeasonPodiumCongratulations(
+        app.pg,
+        req.user.id,
+      ),
+    };
   });
 
   app.patch('/me', { preHandler: [app.authenticate] }, async (req) => {

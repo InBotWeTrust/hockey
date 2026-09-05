@@ -3,7 +3,7 @@ export { createRng, type Rng } from './rng.js';
 export { RINK, GOAL, GOAL_OPENING, PUCK_START, type Vec2 } from './rink.js';
 export type { GoalieConfig, GoalieState, GoaliePatternId } from './goalie/types.js';
 export { GOALIE_SIZE, GOALIE_Y } from './goalie/types.js';
-export { simulateGoalie } from './goalie/simulate.js';
+export { createGoalieSimulator, simulateGoalie, type GoalieSimulator } from './goalie/simulate.js';
 export type { GoalState } from './goal/types.js';
 export { simulateGoal } from './goal/simulate.js';
 export type { ShooterState } from './shooter/types.js';
@@ -55,12 +55,14 @@ export {
   DEFAULT_DUEL_INVENTORY_TIMING,
   duelInventorySpeedPointsToPuckSpeedDelta,
   duelSpeedPressureMultiplier,
+  createDuelStumbleRandomness,
   getDuelPlayerCondition,
   normalizeDuelInventoryResource,
   type DuelInventoryItemSnapshot,
   type DuelInventoryLoadoutSnapshot,
   type DuelInventoryResourceUnit,
   type DuelInventoryTiming,
+  type DuelStumbleRandomness,
   type DuelPlayerCondition,
   type DuelPlayerConditionInput,
   type DuelPlayerFatigueLevel,

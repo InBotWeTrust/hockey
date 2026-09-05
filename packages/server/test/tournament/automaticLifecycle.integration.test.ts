@@ -1250,7 +1250,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
               winsRequired: 1,
               homeSequence: ['H'],
               duelTemplateId: template.rows[0]!.id,
-              gameWindowMs: 3_600_000,
+              gameWindowMs: 604_800_000,
               gameBreakMs: 0,
               roundBreakMs: 0,
             },
@@ -1267,6 +1267,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       playoffRounds: [
         {
           ...(current.rows[0]!.rules_snapshot.playoffRounds as Array<Record<string, unknown>>)[0]!,
+          gameDurationMinutes: 60,
           firstGameStartsAt: '2030-10-28T15:00:00.000Z',
           scheduleDays: [
             { localDate: '2030-10-28', firstWaveLocalTime: '18:00', maxResultGames: 1 },
@@ -1383,7 +1384,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
               winsRequired: 1,
               homeSequence: ['H'],
               duelTemplateId: template.rows[0]!.id,
-              gameWindowMs: 3_600_000,
+              gameWindowMs: 604_800_000,
               gameBreakMs: 0,
               roundBreakMs: 0,
             },
@@ -1400,6 +1401,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       playoffRounds: [
         {
           ...(current.rows[0]!.rules_snapshot.playoffRounds as Array<Record<string, unknown>>)[0]!,
+          gameDurationMinutes: 60,
           firstGameStartsAt: '2030-10-28T15:00:00.000Z',
           scheduleDays: [
             { localDate: '2030-10-28', firstWaveLocalTime: '18:00', maxResultGames: 1 },

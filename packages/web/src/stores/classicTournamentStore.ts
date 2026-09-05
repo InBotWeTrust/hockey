@@ -4,6 +4,7 @@ import {
   startClassicTournamentPeriod,
   submitClassicTournamentShot,
   type ClassicTournamentState,
+  type ClassicTournamentLoadoutSelection,
 } from '../api/tournamentClassic.js';
 import type { ShotInputPayload, ShotResultType } from '../api/duel.js';
 import {
@@ -18,7 +19,7 @@ interface ClassicTournamentStoreState {
   inFlight: boolean;
   error: string | null;
   refresh: (tournamentId: string) => Promise<void>;
-  startPeriod: () => Promise<ClassicTournamentState | null>;
+  startPeriod: (loadout?: ClassicTournamentLoadoutSelection) => Promise<ClassicTournamentState | null>;
   applyState: (state: ClassicTournamentState) => void;
   optimisticAddShot: (claimed: ShotResultType) => void;
   submitShot: (input: {
@@ -60,12 +61,15 @@ export const useClassicTournamentStore = create<ClassicTournamentStoreState>()((
     }
   },
 
-  startPeriod: async () => {
+  startPeriod: async (loadout) => {
     const tournamentId = get().tournamentId;
     if (tournamentId === null || get().inFlight) return null;
     set({ inFlight: true, error: null });
     try {
-      const data = await startClassicTournamentPeriod(tournamentId);
+      const data =
+        loadout === undefined
+          ? await startClassicTournamentPeriod(tournamentId)
+          : await startClassicTournamentPeriod(tournamentId, loadout);
       if (get().tournamentId !== tournamentId) return null;
       set({ data, inFlight: false, error: null });
       return data;

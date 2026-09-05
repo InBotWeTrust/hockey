@@ -8,6 +8,16 @@ import {
 } from '../../src/tournament/playoffScheduling.js';
 
 describe('rebaseRoundGameDaysAtOrAfter', () => {
+  it('moves a start equal to now forward because a round start must be strictly future', () => {
+    const rebased = rebaseRoundGameDaysAtOrAfter(
+      'Europe/Moscow',
+      [{ localDate: '2030-10-27', firstWaveLocalTime: '10:00', maxResultGames: 1 }],
+      new Date('2030-10-27T07:00:00.000Z'),
+    );
+
+    expect(rebased[0]!.localDate).toBe('2030-10-28');
+  });
+
   it('moves a missed DST-bound round to the nearest future local slot without changing capacity', () => {
     const configuredDays = [
       { localDate: '2030-10-27', firstWaveLocalTime: '02:00', maxResultGames: 4 },
@@ -58,6 +68,60 @@ describe('validateRoundGameDays', () => {
         ],
       }),
     ).not.toThrow();
+  });
+
+  it('accepts a legacy cadence without using it to constrain event-driven games', () => {
+    const days = [
+      { localDate: '2026-09-10', firstWaveLocalTime: '10:00', maxResultGames: 3 },
+    ];
+    expect(() =>
+      validateRoundGameDays({
+        winsRequired: 2,
+        readinessMinutes: 5,
+        gameDurationMinutes: 30,
+        plannedStartIntervalMinutes: 30,
+        days,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateRoundGameDays({
+        winsRequired: 2,
+        readinessMinutes: 5,
+        gameDurationMinutes: 30,
+        plannedStartIntervalMinutes: 20,
+        days,
+      }),
+    ).not.toThrow();
+  });
+
+  it('accepts the event-driven completion window and inter-game break without a legacy slot cadence', () => {
+    expect(() =>
+      validateRoundGameDays({
+        winsRequired: 2,
+        readinessMinutes: 5,
+        gameDurationMinutes: 20,
+        interGameBreakMinutes: 5,
+        days: [
+          { localDate: '2026-09-10', firstWaveLocalTime: '10:00', maxResultGames: 2 },
+          { localDate: '2026-09-11', firstWaveLocalTime: '10:00', maxResultGames: 1 },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
+  it.each([
+    [0, 'inter-game break minutes must be between 1 and 30'],
+    [31, 'inter-game break minutes must be between 1 and 30'],
+  ])('rejects an invalid event-driven inter-game break of %i minutes', (interGameBreakMinutes, message) => {
+    expect(() =>
+      validateRoundGameDays({
+        winsRequired: 1,
+        readinessMinutes: 5,
+        gameDurationMinutes: 20,
+        interGameBreakMinutes,
+        days: [{ localDate: '2026-09-10', firstWaveLocalTime: '10:00', maxResultGames: 1 }],
+      }),
+    ).toThrow(message);
   });
 
   it.each([
@@ -314,6 +378,20 @@ describe('calculateHardGameDeadline', () => {
         },
       }).toISOString(),
     ).toBe('2026-09-10T10:20:15.000Z');
+  });
+
+  it('starts the configured completion window after readiness has expired', () => {
+    expect(
+      calculateHardGameDeadline({
+        plannedStartAt: new Date('2026-09-10T10:00:00.000Z'),
+        readyCheckDurationMs: 5 * 60_000,
+        configuredGameDurationMs: 30 * 60_000,
+        templateTiming: {
+          periodDurationsMs: [3 * 60_000],
+          breakDurationsMs: [],
+        },
+      }).toISOString(),
+    ).toBe('2026-09-10T10:35:00.000Z');
   });
 
   it.each([

@@ -165,6 +165,10 @@ describe('apiFetch', () => {
       'playoff_round_started',
       'Раунд уже начался. Перенесите оставшиеся игры отдельно в календаре.',
     ],
+    [
+      'playoff_round_schedule_order',
+      'Следующий раунд начинается раньше окончания предыдущего. Перенесите его даты вперёд.',
+    ],
     ['tournament_schedule_date_not_future', 'Выберите будущую дату первого тура.'],
   ])('localizes the stable player error %s without replacing its code', async (code, message) => {
     // This catches leaking server copy into player UI while preserving a stable branchable code.

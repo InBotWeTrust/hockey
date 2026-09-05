@@ -258,9 +258,16 @@ describe('TournamentOperations', () => {
     );
 
     fireEvent.click(screen.getByRole('tab', { name: 'Сетка' }));
-    const semifinalCard = (await screen.findByText('Полуфинал 1')).closest<HTMLElement>(
-      '.tournament-bracket-series',
+    expect(await screen.findByRole('heading', { name: 'Турнирная сетка' })).toBeInTheDocument();
+    const playoffTabs = screen.getByRole('tablist', { name: 'Раунды плей-офф' });
+    expect(within(playoffTabs).getByRole('tab', { name: 'Сетка' })).toHaveAttribute(
+      'aria-selected',
+      'true',
     );
+    const bracketOverview = screen.getByRole('region', { name: 'Турнирная сетка' });
+    const semifinalCard = within(bracketOverview)
+      .getByText('Серия 1')
+      .closest<HTMLElement>('.tournament-bracket-series');
     expect(semifinalCard).not.toBeNull();
     expect(within(semifinalCard!).getByText('Первый игрок')).toBeInTheDocument();
     expect(within(semifinalCard!).getByText('Второй игрок')).toBeInTheDocument();
@@ -269,31 +276,29 @@ describe('TournamentOperations', () => {
       within(semifinalCard!).queryByRole('button', { name: 'Решить серию вручную' }),
     ).not.toBeInTheDocument();
     fireEvent.click(
-      within(semifinalCard!).getByRole('button', { name: 'Открыть серию Полуфинал 1' }),
+      within(semifinalCard!).getByRole('button', { name: 'Открыть серию Серия 1' }),
     );
+    let dialog = screen.getByRole('dialog', { name: 'Серия 1' });
+    expect(within(dialog).getByText('1 сентября, начало в 10:00')).toBeInTheDocument();
+    expect(within(dialog).getByText('Игра 1')).toBeInTheDocument();
     expect(
-      within(semifinalCard!).getByText('Игра 1 · 1 сентября, 10:00–11:00'),
+      within(dialog).getByRole('button', { name: 'Решить серию вручную' }),
     ).toBeInTheDocument();
-    expect(within(semifinalCard!).getByLabelText('Посев 1')).toHaveTextContent('1');
-    expect(within(semifinalCard!).getByLabelText('2 победы в серии')).toHaveTextContent('2');
-    expect(within(semifinalCard!).getByLabelText('1 победа в серии')).toHaveTextContent('1');
-    expect(screen.getByRole('tab', { name: 'Полуфиналы' })).toHaveAttribute(
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
+    fireEvent.click(within(playoffTabs).getByRole('tab', { name: 'Полуфиналы' }));
+    expect(within(playoffTabs).getByRole('tab', { name: 'Полуфиналы' })).toHaveAttribute(
       'aria-selected',
       'true',
     );
-    fireEvent.click(screen.getByRole('tab', { name: 'Финал' }));
-    expect(screen.getByText('Победитель полуфинала 1')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: 'Полуфиналы' }));
     const reopenedSemifinalCard = screen
-      .getByText('Полуфинал 1')
+      .getByText('Серия 1')
       .closest<HTMLElement>('.tournament-bracket-series');
     expect(reopenedSemifinalCard).not.toBeNull();
     fireEvent.click(
-      within(reopenedSemifinalCard!).getByRole('button', { name: 'Открыть серию Полуфинал 1' }),
+      within(reopenedSemifinalCard!).getByRole('button', { name: 'Открыть серию Серия 1' }),
     );
-    fireEvent.click(
-      await within(reopenedSemifinalCard!).findByRole('button', { name: 'Решить серию вручную' }),
-    );
+    dialog = screen.getByRole('dialog', { name: 'Серия 1' });
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Решить серию вручную' }));
     expect(screen.getByRole('button', { name: 'Подготовить решение' })).toBeDisabled();
     fireEvent.change(screen.getByRole('textbox', { name: 'Причина решения' }), {
       target: { value: 'Игрок дисквалифицирован' },

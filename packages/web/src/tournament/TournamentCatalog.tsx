@@ -1,10 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import {
   applyToTournament,
   fetchTournamentSchedule,
+  fetchTournamentScheduleOtherGames,
   fetchTournamentStandings,
   fetchTournamentBracket,
   fetchTournaments,
@@ -12,6 +13,8 @@ import {
   openTournamentFixtureSegment,
   withdrawFromTournament,
   type TournamentFixture,
+  type TournamentScheduleDay,
+  type TournamentScheduleCursor,
   type TournamentSummary,
 } from '../api/tournament.js';
 import { useAuthStore } from '../auth/authStore.js';
@@ -24,20 +27,41 @@ import { tournamentTimezoneLabel } from './timezoneLabel.js';
 import { TournamentStandingsTable } from './TournamentStandingsTable.js';
 import { TournamentScheduleCalendar } from './TournamentScheduleCalendar.js';
 import { TournamentPlayoffBracket } from './TournamentPlayoffBracket.js';
+import { TournamentMatchdayResults } from './TournamentMatchdayResults.js';
 
-type TournamentTab = 'overview' | 'standings' | 'schedule' | 'playoff' | 'rules';
+type TournamentTab = 'standings' | 'schedule' | 'playoff' | 'rules';
 
-const tabs: Array<{ key: TournamentTab; label: string }> = [
-  { key: 'overview', label: 'Обзор' },
+const activeTournamentTabs: Array<{ key: TournamentTab; label: string }> = [
   { key: 'standings', label: 'Таблица' },
   { key: 'schedule', label: 'Расписание' },
   { key: 'playoff', label: 'Плей-офф' },
-  { key: 'rules', label: 'Правила и призы' },
+  { key: 'rules', label: 'Правила' },
 ];
 
-function tournamentTabFromSearch(search: string): TournamentTab {
+function tournamentHasStarted(startsAt: string | null, now: number): boolean {
+  if (startsAt === null) return false;
+  const timestamp = new Date(startsAt).getTime();
+  return Number.isFinite(timestamp) && timestamp <= now;
+}
+
+export function tournamentTabs(
+  startsAt: string | null,
+  now = Date.now(),
+): Array<{ key: TournamentTab; label: string }> {
+  if (tournamentHasStarted(startsAt, now)) return activeTournamentTabs;
+  const rules = activeTournamentTabs.find((tab) => tab.key === 'rules')!;
+  return [rules, ...activeTournamentTabs.filter((tab) => tab.key !== 'rules')];
+}
+
+export function tournamentInitialTab(
+  search: string,
+  startsAt: string | null,
+  now = Date.now(),
+): TournamentTab {
   const requested = new URLSearchParams(search).get('tab');
-  return tabs.some((tab) => tab.key === requested) ? (requested as TournamentTab) : 'overview';
+  if (requested === 'overview') return 'rules';
+  if (activeTournamentTabs.some((tab) => tab.key === requested)) return requested as TournamentTab;
+  return tournamentHasStarted(startsAt, now) ? 'standings' : 'rules';
 }
 
 function fixtureVenueRole(fixture: TournamentFixture, currentUserId: string | null): VenueRole {
@@ -99,7 +123,15 @@ function fixtureStatusLabel(status: string): string {
   return labels[status] ?? 'Статус уточняется';
 }
 
-function fixtureCanOpen(fixture: TournamentFixture, now = Date.now()): boolean {
+function fixtureHasResult(fixture: TournamentFixture): boolean {
+  return (
+    ['completed', 'settled', 'forfeit', 'technical'].includes(fixture.status) ||
+    fixture.winnerUserId != null
+  );
+}
+
+export function fixtureCanOpen(fixture: TournamentFixture, now = Date.now()): boolean {
+  if (fixtureHasResult(fixture)) return false;
   if (fixture.status === 'open' || fixture.status === 'active') return true;
   if (fixture.status !== 'scheduled' || fixture.scheduledStartsAt === null) return false;
   const startsAt = new Date(fixture.scheduledStartsAt).getTime();
@@ -110,39 +142,109 @@ function fixtureCanOpen(fixture: TournamentFixture, now = Date.now()): boolean {
   return Number.isFinite(startsAt) && startsAt <= now && now < endsAt;
 }
 
-function fixtureTimeLabel(fixture: TournamentFixture, timezone: string): string {
-  if (fixture.scheduledStartsAt === null) return 'Время ещё не назначено';
-  const startsAt = new Date(fixture.scheduledStartsAt);
+function fixtureTimeLabel(fixture: TournamentFixture, timezone: string, finished: boolean): string {
+  if (!finished) return 'Время игры появится после предыдущего результата';
+  const displayValue = fixture.actualStartsAt ?? fixture.scheduledStartsAt;
+  if (displayValue === null || displayValue === undefined) return 'Время ещё не назначено';
+  const startsAt = new Date(displayValue);
   if (!Number.isFinite(startsAt.getTime())) return 'Время ещё не назначено';
   try {
-    const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
+    const formatter = new Intl.DateTimeFormat('ru-RU', {
       timeZone: timezone,
       day: 'numeric',
       month: 'long',
-    });
-    const dateKeyFormatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-    const timeFormatter = new Intl.DateTimeFormat('ru-RU', {
-      timeZone: timezone,
       hour: '2-digit',
       minute: '2-digit',
     });
-    const startDate = dateFormatter.format(startsAt);
-    const startTime = timeFormatter.format(startsAt);
-    if (fixture.windowEndsAt === null) return `${startDate} в ${startTime}`;
-    const endsAt = new Date(fixture.windowEndsAt);
-    if (!Number.isFinite(endsAt.getTime())) return `${startDate} в ${startTime}`;
-    const endTime = timeFormatter.format(endsAt);
-    return dateKeyFormatter.format(startsAt) === dateKeyFormatter.format(endsAt)
-      ? `${startDate}, ${startTime}–${endTime}`
-      : `${startDate}, ${startTime} — ${dateFormatter.format(endsAt)}, ${endTime}`;
+    return formatter.format(startsAt).replace(/ в /, ', ');
   } catch {
     return startsAt.toLocaleString('ru-RU');
   }
+}
+
+function fixtureWinnerUserId(fixture: TournamentFixture): string | null {
+  if (fixture.winnerUserId !== undefined) return fixture.winnerUserId;
+  if (fixture.score.home === fixture.score.away) return null;
+  return fixture.score.home > fixture.score.away
+    ? (fixture.home?.userId ?? null)
+    : (fixture.away?.userId ?? null);
+}
+
+function fixtureTechnicalResultLabel(fixture: TournamentFixture): string | null {
+  if (fixture.technicalResult !== true) return null;
+  const winnerUserId = fixtureWinnerUserId(fixture);
+  const winnerName =
+    winnerUserId === fixture.home?.userId
+      ? fixture.home.name
+      : winnerUserId === fixture.away?.userId
+        ? fixture.away.name
+        : null;
+  return winnerName ? `Техническая победа — ${winnerName}` : 'Технический результат';
+}
+
+function myFixtureResultLabel(
+  fixture: TournamentFixture,
+  currentUserId: string | null,
+): 'Победа' | 'Поражение' | null {
+  if (currentUserId === null) return null;
+  const winnerUserId = fixtureWinnerUserId(fixture);
+  if (winnerUserId === null) return null;
+  return winnerUserId === currentUserId ? 'Победа' : 'Поражение';
+}
+
+function localDateKey(value: string | number, timezone: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return new Date().toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const read = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return `${read('year')}-${read('month')}-${read('day')}`;
+}
+
+type ScheduleDateTournament = Pick<
+  TournamentSummary,
+  'startsAt' | 'completedAt' | 'projectedEndsAt' | 'rules'
+>;
+
+function initialScheduleDate(tournament: ScheduleDateTournament): string {
+  const timezone = String(tournament.rules.config.timezone ?? 'Europe/Moscow');
+  const today = localDateKey(Date.now(), timezone);
+  const starts = tournament.startsAt === null ? today : localDateKey(tournament.startsAt, timezone);
+  const endsValue = tournament.completedAt ?? tournament.projectedEndsAt;
+  const ends =
+    endsValue === null || endsValue === undefined ? today : localDateKey(endsValue, timezone);
+  if (today < starts) return starts;
+  if (today > ends) return ends;
+  return today;
+}
+
+export function scheduleDateForTabChange(
+  nextTab: TournamentTab,
+  tournament: ScheduleDateTournament,
+  currentDate: string,
+): string {
+  return nextTab === 'schedule' ? initialScheduleDate(tournament) : currentDate;
+}
+
+export function scheduleDateAfterDaysLoad(
+  currentDate: string,
+  days: TournamentScheduleDay[],
+  timezone: string,
+  manuallySelected: boolean,
+): string {
+  if (manuallySelected) return currentDate;
+  const today = localDateKey(Date.now(), timezone);
+  return days.some((day) => day.localDate === today) ? today : currentDate;
+}
+
+function fixturePlayerLabel(participant: TournamentFixture['home'], showSeed: boolean): string {
+  const name = participant?.name ?? 'Участник';
+  return showSeed && participant?.seed != null ? `(${participant.seed}) ${name}` : name;
 }
 
 function registrationWindow(
@@ -499,17 +601,35 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
   const navigate = useNavigate();
   const location = useLocation();
   const currentUserId = useAuthStore((state) => state.user?.id ?? null);
-  const [tab, setTab] = useState<TournamentTab>(() => tournamentTabFromSearch(location.search));
+  const [tab, setTab] = useState<TournamentTab>(() =>
+    tournamentInitialTab(location.search, tournament.startsAt),
+  );
+  const visibleTabs = tournamentTabs(tournament.startsAt);
   const [participantsOpen, setParticipantsOpen] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState(() => initialScheduleDate(tournament));
+  const scheduleDateManuallySelected = useRef(false);
   const activeFixtureId = useRef<string | null>(null);
   const fixtureOpeningRef = useRef(false);
   const openFixtureGeneration = useRef(0);
   const queryClient = useQueryClient();
   const registrationState = registrationWindow(tournament);
   const schedule = useQuery({
-    queryKey: ['tournaments', tournament.id, 'schedule'],
-    queryFn: () => fetchTournamentSchedule(tournament.id),
+    queryKey: ['tournaments', tournament.id, 'schedule', scheduleDate],
+    queryFn: () => fetchTournamentSchedule(tournament.id, scheduleDate),
     enabled: tab === 'schedule',
+    placeholderData: (previous) => previous,
+  });
+  const otherGames = useInfiniteQuery({
+    queryKey: ['tournaments', tournament.id, 'schedule', scheduleDate, 'other-games'],
+    queryFn: ({ pageParam }) =>
+      fetchTournamentScheduleOtherGames(
+        tournament.id,
+        scheduleDate,
+        pageParam as TournamentScheduleCursor | null,
+      ),
+    initialPageParam: null as TournamentScheduleCursor | null,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+    enabled: false,
   });
   const standings = useQuery({
     queryKey: ['tournaments', tournament.id, 'standings'],
@@ -536,6 +656,19 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tournaments'] }),
   });
+
+  useEffect(() => {
+    const days = schedule.data?.days;
+    if (tab !== 'schedule' || days === undefined) return;
+    setScheduleDate((currentDate) =>
+      scheduleDateAfterDaysLoad(
+        currentDate,
+        days,
+        String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+        scheduleDateManuallySelected.current,
+      ),
+    );
+  }, [schedule.data?.days, tab, tournament.id, tournament.rules.config.timezone]);
   const openFixture = useMutation({
     mutationFn: async ({ fixtureId, generation }: { fixtureId: string; generation: number }) => ({
       fixtureId,
@@ -556,6 +689,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
         params.set('from', 'sections');
       }
       params.set('match', segment.duelMatchId);
+      params.set('fixture', fixtureId);
       params.set('play', '1');
       navigate(`/?${params.toString()}`);
     },
@@ -582,87 +716,96 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
       <SegmentedTabs
         ariaLabel="Разделы турнира"
         activeTab={tab}
-        items={tabs.map((item) => ({ id: item.key, label: item.label }))}
-        onChange={setTab}
+        items={visibleTabs.map((item) => ({ id: item.key, label: item.label }))}
+        onChange={(nextTab) => {
+          if (nextTab === 'schedule') scheduleDateManuallySelected.current = false;
+          setScheduleDate((currentDate) =>
+            scheduleDateForTabChange(nextTab, tournament, currentDate),
+          );
+          setTab(nextTab);
+        }}
         scrollable
       />
       <section className="glass tournament-details__content">
-        {tab === 'overview' && (
-          <div className="tournament-overview-layout">
-            <section className="tournament-overview-dates">
-              <h3>Сроки</h3>
-              <dl>
+        {tab === 'rules' && (
+          <>
+            <div className="tournament-overview-layout">
+              <section className="tournament-overview-dates">
+                <h3>Сроки</h3>
+                <dl>
+                  <div>
+                    <dt>Начало регистрации</dt>
+                    <dd>
+                      {tournamentDateLabel(
+                        tournament.registrationOpensAt,
+                        String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Конец регистрации</dt>
+                    <dd>
+                      {tournamentDateLabel(
+                        tournament.registrationClosesAt,
+                        String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Первый тур</dt>
+                    <dd>
+                      {tournamentDateLabel(
+                        tournament.startsAt,
+                        String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{tournament.completedAt ? 'Турнир завершён' : 'Плановое окончание'}</dt>
+                    <dd>
+                      {tournamentDateLabel(
+                        tournament.completedAt ?? tournament.projectedEndsAt,
+                        String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+              <div className="tournament-overview-grid">
+                <button
+                  type="button"
+                  className="tournament-overview-grid__participants"
+                  onClick={() => setParticipantsOpen(true)}
+                >
+                  <span>Участники</span>
+                  <strong>
+                    {tournament.participantCount} / {tournament.rules.config.participantLimit}
+                  </strong>
+                </button>
                 <div>
-                  <dt>Начало регистрации</dt>
-                  <dd>
-                    {tournamentDateLabel(
-                      tournament.registrationOpensAt,
-                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                  <span>Плей-офф</span>
+                  <strong>
+                    {numberValue(tournament.rules.config.playoffSize)}{' '}
+                    {pluralRu(
+                      numberValue(tournament.rules.config.playoffSize),
+                      'игрок',
+                      'игрока',
+                      'игроков',
                     )}
-                  </dd>
+                  </strong>
                 </div>
                 <div>
-                  <dt>Конец регистрации</dt>
-                  <dd>
-                    {tournamentDateLabel(
-                      tournament.registrationClosesAt,
-                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
-                    )}
-                  </dd>
+                  <span>Вступительный взнос</span>
+                  <strong>
+                    {tournament.rules.config.entryFeeCoins === 0
+                      ? 'Бесплатно'
+                      : `${tournament.rules.config.entryFeeCoins} монет`}
+                  </strong>
                 </div>
-                <div>
-                  <dt>Первый тур</dt>
-                  <dd>
-                    {tournamentDateLabel(
-                      tournament.startsAt,
-                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt>{tournament.completedAt ? 'Турнир завершён' : 'Плановое окончание'}</dt>
-                  <dd>
-                    {tournamentDateLabel(
-                      tournament.completedAt ?? tournament.projectedEndsAt,
-                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
-                    )}
-                  </dd>
-                </div>
-              </dl>
-            </section>
-            <div className="tournament-overview-grid">
-              <button
-                type="button"
-                className="tournament-overview-grid__participants"
-                onClick={() => setParticipantsOpen(true)}
-              >
-                <span>Участники</span>
-                <strong>
-                  {tournament.participantCount} / {tournament.rules.config.participantLimit}
-                </strong>
-              </button>
-              <div>
-                <span>Плей-офф</span>
-                <strong>
-                  {numberValue(tournament.rules.config.playoffSize)}{' '}
-                  {pluralRu(
-                    numberValue(tournament.rules.config.playoffSize),
-                    'игрок',
-                    'игрока',
-                    'игроков',
-                  )}
-                </strong>
-              </div>
-              <div>
-                <span>Вступительный взнос</span>
-                <strong>
-                  {tournament.rules.config.entryFeeCoins === 0
-                    ? 'Бесплатно'
-                    : `${tournament.rules.config.entryFeeCoins} монет`}
-                </strong>
               </div>
             </div>
-          </div>
+            <TournamentRules tournament={tournament} />
+          </>
         )}
         {tab === 'standings' &&
           (standings.isLoading ? (
@@ -688,10 +831,25 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
             <div role="status">Загрузка расписания…</div>
           ) : schedule.isError ? (
             <div role="status">Не удалось загрузить расписание.</div>
-          ) : schedule.data &&
-            (schedule.data.fixtures.length > 0 || (schedule.data.matchdays?.length ?? 0) > 0) ? (
+          ) : schedule.data ? (
             <TournamentScheduleCalendar
-              fixtures={schedule.data.fixtures}
+              fixtures={[
+                ...(schedule.data.myGames ??
+                  (schedule.data as unknown as { fixtures?: TournamentFixture[] }).fixtures ??
+                  []),
+                ...(otherGames.data?.pages.flatMap((page) => page.games) ?? []),
+              ]}
+              fixtureDays={schedule.data.days ?? []}
+              selectedDate={scheduleDate}
+              onSelectDate={(date) => {
+                scheduleDateManuallySelected.current = true;
+                setScheduleDate(date);
+              }}
+              hasOtherGames={schedule.data.hasOtherGames ?? false}
+              otherGamesLoaded={otherGames.data !== undefined}
+              otherGamesLoading={otherGames.isFetching}
+              hasMoreOtherGames={otherGames.hasNextPage}
+              onLoadOtherGames={() => void otherGames.fetchNextPage()}
               matchdays={schedule.data.matchdays ?? []}
               regularSource={tournament.regularSource}
               tournamentStatus={tournament.status}
@@ -713,30 +871,44 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                 }
                 navigate(`/?${params.toString()}`);
               }}
+              renderMatchdayResults={(matchday) =>
+                currentUserId === null ? null : (
+                  <TournamentMatchdayResults
+                    tournamentId={tournament.id}
+                    matchdayNumber={matchday.number}
+                    viewerUserId={currentUserId}
+                  />
+                )
+              }
               formatDateTime={(value) =>
                 tournamentDateLabel(
                   value,
                   String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
                 )
               }
-              renderFixture={(fixture, mine) => {
+              renderFixture={(fixture, mine, inSeries = false) => {
                 const playable = fixtureCanOpen(fixture);
-                const finished =
-                  ['completed', 'settled', 'forfeit', 'technical'].includes(fixture.status) ||
-                  fixture.score.home + fixture.score.away > 0;
+                const showSeed = fixture.stage === 'playoff' || fixture.stage === 'third_place';
+                const finished = fixtureHasResult(fixture);
+                const myResult = mine ? myFixtureResultLabel(fixture, currentUserId) : null;
+                const technicalResultLabel = fixtureTechnicalResultLabel(fixture);
                 return (
                   <article
                     key={fixture.id}
                     className={`tournament-fixture-card${mine ? ' tournament-fixture-card--mine' : ''}`}
                   >
                     <div className="tournament-fixture-card__meta">
-                      <span>
-                        {fixtureTimeLabel(
-                          fixture,
-                          String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
-                        )}
-                      </span>
-                      <strong>{fixtureStatusLabel(fixture.status)}</strong>
+                      {!inSeries && (
+                        <span>
+                          {fixtureTimeLabel(
+                            fixture,
+                            String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                            finished,
+                          )}
+                        </span>
+                      )}
+                      {mine && <VenueBadge role={fixtureVenueRole(fixture, currentUserId)} />}
+                      <strong>{finished ? 'Завершена' : fixtureStatusLabel(fixture.status)}</strong>
                     </div>
                     <div className="tournament-fixture-summary">
                       <div className="tournament-fixture-matchup">
@@ -755,7 +927,8 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                           />
                         </div>
                         <span className="tournament-fixture-matchup__names">
-                          {fixture.home?.name ?? 'Участник'} — {fixture.away?.name ?? 'Участник'}
+                          {fixturePlayerLabel(fixture.home, showSeed)} —{' '}
+                          {fixturePlayerLabel(fixture.away, showSeed)}
                         </span>
                       </div>
                     </div>
@@ -763,9 +936,19 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                       <div className="tournament-fixture-card__footer">
                         <div>
                           {finished && (
-                            <strong className="tournament-fixture-card__score">
-                              Счёт {fixture.score.home}:{fixture.score.away}
-                            </strong>
+                            <>
+                              {myResult !== null && (
+                                <strong
+                                  className={`tournament-fixture-result tournament-fixture-result--${myResult === 'Победа' ? 'win' : 'loss'}`}
+                                >
+                                  {myResult}
+                                </strong>
+                              )}
+                              <strong className="tournament-fixture-card__score">
+                                {technicalResultLabel ??
+                                  `Счёт ${fixture.score.home}:${fixture.score.away}`}
+                              </strong>
+                            </>
                           )}
                           {mine && playable && (
                             <>
@@ -795,7 +978,6 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                             </>
                           )}
                         </div>
-                        {mine && <VenueBadge role={fixtureVenueRole(fixture, currentUserId)} />}
                       </div>
                     )}
                   </article>
@@ -833,7 +1015,6 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
           ) : (
             <div>Сетка появится после завершения регулярного чемпионата.</div>
           ))}
-        {tab === 'rules' && <TournamentRules tournament={tournament} />}
       </section>
       {tournament.status === 'registration' &&
         !registrationState.hideAction &&
@@ -912,11 +1093,24 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
   );
 }
 
-export function TournamentCatalog(): JSX.Element {
+type TournamentCatalogProps = {
+  selectedTournamentId?: string | null;
+  onSelectedTournamentIdChange?: (tournamentId: string | null) => void;
+};
+
+export function TournamentCatalog({
+  selectedTournamentId,
+  onSelectedTournamentIdChange,
+}: TournamentCatalogProps = {}): JSX.Element {
   const location = useLocation();
-  const [selectedId, setSelectedId] = useState<string | null>(() =>
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(() =>
     new URLSearchParams(location.search).get('tournament'),
   );
+  const selectedId = selectedTournamentId === undefined ? internalSelectedId : selectedTournamentId;
+  const setSelectedId = (tournamentId: string | null): void => {
+    setInternalSelectedId(tournamentId);
+    onSelectedTournamentIdChange?.(tournamentId);
+  };
   const catalog = useQuery({ queryKey: ['tournaments'], queryFn: fetchTournaments });
   const tournaments = catalog.data?.tournaments ?? [];
   const selected = tournaments.find((tournament) => tournament.id === selectedId);

@@ -5,6 +5,7 @@ export interface ResultModalProps {
   durationMs: number;
   subText?: string | null;
   displayKind?: ResultModalKind | undefined;
+  title?: string | undefined;
 }
 
 export type ResultModalKind = ShotResult['type'] | 'post';
@@ -42,7 +43,12 @@ const THEMES: Record<ResultModalKind, Theme> = {
   },
 };
 
-export function ResultModal({ result, durationMs, displayKind }: ResultModalProps): JSX.Element {
+export function ResultModal({
+  result,
+  durationMs,
+  displayKind,
+  title,
+}: ResultModalProps): JSX.Element {
   const theme = THEMES[displayKind ?? result.type];
 
   return (
@@ -97,7 +103,7 @@ export function ResultModal({ result, durationMs, displayKind }: ResultModalProp
             textShadow: '0 1px 0 rgba(255, 255, 255, 0.42)',
           }}
         >
-          {theme.title}
+          {title ?? theme.title}
         </div>
       </div>
     </>

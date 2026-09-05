@@ -62,6 +62,14 @@ export interface DuelPlayerConditionInput {
   baselineShooterSpeed: number;
   currentShooterSpeed: number;
   loadout: DuelInventoryLoadoutSnapshot;
+  stumbleRandomness?: DuelStumbleRandomness;
+}
+
+export interface DuelStumbleRandomness {
+  interval: number;
+  duration: number;
+  recovery: number;
+  usesRollInterval: boolean;
 }
 
 export interface DuelPlayerCondition {
@@ -153,6 +161,24 @@ function defaultSkateStumbleWindow(
   input: DuelPlayerConditionInput,
   timing: DuelInventoryTiming,
 ): { active: boolean; offsetPx: number } {
+  const randomness = input.stumbleRandomness ?? createDuelStumbleRandomness(input, timing);
+  const { usesRollInterval, interval, duration, recovery } = randomness;
+  if (interval <= 0 || duration <= 0) return { active: false, offsetPx: 0 };
+
+  const intervalMs = usesRollInterval
+    ? (interval / Math.max(0.001, input.currentShooterSpeed * 2)) * 1000
+    : interval;
+  if (input.elapsedMs < intervalMs) return { active: false, offsetPx: 0 };
+  const windowMs = duration + Math.max(0, recovery);
+  const phaseMs = (input.elapsedMs - intervalMs) % intervalMs;
+  if (phaseMs >= windowMs) return { active: false, offsetPx: 0 };
+  return { active: true, offsetPx: 0 };
+}
+
+export function createDuelStumbleRandomness(
+  input: Pick<DuelPlayerConditionInput, 'seed' | 'userId' | 'periodNumber'>,
+  timing: DuelInventoryTiming,
+): DuelStumbleRandomness {
   const usesRollInterval = timing.stumbleIntervalMinRolls > 0 || timing.stumbleIntervalMaxRolls > 0;
   const interval = usesRollInterval
     ? deterministicRange(
@@ -175,16 +201,7 @@ function defaultSkateStumbleWindow(
     timing.stumbleRecoveryMinMs,
     timing.stumbleRecoveryMaxMs,
   );
-  if (interval <= 0 || duration <= 0) return { active: false, offsetPx: 0 };
-
-  const intervalMs = usesRollInterval
-    ? (interval / Math.max(0.001, input.currentShooterSpeed * 2)) * 1000
-    : interval;
-  if (input.elapsedMs < intervalMs) return { active: false, offsetPx: 0 };
-  const windowMs = duration + Math.max(0, recovery);
-  const phaseMs = (input.elapsedMs - intervalMs) % intervalMs;
-  if (phaseMs >= windowMs) return { active: false, offsetPx: 0 };
-  return { active: true, offsetPx: 0 };
+  return { interval, duration, recovery, usesRollInterval };
 }
 
 export function getDuelPlayerCondition(input: DuelPlayerConditionInput): DuelPlayerCondition {

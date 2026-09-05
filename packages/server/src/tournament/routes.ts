@@ -15,10 +15,15 @@ import {
   createTournamentDraft,
   disqualifyTournamentParticipant,
   duplicateTournamentDraft,
+  dismissTournamentReadinessHint,
   deleteEmptyDraft,
   getTournament,
   getTournamentGameContext,
+  getTournamentMatchdayResults,
+  getTournamentReadinessHint,
   getTournamentMatchdays,
+  getTournamentScheduleDay,
+  getTournamentScheduleOtherGames,
   getTournamentSchedule,
   getTournamentStandings,
   getTournamentBracket,
@@ -47,10 +52,7 @@ import {
   openTournamentFixtureSegment,
   TournamentFixtureAttemptTerminalError,
 } from './fixtureLifecycle.js';
-import {
-  chooseTournamentNextGame,
-  getTournamentFixtureAttemptStateWithReconciliation,
-} from './fixtureAttempts.js';
+import { getTournamentFixtureAttemptStateWithReconciliation } from './fixtureAttempts.js';
 import { publishTournamentFixtureProgress } from './realtimeProgress.js';
 import {
   finalizeTournamentDailyDay,
@@ -59,10 +61,12 @@ import {
 import { grantTournamentStageRewards } from './rewards.js';
 import { getFixtureLiveState, proposeFixtureLiveTime, respondFixtureLiveProposal } from './live.js';
 import { enqueueTournamentAudiencePush } from '../push/tournament.js';
+import { enqueueTournamentFixtureRescheduledPush } from './fixtureNotifications.js';
 import {
   dispatchTournamentCommunication,
   listTournamentDispatches,
   previewTournamentAudience,
+  reconcilePlayoffDayStartingCommunications,
 } from './communications.js';
 import { createMediaProxyUrl } from '../storage/mediaAccess.js';
 import { invalidateUnreadCache } from '../chat/cache.js';
@@ -81,10 +85,28 @@ import {
   confirmTournamentSeriesWinnerDecision,
   requestTournamentSeriesWinnerDecision,
 } from './seriesAdminDecisions.js';
+import { acknowledgeRegularSeasonPodiumCongratulation } from './podiumCongratulations.js';
 
 const uuid = z.string().uuid();
 const nullableDate = z.string().datetime({ offset: true }).nullable().default(null);
 const nullableImageUrl = z.string().trim().max(2048).nullable().optional();
+const classicLoadoutSchema = z.object({
+  stick: uuid.nullable().optional(),
+  skates: uuid.nullable().optional(),
+  nutrition: uuid.nullable().optional(),
+});
+export const tournamentTitleSchema = z.string().trim().min(1).max(60);
+const localDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const tournamentScheduleQuerySchema = z.object({ date: localDateSchema });
+export const tournamentScheduleOtherGamesQuerySchema = z
+  .object({
+    date: localDateSchema,
+    cursorFixtureNumber: z.coerce.number().int().positive().optional(),
+    cursorId: uuid.optional(),
+  })
+  .refine((value) => (value.cursorFixtureNumber === undefined) === (value.cursorId === undefined), {
+    message: 'cursorFixtureNumber and cursorId must be provided together',
+  });
 const TOURNAMENT_ARTWORK_MAX_PIXELS = 2048 * 2048;
 const classicShotSchema = z.object({
   shot_index: z.number().int().min(1),
@@ -136,7 +158,7 @@ const draftSchema = z.object({
     .max(80)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
     .optional(),
-  title: z.string().trim().min(1).max(160),
+  title: tournamentTitleSchema,
   description: z.string().trim().max(10_000).default(''),
   imageUrl: nullableImageUrl,
   rules: rulesSchema,
@@ -238,10 +260,25 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     return { tournaments: await listPlayerTournaments(app.pg, req.user.id) };
   });
 
+  app.post('/tournaments/congratulations/:congratulationId/read', authenticated, async (req) => {
+    const params = z.object({ congratulationId: uuid }).parse(req.params);
+    return acknowledgeRegularSeasonPodiumCongratulation(app.pg, {
+      congratulationId: params.congratulationId,
+      userId: req.user.id,
+    });
+  });
+
   app.get('/tournaments/classic/active', authenticated, async (req) => {
     await requireTournamentFeature(app);
+    const now = new Date();
+    await reconcilePlayoffDayStartingCommunications(app.pg, {
+      now,
+      publisher: app.realtime,
+      ...(options.systemUserId === undefined ? {} : { systemUserId: options.systemUserId }),
+      invalidateUnreadCache: (userId) => invalidateUnreadCache(app.redis, userId),
+    });
     return {
-      games: await listActiveClassicGames(app.pg, { userId: req.user.id, now: new Date() }),
+      games: await listActiveClassicGames(app.pg, { userId: req.user.id, now }),
     };
   });
 
@@ -259,11 +296,23 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.post('/tournaments/:tournamentId/classic/period/start', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
+    const body = z.object({ loadout: classicLoadoutSchema.optional() }).parse(req.body ?? {});
     return startClassicGamePeriod(app.pg, {
       userId: req.user.id,
       tournamentId: params.tournamentId,
       now: new Date(),
       seedSecret: options.tournamentGameSeedSecret,
+      ...(body.loadout === undefined
+        ? {}
+        : {
+            loadout: {
+              ...(body.loadout.stick === undefined ? {} : { stick: body.loadout.stick }),
+              ...(body.loadout.skates === undefined ? {} : { skates: body.loadout.skates }),
+              ...(body.loadout.nutrition === undefined
+                ? {}
+                : { nutrition: body.loadout.nutrition }),
+            },
+          }),
     });
   });
 
@@ -322,13 +371,79 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.get('/tournaments/:tournamentId/schedule', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
+    const query = tournamentScheduleQuerySchema.parse(req.query);
     await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId, req.user.id);
-    const [fixtures, matchdays] = await Promise.all([
-      getTournamentSchedule(app.pg, params.tournamentId),
+    await refreshCompletedTournamentDailyResultsForTournament(app.pg, {
+      tournamentId: params.tournamentId,
+      now: new Date(),
+    });
+    const [schedule, matchdays] = await Promise.all([
+      getTournamentScheduleDay(app.pg, params.tournamentId, req.user.id, query.date),
       getTournamentMatchdays(app.pg, params.tournamentId, req.user.id),
     ]);
-    return { fixtures, matchdays };
+    return { ...schedule, matchdays };
+  });
+
+  app.get('/tournaments/:tournamentId/schedule/other-games', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    const query = tournamentScheduleOtherGamesQuerySchema.parse(req.query);
+    await getTournament(app.pg, params.tournamentId, req.user.id);
+    return getTournamentScheduleOtherGames(
+      app.pg,
+      params.tournamentId,
+      req.user.id,
+      query.date,
+      query.cursorFixtureNumber === undefined || query.cursorId === undefined
+        ? null
+        : { fixtureNumber: query.cursorFixtureNumber, id: query.cursorId },
+    );
+  });
+
+  app.get('/tournaments/:tournamentId/readiness-hint', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await getTournament(app.pg, params.tournamentId, req.user.id);
+    return getTournamentReadinessHint(app.pg, params.tournamentId, req.user.id);
+  });
+
+  app.post('/tournaments/:tournamentId/readiness-hint/dismiss', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await getTournament(app.pg, params.tournamentId, req.user.id);
+    return dismissTournamentReadinessHint(app.pg, params.tournamentId, req.user.id);
+  });
+
+  app.get('/tournaments/:tournamentId/matchdays/:number/results', authenticated, async (req) => {
+    await requireTournamentFeature(app);
+    const params = z
+      .object({ tournamentId: uuid, number: z.coerce.number().int().positive() })
+      .parse(req.params);
+    const query = z
+      .object({
+        cursorFinalizedAt: z.string().datetime({ offset: true }).optional(),
+        cursorId: uuid.optional(),
+        limit: z.coerce.number().int().min(1).max(20).default(4),
+      })
+      .refine(
+        (value) => (value.cursorFinalizedAt === undefined) === (value.cursorId === undefined),
+        { message: 'cursorFinalizedAt and cursorId must be provided together' },
+      )
+      .parse(req.query);
+    await getTournament(app.pg, params.tournamentId, req.user.id);
+    await refreshCompletedTournamentDailyResultsForTournament(app.pg, {
+      tournamentId: params.tournamentId,
+      now: new Date(),
+    });
+    return getTournamentMatchdayResults(app.pg, params.tournamentId, params.number, {
+      excludeUserId: req.user.id,
+      limit: query.limit,
+      cursor:
+        query.cursorFinalizedAt === undefined || query.cursorId === undefined
+          ? null
+          : { finalizedAt: query.cursorFinalizedAt, id: query.cursorId },
+    });
   });
 
   app.get('/tournaments/:tournamentId/game-context', authenticated, async (req) => {
@@ -402,22 +517,6 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     }
     return result.state;
   });
-
-  app.post(
-    '/tournaments/:tournamentId/fixtures/:fixtureId/attempt/next-game-choice',
-    authenticated,
-    async (req) => {
-      await requireTournamentFeature(app);
-      const params = z.object({ tournamentId: uuid, fixtureId: uuid }).parse(req.params);
-      const body = z.object({ choice: z.enum(['immediate', 'scheduled']) }).parse(req.body);
-      return chooseTournamentNextGame(app.pg, {
-        ...params,
-        ...body,
-        userId: req.user.id,
-        now: new Date(),
-      });
-    },
-  );
 
   app.get('/admin/tournaments/:tournamentId/dispatches', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
@@ -728,7 +827,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
           .string()
           .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
           .optional(),
-        title: z.string().trim().min(1).max(160),
+        title: tournamentTitleSchema,
       })
       .parse(req.body);
     const tournament = await duplicateTournamentDraft(app.pg, {
@@ -901,17 +1000,28 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       reason: body.reason,
       adminUserId: req.user.id,
     });
-    await enqueueTournamentAudiencePush(app.pg, {
-      tournamentId: params.tournamentId,
-      eventType: 'tournament.rescheduled',
-      eventKey: `${params.fixtureId}:rescheduled:${body.startsAt}`,
-      variables: { startsAt: body.startsAt },
-      fallback: {
-        title: 'Матч перенесён',
-        body: `Новое время: ${body.startsAt}`,
-        url: '/?view=amateur&section=tournaments',
-      },
-    });
+    const now = new Date();
+    const startsInMs = new Date(body.startsAt).getTime() - now.getTime();
+    const combinedNotice = startsInMs > 0 && startsInMs < 30 * 60_000;
+    const immediate = combinedNotice
+      ? await reconcilePlayoffDayStartingCommunications(app.pg, {
+          now,
+          fixtureId: params.fixtureId,
+          immediate: true,
+          publisher: app.realtime,
+          ...(options.systemUserId === undefined ? {} : { systemUserId: options.systemUserId }),
+          invalidateUnreadCache: (userId) => invalidateUnreadCache(app.redis, userId),
+        })
+      : null;
+    if (
+      (immediate === null || immediate.considered === 0) &&
+      !(combinedNotice && options.systemUserId === undefined)
+    ) {
+      await enqueueTournamentFixtureRescheduledPush(app.pg, {
+        fixtureId: params.fixtureId,
+        startsAt: new Date(body.startsAt),
+      });
+    }
     await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     return result;
   });

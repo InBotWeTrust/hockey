@@ -120,6 +120,46 @@ describe('ScoreBoard', () => {
     );
   });
 
+  it('uses compact typography for a long timer label without wrapping it', () => {
+    render(
+      <ScoreBoard
+        period={2}
+        periodsTotal={3}
+        timer="04:59"
+        timerLabel="До технического поражения"
+        goals={78}
+        shots={90}
+        shotsTotal={90}
+      />,
+    );
+
+    const label = screen.getByText('До технического поражения');
+    expect(label.closest('.game-scoreboard__metric')).toHaveClass(
+      'game-scoreboard__metric--small',
+    );
+    expect(label).toHaveStyle({ whiteSpace: 'nowrap' });
+  });
+
+  it('uses compact typography for the duel readiness label', () => {
+    render(
+      <ScoreBoard
+        period={1}
+        periodsTotal={2}
+        timer="14:45"
+        timerLabel="Готовность"
+        goals={0}
+        shots={0}
+        shotsTotal={30}
+      />,
+    );
+
+    const label = screen.getByText('Готовность');
+    expect(label.closest('.game-scoreboard__metric')).toHaveClass(
+      'game-scoreboard__metric--small',
+    );
+    expect(label).toHaveStyle({ whiteSpace: 'nowrap' });
+  });
+
   it('builds the existing duel order and opponent status notice', () => {
     const model = buildGameScoreboardModel({
       period: 1,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createDuelStumbleRandomness,
   DEFAULT_DUEL_INVENTORY_TIMING,
   duelInventorySpeedPointsToPuckSpeedDelta,
   getDuelPlayerCondition,
@@ -92,6 +93,56 @@ describe('duel inventory condition', () => {
     };
 
     expect(getDuelPlayerCondition(input)).toEqual(getDuelPlayerCondition(input));
+  });
+
+  it('precomputed stumble randomness is exactly equivalent to per-call calculation', () => {
+    const timing = {
+      ...DEFAULT_DUEL_INVENTORY_TIMING,
+      stumbleIntervalMinRolls: 7,
+      stumbleIntervalMaxRolls: 19,
+      stumbleDurationMinMs: 350,
+      stumbleDurationMaxMs: 825,
+      stumbleRecoveryMinMs: 125,
+      stumbleRecoveryMaxMs: 375,
+    };
+    const elapsedTimes = [
+      0, 1, 2_499, 2_500, 4_999, 5_000, 5_624, 5_625, 5_999, 15_000, 45_000, 90_000,
+      180_000,
+    ];
+
+    for (const seed of ['match-seed', 'another-seed', 'турнир-сид']) {
+      for (const periodNumber of [1, 2, 3]) {
+        for (const currentShooterSpeed of [0.45, 0.85, 1.25, 1.5]) {
+          for (const skates of [null, {
+            id: 'spent-skates',
+            title: 'Старт',
+            resourceUnit: 'distance' as const,
+            resourceAvailable: 0,
+            effectPuckSpeedPoints: 0,
+            timing,
+          }]) {
+            const common = {
+              seed,
+              userId: 'user-a',
+              periodNumber,
+              movementDistancePx: 1_144,
+              baseLaneWidthPx: 572,
+              baselineShooterSpeed: 0.85,
+              currentShooterSpeed,
+              loadout: loadout({ skates, fallbackSkatesTiming: timing }),
+            };
+            const randomness = createDuelStumbleRandomness(common, timing);
+
+            for (const elapsedMs of elapsedTimes) {
+              const input = { ...common, elapsedMs };
+              expect(
+                getDuelPlayerCondition({ ...input, stumbleRandomness: randomness }),
+              ).toEqual(getDuelPlayerCondition(input));
+            }
+          }
+        }
+      }
+    }
   });
 
   it('shows multiple default-skate stumbles during the first express minute without skates', () => {

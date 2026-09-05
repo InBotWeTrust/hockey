@@ -5,6 +5,9 @@ import {
   reconcileTournamentLifecycle,
   type TournamentLifecycleReconcileReport,
 } from '../tournament/automaticLifecycle.js';
+import { reconcilePlayoffDayStartingCommunications } from '../tournament/communications.js';
+import { reconcileMissingPlayoffSeriesGames } from '../tournament/playoffSeriesLifecycle.js';
+import type { EventPublisher } from '../chat/events.js';
 import { isTournamentFeatureEnabled } from '../tournament/service.js';
 
 const DEFAULT_INTERVAL_MS = 60 * 1000;
@@ -13,6 +16,8 @@ export interface TournamentLifecyclePluginOptions {
   enabled?: boolean;
   intervalMs?: number;
   classicSeedSecret: string;
+  systemUserId?: string;
+  publisher?: EventPublisher;
 }
 
 export interface ReconcileTournamentLifecycleBestEffortOptions {
@@ -44,6 +49,9 @@ export async function reconcileBestEffort(
       now: options.now ?? new Date(),
       ...(options.tournamentId === undefined ? {} : { tournamentId: options.tournamentId }),
       classicSeedSecret: options.classicSeedSecret,
+    });
+    await reconcileMissingPlayoffSeriesGames(options.pool, {
+      ...(options.tournamentId === undefined ? {} : { tournamentId: options.tournamentId }),
     });
     if (report.failures.length > 0) {
       options.log.error(
@@ -89,6 +97,14 @@ const plugin: FastifyPluginAsync<TournamentLifecyclePluginOptions> = async (app,
           now: new Date(),
           classicSeedSecret: opts.classicSeedSecret,
         });
+        await reconcileMissingPlayoffSeriesGames(app.pg);
+        if (opts.publisher !== undefined) {
+          await reconcilePlayoffDayStartingCommunications(app.pg, {
+            now: new Date(),
+            publisher: opts.publisher,
+            ...(opts.systemUserId === undefined ? {} : { systemUserId: opts.systemUserId }),
+          });
+        }
         if (report.failures.length > 0) {
           app.log.error(
             { failures: report.failures },

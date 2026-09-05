@@ -128,6 +128,7 @@ export interface AmateurDuelRules {
   winCurrencyReward: number;
   drawCurrencyReward: number;
   winStarReward: number;
+  tournamentLoadoutLifecycleVersion?: 1;
 }
 
 export interface AmateurDuelParticipant {
@@ -152,6 +153,8 @@ export interface AmateurDuelParticipant {
   loadout: AmateurDuelLoadout;
   inventory_available?: AmateurDuelInventoryAvailabilityItem[];
   inventory_report: AmateurDuelInventoryPeriodReport[];
+  tournament_loadout_period?: number | null;
+  tournament_loadout_version?: number;
 }
 
 export interface AmateurDuelLoadoutItem {
@@ -434,6 +437,16 @@ export function readyAmateurDuel(
     method: 'POST',
     body: JSON.stringify({ loadout }),
   }).then((res) => ({ match: stampMatch(res.match) }));
+}
+
+export function confirmTournamentDuelLoadout(
+  matchId: string,
+  loadout: AmateurDuelLoadoutSelection,
+): Promise<{ match: AmateurDuelMatchState }> {
+  return apiFetch<{ match: AmateurDuelMatchState }>(
+    `/duel/amateur/matches/${matchId}/tournament-loadout`,
+    { method: 'POST', body: JSON.stringify({ loadout }) },
+  ).then((res) => ({ match: stampMatch(res.match) }));
 }
 
 export function joinAmateurMatchmaking(

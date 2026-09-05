@@ -4,6 +4,7 @@ import {
   buildPlayoffFixtureWindows,
   buildPlayoffSeriesPlan,
   expandSeriesSchedule,
+  resolveDelayedPlayoffRoundStart,
 } from '../../src/tournament/playoffs.js';
 
 describe('fixed playoff bracket', () => {
@@ -12,6 +13,35 @@ describe('fixed playoff bracket', () => {
     const bracket = buildFixedPlayoffBracket(seeds);
     expect(bracket.firstRound[0]).toMatchObject({ higherSeedId: 'p1', lowerSeedId: `p${size}` });
     expect(bracket.thirdPlaceRequired).toBe(size >= 4);
+  });
+
+  it('keeps the top two seeds in opposite halves of an eight-player bracket', () => {
+    const seeds = Array.from({ length: 8 }, (_, index) => `p${index + 1}`);
+    expect(buildFixedPlayoffBracket(seeds).firstRound).toEqual([
+      { bracketPosition: 1, higherSeedId: 'p1', lowerSeedId: 'p8' },
+      { bracketPosition: 2, higherSeedId: 'p4', lowerSeedId: 'p5' },
+      { bracketPosition: 3, higherSeedId: 'p2', lowerSeedId: 'p7' },
+      { bracketPosition: 4, higherSeedId: 'p3', lowerSeedId: 'p6' },
+    ]);
+  });
+
+  it('uses standard seeded paths for a sixteen-player bracket', () => {
+    const seeds = Array.from({ length: 16 }, (_, index) => `p${index + 1}`);
+    expect(
+      buildFixedPlayoffBracket(seeds).firstRound.map((pairing) => [
+        pairing.higherSeedId,
+        pairing.lowerSeedId,
+      ]),
+    ).toEqual([
+      ['p1', 'p16'],
+      ['p8', 'p9'],
+      ['p4', 'p13'],
+      ['p5', 'p12'],
+      ['p2', 'p15'],
+      ['p7', 'p10'],
+      ['p3', 'p14'],
+      ['p6', 'p11'],
+    ]);
   });
 
   it('prebuilds the maximum conditional schedule from the home pattern', () => {
@@ -53,5 +83,14 @@ describe('fixed playoff bracket', () => {
       { gameNumber: 2, startsAt: '2030-09-01T11:30:00.000Z', endsAt: '2030-09-01T12:30:00.000Z' },
       { gameNumber: 3, startsAt: '2030-09-01T13:00:00.000Z', endsAt: '2030-09-01T14:00:00.000Z' },
     ]);
+  });
+
+  it('delays a past next-round start to thirty minutes after the final prior series settles', () => {
+    expect(
+      resolveDelayedPlayoffRoundStart({
+        configuredStart: new Date('2030-09-01T10:00:00.000Z'),
+        finalPriorSeriesSettledAt: new Date('2030-09-01T12:00:00.000Z'),
+      }),
+    ).toEqual(new Date('2030-09-01T12:30:00.000Z'));
   });
 });

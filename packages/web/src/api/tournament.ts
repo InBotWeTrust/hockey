@@ -10,6 +10,19 @@ export type TournamentStatus =
   | 'completed'
   | 'cancelled';
 
+export interface RegularSeasonPodiumCongratulation {
+  id: string;
+  tournamentId: string;
+  tournamentTitle: string;
+  place: 1 | 2 | 3;
+  reward: {
+    coins: number;
+    stars: number;
+    experience: number;
+  };
+  createdAt: string;
+}
+
 export type TournamentLifecycleAction =
   | 'legacy_requires_audit'
   | 'registration_waiting'
@@ -83,16 +96,64 @@ export interface TournamentParticipant {
 
 export interface TournamentFixture {
   id: string;
+  seriesId?: string | null;
+  gameNumber?: number | null;
+  seriesWinsRequired?: number | null;
+  gameDay?: {
+    id: string;
+    dayNumber: number;
+    localDate: string;
+    startsAt: string;
+  } | null;
   fixtureNumber: number;
   stage: string;
   roundNumber: number;
   scheduledStartsAt: string | null;
   windowEndsAt: string | null;
+  actualStartsAt?: string | null;
   status: string;
   venueMode: 'home_selected' | 'neutral_default';
-  home: { userId: string; name: string | null; avatarUrl?: string | null } | null;
-  away: { userId: string; name: string | null; avatarUrl?: string | null } | null;
+  home: {
+    userId: string;
+    name: string | null;
+    avatarUrl?: string | null;
+    seed?: number | null;
+  } | null;
+  away: {
+    userId: string;
+    name: string | null;
+    avatarUrl?: string | null;
+    seed?: number | null;
+  } | null;
   score: { home: number; away: number };
+  winnerUserId?: string | null;
+  technicalResult?: boolean;
+}
+
+export interface TournamentScheduleDay {
+  localDate: string;
+  hasGames: boolean;
+  hasMyGame: boolean;
+  hasPlayoff: boolean;
+}
+
+export interface TournamentScheduleCursor {
+  fixtureNumber: number;
+  id: string;
+}
+
+export interface TournamentScheduleResponse {
+  days?: TournamentScheduleDay[];
+  myGames?: TournamentFixture[];
+  hasOtherGames?: boolean;
+  matchdays?: TournamentMatchday[];
+  /** Test/legacy response compatibility; the authenticated server never returns this field. */
+  fixtures?: TournamentFixture[];
+}
+
+export interface TournamentScheduleOtherGamesPage {
+  games: TournamentFixture[];
+  nextCursor: TournamentScheduleCursor | null;
 }
 
 export interface TournamentMatchday {
@@ -107,6 +168,26 @@ export interface TournamentMatchday {
     accuracy: number;
     completed: boolean;
   } | null;
+}
+
+export interface TournamentMatchdayResult {
+  id: string;
+  userId: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  goals: number;
+  shots: number;
+  accuracy: number;
+}
+
+export interface TournamentMatchdayResultPage {
+  results: TournamentMatchdayResult[];
+  nextCursor: TournamentMatchdayResultCursor | null;
+}
+
+export interface TournamentMatchdayResultCursor {
+  finalizedAt: string;
+  id: string;
 }
 
 export type TournamentGameContextAction =
@@ -140,14 +221,23 @@ export interface TournamentBracketSource {
 export interface TournamentBracketFixture {
   id: string;
   gameNumber: number;
+  gameDay?: {
+    id: string;
+    dayNumber: number;
+    localDate: string;
+    startsAt: string;
+  } | null;
   scheduledStartsAt: string | null;
   windowEndsAt: string | null;
   status: string;
+  homeUserId?: string | null;
+  awayUserId?: string | null;
   homeName: string | null;
   awayName: string | null;
   homeScore: number | null;
   awayScore: number | null;
   winnerSide: 'home' | 'away' | null;
+  technicalResult?: boolean;
 }
 
 export interface TournamentBracketSeries {
@@ -238,6 +328,7 @@ export interface TournamentFixtureAttemptState {
   } | null;
   series: {
     id: string;
+    kind?: 'championship' | 'third_place';
     winsRequired: number;
     myWins: number;
     opponentWins: number;
@@ -245,6 +336,8 @@ export interface TournamentFixtureAttemptState {
     lowerSeedWins: number;
     higherSeedUserId: string;
     lowerSeedUserId: string;
+    higherSeed?: number | null;
+    lowerSeed?: number | null;
     status: string;
     winnerUserId: string | null;
   } | null;
@@ -252,13 +345,10 @@ export interface TournamentFixtureAttemptState {
     status: string;
     winnerUserId: string | null;
   };
-  nextGameChoice: {
-    nextFixtureId: string;
-    expiresAt: string;
-    myChoice: 'immediate' | 'scheduled' | null;
-    opponentChoice: 'immediate' | 'scheduled' | null;
-    canChoose: boolean;
-    startsImmediately: boolean;
+  nextGame: {
+    fixtureId: string;
+    breakEndsAt: string;
+    available: boolean;
   } | null;
 }
 
@@ -280,9 +370,54 @@ export function withdrawFromTournament(tournamentId: string) {
   );
 }
 
-export function fetchTournamentSchedule(tournamentId: string) {
-  return apiFetch<{ fixtures: TournamentFixture[]; matchdays?: TournamentMatchday[] }>(
-    `/tournaments/${tournamentId}/schedule`,
+export function fetchTournamentSchedule(tournamentId: string, localDate: string) {
+  const query = new URLSearchParams({ date: localDate });
+  return apiFetch<TournamentScheduleResponse>(
+    `/tournaments/${tournamentId}/schedule?${query.toString()}`,
+  );
+}
+
+export function fetchTournamentScheduleOtherGames(
+  tournamentId: string,
+  localDate: string,
+  cursor: TournamentScheduleCursor | null = null,
+) {
+  const query = new URLSearchParams({ date: localDate });
+  if (cursor !== null) {
+    query.set('cursorFixtureNumber', String(cursor.fixtureNumber));
+    query.set('cursorId', cursor.id);
+  }
+  return apiFetch<TournamentScheduleOtherGamesPage>(
+    `/tournaments/${tournamentId}/schedule/other-games?${query.toString()}`,
+  );
+}
+
+export function fetchTournamentReadinessHint(tournamentId: string) {
+  return apiFetch<{ dismissed: boolean; dismissedAt: string | null }>(
+    `/tournaments/${tournamentId}/readiness-hint`,
+  );
+}
+
+export function dismissTournamentReadinessHint(tournamentId: string) {
+  return apiFetch<{ dismissed: true; dismissedAt: string }>(
+    `/tournaments/${tournamentId}/readiness-hint/dismiss`,
+    { method: 'POST' },
+  );
+}
+
+export function fetchTournamentMatchdayResults(
+  tournamentId: string,
+  matchdayNumber: number,
+  cursor: TournamentMatchdayResultCursor | null = null,
+  limit = 4,
+) {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (cursor !== null) {
+    query.set('cursorFinalizedAt', cursor.finalizedAt);
+    query.set('cursorId', cursor.id);
+  }
+  return apiFetch<TournamentMatchdayResultPage>(
+    `/tournaments/${tournamentId}/matchdays/${matchdayNumber}/results?${query.toString()}`,
   );
 }
 
@@ -322,17 +457,6 @@ export function fetchTournamentFixtureAttempt(tournamentId: string, fixtureId: s
   );
 }
 
-export function chooseTournamentNextGame(
-  tournamentId: string,
-  fixtureId: string,
-  choice: 'immediate' | 'scheduled',
-) {
-  return apiFetch<NonNullable<TournamentFixtureAttemptState['nextGameChoice']>>(
-    `/tournaments/${tournamentId}/fixtures/${fixtureId}/attempt/next-game-choice`,
-    { method: 'POST', body: JSON.stringify({ choice }) },
-  );
-}
-
 export function fetchFixtureLiveState(fixtureId: string) {
   return apiFetch<{ live: TournamentLiveState | null }>(`/tournaments/fixtures/${fixtureId}/live`);
 }
@@ -360,4 +484,11 @@ export function respondFixtureLiveProposal(fixtureId: string, proposalId: string
     method: 'POST',
     body: JSON.stringify({ accept }),
   });
+}
+
+export function acknowledgeRegularSeasonPodiumCongratulation(congratulationId: string) {
+  return apiFetch<{ acknowledged: true }>(
+    `/tournaments/congratulations/${congratulationId}/read`,
+    { method: 'POST' },
+  );
 }

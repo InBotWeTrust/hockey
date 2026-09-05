@@ -26,7 +26,11 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   arena_not_owned: 'Эта домашняя площадка ещё не открыта.',
   arena_not_selectable: 'Эту домашнюю площадку сейчас нельзя выбрать.',
   arena_unavailable: 'Домашняя площадка временно недоступна.',
+  onboarding_publish_invalid: 'Не удалось опубликовать: проверьте шаги и изображения.',
+  onboarding_preview_unavailable: 'Предпросмотр недоступен: сначала добавьте шаги.',
   playoff_round_started: 'Раунд уже начался. Перенесите оставшиеся игры отдельно в календаре.',
+  playoff_round_schedule_order:
+    'Следующий раунд начинается раньше окончания предыдущего. Перенесите его даты вперёд.',
   tournament_schedule_date_not_future: 'Выберите будущую дату первого тура.',
 };
 

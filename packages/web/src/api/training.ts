@@ -19,6 +19,8 @@ export interface TrainingStateResponse {
   received_at_performance_ms?: number;
   goalie_id: string;
   period_speed_presets: DailyPeriodSpeedPreset[];
+  tournament_day_locked: boolean;
+  tournament_day_starts_at: string | null;
 }
 
 export interface StartTrainingRequest {

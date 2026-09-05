@@ -11,12 +11,18 @@ import { DuelInviteToast } from '../components/DuelInviteToast.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
 import { OfflineBanner } from '../chat/components/OfflineBanner.js';
 import { useChatSocket } from '../chat/useChatSocket.js';
+import { OnboardingGate } from '../onboarding/OnboardingGate.js';
 
 const DailyScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DailyScreen })),
 );
 const DemoScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DemoScreen })),
+);
+const TournamentResultPreviewScreen = lazy(() =>
+  import('../screens/DailyScreen.js').then((module) => ({
+    default: module.TournamentResultPreviewScreen,
+  })),
 );
 const InventoryScreen = lazy(() =>
   import('../screens/InventoryScreen.js').then((module) => ({ default: module.InventoryScreen })),
@@ -170,10 +176,11 @@ export function appSurfaceClassName(pathname: string): string {
   return 'app-shell--unified-glass';
 }
 
-function AppFrame(): JSX.Element {
+function AppExperience(): JSX.Element {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
-  const bottomNavVisible = isBottomNavVisible(location, user);
+  const bottomNavVisible =
+    location.pathname !== '/dev/tournament-result-preview' && isBottomNavVisible(location, user);
   const backdropClassName = appBackdropClassName(location.pathname, location.search);
   const surfaceClassName = appSurfaceClassName(location.pathname);
   const hasArenaBackdrop = backdropClassName.split(' ').includes('app-shell--arena');
@@ -212,6 +219,14 @@ function AppFrame(): JSX.Element {
             <Routes>
               <Route path="/login" element={<LoginScreen />} />
               <Route path="/demo" element={<DemoScreen />} />
+              <Route
+                path="/dev/tournament-result-preview"
+                element={
+                  <PrivateRoute>
+                    <TournamentResultPreviewScreen />
+                  </PrivateRoute>
+                }
+              />
               <Route path="/auth/vk/callback" element={<VkAuthCallbackScreen />} />
               <Route
                 path="/"
@@ -402,6 +417,23 @@ function AppFrame(): JSX.Element {
       </div>
       <UpdatePrompt />
     </>
+  );
+}
+
+function AppFrame(): JSX.Element {
+  const location = useLocation();
+  const isAuthenticated = useAuthStore((state) => Boolean(state.accessToken));
+  const isPublicEntry =
+    location.pathname === '/login' ||
+    location.pathname === '/demo' ||
+    location.pathname === '/auth/vk/callback';
+
+  if (!isAuthenticated || isPublicEntry) return <AppExperience />;
+
+  return (
+    <OnboardingGate>
+      <AppExperience />
+    </OnboardingGate>
   );
 }
 

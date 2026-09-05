@@ -149,6 +149,7 @@ export async function confirmTournamentSeriesWinnerDecision(
     adminUserId: string;
   },
 ): Promise<TournamentSeriesAdminDecisionDTO> {
+  const settledAt = new Date();
   return transaction(pool, async (client) => {
     await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [
       `tournament:${input.tournamentId}`,
@@ -184,6 +185,7 @@ export async function confirmTournamentSeriesWinnerDecision(
     const completed = await forceTournamentPlayoffSeriesWinner(client, {
       seriesId: input.seriesId,
       winnerParticipantId: row.winner_participant_id,
+      settledAt,
     });
     if (!completed.completed) {
       throw new AppError('conflict', 'series winner cannot be applied', 409);

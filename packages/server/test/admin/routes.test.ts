@@ -691,6 +691,8 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
           ]),
           xp: 0,
           experience: 0,
+          beginnerOnboardingCompleted: false,
+          amateurOnboardingCompleted: false,
           wallet: { coins: 0 },
           pushNotifications: {
             subscribed: true,
@@ -745,6 +747,89 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       [playerId],
     );
     expect(balance.rows[0]).toEqual({ balance: 250, xp: 5, experience: 17 });
+
+    const resetBeginner = await app.inject({
+      method: 'PATCH',
+      url: `/admin/users/${playerId}`,
+      headers: auth(adminToken),
+      payload: { beginnerOnboardingCompleted: true, amateurOnboardingCompleted: false },
+    });
+    expect(resetBeginner.statusCode).toBe(200);
+    expect(resetBeginner.json().user).toMatchObject({
+      beginnerOnboardingCompleted: true,
+      amateurOnboardingCompleted: false,
+    });
+    const resetAmateur = await app.inject({
+      method: 'PATCH',
+      url: `/admin/users/${playerId}`,
+      headers: auth(adminToken),
+      payload: { beginnerOnboardingCompleted: false, amateurOnboardingCompleted: true },
+    });
+    expect(resetAmateur.statusCode).toBe(200);
+    expect(resetAmateur.json().user).toMatchObject({
+      beginnerOnboardingCompleted: false,
+      amateurOnboardingCompleted: true,
+    });
+    const onboardingState = await pool.query<{
+      beginner_onboarding_reset_at: Date | null;
+      amateur_onboarding_reset_at: Date | null;
+    }>(
+      `select beginner_onboarding_reset_at, amateur_onboarding_reset_at
+         from users where id = $1`,
+      [playerId],
+    );
+    expect(onboardingState.rows[0]?.beginner_onboarding_reset_at).not.toBeNull();
+    expect(onboardingState.rows[0]?.amateur_onboarding_reset_at).toBeNull();
+    const audits = await pool.query<{ payload: Record<string, unknown> }>(
+      `select payload from event_log
+        where user_id = $1 and type = 'admin_user_updated'
+          and payload ? 'field'
+        order by created_at`,
+      [playerId],
+    );
+    expect(audits.rows.map((row) => row.payload)).toEqual([
+      {
+        field: 'beginnerOnboardingCompleted',
+        previous: false,
+        next: true,
+        administratorId: adminId,
+      },
+      {
+        field: 'beginnerOnboardingCompleted',
+        previous: true,
+        next: false,
+        administratorId: adminId,
+      },
+      {
+        field: 'amateurOnboardingCompleted',
+        previous: false,
+        next: true,
+        administratorId: adminId,
+      },
+    ]);
+    const unchangedOnboarding = await app.inject({
+      method: 'PATCH',
+      url: `/admin/users/${playerId}`,
+      headers: auth(adminToken),
+      payload: { beginnerOnboardingCompleted: false, amateurOnboardingCompleted: true },
+    });
+    expect(unchangedOnboarding.statusCode).toBe(200);
+    const auditCount = await pool.query<{ count: string }>(
+      `select count(*) from event_log
+        where user_id = $1 and type = 'admin_user_updated' and payload ? 'field'`,
+      [playerId],
+    );
+    expect(Number(auditCount.rows[0]?.count)).toBe(3);
+
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/admin/users/${playerId}`,
+      headers: auth(adminToken),
+    });
+    expect(detail.json().user).toMatchObject({
+      beginnerOnboardingCompleted: false,
+      amateurOnboardingCompleted: true,
+    });
 
     const block = await app.inject({
       method: 'PATCH',
@@ -883,9 +968,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
     });
     expect(inventoryAfterGameplay.statusCode).toBe(200);
     expect(inventoryAfterGameplay.json().items).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: itemId, lowStockThreshold: 12 }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ id: itemId, lowStockThreshold: 12 })]),
     );
 
     await pool.query(

@@ -42,25 +42,56 @@ describe('TournamentScheduleCalendar', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /1 сентября.*ваша игра/i }));
+    const regularDay = screen.getByRole('button', { name: /^1 сентября,/i });
+    expect(regularDay).toHaveClass('tournament-calendar__day--regular');
+    expect(regularDay).toHaveAccessibleName(/ваша игра/i);
+    expect(regularDay.querySelector('i')).toBeInTheDocument();
+    fireEvent.click(regularDay);
 
     expect(screen.getByRole('dialog', { name: 'Игры выбранного дня' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ваши игры' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Другие игры дня' })).toBeInTheDocument();
     expect(screen.getByText('Моя игра')).toBeInTheDocument();
     expect(screen.getByText('Игра 1')).toBeInTheDocument();
     expect(screen.getByText('Игра 2')).toBeInTheDocument();
     expect(screen.getByText('Игра 3')).toBeInTheDocument();
-    expect(screen.queryByText('Игра 4')).not.toBeInTheDocument();
+    expect(screen.getByText('Игра 4')).toBeInTheDocument();
     expect(screen.queryByText('Игра 5')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Показать все игры (6)' }));
-    expect(screen.getByText('Игра 4')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Показать ещё (1)' }));
     expect(screen.getByText('Игра 5')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Свернуть' }));
-    expect(screen.queryByText('Игра 4')).not.toBeInTheDocument();
+    expect(screen.queryByText('Игра 5')).not.toBeInTheDocument();
   });
 
-  it('renders every game below the calendar when inline day details are requested', () => {
+  it('separates my inline fixtures from the other games of the day', () => {
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[fixture(1), fixture(2, true)]}
+        matchdays={[]}
+        regularSource="head_to_head"
+        tournamentStatus="regular"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-01T23:59:59.000Z"
+        fixtureDetailsMode="inline"
+        renderFixture={(item) => <article key={item.id}>{item.home?.name}</article>}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    const headings = screen.getAllByRole('heading').map((heading) => heading.textContent);
+    expect(headings).toContain('Ваши игры');
+    expect(headings).toContain('Другие игры дня');
+    expect(screen.getByText('Моя игра').compareDocumentPosition(screen.getByText('Игра 1'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it('paginates other games below the calendar when inline day details are requested', () => {
     const fixtures = [fixture(1), fixture(2), fixture(3), fixture(4), fixture(5), fixture(6)];
     render(
       <TournamentScheduleCalendar
@@ -80,14 +111,51 @@ describe('TournamentScheduleCalendar', () => {
     );
 
     expect(screen.getByRole('heading', { name: '1 сентября' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Все игры дня' })).toBeInTheDocument();
     expect(screen.getByText('Игра 1')).toBeInTheDocument();
+    expect(screen.getByText('Игра 4')).toBeInTheDocument();
+    expect(screen.queryByText('Игра 5')).not.toBeInTheDocument();
+    expect(screen.queryByText('Игра 6')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Показать ещё (2)' }));
+    expect(screen.getByText('Игра 5')).toBeInTheDocument();
     expect(screen.getByText('Игра 6')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Игры выбранного дня' })).not.toBeInTheDocument();
     expect(screen.queryByText('Ваша игра')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Показать все игры/ })).not.toBeInTheDocument();
   });
 
-  it('renders playoff fixtures inline for a tournament with daily regular games', () => {
+  it('selects today when the tournament schedule contains games for today', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-09-02T09:00:00.000Z'));
+    const todayFixture = {
+      ...fixture(2),
+      scheduledStartsAt: '2030-09-02T10:00:00.000Z',
+      windowEndsAt: '2030-09-02T11:00:00.000Z',
+    };
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[fixture(1), todayFixture]}
+        matchdays={[]}
+        regularSource="head_to_head"
+        tournamentStatus="regular"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-03T23:59:59.000Z"
+        fixtureDetailsMode="inline"
+        renderFixture={(item) => <article key={item.id}>{item.home?.name}</article>}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '2 сентября' })).toBeInTheDocument();
+    expect(screen.getByText('Игра 2')).toBeInTheDocument();
+    expect(screen.queryByText('Игра 1')).not.toBeInTheDocument();
+  });
+
+  it('renders playoff fixtures inline for a tournament with daily regular games by default', () => {
     const playoffFixture = {
       ...fixture(1),
       stage: 'playoff',
@@ -104,7 +172,6 @@ describe('TournamentScheduleCalendar', () => {
         timezone="Europe/Moscow"
         rangeStartsAt="2030-09-01T00:00:00.000Z"
         rangeEndsAt="2030-09-02T23:59:59.000Z"
-        fixtureDetailsMode="inline"
         renderFixture={(item) => <article key={item.id}>{item.home?.name}</article>}
         formatDateTime={(value) => value}
       />,
@@ -157,14 +224,14 @@ describe('TournamentScheduleCalendar', () => {
     );
 
     const legend = screen.getByRole('list', { name: 'Обозначения календаря' });
-    expect(legend).toHaveTextContent('Есть игры');
-    expect(legend).toHaveTextContent('Ваша игра');
+    expect(legend).toHaveTextContent('Регулярный сезон');
     expect(legend).toHaveTextContent('Плей-офф');
+    expect(legend).toHaveTextContent('У вас есть игра');
     expect(legend).toHaveTextContent('Выбранный день');
     expect(legend.querySelectorAll('.tournament-calendar__legend-dot')).toHaveLength(4);
   });
 
-  it('keeps the my-game marker on my head-to-head playoff date', () => {
+  it('marks only assigned playoff games of the current user', () => {
     const opponentPlayoff = {
       ...fixture(1),
       stage: 'playoff' as const,
@@ -174,6 +241,7 @@ describe('TournamentScheduleCalendar', () => {
       ...fixture(2, true),
       stage: 'playoff' as const,
       scheduledStartsAt: '2030-09-02T07:00:00.000Z',
+      status: 'completed',
     };
 
     render(
@@ -186,7 +254,8 @@ describe('TournamentScheduleCalendar', () => {
         isParticipant
         timezone="Europe/Moscow"
         rangeStartsAt="2030-09-01T00:00:00.000Z"
-        rangeEndsAt="2030-09-02T23:59:59.000Z"
+        rangeEndsAt="2030-09-03T23:59:59.000Z"
+        playoffStartsAt={['2030-09-03T07:00:00.000Z']}
         renderFixture={() => null}
         formatDateTime={(value) => value}
       />,
@@ -195,13 +264,57 @@ describe('TournamentScheduleCalendar', () => {
     expect(
       screen
         .getByRole('button', { name: /1 сентября.*плей-офф/i })
-        .querySelector('.tournament-calendar__mine-mark'),
+        .querySelector('i'),
     ).not.toBeInTheDocument();
     expect(
       screen
         .getByRole('button', { name: /2 сентября.*плей-офф.*ваша игра/i })
-        .querySelector('.tournament-calendar__mine-mark'),
+        .querySelector('i'),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /3 сентября.*плей-офф/i }).querySelector('i'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('marks every regular daily matchday for a participating user', () => {
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[]}
+        matchdays={[
+          {
+            id: 'day-1',
+            number: 1,
+            localDate: '2030-09-01',
+            startsAt: '2030-09-01T00:00:00.000Z',
+            endsAt: '2030-09-02T00:00:00.000Z',
+            myResult: null,
+          },
+          {
+            id: 'day-2',
+            number: 2,
+            localDate: '2030-09-02',
+            startsAt: '2030-09-02T00:00:00.000Z',
+            endsAt: '2030-09-03T00:00:00.000Z',
+            myResult: null,
+          },
+        ]}
+        regularSource="daily_aggregate"
+        tournamentStatus="regular"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-02T23:59:59.000Z"
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    for (const date of ['1 сентября', '2 сентября']) {
+      const day = screen.getByRole('button', { name: new RegExp(`${date}.*ваша игра`, 'i') });
+      expect(day).toHaveClass('tournament-calendar__day--regular');
+      expect(day.querySelector('i')).toBeInTheDocument();
+    }
   });
 
   it('shows a completed daily result instead of the open-game button', () => {
@@ -236,11 +349,15 @@ describe('TournamentScheduleCalendar', () => {
         renderFixture={() => null}
         formatDateTime={(value) => value}
         onOpenDailyGame={vi.fn()}
+        renderMatchdayResults={(matchday) => (
+          <section aria-label="Прошедшие игры дня">Результаты тура {matchday.number}</section>
+        )}
       />,
     );
 
     expect(screen.getByText('Ваш результат')).toBeInTheDocument();
     expect(screen.getByText('37 шайб из 90 · точность 41%')).toBeInTheDocument();
+    expect(screen.getByLabelText('Прошедшие игры дня')).toHaveTextContent('Результаты тура 1');
     expect(
       screen.queryByRole('button', { name: 'Открыть ежедневную игру' }),
     ).not.toBeInTheDocument();
@@ -525,5 +642,261 @@ describe('TournamentScheduleCalendar', () => {
     const playoffDay = screen.getByRole('button', { name: /10 сентября.*плей-офф/i });
     expect(playoffDay).toBeEnabled();
     expect(playoffDay).not.toHaveClass('tournament-calendar__day--outside-range');
+  });
+
+  it('extends a classic tournament range to lazy playoff day summaries', () => {
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[]}
+        fixtureDays={[
+          {
+            localDate: '2030-09-10',
+            hasGames: true,
+            hasMyGame: false,
+            hasPlayoff: true,
+          },
+        ]}
+        matchdays={[]}
+        regularSource="classic"
+        tournamentStatus="playoff"
+        currentUserId="me"
+        isParticipant={false}
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-08-28T00:00:00.000Z"
+        rangeEndsAt="2030-08-31T23:59:59.000Z"
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    const playoffDay = screen.getByRole('button', { name: /10 сентября.*плей-офф/i });
+    expect(playoffDay).toBeEnabled();
+    expect(playoffDay).not.toHaveClass('tournament-calendar__day--outside-range');
+  });
+
+  it('loads the other classic playoff games on demand', () => {
+    const loadOtherGames = vi.fn();
+    const commonProps = {
+      fixtureDays: [
+        {
+          localDate: '2030-09-10',
+          hasGames: true,
+          hasMyGame: false,
+          hasPlayoff: true,
+        },
+      ],
+      matchdays: [],
+      regularSource: 'classic' as const,
+      tournamentStatus: 'playoff' as const,
+      currentUserId: 'me',
+      isParticipant: true,
+      timezone: 'Europe/Moscow',
+      rangeStartsAt: '2030-09-10T00:00:00.000Z',
+      rangeEndsAt: '2030-09-10T23:59:59.000Z',
+      renderFixture: (item: TournamentFixture) => <article key={item.id}>{item.home?.name}</article>,
+      formatDateTime: (value: string) => value,
+    };
+    const { rerender } = render(
+      <TournamentScheduleCalendar
+        {...commonProps}
+        fixtures={[]}
+        hasOtherGames
+        otherGamesLoaded={false}
+        onLoadOtherGames={loadOtherGames}
+      />,
+    );
+
+    expect(screen.queryByText('В этот день игр нет.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Посмотреть игры дня' }));
+    expect(loadOtherGames).toHaveBeenCalledOnce();
+
+    const playoffFixture = {
+      ...fixture(7),
+      stage: 'playoff' as const,
+      scheduledStartsAt: '2030-09-10T07:00:00.000Z',
+    };
+    rerender(
+      <TournamentScheduleCalendar
+        {...commonProps}
+        fixtures={[playoffFixture]}
+        hasOtherGames
+        otherGamesLoaded
+        hasMoreOtherGames
+        onLoadOtherGames={loadOtherGames}
+      />,
+    );
+
+    expect(screen.getByText('Игра 7')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Показать ещё' })).toBeInTheDocument();
+  });
+
+  it('groups playoff fixtures into an expandable series with one day start time', () => {
+    const playoffGames = [1, 2, 3].map((gameNumber) => ({
+      ...fixture(gameNumber, true),
+      stage: 'playoff',
+      roundNumber: 2,
+      scheduledStartsAt: null,
+      seriesId: 'series-1',
+      gameNumber,
+      seriesWinsRequired: 2,
+      gameDay: {
+        id: 'day-1',
+        dayNumber: 1,
+        localDate: '2030-09-04',
+        startsAt: '2030-09-04T10:00:00.000Z',
+      },
+      home: { userId: 'me', name: 'Моя игра' },
+      away: { userId: 'opponent', name: 'Соперник' },
+      status: gameNumber < 3 ? 'settled' : 'conditional',
+      winnerUserId: gameNumber === 1 ? 'me' : gameNumber === 2 ? 'opponent' : null,
+      score: gameNumber < 3 ? { home: 54, away: 50 } : { home: 0, away: 0 },
+    } satisfies TournamentFixture));
+
+    render(
+      <TournamentScheduleCalendar
+        fixtures={playoffGames}
+        fixtureDays={[{ localDate: '2030-09-04', hasGames: true, hasMyGame: true, hasPlayoff: true }]}
+        selectedDate="2030-09-04"
+        matchdays={[]}
+        regularSource="classic"
+        tournamentStatus="playoff"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-10T23:59:59.000Z"
+        renderFixture={(item, _mine, inSeries) => (
+          <article key={item.id}>
+            Детали игры {item.gameNumber}{inSeries ? '' : ' · индивидуальное время'}
+          </article>
+        )}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    const series = screen.getByRole('button', { name: /открыть серию/i });
+    expect(series).toHaveTextContent('4 сентября, начало в 13:00');
+    expect(series).toHaveTextContent('1:1');
+    expect(screen.queryByText('Время ещё не назначено')).not.toBeInTheDocument();
+    expect(screen.queryByText('Детали игры 1')).not.toBeInTheDocument();
+
+    fireEvent.click(series);
+    expect(screen.getByText('Детали игры 1')).toBeInTheDocument();
+    expect(screen.getByText('Детали игры 2')).toBeInTheDocument();
+    expect(screen.getByText('Детали игры 3')).toBeInTheDocument();
+    expect(screen.queryByText(/индивидуальное время/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps the series score attached to players when home and away sides alternate', () => {
+    const common = {
+      ...fixture(1, true),
+      stage: 'playoff' as const,
+      scheduledStartsAt: null,
+      seriesId: 'series-1',
+      seriesWinsRequired: 4,
+      gameDay: {
+        id: 'day-1',
+        dayNumber: 1,
+        localDate: '2030-09-04',
+        startsAt: '2030-09-04T10:00:00.000Z',
+      },
+      status: 'settled' as const,
+    };
+    const games: TournamentFixture[] = [
+      {
+        ...common,
+        id: 'game-1',
+        gameNumber: 1,
+        home: { userId: 'me', name: 'Sirius' },
+        away: { userId: 'opponent', name: 'Aleksandra' },
+        winnerUserId: 'me',
+      },
+      {
+        ...common,
+        id: 'game-2',
+        gameNumber: 2,
+        home: { userId: 'opponent', name: 'Aleksandra' },
+        away: { userId: 'me', name: 'Sirius' },
+        winnerUserId: 'opponent',
+      },
+    ];
+
+    render(
+      <TournamentScheduleCalendar
+        fixtures={games}
+        fixtureDays={[
+          { localDate: '2030-09-04', hasGames: true, hasMyGame: true, hasPlayoff: true },
+        ]}
+        selectedDate="2030-09-04"
+        matchdays={[]}
+        regularSource="classic"
+        tournamentStatus="playoff"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-10T23:59:59.000Z"
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    const series = screen.getByRole('button', { name: /открыть серию/i });
+    expect(series).toHaveTextContent('Sirius');
+    expect(series).toHaveTextContent('1:1');
+    expect(series).toHaveTextContent('Aleksandra');
+  });
+
+  it('carries the accumulated series score into the next game day', () => {
+    const games: TournamentFixture[] = [1, 2, 3, 4, 5].map((gameNumber) => ({
+      ...fixture(gameNumber, true),
+      id: `series-game-${gameNumber}`,
+      stage: 'playoff',
+      roundNumber: 2,
+      scheduledStartsAt: null,
+      seriesId: 'series-1',
+      gameNumber,
+      seriesWinsRequired: 4,
+      gameDay: {
+        id: gameNumber < 5 ? 'day-1' : 'day-2',
+        dayNumber: gameNumber < 5 ? 1 : 2,
+        localDate: gameNumber < 5 ? '2030-09-04' : '2030-09-05',
+        startsAt:
+          gameNumber < 5 ? '2030-09-04T10:00:00.000Z' : '2030-09-05T10:00:00.000Z',
+      },
+      home: { userId: 'me', name: 'Sirius' },
+      away: { userId: 'opponent', name: 'Egor' },
+      status: gameNumber < 5 ? 'settled' : 'scheduled',
+      winnerUserId:
+        gameNumber === 1 || gameNumber === 3
+          ? 'me'
+          : gameNumber === 2 || gameNumber === 4
+            ? 'opponent'
+            : null,
+      score: gameNumber < 5 ? { home: 55, away: 50 } : { home: 0, away: 0 },
+    }));
+
+    render(
+      <TournamentScheduleCalendar
+        fixtures={games}
+        fixtureDays={[
+          { localDate: '2030-09-04', hasGames: true, hasMyGame: true, hasPlayoff: true },
+          { localDate: '2030-09-05', hasGames: true, hasMyGame: true, hasPlayoff: true },
+        ]}
+        selectedDate="2030-09-05"
+        matchdays={[]}
+        regularSource="classic"
+        tournamentStatus="playoff"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-10T23:59:59.000Z"
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /открыть серию/i })).toHaveTextContent('2:2');
   });
 });

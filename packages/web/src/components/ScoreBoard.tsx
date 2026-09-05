@@ -85,7 +85,9 @@ export function buildGameScoreboardModel({
     label: timerLabel,
     value: timer,
     tone: 'timer',
-    ...(timer.length >= 6 ? { emphasis: 'small' as const } : {}),
+    ...(timer.length >= 6 || timerLabel.length >= 18 || timerLabel === 'Готовность'
+      ? { emphasis: 'small' as const }
+      : {}),
   };
   const shotsMetric: GameScoreboardMetric = {
     id: 'shots',
@@ -129,10 +131,7 @@ export function GameScoreboard({
   ariaLabel = 'Игровое табло',
 }: GameScoreboardProps): JSX.Element {
   return (
-    <section
-      className="game-scoreboard game-scoreboard--stable-surface"
-      aria-label={ariaLabel}
-    >
+    <section className="game-scoreboard game-scoreboard--stable-surface" aria-label={ariaLabel}>
       <div className="game-scoreboard__rows">
         {rows.map((row) => (
           <div
@@ -151,7 +150,19 @@ export function GameScoreboard({
                   key={metric.id}
                   className={`game-scoreboard__metric game-scoreboard__metric--${tone} game-scoreboard__metric--${emphasis}`}
                 >
-                  <span className="game-scoreboard__label">{metric.label}</span>
+                  <span
+                    className="game-scoreboard__label"
+                    style={
+                      tone === 'timer'
+                        ? {
+                            textAlign: 'center',
+                            whiteSpace: 'nowrap',
+                          }
+                        : undefined
+                    }
+                  >
+                    {metric.label}
+                  </span>
                   <span className="game-scoreboard__value">{metric.value}</span>
                 </div>
               );

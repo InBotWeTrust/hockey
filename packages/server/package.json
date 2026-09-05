@@ -12,6 +12,7 @@
     "start": "node dist/index.js",
     "db:migrate": "tsx src/db/migrate-cli.ts",
     "chat:seed": "tsx src/chat/seed-cli.ts",
+    "onboarding:seed-dev": "tsx src/onboarding/seedDevContentCli.ts",
     "access-code:create": "tsx src/auth/dev-access-code-cli.ts",
     "playoff:schedule-backfill": "tsx src/tournament/playoffScheduleBackfillCli.ts",
     "tournament:lifecycle-audit": "tsx src/tournament/automaticLifecycleAuditCli.ts",

@@ -81,7 +81,9 @@ describe('TournamentAdmin', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+    const titleInput = screen.getByRole('textbox', { name: 'Название' });
+    expect(titleInput).toHaveAttribute('maxlength', '60');
+    fireEvent.change(titleInput, {
       target: { value: 'Кубок расписания' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
@@ -93,9 +95,14 @@ describe('TournamentAdmin', () => {
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1: дней на раунд' })).toHaveValue(2);
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1: максимум игр в день' })).toHaveValue(4);
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1: минут на готовность' })).toHaveValue(5);
+    expect(screen.getByRole('spinbutton', { name: 'Раунд 1: длительность игры, минуты' })).toHaveValue(
+      20,
+    );
+    expect(screen.getByText('Время игр раунда 1')).toBeInTheDocument();
+    expect(screen.getByText('Время игр раунда 2')).toBeInTheDocument();
     expect(
       screen.getByRole('spinbutton', { name: 'Раунд 1: интервал стартов, минуты' }),
-    ).toHaveValue(20);
+    ).toHaveValue(30);
     expect(screen.getByLabelText('Раунд 1: начало первой игры')).toBeInTheDocument();
     expect(screen.queryByText(/овертайм/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/буллит/i)).not.toBeInTheDocument();
@@ -2029,6 +2036,8 @@ describe('TournamentAdmin', () => {
           {
             roundNumber: 1,
             winsRequired: 2,
+            gameDurationMinutes: 20,
+            roundBreakMs: 86_400_000,
             scheduleDays: [
               {
                 localDate: '2030-01-05',
@@ -2075,12 +2084,26 @@ describe('TournamentAdmin', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Расписание плей-офф' });
     expect(dialog).toHaveClass('tournament-wizard--schedule-only');
+    expect(dialog).toHaveTextContent(
+      'Сегодняшнюю дату можно выбрать, если время первой игры ещё не наступило.',
+    );
     expect(screen.getByLabelText('Раунд 1, день 1: дата')).toHaveValue('2030-01-05');
     expect(screen.getByLabelText('Раунд 1, день 2: дата')).toHaveValue('2030-01-07');
     expect(screen.getByLabelText('Раунд 1, день 2: время начала')).toHaveValue('20:30');
     expect(screen.getAllByText('Максимум игр в серии — 3')).toHaveLength(2);
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1, день 2: количество игр' })).toHaveValue(
       1,
+    );
+    expect(screen.getByRole('spinbutton', { name: 'Раунд 1: длительность игры, минуты' })).toHaveValue(
+      20,
+    );
+    fireEvent.change(
+      screen.getByRole('spinbutton', { name: 'Раунд 1: длительность игры, минуты' }),
+      { target: { value: '30' } },
+    );
+    fireEvent.change(
+      screen.getByRole('spinbutton', { name: 'Раунд 1: интервал стартов, минуты' }),
+      { target: { value: '30' } },
     );
     expect(screen.getByRole('button', { name: 'Добавить день в раунд 1' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Сохранить расписание' })).toBeInTheDocument();
@@ -2116,6 +2139,8 @@ describe('TournamentAdmin', () => {
     const savedBody = update.mock.calls[0]?.[2] as {
       rules?: {
         playoffRounds?: Array<{
+          roundBreakMs?: number;
+          gameDurationMinutes?: number;
           scheduleDays?: Array<{
             localDate: string;
             firstWaveLocalTime: string;
@@ -2128,6 +2153,8 @@ describe('TournamentAdmin', () => {
       { localDate: '2030-01-05', firstWaveLocalTime: '18:00', maxResultGames: 1 },
       { localDate: '2030-01-08', firstWaveLocalTime: '21:15', maxResultGames: 2 },
     ]);
+    expect(savedBody.rules?.playoffRounds?.[0]?.roundBreakMs).toBe(0);
+    expect(savedBody.rules?.playoffRounds?.[0]?.gameDurationMinutes).toBe(30);
   });
 
   it('explains a started-round rejection and offers one clear retry action', async () => {

@@ -217,16 +217,20 @@ export function duelFatigueNoticeLabel(condition: DuelPlayerCondition | null): s
   return 'Усталость';
 }
 
-function duelConditionSignature(condition: DuelPlayerCondition | null): string {
-  if (!condition) return 'none';
-  return [
-    condition.status,
-    condition.fatigueLevel,
-    condition.canShoot ? '1' : '0',
-    condition.stumbleActive ? '1' : '0',
-    condition.shooterSpeedMultiplier.toFixed(4),
-    condition.puckSpeedDelta.toFixed(4),
-  ].join(':');
+function sameDuelConditionUiState(
+  left: DuelPlayerCondition | null,
+  right: DuelPlayerCondition | null,
+): boolean {
+  if (left === right) return true;
+  if (left === null || right === null) return false;
+  return (
+    left.status === right.status &&
+    left.fatigueLevel === right.fatigueLevel &&
+    left.canShoot === right.canShoot &&
+    left.stumbleActive === right.stumbleActive &&
+    Math.abs(left.shooterSpeedMultiplier - right.shooterSpeedMultiplier) < 0.0001 &&
+    Math.abs(left.puckSpeedDelta - right.puckSpeedDelta) < 0.0001
+  );
 }
 
 export interface PlayViewProps<TState> {
@@ -308,6 +312,10 @@ export interface PlayViewProps<TState> {
   hudAddon?: ReactNode;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
   readyPresence?: ReadyPresence | undefined;
+  resultCopy?: Partial<Record<ResultModalKind, string>> | undefined;
+  onSubmitError?: ((error: unknown) => void) | undefined;
+  hideBackAction?: boolean | undefined;
+  reduceMotion?: boolean | undefined;
 }
 
 export interface ReadyPresence {
@@ -578,6 +586,10 @@ export function PlayView<TState>({
   hudAddon,
   scoreboardOpponent,
   readyPresence,
+  resultCopy,
+  onSubmitError,
+  hideBackAction = false,
+  reduceMotion = false,
 }: PlayViewProps<TState>): JSX.Element {
   const session: PlaySessionSnapshot = useMemo(
     () => ({
@@ -644,6 +656,7 @@ export function PlayView<TState>({
   const wasDuelStumblingRef = useRef(false);
   const [resultSubText, setResultSubText] = useState<string | null>(null);
   const [resultDisplayKind, setResultDisplayKind] = useState<ResultModalKind | null>(null);
+  const authoritativeResultRef = useRef<ShotResult['type'] | null>(null);
   const [lastResult, setLastResult] = useState<ShotResult | null>(null);
   const liveScoreboardRef = useRef({
     goals: scoreboardGoals ?? goals,
@@ -735,12 +748,11 @@ export function PlayView<TState>({
         ? duelCondition(computeInitialElapsedMs(sessionTimingRef.current), speeds)
         : null,
   );
-  const currentDuelConditionSignatureRef = useRef<string>('');
+  const currentDuelConditionUiRef = useRef<DuelPlayerCondition | null>(currentDuelCondition);
 
   const syncCurrentDuelCondition = useCallback((condition: DuelPlayerCondition | null): void => {
-    const signature = duelConditionSignature(condition);
-    if (signature === currentDuelConditionSignatureRef.current) return;
-    currentDuelConditionSignatureRef.current = signature;
+    if (sameDuelConditionUiState(condition, currentDuelConditionUiRef.current)) return;
+    currentDuelConditionUiRef.current = condition;
     setCurrentDuelCondition(condition);
   }, []);
 
@@ -1523,6 +1535,8 @@ export function PlayView<TState>({
     let subText: string | null = null;
     let displayKind: ResultModalKind = result.type;
     const flightMs = (PUCK_START.y - GOAL_OPENING.y) / puckSpeed;
+    const visualFlightMs = reduceMotion ? 0 : flightMs;
+    const visualPauseMs = reduceMotion ? 1 : SHOT_RESULT_PAUSE_MS;
     const tGoalCross = tapTime + flightMs;
     const tGoalieCross = tapTime + (PUCK_START.y - GOALIE_Y) / puckSpeed;
     if (result.type === 'save') {
@@ -1560,6 +1574,7 @@ export function PlayView<TState>({
 
     setScoreboardSnapshot(liveScoreboardRef.current);
     optimisticAddShot(result.type);
+    authoritativeResultRef.current = null;
     shotSubmitPendingRef.current = true;
     shotAnimationInProgressRef.current = true;
     setIsShotInProgress(true);
@@ -1569,7 +1584,7 @@ export function PlayView<TState>({
     loop.beginShooterPause();
     playerRef.current?.playShot();
     const puckShotPath = puck.shotPath(sx, GOAL_OPENING.y);
-    puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), flightMs);
+    puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), visualFlightMs);
 
     const scheduleShotTimeout = (fn: () => void, delay: number): void => {
       const id = window.setTimeout(() => {
@@ -1592,9 +1607,9 @@ export function PlayView<TState>({
       setScoreboardSnapshot(null);
       setLastResult(result);
       setResultSubText(subText);
-      setResultDisplayKind(displayKind);
+      setResultDisplayKind(authoritativeResultRef.current ?? displayKind);
       setIsShowingResult(true);
-    }, flightMs);
+    }, visualFlightMs);
 
     scheduleShotTimeout(() => {
       if (!continuousClockDuringResult) {
@@ -1617,37 +1632,46 @@ export function PlayView<TState>({
         applyPending();
         pendingMidShotApplyRef.current = null;
       }
-    }, flightMs + SHOT_RESULT_PAUSE_MS);
+    }, visualFlightMs + visualPauseMs);
 
     void submitShot({
       shotIndex,
       input,
       claimedResult: result.type,
-    }).then((res) => {
-      if (!mountedRef.current) return;
-      shotSubmitPendingRef.current = false;
-      setIsShotSubmitPending(false);
-      if (res === null) {
-        // A rejected shot was rendered locally but does not exist in the
-        // authoritative shot history. Drop its flight/pause contribution from
-        // both clocks so any later shot starts from the reconciled server basis.
-        if (shotAnimationInProgressRef.current) {
-          pendingClockRebaseRef.current = true;
-        } else {
-          scheduleClockRebaseFromLatestTiming();
+    })
+      .then((res) => {
+        if (!mountedRef.current) return;
+        if (res === null) {
+          if (shotAnimationInProgressRef.current) {
+            pendingClockRebaseRef.current = true;
+          } else {
+            scheduleClockRebaseFromLatestTiming();
+          }
+          return;
         }
-        return;
-      }
-      const applyNextState = () => {
-        if (res.isCurrent?.() === false) return;
-        (applyResolvedState ?? applyState)(res.state);
-      };
-      if (shotAnimationInProgressRef.current) {
-        pendingMidShotApplyRef.current = applyNextState;
-        return;
-      }
-      applyNextState();
-    });
+        if (resultCopy) {
+          authoritativeResultRef.current = res.serverResult;
+          setResultDisplayKind(res.serverResult);
+        }
+        const applyNextState = () => {
+          if (res.isCurrent?.() === false) return;
+          (applyResolvedState ?? applyState)(res.state);
+        };
+        if (shotAnimationInProgressRef.current) {
+          pendingMidShotApplyRef.current = applyNextState;
+          return;
+        }
+        applyNextState();
+      })
+      .catch((error: unknown) => {
+        if (!mountedRef.current) return;
+        onSubmitError?.(error);
+      })
+      .finally(() => {
+        if (!mountedRef.current) return;
+        shotSubmitPendingRef.current = false;
+        setIsShotSubmitPending(false);
+      });
   }, [
     continuousClockDuringResult,
     freezeRenderingDuringResult,
@@ -1655,6 +1679,9 @@ export function PlayView<TState>({
     submitShot,
     applyState,
     applyResolvedState,
+    resultCopy,
+    onSubmitError,
+    reduceMotion,
     scheduleClockRebaseFromLatestTiming,
   ]);
 
@@ -1904,6 +1931,7 @@ export function PlayView<TState>({
 
       <div
         ref={controlsRef}
+        className="play-controls"
         style={{
           padding: '0 14px 10px',
           display: 'grid',
@@ -1916,27 +1944,32 @@ export function PlayView<TState>({
           ...routeChromeStyle,
         }}
       >
-        <button
-          type="button"
-          aria-label={backLabel}
-          title={backLabel}
-          onClick={handleBackTap}
-          className="icon-btn icon-btn--dark"
-          disabled={isRouteCameraZoomed}
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: 20,
-          }}
-        >
-          <Home size={22} />
-        </button>
+        {hideBackAction ? (
+          <span className="play-controls__back-slot" aria-hidden="true" />
+        ) : (
+          <button
+            type="button"
+            aria-label={backLabel}
+            title={backLabel}
+            onClick={handleBackTap}
+            className="icon-btn icon-btn--dark"
+            disabled={isRouteCameraZoomed}
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 20,
+            }}
+          >
+            <Home size={22} />
+          </button>
+        )}
         <button
           type="button"
           className={isDuelRestBlocked ? 'btn btn--cta btn--duel-blocked' : 'btn btn--cta'}
           onClick={handlePrimaryTap}
           disabled={primaryButtonDisabled}
           style={{
+            gridColumn: 2,
             width: '100%',
             minHeight: 58,
             padding: '0 22px',
@@ -2014,9 +2047,10 @@ export function PlayView<TState>({
       {isShowingResult && lastResult && (
         <ResultModal
           result={lastResult}
-          durationMs={SHOT_RESULT_PAUSE_MS}
+          durationMs={reduceMotion ? 1 : SHOT_RESULT_PAUSE_MS}
           subText={resultSubText}
           displayKind={resultDisplayKind ?? undefined}
+          title={resultCopy?.[resultDisplayKind ?? lastResult.type]}
         />
       )}
     </main>

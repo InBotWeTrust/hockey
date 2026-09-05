@@ -25,10 +25,12 @@ import {
 import {
   DEFAULT_DUEL_INVENTORY_TIMING,
   SHOOTER_AMPLITUDE,
+  createDuelStumbleRandomness,
   getDuelPlayerCondition,
   type DailyPeriodSpeedPreset,
   type DuelInventoryLoadoutSnapshot,
   type DuelPlayerCondition,
+  type DuelPlayerConditionInput,
 } from '@hockey/game-core';
 import type { SpeedOverrides } from '../game/loop.js';
 import {
@@ -51,7 +53,9 @@ import { useDailyStore } from '../stores/dailyStore.js';
 import { useClassicTournamentStore } from '../stores/classicTournamentStore.js';
 import {
   fetchActiveClassicTournamentGames,
-  type ActiveClassicTournamentGame,
+  type ActiveTournamentGame,
+  type ClassicTournamentLoadoutSelection,
+  type ClassicTournamentInventoryItem,
   type ClassicTournamentState,
 } from '../api/tournamentClassic.js';
 import {
@@ -65,6 +69,7 @@ import {
 } from '../stores/demoSession.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { useAmateurDuelStore } from '../stores/amateurDuelStore.js';
+import { useOnboardingGate } from '../onboarding/OnboardingGate.js';
 import { rewardColor } from '../app/rewardColors.js';
 import type { ScoreBoardOpponent } from '../components/ScoreBoard.js';
 import { GlassSelect } from '../components/GlassSelect.js';
@@ -121,7 +126,15 @@ import { AmateurDuelHistoryTab } from '../components/duel/AmateurDuelHistoryTab.
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 import { TournamentCatalog } from '../tournament/TournamentCatalog.js';
-import { fetchTournamentGameContext, type TournamentGameContext } from '../api/tournament.js';
+import {
+  dismissTournamentReadinessHint,
+  fetchTournamentFixtureAttempt,
+  fetchTournamentGameContext,
+  fetchTournamentReadinessHint,
+  openTournamentFixtureSegment,
+  type TournamentFixtureAttemptState,
+  type TournamentGameContext,
+} from '../api/tournament.js';
 import { venueRoleLabel, type VenueRole } from '../components/VenueBadge.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
@@ -145,6 +158,9 @@ interface ArenaEntry {
   eyebrowStatus?: string;
   title: string;
   subtitle: string;
+  subtitleLines?: [string, string];
+  compactTitle?: boolean;
+  compactSubtitle?: boolean;
   meta: string;
   ctaLabel: string;
   disabled?: boolean;
@@ -164,6 +180,7 @@ const DUEL_KIND_ARTWORK_IMAGES: Record<AmateurDuelKind, string> = {
 };
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
 const TRAINING_SPEED_OVERRIDES_STORAGE_KEY = 'hockey.trainingSpeedOverrides';
+const TOURNAMENT_TRAINING_LOCK_LEAD_MS = 30 * 60_000;
 const OPPONENT_ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const OPPONENT_RECENT_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
@@ -236,8 +253,8 @@ const LEGACY_STANDARD_ARENA_BACKGROUNDS = new Set([
   '/sprites/arena-ice-court-v2.webp',
 ]);
 
-function tournamentDuelCourtBackground(match: AmateurDuelMatchState): string | undefined {
-  if (match.source !== 'tournament') return undefined;
+function amateurDuelCourtBackground(match: AmateurDuelMatchState): string {
+  if (match.source !== 'tournament') return AMATEUR_DAILY_COURT_BACKGROUND;
   return LEGACY_STANDARD_ARENA_BACKGROUNDS.has(match.arena.artwork_url)
     ? AMATEUR_TOURNAMENT_COURT_BACKGROUND
     : match.arena.artwork_url;
@@ -299,6 +316,52 @@ function formatEventRemaining(ms: number): string {
     return `${days}д ${hours}:${minutes}`;
   }
   return formatHms(ms);
+}
+
+const MOSCOW_TIMEZONE = 'Europe/Moscow';
+
+function zonedCalendarDay(timestampMs: number): number {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: MOSCOW_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(timestampMs));
+  const value = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  return Date.UTC(value('year'), value('month') - 1, value('day'));
+}
+
+export function tournamentNextGameDisplay(
+  nextGameAt: string,
+  now: number,
+): { label: string; value: string; countdown: boolean } {
+  const nextAtMs = timestampMs(nextGameAt);
+  const dayDifference = Math.round(
+    (zonedCalendarDay(nextAtMs) - zonedCalendarDay(now)) / 86_400_000,
+  );
+  if (dayDifference <= 0) {
+    return {
+      label: 'Следующая игра через:',
+      value: formatMs(Math.max(0, nextAtMs - now)),
+      countdown: true,
+    };
+  }
+  const time = new Intl.DateTimeFormat('ru-RU', {
+    timeZone: MOSCOW_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(nextAtMs));
+  const date =
+    dayDifference === 1
+      ? 'Завтра'
+      : new Intl.DateTimeFormat('ru-RU', {
+          timeZone: MOSCOW_TIMEZONE,
+          day: 'numeric',
+          month: 'long',
+        }).format(new Date(nextAtMs));
+  return { label: 'Следующая игра:', value: `${date} в ${time} (мск)`, countdown: false };
 }
 
 function formatSpeedValue(value: number): string {
@@ -406,6 +469,7 @@ export function tournamentDuelBackPath(
 export function DailyScreen(): JSX.Element {
   const location = useLocation();
   const navigate = useNavigate();
+  const { refreshAfterGameExit } = useOnboardingGate();
   const data = useDailyStore((s) => s.data);
   const error = useDailyStore((s) => s.error);
   const loading = useDailyStore((s) => s.loading);
@@ -414,6 +478,7 @@ export function DailyScreen(): JSX.Element {
   const fromSections = routeParams.get('from') === 'sections';
   const tournamentOrigin = routeParams.get('section') === 'tournaments';
   const tournamentId = routeParams.get('tournament');
+  const tournamentFixtureId = routeParams.get('fixture');
   const tournamentGameRoute =
     tournamentOrigin &&
     tournamentId !== null &&
@@ -435,6 +500,15 @@ export function DailyScreen(): JSX.Element {
   const [pendingPlayEntrance, setPendingPlayEntrance] = useState<PendingPlayMarker>(null);
   const [pendingPlayRouteTransition, setPendingPlayRouteTransition] =
     useState<PendingPlayMarker>(null);
+
+  const leavePlaySurface = useCallback(
+    (destination: string): void => {
+      setDailyView('arena');
+      navigate(destination, { replace: true });
+      void refreshAfterGameExit();
+    },
+    [navigate, refreshAfterGameExit],
+  );
 
   useEffect(() => {
     if (tournamentGameRoute) return;
@@ -586,6 +660,14 @@ export function DailyScreen(): JSX.Element {
     navigate('/?view=arena', { replace: true });
   };
 
+  const leavePlayForHub = (): void => {
+    setPendingPlayEntrance(null);
+    setPendingPlayRouteTransition(null);
+    setSelectedLevel('beginner');
+    setBeginnerMode('daily');
+    leavePlaySurface('/?view=arena');
+  };
+
   const openSections = (): void => {
     setPendingPlayEntrance(null);
     setPendingPlayRouteTransition(null);
@@ -643,10 +725,10 @@ export function DailyScreen(): JSX.Element {
         backLabel={tournamentOrigin ? 'К турниру' : 'К режимам'}
         onBack={() => {
           if (tournamentOrigin) {
-            navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true });
+            leavePlaySurface(tournamentDuelBackPath(fromSections, tournamentId));
             return;
           }
-          openHub();
+          leavePlayForHub();
         }}
         playEntranceOnMount={pendingPlayEntrance === 'daily'}
         onEntranceConsumed={() => setPendingPlayEntrance(null)}
@@ -663,6 +745,8 @@ export function DailyScreen(): JSX.Element {
         return (
           <AmateurDuelPlayView
             matchId={activeAmateurMatchId}
+            tournamentId={tournamentId}
+            tournamentFixtureId={tournamentFixtureId}
             directPlayOnly={directDuelPlay}
             playEntranceOnMount={pendingPlayEntrance === `duel:${activeAmateurMatchId}`}
             onEntranceConsumed={() => setPendingPlayEntrance(null)}
@@ -670,6 +754,14 @@ export function DailyScreen(): JSX.Element {
               pendingPlayRouteTransition === `duel:${activeAmateurMatchId}`
             }
             onRouteTransitionConsumed={() => setPendingPlayRouteTransition(null)}
+            onOpenTournamentMatch={(fixtureId, matchId) => {
+              setActiveAmateurMatchId(matchId);
+              const params = new URLSearchParams(location.search);
+              params.set('fixture', fixtureId);
+              params.set('match', matchId);
+              params.set('play', '1');
+              navigate(`/?${params.toString()}`, { replace: true });
+            }}
             onBack={() => {
               setPendingPlayEntrance(null);
               setPendingPlayRouteTransition(null);
@@ -677,17 +769,16 @@ export function DailyScreen(): JSX.Element {
               if (directDuelPlay) {
                 if (tournamentOrigin) {
                   setAmateurView('tournaments');
-                  navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true });
+                  leavePlaySurface(tournamentDuelBackPath(fromSections, tournamentId));
                   return;
                 }
                 setSelectedLevel('beginner');
                 setBeginnerMode('daily');
-                setDailyView('arena');
-                navigate('/?view=arena', { replace: true });
+                leavePlaySurface('/?view=arena');
                 return;
               }
               setAmateurView('duels');
-              navigate('/?view=amateur&section=duels', { replace: true });
+              leavePlaySurface('/?view=amateur&section=duels');
             }}
           />
         );
@@ -744,7 +835,7 @@ export function DailyScreen(): JSX.Element {
       <TrainingPlaceholder
         autoPlay={routeParams.get('play') === '1'}
         onBack={fromSections ? openSections : openHub}
-        onPlayHome={openHub}
+        onPlayHome={leavePlayForHub}
         playEntranceOnStart={pendingPlayEntrance === 'training'}
         onEntranceConsumed={() => setPendingPlayEntrance(null)}
         playRouteTransitionOnStart={pendingPlayRouteTransition === 'training'}
@@ -808,6 +899,17 @@ function tournamentGameResultLabel(result: NonNullable<TournamentGameContext['re
       maximumFractionDigits: 2,
     },
   ).format(result.accuracy * 100)}%`;
+}
+
+function playoffArenaStageLabel(game: Extract<ActiveTournamentGame, { kind: 'playoff' }>): string {
+  if (game.round_stage === 'third_place') return 'Матч за 3-е место';
+  const distance = game.final_round_number - game.round_number;
+  if (distance === 0) return 'Финал';
+  if (distance === 1) return 'Полуфинал';
+  if (distance === 2) return 'Четвертьфинал';
+  if (distance === 3) return '1/8 финала';
+  if (distance === 4) return '1/16 финала';
+  return `${game.round_number}-й раунд`;
 }
 
 function TournamentGameContextLoading(): JSX.Element {
@@ -888,11 +990,18 @@ function GameHub({
   const periodRemaining = Math.max(0, periodEndsAt - now);
   const nextDayRemaining = Math.max(0, nextDayAt - now);
   const trainingCooldownRemaining = Math.max(0, trainingCooldownEndsAt - now);
+  const tournamentDayStartsAt = trainingData?.tournament_day_starts_at
+    ? new Date(trainingData.tournament_day_starts_at).getTime()
+    : 0;
   const isDailyStartedAndIncomplete =
     data.state === 'period_active' ||
     data.state === 'break_active' ||
     (data.state === 'idle' && data.current_period > 0 && data.current_period < data.total_periods);
   const isTrainingLockedByDaily = isDailyStartedAndIncomplete;
+  const isTrainingLockedByTournament =
+    trainingData?.tournament_day_locked === true ||
+    (tournamentDayStartsAt > 0 &&
+      now >= tournamentDayStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS);
   const isDailyLockedByTraining =
     data.state === 'idle' &&
     data.current_period === 0 &&
@@ -917,7 +1026,9 @@ function GameHub({
   const duelStatsCurrentMatch = duelStatsMatch
     ? (amateurEventItems.find((event) => event.id === duelStatsMatch.id) ?? duelStatsMatch)
     : null;
-  const activeDuelEvents = amateurEventItems.filter(isArenaDuelEvent);
+  const activeDuelEvents = amateurEventItems.filter(
+    (event) => event.source !== 'tournament' && isArenaDuelEvent(event),
+  );
   const [activeCubeEntryId, setActiveCubeEntryId] = useState<string | null>(
     readArenaSelectedEntryId,
   );
@@ -942,6 +1053,16 @@ function GameHub({
     data.state,
     isDailyLockedByTraining,
   ]);
+
+  useEffect(() => {
+    const lockAt = tournamentDayStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS;
+    if (tournamentDayStartsAt <= 0 || now >= lockAt) return undefined;
+    const id = window.setTimeout(
+      () => setNow(Date.now()),
+      Math.min(2_147_000_000, Math.max(0, lockAt - Date.now() + 50)),
+    );
+    return () => window.clearTimeout(id);
+  }, [now, tournamentDayStartsAt]);
 
   useEffect(() => {
     if (data.state === 'period_active' && periodEndsAt > 0 && periodRemaining === 0) void refresh();
@@ -1014,8 +1135,10 @@ function GameHub({
               };
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
-  const trainingAvailability = isTrainingLockedByDaily
-    ? 'Закрыта до завершения игры'
+  const trainingAvailability = isTrainingLockedByDaily || isTrainingLockedByTournament
+    ? isTrainingLockedByTournament
+      ? 'Закрыта на время игр турнира'
+      : 'Закрыта до завершения игры'
     : `${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`;
 
   const runArenaLaunch = useCallback(
@@ -1044,6 +1167,7 @@ function GameHub({
     if (trainingInFlight || arenaActionId === 'training' || isArenaLaunching) return;
     if (
       isTrainingLockedByDaily ||
+      isTrainingLockedByTournament ||
       trainingData?.state === 'active' ||
       trainingData?.state === 'closed' ||
       trainingData?.state === 'idle' ||
@@ -1116,11 +1240,41 @@ function GameHub({
     },
   });
 
+  const openArenaTournamentGame = useMutation({
+    mutationFn: async (game: Extract<ActiveTournamentGame, { kind: 'playoff' }>) => ({
+      game,
+      duelMatchId:
+        game.duel_match_id ??
+        (await openTournamentFixtureSegment(game.tournament_id, game.fixture_id)).duelMatchId,
+    }),
+    onSuccess: ({ game, duelMatchId }) => {
+      const params = new URLSearchParams({
+        view: 'amateur',
+        section: 'tournaments',
+        tournament: game.tournament_id,
+        tab: 'schedule',
+        fixture: game.fixture_id,
+        match: duelMatchId,
+        play: '1',
+      });
+      navigate(`/?${params.toString()}`, { replace: true });
+    },
+    onError: (err) => {
+      setModeInfoModal({
+        title: 'Не удалось открыть игру',
+        text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
+      });
+      void queryClient.invalidateQueries({ queryKey: ['tournaments', 'classic', 'active'] });
+    },
+  });
+
   const dailyArenaEntry: ArenaEntry = {
     id: 'daily',
     kind: 'daily',
     eyebrow: 'Ежедневная игра',
     title: dailyEventTitle,
+    compactTitle: isDailyLockedByTraining,
+    compactSubtitle: isDailyLockedByTraining,
     subtitle:
       data.state === 'closed'
         ? 'День завершён, следующий старт после обновления.'
@@ -1145,7 +1299,7 @@ function GameHub({
         periodsTotal={data.total_periods}
         timer={dailyHubScoreboard.timer}
         timerLabel={dailyHubScoreboard.timerLabel}
-        timerOnly={data.state === 'closed'}
+        timerOnly={data.state === 'closed' || isDailyLockedByTraining}
       />
     ),
   };
@@ -1228,7 +1382,10 @@ function GameHub({
   });
   const classicArenaEntries = [...(classicTournamentGames.data?.games ?? [])]
     .sort((left, right) => {
-      const priority = (game: ActiveClassicTournamentGame): number => {
+      const priority = (game: ActiveTournamentGame): number => {
+        if (game.kind === 'playoff') {
+          return game.state === 'active' || game.state === 'ready_check' ? 0 : 1;
+        }
         if (
           game.state === 'period_active' ||
           game.state === 'break_active' ||
@@ -1241,13 +1398,111 @@ function GameHub({
       return priority(left) - priority(right);
     })
     .map<ArenaEntry>((game) => {
+      if (game.kind === 'playoff') {
+        const breakRemaining = Math.max(0, timestampMs(game.break_ends_at) - now);
+        const startsAtRemaining = Math.max(0, timestampMs(game.starts_at) - now);
+        const readinessRemaining = Math.max(0, timestampMs(game.readiness_ends_at) - now);
+        const closesAtRemaining = Math.max(0, timestampMs(game.closes_at) - now);
+        const isBreak = game.state === 'inter_game_break' && game.break_ends_at !== null;
+        const isPaused = game.state === 'paused';
+        const isReady = game.state === 'ready_check' && readinessRemaining > 0;
+        const isExpiredReadyCheck = game.state === 'ready_check' && readinessRemaining === 0;
+        const isActive = game.state === 'active';
+        const canEnterGame = isReady || isActive;
+        return {
+          id: `playoff-${game.tournament_id}-${game.tournament_day}`,
+          kind: 'duel',
+          eyebrow: `Турнир · ${playoffArenaStageLabel(game)}`,
+          title: game.tournament_title,
+          subtitle: isPaused
+            ? 'Игра ожидает решения администратора.'
+            : isBreak
+              ? 'Перерыв между играми серии'
+              : isReady
+                ? 'Игра серии ожидает подтверждения.'
+                : isActive
+                  ? 'Игра серии уже началась.'
+                  : isExpiredReadyCheck
+                    ? 'Время подтверждения истекло.'
+                    : 'Игра серии ожидает готовности.',
+          meta: isBreak
+            ? `Следующая игра через ${formatMs(breakRemaining)}`
+            : isPaused
+              ? 'Расписание ожидает решения'
+              : isReady
+                ? `Подтвердите участие за ${formatMs(readinessRemaining)}`
+                : isActive
+                  ? `До конца игры ${formatMs(closesAtRemaining)}`
+                  : isExpiredReadyCheck
+                    ? 'Ожидаем результат проверки готовности'
+                    : `Старт через ${formatEventRemaining(startsAtRemaining)}`,
+          ctaLabel: canEnterGame ? 'На лёд' : 'К расписанию',
+          disabled: canEnterGame && openArenaTournamentGame.isPending,
+          onEnter: () => {
+            if (canEnterGame) {
+              openArenaTournamentGame.mutate(game);
+              return;
+            }
+            navigate(
+              `/?view=amateur&section=tournaments&tournament=${encodeURIComponent(game.tournament_id)}&tab=schedule`,
+              { replace: true },
+            );
+          },
+          scoreboard: (
+            <DailyHubScoreboard
+              activePeriod={0}
+              ariaLabel={
+                isPaused
+                  ? `${game.tournament_title}. Игра ожидает решения администратора.`
+                  : isBreak
+                    ? `${game.tournament_title}. Перерыв между играми серии. До конца ${formatMs(breakRemaining)}`
+                    : isReady
+                      ? `${game.tournament_title}. До подтверждения ${formatMs(readinessRemaining)}`
+                      : isActive
+                        ? `${game.tournament_title}. Игра идёт. До конца ${formatMs(closesAtRemaining)}`
+                        : isExpiredReadyCheck
+                          ? `${game.tournament_title}. Время подтверждения истекло.`
+                          : `${game.tournament_title}. Старт через ${formatEventRemaining(startsAtRemaining)}`
+              }
+              periodsTotal={game.total_periods}
+              timer={
+                isPaused
+                  ? '—'
+                  : isBreak
+                    ? formatMs(breakRemaining)
+                    : isReady
+                      ? formatMs(readinessRemaining)
+                      : isActive
+                        ? formatMs(closesAtRemaining)
+                        : isExpiredReadyCheck
+                          ? '—'
+                          : formatEventRemaining(startsAtRemaining)
+              }
+              timerLabel={
+                isPaused
+                  ? 'Пауза'
+                  : isBreak
+                    ? 'Перерыв'
+                    : isReady
+                      ? 'До подтверждения'
+                      : isActive
+                        ? 'До конца'
+                        : isExpiredReadyCheck
+                          ? 'Проверка'
+                          : 'До старта'
+              }
+            />
+          ),
+        };
+      }
       const deadlineRemaining = Math.max(0, timestampMs(game.closes_at) - now);
+      const breakRemaining = Math.max(0, timestampMs(game.break_ends_at) - now);
+      const isBreak = game.state === 'break_active' && game.break_ends_at !== null;
       const started =
         game.state === 'period_active' ||
         game.state === 'break_active' ||
         (game.state === 'idle' && game.current_period > 0);
       const completed = game.state === 'closed';
-      const accuracy = formatGoalRate(game.total_goals, game.total_shots);
       return {
         id: `classic-${game.tournament_id}`,
         kind: 'classic',
@@ -1257,31 +1512,32 @@ function GameHub({
           ? 'Игра завершена, результат сохранён.'
           : started
             ? 'Турнирная игра уже начата.'
-            : 'Отдельная игра по правилам этого турнира.',
+            : 'Отдельная игра по правилам турнира',
+        ...(!completed && !started
+          ? { subtitleLines: ['Отдельная игра', 'по правилам турнира'] as [string, string] }
+          : {}),
         meta: completed
-          ? `${game.total_goals} шайб · точность ${accuracy}`
+          ? ''
           : `${game.current_period > 0 ? `${game.current_period}-й период` : 'Три периода'} · до ${formatEventRemaining(deadlineRemaining)}`,
         ctaLabel: started ? 'Продолжить' : 'Начать',
         disabled: completed,
-        secondaryActions: completed ? (
-          <div
-            aria-label={`Результат: ${game.total_goals} шайб, точность ${accuracy}`}
-            style={{
-              color: '#e9fbff',
-              fontSize: 'clamp(12px, 1.7vh, 15px)',
-              fontWeight: 900,
-              textAlign: 'center',
-            }}
-          >
-            {game.total_goals} шайб · точность {accuracy}
-          </div>
-        ) : undefined,
         onEnter: () =>
           navigate(`/?view=classic&tournament=${encodeURIComponent(game.tournament_id)}`, {
             replace: true,
           }),
         ...(completed
-          ? {}
+          ? {
+              scoreboard: (
+                <DailyHubScoreboard
+                  activePeriod={null}
+                  ariaLabel={`Завершена. До обновления ${formatHms(deadlineRemaining)}`}
+                  periodsTotal={3}
+                  timer={formatHms(deadlineRemaining)}
+                  timerLabel="До обновления"
+                  timerOnly
+                />
+              ),
+            }
           : {
               scoreboard: (
                 <DailyHubScoreboard
@@ -1290,10 +1546,17 @@ function GameHub({
                       ? game.current_period
                       : Math.min(3, game.current_period + 1)
                   }
-                  ariaLabel={`${game.tournament_title}. ${game.tournament_day}-й тур. До закрытия ${formatEventRemaining(deadlineRemaining)}`}
+                  ariaLabel={
+                    isBreak
+                      ? `${game.tournament_title}. ${game.tournament_day}-й тур. Перерыв. До конца ${formatMs(breakRemaining)}. Период ${Math.min(3, game.current_period + 1)}`
+                      : `${game.tournament_title}. ${game.tournament_day}-й тур. До конца дня ${formatEventRemaining(deadlineRemaining)}`
+                  }
                   periodsTotal={3}
-                  timer={formatEventRemaining(deadlineRemaining)}
-                  timerLabel="До закрытия"
+                  spacious
+                  timer={
+                    isBreak ? formatMs(breakRemaining) : formatEventRemaining(deadlineRemaining)
+                  }
+                  timerLabel={isBreak ? 'Перерыв' : 'До конца дня'}
                 />
               ),
             }),
@@ -1551,7 +1814,9 @@ function ArenaVideoCube({
             })}
           </div>
           <ArenaCubeFace entry={activeEntry} />
-          {activeEntry.secondaryActions ?? (
+          {activeEntry.secondaryActions !== undefined ? (
+            activeEntry.secondaryActions
+          ) : activeEntry.disabled ? null : (
             <button
               type="button"
               className="btn btn--cta"
@@ -1742,30 +2007,52 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
           </div>
         ) : (
           <div
+            className={`arena-cube-title${entry.title.length > 28 ? ' arena-cube-title--long' : ''}${entry.compactTitle ? ' arena-cube-title--compact' : ''}`}
             style={{
               color: '#f7feff',
-              fontSize: 'clamp(16px, 2.65vh, 22px)',
-              lineHeight: 0.95,
+              fontSize: entry.compactTitle
+                ? 'clamp(13px, 2vh, 17px)'
+                : entry.title.length > 28
+                  ? 'clamp(13px, 2.05vh, 17px)'
+                  : 'clamp(16px, 2.65vh, 22px)',
+              lineHeight: entry.compactTitle ? 1 : entry.title.length > 28 ? 1.02 : 0.95,
               fontWeight: 950,
+              display: entry.compactTitle ? 'block' : '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: entry.compactTitle ? 1 : 3,
+              overflow: 'hidden',
               overflowWrap: 'break-word',
+              whiteSpace: entry.compactTitle ? 'nowrap' : undefined,
               textTransform: 'uppercase',
+              maxWidth: '100%',
             }}
           >
             {entry.title}
           </div>
         )}
         <div
+          className={entry.compactSubtitle ? 'arena-cube-subtitle--compact' : undefined}
           style={{
-            maxWidth: 'min(72%, 280px)',
+            maxWidth: entry.compactSubtitle ? 'min(84%, 300px)' : 'min(72%, 280px)',
             margin: '0 auto',
             color: 'rgba(234, 246, 255, 0.9)',
-            fontSize: 'clamp(9px, 1.24vh, 10px)',
+            fontSize: entry.compactSubtitle
+              ? 'clamp(8px, 1.12vh, 9px)'
+              : 'clamp(9px, 1.24vh, 10px)',
             fontWeight: 850,
-            lineHeight: 1.12,
+            lineHeight: entry.compactSubtitle ? 1.08 : 1.12,
             textShadow: '0 0 7px rgba(0, 12, 24, 0.88)',
           }}
         >
-          {entry.subtitle}
+          {entry.subtitleLines ? (
+            <span aria-label={entry.subtitle}>
+              {entry.subtitleLines[0]}
+              <br />
+              {entry.subtitleLines[1]}
+            </span>
+          ) : (
+            entry.subtitle
+          )}
         </div>
         <div
           style={{
@@ -1813,6 +2100,7 @@ function DailyHubScoreboard({
   timer,
   timerLabel,
   timerOnly = false,
+  spacious = false,
 }: {
   activePeriod: number | null;
   align?: 'center' | 'left';
@@ -1821,6 +2109,7 @@ function DailyHubScoreboard({
   timer: string;
   timerLabel: string;
   timerOnly?: boolean;
+  spacious?: boolean;
 }): JSX.Element {
   return (
     <div
@@ -1828,17 +2117,26 @@ function DailyHubScoreboard({
       className={timerOnly ? 'daily-hub-scoreboard--timer-only' : undefined}
       style={{
         width: align === 'left' ? 'auto' : '100%',
-        maxWidth: align === 'left' ? 'none' : 306,
+        maxWidth: align === 'left' ? 'none' : spacious ? 360 : 340,
         padding: 0,
         display: 'grid',
         gridTemplateColumns: timerOnly
           ? 'minmax(0, 1fr)'
           : align === 'left'
             ? 'max-content max-content'
-            : 'minmax(0, 1fr) minmax(0, 1fr)',
+            : spacious
+              ? 'max-content max-content'
+              : 'minmax(0, 1fr) auto',
         alignItems: 'center',
         justifyItems: timerOnly ? 'center' : align === 'left' ? 'start' : 'center',
-        gap: align === 'left' ? 36 : 'clamp(6px, 1.1vh, 10px)',
+        gap:
+          align === 'left'
+            ? 36
+            : timerOnly
+              ? 0
+              : spacious
+                ? 'clamp(28px, 5vw, 40px)'
+                : 'clamp(18px, 3vw, 28px)',
         margin: '0 auto',
       }}
     >
@@ -1901,6 +2199,13 @@ function canStartArenaDuelPeriod(
     nowMs < endsAt &&
     match.me.current_period < match.rules.totalPeriods
   );
+}
+
+export function isDuelLoadoutEditable(
+  _source: AmateurDuelMatch['source'],
+  participantState: AmateurDuelParticipantState,
+): boolean {
+  return participantState !== 'period_active';
 }
 
 export function isDuelReadyPresenceState(state: AmateurDuelParticipantState): boolean {
@@ -2124,8 +2429,8 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
       const value = formatMs(myContinueDeadline - now);
       return {
         activePeriod: duelNextPeriod(match),
-        ariaLabel: `До поражения ${value}. Счёт ${score}`,
-        label: 'До поражения',
+        ariaLabel: `До технического поражения ${value}. Счёт ${score}`,
+        label: 'До технического поражения',
         value,
       };
     }
@@ -2137,8 +2442,8 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
       const value = formatMs(opponentContinueDeadline - now);
       return {
         activePeriod: duelNextPeriod(match),
-        ariaLabel: `До поражения соперника ${value}. Счёт ${score}`,
-        label: 'До поражения соперника',
+        ariaLabel: `Ждём завершения игры соперника ${value}. Счёт ${score}`,
+        label: 'Ждём завершения игры соперника',
         value,
       };
     }
@@ -2146,15 +2451,14 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
 
   if (match.status === 'active' && endsAt > now) {
     const value = formatMs(endsAt - now);
-    const waitingForOpponent =
-      match.me.state === 'completed' ||
-      match.me.state === 'forfeit' ||
-      match.opponent.state === 'accepted';
+    const waitingForOpponent = match.me.state === 'completed' || match.me.state === 'forfeit';
     const label =
       match.me.state === 'accepted'
-        ? 'До поражения'
+        ? match.me.current_period === 0
+          ? 'До конца игры'
+          : 'До технического поражения'
         : waitingForOpponent
-          ? 'До поражения соперника'
+          ? 'Ждём завершения игры соперника'
           : 'До таймаута';
     return {
       activePeriod: match.rules.totalPeriods,
@@ -2254,7 +2558,7 @@ function DailyEventScoreboardColumn({
         width: '100%',
       }}
     >
-      <DailyEventScoreboardLabel>{label}</DailyEventScoreboardLabel>
+      <DailyEventScoreboardLabel align={align}>{label}</DailyEventScoreboardLabel>
       <span
         style={{
           color: '#e9fbff',
@@ -2274,7 +2578,13 @@ function DailyEventScoreboardColumn({
   );
 }
 
-function DailyEventScoreboardLabel({ children }: { children: React.ReactNode }): JSX.Element {
+function DailyEventScoreboardLabel({
+  align = 'center',
+  children,
+}: {
+  align?: 'center' | 'left';
+  children: React.ReactNode;
+}): JSX.Element {
   return (
     <span
       style={{
@@ -2283,7 +2593,10 @@ function DailyEventScoreboardLabel({ children }: { children: React.ReactNode }):
         fontWeight: 900,
         letterSpacing: '0.16em',
         textTransform: 'uppercase',
-        whiteSpace: 'nowrap',
+        maxWidth: '100%',
+        overflowWrap: 'anywhere',
+        textAlign: align,
+        whiteSpace: 'normal',
         textShadow: '0 0 7px rgba(88, 207, 255, 0.36)',
       }}
     >
@@ -2359,6 +2672,7 @@ function DailyGameStatsModal({
   title = 'Статистика прошлой игры',
   ariaLabel = 'Статистика последней игры',
   closeLabel = 'Понятно',
+  supplemental,
   onClose,
 }: {
   stats: DailyGameStats | null;
@@ -2366,6 +2680,7 @@ function DailyGameStatsModal({
   title?: string;
   ariaLabel?: string;
   closeLabel?: string;
+  supplemental?: ReactNode;
   onClose: () => void;
 }): JSX.Element {
   const periodsByNumber = new Map<number, PeriodLogEntry>(
@@ -2489,6 +2804,7 @@ function DailyGameStatsModal({
                 );
               })}
             </div>
+            {supplemental}
           </>
         )}
 
@@ -3505,9 +3821,24 @@ function DuelStatusBadge({ match }: { match: AmateurDuelMatch }): JSX.Element {
 }
 
 function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element {
+  const location = useLocation();
+  const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(() =>
+    new URLSearchParams(location.search).get('tournament'),
+  );
+  const handleBack = (): void => {
+    if (selectedTournamentId !== null) {
+      setSelectedTournamentId(null);
+      return;
+    }
+    onBack();
+  };
+
   return (
-    <ModeShell title="Турниры" onBack={onBack} variant="section-hub">
-      <TournamentCatalog />
+    <ModeShell title="Турниры" onBack={handleBack} variant="section-hub">
+      <TournamentCatalog
+        selectedTournamentId={selectedTournamentId}
+        onSelectedTournamentIdChange={setSelectedTournamentId}
+      />
     </ModeShell>
   );
 }
@@ -4987,20 +5318,26 @@ function DuelListCard({
 
 function AmateurDuelPlayView({
   matchId,
+  tournamentId,
+  tournamentFixtureId,
   onBack,
   directPlayOnly = false,
   playEntranceOnMount = false,
   onEntranceConsumed,
   playRouteTransitionOnMount = false,
   onRouteTransitionConsumed,
+  onOpenTournamentMatch,
 }: {
   matchId: string;
+  tournamentId: string | null;
+  tournamentFixtureId: string | null;
   onBack: () => void;
   directPlayOnly?: boolean;
   playEntranceOnMount?: boolean;
   onEntranceConsumed?: () => void;
   playRouteTransitionOnMount?: boolean;
   onRouteTransitionConsumed?: (() => void) | undefined;
+  onOpenTournamentMatch?: (fixtureId: string, matchId: string) => void;
 }): JSX.Element {
   const match = useAmateurDuelStore((s) => s.match);
   const loading = useAmateurDuelStore((s) => s.loading);
@@ -5009,6 +5346,7 @@ function AmateurDuelPlayView({
   const load = useAmateurDuelStore((s) => s.load);
   const refresh = useAmateurDuelStore((s) => s.refresh);
   const ready = useAmateurDuelStore((s) => s.ready);
+  const confirmTournamentLoadout = useAmateurDuelStore((s) => s.confirmTournamentLoadout);
   const startPeriod = useAmateurDuelStore((s) => s.startPeriod);
   const updateLoadout = useAmateurDuelStore((s) => s.updateLoadout);
   const optimisticAddShot = useAmateurDuelStore((s) => s.optimisticAddShot);
@@ -5022,17 +5360,38 @@ function AmateurDuelPlayView({
   );
   const [playerReadyEntranceKey, setPlayerReadyEntranceKey] = useState<string | null>(null);
   const [goalieReadyEntranceKey, setGoalieReadyEntranceKey] = useState<string | null>(null);
-  const [showTournamentReadinessExplanation, setShowTournamentReadinessExplanation] = useState(
-    () => localStorage.getItem('hockey.tournamentReadinessExplanationDisabled') !== 'true',
-  );
+  const [showTournamentReadinessExplanation, setShowTournamentReadinessExplanation] =
+    useState(true);
   const [disableTournamentReadinessExplanation, setDisableTournamentReadinessExplanation] =
     useState(false);
-  const tournamentReadyButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousReadyStateRef = useRef<{ me: boolean; opponent: boolean } | null>(null);
+  const appliedTournamentLoadoutVersionRef = useRef<string | null>(null);
+  const preserveSelectedLoadoutAfterReadyRef = useRef(false);
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
     enabled: Boolean(matchId),
+  });
+  const tournamentAttempt = useQuery({
+    queryKey: ['tournaments', tournamentId, 'fixtures', tournamentFixtureId, 'attempt'],
+    queryFn: () => fetchTournamentFixtureAttempt(tournamentId!, tournamentFixtureId!),
+    enabled:
+      match?.source === 'tournament' && tournamentId !== null && tournamentFixtureId !== null,
+    refetchInterval: 1_000,
+  });
+  const tournamentReadinessHint = useQuery({
+    queryKey: ['tournaments', tournamentId, 'readiness-hint'],
+    queryFn: () => fetchTournamentReadinessHint(tournamentId!),
+    enabled: match?.source === 'tournament' && tournamentId !== null,
+  });
+  const dismissReadinessHint = useMutation({
+    mutationFn: () => dismissTournamentReadinessHint(tournamentId!),
+  });
+  const openNextTournamentGame = useMutation({
+    mutationFn: (fixtureId: string) => openTournamentFixtureSegment(tournamentId!, fixtureId),
+    onSuccess: (segment, fixtureId) => {
+      onOpenTournamentMatch?.(fixtureId, segment.duelMatchId);
+    },
   });
 
   useEffect(() => {
@@ -5042,11 +5401,11 @@ function AmateurDuelPlayView({
   useEffect(() => {
     setDismissedResultMatchId(null);
     setSelectedLoadout({});
-    setShowTournamentReadinessExplanation(
-      localStorage.getItem('hockey.tournamentReadinessExplanationDisabled') !== 'true',
-    );
+    setShowTournamentReadinessExplanation(true);
     setDisableTournamentReadinessExplanation(false);
     previousReadyStateRef.current = null;
+    appliedTournamentLoadoutVersionRef.current = null;
+    preserveSelectedLoadoutAfterReadyRef.current = false;
     setPlayerReadyEntranceKey(null);
     setGoalieReadyEntranceKey(null);
   }, [matchId]);
@@ -5059,6 +5418,9 @@ function AmateurDuelPlayView({
   useEffect(() => {
     const inventory = inventoryQuery.data;
     if (!inventory) return;
+    if (match?.source === 'tournament' && match.me.state === 'accepted') {
+      return;
+    }
     setSelectedLoadout((current) => ({
       stick: current.stick === undefined ? duelEquipmentIdFor(inventory, 'stick') : current.stick,
       skates:
@@ -5068,7 +5430,25 @@ function AmateurDuelPlayView({
           ? duelEquipmentIdFor(inventory, 'nutrition')
           : current.nutrition,
     }));
-  }, [inventoryQuery.data, matchId]);
+  }, [inventoryQuery.data, match, matchId]);
+
+  useEffect(() => {
+    if (!match || match.source !== 'tournament' || match.me.state !== 'accepted') {
+      return;
+    }
+    const selectionKey = match.me.loadout.items
+      .map((item) => `${item.kind}:${item.id}`)
+      .sort()
+      .join('|');
+    const versionKey = `${match.id}:${match.me.current_period + 1}:${match.me.tournament_loadout_period ?? 'preview'}:${match.me.tournament_loadout_version ?? 0}:${selectionKey}`;
+    if (appliedTournamentLoadoutVersionRef.current === versionKey) return;
+    appliedTournamentLoadoutVersionRef.current = versionKey;
+    if (preserveSelectedLoadoutAfterReadyRef.current) {
+      preserveSelectedLoadoutAfterReadyRef.current = false;
+      return;
+    }
+    setSelectedLoadout(duelLoadoutSelectionFromMatch(match));
+  }, [match]);
 
   useEffect(() => {
     if (!match || match.id !== matchId) return;
@@ -5085,6 +5465,11 @@ function AmateurDuelPlayView({
     }
     previousReadyStateRef.current = { me: meReady, opponent: opponentReady };
   }, [match, matchId]);
+
+  const participantState = match?.me?.state;
+  useEffect(() => {
+    if (participantState === 'period_active') setSelectedLoadoutKind(null);
+  }, [participantState]);
 
   useEffect(() => {
     if (!match || match.id !== matchId) return;
@@ -5114,6 +5499,11 @@ function AmateurDuelPlayView({
     return () => window.clearInterval(id);
   }, [match, matchId, refresh]);
 
+  const duelCondition = useMemo(
+    () => (match ? createDuelConditionForMatch(match) : () => null),
+    [match],
+  );
+
   if (!match || match.id !== matchId) {
     return (
       <ModeShell title="Дуэль" onBack={onBack}>
@@ -5134,23 +5524,33 @@ function AmateurDuelPlayView({
     now >= startsAt &&
     now < endsAt &&
     match.me.current_period < match.rules.totalPeriods;
+  const usesTournamentPeriodLoadout =
+    match.source === 'tournament' && match.rules.tournamentLoadoutLifecycleVersion === 1;
+  const loadoutEditable = isDuelLoadoutEditable(match.source, match.me.state);
   const handleDirectDuelAction = async (): Promise<void> => {
     if (inFlight) return;
     const matchNow = duelMatchNowMs(match, now);
     if (match.status === 'ready_check' && match.me.state !== 'ready') {
-      await ready(selectedLoadout);
+      if (usesTournamentPeriodLoadout) preserveSelectedLoadoutAfterReadyRef.current = true;
+      const readyMatch = await ready(usesTournamentPeriodLoadout ? {} : selectedLoadout);
+      if (readyMatch === null) preserveSelectedLoadoutAfterReadyRef.current = false;
       return;
     }
     if (canStartArenaDuelPeriod(match, matchNow)) {
+      if (usesTournamentPeriodLoadout) {
+        const confirmed = await confirmTournamentLoadout(selectedLoadout);
+        if (confirmed === null) return;
+        await startPeriod();
+        return;
+      }
       await startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout));
     }
   };
-  const handleTournamentReadinessConfirmation = async (): Promise<void> => {
-    if (inFlight) return;
-    const next = await ready(selectedLoadout);
-    if (next === null) return;
-    if (disableTournamentReadinessExplanation) {
-      localStorage.setItem('hockey.tournamentReadinessExplanationDisabled', 'true');
+  const dismissTournamentReadinessExplanation = async (): Promise<void> => {
+    if (disableTournamentReadinessExplanation && tournamentId !== null) {
+      const result = await dismissReadinessHint.mutateAsync();
+      tournamentReadinessHint.refetch();
+      if (!result.dismissed) return;
     }
     setShowTournamentReadinessExplanation(false);
   };
@@ -5160,8 +5560,6 @@ function AmateurDuelPlayView({
       : Math.min(match.rules.totalPeriods, match.me.current_period + 1);
   const nextPeriodRule = currentDuelPeriodRule(match);
   const opponentDisplayName = match.opponent.display_name || 'Игрок';
-  const duelCondition = (elapsedMs: number, speeds: SpeedOverrides): DuelPlayerCondition | null =>
-    duelConditionForMatch(match, elapsedMs, speeds);
   const liveDuelCondition =
     match.me.state === 'period_active'
       ? duelCondition(
@@ -5178,11 +5576,19 @@ function AmateurDuelPlayView({
     const next = await updateLoadout({ stick: itemId });
     if (next) setSelectedLoadoutKind(null);
   };
+  const tournamentResultReady =
+    match.source !== 'tournament' ||
+    (tournamentAttempt.isSuccess &&
+      tournamentAttempt.data?.attempt?.duelMatchId === match.id &&
+      !['pending', 'ready_check', 'active'].includes(tournamentAttempt.data.attempt.status));
 
   if (directPlayOnly && match.me.state !== 'period_active') {
     const timing = duelEventTiming(match, now);
     const inactivePeriodRule = duelParticipantPeriodRule(match, match.me);
-    const showDirectResultModal = match.status === 'settled' && dismissedResultMatchId !== match.id;
+    const showDirectResultModal =
+      match.status === 'settled' &&
+      dismissedResultMatchId !== match.id &&
+      tournamentResultReady;
     const canRunDirectDuelAction =
       (match.status === 'ready_check' && match.me.state !== 'ready') ||
       canStartArenaDuelPeriod(match, duelMatchNowMs(match, now));
@@ -5192,7 +5598,9 @@ function AmateurDuelPlayView({
       match.source === 'tournament' &&
       match.status === 'ready_check' &&
       match.me.state !== 'ready' &&
-      showTournamentReadinessExplanation;
+      showTournamentReadinessExplanation &&
+      (tournamentId === null ||
+        (tournamentReadinessHint.isSuccess && tournamentReadinessHint.data.dismissed !== true));
     return (
       <>
         <PlayView<AmateurDuelMatchState>
@@ -5232,7 +5640,7 @@ function AmateurDuelPlayView({
           submitShot={submitShot}
           applyState={applyState}
           duelCondition={duelCondition}
-          longCourtBackground={tournamentDuelCourtBackground(match)}
+          longCourtBackground={amateurDuelCourtBackground(match)}
           hudAddon={
             <DuelRinkLoadoutHud
               match={match}
@@ -5244,7 +5652,17 @@ function AmateurDuelPlayView({
           scoreboardGoals={match.me.goals}
           scoreboardOpponent={duelScoreboardOpponent(match)}
         />
-        {showDirectResultModal && <DuelResultModal match={match} onClose={onBack} />}
+        {showDirectResultModal && (
+          <DuelResultModal
+            match={match}
+            {...(tournamentAttempt.data === undefined
+              ? {}
+              : { tournamentAttempt: tournamentAttempt.data })}
+            now={now}
+            onOpenNextGame={(fixtureId) => openNextTournamentGame.mutate(fixtureId)}
+            onClose={onBack}
+          />
+        )}
         {selectedLoadoutKind !== null && (
           <DuelRinkLoadoutModal
             kind={selectedLoadoutKind}
@@ -5258,15 +5676,10 @@ function AmateurDuelPlayView({
             }}
           />
         )}
-        <AccessibleModal
-          title="Подтвердите участие"
-          open={explainTournamentReadiness}
-          closeBlocked
-          initialFocusRef={tournamentReadyButtonRef}
-        >
+        <AccessibleModal title="Подтвердите участие" open={explainTournamentReadiness} closeBlocked>
           <div style={{ display: 'grid', gap: 14 }}>
             <p className="modal-copy" style={{ margin: 0 }}>
-              Нажмите «Готов», чтобы подтвердить участие в дуэли.
+              Нажмите «Готов» на льду, чтобы подтвердить участие в дуэли.
             </p>
             <p className="modal-copy" style={{ margin: 0, fontSize: 13 }}>
               Подтвердите готовность до конца таймера. Если соперник подтвердит участие, а вы — нет,
@@ -5297,13 +5710,12 @@ function AmateurDuelPlayView({
             )}
             <div className="modal-actions" style={{ marginTop: 2 }}>
               <button
-                ref={tournamentReadyButtonRef}
                 type="button"
                 className="modal-primary btn btn--cta"
-                disabled={inFlight}
-                onClick={() => void handleTournamentReadinessConfirmation()}
+                disabled={dismissReadinessHint.isPending}
+                onClick={() => void dismissTournamentReadinessExplanation()}
               >
-                {inFlight ? 'Фиксируем...' : 'Готов'}
+                Понятно
               </button>
             </div>
           </div>
@@ -5402,17 +5814,17 @@ function AmateurDuelPlayView({
           submitShot={submitShot}
           applyState={applyState}
           duelCondition={duelCondition}
-          longCourtBackground={tournamentDuelCourtBackground(match)}
+          longCourtBackground={amateurDuelCourtBackground(match)}
           hudAddon={
             <DuelInventoryMiniHud
               match={match}
               liveCondition={liveDuelCondition}
-              onSelectKind={setSelectedLoadoutKind}
+              {...(loadoutEditable ? { onSelectKind: setSelectedLoadoutKind } : {})}
             />
           }
           scoreboardOpponent={duelScoreboardOpponent(match)}
         />
-        {selectedLoadoutKind === 'stick' && (
+        {loadoutEditable && selectedLoadoutKind === 'stick' && (
           <DuelRinkLoadoutModal
             kind="stick"
             match={match}
@@ -5450,7 +5862,8 @@ function AmateurDuelPlayView({
       : match.me.state === 'completed'
         ? 'Ждём соперника'
         : 'Период недоступен';
-  const showResultModal = match.status === 'settled' && dismissedResultMatchId !== match.id;
+  const showResultModal =
+    match.status === 'settled' && dismissedResultMatchId !== match.id && tournamentResultReady;
 
   return (
     <ModeShell title="Дуэль" onBack={onBack}>
@@ -5493,7 +5906,17 @@ function AmateurDuelPlayView({
       >
         {startButtonLabel}
       </button>
-      {showResultModal && <DuelResultModal match={match} onClose={onBack} />}
+      {showResultModal && (
+        <DuelResultModal
+          match={match}
+          {...(tournamentAttempt.data === undefined
+            ? {}
+            : { tournamentAttempt: tournamentAttempt.data })}
+          now={now}
+          onOpenNextGame={(fixtureId) => openNextTournamentGame.mutate(fixtureId)}
+          onClose={onBack}
+        />
+      )}
     </ModeShell>
   );
 }
@@ -5503,27 +5926,93 @@ function DuelResultModal({
   onClose,
   closeLabel = 'Понятно',
   isLoadingDetails = false,
+  tournamentAttempt,
+  now = Date.now(),
+  onOpenNextGame,
 }: {
   match: AmateurDuelMatch;
   onClose: () => void;
   closeLabel?: string;
   isLoadingDetails?: boolean;
+  tournamentAttempt?: TournamentFixtureAttemptState;
+  now?: number;
+  onOpenNextGame?: (fixtureId: string) => void;
 }): JSX.Element {
+  const nextGame = tournamentAttempt?.nextGame ?? null;
+  const nextGameDisplay =
+    nextGame === null ? null : tournamentNextGameDisplay(nextGame.breakEndsAt, now);
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Результат дуэли">
       <DuelResultCard
         match={match}
         isLoadingDetails={isLoadingDetails}
+        {...(tournamentAttempt === undefined ? {} : { tournamentAttempt })}
         footer={
-          <div className="modal-actions">
-            <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
-              {closeLabel}
-            </button>
-          </div>
+          <>
+            {nextGame !== null && (
+              <div className="tournament-duel-result__next-game">
+                {nextGame.available ? (
+                  <button
+                    type="button"
+                    className="btn btn--cta"
+                    onClick={() => onOpenNextGame?.(nextGame.fixtureId)}
+                  >
+                    К следующей игре
+                  </button>
+                ) : (
+                  <div className="tournament-duel-result__countdown">
+                    <span>{nextGameDisplay!.label}</span>
+                    <strong
+                      aria-label="До следующей игры"
+                      data-countdown={nextGameDisplay!.countdown ? 'true' : 'false'}
+                    >
+                      {nextGameDisplay!.value}
+                    </strong>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="modal-actions">
+              <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
+                {closeLabel}
+              </button>
+            </div>
+          </>
         }
       />
     </div>
   );
+}
+
+interface TournamentSeriesResultArtwork {
+  src: string;
+  alt: string;
+}
+
+function tournamentSeriesResultArtwork(
+  match: AmateurDuelMatch,
+  tournamentAttempt?: TournamentFixtureAttemptState,
+): TournamentSeriesResultArtwork | null {
+  const series = tournamentAttempt?.series;
+  if (series?.status !== 'completed' || series.winnerUserId === null) return null;
+  const won = series.winnerUserId === match.me.user_id;
+  if (!won) {
+    return {
+      src: '/tournament-results/series-loss.webp',
+      alt:
+        series.kind === 'third_place' ? 'Поражение в матче за третье место' : 'Поражение в серии',
+    };
+  }
+  if (series.kind === 'third_place') {
+    return {
+      src: '/tournament-results/third-place-win.webp',
+      alt: 'Победа в матче за третье место',
+    };
+  }
+  if (tournamentAttempt?.tournament.winnerUserId === match.me.user_id) {
+    return { src: '/tournament-results/final-win.webp', alt: 'Победа в турнире' };
+  }
+  return { src: '/tournament-results/series-win.webp', alt: 'Победа в серии' };
 }
 
 function DuelResultCard({
@@ -5531,13 +6020,15 @@ function DuelResultCard({
   isLoadingDetails = false,
   compact = false,
   footer,
+  tournamentAttempt,
 }: {
   match: AmateurDuelMatch;
   isLoadingDetails?: boolean;
   compact?: boolean;
   footer?: ReactNode;
+  tournamentAttempt?: TournamentFixtureAttemptState;
 }): JSX.Element {
-  const title =
+  const ordinaryTitle =
     match.status !== 'settled'
       ? duelOutcomeText(match)
       : match.outcome === 'draw'
@@ -5547,12 +6038,46 @@ function DuelResultCard({
           : match.winner_user_id === match.me.user_id
             ? 'Победа'
             : 'Поражение';
+  const series = tournamentAttempt?.series ?? null;
+  const mySeed =
+    series === null
+      ? null
+      : series.higherSeedUserId === match.me.user_id
+        ? (series.higherSeed ?? null)
+        : series.lowerSeedUserId === match.me.user_id
+          ? (series.lowerSeed ?? null)
+          : null;
+  const opponentSeed =
+    series === null
+      ? null
+      : series.higherSeedUserId === match.opponent.user_id
+        ? (series.higherSeed ?? null)
+        : series.lowerSeedUserId === match.opponent.user_id
+          ? (series.lowerSeed ?? null)
+          : null;
+  const seriesResultArtwork = tournamentSeriesResultArtwork(match, tournamentAttempt);
+  const seriesWon = series?.winnerUserId === match.me.user_id;
+  const completedSeriesTitle =
+    series?.status !== 'completed'
+      ? null
+      : series.kind === 'third_place'
+        ? seriesWon
+          ? 'Вы заняли 3-е место'
+          : 'Вы проиграли матч за 3-е место'
+        : tournamentAttempt?.tournament.winnerUserId !== null
+          ? seriesWon
+            ? 'Вы выиграли финал'
+            : 'Вы проиграли финал'
+          : seriesWon
+            ? 'Вы выиграли серию'
+            : 'Вы проиграли серию';
+  const title = completedSeriesTitle ?? ordinaryTitle;
   const resultColor =
-    title === 'Победа'
+    ordinaryTitle === 'Победа'
       ? '#22c55e'
-      : title === 'Ничья'
+      : ordinaryTitle === 'Ничья'
         ? '#f59e0b'
-        : title === 'Поражение'
+        : ordinaryTitle === 'Поражение'
           ? '#ef4444'
           : 'rgba(15, 23, 42, 0.38)';
   const points = match.me.result_points;
@@ -5562,6 +6087,10 @@ function DuelResultCard({
   const hasPeriodDetails = mePeriods.length > 0 || opponentPeriods.length > 0;
   const hasMultiplePeriods = match.rules.totalPeriods > 1;
   const tiebreaker = duelTiebreakerExplanation(match);
+  const hasSupplementalDetails =
+    tiebreaker !== null ||
+    match.rules.winStarReward > 0 ||
+    (match.source !== 'tournament' && points > 0);
 
   return (
     <div
@@ -5573,179 +6102,483 @@ function DuelResultCard({
         flexDirection: 'column',
       }}
     >
-      {compact ? (
-        <>
-          <div className="duel-result-card__compact-meta">
-            <DuelResultCompactFact label="Очки" value={pointsText} />
-            <DuelResultCompactFact label="Начало" value={formatShortDateTime(match.starts_at)} />
-          </div>
-          <section className="duel-result-card__compact-summary">
-            <div className="section-label" style={{ margin: 0, padding: 0 }}>
-              Итоговый результат
+      <div
+        className="duel-result-card__scroll"
+        style={{
+          minHeight: 0,
+          flex: '1 1 auto',
+          overflowY: 'auto',
+          overscrollBehavior: 'contain',
+          paddingRight: 3,
+        }}
+      >
+        {compact ? (
+          <>
+            <div className="duel-result-card__compact-meta">
+              <DuelResultCompactFact label="Очки" value={pointsText} />
+              <DuelResultCompactFact label="Начало" value={formatShortDateTime(match.starts_at)} />
             </div>
-            <DuelResultCompactStatsTable
-              label="Итоговый результат"
-              me={{
-                goals: match.me.goals,
-                shots: match.me.shots_taken,
-                durationMs: match.me.active_duration_ms,
-              }}
-              opponentName={match.opponent.display_name || 'Соперник'}
-              opponent={{
-                goals: match.opponent.goals,
-                shots: match.opponent.shots_taken,
-                durationMs: match.opponent.active_duration_ms,
-              }}
-            />
-          </section>
-          {(tiebreaker || match.rules.winStarReward > 0) && (
-            <div className="duel-result-card__compact-details">
-              {tiebreaker && (
-                <>
-                  <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
-                  <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
-                </>
-              )}
-              {match.rules.winStarReward > 0 && (
-                <DuelResultDetailRow
-                  label="Звёзды за победу"
-                  value={`+${match.rules.winStarReward}`}
-                  tone="star"
-                />
-              )}
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <div className="section-label" style={{ margin: 0, padding: 0 }}>
-            Результат
-          </div>
-          <div
-            style={{
-              marginTop: 8,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 12,
-            }}
-          >
-            <h2 className="modal-title" style={{ margin: 0, fontSize: 26, lineHeight: 1.08 }}>
-              {title}
-            </h2>
-            <span
-              aria-hidden="true"
-              style={{
-                width: 16,
-                height: 16,
-                borderRadius: 999,
-                background: resultColor,
-                boxShadow: `0 0 0 5px ${resultColor}24, 0 0 18px ${resultColor}66`,
-                flexShrink: 0,
-              }}
-            />
-          </div>
-          <div
-            aria-label={`Итог дуэли ${match.me.goals}:${match.opponent.goals}`}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-              gap: 10,
-              marginTop: 16,
-            }}
-          >
-            <DailyStatsMetric label="Счёт" value={`${match.me.goals}:${match.opponent.goals}`} />
-            <DailyStatsMetric label="Очки" value={pointsText} />
-          </div>
-          <div
-            style={{
-              marginTop: 14,
-              display: 'grid',
-              gap: 8,
-            }}
-          >
-            <DuelResultDetailRow label="Тип" value={duelKindText(match.rules.duelKind)} />
-            <DuelResultDetailRow label="Соперник" value={match.opponent.display_name || 'Игрок'} />
-            {tiebreaker && (
-              <>
-                <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
-                <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
-              </>
-            )}
-            {match.rules.winStarReward > 0 && (
-              <DuelResultDetailRow
-                label="Звёзды за победу"
-                value={`+${match.rules.winStarReward}`}
-                tone="star"
-              />
-            )}
-            <DuelResultDetailRow label="Начало" value={formatShortDateTime(match.starts_at)} />
-          </div>
-        </>
-      )}
-      <DuelInventoryUsageSummary
-        match={match}
-        title={compact ? 'Расход инвентаря' : 'Общий расход инвентаря'}
-        label="Общий расход инвентаря"
-        compact={compact}
-        style={{ marginTop: compact ? 10 : 14 }}
-      />
-      {hasMultiplePeriods && (
-        <div
-          style={{
-            marginTop: compact ? 12 : 16,
-            minHeight: 0,
-            flex: '1 1 auto',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-        >
-          <div className="section-label" style={{ margin: 0, padding: 0 }}>
-            Периоды
-          </div>
-          {hasPeriodDetails ? (
-            <div
-              style={{
-                minHeight: 0,
-                flex: '1 1 auto',
-                maxHeight: 'min(38dvh, 330px)',
-                overflowY: 'auto',
-                paddingRight: 2,
-              }}
-            >
-              <DuelResultPeriodComparison
-                key={match.id}
-                match={match}
-                totalPeriods={match.rules.totalPeriods}
-                mePeriods={mePeriods}
-                opponentPeriods={opponentPeriods}
+            <section className="duel-result-card__compact-summary">
+              <div className="section-label" style={{ margin: 0, padding: 0 }}>
+                Итоговый результат
+              </div>
+              <DuelResultCompactStatsTable
+                label="Итоговый результат"
+                me={{
+                  goals: match.me.goals,
+                  shots: match.me.shots_taken,
+                  durationMs: match.me.active_duration_ms,
+                }}
                 opponentName={match.opponent.display_name || 'Соперник'}
-                compact={compact}
+                opponent={{
+                  goals: match.opponent.goals,
+                  shots: match.opponent.shots_taken,
+                  durationMs: match.opponent.active_duration_ms,
+                }}
               />
+            </section>
+            {(tiebreaker || match.rules.winStarReward > 0) && (
+              <div className="duel-result-card__compact-details">
+                {tiebreaker && (
+                  <>
+                    <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
+                    <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
+                  </>
+                )}
+                {match.rules.winStarReward > 0 && (
+                  <DuelResultDetailRow
+                    label="Звёзды за победу"
+                    value={`+${match.rules.winStarReward}`}
+                    tone="star"
+                  />
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="section-label" style={{ margin: 0, padding: 0 }}>
+              Результат
             </div>
-          ) : (
             <div
               style={{
                 marginTop: 8,
-                borderRadius: 16,
-                padding: '12px 14px',
-                background: 'rgba(255,255,255,0.42)',
-                border: '1px solid rgba(255,255,255,0.62)',
-                color: 'rgba(15, 23, 42, 0.58)',
-                fontSize: 12,
-                fontWeight: 750,
-                lineHeight: 1.35,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
               }}
             >
-              {isLoadingDetails
-                ? 'Загружаем статистику периодов...'
-                : 'Подробная статистика периодов пока недоступна.'}
+              <h2
+                className="modal-title"
+                style={{
+                  margin: 0,
+                  fontSize: title.length > 30 ? 16 : title.length > 22 ? 19 : 24,
+                  lineHeight: 1.08,
+                  letterSpacing: '-0.02em',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {title}
+              </h2>
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: 999,
+                  background: resultColor,
+                  boxShadow: `0 0 0 5px ${resultColor}24, 0 0 18px ${resultColor}66`,
+                  flexShrink: 0,
+                }}
+              />
             </div>
-          )}
-        </div>
-      )}
-      {footer}
+            {seriesResultArtwork !== null && (
+              <img
+                className="tournament-duel-result__artwork"
+                src={seriesResultArtwork.src}
+                alt={seriesResultArtwork.alt}
+              />
+            )}
+            <div
+              className="tournament-duel-result__matchup"
+              aria-label={`Итог игры: ${match.me.display_name} — ${match.opponent.display_name}, ${match.me.goals}:${match.opponent.goals}`}
+            >
+              <div className="tournament-duel-result__matchup-main">
+                <div className="tournament-duel-result__player">
+                  <UserAvatar
+                    avatarUrl={match.me.avatar_url}
+                    name={match.me.display_name}
+                    size={30}
+                    fontSize={12}
+                  />
+                  <span className="tournament-duel-result__player-name">
+                    {match.me.display_name || 'Игрок'}
+                  </span>
+                  {mySeed !== null && (
+                    <span
+                      className="tournament-duel-result__seed"
+                      aria-label={`Посев ${match.me.display_name}: ${mySeed}`}
+                    >
+                      ({mySeed})
+                    </span>
+                  )}
+                </div>
+                <span className="tournament-duel-result__separator" aria-hidden="true">
+                  —
+                </span>
+                <div className="tournament-duel-result__player">
+                  <UserAvatar
+                    avatarUrl={match.opponent.avatar_url}
+                    name={match.opponent.display_name}
+                    size={30}
+                    fontSize={12}
+                  />
+                  <span className="tournament-duel-result__player-name">
+                    {match.opponent.display_name || 'Игрок'}
+                  </span>
+                  {opponentSeed !== null && (
+                    <span
+                      className="tournament-duel-result__seed"
+                      aria-label={`Посев ${match.opponent.display_name}: ${opponentSeed}`}
+                    >
+                      ({opponentSeed})
+                    </span>
+                  )}
+                </div>
+                <strong className="tournament-duel-result__game-score">
+                  {match.me.goals}:{match.opponent.goals}
+                </strong>
+              </div>
+              <div className="tournament-duel-result__meta">
+                <span>
+                  <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
+                </span>
+                {series !== null && series.winsRequired > 1 && (
+                  <span>
+                    <strong>Счёт в серии:</strong>{' '}
+                    <b aria-label={`Счёт в серии ${series.myWins}:${series.opponentWins}`}>
+                      {series.myWins}:{series.opponentWins}
+                    </b>
+                  </span>
+                )}
+              </div>
+            </div>
+            {hasSupplementalDetails && (
+              <div
+                style={{
+                  marginTop: 10,
+                  display: 'grid',
+                  gap: 8,
+                }}
+              >
+                {tiebreaker && (
+                  <>
+                    <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
+                    <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
+                  </>
+                )}
+                {match.rules.winStarReward > 0 && (
+                  <DuelResultDetailRow
+                    label="Звёзды за победу"
+                    value={`+${match.rules.winStarReward}`}
+                    tone="star"
+                  />
+                )}
+                {match.source !== 'tournament' && points > 0 && (
+                  <DuelResultDetailRow label="Очки" value={pointsText} />
+                )}
+              </div>
+            )}
+          </>
+        )}
+        <DuelInventoryUsageSummary
+          match={match}
+          title={compact ? 'Расход инвентаря' : 'Общий расход инвентаря'}
+          label="Общий расход инвентаря"
+          compact={compact}
+          style={{ marginTop: compact ? 10 : 16 }}
+        />
+        {hasMultiplePeriods && (
+          <div
+            className="duel-result-card__periods"
+            style={{
+              marginTop: compact ? 12 : 16,
+              overflow: 'visible',
+            }}
+          >
+            <div className="section-label" style={{ margin: 0, padding: 0 }}>
+              Периоды
+            </div>
+            {hasPeriodDetails ? (
+              <div
+                style={{
+                  paddingRight: 2,
+                }}
+              >
+                <DuelResultPeriodComparison
+                  key={match.id}
+                  match={match}
+                  totalPeriods={match.rules.totalPeriods}
+                  mePeriods={mePeriods}
+                  opponentPeriods={opponentPeriods}
+                  opponentName={match.opponent.display_name || 'Соперник'}
+                  compact={compact}
+                />
+              </div>
+            ) : (
+              <div
+                style={{
+                  marginTop: 8,
+                  borderRadius: 16,
+                  padding: '12px 14px',
+                  background: 'rgba(255,255,255,0.42)',
+                  border: '1px solid rgba(255,255,255,0.62)',
+                  color: 'rgba(15, 23, 42, 0.58)',
+                  fontSize: 12,
+                  fontWeight: 750,
+                  lineHeight: 1.35,
+                }}
+              >
+                {isLoadingDetails
+                  ? 'Загружаем статистику периодов...'
+                  : 'Подробная статистика периодов пока недоступна.'}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {footer !== undefined && <div className="duel-result-card__footer">{footer}</div>}
+    </div>
+  );
+}
+
+type TournamentResultPreviewVariant =
+  | 'duel-win'
+  | 'series-win'
+  | 'final-win'
+  | 'final-loss'
+  | 'third-place-win'
+  | 'third-place-loss';
+
+export function TournamentResultPreviewScreen(): JSX.Element {
+  const location = useLocation();
+  const requested = new URLSearchParams(location.search).get('variant');
+  const variant: TournamentResultPreviewVariant = [
+    'duel-win',
+    'series-win',
+    'final-win',
+    'final-loss',
+    'third-place-win',
+    'third-place-loss',
+  ].includes(requested ?? '')
+    ? (requested as TournamentResultPreviewVariant)
+    : 'final-win';
+  const won = variant.endsWith('win');
+  const thirdPlace = variant.startsWith('third-place');
+  const final = variant.startsWith('final');
+  const ordinaryDuel = variant === 'duel-win';
+  const meWins = won ? 2 : 1;
+  const opponentWins = won ? 0 : 2;
+  const now = new Date().toISOString();
+  const participant = (userId: string, displayName: string, goals: number, shots: number) => ({
+    user_id: userId,
+    display_name: displayName,
+    avatar_url: null,
+    side: userId === 'preview-me' ? 'challenger' : 'opponent',
+    state: 'completed',
+    current_period: 3,
+    shots_taken: shots,
+    goals,
+    accuracy: Math.round((goals / shots) * 100),
+    active_duration_ms: 274_000,
+    active_duration_seconds: 274,
+    result_points: 0,
+    current_period_shots: 0,
+    current_period_goals: 0,
+    ready_at: now,
+    period_started_at: null,
+    period_ends_at: null,
+    break_ends_at: null,
+    loadout: { items: [], powerScore: 0, powerCap: 100 },
+    inventory_report: [],
+  });
+  const match = {
+    id: 'preview-match',
+    template_id: null,
+    status: 'settled',
+    source: ordinaryDuel ? 'challenge' : 'tournament',
+    ranked: false,
+    season_key: 'preview',
+    duel_kind: 'classic',
+    home_user_id: 'preview-me',
+    venue_role: 'home',
+    venue_policy: 'neutral',
+    arena: { id: 'preview', title: 'Арена', imageUrl: null },
+    starts_at: '2026-09-04T10:00:00.000Z',
+    ends_at: '2026-09-04T11:00:00.000Z',
+    ready_expires_at: null,
+    cooldown_user_id: null,
+    cooldown_until: null,
+    stake_amount: 0,
+    entry_fee_amount: 0,
+    bank_amount: 0,
+    winner_user_id: won ? 'preview-me' : 'preview-opponent',
+    outcome: won ? 'challenger_win' : 'opponent_win',
+    settled_reason: 'completed',
+    accepted_at: now,
+    settled_at: now,
+    created_at: now,
+    server_now: now,
+    period_started_at: null,
+    period_ends_at: null,
+    break_ends_at: null,
+    rules: {
+      title: 'Классика',
+      duelKind: 'classic',
+      duelVariant: 'classic',
+      totalPeriods: 3,
+      shotsPerPeriod: 30,
+      winStarReward: 0,
+    },
+    me: {
+      ...participant('preview-me', 'Вы', 54, 84),
+      inventory_report: [
+        {
+          periodNumber: 1,
+          consumed: [
+            {
+              id: 'preview-stick',
+              kind: 'stick',
+              title: 'Клюшка Ультимейт Ван',
+              charges: 28,
+              remainingReserved: 72,
+            },
+            {
+              id: 'preview-skates',
+              kind: 'skates',
+              title: 'Коньки Профи',
+              charges: 4,
+              remainingReserved: 46,
+            },
+          ],
+        },
+      ],
+    },
+    opponent: participant('preview-opponent', 'Александра', 50, 82),
+    match_seed: null,
+    current_period_shots: 0,
+    current_period_goals: 0,
+    period_speed_presets: [],
+    stick_effects: {},
+    recent_periods: [
+      {
+        period_number: 1,
+        shots_taken: 28,
+        goals: 19,
+        duration_ms: 91_000,
+        closed_reason: 'quota',
+        ended_at: now,
+      },
+      {
+        period_number: 2,
+        shots_taken: 28,
+        goals: 18,
+        duration_ms: 89_000,
+        closed_reason: 'quota',
+        ended_at: now,
+      },
+      {
+        period_number: 3,
+        shots_taken: 28,
+        goals: 17,
+        duration_ms: 94_000,
+        closed_reason: 'quota',
+        ended_at: now,
+      },
+    ],
+    opponent_recent_periods: [
+      {
+        period_number: 1,
+        shots_taken: 27,
+        goals: 17,
+        duration_ms: 95_000,
+        closed_reason: 'quota',
+        ended_at: now,
+      },
+      {
+        period_number: 2,
+        shots_taken: 27,
+        goals: 17,
+        duration_ms: 92_000,
+        closed_reason: 'quota',
+        ended_at: now,
+      },
+      {
+        period_number: 3,
+        shots_taken: 28,
+        goals: 16,
+        duration_ms: 96_000,
+        closed_reason: 'quota',
+        ended_at: now,
+      },
+    ],
+  } as unknown as AmateurDuelMatchState;
+  const tournamentAttempt = {
+    series: {
+      id: 'preview-series',
+      kind: thirdPlace ? 'third_place' : 'championship',
+      winsRequired: 2,
+      myWins: meWins,
+      opponentWins,
+      higherSeedWins: won ? meWins : opponentWins,
+      lowerSeedWins: won ? opponentWins : meWins,
+      higherSeedUserId: won ? 'preview-me' : 'preview-opponent',
+      lowerSeedUserId: won ? 'preview-opponent' : 'preview-me',
+      higherSeed: 2,
+      lowerSeed: 7,
+      status: 'completed',
+      winnerUserId: won ? 'preview-me' : 'preview-opponent',
+    },
+    tournament: {
+      status: final ? 'completed' : 'playoff',
+      winnerUserId: final ? (won ? 'preview-me' : 'preview-opponent') : null,
+    },
+  } as TournamentFixtureAttemptState;
+  const variants: Array<[TournamentResultPreviewVariant, string]> = [
+    ['duel-win', 'Дуэль: победа'],
+    ['series-win', 'Серия: победа'],
+    ['final-win', 'Финал: победа'],
+    ['final-loss', 'Финал: поражение'],
+    ['third-place-win', '3-е место: победа'],
+    ['third-place-loss', '3-е место: поражение'],
+  ];
+  return (
+    <div className="modal-backdrop" style={{ position: 'absolute' }}>
+      <nav className="tournament-result-preview-switcher" aria-label="Варианты результата">
+        {variants.map(([value, label]) => (
+          <a
+            key={value}
+            className={value === variant ? 'is-active' : ''}
+            href={`/dev/tournament-result-preview?variant=${value}`}
+          >
+            {label}
+          </a>
+        ))}
+      </nav>
+      <DuelResultCard
+        match={match}
+        {...(ordinaryDuel ? {} : { tournamentAttempt })}
+        footer={
+          <>
+            <div className="modal-actions">
+              <button type="button" className="modal-primary btn btn--cta">
+                Понятно
+              </button>
+            </div>
+          </>
+        }
+      />
     </div>
   );
 }
@@ -6496,12 +7329,13 @@ function DuelInventoryUsageSummary({
 }): JSX.Element | null {
   const usage = duelInventoryUsageRows(match, periodNumber);
   if (usage.length === 0) return null;
+  const useSectionHeading = compact || title === 'Общий расход инвентаря';
   return (
     <div aria-label={label ?? title} style={{ display: 'grid', gap: compact ? 5 : 6, ...style }}>
       <div
-        className={compact ? 'section-label' : undefined}
+        className={useSectionHeading ? 'section-label' : undefined}
         style={
-          compact
+          useSectionHeading
             ? { margin: 0, padding: 0 }
             : { color: 'var(--muted)', fontSize: 11, fontWeight: 900 }
         }
@@ -6581,14 +7415,12 @@ const DUEL_INVENTORY_SLOTS = [
   { kind: 'nutrition', label: 'Энергия' },
 ] as const;
 
-const DUEL_INVENTORY_ICON_GLASS_STYLE: CSSProperties = {
+export const DUEL_INVENTORY_ICON_GLASS_STYLE: CSSProperties = {
   background:
     'radial-gradient(circle at 28% 0%, rgba(255,255,255,0.94), rgba(255,255,255,0) 42%), linear-gradient(145deg, rgba(255,255,255,0.76), rgba(226,242,250,0.5) 58%, rgba(255,255,255,0.64))',
   border: '1px solid rgba(255,255,255,0.82)',
   boxShadow:
     '0 0 0 1px rgba(15,23,42,0.07), 0 8px 18px rgba(15,23,42,0.14), inset 0 1.5px 0 rgba(255,255,255,0.88), inset 0 -8px 16px rgba(15,23,42,0.06)',
-  backdropFilter: 'blur(14px) saturate(1.24)',
-  WebkitBackdropFilter: 'blur(14px) saturate(1.24)',
 };
 
 const DUEL_EQUIPMENT_META: Record<
@@ -6728,6 +7560,14 @@ function duelStartPeriodLoadoutSelection(
   if (selectedLoadout.stick === undefined) return undefined;
   const selectedStick = selectedDuelAvailabilityItem(match, 'stick', selectedLoadout.stick);
   return { stick: selectedStick ? selectedStick.id : null };
+}
+
+function duelLoadoutSelectionFromMatch(match: AmateurDuelMatch): AmateurDuelLoadoutSelection {
+  return {
+    stick: match.me.loadout.items.find((item) => item.kind === 'stick')?.id ?? null,
+    skates: match.me.loadout.items.find((item) => item.kind === 'skates')?.id ?? null,
+    nutrition: match.me.loadout.items.find((item) => item.kind === 'nutrition')?.id ?? null,
+  };
 }
 
 function duelEquipmentDisplayTitle(item: Pick<InventoryItem, 'kind' | 'rarity' | 'title'>): string {
@@ -7340,24 +8180,39 @@ function duelConditionLoadout(match: AmateurDuelMatch): DuelInventoryLoadoutSnap
   };
 }
 
-function duelConditionForMatch(
+function createDuelConditionForMatch(
   match: AmateurDuelMatchState,
-  elapsedMs: number,
-  speeds: SpeedOverrides,
-): DuelPlayerCondition | null {
-  if (!match.match_seed) return null;
+): (elapsedMs: number, speeds: SpeedOverrides) => DuelPlayerCondition | null {
+  if (!match.match_seed) return () => null;
   const basePreset = periodSpeedPresetFor(match.me.current_period, match.rules.periodSpeedPresets);
-  return getDuelPlayerCondition({
+  const loadout = duelConditionLoadout(match);
+  const movementTiming =
+    loadout.skates?.timing ?? loadout.fallbackSkatesTiming ?? DEFAULT_DUEL_INVENTORY_TIMING;
+  const staticInput = {
     seed: match.match_seed,
     userId: match.me.user_id,
     periodNumber: match.me.current_period,
-    elapsedMs: Math.max(0, elapsedMs),
-    movementDistancePx: movementDistancePxForElapsed(elapsedMs, speeds.shooterFreq),
+  };
+  const stumbleRandomness = createDuelStumbleRandomness(staticInput, movementTiming);
+  const conditionInput: DuelPlayerConditionInput = {
+    ...staticInput,
+    elapsedMs: 0,
+    movementDistancePx: 0,
     baseLaneWidthPx: SHOOTER_AMPLITUDE * 2,
     baselineShooterSpeed: basePreset.shooterFrequency,
-    currentShooterSpeed: speeds.shooterFreq,
-    loadout: duelConditionLoadout(match),
-  });
+    currentShooterSpeed: basePreset.shooterFrequency,
+    loadout,
+    stumbleRandomness,
+  };
+  return (elapsedMs, speeds) => {
+    conditionInput.elapsedMs = Math.max(0, elapsedMs);
+    conditionInput.movementDistancePx = movementDistancePxForElapsed(
+      elapsedMs,
+      speeds.shooterFreq,
+    );
+    conditionInput.currentShooterSpeed = speeds.shooterFreq;
+    return getDuelPlayerCondition(conditionInput);
+  };
 }
 
 function DuelInventoryMiniHud({
@@ -7876,6 +8731,184 @@ function DailyPlayView({
   );
 }
 
+function classicLoadoutSelection(state: ClassicTournamentState): ClassicTournamentLoadoutSelection {
+  return {
+    stick: state.loadout.items.find((item) => item.kind === 'stick')?.id ?? null,
+    skates: state.loadout.items.find((item) => item.kind === 'skates')?.id ?? null,
+    nutrition: state.loadout.items.find((item) => item.kind === 'nutrition')?.id ?? null,
+  };
+}
+
+export function createClassicTournamentCondition(
+  state: ClassicTournamentState,
+): (elapsedMs: number, speeds: SpeedOverrides) => DuelPlayerCondition | null {
+  const consumed = new Map(
+    state.current_period_inventory_consumption.map((item) => [item.id, item.charges]),
+  );
+  const itemFor = (kind: InventoryEquipmentKind) =>
+    state.loadout.items.find((item) => item.kind === kind);
+  const stick = itemFor('stick');
+  const skates = itemFor('skates');
+  const nutrition = itemFor('nutrition');
+  const inventoryItem = (
+    item: ClassicTournamentInventoryItem | undefined,
+    subtractConsumption: boolean,
+  ) =>
+    item && item.resourceUnit !== 'period'
+      ? {
+          id: item.id,
+          title: item.title,
+          resourceUnit: item.resourceUnit,
+          resourceAvailable: Math.max(
+            0,
+            item.resourceAvailable - (subtractConsumption ? (consumed.get(item.id) ?? 0) : 0),
+          ),
+          effectPuckSpeedPoints: item.effectPuckSpeedPoints,
+          timing: item.timing ?? DEFAULT_DUEL_INVENTORY_TIMING,
+        }
+      : null;
+  const loadout: DuelInventoryLoadoutSnapshot = {
+    stick: inventoryItem(stick, true),
+    skates: inventoryItem(skates, false),
+    nutrition: inventoryItem(nutrition, false),
+    fallbackSkatesTiming: DEFAULT_DUEL_INVENTORY_TIMING,
+    fallbackNutritionTiming: DEFAULT_DUEL_INVENTORY_TIMING,
+  };
+  const base = periodSpeedPresetFor(
+    Math.max(1, state.current_period),
+    state.base_period_speed_presets,
+  );
+  const randomness = createDuelStumbleRandomness(
+    { seed: state.daily_seed, userId: state.player_id, periodNumber: Math.max(1, state.current_period) },
+    loadout.skates?.timing ?? DEFAULT_DUEL_INVENTORY_TIMING,
+  );
+  return (elapsedMs, speeds) =>
+    getDuelPlayerCondition({
+      seed: state.daily_seed,
+      userId: state.player_id,
+      periodNumber: Math.max(1, state.current_period),
+      elapsedMs,
+      movementDistancePx:
+        (Math.max(0, elapsedMs) * SHOOTER_AMPLITUDE * 4 * Math.max(0, speeds.shooterFreq)) /
+        1000,
+      baseLaneWidthPx: SHOOTER_AMPLITUDE * 2,
+      baselineShooterSpeed: base.shooterFrequency,
+      currentShooterSpeed: speeds.shooterFreq,
+      loadout,
+      stumbleRandomness: randomness,
+    });
+}
+
+function ClassicRinkLoadoutHud({
+  state,
+  selection,
+  locked,
+  onSelectKind,
+}: {
+  state: ClassicTournamentState;
+  selection: ClassicTournamentLoadoutSelection;
+  locked: boolean;
+  onSelectKind: (kind: InventoryEquipmentKind) => void;
+}): JSX.Element {
+  return (
+    <div aria-label="Выбор инвентаря" style={{ display: 'flex', gap: 9 }}>
+      {DUEL_INVENTORY_SLOTS.map((slot) => {
+        const selectedId = selection[slot.kind] ?? null;
+        const item: ClassicTournamentInventoryItem | undefined = state.inventory_available.find(
+          (candidate) => candidate.kind === slot.kind && candidate.id === selectedId,
+        );
+        const title = item?.title ?? duelBaseEquipmentTitle(slot.kind);
+        const status = item
+          ? formatInventoryResourceAmount(item.kind, item.resourceAvailable, item.resourceUnit)
+          : 'базовый вариант';
+        return (
+          <button
+            key={slot.kind}
+            type="button"
+            aria-label={`${slot.label}: ${title}. ${status}`}
+            disabled={locked}
+            onClick={() => onSelectKind(slot.kind)}
+            style={{
+              width: 31,
+              height: 31,
+              padding: 0,
+              borderRadius: 999,
+              overflow: 'hidden',
+              ...DUEL_INVENTORY_ICON_GLASS_STYLE,
+              opacity: locked ? 0.7 : 1,
+            }}
+          >
+            <img
+              src={item?.imageUrl || placeholderArtworkForKind(slot.kind)}
+              alt=""
+              style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+            />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ClassicRinkLoadoutModal({
+  kind,
+  state,
+  selectedId,
+  onClose,
+  onSelect,
+}: {
+  kind: InventoryEquipmentKind;
+  state: ClassicTournamentState;
+  selectedId: string | null;
+  onClose: () => void;
+  onSelect: (id: string | null) => void;
+}): JSX.Element {
+  const items = state.inventory_available.filter((item) => item.kind === kind);
+  return (
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
+      <section
+        role="dialog"
+        aria-label={DUEL_EQUIPMENT_META[kind].title}
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: 'min(430px, calc(100vw - 28px))', display: 'grid', gap: 10 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="modal-title" style={{ flex: 1 }}>{DUEL_EQUIPMENT_META[kind].title}</div>
+          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+            <X size={15} />
+          </button>
+        </div>
+        <div className="no-scrollbar" style={{ maxHeight: '54dvh', overflowY: 'auto', display: 'grid', gap: 8 }}>
+          <button
+            type="button"
+            className={`glass duel-equipment-option${selectedId === null ? ' duel-equipment-option--selected' : ''}`}
+            onClick={() => onSelect(null)}
+            style={{ minHeight: 64, borderRadius: 16, padding: 10, textAlign: 'left' }}
+          >
+            {duelBaseEquipmentTitle(kind)}
+          </button>
+          {items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`glass duel-equipment-option${selectedId === item.id ? ' duel-equipment-option--selected' : ''}`}
+              onClick={() => onSelect(item.id)}
+              style={{ minHeight: 64, borderRadius: 16, padding: 10, display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left' }}
+            >
+              <img src={item.imageUrl || placeholderArtworkForKind(kind)} alt="" style={{ width: 46, height: 46, borderRadius: 12, objectFit: 'cover' }} />
+              <span style={{ display: 'grid', gap: 3 }}>
+                <strong>{item.title}</strong>
+                <span>{formatInventoryResourceAmount(item.kind, item.resourceAvailable, item.resourceUnit)}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function ClassicTournamentPlayView({
   tournamentId,
   onBack,
@@ -7893,16 +8926,71 @@ function ClassicTournamentPlayView({
   const submitShot = useClassicTournamentStore((state) => state.submitShot);
   const applyState = useClassicTournamentStore((state) => state.applyState);
   const [now, setNow] = useState(Date.now());
+  const [deferredState, setDeferredState] = useState<ClassicTournamentState | null>(null);
+  const [statsModalState, setStatsModalState] = useState<ClassicTournamentState | null>(null);
+  const [selectedLoadout, setSelectedLoadout] = useState<ClassicTournamentLoadoutSelection>({});
+  const [selectedLoadoutKind, setSelectedLoadoutKind] = useState<InventoryEquipmentKind | null>(null);
+
+  const summaryCandidate = deferredState ?? data;
+  const summaryKey = summaryCandidate ? `classic:${summaryCandidate.session_id}` : '';
+  const unseenPeriod =
+    summaryCandidate &&
+    (summaryCandidate.state === 'break_active' || summaryCandidate.state === 'closed')
+      ? findUnseenPeriodSummary(summaryCandidate, summaryKey)
+      : null;
 
   useEffect(() => {
     void refresh(tournamentId);
   }, [refresh, tournamentId]);
 
   useEffect(() => {
+    if (!data || !data.loadout_editable) return;
+    setSelectedLoadout(classicLoadoutSelection(data));
+  }, [data?.current_period, data?.loadout, data?.loadout_editable, data?.session_id]);
+
+  useEffect(() => {
     if (data?.state !== 'break_active' && data?.state !== 'closed') return undefined;
     const timer = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(timer);
   }, [data?.state]);
+
+  useEffect(() => {
+    if (statsModalState !== null || summaryCandidate === null || unseenPeriod === null) return;
+    setStatsModalState(summaryCandidate);
+  }, [statsModalState, summaryCandidate, unseenPeriod]);
+
+  useEffect(() => {
+    if (data?.state !== 'break_active' || loading) return;
+    const breakDeadline = data.break_ends_at ? timestampMs(data.break_ends_at) : 0;
+    if (breakDeadline <= 0 || breakDeadline > now) return;
+    void refresh(tournamentId);
+  }, [data?.break_ends_at, data?.state, loading, now, refresh, tournamentId]);
+
+  const applyClassicResolvedState = useCallback(
+    (next: ClassicTournamentState): void => {
+      if (
+        (next.state === 'break_active' || next.state === 'closed') &&
+        next.recent_periods.length > 0
+      ) {
+        setDeferredState(next);
+        return;
+      }
+      applyState(next);
+    },
+    [applyState],
+  );
+
+  const handleStatsModalClose = useCallback((): void => {
+    const latestPeriod = statsModalState?.recent_periods.at(-1);
+    if (statsModalState && latestPeriod) {
+      setLastSeenAt(`classic:${statsModalState.session_id}`, latestPeriod.ended_at);
+    }
+    setStatsModalState(null);
+    if (deferredState !== null) {
+      applyState(deferredState);
+      setDeferredState(null);
+    }
+  }, [applyState, deferredState, statsModalState]);
 
   if (data === null) {
     return (
@@ -7942,73 +9030,134 @@ function ClassicTournamentPlayView({
   const nextPeriod = Math.min(data.total_periods, data.current_period + 1);
   const periodNumber = active ? data.current_period : canStart ? nextPeriod : data.current_period;
   const completedResult = data.result;
+  const shouldShowSummary = statsModalState !== null || unseenPeriod !== null;
+  const stats = statsModalState ? dailyGameStatsFromState(statsModalState) : null;
+  const duelCondition = createClassicTournamentCondition(data);
 
   return (
-    <PlayView<ClassicTournamentState>
-      suppressedByModal={!active}
-      showIceCar={!active}
-      onBack={onBack}
-      backLabel="К турниру"
-      active={active}
-      seed={data.daily_seed}
-      goalieId={data.goalie_id}
-      periodNumber={Math.max(1, periodNumber)}
-      periodSpeedPresets={data.period_speed_presets}
-      sessionStartedAt={data.period_started_at}
-      serverNow={data.server_now}
-      receivedAtPerformanceMs={data.received_at_performance_ms}
-      goals={active ? data.current_period_goals : data.daily_total_goals}
-      scoreboardGoals={data.daily_total_goals}
-      shots={active ? data.current_period_shots : data.daily_total_shots}
-      shotsTotal={active ? data.shots_per_period : data.shots_per_period * data.total_periods}
-      periodsTotal={data.total_periods}
-      scoreboardPeriodsTotal={data.total_periods}
-      timer={
-        data.state === 'break_active'
-          ? formatMs(breakRemaining)
-          : data.state === 'closed'
-            ? formatEventRemaining(closesRemaining)
-            : canStart
-              ? formatMs(data.period_duration_ms)
-              : undefined
-      }
-      timerLabel={
-        data.state === 'break_active'
-          ? 'ПЕРЕРЫВ'
-          : data.state === 'closed'
-            ? 'ДО ЗАКРЫТИЯ'
-            : canStart
-              ? 'ВРЕМЯ'
-              : undefined
-      }
-      scoreboardNotice={
-        data.state === 'closed' && completedResult !== null
-          ? `${completedResult.goals} шайб · точность ${Math.round(completedResult.accuracy * 100)}%`
-          : `${data.tournament_title} · ${data.tournament_day}-й тур`
-      }
-      shotButtonLabel={
-        canStart
-          ? inFlight
-            ? 'НАЧИНАЕМ...'
-            : data.current_period === 0
-              ? 'НАЧАТЬ'
-              : 'ПРОДОЛЖИТЬ'
-          : data.state === 'break_active'
-            ? 'ЛЁД ГОТОВИТСЯ'
+    <>
+      <PlayView<ClassicTournamentState>
+        suppressedByModal={!active || shouldShowSummary}
+        showIceCar={data.state === 'break_active' && !shouldShowSummary}
+        onBack={onBack}
+        backLabel="К турниру"
+        active={active}
+        seed={data.daily_seed}
+        goalieId={data.goalie_id}
+        periodNumber={Math.max(1, periodNumber)}
+        periodSpeedPresets={data.period_speed_presets}
+        sessionStartedAt={data.period_started_at}
+        serverNow={data.server_now}
+        receivedAtPerformanceMs={data.received_at_performance_ms}
+        goals={active ? data.current_period_goals : data.daily_total_goals}
+        scoreboardGoals={data.daily_total_goals}
+        shots={active ? data.current_period_shots : data.daily_total_shots}
+        shotsTotal={active ? data.shots_per_period : data.shots_per_period * data.total_periods}
+        periodsTotal={data.total_periods}
+        scoreboardPeriodsTotal={data.total_periods}
+        timer={
+          data.state === 'break_active'
+            ? formatMs(breakRemaining)
             : data.state === 'closed'
-              ? 'ИГРА ЗАВЕРШЕНА'
-              : undefined
-      }
-      inactiveAction={canStart ? startPeriod : undefined}
-      entranceBeforeInactiveAction
-      periodEndsAt={active && periodEndsAt > 0 ? periodEndsAt : undefined}
-      onTimerExpired={() => refresh(tournamentId)}
-      optimisticAddShot={optimisticAddShot}
-      submitShot={submitShot}
-      applyState={applyState}
-      applyResolvedState={applyState}
-      longCourtBackground={AMATEUR_DAILY_COURT_BACKGROUND}
-    />
+              ? formatEventRemaining(closesRemaining)
+              : canStart
+                ? formatMs(data.period_duration_ms)
+                : undefined
+        }
+        timerLabel={
+          data.state === 'break_active'
+            ? 'ПЕРЕРЫВ'
+            : data.state === 'closed'
+              ? 'ДО ЗАКРЫТИЯ'
+              : canStart
+                ? 'ВРЕМЯ'
+                : undefined
+        }
+        scoreboardNotice={
+          data.state === 'closed' && completedResult !== null
+            ? `${completedResult.goals} шайб · точность ${Math.round(completedResult.accuracy * 100)}%`
+            : `${data.tournament_title} · ${data.tournament_day}-й тур`
+        }
+        shotButtonLabel={
+          canStart
+            ? inFlight
+              ? 'НАЧИНАЕМ...'
+              : data.current_period === 0
+                ? 'НАЧАТЬ'
+                : 'ПРОДОЛЖИТЬ'
+            : data.state === 'break_active'
+              ? 'ЛЁД ГОТОВИТСЯ'
+              : data.state === 'closed'
+                ? 'ИГРА ЗАВЕРШЕНА'
+                : undefined
+        }
+        inactiveAction={canStart ? () => startPeriod(selectedLoadout) : undefined}
+        entranceBeforeInactiveAction
+        periodEndsAt={active && periodEndsAt > 0 ? periodEndsAt : undefined}
+        onTimerExpired={() => refresh(tournamentId)}
+        optimisticAddShot={optimisticAddShot}
+        submitShot={submitShot}
+        applyState={applyState}
+        applyResolvedState={applyClassicResolvedState}
+        duelCondition={duelCondition}
+        longCourtBackground={AMATEUR_DAILY_COURT_BACKGROUND}
+        hudAddon={
+          <ClassicRinkLoadoutHud
+            state={data}
+            selection={selectedLoadout}
+            locked={!data.loadout_editable || inFlight}
+            onSelectKind={setSelectedLoadoutKind}
+          />
+        }
+      />
+      {selectedLoadoutKind !== null && data.loadout_editable && (
+        <ClassicRinkLoadoutModal
+          kind={selectedLoadoutKind}
+          state={data}
+          selectedId={selectedLoadout[selectedLoadoutKind] ?? null}
+          onClose={() => setSelectedLoadoutKind(null)}
+          onSelect={(id) => {
+            setSelectedLoadout((current) => ({ ...current, [selectedLoadoutKind]: id }));
+            setSelectedLoadoutKind(null);
+          }}
+        />
+      )}
+      {statsModalState && stats && (
+        <DailyGameStatsModal
+          stats={stats}
+          totalPeriods={
+            statsModalState.state === 'closed'
+              ? statsModalState.total_periods
+              : statsModalState.current_period
+          }
+          title={
+            statsModalState.state === 'closed'
+              ? 'Игра завершена'
+              : `${statsModalState.current_period}-й период завершён`
+          }
+          ariaLabel={
+            statsModalState.state === 'closed'
+              ? 'Игра завершена'
+              : `${statsModalState.current_period}-й период завершён`
+          }
+          closeLabel="Понятно"
+          supplemental={
+            statsModalState.inventory_consumption.length > 0 ? (
+              <div aria-label="Общий расход инвентаря" style={{ marginTop: 14, display: 'grid', gap: 6 }}>
+                <div className="section-label" style={{ margin: 0, padding: 0 }}>Общий расход инвентаря</div>
+                {statsModalState.inventory_consumption.map((item) => (
+                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+                    <span style={{ color: 'var(--muted)', fontWeight: 750 }}>{item.title}</span>
+                    <strong>{formatInventoryResourceAmount(item.kind, item.charges, statsModalState.loadout.items.find((candidate) => candidate.id === item.id)?.resourceUnit)}</strong>
+                  </div>
+                ))}
+              </div>
+            ) : null
+          }
+          onClose={handleStatsModalClose}
+        />
+      )}
+    </>
   );
 }
 
@@ -8247,6 +9396,7 @@ function TrainingPlayView({
   const submitShot = useTrainingSessionStore((s) => s.submitShot);
   const applyState = useTrainingSessionStore((s) => s.applyState);
   const refreshDaily = useDailyStore((s) => s.refresh);
+  const refreshTraining = useTrainingSessionStore((s) => s.refresh);
   const userRole = useAuthStore((s) => s.user?.role);
   const experimentalTrainingCourt = useAuthStore((s) => s.user?.experimentalTrainingCourt);
   const [hitboxesVisible, setHitboxesVisible] = useState(() => readTrainingHitboxesVisible());
@@ -8271,7 +9421,15 @@ function TrainingPlayView({
     (dailyData?.state === 'idle' &&
       dailyData.current_period > 0 &&
       dailyData.current_period < dailyData.total_periods);
-  const canStartTraining = data?.state === 'idle' && !isTrainingLockedByDaily;
+  const tournamentStartsAt = data?.tournament_day_starts_at
+    ? new Date(data.tournament_day_starts_at).getTime()
+    : 0;
+  const isTrainingLockedByTournament =
+    data?.tournament_day_locked === true ||
+    (tournamentStartsAt > 0 &&
+      now >= tournamentStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS);
+  const isTrainingLocked = isTrainingLockedByDaily || isTrainingLockedByTournament;
+  const canStartTraining = data?.state === 'idle' && !isTrainingLocked;
   const handleHitboxesChange = useCallback((next: boolean): void => {
     setHitboxesVisible(next);
     saveTrainingHitboxesVisible(next);
@@ -8298,16 +9456,32 @@ function TrainingPlayView({
   );
 
   useEffect(() => {
-    if (data?.state !== 'closed' && !isTrainingLockedByDaily) return undefined;
+    if (data?.state !== 'closed' && !isTrainingLocked) return undefined;
     const id = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(id);
-  }, [data?.state, isTrainingLockedByDaily]);
+  }, [data?.state, isTrainingLocked]);
+
+  useEffect(() => {
+    const lockAt = tournamentStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS;
+    if (tournamentStartsAt <= 0 || now >= lockAt) return undefined;
+    const id = window.setTimeout(
+      () => setNow(Date.now()),
+      Math.min(2_147_000_000, Math.max(0, lockAt - Date.now() + 50)),
+    );
+    return () => window.clearTimeout(id);
+  }, [now, tournamentStartsAt]);
+
+  useEffect(() => {
+    if (!isTrainingLockedByTournament) return undefined;
+    const id = window.setInterval(() => void refreshTraining(), 30_000);
+    return () => window.clearInterval(id);
+  }, [isTrainingLockedByTournament, refreshTraining]);
 
   if (!data) return null;
 
   const isTrainingActive = data.state === 'active';
   const isTrainingClosed = data.state === 'closed';
-  const isTrainingPlayable = isTrainingActive && !isTrainingLockedByDaily;
+  const isTrainingPlayable = isTrainingActive && !isTrainingLocked;
   const nextDayAt = new Date(data.next_day_starts_at).getTime();
   const nextDayRemaining = Math.max(0, nextDayAt - now);
   const dailyPeriodEndsAt = dailyData?.period_ends_at
@@ -8322,14 +9496,23 @@ function TrainingPlayView({
       : dailyData?.state === 'break_active' && dailyBreakEndsAt > 0
         ? Math.max(0, dailyBreakEndsAt - now)
         : 0;
-  const trainingTimer = isTrainingLockedByDaily
+  const tournamentStartsRemaining = Math.max(0, tournamentStartsAt - now);
+  const trainingTimer = isTrainingLockedByTournament
+    ? tournamentStartsRemaining > 0
+      ? formatMs(tournamentStartsRemaining)
+      : 'ИГРЫ'
+    : isTrainingLockedByDaily
     ? dailyLockRemaining > 0
       ? formatMs(dailyLockRemaining)
       : 'ИГРА'
     : isTrainingClosed
       ? formatHms(nextDayRemaining)
       : String(data.shots_limit);
-  const trainingTimerLabel = isTrainingLockedByDaily
+  const trainingTimerLabel = isTrainingLockedByTournament
+    ? tournamentStartsRemaining > 0
+      ? 'ДО НАЧАЛА'
+      : 'СТАТУС'
+    : isTrainingLockedByDaily
     ? dailyLockRemaining > 0
       ? 'ДО ИГРЫ'
       : 'СТАТУС'
@@ -8340,7 +9523,7 @@ function TrainingPlayView({
     <>
       <PlayView<TrainingStateResponse>
         suppressedByModal={!isTrainingPlayable}
-        showIceCar={isTrainingClosed || isTrainingLockedByDaily}
+        showIceCar={isTrainingClosed || isTrainingLocked}
         playEntranceOnMount={isTrainingPlayable ? playEntranceOnMount : false}
         onEntranceConsumed={onEntranceConsumed}
         playRouteTransitionOnMount={playRouteTransitionOnMount}
@@ -8361,13 +9544,21 @@ function TrainingPlayView({
         shotsTotal={data.shots_limit}
         timer={trainingTimer}
         timerLabel={trainingTimerLabel}
-        scoreboardNotice={isTrainingLockedByDaily ? 'Игра уже начата' : undefined}
+        scoreboardNotice={
+          isTrainingLockedByTournament
+            ? tournamentStartsRemaining > 0
+              ? 'Скоро начнутся игры турнира'
+              : 'Идут игры турнира'
+            : isTrainingLockedByDaily
+              ? 'Игра уже начата'
+              : undefined
+        }
         shotButtonLabel={
           isTrainingPlayable
             ? undefined
             : canStartTraining
               ? 'НАЧАТЬ'
-              : isTrainingLockedByDaily
+              : isTrainingLocked
                 ? 'ЛЁД ГОТОВИТСЯ'
                 : 'ТРЕНИРОВКА ЗАВЕРШЕНА'
         }

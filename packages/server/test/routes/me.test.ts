@@ -219,6 +219,79 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     expect(fullBody.experienceBalance).toBe(0);
   });
 
+  it('opts Sections into pending podium congratulations and acknowledges them idempotently', async () => {
+    const owner = await loginTelegram({ id: '4201', first_name: 'Winner' });
+    const other = await loginTelegram({ id: '4202', first_name: 'Other' });
+    const tournament = await app.pg.query<{ id: string }>(
+      `insert into tournament
+         (slug, title, regular_source, visibility, created_by)
+       values ('me-podium-cup', 'Кубок Ледовой арены', 'head_to_head', 'public', $1)
+       returning id`,
+      [owner.user.id],
+    );
+    const congratulation = await app.pg.query<{ id: string }>(
+      `insert into tournament_regular_podium_congratulation
+         (tournament_id, user_id, place, tournament_title,
+          reward_coins, reward_stars, reward_experience)
+       values ($1, $2, 1, 'Кубок Ледовой арены', 5000, 25, 1500)
+       returning id`,
+      [tournament.rows[0]!.id, owner.user.id],
+    );
+    const authorization = { authorization: `Bearer ${owner.accessToken}` };
+
+    const plain = await app.inject({ method: 'GET', url: '/me', headers: authorization });
+    expect(plain.statusCode).toBe(200);
+    expect(plain.json()).not.toHaveProperty('pendingTournamentCongratulations');
+
+    const optedIn = await app.inject({
+      method: 'GET',
+      url: '/me?includeTournamentCongratulations=true',
+      headers: authorization,
+    });
+    expect(optedIn.statusCode).toBe(200);
+    expect(optedIn.json()).toMatchObject({
+      pendingTournamentCongratulations: [
+        {
+          id: congratulation.rows[0]!.id,
+          tournamentId: tournament.rows[0]!.id,
+          tournamentTitle: 'Кубок Ледовой арены',
+          place: 1,
+          reward: { coins: 5000, stars: 25, experience: 1500 },
+        },
+      ],
+    });
+
+    const unauthenticated = await app.inject({
+      method: 'POST',
+      url: `/tournaments/congratulations/${congratulation.rows[0]!.id}/read`,
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+
+    const forbidden = await app.inject({
+      method: 'POST',
+      url: `/tournaments/congratulations/${congratulation.rows[0]!.id}/read`,
+      headers: { authorization: `Bearer ${other.accessToken}` },
+    });
+    expect(forbidden.statusCode).toBe(404);
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const acknowledged = await app.inject({
+        method: 'POST',
+        url: `/tournaments/congratulations/${congratulation.rows[0]!.id}/read`,
+        headers: authorization,
+      });
+      expect(acknowledged.statusCode).toBe(200);
+      expect(acknowledged.json()).toEqual({ acknowledged: true });
+    }
+
+    const afterRead = await app.inject({
+      method: 'GET',
+      url: '/me?includeTournamentCongratulations=true',
+      headers: authorization,
+    });
+    expect(afterRead.json()).toMatchObject({ pendingTournamentCongratulations: [] });
+  });
+
   it('enables the experimental training court for allowlisted Telegram users', async () => {
     const { accessToken } = await loginTelegram({ id: '8579300717', first_name: 'Sirius' });
 

@@ -229,6 +229,7 @@ export function InventoryScreen(): JSX.Element {
         }}
       >
         <div
+          className="inventory-shop-header"
           style={{
             display: 'grid',
             gridTemplateColumns: '40px minmax(0, 1fr) auto',
@@ -391,6 +392,7 @@ function GoodsTab({
             </div>
             <div style={{ display: 'grid', gap: 18 }}>
               <div
+                className="inventory-shop-grid"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'minmax(0, 1fr)',
@@ -444,13 +446,7 @@ function BankTab(): JSX.Element {
       <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
         Банк
       </div>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          gap: 8,
-        }}
-      >
+      <div className="inventory-bank-grid">
         {BANK_PACKAGES.map((pack) => (
           <BankPackageCard key={pack.id} pack={pack} />
         ))}
@@ -462,7 +458,7 @@ function BankTab(): JSX.Element {
 function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JSX.Element {
   return (
     <article
-      className="glass"
+      className="glass inventory-bank-card"
       style={{
         minWidth: 0,
         minHeight: 178,
@@ -536,7 +532,7 @@ function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JS
 function ShopBalanceBar({ tokens, stars }: { tokens: number; stars: number }): JSX.Element {
   return (
     <div
-      className="glass"
+      className="glass inventory-shop-balance"
       style={{
         width: 'fit-content',
         maxWidth: '100%',
@@ -620,7 +616,7 @@ function InventoryProductCard({
 }): JSX.Element {
   return (
     <article
-      className="glass"
+      className="glass inventory-product-card"
       style={{
         minWidth: 0,
         minHeight: 116,
@@ -641,7 +637,6 @@ function InventoryProductCard({
           minWidth: 0,
           height: 94,
           border: '1px solid rgba(255,255,255,0.78)',
-          borderRadius: 18,
           padding: 0,
           overflow: 'hidden',
           background: 'rgba(255,255,255,0.3)',
@@ -677,7 +672,6 @@ function InventoryProductCard({
             margin: 0,
             minWidth: 0,
             color: 'var(--ink)',
-            fontSize: 13,
             fontWeight: 950,
             lineHeight: 1.1,
             overflow: 'hidden',
@@ -693,7 +687,6 @@ function InventoryProductCard({
           style={{
             minHeight: '2.4em',
             color: 'var(--muted)',
-            fontSize: 11,
             fontWeight: 800,
             lineHeight: 1.2,
           }}

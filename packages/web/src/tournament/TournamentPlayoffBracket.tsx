@@ -1,13 +1,22 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
-import { chooseTournamentNextGame, fetchTournamentFixtureAttempt } from '../api/tournament.js';
+import { X } from 'lucide-react';
 import type {
   TournamentBracketFixture,
   TournamentBracketSeries,
-  TournamentBracketSource,
   TournamentFixtureAttemptState,
 } from '../api/tournament.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
+import {
+  PlayoffSeriesCard,
+  TournamentPlayoffOverview,
+  playoffFormatLabel,
+  playoffSeriesScheduleLabel,
+  playoffSeriesNumberMaps,
+  playoffSeriesTitle,
+  playoffStageName,
+  type PlayoffSeriesSelection,
+} from './TournamentPlayoffOverview.js';
 
 interface TournamentPlayoffBracketProps {
   tournamentId: string;
@@ -101,7 +110,6 @@ export function TournamentPlayoffAttemptView(props: {
   timezone: string;
   onOpenGame: () => void;
   onOpenNextGame?: () => void;
-  onChooseNextGame: (choice: 'immediate' | 'scheduled') => void;
 }) {
   const state = props.state;
   const readinessRemaining = useRemaining(
@@ -112,7 +120,7 @@ export function TournamentPlayoffAttemptView(props: {
       ? state.opponentProgress.periodEndsAt
       : null,
   );
-  const nextChoiceRemaining = useRemaining(state.nextGameChoice?.expiresAt ?? null);
+  const nextGameRemaining = useRemaining(state.nextGame?.breakEndsAt ?? null);
   const replayStartRemaining = useRemaining(
     state.attempt.kind === 'replay' && state.attempt.status === 'pending'
       ? state.attempt.scheduledStart
@@ -212,44 +220,25 @@ export function TournamentPlayoffAttemptView(props: {
           <span>Администратор назначит новую дату и время игры.</span>
         </div>
       )}
-      {state.nextGameChoice?.canChoose && (
+      {state.nextGame !== null && (
         <div className="tournament-playoff-attempt__choice">
           <strong>Следующая игра</strong>
-          <span>В течение минуты выберите, готовы ли вы сыграть ещё раз сразу.</span>
-          {nextChoiceRemaining !== null && <span>Осталось на решение {nextChoiceRemaining}</span>}
-          <div>
-            <button
-              type="button"
-              className="btn btn--cta"
-              onClick={() => props.onChooseNextGame('immediate')}
-            >
-              Сыграть сразу
-            </button>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => props.onChooseNextGame('scheduled')}
-            >
-              По расписанию
-            </button>
-          </div>
-        </div>
-      )}
-      {state.nextGameChoice !== null && !state.nextGameChoice.canChoose && (
-        <>
-          <span>
-            {state.nextGameChoice.startsImmediately
-              ? 'Оба игрока готовы — следующая игра начинается.'
-              : state.nextGameChoice.myChoice === 'immediate'
-                ? 'Вы готовы сыграть сразу. Ждём решение соперника.'
-                : 'Следующая игра остаётся в расписании.'}
-          </span>
-          {state.nextGameChoice.startsImmediately && props.onOpenNextGame && (
-            <button type="button" className="btn btn--cta" onClick={props.onOpenNextGame}>
-              Открыть следующую игру
-            </button>
+          {state.nextGame.available ? (
+            <>
+              <span>Следующая игра доступна. Подтвердите готовность ещё раз.</span>
+              {props.onOpenNextGame && (
+                <button type="button" className="btn btn--cta" onClick={props.onOpenNextGame}>
+                  Открыть следующую игру
+                </button>
+              )}
+            </>
+          ) : (
+            <span>
+              Следующая игра станет доступна после перерыва
+              {nextGameRemaining === null ? '.' : ` через ${nextGameRemaining}`}
+            </span>
           )}
-        </>
+        </div>
       )}
       {wonSeries ? (
         <strong className="tournament-playoff-attempt__series-win">
@@ -272,75 +261,6 @@ export function TournamentPlayoffAttemptView(props: {
   );
 }
 
-function PlayerAttemptState(props: {
-  tournamentId: string;
-  fixtureId: string;
-  currentUserId: string;
-  timezone: string;
-  onOpenFixture: (fixtureId: string) => void;
-}) {
-  const queryClient = useQueryClient();
-  const queryKey = ['tournaments', props.tournamentId, 'fixtures', props.fixtureId, 'attempt'];
-  const attempt = useQuery({
-    queryKey,
-    queryFn: () => fetchTournamentFixtureAttempt(props.tournamentId, props.fixtureId),
-    refetchInterval: 5_000,
-  });
-  const choice = useMutation({
-    mutationFn: (value: 'immediate' | 'scheduled') =>
-      chooseTournamentNextGame(props.tournamentId, props.fixtureId, value),
-    onSuccess: (result) => {
-      void queryClient.invalidateQueries({ queryKey });
-      if (result.startsImmediately) props.onOpenFixture(result.nextFixtureId);
-    },
-  });
-  if (!attempt.data) return null;
-  return (
-    <>
-      <TournamentPlayoffAttemptView
-        state={attempt.data}
-        currentUserId={props.currentUserId}
-        timezone={props.timezone}
-        onOpenGame={() => props.onOpenFixture(props.fixtureId)}
-        onOpenNextGame={() => {
-          if (attempt.data.nextGameChoice !== null) {
-            props.onOpenFixture(attempt.data.nextGameChoice.nextFixtureId);
-          }
-        }}
-        onChooseNextGame={(value) => choice.mutate(value)}
-      />
-      {choice.isError && (
-        <span className="tournament-fixture-card__error" role="alert">
-          Не удалось сохранить решение. Попробуйте ещё раз.
-        </span>
-      )}
-    </>
-  );
-}
-
-function formatLabel(kind: 'express' | 'express_plus' | 'classic'): string {
-  if (kind === 'express') return 'Экспресс';
-  if (kind === 'express_plus') return 'Микс';
-  return 'Классика';
-}
-
-function stageName(roundNumber: number, finalRound: number, plural: boolean): string {
-  const distance = finalRound - roundNumber;
-  if (distance === 0) return 'Финал';
-  if (distance === 1) return plural ? 'Полуфиналы' : 'Полуфинал';
-  if (distance === 2) return plural ? 'Четвертьфиналы' : 'Четвертьфинал';
-  if (distance === 3) return '1/8 финала';
-  return plural ? `Раунд ${roundNumber}` : `Игра раунда ${roundNumber}`;
-}
-
-function sourceStageName(roundNumber: number, finalRound: number): string {
-  const distance = finalRound - roundNumber;
-  if (distance === 1) return 'полуфинала';
-  if (distance === 2) return 'четвертьфинала';
-  if (distance === 3) return '1/8 финала';
-  return `серии раунда ${roundNumber}`;
-}
-
 function seriesStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     pending: 'Ожидает участников',
@@ -353,44 +273,57 @@ function seriesStatusLabel(status: string): string {
   return labels[status] ?? 'Статус уточняется';
 }
 
-function gameTimeLabel(fixture: TournamentBracketFixture, timezone: string): string {
-  if (fixture.scheduledStartsAt === null) return 'Время ещё не назначено';
-  const startsAt = new Date(fixture.scheduledStartsAt);
-  if (!Number.isFinite(startsAt.getTime())) return 'Время ещё не назначено';
+function gameDayLabel(startsAtValue: string | null, timezone: string): string {
+  if (startsAtValue === null) return 'Дата игрового дня ещё не назначена';
+  const startsAt = new Date(startsAtValue);
+  if (!Number.isFinite(startsAt.getTime())) return 'Дата игрового дня ещё не назначена';
   const date = new Intl.DateTimeFormat('ru-RU', {
     timeZone: timezone,
     day: 'numeric',
     month: 'long',
   }).format(startsAt);
-  const time = new Intl.DateTimeFormat('ru-RU', {
+  const startTime = new Intl.DateTimeFormat('ru-RU', {
     timeZone: timezone,
     hour: '2-digit',
     minute: '2-digit',
-  });
-  const startTime = time.format(startsAt);
-  if (fixture.windowEndsAt === null) return `${date} в ${startTime}`;
-  const endsAt = new Date(fixture.windowEndsAt);
-  if (!Number.isFinite(endsAt.getTime())) return `${date} в ${startTime}`;
-  const dateKey = new Intl.DateTimeFormat('en-CA', {
+  }).format(startsAt);
+  return `${date}, начало в ${startTime}`;
+}
+
+function localDateKey(value: string | null, timezone: string): string | null {
+  if (value === null) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  });
-  if (dateKey.format(startsAt) === dateKey.format(endsAt)) {
-    return `${date}, ${startTime}–${time.format(endsAt)}`;
+  }).format(date);
+}
+
+function groupFixturesByGameDay(fixtures: TournamentBracketFixture[], timezone: string) {
+  const groups = new Map<
+    string,
+    { startsAt: string | null; fixtures: TournamentBracketFixture[] }
+  >();
+  for (const fixture of fixtures) {
+    const fallbackDate = localDateKey(fixture.scheduledStartsAt, timezone);
+    const key = fixture.gameDay?.id ?? fallbackDate ?? 'unassigned';
+    const startsAt = fixture.gameDay?.startsAt ?? fixture.scheduledStartsAt;
+    const group = groups.get(key);
+    if (group) {
+      group.fixtures.push(fixture);
+    } else {
+      groups.set(key, { startsAt, fixtures: [fixture] });
+    }
   }
-  const endDate = new Intl.DateTimeFormat('ru-RU', {
-    timeZone: timezone,
-    day: 'numeric',
-    month: 'long',
-  }).format(endsAt);
-  return `${date}, ${startTime} — ${endDate}, ${time.format(endsAt)}`;
+  return [...groups.values()];
 }
 
 export function gameResultLabel(fixture: TournamentBracketFixture): string | null {
   if (!['settled', 'forfeit'].includes(fixture.status)) return null;
-  if (fixture.status === 'forfeit') {
+  if (fixture.technicalResult === true || fixture.status === 'forfeit') {
     const winnerName =
       fixture.winnerSide === 'home'
         ? fixture.homeName
@@ -410,149 +343,162 @@ export function gameResultLabel(fixture: TournamentBracketFixture): string | nul
   return `${fixture.homeName} ${fixture.homeScore} : ${fixture.awayScore} ${fixture.awayName}`;
 }
 
-function participantPlaceholder(
-  source: TournamentBracketSource | undefined,
-  byKey: Map<string, TournamentBracketSeries>,
-  finalRound: number,
-): string {
-  if (source?.type !== 'winner' && source?.type !== 'loser') return 'Участник определится позже';
-  const sourceSeries = source.seriesKey ? byKey.get(source.seriesKey) : undefined;
-  if (!sourceSeries) {
-    return source.type === 'winner'
-      ? 'Победитель предыдущей серии'
-      : 'Проигравший предыдущей серии';
-  }
-  const prefix = source.type === 'winner' ? 'Победитель' : 'Проигравший';
-  return `${prefix} ${sourceStageName(sourceSeries.round_number, finalRound)} ${sourceSeries.bracket_position}`;
-}
-
-function ParticipantRow(props: {
-  name: string | null;
-  avatarUrl: string | null;
-  seed: number | null;
-  placeholder: string;
-  winner: boolean;
-  wins: number;
-}) {
-  const name = props.name ?? props.placeholder;
-  return (
-    <div
-      className={`tournament-bracket-player${props.name ? '' : ' tournament-bracket-player--pending'}${props.winner ? ' tournament-bracket-player--winner' : ''}`}
-    >
-      <span
-        className="tournament-bracket-player__seed"
-        aria-label={`Посев ${props.seed ?? 'не определён'}`}
-      >
-        {props.seed ?? '—'}
-      </span>
-      <UserAvatar
-        avatarUrl={props.avatarUrl}
-        name={name}
-        size={32}
-        {...(props.name !== null ? { alt: props.name } : {})}
-      />
-      <div className="tournament-bracket-player__identity">
-        <strong>{name}</strong>
-      </div>
-      <strong
-        className="tournament-bracket-player__wins"
-        aria-label={`${props.wins} ${props.wins % 10 === 1 && props.wins % 100 !== 11 ? 'победа' : [2, 3, 4].includes(props.wins % 10) && ![12, 13, 14].includes(props.wins % 100) ? 'победы' : 'побед'} в серии`}
-      >
-        {props.wins}
-      </strong>
-    </div>
-  );
-}
-
 function SeriesCard(props: {
-  tournamentId: string;
   currentUserId: string | null;
-  onOpenFixture: (fixtureId: string) => void;
   series: TournamentBracketSeries;
   title: string;
   byKey: Map<string, TournamentBracketSeries>;
   finalRound: number;
+  seriesNumberByKey?: Map<string, number>;
   timezone: string;
+  bronze?: boolean;
+  onOpen: () => void;
+}) {
+  return <PlayoffSeriesCard {...props} />;
+}
+
+function SeriesDetailsModal(props: {
+  selection: PlayoffSeriesSelection;
+  tournamentId: string;
+  currentUserId: string | null;
+  timezone: string;
+  onOpenFixture: (fixtureId: string) => void;
+  onClose: () => void;
   renderSeriesAction?: (series: TournamentBracketSeries) => ReactNode;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const sources = props.series.depends_on?.sources ?? [];
-  const finished = ['completed', 'settled'].includes(props.series.status);
-  const higherWon =
-    props.series.winner_user_id !== null
-      ? props.series.winner_user_id === props.series.higher_user_id
-      : finished && props.series.higher_seed_wins > props.series.lower_seed_wins;
-  const lowerWon =
-    props.series.winner_user_id !== null
-      ? props.series.winner_user_id === props.series.lower_user_id
-      : finished && props.series.lower_seed_wins > props.series.higher_seed_wins;
-  const isMySeries =
-    props.currentUserId !== null &&
-    [props.series.higher_user_id, props.series.lower_user_id].includes(props.currentUserId);
-  const latestFixtureId = currentSeriesFixtureId(props.series.fixtures);
+  const { series, title } = props.selection;
+  const players = [
+    {
+      userId: series.higher_user_id,
+      name: series.higher_name,
+      avatarUrl: series.higher_avatar_url,
+      seed: series.higher_seed,
+      wins: series.higher_seed_wins,
+    },
+    {
+      userId: series.lower_user_id,
+      name: series.lower_name,
+      avatarUrl: series.lower_avatar_url,
+      seed: series.lower_seed,
+      wins: series.lower_seed_wins,
+    },
+  ];
+  const statusLabel = seriesStatusLabel(series.status);
+  const scheduleLabel = playoffSeriesScheduleLabel(series, props.timezone);
+  const visibleFixtures = series.fixtures.filter((fixture) =>
+    ['completed', 'settled'].includes(series.status)
+      ? ['settled', 'forfeit'].includes(fixture.status)
+      : fixture.status !== 'cancelled',
+  );
+  const fixtureGroups = groupFixturesByGameDay(visibleFixtures, props.timezone);
+  const isCompleted = ['completed', 'settled'].includes(series.status);
   return (
-    <article
-      className={`tournament-bracket-series${expanded ? ' tournament-bracket-series--expanded' : ''}`}
+    <AccessibleModal
+      title={title}
+      onClose={props.onClose}
+      cardClassName="tournament-bracket-series-modal"
+      headerAction={
+        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={props.onClose}>
+          <X size={16} aria-hidden="true" />
+        </button>
+      }
     >
-      <button
-        type="button"
-        className="tournament-bracket-series__summary"
-        aria-label={`${expanded ? 'Закрыть' : 'Открыть'} серию ${props.title}`}
-        aria-expanded={expanded}
-        onClick={() => setExpanded((current) => !current)}
-      >
-        <header>
-          <strong>{props.title}</strong>
-          <span>{seriesStatusLabel(props.series.status)}</span>
-        </header>
-        <div className="tournament-bracket-series__players">
-          <ParticipantRow
-            name={props.series.higher_name}
-            avatarUrl={props.series.higher_avatar_url}
-            seed={props.series.higher_seed}
-            placeholder={participantPlaceholder(sources[0], props.byKey, props.finalRound)}
-            winner={higherWon}
-            wins={props.series.higher_seed_wins}
-          />
-          <ParticipantRow
-            name={props.series.lower_name}
-            avatarUrl={props.series.lower_avatar_url}
-            seed={props.series.lower_seed}
-            placeholder={participantPlaceholder(sources[1], props.byKey, props.finalRound)}
-            winner={lowerWon}
-            wins={props.series.lower_seed_wins}
-          />
-        </div>
-      </button>
-      {expanded && props.renderSeriesAction?.(props.series)}
-      {expanded && props.series.fixtures.length > 0 && (
-        <div className="tournament-bracket-series__games">
-          {props.series.fixtures.map((fixture) => (
-            <div className="tournament-bracket-game" key={fixture.id}>
-              <span>
-                Игра {fixture.gameNumber} · {gameTimeLabel(fixture, props.timezone)}
-              </span>
-              {gameResultLabel(fixture) !== null && (
-                <strong
-                  className={`tournament-bracket-game__result${fixture.winnerSide ? ` tournament-bracket-game__result--${fixture.winnerSide}-won` : ''}`}
-                >
-                  {gameResultLabel(fixture)}
-                </strong>
-              )}
-              {isMySeries && fixture.id === latestFixtureId && (
-                <PlayerAttemptState
-                  tournamentId={props.tournamentId}
-                  fixtureId={fixture.id}
-                  currentUserId={props.currentUserId!}
-                  timezone={props.timezone}
-                  onOpenFixture={props.onOpenFixture}
+      <div className="tournament-bracket-series-modal__meta">
+        <strong>{isCompleted ? scheduleLabel : statusLabel}</strong>
+        {!isCompleted && scheduleLabel !== statusLabel && <span>{scheduleLabel}</span>}
+      </div>
+      <div className="tournament-bracket-series-modal__players">
+        {players.map((player, index) => {
+          return (
+            <div
+              className="tournament-bracket-series-modal__player"
+              key={player.userId ?? `${index}-${player.name ?? 'pending'}`}
+            >
+              <div className="tournament-bracket-series-modal__identity">
+                {player.seed !== null && (
+                  <span
+                    className="tournament-bracket-series-modal__seed"
+                    aria-label={`Посев ${player.seed}`}
+                  >
+                    {player.seed}
+                  </span>
+                )}
+                <UserAvatar
+                  avatarUrl={player.avatarUrl}
+                  name={player.name}
+                  size={30}
+                  alt={player.name ?? 'Участник'}
                 />
-              )}
+                <strong className="tournament-bracket-series-modal__name">
+                  {player.name ?? 'Участник определится позже'}
+                </strong>
+              </div>
+              <strong aria-label={`${player.wins} побед в серии`}>{player.wins}</strong>
             </div>
-          ))}
-        </div>
-      )}
-    </article>
+          );
+        })}
+      </div>
+      <strong className="tournament-bracket-series-modal__score">
+        Счёт серии {series.higher_seed_wins}:{series.lower_seed_wins}
+      </strong>
+      <div className="tournament-bracket-series__games">
+        {visibleFixtures.length === 0 ? (
+          <span className="tournament-bracket-series-modal__empty">
+            Игры серии ещё не назначены.
+          </span>
+        ) : (
+          fixtureGroups.map((group, groupIndex) => (
+            <section className="tournament-bracket-game-day" key={`${group.startsAt}-${groupIndex}`}>
+              <strong className="tournament-bracket-game-day__title">
+                {gameDayLabel(group.startsAt, props.timezone)}
+              </strong>
+              <div className="tournament-bracket-game-day__fixtures">
+                {group.fixtures.map((fixture) => {
+                  const resultLabel = gameResultLabel(fixture);
+                  const ariaResultLabel =
+                    fixture.technicalResult === true || fixture.status === 'forfeit'
+                      ? resultLabel
+                      : fixture.homeName !== null &&
+                          fixture.awayName !== null &&
+                          fixture.homeScore !== null &&
+                          fixture.awayScore !== null
+                        ? `${fixture.homeName} ${fixture.homeScore}:${fixture.awayScore} ${fixture.awayName}`
+                        : null;
+                  return (
+                    <div
+                      className={`tournament-bracket-game${resultLabel === null ? '' : ' tournament-bracket-game--played'}`}
+                      key={fixture.id}
+                      aria-label={
+                        ariaResultLabel === null
+                          ? undefined
+                          : `Игра ${fixture.gameNumber}: ${ariaResultLabel}`
+                      }
+                    >
+                      <span>Игра {fixture.gameNumber}</span>
+                      {resultLabel !== null && (
+                        <strong className="tournament-bracket-game__result">
+                          {fixture.technicalResult === true || fixture.status === 'forfeit' ? (
+                            <span className="tournament-bracket-game__technical-result">
+                              {resultLabel}
+                            </span>
+                          ) : (
+                            <span className="tournament-bracket-game__matchup">
+                              {fixture.homeName} — {fixture.awayName} {fixture.homeScore}:
+                              {fixture.awayScore}
+                            </span>
+                          )}
+                        </strong>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ))
+        )}
+      </div>
+      {props.renderSeriesAction?.(series)}
+    </AccessibleModal>
   );
 }
 
@@ -566,6 +512,7 @@ export function TournamentPlayoffBracket({
   renderSeriesAction,
 }: TournamentPlayoffBracketProps) {
   const championship = series.filter((item) => item.kind === 'championship');
+  const seriesNumbers = playoffSeriesNumberMaps(championship);
   const finalRound = Math.max(...championship.map((item) => item.round_number));
   const byKey = new Map(
     series.flatMap((item) =>
@@ -580,7 +527,7 @@ export function TournamentPlayoffBracket({
     const roundSeries = championship.filter((item) => item.round_number === roundNumber);
     return {
       key: `round-${roundNumber}`,
-      label: stageName(roundNumber, finalRound, true),
+      label: playoffStageName(roundNumber, finalRound, true),
       roundNumber,
       series: roundSeries,
       bronze: false,
@@ -595,30 +542,26 @@ export function TournamentPlayoffBracket({
       bronze: true,
     });
   }
-  const recommendedView =
-    roundViews.find((view) =>
-      view.series.some((item) => ['active', 'scheduled'].includes(item.status)),
-    ) ??
-    [...roundViews].reverse().find((view) => !view.bronze) ??
-    roundViews[0]!;
-  const [selectedKey, setSelectedKey] = useState(recommendedView.key);
-  const selectedView = roundViews.find((view) => view.key === selectedKey) ?? recommendedView;
+  const [selectedKey, setSelectedKey] = useState('overview');
+  const [selectedSeries, setSelectedSeries] = useState<PlayoffSeriesSelection | null>(null);
+  const selectedView = roundViews.find((view) => view.key === selectedKey) ?? null;
+  const tabs = [{ key: 'overview', label: 'Сетка', roundNumber: 0, bronze: false }, ...roundViews];
 
   return (
     <div className="tournament-bracket">
-      {roundViews.length > 1 && (
+      {tabs.length > 1 && (
         <div className="tournament-bracket__round-tabs" role="tablist" aria-label="Раунды плей-офф">
-          {roundViews.map((view) => (
+          {tabs.map((view) => (
             <button
               type="button"
               role="tab"
-              aria-selected={view.key === selectedView.key}
+              aria-selected={view.key === selectedKey}
               className={[
                 view.roundNumber === finalRound && !view.bronze
                   ? 'tournament-bracket__round-tab--gold'
                   : '',
                 view.bronze ? 'tournament-bracket__round-tab--bronze' : '',
-                view.key === selectedView.key ? 'is-active' : '',
+                view.key === selectedKey ? 'is-active' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
@@ -630,42 +573,69 @@ export function TournamentPlayoffBracket({
           ))}
         </div>
       )}
-      <section
-        className={`tournament-bracket-round${selectedView.bronze ? ' tournament-bracket-round--bronze' : ''}`}
-      >
-        <h3>{selectedView.label}</h3>
-        <p className="tournament-rules__muted">
-          Формат игры:{' '}
-          {(() => {
-            const configured = formats?.find(
-              (format) => format.roundNumber === selectedView.roundNumber,
-            );
-            return configured === undefined
-              ? 'будет объявлен перед стартом'
-              : formatLabel(configured.duelKind);
-          })()}
-        </p>
-        <div>
-          {selectedView.series.map((item) => (
-            <SeriesCard
-              key={item.id}
-              tournamentId={tournamentId}
-              currentUserId={currentUserId}
-              onOpenFixture={onOpenFixture}
-              series={item}
-              title={
-                selectedView.bronze
+      {selectedKey === 'overview' ? (
+        <TournamentPlayoffOverview
+          series={series}
+          currentUserId={currentUserId}
+          timezone={timezone}
+          {...(formats === undefined ? {} : { formats })}
+          onOpenSeries={setSelectedSeries}
+        />
+      ) : (
+        selectedView && (
+          <section
+            className={`tournament-bracket-round${selectedView.bronze ? ' tournament-bracket-round--bronze' : ''}`}
+          >
+            <h3>{selectedView.label}</h3>
+            <p className="tournament-rules__muted">
+              Формат игры:{' '}
+              {(() => {
+                const configured = formats?.find(
+                  (format) => format.roundNumber === selectedView.roundNumber,
+                );
+                return configured === undefined
+                  ? 'будет объявлен перед стартом'
+                  : playoffFormatLabel(configured.duelKind);
+              })()}
+            </p>
+            <div>
+              {selectedView.series.map((item) => {
+                const title = selectedView.bronze
                   ? 'За 3-е место'
-                  : `${stageName(selectedView.roundNumber, finalRound, false)}${selectedView.series.length > 1 ? ` ${item.bracket_position}` : ''}`
-              }
-              byKey={byKey}
-              finalRound={finalRound}
-              timezone={timezone}
-              {...(renderSeriesAction === undefined ? {} : { renderSeriesAction })}
-            />
-          ))}
-        </div>
-      </section>
+                  : playoffSeriesTitle(
+                      seriesNumbers.byId.get(item.id) ?? item.bracket_position,
+                      item.wins_required,
+                    );
+                return (
+                  <SeriesCard
+                    key={item.id}
+                    currentUserId={currentUserId}
+                    series={item}
+                    title={title}
+                    byKey={byKey}
+                    finalRound={finalRound}
+                    seriesNumberByKey={seriesNumbers.byKey}
+                    timezone={timezone}
+                    bronze={selectedView.bronze}
+                    onOpen={() => setSelectedSeries({ series: item, title })}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        )
+      )}
+      {selectedSeries !== null && (
+        <SeriesDetailsModal
+          selection={selectedSeries}
+          tournamentId={tournamentId}
+          currentUserId={currentUserId}
+          timezone={timezone}
+          onOpenFixture={onOpenFixture}
+          onClose={() => setSelectedSeries(null)}
+          {...(renderSeriesAction === undefined ? {} : { renderSeriesAction })}
+        />
+      )}
     </div>
   );
 }

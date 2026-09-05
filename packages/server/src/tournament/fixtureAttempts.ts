@@ -63,6 +63,7 @@ export interface TournamentFixtureAttemptStateDTO {
   } | null;
   series: {
     id: string;
+    kind: 'championship' | 'third_place';
     winsRequired: number;
     myWins: number;
     opponentWins: number;
@@ -70,6 +71,8 @@ export interface TournamentFixtureAttemptStateDTO {
     lowerSeedWins: number;
     higherSeedUserId: string;
     lowerSeedUserId: string;
+    higherSeed: number | null;
+    lowerSeed: number | null;
     status: string;
     winnerUserId: string | null;
   } | null;
@@ -77,13 +80,10 @@ export interface TournamentFixtureAttemptStateDTO {
     status: string;
     winnerUserId: string | null;
   };
-  nextGameChoice: {
-    nextFixtureId: string;
-    expiresAt: string;
-    myChoice: 'immediate' | 'scheduled' | null;
-    opponentChoice: 'immediate' | 'scheduled' | null;
-    canChoose: boolean;
-    startsImmediately: boolean;
+  nextGame: {
+    fixtureId: string;
+    breakEndsAt: string;
+    available: boolean;
   } | null;
 }
 
@@ -253,10 +253,14 @@ export function attemptDeadline(
   scheduledStartsAt: Date,
   readinessMinutes: number,
   template: DuelTemplateLifecycleSnapshot,
+  gameDurationMinutes?: number,
 ): Date {
   return calculateHardGameDeadline({
     plannedStartAt: scheduledStartsAt,
     readyCheckDurationMs: readinessMinutes * 60_000,
+    ...(gameDurationMinutes === undefined
+      ? {}
+      : { configuredGameDurationMs: gameDurationMinutes * 60_000 }),
     templateTiming: template,
   });
 }
@@ -267,7 +271,9 @@ export async function insertRoundGameDays(
     roundId: string;
     days: ResolvedRoundGameDay[];
     readinessMinutes: number;
-    plannedStartIntervalMinutes: number;
+    /** Retained only while importing legacy slot-based schedule snapshots. */
+    plannedStartIntervalMinutes?: number;
+    interGameBreakMinutes?: number;
   },
 ): Promise<ResolvedRoundGameDay[]> {
   const persisted: ResolvedRoundGameDay[] = [];
@@ -275,9 +281,10 @@ export async function insertRoundGameDays(
     const inserted = await client.query<{ id: string }>(
       `insert into tournament_round_game_day
          (round_id, day_number, local_date, first_game_local_time, first_game_starts_at,
-          max_result_bearing_games, readiness_duration, planned_start_interval)
+          max_result_bearing_games, readiness_duration, planned_start_interval,
+          inter_game_break_duration)
        values ($1, $2, $3::date, $4::time, $5, $6, $7 * interval '1 minute',
-               $8 * interval '1 minute')
+               $8 * interval '1 minute', $9 * interval '1 minute')
        returning id`,
       [
         input.roundId,
@@ -287,7 +294,8 @@ export async function insertRoundGameDays(
         day.firstGameStartsAt,
         day.maxResultGames,
         input.readinessMinutes,
-        input.plannedStartIntervalMinutes,
+        input.plannedStartIntervalMinutes ?? 1,
+        input.interGameBreakMinutes ?? 5,
       ],
     );
     persisted.push({ ...day, id: inserted.rows[0]!.id });
@@ -302,6 +310,7 @@ export async function insertInitialFixtureAttempt(
     roundGameDayId: string | null;
     scheduledStartsAt: Date;
     readinessMinutes: number;
+    gameDurationMinutes?: number;
     template: DuelTemplateLifecycleSnapshot;
     readinessMode?: 'manual' | 'auto_continue';
     rescheduledReason?: string;
@@ -314,6 +323,7 @@ export async function insertInitialFixtureAttempt(
     input.scheduledStartsAt,
     input.readinessMinutes,
     input.template,
+    input.gameDurationMinutes,
   );
   const inserted = await client.query<{ id: string }>(
     `insert into tournament_fixture_attempt
@@ -330,6 +340,7 @@ export async function insertInitialFixtureAttempt(
       hardDeadlineAt,
       JSON.stringify({
         ...input.template,
+        completionWindowMs: hardDeadlineAt.getTime() - readinessExpiresAt.getTime(),
         readinessMode: input.readinessMode ?? 'manual',
         ...(input.rescheduledReason === undefined
           ? {}
@@ -383,11 +394,36 @@ export async function markTournamentAttemptActive(
   duelMatchId: string,
 ): Promise<boolean> {
   const activated = await client.query(
-    `update tournament_fixture_attempt
-        set status = 'active', updated_at = now()
-      where amateur_duel_match_id = $1 and status = 'ready_check'
-        and home_ready_at is not null and away_ready_at is not null
-      returning fixture_id`,
+    `with activated as (
+       update tournament_fixture_attempt
+          set status = 'active',
+              readiness_expires_at = greatest(home_ready_at, away_ready_at),
+              hard_deadline_at = greatest(home_ready_at, away_ready_at) +
+                (
+                  case
+                    when coalesce(result_snapshot->>'completionWindowMs', '') ~ '^[1-9][0-9]*$'
+                      then (result_snapshot->>'completionWindowMs')::bigint
+                    else greatest(
+                      0,
+                      floor(extract(epoch from (hard_deadline_at - readiness_expires_at)) * 1000)
+                    )::bigint
+                  end
+                ) * interval '1 millisecond',
+              updated_at = now()
+        where amateur_duel_match_id = $1 and status = 'ready_check'
+          and home_ready_at is not null and away_ready_at is not null
+        returning fixture_id, hard_deadline_at
+     ), updated_fixture as (
+       update tournament_fixture fixture
+          set window_ends_at = activated.hard_deadline_at, updated_at = now()
+         from activated
+        where fixture.id = activated.fixture_id
+     )
+     update amateur_duel_match duel
+        set ends_at = activated.hard_deadline_at, updated_at = now()
+       from activated
+      where duel.id = $1
+      returning activated.fixture_id`,
     [duelMatchId],
   );
   if ((activated.rowCount ?? 0) === 0) return false;
@@ -440,6 +476,7 @@ interface EarnedAttemptContext {
   series_id: string | null;
   tournament_id: string;
   round_stage: string;
+  round_rules: Record<string, unknown>;
   home_participant_id: string;
   away_participant_id: string;
   home_goals: number;
@@ -454,6 +491,15 @@ interface EarnedAttemptContext {
 
 function accuracyPercent(goals: number, shots: number): number {
   return shots > 0 ? (goals / shots) * 100 : 0;
+}
+
+function positiveSnapshotInteger(
+  snapshot: Record<string, unknown>,
+  key: string,
+  fallback: number,
+): number {
+  const value = snapshot[key];
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : fallback;
 }
 
 export async function hasActiveTournamentAttemptForDuel(
@@ -487,7 +533,8 @@ export async function settleEarnedTournamentAttemptForDuel(
             attempt.status as attempt_status,
             attempt.result_snapshot, fixture.id as fixture_id,
             fixture.status as fixture_status, fixture.series_id, fixture.tournament_id,
-            round.stage as round_stage, fixture.home_participant_id,
+            round.stage as round_stage, round.rules_snapshot as round_rules,
+            fixture.home_participant_id,
             fixture.away_participant_id,
             home_duel.goals as home_goals, home_duel.shots_taken as home_shots,
             home_duel.active_duration_ms as home_active_time_ms,
@@ -570,14 +617,27 @@ export async function settleEarnedTournamentAttemptForDuel(
       throw new AppError('configuration_error', 'attempt timing snapshot is invalid', 409);
     }
     const isRegularReplay = context.round_stage === 'regular';
-    const replayStartsAt = new Date(input.settledAt.getTime() + (isRegularReplay ? 0 : 10_000));
-    const replayReadyCheckDurationMs = isRegularReplay ? 180_000 : 10_000;
+    const replayStartsAt = new Date(
+      input.settledAt.getTime() +
+        (isRegularReplay
+          ? 0
+          : positiveSnapshotInteger(context.round_rules, 'interGameBreakMinutes', 5) * 60_000),
+    );
+    const replayReadyCheckDurationMs = isRegularReplay
+      ? 180_000
+      : positiveSnapshotInteger(context.round_rules, 'readinessMinutes', 5) * 60_000;
     const replayReadinessExpiresAt = new Date(
       replayStartsAt.getTime() + replayReadyCheckDurationMs,
     );
     const replayHardDeadlineAt = calculateHardGameDeadline({
       plannedStartAt: replayStartsAt,
       readyCheckDurationMs: replayReadyCheckDurationMs,
+      ...(isRegularReplay
+        ? {}
+        : {
+            configuredGameDurationMs:
+              positiveSnapshotInteger(context.round_rules, 'gameDurationMinutes', 20) * 60_000,
+          }),
       templateTiming: { periodDurationsMs, breakDurationsMs },
     });
     const settled = await client.query(
@@ -639,7 +699,7 @@ export async function settleEarnedTournamentAttemptForDuel(
           periodDurationsMs,
           breakDurationsMs,
           templateSnapshot: templateSnapshot.data,
-          readinessMode: isRegularReplay ? 'manual_replay' : 'auto_continue',
+          readinessMode: isRegularReplay ? 'manual_replay' : 'manual',
           replayOfAttemptId: context.attempt_id,
         }),
       ],
@@ -735,12 +795,6 @@ export async function settleEarnedTournamentAttemptForDuel(
     await advanceTournamentPlayoffSeries(client, {
       seriesId: context.series_id,
       winnerParticipantId,
-    });
-    await createNextGameChoices(client, {
-      seriesId: context.series_id,
-      settledAttemptId: context.attempt_id,
-      homeParticipantId: context.home_participant_id,
-      awayParticipantId: context.away_participant_id,
       settledAt: input.settledAt,
     });
   }
@@ -761,42 +815,6 @@ export async function settleEarnedTournamentAttemptForDuel(
     tournamentId: context.tournament_id,
     roundStage: context.round_stage,
   };
-}
-
-async function createNextGameChoices(
-  client: PoolClient,
-  input: {
-    seriesId: string;
-    settledAttemptId: string;
-    homeParticipantId: string;
-    awayParticipantId: string;
-    settledAt: Date;
-  },
-): Promise<void> {
-  const nextFixture = await client.query<{ id: string }>(
-    `select fixture.id
-       from tournament_playoff_series series
-       join tournament_fixture fixture on fixture.series_id = series.id
-      where series.id = $1 and series.status = 'active'
-        and fixture.status = 'scheduled'
-        and coalesce((fixture.result_snapshot->>'gameNumber')::int, 1) =
-            series.higher_seed_wins + series.lower_seed_wins + 1
-      order by fixture.fixture_number
-      limit 1`,
-    [input.seriesId],
-  );
-  const nextFixtureId = nextFixture.rows[0]?.id;
-  if (nextFixtureId === undefined) return;
-  const expiresAt = new Date(input.settledAt.getTime() + 60_000);
-  for (const participantId of [input.homeParticipantId, input.awayParticipantId]) {
-    await client.query(
-      `insert into tournament_next_game_choice
-         (fixture_attempt_id, participant_id, next_fixture_id, choice, expires_at)
-       values ($1, $2, $3, 'scheduled', $4)
-       on conflict (fixture_attempt_id, participant_id) do nothing`,
-      [input.settledAttemptId, participantId, nextFixtureId, expiresAt],
-    );
-  }
 }
 
 async function settleTechnicalTournamentAttempt(
@@ -874,6 +892,7 @@ async function settleTechnicalTournamentAttempt(
     await advanceTournamentPlayoffSeries(client, {
       seriesId: context.series_id,
       winnerParticipantId,
+      settledAt: input.now,
     });
   }
   if (context.round_stage === 'regular') {
@@ -1187,22 +1206,21 @@ interface PlayerAttemptStateRow {
   opponent_current_period: number | null;
   opponent_period_started_at: Date | null;
   series_id: string | null;
+  series_kind: 'championship' | 'third_place' | null;
   wins_required: number | null;
   higher_seed_wins: number | null;
   lower_seed_wins: number | null;
   higher_seed_user_id: string | null;
   lower_seed_user_id: string | null;
+  higher_seed: number | null;
+  lower_seed: number | null;
   series_status: string | null;
   series_winner_user_id: string | null;
   tournament_status: string;
   tournament_winner_user_id: string | null;
   next_fixture_id: string | null;
-  choice_expires_at: Date | null;
-  my_choice: 'immediate' | 'scheduled' | null;
-  my_choice_decided_at: Date | null;
-  opponent_choice: 'immediate' | 'scheduled' | null;
-  opponent_choice_decided_at: Date | null;
-  next_readiness_mode: string | null;
+  next_scheduled_starts_at: Date | null;
+  next_attempt_status: string | null;
 }
 
 function nullableNumber(value: string | number | null): number | null {
@@ -1244,19 +1262,19 @@ async function fetchPlayerAttemptStateRow(
             opponent_duel.state as opponent_state,
             opponent_duel.current_period as opponent_current_period,
             opponent_duel.period_started_at as opponent_period_started_at,
-            series.id as series_id, series.wins_required,
+            series.id as series_id, series.kind as series_kind, series.wins_required,
             series.higher_seed_wins, series.lower_seed_wins,
             higher_seed.user_id as higher_seed_user_id,
             lower_seed.user_id as lower_seed_user_id,
+            higher_seed.seed as higher_seed,
+            lower_seed.seed as lower_seed,
             series.status as series_status,
             series_winner.user_id as series_winner_user_id,
             tournament.status as tournament_status,
             tournament_winner.user_id as tournament_winner_user_id,
-            my_choice.next_fixture_id, my_choice.expires_at as choice_expires_at,
-            my_choice.choice as my_choice, my_choice.decided_at as my_choice_decided_at,
-            opponent_choice.choice as opponent_choice,
-            opponent_choice.decided_at as opponent_choice_decided_at,
-            next_attempt.result_snapshot->>'readinessMode' as next_readiness_mode
+            next_game.fixture_id as next_fixture_id,
+            next_game.scheduled_starts_at as next_scheduled_starts_at,
+            next_game.attempt_status as next_attempt_status
        from tournament_fixture fixture
        join tournament tournament on tournament.id = fixture.tournament_id
        join tournament_participant home on home.id = fixture.home_participant_id
@@ -1277,25 +1295,23 @@ async function fetchPlayerAttemptStateRow(
          on lower_seed.id = series.lower_seed_participant_id
        left join tournament_participant series_winner
          on series_winner.id = series.winner_participant_id
-       left join tournament_next_game_choice my_choice
-         on my_choice.fixture_attempt_id = attempt.id
-        and my_choice.participant_id = case
-          when home.user_id = $3 then fixture.home_participant_id
-          else fixture.away_participant_id
-        end
-       left join tournament_next_game_choice opponent_choice
-         on opponent_choice.fixture_attempt_id = attempt.id
-        and opponent_choice.participant_id = case
-          when home.user_id = $3 then fixture.away_participant_id
-          else fixture.home_participant_id
-        end
        left join lateral (
-         select candidate.result_snapshot
-           from tournament_fixture_attempt candidate
-          where candidate.fixture_id = my_choice.next_fixture_id
-          order by candidate.attempt_number desc
+         select next_fixture.id as fixture_id, next_attempt.scheduled_starts_at,
+                next_attempt.status as attempt_status
+           from tournament_fixture next_fixture
+           join lateral (
+             select candidate.scheduled_starts_at, candidate.status
+               from tournament_fixture_attempt candidate
+              where candidate.fixture_id = next_fixture.id
+              order by candidate.attempt_number desc
+              limit 1
+           ) next_attempt on true
+          where next_fixture.series_id = series.id
+            and next_fixture.status = 'scheduled'
+            and coalesce((next_fixture.result_snapshot->>'gameNumber')::int, 1) =
+                series.higher_seed_wins + series.lower_seed_wins + 1
           limit 1
-       ) next_attempt on true
+       ) next_game on attempt.status in ('settled', 'technical_result')
        left join amateur_duel_participant opponent_duel
          on opponent_duel.match_id = attempt.amateur_duel_match_id
         and opponent_duel.user_id = case when home.user_id = $3 then away.user_id else home.user_id end
@@ -1412,6 +1428,7 @@ export async function getTournamentFixtureAttemptStateWithReconciliation(
           ? null
           : {
               id: row.series_id,
+              kind: row.series_kind!,
               winsRequired: Number(row.wins_required),
               myWins: Number(isHigherSeed ? row.higher_seed_wins : row.lower_seed_wins),
               opponentWins: Number(isHigherSeed ? row.lower_seed_wins : row.higher_seed_wins),
@@ -1419,6 +1436,8 @@ export async function getTournamentFixtureAttemptStateWithReconciliation(
               lowerSeedWins: Number(row.lower_seed_wins),
               higherSeedUserId: row.higher_seed_user_id,
               lowerSeedUserId: row.lower_seed_user_id,
+              higherSeed: row.higher_seed === null ? null : Number(row.higher_seed),
+              lowerSeed: row.lower_seed === null ? null : Number(row.lower_seed),
               status: row.series_status!,
               winnerUserId: row.series_winner_user_id,
             },
@@ -1426,16 +1445,15 @@ export async function getTournamentFixtureAttemptStateWithReconciliation(
         status: row.tournament_status,
         winnerUserId: row.tournament_winner_user_id,
       },
-      nextGameChoice:
-        row.next_fixture_id === null || row.choice_expires_at === null
+      nextGame:
+        row.next_fixture_id === null || row.next_scheduled_starts_at === null
           ? null
           : {
-              nextFixtureId: row.next_fixture_id,
-              expiresAt: row.choice_expires_at.toISOString(),
-              myChoice: row.my_choice_decided_at === null ? null : row.my_choice,
-              opponentChoice: row.opponent_choice_decided_at === null ? null : row.opponent_choice,
-              canChoose: row.my_choice_decided_at === null && input.now < row.choice_expires_at,
-              startsImmediately: row.next_readiness_mode === 'next_game_auto_continue',
+              fixtureId: row.next_fixture_id,
+              breakEndsAt: row.next_scheduled_starts_at.toISOString(),
+              available:
+                input.now >= row.next_scheduled_starts_at &&
+                ['pending', 'ready_check', 'active'].includes(row.next_attempt_status ?? ''),
             },
     };
     return {
@@ -1443,158 +1461,6 @@ export async function getTournamentFixtureAttemptStateWithReconciliation(
       ...(reconciledAttempt.newlySettledRegularFixture === undefined
         ? {}
         : { newlySettledRegularFixture: reconciledAttempt.newlySettledRegularFixture }),
-    };
-  } catch (error) {
-    await client.query('rollback').catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-export async function chooseTournamentNextGame(
-  pool: Pool,
-  input: {
-    tournamentId: string;
-    fixtureId: string;
-    userId: string;
-    choice: 'immediate' | 'scheduled';
-    now: Date;
-  },
-): Promise<NonNullable<TournamentFixtureAttemptStateDTO['nextGameChoice']>> {
-  const client = await pool.connect();
-  try {
-    await client.query('begin');
-    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [
-      `tournament:${input.tournamentId}`,
-    ]);
-    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [
-      `tournament-fixture:${input.fixtureId}`,
-    ]);
-    const choices = await client.query<{
-      id: string;
-      participant_id: string;
-      user_id: string;
-      next_fixture_id: string;
-      choice: 'immediate' | 'scheduled';
-      decided_at: Date | null;
-      expires_at: Date;
-    }>(
-      `select choice.id, choice.participant_id, participant.user_id,
-              choice.next_fixture_id, choice.choice, choice.decided_at, choice.expires_at
-         from tournament_fixture fixture
-         join tournament_fixture_attempt attempt on attempt.fixture_id = fixture.id
-         join tournament_next_game_choice choice on choice.fixture_attempt_id = attempt.id
-         join tournament_participant participant on participant.id = choice.participant_id
-        where fixture.id = $1 and fixture.tournament_id = $2
-          and attempt.attempt_number = (
-            select max(candidate.attempt_number)
-              from tournament_fixture_attempt candidate
-             where candidate.fixture_id = fixture.id
-          )
-        order by choice.participant_id
-        for update of choice`,
-      [input.fixtureId, input.tournamentId],
-    );
-    const mine = choices.rows.find((choice) => choice.user_id === input.userId);
-    const opponent = choices.rows.find((choice) => choice.user_id !== input.userId);
-    if (mine === undefined || opponent === undefined) {
-      throw new AppError('not_found', 'next game choice is not available', 404);
-    }
-    const fixedNextGame = await client.query<{ readiness_mode: string | null }>(
-      `select result_snapshot->>'readinessMode' as readiness_mode
-         from tournament_fixture_attempt
-        where fixture_id = $1
-        order by attempt_number desc
-        limit 1`,
-      [mine.next_fixture_id],
-    );
-    if (fixedNextGame.rows[0]?.readiness_mode === 'next_game_auto_continue') {
-      if (mine.decided_at !== null && mine.choice === input.choice) {
-        await client.query('commit');
-        return {
-          nextFixtureId: mine.next_fixture_id,
-          expiresAt: mine.expires_at.toISOString(),
-          myChoice: mine.choice,
-          opponentChoice: opponent.decided_at === null ? null : opponent.choice,
-          canChoose: false,
-          startsImmediately: true,
-        };
-      }
-      throw new AppError('conflict', 'Следующая игра уже начинается', 409);
-    }
-    if (input.now >= mine.expires_at) {
-      throw new AppError('conflict', 'next game choice has expired', 409);
-    }
-    await client.query(
-      `update tournament_next_game_choice
-          set choice = $2, decided_at = $3, updated_at = now()
-        where id = $1`,
-      [mine.id, input.choice, input.now],
-    );
-    mine.choice = input.choice;
-    mine.decided_at = input.now;
-
-    const startsImmediately =
-      mine.choice === 'immediate' &&
-      mine.decided_at !== null &&
-      opponent.choice === 'immediate' &&
-      opponent.decided_at !== null;
-    if (startsImmediately) {
-      const nextAttempt = await client.query<{
-        id: string;
-        scheduled_starts_at: Date;
-        readiness_expires_at: Date;
-        hard_deadline_at: Date;
-        result_snapshot: Record<string, unknown> | null;
-      }>(
-        `select id, scheduled_starts_at, readiness_expires_at, hard_deadline_at,
-                result_snapshot
-           from tournament_fixture_attempt
-          where fixture_id = $1 and status = 'pending'
-          order by attempt_number desc
-          limit 1
-          for update`,
-        [mine.next_fixture_id],
-      );
-      const attempt = nextAttempt.rows[0];
-      if (attempt === undefined) {
-        throw new AppError('conflict', 'next tournament game is not available', 409);
-      }
-      if (attempt.result_snapshot?.readinessMode !== 'next_game_auto_continue') {
-        const readinessExpiresAt = new Date(input.now.getTime() + 60_000);
-        const gameplayDurationMs = Math.max(
-          1,
-          attempt.hard_deadline_at.getTime() - attempt.readiness_expires_at.getTime(),
-        );
-        const hardDeadlineAt = new Date(readinessExpiresAt.getTime() + gameplayDurationMs);
-        await client.query(
-          `update tournament_fixture_attempt
-              set scheduled_starts_at = $2, readiness_expires_at = $3,
-                  hard_deadline_at = $4,
-                  result_snapshot = coalesce(result_snapshot, '{}'::jsonb)
-                    || '{"readinessMode":"next_game_auto_continue"}'::jsonb,
-                  updated_at = now()
-            where id = $1 and status = 'pending'`,
-          [attempt.id, input.now, readinessExpiresAt, hardDeadlineAt],
-        );
-        await client.query(
-          `update tournament_fixture
-              set status = 'scheduled', scheduled_starts_at = $2,
-                  window_ends_at = $3, updated_at = now()
-            where id = $1 and status in ('conditional', 'scheduled')`,
-          [mine.next_fixture_id, input.now, hardDeadlineAt],
-        );
-      }
-    }
-    await client.query('commit');
-    return {
-      nextFixtureId: mine.next_fixture_id,
-      expiresAt: mine.expires_at.toISOString(),
-      myChoice: mine.choice,
-      opponentChoice: opponent.decided_at === null ? null : opponent.choice,
-      canChoose: false,
-      startsImmediately,
     };
   } catch (error) {
     await client.query('rollback').catch(() => undefined);

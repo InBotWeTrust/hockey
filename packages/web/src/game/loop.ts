@@ -1,6 +1,6 @@
 import type { Ticker } from 'pixi.js';
 import {
-  simulateGoalie,
+  createGoalieSimulator,
   simulateGoal,
   getGoalie,
   getSessionPhaseOffsets,
@@ -8,6 +8,7 @@ import {
   type GoalieConfig,
   type GoalState,
   type SessionPhaseOffsets,
+  type GoalieSimulator,
   SHOOTER_CENTER_X,
   SHOOTER_AMPLITUDE,
   type DuelPlayerCondition,
@@ -129,6 +130,13 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
   let frozenConditionShooterX: number | null = null;
   let heldStumbleCondition: DuelPlayerCondition | null = null;
   let heldStumbleUntilMs = 0;
+  let activeConfigSource: GoalieConfig | null = null;
+  let activeConfigGoalFrequency: number | null = null;
+  let activeConfigGoalieFrequency: number | null = null;
+  let cachedActiveConfig: GoalieConfig | null = null;
+  let goalieSimulator: GoalieSimulator | null = null;
+  let goalieSimulatorSeed: string | null = null;
+  let goalieSimulatorShotIndex: number | null = null;
 
   function shooterT(now: number): number {
     const activeManual = shooterPauseStartedAt !== null ? now - shooterPauseStartedAt : 0;
@@ -170,9 +178,21 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     if (!cfg) return;
     const now = advanceRenderClock();
     const overrides = opts.getSpeedOverrides?.();
-    const activeCfg = overrides
-      ? { ...cfg, goalFrequency: overrides.goalFreq, frequency: overrides.goalieFreq }
-      : cfg;
+    if (
+      cachedActiveConfig === null ||
+      activeConfigSource !== cfg ||
+      activeConfigGoalFrequency !== (overrides?.goalFreq ?? null) ||
+      activeConfigGoalieFrequency !== (overrides?.goalieFreq ?? null)
+    ) {
+      activeConfigSource = cfg;
+      activeConfigGoalFrequency = overrides?.goalFreq ?? null;
+      activeConfigGoalieFrequency = overrides?.goalieFreq ?? null;
+      cachedActiveConfig = overrides
+        ? { ...cfg, goalFrequency: overrides.goalFreq, frequency: overrides.goalieFreq }
+        : cfg;
+      goalieSimulator = null;
+    }
+    const activeCfg = cachedActiveConfig;
     const sf = overrides?.shooterFreq ?? 0.45;
     const o = getOffsets();
     const tScene = sceneT(now);
@@ -230,13 +250,18 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       frozenConditionShooterX = null;
     }
     const goalState: GoalState = simulateGoal(activeCfg, tScene, o.goal);
-    const goalieState: GoalieState = simulateGoalie(
-      activeCfg,
-      opts.getSeed(),
-      opts.getShotIndex(),
-      tScene,
-      o.goalie,
-    );
+    const goalieSeed = opts.getSeed();
+    const goalieShotIndex = opts.getShotIndex();
+    if (
+      goalieSimulator === null ||
+      goalieSimulatorSeed !== goalieSeed ||
+      goalieSimulatorShotIndex !== goalieShotIndex
+    ) {
+      goalieSimulatorSeed = goalieSeed;
+      goalieSimulatorShotIndex = goalieShotIndex;
+      goalieSimulator = createGoalieSimulator(activeCfg, goalieSeed, goalieShotIndex);
+    }
+    const goalieState: GoalieState = goalieSimulator(tScene, o.goalie);
     const shiftedShooterTWithOffset = rawShooterTWithOffset + shooterTimeShift;
     const sx = conditionPausesShooter
       ? (frozenConditionShooterX ??
