@@ -313,6 +313,52 @@ function formatEventRemaining(ms: number): string {
   return formatHms(ms);
 }
 
+const MOSCOW_TIMEZONE = 'Europe/Moscow';
+
+function zonedCalendarDay(timestampMs: number): number {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: MOSCOW_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(timestampMs));
+  const value = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  return Date.UTC(value('year'), value('month') - 1, value('day'));
+}
+
+export function tournamentNextGameDisplay(
+  nextGameAt: string,
+  now: number,
+): { label: string; value: string; countdown: boolean } {
+  const nextAtMs = timestampMs(nextGameAt);
+  const dayDifference = Math.round(
+    (zonedCalendarDay(nextAtMs) - zonedCalendarDay(now)) / 86_400_000,
+  );
+  if (dayDifference <= 0) {
+    return {
+      label: 'Следующая игра через:',
+      value: formatMs(Math.max(0, nextAtMs - now)),
+      countdown: true,
+    };
+  }
+  const time = new Intl.DateTimeFormat('ru-RU', {
+    timeZone: MOSCOW_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(nextAtMs));
+  const date =
+    dayDifference === 1
+      ? 'Завтра'
+      : new Intl.DateTimeFormat('ru-RU', {
+          timeZone: MOSCOW_TIMEZONE,
+          day: 'numeric',
+          month: 'long',
+        }).format(new Date(nextAtMs));
+  return { label: 'Следующая игра:', value: `${date} в ${time} (мск)`, countdown: false };
+}
+
 function formatSpeedValue(value: number): string {
   return value.toFixed(2).replace('.', ',');
 }
@@ -968,7 +1014,9 @@ function GameHub({
   const duelStatsCurrentMatch = duelStatsMatch
     ? (amateurEventItems.find((event) => event.id === duelStatsMatch.id) ?? duelStatsMatch)
     : null;
-  const activeDuelEvents = amateurEventItems.filter(isArenaDuelEvent);
+  const activeDuelEvents = amateurEventItems.filter(
+    (event) => event.source !== 'tournament' && isArenaDuelEvent(event),
+  );
   const [activeCubeEntryId, setActiveCubeEntryId] = useState<string | null>(
     readArenaSelectedEntryId,
   );
@@ -5859,6 +5907,8 @@ function DuelResultModal({
   onOpenNextGame?: (fixtureId: string) => void;
 }): JSX.Element {
   const nextGame = tournamentAttempt?.nextGame ?? null;
+  const nextGameDisplay =
+    nextGame === null ? null : tournamentNextGameDisplay(nextGame.breakEndsAt, now);
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Результат дуэли">
       <DuelResultCard
@@ -5879,9 +5929,12 @@ function DuelResultModal({
                   </button>
                 ) : (
                   <div className="tournament-duel-result__countdown">
-                    <span>Следующая игра через:</span>
-                    <strong aria-label="До следующей игры">
-                      {formatMs(Math.max(0, new Date(nextGame.breakEndsAt).getTime() - now))}
+                    <span>{nextGameDisplay!.label}</span>
+                    <strong
+                      aria-label="До следующей игры"
+                      data-countdown={nextGameDisplay!.countdown ? 'true' : 'false'}
+                    >
+                      {nextGameDisplay!.value}
                     </strong>
                   </div>
                 )}

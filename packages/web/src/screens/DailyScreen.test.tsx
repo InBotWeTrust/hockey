@@ -28,6 +28,7 @@ import {
   initialGameRouteState,
   isDuelInventoryLow,
   isDuelReadyPresenceState,
+  tournamentNextGameDisplay,
   tournamentDuelBackPath,
 } from './DailyScreen.js';
 import { PlayView, duelFatigueNoticeLabel, duelPrimaryButtonLabel } from '../game/PlayView.js';
@@ -371,6 +372,33 @@ afterEach(() => {
 });
 
 describe('DailyScreen', () => {
+  it('shows tomorrow in Moscow instead of a multi-hour next-game countdown', () => {
+    expect(
+      tournamentNextGameDisplay(
+        '2026-09-06T10:00:00.000Z',
+        Date.parse('2026-09-05T10:50:00.000Z'),
+      ),
+    ).toEqual({ label: 'Следующая игра:', value: 'Завтра в 13:00 (мск)', countdown: false });
+  });
+
+  it('shows the Moscow date when the next game is later than tomorrow', () => {
+    expect(
+      tournamentNextGameDisplay(
+        '2026-09-08T10:00:00.000Z',
+        Date.parse('2026-09-05T10:50:00.000Z'),
+      ),
+    ).toEqual({ label: 'Следующая игра:', value: '8 сентября в 13:00 (мск)', countdown: false });
+  });
+
+  it('keeps the countdown for the next game on the same Moscow day', () => {
+    expect(
+      tournamentNextGameDisplay(
+        '2026-09-05T11:00:00.000Z',
+        Date.parse('2026-09-05T10:55:10.000Z'),
+      ),
+    ).toEqual({ label: 'Следующая игра через:', value: '04:50', countdown: true });
+  });
+
   it('does not load the ordinary daily game from a completed tournament URL', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
@@ -813,6 +841,66 @@ describe('DailyScreen', () => {
         'view=amateur&section=tournaments&tournament=playoff-ready&tab=schedule&fixture=fixture-ready&match=match-ready&play=1',
       ),
     );
+  });
+
+  it('shows a tournament duel only once when both arena feeds return the same match', async () => {
+    const tournamentMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      id: 'match-ready',
+      source: 'tournament',
+      status: 'ready_check',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: new Date(Date.now() - 60_000).toISOString(),
+      ends_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      me: { ...settledDuelMatch.me, state: 'ready', current_period: 0 },
+      opponent: { ...settledDuelMatch.opponent, state: 'ready', current_period: 0 },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/classic/active')
+        ? {
+            games: [
+              {
+                tournament_id: 'playoff-ready',
+                tournament_title: 'Чемпионат мира',
+                tournament_day: 1,
+                kind: 'playoff',
+                fixture_id: 'fixture-ready',
+                duel_match_id: 'match-ready',
+                round_stage: 'playoff',
+                round_number: 3,
+                final_round_number: 3,
+                starts_at: tournamentMatch.starts_at,
+                readiness_ends_at: tournamentMatch.ends_at,
+                closes_at: tournamentMatch.ends_at,
+                break_ends_at: null,
+                state: 'ready_check',
+                current_period: 0,
+                total_periods: 2,
+                total_shots: 0,
+                total_goals: 0,
+              },
+            ],
+          }
+        : url.includes('/duel/amateur/events')
+          ? { events: [tournamentMatch] }
+          : url.includes('/duel/training/state')
+            ? trainingIdleState
+            : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=arena']);
+
+    expect(await screen.findByText('Турнир · Финал')).toBeInTheDocument();
+    expect(screen.queryByText('Активная дуэль (Ваш ход)')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Чемпионат мира')).toHaveLength(1);
   });
 
   it('returns from a classic tournament game to its schedule', async () => {
