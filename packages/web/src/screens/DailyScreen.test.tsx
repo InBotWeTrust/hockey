@@ -19,6 +19,7 @@ import {
 import {
   DailyScreen,
   DUEL_INVENTORY_ICON_GLASS_STYLE,
+  createClassicTournamentCondition,
   duelBackLabel,
   duelEquipmentEffectLabel,
   duelEventTiming,
@@ -501,6 +502,9 @@ describe('DailyScreen', () => {
     expect(await screen.findByLabelText(/Клюшка: Тестовая клюшка/)).toBeEnabled();
     expect(screen.getByLabelText(/Коньки: Обычные коньки/)).toBeEnabled();
     expect(screen.getByLabelText(/Энергия: Без питания/)).toBeEnabled();
+    fireEvent.click(screen.getByLabelText(/Клюшка: Тестовая клюшка/));
+    expect(screen.getByRole('dialog', { name: 'Клюшка' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
     fireEvent.click(screen.getByRole('button', { name: 'НАЧАТЬ' }));
     await waitFor(() => {
       const startCall = fetchMock.mock.calls.find(([input]) =>
@@ -532,6 +536,103 @@ describe('DailyScreen', () => {
     expect(await screen.findByLabelText(/Клюшка: Обычная клюшка/)).toBeDisabled();
     expect(screen.getByLabelText(/Коньки: Обычные коньки/)).toBeDisabled();
     expect(screen.getByLabelText(/Энергия: Без питания/)).toBeDisabled();
+  });
+
+  it('allows changing classic inventory during the break', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...classicIdleState,
+          state: 'break_active',
+          current_period: 1,
+          break_ends_at: new Date(Date.now() + 60_000).toISOString(),
+          loadout_editable: true,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    renderWith(['/?view=classic&tournament=classic-1']);
+
+    const stickButton = await screen.findByLabelText(/Клюшка: Обычная клюшка/);
+    expect(stickButton).toBeEnabled();
+    fireEvent.click(stickButton);
+    expect(screen.getByRole('dialog', { name: 'Клюшка' })).toBeInTheDocument();
+  });
+
+  it('shows the remaining classic inventory resource during an active period', async () => {
+    const stick = {
+      id: '00000000-0000-4000-8000-000000000901',
+      itemId: '00000000-0000-4000-8000-000000000901',
+      instanceId: null,
+      kind: 'stick' as const,
+      title: 'Тестовая клюшка',
+      imageUrl: null,
+      resourceUnit: 'shot' as const,
+      resourceAvailable: 20,
+      effectPuckSpeedPoints: 10,
+      effectShooterFrequencyDelta: 0,
+      effectGoalieFrequencyDelta: 0,
+      effectGoalFrequencyDelta: 0,
+    };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...classicIdleState,
+          state: 'period_active',
+          current_period: 1,
+          current_period_shots: 3,
+          period_started_at: new Date().toISOString(),
+          period_ends_at: new Date(Date.now() + 60_000).toISOString(),
+          loadout: { items: [stick] },
+          loadout_editable: false,
+          current_period_inventory_consumption: [
+            { id: stick.id, itemId: stick.itemId, kind: 'stick', title: stick.title, charges: 3 },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    renderWith(['/?view=classic&tournament=classic-1']);
+
+    expect(await screen.findByLabelText(/Клюшка: Тестовая клюшка\. 17 бросков/)).toBeDisabled();
+    expect(screen.getByText('17')).toBeInTheDocument();
+  });
+
+  it('applies the classic stick puck-speed bonus exactly once and removes it when exhausted', () => {
+    const stick = {
+      id: '00000000-0000-4000-8000-000000000901',
+      itemId: '00000000-0000-4000-8000-000000000901',
+      instanceId: null,
+      kind: 'stick' as const,
+      title: 'Тестовая клюшка',
+      imageUrl: null,
+      resourceUnit: 'shot' as const,
+      resourceAvailable: 1,
+      effectPuckSpeedPoints: 10,
+      effectShooterFrequencyDelta: 0,
+      effectGoalieFrequencyDelta: 0,
+      effectGoalFrequencyDelta: 0,
+    };
+    const activeState: ClassicTournamentState = {
+      ...classicIdleState,
+      state: 'period_active',
+      current_period: 1,
+      loadout: { items: [stick] },
+      loadout_editable: false,
+    };
+    const speeds = { goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.3 };
+
+    expect(createClassicTournamentCondition(activeState)(0, speeds)?.puckSpeedDelta).toBe(0.1);
+    expect(
+      createClassicTournamentCondition({
+        ...activeState,
+        current_period_inventory_consumption: [
+          { id: stick.id, itemId: stick.itemId, kind: 'stick', title: stick.title, charges: 1 },
+        ],
+      })(0, speeds)?.puckSpeedDelta,
+    ).toBe(0);
   });
 
   it('shows classic period results before the resurfacing break', async () => {

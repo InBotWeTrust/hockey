@@ -163,9 +163,9 @@ const defaultPlayoffRound = (): PlayoffRoundDraft => ({
 });
 
 const defaultClassicPeriods = (): [ClassicPeriodDraft, ClassicPeriodDraft, ClassicPeriodDraft] => [
-  { goalSpeed: 0.55, goalieSpeed: 0.65, playerSpeed: 0.8, puckSpeed: 1.3 },
-  { goalSpeed: 0.72, goalieSpeed: 0.84, playerSpeed: 1, puckSpeed: 1.55 },
-  { goalSpeed: 0.9, goalieSpeed: 1.05, playerSpeed: 1.18, puckSpeed: 1.8 },
+  { goalSpeed: 0.5, goalieSpeed: 0.6, playerSpeed: 0.75, puckSpeed: 0.85 },
+  { goalSpeed: 0.5, goalieSpeed: 0.6, playerSpeed: 0.7, puckSpeed: 0.85 },
+  { goalSpeed: 0.5, goalieSpeed: 0.6, playerSpeed: 0.65, puckSpeed: 0.85 },
 ];
 
 const defaultDraft: TournamentDraft = {
