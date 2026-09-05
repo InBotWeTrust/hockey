@@ -24,7 +24,11 @@ import { AccessibleModal } from '../components/AccessibleModal.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { placeholderArtworkForKind } from './inventoryArtwork.js';
 import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
-import { formatProfileNumber, getLevelLabel } from './profileSections.js';
+import {
+  AchievementDetailsSheet,
+  formatProfileNumber,
+  getLevelLabel,
+} from './profileSections.js';
 import type { ProfileData } from './profileTypes.js';
 
 function ProfileBalance({
@@ -224,33 +228,6 @@ function EquipmentPickerModal({
             </span>
           </button>
         ))}
-      </div>
-    </AccessibleModal>
-  );
-}
-
-function AchievementDetailsModal({
-  achievement,
-  onClose,
-}: {
-  achievement: ProfileData['achievements'][number];
-  onClose: () => void;
-}): JSX.Element {
-  return (
-    <AccessibleModal
-      title={achievement.title}
-      ariaLabel={achievement.title}
-      copy={achievement.requirement}
-      onRequestClose={onClose}
-      headerAction={
-        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
-          <X size={15} />
-        </button>
-      }
-    >
-      <div className="profile-achievement-details">
-        <img src={achievement.photoUrl} alt="" />
-        <p>{achievement.description}</p>
       </div>
     </AccessibleModal>
   );
@@ -494,7 +471,7 @@ export function ProfileScreen(): JSX.Element {
         />
       ) : null}
       {selectedAchievement !== null ? (
-        <AchievementDetailsModal
+        <AchievementDetailsSheet
           achievement={selectedAchievement}
           onClose={() => setSelectedAchievement(null)}
         />

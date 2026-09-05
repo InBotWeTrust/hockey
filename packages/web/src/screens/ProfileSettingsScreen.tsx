@@ -146,7 +146,7 @@ export function ProfileSettingsScreen(): JSX.Element {
           <div className="profile-logout-wrap">
             <button
               type="button"
-              className="glass profile-logout-btn profile-logout-btn--danger"
+              className="profile-logout-btn profile-logout-btn--danger"
               onClick={() => void logout()}
             >
               <LogOut size={16} />
