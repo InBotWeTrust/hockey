@@ -199,6 +199,15 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
       tgFirstName: 'Alice',
       tgAvatarUrl: 'tg.png',
       tgUsername: 'alice',
+      registeredAt: expect.any(String),
+      registrationProvider: 'telegram',
+      registrationProviderId: '42',
+      trophySummary: {
+        regularSeasonWins: 0,
+        tournamentChampionships: 0,
+        tournamentPodiums: 0,
+        completedChallenges: 0,
+      },
     });
     const fullBody = res.json() as {
       achievements: Array<{ id: string; status: string; photoUrl: string }>;
@@ -360,7 +369,7 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     ]);
   });
 
-  it('counts consecutive play days from shots in any game mode', async () => {
+  it('counts consecutive play days only from official game modes', async () => {
     const { accessToken, user } = await loginTelegram({ id: '46' });
 
     await insertDailyShot(user.id, 0, 1);
@@ -378,9 +387,98 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({
       stats: {
-        playStreakDays: 3,
-        bestPlayStreakDays: 3,
+        playStreakDays: 1,
+        bestPlayStreakDays: 1,
       },
+    });
+  });
+
+  it('counts only the playoff final and actual podium places in trophy summary', async () => {
+    const champion = await loginTelegram({ id: '61', first_name: 'Champion' });
+    const runnerUp = await loginTelegram({ id: '62', first_name: 'Runner-up' });
+    const earlyLoser = await loginTelegram({ id: '63', first_name: 'Early loser' });
+    const bronzeWinner = await loginTelegram({ id: '64', first_name: 'Bronze winner' });
+
+    const tournament = await app.pg.query<{ id: string }>(
+      `insert into tournament (slug, title, status, regular_source, created_by)
+       values ('profile-trophy-summary', 'Profile trophy summary', 'completed', 'head_to_head', $1)
+       returning id`,
+      [champion.user.id],
+    );
+    const tournamentId = tournament.rows[0]!.id;
+    const participantByUser = new Map<string, string>();
+    for (const player of [champion, runnerUp, earlyLoser, bronzeWinner]) {
+      const participant = await app.pg.query<{ id: string }>(
+        `insert into tournament_participant (tournament_id, user_id, state)
+         values ($1, $2, 'approved') returning id`,
+        [tournamentId, player.user.id],
+      );
+      participantByUser.set(player.user.id, participant.rows[0]!.id);
+    }
+    const quarterfinal = await app.pg.query<{ id: string }>(
+      `insert into tournament_round (tournament_id, stage, number, status)
+       values ($1, 'playoff', 1, 'settled') returning id`,
+      [tournamentId],
+    );
+    const final = await app.pg.query<{ id: string }>(
+      `insert into tournament_round (tournament_id, stage, number, status)
+       values ($1, 'playoff', 2, 'settled') returning id`,
+      [tournamentId],
+    );
+    const bronze = await app.pg.query<{ id: string }>(
+      `insert into tournament_round (tournament_id, stage, number, status)
+       values ($1, 'third_place', 2, 'settled') returning id`,
+      [tournamentId],
+    );
+    const championParticipant = participantByUser.get(champion.user.id)!;
+    const runnerUpParticipant = participantByUser.get(runnerUp.user.id)!;
+    const earlyLoserParticipant = participantByUser.get(earlyLoser.user.id)!;
+    const bronzeWinnerParticipant = participantByUser.get(bronzeWinner.user.id)!;
+    await app.pg.query(
+      `insert into tournament_playoff_series
+         (tournament_id, round_id, bracket_position, kind,
+          higher_seed_participant_id, lower_seed_participant_id, winner_participant_id,
+          wins_required, home_sequence, status)
+       values
+         ($1, $2, 1, 'championship', $3, $4, $3, 1, '[]'::jsonb, 'completed'),
+         ($1, $5, 1, 'championship', $3, $6, $3, 1, '[]'::jsonb, 'completed'),
+         ($1, $7, 1, 'third_place', $4, $8, $8, 1, '[]'::jsonb, 'completed')`,
+      [
+        tournamentId,
+        quarterfinal.rows[0]!.id,
+        championParticipant,
+        earlyLoserParticipant,
+        final.rows[0]!.id,
+        runnerUpParticipant,
+        bronze.rows[0]!.id,
+        bronzeWinnerParticipant,
+      ],
+    );
+
+    const fetchSummary = async (accessToken: string) => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/me',
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      expect(response.statusCode).toBe(200);
+      return response.json().trophySummary as {
+        tournamentChampionships: number;
+        tournamentPodiums: number;
+      };
+    };
+
+    await expect(fetchSummary(champion.accessToken)).resolves.toMatchObject({
+      tournamentChampionships: 1,
+      tournamentPodiums: 0,
+    });
+    await expect(fetchSummary(runnerUp.accessToken)).resolves.toMatchObject({
+      tournamentChampionships: 0,
+      tournamentPodiums: 1,
+    });
+    await expect(fetchSummary(earlyLoser.accessToken)).resolves.toMatchObject({
+      tournamentChampionships: 0,
+      tournamentPodiums: 0,
     });
   });
 

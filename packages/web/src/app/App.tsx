@@ -45,6 +45,21 @@ const ProfileSettingsScreen = lazy(() =>
     default: module.ProfileSettingsScreen,
   })),
 );
+const ProfileStatsScreen = lazy(() =>
+  import('../screens/ProfileDestinationScreens.js').then((module) => ({
+    default: module.ProfileStatsScreen,
+  })),
+);
+const ProfileEquipmentScreen = lazy(() =>
+  import('../screens/ProfileDestinationScreens.js').then((module) => ({
+    default: module.ProfileEquipmentScreen,
+  })),
+);
+const ProfileArenaScreen = lazy(() =>
+  import('../screens/ProfileDestinationScreens.js').then((module) => ({
+    default: module.ProfileArenaScreen,
+  })),
+);
 const SectionsScreen = lazy(() =>
   import('../screens/SectionsScreen.js').then((module) => ({ default: module.SectionsScreen })),
 );
@@ -158,9 +173,7 @@ export function appSurfaceClassName(pathname: string): string {
   if (pathname === '/login' || pathname.startsWith('/auth/')) {
     return 'app-shell--auth-surfaces';
   }
-  return pathname === '/profile' || pathname.startsWith('/profile/')
-    ? 'app-shell--profile-tab'
-    : 'app-shell--unified-glass';
+  return 'app-shell--unified-glass';
 }
 
 function AppExperience(): JSX.Element {
@@ -304,6 +317,46 @@ function AppExperience(): JSX.Element {
                 element={
                   <PrivateRoute>
                     <ProfileSettingsScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile/stats"
+                element={
+                  <PrivateRoute>
+                    <ProfileStatsScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile/equipment"
+                element={
+                  <PrivateRoute>
+                    <ProfileEquipmentScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile/arena"
+                element={
+                  <PrivateRoute>
+                    <ProfileArenaScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile/achievements"
+                element={
+                  <PrivateRoute>
+                    <AchievementsScreen profileContext />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile/achievements/weekly-challenge"
+                element={
+                  <PrivateRoute>
+                    <WeeklyChallengeScreen profileContext />
                   </PrivateRoute>
                 }
               />

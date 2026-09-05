@@ -19,6 +19,7 @@ export interface SheetProps {
   maxHeight?: string;
   backdropTestId?: string;
   headerAction?: ReactNode;
+  grabberPlacement?: 'top' | 'content';
 }
 
 export function Sheet({
@@ -31,6 +32,7 @@ export function Sheet({
   maxHeight = '82dvh',
   backdropTestId,
   headerAction,
+  grabberPlacement = 'content',
 }: SheetProps): JSX.Element {
   return (
     <AccessibleModal
@@ -39,6 +41,9 @@ export function Sheet({
       presentation="sheet"
       {...(backdropTestId === undefined ? {} : { backdropTestId })}
       {...(headerAction === undefined ? {} : { headerAction })}
+      {...(grabberPlacement === 'top'
+        ? { beforeHeader: <div className="sheet-grabber sheet-grabber--top" aria-hidden="true" /> }
+        : {})}
       onRequestClose={onRequestClose}
       closeBlocked={!dismissible}
       cardClassName="sheet-card"
@@ -47,7 +52,7 @@ export function Sheet({
         if (dismissible && shouldDismissSheet(offsetY, velocityY)) onRequestClose('drag');
       }}
     >
-      <div className="sheet-grabber" aria-hidden="true" />
+      {grabberPlacement === 'content' && <div className="sheet-grabber" aria-hidden="true" />}
       <div className="sheet-content" data-dirty={dirty ? 'true' : undefined}>
         {children}
       </div>

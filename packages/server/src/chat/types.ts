@@ -2,7 +2,11 @@
 // to camelCase happens at the API boundary (routes layer) in PR 2.
 
 import type { ProfileAchievementDTO } from '../achievements/service.js';
-import type { CompetitionLevel, ProfileStatsDTO } from '../profile/summary.js';
+import type {
+  CompetitionLevel,
+  ProfileStatsDTO,
+  TrophySummaryDTO,
+} from '../profile/summary.js';
 
 export type ChatType = 'direct' | 'group' | 'system' | 'channel';
 export type AccountKind = 'player' | 'official';
@@ -226,6 +230,10 @@ export interface UserPublicProfileDTO {
   competitionLevel: CompetitionLevel;
   stats: ProfileStatsDTO;
   achievements: ProfileAchievementDTO[];
+  currencyBalance: number;
+  starBalance: number;
+  experienceBalance: number;
+  trophySummary: TrophySummaryDTO;
   // ISO; surface "joined at" on the profile screen.
   createdAt: string;
   // ISO; surface "last seen" subtitle on the public profile / DM header.

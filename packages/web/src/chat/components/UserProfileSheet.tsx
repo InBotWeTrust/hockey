@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { Award, CircleDollarSign, Medal, Star, Target, TrendingUp, Trophy, X } from 'lucide-react';
 import {
   fetchUserProfile,
   findOrCreateDM,
@@ -14,10 +14,9 @@ import { UserAvatar } from './UserAvatar.js';
 import type { ProfileAchievement } from '../../screens/profileTypes.js';
 import {
   AchievementDetailsSheet,
-  EMPTY_PROFILE_STATS,
+  formatProfileNumber,
   getLevelLabel,
   ProfileAchievementsSection,
-  ProfileStatsGrid,
 } from '../../screens/profileSections.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { DuelChallengeModal, hasOpenDuelWithUser } from './DuelChallengeModal.js';
@@ -26,6 +25,145 @@ import { Sheet } from '../../components/Sheet.js';
 interface UserProfileSheetProps {
   sender: UserPickerItem | null;
   onClose: () => void;
+}
+
+function PublicBalance({
+  label,
+  value,
+  tone,
+  icon,
+}: {
+  label: string;
+  value: number;
+  tone: string;
+  icon: JSX.Element;
+}): JSX.Element {
+  return (
+    <div className="profile-balance">
+      <span className="profile-balance__label">{label}</span>
+      <span className={`profile-balance__amount profile-balance__amount--${tone}`}>
+        {icon}
+        <strong className="profile-balance__value" aria-label={`${label}: ${value}`}>
+          {formatProfileNumber(value)}
+        </strong>
+      </span>
+    </div>
+  );
+}
+
+function PublicSportingPassport({
+  profile,
+  displayName,
+  avatarUrl,
+}: {
+  profile: UserPublicProfileDTO;
+  displayName: string;
+  avatarUrl: string | null;
+}): JSX.Element {
+  const registeredDate = new Date(profile.createdAt);
+  const registeredLabel = Number.isNaN(registeredDate.getTime())
+    ? '—'
+    : registeredDate.toLocaleDateString('ru-RU', {
+        timeZone: 'UTC',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+  const trophySummary = profile.trophySummary ?? {
+    regularSeasonWins: 0,
+    tournamentChampionships: 0,
+    tournamentPodiums: 0,
+    completedChallenges: 0,
+  };
+  const trophies = [
+    ['Победы в регулярке', trophySummary.regularSeasonWins, Trophy],
+    ['Чемпионства', trophySummary.tournamentChampionships, Award],
+    ['Призовые места', trophySummary.tournamentPodiums, Medal],
+    ['Челленджи', trophySummary.completedChallenges, Target],
+  ] as const;
+
+  return (
+    <section
+      className="profile-passport public-profile-passport"
+      aria-label="Публичный спортивный паспорт"
+    >
+      <div className="profile-passport__top">
+        <div className="profile-identity__main">
+          <UserAvatar avatarUrl={avatarUrl} name={displayName} size={56} fontSize={21} />
+          <div className="profile-identity__copy">
+            <span className="profile-identity__name">{displayName}</span>
+            <span className="profile-identity__level">
+              {getLevelLabel(profile.competitionLevel)}
+            </span>
+          </div>
+        </div>
+        <div className="profile-balances" aria-label="Баланс игрока">
+          <PublicBalance
+            label="Монеты"
+            value={profile.currencyBalance ?? 0}
+            tone="coins"
+            icon={<CircleDollarSign aria-hidden="true" />}
+          />
+          <PublicBalance
+            label="Звёзды"
+            value={profile.starBalance ?? 0}
+            tone="stars"
+            icon={<Star aria-hidden="true" />}
+          />
+          <PublicBalance
+            label="Опыт"
+            value={profile.experienceBalance ?? 0}
+            tone="experience"
+            icon={<TrendingUp aria-hidden="true" />}
+          />
+        </div>
+      </div>
+      <div className="profile-sporting-metrics" aria-label="Главные показатели">
+        <div className="profile-sporting-metrics__item">
+          <strong>{formatProfileNumber(profile.stats.goals)}</strong>
+          <span>Голы</span>
+        </div>
+        <div className="profile-sporting-metrics__item">
+          <strong>{formatProfileNumber(profile.stats.accuracy)}%</strong>
+          <span>Точность</span>
+        </div>
+        <div className="profile-sporting-metrics__item">
+          <strong>
+            {formatProfileNumber(profile.stats.playStreakDays)}{' '}
+            <span className="profile-streak-record">
+              (
+              {formatProfileNumber(
+                profile.stats.bestPlayStreakDays ?? profile.stats.playStreakDays,
+              )}
+              )
+            </span>
+          </strong>
+          <span>Дней подряд</span>
+        </div>
+        <div className="profile-sporting-metrics__item">
+          <strong>
+            {registeredLabel === '—' ? (
+              registeredLabel
+            ) : (
+              <span className="profile-registration-date">
+                <span className="profile-registration-date__prefix">с</span> {registeredLabel}
+              </span>
+            )}
+          </strong>
+          <span>В игре</span>
+        </div>
+      </div>
+      <section className="profile-trophy-showcase" aria-label="Витрина наград">
+        {trophies.map(([label, value, Icon]) => (
+          <div className="profile-trophy-showcase__item" key={label}>
+            <Icon aria-hidden="true" />
+            <strong>{formatProfileNumber(value)}</strong>
+            <span>{label}</span>
+          </div>
+        ))}
+      </section>
+    </section>
+  );
 }
 
 export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JSX.Element | null {
@@ -88,13 +226,17 @@ function UserProfileSheetContent({
 
   const displayName = profile?.displayName ?? sender.displayName;
   const avatarUrl = profile?.avatarUrl ?? sender.avatarUrl;
+  const completedAchievements = (profile?.achievements ?? []).filter(
+    (achievement) => achievement.isUnlocked,
+  );
 
   return (
     <Sheet
       open
       title="Профиль игрока"
       onRequestClose={() => onClose()}
-      maxHeight="80dvh"
+      maxHeight="94dvh"
+      grabberPlacement="top"
       backdropTestId="profile-sheet-backdrop"
       headerAction={
         <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
@@ -110,39 +252,12 @@ function UserProfileSheetContent({
           gap: 0,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <UserAvatar
-            avatarUrl={avatarUrl}
-            name={displayName}
-            size={88}
-            fontSize={32}
-            style={{ boxShadow: '0 10px 26px rgba(15, 23, 42, 0.25)' }}
-          />
-          <div
-            style={{
-              minWidth: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'flex-start',
-              gap: 8,
-            }}
-          >
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', minWidth: 0 }}>
-              {displayName}
-            </div>
-            {profile && (
-              <span className="pill pill--dark">
-                <small>Уровень</small> {getLevelLabel(profile.competitionLevel)}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="section-label" style={{ margin: '18px 0 6px', padding: '2px 6px' }}>
-          Статистика
-        </div>
         {profile ? (
-          <ProfileStatsGrid stats={profile.stats ?? EMPTY_PROFILE_STATS} columns={2} />
+          <PublicSportingPassport
+            profile={profile}
+            displayName={displayName}
+            avatarUrl={avatarUrl}
+          />
         ) : (
           <div
             className="glass"
@@ -160,9 +275,9 @@ function UserProfileSheetContent({
           </div>
         )}
 
-        {profile && (
+        {completedAchievements.length > 0 && (
           <ProfileAchievementsSection
-            achievements={profile.achievements ?? []}
+            achievements={completedAchievements}
             onOpenAchievement={setSelectedAchievement}
             labelStyle={{ margin: '18px 0 6px', padding: '2px 6px' }}
             style={{ margin: 0 }}

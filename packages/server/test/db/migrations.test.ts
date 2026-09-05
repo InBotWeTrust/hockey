@@ -539,6 +539,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '097_revert_beginner_tutorial_gameplay_speed.sql',
       '098_achievement_reward_ledger.sql',
       '099_tournament_classic_period_loadout.sql',
+      '100_backfill_official_amateur_duel_stats.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -621,6 +622,54 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       expect(customisedMix.rows[0]?.period_speed_presets).toEqual(customPresets);
     } finally {
       await pool.query('rollback');
+    }
+  });
+
+  it('backfills only amateur-duel shots into official lifetime totals', async () => {
+    const userId = '99999999-9999-4999-8999-999999999999';
+    const migrationsBeforeBackfill = await createMigrationsDirBefore(
+      '100_backfill_official_amateur_duel_stats.sql',
+    );
+    const migration = await fs.readFile(
+      path.join(MIGRATIONS_DIR, '100_backfill_official_amateur_duel_stats.sql'),
+      'utf8',
+    );
+
+    try {
+      await resetDatabase(pool);
+      await applyMigrations(pool, migrationsBeforeBackfill);
+      await pool.query('begin');
+      await pool.query(
+        `insert into users
+           (id, display_name, timezone, lifetime_shots_total, lifetime_goals_total)
+         values ($1, 'Stats backfill player', 'Europe/Moscow', 10, 5)`,
+        [userId],
+      );
+      await pool.query(`alter table shot_session drop constraint shot_session_check`);
+      await pool.query(
+        `insert into shot_session
+           (user_id, mode, period_number, shot_index, seed, input_payload,
+            server_result, game_core_version)
+         values
+           ($1, 'amateur_duel', 1, 1, 'a1', '{}'::jsonb, 'goal', 1),
+           ($1, 'amateur_duel', 1, 2, 'a2', '{}'::jsonb, 'save', 1),
+           ($1, 'training', 1, 1, 't1', '{}'::jsonb, 'goal', 1),
+           ($1, 'bonus', 1, 1, 'b1', '{}'::jsonb, 'goal', 1)`,
+        [userId],
+      );
+
+      await pool.query(migration);
+
+      const totals = await pool.query<{ shots: number; goals: number }>(
+        `select lifetime_shots_total as shots, lifetime_goals_total as goals
+           from users
+          where id = $1`,
+        [userId],
+      );
+      expect(totals.rows[0]).toEqual({ shots: 12, goals: 6 });
+    } finally {
+      await pool.query('rollback');
+      await fs.rm(migrationsBeforeBackfill, { recursive: true, force: true });
     }
   });
 
@@ -1246,6 +1295,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '097_revert_beginner_tutorial_gameplay_speed.sql',
       '098_achievement_reward_ledger.sql',
       '099_tournament_classic_period_loadout.sql',
+      '100_backfill_official_amateur_duel_stats.sql',
     ]);
 
     const activeInventory = await pool.query<{

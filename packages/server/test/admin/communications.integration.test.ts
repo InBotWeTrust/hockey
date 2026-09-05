@@ -112,6 +112,32 @@ describe.skipIf(!hasIntegrationEnv)('official communications admin inbox', () =>
     });
   });
 
+  it('delivers player feedback directly to the official dialog and shared admin inbox', async () => {
+    const sent = await app.inject({
+      method: 'POST',
+      url: '/feedback/direct',
+      headers: auth(playerToken),
+      payload: { message: 'Подскажите по турниру' },
+    });
+
+    expect(sent.statusCode).toBe(201);
+    expect(sent.json()).toMatchObject({ chatId });
+
+    const dialogMessages = await app.inject({
+      method: 'GET',
+      url: `/admin/communications/dialogs/${chatId}/messages`,
+      headers: auth(adminToken),
+    });
+    expect(dialogMessages.statusCode).toBe(200);
+    expect(dialogMessages.json()).toEqual(
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({ senderId: PLAYER_ID, content: 'Подскажите по турниру' }),
+        ]),
+      }),
+    );
+  });
+
   it('does not expose the official account as a player profile', async () => {
     const profile = await app.inject({
       method: 'GET',
