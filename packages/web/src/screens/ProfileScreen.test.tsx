@@ -223,6 +223,13 @@ describe('ProfileScreen', () => {
     );
 
     expect(screen.getByRole('dialog', { name: 'Снайпер недели' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Снайпер недели' })).toHaveClass(
+      'achievement-details-modal',
+    );
+    expect(screen.getByRole('img', { name: 'Снайпер недели' })).toHaveClass(
+      'achievement-details-modal__image',
+    );
+    expect(screen.queryByText('Выполнено')).not.toBeInTheDocument();
     expect(screen.getByText('Лучший результат')).toBeInTheDocument();
     expect(screen.getByText('Забить 50 голов')).toBeInTheDocument();
   });

@@ -196,7 +196,9 @@ describe('ProfileSettingsScreen', () => {
     expect(screen.queryByText(/Привязать/)).not.toBeInTheDocument();
     expect(screen.queryByText('Кастом')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Из ВКонтакте/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Выйти' })).toHaveClass('profile-logout-btn--danger');
+    const logoutButton = screen.getByRole('button', { name: 'Выйти' });
+    expect(logoutButton).toHaveClass('profile-logout-btn--danger');
+    expect(logoutButton).not.toHaveClass('glass');
     expect(screen.getByRole('button', { name: 'О хвате' })).toHaveClass(
       'profile-settings-grip-info',
     );

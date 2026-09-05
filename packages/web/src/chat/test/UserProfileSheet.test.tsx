@@ -206,6 +206,13 @@ describe('UserProfileSheet', () => {
     expect(screen.getByLabelText('Витрина наград')).toHaveTextContent('Чемпионства');
     expect(screen.getByText('Любитель')).toHaveClass('profile-identity__level');
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
+    const identity = screen.getByText('Иван Петров').closest('.profile-identity__main');
+    expect(identity).toHaveClass('public-profile-identity');
+    expect(identity?.querySelector('[aria-hidden="true"]')).toHaveStyle({
+      width: '80px',
+      height: '80px',
+    });
+    expect(screen.getByText('Иван Петров')).toHaveClass('public-profile-identity__name');
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toHaveClass('sheet-card');
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' }).firstElementChild).toHaveClass(
       'sheet-grabber',
@@ -215,6 +222,22 @@ describe('UserProfileSheet', () => {
         .getByRole('heading', { name: 'Профиль игрока' })
         .parentElement?.querySelector(':scope > button[aria-label="Закрыть"]'),
     ).toBeInTheDocument();
+  });
+
+  it('opens achievement details without a completion badge and with a square full-width image', async () => {
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+      onClose: () => {},
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Первая шайба.*получено/i }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Первая шайба' });
+    expect(dialog).toHaveClass('achievement-details-modal');
+    expect(screen.getByRole('img', { name: 'Первая шайба' })).toHaveClass(
+      'achievement-details-modal__image',
+    );
+    expect(screen.queryByText('Выполнено')).not.toBeInTheDocument();
   });
 
   it('hides the achievements section when the player has no completed achievements', async () => {

@@ -2518,8 +2518,21 @@
 
 .public-profile-passport {
   gap: 12px;
+  margin-top: -8px;
   padding: 0;
   border-radius: 0;
+}
+
+.public-profile-identity {
+  gap: 15px;
+}
+
+.public-profile-identity__name {
+  font-size: 25px;
+}
+
+.public-profile-identity .profile-identity__level {
+  font-size: 15px;
 }
 
 .sheet-content {
@@ -3266,7 +3279,7 @@
 .profile-identity__copy {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 5px;
 }
 
 .profile-identity__name {
@@ -3740,24 +3753,40 @@
   font-weight: 750;
 }
 
-.profile-achievement-details {
+.achievement-details-modal__content {
   display: grid;
   gap: 12px;
+  color: var(--ink);
 }
 
-.profile-achievement-details img {
+.achievement-details-modal__image {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 1;
   border-radius: 18px;
   object-fit: cover;
+  display: block;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 8px 18px rgba(15, 23, 42, 0.12);
 }
 
-.profile-achievement-details p {
+.achievement-details-modal__content p {
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
   line-height: 1.45;
+}
+
+.achievement-details-modal__requirement {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.achievement-details-modal__requirement strong {
+  color: var(--ink);
+  font-weight: 900;
 }
 
 .profile-utility-grid {
@@ -9814,9 +9843,16 @@ button.daily-calendar__day:active {
 }
 
 .profile-logout-btn--danger {
-  border-color: rgba(127, 29, 29, 0.32);
-  background: rgba(224, 132, 132, 0.68);
-  color: #7f1d1d;
+  border: 1px solid rgba(104, 35, 35, 0.34);
+  background: rgba(211, 115, 115, 0.76);
+  color: #34202a;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 8px 18px rgba(86, 36, 36, 0.15);
+}
+
+.profile-logout-btn--danger svg {
+  color: currentColor;
 }
 
 .tournament-reward-status strong {

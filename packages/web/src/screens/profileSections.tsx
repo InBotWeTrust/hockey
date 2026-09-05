@@ -289,13 +289,12 @@ export function AchievementDetailsSheet({
   achievement: ProfileAchievement;
   onClose: () => void;
 }): JSX.Element {
-  const status = achievement.isUnlocked ? 'Выполнено' : 'Не выполнено';
-
   return (
     <AccessibleModal
       open
       title={achievement.title}
       onRequestClose={() => onClose()}
+      cardClassName="achievement-details-modal"
       headerAction={
         <button
           type="button"
@@ -314,74 +313,16 @@ export function AchievementDetailsSheet({
         position: 'relative',
       }}
     >
-      <div
-        style={{
-          width: '100%',
-          color: 'var(--ink)',
-          position: 'relative',
-        }}
-      >
-        <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 14 }}>
-          <div
-            style={{
-              width: 72,
-              height: 72,
-              borderRadius: 18,
-              overflow: 'hidden',
-              background: 'rgba(15, 23, 42, 0.08)',
-              border: '1px solid rgba(255,255,255,0.82)',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 8px 18px rgba(15,23,42,0.12)',
-              alignSelf: 'start',
-            }}
-          >
-            <img
-              src={achievement.photoUrl}
-              alt=""
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                display: 'block',
-                filter: achievement.isUnlocked ? 'none' : 'grayscale(1) saturate(0.1)',
-                opacity: achievement.isUnlocked ? 1 : 0.58,
-              }}
-            />
-          </div>
-          <div
-            style={{
-              minWidth: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 7,
-            }}
-          >
-            <span
-              className={achievement.isUnlocked ? 'pill pill--dark' : 'pill'}
-              style={{
-                alignSelf: 'flex-start',
-                padding: '5px 10px',
-                fontSize: 11,
-                letterSpacing: 0,
-              }}
-            >
-              {status}
-            </span>
-          </div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
-          <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-            {achievement.description}
-          </p>
-          <div
-            style={{
-              color: 'var(--muted)',
-              fontSize: 13,
-              lineHeight: 1.5,
-            }}
-          >
-            <strong style={{ color: 'var(--ink)', fontWeight: 900 }}>Цель: </strong>
-            {achievement.requirement}
-          </div>
+      <div className="achievement-details-modal__content">
+        <img
+          className="achievement-details-modal__image"
+          src={achievement.photoUrl}
+          alt={achievement.title}
+        />
+        <p>{achievement.description}</p>
+        <div className="achievement-details-modal__requirement">
+          <strong>Цель: </strong>
+          {achievement.requirement}
         </div>
       </div>
     </AccessibleModal>

@@ -88,10 +88,12 @@ function PublicSportingPassport({
       aria-label="Публичный спортивный паспорт"
     >
       <div className="profile-passport__top">
-        <div className="profile-identity__main">
-          <UserAvatar avatarUrl={avatarUrl} name={displayName} size={56} fontSize={21} />
+        <div className="profile-identity__main public-profile-identity">
+          <UserAvatar avatarUrl={avatarUrl} name={displayName} size={80} fontSize={30} />
           <div className="profile-identity__copy">
-            <span className="profile-identity__name">{displayName}</span>
+            <span className="profile-identity__name public-profile-identity__name">
+              {displayName}
+            </span>
             <span className="profile-identity__level">
               {getLevelLabel(profile.competitionLevel)}
             </span>
