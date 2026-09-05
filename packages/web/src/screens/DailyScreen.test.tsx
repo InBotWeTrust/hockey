@@ -94,6 +94,8 @@ const trainingIdleState: TrainingStateResponse = {
   server_now: '2026-04-25T12:00:00.000Z',
   goalie_id: 'rookie',
   period_speed_presets: [...DAILY_PERIOD_SPEED_PRESETS],
+  tournament_day_locked: false,
+  tournament_day_starts_at: null,
 };
 
 const trainingActiveState: TrainingStateResponse = {
@@ -149,12 +151,19 @@ const classicIdleState: ClassicTournamentState = {
   tournament_id: 'classic-1',
   tournament_title: 'Кубок классики',
   tournament_day: 1,
+  player_id: '00000000-0000-4000-8000-000000000902',
   session_id: 'classic-session-1',
   expired: false,
   closes_at: '2030-09-01T21:00:00.000Z',
   period_duration_ms: 1_200_000,
   break_duration_ms: 900_000,
+  base_period_speed_presets: [...DAILY_PERIOD_SPEED_PRESETS],
   daily_seed: 'classic-seed',
+  loadout: { items: [] },
+  loadout_editable: true,
+  inventory_available: [],
+  inventory_consumption: [],
+  current_period_inventory_consumption: [],
   result: null,
 };
 
@@ -452,6 +461,78 @@ describe('DailyScreen', () => {
     ).toBe(false);
   });
 
+  it('shows classic inventory circles and submits the selected loadout with period start', async () => {
+    const stick = {
+      id: '00000000-0000-4000-8000-000000000901',
+      itemId: '00000000-0000-4000-8000-000000000901',
+      instanceId: null,
+      kind: 'stick' as const,
+      title: 'Тестовая клюшка',
+      imageUrl: null,
+      resourceUnit: 'shot' as const,
+      resourceAvailable: 20,
+      effectPuckSpeedPoints: 10,
+      effectShooterFrequencyDelta: 0,
+      effectGoalieFrequencyDelta: 0,
+      effectGoalFrequencyDelta: 0,
+    };
+    const state = {
+      ...classicIdleState,
+      loadout: { items: [stick] },
+      inventory_available: [stick],
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.endsWith('/classic/period/start')) {
+        return new Response(JSON.stringify({ ...state, state: 'period_active', current_period: 1 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(state), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=classic&tournament=classic-1']);
+
+    expect(await screen.findByLabelText(/Клюшка: Тестовая клюшка/)).toBeEnabled();
+    expect(screen.getByLabelText(/Коньки: Обычные коньки/)).toBeEnabled();
+    expect(screen.getByLabelText(/Энергия: Без питания/)).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'НАЧАТЬ' }));
+    await waitFor(() => {
+      const startCall = fetchMock.mock.calls.find(([input]) =>
+        String(input).endsWith('/classic/period/start'),
+      );
+      expect(startCall?.[1]?.body).toBe(
+        JSON.stringify({ loadout: { stick: stick.id, skates: null, nutrition: null } }),
+      );
+    });
+  });
+
+  it('locks classic inventory circles while a period is active', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...classicIdleState,
+          state: 'period_active',
+          current_period: 1,
+          period_started_at: new Date().toISOString(),
+          period_ends_at: new Date(Date.now() + 60_000).toISOString(),
+          loadout_editable: false,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    renderWith(['/?view=classic&tournament=classic-1']);
+
+    expect(await screen.findByLabelText(/Клюшка: Обычная клюшка/)).toBeDisabled();
+    expect(screen.getByLabelText(/Коньки: Обычные коньки/)).toBeDisabled();
+    expect(screen.getByLabelText(/Энергия: Без питания/)).toBeDisabled();
+  });
+
   it('shows classic period results before the resurfacing break', async () => {
     const breakState: ClassicTournamentState = {
       ...classicIdleState,
@@ -537,6 +618,15 @@ describe('DailyScreen', () => {
       daily_total_shots: 90,
       daily_total_goals: 78,
       recent_periods: periods,
+      inventory_consumption: [
+        {
+          id: '00000000-0000-4000-8000-000000000901',
+          itemId: '00000000-0000-4000-8000-000000000901',
+          kind: 'stick',
+          title: 'Тестовая клюшка',
+          charges: 20,
+        },
+      ],
       result: {
         goals: 78,
         shots: 90,
@@ -557,6 +647,9 @@ describe('DailyScreen', () => {
     expect(await screen.findByRole('dialog', { name: 'Игра завершена' })).toBeInTheDocument();
     expect(screen.getByLabelText('Итого: 78 голов из 90 бросков')).toBeInTheDocument();
     expect(screen.getByText('87%')).toBeInTheDocument();
+    expect(screen.getByLabelText('Общий расход инвентаря')).toHaveTextContent(
+      'Тестовая клюшка',
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
     expect(screen.queryByRole('dialog', { name: 'Игра завершена' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'ИГРА ЗАВЕРШЕНА' })).toBeDisabled();
@@ -2613,6 +2706,32 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
     expect(screen.getByText('Игра уже начата')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
+  });
+
+  it('blocks active training shots during the tournament game day block', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(
+          JSON.stringify({
+            ...trainingActiveState,
+            tournament_day_locked: true,
+            tournament_day_starts_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify(baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=training&play=1']);
+
+    expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
+    expect(screen.getByText('Идут игры турнира')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
 

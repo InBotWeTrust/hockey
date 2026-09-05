@@ -145,6 +145,101 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     });
   }
 
+  async function createPlayoffDayBlock(input: {
+    firstGameStartsAt: Date;
+    attemptStartsAt?: Date;
+    attemptStatus?: 'pending' | 'ready_check' | 'active' | 'settled';
+  }): Promise<{ attemptId: string }> {
+    const opponent = await findOrCreateTelegramUser(pool, {
+      providerUid: `training-opponent-${Date.now()}-${Math.random()}`,
+      displayName: 'Opponent',
+      timezone: 'Europe/Moscow',
+    });
+    const tournament = await pool.query<{ id: string }>(
+      `insert into tournament (slug, title, status, regular_source, created_by)
+       values ($1, 'Training lock cup', 'playoff', 'head_to_head', $2)
+       returning id`,
+      [`training-lock-${Date.now()}-${Math.random()}`, userId],
+    );
+    const home = await pool.query<{ id: string }>(
+      `insert into tournament_participant (tournament_id, user_id, state)
+       values ($1, $2, 'approved') returning id`,
+      [tournament.rows[0]!.id, userId],
+    );
+    const away = await pool.query<{ id: string }>(
+      `insert into tournament_participant (tournament_id, user_id, state)
+       values ($1, $2, 'approved') returning id`,
+      [tournament.rows[0]!.id, opponent.id],
+    );
+    const round = await pool.query<{ id: string }>(
+      `insert into tournament_round (tournament_id, stage, number, status)
+       values ($1, 'playoff', 1, 'open') returning id`,
+      [tournament.rows[0]!.id],
+    );
+    const localDate = input.firstGameStartsAt.toLocaleDateString('en-CA', {
+      timeZone: 'Europe/Moscow',
+    });
+    const gameDay = await pool.query<{ id: string }>(
+      `insert into tournament_round_game_day
+         (round_id, day_number, local_date, first_game_local_time, first_game_starts_at,
+          max_result_bearing_games, readiness_duration, planned_start_interval, status)
+       values ($1, 1, $2::date, '13:00', $3, 7, interval '10 minutes',
+               interval '15 minutes', 'open') returning id`,
+      [round.rows[0]!.id, localDate, input.firstGameStartsAt],
+    );
+    const fixture = await pool.query<{ id: string }>(
+      `insert into tournament_fixture
+         (tournament_id, round_id, fixture_number, home_participant_id,
+          away_participant_id, scheduled_starts_at, window_ends_at, status)
+       values ($1, $2, 1, $3, $4, $5, $6, 'open') returning id`,
+      [
+        tournament.rows[0]!.id,
+        round.rows[0]!.id,
+        home.rows[0]!.id,
+        away.rows[0]!.id,
+        input.attemptStartsAt ?? input.firstGameStartsAt,
+        new Date((input.attemptStartsAt ?? input.firstGameStartsAt).getTime() + 60 * 60_000),
+      ],
+    );
+    const attemptStartsAt = input.attemptStartsAt ?? input.firstGameStartsAt;
+    const attempt = await pool.query<{ id: string }>(
+      `insert into tournament_fixture_attempt
+         (fixture_id, round_game_day_id, attempt_number, kind, status,
+          scheduled_starts_at, readiness_expires_at, hard_deadline_at, is_result_bearing)
+       values ($1, $2, 1, 'initial', $3, $4, $5, $6, true) returning id`,
+      [
+        fixture.rows[0]!.id,
+        gameDay.rows[0]!.id,
+        input.attemptStatus ?? 'pending',
+        attemptStartsAt,
+        new Date(attemptStartsAt.getTime() + 10 * 60_000),
+        new Date(attemptStartsAt.getTime() + 60 * 60_000),
+      ],
+    );
+    return { attemptId: attempt.rows[0]!.id };
+  }
+
+  async function createClassicTournamentDay(startsAt: Date): Promise<void> {
+    const tournament = await pool.query<{ id: string }>(
+      `insert into tournament (slug, title, status, regular_source, created_by)
+       values ($1, 'Classic training lock', 'regular', 'classic', $2)
+       returning id`,
+      [`classic-training-lock-${Date.now()}-${Math.random()}`, userId],
+    );
+    await pool.query(
+      `insert into tournament_participant (tournament_id, user_id, state)
+       values ($1, $2, 'approved')`,
+      [tournament.rows[0]!.id, userId],
+    );
+    await pool.query(
+      `insert into tournament_matchday
+         (tournament_id, number, local_date, starts_at, ends_at, status)
+       values ($1, 1, ($2::timestamptz at time zone 'Europe/Moscow')::date,
+               $2, $3, 'open')`,
+      [tournament.rows[0]!.id, startsAt, new Date(startsAt.getTime() + 24 * 60 * 60_000)],
+    );
+  }
+
   it('initial state is idle', async () => {
     const state = await getState();
     expect(state.state).toBe('idle');
@@ -249,6 +344,67 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     expect(daily.statusCode).toBe(200);
 
     const shot = await submitShot(1);
+    expect(shot.statusCode).toBe(409);
+  });
+
+  it('allows training 31 minutes before the first tournament game of the day', async () => {
+    await createPlayoffDayBlock({ firstGameStartsAt: new Date(Date.now() + 31 * 60_000) });
+
+    const training = await startTraining(1);
+
+    expect(training.statusCode).toBe(200);
+  });
+
+  it('rejects training from 30 minutes before the tournament day block starts', async () => {
+    await createPlayoffDayBlock({ firstGameStartsAt: new Date(Date.now() + 29 * 60_000) });
+
+    const training = await startTraining(1);
+
+    expect(training.statusCode).toBe(409);
+  });
+
+  it('keeps training locked between games in the same tournament day block', async () => {
+    await createPlayoffDayBlock({
+      firstGameStartsAt: new Date(Date.now() - 20 * 60_000),
+      attemptStartsAt: new Date(Date.now() + 10 * 60_000),
+      attemptStatus: 'pending',
+    });
+
+    const training = await startTraining(1);
+
+    expect(training.statusCode).toBe(409);
+  });
+
+  it('allows training after the last game in the tournament day block is settled', async () => {
+    const block = await createPlayoffDayBlock({
+      firstGameStartsAt: new Date(Date.now() - 20 * 60_000),
+      attemptStatus: 'settled',
+    });
+    await pool.query(
+      `update tournament_fixture_attempt set settled_at = now() where id = $1`,
+      [block.attemptId],
+    );
+
+    const training = await startTraining(1);
+
+    expect(training.statusCode).toBe(200);
+  });
+
+  it('rejects training during a classic tournament game day', async () => {
+    await createClassicTournamentDay(new Date(Date.now() + 20 * 60_000));
+
+    const training = await startTraining(1);
+
+    expect(training.statusCode).toBe(409);
+  });
+
+  it('rejects a shot from an open training during a tournament day block', async () => {
+    const training = await startTraining(2);
+    expect(training.statusCode).toBe(200);
+    await createPlayoffDayBlock({ firstGameStartsAt: new Date(Date.now() + 20 * 60_000) });
+
+    const shot = await submitShot(1);
+
     expect(shot.statusCode).toBe(409);
   });
 

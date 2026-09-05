@@ -90,6 +90,11 @@ import { acknowledgeRegularSeasonPodiumCongratulation } from './podiumCongratula
 const uuid = z.string().uuid();
 const nullableDate = z.string().datetime({ offset: true }).nullable().default(null);
 const nullableImageUrl = z.string().trim().max(2048).nullable().optional();
+const classicLoadoutSchema = z.object({
+  stick: uuid.nullable().optional(),
+  skates: uuid.nullable().optional(),
+  nutrition: uuid.nullable().optional(),
+});
 export const tournamentTitleSchema = z.string().trim().min(1).max(60);
 const localDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const tournamentScheduleQuerySchema = z.object({ date: localDateSchema });
@@ -291,11 +296,23 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.post('/tournaments/:tournamentId/classic/period/start', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
+    const body = z.object({ loadout: classicLoadoutSchema.optional() }).parse(req.body ?? {});
     return startClassicGamePeriod(app.pg, {
       userId: req.user.id,
       tournamentId: params.tournamentId,
       now: new Date(),
       seedSecret: options.tournamentGameSeedSecret,
+      ...(body.loadout === undefined
+        ? {}
+        : {
+            loadout: {
+              ...(body.loadout.stick === undefined ? {} : { stick: body.loadout.stick }),
+              ...(body.loadout.skates === undefined ? {} : { skates: body.loadout.skates }),
+              ...(body.loadout.nutrition === undefined
+                ? {}
+                : { nutrition: body.loadout.nutrition }),
+            },
+          }),
     });
   });
 

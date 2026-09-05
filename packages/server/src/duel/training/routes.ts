@@ -70,11 +70,18 @@ interface TrainingStateResponse {
   server_now: string;
   goalie_id: string;
   period_speed_presets: DailyPeriodSpeedPreset[];
+  tournament_day_locked: boolean;
+  tournament_day_starts_at: string | null;
 }
 
 interface TrainingShotSubmitResponse {
   server_result: 'goal' | 'save' | 'miss';
   state: TrainingStateResponse;
+}
+
+interface TournamentDayTrainingLock {
+  locked: boolean;
+  startsAt: string | null;
 }
 
 function isDailyGameStartedAndIncomplete(pool: DayPoolRow | null, totalPeriods: number): boolean {
@@ -181,13 +188,17 @@ async function reconcileTrainingSession(
 
 async function buildTrainingState(
   client: PoolClient,
+  userId: string,
   session: TrainingSessionRow | null,
   localToday: string,
   timezone: string,
   settings: GameSettings,
   now: Date,
+  knownTournamentLock?: TournamentDayTrainingLock,
 ): Promise<TrainingStateResponse> {
   const nextDay = await nextDayStartsAt(client, localToday, timezone);
+  const tournamentLock =
+    knownTournamentLock ?? (await getTournamentDayTrainingLock(client, userId, now));
   if (session === null) {
     return {
       state: 'idle',
@@ -202,6 +213,8 @@ async function buildTrainingState(
       server_now: now.toISOString(),
       goalie_id: settings.training.goalieId,
       period_speed_presets: settings.daily.periodSpeedPresets,
+      tournament_day_locked: tournamentLock.locked,
+      tournament_day_starts_at: tournamentLock.startsAt,
     };
   }
 
@@ -219,6 +232,60 @@ async function buildTrainingState(
     server_now: now.toISOString(),
     goalie_id: settings.training.goalieId,
     period_speed_presets: settings.daily.periodSpeedPresets,
+    tournament_day_locked: tournamentLock.locked,
+    tournament_day_starts_at: tournamentLock.startsAt,
+  };
+}
+
+async function getTournamentDayTrainingLock(
+  client: PoolClient,
+  userId: string,
+  now: Date,
+): Promise<TournamentDayTrainingLock> {
+  const { rows } = await client.query<{ starts_at: Date }>(
+    `select candidate.starts_at
+       from (
+         select matchday.starts_at
+           from tournament_matchday matchday
+           join tournament tournament on tournament.id = matchday.tournament_id
+           join tournament_participant participant
+             on participant.tournament_id = tournament.id
+            and participant.user_id = $1
+            and participant.state = 'approved'
+           left join tournament_classic_session session
+             on session.tournament_id = tournament.id
+            and session.participant_id = participant.id
+            and session.tournament_day = matchday.number
+          where tournament.regular_source = 'classic'
+            and tournament.status = 'regular'
+            and matchday.status <> 'cancelled'
+            and matchday.ends_at > $2::timestamptz
+            and (session.id is null or session.state not in ('closed', 'expired'))
+         union all
+         select game_day.first_game_starts_at as starts_at
+           from tournament_fixture_attempt attempt
+           join tournament_round_game_day game_day on game_day.id = attempt.round_game_day_id
+           join tournament_fixture fixture on fixture.id = attempt.fixture_id
+           join tournament tournament on tournament.id = fixture.tournament_id
+           join tournament_participant participant
+             on participant.id in (fixture.home_participant_id, fixture.away_participant_id)
+            and participant.user_id = $1
+            and participant.state = 'approved'
+          where tournament.status = 'playoff'
+            and game_day.status <> 'cancelled'
+            and attempt.status in (
+              'pending', 'ready_check', 'active', 'needs_reschedule', 'needs_admin_decision'
+            )
+       ) candidate
+      order by candidate.starts_at
+      limit 1`,
+    [userId, now],
+  );
+  return {
+    locked:
+      rows[0] !== undefined &&
+      rows[0].starts_at.getTime() <= now.getTime() + 30 * 60_000,
+    startsAt: rows[0]?.starts_at.toISOString() ?? null,
   };
 }
 
@@ -256,6 +323,22 @@ async function assertTrainingAvailableDuringDaily(
   }
 }
 
+async function assertTrainingAvailableDuringTournament(
+  client: PoolClient,
+  userId: string,
+  now: Date,
+): Promise<TournamentDayTrainingLock> {
+  const lock = await getTournamentDayTrainingLock(client, userId, now);
+  if (lock.locked) {
+    throw new AppError(
+      'conflict',
+      'training is locked during the tournament game day block',
+      409,
+    );
+  }
+  return lock;
+}
+
 export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> = async (
   app,
   opts,
@@ -281,7 +364,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         req.user.id,
         now,
       );
-      return buildTrainingState(client, session, localToday, timezone, settings, now);
+      return buildTrainingState(client, req.user.id, session, localToday, timezone, settings, now);
     }),
   );
 
@@ -296,6 +379,11 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
       const now = new Date();
       const settings = await getGameSettings(client);
       await assertTrainingAvailableDuringDaily(client, req.user.id, now, settings);
+      const tournamentLock = await assertTrainingAvailableDuringTournament(
+        client,
+        req.user.id,
+        now,
+      );
       const { session, localToday, timezone } = await reconcileTrainingSession(
         client,
         req.user.id,
@@ -311,9 +399,27 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
                         game_core_version, training_seed, started_at, closed_at`,
             [selectedPeriod, session.id],
           );
-          return buildTrainingState(client, rows[0]!, localToday, timezone, settings, now);
+          return buildTrainingState(
+            client,
+            req.user.id,
+            rows[0]!,
+            localToday,
+            timezone,
+            settings,
+            now,
+            tournamentLock,
+          );
         }
-        return buildTrainingState(client, session, localToday, timezone, settings, now);
+        return buildTrainingState(
+          client,
+          req.user.id,
+          session,
+          localToday,
+          timezone,
+          settings,
+          now,
+          tournamentLock,
+        );
       }
 
       const trainingSeed = deriveTrainingSeed(
@@ -342,7 +448,16 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         day_date: localToday,
         selected_period: selectedPeriod,
       });
-      return buildTrainingState(client, created, localToday, timezone, settings, now);
+      return buildTrainingState(
+        client,
+        req.user.id,
+        created,
+        localToday,
+        timezone,
+        settings,
+        now,
+        tournamentLock,
+      );
     });
     schedulePendingAchievementRecovery(req.user.id);
     return state;
@@ -359,6 +474,11 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
       const now = new Date();
       const settings = await getGameSettings(client);
       await assertTrainingAvailableDuringDaily(client, req.user.id, now, settings);
+      const tournamentLock = await assertTrainingAvailableDuringTournament(
+        client,
+        req.user.id,
+        now,
+      );
       const { session, localToday, timezone } = await reconcileTrainingSession(
         client,
         req.user.id,
@@ -466,11 +586,13 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
       const nextSession = await fetchTodayTrainingSession(client, req.user.id, localToday);
       const state = await buildTrainingState(
         client,
+        req.user.id,
         nextSession,
         localToday,
         timezone,
         settings,
         now,
+        tournamentLock,
       );
       return { server_result: serverResult, state };
     });

@@ -233,6 +233,9 @@ describe.skipIf(!hasIntegrationEnv)('077 accuracy World Tour movement balance', 
       '093_tournament_readiness_hint_preference.sql',
       '094_balance_ultimate_one_puck_speed.sql',
       '095_tournament_regular_podium_congratulation.sql',
+      '097_revert_beginner_tutorial_gameplay_speed.sql',
+      '098_achievement_reward_ledger.sql',
+      '099_tournament_classic_period_loadout.sql',
     ]);
     const attempt = await pool.query<{
       status: string;

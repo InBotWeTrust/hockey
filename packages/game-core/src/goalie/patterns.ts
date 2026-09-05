@@ -49,6 +49,10 @@ export function dashPattern(cfg: GoalieConfig, rng: Rng, t: number): Vec2 {
   const step = Math.floor(t / period);
   let pick = 0;
   for (let i = 0; i <= step; i++) pick = rng.next();
-  const offset = (pick * 2 - 1) * cfg.amplitude; // -amplitude..amplitude
+  return dashPatternFromPick(cfg, pick);
+}
+
+export function dashPatternFromPick(cfg: GoalieConfig, pick: number): Vec2 {
+  const offset = (pick * 2 - 1) * cfg.amplitude;
   return { x: clampGoalFrame(goalCenterX + halfOpening * offset), y: goalY };
 }

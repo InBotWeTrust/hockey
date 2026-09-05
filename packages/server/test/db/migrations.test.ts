@@ -538,6 +538,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '095_tournament_regular_podium_congratulation.sql',
       '097_revert_beginner_tutorial_gameplay_speed.sql',
       '098_achievement_reward_ledger.sql',
+      '099_tournament_classic_period_loadout.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -1244,6 +1245,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '095_tournament_regular_podium_congratulation.sql',
       '097_revert_beginner_tutorial_gameplay_speed.sql',
       '098_achievement_reward_ledger.sql',
+      '099_tournament_classic_period_loadout.sql',
     ]);
 
     const activeInventory = await pool.query<{

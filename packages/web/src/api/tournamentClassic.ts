@@ -6,6 +6,7 @@ import type {
   ShotResultType,
   SubmitShotRequest,
 } from './duel.js';
+import type { DuelInventoryTiming } from '@hockey/game-core';
 
 export interface ActiveClassicTournamentGame {
   kind: 'classic';
@@ -48,11 +49,19 @@ export interface ClassicTournamentState extends DailyStateResponse {
   tournament_id: string;
   tournament_title: string;
   tournament_day: number;
+  player_id: string;
   session_id: string;
+  daily_seed: string;
   expired: boolean;
   closes_at: string;
   period_duration_ms: number;
   break_duration_ms: number;
+  base_period_speed_presets: DailyStateResponse['period_speed_presets'];
+  loadout: ClassicTournamentLoadout;
+  loadout_editable: boolean;
+  inventory_available: ClassicTournamentInventoryItem[];
+  inventory_consumption: ClassicTournamentInventoryConsumption[];
+  current_period_inventory_consumption: ClassicTournamentInventoryConsumption[];
   result: {
     goals: number;
     shots: number;
@@ -60,6 +69,38 @@ export interface ClassicTournamentState extends DailyStateResponse {
     counted: boolean;
     game_completed: boolean;
   } | null;
+}
+
+export interface ClassicTournamentLoadoutSelection {
+  stick?: string | null;
+  skates?: string | null;
+  nutrition?: string | null;
+}
+
+export interface ClassicTournamentInventoryItem {
+  id: string;
+  itemId: string;
+  instanceId: string | null;
+  kind: 'stick' | 'skates' | 'nutrition';
+  title: string;
+  imageUrl: string | null;
+  resourceUnit: 'period' | 'shot' | 'distance' | 'energy_ms';
+  resourceAvailable: number;
+  effectPuckSpeedPoints: number;
+  effectShooterFrequencyDelta: number;
+  effectGoalieFrequencyDelta: number;
+  effectGoalFrequencyDelta: number;
+  timing?: DuelInventoryTiming;
+}
+
+export interface ClassicTournamentLoadout { items: ClassicTournamentInventoryItem[] }
+
+export interface ClassicTournamentInventoryConsumption {
+  id: string;
+  itemId: string;
+  kind: 'stick' | 'skates' | 'nutrition';
+  title: string;
+  charges: number;
 }
 
 export interface ClassicTournamentShotResponse {
@@ -89,10 +130,14 @@ export function fetchClassicTournamentState(
 
 export function startClassicTournamentPeriod(
   tournamentId: string,
+  loadout?: ClassicTournamentLoadoutSelection,
 ): Promise<ClassicTournamentState> {
   return apiFetch<ClassicTournamentState>(
     `/tournaments/${encodeURIComponent(tournamentId)}/classic/period/start`,
-    { method: 'POST' },
+    {
+      method: 'POST',
+      ...(loadout === undefined ? {} : { body: JSON.stringify({ loadout }) }),
+    },
   ).then(stampState);
 }
 

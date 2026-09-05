@@ -170,6 +170,61 @@ async function submitMiss(pool: Pool, shotIndex: number, now: Date): Promise<voi
   });
 }
 
+async function seedClassicShotStick(pool: Pool, chargesAvailable: number): Promise<string> {
+  const { rows } = await pool.query<{ id: string }>(
+    `update admin_inventory_items
+        set duel_period_cost = 0,
+            resource_unit = 'shot',
+            effect_puck_speed_points = 10,
+            effect_puck_speed_delta = 0.1
+      where id = (
+        select id from admin_inventory_items
+         where item_kind = 'stick' and deleted_at is null
+         order by id limit 1
+      )
+      returning id`,
+  );
+  const itemId = rows[0]!.id;
+  await pool.query(
+    `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+     values ($1, $2, $3)`,
+    [PLAYER_ID, itemId, chargesAvailable],
+  );
+  await pool.query(
+    `insert into user_equipment (user_id, equipped_stick_item_id)
+     values ($1, $2)
+     on conflict (user_id) do update set equipped_stick_item_id = excluded.equipped_stick_item_id`,
+    [PLAYER_ID, itemId],
+  );
+  return itemId;
+}
+
+async function seedClassicConditionItem(
+  pool: Pool,
+  kind: 'skates' | 'nutrition',
+  chargesAvailable: number,
+): Promise<string> {
+  const resourceUnit = kind === 'skates' ? 'distance' : 'energy_ms';
+  const { rows } = await pool.query<{ id: string }>(
+    `update admin_inventory_items
+        set duel_period_cost = 0, resource_unit = $2
+      where id = (
+        select id from admin_inventory_items
+         where item_kind = $1 and deleted_at is null
+         order by id limit 1
+      )
+      returning id`,
+    [kind, resourceUnit],
+  );
+  const itemId = rows[0]!.id;
+  await pool.query(
+    `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+     values ($1, $2, $3)`,
+    [PLAYER_ID, itemId, chargesAvailable],
+  );
+  return itemId;
+}
+
 describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () => {
   let pool: Pool;
 
@@ -213,6 +268,209 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     ]);
     const sessions = await pool.query(`select id from tournament_classic_session`);
     expect(sessions.rowCount).toBe(1);
+  });
+
+  it('uses a partial shot-stick balance and continues with the base stick after depletion', async () => {
+    const stickId = await seedClassicShotStick(pool, 1);
+    await pool.query(
+      `update tournament_revision
+          set rules_snapshot = jsonb_set(
+            rules_snapshot, '{config,classicRules,shotsPerPeriod}', '2'::jsonb
+          )
+        where id = $1`,
+      [REVISION_ID],
+    );
+
+    const initial = await getClassicGameState(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    expect(initial.loadout.items).toEqual([
+      expect.objectContaining({ itemId: stickId, kind: 'stick', resourceAvailable: 1 }),
+    ]);
+    expect(initial.loadout_editable).toBe(true);
+
+    await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      loadout: { stick: stickId },
+    });
+    await submitClassicGameShot(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      shotIndex: 1,
+      input: { tapTime: 0 },
+      claimedResult: 'miss',
+    });
+    await submitClassicGameShot(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: new Date(NOW.getTime() + 1),
+      seedSecret: SEED_SECRET,
+      shotIndex: 2,
+      input: { tapTime: 1 },
+      claimedResult: 'miss',
+    });
+
+    const shots = await pool.query<{ puck_speed: number }>(
+      `select (input_payload->>'puckSpeedPerMs')::double precision as puck_speed
+         from shot_session
+        where tournament_classic_session_id = $1
+        order by shot_index`,
+      [initial.session_id],
+    );
+    expect(shots.rows[0]!.puck_speed).toBeCloseTo(1.4, 8);
+    expect(shots.rows[1]!.puck_speed).toBeCloseTo(1.3, 8);
+  });
+
+  it('does not block a classic period when the equipped inventory is empty', async () => {
+    const stickId = await seedClassicShotStick(pool, 0);
+    const started = await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      loadout: { stick: stickId },
+    });
+    expect(started.state).toBe('period_active');
+
+    await submitClassicGameShot(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      shotIndex: 1,
+      input: { tapTime: 0 },
+      claimedResult: 'miss',
+    });
+    const stored = await pool.query<{ puck_speed: number }>(
+      `select (input_payload->>'puckSpeedPerMs')::double precision as puck_speed
+         from shot_session where tournament_classic_session_id = $1`,
+      [started.session_id],
+    );
+    expect(stored.rows[0]!.puck_speed).toBeCloseTo(1.3, 8);
+  });
+
+  it('snapshots the selected inventory timing configured in the admin catalog', async () => {
+    const stickId = await seedClassicShotStick(pool, 1);
+    await pool.query(
+      `update admin_inventory_items
+          set effect_fatigue_delay_ms = 12345,
+              effect_stumble_interval_min_ms = 23456
+        where id = $1`,
+      [stickId],
+    );
+
+    const started = await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      loadout: { stick: stickId },
+    });
+
+    expect(started.loadout.items[0]).toEqual(
+      expect.objectContaining({
+        timing: expect.objectContaining({
+          fatigueDelayMs: 12345,
+          stumbleIntervalMinMs: 23456,
+        }),
+      }),
+    );
+  });
+
+  it('charges skates and nutrition only for the activity actually completed', async () => {
+    const skatesId = await seedClassicConditionItem(pool, 'skates', 100);
+    const nutritionId = await seedClassicConditionItem(pool, 'nutrition', 10_000);
+    const started = await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      loadout: { skates: skatesId, nutrition: nutritionId },
+    });
+
+    const shot = await submitClassicGameShot(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: new Date(NOW.getTime() + 1_000),
+      seedSecret: SEED_SECRET,
+      shotIndex: 1,
+      input: { tapTime: 1_000 },
+      claimedResult: 'miss',
+    });
+
+    expect(shot.state.inventory_consumption).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ itemId: skatesId, charges: 1.6 }),
+        expect.objectContaining({ itemId: nutritionId, charges: 1067 }),
+      ]),
+    );
+    const balances = await pool.query<{ inventory_item_id: string; charges_available: number }>(
+      `select inventory_item_id, charges_available
+         from user_inventory_item
+        where user_id = $1 and inventory_item_id = any($2::uuid[])
+        order by inventory_item_id`,
+      [PLAYER_ID, [skatesId, nutritionId]],
+    );
+    expect(new Map(balances.rows.map((row) => [row.inventory_item_id, row.charges_available]))).toEqual(
+      new Map([
+        [skatesId, 98],
+        [nutritionId, 8933],
+      ]),
+    );
+    expect(started.inventory_consumption).toEqual([]);
+  });
+
+  it('keeps a started period loadout immutable and accepts a new selection after the break', async () => {
+    const stickId = await seedClassicShotStick(pool, 2);
+    const first = await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      loadout: { stick: stickId },
+    });
+    await expect(
+      startClassicGamePeriod(pool, {
+        userId: PLAYER_ID,
+        tournamentId: TOURNAMENT_ID,
+        now: NOW,
+        seedSecret: SEED_SECRET,
+        loadout: { stick: null },
+      }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    await submitClassicGameShot(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      shotIndex: 1,
+      input: { tapTime: 0 },
+      claimedResult: 'miss',
+    });
+    await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: new Date(NOW.getTime() + 1),
+      seedSecret: SEED_SECRET,
+      loadout: { stick: null },
+    });
+    const snapshots = await pool.query<{ period_number: number; snapshot: { items: unknown[] } }>(
+      `select period_number, snapshot from tournament_classic_period_loadout
+        where session_id = $1 order by period_number`,
+      [first.session_id],
+    );
+    expect(snapshots.rows.map((row) => [row.period_number, row.snapshot.items.length])).toEqual([
+      [1, 1],
+      [2, 0],
+    ]);
   });
 
   it('exposes the current break deadline on the active-games board', async () => {
@@ -451,13 +709,35 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     const authorization = `Bearer ${await jwt.issueAccessToken({ sub: PLAYER_ID })}`;
     const reconcile = vi.spyOn(app, 'reconcileTournamentLifecycleBestEffort');
     try {
+      const malformed = await app.inject({
+        method: 'POST',
+        url: `/tournaments/${TOURNAMENT_ID}/classic/period/start`,
+        headers: { authorization },
+        payload: { loadout: { stick: 'not-a-uuid' } },
+      });
+      expect(malformed.statusCode).toBe(400);
+
       for (let period = 1; period <= 3; period += 1) {
         const started = await app.inject({
           method: 'POST',
           url: `/tournaments/${TOURNAMENT_ID}/classic/period/start`,
           headers: { authorization },
+          ...(period === 1
+            ? { payload: { loadout: { stick: null, skates: null, nutrition: null } } }
+            : {}),
         });
         expect(started.statusCode).toBe(200);
+        if (period === 1) {
+          const periodLoadout = await pool.query<{ selection: Record<string, null> }>(
+            `select selection from tournament_classic_period_loadout
+              where period_number = 1`,
+          );
+          expect(periodLoadout.rows[0]?.selection).toEqual({
+            stick: null,
+            skates: null,
+            nutrition: null,
+          });
+        }
         const shot = await app.inject({
           method: 'POST',
           url: `/tournaments/${TOURNAMENT_ID}/classic/shot`,

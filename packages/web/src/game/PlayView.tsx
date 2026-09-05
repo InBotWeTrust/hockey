@@ -217,16 +217,20 @@ export function duelFatigueNoticeLabel(condition: DuelPlayerCondition | null): s
   return 'Усталость';
 }
 
-function duelConditionSignature(condition: DuelPlayerCondition | null): string {
-  if (!condition) return 'none';
-  return [
-    condition.status,
-    condition.fatigueLevel,
-    condition.canShoot ? '1' : '0',
-    condition.stumbleActive ? '1' : '0',
-    condition.shooterSpeedMultiplier.toFixed(4),
-    condition.puckSpeedDelta.toFixed(4),
-  ].join(':');
+function sameDuelConditionUiState(
+  left: DuelPlayerCondition | null,
+  right: DuelPlayerCondition | null,
+): boolean {
+  if (left === right) return true;
+  if (left === null || right === null) return false;
+  return (
+    left.status === right.status &&
+    left.fatigueLevel === right.fatigueLevel &&
+    left.canShoot === right.canShoot &&
+    left.stumbleActive === right.stumbleActive &&
+    Math.abs(left.shooterSpeedMultiplier - right.shooterSpeedMultiplier) < 0.0001 &&
+    Math.abs(left.puckSpeedDelta - right.puckSpeedDelta) < 0.0001
+  );
 }
 
 export interface PlayViewProps<TState> {
@@ -744,12 +748,11 @@ export function PlayView<TState>({
         ? duelCondition(computeInitialElapsedMs(sessionTimingRef.current), speeds)
         : null,
   );
-  const currentDuelConditionSignatureRef = useRef<string>('');
+  const currentDuelConditionUiRef = useRef<DuelPlayerCondition | null>(currentDuelCondition);
 
   const syncCurrentDuelCondition = useCallback((condition: DuelPlayerCondition | null): void => {
-    const signature = duelConditionSignature(condition);
-    if (signature === currentDuelConditionSignatureRef.current) return;
-    currentDuelConditionSignatureRef.current = signature;
+    if (sameDuelConditionUiState(condition, currentDuelConditionUiRef.current)) return;
+    currentDuelConditionUiRef.current = condition;
     setCurrentDuelCondition(condition);
   }, []);
 

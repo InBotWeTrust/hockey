@@ -1,7 +1,10 @@
 import type { Pool, PoolClient } from 'pg';
 import {
   GAME_CORE_VERSION,
+  DEFAULT_DUEL_INVENTORY_TIMING,
+  SHOOTER_AMPLITUDE,
   STICK_NEUTRAL,
+  getDuelPlayerCondition,
   getGoalie,
   getSessionPhaseOffsets,
   resolvePerspectiveCourtShot,
@@ -14,6 +17,7 @@ import { parseTournamentConfig } from './config.js';
 import { resolveClassicResult } from './classic.js';
 import { rebuildDailyAggregateStandings, refreshDailyDayPlacements } from './dailyAggregate.js';
 import type { ClassicTournamentConfig, TournamentClassicRules } from './types.js';
+import type { DuelInventoryTiming } from '@hockey/game-core';
 
 type ClassicSessionState = 'idle' | 'period_active' | 'break_active' | 'closed' | 'expired';
 type ShotResult = 'goal' | 'save' | 'miss';
@@ -75,6 +79,7 @@ export interface ClassicGameState {
   tournament_id: string;
   tournament_title: string;
   tournament_day: number;
+  player_id: string;
   session_id: string;
   state: 'idle' | 'period_active' | 'break_active' | 'closed';
   expired: boolean;
@@ -99,9 +104,15 @@ export interface ClassicGameState {
   break_duration_ms: number;
   total_periods: 3;
   period_speed_presets: TournamentClassicRules['periodSpeedPresets'];
+  base_period_speed_presets: TournamentClassicRules['periodSpeedPresets'];
   recent_periods: ClassicPeriodLogEntry[];
   previous_game: null;
   training_cooldown_ends_at: null;
+  loadout: ClassicLoadoutSnapshot;
+  loadout_editable: boolean;
+  inventory_available: ClassicInventoryAvailabilityItem[];
+  inventory_consumption: ClassicInventoryConsumptionItem[];
+  current_period_inventory_consumption: ClassicInventoryConsumptionItem[];
   result: {
     goals: number;
     shots: number;
@@ -109,6 +120,115 @@ export interface ClassicGameState {
     counted: boolean;
     game_completed: boolean;
   } | null;
+}
+
+export interface ClassicLoadoutSelection {
+  stick?: string | null;
+  skates?: string | null;
+  nutrition?: string | null;
+}
+
+export interface ClassicLoadoutItemSnapshot {
+  id: string;
+  itemId: string;
+  instanceId: string | null;
+  kind: 'stick' | 'skates' | 'nutrition';
+  title: string;
+  imageUrl: string | null;
+  resourceUnit: 'period' | 'shot' | 'distance' | 'energy_ms';
+  resourceAvailable: number;
+  effectPuckSpeedPoints: number;
+  effectShooterFrequencyDelta: number;
+  effectGoalieFrequencyDelta: number;
+  effectGoalFrequencyDelta: number;
+  timing: DuelInventoryTiming;
+}
+
+type ClassicInventoryRow = {
+  id: string; item_id: string; instance_id: string | null;
+  item_kind: 'stick' | 'skates' | 'nutrition'; title: string; image_url: string | null;
+  resource_unit: 'period' | 'shot' | 'distance' | 'energy_ms'; charges_available: number;
+  effect_puck_speed_points: number; effect_shooter_frequency_delta: number | string;
+  effect_goalie_frequency_delta: number | string; effect_goal_frequency_delta: number | string;
+  effect_stumble_interval_min_rolls: number | string;
+  effect_stumble_interval_max_rolls: number | string;
+  effect_stumble_interval_min_ms: number;
+  effect_stumble_interval_max_ms: number;
+  effect_stumble_duration_min_ms: number;
+  effect_stumble_duration_max_ms: number;
+  effect_stumble_offset_min_px: number;
+  effect_stumble_offset_max_px: number;
+  effect_stumble_recovery_min_ms: number;
+  effect_stumble_recovery_max_ms: number;
+  effect_nutrition_slowdown_ms: number;
+  effect_nutrition_stop_ms: number;
+  effect_energy_baseline_speed: number | string;
+  effect_fatigue_delay_ms: number;
+  effect_fatigue_speed_multiplier: number | string;
+  effect_fatigue_grace_ms: number;
+  effect_fatigue_slowdown_start_ms: number;
+  effect_fatigue_heavy_slowdown_start_ms: number;
+  effect_fatigue_stop_start_ms: number;
+  effect_fatigue_stop_duration_ms: number;
+  effect_fatigue_after_rest_ms: number;
+  effect_fatigue_slow_multiplier: number | string;
+  effect_fatigue_heavy_multiplier: number | string;
+};
+
+const CLASSIC_INVENTORY_TIMING_COLUMNS = `
+  item.effect_stumble_interval_min_rolls, item.effect_stumble_interval_max_rolls,
+  item.effect_stumble_interval_min_ms, item.effect_stumble_interval_max_ms,
+  item.effect_stumble_duration_min_ms, item.effect_stumble_duration_max_ms,
+  item.effect_stumble_offset_min_px, item.effect_stumble_offset_max_px,
+  item.effect_stumble_recovery_min_ms, item.effect_stumble_recovery_max_ms,
+  item.effect_nutrition_slowdown_ms, item.effect_nutrition_stop_ms,
+  item.effect_energy_baseline_speed,
+  item.effect_fatigue_delay_ms, item.effect_fatigue_speed_multiplier,
+  item.effect_fatigue_grace_ms, item.effect_fatigue_slowdown_start_ms,
+  item.effect_fatigue_heavy_slowdown_start_ms, item.effect_fatigue_stop_start_ms,
+  item.effect_fatigue_stop_duration_ms, item.effect_fatigue_after_rest_ms,
+  item.effect_fatigue_slow_multiplier, item.effect_fatigue_heavy_multiplier`;
+
+function classicInventoryTiming(row: ClassicInventoryRow): DuelInventoryTiming {
+  return {
+    stumbleIntervalMinRolls: Number(row.effect_stumble_interval_min_rolls),
+    stumbleIntervalMaxRolls: Number(row.effect_stumble_interval_max_rolls),
+    stumbleIntervalMinMs: Number(row.effect_stumble_interval_min_ms),
+    stumbleIntervalMaxMs: Number(row.effect_stumble_interval_max_ms),
+    stumbleDurationMinMs: Number(row.effect_stumble_duration_min_ms),
+    stumbleDurationMaxMs: Number(row.effect_stumble_duration_max_ms),
+    stumbleOffsetMinPx: Number(row.effect_stumble_offset_min_px),
+    stumbleOffsetMaxPx: Number(row.effect_stumble_offset_max_px),
+    stumbleRecoveryMinMs: Number(row.effect_stumble_recovery_min_ms),
+    stumbleRecoveryMaxMs: Number(row.effect_stumble_recovery_max_ms),
+    nutritionSlowdownMs: Number(row.effect_nutrition_slowdown_ms),
+    nutritionStopMs: Number(row.effect_nutrition_stop_ms),
+    energyBaselineSpeed: Number(row.effect_energy_baseline_speed),
+    fatigueDelayMs: Number(row.effect_fatigue_delay_ms),
+    fatigueSpeedMultiplier: Number(row.effect_fatigue_speed_multiplier),
+    fatigueGraceMs: Number(row.effect_fatigue_grace_ms),
+    fatigueSlowdownStartMs: Number(row.effect_fatigue_slowdown_start_ms),
+    fatigueHeavySlowdownStartMs: Number(row.effect_fatigue_heavy_slowdown_start_ms),
+    fatigueStopStartMs: Number(row.effect_fatigue_stop_start_ms),
+    fatigueStopDurationMs: Number(row.effect_fatigue_stop_duration_ms),
+    fatigueAfterRestMs: Number(row.effect_fatigue_after_rest_ms),
+    fatigueSlowMultiplier: Number(row.effect_fatigue_slow_multiplier),
+    fatigueHeavyMultiplier: Number(row.effect_fatigue_heavy_multiplier),
+  };
+}
+
+export interface ClassicLoadoutSnapshot {
+  items: ClassicLoadoutItemSnapshot[];
+}
+
+export interface ClassicInventoryAvailabilityItem extends ClassicLoadoutItemSnapshot {}
+
+export interface ClassicInventoryConsumptionItem {
+  id: string;
+  itemId: string;
+  kind: 'stick' | 'skates' | 'nutrition';
+  title: string;
+  charges: number;
 }
 
 export interface ActiveClassicGame {
@@ -378,6 +498,198 @@ async function fetchPeriods(client: PoolClient, sessionId: string): Promise<Clas
   return rows;
 }
 
+async function resolveClassicLoadout(
+  client: PoolClient,
+  userId: string,
+  selection?: ClassicLoadoutSelection,
+): Promise<ClassicLoadoutSnapshot> {
+  let resolved = selection;
+  if (resolved === undefined) {
+    const { rows } = await client.query<{
+      equipped_stick_item_id: string | null;
+      equipped_skates_item_id: string | null;
+      equipped_nutrition_item_id: string | null;
+    }>(
+      `select equipped_stick_item_id, equipped_skates_item_id, equipped_nutrition_item_id
+         from user_equipment where user_id = $1`,
+      [userId],
+    );
+    resolved = {
+      stick: rows[0]?.equipped_stick_item_id ?? null,
+      skates: rows[0]?.equipped_skates_item_id ?? null,
+      nutrition: rows[0]?.equipped_nutrition_item_id ?? null,
+    };
+  }
+  const requested = [
+    { kind: 'stick' as const, id: resolved.stick ?? null },
+    { kind: 'skates' as const, id: resolved.skates ?? null },
+    { kind: 'nutrition' as const, id: resolved.nutrition ?? null },
+  ].filter((entry): entry is { kind: 'stick' | 'skates' | 'nutrition'; id: string } => entry.id !== null);
+  if (requested.length === 0) return { items: [] };
+  const ids = requested.map((entry) => entry.id);
+  const { rows } = await client.query<ClassicInventoryRow>(
+    `select coalesce(instance.id, item.id) as id, item.id as item_id,
+            instance.id as instance_id, item.item_kind, item.title,
+            nullif(item.photo_url, '') as image_url, item.resource_unit,
+            case when instance.id is not null then instance.charges_available
+                 else coalesce(legacy.charges_available, 0) end::int as charges_available,
+            item.effect_puck_speed_points, item.effect_shooter_frequency_delta,
+            item.effect_goalie_frequency_delta, item.effect_goal_frequency_delta,
+            ${CLASSIC_INVENTORY_TIMING_COLUMNS}
+       from admin_inventory_items item
+       left join lateral (
+         select owned.id, owned.charges_available
+           from user_inventory_instance owned
+          where owned.user_id = $1 and owned.inventory_item_id = item.id
+            and (owned.id = any($2::uuid[]) or item.id = any($2::uuid[]))
+          order by case when owned.id = any($2::uuid[]) then 0 else 1 end,
+                   case when owned.charges_available > 0 then 0 else 1 end,
+                   owned.created_at, owned.id limit 1
+       ) instance on true
+       left join user_inventory_item legacy
+         on legacy.user_id = $1 and legacy.inventory_item_id = item.id and instance.id is null
+      where (item.id = any($2::uuid[]) or instance.id = any($2::uuid[]))
+        and item.deleted_at is null`,
+    [userId, ids],
+  );
+  const byId = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    byId.set(row.id, row);
+    byId.set(row.item_id, row);
+  }
+  const items: ClassicLoadoutItemSnapshot[] = [];
+  for (const entry of requested) {
+    const row = byId.get(entry.id);
+    if (!row || row.item_kind !== entry.kind) {
+      if (selection === undefined) continue;
+      throw new AppError('conflict', `invalid ${entry.kind} classic loadout item`, 409);
+    }
+    items.push({
+      id: row.id, itemId: row.item_id, instanceId: row.instance_id, kind: row.item_kind,
+      title: row.title, imageUrl: row.image_url, resourceUnit: row.resource_unit,
+      resourceAvailable: Number(row.charges_available),
+      effectPuckSpeedPoints: Number(row.effect_puck_speed_points),
+      effectShooterFrequencyDelta: Number(row.effect_shooter_frequency_delta),
+      effectGoalieFrequencyDelta: Number(row.effect_goalie_frequency_delta),
+      effectGoalFrequencyDelta: Number(row.effect_goal_frequency_delta),
+      timing: classicInventoryTiming(row),
+    });
+  }
+  return { items };
+}
+
+async function fetchClassicInventoryAvailability(
+  client: PoolClient,
+  userId: string,
+): Promise<ClassicInventoryAvailabilityItem[]> {
+  const { rows } = await client.query<ClassicInventoryRow>(
+    `select coalesce(instance.id, item.id) as id, item.id as item_id,
+            instance.id as instance_id, item.item_kind, item.title,
+            nullif(item.photo_url, '') as image_url, item.resource_unit,
+            coalesce(instance.charges_available, legacy.charges_available, 0)::int as charges_available,
+            item.effect_puck_speed_points, item.effect_shooter_frequency_delta,
+            item.effect_goalie_frequency_delta, item.effect_goal_frequency_delta,
+            ${CLASSIC_INVENTORY_TIMING_COLUMNS}
+       from admin_inventory_items item
+       left join lateral (
+         select owned.id, owned.charges_available from user_inventory_instance owned
+          where owned.user_id = $1 and owned.inventory_item_id = item.id
+          order by case when owned.charges_available > 0 then 0 else 1 end,
+                   owned.created_at, owned.id limit 1
+       ) instance on true
+       left join user_inventory_item legacy
+         on legacy.user_id = $1 and legacy.inventory_item_id = item.id and instance.id is null
+      where item.deleted_at is null
+        and coalesce(instance.charges_available, legacy.charges_available, 0) > 0
+      order by item.item_kind, item.title, item.id`,
+    [userId],
+  );
+  return rows.map((row) => ({
+    id: row.id, itemId: row.item_id, instanceId: row.instance_id, kind: row.item_kind,
+    title: row.title, imageUrl: row.image_url, resourceUnit: row.resource_unit,
+    resourceAvailable: Number(row.charges_available),
+    effectPuckSpeedPoints: Number(row.effect_puck_speed_points),
+    effectShooterFrequencyDelta: Number(row.effect_shooter_frequency_delta),
+    effectGoalieFrequencyDelta: Number(row.effect_goalie_frequency_delta),
+    effectGoalFrequencyDelta: Number(row.effect_goal_frequency_delta),
+    timing: classicInventoryTiming(row),
+  }));
+}
+
+async function fetchClassicPeriodLoadout(
+  client: PoolClient,
+  sessionId: string,
+  periodNumber: number,
+): Promise<{ snapshot: ClassicLoadoutSnapshot; consumption: ClassicInventoryConsumptionItem[] } | null> {
+  const { rows } = await client.query<{ snapshot: ClassicLoadoutSnapshot; consumption: ClassicInventoryConsumptionItem[] }>(
+    `select snapshot, consumption from tournament_classic_period_loadout
+      where session_id = $1 and period_number = $2`,
+    [sessionId, periodNumber],
+  );
+  return rows[0] ?? null;
+}
+
+async function syncClassicLegacyInventory(
+  client: PoolClient,
+  userId: string,
+  itemId: string,
+): Promise<void> {
+  await client.query(
+    `insert into user_inventory_item
+       (user_id, inventory_item_id, charges_available, charges_reserved, updated_at)
+     select $1, $2, coalesce(sum(charges_available), 0)::int,
+            coalesce(sum(charges_reserved), 0)::int, now()
+       from user_inventory_instance
+      where user_id = $1 and inventory_item_id = $2
+     on conflict (user_id, inventory_item_id) do update
+       set charges_available = excluded.charges_available,
+           charges_reserved = excluded.charges_reserved,
+           updated_at = now()`,
+    [userId, itemId],
+  );
+}
+
+async function consumeClassicInventoryForShot(
+  client: PoolClient,
+  userId: string,
+  sessionId: string,
+  periodNumber: number,
+  loadout: ClassicLoadoutSnapshot,
+  consumption: ClassicInventoryConsumptionItem[],
+  targets: { stick: number; skates: number; nutrition: number },
+  now: Date,
+): Promise<void> {
+  const next = [...consumption];
+  for (const item of loadout.items) {
+    const previous = consumption.find((entry) => entry.id === item.id)?.charges ?? 0;
+    const target = Math.min(item.resourceAvailable, Math.max(previous, targets[item.kind]));
+    const delta = Math.max(0, Math.ceil(target) - Math.ceil(previous));
+    if (delta <= 0) continue;
+    const update = item.instanceId
+      ? await client.query(
+          `update user_inventory_instance set charges_available = charges_available - $3, updated_at = $4
+            where user_id = $1 and id = $2 and charges_available >= $3`,
+          [userId, item.instanceId, delta, now],
+        )
+      : await client.query(
+          `update user_inventory_item set charges_available = charges_available - $3, updated_at = $4
+            where user_id = $1 and inventory_item_id = $2 and charges_available >= $3`,
+          [userId, item.itemId, delta, now],
+        );
+    if (update.rowCount !== 1) continue;
+    if (item.instanceId) await syncClassicLegacyInventory(client, userId, item.itemId);
+    const index = next.findIndex((entry) => entry.id === item.id);
+    const value = { id: item.id, itemId: item.itemId, kind: item.kind, title: item.title, charges: target };
+    if (index >= 0) next[index] = value;
+    else next.push(value);
+  }
+  await client.query(
+    `update tournament_classic_period_loadout set consumption = $3, updated_at = $4
+      where session_id = $1 and period_number = $2`,
+    [sessionId, periodNumber, JSON.stringify(next), now],
+  );
+}
+
 async function finalizeSessionResult(
   client: PoolClient,
   context: ClassicContext,
@@ -637,10 +949,46 @@ async function buildState(
           ),
         ).toISOString()
       : null;
+  const boundaryPeriod = Math.min(3, Math.max(1, session.state === 'period_active' ? session.current_period : session.current_period + 1));
+  const storedLoadout = await fetchClassicPeriodLoadout(client, session.id, boundaryPeriod);
+  const loadout = storedLoadout?.snapshot ?? await resolveClassicLoadout(client, userId);
+  const allConsumption = await client.query<{ consumption: ClassicInventoryConsumptionItem[] }>(
+    `select consumption from tournament_classic_period_loadout
+      where session_id = $1 order by period_number`,
+    [session.id],
+  );
+  const consumptionById = new Map<string, ClassicInventoryConsumptionItem>();
+  for (const row of allConsumption.rows) {
+    for (const item of row.consumption ?? []) {
+      const previous = consumptionById.get(item.id);
+      consumptionById.set(item.id, { ...item, charges: (previous?.charges ?? 0) + Number(item.charges) });
+    }
+  }
+  const currentConsumption = storedLoadout?.consumption ?? [];
+  const currentConsumedFor = (id: string): number =>
+    currentConsumption.find((item) => item.id === id)?.charges ?? 0;
+  const activeLoadoutItems = loadout.items.filter(
+    (item) => item.resourceAvailable > currentConsumedFor(item.id),
+  );
+  const effectivePeriodSpeedPresets = session.rules_snapshot.periodSpeedPresets.map(
+    (preset) => ({
+      ...preset,
+      shooterFrequency:
+        preset.shooterFrequency +
+        activeLoadoutItems.reduce((sum, item) => sum + item.effectShooterFrequencyDelta, 0),
+      goalieFrequency:
+        preset.goalieFrequency +
+        activeLoadoutItems.reduce((sum, item) => sum + item.effectGoalieFrequencyDelta, 0),
+      goalFrequency:
+        preset.goalFrequency +
+        activeLoadoutItems.reduce((sum, item) => sum + item.effectGoalFrequencyDelta, 0),
+    }),
+  ) as TournamentClassicRules['periodSpeedPresets'];
   return {
     tournament_id: context.tournamentId,
     tournament_title: context.tournamentTitle,
     tournament_day: context.tournamentDay,
+    player_id: userId,
     session_id: session.id,
     state: session.state === 'expired' ? 'closed' : session.state,
     expired: session.state === 'expired',
@@ -664,7 +1012,8 @@ async function buildState(
     period_duration_ms: session.rules_snapshot.periodDurationMs,
     break_duration_ms: session.rules_snapshot.breakDurationMs,
     total_periods: 3,
-    period_speed_presets: session.rules_snapshot.periodSpeedPresets,
+    period_speed_presets: effectivePeriodSpeedPresets,
+    base_period_speed_presets: session.rules_snapshot.periodSpeedPresets,
     recent_periods: periods.map((period) => ({
       period_number: Number(period.period_number),
       shots_taken: Number(period.shots_taken),
@@ -675,6 +1024,11 @@ async function buildState(
     })),
     previous_game: null,
     training_cooldown_ends_at: null,
+    loadout,
+    loadout_editable: session.state === 'idle' || session.state === 'break_active',
+    inventory_available: await fetchClassicInventoryAvailability(client, userId),
+    inventory_consumption: [...consumptionById.values()].filter((item) => item.charges > 0),
+    current_period_inventory_consumption: currentConsumption,
     result:
       result === undefined
         ? null
@@ -899,7 +1253,13 @@ export async function getClassicGameState(
 
 export async function startClassicGamePeriod(
   pool: Pool,
-  input: { userId: string; tournamentId: string; now: Date; seedSecret: string },
+  input: {
+    userId: string;
+    tournamentId: string;
+    now: Date;
+    seedSecret: string;
+    loadout?: ClassicLoadoutSelection;
+  },
 ): Promise<ClassicGameState> {
   return transaction(pool, async (client) => {
     const context = await requireContext(client, input.userId, input.tournamentId, input.now);
@@ -915,6 +1275,14 @@ export async function startClassicGamePeriod(
     if (session.current_period >= 3) {
       throw new AppError('conflict', 'all classic periods are completed', 409);
     }
+    const periodNumber = session.current_period + 1;
+    const loadout = await resolveClassicLoadout(client, input.userId, input.loadout);
+    await client.query(
+      `insert into tournament_classic_period_loadout
+         (session_id, period_number, selection, snapshot, consumption, created_at, updated_at)
+       values ($1, $2, $3, $4, '[]'::jsonb, $5, $5)`,
+      [session.id, periodNumber, JSON.stringify(input.loadout ?? {}), JSON.stringify(loadout), input.now],
+    );
     const { rows } = await client.query<ClassicSessionRow>(
       `update tournament_classic_session
           set state = 'period_active', current_period = current_period + 1,
@@ -975,16 +1343,73 @@ export async function submitClassicGameShot(
       (candidate) => candidate.periodNumber === session.current_period,
     );
     if (!preset) throw new AppError('internal_error', 'classic period speed is missing', 500);
+    const periodLoadout = await fetchClassicPeriodLoadout(
+      client,
+      session.id,
+      session.current_period,
+    );
+    if (!periodLoadout) {
+      throw new AppError('internal_error', 'classic period loadout is missing', 500);
+    }
+    const consumedFor = (id: string): number =>
+      periodLoadout.consumption.find((item) => item.id === id)?.charges ?? 0;
+    const remainingFor = (item: ClassicLoadoutItemSnapshot): number =>
+      Math.max(0, item.resourceAvailable - consumedFor(item.id));
+    const activeItems = periodLoadout.snapshot.items.filter((item) => remainingFor(item) > 0);
+    const stick = periodLoadout.snapshot.items.find((item) => item.kind === 'stick');
+    const skates = periodLoadout.snapshot.items.find((item) => item.kind === 'skates');
+    const nutrition = periodLoadout.snapshot.items.find((item) => item.kind === 'nutrition');
+    const shooterFrequency = preset.shooterFrequency + activeItems.reduce(
+      (sum, item) => sum + item.effectShooterFrequencyDelta,
+      0,
+    );
+    const condition = getDuelPlayerCondition({
+      seed: session.session_seed,
+      userId: input.userId,
+      periodNumber: session.current_period,
+      elapsedMs: input.input.tapTime,
+      movementDistancePx:
+        (Math.max(0, input.input.tapTime) * SHOOTER_AMPLITUDE * 4 * Math.max(0, shooterFrequency)) /
+        1000,
+      baseLaneWidthPx: SHOOTER_AMPLITUDE * 2,
+      baselineShooterSpeed: preset.shooterFrequency,
+      currentShooterSpeed: shooterFrequency,
+      loadout: {
+        stick:
+          stick && stick.resourceUnit !== 'period'
+            ? { id: stick.id, title: stick.title, resourceUnit: stick.resourceUnit,
+                resourceAvailable: remainingFor(stick), effectPuckSpeedPoints: stick.effectPuckSpeedPoints,
+                timing: stick.timing }
+            : null,
+        skates:
+          skates && skates.resourceUnit !== 'period'
+            ? { id: skates.id, title: skates.title, resourceUnit: skates.resourceUnit,
+                resourceAvailable: skates.resourceAvailable, effectPuckSpeedPoints: skates.effectPuckSpeedPoints,
+                timing: skates.timing }
+            : null,
+        nutrition:
+          nutrition && nutrition.resourceUnit !== 'period'
+            ? { id: nutrition.id, title: nutrition.title, resourceUnit: nutrition.resourceUnit,
+                resourceAvailable: nutrition.resourceAvailable, effectPuckSpeedPoints: nutrition.effectPuckSpeedPoints,
+                timing: nutrition.timing }
+            : null,
+        fallbackSkatesTiming: DEFAULT_DUEL_INVENTORY_TIMING,
+        fallbackNutritionTiming: DEFAULT_DUEL_INVENTORY_TIMING,
+      },
+    });
+    if (!condition.canShoot) {
+      throw new AppError('conflict', `player cannot shoot during classic inventory status '${condition.status}'`, 409);
+    }
     const shotSeed = deriveShotSeed(session.session_seed, session.current_period, input.shotIndex);
     const shotInput = {
       tapTime: input.input.tapTime,
       ...(input.input.shooterTapTime === undefined
         ? {}
         : { shooterTapTime: input.input.shooterTapTime }),
-      puckSpeedPerMs: preset.puckSpeedPerMs,
-      shooterFrequency: preset.shooterFrequency,
-      goalieFrequency: preset.goalieFrequency,
-      goalFrequency: preset.goalFrequency,
+      puckSpeedPerMs: preset.puckSpeedPerMs + condition.puckSpeedDelta,
+      shooterFrequency: shooterFrequency * condition.shooterSpeedMultiplier,
+      goalieFrequency: preset.goalieFrequency + activeItems.reduce((sum, item) => sum + item.effectGoalieFrequencyDelta, 0),
+      goalFrequency: preset.goalFrequency + activeItems.reduce((sum, item) => sum + item.effectGoalFrequencyDelta, 0),
     };
     const result = resolvePerspectiveCourtShot(
       shotInput,
@@ -1010,6 +1435,20 @@ export async function submitClassicGameShot(
         serverResult,
         session.game_core_version,
       ],
+    );
+    await consumeClassicInventoryForShot(
+      client,
+      input.userId,
+      session.id,
+      session.current_period,
+      periodLoadout.snapshot,
+      periodLoadout.consumption,
+      {
+        stick: (stick ? consumedFor(stick.id) : 0) + (stick?.resourceUnit === 'shot' && remainingFor(stick) > 0 ? 1 : 0),
+        skates: condition.skatesConsumed,
+        nutrition: condition.nutritionConsumed,
+      },
+      input.now,
     );
     const updatedUser = await client.query<{
       lifetime_shots_total: number;

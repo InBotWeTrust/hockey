@@ -25,10 +25,12 @@ import {
 import {
   DEFAULT_DUEL_INVENTORY_TIMING,
   SHOOTER_AMPLITUDE,
+  createDuelStumbleRandomness,
   getDuelPlayerCondition,
   type DailyPeriodSpeedPreset,
   type DuelInventoryLoadoutSnapshot,
   type DuelPlayerCondition,
+  type DuelPlayerConditionInput,
 } from '@hockey/game-core';
 import type { SpeedOverrides } from '../game/loop.js';
 import {
@@ -52,6 +54,8 @@ import { useClassicTournamentStore } from '../stores/classicTournamentStore.js';
 import {
   fetchActiveClassicTournamentGames,
   type ActiveTournamentGame,
+  type ClassicTournamentLoadoutSelection,
+  type ClassicTournamentInventoryItem,
   type ClassicTournamentState,
 } from '../api/tournamentClassic.js';
 import {
@@ -176,6 +180,7 @@ const DUEL_KIND_ARTWORK_IMAGES: Record<AmateurDuelKind, string> = {
 };
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
 const TRAINING_SPEED_OVERRIDES_STORAGE_KEY = 'hockey.trainingSpeedOverrides';
+const TOURNAMENT_TRAINING_LOCK_LEAD_MS = 30 * 60_000;
 const OPPONENT_ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const OPPONENT_RECENT_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
@@ -985,11 +990,18 @@ function GameHub({
   const periodRemaining = Math.max(0, periodEndsAt - now);
   const nextDayRemaining = Math.max(0, nextDayAt - now);
   const trainingCooldownRemaining = Math.max(0, trainingCooldownEndsAt - now);
+  const tournamentDayStartsAt = trainingData?.tournament_day_starts_at
+    ? new Date(trainingData.tournament_day_starts_at).getTime()
+    : 0;
   const isDailyStartedAndIncomplete =
     data.state === 'period_active' ||
     data.state === 'break_active' ||
     (data.state === 'idle' && data.current_period > 0 && data.current_period < data.total_periods);
   const isTrainingLockedByDaily = isDailyStartedAndIncomplete;
+  const isTrainingLockedByTournament =
+    trainingData?.tournament_day_locked === true ||
+    (tournamentDayStartsAt > 0 &&
+      now >= tournamentDayStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS);
   const isDailyLockedByTraining =
     data.state === 'idle' &&
     data.current_period === 0 &&
@@ -1041,6 +1053,16 @@ function GameHub({
     data.state,
     isDailyLockedByTraining,
   ]);
+
+  useEffect(() => {
+    const lockAt = tournamentDayStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS;
+    if (tournamentDayStartsAt <= 0 || now >= lockAt) return undefined;
+    const id = window.setTimeout(
+      () => setNow(Date.now()),
+      Math.min(2_147_000_000, Math.max(0, lockAt - Date.now() + 50)),
+    );
+    return () => window.clearTimeout(id);
+  }, [now, tournamentDayStartsAt]);
 
   useEffect(() => {
     if (data.state === 'period_active' && periodEndsAt > 0 && periodRemaining === 0) void refresh();
@@ -1113,8 +1135,10 @@ function GameHub({
               };
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
-  const trainingAvailability = isTrainingLockedByDaily
-    ? 'Закрыта до завершения игры'
+  const trainingAvailability = isTrainingLockedByDaily || isTrainingLockedByTournament
+    ? isTrainingLockedByTournament
+      ? 'Закрыта на время игр турнира'
+      : 'Закрыта до завершения игры'
     : `${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`;
 
   const runArenaLaunch = useCallback(
@@ -1143,6 +1167,7 @@ function GameHub({
     if (trainingInFlight || arenaActionId === 'training' || isArenaLaunching) return;
     if (
       isTrainingLockedByDaily ||
+      isTrainingLockedByTournament ||
       trainingData?.state === 'active' ||
       trainingData?.state === 'closed' ||
       trainingData?.state === 'idle' ||
@@ -2640,6 +2665,7 @@ function DailyGameStatsModal({
   title = 'Статистика прошлой игры',
   ariaLabel = 'Статистика последней игры',
   closeLabel = 'Понятно',
+  supplemental,
   onClose,
 }: {
   stats: DailyGameStats | null;
@@ -2647,6 +2673,7 @@ function DailyGameStatsModal({
   title?: string;
   ariaLabel?: string;
   closeLabel?: string;
+  supplemental?: ReactNode;
   onClose: () => void;
 }): JSX.Element {
   const periodsByNumber = new Map<number, PeriodLogEntry>(
@@ -2770,6 +2797,7 @@ function DailyGameStatsModal({
                 );
               })}
             </div>
+            {supplemental}
           </>
         )}
 
@@ -5459,6 +5487,11 @@ function AmateurDuelPlayView({
     return () => window.clearInterval(id);
   }, [match, matchId, refresh]);
 
+  const duelCondition = useMemo(
+    () => (match ? createDuelConditionForMatch(match) : () => null),
+    [match],
+  );
+
   if (!match || match.id !== matchId) {
     return (
       <ModeShell title="Дуэль" onBack={onBack}>
@@ -5514,8 +5547,6 @@ function AmateurDuelPlayView({
       : Math.min(match.rules.totalPeriods, match.me.current_period + 1);
   const nextPeriodRule = currentDuelPeriodRule(match);
   const opponentDisplayName = match.opponent.display_name || 'Игрок';
-  const duelCondition = (elapsedMs: number, speeds: SpeedOverrides): DuelPlayerCondition | null =>
-    duelConditionForMatch(match, elapsedMs, speeds);
   const liveDuelCondition =
     match.me.state === 'period_active'
       ? duelCondition(
@@ -8136,24 +8167,39 @@ function duelConditionLoadout(match: AmateurDuelMatch): DuelInventoryLoadoutSnap
   };
 }
 
-function duelConditionForMatch(
+function createDuelConditionForMatch(
   match: AmateurDuelMatchState,
-  elapsedMs: number,
-  speeds: SpeedOverrides,
-): DuelPlayerCondition | null {
-  if (!match.match_seed) return null;
+): (elapsedMs: number, speeds: SpeedOverrides) => DuelPlayerCondition | null {
+  if (!match.match_seed) return () => null;
   const basePreset = periodSpeedPresetFor(match.me.current_period, match.rules.periodSpeedPresets);
-  return getDuelPlayerCondition({
+  const loadout = duelConditionLoadout(match);
+  const movementTiming =
+    loadout.skates?.timing ?? loadout.fallbackSkatesTiming ?? DEFAULT_DUEL_INVENTORY_TIMING;
+  const staticInput = {
     seed: match.match_seed,
     userId: match.me.user_id,
     periodNumber: match.me.current_period,
-    elapsedMs: Math.max(0, elapsedMs),
-    movementDistancePx: movementDistancePxForElapsed(elapsedMs, speeds.shooterFreq),
+  };
+  const stumbleRandomness = createDuelStumbleRandomness(staticInput, movementTiming);
+  const conditionInput: DuelPlayerConditionInput = {
+    ...staticInput,
+    elapsedMs: 0,
+    movementDistancePx: 0,
     baseLaneWidthPx: SHOOTER_AMPLITUDE * 2,
     baselineShooterSpeed: basePreset.shooterFrequency,
-    currentShooterSpeed: speeds.shooterFreq,
-    loadout: duelConditionLoadout(match),
-  });
+    currentShooterSpeed: basePreset.shooterFrequency,
+    loadout,
+    stumbleRandomness,
+  };
+  return (elapsedMs, speeds) => {
+    conditionInput.elapsedMs = Math.max(0, elapsedMs);
+    conditionInput.movementDistancePx = movementDistancePxForElapsed(
+      elapsedMs,
+      speeds.shooterFreq,
+    );
+    conditionInput.currentShooterSpeed = speeds.shooterFreq;
+    return getDuelPlayerCondition(conditionInput);
+  };
 }
 
 function DuelInventoryMiniHud({
@@ -8672,6 +8718,184 @@ function DailyPlayView({
   );
 }
 
+function classicLoadoutSelection(state: ClassicTournamentState): ClassicTournamentLoadoutSelection {
+  return {
+    stick: state.loadout.items.find((item) => item.kind === 'stick')?.id ?? null,
+    skates: state.loadout.items.find((item) => item.kind === 'skates')?.id ?? null,
+    nutrition: state.loadout.items.find((item) => item.kind === 'nutrition')?.id ?? null,
+  };
+}
+
+export function createClassicTournamentCondition(
+  state: ClassicTournamentState,
+): (elapsedMs: number, speeds: SpeedOverrides) => DuelPlayerCondition | null {
+  const consumed = new Map(
+    state.current_period_inventory_consumption.map((item) => [item.id, item.charges]),
+  );
+  const itemFor = (kind: InventoryEquipmentKind) =>
+    state.loadout.items.find((item) => item.kind === kind);
+  const stick = itemFor('stick');
+  const skates = itemFor('skates');
+  const nutrition = itemFor('nutrition');
+  const inventoryItem = (
+    item: ClassicTournamentInventoryItem | undefined,
+    subtractConsumption: boolean,
+  ) =>
+    item && item.resourceUnit !== 'period'
+      ? {
+          id: item.id,
+          title: item.title,
+          resourceUnit: item.resourceUnit,
+          resourceAvailable: Math.max(
+            0,
+            item.resourceAvailable - (subtractConsumption ? (consumed.get(item.id) ?? 0) : 0),
+          ),
+          effectPuckSpeedPoints: item.effectPuckSpeedPoints,
+          timing: item.timing ?? DEFAULT_DUEL_INVENTORY_TIMING,
+        }
+      : null;
+  const loadout: DuelInventoryLoadoutSnapshot = {
+    stick: inventoryItem(stick, true),
+    skates: inventoryItem(skates, false),
+    nutrition: inventoryItem(nutrition, false),
+    fallbackSkatesTiming: DEFAULT_DUEL_INVENTORY_TIMING,
+    fallbackNutritionTiming: DEFAULT_DUEL_INVENTORY_TIMING,
+  };
+  const base = periodSpeedPresetFor(
+    Math.max(1, state.current_period),
+    state.base_period_speed_presets,
+  );
+  const randomness = createDuelStumbleRandomness(
+    { seed: state.daily_seed, userId: state.player_id, periodNumber: Math.max(1, state.current_period) },
+    loadout.skates?.timing ?? DEFAULT_DUEL_INVENTORY_TIMING,
+  );
+  return (elapsedMs, speeds) =>
+    getDuelPlayerCondition({
+      seed: state.daily_seed,
+      userId: state.player_id,
+      periodNumber: Math.max(1, state.current_period),
+      elapsedMs,
+      movementDistancePx:
+        (Math.max(0, elapsedMs) * SHOOTER_AMPLITUDE * 4 * Math.max(0, speeds.shooterFreq)) /
+        1000,
+      baseLaneWidthPx: SHOOTER_AMPLITUDE * 2,
+      baselineShooterSpeed: base.shooterFrequency,
+      currentShooterSpeed: speeds.shooterFreq,
+      loadout,
+      stumbleRandomness: randomness,
+    });
+}
+
+function ClassicRinkLoadoutHud({
+  state,
+  selection,
+  locked,
+  onSelectKind,
+}: {
+  state: ClassicTournamentState;
+  selection: ClassicTournamentLoadoutSelection;
+  locked: boolean;
+  onSelectKind: (kind: InventoryEquipmentKind) => void;
+}): JSX.Element {
+  return (
+    <div aria-label="Выбор инвентаря" style={{ display: 'flex', gap: 9 }}>
+      {DUEL_INVENTORY_SLOTS.map((slot) => {
+        const selectedId = selection[slot.kind] ?? null;
+        const item: ClassicTournamentInventoryItem | undefined = state.inventory_available.find(
+          (candidate) => candidate.kind === slot.kind && candidate.id === selectedId,
+        );
+        const title = item?.title ?? duelBaseEquipmentTitle(slot.kind);
+        const status = item
+          ? formatInventoryResourceAmount(item.kind, item.resourceAvailable, item.resourceUnit)
+          : 'базовый вариант';
+        return (
+          <button
+            key={slot.kind}
+            type="button"
+            aria-label={`${slot.label}: ${title}. ${status}`}
+            disabled={locked}
+            onClick={() => onSelectKind(slot.kind)}
+            style={{
+              width: 31,
+              height: 31,
+              padding: 0,
+              borderRadius: 999,
+              overflow: 'hidden',
+              ...DUEL_INVENTORY_ICON_GLASS_STYLE,
+              opacity: locked ? 0.7 : 1,
+            }}
+          >
+            <img
+              src={item?.imageUrl || placeholderArtworkForKind(slot.kind)}
+              alt=""
+              style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+            />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ClassicRinkLoadoutModal({
+  kind,
+  state,
+  selectedId,
+  onClose,
+  onSelect,
+}: {
+  kind: InventoryEquipmentKind;
+  state: ClassicTournamentState;
+  selectedId: string | null;
+  onClose: () => void;
+  onSelect: (id: string | null) => void;
+}): JSX.Element {
+  const items = state.inventory_available.filter((item) => item.kind === kind);
+  return (
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
+      <section
+        role="dialog"
+        aria-label={DUEL_EQUIPMENT_META[kind].title}
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: 'min(430px, calc(100vw - 28px))', display: 'grid', gap: 10 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="modal-title" style={{ flex: 1 }}>{DUEL_EQUIPMENT_META[kind].title}</div>
+          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+            <X size={15} />
+          </button>
+        </div>
+        <div className="no-scrollbar" style={{ maxHeight: '54dvh', overflowY: 'auto', display: 'grid', gap: 8 }}>
+          <button
+            type="button"
+            className={`glass duel-equipment-option${selectedId === null ? ' duel-equipment-option--selected' : ''}`}
+            onClick={() => onSelect(null)}
+            style={{ minHeight: 64, borderRadius: 16, padding: 10, textAlign: 'left' }}
+          >
+            {duelBaseEquipmentTitle(kind)}
+          </button>
+          {items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`glass duel-equipment-option${selectedId === item.id ? ' duel-equipment-option--selected' : ''}`}
+              onClick={() => onSelect(item.id)}
+              style={{ minHeight: 64, borderRadius: 16, padding: 10, display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left' }}
+            >
+              <img src={item.imageUrl || placeholderArtworkForKind(kind)} alt="" style={{ width: 46, height: 46, borderRadius: 12, objectFit: 'cover' }} />
+              <span style={{ display: 'grid', gap: 3 }}>
+                <strong>{item.title}</strong>
+                <span>{formatInventoryResourceAmount(item.kind, item.resourceAvailable, item.resourceUnit)}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function ClassicTournamentPlayView({
   tournamentId,
   onBack,
@@ -8691,6 +8915,8 @@ function ClassicTournamentPlayView({
   const [now, setNow] = useState(Date.now());
   const [deferredState, setDeferredState] = useState<ClassicTournamentState | null>(null);
   const [statsModalState, setStatsModalState] = useState<ClassicTournamentState | null>(null);
+  const [selectedLoadout, setSelectedLoadout] = useState<ClassicTournamentLoadoutSelection>({});
+  const [selectedLoadoutKind, setSelectedLoadoutKind] = useState<InventoryEquipmentKind | null>(null);
 
   const summaryCandidate = deferredState ?? data;
   const summaryKey = summaryCandidate ? `classic:${summaryCandidate.session_id}` : '';
@@ -8703,6 +8929,11 @@ function ClassicTournamentPlayView({
   useEffect(() => {
     void refresh(tournamentId);
   }, [refresh, tournamentId]);
+
+  useEffect(() => {
+    if (!data || !data.loadout_editable) return;
+    setSelectedLoadout(classicLoadoutSelection(data));
+  }, [data?.current_period, data?.loadout, data?.loadout_editable, data?.session_id]);
 
   useEffect(() => {
     if (data?.state !== 'break_active' && data?.state !== 'closed') return undefined;
@@ -8788,6 +9019,7 @@ function ClassicTournamentPlayView({
   const completedResult = data.result;
   const shouldShowSummary = statsModalState !== null || unseenPeriod !== null;
   const stats = statsModalState ? dailyGameStatsFromState(statsModalState) : null;
+  const duelCondition = createClassicTournamentCondition(data);
 
   return (
     <>
@@ -8846,7 +9078,7 @@ function ClassicTournamentPlayView({
                 ? 'ИГРА ЗАВЕРШЕНА'
                 : undefined
         }
-        inactiveAction={canStart ? startPeriod : undefined}
+        inactiveAction={canStart ? () => startPeriod(selectedLoadout) : undefined}
         entranceBeforeInactiveAction
         periodEndsAt={active && periodEndsAt > 0 ? periodEndsAt : undefined}
         onTimerExpired={() => refresh(tournamentId)}
@@ -8854,8 +9086,29 @@ function ClassicTournamentPlayView({
         submitShot={submitShot}
         applyState={applyState}
         applyResolvedState={applyClassicResolvedState}
+        duelCondition={duelCondition}
         longCourtBackground={AMATEUR_DAILY_COURT_BACKGROUND}
+        hudAddon={
+          <ClassicRinkLoadoutHud
+            state={data}
+            selection={selectedLoadout}
+            locked={!data.loadout_editable || inFlight}
+            onSelectKind={setSelectedLoadoutKind}
+          />
+        }
       />
+      {selectedLoadoutKind !== null && data.loadout_editable && (
+        <ClassicRinkLoadoutModal
+          kind={selectedLoadoutKind}
+          state={data}
+          selectedId={selectedLoadout[selectedLoadoutKind] ?? null}
+          onClose={() => setSelectedLoadoutKind(null)}
+          onSelect={(id) => {
+            setSelectedLoadout((current) => ({ ...current, [selectedLoadoutKind]: id }));
+            setSelectedLoadoutKind(null);
+          }}
+        />
+      )}
       {statsModalState && stats && (
         <DailyGameStatsModal
           stats={stats}
@@ -8875,6 +9128,19 @@ function ClassicTournamentPlayView({
               : `${statsModalState.current_period}-й период завершён`
           }
           closeLabel="Понятно"
+          supplemental={
+            statsModalState.inventory_consumption.length > 0 ? (
+              <div aria-label="Общий расход инвентаря" style={{ marginTop: 14, display: 'grid', gap: 6 }}>
+                <div className="section-label" style={{ margin: 0, padding: 0 }}>Общий расход инвентаря</div>
+                {statsModalState.inventory_consumption.map((item) => (
+                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+                    <span style={{ color: 'var(--muted)', fontWeight: 750 }}>{item.title}</span>
+                    <strong>{formatInventoryResourceAmount(item.kind, item.charges, statsModalState.loadout.items.find((candidate) => candidate.id === item.id)?.resourceUnit)}</strong>
+                  </div>
+                ))}
+              </div>
+            ) : null
+          }
           onClose={handleStatsModalClose}
         />
       )}
@@ -9117,6 +9383,7 @@ function TrainingPlayView({
   const submitShot = useTrainingSessionStore((s) => s.submitShot);
   const applyState = useTrainingSessionStore((s) => s.applyState);
   const refreshDaily = useDailyStore((s) => s.refresh);
+  const refreshTraining = useTrainingSessionStore((s) => s.refresh);
   const userRole = useAuthStore((s) => s.user?.role);
   const experimentalTrainingCourt = useAuthStore((s) => s.user?.experimentalTrainingCourt);
   const [hitboxesVisible, setHitboxesVisible] = useState(() => readTrainingHitboxesVisible());
@@ -9141,7 +9408,15 @@ function TrainingPlayView({
     (dailyData?.state === 'idle' &&
       dailyData.current_period > 0 &&
       dailyData.current_period < dailyData.total_periods);
-  const canStartTraining = data?.state === 'idle' && !isTrainingLockedByDaily;
+  const tournamentStartsAt = data?.tournament_day_starts_at
+    ? new Date(data.tournament_day_starts_at).getTime()
+    : 0;
+  const isTrainingLockedByTournament =
+    data?.tournament_day_locked === true ||
+    (tournamentStartsAt > 0 &&
+      now >= tournamentStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS);
+  const isTrainingLocked = isTrainingLockedByDaily || isTrainingLockedByTournament;
+  const canStartTraining = data?.state === 'idle' && !isTrainingLocked;
   const handleHitboxesChange = useCallback((next: boolean): void => {
     setHitboxesVisible(next);
     saveTrainingHitboxesVisible(next);
@@ -9168,16 +9443,32 @@ function TrainingPlayView({
   );
 
   useEffect(() => {
-    if (data?.state !== 'closed' && !isTrainingLockedByDaily) return undefined;
+    if (data?.state !== 'closed' && !isTrainingLocked) return undefined;
     const id = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(id);
-  }, [data?.state, isTrainingLockedByDaily]);
+  }, [data?.state, isTrainingLocked]);
+
+  useEffect(() => {
+    const lockAt = tournamentStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS;
+    if (tournamentStartsAt <= 0 || now >= lockAt) return undefined;
+    const id = window.setTimeout(
+      () => setNow(Date.now()),
+      Math.min(2_147_000_000, Math.max(0, lockAt - Date.now() + 50)),
+    );
+    return () => window.clearTimeout(id);
+  }, [now, tournamentStartsAt]);
+
+  useEffect(() => {
+    if (!isTrainingLockedByTournament) return undefined;
+    const id = window.setInterval(() => void refreshTraining(), 30_000);
+    return () => window.clearInterval(id);
+  }, [isTrainingLockedByTournament, refreshTraining]);
 
   if (!data) return null;
 
   const isTrainingActive = data.state === 'active';
   const isTrainingClosed = data.state === 'closed';
-  const isTrainingPlayable = isTrainingActive && !isTrainingLockedByDaily;
+  const isTrainingPlayable = isTrainingActive && !isTrainingLocked;
   const nextDayAt = new Date(data.next_day_starts_at).getTime();
   const nextDayRemaining = Math.max(0, nextDayAt - now);
   const dailyPeriodEndsAt = dailyData?.period_ends_at
@@ -9192,14 +9483,23 @@ function TrainingPlayView({
       : dailyData?.state === 'break_active' && dailyBreakEndsAt > 0
         ? Math.max(0, dailyBreakEndsAt - now)
         : 0;
-  const trainingTimer = isTrainingLockedByDaily
+  const tournamentStartsRemaining = Math.max(0, tournamentStartsAt - now);
+  const trainingTimer = isTrainingLockedByTournament
+    ? tournamentStartsRemaining > 0
+      ? formatMs(tournamentStartsRemaining)
+      : 'ИГРЫ'
+    : isTrainingLockedByDaily
     ? dailyLockRemaining > 0
       ? formatMs(dailyLockRemaining)
       : 'ИГРА'
     : isTrainingClosed
       ? formatHms(nextDayRemaining)
       : String(data.shots_limit);
-  const trainingTimerLabel = isTrainingLockedByDaily
+  const trainingTimerLabel = isTrainingLockedByTournament
+    ? tournamentStartsRemaining > 0
+      ? 'ДО НАЧАЛА'
+      : 'СТАТУС'
+    : isTrainingLockedByDaily
     ? dailyLockRemaining > 0
       ? 'ДО ИГРЫ'
       : 'СТАТУС'
@@ -9210,7 +9510,7 @@ function TrainingPlayView({
     <>
       <PlayView<TrainingStateResponse>
         suppressedByModal={!isTrainingPlayable}
-        showIceCar={isTrainingClosed || isTrainingLockedByDaily}
+        showIceCar={isTrainingClosed || isTrainingLocked}
         playEntranceOnMount={isTrainingPlayable ? playEntranceOnMount : false}
         onEntranceConsumed={onEntranceConsumed}
         playRouteTransitionOnMount={playRouteTransitionOnMount}
@@ -9231,13 +9531,21 @@ function TrainingPlayView({
         shotsTotal={data.shots_limit}
         timer={trainingTimer}
         timerLabel={trainingTimerLabel}
-        scoreboardNotice={isTrainingLockedByDaily ? 'Игра уже начата' : undefined}
+        scoreboardNotice={
+          isTrainingLockedByTournament
+            ? tournamentStartsRemaining > 0
+              ? 'Скоро начнутся игры турнира'
+              : 'Идут игры турнира'
+            : isTrainingLockedByDaily
+              ? 'Игра уже начата'
+              : undefined
+        }
         shotButtonLabel={
           isTrainingPlayable
             ? undefined
             : canStartTraining
               ? 'НАЧАТЬ'
-              : isTrainingLockedByDaily
+              : isTrainingLocked
                 ? 'ЛЁД ГОТОВИТСЯ'
                 : 'ТРЕНИРОВКА ЗАВЕРШЕНА'
         }
