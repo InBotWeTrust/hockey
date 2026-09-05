@@ -10,6 +10,8 @@ import {
   fixtureCanOpen,
   scheduleDateAfterDaysLoad,
   scheduleDateForTabChange,
+  tournamentInitialTab,
+  tournamentTabs,
   TournamentCatalog,
 } from './TournamentCatalog.js';
 
@@ -26,6 +28,35 @@ describe('TournamentCatalog', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     useAuthStore.setState({ user: { id: 'u1', displayName: 'Первый' } });
+  });
+
+  it('puts the combined rules tab first and opens it before the tournament starts', () => {
+    const startsAt = '2099-09-11T07:00:00.000Z';
+
+    expect(tournamentTabs(startsAt, new Date('2099-09-10T07:00:00.000Z').getTime())).toEqual([
+      { key: 'rules', label: 'Правила' },
+      { key: 'standings', label: 'Таблица' },
+      { key: 'schedule', label: 'Расписание' },
+      { key: 'playoff', label: 'Плей-офф' },
+    ]);
+    expect(tournamentInitialTab('', startsAt, new Date('2099-09-10T07:00:00.000Z').getTime())).toBe(
+      'rules',
+    );
+    expect(tournamentInitialTab('?tab=overview', startsAt, 0)).toBe('rules');
+  });
+
+  it('puts the combined rules tab last and opens standings after the tournament starts', () => {
+    const startsAt = '2030-09-01T07:00:00.000Z';
+    const now = new Date('2030-09-02T07:00:00.000Z').getTime();
+
+    expect(tournamentTabs(startsAt, now)).toEqual([
+      { key: 'standings', label: 'Таблица' },
+      { key: 'schedule', label: 'Расписание' },
+      { key: 'playoff', label: 'Плей-офф' },
+      { key: 'rules', label: 'Правила' },
+    ]);
+    expect(tournamentInitialTab('', startsAt, now)).toBe('standings');
+    expect(tournamentInitialTab('?tab=rules', startsAt, now)).toBe('rules');
   });
 
   it('resets the schedule to today whenever the schedule tab is opened', () => {
@@ -46,7 +77,7 @@ describe('TournamentCatalog', () => {
     };
 
     expect(scheduleDateForTabChange('schedule', tournament, '2030-09-01')).toBe('2030-09-04');
-    expect(scheduleDateForTabChange('overview', tournament, '2030-09-01')).toBe('2030-09-01');
+    expect(scheduleDateForTabChange('rules', tournament, '2030-09-01')).toBe('2030-09-01');
     vi.useRealTimers();
   });
 
@@ -745,7 +776,7 @@ describe('TournamentCatalog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок льда' }));
     expect(screen.getByText('Вы участвуете')).toBeInTheDocument();
     const sections = screen.getByRole('tablist', { name: 'Разделы турнира' });
-    expect(screen.getAllByRole('tab')).toHaveLength(5);
+    expect(screen.getAllByRole('tab')).toHaveLength(4);
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
     expect(await screen.findByRole('grid', { name: 'Календарь турнира' })).toBeInTheDocument();
     expect(screen.getByText('Сентябрь 2030')).toBeInTheDocument();
@@ -896,9 +927,9 @@ describe('TournamentCatalog', () => {
       name: 'Посмотреть другие игры дня',
     });
     expect(screen.queryByRole('heading', { name: 'Другие игры дня' })).not.toBeInTheDocument();
-    expect(
-      screen.getByText('Первый — Второй').compareDocumentPosition(otherGamesButton),
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByText('Первый — Второй').compareDocumentPosition(otherGamesButton)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     fireEvent.click(otherGamesButton);
     for (const id of ['other-2', 'other-3', 'other-4', 'other-5', 'other-6']) {
       expect(await screen.findByText(`Чужой ${id} — Гость ${id}`)).toBeInTheDocument();
@@ -2044,7 +2075,9 @@ describe('TournamentCatalog', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок правил' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Правила и призы' }));
+    expect(screen.getByRole('tab', { name: 'Правила' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('heading', { name: 'Сроки' })).toBeInTheDocument();
+    expect(screen.getByText('4 / 8')).toBeInTheDocument();
 
     expect(
       screen.getByText(

@@ -29,19 +29,39 @@ import { TournamentScheduleCalendar } from './TournamentScheduleCalendar.js';
 import { TournamentPlayoffBracket } from './TournamentPlayoffBracket.js';
 import { TournamentMatchdayResults } from './TournamentMatchdayResults.js';
 
-type TournamentTab = 'overview' | 'standings' | 'schedule' | 'playoff' | 'rules';
+type TournamentTab = 'standings' | 'schedule' | 'playoff' | 'rules';
 
-const tabs: Array<{ key: TournamentTab; label: string }> = [
-  { key: 'overview', label: 'Обзор' },
+const activeTournamentTabs: Array<{ key: TournamentTab; label: string }> = [
   { key: 'standings', label: 'Таблица' },
   { key: 'schedule', label: 'Расписание' },
   { key: 'playoff', label: 'Плей-офф' },
-  { key: 'rules', label: 'Правила и призы' },
+  { key: 'rules', label: 'Правила' },
 ];
 
-function tournamentTabFromSearch(search: string): TournamentTab {
+function tournamentHasStarted(startsAt: string | null, now: number): boolean {
+  if (startsAt === null) return false;
+  const timestamp = new Date(startsAt).getTime();
+  return Number.isFinite(timestamp) && timestamp <= now;
+}
+
+export function tournamentTabs(
+  startsAt: string | null,
+  now = Date.now(),
+): Array<{ key: TournamentTab; label: string }> {
+  if (tournamentHasStarted(startsAt, now)) return activeTournamentTabs;
+  const rules = activeTournamentTabs.find((tab) => tab.key === 'rules')!;
+  return [rules, ...activeTournamentTabs.filter((tab) => tab.key !== 'rules')];
+}
+
+export function tournamentInitialTab(
+  search: string,
+  startsAt: string | null,
+  now = Date.now(),
+): TournamentTab {
   const requested = new URLSearchParams(search).get('tab');
-  return tabs.some((tab) => tab.key === requested) ? (requested as TournamentTab) : 'overview';
+  if (requested === 'overview') return 'rules';
+  if (activeTournamentTabs.some((tab) => tab.key === requested)) return requested as TournamentTab;
+  return tournamentHasStarted(startsAt, now) ? 'standings' : 'rules';
 }
 
 function fixtureVenueRole(fixture: TournamentFixture, currentUserId: string | null): VenueRole {
@@ -581,7 +601,10 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
   const navigate = useNavigate();
   const location = useLocation();
   const currentUserId = useAuthStore((state) => state.user?.id ?? null);
-  const [tab, setTab] = useState<TournamentTab>(() => tournamentTabFromSearch(location.search));
+  const [tab, setTab] = useState<TournamentTab>(() =>
+    tournamentInitialTab(location.search, tournament.startsAt),
+  );
+  const visibleTabs = tournamentTabs(tournament.startsAt);
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [scheduleDate, setScheduleDate] = useState(() => initialScheduleDate(tournament));
   const scheduleDateManuallySelected = useRef(false);
@@ -693,7 +716,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
       <SegmentedTabs
         ariaLabel="Разделы турнира"
         activeTab={tab}
-        items={tabs.map((item) => ({ id: item.key, label: item.label }))}
+        items={visibleTabs.map((item) => ({ id: item.key, label: item.label }))}
         onChange={(nextTab) => {
           if (nextTab === 'schedule') scheduleDateManuallySelected.current = false;
           setScheduleDate((currentDate) =>
@@ -704,82 +727,85 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
         scrollable
       />
       <section className="glass tournament-details__content">
-        {tab === 'overview' && (
-          <div className="tournament-overview-layout">
-            <section className="tournament-overview-dates">
-              <h3>Сроки</h3>
-              <dl>
+        {tab === 'rules' && (
+          <>
+            <div className="tournament-overview-layout">
+              <section className="tournament-overview-dates">
+                <h3>Сроки</h3>
+                <dl>
+                  <div>
+                    <dt>Начало регистрации</dt>
+                    <dd>
+                      {tournamentDateLabel(
+                        tournament.registrationOpensAt,
+                        String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Конец регистрации</dt>
+                    <dd>
+                      {tournamentDateLabel(
+                        tournament.registrationClosesAt,
+                        String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Первый тур</dt>
+                    <dd>
+                      {tournamentDateLabel(
+                        tournament.startsAt,
+                        String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{tournament.completedAt ? 'Турнир завершён' : 'Плановое окончание'}</dt>
+                    <dd>
+                      {tournamentDateLabel(
+                        tournament.completedAt ?? tournament.projectedEndsAt,
+                        String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+              <div className="tournament-overview-grid">
+                <button
+                  type="button"
+                  className="tournament-overview-grid__participants"
+                  onClick={() => setParticipantsOpen(true)}
+                >
+                  <span>Участники</span>
+                  <strong>
+                    {tournament.participantCount} / {tournament.rules.config.participantLimit}
+                  </strong>
+                </button>
                 <div>
-                  <dt>Начало регистрации</dt>
-                  <dd>
-                    {tournamentDateLabel(
-                      tournament.registrationOpensAt,
-                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
+                  <span>Плей-офф</span>
+                  <strong>
+                    {numberValue(tournament.rules.config.playoffSize)}{' '}
+                    {pluralRu(
+                      numberValue(tournament.rules.config.playoffSize),
+                      'игрок',
+                      'игрока',
+                      'игроков',
                     )}
-                  </dd>
+                  </strong>
                 </div>
                 <div>
-                  <dt>Конец регистрации</dt>
-                  <dd>
-                    {tournamentDateLabel(
-                      tournament.registrationClosesAt,
-                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
-                    )}
-                  </dd>
+                  <span>Вступительный взнос</span>
+                  <strong>
+                    {tournament.rules.config.entryFeeCoins === 0
+                      ? 'Бесплатно'
+                      : `${tournament.rules.config.entryFeeCoins} монет`}
+                  </strong>
                 </div>
-                <div>
-                  <dt>Первый тур</dt>
-                  <dd>
-                    {tournamentDateLabel(
-                      tournament.startsAt,
-                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt>{tournament.completedAt ? 'Турнир завершён' : 'Плановое окончание'}</dt>
-                  <dd>
-                    {tournamentDateLabel(
-                      tournament.completedAt ?? tournament.projectedEndsAt,
-                      String(tournament.rules.config.timezone ?? 'Europe/Moscow'),
-                    )}
-                  </dd>
-                </div>
-              </dl>
-            </section>
-            <div className="tournament-overview-grid">
-              <button
-                type="button"
-                className="tournament-overview-grid__participants"
-                onClick={() => setParticipantsOpen(true)}
-              >
-                <span>Участники</span>
-                <strong>
-                  {tournament.participantCount} / {tournament.rules.config.participantLimit}
-                </strong>
-              </button>
-              <div>
-                <span>Плей-офф</span>
-                <strong>
-                  {numberValue(tournament.rules.config.playoffSize)}{' '}
-                  {pluralRu(
-                    numberValue(tournament.rules.config.playoffSize),
-                    'игрок',
-                    'игрока',
-                    'игроков',
-                  )}
-                </strong>
-              </div>
-              <div>
-                <span>Вступительный взнос</span>
-                <strong>
-                  {tournament.rules.config.entryFeeCoins === 0
-                    ? 'Бесплатно'
-                    : `${tournament.rules.config.entryFeeCoins} монет`}
-                </strong>
               </div>
             </div>
-          </div>
+            <TournamentRules tournament={tournament} />
+          </>
         )}
         {tab === 'standings' &&
           (standings.isLoading ? (
@@ -989,7 +1015,6 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
           ) : (
             <div>Сетка появится после завершения регулярного чемпионата.</div>
           ))}
-        {tab === 'rules' && <TournamentRules tournament={tournament} />}
       </section>
       {tournament.status === 'registration' &&
         !registrationState.hideAction &&
