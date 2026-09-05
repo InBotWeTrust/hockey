@@ -18,6 +18,7 @@ import {
 } from '@hockey/game-core';
 import {
   DailyScreen,
+  DUEL_INVENTORY_ICON_GLASS_STYLE,
   duelBackLabel,
   duelEquipmentEffectLabel,
   duelEventTiming,
@@ -6336,6 +6337,11 @@ describe('DailyScreen', () => {
 });
 
 describe('duel ready rink presence', () => {
+  it('does not apply live backdrop blur over the animated duel rink', () => {
+    expect(DUEL_INVENTORY_ICON_GLASS_STYLE).not.toHaveProperty('backdropFilter');
+    expect(DUEL_INVENTORY_ICON_GLASS_STYLE).not.toHaveProperty('WebkitBackdropFilter');
+  });
+
   it('keeps the opponent goalie present after the opponent has started a period', () => {
     expect(isDuelReadyPresenceState('ready')).toBe(true);
     expect(isDuelReadyPresenceState('accepted')).toBe(true);

@@ -7371,14 +7371,12 @@ const DUEL_INVENTORY_SLOTS = [
   { kind: 'nutrition', label: 'Энергия' },
 ] as const;
 
-const DUEL_INVENTORY_ICON_GLASS_STYLE: CSSProperties = {
+export const DUEL_INVENTORY_ICON_GLASS_STYLE: CSSProperties = {
   background:
     'radial-gradient(circle at 28% 0%, rgba(255,255,255,0.94), rgba(255,255,255,0) 42%), linear-gradient(145deg, rgba(255,255,255,0.76), rgba(226,242,250,0.5) 58%, rgba(255,255,255,0.64))',
   border: '1px solid rgba(255,255,255,0.82)',
   boxShadow:
     '0 0 0 1px rgba(15,23,42,0.07), 0 8px 18px rgba(15,23,42,0.14), inset 0 1.5px 0 rgba(255,255,255,0.88), inset 0 -8px 16px rgba(15,23,42,0.06)',
-  backdropFilter: 'blur(14px) saturate(1.24)',
-  WebkitBackdropFilter: 'blur(14px) saturate(1.24)',
 };
 
 const DUEL_EQUIPMENT_META: Record<
