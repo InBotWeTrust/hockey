@@ -482,6 +482,142 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     });
   });
 
+  it('counts only completed final and bronze series, never completed semi-finals', async () => {
+    const champion = await loginTelegram({ id: '71', first_name: 'Champion' });
+    const runnerUp = await loginTelegram({ id: '72', first_name: 'Runner-up' });
+    const bronzeWinner = await loginTelegram({ id: '73', first_name: 'Bronze winner' });
+    const bronzeLoser = await loginTelegram({ id: '74', first_name: 'Bronze loser' });
+    const tournament = await app.pg.query<{ id: string }>(
+      `insert into tournament (slug, title, status, regular_source, created_by)
+       values ('profile-live-playoff-summary', 'Profile live playoff summary', 'active', 'head_to_head', $1)
+       returning id`,
+      [champion.user.id],
+    );
+    const tournamentId = tournament.rows[0]!.id;
+    const participantByUser = new Map<string, string>();
+    for (const player of [champion, runnerUp, bronzeWinner, bronzeLoser]) {
+      const participant = await app.pg.query<{ id: string }>(
+        `insert into tournament_participant (tournament_id, user_id, state)
+         values ($1, $2, 'approved') returning id`,
+        [tournamentId, player.user.id],
+      );
+      participantByUser.set(player.user.id, participant.rows[0]!.id);
+    }
+    const semiFinals = await app.pg.query<{ id: string }>(
+      `insert into tournament_round (tournament_id, stage, number, status)
+       values ($1, 'playoff', 1, 'settled') returning id`,
+      [tournamentId],
+    );
+    const final = await app.pg.query<{ id: string }>(
+      `insert into tournament_round (tournament_id, stage, number, status)
+       values ($1, 'playoff', 2, 'active') returning id`,
+      [tournamentId],
+    );
+    const bronze = await app.pg.query<{ id: string }>(
+      `insert into tournament_round (tournament_id, stage, number, status)
+       values ($1, 'third_place', 2, 'active') returning id`,
+      [tournamentId],
+    );
+    const championParticipant = participantByUser.get(champion.user.id)!;
+    const runnerUpParticipant = participantByUser.get(runnerUp.user.id)!;
+    const bronzeWinnerParticipant = participantByUser.get(bronzeWinner.user.id)!;
+    const bronzeLoserParticipant = participantByUser.get(bronzeLoser.user.id)!;
+    const series = await app.pg.query<{
+      id: string;
+      kind: 'championship' | 'third_place';
+      round_id: string;
+    }>(
+      `insert into tournament_playoff_series
+         (tournament_id, round_id, bracket_position, kind,
+          higher_seed_participant_id, lower_seed_participant_id, winner_participant_id,
+          wins_required, home_sequence, status)
+       values
+         ($1, $2, 1, 'championship', $3, $5, $3, 1, '[]'::jsonb, 'completed'),
+         ($1, $2, 2, 'championship', $4, $6, $4, 1, '[]'::jsonb, 'completed'),
+         ($1, $7, 1, 'championship', $3, $4, null, 1, '[]'::jsonb, 'active'),
+         ($1, $8, 1, 'third_place', $5, $6, null, 1, '[]'::jsonb, 'active')
+       returning id, kind, round_id`,
+      [
+        tournamentId,
+        semiFinals.rows[0]!.id,
+        championParticipant,
+        runnerUpParticipant,
+        bronzeWinnerParticipant,
+        bronzeLoserParticipant,
+        final.rows[0]!.id,
+        bronze.rows[0]!.id,
+      ],
+    );
+    const finalSeriesId = series.rows.find((row) => row.round_id === final.rows[0]!.id)!.id;
+    const bronzeSeriesId = series.rows.find((row) => row.kind === 'third_place')!.id;
+    const fetchSummary = async (accessToken: string) => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/me',
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      expect(response.statusCode).toBe(200);
+      return response.json().trophySummary as {
+        tournamentChampionships: number;
+        tournamentPodiums: number;
+      };
+    };
+    const expectSummary = async (
+      player: { accessToken: string },
+      championships: number,
+      podiums: number,
+    ) => {
+      await expect(fetchSummary(player.accessToken)).resolves.toMatchObject({
+        tournamentChampionships: championships,
+        tournamentPodiums: podiums,
+      });
+    };
+
+    // Both semi-finals are complete, but neither medal series is complete yet.
+    await expectSummary(champion, 0, 0);
+    await expectSummary(runnerUp, 0, 0);
+    await expectSummary(bronzeWinner, 0, 0);
+    await expectSummary(bronzeLoser, 0, 0);
+
+    await app.pg.query(
+      `update tournament_playoff_series
+          set status = 'completed', winner_participant_id = $2
+        where id = $1`,
+      [bronzeSeriesId, bronzeWinnerParticipant],
+    );
+    await expectSummary(bronzeWinner, 0, 1);
+    await expectSummary(bronzeLoser, 0, 0);
+    await expectSummary(champion, 0, 0);
+
+    await app.pg.query(
+      `update tournament_playoff_series
+          set status = 'active', winner_participant_id = null
+        where id = $1`,
+      [bronzeSeriesId],
+    );
+    await app.pg.query(
+      `update tournament_playoff_series
+          set status = 'completed', winner_participant_id = $2
+        where id = $1`,
+      [finalSeriesId, championParticipant],
+    );
+    await expectSummary(champion, 1, 0);
+    await expectSummary(runnerUp, 0, 1);
+    await expectSummary(bronzeWinner, 0, 0);
+    await expectSummary(bronzeLoser, 0, 0);
+
+    await app.pg.query(
+      `update tournament_playoff_series
+          set status = 'completed', winner_participant_id = $2
+        where id = $1`,
+      [bronzeSeriesId, bronzeWinnerParticipant],
+    );
+    await expectSummary(champion, 1, 0);
+    await expectSummary(runnerUp, 0, 1);
+    await expectSummary(bronzeWinner, 0, 1);
+    await expectSummary(bronzeLoser, 0, 0);
+  });
+
   it('rejects displaySource=vk when VK is not linked', async () => {
     const { accessToken } = await loginTelegram({ id: '43' });
 
