@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LoginScreen } from '../screens/LoginScreen.js';
@@ -102,6 +102,59 @@ describe('App routing + auth', () => {
     const ambientLights = screen.getByTestId('arena-ambient-lights');
     expect(ambientLights).toHaveAttribute('aria-hidden', 'true');
     expect(ambientLights.children).toHaveLength(10);
+  });
+
+  it('keeps achievements opened from the profile in the profile navigation context', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    window.history.replaceState({}, '', '/profile/achievements');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Задания' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/profile/achievements');
+    expect(screen.getByRole('button', { name: 'Раздевалка' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
+    expect(window.location.pathname).toBe('/profile');
+  });
+
+  it('keeps challenges opened from the profile in the profile navigation context', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    window.history.replaceState({}, '', '/profile/achievements');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: 'Задания' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Челленджи' }));
+
+    expect(window.location.pathname).toBe('/profile/achievements/weekly-challenge');
+    expect(screen.getByRole('button', { name: 'Раздевалка' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
   });
 
   it('loads a bonus attempt detail on the authenticated play route', async () => {
@@ -231,16 +284,13 @@ describe('app backdrop variants', () => {
 });
 
 describe('app surface variants', () => {
-  it('uses unified glass outside the personal profile tab', () => {
+  it('uses unified glass across standard arena screens, including the profile', () => {
     expect(appSurfaceClassName('/sections')).toBe('app-shell--unified-glass');
     expect(appSurfaceClassName('/users/user-1')).toBe('app-shell--unified-glass');
     expect(appSurfaceClassName('/bonus-games')).toBe('app-shell--unified-glass');
-  });
-
-  it('preserves the personal profile tab and every nested profile screen', () => {
-    expect(appSurfaceClassName('/profile')).toBe('app-shell--profile-tab');
-    expect(appSurfaceClassName('/profile/settings')).toBe('app-shell--profile-tab');
-    expect(appSurfaceClassName('/profile/support')).toBe('app-shell--profile-tab');
+    expect(appSurfaceClassName('/profile')).toBe('app-shell--unified-glass');
+    expect(appSurfaceClassName('/profile/settings')).toBe('app-shell--unified-glass');
+    expect(appSurfaceClassName('/profile/support')).toBe('app-shell--unified-glass');
   });
 
   it('preserves the dedicated dark authentication treatment', () => {

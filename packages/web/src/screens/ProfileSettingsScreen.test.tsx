@@ -1,12 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProfileSettingsScreen } from './ProfileSettingsScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
-
-type AuthCallback = (payload: Record<string, unknown>) => void;
-type WindowWithCallbacks = typeof window & Record<string, AuthCallback | undefined>;
 
 function renderProfileSettings(): void {
   const qc = new QueryClient({
@@ -27,6 +24,8 @@ const telegramProfile = {
   avatarUrl: 'tg.png',
   grip: 'right',
   displaySource: 'telegram',
+  registrationProvider: 'telegram',
+  registrationProviderId: '42',
   linkedProviders: ['telegram', 'vk'],
   customFirstName: null,
   customLastName: null,
@@ -48,6 +47,8 @@ const vkOnlyProfile = {
   avatarUrl: 'vk.png',
   grip: 'right',
   displaySource: 'vk',
+  registrationProvider: 'vk',
+  registrationProviderId: 'vk-42',
   linkedProviders: ['vk'],
   customFirstName: null,
   customLastName: null,
@@ -151,6 +152,10 @@ function mockSettingsFetch(
       });
     }
 
+    if (url.endsWith('/api/feedback/direct') && init?.method === 'POST') {
+      return jsonResponse({ chatId: 'official-chat-1', messageId: 'message-1' });
+    }
+
     return jsonResponse({ error: { code: 'not_found', message: 'not found' } }, 404);
   });
 }
@@ -177,117 +182,25 @@ describe('ProfileSettingsScreen', () => {
     vi.restoreAllMocks();
   });
 
-  it('switches display source through PATCH /me', async () => {
-    const fetchMock = mockSettingsFetch();
-    const vibrate = vi.fn(() => true);
-    Object.defineProperty(window.navigator, 'vibrate', { configurable: true, value: vibrate });
+  it('shows the registration provider as a read-only account card', async () => {
+    mockSettingsFetch();
 
     renderProfileSettings();
-    expect(await screen.findByText('Аккаунт (u1)')).toBeInTheDocument();
-    expect(screen.queryByText('ID игрока')).not.toBeInTheDocument();
-    expect(
-      document.querySelector('img[src="/sprites/ultimate-player-left.webp"]'),
-    ).toBeInTheDocument();
-    expect(
-      document.querySelector('img[src="/sprites/ultimate-player-right.webp"]'),
-    ).toBeInTheDocument();
-    const vkButton = await screen.findByRole('button', { name: /из вконтакте/i });
-    fireEvent.click(vkButton);
 
-    await waitFor(() =>
-      expect(
-        findFetchCall(
-          fetchMock,
-          (url, init) => url.endsWith('/api/me') && init?.method === 'PATCH',
-        ),
-      ).toBeTruthy(),
+    expect(await screen.findByText('Аккаунт')).toBeInTheDocument();
+    const account = screen.getByLabelText('Аккаунт Telegram');
+    expect(account).toHaveTextContent('Alice T');
+    expect(account).toHaveTextContent('TG ID 42');
+    expect(account).not.toHaveTextContent('Telegram');
+    expect(account.querySelector('img')).toHaveAttribute('src', 'tg.png');
+    expect(screen.queryByText(/Привязать/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Кастом')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Из ВКонтакте/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Выйти' })).toHaveClass('profile-logout-btn--danger');
+    expect(screen.getByRole('button', { name: 'О хвате' })).toHaveClass(
+      'profile-settings-grip-info',
     );
-    const patchCall = findFetchCall(
-      fetchMock,
-      (url, init) => url.endsWith('/api/me') && init?.method === 'PATCH',
-    )!;
-    expect(patchCall[0]).toBe('/api/me');
-    expect((patchCall[1] as RequestInit).method).toBe('PATCH');
-    expect((patchCall[1] as RequestInit).body).toBe(JSON.stringify({ displaySource: 'vk' }));
-    await waitFor(() => expect(screen.getAllByText('Vera V').length).toBeGreaterThan(0));
-    expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
-  });
-
-  it('links Telegram from a VK-only profile through Telegram widget payload', async () => {
-    const fetchMock = mockSettingsFetch(vkOnlyProfile);
-
-    renderProfileSettings();
-    expect(await screen.findByText('Привязать Telegram')).toBeInTheDocument();
-    const script = screen.getByTestId('telegram-login-container').querySelector('script')!;
-    const cbName = script.getAttribute('data-onauth')!.replace('(user)', '');
-    const cb = (window as WindowWithCallbacks)[cbName]!;
-    cb({ id: 42, first_name: 'Alice', photo_url: 'tg.png', auth_date: 1, hash: 'h' });
-
-    await waitFor(() =>
-      expect(
-        findFetchCall(
-          fetchMock,
-          (url, init) => url.endsWith('/api/auth/telegram') && init?.method === 'POST',
-        ),
-      ).toBeTruthy(),
-    );
-    const postCall = findFetchCall(
-      fetchMock,
-      (url, init) => url.endsWith('/api/auth/telegram') && init?.method === 'POST',
-    )!;
-    expect(postCall[0]).toBe('/api/auth/telegram');
-    const init = postCall[1] as RequestInit;
-    expect(init.method).toBe('POST');
-    expect(new Headers(init.headers).get('Authorization')).toBe('Bearer a');
-    expect(JSON.parse(init.body as string)).toMatchObject({
-      id: 42,
-      first_name: 'Alice',
-      photo_url: 'tg.png',
-    });
-    expect(useAuthStore.getState().accessToken).toBe('next-a');
-  });
-
-  it('saves custom profile name through PATCH /me', async () => {
-    const fetchMock = mockSettingsFetch();
-
-    renderProfileSettings();
-    fireEvent.click(await screen.findByRole('button', { name: /Кастом.*Alice T/i }));
-    expect(screen.getByRole('dialog', { name: 'Кастомный профиль' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Закрыть кастомный профиль' })).toBeInTheDocument();
-    fireEvent.change(await screen.findByLabelText('Кастомное имя'), {
-      target: { value: 'Егор' },
-    });
-    fireEvent.change(screen.getByLabelText('Кастомная фамилия'), {
-      target: { value: 'Гуменюк' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /сохранить кастомный профиль/i }));
-
-    await waitFor(() =>
-      expect(
-        findFetchCall(
-          fetchMock,
-          (url, init) =>
-            url.endsWith('/api/me') &&
-            init?.method === 'PATCH' &&
-            parseJsonBody(init).displaySource === 'custom',
-        ),
-      ).toBeTruthy(),
-    );
-    const patchCall = findFetchCall(
-      fetchMock,
-      (url, init) =>
-        url.endsWith('/api/me') &&
-        init?.method === 'PATCH' &&
-        parseJsonBody(init).displaySource === 'custom',
-    )!;
-    expect(patchCall[0]).toBe('/api/me');
-    expect((patchCall[1] as RequestInit).method).toBe('PATCH');
-    expect(JSON.parse((patchCall[1] as RequestInit).body as string)).toMatchObject({
-      displaySource: 'custom',
-      customFirstName: 'Егор',
-      customLastName: 'Гуменюк',
-    });
-    await waitFor(() => expect(screen.getAllByText('Егор Гуменюк').length).toBeGreaterThan(0));
+    expect(screen.getByRole('heading', { name: 'Настройки' })).toHaveClass('screen-title-on-arena');
   });
 
   it('shows notification and feedback controls in settings', async () => {
@@ -360,6 +273,48 @@ describe('ProfileSettingsScreen', () => {
       kind: 'review',
       rating: 5,
       message: 'Все работает бодро.',
+    });
+  });
+
+  it('sends a non-empty message to the official account from the feedback card', async () => {
+    const fetchMock = mockSettingsFetch();
+
+    renderProfileSettings();
+
+    const openButton = await screen.findByRole('button', { name: 'Написать в личку' });
+    expect(screen.getByText('Официальный аккаунт')).toBeInTheDocument();
+    expect(screen.getByAltText('Ультимейт Хоккей')).toHaveAttribute(
+      'src',
+      '/icons/official-account.webp',
+    );
+    fireEvent.click(openButton);
+
+    const dialog = screen.getByRole('dialog', { name: 'Написать в личку' });
+    expect(within(dialog).queryByText('Официальный аккаунт')).not.toBeInTheDocument();
+    expect(within(dialog).getByText('Сообщение')).toHaveClass('section-label');
+    const submitButton = within(dialog).getByRole('button', { name: 'Отправить' });
+    expect(submitButton).toBeDisabled();
+
+    fireEvent.change(within(dialog).getByLabelText('Сообщение'), {
+      target: { value: 'Подскажите по турниру' },
+    });
+    expect(submitButton).toBeEnabled();
+    fireEvent.click(submitButton);
+
+    await waitFor(() =>
+      expect(
+        findFetchCall(
+          fetchMock,
+          (url, init) => url.endsWith('/api/feedback/direct') && init?.method === 'POST',
+        ),
+      ).toBeTruthy(),
+    );
+    const postCall = findFetchCall(
+      fetchMock,
+      (url, init) => url.endsWith('/api/feedback/direct') && init?.method === 'POST',
+    )!;
+    expect(JSON.parse((postCall[1] as RequestInit).body as string)).toEqual({
+      message: 'Подскажите по турниру',
     });
   });
 });

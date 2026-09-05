@@ -1,6 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
+import { findOrCreateDM, sendMessage } from '../chat/service.js';
+import { publishMessageNew } from '../chat/events.js';
+import { checkAndConsumeRateLimit, invalidateUnreadCache } from '../chat/cache.js';
 
 type FeedbackKind = 'review' | 'suggestion' | 'question';
 
@@ -32,7 +35,11 @@ function mapFeedback(row: FeedbackRow) {
   };
 }
 
-export const feedbackRoutes: FastifyPluginAsync = async (app) => {
+interface FeedbackRoutesOptions {
+  systemUserId?: string;
+}
+
+export const feedbackRoutes: FastifyPluginAsync<FeedbackRoutesOptions> = async (app, options) => {
   app.post('/feedback', { preHandler: [app.authenticate] }, async (req) => {
     const body = createFeedbackSchema.safeParse(req.body);
     if (!body.success) {
@@ -48,5 +55,28 @@ export const feedbackRoutes: FastifyPluginAsync = async (app) => {
     );
 
     return { feedback: mapFeedback(rows[0]!) };
+  });
+
+  app.post('/feedback/direct', { preHandler: [app.authenticate] }, async (req, reply) => {
+    if (options.systemUserId === undefined) {
+      throw new AppError('configuration_error', 'SYSTEM_USER_ID is required', 409);
+    }
+    const body = z
+      .object({ message: z.string().trim().min(1).max(2000) })
+      .strict()
+      .parse(req.body);
+    await checkAndConsumeRateLimit(app.redis, req.user.id);
+    const { chatId } = await findOrCreateDM(app.pg, req.user.id, options.systemUserId);
+    const message = await sendMessage(app.pg, {
+      chatId,
+      senderId: req.user.id,
+      content: body.message,
+    });
+    await Promise.all(
+      [req.user.id, options.systemUserId].map((userId) => invalidateUnreadCache(app.redis, userId)),
+    );
+    await publishMessageNew(app.pg, app.realtime, chatId, 'direct', message);
+    reply.code(201);
+    return { chatId, messageId: message.id };
   });
 };

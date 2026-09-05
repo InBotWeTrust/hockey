@@ -30,6 +30,7 @@ export interface ProfileAchievement {
 
 export interface ProfileData {
   id: string;
+  registeredAt: string;
   displayName: string;
   role?: 'player' | 'admin';
   avatarUrl?: string | null;
@@ -37,10 +38,18 @@ export interface ProfileData {
   competitionLevel: CompetitionLevel;
   stats: ProfileStats;
   achievements: ProfileAchievement[];
+  trophySummary?: {
+    regularSeasonWins: number;
+    tournamentChampionships: number;
+    tournamentPodiums: number;
+    completedChallenges: number;
+  };
   unclaimedAchievementsCount?: number;
   currencyBalance?: number;
   starBalance?: number;
   experienceBalance?: number;
+  registrationProvider?: 'telegram' | 'vk';
+  registrationProviderId?: string;
   displaySource?: 'telegram' | 'vk' | 'custom';
   linkedProviders?: Array<'telegram' | 'vk'>;
   customDisplayName?: string | null;

@@ -169,9 +169,17 @@ function rewardText(achievement: AchievementDto): string {
   }).join(' · ');
 }
 
-export function AchievementsScreen(): JSX.Element {
+export function AchievementsScreen({
+  profileContext = false,
+}: {
+  profileContext?: boolean;
+}): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const backRoute = profileContext ? '/profile' : '/sections';
+  const weeklyChallengeRoute = profileContext
+    ? '/profile/achievements/weekly-challenge'
+    : '/achievements/weekly-challenge';
   const [filter, setFilter] = useState<AchievementFilter>('all');
   const [selected, setSelected] = useState<AchievementDto | null>(null);
   const [claimedReward, setClaimedReward] = useState<{
@@ -268,7 +276,7 @@ export function AchievementsScreen(): JSX.Element {
           <button
             type="button"
             className="icon-btn"
-            onClick={() => navigate('/sections')}
+            onClick={() => navigate(backRoute)}
             aria-label="Назад"
             title="Назад"
             style={{
@@ -301,7 +309,7 @@ export function AchievementsScreen(): JSX.Element {
           activeTab="achievements"
           ariaLabel="Разделы заданий"
           onChange={(tab) => {
-            if (tab === 'challenges') navigate('/achievements/weekly-challenge');
+            if (tab === 'challenges') navigate(weeklyChallengeRoute);
           }}
         />
         <div className="section-label section-label--page">

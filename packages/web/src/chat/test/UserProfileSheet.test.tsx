@@ -13,6 +13,15 @@ const publicProfile: api.UserPublicProfileDTO = {
   displayName: 'Иван Петров',
   avatarUrl: null,
   competitionLevel: 'amateur',
+  currencyBalance: 220,
+  starBalance: 20,
+  experienceBalance: 1090,
+  trophySummary: {
+    regularSeasonWins: 1,
+    tournamentChampionships: 2,
+    tournamentPodiums: 3,
+    completedChallenges: 4,
+  },
   stats: {
     shots: 128,
     goals: 64,
@@ -183,22 +192,44 @@ describe('UserProfileSheet', () => {
       sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
       onClose: () => {},
     });
-    expect(screen.getByText('Иван Петров')).toBeInTheDocument();
+    expect(await screen.findByText('Иван Петров')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
     expect(await screen.findByText('Любитель')).toBeInTheDocument();
-    expect(screen.getByText('Броски')).toBeInTheDocument();
-    expect(screen.getByText('128')).toBeInTheDocument();
     expect(screen.getByText('Голы')).toBeInTheDocument();
     expect(screen.getByText('64')).toBeInTheDocument();
     expect(screen.getByText('(12)')).toBeInTheDocument();
     expect(screen.getByText('Выполненные задания (1)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Публичный спортивный паспорт')).toBeInTheDocument();
+    expect(screen.getByLabelText('Монеты: 220')).toBeInTheDocument();
+    expect(screen.getByLabelText('Звёзды: 20')).toBeInTheDocument();
+    expect(screen.getByLabelText('Опыт: 1090')).toBeInTheDocument();
+    expect(screen.getByLabelText('Витрина наград')).toHaveTextContent('Чемпионства');
+    expect(screen.getByText('Любитель')).toHaveClass('profile-identity__level');
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toHaveClass('sheet-card');
+    expect(screen.getByRole('dialog', { name: 'Профиль игрока' }).firstElementChild).toHaveClass(
+      'sheet-grabber',
+    );
     expect(
       screen
         .getByRole('heading', { name: 'Профиль игрока' })
         .parentElement?.querySelector(':scope > button[aria-label="Закрыть"]'),
     ).toBeInTheDocument();
+  });
+
+  it('hides the achievements section when the player has no completed achievements', async () => {
+    vi.mocked(api.fetchUserProfile).mockResolvedValue({
+      ...publicProfile,
+      achievements: [],
+    });
+
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+      onClose: () => {},
+    });
+
+    expect(await screen.findByText('Иван Петров')).toBeInTheDocument();
+    expect(screen.queryByText(/Выполненные задания/)).not.toBeInTheDocument();
   });
 
   it('clicking "Написать в личку" calls findOrCreateDM and closes the sheet', async () => {

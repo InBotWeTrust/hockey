@@ -2128,13 +2128,26 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       [userA, stickId],
     );
     expect(inventory.rows[0]).toEqual({ charges_available: 1, charges_reserved: 0 });
-    const storedShot = await pool.query<{ input_payload: { puckSpeedPerMs: number } }>(
-      `select input_payload
+    const storedShot = await pool.query<{
+      input_payload: { puckSpeedPerMs: number };
+      server_result: 'goal' | 'save' | 'miss';
+    }>(
+      `select input_payload, server_result
          from shot_session
         where amateur_duel_match_id = $1 and user_id = $2 and shot_index = 1`,
       [matchId, userA],
     );
     expect(storedShot.rows[0]?.input_payload.puckSpeedPerMs).toBe(1.4);
+    const officialStats = await pool.query<{ shots: number; goals: number }>(
+      `select lifetime_shots_total as shots, lifetime_goals_total as goals
+         from users
+        where id = $1`,
+      [userA],
+    );
+    expect(officialStats.rows[0]).toEqual({
+      shots: 1,
+      goals: storedShot.rows[0]?.server_result === 'goal' ? 1 : 0,
+    });
     const consumed = shot
       .json()
       .match.me.inventory_report.flatMap(
