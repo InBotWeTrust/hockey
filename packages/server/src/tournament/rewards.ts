@@ -167,6 +167,17 @@ export async function grantTournamentStageRewardsWithClient(
                 s.winner_participant_id, r.number as round_number
            from tournament_playoff_series s join tournament_round r on r.id = s.round_id
           where s.tournament_id = $1 and s.status = 'completed'
+            and (
+              s.kind = 'third_place'
+              or r.number = (
+                select max(final_round.number)
+                  from tournament_playoff_series final_series
+                  join tournament_round final_round on final_round.id = final_series.round_id
+                 where final_series.tournament_id = $1
+                   and final_series.kind = 'championship'
+                   and final_series.status <> 'cancelled'
+              )
+            )
           order by r.number desc`,
       [tournamentId],
     );
@@ -257,9 +268,19 @@ export async function grantPlayoffRewardsIfComplete(
   }>(
     `select coalesce((revision.rules_snapshot->'config'->>'playoffSize')::int, 0) as playoff_size,
             exists (
-              select 1 from tournament_playoff_series series
+              select 1
+                from tournament_playoff_series series
+                join tournament_round round on round.id = series.round_id
                where series.tournament_id = tournament.id
                  and series.kind = 'championship' and series.status = 'completed'
+                 and round.number = (
+                   select max(final_round.number)
+                     from tournament_playoff_series final_series
+                     join tournament_round final_round on final_round.id = final_series.round_id
+                    where final_series.tournament_id = tournament.id
+                      and final_series.kind = 'championship'
+                      and final_series.status <> 'cancelled'
+                 )
             ) as final_complete,
             exists (
               select 1 from tournament_playoff_series series

@@ -324,8 +324,11 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             (left, right) => (left.gameNumber ?? 0) - (right.gameNumber ?? 0),
           );
           const first = ordered[0]!;
+          const allSeriesGames = props.fixtures.filter(
+            (fixture) => fixture.seriesId === first.seriesId,
+          );
           const score = seriesScore(
-            ordered,
+            allSeriesGames,
             first.home?.userId ?? null,
             first.away?.userId ?? null,
           );

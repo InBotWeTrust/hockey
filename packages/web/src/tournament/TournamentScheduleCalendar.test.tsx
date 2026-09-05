@@ -846,4 +846,57 @@ describe('TournamentScheduleCalendar', () => {
     expect(series).toHaveTextContent('1:1');
     expect(series).toHaveTextContent('Aleksandra');
   });
+
+  it('carries the accumulated series score into the next game day', () => {
+    const games: TournamentFixture[] = [1, 2, 3, 4, 5].map((gameNumber) => ({
+      ...fixture(gameNumber, true),
+      id: `series-game-${gameNumber}`,
+      stage: 'playoff',
+      roundNumber: 2,
+      scheduledStartsAt: null,
+      seriesId: 'series-1',
+      gameNumber,
+      seriesWinsRequired: 4,
+      gameDay: {
+        id: gameNumber < 5 ? 'day-1' : 'day-2',
+        dayNumber: gameNumber < 5 ? 1 : 2,
+        localDate: gameNumber < 5 ? '2030-09-04' : '2030-09-05',
+        startsAt:
+          gameNumber < 5 ? '2030-09-04T10:00:00.000Z' : '2030-09-05T10:00:00.000Z',
+      },
+      home: { userId: 'me', name: 'Sirius' },
+      away: { userId: 'opponent', name: 'Egor' },
+      status: gameNumber < 5 ? 'settled' : 'scheduled',
+      winnerUserId:
+        gameNumber === 1 || gameNumber === 3
+          ? 'me'
+          : gameNumber === 2 || gameNumber === 4
+            ? 'opponent'
+            : null,
+      score: gameNumber < 5 ? { home: 55, away: 50 } : { home: 0, away: 0 },
+    }));
+
+    render(
+      <TournamentScheduleCalendar
+        fixtures={games}
+        fixtureDays={[
+          { localDate: '2030-09-04', hasGames: true, hasMyGame: true, hasPlayoff: true },
+          { localDate: '2030-09-05', hasGames: true, hasMyGame: true, hasPlayoff: true },
+        ]}
+        selectedDate="2030-09-05"
+        matchdays={[]}
+        regularSource="classic"
+        tournamentStatus="playoff"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-10T23:59:59.000Z"
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /открыть серию/i })).toHaveTextContent('2:2');
+  });
 });

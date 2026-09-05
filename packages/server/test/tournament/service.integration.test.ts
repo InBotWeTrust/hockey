@@ -52,7 +52,10 @@ import {
 } from '../../src/tournament/communications.js';
 import { enqueueTournamentPush } from '../../src/push/tournament.js';
 import { backfillPlayoffScheduling } from '../../src/tournament/playoffScheduleBackfill.js';
-import { grantTournamentStageRewards } from '../../src/tournament/rewards.js';
+import {
+  grantPlayoffRewardsIfComplete,
+  grantTournamentStageRewards,
+} from '../../src/tournament/rewards.js';
 import {
   createTestPool,
   getTestUrls,
@@ -3248,6 +3251,77 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       delivery_count: String(PLAYER_IDS.length),
       playoff_reward_count: '2',
     });
+  });
+
+  it('does not complete a tournament while the actual final is still active', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'active-final-completion-regression',
+      0,
+      playoffTournamentRules(4, {
+        stageRewards: { regular: [], playoff: [] },
+      }),
+    );
+    const participants = [];
+    for (const playerId of PLAYER_IDS) {
+      participants.push(await applyToTournament(pool, tournament.id, playerId));
+    }
+    await pool.query(`update tournament set status = 'playoff' where id = $1`, [tournament.id]);
+    const rounds = await pool.query<{ id: string; stage: string }>(
+      `insert into tournament_round
+         (tournament_id, stage, number, name, starts_at, ends_at, status)
+       values
+         ($1, 'playoff', 1, 'Полуфинал', now(), now() + interval '1 hour', 'settled'),
+         ($1, 'playoff', 2, 'Финал', now(), now() + interval '1 hour', 'open'),
+         ($1, 'third_place', 2, 'За третье место', now(), now() + interval '1 hour', 'settled')
+       returning id, stage`,
+      [tournament.id],
+    );
+    const semifinalRoundId = rounds.rows.find(
+      (round) => round.stage === 'playoff',
+    )!.id;
+    const finalRoundId = rounds.rows.filter((round) => round.stage === 'playoff')[1]!.id;
+    const bronzeRoundId = rounds.rows.find((round) => round.stage === 'third_place')!.id;
+    const participantIds = participants.map((participant) => participant.participantId);
+    await pool.query(
+      `insert into tournament_playoff_series
+         (tournament_id, round_id, bracket_position, kind,
+          higher_seed_participant_id, lower_seed_participant_id, winner_participant_id,
+          wins_required, higher_seed_wins, lower_seed_wins, home_sequence, status)
+       values
+         ($1, $2, 1, 'championship', $5, $6, $5, 1, 1, 0, '["H"]', 'completed'),
+         ($1, $3, 1, 'championship', $5, $7, null, 4, 2, 2, '["H"]', 'active'),
+         ($1, $4, 1, 'third_place', $6, $8, $6, 1, 1, 0, '["H"]', 'completed')`,
+      [
+        tournament.id,
+        semifinalRoundId,
+        finalRoundId,
+        bronzeRoundId,
+        participantIds[0],
+        participantIds[1],
+        participantIds[2],
+        participantIds[3],
+      ],
+    );
+
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      expect(await grantPlayoffRewardsIfComplete(client, tournament.id)).toEqual({
+        completed: false,
+        granted: 0,
+      });
+      await client.query('commit');
+    } finally {
+      client.release();
+    }
+
+    const state = await pool.query<{ status: string; completed_at: Date | null }>(
+      `select status, completed_at from tournament where id = $1`,
+      [tournament.id],
+    );
+    expect(state.rows[0]).toEqual({ status: 'playoff', completed_at: null });
   });
 
   it('allows parallel tournament duels for the same participant pair', async () => {
