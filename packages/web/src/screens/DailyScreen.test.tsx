@@ -7361,6 +7361,7 @@ describe('DailyScreen', () => {
     ).toHaveTextContent('3:1');
     expect(within(dialog).getByText('Формат:')).toBeInTheDocument();
     expect(within(dialog).getByText('Экспресс')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Очки за дуэль: +3')).toHaveTextContent('+3');
     expect(within(dialog).queryByText('Соперник')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Начало')).not.toBeInTheDocument();
     expect(within(dialog).getByText('+3')).toBeInTheDocument();
