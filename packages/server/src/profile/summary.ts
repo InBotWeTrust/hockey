@@ -39,16 +39,32 @@ export async function fetchTrophySummary(db: Queryable, userId: string): Promise
     tournament_podiums: number;
     completed_challenges: number;
   }>(
-    `with completed_playoff_finals as (
+    `with playoff_finals as (
        select distinct on (series.tournament_id)
               series.tournament_id,
               series.higher_seed_participant_id,
               series.lower_seed_participant_id,
-              series.winner_participant_id
+              series.winner_participant_id,
+              series.status
          from tournament_playoff_series series
          join tournament_round round_record on round_record.id = series.round_id
-        where series.kind = 'championship' and series.status = 'completed'
-        order by series.tournament_id, round_record.number desc
+        where series.kind = 'championship'
+          and round_record.stage = 'playoff'
+          and round_record.number = (
+            select max(final_round.number)
+              from tournament_round final_round
+             where final_round.tournament_id = series.tournament_id
+               and final_round.stage = 'playoff'
+          )
+        order by series.tournament_id, series.bracket_position, series.id
+     ),
+     completed_playoff_finals as (
+       select tournament_id,
+              higher_seed_participant_id,
+              lower_seed_participant_id,
+              winner_participant_id
+         from playoff_finals
+        where status = 'completed'
      ),
      playoff_podiums as (
        select final.tournament_id,
