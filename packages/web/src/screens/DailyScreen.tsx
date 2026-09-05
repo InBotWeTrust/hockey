@@ -7464,6 +7464,12 @@ function duelBaseEquipmentTitle(kind: InventoryEquipmentKind): string {
   return 'Без питания';
 }
 
+function duelBaseEquipmentDrawback(kind: InventoryEquipmentKind): string {
+  if (kind === 'stick') return 'Шайба будет лететь медленно';
+  if (kind === 'skates') return 'Возможны спотыкания';
+  return 'Игрок будет уставать';
+}
+
 function duelEquipmentEmptyPurchaseLabel(kind: InventoryEquipmentKind): string {
   if (kind === 'stick') return 'Купленных клюшек пока нет';
   if (kind === 'skates') return 'Купленных коньков пока нет';
@@ -8810,16 +8816,32 @@ function ClassicRinkLoadoutHud({
   locked: boolean;
   onSelectKind: (kind: InventoryEquipmentKind) => void;
 }): JSX.Element {
+  const consumed = new Map(
+    state.current_period_inventory_consumption.map((item) => [item.id, item.charges]),
+  );
   return (
-    <div aria-label="Выбор инвентаря" style={{ display: 'flex', gap: 9 }}>
+    <div
+      aria-label="Выбор инвентаря"
+      style={{ display: 'flex', gap: 9, pointerEvents: locked ? 'none' : 'auto' }}
+    >
       {DUEL_INVENTORY_SLOTS.map((slot) => {
         const selectedId = selection[slot.kind] ?? null;
-        const item: ClassicTournamentInventoryItem | undefined = state.inventory_available.find(
-          (candidate) => candidate.kind === slot.kind && candidate.id === selectedId,
-        );
+        const item: ClassicTournamentInventoryItem | undefined =
+          state.loadout.items.find(
+            (candidate) => candidate.kind === slot.kind && candidate.id === selectedId,
+          ) ??
+          state.inventory_available.find(
+            (candidate) => candidate.kind === slot.kind && candidate.id === selectedId,
+          );
+        const remaining = item
+          ? Math.max(0, item.resourceAvailable - (consumed.get(item.id) ?? 0))
+          : 0;
+        const inventoryBadge = item
+          ? duelInventoryBadgeLabel(item.kind, remaining, item.resourceUnit)
+          : null;
         const title = item?.title ?? duelBaseEquipmentTitle(slot.kind);
         const status = item
-          ? formatInventoryResourceAmount(item.kind, item.resourceAvailable, item.resourceUnit)
+          ? formatInventoryResourceAmount(item.kind, remaining, item.resourceUnit)
           : 'базовый вариант';
         return (
           <button
@@ -8829,20 +8851,54 @@ function ClassicRinkLoadoutHud({
             disabled={locked}
             onClick={() => onSelectKind(slot.kind)}
             style={{
+              position: 'relative',
               width: 31,
               height: 31,
               padding: 0,
               borderRadius: 999,
-              overflow: 'hidden',
+              overflow: 'visible',
+              display: 'block',
               ...DUEL_INVENTORY_ICON_GLASS_STYLE,
               opacity: locked ? 0.7 : 1,
+              cursor: locked ? 'default' : 'pointer',
+              WebkitTapHighlightColor: 'transparent',
             }}
           >
             <img
               src={item?.imageUrl || placeholderArtworkForKind(slot.kind)}
               alt=""
-              style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                display: 'block',
+                borderRadius: 999,
+                objectFit: 'cover',
+              }}
             />
+            {inventoryBadge && (
+              <span
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  left: '50%',
+                  bottom: -16,
+                  minWidth: 'max-content',
+                  transform: 'translateX(-50%)',
+                  display: 'block',
+                  color: '#16233b',
+                  fontFamily: 'var(--font-ui)',
+                  fontSize: 9.5,
+                  fontWeight: 950,
+                  lineHeight: 1,
+                  letterSpacing: '0.01em',
+                  textShadow: '0 1px 0 rgba(255,255,255,0.72)',
+                }}
+              >
+                {inventoryBadge}
+              </span>
+            )}
           </button>
         );
       })}
@@ -8884,9 +8940,59 @@ function ClassicRinkLoadoutModal({
             type="button"
             className={`glass duel-equipment-option${selectedId === null ? ' duel-equipment-option--selected' : ''}`}
             onClick={() => onSelect(null)}
-            style={{ minHeight: 64, borderRadius: 16, padding: 10, textAlign: 'left' }}
+            aria-pressed={selectedId === null}
+            style={{
+              minHeight: 78,
+              borderRadius: 16,
+              padding: 10,
+              display: 'grid',
+              gridTemplateColumns: '56px minmax(0, 1fr) 22px',
+              alignItems: 'center',
+              gap: 10,
+              textAlign: 'left',
+              boxShadow: 'none',
+            }}
           >
-            {duelBaseEquipmentTitle(kind)}
+            <span
+              aria-hidden="true"
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 14,
+                overflow: 'hidden',
+                border: '1px solid rgba(255,255,255,0.78)',
+                background: 'rgba(255,255,255,0.28)',
+              }}
+            >
+              <img
+                src={placeholderArtworkForKind(kind)}
+                alt=""
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'block',
+                  objectFit: 'cover',
+                  filter: 'none',
+                  opacity: 1,
+                }}
+              />
+            </span>
+            <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
+              <strong style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}>
+                {duelBaseEquipmentTitle(kind)}
+              </strong>
+              <span
+                style={{
+                  color: 'rgba(15, 23, 42, 0.62)',
+                  fontSize: 12,
+                  fontWeight: 760,
+                  lineHeight: 1.25,
+                }}
+              >
+                {duelBaseEquipmentDrawback(kind)}
+              </span>
+            </span>
+            <DuelEquipmentSelectionRadio selected={selectedId === null} />
           </button>
           {items.map((item) => (
             <button
@@ -8894,13 +9000,65 @@ function ClassicRinkLoadoutModal({
               type="button"
               className={`glass duel-equipment-option${selectedId === item.id ? ' duel-equipment-option--selected' : ''}`}
               onClick={() => onSelect(item.id)}
-              style={{ minHeight: 64, borderRadius: 16, padding: 10, display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left' }}
+              aria-pressed={selectedId === item.id}
+              style={{
+                minHeight: 78,
+                borderRadius: 16,
+                padding: 10,
+                display: 'grid',
+                gridTemplateColumns: '56px minmax(0, 1fr) 22px',
+                alignItems: 'center',
+                gap: 10,
+                textAlign: 'left',
+                boxShadow: 'none',
+              }}
             >
-              <img src={item.imageUrl || placeholderArtworkForKind(kind)} alt="" style={{ width: 46, height: 46, borderRadius: 12, objectFit: 'cover' }} />
-              <span style={{ display: 'grid', gap: 3 }}>
-                <strong>{item.title}</strong>
-                <span>{formatInventoryResourceAmount(item.kind, item.resourceAvailable, item.resourceUnit)}</span>
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 14,
+                  overflow: 'hidden',
+                  border: '1px solid rgba(255,255,255,0.78)',
+                  background: 'rgba(255,255,255,0.28)',
+                }}
+              >
+                <img
+                  src={item.imageUrl || placeholderArtworkForKind(kind)}
+                  alt=""
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    display: 'block',
+                    objectFit: 'cover',
+                    filter: 'none',
+                    opacity: 1,
+                  }}
+                />
               </span>
+              <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
+                <strong
+                  style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}
+                >
+                  {item.title}
+                </strong>
+                <span
+                  style={{
+                    color: 'rgba(15, 23, 42, 0.62)',
+                    fontSize: 12,
+                    fontWeight: 760,
+                    lineHeight: 1.25,
+                  }}
+                >
+                  {formatInventoryResourceAmount(
+                    item.kind,
+                    item.resourceAvailable,
+                    item.resourceUnit,
+                  )}
+                </span>
+              </span>
+              <DuelEquipmentSelectionRadio selected={selectedId === item.id} />
             </button>
           ))}
         </div>
@@ -8944,7 +9102,7 @@ function ClassicTournamentPlayView({
   }, [refresh, tournamentId]);
 
   useEffect(() => {
-    if (!data || !data.loadout_editable) return;
+    if (!data) return;
     setSelectedLoadout(classicLoadoutSelection(data));
   }, [data?.current_period, data?.loadout, data?.loadout_editable, data?.session_id]);
 
