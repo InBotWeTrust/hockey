@@ -67,8 +67,12 @@ function rewardPartItems(
 ): Array<{ tone: RewardTone; text: string }> {
   const prefix = opts.plus === true ? '+' : '';
   return [
-    reward.coins > 0 ? { tone: 'coin' as const, text: `${prefix}${numberText(reward.coins)}` } : null,
-    reward.stars > 0 ? { tone: 'star' as const, text: `${prefix}${numberText(reward.stars)}` } : null,
+    reward.coins > 0
+      ? { tone: 'coin' as const, text: `${prefix}${numberText(reward.coins)}` }
+      : null,
+    reward.stars > 0
+      ? { tone: 'star' as const, text: `${prefix}${numberText(reward.stars)}` }
+      : null,
     reward.experience > 0
       ? { tone: 'experience' as const, text: `${prefix}${numberText(reward.experience)}` }
       : null,
@@ -121,9 +125,15 @@ function RewardChip({
   );
 }
 
-export function WeeklyChallengeScreen(): JSX.Element {
+export function WeeklyChallengeScreen({
+  profileContext = false,
+}: {
+  profileContext?: boolean;
+}): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const backRoute = profileContext ? '/profile' : '/sections';
+  const achievementsRoute = profileContext ? '/profile/achievements' : '/achievements';
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [claimedReward, setClaimedReward] = useState<{
     title: string;
@@ -196,7 +206,7 @@ export function WeeklyChallengeScreen(): JSX.Element {
           <button
             type="button"
             className="icon-btn"
-            onClick={() => navigate('/sections')}
+            onClick={() => navigate(backRoute)}
             aria-label="Назад"
             title="Назад"
             style={{
@@ -230,7 +240,7 @@ export function WeeklyChallengeScreen(): JSX.Element {
           activeTab="challenges"
           ariaLabel="Разделы заданий"
           onChange={(tab) => {
-            if (tab === 'achievements') navigate('/achievements');
+            if (tab === 'achievements') navigate(achievementsRoute);
           }}
         />
 

@@ -731,6 +731,15 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
       id: userB,
       displayName: 'Bob',
       competitionLevel: 'amateur',
+      currencyBalance: expect.any(Number),
+      starBalance: expect.any(Number),
+      experienceBalance: expect.any(Number),
+      trophySummary: {
+        regularSeasonWins: 0,
+        tournamentChampionships: 0,
+        tournamentPodiums: 0,
+        completedChallenges: 0,
+      },
       stats: {
         shots: 30,
         goals: 10,

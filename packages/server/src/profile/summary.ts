@@ -25,6 +25,72 @@ export interface ProfileProgressDTO {
   unclaimedAchievementsCount: number;
 }
 
+export interface TrophySummaryDTO {
+  regularSeasonWins: number;
+  tournamentChampionships: number;
+  tournamentPodiums: number;
+  completedChallenges: number;
+}
+
+export async function fetchTrophySummary(db: Queryable, userId: string): Promise<TrophySummaryDTO> {
+  const { rows } = await db.query<{
+    regular_season_wins: number;
+    tournament_championships: number;
+    tournament_podiums: number;
+    completed_challenges: number;
+  }>(
+    `with completed_playoff_finals as (
+       select distinct on (series.tournament_id)
+              series.tournament_id,
+              series.higher_seed_participant_id,
+              series.lower_seed_participant_id,
+              series.winner_participant_id
+         from tournament_playoff_series series
+         join tournament_round round_record on round_record.id = series.round_id
+        where series.kind = 'championship' and series.status = 'completed'
+        order by series.tournament_id, round_record.number desc
+     ),
+     playoff_podiums as (
+       select final.tournament_id,
+              case
+                when final.winner_participant_id = final.higher_seed_participant_id
+                  then final.lower_seed_participant_id
+                else final.higher_seed_participant_id
+              end as participant_id
+         from completed_playoff_finals final
+       union all
+       select series.tournament_id, series.winner_participant_id
+         from tournament_playoff_series series
+        where series.kind = 'third_place' and series.status = 'completed'
+     )
+     select
+       (select count(*)::int
+          from tournament_standing standing
+          join tournament_participant participant on participant.id = standing.participant_id
+          join tournament tournament_record on tournament_record.id = standing.tournament_id
+         where participant.user_id = $1 and standing.rank = 1
+           and tournament_record.status = 'completed') as regular_season_wins,
+       (select count(distinct final.tournament_id)::int
+          from completed_playoff_finals final
+          join tournament_participant winner on winner.id = final.winner_participant_id
+         where winner.user_id = $1) as tournament_championships,
+       (select count(distinct podium.tournament_id)::int
+          from playoff_podiums podium
+          join tournament_participant participant on participant.id = podium.participant_id
+         where participant.user_id = $1) as tournament_podiums,
+       (select count(*)::int from weekly_challenge_reward_claims where user_id = $1)
+         as completed_challenges`,
+    [userId],
+  );
+  const row = rows[0]!;
+  return {
+    regularSeasonWins: Number(row.regular_season_wins),
+    tournamentChampionships: Number(row.tournament_championships),
+    tournamentPodiums: Number(row.tournament_podiums),
+    completedChallenges: Number(row.completed_challenges),
+  };
+}
+
 export interface ProfileProgressRow {
   id: string;
   level: number | string;
@@ -66,6 +132,7 @@ export async function fetchPlayStreakStats(
        select distinct (created_at at time zone $2)::date as day
          from shot_session
         where user_id = $1
+          and mode in ('daily', 'amateur_duel', 'tournament_classic')
      ),
      params as (
        select (now() at time zone $2)::date as today

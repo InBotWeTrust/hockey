@@ -468,6 +468,15 @@ export interface UserPublicProfileDTO {
   competitionLevel: CompetitionLevel;
   stats: ProfileStats;
   achievements: ProfileAchievement[];
+  currencyBalance?: number;
+  starBalance?: number;
+  experienceBalance?: number;
+  trophySummary?: {
+    regularSeasonWins: number;
+    tournamentChampionships: number;
+    tournamentPodiums: number;
+    completedChallenges: number;
+  };
   createdAt: string; // ISO
   lastSeenAt: string | null; // ISO; null = never recorded
 }

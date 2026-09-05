@@ -54,6 +54,7 @@ export function AccessibleModal({
   backdropStyle,
   backdropTestId,
   headerAction,
+  beforeHeader,
   children,
 }: {
   title: string;
@@ -72,6 +73,7 @@ export function AccessibleModal({
   backdropStyle?: CSSProperties;
   backdropTestId?: string;
   headerAction?: ReactNode;
+  beforeHeader?: ReactNode;
   children: ReactNode;
 }): JSX.Element {
   const reduceMotion = useReducedMotion();
@@ -224,6 +226,7 @@ export function AccessibleModal({
               ? {}
               : { onDragEnd: (_event, info) => onDragEnd(info.offset.y, info.velocity.y) })}
           >
+            {beforeHeader}
             {headerAction === undefined ? (
               <h2 id={titleId} className="modal-title">
                 {title}

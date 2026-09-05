@@ -22,6 +22,7 @@ import { invalidateUnreadCache } from '../../chat/cache.js';
 import { publishChatRead, publishMessageNew } from '../../chat/events.js';
 import { findOrCreateDM, markChatAsRead, sendMessage } from '../../chat/service.js';
 import { evaluateDuelSettledAchievements } from '../../achievements/engine.js';
+import { grantStatAchievements } from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
 import { enqueueDuelPush } from '../../push/duel.js';
 import { appendEvent } from '../eventLog.js';
@@ -5247,6 +5248,25 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             match.game_core_version,
           ],
         );
+
+        const updatedUser = await client.query<{
+          lifetime_shots_total: number;
+          lifetime_goals_total: number;
+          level: number;
+        }>(
+          `update users
+              set lifetime_shots_total = lifetime_shots_total + 1,
+                  lifetime_goals_total = lifetime_goals_total + $2
+            where id = $1
+          returning lifetime_shots_total, lifetime_goals_total, level`,
+          [req.user.id, serverResult === 'goal' ? 1 : 0],
+        );
+        const user = updatedUser.rows[0]!;
+        await grantStatAchievements(client, req.user.id, {
+          lifetimeShots: Number(user.lifetime_shots_total),
+          lifetimeGoals: Number(user.lifetime_goals_total),
+          level: Number(user.level),
+        });
 
         if (body.claimed_result !== serverResult) {
           await appendEvent(client, req.user.id, 'shot_mismatch', {

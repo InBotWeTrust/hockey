@@ -16,7 +16,7 @@ import {
   MessageNotFoundError,
   PinLimitExceededError,
 } from './errors.js';
-import { buildProfileProgress } from '../profile/summary.js';
+import { buildProfileProgress, fetchTrophySummary } from '../profile/summary.js';
 
 export const PIN_LIMIT = 3;
 
@@ -409,18 +409,26 @@ export async function getUserPublicProfile(
     lifetime_goals_total: number;
     created_at: Date;
     last_seen_at: Date | null;
+    currency_balance: number;
+    star_balance: number;
+    experience_balance: number;
   }>(
-    `select id, display_name, avatar_url, level, timezone,
+    `select u.id, u.display_name, u.avatar_url, u.level, u.timezone,
             lifetime_shots_total, lifetime_goals_total,
-            created_at, last_seen_at
-       from users
-      where id = $1
-        and account_kind = 'player'`,
+            u.created_at, u.last_seen_at,
+            coalesce(uca.balance, 0)::int as currency_balance,
+            u.xp::int as star_balance,
+            u.experience::int as experience_balance
+       from users u
+       left join user_currency_account uca on uca.user_id = u.id
+      where u.id = $1
+        and u.account_kind = 'player'`,
     [userId],
   );
   if (r.rowCount === 0) return null;
   const row = r.rows[0]!;
   const profileProgress = await buildProfileProgress(pool, row);
+  const trophySummary = await fetchTrophySummary(pool, row.id);
 
   return {
     id: row.id,
@@ -429,6 +437,10 @@ export async function getUserPublicProfile(
     competitionLevel: profileProgress.competitionLevel,
     stats: profileProgress.stats,
     achievements: profileProgress.achievements,
+    currencyBalance: Number(row.currency_balance),
+    starBalance: Number(row.star_balance),
+    experienceBalance: Number(row.experience_balance),
+    trophySummary,
     createdAt: row.created_at.toISOString(),
     lastSeenAt: row.last_seen_at !== null ? row.last_seen_at.toISOString() : null,
   };

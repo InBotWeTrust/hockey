@@ -262,7 +262,7 @@ export function InventoryScreen(): JSX.Element {
             className="screen-title-on-arena"
             style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}
           >
-            Магазин
+            Инвентарь
           </h1>
           <ShopBalanceBar tokens={tokens} stars={inventory?.balances.stars ?? 0} />
         </div>
@@ -391,7 +391,14 @@ function GoodsTab({
               {KIND_META[kind].title}
             </div>
             <div style={{ display: 'grid', gap: 18 }}>
-              <div className="inventory-shop-grid">
+              <div
+                className="inventory-shop-grid"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(0, 1fr)',
+                  gap: 8,
+                }}
+              >
                 {items.map((item) => {
                   const canBuy = tokens >= item.currencyPrice;
                   return (
@@ -612,7 +619,13 @@ function InventoryProductCard({
       className="glass inventory-product-card"
       style={{
         minWidth: 0,
+        minHeight: 116,
+        padding: 10,
+        borderRadius: 22,
         display: 'grid',
+        gridTemplateColumns: '94px minmax(0, 1fr) auto',
+        alignItems: 'center',
+        gap: 12,
         overflow: 'hidden',
       }}
     >
@@ -622,6 +635,7 @@ function InventoryProductCard({
         aria-label={`Подробнее о ${item.title}`}
         style={{
           minWidth: 0,
+          height: 94,
           border: '1px solid rgba(255,255,255,0.78)',
           padding: 0,
           overflow: 'hidden',
@@ -707,10 +721,9 @@ function InventoryProductCard({
             : `Не хватает монет на ${item.title}`
         }
         style={{
-          minWidth: 0,
-          width: '100%',
-          minHeight: 34,
-          padding: '0 10px',
+        minWidth: 86,
+        minHeight: 38,
+        padding: '0 12px',
           fontSize: 12,
           opacity: !canBuy ? 0.5 : undefined,
           cursor: !canBuy ? 'not-allowed' : undefined,

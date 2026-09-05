@@ -9,7 +9,7 @@ import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/tes
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
-const MIGRATION_NAME = '100_align_tournament_classic_puck_speed.sql';
+const MIGRATION_NAME = '101_align_tournament_classic_puck_speed.sql';
 
 async function createMigrationsDirBefore(cutoff: string): Promise<string> {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'hockey-migrations-before-100-'));

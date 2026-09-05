@@ -182,7 +182,7 @@ describe('InventoryScreen', () => {
 
     renderInventory();
 
-    expect(await screen.findByText('Магазин')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Инвентарь' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Назад' })).toBeInTheDocument();
     expect(await screen.findByLabelText('Монеты: 1 000')).toBeInTheDocument();
     expect(screen.getByLabelText('Звёзды: 2')).toBeInTheDocument();

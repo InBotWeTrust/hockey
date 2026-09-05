@@ -122,7 +122,9 @@ export async function buildApp(options: BuildAppOptions = {}) {
     mediaAccessSecret: config.JWT_SECRET,
   });
   await app.register(achievementRoutes);
-  await app.register(feedbackRoutes);
+  await app.register(feedbackRoutes, {
+    ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
+  });
   await app.register(meRoutes);
   await app.register(arenaRoutes);
   await app.register(bonusGameRoutes, { bonusSeedSecret: config.DAILY_SEED_SECRET });
