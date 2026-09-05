@@ -5854,6 +5854,7 @@ describe('DailyScreen', () => {
     const tournamentMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
       source: 'tournament',
+      rules: { ...settledDuelMatch.rules, totalPeriods: 2 },
       winner_user_id: 'u2',
       outcome: 'opponent_win',
       me: { ...settledDuelMatch.me, goals: 1, result_points: 0 },
@@ -5958,6 +5959,16 @@ describe('DailyScreen', () => {
     expect(within(dialog).queryByText('Очки')).not.toBeInTheDocument();
     expect(within(dialog).getByText('Следующая игра через:')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('До следующей игры')).toHaveTextContent(/0[34]:\d{2}/);
+    const scrollRegion = dialog.querySelector('.duel-result-card__scroll');
+    const footer = dialog.querySelector('.duel-result-card__footer');
+    const periods = dialog.querySelector('.duel-result-card__periods');
+    expect(scrollRegion).toHaveStyle({ overflowY: 'auto' });
+    expect(periods).toHaveStyle({ overflow: 'visible' });
+    expect(periods).not.toHaveStyle({ maxHeight: 'min(38dvh, 330px)' });
+    expect(footer).toContainElement(within(dialog).getByRole('button', { name: 'Понятно' }));
+    expect(scrollRegion).not.toContainElement(
+      within(dialog).getByRole('button', { name: 'Понятно' }),
+    );
   });
 
   it('opens the next tournament game when its readiness window becomes available', async () => {

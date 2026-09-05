@@ -6070,249 +6070,253 @@ function DuelResultCard({
         flexDirection: 'column',
       }}
     >
-      {compact ? (
-        <>
-          <div className="duel-result-card__compact-meta">
-            <DuelResultCompactFact label="Очки" value={pointsText} />
-            <DuelResultCompactFact label="Начало" value={formatShortDateTime(match.starts_at)} />
-          </div>
-          <section className="duel-result-card__compact-summary">
-            <div className="section-label" style={{ margin: 0, padding: 0 }}>
-              Итоговый результат
+      <div
+        className="duel-result-card__scroll"
+        style={{
+          minHeight: 0,
+          flex: '1 1 auto',
+          overflowY: 'auto',
+          overscrollBehavior: 'contain',
+          paddingRight: 3,
+        }}
+      >
+        {compact ? (
+          <>
+            <div className="duel-result-card__compact-meta">
+              <DuelResultCompactFact label="Очки" value={pointsText} />
+              <DuelResultCompactFact label="Начало" value={formatShortDateTime(match.starts_at)} />
             </div>
-            <DuelResultCompactStatsTable
-              label="Итоговый результат"
-              me={{
-                goals: match.me.goals,
-                shots: match.me.shots_taken,
-                durationMs: match.me.active_duration_ms,
-              }}
-              opponentName={match.opponent.display_name || 'Соперник'}
-              opponent={{
-                goals: match.opponent.goals,
-                shots: match.opponent.shots_taken,
-                durationMs: match.opponent.active_duration_ms,
-              }}
-            />
-          </section>
-          {(tiebreaker || match.rules.winStarReward > 0) && (
-            <div className="duel-result-card__compact-details">
-              {tiebreaker && (
-                <>
-                  <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
-                  <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
-                </>
-              )}
-              {match.rules.winStarReward > 0 && (
-                <DuelResultDetailRow
-                  label="Звёзды за победу"
-                  value={`+${match.rules.winStarReward}`}
-                  tone="star"
-                />
-              )}
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <div className="section-label" style={{ margin: 0, padding: 0 }}>
-            Результат
-          </div>
-          <div
-            style={{
-              marginTop: 8,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 12,
-            }}
-          >
-            <h2
-              className="modal-title"
-              style={{
-                margin: 0,
-                fontSize: title.length > 30 ? 16 : title.length > 22 ? 19 : 24,
-                lineHeight: 1.08,
-                letterSpacing: '-0.02em',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {title}
-            </h2>
-            <span
-              aria-hidden="true"
-              style={{
-                width: 16,
-                height: 16,
-                borderRadius: 999,
-                background: resultColor,
-                boxShadow: `0 0 0 5px ${resultColor}24, 0 0 18px ${resultColor}66`,
-                flexShrink: 0,
-              }}
-            />
-          </div>
-          {seriesResultArtwork !== null && (
-            <img
-              className="tournament-duel-result__artwork"
-              src={seriesResultArtwork.src}
-              alt={seriesResultArtwork.alt}
-            />
-          )}
-          <div
-            className="tournament-duel-result__matchup"
-            aria-label={`Итог игры: ${match.me.display_name} — ${match.opponent.display_name}, ${match.me.goals}:${match.opponent.goals}`}
-          >
-            <div className="tournament-duel-result__matchup-main">
-              <div className="tournament-duel-result__player">
-                <UserAvatar
-                  avatarUrl={match.me.avatar_url}
-                  name={match.me.display_name}
-                  size={30}
-                  fontSize={12}
-                />
-                <span className="tournament-duel-result__player-name">
-                  {match.me.display_name || 'Игрок'}
-                </span>
-                {mySeed !== null && (
-                  <span
-                    className="tournament-duel-result__seed"
-                    aria-label={`Посев ${match.me.display_name}: ${mySeed}`}
-                  >
-                    ({mySeed})
-                  </span>
-                )}
+            <section className="duel-result-card__compact-summary">
+              <div className="section-label" style={{ margin: 0, padding: 0 }}>
+                Итоговый результат
               </div>
-              <span className="tournament-duel-result__separator" aria-hidden="true">
-                —
-              </span>
-              <div className="tournament-duel-result__player">
-                <UserAvatar
-                  avatarUrl={match.opponent.avatar_url}
-                  name={match.opponent.display_name}
-                  size={30}
-                  fontSize={12}
-                />
-                <span className="tournament-duel-result__player-name">
-                  {match.opponent.display_name || 'Игрок'}
-                </span>
-                {opponentSeed !== null && (
-                  <span
-                    className="tournament-duel-result__seed"
-                    aria-label={`Посев ${match.opponent.display_name}: ${opponentSeed}`}
-                  >
-                    ({opponentSeed})
-                  </span>
-                )}
-              </div>
-              <strong className="tournament-duel-result__game-score">
-                {match.me.goals}:{match.opponent.goals}
-              </strong>
-            </div>
-            <div className="tournament-duel-result__meta">
-              <span>
-                <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
-              </span>
-              {series !== null && series.winsRequired > 1 && (
-                <span>
-                  <strong>Счёт в серии:</strong>{' '}
-                  <b aria-label={`Счёт в серии ${series.myWins}:${series.opponentWins}`}>
-                    {series.myWins}:{series.opponentWins}
-                  </b>
-                </span>
-              )}
-            </div>
-          </div>
-          {hasSupplementalDetails && (
-            <div
-              style={{
-                marginTop: 10,
-                display: 'grid',
-                gap: 8,
-              }}
-            >
-            {tiebreaker && (
-              <>
-                <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
-                <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
-              </>
-            )}
-            {match.rules.winStarReward > 0 && (
-              <DuelResultDetailRow
-                label="Звёзды за победу"
-                value={`+${match.rules.winStarReward}`}
-                tone="star"
-              />
-            )}
-            {match.source !== 'tournament' && points > 0 && (
-              <DuelResultDetailRow label="Очки" value={pointsText} />
-            )}
-            </div>
-          )}
-        </>
-      )}
-      <DuelInventoryUsageSummary
-        match={match}
-        title={compact ? 'Расход инвентаря' : 'Общий расход инвентаря'}
-        label="Общий расход инвентаря"
-        compact={compact}
-        style={{ marginTop: compact ? 10 : 16 }}
-      />
-      {hasMultiplePeriods && (
-        <div
-          style={{
-            marginTop: compact ? 12 : 16,
-            minHeight: 0,
-            flex: '1 1 auto',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-        >
-          <div className="section-label" style={{ margin: 0, padding: 0 }}>
-            Периоды
-          </div>
-          {hasPeriodDetails ? (
-            <div
-              style={{
-                minHeight: 0,
-                flex: '1 1 auto',
-                maxHeight: 'min(38dvh, 330px)',
-                overflowY: 'auto',
-                paddingRight: 2,
-              }}
-            >
-              <DuelResultPeriodComparison
-                key={match.id}
-                match={match}
-                totalPeriods={match.rules.totalPeriods}
-                mePeriods={mePeriods}
-                opponentPeriods={opponentPeriods}
+              <DuelResultCompactStatsTable
+                label="Итоговый результат"
+                me={{
+                  goals: match.me.goals,
+                  shots: match.me.shots_taken,
+                  durationMs: match.me.active_duration_ms,
+                }}
                 opponentName={match.opponent.display_name || 'Соперник'}
-                compact={compact}
+                opponent={{
+                  goals: match.opponent.goals,
+                  shots: match.opponent.shots_taken,
+                  durationMs: match.opponent.active_duration_ms,
+                }}
               />
+            </section>
+            {(tiebreaker || match.rules.winStarReward > 0) && (
+              <div className="duel-result-card__compact-details">
+                {tiebreaker && (
+                  <>
+                    <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
+                    <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
+                  </>
+                )}
+                {match.rules.winStarReward > 0 && (
+                  <DuelResultDetailRow
+                    label="Звёзды за победу"
+                    value={`+${match.rules.winStarReward}`}
+                    tone="star"
+                  />
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="section-label" style={{ margin: 0, padding: 0 }}>
+              Результат
             </div>
-          ) : (
             <div
               style={{
                 marginTop: 8,
-                borderRadius: 16,
-                padding: '12px 14px',
-                background: 'rgba(255,255,255,0.42)',
-                border: '1px solid rgba(255,255,255,0.62)',
-                color: 'rgba(15, 23, 42, 0.58)',
-                fontSize: 12,
-                fontWeight: 750,
-                lineHeight: 1.35,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
               }}
             >
-              {isLoadingDetails
-                ? 'Загружаем статистику периодов...'
-                : 'Подробная статистика периодов пока недоступна.'}
+              <h2
+                className="modal-title"
+                style={{
+                  margin: 0,
+                  fontSize: title.length > 30 ? 16 : title.length > 22 ? 19 : 24,
+                  lineHeight: 1.08,
+                  letterSpacing: '-0.02em',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {title}
+              </h2>
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: 999,
+                  background: resultColor,
+                  boxShadow: `0 0 0 5px ${resultColor}24, 0 0 18px ${resultColor}66`,
+                  flexShrink: 0,
+                }}
+              />
             </div>
-          )}
-        </div>
-      )}
-      {footer}
+            {seriesResultArtwork !== null && (
+              <img
+                className="tournament-duel-result__artwork"
+                src={seriesResultArtwork.src}
+                alt={seriesResultArtwork.alt}
+              />
+            )}
+            <div
+              className="tournament-duel-result__matchup"
+              aria-label={`Итог игры: ${match.me.display_name} — ${match.opponent.display_name}, ${match.me.goals}:${match.opponent.goals}`}
+            >
+              <div className="tournament-duel-result__matchup-main">
+                <div className="tournament-duel-result__player">
+                  <UserAvatar
+                    avatarUrl={match.me.avatar_url}
+                    name={match.me.display_name}
+                    size={30}
+                    fontSize={12}
+                  />
+                  <span className="tournament-duel-result__player-name">
+                    {match.me.display_name || 'Игрок'}
+                  </span>
+                  {mySeed !== null && (
+                    <span
+                      className="tournament-duel-result__seed"
+                      aria-label={`Посев ${match.me.display_name}: ${mySeed}`}
+                    >
+                      ({mySeed})
+                    </span>
+                  )}
+                </div>
+                <span className="tournament-duel-result__separator" aria-hidden="true">
+                  —
+                </span>
+                <div className="tournament-duel-result__player">
+                  <UserAvatar
+                    avatarUrl={match.opponent.avatar_url}
+                    name={match.opponent.display_name}
+                    size={30}
+                    fontSize={12}
+                  />
+                  <span className="tournament-duel-result__player-name">
+                    {match.opponent.display_name || 'Игрок'}
+                  </span>
+                  {opponentSeed !== null && (
+                    <span
+                      className="tournament-duel-result__seed"
+                      aria-label={`Посев ${match.opponent.display_name}: ${opponentSeed}`}
+                    >
+                      ({opponentSeed})
+                    </span>
+                  )}
+                </div>
+                <strong className="tournament-duel-result__game-score">
+                  {match.me.goals}:{match.opponent.goals}
+                </strong>
+              </div>
+              <div className="tournament-duel-result__meta">
+                <span>
+                  <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
+                </span>
+                {series !== null && series.winsRequired > 1 && (
+                  <span>
+                    <strong>Счёт в серии:</strong>{' '}
+                    <b aria-label={`Счёт в серии ${series.myWins}:${series.opponentWins}`}>
+                      {series.myWins}:{series.opponentWins}
+                    </b>
+                  </span>
+                )}
+              </div>
+            </div>
+            {hasSupplementalDetails && (
+              <div
+                style={{
+                  marginTop: 10,
+                  display: 'grid',
+                  gap: 8,
+                }}
+              >
+                {tiebreaker && (
+                  <>
+                    <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
+                    <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
+                  </>
+                )}
+                {match.rules.winStarReward > 0 && (
+                  <DuelResultDetailRow
+                    label="Звёзды за победу"
+                    value={`+${match.rules.winStarReward}`}
+                    tone="star"
+                  />
+                )}
+                {match.source !== 'tournament' && points > 0 && (
+                  <DuelResultDetailRow label="Очки" value={pointsText} />
+                )}
+              </div>
+            )}
+          </>
+        )}
+        <DuelInventoryUsageSummary
+          match={match}
+          title={compact ? 'Расход инвентаря' : 'Общий расход инвентаря'}
+          label="Общий расход инвентаря"
+          compact={compact}
+          style={{ marginTop: compact ? 10 : 16 }}
+        />
+        {hasMultiplePeriods && (
+          <div
+            className="duel-result-card__periods"
+            style={{
+              marginTop: compact ? 12 : 16,
+              overflow: 'visible',
+            }}
+          >
+            <div className="section-label" style={{ margin: 0, padding: 0 }}>
+              Периоды
+            </div>
+            {hasPeriodDetails ? (
+              <div
+                style={{
+                  paddingRight: 2,
+                }}
+              >
+                <DuelResultPeriodComparison
+                  key={match.id}
+                  match={match}
+                  totalPeriods={match.rules.totalPeriods}
+                  mePeriods={mePeriods}
+                  opponentPeriods={opponentPeriods}
+                  opponentName={match.opponent.display_name || 'Соперник'}
+                  compact={compact}
+                />
+              </div>
+            ) : (
+              <div
+                style={{
+                  marginTop: 8,
+                  borderRadius: 16,
+                  padding: '12px 14px',
+                  background: 'rgba(255,255,255,0.42)',
+                  border: '1px solid rgba(255,255,255,0.62)',
+                  color: 'rgba(15, 23, 42, 0.58)',
+                  fontSize: 12,
+                  fontWeight: 750,
+                  lineHeight: 1.35,
+                }}
+              >
+                {isLoadingDetails
+                  ? 'Загружаем статистику периодов...'
+                  : 'Подробная статистика периодов пока недоступна.'}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {footer !== undefined && <div className="duel-result-card__footer">{footer}</div>}
     </div>
   );
 }
