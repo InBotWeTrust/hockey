@@ -332,6 +332,19 @@ describe('TournamentCatalog', () => {
     );
   });
 
+  it('stretches scrollable tournament tabs evenly when all four labels fit', () => {
+    expect(designSystemCss).toMatch(
+      /\.tournament-details > \.segmented-tabs--scrollable \.segmented-tabs__item\s*\{[^}]*flex:\s*1 1 0;[^}]*min-width:\s*max-content;/s,
+    );
+  });
+
+  it('keeps the same section rhythm before regular-season and playoff rules', () => {
+    expect(designSystemCss).toMatch(
+      /\.tournament-overview-layout \+ \.tournament-rules\s*\{[^}]*margin-top:\s*18px;/s,
+    );
+    expect(designSystemCss).toMatch(/\.tournament-rules\s*\{[^}]*gap:\s*18px;/s);
+  });
+
   it('keeps the shared playoff round heading rhythm compact and even', () => {
     const style = document.createElement('style');
     style.textContent = designSystemCss;

@@ -28,6 +28,7 @@ import {
   duelRinkReadyPresenceForMatch,
   initialGameRouteState,
   isDuelInventoryLow,
+  isDuelLoadoutEditable,
   isDuelReadyPresenceState,
   tournamentNextGameDisplay,
   tournamentDuelBackPath,
@@ -1166,6 +1167,19 @@ describe('DailyScreen', () => {
     expect(isDuelInventoryLow('nutrition', 60_000, 60_000)).toBe(true);
     expect(isDuelInventoryLow('nutrition', 60_001, 60_000)).toBe(false);
     expect(isDuelInventoryLow('nutrition', 0, 60_000)).toBe(false);
+  });
+
+  it('locks inventory while an ordinary duel period is active', () => {
+    expect(isDuelLoadoutEditable('challenge', 'period_active')).toBe(false);
+  });
+
+  it('locks inventory while a tournament duel period is active', () => {
+    expect(isDuelLoadoutEditable('tournament', 'period_active')).toBe(false);
+  });
+
+  it('allows inventory before and between duel periods', () => {
+    expect(isDuelLoadoutEditable('challenge', 'accepted')).toBe(true);
+    expect(isDuelLoadoutEditable('tournament', 'break_active')).toBe(true);
   });
 
   it('subtracts live duel skates and energy usage from HUD inventory numbers', () => {

@@ -2201,6 +2201,13 @@ function canStartArenaDuelPeriod(
   );
 }
 
+export function isDuelLoadoutEditable(
+  _source: AmateurDuelMatch['source'],
+  participantState: AmateurDuelParticipantState,
+): boolean {
+  return participantState !== 'period_active';
+}
+
 export function isDuelReadyPresenceState(state: AmateurDuelParticipantState): boolean {
   return (
     state === 'ready' ||
@@ -5459,6 +5466,11 @@ function AmateurDuelPlayView({
     previousReadyStateRef.current = { me: meReady, opponent: opponentReady };
   }, [match, matchId]);
 
+  const participantState = match?.me?.state;
+  useEffect(() => {
+    if (participantState === 'period_active') setSelectedLoadoutKind(null);
+  }, [participantState]);
+
   useEffect(() => {
     if (!match || match.id !== matchId) return;
     const endsAtMs = new Date(match.ends_at).getTime();
@@ -5514,6 +5526,7 @@ function AmateurDuelPlayView({
     match.me.current_period < match.rules.totalPeriods;
   const usesTournamentPeriodLoadout =
     match.source === 'tournament' && match.rules.tournamentLoadoutLifecycleVersion === 1;
+  const loadoutEditable = isDuelLoadoutEditable(match.source, match.me.state);
   const handleDirectDuelAction = async (): Promise<void> => {
     if (inFlight) return;
     const matchNow = duelMatchNowMs(match, now);
@@ -5806,12 +5819,12 @@ function AmateurDuelPlayView({
             <DuelInventoryMiniHud
               match={match}
               liveCondition={liveDuelCondition}
-              onSelectKind={setSelectedLoadoutKind}
+              {...(loadoutEditable ? { onSelectKind: setSelectedLoadoutKind } : {})}
             />
           }
           scoreboardOpponent={duelScoreboardOpponent(match)}
         />
-        {selectedLoadoutKind === 'stick' && (
+        {loadoutEditable && selectedLoadoutKind === 'stick' && (
           <DuelRinkLoadoutModal
             kind="stick"
             match={match}

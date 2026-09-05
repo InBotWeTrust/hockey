@@ -2352,11 +2352,9 @@ async function closeParticipantPeriod(
     ],
   );
 
-  const periodRule = getDuelPeriodRule(rules, participant.current_period);
-  const periodCompleted =
-    reason === 'quota' || (reason === 'timeout' && periodRule.mode === 'time_attack');
-  const completedByQuota = periodCompleted && participant.current_period >= rules.totalPeriods;
-  const nextState: ParticipantState = completedByQuota
+  const periodCompleted = reason === 'quota' || reason === 'timeout';
+  const completedAllPeriods = periodCompleted && participant.current_period >= rules.totalPeriods;
+  const nextState: ParticipantState = completedAllPeriods
     ? 'completed'
     : periodCompleted
       ? 'break_active'

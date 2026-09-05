@@ -2772,6 +2772,11 @@
   scroll-snap-align: start;
   text-overflow: initial;
 }
+
+.tournament-details > .segmented-tabs--scrollable .segmented-tabs__item {
+  flex: 1 1 0;
+  min-width: max-content;
+}
 .segmented-tabs__item--active {
   border-color: rgba(15, 23, 42, 0.92);
   background: rgba(15, 23, 42, 0.92);
@@ -6311,6 +6316,10 @@ button.daily-calendar__day:active {
 .tournament-overview-layout {
   display: grid;
   gap: 12px;
+}
+
+.tournament-overview-layout + .tournament-rules {
+  margin-top: 18px;
 }
 
 .tournament-overview-dates {
