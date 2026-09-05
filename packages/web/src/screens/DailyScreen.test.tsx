@@ -1617,10 +1617,12 @@ describe('DailyScreen', () => {
     expect(await screen.findByRole('button', { name: 'К арене' })).toBeInTheDocument();
     const waitingLabel = screen.getByText('Ждём завершения игры соперника');
     expect(waitingLabel).toHaveStyle({
-      whiteSpace: 'normal',
+      whiteSpace: 'nowrap',
       textAlign: 'center',
-      overflowWrap: 'anywhere',
     });
+    expect(waitingLabel.closest('.game-scoreboard__metric')).toHaveClass(
+      'game-scoreboard__metric--small',
+    );
     expect(screen.queryByRole('heading', { name: 'Дуэль' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Эта дуэль сейчас не на площадке/)).not.toBeInTheDocument();
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
@@ -5536,6 +5538,37 @@ describe('DailyScreen', () => {
     });
   });
 
+  it('shows the overall game deadline before the first period after both players are ready', () => {
+    const now = Date.parse('2026-05-16T10:10:00.000Z');
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      ends_at: '2026-05-16T10:25:00.000Z',
+      server_now: '2026-05-16T10:10:00.000Z',
+      me: {
+        ...settledDuelMatch.me,
+        state: 'accepted',
+        current_period: 0,
+        ready_at: '2026-05-16T10:10:00.000Z',
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'accepted',
+        current_period: 0,
+        ready_at: '2026-05-16T10:10:00.000Z',
+      },
+    };
+
+    expect(duelEventTiming(activeMatch, now)).toMatchObject({
+      label: 'До конца игры',
+      value: '15:00',
+    });
+  });
+
   it('says that the finished player is waiting for the opponent instead of threatening a loss', () => {
     const now = Date.parse('2026-05-16T10:10:00.000Z');
     const activeMatch: AmateurDuelMatchState = {
@@ -5637,6 +5670,96 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('dialog', { name: 'Результат дуэли' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('location')).toHaveTextContent('/?view=amateur&section=duels');
     expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for the authoritative tournament result before opening the result modal', async () => {
+    const tournamentMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      source: 'tournament',
+    };
+    let resolveAttempt!: (response: Response) => void;
+    const delayedAttempt = new Promise<Response>((resolve) => {
+      resolveAttempt = resolve;
+    });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: tournamentMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/tournaments/t1/fixtures/f1/attempt')) return delayedAttempt;
+      if (url.includes('/tournaments/t1/readiness-hint')) {
+        return new Response(JSON.stringify({ dismissed: true, dismissedAt: null }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith([
+      '/?view=amateur&section=tournaments&tournament=t1&fixture=f1&match=match-1&play=1',
+    ]);
+
+    await screen.findByText('СЧЁТ');
+    expect(screen.queryByRole('dialog', { name: 'Результат дуэли' })).not.toBeInTheDocument();
+
+    resolveAttempt(
+      new Response(
+        JSON.stringify({
+          attempt: {
+            id: 'attempt-1',
+            number: 2,
+            kind: 'initial',
+            status: 'settled',
+            scheduledStart: tournamentMatch.starts_at,
+            readinessExpiresAt: tournamentMatch.starts_at,
+            hardDeadlineAt: tournamentMatch.ends_at,
+            myReady: true,
+            opponentReady: true,
+            duelMatchId: tournamentMatch.id,
+            result: null,
+            incidentType: null,
+          },
+          opponentProgress: null,
+          series: {
+            id: 'series-1',
+            kind: 'championship',
+            winsRequired: 3,
+            myWins: 2,
+            opponentWins: 0,
+            higherSeedWins: 2,
+            lowerSeedWins: 0,
+            higherSeedUserId: 'u1',
+            lowerSeedUserId: 'u2',
+            status: 'active',
+            winnerUserId: null,
+          },
+          tournament: { status: 'playoff', winnerUserId: null },
+          nextGame: {
+            fixtureId: 'f2',
+            breakEndsAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+            available: false,
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const dialog = await screen.findByRole('dialog', { name: 'Результат дуэли' });
+    expect(within(dialog).getByLabelText('Счёт в серии 2:0')).toBeInTheDocument();
+    expect(within(dialog).getByText('Следующая игра через:')).toBeInTheDocument();
   });
 
   it('shows a tournament series result without league points and counts down the break', async () => {

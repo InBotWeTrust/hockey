@@ -120,6 +120,26 @@ describe('ScoreBoard', () => {
     );
   });
 
+  it('uses compact typography for a long timer label without wrapping it', () => {
+    render(
+      <ScoreBoard
+        period={2}
+        periodsTotal={3}
+        timer="04:59"
+        timerLabel="До технического поражения"
+        goals={78}
+        shots={90}
+        shotsTotal={90}
+      />,
+    );
+
+    const label = screen.getByText('До технического поражения');
+    expect(label.closest('.game-scoreboard__metric')).toHaveClass(
+      'game-scoreboard__metric--small',
+    );
+    expect(label).toHaveStyle({ whiteSpace: 'nowrap' });
+  });
+
   it('builds the existing duel order and opponent status notice', () => {
     const model = buildGameScoreboardModel({
       period: 1,

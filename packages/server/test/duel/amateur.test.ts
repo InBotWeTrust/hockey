@@ -1926,6 +1926,12 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   });
 
   it('settles a player as forfeit five minutes after intermission is ready', async () => {
+    await pool.query(
+      `update users
+          set avatar_url = case when id = $1 then 'https://example.test/a.webp' else 'https://example.test/b.webp' end
+        where id = any($2::uuid[])`,
+      [userA, [userA, userB]],
+    );
     const templateId = await createTemplate({
       totalPeriods: 2,
       periodDurationMs: 1200000,
@@ -1992,6 +1998,14 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(settled.statusCode).toBe(200);
     expect(settled.json().match.status).toBe('settled');
     expect(settled.json().match.winner_user_id).toBe(userA);
+    expect(settled.json().match.me).toMatchObject({
+      display_name: 'Player A',
+      avatar_url: 'https://example.test/a.webp',
+    });
+    expect(settled.json().match.opponent).toMatchObject({
+      display_name: 'Player B',
+      avatar_url: 'https://example.test/b.webp',
+    });
     expect(settled.json().match.opponent.state).toBe('forfeit');
   });
 

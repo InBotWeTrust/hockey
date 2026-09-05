@@ -970,10 +970,9 @@
 }
 
 .game-scoreboard__metric--timer .game-scoreboard__label {
-  overflow-wrap: anywhere;
   text-align: center;
-  text-overflow: clip;
-  white-space: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .game-scoreboard__metric--muted .game-scoreboard__value {

@@ -2785,7 +2785,17 @@ async function settleMatchIfReady(
     await evaluateDuelSettledAchievements(client, { matchId: match.id, winnerUserId });
   }
   return {
-    match: rows[0]!,
+    match: {
+      ...rows[0]!,
+      ...(match.challenger_name !== undefined ? { challenger_name: match.challenger_name } : {}),
+      ...(match.challenger_avatar_url !== undefined
+        ? { challenger_avatar_url: match.challenger_avatar_url }
+        : {}),
+      ...(match.opponent_name !== undefined ? { opponent_name: match.opponent_name } : {}),
+      ...(match.opponent_avatar_url !== undefined
+        ? { opponent_avatar_url: match.opponent_avatar_url }
+        : {}),
+    },
     changed: true,
     ...(tournamentSettlement?.settledNow === true &&
     tournamentSettlement.roundStage === 'regular' &&

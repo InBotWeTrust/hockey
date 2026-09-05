@@ -2386,7 +2386,9 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
     const waitingForOpponent = match.me.state === 'completed' || match.me.state === 'forfeit';
     const label =
       match.me.state === 'accepted'
-        ? 'До технического поражения'
+        ? match.me.current_period === 0
+          ? 'До конца игры'
+          : 'До технического поражения'
         : waitingForOpponent
           ? 'Ждём завершения игры соперника'
           : 'До таймаута';
@@ -5494,11 +5496,19 @@ function AmateurDuelPlayView({
     const next = await updateLoadout({ stick: itemId });
     if (next) setSelectedLoadoutKind(null);
   };
+  const tournamentResultReady =
+    match.source !== 'tournament' ||
+    (tournamentAttempt.isSuccess &&
+      tournamentAttempt.data?.attempt?.duelMatchId === match.id &&
+      !['pending', 'ready_check', 'active'].includes(tournamentAttempt.data.attempt.status));
 
   if (directPlayOnly && match.me.state !== 'period_active') {
     const timing = duelEventTiming(match, now);
     const inactivePeriodRule = duelParticipantPeriodRule(match, match.me);
-    const showDirectResultModal = match.status === 'settled' && dismissedResultMatchId !== match.id;
+    const showDirectResultModal =
+      match.status === 'settled' &&
+      dismissedResultMatchId !== match.id &&
+      tournamentResultReady;
     const canRunDirectDuelAction =
       (match.status === 'ready_check' && match.me.state !== 'ready') ||
       canStartArenaDuelPeriod(match, duelMatchNowMs(match, now));
@@ -5772,7 +5782,8 @@ function AmateurDuelPlayView({
       : match.me.state === 'completed'
         ? 'Ждём соперника'
         : 'Период недоступен';
-  const showResultModal = match.status === 'settled' && dismissedResultMatchId !== match.id;
+  const showResultModal =
+    match.status === 'settled' && dismissedResultMatchId !== match.id && tournamentResultReady;
 
   return (
     <ModeShell title="Дуэль" onBack={onBack}>
