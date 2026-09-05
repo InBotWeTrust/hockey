@@ -1478,7 +1478,6 @@ function GameHub({
         game.state === 'break_active' ||
         (game.state === 'idle' && game.current_period > 0);
       const completed = game.state === 'closed';
-      const accuracy = formatGoalRate(game.total_goals, game.total_shots);
       return {
         id: `classic-${game.tournament_id}`,
         kind: 'classic',
@@ -1493,23 +1492,10 @@ function GameHub({
           ? { subtitleLines: ['Отдельная игра', 'по правилам турнира'] as [string, string] }
           : {}),
         meta: completed
-          ? `${game.total_goals} шайб · точность ${accuracy}`
+          ? ''
           : `${game.current_period > 0 ? `${game.current_period}-й период` : 'Три периода'} · до ${formatEventRemaining(deadlineRemaining)}`,
         ctaLabel: started ? 'Продолжить' : 'Начать',
         disabled: completed,
-        secondaryActions: completed ? (
-          <div
-            aria-label={`Результат: ${game.total_goals} шайб, точность ${accuracy}`}
-            style={{
-              color: '#e9fbff',
-              fontSize: 'clamp(12px, 1.7vh, 15px)',
-              fontWeight: 900,
-              textAlign: 'center',
-            }}
-          >
-            {game.total_goals} шайб · точность {accuracy}
-          </div>
-        ) : undefined,
         onEnter: () =>
           navigate(`/?view=classic&tournament=${encodeURIComponent(game.tournament_id)}`, {
             replace: true,
@@ -1803,7 +1789,9 @@ function ArenaVideoCube({
             })}
           </div>
           <ArenaCubeFace entry={activeEntry} />
-          {activeEntry.secondaryActions ?? (
+          {activeEntry.secondaryActions !== undefined ? (
+            activeEntry.secondaryActions
+          ) : activeEntry.disabled ? null : (
             <button
               type="button"
               className="btn btn--cta"

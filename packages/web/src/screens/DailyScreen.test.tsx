@@ -1033,8 +1033,12 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=arena']);
 
-    expect(await screen.findByLabelText('Результат: 36 шайб, точность 40%')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('article', { name: 'Турнир · 3-й тур: Финишная классика' }),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText('Завершена. До обновления 01:00:00')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Результат: 36 шайб, точность 40%')).not.toBeInTheDocument();
+    expect(screen.queryByText('36 шайб · точность 40%')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Начать|Продолжить/ })).toBeNull();
   });
 
