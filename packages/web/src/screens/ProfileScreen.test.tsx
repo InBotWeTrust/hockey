@@ -210,10 +210,9 @@ describe('ProfileScreen', () => {
     expect(screen.getByRole('button', { name: 'Открыть инвентарь' })).toHaveClass(
       'profile-section-label',
     );
-    expect(screen.getByText('Профиль и аккаунт')).toHaveClass(
-      'profile-utility-card__subtitle',
-      'profile-loadout-slot__kind',
-    );
+    expect(screen.getByText('Настройки')).toHaveClass('profile-section-label');
+    expect(screen.getByText('Профиль и уведомления')).toHaveClass('profile-settings-card__title');
+    expect(screen.queryByText('Профиль и аккаунт')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Домашняя арена' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Открыть карьеру и награды' })).toBeInTheDocument();
     expect(screen.getByText('Награды и достижения (1)')).toBeInTheDocument();

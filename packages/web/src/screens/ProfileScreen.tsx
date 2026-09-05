@@ -564,25 +564,25 @@ export function ProfileScreen(): JSX.Element {
           onOpen={() => navigate('/profile/achievements')}
           onChoose={setSelectedAchievement}
         />
-        <div className="profile-utility-grid">
-          <button
-            type="button"
-            className="profile-utility-card glass"
-            aria-label="Настройки"
-            onClick={() => navigate('/profile/settings')}
-          >
-            <span className="profile-utility-card__visual profile-utility-card__visual--icon">
-              <Settings aria-hidden="true" />
-            </span>
-            <span className="profile-utility-card__copy">
-              <strong>Настройки</strong>
-              <span className="profile-utility-card__subtitle profile-loadout-slot__kind">
-                Профиль и аккаунт
+        <section className="profile-settings-section" aria-label="Настройки">
+          <span className="section-label profile-section-label">Настройки</span>
+          <div className="profile-utility-grid">
+            <button
+              type="button"
+              className="profile-utility-card glass"
+              aria-label="Настройки"
+              onClick={() => navigate('/profile/settings')}
+            >
+              <span className="profile-utility-card__visual profile-utility-card__visual--icon">
+                <Settings aria-hidden="true" />
               </span>
-            </span>
-            <ChevronRight aria-hidden="true" />
-          </button>
-        </div>
+              <span className="profile-utility-card__copy">
+                <strong className="profile-settings-card__title">Профиль и уведомления</strong>
+              </span>
+              <ChevronRight aria-hidden="true" />
+            </button>
+          </div>
+        </section>
       </section>
       {pickerKind !== null && inventoryQuery.data !== undefined ? (
         <EquipmentPickerModal
