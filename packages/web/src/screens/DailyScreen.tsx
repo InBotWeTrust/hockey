@@ -7464,6 +7464,12 @@ function duelBaseEquipmentTitle(kind: InventoryEquipmentKind): string {
   return 'Без питания';
 }
 
+function duelBaseEquipmentDrawback(kind: InventoryEquipmentKind): string {
+  if (kind === 'stick') return 'Шайба будет лететь медленно';
+  if (kind === 'skates') return 'Возможны спотыкания';
+  return 'Игрок будет уставать';
+}
+
 function duelEquipmentEmptyPurchaseLabel(kind: InventoryEquipmentKind): string {
   if (kind === 'stick') return 'Купленных клюшек пока нет';
   if (kind === 'skates') return 'Купленных коньков пока нет';
@@ -8934,9 +8940,57 @@ function ClassicRinkLoadoutModal({
             type="button"
             className={`glass duel-equipment-option${selectedId === null ? ' duel-equipment-option--selected' : ''}`}
             onClick={() => onSelect(null)}
-            style={{ minHeight: 64, borderRadius: 16, padding: 10, textAlign: 'left' }}
+            aria-pressed={selectedId === null}
+            style={{
+              minHeight: 78,
+              borderRadius: 16,
+              padding: 10,
+              display: 'grid',
+              gridTemplateColumns: '56px minmax(0, 1fr)',
+              alignItems: 'center',
+              gap: 10,
+              textAlign: 'left',
+            }}
           >
-            {duelBaseEquipmentTitle(kind)}
+            <span
+              aria-hidden="true"
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 14,
+                overflow: 'hidden',
+                border: '1px solid rgba(255,255,255,0.78)',
+                background: 'rgba(255,255,255,0.28)',
+              }}
+            >
+              <img
+                src={placeholderArtworkForKind(kind)}
+                alt=""
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'block',
+                  objectFit: 'cover',
+                  filter: 'grayscale(0.45)',
+                  opacity: 0.72,
+                }}
+              />
+            </span>
+            <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
+              <strong style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}>
+                {duelBaseEquipmentTitle(kind)}
+              </strong>
+              <span
+                style={{
+                  color: 'rgba(15, 23, 42, 0.62)',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  lineHeight: 1.28,
+                }}
+              >
+                {duelBaseEquipmentDrawback(kind)}
+              </span>
+            </span>
           </button>
           {items.map((item) => (
             <button

@@ -516,6 +516,54 @@ describe('DailyScreen', () => {
     });
   });
 
+  it('shows artwork and drawback copy for every base classic tournament item', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(classicIdleState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    renderWith(['/?view=classic&tournament=classic-1']);
+
+    const cases = [
+      {
+        slot: /Коньки: Обычные коньки/,
+        dialog: 'Коньки',
+        title: 'Обычные коньки',
+        copy: 'Возможны спотыкания',
+        artwork: '/inventory/skates-base.webp',
+      },
+      {
+        slot: /Энергия: Без питания/,
+        dialog: 'Питание',
+        title: 'Без питания',
+        copy: 'Игрок будет уставать',
+        artwork: '/inventory/nutrition-none.webp',
+      },
+      {
+        slot: /Клюшка: Обычная клюшка/,
+        dialog: 'Клюшка',
+        title: 'Обычная клюшка',
+        copy: 'Шайба будет лететь медленно',
+        artwork: '/inventory/stick-base.webp',
+      },
+    ];
+
+    for (const item of cases) {
+      fireEvent.click(await screen.findByLabelText(item.slot));
+      const dialog = screen.getByRole('dialog', { name: item.dialog });
+      const option = within(dialog).getByRole('button', { name: new RegExp(item.title) });
+      expect(within(option).getByText(item.title).tagName).toBe('STRONG');
+      expect(within(option).getByText(item.copy)).toBeInTheDocument();
+      expect(option.querySelector('img')).toHaveAttribute(
+        'src',
+        expect.stringContaining(item.artwork),
+      );
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
+    }
+  });
+
   it('locks classic inventory circles while a period is active', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
