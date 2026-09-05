@@ -5993,10 +5993,7 @@ function DuelResultCard({
   const hasPeriodDetails = mePeriods.length > 0 || opponentPeriods.length > 0;
   const hasMultiplePeriods = match.rules.totalPeriods > 1;
   const tiebreaker = duelTiebreakerExplanation(match);
-  const hasSupplementalDetails =
-    tiebreaker !== null ||
-    match.rules.winStarReward > 0 ||
-    (match.source !== 'tournament' && points > 0);
+  const hasSupplementalDetails = tiebreaker !== null || match.rules.winStarReward > 0;
 
   return (
     <div
@@ -6160,6 +6157,12 @@ function DuelResultCard({
                 <span>
                   <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
                 </span>
+                {match.source !== 'tournament' && (
+                  <span className="duel-result-points" aria-label={`Очки за дуэль: ${pointsText}`}>
+                    <span>Очки</span>
+                    <strong>{pointsText}</strong>
+                  </span>
+                )}
                 {series !== null && series.winsRequired > 1 && (
                   <span>
                     <strong>Счёт в серии:</strong>{' '}
@@ -6190,9 +6193,6 @@ function DuelResultCard({
                     value={`+${match.rules.winStarReward}`}
                     tone="star"
                   />
-                )}
-                {match.source !== 'tournament' && points > 0 && (
-                  <DuelResultDetailRow label="Очки" value={pointsText} />
                 )}
               </div>
             )}
