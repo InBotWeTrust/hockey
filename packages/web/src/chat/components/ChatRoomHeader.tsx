@@ -24,55 +24,45 @@ export function ChatRoomHeader({
   searchOpen,
   onToggleSearch,
 }: Props): JSX.Element {
+  const identity = (
+    <div className="chat-room-header__identity">
+      <span className="chat-room-header__avatar">
+        <UserAvatar avatarUrl={avatarUrl} name={title} size={38} />
+      </span>
+      <span className="chat-room-header__copy">
+        <span className="chat-room-header__title">{title}</span>
+        {subtitle && <span className="chat-room-header__subtitle">{subtitle}</span>}
+      </span>
+    </div>
+  );
+
   return (
     <div className="chat-room-header">
       <button
         type="button"
-        className="icon-btn glass-dock-icon chat-room-header__control"
+        className="icon-btn glass-dock-icon chat-room-header__control chat-room-header__control--surface"
         aria-label="К списку чатов"
         onClick={onBack}
       >
         <ArrowLeft size={16} />
       </button>
 
-      {(() => {
-        const avatarNode = <UserAvatar avatarUrl={avatarUrl} name={title} size={40} />;
-        const titleNode = (
-          <div className="chat-room-header__identity">
-            <div className="chat-room-header__title">
-              {title}
-            </div>
-            {subtitle && (
-              <div className="chat-room-header__subtitle">
-                {subtitle}
-              </div>
-            )}
-          </div>
-        );
-        if (onTitleClick) {
-          return (
-            <button
-              type="button"
-              onClick={onTitleClick}
-              aria-label={onTitleClickLabel ?? 'Открыть информацию о чате'}
-              className="chat-room-header__profile"
-            >
-              {avatarNode}
-              {titleNode}
-            </button>
-          );
-        }
-        return (
-          <>
-            {avatarNode}
-            {titleNode}
-          </>
-        );
-      })()}
+      {onTitleClick ? (
+        <button
+          type="button"
+          onClick={onTitleClick}
+          aria-label={onTitleClickLabel ?? 'Открыть информацию о чате'}
+          className="chat-room-header__profile"
+        >
+          {identity}
+        </button>
+      ) : (
+        identity
+      )}
 
       <button
         type="button"
-        className="icon-btn glass-dock-icon chat-room-header__control"
+        className="icon-btn glass-dock-icon chat-room-header__control chat-room-header__control--surface"
         aria-label={searchOpen ? 'Закрыть поиск' : 'Поиск по чату'}
         aria-pressed={searchOpen}
         onClick={onToggleSearch}

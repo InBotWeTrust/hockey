@@ -19,13 +19,14 @@ describe('ChatRoom chrome', () => {
     const header = container.querySelector('.chat-room-header');
     expect(header).toBeInTheDocument();
     expect(header).not.toHaveClass('glass-dock-surface');
-    expect(screen.getByText('Dmitry Arkaim').closest('.chat-room-header__identity')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'К списку чатов' })).toHaveClass(
-      'chat-room-header__control',
-    );
-    expect(screen.getByRole('button', { name: 'Закрыть поиск' })).toHaveClass(
-      'chat-room-header__control',
-    );
+    const identity = screen.getByText('Dmitry Arkaim').closest('.chat-room-header__identity');
+    expect(identity).toBeInTheDocument();
+    expect(identity?.querySelector('.chat-room-header__avatar')).toBeInTheDocument();
+
+    const back = screen.getByRole('button', { name: 'К списку чатов' });
+    const search = screen.getByRole('button', { name: 'Закрыть поиск' });
+    expect(back).toHaveClass('chat-room-header__control', 'chat-room-header__control--surface');
+    expect(search).toHaveClass('chat-room-header__control', 'chat-room-header__control--surface');
   });
 
   it('uses a compact rounded field for in-chat search', () => {

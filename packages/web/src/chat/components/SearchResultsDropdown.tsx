@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react';
 import { searchMessagesApi, type ChatDTO, type MessageSearchHit } from '../api.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import { HighlightedText } from './HighlightedText.js';
+import { UserAvatar } from './UserAvatar.js';
 import { excerptAround } from '../searchUtils.js';
 
 export interface SearchResultsDropdownProps {
@@ -51,7 +52,20 @@ export function SearchResultsDropdown({
                 aria-label={chatLabel(c)}
                 onClick={() => navigate(`/chat/${c.id}`)}
               >
-                <HighlightedText text={chatLabel(c)} tokens={tokens} />
+                <UserAvatar
+                  avatarUrl={c.type === 'direct' ? c.dmCounterpart?.avatarUrl : c.avatarUrl}
+                  name={chatLabel(c)}
+                  size={36}
+                  alt={chatLabel(c)}
+                />
+                <span className="chat-search-results__chat-copy">
+                  <span className="chat-search-results__chat-name">
+                    <HighlightedText text={chatLabel(c)} tokens={tokens} />
+                  </span>
+                  <span className="chat-search-results__chat-type">
+                    {c.type === 'direct' ? 'Личный чат' : 'Чат'}
+                  </span>
+                </span>
               </button>
             ))}
           </div>
