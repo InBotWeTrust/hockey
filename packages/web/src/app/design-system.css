@@ -6555,6 +6555,7 @@ button.daily-calendar__day:active {
 }
 
 .arena-video-cube__plate--amateur {
+  top: -11.8vh;
   width: min(85.5%, 374px);
 }
 
@@ -6584,6 +6585,7 @@ button.daily-calendar__day:active {
 
 
   .arena-video-cube__plate--amateur {
+    top: -7vh;
     width: min(84%, 344px);
   }
 
