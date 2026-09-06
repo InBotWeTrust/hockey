@@ -178,6 +178,11 @@ describe('AchievementsScreen', () => {
     expect(screen.getByRole('tab', { name: 'Тренировка' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Турниры' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Будущее' })).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: 'Фильтр заданий' })).toHaveClass(
+      'segmented-tabs',
+      'segmented-tabs--compact',
+      'segmented-tabs--scrollable',
+    );
 
     fireEvent.click(screen.getByRole('tab', { name: 'Ежедневная' }));
 
