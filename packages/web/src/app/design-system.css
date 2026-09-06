@@ -47,6 +47,15 @@
   filter: none;
   transform: none;
 }
+.app-shell--arena.arena-bg--beginner::before {
+  background-image: url('/backgrounds/arena-beginner.webp');
+}
+.app-shell--arena.arena-bg--amateur::before {
+  background-image: url('/backgrounds/arena-amateur.webp');
+}
+.app-shell--arena.arena-bg--professional::before {
+  background-image: url('/sprites/app-arena-ice.webp');
+}
 .app-shell--arena::after {
   opacity: 0;
 }
@@ -3465,6 +3474,22 @@
 
 .profile-screen--locker-bg,
 .mode-shell--locker {
+  background-color: #071427;
+}
+
+.locker-room-bg--beginner {
+  background:
+    linear-gradient(180deg, rgba(7, 20, 39, 0.12), rgba(7, 20, 39, 0.38)),
+    url('/backgrounds/locker-room-beginner.webp') center top / cover no-repeat;
+}
+
+.locker-room-bg--amateur {
+  background:
+    linear-gradient(180deg, rgba(7, 20, 39, 0.12), rgba(7, 20, 39, 0.38)),
+    url('/backgrounds/locker-room-amateur.webp') center top / cover no-repeat;
+}
+
+.locker-room-bg--professional {
   background:
     linear-gradient(180deg, rgba(7, 20, 39, 0.12), rgba(7, 20, 39, 0.38)),
     url('/backgrounds/locker-room-detailed.webp') center top / cover no-repeat;
@@ -6282,10 +6307,41 @@ button.daily-calendar__day:active {
   touch-action: pan-y;
 }
 
+.arena-video-cube__plate--amateur {
+  width: min(85.5%, 374px);
+}
+
+.arena-video-cube__plate--beginner {
+  top: -1vh;
+}
+
+.arena-video-cube__plate--beginner .arena-video-cube__screen {
+  left: 11.6%;
+  right: 11.6%;
+  top: 33.3%;
+  height: 48.2%;
+}
+
+.arena-video-cube__plate--amateur .arena-video-cube__screen {
+  left: 12.2%;
+  right: 12.2%;
+  top: 41.2%;
+  height: 47.2%;
+}
+
 @media (max-height: 700px) {
   .arena-video-cube__plate {
     top: 0;
     width: min(76%, 312px);
+  }
+
+
+  .arena-video-cube__plate--amateur {
+    width: min(84%, 344px);
+  }
+
+  .arena-video-cube__plate--beginner {
+    top: 0;
   }
 }
 

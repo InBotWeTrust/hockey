@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './global.css';
 import './design-system.css';
@@ -12,6 +12,9 @@ import { UpdatePrompt } from '../components/UpdatePrompt.js';
 import { OfflineBanner } from '../chat/components/OfflineBanner.js';
 import { useChatSocket } from '../chat/useChatSocket.js';
 import { OnboardingGate } from '../onboarding/OnboardingGate.js';
+import { apiFetch } from '../api/apiFetch.js';
+import type { ProfileData } from '../screens/profileTypes.js';
+import { arenaBackgroundClass } from '../screens/lockerRoomBackground.js';
 
 const DailyScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DailyScreen })),
@@ -184,13 +187,21 @@ function AppExperience(): JSX.Element {
   const backdropClassName = appBackdropClassName(location.pathname, location.search);
   const surfaceClassName = appSurfaceClassName(location.pathname);
   const hasArenaBackdrop = backdropClassName.split(' ').includes('app-shell--arena');
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiFetch<ProfileData>('/me'),
+    enabled: user !== null && hasArenaBackdrop,
+  });
+  const levelBackdropClassName = hasArenaBackdrop
+    ? arenaBackgroundClass(profileQuery.data?.competitionLevel)
+    : '';
 
   return (
     <>
       <ChatRealtime />
       <DuelInviteToast />
       <div
-        className={`app-shell ${surfaceClassName}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}`}
+        className={`app-shell ${surfaceClassName}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
         style={{
           maxWidth: 430,
           margin: '0 auto',

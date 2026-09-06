@@ -4591,6 +4591,7 @@ describe('DailyScreen', () => {
     fireEvent.click(await screen.findByRole('tab', { name: 'Раздевалка' }));
 
     expect(document.querySelector('main.mode-shell')).toHaveClass('mode-shell--locker');
+    expect(document.querySelector('main.mode-shell')).toHaveClass('locker-room-bg--professional');
     expect(screen.queryByText('Доступный инвентарь')).not.toBeInTheDocument();
     const infoButton = screen.getByRole('button', { name: 'Что такое раздевалка' });
     expect(infoButton).toHaveClass('duel-section-info-btn');
