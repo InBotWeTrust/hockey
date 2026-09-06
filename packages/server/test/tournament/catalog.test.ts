@@ -7,7 +7,7 @@ import {
 } from '../../src/tournament/service.js';
 
 describe('player tournament catalog', () => {
-  it('maps artwork and the authenticated player final place', async () => {
+  it('maps artwork and the authenticated player place from the final playoff round', async () => {
     let queryNumber = 0;
     const query = async () => {
       queryNumber += 1;
@@ -17,13 +17,23 @@ describe('player tournament catalog', () => {
             {
               tournament_id: 't1',
               kind: 'championship',
-              higher_seed_participant_id: 'participant-1',
-              lower_seed_participant_id: 'participant-8',
+              round_number: 1,
+              higher_seed_participant_id: 'participant-8',
+              lower_seed_participant_id: 'participant-4',
               winner_participant_id: 'participant-8',
             },
             {
               tournament_id: 't1',
+              kind: 'championship',
+              round_number: 2,
+              higher_seed_participant_id: 'participant-1',
+              lower_seed_participant_id: 'participant-8',
+              winner_participant_id: 'participant-1',
+            },
+            {
+              tournament_id: 't1',
               kind: 'third_place',
+              round_number: 2,
               higher_seed_participant_id: 'participant-2',
               lower_seed_participant_id: 'participant-3',
               winner_participant_id: 'participant-3',
@@ -74,7 +84,7 @@ describe('player tournament catalog', () => {
     expect(tournaments[0]).toMatchObject({
       imageUrl: '/api/media/proxy/tournaments/artwork/ice.webp?token=signed',
       myParticipantState: 'approved',
-      myFinalPlace: 1,
+      myFinalPlace: 2,
       playoffFormats: [{ roundNumber: 1, duelKind: 'express_plus' }],
     });
   });

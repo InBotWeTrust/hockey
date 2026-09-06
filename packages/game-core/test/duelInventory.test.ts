@@ -95,6 +95,27 @@ describe('duel inventory condition', () => {
     expect(getDuelPlayerCondition(input)).toEqual(getDuelPlayerCondition(input));
   });
 
+  it('can reuse a caller-owned condition object without changing the calculated result', () => {
+    const input = {
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      elapsedMs: 30_000,
+      movementDistancePx: 500,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 0.8,
+      currentShooterSpeed: 0.8,
+      loadout: loadout(),
+    };
+    const expected = getDuelPlayerCondition(input);
+    const reusable = { ...expected, status: 'normal' as const };
+
+    const actual = getDuelPlayerCondition(input, reusable);
+
+    expect(actual).toBe(reusable);
+    expect(actual).toEqual(expected);
+  });
+
   it('precomputed stumble randomness is exactly equivalent to per-call calculation', () => {
     const timing = {
       ...DEFAULT_DUEL_INVENTORY_TIMING,
@@ -106,21 +127,23 @@ describe('duel inventory condition', () => {
       stumbleRecoveryMaxMs: 375,
     };
     const elapsedTimes = [
-      0, 1, 2_499, 2_500, 4_999, 5_000, 5_624, 5_625, 5_999, 15_000, 45_000, 90_000,
-      180_000,
+      0, 1, 2_499, 2_500, 4_999, 5_000, 5_624, 5_625, 5_999, 15_000, 45_000, 90_000, 180_000,
     ];
 
     for (const seed of ['match-seed', 'another-seed', 'турнир-сид']) {
       for (const periodNumber of [1, 2, 3]) {
         for (const currentShooterSpeed of [0.45, 0.85, 1.25, 1.5]) {
-          for (const skates of [null, {
-            id: 'spent-skates',
-            title: 'Старт',
-            resourceUnit: 'distance' as const,
-            resourceAvailable: 0,
-            effectPuckSpeedPoints: 0,
-            timing,
-          }]) {
+          for (const skates of [
+            null,
+            {
+              id: 'spent-skates',
+              title: 'Старт',
+              resourceUnit: 'distance' as const,
+              resourceAvailable: 0,
+              effectPuckSpeedPoints: 0,
+              timing,
+            },
+          ]) {
             const common = {
               seed,
               userId: 'user-a',
@@ -135,9 +158,9 @@ describe('duel inventory condition', () => {
 
             for (const elapsedMs of elapsedTimes) {
               const input = { ...common, elapsedMs };
-              expect(
-                getDuelPlayerCondition({ ...input, stumbleRandomness: randomness }),
-              ).toEqual(getDuelPlayerCondition(input));
+              expect(getDuelPlayerCondition({ ...input, stumbleRandomness: randomness })).toEqual(
+                getDuelPlayerCondition(input),
+              );
             }
           }
         }

@@ -192,6 +192,59 @@ describe('TournamentCatalog', () => {
     expect(screen.getByRole('button', { name: 'Открыть Кубок льда' })).toBeInTheDocument();
   });
 
+  it('opens the existing player profile sheet from the whole standings row', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 't-standings',
+          slug: 'standings-cup',
+          title: 'Кубок таблицы',
+          description: '',
+          status: 'regular',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 2,
+          lifecycle: TEST_LIFECYCLE,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: '2026-09-01T07:00:00.000Z',
+          rules: {
+            config: { participantLimit: 2, entryFeeCoins: 0, playoffSize: 2 },
+          },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchTournamentStandings').mockResolvedValue({
+      standings: [
+        {
+          user_id: 'u1',
+          display_name: 'Первый',
+          avatar_url: '/avatars/first.webp',
+          rank: 1,
+          played: 2,
+          goals_for: 12,
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок таблицы' }));
+    const playerName = await screen.findByRole('button', { name: 'Открыть профиль Первый' });
+    fireEvent.click(playerName.closest('tr')!.querySelector('td')!);
+
+    expect(await screen.findByRole('dialog', { name: 'Профиль игрока' })).toBeInTheDocument();
+    expect(screen.getByText('Это ваш профиль')).toBeInTheDocument();
+  });
+
   it('shows registration opening and closing dates as separate readable rows', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [
@@ -429,10 +482,10 @@ describe('TournamentCatalog', () => {
       /\.tournament-bracket-overview__column\s*\{[^}]*grid-template-rows:\s*auto minmax\(min-content,\s*1fr\);/s,
     );
     expect(designSystemCss).not.toMatch(
-      /\.tournament-bracket-overview__series-list--with-bronze\s*\{[^}]*min-height:/s,
+      /\.tournament-bracket-overview__series-list--with-bronze\s*\{/s,
     );
     expect(designSystemCss).toMatch(
-      /\.tournament-bracket-overview__bronze-lane\s*\{[^}]*position:\s*relative;[^}]*margin-top:\s*20px;/s,
+      /\.tournament-bracket-overview__bronze-column\s*\{[^}]*align-self:\s*start;[^}]*min-width:\s*0;/s,
     );
     expect(designSystemCss).toMatch(
       /\.tournament-bracket-series--mine\s*\{[^}]*border-color:\s*rgba\(43, 126, 89,/s,
@@ -775,7 +828,7 @@ describe('TournamentCatalog', () => {
           roundNumber: 1,
           scheduledStartsAt: '2030-09-02T07:00:00.000Z',
           windowEndsAt: '2030-09-02T08:00:00.000Z',
-          status: 'scheduled',
+          status: 'conditional',
           venueMode: 'home_selected',
           home: { userId: 'u1', name: 'Первый', avatarUrl: '/first.webp', seed: 1 },
           away: { userId: 'u3', name: 'Третий', avatarUrl: '/third.webp', seed: 4 },
@@ -845,7 +898,10 @@ describe('TournamentCatalog', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: /2 сентября.*плей-офф/i }));
     const playoffCard = await screen.findByText('(1) Первый — (4) Третий');
-    expect(playoffCard.closest('.tournament-fixture-card')).toBeInTheDocument();
+    expect(playoffCard.closest('.tournament-fixture-card')).toHaveTextContent('Запланирована');
+    expect(playoffCard.closest('.tournament-fixture-card')).not.toHaveTextContent(
+      'Соперники определятся позже',
+    );
     expect(screen.getByText('(2) Второй — (3) Четвёртый')).toBeInTheDocument();
     expect(sections).toBeInTheDocument();
   });

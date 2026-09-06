@@ -204,7 +204,10 @@ export function createDuelStumbleRandomness(
   return { interval, duration, recovery, usesRollInterval };
 }
 
-export function getDuelPlayerCondition(input: DuelPlayerConditionInput): DuelPlayerCondition {
+export function getDuelPlayerCondition(
+  input: DuelPlayerConditionInput,
+  reusable?: DuelPlayerCondition,
+): DuelPlayerCondition {
   const nutritionTiming = timingFor(input.loadout.nutrition, input.loadout.fallbackNutritionTiming);
   const speedPressureMultiplier = duelSpeedPressureMultiplier(
     nutritionTiming.energyBaselineSpeed,
@@ -232,36 +235,38 @@ export function getDuelPlayerCondition(input: DuelPlayerConditionInput): DuelPla
     ? { active: false, offsetPx: 0 }
     : defaultSkateStumbleWindow(input, movementTiming);
   if (stumble.active) {
-    return condition({
+    return condition(
+      reusable,
       puckSpeedDelta,
-      shooterSpeedMultiplier: 1,
-      canShoot: false,
-      status: 'stumble',
-      fatigueLevel: 'none',
-      stumbleActive: true,
-      shooterXOffsetPx: stumble.offsetPx,
-      fatigueMs: 0,
+      1,
+      false,
+      'stumble',
+      'none',
+      true,
+      stumble.offsetPx,
+      0,
       nutritionConsumed,
       skatesConsumed,
-    });
+    );
   }
 
   const fatigueTiming = timingFor(nutrition, input.loadout.fallbackNutritionTiming);
   const fatigueMs = accumulatedFatigueMs(input, rawNutritionCost, fatigueTiming);
   const fatigue = fatigueState(fatigueMs, fatigueTiming);
 
-  return condition({
+  return condition(
+    reusable,
     puckSpeedDelta,
-    shooterSpeedMultiplier: fatigue.speedMultiplier,
-    canShoot: fatigue.canShoot,
-    status: fatigue.status,
-    fatigueLevel: fatigue.level,
-    stumbleActive: false,
-    shooterXOffsetPx: 0,
-    fatigueMs: fatigue.normalizedFatigueMs,
+    fatigue.speedMultiplier,
+    fatigue.canShoot,
+    fatigue.status,
+    fatigue.level,
+    false,
+    0,
+    fatigue.normalizedFatigueMs,
     nutritionConsumed,
     skatesConsumed,
-  });
+  );
 }
 
 function activeStickPuckSpeedDelta(stick: DuelInventoryItemSnapshot | null): number {
@@ -388,6 +393,42 @@ function fatigueState(
   };
 }
 
-function condition(value: DuelPlayerCondition): DuelPlayerCondition {
-  return value;
+function condition(
+  reusable: DuelPlayerCondition | undefined,
+  puckSpeedDelta: number,
+  shooterSpeedMultiplier: number,
+  canShoot: boolean,
+  status: DuelPlayerConditionStatus,
+  fatigueLevel: DuelPlayerFatigueLevel,
+  stumbleActive: boolean,
+  shooterXOffsetPx: number,
+  fatigueMs: number,
+  nutritionConsumed: number,
+  skatesConsumed: number,
+): DuelPlayerCondition {
+  if (reusable === undefined) {
+    return {
+      puckSpeedDelta,
+      shooterSpeedMultiplier,
+      canShoot,
+      status,
+      fatigueLevel,
+      stumbleActive,
+      shooterXOffsetPx,
+      fatigueMs,
+      nutritionConsumed,
+      skatesConsumed,
+    };
+  }
+  reusable.puckSpeedDelta = puckSpeedDelta;
+  reusable.shooterSpeedMultiplier = shooterSpeedMultiplier;
+  reusable.canShoot = canShoot;
+  reusable.status = status;
+  reusable.fatigueLevel = fatigueLevel;
+  reusable.stumbleActive = stumbleActive;
+  reusable.shooterXOffsetPx = shooterXOffsetPx;
+  reusable.fatigueMs = fatigueMs;
+  reusable.nutritionConsumed = nutritionConsumed;
+  reusable.skatesConsumed = skatesConsumed;
+  return reusable;
 }

@@ -532,6 +532,13 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
         </li>
         <li>
           <span
+            className="tournament-calendar__legend-dot tournament-calendar__legend-dot--empty-day"
+            aria-hidden="true"
+          />
+          В этот день игр в турнире нет
+        </li>
+        <li>
+          <span
             className="tournament-calendar__legend-dot tournament-calendar__legend-dot--selected"
             aria-hidden="true"
           />

@@ -109,7 +109,7 @@ interface PendingAttachment {
   isUploading: boolean;
 }
 
-type DuelInviteResolution = 'accepted' | 'declined' | 'unavailable';
+type DuelInviteResolution = 'accepted' | 'completed' | 'declined' | 'unavailable';
 type VoiceRecordingState = 'idle' | 'recording' | 'uploading';
 
 function createAttachmentPreviewUrl(file: File): string | null {
@@ -175,12 +175,24 @@ function duelInviteExternalResolution(
   match: AmateurDuelMatch | undefined,
 ): DuelInviteResolution | undefined {
   if (!match) return undefined;
-  if (match.status === 'ready_check' || match.status === 'active' || match.status === 'settled') {
+  if (match.status === 'settled') return 'completed';
+  if (match.status === 'ready_check' || match.status === 'active') {
     return 'accepted';
   }
   if (match.status === 'cancelled' || match.status === 'expired') return 'unavailable';
   if (match.me.state !== 'invited') return 'accepted';
   return undefined;
+}
+
+function resolveDuelInvite(
+  invite: AmateurDuelInviteMessageMetadata,
+  match: AmateurDuelMatch | undefined,
+  now = Date.now(),
+): DuelInviteResolution | undefined {
+  const externalResolution = duelInviteExternalResolution(match);
+  if (externalResolution !== undefined) return externalResolution;
+  const replyDeadline = Date.parse(invite.endsAt);
+  return Number.isFinite(replyDeadline) && replyDeadline <= now ? 'unavailable' : undefined;
 }
 
 function isSameLocalDay(a: Date, b: Date): boolean {
@@ -285,6 +297,8 @@ function DuelInviteActions({
   const status =
     resolution === 'accepted'
       ? 'Дуэль принята'
+      : resolution === 'completed'
+        ? 'Дуэль завершена'
       : resolution === 'declined'
         ? 'Вы отклонили'
         : resolution === 'unavailable'
@@ -1441,7 +1455,10 @@ export function ChatRoomScreen(): JSX.Element {
           const duelInvite = parseDuelInviteMetadata(m.metadata);
           const duelInviteResolution = duelInvite
             ? (duelInviteResolutionByMatch[duelInvite.matchId] ??
-              duelInviteExternalResolution(duelInviteMatchById.get(duelInvite.matchId)))
+              resolveDuelInvite(
+                duelInvite,
+                duelInviteMatchById.get(duelInvite.matchId),
+              ))
             : undefined;
           const inviteActionSlot =
             duelInvite && !isOwn && !m.isDeleted ? (

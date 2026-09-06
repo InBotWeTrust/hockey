@@ -307,7 +307,11 @@ export interface PlayViewProps<TState> {
   hitboxesOptions?: HitboxesOptions | undefined;
   shotResolver?: PlayShotResolver | undefined;
   duelCondition?:
-    | ((elapsedMs: number, speeds: SpeedOverrides) => DuelPlayerCondition | null)
+    | ((
+        elapsedMs: number,
+        speeds: SpeedOverrides,
+        reusable?: DuelPlayerCondition,
+      ) => DuelPlayerCondition | null)
     | undefined;
   hudAddon?: ReactNode;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
@@ -750,8 +754,9 @@ export function PlayView<TState>({
 
   const syncCurrentDuelCondition = useCallback((condition: DuelPlayerCondition | null): void => {
     if (sameDuelConditionUiState(condition, currentDuelConditionUiRef.current)) return;
-    currentDuelConditionUiRef.current = condition;
-    setCurrentDuelCondition(condition);
+    const uiSnapshot = condition === null ? null : { ...condition };
+    currentDuelConditionUiRef.current = uiSnapshot;
+    setCurrentDuelCondition(uiSnapshot);
   }, []);
 
   useEffect(() => {
@@ -859,9 +864,7 @@ export function PlayView<TState>({
     return () => window.clearInterval(id);
   }, [periodEndsAt, scoreboardEndsAt]);
   const remaining = periodEndsAt ? Math.max(0, periodEndsAt - now) : 0;
-  const scoreboardRemaining = scoreboardEndsAt
-    ? Math.max(0, scoreboardEndsAt - now)
-    : remaining;
+  const scoreboardRemaining = scoreboardEndsAt ? Math.max(0, scoreboardEndsAt - now) : remaining;
 
   useLayoutEffect(() => {
     const root = playRootRef.current;
@@ -1257,8 +1260,8 @@ export function PlayView<TState>({
         getGoalieConfig: () => goalieConfigRef.current,
         getSpeedOverrides: () => speedsRef.current,
         getInitialClocks: () => computeInitialPlayClocks(sessionTimingRef.current),
-        getDuelCondition: (elapsedMs, activeSpeeds) =>
-          duelConditionRef.current?.(elapsedMs, activeSpeeds) ?? null,
+        getDuelCondition: (elapsedMs, activeSpeeds, reusable) =>
+          duelConditionRef.current?.(elapsedMs, activeSpeeds, reusable) ?? null,
         onDuelConditionChange: syncCurrentDuelCondition,
       });
       tickerRef.current = app.ticker;
