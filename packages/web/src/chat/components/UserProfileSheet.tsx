@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Award, CircleDollarSign, Medal, Star, Target, TrendingUp, Trophy, X } from 'lucide-react';
+import { Award, Medal, Target, TrendingUp, Trophy, X } from 'lucide-react';
 import {
   fetchUserProfile,
   findOrCreateDM,
@@ -29,27 +29,48 @@ interface UserProfileSheetProps {
   onClose: () => void;
 }
 
-function PublicBalance({
-  label,
-  value,
-  tone,
-  icon,
-}: {
-  label: string;
-  value: number;
-  tone: string;
-  icon: JSX.Element;
-}): JSX.Element {
+function PublicExperienceBadge({ experience }: { experience: number }): JSX.Element {
+  const badgeRef = useRef<HTMLSpanElement>(null);
+  const valueRef = useRef<HTMLSpanElement>(null);
+  const iconRef = useRef<SVGSVGElement>(null);
+  const formattedExperience = formatProfileNumber(experience);
+
+  useLayoutEffect(() => {
+    const badge = badgeRef.current;
+    const value = valueRef.current;
+    const icon = iconRef.current;
+    if (!badge || !value || !icon) return;
+
+    const fit = (): void => {
+      value.style.fontSize = '12px';
+      icon.style.width = '13px';
+      icon.style.height = '13px';
+
+      const avatarWidth = badge.parentElement?.clientWidth ?? 0;
+      const maxWidth = avatarWidth * 1.15;
+      const naturalWidth = badge.scrollWidth;
+      if (maxWidth === 0 || naturalWidth <= maxWidth) return;
+
+      const scale = Math.max(0.45, maxWidth / naturalWidth);
+      value.style.fontSize = `${12 * scale}px`;
+      icon.style.width = `${13 * scale}px`;
+      icon.style.height = `${13 * scale}px`;
+    };
+
+    fit();
+    const observer =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(fit);
+    observer?.observe(badge.parentElement ?? badge);
+    return () => observer?.disconnect();
+  }, [formattedExperience]);
+
   return (
-    <div className="profile-balance">
-      <span className="profile-balance__label">{label}</span>
-      <span className={`profile-balance__amount profile-balance__amount--${tone}`}>
-        {icon}
-        <strong className="profile-balance__value" aria-label={`${label}: ${value}`}>
-          {formatProfileNumber(value)}
-        </strong>
+    <span className="public-profile-experience" ref={badgeRef} aria-label={`Опыт: ${experience}`}>
+      <TrendingUp aria-hidden="true" ref={iconRef} />
+      <span className="public-profile-experience__value" ref={valueRef}>
+        {formattedExperience}
       </span>
-    </div>
+    </span>
   );
 }
 
@@ -93,7 +114,10 @@ function PublicSportingPassport({
     >
       <div className="profile-passport__top">
         <div className="profile-identity__main public-profile-identity">
-          <UserAvatar avatarUrl={avatarUrl} name={displayName} size={80} fontSize={30} />
+          <div className="public-profile-avatar">
+            <UserAvatar avatarUrl={avatarUrl} name={displayName} size={80} fontSize={30} />
+            <PublicExperienceBadge experience={profile.experienceBalance ?? 0} />
+          </div>
           <div className="profile-identity__copy">
             <span className="profile-identity__name public-profile-identity__name">
               {displayName}
@@ -102,26 +126,6 @@ function PublicSportingPassport({
               {getLevelLabel(profile.competitionLevel)}
             </span>
           </div>
-        </div>
-        <div className="profile-balances" aria-label="Баланс игрока">
-          <PublicBalance
-            label="Монеты"
-            value={profile.currencyBalance ?? 0}
-            tone="coins"
-            icon={<CircleDollarSign aria-hidden="true" />}
-          />
-          <PublicBalance
-            label="Звёзды"
-            value={profile.starBalance ?? 0}
-            tone="stars"
-            icon={<Star aria-hidden="true" />}
-          />
-          <PublicBalance
-            label="Опыт"
-            value={profile.experienceBalance ?? 0}
-            tone="experience"
-            icon={<TrendingUp aria-hidden="true" />}
-          />
         </div>
       </div>
       <div className="profile-sporting-metrics" aria-label="Главные показатели">

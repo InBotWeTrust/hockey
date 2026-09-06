@@ -2531,6 +2531,51 @@
   font-size: 25px;
 }
 
+.public-profile-avatar {
+  position: relative;
+  flex: 0 0 80px;
+  width: 80px;
+  height: 80px;
+}
+
+.public-profile-experience {
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  transform: translateX(-50%);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 115%;
+  overflow: hidden;
+  min-height: 24px;
+  padding: 3px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+  background: rgba(231, 239, 248, 0.96);
+  box-shadow: 0 4px 12px rgba(15, 43, 68, 0.22);
+  color: var(--reward-experience);
+  font-size: 12px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.public-profile-experience svg {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.6;
+}
+
+.public-profile-experience__value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
 .public-profile-identity .profile-identity__level {
   font-size: 15px;
 }
