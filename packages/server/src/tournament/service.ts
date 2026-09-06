@@ -1347,12 +1347,15 @@ export async function listPlayerTournaments(pool: Pool, userId: string) {
       higher_seed_participant_id: string;
       lower_seed_participant_id: string;
       winner_participant_id: string;
+      round_number: number;
     }>(
-      `select tournament_id, kind, higher_seed_participant_id,
-              lower_seed_participant_id, winner_participant_id
-         from tournament_playoff_series
-        where tournament_id = any($1::uuid[]) and status = 'completed'
-          and kind in ('championship', 'third_place')`,
+      `select series.tournament_id, series.kind, series.higher_seed_participant_id,
+              series.lower_seed_participant_id, series.winner_participant_id,
+              round.number as round_number
+         from tournament_playoff_series series
+         join tournament_round round on round.id = series.round_id
+        where series.tournament_id = any($1::uuid[]) and series.status = 'completed'
+          and series.kind in ('championship', 'third_place')`,
       [completedIds],
     );
     const seriesByTournament = new Map<string, typeof series.rows>();
@@ -1363,7 +1366,9 @@ export async function listPlayerTournaments(pool: Pool, userId: string) {
     }
     for (const tournamentId of completedIds) {
       const tournamentSeries = seriesByTournament.get(tournamentId) ?? [];
-      const final = tournamentSeries.find((row) => row.kind === 'championship');
+      const final = tournamentSeries
+        .filter((row) => row.kind === 'championship')
+        .sort((left, right) => right.round_number - left.round_number)[0];
       if (final === undefined) continue;
       const bronze = tournamentSeries.find((row) => row.kind === 'third_place');
       for (const placement of resolvePlayoffPlacements({
