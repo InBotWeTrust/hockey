@@ -3,6 +3,13 @@ import { getGameSettings } from '../duel/gameSettings.js';
 
 type Queryable = Pool | PoolClient;
 
+export interface AchievementCompletionCandidate {
+  userId: string;
+  achievementId: string;
+  achievedAt: Date;
+  context: Record<string, unknown>;
+}
+
 export type AchievementStatus = 'locked' | 'completed_unclaimed' | 'claimed';
 export type AchievementAvailability = 'active' | 'future' | 'hidden';
 
@@ -88,17 +95,52 @@ export async function completeAchievements(
   achievementIds: string[],
   context: Record<string, unknown> = {},
 ): Promise<void> {
-  if (achievementIds.length === 0) return;
-
-  await db.query(
-    `insert into user_achievements (user_id, achievement_id, completed_at, completion_context)
-       select $1::uuid, a.id, now(), $3::jsonb
-         from achievements a
-         join unnest($2::text[]) as completed(id) on completed.id = a.id
-        where a.availability = 'active'
-      on conflict (user_id, achievement_id) do nothing`,
-    [userId, achievementIds, JSON.stringify(context)],
+  const achievedAt = new Date();
+  await completeAchievementCandidates(
+    db,
+    achievementIds.map((achievementId) => ({ userId, achievementId, achievedAt, context })),
   );
+}
+
+export async function completeAchievementCandidates(
+  db: Queryable,
+  candidates: readonly AchievementCompletionCandidate[],
+): Promise<{ attempted: number; inserted: number }> {
+  const uniqueCandidates = new Map<string, AchievementCompletionCandidate>();
+  for (const candidate of candidates) {
+    const key = `${candidate.userId}\u0000${candidate.achievementId}`;
+    const existing = uniqueCandidates.get(key);
+    if (existing === undefined || candidate.achievedAt < existing.achievedAt) {
+      uniqueCandidates.set(key, candidate);
+    }
+  }
+
+  if (uniqueCandidates.size === 0) return { attempted: 0, inserted: 0 };
+
+  const payload = [...uniqueCandidates.values()].map((candidate) => ({
+    user_id: candidate.userId,
+    achievement_id: candidate.achievementId,
+    achieved_at: candidate.achievedAt.toISOString(),
+    context: candidate.context,
+  }));
+  const result = await db.query(
+    `insert into user_achievements
+       (user_id, achievement_id, completed_at, completion_context)
+     select candidate.user_id, candidate.achievement_id, candidate.achieved_at, candidate.context
+       from jsonb_to_recordset($1::jsonb) as candidate(
+         user_id uuid,
+         achievement_id text,
+         achieved_at timestamptz,
+         context jsonb
+       )
+       join achievements achievement on achievement.id = candidate.achievement_id
+      where achievement.availability = 'active'
+     on conflict (user_id, achievement_id) do nothing
+     returning achievement_id`,
+    [JSON.stringify(payload)],
+  );
+
+  return { attempted: uniqueCandidates.size, inserted: result.rowCount ?? 0 };
 }
 
 export const grantAchievements = completeAchievements;
