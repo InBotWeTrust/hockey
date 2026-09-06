@@ -309,7 +309,7 @@ export function TrophyHistoryModal({
             ))
           : tournamentItems.map((item) => (
               <article className="profile-trophy-history__tournament" key={item.id}>
-                {item.imageUrl ? <img src={item.imageUrl} alt={item.title} /> : null}
+                <img src={item.imageUrl ?? '/modes/tournaments.webp'} alt={item.title} />
                 <span className="profile-trophy-history__tournament-copy">
                   <strong>{item.title}</strong>
                   <small>{formatTrophyDateRange(item.startsAt, item.endsAt)}</small>

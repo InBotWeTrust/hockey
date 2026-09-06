@@ -347,7 +347,7 @@ export function AchievementDetailsSheet({
       open
       title={achievement.title}
       onRequestClose={() => onClose()}
-      cardClassName="achievement-details-modal"
+      cardClassName="achievement-details-modal achievement-details-modal--crisp"
       headerAction={
         <button
           type="button"

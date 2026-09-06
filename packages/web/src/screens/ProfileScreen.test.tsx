@@ -325,6 +325,30 @@ describe('ProfileScreen', () => {
     expect(screen.getByRole('img', { name: 'Кубок открытия' })).toHaveAttribute('src', '/cup.webp');
   });
 
+  it('uses the default tournament artwork when a trophy has no image', async () => {
+    mockProfileRequest(200, {
+      ...profile,
+      trophyDetails: {
+        ...profile.trophyDetails,
+        regularSeasonWins: [
+          {
+            ...profile.trophyDetails.regularSeasonWins[0]!,
+            title: 'Чемпионат с очень длинным названием',
+            imageUrl: null as unknown as string,
+          },
+        ],
+      },
+    });
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: /победы в регулярке/i }));
+
+    expect(screen.getByRole('img', { name: 'Чемпионат с очень длинным названием' })).toHaveAttribute(
+      'src',
+      '/modes/tournaments.webp',
+    );
+  });
+
   it('keeps a zero trophy section non-interactive', async () => {
     mockProfileRequest(200, {
       ...profile,

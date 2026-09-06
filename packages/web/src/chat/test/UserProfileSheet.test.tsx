@@ -232,6 +232,9 @@ describe('UserProfileSheet', () => {
     expect(screen.getByLabelText('Звёзды: 20')).toBeInTheDocument();
     expect(screen.getByLabelText('Опыт: 1090')).toBeInTheDocument();
     expect(screen.getByLabelText('Витрина наград')).toHaveTextContent('Чемпионства');
+    expect(screen.getByLabelText('Витрина наград').querySelectorAll('.profile-fitted-number')).toHaveLength(
+      4,
+    );
     expect(screen.getByText('Любитель')).toHaveClass('profile-identity__level');
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
     const identity = screen.getByText('Иван Петров').closest('.profile-identity__main');
@@ -262,6 +265,7 @@ describe('UserProfileSheet', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Первая шайба' });
     expect(dialog).toHaveClass('achievement-details-modal');
+    expect(dialog).toHaveClass('achievement-details-modal--crisp');
     expect(screen.getByRole('img', { name: 'Первая шайба' })).toHaveClass(
       'achievement-details-modal__image',
     );

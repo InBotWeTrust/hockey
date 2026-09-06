@@ -197,9 +197,28 @@ export async function fetchTrophyDetails(db: Queryable, userId: string): Promise
         where series.kind = 'third_place' and series.status = 'completed'
      )
      select awards.category, tournament_record.id, tournament_record.title, tournament_record.image_url,
-            tournament_record.starts_at, tournament_record.completed_at as ends_at, awards.result
+            coalesce(tournament_record.starts_at, tournament_schedule.starts_at) as starts_at,
+            coalesce(tournament_schedule.ends_at, tournament_record.completed_at) as ends_at,
+            awards.result
        from awards
        join tournament tournament_record on tournament_record.id = awards.tournament_id
+       left join lateral (
+         select min(schedule_window.starts_at) as starts_at, max(schedule_window.ends_at) as ends_at
+           from (
+             select round_record.starts_at, round_record.ends_at
+               from tournament_round round_record
+              where round_record.tournament_id = tournament_record.id
+             union all
+             select matchday.starts_at, matchday.ends_at
+               from tournament_matchday matchday
+              where matchday.tournament_id = tournament_record.id
+             union all
+             select fixture.scheduled_starts_at,
+                    coalesce(fixture.window_ends_at, fixture.scheduled_starts_at)
+               from tournament_fixture fixture
+              where fixture.tournament_id = tournament_record.id
+           ) schedule_window
+       ) tournament_schedule on true
       where awards.user_id = $1
       order by tournament_record.completed_at desc nulls last, tournament_record.starts_at desc nulls last,
                tournament_record.id desc`,

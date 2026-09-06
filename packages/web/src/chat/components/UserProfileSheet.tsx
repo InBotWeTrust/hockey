@@ -14,6 +14,7 @@ import { UserAvatar } from './UserAvatar.js';
 import type { ProfileAchievement } from '../../screens/profileTypes.js';
 import {
   AchievementDetailsSheet,
+  FittedOneLineText,
   formatProfileNumber,
   getLevelLabel,
   ProfileAchievementsSection,
@@ -164,7 +165,11 @@ function PublicSportingPassport({
           const content = (
             <>
               <Icon aria-hidden="true" />
-              <strong className="profile-trophy-showcase__number">{formatProfileNumber(value)}</strong>
+              <strong>
+                <FittedOneLineText className="profile-trophy-showcase__number" maxFontSize={18}>
+                  {formatProfileNumber(value)}
+                </FittedOneLineText>
+              </strong>
               <span>{label}</span>
             </>
           );
@@ -178,7 +183,10 @@ function PublicSportingPassport({
               {content}
             </button>
           ) : (
-            <div className="profile-trophy-showcase__item" key={section}>
+            <div
+              className="profile-trophy-showcase__item profile-trophy-showcase__item--empty"
+              key={section}
+            >
               {content}
             </div>
           );
