@@ -192,6 +192,59 @@ describe('TournamentCatalog', () => {
     expect(screen.getByRole('button', { name: 'Открыть Кубок льда' })).toBeInTheDocument();
   });
 
+  it('opens the existing player profile sheet from the whole standings row', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 't-standings',
+          slug: 'standings-cup',
+          title: 'Кубок таблицы',
+          description: '',
+          status: 'regular',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 2,
+          lifecycle: TEST_LIFECYCLE,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: '2026-09-01T07:00:00.000Z',
+          rules: {
+            config: { participantLimit: 2, entryFeeCoins: 0, playoffSize: 2 },
+          },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchTournamentStandings').mockResolvedValue({
+      standings: [
+        {
+          user_id: 'u1',
+          display_name: 'Первый',
+          avatar_url: '/avatars/first.webp',
+          rank: 1,
+          played: 2,
+          goals_for: 12,
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок таблицы' }));
+    const playerName = await screen.findByRole('button', { name: 'Открыть профиль Первый' });
+    fireEvent.click(playerName.closest('tr')!.querySelector('td')!);
+
+    expect(await screen.findByRole('dialog', { name: 'Профиль игрока' })).toBeInTheDocument();
+    expect(screen.getByText('Это ваш профиль')).toBeInTheDocument();
+  });
+
   it('shows registration opening and closing dates as separate readable rows', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [

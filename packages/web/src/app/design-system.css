@@ -4666,6 +4666,22 @@
   cursor: default;
 }
 
+.tournament-standing-table tbody tr.tournament-standing-table__clickable-row {
+  cursor: pointer;
+  transition:
+    filter 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.tournament-standing-table tbody tr.tournament-standing-table__clickable-row:hover {
+  filter: brightness(0.97);
+  box-shadow: inset 0 0 0 1px rgba(30, 91, 151, 0.13);
+}
+
+.tournament-standing-table tbody tr.tournament-standing-table__clickable-row:active {
+  filter: brightness(0.92);
+}
+
 .tournament-standing-table tbody tr.tournament-standing-table__current-user {
   color: #fff;
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95));

@@ -22,6 +22,8 @@ import { VenueBadge, type VenueRole } from '../components/VenueBadge.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
+import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
+import type { UserPickerItem } from '../chat/api.js';
 import { tournamentStatusLabel } from './labels.js';
 import { tournamentTimezoneLabel } from './timezoneLabel.js';
 import { TournamentStandingsTable } from './TournamentStandingsTable.js';
@@ -613,6 +615,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
   );
   const visibleTabs = tournamentTabs(tournament.startsAt);
   const [participantsOpen, setParticipantsOpen] = useState(false);
+  const [profilePlayer, setProfilePlayer] = useState<UserPickerItem | null>(null);
   const [scheduleDate, setScheduleDate] = useState(() => initialScheduleDate(tournament));
   const scheduleDateManuallySelected = useRef(false);
   const activeFixtureId = useRef<string | null>(null);
@@ -824,6 +827,17 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               rows={standings.data.standings}
               regularSource={String(tournament.rules.config.regularSource ?? '')}
               playoffSize={Number(tournament.rules.config.playoffSize ?? 0)}
+              currentUserId={currentUserId}
+              onPlayerClick={(row) => {
+                const userId = typeof row.user_id === 'string' ? row.user_id : '';
+                if (userId.length === 0) return;
+                setProfilePlayer({
+                  userId,
+                  displayName:
+                    typeof row.display_name === 'string' ? row.display_name : 'Участник турнира',
+                  avatarUrl: typeof row.avatar_url === 'string' ? row.avatar_url : null,
+                });
+              }}
               dailyMetric={
                 typeof tournament.rules.config.dailyMetric === 'string'
                   ? tournament.rules.config.dailyMetric
@@ -1096,6 +1110,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
           </div>
         </AccessibleModal>
       )}
+      <UserProfileSheet sender={profilePlayer} onClose={() => setProfilePlayer(null)} />
     </div>
   );
 }
