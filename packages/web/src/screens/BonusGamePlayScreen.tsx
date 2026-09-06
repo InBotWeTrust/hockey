@@ -46,7 +46,6 @@ const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpri
   idleSizeScale: 1.22,
   saveSizeScale: 0.96,
   saveVisualYOffset: 10,
-  shadow: true,
 };
 
 // PlayView normally applies the deferred server DTO at the end of the puck animation.

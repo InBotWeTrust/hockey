@@ -178,7 +178,6 @@ export function TestCourtScreen(): JSX.Element {
           shotDurationMs: 500,
           visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
           visualYOffset: TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
-          shadow: true,
         }}
         goalOptions={{
           spriteUrl: '/sprites/test-goal-clean.webp',
@@ -199,7 +198,6 @@ export function TestCourtScreen(): JSX.Element {
           idleSizeScale: 1.22,
           saveSizeScale: 0.96,
           saveVisualYOffset: 10,
-          shadow: true,
         }}
         puckOptions={{
           radiusScaleX: 1.16,

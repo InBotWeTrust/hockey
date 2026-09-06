@@ -360,7 +360,6 @@ const PERSPECTIVE_PLAYER_OPTIONS: PlayerOptions = {
   shotDurationMs: 500,
   visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
   visualYOffset: TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
-  shadow: true,
 };
 
 export const TRAINING_STREET_PLAYER_OPTIONS: PlayerOptions = {
@@ -395,7 +394,6 @@ const PERSPECTIVE_GOALIE_OPTIONS: GoalieOptions = {
   idleSizeScale: 1.22,
   saveSizeScale: 0.96,
   saveVisualYOffset: 10,
-  shadow: true,
 };
 
 export const TRAINING_AMATEUR_GOALIE_OPTIONS: GoalieOptions = {
