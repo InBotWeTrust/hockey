@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AchievementDto } from '../api/achievements.js';
@@ -118,14 +118,37 @@ describe('AchievementsScreen', () => {
   });
 
   it('opens achievement details in the shared accessible modal', async () => {
-    mockAchievementsApi([makeAchievement({ title: 'Первая шайба' })]);
+    mockAchievementsApi([
+      makeAchievement({
+        title: 'Первая шайба',
+        photoUrl: '/achievements/first-goal.webp?v=20260906-hd1',
+      }),
+    ]);
     renderAchievements();
 
     const card = (await screen.findByText('Первая шайба')).closest('button');
     expect(card).not.toBeNull();
     fireEvent.click(card!);
 
-    expect(screen.getByRole('dialog', { name: 'Первая шайба' })).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Первая шайба' });
+    expect(dialog).toHaveClass(
+      'achievement-details-modal',
+      'achievement-details-modal--crisp',
+    );
+    const details = within(dialog);
+    const requirement = details.getByText('Условие');
+    const artwork = details.getByRole('img', { name: 'Первая шайба' });
+    const description = details.getByText('Описание');
+    expect(artwork).toHaveAttribute(
+      'src',
+      '/achievements/first-goal.webp?v=20260906-hd1',
+    );
+    expect(requirement.compareDocumentPosition(artwork) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
+    );
+    expect(artwork.compareDocumentPosition(description) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
+    );
     expect(screen.getByRole('button', { name: 'Закрыть окно' })).toBeInTheDocument();
     expect(document.body.firstElementChild).toHaveAttribute('inert');
   });

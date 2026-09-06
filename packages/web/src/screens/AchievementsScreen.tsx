@@ -353,6 +353,7 @@ export function AchievementsScreen({
           copy={selected.requirement}
           onRequestClose={() => setSelected(null)}
           closeBlocked={claimMutation.isPending}
+          cardClassName="achievement-details-modal achievement-details-modal--crisp"
           headerAction={
             <button
               type="button"
@@ -364,9 +365,20 @@ export function AchievementsScreen({
               <X size={15} />
             </button>
           }
+          cardStyle={{
+            width: 'min(320px, calc(100vw - 40px))',
+            maxHeight: 'calc(100dvh - 40px - var(--app-safe-top) - var(--app-safe-bottom))',
+            overflowY: 'auto',
+            position: 'relative',
+          }}
         >
-          <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>
-            {selected.description}
+          <div className="achievement-details-modal__content">
+            <img
+              className="achievement-details-modal__image"
+              src={selected.photoUrl}
+              alt={selected.title}
+            />
+            <p>{selected.description}</p>
           </div>
           {rewardText(selected) && (
             <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
