@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import { reconcileTournamentAchievements } from '../achievements/tournamentEvaluator.js';
 import { AppError } from '../plugins/errors.js';
 import { enqueueTournamentAudiencePush } from '../push/tournament.js';
 
@@ -242,6 +243,10 @@ export async function grantTournamentStageRewardsWithClient(
           where id = $1 and status = 'playoff'`,
       [tournamentId],
     );
+    await reconcileTournamentAchievements(client, {
+      tournamentId,
+      source: 'tournament_live',
+    });
     await enqueueTournamentAudiencePush(client, {
       tournamentId,
       eventType: 'tournament.completed',

@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
+import { reconcileTournamentAchievements } from '../achievements/tournamentEvaluator.js';
 import { decideNextFixtureSegment, type FixtureSegmentKind } from './segments.js';
 import { rebuildHeadToHeadStandings } from './standingsPersistence.js';
 import { advanceTournamentPlayoffSeries } from './playoffSeriesLifecycle.js';
@@ -606,6 +607,12 @@ export async function settleTournamentSegmentForDuel(
   }
   if (segment.round_stage === 'regular') {
     await rebuildHeadToHeadStandings(client, segment.tournament_id);
+  }
+  if (segment.round_stage === 'playoff' || segment.round_stage === 'third_place') {
+    await reconcileTournamentAchievements(client, {
+      tournamentId: segment.tournament_id,
+      source: 'tournament_live',
+    });
   }
   await enqueueTournamentFixtureResultPush(client, {
     fixtureId: segment.fixture_id,

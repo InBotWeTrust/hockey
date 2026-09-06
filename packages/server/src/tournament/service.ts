@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
+import { reconcileTournamentAchievements } from '../achievements/tournamentEvaluator.js';
 import { appendEvent } from '../duel/eventLog.js';
 import { grantTournamentStageRewardsWithClient, resolvePlayoffPlacements } from './rewards.js';
 import { createRegularSeasonPodiumCongratulations } from './podiumCongratulations.js';
@@ -44,9 +45,7 @@ import {
 import { rebuildHeadToHeadStandings } from './standingsPersistence.js';
 import { rebuildDailyAggregateStandings } from './dailyAggregate.js';
 import { advanceTournamentPlayoffSeries } from './playoffSeriesLifecycle.js';
-import {
-  enqueueTournamentFixtureResultPush,
-} from './fixtureNotifications.js';
+import { enqueueTournamentFixtureResultPush } from './fixtureNotifications.js';
 import { lockTournament, lockTournamentFixture } from './locks.js';
 import { canTransitionTournament } from './lifecycle.js';
 import { tournamentSlugBase } from './slug.js';
@@ -382,9 +381,7 @@ async function reschedulePublishedPlayoffRounds(
         throw new AppError('configuration_error', 'У игры не указан номер в серии', 409);
       }
       const slot =
-        fixture.game_number === 1
-          ? { day: days[0]!, startsAt: days[0]!.firstGameStartsAt }
-          : null;
+        fixture.game_number === 1 ? { day: days[0]!, startsAt: days[0]!.firstGameStartsAt } : null;
       if (slot !== null && slot.startsAt <= input.now) {
         throw new AppError('bad_request', 'Новое время игр должно быть в будущем', 400);
       }
@@ -2783,35 +2780,35 @@ export async function publishRegularSchedule(pool: Pool, tournamentId: string) {
 }
 
 interface TournamentScheduleFixtureRow {
-    id: string;
-    series_id: string | null;
-    game_number: number | null;
-    series_wins_required: number | null;
-    game_day_id: string | null;
-    game_day_number: number | null;
-    game_day_local_date: string | null;
-    game_day_starts_at: Date | null;
-    fixture_number: number;
-    stage: string;
-    round_number: number;
-    scheduled_starts_at: Date | null;
-    window_ends_at: Date | null;
-    status: string;
-    venue_mode: 'home_selected' | 'neutral_default';
-    home_user_id: string | null;
-    home_name: string | null;
-    home_avatar_url: string | null;
-    home_seed: number | null;
-    away_user_id: string | null;
-    away_name: string | null;
-    away_avatar_url: string | null;
-    away_seed: number | null;
-    home_score: number;
-    away_score: number;
-    settled_at?: Date | null;
-    actual_starts_at?: Date | null;
-    winner_user_id?: string | null;
-    technical_result: boolean;
+  id: string;
+  series_id: string | null;
+  game_number: number | null;
+  series_wins_required: number | null;
+  game_day_id: string | null;
+  game_day_number: number | null;
+  game_day_local_date: string | null;
+  game_day_starts_at: Date | null;
+  fixture_number: number;
+  stage: string;
+  round_number: number;
+  scheduled_starts_at: Date | null;
+  window_ends_at: Date | null;
+  status: string;
+  venue_mode: 'home_selected' | 'neutral_default';
+  home_user_id: string | null;
+  home_name: string | null;
+  home_avatar_url: string | null;
+  home_seed: number | null;
+  away_user_id: string | null;
+  away_name: string | null;
+  away_avatar_url: string | null;
+  away_seed: number | null;
+  home_score: number;
+  away_score: number;
+  settled_at?: Date | null;
+  actual_starts_at?: Date | null;
+  winner_user_id?: string | null;
+  technical_result: boolean;
 }
 
 function tournamentScheduleFixtureDto(row: TournamentScheduleFixtureRow) {
@@ -2819,8 +2816,7 @@ function tournamentScheduleFixtureDto(row: TournamentScheduleFixtureRow) {
     id: row.id,
     seriesId: row.series_id ?? null,
     gameNumber: row.game_number == null ? null : Number(row.game_number),
-    seriesWinsRequired:
-      row.series_wins_required == null ? null : Number(row.series_wins_required),
+    seriesWinsRequired: row.series_wins_required == null ? null : Number(row.series_wins_required),
     gameDay:
       row.game_day_id == null || row.game_day_local_date == null || row.game_day_starts_at == null
         ? null
@@ -3018,11 +3014,7 @@ export interface TournamentScheduleCursor {
   id: string;
 }
 
-export async function getTournamentReadinessHint(
-  pool: Pool,
-  tournamentId: string,
-  userId: string,
-) {
+export async function getTournamentReadinessHint(pool: Pool, tournamentId: string, userId: string) {
   const result = await pool.query<{ dismissed_at: Date }>(
     `select dismissed_at
        from tournament_readiness_hint_preference
@@ -4484,6 +4476,10 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
       `update tournament set status = 'playoff', updated_at = now() where id = $1`,
       [tournamentId],
     );
+    await reconcileTournamentAchievements(client, {
+      tournamentId,
+      source: 'tournament_live',
+    });
     await enqueueTournamentAudiencePush(client, {
       tournamentId,
       eventType: 'tournament.playoff_started',
