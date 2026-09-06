@@ -7914,14 +7914,6 @@ button.daily-calendar__day:active {
   gap: 10px;
 }
 
-.tournament-bracket-overview__series-list--with-bronze {
-  min-height: calc(100% + 56px);
-}
-
-.tournament-bracket-overview__grid[data-has-bronze='true'] {
-  padding-bottom: 64px;
-}
-
 .tournament-bracket-connector {
   position: absolute;
   left: 100%;
@@ -7966,11 +7958,17 @@ button.daily-calendar__day:active {
   content: '';
 }
 
+.tournament-bracket-overview__bronze-column {
+  display: grid;
+  align-self: start;
+  min-width: 0;
+  gap: 10px;
+}
+
 .tournament-bracket-overview__bronze-lane {
   position: relative;
   z-index: 1;
   min-width: 0;
-  margin-top: 20px;
 }
 
 .tournament-bracket-overview__bronze-lane::before {
