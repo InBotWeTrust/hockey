@@ -53,7 +53,13 @@ function reward(category: AchievementCategory) {
   return DEFAULT_REWARD_BY_CATEGORY[category];
 }
 
-export const ACHIEVEMENT_SEEDS: AchievementSeed[] = [
+const ACHIEVEMENT_ARTWORK_VERSION = '20260906-hd1';
+
+function versionArtworkUrl(photoUrl: string): string {
+  return `${photoUrl}?v=${ACHIEVEMENT_ARTWORK_VERSION}`;
+}
+
+const ACHIEVEMENT_SEED_DEFINITIONS: AchievementSeed[] = [
   {
     id: 'ideal-day',
     photoUrl: '/achievements/ideal-day.webp',
@@ -698,3 +704,10 @@ export const ACHIEVEMENT_SEEDS: AchievementSeed[] = [
     sortOrder: 510,
   },
 ];
+
+export const ACHIEVEMENT_SEEDS: AchievementSeed[] = ACHIEVEMENT_SEED_DEFINITIONS.map(
+  (achievement) => ({
+    ...achievement,
+    photoUrl: versionArtworkUrl(achievement.photoUrl),
+  }),
+);

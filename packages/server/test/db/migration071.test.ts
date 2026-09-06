@@ -206,6 +206,7 @@ describe.skipIf(!hasIntegrationEnv)('071 accuracy World Tour migration', () => {
       '101_align_tournament_classic_puck_speed.sql',
       '102_amateur_duel_rating_match_ledger.sql',
       '103_tournament_achievements.sql',
+      '104_version_achievement_artwork.sql',
     ]);
 
     const preserved = await pool.query<{

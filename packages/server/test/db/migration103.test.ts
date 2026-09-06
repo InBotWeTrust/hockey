@@ -33,6 +33,15 @@ function tuple(achievement: (typeof ACHIEVEMENT_SEEDS)[number]) {
 }
 
 describe('tournament achievement catalogue', () => {
+  it('versions every bundled artwork URL so clients cannot reuse stale thumbnails', () => {
+    expect(ACHIEVEMENT_SEEDS).not.toHaveLength(0);
+    expect(
+      ACHIEVEMENT_SEEDS.every((achievement) =>
+        /^\/achievements\/[^?]+\.webp\?v=20260906-hd1$/.test(achievement.photoUrl),
+      ),
+    ).toBe(true);
+  });
+
   it('defines ten active tournament achievements with the approved rewards', () => {
     const tournamentAchievements = ACHIEVEMENT_SEEDS.filter(
       (achievement) => achievement.category === 'tournament',
@@ -75,8 +84,9 @@ describe.skipIf(!hasIntegrationEnv)('migration 103 tournament achievements', () 
       reward_currency: number;
       reward_stars: number;
       reward_experience: number;
+      photo_url: string;
     }>(
-      `select id, title, availability, future_tag,
+      `select id, title, availability, future_tag, photo_url,
               reward_currency, reward_stars, reward_experience
          from achievements
         where category = 'tournament'
@@ -87,6 +97,9 @@ describe.skipIf(!hasIntegrationEnv)('migration 103 tournament achievements', () 
     expect(rows.every((row) => row.availability === 'active' && row.future_tag === null)).toBe(
       true,
     );
+    expect(
+      rows.every((row) => /^\/achievements\/[^?]+\.webp\?v=20260906-hd1$/.test(row.photo_url)),
+    ).toBe(true);
     expect(
       rows.map((row) => [
         row.id,

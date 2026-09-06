@@ -283,6 +283,7 @@ describe.skipIf(!hasIntegrationEnv)('076 speed bonus game balance', () => {
       '101_align_tournament_classic_puck_speed.sql',
       '102_amateur_duel_rating_match_ledger.sql',
       '103_tournament_achievements.sql',
+      '104_version_achievement_artwork.sql',
     ]);
     const attempt = await pool.query<{
       status: string;
