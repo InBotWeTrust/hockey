@@ -361,7 +361,6 @@ describe('BonusGamePlayScreen', () => {
         idleSizeScale: 1.22,
         saveSizeScale: 0.96,
         saveVisualYOffset: 10,
-        shadow: true,
       },
       goalieConfig: {
         id: 'bonus:beach:p2',

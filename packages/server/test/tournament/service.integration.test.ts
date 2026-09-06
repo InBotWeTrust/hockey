@@ -2473,6 +2473,20 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       [tournament.id],
     );
     expect(series.rows[0]!.count).toBe(1);
+    const achievements = await pool.query<{ achievement_id: string; count: number }>(
+      `select achievement_id, count(*)::int as count
+         from user_achievements
+        where achievement_id in (
+          'regular-season-champion', 'regular-season-medalist', 'playoff-final'
+        )
+        group by achievement_id
+        order by achievement_id`,
+    );
+    expect(achievements.rows).toEqual([
+      { achievement_id: 'playoff-final', count: 2 },
+      { achievement_id: 'regular-season-champion', count: 1 },
+      { achievement_id: 'regular-season-medalist', count: 2 },
+    ]);
   });
 
   it('includes playoff seeds in the public schedule', async () => {
@@ -3278,9 +3292,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
        returning id, stage`,
       [tournament.id],
     );
-    const semifinalRoundId = rounds.rows.find(
-      (round) => round.stage === 'playoff',
-    )!.id;
+    const semifinalRoundId = rounds.rows.find((round) => round.stage === 'playoff')!.id;
     const finalRoundId = rounds.rows.filter((round) => round.stage === 'playoff')[1]!.id;
     const bronzeRoundId = rounds.rows.find((round) => round.stage === 'third_place')!.id;
     const participantIds = participants.map((participant) => participant.participantId);
@@ -3991,6 +4003,18 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       'forfeit',
       'cancelled',
     ]);
+
+    const publicSchedule = await tournamentService.getTournamentScheduleDay(
+      pool,
+      tournament.id,
+      PLAYER_IDS[0],
+      '2030-09-01',
+    );
+    expect(
+      publicSchedule.myGames
+        .filter((fixture) => fixture.seriesId === firstRound.rows[0]!.series_id)
+        .map((fixture) => fixture.gameNumber),
+    ).toEqual([1, 2]);
 
     const finalSeries = await pool.query<{ higher_seed_participant_id: string; status: string }>(
       `select higher_seed_participant_id, status from tournament_playoff_series

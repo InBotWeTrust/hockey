@@ -315,38 +315,13 @@ export function AchievementsScreen({
         <div className="section-label section-label--page">
           Задания · {countText(selectedFilterCounts.completed, selectedFilterCounts.total)}
         </div>
-        <div
-          role="tablist"
-          aria-label="Фильтр заданий"
-          style={{
-            display: 'flex',
-            gap: 8,
-            overflowX: 'auto',
-            paddingBottom: 2,
-            overscrollBehaviorX: 'contain',
-          }}
-        >
-          {visibleFilters.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={filter === item.id}
-              onClick={() => setFilter(item.id)}
-              className={filter === item.id ? 'pill pill--dark' : 'pill'}
-              style={{
-                flex: '0 0 auto',
-                border: 0,
-                minHeight: 34,
-                padding: '0 14px',
-                fontSize: 12,
-                fontWeight: 900,
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <SegmentedTabs
+          items={visibleFilters}
+          activeTab={filter}
+          ariaLabel="Фильтр заданий"
+          onChange={setFilter}
+          scrollable
+        />
 
         {achievementsQuery.isLoading ? (
           <div style={{ color: 'var(--muted)', fontSize: 14, padding: '32px 0' }}>Загрузка…</div>
@@ -378,6 +353,7 @@ export function AchievementsScreen({
           copy={selected.requirement}
           onRequestClose={() => setSelected(null)}
           closeBlocked={claimMutation.isPending}
+          cardClassName="achievement-details-modal achievement-details-modal--crisp"
           headerAction={
             <button
               type="button"
@@ -389,9 +365,20 @@ export function AchievementsScreen({
               <X size={15} />
             </button>
           }
+          cardStyle={{
+            width: 'min(320px, calc(100vw - 40px))',
+            maxHeight: 'calc(100dvh - 40px - var(--app-safe-top) - var(--app-safe-bottom))',
+            overflowY: 'auto',
+            position: 'relative',
+          }}
         >
-          <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>
-            {selected.description}
+          <div className="achievement-details-modal__content">
+            <img
+              className="achievement-details-modal__image"
+              src={selected.photoUrl}
+              alt={selected.title}
+            />
+            <p>{selected.description}</p>
           </div>
           {rewardText(selected) && (
             <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>

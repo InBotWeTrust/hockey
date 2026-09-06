@@ -48,7 +48,11 @@ export interface GameLoopOpts {
   getSpeedOverrides?: () => SpeedOverrides;
   getInitialElapsedMs?: () => number;
   getInitialClocks?: () => GameLoopClocks;
-  getDuelCondition?: (elapsedMs: number, speeds: SpeedOverrides) => DuelPlayerCondition | null;
+  getDuelCondition?: (
+    elapsedMs: number,
+    speeds: SpeedOverrides,
+    reusable?: DuelPlayerCondition,
+  ) => DuelPlayerCondition | null;
   onDuelConditionChange?: (condition: DuelPlayerCondition | null) => void;
 }
 
@@ -137,6 +141,18 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
   let goalieSimulator: GoalieSimulator | null = null;
   let goalieSimulatorSeed: string | null = null;
   let goalieSimulatorShotIndex: number | null = null;
+  const reusableCondition: DuelPlayerCondition = {
+    puckSpeedDelta: 0,
+    shooterSpeedMultiplier: 1,
+    canShoot: true,
+    status: 'normal',
+    fatigueLevel: 'none',
+    stumbleActive: false,
+    shooterXOffsetPx: 0,
+    fatigueMs: 0,
+    nutritionConsumed: 0,
+    skatesConsumed: 0,
+  };
 
   function shooterT(now: number): number {
     const activeManual = shooterPauseStartedAt !== null ? now - shooterPauseStartedAt : 0;
@@ -196,9 +212,11 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     const sf = overrides?.shooterFreq ?? 0.45;
     const o = getOffsets();
     const tScene = sceneT(now);
-    const rawCondition = overrides ? opts.getDuelCondition?.(tScene, overrides) : null;
+    const rawCondition = overrides
+      ? opts.getDuelCondition?.(tScene, overrides, reusableCondition)
+      : null;
     if (rawCondition?.stumbleActive === true) {
-      heldStumbleCondition = rawCondition;
+      if (heldStumbleCondition === null) heldStumbleCondition = { ...rawCondition };
       heldStumbleUntilMs = Math.max(heldStumbleUntilMs, now + MIN_STUMBLE_PAUSE_MS);
     } else if (heldStumbleCondition !== null && now >= heldStumbleUntilMs) {
       heldStumbleCondition = null;

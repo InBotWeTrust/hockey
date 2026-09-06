@@ -238,6 +238,9 @@ describe.skipIf(!hasIntegrationEnv)('077 accuracy World Tour movement balance', 
       '099_tournament_classic_period_loadout.sql',
       '100_backfill_official_amateur_duel_stats.sql',
       '101_align_tournament_classic_puck_speed.sql',
+      '102_amateur_duel_rating_match_ledger.sql',
+      '103_tournament_achievements.sql',
+      '104_version_achievement_artwork.sql',
     ]);
     const attempt = await pool.query<{
       status: string;

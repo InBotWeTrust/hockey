@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AchievementDto } from '../api/achievements.js';
@@ -118,14 +118,37 @@ describe('AchievementsScreen', () => {
   });
 
   it('opens achievement details in the shared accessible modal', async () => {
-    mockAchievementsApi([makeAchievement({ title: 'Первая шайба' })]);
+    mockAchievementsApi([
+      makeAchievement({
+        title: 'Первая шайба',
+        photoUrl: '/achievements/first-goal.webp?v=20260906-hd1',
+      }),
+    ]);
     renderAchievements();
 
     const card = (await screen.findByText('Первая шайба')).closest('button');
     expect(card).not.toBeNull();
     fireEvent.click(card!);
 
-    expect(screen.getByRole('dialog', { name: 'Первая шайба' })).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Первая шайба' });
+    expect(dialog).toHaveClass(
+      'achievement-details-modal',
+      'achievement-details-modal--crisp',
+    );
+    const details = within(dialog);
+    const requirement = details.getByText('Условие');
+    const artwork = details.getByRole('img', { name: 'Первая шайба' });
+    const description = details.getByText('Описание');
+    expect(artwork).toHaveAttribute(
+      'src',
+      '/achievements/first-goal.webp?v=20260906-hd1',
+    );
+    expect(requirement.compareDocumentPosition(artwork) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
+    );
+    expect(artwork.compareDocumentPosition(description) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
+    );
     expect(screen.getByRole('button', { name: 'Закрыть окно' })).toBeInTheDocument();
     expect(document.body.firstElementChild).toHaveAttribute('inert');
   });
@@ -178,6 +201,11 @@ describe('AchievementsScreen', () => {
     expect(screen.getByRole('tab', { name: 'Тренировка' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Турниры' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Будущее' })).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: 'Фильтр заданий' })).toHaveClass(
+      'segmented-tabs',
+      'segmented-tabs--compact',
+      'segmented-tabs--scrollable',
+    );
 
     fireEvent.click(screen.getByRole('tab', { name: 'Ежедневная' }));
 
@@ -199,6 +227,41 @@ describe('AchievementsScreen', () => {
     expect(screen.getByText('Задания · 0/1')).toBeInTheDocument();
     expect(screen.getByText('Тренировочная цель')).toBeInTheDocument();
     expect(screen.queryByText('День 1')).toBeNull();
+  });
+
+  it('shows all ten active tournament achievements without future labels', async () => {
+    const tournamentAchievements = [
+      ['regular-season-champion', 'Победитель регулярки', 125, 250],
+      ['regular-season-medalist', 'Призёр регулярки', 50, 100],
+      ['playoff-semifinal', 'Турнирный характер', 75, 150],
+      ['playoff-final', 'Финальный лёд', 125, 250],
+      ['tournament-cup', 'Кубок над головой', 200, 400],
+      ['dark-horse', 'Тёмная лошадка', 100, 200],
+      ['death-bracket', 'Сетка смерти', 250, 500],
+      ['series-comeback', 'Мощный камбэк', 150, 300],
+      ['no-shake', 'Без дрожи', 75, 150],
+      ['tournament-streak', 'Турнирная серия', 300, 700],
+    ] as const;
+    mockAchievementsApi(
+      tournamentAchievements.map(([id, title, rewardCurrency, rewardExperience]) =>
+        makeAchievement({
+          id,
+          title,
+          category: 'tournament',
+          rewardCurrency,
+          rewardStars: rewardExperience,
+          rewardExperience,
+        }),
+      ),
+    );
+    renderAchievements();
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Турниры' }));
+
+    expect(screen.getByText('Задания · 0/10')).toBeInTheDocument();
+    expect(screen.queryByText('Скоро')).toBeNull();
+    expect(screen.getByText('Победитель регулярки')).toBeInTheDocument();
+    expect(screen.getByText('Призёр регулярки')).toBeInTheDocument();
   });
 
   it('uses clear achievement statuses without changing catalogue order', async () => {

@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import { reconcileTournamentAchievements } from '../achievements/tournamentEvaluator.js';
 import { cancelTournamentDuel } from '../duel/amateur/lifecycle.js';
 import { resolveDelayedPlayoffRoundStart } from './playoffs.js';
 import { grantPlayoffRewardsIfComplete } from './rewards.js';
@@ -434,7 +435,13 @@ async function finalizeTournamentPlayoffSeries(
       ? completedSeries.lower_seed_participant_id
       : completedSeries.higher_seed_participant_id;
   await grantPlayoffRewardsIfComplete(client, completedSeries.tournament_id);
-  if (completedKey === undefined || loserParticipantId === null) return { completed: true };
+  if (completedKey === undefined || loserParticipantId === null) {
+    await reconcileTournamentAchievements(client, {
+      tournamentId: completedSeries.tournament_id,
+      source: 'tournament_live',
+    });
+    return { completed: true };
+  }
 
   const dependents = await client.query<{
     id: string;
@@ -513,6 +520,10 @@ async function finalizeTournamentPlayoffSeries(
     await delayPastPlayoffRoundStart(client, { roundId: dependent.round_id });
   }
 
+  await reconcileTournamentAchievements(client, {
+    tournamentId: completedSeries.tournament_id,
+    source: 'tournament_live',
+  });
   return { completed: true };
 }
 

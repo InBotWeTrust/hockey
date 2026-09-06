@@ -35,6 +35,21 @@ function makeChat(name: string, id = 'chat-1'): ChatDTO {
   };
 }
 
+function makeDirectChat(name: string, avatarUrl: string): ChatDTO {
+  return {
+    ...makeChat(name),
+    type: 'direct',
+    name: null,
+    dmCounterpart: {
+      userId: 'user-1',
+      displayName: name,
+      avatarUrl,
+      lastSeenAt: null,
+      lastReadAt: null,
+    },
+  };
+}
+
 function wrap(ui: JSX.Element): JSX.Element {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
@@ -59,8 +74,37 @@ describe('SearchResultsDropdown', () => {
     apiFetchMock.mockResolvedValue([]);
     render(wrap(<SearchResultsDropdown query="te" chatHits={[makeChat('Team')]} />));
     expect(screen.getByRole('heading', { name: 'Чаты' })).toBeInTheDocument();
-    const btn = screen.getByRole('button');
-    expect(btn.textContent).toBe('Team');
+    expect(screen.getByRole('button', { name: 'Team' })).toBeInTheDocument();
+  });
+
+  it('renders search results as one flat light list without nested glass cards', () => {
+    const { container } = render(
+      wrap(<SearchResultsDropdown query="te" chatHits={[makeChat('Team')]} />),
+    );
+
+    expect(container.querySelector('.chat-search-results')).toBeInTheDocument();
+    expect(container.querySelector('.chat-search-results__list')).toBeInTheDocument();
+    expect(container.querySelector('.glass-dark')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Team' })).toHaveClass(
+      'chat-search-results__item',
+    );
+  });
+
+  it('shows the counterpart avatar and direct-chat label in a personal chat result', () => {
+    render(
+      wrap(
+        <SearchResultsDropdown
+          query="ал"
+          chatHits={[makeDirectChat('Александра', 'https://example.com/alex.jpg')]}
+        />,
+      ),
+    );
+
+    expect(screen.getByRole('img', { name: 'Александра' })).toHaveAttribute(
+      'src',
+      'https://example.com/alex.jpg',
+    );
+    expect(screen.getByText('Личный чат')).toBeInTheDocument();
   });
 
   it('does not call /chat/search when query is shorter than 2 chars', async () => {

@@ -1,4 +1,4 @@
-import { Assets, BlurFilter, Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { Assets, Container, Sprite, Texture } from 'pixi.js';
 import { PUCK_START } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
@@ -36,12 +36,10 @@ export interface PlayerOptions {
   shotDurationMs?: number | undefined;
   visualYScale?: number | undefined;
   visualYOffset?: number | undefined;
-  shadow?: boolean | undefined;
 }
 
 export class Player {
   readonly container = new Container();
-  private readonly shadow: Graphics | null;
   private readonly sprite: Sprite;
   private readonly shotDir: 1 | -1;
   private readonly spriteWidth: number;
@@ -81,13 +79,6 @@ export class Player {
     this.shotDurationMs = options.shotDurationMs ?? SHOT_DURATION_MS;
     this.visualYScale = options.visualYScale ?? 1;
     this.visualYOffset = options.visualYOffset ?? 0;
-    this.shadow = options.shadow
-      ? new Graphics().ellipse(0, 0, 1, 1).fill({ color: 0x0c1b2d, alpha: 0.24 })
-      : null;
-    if (this.shadow) {
-      this.shadow.filters = [new BlurFilter({ strength: 8 })];
-      this.container.addChild(this.shadow);
-    }
     this.sprite = new Sprite(Texture.EMPTY);
     this.sprite.anchor.set(0.5, 0.5);
     this.container.addChild(this.sprite);
@@ -169,16 +160,6 @@ export class Player {
     this.sprite.width = activeSpriteWidth * s;
     this.sprite.height = (activeSpriteWidth / activeSpriteAspect) * s;
     this.sprite.position.set(shooterX * s, (shooterY * this.visualYScale + this.visualYOffset) * s);
-    if (this.shadow) {
-      this.shadow.clear();
-      this.shadow
-        .ellipse(0, 0, this.sprite.width * 0.28, this.sprite.width * 0.08)
-        .fill({ color: 0x0c1b2d, alpha: 0.22 });
-      this.shadow.position.set(
-        this.sprite.position.x,
-        this.sprite.position.y + this.sprite.height * 0.34,
-      );
-    }
     this.container.position.set(scale.offsetX, scale.offsetY);
 
     if (useRestSprite || useStumbleSprite) {

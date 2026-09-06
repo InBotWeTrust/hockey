@@ -38,6 +38,7 @@ interface ClassicContext {
   endsAt: Date;
   rulesSnapshot: TournamentRulesSnapshot;
   config: ClassicTournamentConfig;
+  userId: string;
 }
 
 interface ClassicSessionRow {
@@ -145,11 +146,18 @@ export interface ClassicLoadoutItemSnapshot {
 }
 
 type ClassicInventoryRow = {
-  id: string; item_id: string; instance_id: string | null;
-  item_kind: 'stick' | 'skates' | 'nutrition'; title: string; image_url: string | null;
-  resource_unit: 'period' | 'shot' | 'distance' | 'energy_ms'; charges_available: number;
-  effect_puck_speed_points: number; effect_shooter_frequency_delta: number | string;
-  effect_goalie_frequency_delta: number | string; effect_goal_frequency_delta: number | string;
+  id: string;
+  item_id: string;
+  instance_id: string | null;
+  item_kind: 'stick' | 'skates' | 'nutrition';
+  title: string;
+  image_url: string | null;
+  resource_unit: 'period' | 'shot' | 'distance' | 'energy_ms';
+  charges_available: number;
+  effect_puck_speed_points: number;
+  effect_shooter_frequency_delta: number | string;
+  effect_goalie_frequency_delta: number | string;
+  effect_goal_frequency_delta: number | string;
   effect_stumble_interval_min_rolls: number | string;
   effect_stumble_interval_max_rolls: number | string;
   effect_stumble_interval_min_ms: number;
@@ -358,6 +366,7 @@ async function fetchCurrentContext(
     endsAt: row.ends_at,
     rulesSnapshot: row.rules_snapshot,
     config,
+    userId,
   };
 }
 
@@ -404,6 +413,7 @@ async function fetchSessionContext(
     endsAt: row.ends_at,
     rulesSnapshot: row.rules_snapshot,
     config: asClassicConfig(row.rules_snapshot),
+    userId,
   };
 }
 
@@ -524,7 +534,9 @@ async function resolveClassicLoadout(
     { kind: 'stick' as const, id: resolved.stick ?? null },
     { kind: 'skates' as const, id: resolved.skates ?? null },
     { kind: 'nutrition' as const, id: resolved.nutrition ?? null },
-  ].filter((entry): entry is { kind: 'stick' | 'skates' | 'nutrition'; id: string } => entry.id !== null);
+  ].filter(
+    (entry): entry is { kind: 'stick' | 'skates' | 'nutrition'; id: string } => entry.id !== null,
+  );
   if (requested.length === 0) return { items: [] };
   const ids = requested.map((entry) => entry.id);
   const { rows } = await client.query<ClassicInventoryRow>(
@@ -565,8 +577,13 @@ async function resolveClassicLoadout(
       throw new AppError('conflict', `invalid ${entry.kind} classic loadout item`, 409);
     }
     items.push({
-      id: row.id, itemId: row.item_id, instanceId: row.instance_id, kind: row.item_kind,
-      title: row.title, imageUrl: row.image_url, resourceUnit: row.resource_unit,
+      id: row.id,
+      itemId: row.item_id,
+      instanceId: row.instance_id,
+      kind: row.item_kind,
+      title: row.title,
+      imageUrl: row.image_url,
+      resourceUnit: row.resource_unit,
       resourceAvailable: Number(row.charges_available),
       effectPuckSpeedPoints: Number(row.effect_puck_speed_points),
       effectShooterFrequencyDelta: Number(row.effect_shooter_frequency_delta),
@@ -605,8 +622,13 @@ async function fetchClassicInventoryAvailability(
     [userId],
   );
   return rows.map((row) => ({
-    id: row.id, itemId: row.item_id, instanceId: row.instance_id, kind: row.item_kind,
-    title: row.title, imageUrl: row.image_url, resourceUnit: row.resource_unit,
+    id: row.id,
+    itemId: row.item_id,
+    instanceId: row.instance_id,
+    kind: row.item_kind,
+    title: row.title,
+    imageUrl: row.image_url,
+    resourceUnit: row.resource_unit,
     resourceAvailable: Number(row.charges_available),
     effectPuckSpeedPoints: Number(row.effect_puck_speed_points),
     effectShooterFrequencyDelta: Number(row.effect_shooter_frequency_delta),
@@ -620,8 +642,14 @@ async function fetchClassicPeriodLoadout(
   client: PoolClient,
   sessionId: string,
   periodNumber: number,
-): Promise<{ snapshot: ClassicLoadoutSnapshot; consumption: ClassicInventoryConsumptionItem[] } | null> {
-  const { rows } = await client.query<{ snapshot: ClassicLoadoutSnapshot; consumption: ClassicInventoryConsumptionItem[] }>(
+): Promise<{
+  snapshot: ClassicLoadoutSnapshot;
+  consumption: ClassicInventoryConsumptionItem[];
+} | null> {
+  const { rows } = await client.query<{
+    snapshot: ClassicLoadoutSnapshot;
+    consumption: ClassicInventoryConsumptionItem[];
+  }>(
     `select snapshot, consumption from tournament_classic_period_loadout
       where session_id = $1 and period_number = $2`,
     [sessionId, periodNumber],
@@ -663,23 +691,38 @@ async function consumeClassicInventoryForShot(
   for (const item of loadout.items) {
     const previous = consumption.find((entry) => entry.id === item.id)?.charges ?? 0;
     const target = Math.min(item.resourceAvailable, Math.max(previous, targets[item.kind]));
-    const delta = Math.max(0, Math.ceil(target) - Math.ceil(previous));
-    if (delta <= 0) continue;
-    const update = item.instanceId
-      ? await client.query(
-          `update user_inventory_instance set charges_available = charges_available - $3, updated_at = $4
+    const reportedDelta = Math.max(0, target - previous);
+    if (reportedDelta <= 0) continue;
+    const availableDelta =
+      item.resourceUnit === 'distance'
+        ? Math.max(0, Math.floor(target) - Math.floor(previous))
+        : Math.max(0, Math.ceil(target) - Math.ceil(previous));
+    const update =
+      availableDelta <= 0
+        ? null
+        : item.instanceId
+          ? await client.query(
+              `update user_inventory_instance set charges_available = charges_available - $3, updated_at = $4
             where user_id = $1 and id = $2 and charges_available >= $3`,
-          [userId, item.instanceId, delta, now],
-        )
-      : await client.query(
-          `update user_inventory_item set charges_available = charges_available - $3, updated_at = $4
+              [userId, item.instanceId, availableDelta, now],
+            )
+          : await client.query(
+              `update user_inventory_item set charges_available = charges_available - $3, updated_at = $4
             where user_id = $1 and inventory_item_id = $2 and charges_available >= $3`,
-          [userId, item.itemId, delta, now],
-        );
-    if (update.rowCount !== 1) continue;
-    if (item.instanceId) await syncClassicLegacyInventory(client, userId, item.itemId);
+              [userId, item.itemId, availableDelta, now],
+            );
+    if (update !== null && update.rowCount !== 1) continue;
+    if (update !== null && item.instanceId) {
+      await syncClassicLegacyInventory(client, userId, item.itemId);
+    }
     const index = next.findIndex((entry) => entry.id === item.id);
-    const value = { id: item.id, itemId: item.itemId, kind: item.kind, title: item.title, charges: target };
+    const value = {
+      id: item.id,
+      itemId: item.itemId,
+      kind: item.kind,
+      title: item.title,
+      charges: target,
+    };
     if (index >= 0) next[index] = value;
     else next.push(value);
   }
@@ -687,6 +730,57 @@ async function consumeClassicInventoryForShot(
     `update tournament_classic_period_loadout set consumption = $3, updated_at = $4
       where session_id = $1 and period_number = $2`,
     [sessionId, periodNumber, JSON.stringify(next), now],
+  );
+}
+
+async function consumeClassicInventoryAtPeriodEnd(
+  client: PoolClient,
+  context: ClassicContext,
+  session: ClassicSessionRow,
+  endedAt: Date,
+): Promise<void> {
+  if (session.period_started_at === null) return;
+  const periodLoadout = await fetchClassicPeriodLoadout(client, session.id, session.current_period);
+  if (!periodLoadout) return;
+  const preset = session.rules_snapshot.periodSpeedPresets.find(
+    (candidate) => candidate.periodNumber === session.current_period,
+  );
+  if (!preset) throw new AppError('internal_error', 'classic period speed is missing', 500);
+  const consumedFor = (id: string): number =>
+    periodLoadout.consumption.find((item) => item.id === id)?.charges ?? 0;
+  const remainingFor = (item: ClassicLoadoutItemSnapshot): number =>
+    Math.max(0, item.resourceAvailable - consumedFor(item.id));
+  const activeItems = periodLoadout.snapshot.items.filter((item) => remainingFor(item) > 0);
+  const shooterFrequency =
+    preset.shooterFrequency +
+    activeItems.reduce((sum, item) => sum + item.effectShooterFrequencyDelta, 0);
+  const elapsedMs = Math.max(0, endedAt.getTime() - session.period_started_at.getTime());
+  const condition = getDuelPlayerCondition({
+    seed: session.session_seed,
+    userId: context.userId,
+    periodNumber: session.current_period,
+    elapsedMs,
+    movementDistancePx: (elapsedMs * SHOOTER_AMPLITUDE * 4 * Math.max(0, shooterFrequency)) / 1000,
+    baseLaneWidthPx: SHOOTER_AMPLITUDE * 2,
+    baselineShooterSpeed: preset.shooterFrequency,
+    currentShooterSpeed: shooterFrequency,
+    loadout: {
+      stick: null,
+      skates: periodLoadout.snapshot.items.find((item) => item.kind === 'skates') ?? null,
+      nutrition: periodLoadout.snapshot.items.find((item) => item.kind === 'nutrition') ?? null,
+      fallbackSkatesTiming: DEFAULT_DUEL_INVENTORY_TIMING,
+      fallbackNutritionTiming: DEFAULT_DUEL_INVENTORY_TIMING,
+    },
+  });
+  await consumeClassicInventoryForShot(
+    client,
+    context.userId,
+    session.id,
+    session.current_period,
+    periodLoadout.snapshot,
+    periodLoadout.consumption,
+    { stick: 0, skates: condition.skatesConsumed, nutrition: condition.nutritionConsumed },
+    endedAt,
   );
 }
 
@@ -791,6 +885,7 @@ async function closePeriod(
   if (session.period_started_at === null) {
     throw new AppError('internal_error', 'classic period start is missing', 500);
   }
+  await consumeClassicInventoryAtPeriodEnd(client, context, session, endedAt);
   const aggregate = await aggregateCurrentPeriod(client, session.id, session.current_period);
   await client.query(
     `insert into tournament_classic_period
@@ -949,9 +1044,15 @@ async function buildState(
           ),
         ).toISOString()
       : null;
-  const boundaryPeriod = Math.min(3, Math.max(1, session.state === 'period_active' ? session.current_period : session.current_period + 1));
+  const boundaryPeriod = Math.min(
+    3,
+    Math.max(
+      1,
+      session.state === 'period_active' ? session.current_period : session.current_period + 1,
+    ),
+  );
   const storedLoadout = await fetchClassicPeriodLoadout(client, session.id, boundaryPeriod);
-  const loadout = storedLoadout?.snapshot ?? await resolveClassicLoadout(client, userId);
+  const loadout = storedLoadout?.snapshot ?? (await resolveClassicLoadout(client, userId));
   const allConsumption = await client.query<{ consumption: ClassicInventoryConsumptionItem[] }>(
     `select consumption from tournament_classic_period_loadout
       where session_id = $1 order by period_number`,
@@ -961,7 +1062,10 @@ async function buildState(
   for (const row of allConsumption.rows) {
     for (const item of row.consumption ?? []) {
       const previous = consumptionById.get(item.id);
-      consumptionById.set(item.id, { ...item, charges: (previous?.charges ?? 0) + Number(item.charges) });
+      consumptionById.set(item.id, {
+        ...item,
+        charges: (previous?.charges ?? 0) + Number(item.charges),
+      });
     }
   }
   const currentConsumption = storedLoadout?.consumption ?? [];
@@ -970,20 +1074,18 @@ async function buildState(
   const activeLoadoutItems = loadout.items.filter(
     (item) => item.resourceAvailable > currentConsumedFor(item.id),
   );
-  const effectivePeriodSpeedPresets = session.rules_snapshot.periodSpeedPresets.map(
-    (preset) => ({
-      ...preset,
-      shooterFrequency:
-        preset.shooterFrequency +
-        activeLoadoutItems.reduce((sum, item) => sum + item.effectShooterFrequencyDelta, 0),
-      goalieFrequency:
-        preset.goalieFrequency +
-        activeLoadoutItems.reduce((sum, item) => sum + item.effectGoalieFrequencyDelta, 0),
-      goalFrequency:
-        preset.goalFrequency +
-        activeLoadoutItems.reduce((sum, item) => sum + item.effectGoalFrequencyDelta, 0),
-    }),
-  ) as TournamentClassicRules['periodSpeedPresets'];
+  const effectivePeriodSpeedPresets = session.rules_snapshot.periodSpeedPresets.map((preset) => ({
+    ...preset,
+    shooterFrequency:
+      preset.shooterFrequency +
+      activeLoadoutItems.reduce((sum, item) => sum + item.effectShooterFrequencyDelta, 0),
+    goalieFrequency:
+      preset.goalieFrequency +
+      activeLoadoutItems.reduce((sum, item) => sum + item.effectGoalieFrequencyDelta, 0),
+    goalFrequency:
+      preset.goalFrequency +
+      activeLoadoutItems.reduce((sum, item) => sum + item.effectGoalFrequencyDelta, 0),
+  })) as TournamentClassicRules['periodSpeedPresets'];
   return {
     tournament_id: context.tournamentId,
     tournament_title: context.tournamentTitle,
@@ -1281,7 +1383,13 @@ export async function startClassicGamePeriod(
       `insert into tournament_classic_period_loadout
          (session_id, period_number, selection, snapshot, consumption, created_at, updated_at)
        values ($1, $2, $3, $4, '[]'::jsonb, $5, $5)`,
-      [session.id, periodNumber, JSON.stringify(input.loadout ?? {}), JSON.stringify(loadout), input.now],
+      [
+        session.id,
+        periodNumber,
+        JSON.stringify(input.loadout ?? {}),
+        JSON.stringify(loadout),
+        input.now,
+      ],
     );
     const { rows } = await client.query<ClassicSessionRow>(
       `update tournament_classic_session
@@ -1359,10 +1467,9 @@ export async function submitClassicGameShot(
     const stick = periodLoadout.snapshot.items.find((item) => item.kind === 'stick');
     const skates = periodLoadout.snapshot.items.find((item) => item.kind === 'skates');
     const nutrition = periodLoadout.snapshot.items.find((item) => item.kind === 'nutrition');
-    const shooterFrequency = preset.shooterFrequency + activeItems.reduce(
-      (sum, item) => sum + item.effectShooterFrequencyDelta,
-      0,
-    );
+    const shooterFrequency =
+      preset.shooterFrequency +
+      activeItems.reduce((sum, item) => sum + item.effectShooterFrequencyDelta, 0);
     const condition = getDuelPlayerCondition({
       seed: session.session_seed,
       userId: input.userId,
@@ -1377,28 +1484,47 @@ export async function submitClassicGameShot(
       loadout: {
         stick:
           stick && stick.resourceUnit !== 'period'
-            ? { id: stick.id, title: stick.title, resourceUnit: stick.resourceUnit,
-                resourceAvailable: remainingFor(stick), effectPuckSpeedPoints: stick.effectPuckSpeedPoints,
-                timing: stick.timing }
+            ? {
+                id: stick.id,
+                title: stick.title,
+                resourceUnit: stick.resourceUnit,
+                resourceAvailable: remainingFor(stick),
+                effectPuckSpeedPoints: stick.effectPuckSpeedPoints,
+                timing: stick.timing,
+              }
             : null,
         skates:
           skates && skates.resourceUnit !== 'period'
-            ? { id: skates.id, title: skates.title, resourceUnit: skates.resourceUnit,
-                resourceAvailable: skates.resourceAvailable, effectPuckSpeedPoints: skates.effectPuckSpeedPoints,
-                timing: skates.timing }
+            ? {
+                id: skates.id,
+                title: skates.title,
+                resourceUnit: skates.resourceUnit,
+                resourceAvailable: skates.resourceAvailable,
+                effectPuckSpeedPoints: skates.effectPuckSpeedPoints,
+                timing: skates.timing,
+              }
             : null,
         nutrition:
           nutrition && nutrition.resourceUnit !== 'period'
-            ? { id: nutrition.id, title: nutrition.title, resourceUnit: nutrition.resourceUnit,
-                resourceAvailable: nutrition.resourceAvailable, effectPuckSpeedPoints: nutrition.effectPuckSpeedPoints,
-                timing: nutrition.timing }
+            ? {
+                id: nutrition.id,
+                title: nutrition.title,
+                resourceUnit: nutrition.resourceUnit,
+                resourceAvailable: nutrition.resourceAvailable,
+                effectPuckSpeedPoints: nutrition.effectPuckSpeedPoints,
+                timing: nutrition.timing,
+              }
             : null,
         fallbackSkatesTiming: DEFAULT_DUEL_INVENTORY_TIMING,
         fallbackNutritionTiming: DEFAULT_DUEL_INVENTORY_TIMING,
       },
     });
     if (!condition.canShoot) {
-      throw new AppError('conflict', `player cannot shoot during classic inventory status '${condition.status}'`, 409);
+      throw new AppError(
+        'conflict',
+        `player cannot shoot during classic inventory status '${condition.status}'`,
+        409,
+      );
     }
     const shotSeed = deriveShotSeed(session.session_seed, session.current_period, input.shotIndex);
     const shotInput = {
@@ -1408,8 +1534,12 @@ export async function submitClassicGameShot(
         : { shooterTapTime: input.input.shooterTapTime }),
       puckSpeedPerMs: preset.puckSpeedPerMs + condition.puckSpeedDelta,
       shooterFrequency: shooterFrequency * condition.shooterSpeedMultiplier,
-      goalieFrequency: preset.goalieFrequency + activeItems.reduce((sum, item) => sum + item.effectGoalieFrequencyDelta, 0),
-      goalFrequency: preset.goalFrequency + activeItems.reduce((sum, item) => sum + item.effectGoalFrequencyDelta, 0),
+      goalieFrequency:
+        preset.goalieFrequency +
+        activeItems.reduce((sum, item) => sum + item.effectGoalieFrequencyDelta, 0),
+      goalFrequency:
+        preset.goalFrequency +
+        activeItems.reduce((sum, item) => sum + item.effectGoalFrequencyDelta, 0),
     };
     const result = resolvePerspectiveCourtShot(
       shotInput,
@@ -1444,7 +1574,9 @@ export async function submitClassicGameShot(
       periodLoadout.snapshot,
       periodLoadout.consumption,
       {
-        stick: (stick ? consumedFor(stick.id) : 0) + (stick?.resourceUnit === 'shot' && remainingFor(stick) > 0 ? 1 : 0),
+        stick:
+          (stick ? consumedFor(stick.id) : 0) +
+          (stick?.resourceUnit === 'shot' && remainingFor(stick) > 0 ? 1 : 0),
         skates: condition.skatesConsumed,
         nutrition: condition.nutritionConsumed,
       },
@@ -1545,6 +1677,7 @@ export async function finalizeClassicTournamentDay(
         endsAt: row.ends_at,
         rulesSnapshot: row.rules_snapshot,
         config,
+        userId: row.user_id,
       };
       let session = await getOrCreateSession(client, context, row.user_id, input.seedSecret);
       if (session.state === 'closed' || session.state === 'expired') continue;

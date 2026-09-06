@@ -1120,6 +1120,243 @@
   opacity: 1;
 }
 
+.chat-list-search-field {
+  height: 40px;
+  border-radius: 16px;
+}
+
+.chat-room-search__field {
+  height: 40px;
+  border-radius: 20px;
+}
+
+.chat-room-search {
+  margin: 8px 14px 0;
+}
+
+.chat-room-header {
+  min-height: 54px;
+  margin: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-room-header__control {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.chat-room-header__control--surface {
+  background: var(--chrome-surface-bg);
+  border-color: var(--chrome-surface-border);
+  color: #10243a;
+  box-shadow:
+    0 7px 18px rgba(2, 8, 23, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+.chat-room-header__profile {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-room-header__identity {
+  min-width: 0;
+  flex: 1;
+  min-height: 48px;
+  padding: 4px 10px 4px 5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 24px;
+  background: rgba(205, 222, 239, 0.66);
+  box-shadow: 0 5px 16px rgba(15, 35, 55, 0.14);
+  backdrop-filter: blur(12px) saturate(116%);
+  -webkit-backdrop-filter: blur(12px) saturate(116%);
+}
+
+.chat-room-header__avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.chat-room-header__copy {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.chat-room-header__title,
+.chat-room-header__subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-room-header__title {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 18px;
+}
+
+.chat-room-header__subtitle {
+  margin-top: 1px;
+  color: rgba(51, 72, 96, 0.78);
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 14px;
+}
+
+.chat-search-results {
+  margin: 6px 14px 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 16px;
+  background: rgba(229, 239, 249, 0.88);
+  box-shadow: 0 10px 28px rgba(9, 27, 46, 0.2);
+  color: var(--ink);
+  backdrop-filter: blur(16px) saturate(118%);
+  -webkit-backdrop-filter: blur(16px) saturate(118%);
+}
+
+.chat-search-results__section + .chat-search-results__section {
+  border-top: 1px solid rgba(75, 98, 123, 0.15);
+}
+
+.chat-search-results__heading {
+  min-height: 30px;
+  margin: 0;
+  padding: 8px 12px 5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(52, 73, 97, 0.72);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.chat-search-results__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-search-results__item {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 0;
+  border-top: 1px solid rgba(75, 98, 123, 0.12);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-search-results__item:not(.chat-search-results__item--message) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-search-results__chat-copy {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chat-search-results__chat-name {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-search-results__chat-type {
+  color: rgba(52, 73, 97, 0.68);
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.chat-search-results__item:active {
+  background: rgba(121, 170, 213, 0.16);
+}
+
+.chat-search-results__item--message {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.chat-search-results__sender {
+  color: rgba(52, 73, 97, 0.72);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.chat-search-results__snippet {
+  font-size: 13px;
+}
+
+.chat-search-results mark {
+  padding: 0 2px;
+  border-radius: 4px;
+  background: rgba(121, 191, 242, 0.3);
+  color: inherit;
+}
+
+.chat-search-results__empty {
+  margin: 0;
+  padding: 7px 12px 11px;
+  color: rgba(52, 73, 97, 0.68);
+  font-size: 13px;
+}
+
+.chat-search-results__error {
+  padding: 8px 12px 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-search-results__retry {
+  padding: 3px 10px;
+  border: 1px solid rgba(35, 55, 78, 0.42);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .chat-dock-composer {
   margin: 0 12px;
   padding: 10px;
@@ -4711,6 +4948,22 @@
   cursor: default;
 }
 
+.tournament-standing-table tbody tr.tournament-standing-table__clickable-row {
+  cursor: pointer;
+  transition:
+    filter 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.tournament-standing-table tbody tr.tournament-standing-table__clickable-row:hover {
+  filter: brightness(0.97);
+  box-shadow: inset 0 0 0 1px rgba(30, 91, 151, 0.13);
+}
+
+.tournament-standing-table tbody tr.tournament-standing-table__clickable-row:active {
+  filter: brightness(0.92);
+}
+
 .tournament-standing-table tbody tr.tournament-standing-table__current-user {
   color: #fff;
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95));
@@ -7384,6 +7637,11 @@ button.daily-calendar__day:active {
   background: #173c5e;
 }
 
+.tournament-calendar__legend-dot--empty-day {
+  border-color: rgba(185, 137, 31, 0.3);
+  background: rgba(243, 196, 91, 0.9);
+}
+
 .tournament-calendar__legend-dot--selected {
   background: #173c5e;
 }
@@ -7959,10 +8217,6 @@ button.daily-calendar__day:active {
   gap: 10px;
 }
 
-.tournament-bracket-overview__series-list--with-bronze {
-  min-height: 392px;
-}
-
 .tournament-bracket-connector {
   position: absolute;
   left: 100%;
@@ -8007,11 +8261,15 @@ button.daily-calendar__day:active {
   content: '';
 }
 
+.tournament-bracket-overview__bronze-column {
+  display: grid;
+  align-self: start;
+  min-width: 0;
+  gap: 10px;
+}
+
 .tournament-bracket-overview__bronze-lane {
-  position: absolute;
-  top: calc(50% + 100px);
-  right: 0;
-  left: 0;
+  position: relative;
   z-index: 1;
   min-width: 0;
 }
@@ -10488,4 +10746,9 @@ button.daily-calendar__day:active {
   box-shadow:
     0 0 0 2px rgba(43, 126, 89, 0.1),
     var(--surface-card-shadow);
+}
+
+.app-shell--unified-glass .tournament-bracket-player--bronze-winner {
+  background: rgba(205, 139, 85, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(158, 96, 47, 0.2);
 }

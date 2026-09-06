@@ -1492,8 +1492,7 @@ async function buildLoadoutSnapshot(
     selection.stick !== undefined ||
     selection.skates !== undefined ||
     selection.nutrition !== undefined;
-  const hasExplicitSelection =
-    options.explicitSelection ?? selectionProvided;
+  const hasExplicitSelection = options.explicitSelection ?? selectionProvided;
   let resolvedSelection = selection;
   if (!selectionProvided) {
     const { rows } = await client.query<{
@@ -1754,7 +1753,9 @@ async function previousTournamentLoadoutSelection(
     [matchId, userId],
   );
   const row = rows[0];
-  return row ? loadoutSelectionFromSnapshot(loadoutFromUnknown(row.loadout_snapshot, powerCap)) : null;
+  return row
+    ? loadoutSelectionFromSnapshot(loadoutFromUnknown(row.loadout_snapshot, powerCap))
+    : null;
 }
 
 async function buildTournamentLoadoutSnapshot(
@@ -2005,7 +2006,11 @@ async function consumeInventoryForShot(
   participant: DuelParticipantRow,
   loadout: LoadoutSnapshot,
   reportBeforeShot: InventoryPeriodReport[],
-  consumedTotals: { skatesConsumed: number; nutritionConsumed: number },
+  consumedTotals: {
+    skatesConsumed: number;
+    nutritionConsumed: number;
+    consumeShot?: boolean;
+  },
 ): Promise<void> {
   const periodNumber = participant.current_period;
   const consumed: InventoryPeriodReport['consumed'] = [];
@@ -2018,7 +2023,10 @@ async function consumeInventoryForShot(
     const availableForPeriod = Math.max(0, item.resourceAvailable - consumedBeforePeriod);
     let target = previous;
     if (item.resourceUnit === 'shot') {
-      target = previous < availableForPeriod ? previous + 1 : previous;
+      target =
+        consumedTotals.consumeShot !== false && previous < availableForPeriod
+          ? previous + 1
+          : previous;
     } else if (item.resourceUnit === 'distance') {
       target = consumedTotals.skatesConsumed;
     } else if (item.resourceUnit === 'energy_ms') {
@@ -2326,6 +2334,43 @@ async function closeParticipantPeriod(
   reason: 'quota' | 'timeout' | 'window_end',
 ): Promise<boolean> {
   if (participant.period_started_at === null) return false;
+  const durationMs = Math.max(0, now.getTime() - participant.period_started_at.getTime());
+  const loadout = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
+  const inventoryReport = inventoryReportFromUnknown(participant.inventory_report);
+  if (loadout.items.some((item) => item.resourceUnit !== 'period')) {
+    const effects = effectsFromUnknown(participant.inventory_effects_snapshot);
+    const basePeriodSpeeds = rules.periodSpeedPresets.find(
+      (preset) => preset.periodNumber === participant.current_period,
+    );
+    const periodSpeeds = effectivePeriodSpeedPresets(
+      rules,
+      periodSpeedEffectsForLoadout(effects, loadout),
+    ).find((preset) => preset.periodNumber === participant.current_period);
+    if (!basePeriodSpeeds || !periodSpeeds) {
+      throw new AppError('server_error', 'missing duel period speeds', 500);
+    }
+    const condition = getDuelPlayerCondition({
+      seed: (await fetchMatchForUpdate(client, participant.match_id)).match_seed,
+      userId: participant.user_id,
+      periodNumber: participant.current_period,
+      elapsedMs: durationMs,
+      movementDistancePx: movementDistancePxForElapsed(durationMs, periodSpeeds.shooterFrequency),
+      baseLaneWidthPx: SHOOTER_AMPLITUDE * 2,
+      baselineShooterSpeed: basePeriodSpeeds.shooterFrequency,
+      currentShooterSpeed: periodSpeeds.shooterFrequency,
+      loadout: conditionLoadoutFromSnapshot(
+        loadout,
+        inventoryReport,
+        participant.current_period,
+        rules,
+      ),
+    });
+    await consumeInventoryForShot(client, participant, loadout, inventoryReport, {
+      skatesConsumed: condition.skatesConsumed,
+      nutritionConsumed: condition.nutritionConsumed,
+      consumeShot: false,
+    });
+  }
   const stats = await fetchCurrentPeriodStats(
     client,
     participant.match_id,
@@ -2333,7 +2378,6 @@ async function closeParticipantPeriod(
     participant.current_period,
   );
   const endedAt = now;
-  const durationMs = Math.max(0, endedAt.getTime() - participant.period_started_at.getTime());
   await client.query(
     `insert into amateur_duel_period_log
        (match_id, user_id, period_number, started_at, ended_at, shots_taken, goals,
@@ -2495,10 +2539,7 @@ async function settleMatchIfReady(
             metadata: { reason: 'no_play_entry_fee_refund' },
           });
         }
-        if (
-          match.source === 'tournament' &&
-          usesTournamentPeriodLoadoutLifecycle(rules)
-        ) {
+        if (match.source === 'tournament' && usesTournamentPeriodLoadoutLifecycle(rules)) {
           await releasePendingTournamentPeriodReservation(client, participant);
         } else {
           await releaseRemainingDuelInventoryReserve(client, {
@@ -2643,10 +2684,7 @@ async function settleMatchIfReady(
   }
 
   for (const participant of refreshed) {
-    if (
-      match.source === 'tournament' &&
-      usesTournamentPeriodLoadoutLifecycle(rules)
-    ) {
+    if (match.source === 'tournament' && usesTournamentPeriodLoadoutLifecycle(rules)) {
       await releasePendingTournamentPeriodReservation(client, participant);
     } else {
       await releaseRemainingDuelInventoryReserve(client, {
@@ -2719,29 +2757,19 @@ async function settleMatchIfReady(
       { mine: b, other: a, points: bPoints },
     ]) {
       await client.query(
-        `insert into amateur_duel_rating
-         (season_key, user_id, points, wins, draws, losses, goals_for, goals_against,
-          matches_played, active_duration_seconds, updated_at)
-       values (
-         $1, $2, $3, case when $7::boolean then 1 else 0 end,
-         case when $8::boolean then 1 else 0 end,
-         case when $9::boolean then 1 else 0 end,
-         $4, $5, 1, $6, now()
-       )
-       on conflict (season_key, user_id) do update
-          set points = amateur_duel_rating.points + excluded.points,
-              wins = amateur_duel_rating.wins + excluded.wins,
-              draws = amateur_duel_rating.draws + excluded.draws,
-              losses = amateur_duel_rating.losses + excluded.losses,
-              goals_for = amateur_duel_rating.goals_for + excluded.goals_for,
-              goals_against = amateur_duel_rating.goals_against + excluded.goals_against,
-              matches_played = amateur_duel_rating.matches_played + 1,
-              active_duration_seconds =
-                amateur_duel_rating.active_duration_seconds + excluded.active_duration_seconds,
-              updated_at = now()`,
+        `insert into amateur_duel_rating_match
+           (match_id, user_id, season_key, points, wins, draws, losses,
+            goals_for, goals_against, active_duration_seconds)
+         values ($1, $2, $3, $4,
+                 case when $8::boolean then 1 else 0 end,
+                 case when $9::boolean then 1 else 0 end,
+                 case when $10::boolean then 1 else 0 end,
+                 $5, $6, $7)
+         on conflict (match_id, user_id) do nothing`,
         [
-          match.season_key,
+          match.id,
           participant.mine.user_id,
+          match.season_key,
           participant.points,
           participant.mine.goals,
           participant.other.goals,
@@ -3267,7 +3295,14 @@ async function markTournamentReadinessMessagesAsRead(
       const dm = await findOrCreateDM(app.pg, systemUserId, userId);
       await markChatAsRead(app.pg, dm.chatId, userId);
       await invalidateUnreadCache(app.redis, userId);
-      await publishChatRead(app.pg, app.realtime, dm.chatId, 'direct', userId, new Date().toISOString());
+      await publishChatRead(
+        app.pg,
+        app.realtime,
+        dm.chatId,
+        'direct',
+        userId,
+        new Date().toISOString(),
+      );
     }),
   );
 }
@@ -4064,7 +4099,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
 	                and m.source <> 'tournament'
 	             union
 	             select r.season_key
-	               from amateur_duel_rating r
+	               from amateur_duel_rating_live r
 	              where r.user_id = $1
 	           ) seasons
 	          order by season_key desc`,
@@ -4080,7 +4115,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
 	                            order by r.points desc, r.wins desc, r.active_duration_seconds asc,
 	                                     u.display_name asc
 	                          ) as rank
-	                     from amateur_duel_rating r
+	                     from amateur_duel_rating_live r
 	                     join users u on u.id = r.user_id
 	                    where r.season_key = $1
 	                 ) ranked
@@ -4130,10 +4165,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       where (m.challenger_user_id = $1 or m.opponent_user_id = $1)
         and m.status = 'settled'
         and m.source <> 'tournament'
-        and m.settled_at is not null
-        and m.settled_reason = 'completed'
-        and me.state = 'completed'
-        and opponent.state = 'completed'`;
+        and m.settled_at is not null`;
     const { rows: monthRows } = await app.pg.query<{
       id: string;
       local_day: number;
@@ -4706,11 +4738,16 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     async (req) => {
       const params = z.object({ matchId: uuid }).parse(req.params);
       const parsed = readyBodySchema.safeParse(req.body ?? {});
-      if (!parsed.success) throw new AppError('bad_request', 'invalid tournament loadout payload', 400);
+      if (!parsed.success)
+        throw new AppError('bad_request', 'invalid tournament loadout payload', 400);
       const response = await withTransaction(app, async (client) => {
         const now = new Date();
         let match = (
-          await reconcileMatch(client, await fetchPlayableMatchForUpdate(client, params.matchId), now)
+          await reconcileMatch(
+            client,
+            await fetchPlayableMatchForUpdate(client, params.matchId),
+            now,
+          )
         ).match;
         if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'duel match access denied', 403);
@@ -4727,7 +4764,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           (candidate) => candidate.user_id === req.user.id,
         );
         if (!participant || participant.state !== 'accepted') {
-          throw new AppError('conflict', 'tournament loadout can only be confirmed before a period', 409);
+          throw new AppError(
+            'conflict',
+            'tournament loadout can only be confirmed before a period',
+            409,
+          );
         }
         const boundaryPeriod = participant.current_period + 1;
         const previousBoundaryLoadout =
@@ -4741,7 +4782,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           rules,
           previousBoundaryLoadout,
         });
-        if (previousBoundaryLoadout === null || !sameLoadoutSelection(previousBoundaryLoadout, loadout)) {
+        if (
+          previousBoundaryLoadout === null ||
+          !sameLoadoutSelection(previousBoundaryLoadout, loadout)
+        ) {
           const reservationDelta = await adjustTournamentPeriodReservation(client, {
             userId: req.user.id,
             matchId: match.id,
@@ -5041,14 +5085,19 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           usesTournamentPeriodLoadoutLifecycle(rules) &&
           participant.tournament_loadout_period !== participant.current_period + 1
         ) {
-          throw new AppError('conflict', 'tournament loadout must be confirmed before a period', 409);
+          throw new AppError(
+            'conflict',
+            'tournament loadout must be confirmed before a period',
+            409,
+          );
         }
         if (parsed.data.loadout !== undefined) {
-          if (
-            match.source === 'tournament' &&
-            usesTournamentPeriodLoadoutLifecycle(rules)
-          ) {
-            throw new AppError('conflict', 'confirm tournament loadout before starting a period', 409);
+          if (match.source === 'tournament' && usesTournamentPeriodLoadoutLifecycle(rules)) {
+            throw new AppError(
+              'conflict',
+              'confirm tournament loadout before starting a period',
+              409,
+            );
           }
           const currentLoadout = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
           const stickOnly = await buildLoadoutSnapshot(
@@ -5348,7 +5397,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     const { rows } = await app.pg.query<RatingRow>(
       `select r.user_id, u.display_name, u.avatar_url, r.points, r.wins, r.draws, r.losses,
 	              r.goals_for, r.goals_against, r.matches_played, r.active_duration_seconds
-	         from amateur_duel_rating r
+	         from amateur_duel_rating_live r
          join users u on u.id = r.user_id
         where r.season_key = $1
         order by r.points desc, r.wins desc, r.active_duration_seconds asc, u.display_name asc
@@ -5362,7 +5411,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
 	                  row_number() over (
 	                    order by r.points desc, r.wins desc, r.active_duration_seconds asc, u.display_name asc
 	                  ) as rank
-	             from amateur_duel_rating r
+	             from amateur_duel_rating_live r
 	             join users u on u.id = r.user_id
 	            where r.season_key = $1
 	         ) ranked
@@ -5370,7 +5419,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       [seasonKey, req.user.id],
     );
     const { rows: seasonRows } = await app.pg.query<{ season_key: string }>(
-      `select distinct season_key from amateur_duel_rating order by season_key desc`,
+      `select distinct season_key from amateur_duel_rating_live order by season_key desc`,
     );
     return {
       season_key: seasonKey,

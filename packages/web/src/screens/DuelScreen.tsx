@@ -79,7 +79,6 @@ const PERSPECTIVE_PLAYER_OPTIONS = {
   shotDurationMs: 500,
   visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
   visualYOffset: TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
-  shadow: true,
 };
 
 const PERSPECTIVE_GOAL_OPTIONS = {
@@ -102,7 +101,6 @@ const PERSPECTIVE_GOALIE_OPTIONS = {
   idleSizeScale: 1.22,
   saveSizeScale: 0.96,
   saveVisualYOffset: 10,
-  shadow: true,
 };
 
 const PERSPECTIVE_PUCK_OPTIONS = {

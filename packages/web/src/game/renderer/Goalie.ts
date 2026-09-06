@@ -1,4 +1,4 @@
-import { Assets, BlurFilter, Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { Assets, Container, Sprite, Texture } from 'pixi.js';
 import { type GoalieState } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
@@ -22,12 +22,10 @@ export interface GoalieOptions {
   idleSizeScale?: number | undefined;
   saveSizeScale?: number | undefined;
   saveVisualYOffset?: number | undefined;
-  shadow?: boolean | undefined;
 }
 
 export class Goalie {
   readonly container = new Container();
-  private readonly shadow: Graphics | null;
   private readonly sprite: Sprite;
   private readonly visualYScale: number;
   private readonly visualYOffset: number;
@@ -55,13 +53,6 @@ export class Goalie {
     this.idleSizeScale = options.idleSizeScale ?? 1;
     this.saveSizeScale = options.saveSizeScale ?? 1;
     this.saveVisualYOffset = options.saveVisualYOffset ?? 0;
-    this.shadow = options.shadow
-      ? new Graphics().ellipse(0, 0, 1, 1).fill({ color: 0x0c1b2d, alpha: 0.2 })
-      : null;
-    if (this.shadow) {
-      this.shadow.filters = [new BlurFilter({ strength: 8 })];
-      this.container.addChild(this.shadow);
-    }
     this.sprite = new Sprite(Texture.EMPTY);
     this.sprite.anchor.set(0.5, 0.5);
     this.container.addChild(this.sprite);
@@ -110,13 +101,6 @@ export class Goalie {
       x * s,
       (state.position.y * this.visualYScale + this.visualYOffset + poseYOffset) * s,
     );
-    if (this.shadow) {
-      this.shadow.clear();
-      this.shadow
-        .ellipse(0, 0, size * (this.isSaving ? 0.4 : 0.34), size * 0.09)
-        .fill({ color: 0x0c1b2d, alpha: this.isSaving ? 0.18 : 0.2 });
-      this.shadow.position.set(this.sprite.position.x, this.sprite.position.y + size * 0.3);
-    }
     this.container.position.set(scale.offsetX, scale.offsetY);
   }
 
