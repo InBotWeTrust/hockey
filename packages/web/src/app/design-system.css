@@ -3463,6 +3463,17 @@
   color: var(--ink);
 }
 
+.profile-screen--locker-bg,
+.mode-shell--locker {
+  background:
+    linear-gradient(180deg, rgba(7, 20, 39, 0.12), rgba(7, 20, 39, 0.38)),
+    url('/backgrounds/locker-room.webp') center top / cover no-repeat;
+}
+
+.mode-shell--locker {
+  background-attachment: local;
+}
+
 .profile-screen--status,
 .profile-detail-screen--status {
   display: grid;

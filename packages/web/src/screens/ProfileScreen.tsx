@@ -508,7 +508,7 @@ export function ProfileScreen(): JSX.Element {
   }
   const initial = profile.displayName.trim().charAt(0).toUpperCase() || '?';
   return (
-    <main className="screen profile-screen">
+    <main className="screen profile-screen profile-screen--locker-bg">
       <section className="profile-passport glass" aria-label="Спортивный паспорт">
         <div className="profile-passport__top">
           <div className="profile-identity__main">

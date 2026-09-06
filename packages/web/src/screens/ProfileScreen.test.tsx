@@ -195,6 +195,7 @@ describe('ProfileScreen', () => {
     renderProfile();
 
     expect(await screen.findByLabelText('Спортивный паспорт')).toBeInTheDocument();
+    expect(document.querySelector('main.profile-screen')).toHaveClass('profile-screen--locker-bg');
     expect(screen.queryByText('Всё по делу')).not.toBeInTheDocument();
     expect(screen.getByText('Alice T')).toBeInTheDocument();
     expect(screen.getByText('Новичок')).toBeInTheDocument();
