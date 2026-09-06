@@ -400,8 +400,8 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     const bronzeWinner = await loginTelegram({ id: '64', first_name: 'Bronze winner' });
 
     const tournament = await app.pg.query<{ id: string }>(
-      `insert into tournament (slug, title, status, regular_source, created_by)
-       values ('profile-trophy-summary', 'Profile trophy summary', 'completed', 'head_to_head', $1)
+      `insert into tournament (slug, title, status, regular_source, starts_at, created_by)
+       values ('profile-trophy-summary', 'Profile trophy summary', 'completed', 'head_to_head', '2026-08-01T10:00:00Z', $1)
        returning id`,
       [champion.user.id],
     );
@@ -421,13 +421,13 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
       [tournamentId],
     );
     const final = await app.pg.query<{ id: string }>(
-      `insert into tournament_round (tournament_id, stage, number, status)
-       values ($1, 'playoff', 2, 'settled') returning id`,
+      `insert into tournament_round (tournament_id, stage, number, ends_at, status)
+       values ($1, 'playoff', 2, '2026-08-08T22:00:00Z', 'settled') returning id`,
       [tournamentId],
     );
     const bronze = await app.pg.query<{ id: string }>(
-      `insert into tournament_round (tournament_id, stage, number, status)
-       values ($1, 'third_place', 2, 'settled') returning id`,
+      `insert into tournament_round (tournament_id, stage, number, ends_at, status)
+       values ($1, 'third_place', 2, '2026-08-07T22:00:00Z', 'settled') returning id`,
       [tournamentId],
     );
     const championParticipant = participantByUser.get(champion.user.id)!;
@@ -489,7 +489,14 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     expect(championProfile.statusCode).toBe(200);
     expect(championProfile.json()).toMatchObject({
       trophyDetails: {
-        tournamentChampionships: [{ title: 'Profile trophy summary', result: 'Победа в финале' }],
+        tournamentChampionships: [
+          {
+            title: 'Profile trophy summary',
+            startsAt: '2026-08-01T10:00:00.000Z',
+            endsAt: '2026-08-08T22:00:00.000Z',
+            result: 'Победа в финале',
+          },
+        ],
       },
     });
   });

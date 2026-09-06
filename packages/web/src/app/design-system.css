@@ -3852,6 +3852,13 @@
   color: var(--ink);
 }
 
+/* Keep achievement artwork in a separate, unfiltered compositing layer on WebKit. */
+.modal-card.achievement-details-modal--crisp {
+  background: rgba(226, 233, 241, 0.92);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .achievement-details-modal__image {
   width: 100%;
   aspect-ratio: 1;

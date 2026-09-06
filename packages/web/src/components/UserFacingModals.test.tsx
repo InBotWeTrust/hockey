@@ -49,6 +49,7 @@ describe('user-facing modal consistency', () => {
     const dialog = screen.getByRole('dialog', { name: 'Снайпер' });
     expect(dialog).toHaveClass('modal-card');
     expect(dialog).toHaveClass('achievement-details-modal');
+    expect(dialog).toHaveClass('achievement-details-modal--crisp');
     expect(screen.getByRole('img', { name: 'Снайпер' })).toHaveClass(
       'achievement-details-modal__image',
     );

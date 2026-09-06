@@ -780,8 +780,10 @@ describe('BonusGamesScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
 
-    expect(await screen.findByLabelText('location')).toHaveTextContent(
-      '/bonus-games/00000000-0000-4000-8000-000000000601/play?attempt=attempt-new',
+    await waitFor(() =>
+      expect(screen.getByLabelText('location')).toHaveTextContent(
+        '/bonus-games/00000000-0000-4000-8000-000000000601/play?attempt=attempt-new',
+      ),
     );
   });
 
