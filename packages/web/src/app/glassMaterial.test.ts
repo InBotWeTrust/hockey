@@ -104,4 +104,20 @@ describe('unified glass material', () => {
 
     expect(selectedRoundRule?.style.getPropertyValue('color')).toBe('#ffffff');
   });
+
+  it('keeps the chat search control as light as the back control on the arena background', () => {
+    const style = mountDesignSystem();
+    const sharedControlRule = Array.from(style.sheet?.cssRules ?? [])
+      .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
+      .find((rule) => rule.selectorText === '.icon-btn.chat-room-header__control--surface');
+
+    expect(sharedControlRule).toBeDefined();
+    expect(sharedControlRule?.style.getPropertyValue('background')).toBe(
+      'var(--chrome-surface-bg)',
+    );
+    expect(sharedControlRule?.style.getPropertyValue('border-color')).toBe(
+      'var(--chrome-surface-border)',
+    );
+    expect(sharedControlRule?.style.getPropertyValue('color')).toBe('#10243a');
+  });
 });
