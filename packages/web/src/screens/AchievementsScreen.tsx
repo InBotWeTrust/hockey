@@ -257,7 +257,7 @@ export function AchievementsScreen({
     <main
       className="screen"
       style={{
-        padding: 'calc(22px + var(--app-safe-top)) 24px 24px',
+        padding: 'calc(22px + var(--app-safe-top)) 14px 24px',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
       }}

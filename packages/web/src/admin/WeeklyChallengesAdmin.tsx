@@ -400,10 +400,9 @@ export function WeeklyChallengesAdmin(): JSX.Element {
                 }}
               >
                 <div
+                  className="weekly-challenge-admin-task__fields"
                   style={{
                     display: 'grid',
-                    gridTemplateColumns:
-                      'minmax(180px, 0.9fr) minmax(220px, 1.4fr) minmax(110px, 0.5fr) auto',
                     gap: 8,
                     alignItems: 'end',
                   }}
@@ -434,7 +433,7 @@ export function WeeklyChallengesAdmin(): JSX.Element {
                   </AdminField>
                   <button
                     type="button"
-                    className="chip"
+                    className="chip weekly-challenge-admin-task__remove"
                     onClick={() =>
                       setForm((current) => ({
                         ...current,

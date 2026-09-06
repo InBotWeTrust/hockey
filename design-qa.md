@@ -33,8 +33,6 @@ No actionable P0, P1, or P2 visual differences remain for the requested admin ca
 
 final result: passed
 
----
-
 # Design QA — узкие экраны 323–360 px
 
 ## Evidence
@@ -415,3 +413,103 @@ final result: passed
 No remaining actionable differences for the requested filter and section-heading treatment.
 
 final result: passed
+
+---
+
+# Inventory catalogue, bank, and transaction history QA
+
+## Evidence
+
+- Source visual truth:
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-20927a2b-5ab7-4a83-8f8f-6aa79cb1cfc8.png` — inconsistent horizontal page padding.
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-27303d44-bc21-4e4e-9707-f7a273064d17.png` — vertical bank cards to replace.
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-96faf487-3da2-4390-83df-676600fa6ddd.png` — transaction history readability problem.
+- Rendered local implementation checked in the Codex in-app browser at `http://127.0.0.1:5173/inventory`.
+- State: authenticated local preview with six products, three bank packages, and four representative transaction records.
+- App shell: 430 CSS px wide.
+
+## Checks
+
+- Inventory product cards remain one horizontal row and no longer reserve obsolete grid rows below their content.
+- Inventory, achievements, and weekly-challenge screens use the shared 14 px horizontal page padding.
+- Bank packages render as one horizontal card per row with icon, copy, price, and disabled purchase action.
+- History filters use the shared `SegmentedTabs` control used by the shop and duel flows.
+- Transactions are grouped by calendar date and rendered as separate compact rows with category icon, title, time, source, and right-aligned currency amounts.
+- Long achievement titles wrap instead of being truncated to an ambiguous single line.
+- Positive amounts use the success tone; purchases retain the appropriate currency tone.
+- Empty transaction history is plain readable text without a glass container.
+- Goods, Bank, and History tab switching was exercised in the local browser.
+- Browser console errors: 0.
+
+## Findings
+
+- No remaining actionable layout issue was found in the requested areas at the rendered app-shell width.
+
+final result: passed
+
+---
+
+# Inventory transaction amount follow-up QA
+
+## Evidence
+
+- Profile visual source: the experience balance uses the `TrendingUp` icon and `--reward-experience` color.
+- Rendered local implementation checked in the Codex in-app browser at `http://127.0.0.1:5173/inventory`.
+- Browser-computed values: experience `rgb(37, 99, 235)`; coin and ruble debits `rgb(185, 28, 28)`.
+
+## Checks
+
+- Experience transaction amounts use the same `TrendingUp` icon and blue experience tone as the profile.
+- Every negative amount uses the shared deep-red danger tone regardless of currency.
+- Positive coin and star amounts retain their existing profile-aligned currency colors.
+
+## Findings
+
+- No remaining mismatch was found for the requested transaction icons and amount colors.
+
+final result: passed
+
+---
+
+# Training period speed summary QA
+
+## Evidence
+
+- Source visual truth: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-9d6acb2f-71cf-4177-a911-32b84702fbd0.png`.
+- Component contract: `PeriodSpeedSummary` uses the shared `.section-label` typography and an explicit four-column `minmax(0, 1fr)` grid.
+- Focused `DailyScreen` regression test verifies both contracts.
+
+## Checks
+
+- “Скорости 1-го периода” uses the same font size, weight, letter spacing, and color as other section labels inside setup cards.
+- Gates, goalie, player, and puck values occupy one row of four equal columns.
+- Compact responsive type and zero-minimum grid columns prevent horizontal page scrolling on narrow screens.
+- Focused test, project lint, server typecheck, web production build, and `git diff --check` pass.
+
+## Findings
+
+- Rendered authenticated QA remains pending because the local browser session is currently signed out; no authentication state was changed automatically.
+
+final result: passed with rendered follow-up pending
+
+---
+
+# Weekly challenge admin mobile task form QA
+
+## Evidence
+
+- Source diagnosis: the task row previously required four fixed minimum-width columns (`180 + 220 + 110 px + action`).
+- Regression coverage: `WeeklyChallengesAdmin.test.tsx` verifies that each task uses the responsive task-row contract and keeps its remove action inside that row.
+
+## Checks
+
+- Desktop and tablet task rows retain four horizontal columns.
+- At widths up to 640 px, task type, title, target, and remove action form one vertical column.
+- The remove action fills the task card width and remains centered.
+- Challenge payload, validation, add/remove behavior, and save behavior are unchanged.
+
+## Findings
+
+- Authenticated rendered checks at 323, 360, and 430 px remain pending because the current local API session returns an authorization/load error; no account or authentication state was changed automatically.
+
+final result: passed with rendered follow-up pending

@@ -140,11 +140,11 @@ describe.skipIf(!hasIntegrationEnv)('achievement claim routes', () => {
 
     const inventory = await app.inject({
       method: 'GET',
-      url: '/inventory/me',
+      url: '/inventory/transactions?filter=credit&limit=20',
       headers: { authorization: `Bearer ${token}` },
     });
     expect(inventory.statusCode).toBe(200);
-    expect(inventory.json().transactionHistory).toEqual(
+    expect(inventory.json().transactions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           title: 'Награда за достижение «Первая шайба»',

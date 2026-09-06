@@ -1190,11 +1190,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       .items.stick.find((item: { itemId: string }) => item.itemId === stickId);
     expect(stick?.chargesAvailable).toBe(5);
     expect(stick?.chargesPerPurchase).toBe(5);
-    expect(purchased.json().purchaseHistory[0]).toMatchObject({
-      title: 'Bronze shop stick',
-      tokensSpent: 40,
-      chargesAdded: 5,
-    });
+    expect(purchased.json().purchaseHistory).toBeUndefined();
+    expect(purchased.json().transactionHistory).toBeUndefined();
 
     const ledger = await pool.query<{ available_delta: number; balance_after: number }>(
       `select available_delta, balance_after
@@ -1222,7 +1219,15 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       headers: auth(tokenA),
     });
     expect(state.statusCode).toBe(200);
-    expect(state.json().transactionHistory).toEqual(
+    expect(state.json().transactionHistory).toBeUndefined();
+
+    const history = await app.inject({
+      method: 'GET',
+      url: '/inventory/transactions?filter=all&limit=20',
+      headers: auth(tokenA),
+    });
+    expect(history.statusCode).toBe(200);
+    expect(history.json().transactions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           title: 'Bronze shop stick',
@@ -1248,6 +1253,52 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         }),
       ]),
     );
+    expect(history.json().nextCursor).toBeNull();
+  });
+
+  it('paginates and filters inventory transaction history', async () => {
+    await pool.query(
+      `insert into currency_ledger
+         (user_id, reason, available_delta, reserved_delta, balance_after, reserved_after, metadata, created_at)
+       select $1, 'weekly_challenge_reward', 1, 0, 101, 0,
+              jsonb_build_object('title', 'Награда ' || series),
+              timestamptz '2026-09-06 18:00:00+03' - series * interval '1 minute'
+         from generate_series(1, 21) as series`,
+      [userA],
+    );
+    await pool.query(
+      `insert into payments (user_id, title, amount_rub, status, paid_at, created_at)
+       values ($1, 'Игровой запас', 299, 'paid', now(), timestamptz '2026-09-05 12:00:00+03')`,
+      [userA],
+    );
+
+    const first = await app.inject({
+      method: 'GET',
+      url: '/inventory/transactions?filter=credit&limit=20',
+      headers: auth(tokenA),
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().transactions).toHaveLength(20);
+    expect(first.json().nextCursor).toEqual(expect.any(String));
+
+    const second = await app.inject({
+      method: 'GET',
+      url: `/inventory/transactions?filter=credit&limit=20&cursor=${encodeURIComponent(first.json().nextCursor)}`,
+      headers: auth(tokenA),
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().transactions).toHaveLength(1);
+    expect(second.json().nextCursor).toBeNull();
+    expect(second.json().transactions[0].id).not.toBe(first.json().transactions[19].id);
+
+    const rubles = await app.inject({
+      method: 'GET',
+      url: '/inventory/transactions?filter=ruble&limit=20',
+      headers: auth(tokenA),
+    });
+    expect(rubles.statusCode).toBe(200);
+    expect(rubles.json().transactions).toHaveLength(1);
+    expect(rubles.json().transactions[0]).toMatchObject({ category: 'bank' });
   });
 
   it('keeps duplicate inventory purchases as separate instances', async () => {
