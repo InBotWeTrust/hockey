@@ -3256,16 +3256,18 @@ function ModeShell({
   onBack,
   children,
   variant = 'default',
+  className,
 }: {
   title: string;
   onBack: () => void;
   children: React.ReactNode;
   variant?: 'default' | 'section-hub';
+  className?: string;
 }): JSX.Element {
   const isSectionHub = variant === 'section-hub';
   return (
     <main
-      className={`screen mode-shell${isSectionHub ? ' mode-shell--section-hub' : ''}`}
+      className={`screen mode-shell${isSectionHub ? ' mode-shell--section-hub' : ''}${className ? ` ${className}` : ''}`}
       style={{
         padding: isSectionHub
           ? 'calc(18px + var(--app-safe-top)) 14px 24px'
@@ -4284,7 +4286,12 @@ function AmateurDuelsPage({
     });
 
   return (
-    <ModeShell title="Дуэли" onBack={onBack} variant="section-hub">
+    <ModeShell
+      title="Дуэли"
+      onBack={onBack}
+      variant="section-hub"
+      className={duelTab === 'locker' ? 'mode-shell--locker' : ''}
+    >
       <SegmentedTabs
         ariaLabel="Разделы дуэлей"
         activeTab={duelTab}
