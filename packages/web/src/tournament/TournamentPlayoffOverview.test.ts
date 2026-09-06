@@ -211,7 +211,7 @@ describe('playoffSeriesScheduleLabel', () => {
     ).toHaveTextContent('1');
   });
 
-  it('centers championship rounds independently and keeps bronze outside the final flow', () => {
+  it('keeps the third-place series in the final column flow so narrow screens do not clip it', () => {
     const semifinalOne = {
       ...series('scheduled', []),
       id: 'semifinal-1',
@@ -290,7 +290,7 @@ describe('playoffSeriesScheduleLabel', () => {
     expect(connectors[0]).toHaveStyle({ top: '25%', height: '50%' });
     const finalList = finalButton.closest('.tournament-bracket-overview__series-list');
     expect(finalList).toHaveAttribute('data-series-count', '1');
-    expect(finalList).toHaveClass('tournament-bracket-overview__series-list--with-bronze');
+    expect(finalList).not.toHaveClass('tournament-bracket-overview__series-list--with-bronze');
     expect(
       within(finalList as HTMLElement).getByRole('button', {
         name: 'Открыть серию За 3-е место, Серия 4',

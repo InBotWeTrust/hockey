@@ -419,10 +419,73 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
         order by inventory_item_id`,
       [PLAYER_ID, [skatesId, nutritionId]],
     );
-    expect(new Map(balances.rows.map((row) => [row.inventory_item_id, row.charges_available]))).toEqual(
+    expect(
+      new Map(balances.rows.map((row) => [row.inventory_item_id, row.charges_available])),
+    ).toEqual(
       new Map([
-        [skatesId, 98],
+        [skatesId, 99],
         [nutritionId, 8933],
+      ]),
+    );
+    expect(started.inventory_consumption).toEqual([]);
+  });
+
+  it('charges movement and energy accumulated after the final classic shot when the period closes', async () => {
+    const skatesId = await seedClassicConditionItem(pool, 'skates', 100);
+    const nutritionId = await seedClassicConditionItem(pool, 'nutrition', 10_000);
+    await pool.query(
+      `update tournament_revision
+          set rules_snapshot = jsonb_set(
+            jsonb_set(
+              rules_snapshot, '{config,classicRules,periodDurationMs}', '2000'::jsonb
+            ),
+            '{config,classicRules,shotsPerPeriod}', '2'::jsonb
+          )
+        where id = $1`,
+      [REVISION_ID],
+    );
+    const started = await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      loadout: { skates: skatesId, nutrition: nutritionId },
+    });
+
+    await submitClassicGameShot(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: new Date(NOW.getTime() + 1_000),
+      seedSecret: SEED_SECRET,
+      shotIndex: 1,
+      input: { tapTime: 1_000 },
+      claimedResult: 'miss',
+    });
+    const closed = await getClassicGameState(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: new Date(NOW.getTime() + 2_000),
+      seedSecret: SEED_SECRET,
+    });
+
+    expect(closed.inventory_consumption).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ itemId: skatesId, charges: 3.2 }),
+        expect.objectContaining({ itemId: nutritionId, charges: 2134 }),
+      ]),
+    );
+    const balances = await pool.query<{ inventory_item_id: string; charges_available: number }>(
+      `select inventory_item_id, charges_available
+         from user_inventory_item
+        where user_id = $1 and inventory_item_id = any($2::uuid[])`,
+      [PLAYER_ID, [skatesId, nutritionId]],
+    );
+    expect(
+      new Map(balances.rows.map((row) => [row.inventory_item_id, row.charges_available])),
+    ).toEqual(
+      new Map([
+        [skatesId, 97],
+        [nutritionId, 7866],
       ]),
     );
     expect(started.inventory_consumption).toEqual([]);

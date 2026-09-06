@@ -1595,15 +1595,98 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(history.json().stats).toEqual({ duels: 1, wins: 1, points: 3 });
   });
 
-  it('returns rating visibility and available Moscow seasons', async () => {
+  it('builds rating from match-linked ordinary duel entries instead of the stale aggregate', async () => {
+    const templateId = await createTemplate();
+
+    async function createRatedMatch(source: 'challenge' | 'tournament') {
+      const created = await challenge(templateId);
+      const matchId = String(created.json().match.id);
+      await pool.query(
+        `update amateur_duel_match
+            set source = $2, status = 'settled', ranked = true, season_key = '2026-09',
+                settled_at = now(), settled_reason = 'completed',
+                winner_user_id = challenger_user_id, outcome = 'challenger_win'
+          where id = $1`,
+        [matchId, source],
+      );
+      await pool.query(
+        `update amateur_duel_participant
+            set result_points = case when user_id = $2 then 3 else 0 end,
+                goals = case when user_id = $2 then 4 else 2 end,
+                active_duration_ms = case when user_id = $2 then 180000 else 190000 end
+          where match_id = $1`,
+        [matchId, userA],
+      );
+      await pool.query(
+        `insert into amateur_duel_rating_match
+           (match_id, user_id, season_key, points, wins, draws, losses,
+            goals_for, goals_against, active_duration_seconds)
+         values ($1, $2, '2026-09', 3, 1, 0, 0, 4, 2, 180),
+                ($1, $3, '2026-09', 0, 0, 0, 1, 2, 4, 190)`,
+        [matchId, userA, userB],
+      );
+      return matchId;
+    }
+
+    await createRatedMatch('challenge');
+    await createRatedMatch('tournament');
     await pool.query(
       `insert into amateur_duel_rating
          (season_key, user_id, points, wins, draws, losses, goals_for, goals_against,
           matches_played, active_duration_seconds)
-       values ('2026-04', $1, 3, 1, 0, 0, 4, 2, 1, 180),
-              ('2026-05', $1, 1, 0, 1, 0, 2, 2, 1, 190)`,
-      [userA],
+       values ('2026-09', $1, 99, 9, 0, 0, 99, 0, 9, 1),
+              ('2026-09', $2, 0, 0, 0, 9, 0, 99, 9, 999)`,
+      [userA, userB],
     );
+
+    const rating = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/rating?season_key=2026-09',
+      headers: auth(tokenA),
+    });
+
+    expect(rating.statusCode).toBe(200);
+    expect(rating.json().rating).toEqual([
+      expect.objectContaining({ user_id: userA, points: 3, wins: 1, matches_played: 1 }),
+      expect.objectContaining({ user_id: userB, points: 0, losses: 1, matches_played: 1 }),
+    ]);
+
+    const history = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/history?season_key=2026-09',
+      headers: auth(tokenA),
+    });
+    expect(history.statusCode).toBe(200);
+    expect(history.json()).toMatchObject({
+      rating_place: 1,
+      stats: { duels: 1, wins: 1, points: 3 },
+    });
+  });
+
+  it('returns rating visibility and available Moscow seasons', async () => {
+    const templateId = await createTemplate();
+    for (const [seasonKey, points, wins, draws] of [
+      ['2026-04', 3, 1, 0],
+      ['2026-05', 1, 0, 1],
+    ] as const) {
+      const created = await challenge(templateId);
+      const matchId = String(created.json().match.id);
+      await pool.query(
+        `update amateur_duel_match
+            set status = 'settled', ranked = true, season_key = $2, settled_at = now(),
+                settled_reason = 'completed', winner_user_id = $3,
+                outcome = case when $4::int = 1 then 'challenger_win' else 'draw' end
+          where id = $1`,
+        [matchId, seasonKey, userA, wins],
+      );
+      await pool.query(
+        `insert into amateur_duel_rating_match
+           (match_id, user_id, season_key, points, wins, draws, losses,
+            goals_for, goals_against, active_duration_seconds)
+         values ($1, $2, $3, $4, $5, $6, 0, 4, 2, 180)`,
+        [matchId, userA, seasonKey, points, wins, draws],
+      );
+    }
 
     const enabled = await app.inject({
       method: 'GET',
@@ -1663,7 +1746,10 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       expect(shot.statusCode).toBe(200);
     }
     const ratings = await pool.query<{ matches_played: number }>(
-      `select matches_played from amateur_duel_rating where user_id = any($1::uuid[])`,
+      `select count(*)::int as matches_played
+         from amateur_duel_rating_match
+        where user_id = any($1::uuid[])
+        group by user_id`,
       [[userA, userB]],
     );
     expect(ratings.rows).toHaveLength(2);
@@ -1724,10 +1810,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
        values ('tournaments.enabled', 'true'::jsonb, 'Турниры включены', 'test')
        on conflict (key) do update set value = excluded.value`,
     );
-    await pool.query(
-      `update amateur_duel_match set source = 'tournament' where id = $1`,
-      [tournamentId],
-    );
+    await pool.query(`update amateur_duel_match set source = 'tournament' where id = $1`, [
+      tournamentId,
+    ]);
     await insertHistoryMatch({
       settledAt: '2026-05-02T12:00:00.000Z',
       settledReason: 'no_show',
@@ -2792,6 +2877,77 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(settled.json().match.me.result_points).toBe(0);
     expect(settled.json().match.opponent.result_points).toBe(3);
   });
+
+  it.each(['challenge', 'tournament'] as const)(
+    'charges movement and energy at the end of a %s duel period even without a final shot',
+    async (source) => {
+      const skatesId = await createInventoryItem('skates', `Period-end skates ${source}`);
+      const nutritionId = await createInventoryItem('nutrition', `Period-end nutrition ${source}`);
+      await pool.query(
+        `update admin_inventory_items
+            set duel_period_cost = 0,
+                resource_unit = case when id = $1 then 'distance' else 'energy_ms' end
+          where id = any($2::uuid[])`,
+        [skatesId, [skatesId, nutritionId]],
+      );
+      await pool.query(
+        `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+         values ($1, $2, 100), ($1, $3, 10000)`,
+        [userA, skatesId, nutritionId],
+      );
+      const templateId = await createTemplate({
+        duelKind: 'express',
+        variant: 'time_attack',
+        totalPeriods: 1,
+        periodDurationMs: 2000,
+        periodRules: [{ periodNumber: 1, mode: 'time_attack', durationMs: 2000, shotsLimit: null }],
+      });
+      const created = await challenge(templateId);
+      const matchId = created.json().match.id;
+      const started = await acceptReadyAndStart(matchId, {
+        loadout: { skates: skatesId, nutrition: nutritionId },
+      });
+      expect(started.statusCode).toBe(200);
+      await pool.query(
+        `update amateur_duel_participant
+            set period_started_at = now() - interval '3 seconds'
+          where match_id = $1 and user_id = $2`,
+        [matchId, userA],
+      );
+      if (source === 'tournament') {
+        await pool.query(
+          `update game_settings set value = 'true'::jsonb where key = 'tournaments.enabled'`,
+        );
+        await pool.query(`update amateur_duel_match set source = 'tournament' where id = $1`, [
+          matchId,
+        ]);
+        await attachTournamentHierarchy(matchId, {
+          slug: 'period-end-inventory',
+          tournamentStatus: 'regular',
+          fixtureStatus: 'active',
+          segmentStatus: 'active',
+        });
+      }
+
+      const reconciled = await app.inject({
+        method: 'GET',
+        url: `/duel/amateur/matches/${matchId}`,
+        headers: auth(tokenA),
+      });
+      expect(reconciled.statusCode).toBe(200);
+      const balances = await pool.query<{ inventory_item_id: string; charges_available: number }>(
+        `select inventory_item_id, charges_available
+           from user_inventory_item
+          where user_id = $1 and inventory_item_id = any($2::uuid[])`,
+        [userA, [skatesId, nutritionId]],
+      );
+      const byItem = new Map(
+        balances.rows.map((row) => [row.inventory_item_id, Number(row.charges_available)]),
+      );
+      expect(byItem.get(skatesId)).toBeLessThan(100);
+      expect(byItem.get(nutritionId)).toBeLessThan(10_000);
+    },
+  );
 
   it.each([
     {

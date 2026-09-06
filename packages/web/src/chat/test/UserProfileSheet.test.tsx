@@ -230,6 +230,10 @@ describe('UserProfileSheet', () => {
     expect(screen.getByLabelText('Публичный спортивный паспорт')).toBeInTheDocument();
     expect(screen.getByLabelText('Монеты: 220')).toBeInTheDocument();
     expect(screen.getByLabelText('Звёзды: 20')).toBeInTheDocument();
+    expect(screen.getByLabelText('Звёзды: 20').parentElement?.querySelector('svg')).toHaveAttribute(
+      'fill',
+      'currentColor',
+    );
     expect(screen.getByLabelText('Опыт: 1090')).toBeInTheDocument();
     expect(screen.getByLabelText('Витрина наград')).toHaveTextContent('Чемпионства');
     expect(screen.getByText('Любитель')).toHaveClass('profile-identity__level');

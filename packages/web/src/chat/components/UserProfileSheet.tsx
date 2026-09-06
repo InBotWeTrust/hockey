@@ -113,7 +113,7 @@ function PublicSportingPassport({
             label="Звёзды"
             value={profile.starBalance ?? 0}
             tone="stars"
-            icon={<Star aria-hidden="true" />}
+            icon={<Star aria-hidden="true" fill="currentColor" />}
           />
           <PublicBalance
             label="Опыт"
@@ -164,7 +164,9 @@ function PublicSportingPassport({
           const content = (
             <>
               <Icon aria-hidden="true" />
-              <strong className="profile-trophy-showcase__number">{formatProfileNumber(value)}</strong>
+              <strong className="profile-trophy-showcase__number">
+                {formatProfileNumber(value)}
+              </strong>
               <span>{label}</span>
             </>
           );

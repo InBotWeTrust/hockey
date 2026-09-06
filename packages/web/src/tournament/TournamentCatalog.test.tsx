@@ -428,11 +428,11 @@ describe('TournamentCatalog', () => {
     expect(designSystemCss).toMatch(
       /\.tournament-bracket-overview__column\s*\{[^}]*grid-template-rows:\s*auto minmax\(min-content,\s*1fr\);/s,
     );
-    expect(designSystemCss).toMatch(
-      /\.tournament-bracket-overview__series-list--with-bronze\s*\{[^}]*min-height:\s*392px;/s,
+    expect(designSystemCss).not.toMatch(
+      /\.tournament-bracket-overview__series-list--with-bronze\s*\{[^}]*min-height:/s,
     );
     expect(designSystemCss).toMatch(
-      /\.tournament-bracket-overview__bronze-lane\s*\{[^}]*top:\s*calc\(50% \+ 100px\);/s,
+      /\.tournament-bracket-overview__bronze-lane\s*\{[^}]*position:\s*relative;[^}]*margin-top:\s*20px;/s,
     );
     expect(designSystemCss).toMatch(
       /\.tournament-bracket-series--mine\s*\{[^}]*border-color:\s*rgba\(43, 126, 89,/s,
@@ -471,6 +471,25 @@ describe('TournamentCatalog', () => {
     expect(designSystemCss).toMatch(
       /\.tournament-bracket-player--pending\s*\{[^}]*min-width:\s*0;[^}]*width:\s*100%;[^}]*overflow:\s*hidden;/s,
     );
+  });
+
+  it('keeps the completed third-place winner bronze on unified glass surfaces', () => {
+    const style = document.createElement('style');
+    style.textContent = designSystemCss;
+    const shell = document.createElement('div');
+    shell.className = 'app-shell--unified-glass';
+    shell.innerHTML =
+      '<div class="tournament-bracket-player tournament-bracket-player--winner tournament-bracket-player--bronze-winner"></div>';
+    document.head.append(style);
+    document.body.append(shell);
+    try {
+      const winner = shell.firstElementChild as HTMLElement;
+      expect(getComputedStyle(winner).backgroundColor).toBe('rgba(205, 139, 85, 0.22)');
+      expect(getComputedStyle(winner).boxShadow).toContain('rgba(158, 96, 47, 0.2)');
+    } finally {
+      shell.remove();
+      style.remove();
+    }
   });
 
   it('uses compact two-column playoff cards and safe bottom spacing on narrow screens', () => {
