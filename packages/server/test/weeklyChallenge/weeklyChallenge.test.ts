@@ -324,6 +324,59 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     expect(claim.json().challenge).toMatchObject({ id: currentChallengeId });
   });
 
+  it('returns only future, participating active, and successfully completed challenges', async () => {
+    const futureChallengeId = await createChallenge({
+      title: 'Будущая неделя',
+      isActive: false,
+      joinOpenOffset: '-1 day',
+      startOffset: '-2 days',
+      endOffset: '-9 days',
+    });
+    const activeChallengeId = await createActiveChallenge();
+    await pool.query(
+      `insert into weekly_challenge_participants (challenge_id, user_id, joined_at)
+       values ($1, $2, now() - interval '1 hour')`,
+      [activeChallengeId, userId],
+    );
+    const completedChallengeId = await createChallenge({
+      title: 'Пройденная неделя',
+      isActive: false,
+      joinOpenOffset: '15 days',
+      startOffset: '14 days',
+      endOffset: '7 days',
+    });
+    await pool.query(
+      `insert into weekly_challenge_participants (challenge_id, user_id, joined_at)
+       values ($1, $2, now() - interval '14 days')`,
+      [completedChallengeId, userId],
+    );
+    await insertGoal(`now() - interval '10 days'`);
+    await createChallenge({
+      title: 'Чужой действующий челлендж',
+      isActive: false,
+      endOffset: '-7 days',
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/catalog',
+      headers: authHeader(),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      future: [{ id: futureChallengeId, title: 'Будущая неделя', participant: null }],
+      active: [{ id: activeChallengeId, title: 'Неделя снайпера' }],
+      completed: [
+        {
+          id: completedChallengeId,
+          title: 'Пройденная неделя',
+          allTasksCompleted: true,
+        },
+      ],
+    });
+  });
+
   it('treats reward claim rows as claimed even if participant state is stale', async () => {
     const challengeId = await createActiveChallenge();
     await pool.query(

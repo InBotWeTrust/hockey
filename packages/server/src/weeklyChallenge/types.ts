@@ -83,3 +83,23 @@ export interface WeeklyChallengeCurrentResponse {
   challenge: WeeklyChallengeDTO | null;
   pendingRewards: WeeklyChallengeDTO[];
 }
+
+export type WeeklyChallengeCatalogSection = 'future' | 'active' | 'completed';
+
+export interface WeeklyChallengeCatalogResponse {
+  future: WeeklyChallengeDTO[];
+  active: WeeklyChallengeDTO[];
+  completed: WeeklyChallengeDTO[];
+}
+
+export function classifyWeeklyChallengeForCatalog(
+  challenge: WeeklyChallengeDTO,
+): WeeklyChallengeCatalogSection | null {
+  if (challenge.status === 'not_open' || challenge.status === 'join_open') {
+    return challenge.declinedAt === null ? 'future' : null;
+  }
+  if (challenge.status === 'running') {
+    return challenge.participant === null ? null : 'active';
+  }
+  return challenge.participant !== null && challenge.allTasksCompleted ? 'completed' : null;
+}
