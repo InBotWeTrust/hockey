@@ -42,8 +42,18 @@ export interface WeeklyChallengeCurrentResponse {
   pendingRewards: WeeklyChallenge[];
 }
 
+export interface WeeklyChallengeCatalogResponse {
+  future: WeeklyChallenge[];
+  active: WeeklyChallenge[];
+  completed: WeeklyChallenge[];
+}
+
 export function fetchWeeklyChallenge(): Promise<WeeklyChallengeCurrentResponse> {
   return apiFetch<WeeklyChallengeCurrentResponse>('/weekly-challenge/current');
+}
+
+export function fetchWeeklyChallengeCatalog(): Promise<WeeklyChallengeCatalogResponse> {
+  return apiFetch<WeeklyChallengeCatalogResponse>('/weekly-challenge/catalog');
 }
 
 export function joinWeeklyChallenge(id: string): Promise<WeeklyChallengeCurrentResponse> {

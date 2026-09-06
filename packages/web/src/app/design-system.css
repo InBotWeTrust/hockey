@@ -1151,7 +1151,7 @@
   flex-shrink: 0;
 }
 
-.chat-room-header__control--surface {
+.icon-btn.chat-room-header__control--surface {
   background: var(--chrome-surface-bg);
   border-color: var(--chrome-surface-border);
   color: #10243a;
@@ -10762,4 +10762,306 @@ button.daily-calendar__day:active {
 .app-shell--unified-glass .tournament-bracket-player--bronze-winner {
   background: rgba(205, 139, 85, 0.22);
   box-shadow: inset 0 0 0 1px rgba(158, 96, 47, 0.2);
+}
+
+/* Weekly challenge catalogue */
+.weekly-challenge-screen {
+  padding: calc(22px + var(--app-safe-top)) 24px 24px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.weekly-challenge-screen__content {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.weekly-challenge-screen__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.weekly-challenge-screen__back.icon-btn {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.weekly-challenge-screen__title {
+  min-width: 0;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.weekly-challenge-filters.segmented-tabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  width: 100%;
+  padding: 4px;
+}
+
+.weekly-challenge-filter.segmented-tabs__item {
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: clip;
+}
+
+.weekly-challenge-section-title {
+  margin: 2px 0 -2px;
+  padding-inline: 0;
+}
+
+.weekly-challenge-empty {
+  margin: 12px 4px 0;
+  color: rgba(240, 246, 255, 0.86);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.45;
+  text-shadow: 0 1px 10px rgba(2, 8, 23, 0.5);
+}
+
+.weekly-challenge-list {
+  display: grid;
+  gap: 10px;
+}
+
+.weekly-challenge-card {
+  padding: 15px 16px 16px;
+  border-radius: 22px;
+  display: grid;
+  gap: 10px;
+}
+
+.weekly-challenge-card__topline {
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.weekly-challenge-card__status {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.1);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+}
+
+.weekly-challenge-card__timer {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-align: right;
+}
+
+.weekly-challenge-card__title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 950;
+  line-height: 1.12;
+}
+
+.weekly-challenge-card__dates {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.weekly-challenge-card__description {
+  margin: 7px 0 0;
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.weekly-challenge-card__rewards {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.weekly-challenge-card__reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 950;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.weekly-challenge-card__reward > span:first-child {
+  width: 17px;
+  height: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.weekly-challenge-task-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid rgba(71, 85, 105, 0.13);
+}
+
+.weekly-challenge-task {
+  padding: 10px 0 9px;
+  border-bottom: 1px solid rgba(71, 85, 105, 0.13);
+}
+
+.weekly-challenge-task__line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.weekly-challenge-task__title {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.weekly-challenge-task__check {
+  flex: 0 0 auto;
+  color: #17233d;
+}
+
+.weekly-challenge-task__value {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.weekly-challenge-task__track {
+  height: 3px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.1);
+}
+
+.weekly-challenge-task__track > span {
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: var(--blue-accent);
+}
+
+.weekly-challenge-card__actions {
+  display: grid;
+  grid-template-columns: 0.82fr 1fr;
+  gap: 8px;
+}
+
+.weekly-challenge-card__actions .btn,
+.weekly-challenge-card > .btn {
+  min-height: 42px;
+  padding: 11px 14px;
+  font-size: 13px;
+}
+
+.weekly-challenge-card__decline.btn {
+  color: #b91c1c;
+  background: rgba(255, 255, 255, 0.48);
+  border-color: rgba(185, 28, 28, 0.2);
+  box-shadow: none;
+}
+
+.weekly-challenge-card__claimed {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.weekly-challenge-card__error {
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.weekly-challenge-reward-toast {
+  position: fixed;
+  z-index: 280;
+  right: 18px;
+  bottom: calc(88px + var(--app-safe-bottom));
+  left: 18px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.weekly-challenge-reward-toast__card {
+  width: min(100%, 330px);
+  padding: 14px 16px;
+  border-radius: 18px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  animation: reward-pop 2.6s ease both;
+}
+
+.weekly-challenge-reward-toast__title {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.weekly-challenge-reward-toast__values {
+  margin-top: 3px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+@media (max-width: 420px) {
+  .weekly-challenge-screen {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .weekly-challenge-card {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
 }

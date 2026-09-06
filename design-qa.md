@@ -328,3 +328,90 @@ final result: passed
 - No actionable layout issues found at the requested narrow widths.
 
 final result: passed
+
+---
+
+# Weekly challenge catalogue design QA
+
+## Evidence
+
+- Source visual truth:
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-00d6e8da-76de-45e7-b512-b200867ffebd.png` — shared segmented control treatment.
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-523b27cd-9976-4888-92f2-93f831339bea.png` — task-row treatment and requested completion check location.
+- Rendered implementation: `output/playwright/challenge-catalog-after.png`.
+- Focused comparisons:
+  - `output/playwright/challenge-filter-comparison.png`.
+  - `output/playwright/challenge-tasks-comparison.png`.
+- Browser URL: `http://127.0.0.1:5173/achievements/weekly-challenge`.
+- Viewport: 709 x 1296 CSS px, device pixel ratio 2; app shell 430 x 1296 CSS px.
+- Captured screenshot: 709 x 1296 px, normalized by the browser capture to CSS-pixel dimensions.
+- Source pixels: segmented control 814 x 154; task region 748 x 312. Focused comparisons normalize both source and implementation to 383 px width.
+- State: authenticated local preview, active challenge selected, one completed task.
+
+## Full-view comparison
+
+The challenge screen keeps the existing 430 px mobile app shell, ice-arena background, shared page tabs, compact challenge card, and bottom navigation. The new filter fits completely inside the content width and no longer clips the third option.
+
+## Focused comparison
+
+- Filter: the implementation now uses the same single frosted pill container, three equal-width segments, navy selected segment, light inactive segments, white border, and count badges as the established shop/duel pattern.
+- Tasks: row typography, right-aligned progress values, separators, and thin progress tracks remain aligned with the reference. The completed-task check is intentionally changed from cyan to dark navy per the latest user instruction.
+
+## Required fidelity surfaces
+
+- Fonts and typography: existing application font stack and weights are preserved; all three labels fit without truncation.
+- Spacing and layout rhythm: 4 px outer padding and 4 px inter-segment gap match the shared `SegmentedTabs` component; the control is 382 x 48 CSS px and stays inside the 382 px content width.
+- Colors and visual tokens: selected segment uses the shared navy active state; inactive background and white outline inherit the arena segmented-tabs tokens; completion check is `#17233d`.
+- Image quality and asset fidelity: no new raster assets are introduced; the existing arena background remains sharp and unchanged.
+- Copy and content: `Действующие`, `Будущие`, `Пройденные` and their counts are unchanged.
+
+## Comparison history
+
+1. Initial finding: P2 — three independent chips overflowed horizontally and visually diverged from the shop/duel segmented control; the completion check used the cyan progress color.
+2. Fix: replaced independent chips with one shared segmented container, equalized three columns, retained compact count badges, and added a dedicated dark-navy completion-check class.
+3. Post-fix evidence: both focused comparison images show the unified control and the dark completion check with no clipping.
+
+## Findings
+
+No remaining P0, P1, or P2 differences for the requested areas.
+
+## Primary interactions and console
+
+- Switched between Future, Active, and Completed filters successfully in the local browser.
+- Future join action and completed-state label are present in their respective views.
+- Local mock WebSocket is connected for preview; no reconnect banner is present in the final state.
+
+## Follow-up polish
+
+No P3 item is required for this iteration.
+
+final result: passed
+
+---
+
+# Weekly challenge filter labels follow-up QA
+
+## Evidence
+
+- Source visual truth:
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-095f9ac1-6b47-404b-86ef-ff44d3877f20.png` — segmented filters without inline counters.
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-6f3d684d-11c5-40b6-ae4c-78f0d3e32d4d.png` — separate uppercase section heading with count.
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-3decf513-cf67-4eb0-817b-2cb9acae8e15.png` — section heading must have no left inset.
+- Rendered implementation: `output/playwright/challenge-catalog-after.png`.
+- Browser URL: `http://127.0.0.1:5173/achievements/weekly-challenge`.
+- State: authenticated local preview, completed challenge selected.
+
+## Checks
+
+- Filter tabs contain labels only; counts are not rendered inside the segmented control.
+- The section heading mirrors the selected filter and renders its item count in parentheses.
+- Switching Future, Active, and Completed updates both content and heading.
+- The heading aligns with the left edge of the filter and challenge card without inherited `section-label` padding.
+- Completed-task checks remain dark navy (`#17233d`).
+- Browser console errors: 0.
+
+## Findings
+
+No remaining actionable differences for the requested filter and section-heading treatment.
+
+final result: passed
