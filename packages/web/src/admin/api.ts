@@ -1015,6 +1015,7 @@ export interface AdminAchievement {
   rewardCurrency: number;
   rewardStars: number;
   rewardExperience: number;
+  rewardTokens?: number;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -1033,6 +1034,7 @@ export interface AdminAchievementPatch {
   rewardCurrency?: number;
   rewardStars?: number;
   rewardExperience?: number;
+  rewardTokens?: number;
   sortOrder?: number;
 }
 

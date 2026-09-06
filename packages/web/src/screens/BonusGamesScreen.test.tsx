@@ -64,23 +64,19 @@ function card(overrides: Record<string, unknown>) {
 function mockCatalog(
   games: unknown[],
   options: {
-    stars?: number;
     catalogFailure?: unknown;
-    balanceFailure?: unknown;
-    unlockFailure?: unknown;
-    unlockResponse?: Response;
     startFailure?: unknown;
     abandonFailure?: unknown;
+    speedRemaining?: number;
+    accuracyRemaining?: number;
   } = {},
 ): void {
   const {
-    stars = 3,
     catalogFailure,
-    balanceFailure,
-    unlockFailure,
-    unlockResponse,
     startFailure,
     abandonFailure,
+    speedRemaining = 2,
+    accuracyRemaining = 2,
   } = options;
   vi.spyOn(globalThis, 'fetch').mockImplementation(
     (input: RequestInfo | URL, init?: RequestInit) => {
@@ -95,35 +91,20 @@ function mockCatalog(
                 games
                   .map((game) => (game as { active_attempt?: unknown }).active_attempt)
                   .find((attempt) => attempt != null) ?? null,
+              attempt_allowances: {
+                speed: { daily_limit: 2, used: 2 - speedRemaining, remaining: speedRemaining },
+                accuracy: {
+                  daily_limit: 2,
+                  used: 2 - accuracyRemaining,
+                  remaining: accuracyRemaining,
+                },
+              },
             }),
             {
               status: 200,
               headers: { 'Content-Type': 'application/json' },
             },
           ),
-        );
-      }
-      if (url.endsWith('/api/inventory/me')) {
-        if (balanceFailure !== undefined) return Promise.reject(balanceFailure);
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              balances: { tokens: 200, stars, experience: 100 },
-              equipped: { stickItemId: null, skatesItemId: null, nutritionItemId: null },
-              items: { stick: [], skates: [], nutrition: [] },
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        );
-      }
-      if (url.includes('/api/bonus-games/') && url.endsWith('/unlock') && init?.method === 'POST') {
-        if (unlockFailure !== undefined) return Promise.reject(unlockFailure);
-        return Promise.resolve(
-          unlockResponse ??
-            new Response(JSON.stringify({ unlocked: true, star_balance: stars - 1 }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
         );
       }
       if (
@@ -367,17 +348,14 @@ describe('BonusGamesScreen', () => {
         id: 'pirate-bay',
         slug: 'pirate-bay',
         title: 'Пиратская бухта',
-        state: 'purchase_required',
-        access_type: 'paid',
-        unlock_price_stars: 1,
-        is_unlocked: false,
+        state: 'available',
       }),
     ]);
     renderCatalog();
 
-    const purchaseControl = await screen.findByRole('button', { name: 'Открыть за 1 звезду' });
+    const playControl = await screen.findByRole('button', { name: 'Играть' });
     const repeatControl = screen.getByRole('button', { name: 'Повторить' });
-    expect(purchaseControl).toHaveClass('bonus-game-card__hit-area');
+    expect(playControl).toHaveClass('bonus-game-card__hit-area');
     expect(repeatControl).toHaveClass('bonus-game-card__hit-area');
     expect(screen.queryByRole('button', { name: 'Закрыта' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Дальше' })).toHaveClass(
@@ -729,9 +707,7 @@ describe('BonusGamesScreen', () => {
   it('renders first-clear rewards as accessible resource icons', async () => {
     mockCatalog([
       card({
-        state: 'purchase_required',
-        access_type: 'paid',
-        unlock_price_stars: 22,
+        state: 'available',
         target_goals: 21,
         qualification_rules: { type: 'goals_from_shots', targetGoals: 21, shotsLimit: 21 },
         total_periods: 2,
@@ -787,155 +763,30 @@ describe('BonusGamesScreen', () => {
     );
   });
 
-  it('confirms the current server price and balance before one paid unlock request', async () => {
+  it('shows two independent daily attempt allowances', async () => {
     mockCatalog(
       [
-        card({
-          state: 'purchase_required',
-          access_type: 'paid',
-          unlock_price_stars: 1,
-          is_unlocked: false,
-        }),
+        card({ id: 'speed-game' }),
+        card({ id: 'accuracy-game', skill_code: 'accuracy', title: 'Точная игра' }),
       ],
-      {
-        stars: 1,
-        unlockResponse: new Response(
-          JSON.stringify({
-            error: { code: 'bonus_insufficient_stars', message: 'not enough stars' },
-          }),
-          { status: 409, headers: { 'Content-Type': 'application/json' } },
-        ),
-      },
+      { speedRemaining: 1, accuracyRemaining: 2 },
     );
     renderCatalog();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 1 звезду' }));
-    expect(screen.getByRole('dialog', { name: 'Открыть игру?' })).toHaveTextContent(
-      'Стоимость: 1 звезда. На балансе: 1 звезда.',
-    );
+    expect(await screen.findByText('Попытки сегодня: 1 из 2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Точность' }));
+    expect(screen.getByText('Попытки сегодня: 2 из 2')).toBeInTheDocument();
+  });
 
-    fireEvent.click(
-      within(screen.getByRole('dialog', { name: 'Открыть игру?' })).getByRole('button', {
-        name: 'Открыть за 1 звезду',
-      }),
-    );
+  it('blocks a new attempt when the selected skill has no attempts left', async () => {
+    mockCatalog([card({})], { speedRemaining: 0 });
+    renderCatalog();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Недостаточно звёзд для открытия бонус-игры.',
-    );
+    expect(await screen.findByText('Попытки сегодня: 0 из 2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Попытки закончились' })).toBeDisabled();
     expect(
-      vi
-        .mocked(globalThis.fetch)
-        .mock.calls.filter(
-          ([input, init]) =>
-            String(input).endsWith(
-              '/api/bonus-games/00000000-0000-4000-8000-000000000601/unlock',
-            ) && init?.method === 'POST',
-        ),
-    ).toHaveLength(1);
-    const unlockCall = vi
-      .mocked(globalThis.fetch)
-      .mock.calls.find(
-        ([input, init]) => String(input).endsWith('/unlock') && init?.method === 'POST',
-      );
-    expect(JSON.parse(String(unlockCall?.[1]?.body))).toEqual({ expected_price_stars: 1 });
-  });
-
-  it('focuses the purchase modal and restores its exact trigger after Escape', async () => {
-    mockCatalog([
-      card({
-        state: 'purchase_required',
-        access_type: 'paid',
-        unlock_price_stars: 1,
-        is_unlocked: false,
-      }),
-    ]);
-    renderCatalog();
-    const trigger = await screen.findByRole('button', { name: 'Открыть за 1 звезду' });
-    trigger.focus();
-    fireEvent.click(trigger);
-
-    const dialog = screen.getByRole('dialog', { name: 'Открыть игру?' });
-    await waitFor(() =>
-      expect(within(dialog).getByRole('button', { name: 'Отмена' })).toHaveFocus(),
-    );
-    fireEvent.keyDown(dialog, { key: 'Escape' });
-
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Открыть игру?' })).toBeNull());
-    expect(trigger).toHaveFocus();
-  });
-
-  it('refreshes the catalog and requires a fresh confirmation when the locked price changed', async () => {
-    let currentGames = [
-      card({
-        state: 'purchase_required',
-        access_type: 'paid',
-        unlock_price_stars: 1,
-        is_unlocked: false,
-      }),
-    ];
-    let catalogRequests = 0;
-    vi.spyOn(globalThis, 'fetch').mockImplementation(
-      (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input);
-        if (url.endsWith('/api/bonus-games')) {
-          catalogRequests += 1;
-          return Promise.resolve(
-            new Response(JSON.stringify({ games: currentGames, active_attempt: null }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          );
-        }
-        if (url.endsWith('/api/inventory/me')) {
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({
-                balances: { tokens: 0, stars: 5, experience: 0 },
-                equipped: { stickItemId: null, skatesItemId: null, nutritionItemId: null },
-                items: { stick: [], skates: [], nutrition: [] },
-              }),
-              { status: 200, headers: { 'Content-Type': 'application/json' } },
-            ),
-          );
-        }
-        if (url.endsWith('/unlock') && init?.method === 'POST') {
-          currentGames = [
-            card({
-              state: 'purchase_required',
-              access_type: 'paid',
-              unlock_price_stars: 2,
-              is_unlocked: false,
-            }),
-          ];
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({
-                error: { code: 'bonus_price_changed', message: 'internal current price is 2' },
-              }),
-              { status: 409, headers: { 'Content-Type': 'application/json' } },
-            ),
-          );
-        }
-        return Promise.resolve(new Response('{}', { status: 200 }));
-      },
-    );
-    renderCatalog();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 1 звезду' }));
-    fireEvent.click(
-      within(screen.getByRole('dialog', { name: 'Открыть игру?' })).getByRole('button', {
-        name: 'Открыть за 1 звезду',
-      }),
-    );
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Цена игры изменилась. Проверьте каталог и подтвердите открытие снова.',
-    );
-    expect(screen.queryByRole('dialog', { name: 'Открыть игру?' })).toBeNull();
-    await waitFor(() => expect(catalogRequests).toBe(2));
-    expect(screen.getByRole('button', { name: /Открыть за 2/ })).toBeInTheDocument();
-    expect(screen.queryByText(/internal current price/i)).toBeNull();
+      vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),
+    ).toHaveLength(0);
   });
 
   it('does not expose a rejected catalog request error', async () => {
@@ -960,36 +811,14 @@ describe('BonusGamesScreen', () => {
     expect(screen.queryByText('private start failure')).toBeNull();
   });
 
-  it('does not expose a rejected balance request error', async () => {
-    mockCatalog([card({ state: 'purchase_required', access_type: 'paid', is_unlocked: false })], {
-      balanceFailure: new Error('private balance failure'),
-    });
+  it('does not request inventory balances or paid unlocks', async () => {
+    mockCatalog([card({})]);
     renderCatalog();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 0 звёзд' }));
-
-    expect(screen.getByRole('dialog', { name: 'Открыть игру?' })).toHaveTextContent(
-      'Не удалось выполнить запрос. Попробуйте ещё раз.',
-    );
-    expect(screen.queryByText('private balance failure')).toBeNull();
-  });
-
-  it('does not expose a rejected purchase error', async () => {
-    mockCatalog([card({ state: 'purchase_required', access_type: 'paid', is_unlocked: false })], {
-      unlockFailure: new TypeError('private payment transport'),
-    });
-    renderCatalog();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 0 звёзд' }));
-    fireEvent.click(
-      within(screen.getByRole('dialog', { name: 'Открыть игру?' })).getByRole('button', {
-        name: 'Открыть за 0 звёзд',
-      }),
-    );
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Не удалось выполнить запрос. Попробуйте ещё раз.',
-    );
-    expect(screen.queryByText('private payment transport')).toBeNull();
+    await screen.findByRole('button', { name: 'Играть' });
+    const urls = vi.mocked(globalThis.fetch).mock.calls.map(([input]) => String(input));
+    expect(urls).not.toContain('/api/inventory/me');
+    expect(urls.some((url) => url.endsWith('/unlock'))).toBe(false);
+    expect(screen.queryByText(/Открыть за/)).not.toBeInTheDocument();
   });
 });

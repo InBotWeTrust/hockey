@@ -15,6 +15,7 @@ export interface AchievementDto {
   rewardCurrency: number;
   rewardStars: number;
   rewardExperience: number;
+  rewardTokens?: number;
   status: AchievementStatus;
   isUnlocked: boolean;
   isClaimable: boolean;
@@ -33,11 +34,13 @@ export interface ClaimAchievementResponse {
     currency: number;
     stars: number;
     experience: number;
+    tokens?: number;
   };
   balances: {
     currencyBalance: number;
     starBalance: number;
     experienceBalance: number;
+    tokenBalance?: number;
   };
   unclaimedCount: number;
 }

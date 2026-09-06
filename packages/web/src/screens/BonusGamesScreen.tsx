@@ -15,18 +15,16 @@ import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import {
   fetchBonusGames,
   abandonBonusAttempt,
-  purchaseBonusGame,
   startBonusAttempt,
   type BonusGameCard,
   type BonusSkillCode,
 } from '../api/bonusGames.js';
 import { ApiError } from '../api/apiFetch.js';
-import { fetchMyInventory } from '../api/inventory.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
-import { formatRussianCount } from '../lib/russianPlural.js';
 import { qualificationDescription } from '../game/bonusGameQualification.js';
 import { versionBonusGameArtwork } from '../game/bonusGameArtwork.js';
+import { formatRussianCount } from '../lib/russianPlural.js';
 
 const SAFE_UI_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
 const LAST_SKILL_STORAGE_KEY = 'bonus-games:last-skill';
@@ -45,9 +43,6 @@ function numberText(value: number): string {
 }
 
 function actionLabel(game: BonusGameCard): string {
-  if (game.state === 'purchase_required') {
-    return `Открыть за ${formatRussianCount(game.unlock_price_stars, 'звезду', 'звезды', 'звёзд')}`;
-  }
   if (game.state === 'in_progress' || game.active_attempt !== null) return 'Продолжить';
   if (game.state === 'completed') return 'Повторить';
   if (game.state === 'available') return 'Играть';
@@ -61,8 +56,6 @@ function isPlayable(game: BonusGameCard): boolean {
 export function BonusGamesScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [purchaseGame, setPurchaseGame] = useState<BonusGameCard | null>(null);
-  const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
   const [switchGame, setSwitchGame] = useState<BonusGameCard | null>(null);
   const switchAttemptRequestRef = useRef(false);
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -70,7 +63,6 @@ export function BonusGamesScreen(): JSX.Element {
     localStorage.getItem(LAST_SKILL_STORAGE_KEY) === 'accuracy' ? 'accuracy' : 'speed',
   );
   const catalogQuery = useQuery({ queryKey: ['bonus-games'], queryFn: fetchBonusGames });
-  const inventoryQuery = useQuery({ queryKey: ['inventory', 'me'], queryFn: fetchMyInventory });
   const startMutation = useMutation({
     mutationFn: startBonusAttempt,
     onSuccess: async (response) => {
@@ -80,24 +72,6 @@ export function BonusGamesScreen(): JSX.Element {
       );
     },
   });
-  const purchaseMutation = useMutation({
-    mutationFn: purchaseBonusGame,
-    onMutate: () => setPurchaseNotice(null),
-    onSuccess: async () => {
-      setPurchaseGame(null);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['bonus-games'] }),
-        queryClient.invalidateQueries({ queryKey: ['inventory', 'me'] }),
-      ]);
-    },
-    onError: (error) => {
-      if (!(error instanceof ApiError) || error.code !== 'bonus_price_changed') return;
-      setPurchaseGame(null);
-      setPurchaseNotice(error.message);
-      void queryClient.invalidateQueries({ queryKey: ['bonus-games'] });
-    },
-  });
-
   const activeAttempt = catalogQuery.data?.active_attempt ?? null;
   const allGames = catalogQuery.data?.games ?? [];
   const activeGame = allGames.find((game) => game.active_attempt?.id === activeAttempt?.id);
@@ -107,11 +81,6 @@ export function BonusGamesScreen(): JSX.Element {
   };
 
   const performGameAction = (game: BonusGameCard): void => {
-    if (game.state === 'purchase_required') {
-      purchaseMutation.reset();
-      setPurchaseGame(game);
-      return;
-    }
     if (game.state === 'in_progress' || game.active_attempt !== null) {
       navigate(
         `/bonus-games/${game.id}/play?attempt=${encodeURIComponent(game.active_attempt!.id)}`,
@@ -149,6 +118,8 @@ export function BonusGamesScreen(): JSX.Element {
     performGameAction(game);
   };
   const games = allGames.filter((game) => game.skill_code === selectedSkill);
+  const selectedAllowance = catalogQuery.data?.attempt_allowances?.[selectedSkill];
+  const canStartNewAttempt = selectedAllowance === undefined || selectedAllowance.remaining > 0;
   const selectSkill = (skill: BonusSkillCode): void => {
     setSelectedSkill(skill);
     localStorage.setItem(LAST_SKILL_STORAGE_KEY, skill);
@@ -156,7 +127,7 @@ export function BonusGamesScreen(): JSX.Element {
   const focusGame =
     games.find((game) => game.active_attempt !== null) ??
     games.find((game) => game.state === 'in_progress') ??
-    games.find((game) => game.state === 'available' || game.state === 'purchase_required') ??
+    games.find((game) => game.state === 'available') ??
     (games.every((game) => game.state === 'completed') ? null : (games[0] ?? null));
   const completedGames = games.filter(
     (game) => game.state === 'completed' && game.id !== focusGame?.id,
@@ -166,7 +137,6 @@ export function BonusGamesScreen(): JSX.Element {
       game.id !== focusGame?.id &&
       game.state !== 'completed' &&
       game.state !== 'available' &&
-      game.state !== 'purchase_required' &&
       game.state !== 'in_progress',
   );
 
@@ -216,6 +186,13 @@ export function BonusGamesScreen(): JSX.Element {
           />
         </div>
 
+        {catalogQuery.data?.attempt_allowances?.[selectedSkill] ? (
+          <p className="bonus-games-attempt-allowance">
+            Попытки сегодня: {catalogQuery.data.attempt_allowances[selectedSkill]!.remaining} из{' '}
+            {catalogQuery.data.attempt_allowances[selectedSkill]!.daily_limit}
+          </p>
+        ) : null}
+
         {catalogQuery.isLoading ? (
           <div className="bonus-games-catalog__notice" role="status">
             Загружаем бонусные игры…
@@ -240,6 +217,7 @@ export function BonusGamesScreen(): JSX.Element {
                   game={focusGame}
                   actionLabel={actionLabel(focusGame)}
                   isStarting={startMutation.isPending && startMutation.variables === focusGame.id}
+                  canStartNewAttempt={canStartNewAttempt}
                   onAction={() => openGame(focusGame)}
                   featured={true}
                 />
@@ -260,6 +238,7 @@ export function BonusGamesScreen(): JSX.Element {
                       game={game}
                       actionLabel={actionLabel(game)}
                       isStarting={startMutation.isPending && startMutation.variables === game.id}
+                      canStartNewAttempt={canStartNewAttempt}
                       onAction={() => openGame(game)}
                       compact={true}
                     />
@@ -279,6 +258,7 @@ export function BonusGamesScreen(): JSX.Element {
                       game={game}
                       actionLabel={actionLabel(game)}
                       isStarting={false}
+                      canStartNewAttempt={canStartNewAttempt}
                       onAction={() => openGame(game)}
                       compact={true}
                     />
@@ -294,34 +274,7 @@ export function BonusGamesScreen(): JSX.Element {
             {safeUiError(startMutation.error)}
           </div>
         )}
-        {purchaseNotice !== null && (
-          <div className="bonus-games-catalog__notice" role="alert">
-            {purchaseNotice}
-          </div>
-        )}
       </section>
-
-      {purchaseGame && (
-        <PurchaseBonusGameModal
-          game={purchaseGame}
-          starBalance={inventoryQuery.data?.balances.stars}
-          balanceLoading={inventoryQuery.isLoading}
-          balanceError={inventoryQuery.isError ? safeUiError(inventoryQuery.error) : null}
-          isPurchasing={purchaseMutation.isPending}
-          error={purchaseMutation.isError ? safeUiError(purchaseMutation.error) : null}
-          onClose={() => {
-            if (purchaseMutation.isPending) return;
-            purchaseMutation.reset();
-            setPurchaseGame(null);
-          }}
-          onConfirm={() =>
-            purchaseMutation.mutate({
-              gameId: purchaseGame.id,
-              expectedPriceStars: purchaseGame.unlock_price_stars,
-            })
-          }
-        />
-      )}
       {rulesOpen && <BonusGamesRulesModal onClose={() => setRulesOpen(false)} />}
       {switchGame !== null && activeAttempt !== null && activeGame !== undefined ? (
         <AccessibleModal
@@ -369,7 +322,7 @@ function BonusGamesRulesModal({ onClose }: { onClose: () => void }): JSX.Element
     <AccessibleModal title="Правила бонусных игр" onClose={onClose}>
       <ol className="bonus-games-rules">
         <li>Игры открываются последовательно: сначала нужно пройти предыдущую.</li>
-        <li>Некоторые игры бесплатные, другие нужно один раз открыть за звёзды.</li>
+        <li>Каждый день доступны две попытки на скорость и две попытки на точность.</li>
         <li>Для прохождения выполните указанную цель за доступные периоды и броски.</li>
         <li>Монеты, звёзды и опыт начисляются только за первое прохождение.</li>
         <li>Пройденные игры можно повторять, но без повторной награды.</li>
@@ -387,6 +340,7 @@ function BonusGameCard({
   game,
   actionLabel: label,
   isStarting,
+  canStartNewAttempt,
   onAction,
   featured = false,
   compact = false,
@@ -394,12 +348,15 @@ function BonusGameCard({
   game: BonusGameCard;
   actionLabel: string;
   isStarting: boolean;
+  canStartNewAttempt: boolean;
   onAction: () => void;
   featured?: boolean;
   compact?: boolean;
 }): JSX.Element {
-  const canAct =
-    game.state === 'purchase_required' || game.active_attempt !== null || isPlayable(game);
+  const isContinuable = game.active_attempt !== null || game.state === 'in_progress';
+  const canAct = isContinuable || (isPlayable(game) && canStartNewAttempt);
+  const visibleActionLabel =
+    !isContinuable && isPlayable(game) && !canStartNewAttempt ? 'Попытки закончились' : label;
   const firstClearRewards = [
     {
       label: 'Монеты',
@@ -441,13 +398,13 @@ function BonusGameCard({
     <article
       className={`bonus-game-card${featured ? ' bonus-game-card--featured' : ''}${featured && isWorldTourArtwork ? ' bonus-game-card--world-tour' : ''}${compact ? ' bonus-game-card--compact' : ''}${game.state === 'completed' ? ' bonus-game-card--completed' : ''}`}
     >
-      {canAct && (
+      {(canAct || (!isContinuable && isPlayable(game))) && (
         <button
           type="button"
           className="bonus-game-card__hit-area"
-          disabled={isStarting}
+          disabled={isStarting || !canAct}
           onClick={onAction}
-          aria-label={isStarting ? 'Подготавливаем…' : label}
+          aria-label={isStarting ? 'Подготавливаем…' : visibleActionLabel}
         />
       )}
       <div className="bonus-game-card__artwork-frame">
@@ -540,67 +497,5 @@ function BonusGameReward({
       </span>
       <span>{numberText(value)}</span>
     </span>
-  );
-}
-
-function PurchaseBonusGameModal({
-  game,
-  starBalance,
-  balanceLoading,
-  balanceError,
-  isPurchasing,
-  error,
-  onClose,
-  onConfirm,
-}: {
-  game: BonusGameCard;
-  starBalance: number | undefined;
-  balanceLoading: boolean;
-  balanceError: string | null;
-  isPurchasing: boolean;
-  error: string | null;
-  onClose: () => void;
-  onConfirm: () => void;
-}): JSX.Element {
-  const price = formatRussianCount(game.unlock_price_stars, 'звезда', 'звезды', 'звёзд');
-  const actionPrice = formatRussianCount(game.unlock_price_stars, 'звезду', 'звезды', 'звёзд');
-  const balanceCopy = balanceLoading
-    ? 'Проверяем баланс звёзд…'
-    : balanceError
-      ? balanceError
-      : `Стоимость: ${price}. На балансе: ${formatRussianCount(
-          starBalance ?? 0,
-          'звезда',
-          'звезды',
-          'звёзд',
-        )}.`;
-
-  return (
-    <AccessibleModal
-      title="Открыть игру?"
-      copy={`${game.title}. Открытие оплачивается один раз, а повторные попытки будут бесплатными.`}
-      closeBlocked={isPurchasing}
-      onClose={onClose}
-    >
-      <p className="modal-copy">{balanceCopy}</p>
-      {error && (
-        <p className="bonus-games-purchase-error" role="alert">
-          {error}
-        </p>
-      )}
-      <div className="modal-actions">
-        <button type="button" className="btn btn--ghost" disabled={isPurchasing} onClick={onClose}>
-          Отмена
-        </button>
-        <button
-          type="button"
-          className="modal-primary btn btn--cta"
-          disabled={isPurchasing || balanceLoading || balanceError !== null}
-          onClick={onConfirm}
-        >
-          {isPurchasing ? 'Открываем…' : `Открыть за ${actionPrice}`}
-        </button>
-      </div>
-    </AccessibleModal>
   );
 }

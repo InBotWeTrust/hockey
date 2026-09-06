@@ -10,16 +10,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 
 const expectedTournamentAchievements = [
-  ['regular-season-medalist', 'Призёр регулярки', 50, 100, 100],
-  ['playoff-semifinal', 'Турнирный характер', 75, 150, 150],
-  ['no-shake', 'Без дрожи', 75, 150, 150],
-  ['dark-horse', 'Тёмная лошадка', 100, 200, 200],
-  ['regular-season-champion', 'Победитель регулярки', 125, 250, 250],
-  ['playoff-final', 'Финальный лёд', 125, 250, 250],
-  ['series-comeback', 'Мощный камбэк', 150, 300, 300],
-  ['tournament-cup', 'Кубок над головой', 200, 400, 400],
-  ['death-bracket', 'Сетка смерти', 250, 500, 500],
-  ['tournament-streak', 'Турнирная серия', 300, 700, 700],
+  ['regular-season-medalist', 'Призёр регулярки', 220, 45, 45, 2],
+  ['playoff-semifinal', 'Турнирный характер', 100, 50, 50, 1],
+  ['no-shake', 'Без дрожи', 0, 20, 20, 0],
+  ['dark-horse', 'Тёмная лошадка', 0, 25, 25, 0],
+  ['regular-season-champion', 'Победитель регулярки', 250, 50, 50, 3],
+  ['playoff-final', 'Финальный лёд', 150, 75, 75, 2],
+  ['series-comeback', 'Мощный камбэк', 0, 35, 35, 0],
+  ['tournament-cup', 'Кубок над головой', 1000, 100, 100, 5],
+  ['death-bracket', 'Сетка смерти', 0, 25, 25, 0],
+  ['tournament-streak', 'Турнирная серия', 2500, 250, 250, 5],
 ] as const;
 
 function tuple(achievement: (typeof ACHIEVEMENT_SEEDS)[number]) {
@@ -29,6 +29,7 @@ function tuple(achievement: (typeof ACHIEVEMENT_SEEDS)[number]) {
     achievement.rewardCurrency,
     achievement.rewardStars,
     achievement.rewardExperience,
+    achievement.rewardTokens,
   ];
 }
 
@@ -84,10 +85,11 @@ describe.skipIf(!hasIntegrationEnv)('migration 103 tournament achievements', () 
       reward_currency: number;
       reward_stars: number;
       reward_experience: number;
+      reward_tokens: number;
       photo_url: string;
     }>(
       `select id, title, availability, future_tag, photo_url,
-              reward_currency, reward_stars, reward_experience
+              reward_currency, reward_stars, reward_experience, reward_tokens
          from achievements
         where category = 'tournament'
         order by id`,
@@ -107,6 +109,7 @@ describe.skipIf(!hasIntegrationEnv)('migration 103 tournament achievements', () 
         row.reward_currency,
         row.reward_stars,
         row.reward_experience,
+        row.reward_tokens,
       ]),
     ).toEqual(
       [...expectedTournamentAchievements].sort((left, right) => left[0].localeCompare(right[0])),

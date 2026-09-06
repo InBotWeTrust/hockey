@@ -6509,6 +6509,7 @@ function AchievementAdminCard({
     rewardCurrency: String(achievement.rewardCurrency),
     rewardStars: String(achievement.rewardStars),
     rewardExperience: String(achievement.rewardExperience),
+    rewardTokens: String(achievement.rewardTokens ?? 0),
     sortOrder: String(achievement.sortOrder),
   });
 
@@ -6524,6 +6525,7 @@ function AchievementAdminCard({
       rewardCurrency: String(achievement.rewardCurrency),
       rewardStars: String(achievement.rewardStars),
       rewardExperience: String(achievement.rewardExperience),
+      rewardTokens: String(achievement.rewardTokens ?? 0),
       sortOrder: String(achievement.sortOrder),
     });
   }, [achievement]);
@@ -6531,10 +6533,15 @@ function AchievementAdminCard({
   const rewardCurrency = Number(draft.rewardCurrency);
   const rewardStars = Number(draft.rewardStars);
   const rewardExperience = Number(draft.rewardExperience);
+  const rewardTokens = Number(draft.rewardTokens);
   const sortOrder = Number(draft.sortOrder);
-  const validNumbers = [rewardCurrency, rewardStars, rewardExperience, sortOrder].every(
-    (value) => Number.isFinite(value) && value >= 0,
-  );
+  const validNumbers = [
+    rewardCurrency,
+    rewardStars,
+    rewardExperience,
+    rewardTokens,
+    sortOrder,
+  ].every((value) => Number.isFinite(value) && value >= 0);
   const patch = useMemo<AdminAchievementPatch>(() => {
     const body: AdminAchievementPatch = {};
     if (draft.title !== achievement.title) body.title = draft.title;
@@ -6553,9 +6560,11 @@ function AchievementAdminCard({
     if (rewardExperience !== achievement.rewardExperience) {
       body.rewardExperience = Math.trunc(rewardExperience);
     }
+    if (rewardTokens !== (achievement.rewardTokens ?? 0))
+      body.rewardTokens = Math.trunc(rewardTokens);
     if (sortOrder !== achievement.sortOrder) body.sortOrder = Math.trunc(sortOrder);
     return body;
-  }, [achievement, draft, rewardCurrency, rewardExperience, rewardStars, sortOrder]);
+  }, [achievement, draft, rewardCurrency, rewardExperience, rewardStars, rewardTokens, sortOrder]);
   const dirty = Object.keys(patch).length > 0;
   const unclaimedCount = Math.max(0, achievement.completedCount - achievement.claimedCount);
   const mutation = useMutation({
@@ -6725,6 +6734,16 @@ function AchievementAdminCard({
             value={draft.rewardExperience}
             onChange={(event) =>
               setDraft((current) => ({ ...current, rewardExperience: event.target.value }))
+            }
+          />
+        </AdminField>
+        <AdminField label="Токены">
+          <input
+            type="number"
+            min={0}
+            value={draft.rewardTokens}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, rewardTokens: event.target.value }))
             }
           />
         </AdminField>

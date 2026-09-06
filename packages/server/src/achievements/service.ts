@@ -31,6 +31,7 @@ export interface ProfileAchievementDTO {
   rewardCurrency: number;
   rewardStars: number;
   rewardExperience: number;
+  rewardTokens: number;
   status: AchievementStatus;
   isUnlocked: boolean;
   isClaimable: boolean;
@@ -50,6 +51,7 @@ interface AchievementRow {
   reward_currency: number | string;
   reward_stars: number | string;
   reward_experience: number | string;
+  reward_tokens: number | string;
   completed_at: Date | null;
   claimed_at: Date | null;
 }
@@ -81,6 +83,7 @@ function mapAchievementRow(row: AchievementRow): ProfileAchievementDTO {
     rewardCurrency: Number(row.reward_currency),
     rewardStars: Number(row.reward_stars),
     rewardExperience: Number(row.reward_experience),
+    rewardTokens: Number(row.reward_tokens),
     status,
     isUnlocked: row.completed_at !== null,
     isClaimable: status === 'completed_unclaimed',
@@ -185,7 +188,7 @@ export async function fetchAchievementCatalogueForUser(
   const { rows } = await db.query<AchievementRow>(
     `select a.id, a.photo_url, a.title, a.description, a.requirement,
             a.category, a.availability, a.future_tag,
-            a.reward_currency, a.reward_stars, a.reward_experience,
+            a.reward_currency, a.reward_stars, a.reward_experience, a.reward_tokens,
             ua.completed_at, ua.claimed_at
        from achievements a
        left join user_achievements ua

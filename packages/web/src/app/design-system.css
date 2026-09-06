@@ -1477,6 +1477,13 @@
   width: 100%;
 }
 
+.bonus-games-attempt-allowance {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
 .bonus-games-rules {
   display: grid;
   gap: 9px;

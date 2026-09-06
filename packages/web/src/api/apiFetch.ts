@@ -12,6 +12,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   bonus_level_locked: 'Бонус-игры доступны после открытия любительского уровня.',
   bonus_previous_game_required: 'Сначала завершите предыдущую бонус-игру.',
   bonus_purchase_required: 'Сначала откройте эту бонус-игру.',
+  bonus_daily_attempt_limit: 'Попытки на сегодня закончились. Новые будут доступны после полуночи.',
   bonus_insufficient_stars: 'Недостаточно звёзд для открытия бонус-игры.',
   bonus_price_changed: 'Цена игры изменилась. Проверьте каталог и подтвердите открытие снова.',
   bonus_game_inactive: 'Эта бонус-игра сейчас недоступна.',

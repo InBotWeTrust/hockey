@@ -90,7 +90,7 @@ function rewardPartItems(
     reward.experience > 0
       ? { tone: 'experience' as const, text: `${prefix}${numberText(reward.experience)}` }
       : null,
-  ].filter((part): part is { tone: RewardTone; text: string } => part !== null);
+  ].filter((part): part is Exclude<typeof part, null> => part !== null);
 }
 
 function RewardChip({
