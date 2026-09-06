@@ -97,6 +97,7 @@ describe('ChatRoomScreen', () => {
     vi.spyOn(api, 'fetchMessages').mockResolvedValue([msgFromSelf, msgFromOther]); // server DESC
     vi.spyOn(api, 'markChatAsRead').mockResolvedValue(undefined);
     vi.spyOn(api, 'fetchChatList').mockResolvedValue([]);
+    vi.spyOn(amateurDuelApi, 'fetchAmateurMatches').mockResolvedValue({ matches: [] });
     vi.spyOn(api, 'fetchUserProfile').mockResolvedValue({
       id: OTHER_ID,
       displayName: 'Иван',
@@ -147,8 +148,8 @@ describe('ChatRoomScreen', () => {
           matchId: '11111111-1111-1111-1111-111111111111',
           templateTitle: 'Классическая дуэль',
           challengerName: 'Иван',
-          startsAt: '2026-05-04T10:00:00.000Z',
-          endsAt: '2026-05-04T12:00:00.000Z',
+          startsAt: '2030-05-04T10:00:00.000Z',
+          endsAt: '2030-05-04T12:00:00.000Z',
           totalPeriods: 3,
           shotsPerPeriod: 30,
           periodDurationMs: 1_200_000,
@@ -171,6 +172,72 @@ describe('ChatRoomScreen', () => {
     expect(await screen.findByText('Вы отклонили')).toBeInTheDocument();
   });
 
+  it('does not restore actions for an expired invite missing from recent matches', async () => {
+    vi.mocked(api.fetchMessages).mockResolvedValue([
+      {
+        ...msgFromOther,
+        id: 'expired-duel-invite',
+        content: 'Иван вызывает вас на дуэль «Экспресс».',
+        metadata: {
+          type: 'amateur_duel_invite',
+          matchId: '22222222-2222-2222-2222-222222222222',
+          templateTitle: 'Экспресс',
+          challengerName: 'Иван',
+          startsAt: '2026-05-04T10:00:00.000Z',
+          endsAt: '2026-05-04T10:15:00.000Z',
+          totalPeriods: 1,
+          shotsPerPeriod: 30,
+          periodDurationMs: 180_000,
+          breakDurationMs: 0,
+          stakeAmount: 0,
+          entryFeeAmount: 0,
+          bankAmount: 0,
+        },
+      },
+    ]);
+
+    renderRoom('c1');
+
+    expect(await screen.findByText('Вызов уже недоступен')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Принять' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Отклонить' })).not.toBeInTheDocument();
+  });
+
+  it('labels an already settled invite as completed without action buttons', async () => {
+    const matchId = '33333333-3333-3333-3333-333333333333';
+    vi.mocked(amateurDuelApi.fetchAmateurMatches).mockResolvedValue({
+      matches: [{ id: matchId, status: 'settled' } as amateurDuelApi.AmateurDuelMatch],
+    });
+    vi.mocked(api.fetchMessages).mockResolvedValue([
+      {
+        ...msgFromOther,
+        id: 'settled-duel-invite',
+        content: 'Иван вызывает вас на дуэль «Микс».',
+        metadata: {
+          type: 'amateur_duel_invite',
+          matchId,
+          templateTitle: 'Микс',
+          challengerName: 'Иван',
+          startsAt: '2030-05-04T10:00:00.000Z',
+          endsAt: '2030-05-04T10:15:00.000Z',
+          totalPeriods: 2,
+          shotsPerPeriod: 30,
+          periodDurationMs: 180_000,
+          breakDurationMs: 60_000,
+          stakeAmount: 0,
+          entryFeeAmount: 0,
+          bankAmount: 0,
+        },
+      },
+    ]);
+
+    renderRoom('c1');
+
+    expect(await screen.findByText('Дуэль завершена')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Принять' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Отклонить' })).not.toBeInTheDocument();
+  });
+
   it('accepts a duel invite and opens the duel room', async () => {
     const matchId = '11111111-1111-1111-1111-111111111111';
     const accept = vi.spyOn(amateurDuelApi, 'acceptAmateurDuel').mockResolvedValue({
@@ -189,8 +256,8 @@ describe('ChatRoomScreen', () => {
           matchId,
           templateTitle: 'Классическая дуэль',
           challengerName: 'Иван',
-          startsAt: '2026-05-04T10:00:00.000Z',
-          endsAt: '2026-05-04T12:00:00.000Z',
+          startsAt: '2030-05-04T10:00:00.000Z',
+          endsAt: '2030-05-04T12:00:00.000Z',
           totalPeriods: 3,
           shotsPerPeriod: 30,
           periodDurationMs: 1_200_000,
