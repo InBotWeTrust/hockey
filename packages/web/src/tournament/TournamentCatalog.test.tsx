@@ -428,8 +428,11 @@ describe('TournamentCatalog', () => {
     expect(designSystemCss).toMatch(
       /\.tournament-bracket-overview__column\s*\{[^}]*grid-template-rows:\s*auto minmax\(min-content,\s*1fr\);/s,
     );
-    expect(designSystemCss).not.toMatch(
-      /\.tournament-bracket-overview__series-list--with-bronze\s*\{[^}]*min-height:/s,
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview__series-list--with-bronze\s*\{[^}]*min-height:\s*calc\(100% \+ 56px\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.tournament-bracket-overview__grid\[data-has-bronze='true'\]\s*\{[^}]*padding-bottom:\s*64px;/s,
     );
     expect(designSystemCss).toMatch(
       /\.tournament-bracket-overview__bronze-lane\s*\{[^}]*position:\s*relative;[^}]*margin-top:\s*20px;/s,

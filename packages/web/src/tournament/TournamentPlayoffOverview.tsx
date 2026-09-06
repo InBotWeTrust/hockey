@@ -403,7 +403,11 @@ export function TournamentPlayoffOverview(props: {
         </div>
       </div>
       <div className="tournament-bracket-overview__viewport">
-        <div className="tournament-bracket-overview__grid" style={style}>
+        <div
+          className="tournament-bracket-overview__grid"
+          data-has-bronze={bronze.length > 0 ? 'true' : 'false'}
+          style={style}
+        >
           {rounds.map((roundNumber) => {
             const items = championship.filter((item) => item.round_number === roundNumber);
             const configured = props.formats?.find((format) => format.roundNumber === roundNumber);
@@ -416,7 +420,14 @@ export function TournamentPlayoffOverview(props: {
                   </span>
                 </header>
                 <div
-                  className="tournament-bracket-overview__series-list"
+                  className={[
+                    'tournament-bracket-overview__series-list',
+                    roundNumber === finalRound && bronze.length > 0
+                      ? 'tournament-bracket-overview__series-list--with-bronze'
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                   data-series-count={items.length}
                 >
                   {items.map((item) => {

@@ -7914,6 +7914,14 @@ button.daily-calendar__day:active {
   gap: 10px;
 }
 
+.tournament-bracket-overview__series-list--with-bronze {
+  min-height: calc(100% + 56px);
+}
+
+.tournament-bracket-overview__grid[data-has-bronze='true'] {
+  padding-bottom: 64px;
+}
+
 .tournament-bracket-connector {
   position: absolute;
   left: 100%;
