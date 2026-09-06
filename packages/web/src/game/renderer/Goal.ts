@@ -1,4 +1,4 @@
-import { Assets, BlurFilter, Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { Assets, Container, Graphics, Sprite, Texture } from 'pixi.js';
 import { GOAL } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
@@ -43,7 +43,6 @@ export class Goal {
     this.light = new Graphics()
       .ellipse(0, 0, this.gateWidth * 0.36, this.gateHeight * 0.55)
       .fill({ color: 0xff1a1a });
-    this.light.filters = [new BlurFilter({ strength: 14 })];
     this.light.alpha = 0;
 
     this.sprite = new Sprite(Texture.EMPTY);

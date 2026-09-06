@@ -1,4 +1,4 @@
-import { Assets, BlurFilter, Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { Assets, Container, Graphics, Sprite, Texture } from 'pixi.js';
 import { PUCK_START } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
@@ -85,7 +85,6 @@ export class Player {
       ? new Graphics().ellipse(0, 0, 1, 1).fill({ color: 0x0c1b2d, alpha: 0.24 })
       : null;
     if (this.shadow) {
-      this.shadow.filters = [new BlurFilter({ strength: 8 })];
       this.container.addChild(this.shadow);
     }
     this.sprite = new Sprite(Texture.EMPTY);
@@ -150,7 +149,8 @@ export class Player {
         : options.stumbling === true && this.stumbleTexture !== null
           ? this.stumbleTexture
           : null;
-    const useRestSprite = activeSpecialTexture !== null && activeSpecialTexture === this.restTexture;
+    const useRestSprite =
+      activeSpecialTexture !== null && activeSpecialTexture === this.restTexture;
     const useStumbleSprite =
       activeSpecialTexture !== null && activeSpecialTexture === this.stumbleTexture;
     const activeSpriteWidth = useRestSprite
@@ -170,10 +170,7 @@ export class Player {
     this.sprite.height = (activeSpriteWidth / activeSpriteAspect) * s;
     this.sprite.position.set(shooterX * s, (shooterY * this.visualYScale + this.visualYOffset) * s);
     if (this.shadow) {
-      this.shadow.clear();
-      this.shadow
-        .ellipse(0, 0, this.sprite.width * 0.28, this.sprite.width * 0.08)
-        .fill({ color: 0x0c1b2d, alpha: 0.22 });
+      this.shadow.scale.set(this.sprite.width * 0.28, this.sprite.width * 0.08);
       this.shadow.position.set(
         this.sprite.position.x,
         this.sprite.position.y + this.sprite.height * 0.34,
