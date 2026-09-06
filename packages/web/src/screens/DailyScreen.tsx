@@ -4279,7 +4279,7 @@ function AmateurDuelsPage({
       title="Дуэли"
       onBack={onBack}
       variant="section-hub"
-      className={duelTab === 'locker' ? 'mode-shell--locker' : undefined}
+      className={duelTab === 'locker' ? 'mode-shell--locker' : ''}
     >
       <SegmentedTabs
         ariaLabel="Разделы дуэлей"
