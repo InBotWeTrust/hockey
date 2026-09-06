@@ -4165,10 +4165,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       where (m.challenger_user_id = $1 or m.opponent_user_id = $1)
         and m.status = 'settled'
         and m.source <> 'tournament'
-        and m.settled_at is not null
-        and m.settled_reason = 'completed'
-        and me.state = 'completed'
-        and opponent.state = 'completed'`;
+        and m.settled_at is not null`;
     const { rows: monthRows } = await app.pg.query<{
       id: string;
       local_day: number;

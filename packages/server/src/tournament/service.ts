@@ -2987,8 +2987,17 @@ export async function getTournamentScheduleDay(
   const myGamesResult = await pool.query<TournamentScheduleFixtureRow>(
     `${PUBLIC_SCHEDULE_FIXTURE_SCOPE}
      ${PUBLIC_SCHEDULE_FIXTURE_SELECT}
-      where fixture.local_date = $3::date
-        and $2::uuid in (home_user_id, away_user_id)
+      where $2::uuid in (fixture.home_user_id, fixture.away_user_id)
+        and (
+          fixture.local_date = $3::date
+          or fixture.series_id in (
+            select series_fixture.series_id
+              from fixture_scope series_fixture
+             where series_fixture.local_date = $3::date
+               and series_fixture.series_id is not null
+               and $2::uuid in (series_fixture.home_user_id, series_fixture.away_user_id)
+          )
+        )
       order by fixture.fixture_number, fixture.id`,
     [tournamentId, userId, localDate],
   );

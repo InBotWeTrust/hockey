@@ -1813,7 +1813,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     await pool.query(`update amateur_duel_match set source = 'tournament' where id = $1`, [
       tournamentId,
     ]);
-    await insertHistoryMatch({
+    const technicalWinId = await insertHistoryMatch({
       settledAt: '2026-05-02T12:00:00.000Z',
       settledReason: 'no_show',
       challengerState: 'completed',
@@ -1836,20 +1836,35 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().month_key).toBe('2026-04');
-    expect(response.json().available_months).toEqual(['2026-06', '2026-04']);
+    expect(response.json().available_months).toEqual(['2026-06', '2026-05', '2026-04']);
     expect(response.json().range).toEqual({ from: '2026-04', to: '2026-06' });
     expect(response.json().stats).toEqual({
-      played: 2,
-      wins: 1,
+      played: 3,
+      wins: 2,
       draws: 1,
       losses: 0,
-      win_percentage: 50,
+      win_percentage: 67,
     });
     expect(response.json().days).toEqual([
       expect.objectContaining({
         day: 30,
         matches: [
           expect.objectContaining({ id: includedId, result: 'win', venue_role: 'neutral' }),
+        ],
+      }),
+    ]);
+
+    const technicalMonth = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/history/calendar?month_key=2026-05',
+      headers: auth(tokenA),
+    });
+    expect(technicalMonth.statusCode).toBe(200);
+    expect(technicalMonth.json().days).toEqual([
+      expect.objectContaining({
+        day: 2,
+        matches: [
+          expect.objectContaining({ id: technicalWinId, result: 'win', venue_role: 'neutral' }),
         ],
       }),
     ]);

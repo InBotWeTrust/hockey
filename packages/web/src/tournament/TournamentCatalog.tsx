@@ -106,7 +106,14 @@ function participationLabel(tournament: TournamentSummary): string {
   return participantStateLabel(tournament.myParticipantState);
 }
 
-function fixtureStatusLabel(status: string): string {
+function fixtureStatusLabel(fixture: TournamentFixture): string {
+  if (
+    fixture.status === 'conditional' &&
+    fixture.home?.userId != null &&
+    fixture.away?.userId != null
+  ) {
+    return 'Запланирована';
+  }
   const labels: Record<string, string> = {
     conditional: 'Соперники определятся позже',
     scheduled: 'Запланирована',
@@ -120,7 +127,7 @@ function fixtureStatusLabel(status: string): string {
     blocked: 'Ожидает решения',
     paused: 'Ожидает решения',
   };
-  return labels[status] ?? 'Статус уточняется';
+  return labels[fixture.status] ?? 'Статус уточняется';
 }
 
 function fixtureHasResult(fixture: TournamentFixture): boolean {
@@ -908,7 +915,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                         </span>
                       )}
                       {mine && <VenueBadge role={fixtureVenueRole(fixture, currentUserId)} />}
-                      <strong>{finished ? 'Завершена' : fixtureStatusLabel(fixture.status)}</strong>
+                      <strong>{finished ? 'Завершена' : fixtureStatusLabel(fixture)}</strong>
                     </div>
                     <div className="tournament-fixture-summary">
                       <div className="tournament-fixture-matchup">

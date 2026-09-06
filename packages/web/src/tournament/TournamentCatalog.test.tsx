@@ -778,7 +778,7 @@ describe('TournamentCatalog', () => {
           roundNumber: 1,
           scheduledStartsAt: '2030-09-02T07:00:00.000Z',
           windowEndsAt: '2030-09-02T08:00:00.000Z',
-          status: 'scheduled',
+          status: 'conditional',
           venueMode: 'home_selected',
           home: { userId: 'u1', name: 'Первый', avatarUrl: '/first.webp', seed: 1 },
           away: { userId: 'u3', name: 'Третий', avatarUrl: '/third.webp', seed: 4 },
@@ -848,7 +848,10 @@ describe('TournamentCatalog', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: /2 сентября.*плей-офф/i }));
     const playoffCard = await screen.findByText('(1) Первый — (4) Третий');
-    expect(playoffCard.closest('.tournament-fixture-card')).toBeInTheDocument();
+    expect(playoffCard.closest('.tournament-fixture-card')).toHaveTextContent('Запланирована');
+    expect(playoffCard.closest('.tournament-fixture-card')).not.toHaveTextContent(
+      'Соперники определятся позже',
+    );
     expect(screen.getByText('(2) Второй — (3) Четвёртый')).toBeInTheDocument();
     expect(sections).toBeInTheDocument();
   });
