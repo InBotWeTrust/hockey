@@ -227,7 +227,7 @@ export function ChatListScreen(): JSX.Element {
           }}
         >
           <div
-            className="glass-dock-field"
+            className="glass-dock-field chat-list-search-field"
             style={{
               flex: 1,
             }}

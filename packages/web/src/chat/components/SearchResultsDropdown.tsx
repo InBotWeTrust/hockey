@@ -17,17 +17,6 @@ function chatLabel(c: ChatDTO): string {
   return c.name ?? 'Без названия';
 }
 
-const cardButtonStyle = {
-  textAlign: 'left' as const,
-  padding: '8px 12px',
-  borderRadius: 12,
-  border: 'none',
-  background: 'transparent',
-  cursor: 'pointer',
-  font: 'inherit',
-  color: 'var(--ink)',
-};
-
 export function SearchResultsDropdown({
   query,
   chatHits,
@@ -45,32 +34,22 @@ export function SearchResultsDropdown({
   });
 
   return (
-    <div
-      className="glass-dark"
-      style={{
-        margin: '6px 14px 0',
-        borderRadius: 16,
-        padding: '10px 12px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-      }}
-    >
-      <section>
-        <h3 style={{ margin: '0 0 6px', fontSize: 12, color: 'var(--muted)' }}>Чаты</h3>
+    <div className="chat-search-results">
+      <section className="chat-search-results__section">
+        <h3 className="chat-search-results__heading">Чаты</h3>
         {chatHits.length === 0 ? (
-          <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13 }}>
+          <p className="chat-search-results__empty">
             Совпадений среди чатов нет
           </p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div className="chat-search-results__list">
             {chatHits.map((c) => (
               <button
                 type="button"
                 key={c.id}
-                className="glass"
+                className="chat-search-results__item"
+                aria-label={chatLabel(c)}
                 onClick={() => navigate(`/chat/${c.id}`)}
-                style={cardButtonStyle}
               >
                 <HighlightedText text={chatLabel(c)} tokens={tokens} />
               </button>
@@ -80,77 +59,39 @@ export function SearchResultsDropdown({
       </section>
 
       {enabled ? (
-        <section>
-          <h3
-            style={{
-              margin: '0 0 6px',
-              fontSize: 12,
-              color: 'var(--muted)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
+        <section className="chat-search-results__section">
+          <h3 className="chat-search-results__heading">
             Сообщения
             {isLoading && <Loader2 size={12} className="spin" aria-label="Loading" />}
           </h3>
           {isError ? (
-            <div
-              className="glass-dark"
-              style={{
-                padding: '8px 12px',
-                borderRadius: 12,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
+            <div className="chat-search-results__error">
               <span style={{ fontSize: 13 }}>Не удалось загрузить результаты.</span>
               <button
                 type="button"
                 onClick={() => void refetch()}
-                style={{
-                  background: 'transparent',
-                  border: '1px solid var(--ink)',
-                  borderRadius: 999,
-                  padding: '2px 10px',
-                  font: 'inherit',
-                  fontSize: 12,
-                  color: 'var(--ink)',
-                  cursor: 'pointer',
-                }}
+                className="chat-search-results__retry"
               >
                 Повторить
               </button>
             </div>
           ) : !isLoading && (data ?? []).length === 0 ? (
-            <p
-              className="glass"
-              style={{
-                margin: 0,
-                padding: '8px 12px',
-                borderRadius: 12,
-                color: 'var(--muted)',
-                fontSize: 13,
-              }}
-            >
+            <p className="chat-search-results__empty">
               {`Ничего не найдено по «${trimmed}»`}
             </p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div className="chat-search-results__list">
               {(data ?? []).map((hit) => {
                 const snippet = excerptAround(hit.content, tokens);
                 return (
                   <button
                     type="button"
                     key={hit.id}
-                    className="glass"
+                    className="chat-search-results__item chat-search-results__item--message"
                     onClick={() => navigate(`/chat/${hit.chatId}?goto=${hit.id}`)}
-                    style={{ ...cardButtonStyle, display: 'flex', flexDirection: 'column', gap: 4 }}
                   >
-                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>{hit.senderName}</span>
-                    <span style={{ fontSize: 13 }}>
+                    <span className="chat-search-results__sender">{hit.senderName}</span>
+                    <span className="chat-search-results__snippet">
                       <HighlightedText text={snippet} tokens={tokens} />
                     </span>
                   </button>

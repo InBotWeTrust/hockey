@@ -63,6 +63,19 @@ describe('SearchResultsDropdown', () => {
     expect(btn.textContent).toBe('Team');
   });
 
+  it('renders search results as one flat light list without nested glass cards', () => {
+    const { container } = render(
+      wrap(<SearchResultsDropdown query="te" chatHits={[makeChat('Team')]} />),
+    );
+
+    expect(container.querySelector('.chat-search-results')).toBeInTheDocument();
+    expect(container.querySelector('.chat-search-results__list')).toBeInTheDocument();
+    expect(container.querySelector('.glass-dark')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Team' })).toHaveClass(
+      'chat-search-results__item',
+    );
+  });
+
   it('does not call /chat/search when query is shorter than 2 chars', async () => {
     render(wrap(<SearchResultsDropdown query="t" chatHits={[]} />));
     await new Promise((r) => setTimeout(r, 0));

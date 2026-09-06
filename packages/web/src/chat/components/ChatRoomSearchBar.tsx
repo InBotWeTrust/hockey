@@ -21,20 +21,17 @@ export function ChatRoomSearchBar({ open, value, placeholder, onChange }: Props)
 
   return (
     <div
+      className="chat-room-search"
       aria-hidden={!open}
       style={{
-        margin: '8px 14px 0',
-        maxHeight: open ? 48 : 0,
+        maxHeight: open ? 44 : 0,
         opacity: open ? 1 : 0,
         overflow: 'hidden',
         transition: 'max-height 180ms ease-out, opacity 140ms ease-out',
       }}
     >
       <div
-        className="glass-dock-field"
-        style={{
-          width: '100%',
-        }}
+        className="glass-dock-field chat-room-search__field"
       >
         <Search size={14} color="var(--muted)" aria-hidden />
         <input
