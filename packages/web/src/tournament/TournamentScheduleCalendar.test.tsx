@@ -228,7 +228,8 @@ describe('TournamentScheduleCalendar', () => {
     expect(legend).toHaveTextContent('Плей-офф');
     expect(legend).toHaveTextContent('У вас есть игра');
     expect(legend).toHaveTextContent('Выбранный день');
-    expect(legend.querySelectorAll('.tournament-calendar__legend-dot')).toHaveLength(4);
+    expect(legend).toHaveTextContent('В этот день игр в турнире нет');
+    expect(legend.querySelectorAll('.tournament-calendar__legend-dot')).toHaveLength(5);
   });
 
   it('marks only assigned playoff games of the current user', () => {
