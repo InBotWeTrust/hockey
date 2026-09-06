@@ -973,6 +973,7 @@ function GameHub({
   const refresh = useDailyStore((s) => s.refresh);
   const trainingData = useTrainingSessionStore((s) => s.data);
   const trainingInFlight = useTrainingSessionStore((s) => s.inFlight);
+  const refreshTraining = useTrainingSessionStore((s) => s.refresh);
   const [modeInfoModal, setModeInfoModal] = useState<ModeInfoModalContent | null>(null);
   const [duelStatsMatch, setDuelStatsMatch] = useState<AmateurDuelMatch | null>(null);
   const [arenaActionId, setArenaActionId] = useState<string | null>(null);
@@ -1032,6 +1033,16 @@ function GameHub({
     readArenaSelectedEntryId,
   );
   const prioritizedDuelEntryIdsRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    void refreshTraining();
+  }, [refreshTraining]);
+
+  useEffect(() => {
+    if (!isTrainingLockedByTournament) return undefined;
+    const id = window.setInterval(() => void refreshTraining(), 30_000);
+    return () => window.clearInterval(id);
+  }, [isTrainingLockedByTournament, refreshTraining]);
 
   useEffect(() => {
     if (

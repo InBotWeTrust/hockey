@@ -1740,6 +1740,58 @@ describe('DailyScreen', () => {
     expect(screen.queryByText('Профессионалы')).not.toBeInTheDocument();
   });
 
+  it('refreshes a stale tournament training lock when the arena mounts', async () => {
+    useDailyStore.setState({ data: baseState });
+    useTrainingSessionStore.setState({
+      data: {
+        ...trainingIdleState,
+        tournament_day_locked: true,
+        tournament_day_starts_at: '2026-04-25T10:00:00.000Z',
+      },
+    });
+
+    renderWith();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать Тренировка' }));
+    expect(await screen.findByText('0/500 бросков сегодня')).toBeInTheDocument();
+    expect(screen.queryByText('Закрыта на время игр турнира')).not.toBeInTheDocument();
+  });
+
+  it('rechecks a tournament training lock every 30 seconds while the arena stays open', async () => {
+    vi.useFakeTimers();
+    const lockedTrainingState: TrainingStateResponse = {
+      ...trainingIdleState,
+      tournament_day_locked: true,
+      tournament_day_starts_at: '2026-04-25T10:00:00.000Z',
+    };
+    let trainingRequests = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        trainingRequests += 1;
+        return new Response(
+          JSON.stringify(trainingRequests === 1 ? lockedTrainingState : trainingIdleState),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify(baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    useDailyStore.setState({ data: baseState });
+    useTrainingSessionStore.setState({ data: lockedTrainingState });
+
+    renderWith();
+    await act(async () => Promise.resolve());
+    fireEvent.click(screen.getByRole('button', { name: 'Выбрать Тренировка' }));
+    expect(screen.getByText('Закрыта на время игр турнира')).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(screen.getByText('0/500 бросков сегодня')).toBeInTheDocument();
+  });
+
   it('switches arena tableau cards with circular swipe gestures', async () => {
     renderWith(['/?view=arena']);
 
