@@ -429,6 +429,17 @@ export async function settleTournamentSegmentForDuel(
     settledAt: input.settledAt,
   });
   if (attemptSettlement.matched && attemptSettlement.fixtureId !== undefined) {
+    if (
+      attemptSettlement.settledNow &&
+      (attemptSettlement.roundStage === 'playoff' ||
+        attemptSettlement.roundStage === 'third_place') &&
+      attemptSettlement.tournamentId !== undefined
+    ) {
+      await reconcileTournamentAchievements(client, {
+        tournamentId: attemptSettlement.tournamentId,
+        source: 'tournament_live',
+      });
+    }
     return {
       fixtureId: attemptSettlement.fixtureId,
       completed: attemptSettlement.completed,

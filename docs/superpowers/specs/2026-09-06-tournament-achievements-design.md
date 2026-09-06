@@ -1,8 +1,10 @@
 # Tournament Achievements Design
 
-**Date:** 2026-09-06  
-**Status:** Approved in conversation; awaiting written-spec review  
-**Target branch:** `dev` via an isolated feature branch  
+**Date:** 2026-09-06
+
+**Status:** Approved in conversation; awaiting written-spec review
+
+**Target branch:** `dev` via an isolated feature branch
 
 ## Objective
 
@@ -31,18 +33,18 @@ They use the existing achievement lifecycle: `locked -> completed_unclaimed -> c
 
 Tournament achievement rewards are additional to configured tournament stage rewards. Stars and experience are numerically equal.
 
-| Achievement | Coins | Stars | Experience |
-| --- | ---: | ---: | ---: |
-| Призёр регулярки | 50 | 100 | 100 |
-| Турнирный характер | 75 | 150 | 150 |
-| Без дрожи | 75 | 150 | 150 |
-| Тёмная лошадка | 100 | 200 | 200 |
-| Победитель регулярки | 125 | 250 | 250 |
-| Финальный лёд | 125 | 250 | 250 |
-| Мощный камбэк | 150 | 300 | 300 |
-| Кубок над головой | 200 | 400 | 400 |
-| Сетка смерти | 250 | 500 | 500 |
-| Турнирная серия | 300 | 700 | 700 |
+| Achievement          | Coins | Stars | Experience |
+| -------------------- | ----: | ----: | ---------: |
+| Призёр регулярки     |    50 |   100 |        100 |
+| Турнирный характер   |    75 |   150 |        150 |
+| Без дрожи            |    75 |   150 |        150 |
+| Тёмная лошадка       |   100 |   200 |        200 |
+| Победитель регулярки |   125 |   250 |        250 |
+| Финальный лёд        |   125 |   250 |        250 |
+| Мощный камбэк        |   150 |   300 |        300 |
+| Кубок над головой    |   200 |   400 |        400 |
+| Сетка смерти         |   250 |   500 |        500 |
+| Турнирная серия      |   300 |   700 |        700 |
 
 The regular-season winner does not also receive `regular-season-medalist`.
 
@@ -137,13 +139,13 @@ Only active catalogue entries may complete. The catalogue migration activates th
 
 Invoke reconciliation after the transaction has made the canonical tournament state visible at these boundaries:
 
-| Persisted transition | Rules reconciled |
-| --- | --- |
-| Regular stage finalised and standings frozen | Regular-season champion and medalist |
-| Championship bracket or later round materialised | Semifinal and final reach |
-| Playoff fixture settled | No shake |
+| Persisted transition                                | Rules reconciled                                 |
+| --------------------------------------------------- | ------------------------------------------------ |
+| Regular stage finalised and standings frozen        | Regular-season champion and medalist             |
+| Championship bracket or later round materialised    | Semifinal and final reach                        |
+| Playoff fixture settled                             | No shake                                         |
 | Playoff series resolved or administratively decided | Dark horse, death bracket, comeback, round reach |
-| Tournament champion becomes official | Cup and three championships in one season |
+| Tournament champion becomes official                | Cup and three championships in one season        |
 
 Prefer a single post-transition reconciliation entry point over separate ad-hoc grants. Failures must follow the existing transaction/error contract of the calling path; achievements must not be granted from partially persisted tournament state.
 

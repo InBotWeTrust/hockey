@@ -51,6 +51,7 @@
 ### Task 1: Activate and seed the ten-entry tournament catalogue
 
 **Files:**
+
 - Create: `packages/server/db/migrations/103_tournament_achievements.sql`
 - Modify: `packages/server/src/achievements/catalog.ts:39-46,536-629`
 - Create: `packages/server/test/db/migration103.test.ts`
@@ -58,6 +59,7 @@
 - Modify any exact migration-ledger tests found by `rg "102_amateur_duel_rating_match_ledger|_migrations" packages/server/test/db`
 
 **Interfaces:**
+
 - Consumes: existing `achievements` columns and `ACHIEVEMENT_SEEDS` contract.
 - Produces: ten active catalogue ids with exact copy, image paths, order, and rewards.
 
@@ -139,10 +141,12 @@ git commit -m "feat: activate tournament achievement catalogue"
 ### Task 2: Persist timestamped completion candidates safely
 
 **Files:**
+
 - Modify: `packages/server/src/achievements/service.ts:85-104`
 - Create: `packages/server/test/achievements/completionCandidates.test.ts`
 
 **Interfaces:**
+
 - Consumes: `Pool | PoolClient`, active achievement catalogue, existing unique `(user_id, achievement_id)` constraint.
 - Produces:
 
@@ -221,10 +225,12 @@ git commit -m "feat: persist timestamped achievement completions"
 ### Task 3: Implement pure tournament achievement rules
 
 **Files:**
+
 - Create: `packages/server/src/achievements/tournamentRules.ts`
 - Create: `packages/server/test/achievements/tournamentRules.test.ts`
 
 **Interfaces:**
+
 - Produces:
 
 ```ts
@@ -267,9 +273,13 @@ Cover August 31 versus September 1 in UTC instants after applying the tournament
 Construct chronological inputs covering:
 
 ```ts
-expect(reachesDeathBracket([strongWinA, strongWinB, strongWinC]).achievedAt).toEqual(strongWinC.completedAt);
+expect(reachesDeathBracket([strongWinA, strongWinB, strongWinC]).achievedAt).toEqual(
+  strongWinC.completedAt,
+);
 expect(reachesDeathBracket([strongWinA, loss, strongWinB, strongWinC]).achievedAt).toBeNull();
-expect(reachesDeathBracket([strongWinA, weakerOpponentWin, strongWinB, strongWinC]).achievedAt).toBeNull();
+expect(
+  reachesDeathBracket([strongWinA, weakerOpponentWin, strongWinB, strongWinC]).achievedAt,
+).toBeNull();
 ```
 
 The last assertion verifies that a win over a not-more-experienced opponent resets the chain, after which B and C only produce a count of two. Add repeated-opponent and third-place-series examples through the same generic series shape.
@@ -308,10 +318,12 @@ git commit -m "feat: define tournament achievement rules"
 ### Task 4: Collect candidates from canonical tournament history
 
 **Files:**
+
 - Create: `packages/server/src/achievements/tournamentEvaluator.ts`
 - Create: `packages/server/test/achievements/tournamentEvaluator.test.ts`
 
 **Interfaces:**
+
 - Consumes: `completeAchievementCandidates`, pure helpers from Task 3, tournament tables from migrations 061-102.
 - Produces:
 
@@ -390,12 +402,12 @@ pnpm --filter @hockey/server test -- test/achievements/tournamentEvaluator.test.
 Build small private loaders rather than one opaque mega-query:
 
 ```ts
-loadTournamentBoundary(db, tournamentId)
-loadRegularPlacements(db, tournamentId)
-loadAssignedPlayoffSeries(db, tournamentId)
-loadFixturePerformance(db, tournamentId)
-loadAffectedUserSeriesHistory(db, userIds)
-loadAffectedUserChampionships(db, userIds)
+loadTournamentBoundary(db, tournamentId);
+loadRegularPlacements(db, tournamentId);
+loadAssignedPlayoffSeries(db, tournamentId);
+loadFixturePerformance(db, tournamentId);
+loadAffectedUserSeriesHistory(db, userIds);
+loadAffectedUserChampionships(db, userIds);
 ```
 
 Use `tournament.completed_at` for championships, `tournament_playoff_series.updated_at` for completed series, `tournament_fixture.settled_at` for no-shake, and series/round creation timestamps for round reach. For regular completion, use the latest canonical regular result timestamp (`fixture.settled_at` for head-to-head, `tournament_daily_result.finalized_at` for daily/classic), falling back to the playoff-start boundary timestamp and incrementing `timestampFallbacks`.
@@ -424,6 +436,7 @@ git commit -m "feat: evaluate tournament achievements"
 ### Task 5: Connect reconciliation to live tournament lifecycle boundaries
 
 **Files:**
+
 - Modify: `packages/server/src/tournament/service.ts:4122-4500`
 - Modify: `packages/server/src/tournament/fixtureLifecycle.ts:416-625`
 - Modify: `packages/server/src/tournament/playoffSeriesLifecycle.ts:213-330,489-550`
@@ -434,6 +447,7 @@ git commit -m "feat: evaluate tournament achievements"
 - Create: `packages/server/test/achievements/tournamentLifecycle.integration.test.ts`
 
 **Interfaces:**
+
 - Consumes: `reconcileTournamentAchievements(client, { tournamentId, source: 'tournament_live' })`.
 - Produces: live completions after every qualifying canonical transition.
 
@@ -488,12 +502,14 @@ git commit -m "feat: reconcile live tournament achievements"
 ### Task 6: Add dry-run/apply historical backfill
 
 **Files:**
+
 - Create: `packages/server/src/achievements/tournamentBackfill.ts`
 - Create: `packages/server/src/achievements/tournamentBackfillCli.ts`
 - Modify: `packages/server/package.json`
 - Create: `packages/server/test/achievements/tournamentBackfill.test.ts`
 
 **Interfaces:**
+
 - Consumes: `collectTournamentAchievementCandidates`, `completeAchievementCandidates`.
 - Produces:
 
@@ -575,12 +591,14 @@ git commit -m "feat: backfill tournament achievements safely"
 ### Task 7: Create the two achievement artworks and verify UI presentation
 
 **Files:**
+
 - Create: `packages/web/public/achievements/regular-season-champion.webp`
 - Create: `packages/web/public/achievements/regular-season-medalist.webp`
 - Modify: `packages/web/src/screens/AchievementsScreen.test.tsx`
 - Modify or create: `packages/web/src/game/achievementAssets.test.ts`
 
 **Interfaces:**
+
 - Consumes: catalogue image paths from Task 1 and existing `AchievementCard` rendering.
 - Produces: two 256x256 decodable WebP assets and a ten-card active tournament UI contract.
 
@@ -635,10 +653,12 @@ git commit -m "feat: add regular season achievement artwork"
 ### Task 8: Full verification and backfill rehearsal
 
 **Files:**
+
 - Modify only files required to fix verified failures introduced by Tasks 1-7.
 - Do not alter unrelated baseline failures or user-owned files.
 
 **Interfaces:**
+
 - Consumes: completed implementation.
 - Produces: local evidence and a dry-run/apply rehearsal against an isolated test database.
 

@@ -66,6 +66,7 @@ describe('more-experienced opponent rules', () => {
     ['a loss', series('reset', 2, { result: 'loss' })],
     ['a win over a not-more-experienced opponent', series('reset', 2, { opponentExperience: 100 })],
     ['a technical win', series('reset', 2, { result: 'technical_win' })],
+    ['a cancelled resolved series', series('reset', 2, { result: 'cancelled' })],
     ['a series with an unavailable snapshot', series('reset', 2, { opponentExperience: null })],
   ])('resets the chain after %s', (_label, resetSeries) => {
     expect(

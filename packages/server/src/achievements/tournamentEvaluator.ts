@@ -54,13 +54,6 @@ interface SeriesRow {
   opponent_experience: number | null;
 }
 
-function configValue(snapshot: Record<string, unknown>, key: string): unknown {
-  const config = snapshot.config;
-  return typeof config === 'object' && config !== null
-    ? (config as Record<string, unknown>)[key]
-    : undefined;
-}
-
 function localSeasonKey(startsAt: Date, timezone: string): { key: string; fallback: boolean } {
   let activeTimezone = timezone;
   let fallback = false;
@@ -262,7 +255,14 @@ export async function collectTournamentAchievementCandidates(
           seriesId: series.series_id,
           tournamentId: series.tournament_id,
           completedAt: series.completed_at,
-          result: isWinner ? (playedWinner ? 'played_win' : 'technical_win') : 'loss',
+          result:
+            series.status === 'cancelled'
+              ? 'cancelled'
+              : isWinner
+                ? playedWinner
+                  ? 'played_win'
+                  : 'technical_win'
+                : 'loss',
           playerExperience: series.player_experience,
           opponentExperience: series.opponent_experience,
         };
@@ -425,7 +425,8 @@ async function loadAffectedUserSeriesHistory(
           order by played.played_at, played.match_id
           limit 1
        ) experience on true
-      where participant.user_id = any($1::uuid[]) and series.status = 'completed'
+      where participant.user_id = any($1::uuid[])
+        and series.status in ('completed', 'cancelled')
         and series.higher_seed_participant_id is not null
         and series.lower_seed_participant_id is not null
       order by series.updated_at, series.id`,

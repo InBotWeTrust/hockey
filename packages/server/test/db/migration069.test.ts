@@ -238,6 +238,8 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
       '099_tournament_classic_period_loadout.sql',
       '100_backfill_official_amateur_duel_stats.sql',
       '101_align_tournament_classic_puck_speed.sql',
+      '102_amateur_duel_rating_match_ledger.sql',
+      '103_tournament_achievements.sql',
     ]);
 
     const accuracy = await pool.query<{

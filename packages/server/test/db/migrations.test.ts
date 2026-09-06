@@ -543,6 +543,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '100_backfill_official_amateur_duel_stats.sql',
       '101_align_tournament_classic_puck_speed.sql',
       '102_amateur_duel_rating_match_ledger.sql',
+      '103_tournament_achievements.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -1301,6 +1302,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '100_backfill_official_amateur_duel_stats.sql',
       '101_align_tournament_classic_puck_speed.sql',
       '102_amateur_duel_rating_match_ledger.sql',
+      '103_tournament_achievements.sql',
     ]);
 
     const activeInventory = await pool.query<{
