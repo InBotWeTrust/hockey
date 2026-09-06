@@ -15,7 +15,7 @@ const publicProfile: api.UserPublicProfileDTO = {
   competitionLevel: 'amateur',
   currencyBalance: 220,
   starBalance: 20,
-  experienceBalance: 1090,
+  experienceBalance: 100000,
   trophySummary: {
     regularSeasonWins: 1,
     tournamentChampionships: 2,
@@ -228,13 +228,11 @@ describe('UserProfileSheet', () => {
     expect(screen.getByText('(12)')).toBeInTheDocument();
     expect(screen.getByText('Выполненные задания (1)')).toBeInTheDocument();
     expect(screen.getByLabelText('Публичный спортивный паспорт')).toBeInTheDocument();
-    expect(screen.getByLabelText('Монеты: 220')).toBeInTheDocument();
-    expect(screen.getByLabelText('Звёзды: 20')).toBeInTheDocument();
-    expect(screen.getByLabelText('Звёзды: 20').parentElement?.querySelector('svg')).toHaveAttribute(
-      'fill',
-      'currentColor',
-    );
-    expect(screen.getByLabelText('Опыт: 1090')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Монеты: 220')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Звёзды: 20')).not.toBeInTheDocument();
+    const experienceBadge = screen.getByLabelText('Опыт: 100000');
+    expect(experienceBadge).toHaveTextContent('100 000');
+    expect(experienceBadge.querySelector('.public-profile-experience__value')).toBeInTheDocument();
     expect(screen.getByLabelText('Витрина наград')).toHaveTextContent('Чемпионства');
     expect(screen.getByLabelText('Витрина наград').querySelectorAll('.profile-fitted-number')).toHaveLength(
       4,
@@ -247,6 +245,7 @@ describe('UserProfileSheet', () => {
       width: '80px',
       height: '80px',
     });
+    expect(identity?.querySelector('.public-profile-experience')).toBeInTheDocument();
     expect(screen.getByText('Иван Петров')).toHaveClass('public-profile-identity__name');
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toHaveClass('sheet-card');
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' }).firstElementChild).toHaveClass(
