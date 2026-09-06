@@ -112,6 +112,30 @@ describe('createGameLoop', () => {
     expect(ticker.add).toHaveBeenCalledTimes(1);
   });
 
+  it('reuses one condition result object across animation frames', () => {
+    const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    const reusableResults: unknown[] = [];
+    const loop = makeLoop({
+      getGoalieConfig: () => stationaryCustomGoalie,
+      getSpeedOverrides: () => ({ goalFreq: 0.5, goalieFreq: 0.5, shooterFreq: 0.5, puckSpeed: 1 }),
+      getDuelCondition: (_elapsedMs, _speeds, reusable) => {
+        reusableResults.push(reusable);
+        return reusable ?? null;
+      },
+    });
+    const ticker = makeTicker();
+    loop.attach(ticker);
+    const onTick = ticker.add.mock.calls[0]?.[0] as (ticker: Ticker) => void;
+
+    onTick(ticker);
+    nowSpy.mockReturnValue(1_016);
+    onTick(ticker);
+
+    expect(reusableResults[0]).toBeDefined();
+    expect(reusableResults[1]).toBe(reusableResults[0]);
+    nowSpy.mockRestore();
+  });
+
   it('keeps detach idempotent when Pixi has already removed the callback', () => {
     const loop = makeLoop();
     const ticker = makeTicker();

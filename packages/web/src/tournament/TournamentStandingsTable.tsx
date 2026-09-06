@@ -58,6 +58,7 @@ export function TournamentStandingsTable(props: {
           const playerName = String(row.display_name ?? `Участник ${index + 1}`);
           const rank = Number(row.rank ?? index + 1);
           const userId = String(row.user_id ?? '');
+          const isClickable = props.onPlayerClick !== undefined && userId.length > 0;
           const isPlayoffPlace = playoffSize > 0 && Number.isFinite(rank) && rank <= playoffSize;
           const isCurrentUser = props.currentUserId === userId;
           const medalClass =
@@ -77,9 +78,11 @@ export function TournamentStandingsTable(props: {
                 isPlayoffPlace ? 'tournament-standing-table__playoff-place' : '',
                 isCurrentUser ? 'tournament-standing-table__current-user' : '',
                 medalClass,
+                isClickable ? 'tournament-standing-table__clickable-row' : '',
               ]
                 .filter(Boolean)
                 .join(' ') || undefined}
+              onClick={isClickable ? () => props.onPlayerClick?.(row) : undefined}
             >
               <td>{displayNumber(row.rank ?? index + 1, 0)}</td>
               <td>
@@ -87,8 +90,7 @@ export function TournamentStandingsTable(props: {
                   type="button"
                   className="tournament-standing-player tournament-standing-player--button"
                   aria-label={`Открыть профиль ${playerName}`}
-                  disabled={!props.onPlayerClick}
-                  onClick={() => props.onPlayerClick?.(row)}
+                  disabled={!isClickable}
                 >
                   <UserAvatar
                     avatarUrl={typeof row.avatar_url === 'string' ? row.avatar_url : null}

@@ -460,33 +460,6 @@ export function TournamentPlayoffOverview(props: {
                         />
                       );
                     })}
-                  {roundNumber === finalRound &&
-                    bronze.map((item, index) => {
-                      const title = playoffSeriesTitle(
-                        championship.length + index + 1,
-                        item.wins_required,
-                      );
-                      return (
-                      <div className="tournament-bracket-overview__bronze-lane" key={item.id}>
-                        <PlayoffSeriesCard
-                          series={item}
-                          title={title}
-                          stageLabel="За 3-е место"
-                          byKey={byKey}
-                          finalRound={finalRound}
-                          seriesNumberByKey={seriesNumbers.byKey}
-                          currentUserId={props.currentUserId}
-                          timezone={props.timezone}
-                          bronze
-                          compact
-                          density={visibleColumns}
-                          onOpen={() =>
-                            props.onOpenSeries({ series: item, title: `За 3-е место · ${title}` })
-                          }
-                        />
-                      </div>
-                      );
-                    })}
                 </div>
               </section>
             );
@@ -516,6 +489,39 @@ export function TournamentPlayoffOverview(props: {
               )}
             </article>
           </section>
+          {bronze.length > 0 && (
+            <section
+              className="tournament-bracket-overview__bronze-column"
+              style={{ gridColumn: rounds.length, gridRow: 2 }}
+            >
+              {bronze.map((item, index) => {
+                const title = playoffSeriesTitle(
+                  championship.length + index + 1,
+                  item.wins_required,
+                );
+                return (
+                  <div className="tournament-bracket-overview__bronze-lane" key={item.id}>
+                    <PlayoffSeriesCard
+                      series={item}
+                      title={title}
+                      stageLabel="За 3-е место"
+                      byKey={byKey}
+                      finalRound={finalRound}
+                      seriesNumberByKey={seriesNumbers.byKey}
+                      currentUserId={props.currentUserId}
+                      timezone={props.timezone}
+                      bronze
+                      compact
+                      density={visibleColumns}
+                      onOpen={() =>
+                        props.onOpenSeries({ series: item, title: `За 3-е место · ${title}` })
+                      }
+                    />
+                  </div>
+                );
+              })}
+            </section>
+          )}
         </div>
       </div>
     </section>

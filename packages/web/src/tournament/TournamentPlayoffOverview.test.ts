@@ -292,10 +292,10 @@ describe('playoffSeriesScheduleLabel', () => {
     expect(finalList).toHaveAttribute('data-series-count', '1');
     expect(finalList).not.toHaveClass('tournament-bracket-overview__series-list--with-bronze');
     expect(
-      within(finalList as HTMLElement).getByRole('button', {
+      within(finalList as HTMLElement).queryByRole('button', {
         name: 'Открыть серию За 3-е место, Серия 4',
       }),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
 
     const bronzeButton = screen.getByRole('button', {
       name: 'Открыть серию За 3-е место, Серия 4',
@@ -304,11 +304,9 @@ describe('playoffSeriesScheduleLabel', () => {
       'tournament-bracket-series__stage-label',
     );
     expect(within(bronzeButton).getByText('Серия 4')).toBeInTheDocument();
-    expect(
-      bronzeButton
-        .closest('.tournament-bracket-overview__bronze-lane')
-        ?.closest('.tournament-bracket-overview__series-list'),
-    ).toBe(finalList);
+    const bronzeColumn = bronzeButton.closest('.tournament-bracket-overview__bronze-column');
+    expect(bronzeColumn).toHaveStyle({ gridColumn: '2', gridRow: '2' });
+    expect(bronzeColumn?.parentElement).toHaveClass('tournament-bracket-overview__grid');
   });
 
   it('highlights only the third-place winner row with bronze after the series is completed', () => {

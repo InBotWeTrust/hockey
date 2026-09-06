@@ -973,6 +973,7 @@ function GameHub({
   const refresh = useDailyStore((s) => s.refresh);
   const trainingData = useTrainingSessionStore((s) => s.data);
   const trainingInFlight = useTrainingSessionStore((s) => s.inFlight);
+  const refreshTraining = useTrainingSessionStore((s) => s.refresh);
   const [modeInfoModal, setModeInfoModal] = useState<ModeInfoModalContent | null>(null);
   const [duelStatsMatch, setDuelStatsMatch] = useState<AmateurDuelMatch | null>(null);
   const [arenaActionId, setArenaActionId] = useState<string | null>(null);
@@ -1000,8 +1001,7 @@ function GameHub({
   const isTrainingLockedByDaily = isDailyStartedAndIncomplete;
   const isTrainingLockedByTournament =
     trainingData?.tournament_day_locked === true ||
-    (tournamentDayStartsAt > 0 &&
-      now >= tournamentDayStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS);
+    (tournamentDayStartsAt > 0 && now >= tournamentDayStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS);
   const isDailyLockedByTraining =
     data.state === 'idle' &&
     data.current_period === 0 &&
@@ -1033,6 +1033,16 @@ function GameHub({
     readArenaSelectedEntryId,
   );
   const prioritizedDuelEntryIdsRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    void refreshTraining();
+  }, [refreshTraining]);
+
+  useEffect(() => {
+    if (!isTrainingLockedByTournament) return undefined;
+    const id = window.setInterval(() => void refreshTraining(), 30_000);
+    return () => window.clearInterval(id);
+  }, [isTrainingLockedByTournament, refreshTraining]);
 
   useEffect(() => {
     if (
@@ -1135,11 +1145,12 @@ function GameHub({
               };
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
-  const trainingAvailability = isTrainingLockedByDaily || isTrainingLockedByTournament
-    ? isTrainingLockedByTournament
-      ? 'Закрыта на время игр турнира'
-      : 'Закрыта до завершения игры'
-    : `${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`;
+  const trainingAvailability =
+    isTrainingLockedByDaily || isTrainingLockedByTournament
+      ? isTrainingLockedByTournament
+        ? 'Закрыта на время игр турнира'
+        : 'Закрыта до завершения игры'
+      : `${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`;
 
   const runArenaLaunch = useCallback(
     async <T,>(
@@ -5316,6 +5327,12 @@ function DuelListCard({
   );
 }
 
+export function tournamentAttemptRefetchInterval(
+  participantState: AmateurDuelMatchState['me']['state'] | undefined,
+): 1000 | false {
+  return participantState === 'period_active' ? false : 1_000;
+}
+
 function AmateurDuelPlayView({
   matchId,
   tournamentId,
@@ -5377,7 +5394,7 @@ function AmateurDuelPlayView({
     queryFn: () => fetchTournamentFixtureAttempt(tournamentId!, tournamentFixtureId!),
     enabled:
       match?.source === 'tournament' && tournamentId !== null && tournamentFixtureId !== null,
-    refetchInterval: 1_000,
+    refetchInterval: tournamentAttemptRefetchInterval(match?.me?.state),
   });
   const tournamentReadinessHint = useQuery({
     queryKey: ['tournaments', tournamentId, 'readiness-hint'],
@@ -5586,9 +5603,7 @@ function AmateurDuelPlayView({
     const timing = duelEventTiming(match, now);
     const inactivePeriodRule = duelParticipantPeriodRule(match, match.me);
     const showDirectResultModal =
-      match.status === 'settled' &&
-      dismissedResultMatchId !== match.id &&
-      tournamentResultReady;
+      match.status === 'settled' && dismissedResultMatchId !== match.id && tournamentResultReady;
     const canRunDirectDuelAction =
       (match.status === 'ready_check' && match.me.state !== 'ready') ||
       canStartArenaDuelPeriod(match, duelMatchNowMs(match, now));
@@ -8188,7 +8203,11 @@ function duelConditionLoadout(match: AmateurDuelMatch): DuelInventoryLoadoutSnap
 
 function createDuelConditionForMatch(
   match: AmateurDuelMatchState,
-): (elapsedMs: number, speeds: SpeedOverrides) => DuelPlayerCondition | null {
+): (
+  elapsedMs: number,
+  speeds: SpeedOverrides,
+  reusable?: DuelPlayerCondition,
+) => DuelPlayerCondition | null {
   if (!match.match_seed) return () => null;
   const basePreset = periodSpeedPresetFor(match.me.current_period, match.rules.periodSpeedPresets);
   const loadout = duelConditionLoadout(match);
@@ -8210,14 +8229,11 @@ function createDuelConditionForMatch(
     loadout,
     stumbleRandomness,
   };
-  return (elapsedMs, speeds) => {
+  return (elapsedMs, speeds, reusable) => {
     conditionInput.elapsedMs = Math.max(0, elapsedMs);
-    conditionInput.movementDistancePx = movementDistancePxForElapsed(
-      elapsedMs,
-      speeds.shooterFreq,
-    );
+    conditionInput.movementDistancePx = movementDistancePxForElapsed(elapsedMs, speeds.shooterFreq);
     conditionInput.currentShooterSpeed = speeds.shooterFreq;
-    return getDuelPlayerCondition(conditionInput);
+    return getDuelPlayerCondition(conditionInput, reusable);
   };
 }
 
@@ -8747,7 +8763,11 @@ function classicLoadoutSelection(state: ClassicTournamentState): ClassicTourname
 
 export function createClassicTournamentCondition(
   state: ClassicTournamentState,
-): (elapsedMs: number, speeds: SpeedOverrides) => DuelPlayerCondition | null {
+): (
+  elapsedMs: number,
+  speeds: SpeedOverrides,
+  reusable?: DuelPlayerCondition,
+) => DuelPlayerCondition | null {
   const consumed = new Map(
     state.current_period_inventory_consumption.map((item) => [item.id, item.charges]),
   );
@@ -8785,24 +8805,32 @@ export function createClassicTournamentCondition(
     state.base_period_speed_presets,
   );
   const randomness = createDuelStumbleRandomness(
-    { seed: state.daily_seed, userId: state.player_id, periodNumber: Math.max(1, state.current_period) },
-    loadout.skates?.timing ?? DEFAULT_DUEL_INVENTORY_TIMING,
-  );
-  return (elapsedMs, speeds) =>
-    getDuelPlayerCondition({
+    {
       seed: state.daily_seed,
       userId: state.player_id,
       periodNumber: Math.max(1, state.current_period),
-      elapsedMs,
-      movementDistancePx:
-        (Math.max(0, elapsedMs) * SHOOTER_AMPLITUDE * 4 * Math.max(0, speeds.shooterFreq)) /
-        1000,
-      baseLaneWidthPx: SHOOTER_AMPLITUDE * 2,
-      baselineShooterSpeed: base.shooterFrequency,
-      currentShooterSpeed: speeds.shooterFreq,
-      loadout,
-      stumbleRandomness: randomness,
-    });
+    },
+    loadout.skates?.timing ?? DEFAULT_DUEL_INVENTORY_TIMING,
+  );
+  const conditionInput: DuelPlayerConditionInput = {
+    seed: state.daily_seed,
+    userId: state.player_id,
+    periodNumber: Math.max(1, state.current_period),
+    elapsedMs: 0,
+    movementDistancePx: 0,
+    baseLaneWidthPx: SHOOTER_AMPLITUDE * 2,
+    baselineShooterSpeed: base.shooterFrequency,
+    currentShooterSpeed: base.shooterFrequency,
+    loadout,
+    stumbleRandomness: randomness,
+  };
+  return (elapsedMs, speeds, reusable) => {
+    conditionInput.elapsedMs = elapsedMs;
+    conditionInput.movementDistancePx =
+      (Math.max(0, elapsedMs) * SHOOTER_AMPLITUDE * 4 * Math.max(0, speeds.shooterFreq)) / 1000;
+    conditionInput.currentShooterSpeed = speeds.shooterFreq;
+    return getDuelPlayerCondition(conditionInput, reusable);
+  };
 }
 
 function ClassicRinkLoadoutHud({
@@ -8930,12 +8958,17 @@ function ClassicRinkLoadoutModal({
         style={{ width: 'min(430px, calc(100vw - 28px))', display: 'grid', gap: 10 }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div className="modal-title" style={{ flex: 1 }}>{DUEL_EQUIPMENT_META[kind].title}</div>
+          <div className="modal-title" style={{ flex: 1 }}>
+            {DUEL_EQUIPMENT_META[kind].title}
+          </div>
           <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
             <X size={15} />
           </button>
         </div>
-        <div className="no-scrollbar" style={{ maxHeight: '54dvh', overflowY: 'auto', display: 'grid', gap: 8 }}>
+        <div
+          className="no-scrollbar"
+          style={{ maxHeight: '54dvh', overflowY: 'auto', display: 'grid', gap: 8 }}
+        >
           <button
             type="button"
             className={`glass duel-equipment-option${selectedId === null ? ' duel-equipment-option--selected' : ''}`}
@@ -9038,9 +9071,7 @@ function ClassicRinkLoadoutModal({
                 />
               </span>
               <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
-                <strong
-                  style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}
-                >
+                <strong style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}>
                   {item.title}
                 </strong>
                 <span
@@ -9087,7 +9118,9 @@ function ClassicTournamentPlayView({
   const [deferredState, setDeferredState] = useState<ClassicTournamentState | null>(null);
   const [statsModalState, setStatsModalState] = useState<ClassicTournamentState | null>(null);
   const [selectedLoadout, setSelectedLoadout] = useState<ClassicTournamentLoadoutSelection>({});
-  const [selectedLoadoutKind, setSelectedLoadoutKind] = useState<InventoryEquipmentKind | null>(null);
+  const [selectedLoadoutKind, setSelectedLoadoutKind] = useState<InventoryEquipmentKind | null>(
+    null,
+  );
 
   const summaryCandidate = deferredState ?? data;
   const summaryKey = summaryCandidate ? `classic:${summaryCandidate.session_id}` : '';
@@ -9301,12 +9334,32 @@ function ClassicTournamentPlayView({
           closeLabel="Понятно"
           supplemental={
             statsModalState.inventory_consumption.length > 0 ? (
-              <div aria-label="Общий расход инвентаря" style={{ marginTop: 14, display: 'grid', gap: 6 }}>
-                <div className="section-label" style={{ margin: 0, padding: 0 }}>Общий расход инвентаря</div>
+              <div
+                aria-label="Общий расход инвентаря"
+                style={{ marginTop: 14, display: 'grid', gap: 6 }}
+              >
+                <div className="section-label" style={{ margin: 0, padding: 0 }}>
+                  Общий расход инвентаря
+                </div>
                 {statsModalState.inventory_consumption.map((item) => (
-                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+                  <div
+                    key={item.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      fontSize: 12,
+                    }}
+                  >
                     <span style={{ color: 'var(--muted)', fontWeight: 750 }}>{item.title}</span>
-                    <strong>{formatInventoryResourceAmount(item.kind, item.charges, statsModalState.loadout.items.find((candidate) => candidate.id === item.id)?.resourceUnit)}</strong>
+                    <strong>
+                      {formatInventoryResourceAmount(
+                        item.kind,
+                        item.charges,
+                        statsModalState.loadout.items.find((candidate) => candidate.id === item.id)
+                          ?.resourceUnit,
+                      )}
+                    </strong>
                   </div>
                 ))}
               </div>
@@ -9584,8 +9637,7 @@ function TrainingPlayView({
     : 0;
   const isTrainingLockedByTournament =
     data?.tournament_day_locked === true ||
-    (tournamentStartsAt > 0 &&
-      now >= tournamentStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS);
+    (tournamentStartsAt > 0 && now >= tournamentStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS);
   const isTrainingLocked = isTrainingLockedByDaily || isTrainingLockedByTournament;
   const canStartTraining = data?.state === 'idle' && !isTrainingLocked;
   const handleHitboxesChange = useCallback((next: boolean): void => {
@@ -9660,23 +9712,23 @@ function TrainingPlayView({
       ? formatMs(tournamentStartsRemaining)
       : 'ИГРЫ'
     : isTrainingLockedByDaily
-    ? dailyLockRemaining > 0
-      ? formatMs(dailyLockRemaining)
-      : 'ИГРА'
-    : isTrainingClosed
-      ? formatHms(nextDayRemaining)
-      : String(data.shots_limit);
+      ? dailyLockRemaining > 0
+        ? formatMs(dailyLockRemaining)
+        : 'ИГРА'
+      : isTrainingClosed
+        ? formatHms(nextDayRemaining)
+        : String(data.shots_limit);
   const trainingTimerLabel = isTrainingLockedByTournament
     ? tournamentStartsRemaining > 0
       ? 'ДО НАЧАЛА'
       : 'СТАТУС'
     : isTrainingLockedByDaily
-    ? dailyLockRemaining > 0
-      ? 'ДО ИГРЫ'
-      : 'СТАТУС'
-    : isTrainingClosed
-      ? 'ДО ОБНОВЛЕНИЯ'
-      : 'ЛИМИТ';
+      ? dailyLockRemaining > 0
+        ? 'ДО ИГРЫ'
+        : 'СТАТУС'
+      : isTrainingClosed
+        ? 'ДО ОБНОВЛЕНИЯ'
+        : 'ЛИМИТ';
   return (
     <>
       <PlayView<TrainingStateResponse>

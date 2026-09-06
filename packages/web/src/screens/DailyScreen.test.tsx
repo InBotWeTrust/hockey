@@ -32,6 +32,7 @@ import {
   isDuelLoadoutEditable,
   isDuelReadyPresenceState,
   tournamentNextGameDisplay,
+  tournamentAttemptRefetchInterval,
   tournamentDuelBackPath,
 } from './DailyScreen.js';
 import { PlayView, duelFatigueNoticeLabel, duelPrimaryButtonLabel } from '../game/PlayView.js';
@@ -384,30 +385,27 @@ afterEach(() => {
 });
 
 describe('DailyScreen', () => {
+  it('pauses tournament-attempt polling while a duel period is actively rendering', () => {
+    expect(tournamentAttemptRefetchInterval('period_active')).toBe(false);
+    expect(tournamentAttemptRefetchInterval('accepted')).toBe(1_000);
+    expect(tournamentAttemptRefetchInterval(undefined)).toBe(1_000);
+  });
+
   it('shows tomorrow in Moscow instead of a multi-hour next-game countdown', () => {
     expect(
-      tournamentNextGameDisplay(
-        '2026-09-06T10:00:00.000Z',
-        Date.parse('2026-09-05T10:50:00.000Z'),
-      ),
+      tournamentNextGameDisplay('2026-09-06T10:00:00.000Z', Date.parse('2026-09-05T10:50:00.000Z')),
     ).toEqual({ label: 'Следующая игра:', value: 'Завтра в 13:00 (мск)', countdown: false });
   });
 
   it('shows the Moscow date when the next game is later than tomorrow', () => {
     expect(
-      tournamentNextGameDisplay(
-        '2026-09-08T10:00:00.000Z',
-        Date.parse('2026-09-05T10:50:00.000Z'),
-      ),
+      tournamentNextGameDisplay('2026-09-08T10:00:00.000Z', Date.parse('2026-09-05T10:50:00.000Z')),
     ).toEqual({ label: 'Следующая игра:', value: '8 сентября в 13:00 (мск)', countdown: false });
   });
 
   it('keeps the countdown for the next game on the same Moscow day', () => {
     expect(
-      tournamentNextGameDisplay(
-        '2026-09-05T11:00:00.000Z',
-        Date.parse('2026-09-05T10:55:10.000Z'),
-      ),
+      tournamentNextGameDisplay('2026-09-05T11:00:00.000Z', Date.parse('2026-09-05T10:55:10.000Z')),
     ).toEqual({ label: 'Следующая игра через:', value: '04:50', countdown: true });
   });
 
@@ -486,10 +484,13 @@ describe('DailyScreen', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       if (url.endsWith('/classic/period/start')) {
-        return new Response(JSON.stringify({ ...state, state: 'period_active', current_period: 1 }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
+        return new Response(
+          JSON.stringify({ ...state, state: 'period_active', current_period: 1 }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
       }
       return new Response(JSON.stringify(state), {
         status: 200,
@@ -519,29 +520,56 @@ describe('DailyScreen', () => {
   it('shows artwork and drawback copy for every base classic tournament item', async () => {
     const inventoryAvailable: ClassicTournamentState['inventory_available'] = [
       {
-        id: 'classic-stick', itemId: 'classic-stick', instanceId: null, kind: 'stick',
-        title: 'Клюшка Профи', imageUrl: '/inventory/stick-gold.webp', resourceUnit: 'shot',
-        resourceAvailable: 20, effectPuckSpeedPoints: 40, effectShooterFrequencyDelta: 0,
-        effectGoalieFrequencyDelta: 0, effectGoalFrequencyDelta: 0,
+        id: 'classic-stick',
+        itemId: 'classic-stick',
+        instanceId: null,
+        kind: 'stick',
+        title: 'Клюшка Профи',
+        imageUrl: '/inventory/stick-gold.webp',
+        resourceUnit: 'shot',
+        resourceAvailable: 20,
+        effectPuckSpeedPoints: 40,
+        effectShooterFrequencyDelta: 0,
+        effectGoalieFrequencyDelta: 0,
+        effectGoalFrequencyDelta: 0,
       },
       {
-        id: 'classic-skates', itemId: 'classic-skates', instanceId: null, kind: 'skates',
-        title: 'Коньки Профи', imageUrl: '/inventory/skates-gold.webp', resourceUnit: 'distance',
-        resourceAvailable: 20, effectPuckSpeedPoints: 0, effectShooterFrequencyDelta: 0,
-        effectGoalieFrequencyDelta: 0, effectGoalFrequencyDelta: 0,
+        id: 'classic-skates',
+        itemId: 'classic-skates',
+        instanceId: null,
+        kind: 'skates',
+        title: 'Коньки Профи',
+        imageUrl: '/inventory/skates-gold.webp',
+        resourceUnit: 'distance',
+        resourceAvailable: 20,
+        effectPuckSpeedPoints: 0,
+        effectShooterFrequencyDelta: 0,
+        effectGoalieFrequencyDelta: 0,
+        effectGoalFrequencyDelta: 0,
       },
       {
-        id: 'classic-nutrition', itemId: 'classic-nutrition', instanceId: null, kind: 'nutrition',
-        title: 'Энерго-комплекс', imageUrl: '/inventory/nutrition-gold.webp', resourceUnit: 'energy_ms',
-        resourceAvailable: 20, effectPuckSpeedPoints: 0, effectShooterFrequencyDelta: 0,
-        effectGoalieFrequencyDelta: 0, effectGoalFrequencyDelta: 0,
+        id: 'classic-nutrition',
+        itemId: 'classic-nutrition',
+        instanceId: null,
+        kind: 'nutrition',
+        title: 'Энерго-комплекс',
+        imageUrl: '/inventory/nutrition-gold.webp',
+        resourceUnit: 'energy_ms',
+        resourceAvailable: 20,
+        effectPuckSpeedPoints: 0,
+        effectShooterFrequencyDelta: 0,
+        effectGoalieFrequencyDelta: 0,
+        effectGoalFrequencyDelta: 0,
       },
     ];
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ ...classicIdleState, inventory_available: inventoryAvailable }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+      new Response(
+        JSON.stringify({ ...classicIdleState, inventory_available: inventoryAvailable }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
     );
 
     renderWith(['/?view=classic&tournament=classic-1']);
@@ -583,7 +611,9 @@ describe('DailyScreen', () => {
         'src',
         expect.stringContaining(item.artwork),
       );
-      const purchasedOption = within(dialog).getByRole('button', { name: new RegExp(item.purchasedTitle) });
+      const purchasedOption = within(dialog).getByRole('button', {
+        name: new RegExp(item.purchasedTitle),
+      });
       const baseImage = option.querySelector('img');
       const purchasedImage = purchasedOption.querySelector('img');
       const purchasedTitle = within(purchasedOption).getByText(item.purchasedTitle);
@@ -598,7 +628,9 @@ describe('DailyScreen', () => {
         option.querySelector('.duel-equipment-option__check--selected svg'),
       ).toBeInTheDocument();
       expect(
-        purchasedOption.querySelector('.duel-equipment-option__check:not(.duel-equipment-option__check--selected)'),
+        purchasedOption.querySelector(
+          '.duel-equipment-option__check:not(.duel-equipment-option__check--selected)',
+        ),
       ).toBeInTheDocument();
       fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
     }
@@ -711,8 +743,10 @@ describe('DailyScreen', () => {
       loadout_editable: false,
     };
     const speeds = { goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.3 };
+    const reusable = createClassicTournamentCondition(activeState)(0, speeds)!;
 
     expect(createClassicTournamentCondition(activeState)(0, speeds)?.puckSpeedDelta).toBe(0.1);
+    expect(createClassicTournamentCondition(activeState)(0, speeds, reusable)).toBe(reusable);
     expect(
       createClassicTournamentCondition({
         ...activeState,
@@ -837,9 +871,7 @@ describe('DailyScreen', () => {
     expect(await screen.findByRole('dialog', { name: 'Игра завершена' })).toBeInTheDocument();
     expect(screen.getByLabelText('Итого: 78 голов из 90 бросков')).toBeInTheDocument();
     expect(screen.getByText('87%')).toBeInTheDocument();
-    expect(screen.getByLabelText('Общий расход инвентаря')).toHaveTextContent(
-      'Тестовая клюшка',
-    );
+    expect(screen.getByLabelText('Общий расход инвентаря')).toHaveTextContent('Тестовая клюшка');
     fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
     expect(screen.queryByRole('dialog', { name: 'Игра завершена' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'ИГРА ЗАВЕРШЕНА' })).toBeDisabled();
@@ -1708,6 +1740,58 @@ describe('DailyScreen', () => {
     expect(screen.queryByText('Профессионалы')).not.toBeInTheDocument();
   });
 
+  it('refreshes a stale tournament training lock when the arena mounts', async () => {
+    useDailyStore.setState({ data: baseState });
+    useTrainingSessionStore.setState({
+      data: {
+        ...trainingIdleState,
+        tournament_day_locked: true,
+        tournament_day_starts_at: '2026-04-25T10:00:00.000Z',
+      },
+    });
+
+    renderWith();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать Тренировка' }));
+    expect(await screen.findByText('0/500 бросков сегодня')).toBeInTheDocument();
+    expect(screen.queryByText('Закрыта на время игр турнира')).not.toBeInTheDocument();
+  });
+
+  it('rechecks a tournament training lock every 30 seconds while the arena stays open', async () => {
+    vi.useFakeTimers();
+    const lockedTrainingState: TrainingStateResponse = {
+      ...trainingIdleState,
+      tournament_day_locked: true,
+      tournament_day_starts_at: '2026-04-25T10:00:00.000Z',
+    };
+    let trainingRequests = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        trainingRequests += 1;
+        return new Response(
+          JSON.stringify(trainingRequests === 1 ? lockedTrainingState : trainingIdleState),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify(baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    useDailyStore.setState({ data: baseState });
+    useTrainingSessionStore.setState({ data: lockedTrainingState });
+
+    renderWith();
+    await act(async () => Promise.resolve());
+    fireEvent.click(screen.getByRole('button', { name: 'Выбрать Тренировка' }));
+    expect(screen.getByText('Закрыта на время игр турнира')).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(screen.getByText('0/500 бросков сегодня')).toBeInTheDocument();
+  });
+
   it('switches arena tableau cards with circular swipe gestures', async () => {
     renderWith(['/?view=arena']);
 
@@ -2014,9 +2098,7 @@ describe('DailyScreen', () => {
     );
     expect(screen.queryByRole('heading', { name: 'Дуэль' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Эта дуэль сейчас не на площадке/)).not.toBeInTheDocument();
-    expect(
-      document.querySelector('img[src="/sprites/amateur-daily-court.webp"]'),
-    ).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/amateur-daily-court.webp"]')).toBeTruthy();
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeFalsy();
     expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeFalsy();
   });
@@ -3623,7 +3705,9 @@ describe('DailyScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
 
-    expect(await screen.findByRole('button', { name: 'Открыть Кубок возврата' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: 'Открыть Кубок возврата' }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Турниры' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Любители' })).not.toBeInTheDocument();
   });
@@ -5257,9 +5341,7 @@ describe('DailyScreen', () => {
 
     const startButton = await screen.findByRole('button', { name: 'НАЧАТЬ' });
     expect(startButton).toBeEnabled();
-    expect(
-      document.querySelector('img[src="/sprites/amateur-daily-court.webp"]'),
-    ).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/amateur-daily-court.webp"]')).toBeTruthy();
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeFalsy();
     expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeFalsy();
     expect(screen.getByLabelText('Игровое табло')).toBeInTheDocument();
@@ -6074,9 +6156,9 @@ describe('DailyScreen', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Результат дуэли' });
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByText('Победа')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('Итог игры: Tester — Duel Opponent, 3:1')).toHaveTextContent(
-      '3:1',
-    );
+    expect(
+      within(dialog).getByLabelText('Итог игры: Tester — Duel Opponent, 3:1'),
+    ).toHaveTextContent('3:1');
     expect(within(dialog).getByText('Формат:')).toBeInTheDocument();
     expect(within(dialog).getByText('Экспресс')).toBeInTheDocument();
     expect(within(dialog).queryByText('Соперник')).not.toBeInTheDocument();

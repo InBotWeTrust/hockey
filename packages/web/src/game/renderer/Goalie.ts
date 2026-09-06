@@ -1,4 +1,4 @@
-import { Assets, BlurFilter, Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { Assets, Container, Graphics, Sprite, Texture } from 'pixi.js';
 import { type GoalieState } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 
@@ -59,7 +59,6 @@ export class Goalie {
       ? new Graphics().ellipse(0, 0, 1, 1).fill({ color: 0x0c1b2d, alpha: 0.2 })
       : null;
     if (this.shadow) {
-      this.shadow.filters = [new BlurFilter({ strength: 8 })];
       this.container.addChild(this.shadow);
     }
     this.sprite = new Sprite(Texture.EMPTY);
@@ -111,10 +110,8 @@ export class Goalie {
       (state.position.y * this.visualYScale + this.visualYOffset + poseYOffset) * s,
     );
     if (this.shadow) {
-      this.shadow.clear();
-      this.shadow
-        .ellipse(0, 0, size * (this.isSaving ? 0.4 : 0.34), size * 0.09)
-        .fill({ color: 0x0c1b2d, alpha: this.isSaving ? 0.18 : 0.2 });
+      this.shadow.scale.set(size * (this.isSaving ? 0.4 : 0.34), size * 0.09);
+      this.shadow.alpha = this.isSaving ? 0.9 : 1;
       this.shadow.position.set(this.sprite.position.x, this.sprite.position.y + size * 0.3);
     }
     this.container.position.set(scale.offsetX, scale.offsetY);
