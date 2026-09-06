@@ -201,6 +201,41 @@ describe('AchievementsScreen', () => {
     expect(screen.queryByText('День 1')).toBeNull();
   });
 
+  it('shows all ten active tournament achievements without future labels', async () => {
+    const tournamentAchievements = [
+      ['regular-season-champion', 'Победитель регулярки', 125, 250],
+      ['regular-season-medalist', 'Призёр регулярки', 50, 100],
+      ['playoff-semifinal', 'Турнирный характер', 75, 150],
+      ['playoff-final', 'Финальный лёд', 125, 250],
+      ['tournament-cup', 'Кубок над головой', 200, 400],
+      ['dark-horse', 'Тёмная лошадка', 100, 200],
+      ['death-bracket', 'Сетка смерти', 250, 500],
+      ['series-comeback', 'Мощный камбэк', 150, 300],
+      ['no-shake', 'Без дрожи', 75, 150],
+      ['tournament-streak', 'Турнирная серия', 300, 700],
+    ] as const;
+    mockAchievementsApi(
+      tournamentAchievements.map(([id, title, rewardCurrency, rewardExperience]) =>
+        makeAchievement({
+          id,
+          title,
+          category: 'tournament',
+          rewardCurrency,
+          rewardStars: rewardExperience,
+          rewardExperience,
+        }),
+      ),
+    );
+    renderAchievements();
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Турниры' }));
+
+    expect(screen.getByText('Задания · 0/10')).toBeInTheDocument();
+    expect(screen.queryByText('Скоро')).toBeNull();
+    expect(screen.getByText('Победитель регулярки')).toBeInTheDocument();
+    expect(screen.getByText('Призёр регулярки')).toBeInTheDocument();
+  });
+
   it('uses clear achievement statuses without changing catalogue order', async () => {
     mockAchievementsApi([
       makeAchievement({
