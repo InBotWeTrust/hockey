@@ -1151,7 +1151,7 @@
   flex-shrink: 0;
 }
 
-.chat-room-header__control--surface {
+.icon-btn.chat-room-header__control--surface {
   background: var(--chrome-surface-bg);
   border-color: var(--chrome-surface-border);
   color: #10243a;
