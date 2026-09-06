@@ -4004,6 +4004,18 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       'cancelled',
     ]);
 
+    const publicSchedule = await tournamentService.getTournamentScheduleDay(
+      pool,
+      tournament.id,
+      PLAYER_IDS[0],
+      '2030-09-01',
+    );
+    expect(
+      publicSchedule.myGames
+        .filter((fixture) => fixture.seriesId === firstRound.rows[0]!.series_id)
+        .map((fixture) => fixture.gameNumber),
+    ).toEqual([1, 2]);
+
     const finalSeries = await pool.query<{ higher_seed_participant_id: string; status: string }>(
       `select higher_seed_participant_id, status from tournament_playoff_series
         where tournament_id = $1 and depends_on->>'key' = 'R2S1'`,

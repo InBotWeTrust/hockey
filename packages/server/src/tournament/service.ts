@@ -2961,6 +2961,10 @@ const PUBLIC_SCHEDULE_FIXTURE_SCOPE = `
        ) planned_game_day on true
        left join amateur_duel_match duel on duel.id = latest_attempt.amateur_duel_match_id
      where f.tournament_id = $1
+       and not (
+         f.status = 'cancelled'
+         and coalesce(series.status = 'completed', false)
+       )
   )`;
 
 export async function getTournamentScheduleDay(
