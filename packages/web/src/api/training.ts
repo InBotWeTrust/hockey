@@ -38,6 +38,29 @@ export interface SubmitTrainingShotResponse {
   state: TrainingStateResponse;
 }
 
+export interface TrainingHistorySession {
+  day_date: string;
+  selected_period: number;
+  shots_limit: number;
+  total_shots: number;
+  total_goals: number;
+  completed: boolean;
+}
+
+export interface TrainingHistorySummary {
+  played_trainings: number;
+  completed_trainings: number;
+  total_shots: number;
+  total_goals: number;
+}
+
+export interface TrainingHistoryResponse {
+  sessions: TrainingHistorySession[];
+  hasMore: boolean;
+  nextOffset: number | null;
+  summary: TrainingHistorySummary;
+}
+
 function stampTrainingState(state: TrainingStateResponse): TrainingStateResponse {
   return {
     ...state,
@@ -49,6 +72,12 @@ export function fetchTrainingState(options?: GameRequestOptions): Promise<Traini
   return apiFetch<TrainingStateResponse>('/duel/training/state', {
     ...(options?.signal === undefined ? {} : { signal: options.signal }),
   }).then(stampTrainingState);
+}
+
+export function fetchTrainingHistory(limit = 20, offset = 0): Promise<TrainingHistoryResponse> {
+  return apiFetch<TrainingHistoryResponse>(
+    `/duel/training/history?limit=${limit}&offset=${offset}`,
+  );
 }
 
 export function startTraining(body: StartTrainingRequest): Promise<TrainingStateResponse> {

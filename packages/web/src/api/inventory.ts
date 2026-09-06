@@ -61,6 +61,13 @@ export interface InventoryTransaction {
   createdAt: string;
 }
 
+export type InventoryTransactionFilter = 'all' | 'credit' | 'debit' | 'ruble';
+
+export interface InventoryTransactionPage {
+  transactions: InventoryTransaction[];
+  nextCursor: string | null;
+}
+
 export interface InventoryState {
   balances: {
     tokens: number;
@@ -86,6 +93,16 @@ export interface EquipmentPatch {
 
 export function fetchMyInventory(): Promise<InventoryState> {
   return apiFetch<InventoryState>('/inventory/me');
+}
+
+export function fetchInventoryTransactions(
+  filter: InventoryTransactionFilter,
+  cursor: string | null = null,
+  limit = 20,
+): Promise<InventoryTransactionPage> {
+  const query = new URLSearchParams({ filter, limit: String(limit) });
+  if (cursor !== null) query.set('cursor', cursor);
+  return apiFetch<InventoryTransactionPage>(`/inventory/transactions?${query.toString()}`);
 }
 
 export function patchEquipment(patch: EquipmentPatch): Promise<InventoryState> {

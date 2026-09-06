@@ -102,6 +102,7 @@ const inventoryWithItems: InventoryState = {
       amounts: [
         { currency: 'coin', value: 100 },
         { currency: 'star', value: 2 },
+        { currency: 'experience', value: 10 },
       ],
       createdAt: '2026-05-27T10:20:00.000Z',
     },
@@ -135,6 +136,25 @@ function mockInventoryFetch(inventory: InventoryState, purchasedInventory = inve
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
+    }
+    if (url.includes('/api/inventory/transactions')) {
+      const parsed = new URL(url, 'http://localhost');
+      const filter = parsed.searchParams.get('filter') ?? 'all';
+      const cursor = parsed.searchParams.get('cursor');
+      const matching = (inventory.transactionHistory ?? []).filter((entry) => {
+        if (filter === 'credit') return entry.flow === 'credit';
+        if (filter === 'debit') return entry.flow === 'debit' && entry.category !== 'bank';
+        if (filter === 'ruble') return entry.amounts.some((amount) => amount.currency === 'ruble');
+        return true;
+      });
+      const offset = cursor === null ? 0 : 20;
+      return new Response(
+        JSON.stringify({
+          transactions: matching.slice(offset, offset + 20),
+          nextCursor: matching.length > offset + 20 ? 'next-page' : null,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
     }
     if (url.endsWith('/api/inventory/equipment') && init?.method === 'PATCH') {
       return new Response(JSON.stringify(inventory), {
@@ -182,7 +202,7 @@ describe('InventoryScreen', () => {
 
     renderInventory();
 
-    expect(await screen.findByRole('heading', { name: 'Инвентарь' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Магазин' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Назад' })).toBeInTheDocument();
     expect(await screen.findByLabelText('Монеты: 1 000')).toBeInTheDocument();
     expect(screen.getByLabelText('Звёзды: 2')).toBeInTheDocument();
@@ -259,9 +279,9 @@ describe('InventoryScreen', () => {
     expect(screen.getByText('Стартовый набор')).toBeInTheDocument();
     expect(screen.getByText('Игровой запас')).toBeInTheDocument();
     expect(screen.getByText('Клубный банк')).toBeInTheDocument();
-    expect(screen.getByText('500')).toBeInTheDocument();
-    expect(screen.getByText('1 200')).toBeInTheDocument();
-    expect(screen.getByText('3 000')).toBeInTheDocument();
+    expect(screen.getByText('500 монет')).toBeInTheDocument();
+    expect(screen.getByText('1 200 монет')).toBeInTheDocument();
+    expect(screen.getByText('3 000 монет')).toBeInTheDocument();
   });
 
   it('shows transaction history with currency icons and filters', async () => {
@@ -269,30 +289,92 @@ describe('InventoryScreen', () => {
 
     renderInventory();
 
+    expect(
+      vi.mocked(globalThis.fetch).mock.calls.some(([input]) =>
+        String(input).includes('/api/inventory/transactions'),
+      ),
+    ).toBe(false);
+
     fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
 
-    expect(screen.getByRole('button', { name: 'Все' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Начисления' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Списания' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Рубли' })).toBeInTheDocument();
+    const filters = await screen.findByRole('tablist', { name: 'Фильтр истории' });
+    expect(filters).toHaveClass('segmented-tabs');
+    expect(screen.getByRole('tab', { name: 'Все', selected: true })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Начисления' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Списания' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Рубли' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 3, name: '27 мая' })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Операции за 27 мая' })).toBeInTheDocument();
     expect(screen.getByText('Недельная награда')).toBeInTheDocument();
     expect(screen.getByText('Бронзовая клюшка')).toBeInTheDocument();
     expect(screen.getByText('Игровой запас')).toBeInTheDocument();
-    expect(screen.getByLabelText('Начисление монет: 100')).toBeInTheDocument();
-    expect(screen.getByLabelText('Начисление звёзд: 2')).toBeInTheDocument();
-    expect(screen.getByLabelText('Списание монет: 120')).toBeInTheDocument();
-    expect(screen.getByLabelText('Списание рублей: 299 ₽')).toBeInTheDocument();
+    expect(screen.getByLabelText('Начисление монет: 100')).toHaveStyle({
+      color: 'var(--reward-coin)',
+    });
+    expect(screen.getByLabelText('Начисление звёзд: 2')).toHaveStyle({
+      color: 'var(--reward-star)',
+    });
+    const experienceCredit = screen.getByLabelText('Начисление опыта: 10');
+    expect(experienceCredit).toHaveStyle({
+      color: 'var(--reward-experience)',
+    });
+    expect(experienceCredit.querySelector('svg')).toHaveClass('lucide-trending-up');
+    expect(screen.getByLabelText('Списание монет: 120')).toHaveStyle({
+      color: 'var(--red-deep)',
+    });
+    expect(screen.getByLabelText('Списание рублей: 299 ₽')).toHaveStyle({
+      color: 'var(--red-deep)',
+    });
     expect(screen.getByText(/банк · Оплачено/)).toBeInTheDocument();
     expect(screen.getByText(/товар · 5 бросков/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Начисления' }));
-    expect(screen.getByText('Недельная награда')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Начисления' }));
+    expect(await screen.findByText('Недельная награда')).toBeInTheDocument();
     expect(screen.queryByText('Бронзовая клюшка')).not.toBeInTheDocument();
     expect(screen.queryByText('Игровой запас')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Рубли' }));
-    expect(screen.getByText('Игровой запас')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Рубли' }));
+    expect(await screen.findByText('Игровой запас')).toBeInTheDocument();
     expect(screen.queryByText('Недельная награда')).not.toBeInTheDocument();
+  });
+
+  it('loads transaction history in pages of twenty', async () => {
+    const transactions = Array.from({ length: 21 }, (_, index) => ({
+      id: `reward-${index + 1}`,
+      title: `Награда ${index + 1}`,
+      subtitle: '06.09, 18:42 · достижение',
+      category: 'reward' as const,
+      flow: 'credit' as const,
+      amounts: [{ currency: 'coin' as const, value: index + 1 }],
+      createdAt: new Date(Date.UTC(2026, 8, 6, 15, 42, 21 - index)).toISOString(),
+    }));
+    mockInventoryFetch({ ...inventoryWithItems, transactionHistory: transactions });
+
+    renderInventory();
+    fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
+
+    expect(await screen.findByText('Награда 20')).toBeInTheDocument();
+    expect(screen.queryByText('Награда 21')).toBeNull();
+    const loadMore = screen.getByRole('button', { name: 'Загрузить ещё' });
+    fireEvent.click(loadMore);
+
+    expect(await screen.findByText('Награда 21')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Загрузить ещё' })).toBeNull();
+  });
+
+  it('shows an unboxed empty state for a filtered transaction history', async () => {
+    mockInventoryFetch({
+      ...inventoryWithItems,
+      purchaseHistory: [],
+      bankHistory: [],
+      transactionHistory: [],
+    });
+
+    renderInventory();
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
+    const empty = await screen.findByText('Операций пока нет.');
+    expect(empty.closest('.glass')).toBeNull();
   });
 
   it('shows an empty shop state when no products exist', async () => {

@@ -2914,7 +2914,8 @@ describe('DailyScreen', () => {
     expect(await screen.findByRole('button', { name: 'На лёд' })).toBeInTheDocument();
     expect(screen.getByText('0/500')).toBeInTheDocument();
     expect(screen.getByText('ДО ОБНОВЛЕНИЯ')).toBeInTheDocument();
-    expect(screen.getByText('Скорости 1-го периода')).toBeInTheDocument();
+    expect(screen.getByText('Скорости 1-го периода')).toHaveClass('section-label');
+    expect(screen.getByText('Настройки')).toHaveClass('section-label', 'training-settings__title');
     expect(screen.getByText('0,50/с')).toBeInTheDocument();
 
     const trainingInfo = screen.getByRole('region', { name: 'Информация о тренировке' });
@@ -2928,6 +2929,9 @@ describe('DailyScreen', () => {
 
     const trainingSetup = screen.getByRole('region', { name: 'Настройка тренировки' });
     expect(trainingSetup).toHaveClass('mode-setup-card', 'training-config-card');
+    expect(trainingSetup.querySelector('.training-period-speeds__grid')).toHaveStyle({
+      gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    });
     expect(within(trainingSetup).getByRole('tab', { name: '1 период' })).toBeInTheDocument();
     expect(within(trainingSetup).getByRole('button', { name: 'На лёд' })).toBeInTheDocument();
   });

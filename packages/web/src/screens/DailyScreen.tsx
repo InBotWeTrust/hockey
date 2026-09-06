@@ -74,6 +74,7 @@ import { rewardColor } from '../app/rewardColors.js';
 import type { ScoreBoardOpponent } from '../components/ScoreBoard.js';
 import { GlassSelect } from '../components/GlassSelect.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
+import { TrainingHistorySection } from '../components/TrainingHistorySection.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
@@ -3483,29 +3484,39 @@ function TrainingPlaceholder({
         )}
       </section>
       {!loading && canConfigureTraining && (
-        <section className="mode-setup-card training-config-card" aria-label="Настройка тренировки">
-          <SegmentedTabs
-            ariaLabel="Период тренировки"
-            items={[
-              { id: '1', label: '1 период' },
-              { id: '2', label: '2 период' },
-              { id: '3', label: '3 период' },
-            ]}
-            activeTab={String(selectedPeriod)}
-            disabled={inFlight}
-            onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
-          />
-          <PeriodSpeedSummary periodNumber={selectedPeriod} presets={data?.period_speed_presets} />
-          <button
-            type="button"
-            className="btn btn--cta"
-            disabled={inFlight}
-            onClick={() => void handleTrainingAction()}
+        <div className="training-settings">
+          <div className="section-label training-settings__title">Настройки</div>
+          <section
+            className="mode-setup-card training-config-card"
+            aria-label="Настройка тренировки"
           >
-            {trainingActionLabel}
-          </button>
-        </section>
+            <SegmentedTabs
+              ariaLabel="Период тренировки"
+              items={[
+                { id: '1', label: '1 период' },
+                { id: '2', label: '2 период' },
+                { id: '3', label: '3 период' },
+              ]}
+              activeTab={String(selectedPeriod)}
+              disabled={inFlight}
+              onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
+            />
+            <PeriodSpeedSummary
+              periodNumber={selectedPeriod}
+              presets={data?.period_speed_presets}
+            />
+            <button
+              type="button"
+              className="btn btn--cta"
+              disabled={inFlight}
+              onClick={() => void handleTrainingAction()}
+            >
+              {trainingActionLabel}
+            </button>
+          </section>
+        </div>
       )}
+      <TrainingHistorySection currentDayDate={data?.day_date ?? null} />
     </ModeShell>
   );
 }
@@ -8394,6 +8405,7 @@ function PeriodSpeedSummary({
 
   return (
     <div
+      className="training-period-speeds"
       aria-label={`${periodNumber}-й период: скорости`}
       style={{
         padding: 12,
@@ -8406,24 +8418,19 @@ function PeriodSpeedSummary({
         gap: 10,
       }}
     >
-      <div
-        style={{
-          color: 'rgba(15, 23, 42, 0.58)',
-          fontSize: 10,
-          fontWeight: 900,
-          letterSpacing: '0.16em',
-          textTransform: 'uppercase',
-        }}
-      >
+      <div className="section-label training-period-speeds__title">
         Скорости {periodNumber}-го периода
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+      <div
+        className="training-period-speeds__grid"
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 4 }}
+      >
         {items.map((item) => (
           <div key={item.label} style={{ minWidth: 0 }}>
             <div
               style={{
                 color: 'rgba(15, 23, 42, 0.54)',
-                fontSize: 11,
+                fontSize: 'clamp(8px, 2.5vw, 10px)',
                 fontWeight: 800,
                 lineHeight: 1.1,
               }}
@@ -8434,7 +8441,7 @@ function PeriodSpeedSummary({
               style={{
                 marginTop: 3,
                 color: 'var(--ink)',
-                fontSize: 15,
+                fontSize: 'clamp(9px, 2.8vw, 12px)',
                 fontWeight: 900,
                 fontVariantNumeric: 'tabular-nums',
                 lineHeight: 1.1,
