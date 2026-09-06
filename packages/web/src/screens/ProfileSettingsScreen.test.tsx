@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within, type RenderResult } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProfileSettingsScreen } from './ProfileSettingsScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
 
-function renderProfileSettings(): void {
+function renderProfileSettings(): RenderResult {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  render(
+  return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/profile/settings']}>
         <ProfileSettingsScreen />
@@ -26,6 +26,7 @@ const telegramProfile = {
   displaySource: 'telegram',
   registrationProvider: 'telegram',
   registrationProviderId: '42',
+  competitionLevel: 'amateur',
   linkedProviders: ['telegram', 'vk'],
   customFirstName: null,
   customLastName: null,
@@ -49,6 +50,7 @@ const vkOnlyProfile = {
   displaySource: 'vk',
   registrationProvider: 'vk',
   registrationProviderId: 'vk-42',
+  competitionLevel: 'amateur',
   linkedProviders: ['vk'],
   customFirstName: null,
   customLastName: null,
@@ -181,6 +183,21 @@ describe('ProfileSettingsScreen', () => {
     });
     vi.restoreAllMocks();
   });
+
+  it.each(['beginner', 'amateur', 'professional'] as const)(
+    'uses the %s locker-room background in settings',
+    async (competitionLevel) => {
+      mockSettingsFetch({ ...telegramProfile, competitionLevel });
+
+      renderProfileSettings();
+
+      await screen.findByText('Аккаунт');
+      expect(document.querySelector('main.profile-settings-screen')).toHaveClass(
+        'profile-screen--locker-bg',
+        `locker-room-bg--${competitionLevel}`,
+      );
+    },
+  );
 
   it('shows the registration provider as a read-only account card', async () => {
     mockSettingsFetch();

@@ -9,6 +9,7 @@ import { AccessibleModal } from '../components/AccessibleModal.js';
 import { triggerHaptic } from '../feedback/haptics.js';
 import { ProfileSupportSections } from './ProfileSupportSections.js';
 import type { ProfileData } from './profileTypes.js';
+import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 
 export function ProfileSettingsScreen(): JSX.Element {
   const navigate = useNavigate();
@@ -72,7 +73,10 @@ export function ProfileSettingsScreen(): JSX.Element {
   const accountIdLabel = registrationProvider === 'vk' ? 'VK ID' : 'TG ID';
 
   return (
-    <main className="screen" style={{ paddingTop: 'var(--app-safe-top)', paddingBottom: 16 }}>
+    <main
+      className={`screen profile-settings-screen profile-screen--locker-bg ${lockerRoomBackgroundClass(data?.competitionLevel)}`}
+      style={{ paddingTop: 'var(--app-safe-top)', paddingBottom: 16 }}
+    >
       <div className="profile-settings-header">
         <button
           type="button"
