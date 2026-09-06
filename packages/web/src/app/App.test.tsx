@@ -9,6 +9,13 @@ import { useBonusGameStore } from '../stores/bonusGameStore.js';
 import { App, RouteLoading, appBackdropClassName, appSurfaceClassName } from './App.js';
 import { fetchRequiredOnboarding, recordStepView, startOnboarding } from '../api/onboarding.js';
 import type * as OnboardingApi from '../api/onboarding.js';
+import {
+  arenaBackgroundClass,
+  arenaCourtImage,
+  arenaVideoCubeClass,
+  arenaVideoCubeImage,
+  lockerRoomBackgroundClass,
+} from '../screens/lockerRoomBackground.js';
 
 vi.mock('../game/PlayView.js', () => ({
   PlayView: () => <div data-testid="play-view" />,
@@ -346,6 +353,20 @@ describe('App routing + auth', () => {
 });
 
 describe('app backdrop variants', () => {
+  it('maps every competition level to matching arena and locker-room backgrounds', () => {
+    for (const level of ['beginner', 'amateur', 'professional'] as const) {
+      expect(arenaBackgroundClass(level)).toBe(`arena-bg--${level}`);
+      expect(lockerRoomBackgroundClass(level)).toBe(`locker-room-bg--${level}`);
+    }
+    expect(arenaVideoCubeImage('beginner')).toBe('/sprites/app-arena-cube-beginner.webp');
+    expect(arenaVideoCubeImage('amateur')).toBe('/sprites/app-arena-cube-amateur.webp');
+    expect(arenaVideoCubeImage('professional')).toBe('/sprites/app-arena-cube.webp');
+    expect(arenaVideoCubeClass('amateur')).toBe('arena-video-cube__plate--amateur');
+    expect(arenaCourtImage('beginner')).toBe('/backgrounds/arena-beginner.webp');
+    expect(arenaCourtImage('amateur')).toBe('/backgrounds/arena-amateur.webp');
+    expect(arenaCourtImage('professional')).toBe('/sprites/app-arena-ice.webp');
+  });
+
   it('renders lazy route loading text with a high-contrast arena treatment', () => {
     render(<RouteLoading />);
 

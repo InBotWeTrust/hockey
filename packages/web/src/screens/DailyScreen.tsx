@@ -90,6 +90,12 @@ import type { TrainingStateResponse } from '../api/training.js';
 import { fetchBonusGames } from '../api/bonusGames.js';
 import type { ProfileData } from './profileTypes.js';
 import {
+  arenaCourtImage,
+  arenaVideoCubeClass,
+  arenaVideoCubeImage,
+} from './lockerRoomBackground.js';
+import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
+import {
   fetchMyInventory,
   patchEquipment,
   type InventoryEquipmentKind,
@@ -247,8 +253,6 @@ function readTrainingSpeedOverrides(): SpeedOverrides | null {
 
 const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
 const AMATEUR_TOURNAMENT_COURT_BACKGROUND = '/sprites/amateur-tournament-court.webp';
-const ARENA_ICE_COURT_BACKGROUND = '/sprites/app-arena-ice.webp';
-const ARENA_CUBE_IMAGE = '/sprites/app-arena-cube.webp';
 const LEGACY_STANDARD_ARENA_BACKGROUNDS = new Set([
   '/sprites/arena-ice-court.webp',
   '/sprites/arena-ice-court-v2.webp',
@@ -970,6 +974,10 @@ function GameHub({
 }): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiFetch<ProfileData>('/me'),
+  });
   const data = useDailyStore((s) => s.data)!;
   const refresh = useDailyStore((s) => s.refresh);
   const trainingData = useTrainingSessionStore((s) => s.data);
@@ -1648,6 +1656,9 @@ function GameHub({
           entries={arenaEntries}
           activeIndex={activeCubeIndex}
           onActiveIndexChange={handleArenaActiveIndexChange}
+          cubeImage={arenaVideoCubeImage(profileQuery.data?.competitionLevel)}
+          cubeClass={arenaVideoCubeClass(profileQuery.data?.competitionLevel)}
+          backgroundImage={arenaCourtImage(profileQuery.data?.competitionLevel)}
         />
       </section>
 
@@ -1670,10 +1681,16 @@ function ArenaVideoCube({
   entries,
   activeIndex,
   onActiveIndexChange,
+  cubeImage,
+  cubeClass,
+  backgroundImage,
 }: {
   entries: ArenaEntry[];
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
+  cubeImage: string;
+  cubeClass: string;
+  backgroundImage: string;
 }): JSX.Element {
   const activeEntry = entries[Math.min(entries.length - 1, Math.max(0, activeIndex))] ?? entries[0];
   const hasManyEntries = entries.length > 1;
@@ -1738,12 +1755,12 @@ function ArenaVideoCube({
     >
       <img
         className="arena-video-cube__background"
-        src={ARENA_ICE_COURT_BACKGROUND}
+        src={backgroundImage}
         alt=""
         aria-hidden="true"
       />
-      <div className="arena-video-cube__plate">
-        <img className="arena-video-cube__cube" src={ARENA_CUBE_IMAGE} alt="" aria-hidden="true" />
+      <div className={`arena-video-cube__plate ${cubeClass}`}>
+        <img className="arena-video-cube__cube" src={cubeImage} alt="" aria-hidden="true" />
         <div
           className="arena-video-cube__screen"
           aria-label="Разделы на табло"
@@ -4100,6 +4117,10 @@ function AmateurDuelsPage({
 }): JSX.Element {
   const navigate = useNavigate();
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiFetch<ProfileData>('/me'),
+  });
   const queryClient = useQueryClient();
   const [duelTab, setDuelTab] = useState<AmateurDuelTab>('game');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
@@ -4290,7 +4311,11 @@ function AmateurDuelsPage({
       title="Дуэли"
       onBack={onBack}
       variant="section-hub"
-      className={duelTab === 'locker' ? 'mode-shell--locker' : ''}
+      className={
+        duelTab === 'locker'
+          ? `mode-shell--locker ${lockerRoomBackgroundClass(profileQuery.data?.competitionLevel)}`
+          : ''
+      }
     >
       <SegmentedTabs
         ariaLabel="Разделы дуэлей"
