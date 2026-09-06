@@ -33,6 +33,7 @@ export interface AchievementSeed {
   rewardCurrency: number;
   rewardStars: number;
   rewardExperience: number;
+  rewardTokens: number;
   sortOrder: number;
 }
 
@@ -50,8 +51,82 @@ const DEFAULT_REWARD_BY_CATEGORY = {
 >;
 
 function reward(category: AchievementCategory) {
-  return DEFAULT_REWARD_BY_CATEGORY[category];
+  return { ...DEFAULT_REWARD_BY_CATEGORY[category], rewardTokens: 0 };
 }
+
+type AchievementReward = Pick<
+  AchievementSeed,
+  'rewardCurrency' | 'rewardStars' | 'rewardExperience' | 'rewardTokens'
+>;
+
+function approvedReward(
+  rewardCurrency: number,
+  rewardStars: number,
+  rewardTokens = 0,
+): AchievementReward {
+  return {
+    rewardCurrency,
+    rewardStars,
+    rewardExperience: rewardStars,
+    rewardTokens,
+  };
+}
+
+const APPROVED_REWARDS: Record<string, AchievementReward> = {
+  'ideal-day': approvedReward(0, 25),
+  'first-goal': approvedReward(0, 1),
+  'first-daily-game': approvedReward(0, 2),
+  'first-training': approvedReward(0, 2),
+  'amateur-ticket': approvedReward(25_000, 250, 5),
+  'pro-ticket': approvedReward(0, 0),
+  'daily-sniper-streak': approvedReward(0, 5),
+  'ice-hand': approvedReward(0, 5),
+  'steady-tempo': approvedReward(0, 5),
+  'third-period-decides': approvedReward(0, 5),
+  'final-push': approvedReward(0, 5),
+  'no-panic': approvedReward(0, 5),
+  'dry-finish': approvedReward(0, 5),
+  'keeping-fit': approvedReward(0, 15),
+  'sniper-week': approvedReward(0, 20),
+  'sniper-month': approvedReward(0, 50),
+  'training-monster': approvedReward(0, 5),
+  'rhythm-control': approvedReward(0, 5),
+  'cold-start': approvedReward(0, 3),
+  'no-warmup-needed': approvedReward(0, 2),
+  'finish-machine': approvedReward(0, 3),
+  underdog: approvedReward(0, 8),
+  'classic-speed': approvedReward(0, 3),
+  'nervous-finish': approvedReward(0, 8),
+  'stable-student': approvedReward(0, 15),
+  'training-before-battle': approvedReward(0, 5),
+  'dangerous-host': approvedReward(0, 5),
+  blowout: approvedReward(0, 3),
+  'thin-edge': approvedReward(0, 3),
+  revenge: approvedReward(0, 5),
+  'hunter-streak': approvedReward(0, 10),
+  'clean-win': approvedReward(0, 5),
+  'dangerous-guest': approvedReward(0, 8),
+  'no-room-for-error': approvedReward(0, 3),
+  wallet: approvedReward(0, 15),
+  'economical-master': approvedReward(0, 25, 1),
+  'regular-season-champion': approvedReward(250, 50, 3),
+  'regular-season-medalist': approvedReward(220, 45, 2),
+  'playoff-semifinal': approvedReward(100, 50, 1),
+  'playoff-final': approvedReward(150, 75, 2),
+  'tournament-cup': approvedReward(1_000, 100, 5),
+  'dark-horse': approvedReward(0, 25),
+  'death-bracket': approvedReward(0, 25),
+  'series-comeback': approvedReward(0, 35),
+  'no-shake': approvedReward(0, 20),
+  'tournament-streak': approvedReward(2_500, 250, 5),
+  'monthly-top-1': approvedReward(1_000, 100, 3),
+};
+
+const REMOVED_ACHIEVEMENT_IDS = new Set([
+  'almost-perfect-training',
+  'handled-pressure',
+  'master-arsenal',
+]);
 
 const ACHIEVEMENT_ARTWORK_VERSION = '20260906-hd1';
 
@@ -59,7 +134,7 @@ function versionArtworkUrl(photoUrl: string): string {
   return `${photoUrl}?v=${ACHIEVEMENT_ARTWORK_VERSION}`;
 }
 
-const ACHIEVEMENT_SEED_DEFINITIONS: AchievementSeed[] = [
+const ACHIEVEMENT_SEED_DEFINITIONS: Array<Omit<AchievementSeed, 'rewardTokens'>> = [
   {
     id: 'ideal-day',
     photoUrl: '/achievements/ideal-day.webp',
@@ -708,6 +783,9 @@ const ACHIEVEMENT_SEED_DEFINITIONS: AchievementSeed[] = [
 export const ACHIEVEMENT_SEEDS: AchievementSeed[] = ACHIEVEMENT_SEED_DEFINITIONS.map(
   (achievement) => ({
     ...achievement,
+    rewardTokens: 0,
+    ...(APPROVED_REWARDS[achievement.id] ?? {}),
+    ...(REMOVED_ACHIEVEMENT_IDS.has(achievement.id) ? { availability: 'hidden' as const } : {}),
     photoUrl: versionArtworkUrl(achievement.photoUrl),
   }),
 );

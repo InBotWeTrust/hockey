@@ -9,11 +9,16 @@ export type BonusGameAccessType = 'free' | 'paid';
 export type BonusGameAttemptStatus = 'active' | 'completed' | 'failed' | 'abandoned';
 export type BonusGameAttemptState = 'idle' | 'period_active' | 'break_active' | 'closed';
 export type BonusPeriodClosedReason = 'quota' | 'timeout' | 'target_reached' | 'attempt_abandoned';
-export type BonusGameEconomyEventKind =
-  | 'unlock_purchase'
-  | 'unlock_refund'
-  | 'first_clear_reward';
+export type BonusGameEconomyEventKind = 'unlock_purchase' | 'unlock_refund' | 'first_clear_reward';
 export type BonusGoaliePattern = Extract<GoaliePatternId, 'linear' | 'sine' | 'dash'>;
+
+export interface BonusAttemptAllowanceDTO {
+  skillCode: BonusSkillCode;
+  dailyLimit: 2;
+  used: number;
+  remaining: number;
+  resetsAt: string;
+}
 
 export interface BonusPeriodRule {
   periodNumber: number;

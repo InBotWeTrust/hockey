@@ -393,6 +393,7 @@ interface AdminAchievementRow {
   reward_currency: number | string;
   reward_stars: number | string;
   reward_experience: number | string;
+  reward_tokens: number | string;
   sort_order: number;
   created_at: Date;
   updated_at: Date;
@@ -552,6 +553,7 @@ const achievementPatchSchema = z
     rewardCurrency: z.number().int().min(0).max(9_000_000_000).optional(),
     rewardStars: z.number().int().min(0).max(9_000_000_000).optional(),
     rewardExperience: z.number().int().min(0).max(9_000_000_000).optional(),
+    rewardTokens: z.number().int().min(0).max(9_000_000_000).optional(),
     sortOrder: z.number().int().min(0).max(1_000_000).optional(),
   })
   .strict()
@@ -567,6 +569,7 @@ const achievementPatchSchema = z
       value.rewardCurrency !== undefined ||
       value.rewardStars !== undefined ||
       value.rewardExperience !== undefined ||
+      value.rewardTokens !== undefined ||
       value.sortOrder !== undefined,
     'no changes',
   );
@@ -1293,6 +1296,7 @@ function mapAdminAchievement(row: AdminAchievementRow) {
     rewardCurrency: Number(row.reward_currency),
     rewardStars: Number(row.reward_stars),
     rewardExperience: Number(row.reward_experience),
+    rewardTokens: Number(row.reward_tokens),
     sortOrder: row.sort_order,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
@@ -2478,6 +2482,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
               a.reward_currency,
               a.reward_stars,
               a.reward_experience,
+              a.reward_tokens,
               a.sort_order,
               a.created_at,
               a.updated_at,
@@ -2528,6 +2533,9 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
     if (body.data.rewardExperience !== undefined) {
       addAssignment(assignments, values, 'reward_experience', body.data.rewardExperience);
     }
+    if (body.data.rewardTokens !== undefined) {
+      addAssignment(assignments, values, 'reward_tokens', body.data.rewardTokens);
+    }
     if (body.data.sortOrder !== undefined) {
       addAssignment(assignments, values, 'sort_order', body.data.sortOrder);
     }
@@ -2539,7 +2547,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
               updated_at = now()
         where id = $${values.length}
       returning id, photo_url, title, description, requirement, category, availability, future_tag,
-                reward_currency, reward_stars, reward_experience, sort_order, created_at,
+                reward_currency, reward_stars, reward_experience, reward_tokens, sort_order, created_at,
                 updated_at,
                 (select count(*)::text from user_achievements where achievement_id = achievements.id)
                   as completed_count,

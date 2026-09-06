@@ -43,11 +43,13 @@ import {
   type BonusGameStatus,
   type BonusSkillCode,
   type BonusPeriodRule,
+  type BonusAttemptAllowanceDTO,
 } from './types.js';
 
 interface LockedUserRow {
   level: number;
   lifetime_goals_total: number;
+  timezone: string;
 }
 
 type BonusShotResult = 'goal' | 'save' | 'miss';
@@ -231,7 +233,7 @@ export async function loadBonusAttemptDto(
 
 async function lockUser(client: PoolClient, userId: string): Promise<LockedUserRow> {
   const { rows } = await client.query<LockedUserRow>(
-    `select level, lifetime_goals_total
+    `select level, lifetime_goals_total, timezone
        from users
       where id = $1
       for update`,
@@ -240,6 +242,92 @@ async function lockUser(client: PoolClient, userId: string): Promise<LockedUserR
   const user = rows[0];
   if (user === undefined) throw new AppError('not_found', 'user not found', 404);
   return user;
+}
+
+const BONUS_DAILY_ATTEMPT_LIMIT = 2 as const;
+
+async function reserveDailyAttemptSlot(
+  client: PoolClient,
+  input: { userId: string; timezone: string; skillCode: BonusSkillCode; now: Date },
+): Promise<{ localDate: string; slot: number }> {
+  const dateResult = await client.query<{ local_date: string }>(
+    `select ($1::timestamptz at time zone $2)::date::text as local_date`,
+    [input.now, input.timezone],
+  );
+  const localDate = dateResult.rows[0]?.local_date;
+  if (localDate === undefined)
+    throw new AppError('internal_error', 'local bonus date missing', 500);
+
+  await client.query('select pg_advisory_xact_lock(hashtext($1), hashtext($2))', [
+    input.userId,
+    `${localDate}:${input.skillCode}`,
+  ]);
+  const slotResult = await client.query<{ slot: number }>(
+    `select candidate.slot
+       from generate_series(1, $4::int) candidate(slot)
+      where not exists (
+        select 1
+          from bonus_game_daily_attempt_slot used
+         where used.user_id = $1
+           and used.local_date = $2::date
+           and used.skill_code = $3
+           and used.slot = candidate.slot
+      )
+      order by candidate.slot
+      limit 1`,
+    [input.userId, localDate, input.skillCode, BONUS_DAILY_ATTEMPT_LIMIT],
+  );
+  const slot = slotResult.rows[0]?.slot;
+  if (slot === undefined) {
+    throw new AppError('bonus_daily_attempt_limit', 'daily bonus attempt limit reached', 409);
+  }
+  return { localDate, slot };
+}
+
+export async function fetchBonusAttemptAllowances(
+  pool: Pool,
+  userId: string,
+  now: Date,
+): Promise<Record<BonusSkillCode, BonusAttemptAllowanceDTO>> {
+  const { rows } = await pool.query<{
+    skill_code: BonusSkillCode;
+    used: number | string;
+    resets_at: Date;
+  }>(
+    `with player as (
+       select timezone,
+              ($2::timestamptz at time zone timezone)::date as local_date,
+              ((date_trunc('day', $2::timestamptz at time zone timezone) + interval '1 day')
+                at time zone timezone) as resets_at
+         from users
+        where id = $1
+     ), skills(skill_code) as (values ('speed'::text), ('accuracy'::text))
+     select skills.skill_code,
+            count(slot.attempt_id)::int as used,
+            player.resets_at
+       from player
+       cross join skills
+       left join bonus_game_daily_attempt_slot slot
+         on slot.user_id = $1
+        and slot.local_date = player.local_date
+        and slot.skill_code = skills.skill_code
+      group by skills.skill_code, player.resets_at`,
+    [userId, now],
+  );
+  const fallbackReset = new Date(now.getTime() + 86_400_000).toISOString();
+  const result = {} as Record<BonusSkillCode, BonusAttemptAllowanceDTO>;
+  for (const skillCode of ['speed', 'accuracy'] as const) {
+    const row = rows.find((candidate) => candidate.skill_code === skillCode);
+    const used = Math.min(BONUS_DAILY_ATTEMPT_LIMIT, Number(row?.used ?? 0));
+    result[skillCode] = {
+      skillCode,
+      dailyLimit: BONUS_DAILY_ATTEMPT_LIMIT,
+      used,
+      remaining: BONUS_DAILY_ATTEMPT_LIMIT - used,
+      resetsAt: row?.resets_at.toISOString() ?? fallbackReset,
+    };
+  }
+  return result;
 }
 
 async function fetchActiveAttempt(
@@ -462,6 +550,12 @@ export async function startOrResumeBonusAttempt(
         experience: Number(game.reward_experience),
       };
       const attemptId = randomUUID();
+      const dailySlot = await reserveDailyAttemptSlot(client, {
+        userId: input.userId,
+        timezone: user.timezone,
+        skillCode: game.skill_code,
+        now: input.now,
+      });
       const attemptSeed = deriveBonusAttemptSeed(
         attemptId,
         input.userId,
@@ -499,6 +593,12 @@ export async function startOrResumeBonusAttempt(
             : null,
           input.now,
         ],
+      );
+      await client.query(
+        `insert into bonus_game_daily_attempt_slot
+           (user_id, local_date, skill_code, slot, attempt_id, created_at)
+         values ($1, $2::date, $3, $4, $5, $6)`,
+        [input.userId, dailySlot.localDate, game.skill_code, dailySlot.slot, attemptId, input.now],
       );
       const attempt = await loadBonusAttemptDto(client, rows[0]!);
       await client.query('commit');
@@ -836,13 +936,9 @@ function assertBonusShotTimeFresh(
   const flightMs = (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs;
   // Period expiry remains wall-clock based, while the deterministic scene uses
   // the same one-second result pause as the daily game after every accepted shot.
-  const expectedSceneTime = Math.max(
-    0,
-    elapsedMs - previousShots * BONUS_SHOT_RESULT_PAUSE_MS,
-  );
+  const expectedSceneTime = Math.max(0, elapsedMs - previousShots * BONUS_SHOT_RESULT_PAUSE_MS);
   const expectedShooterTime = expectedSceneTime - previousShots * flightMs;
-  const accumulatedTimerDrift =
-    previousShots * BONUS_SHOT_TIMER_DRIFT_ALLOWANCE_PER_SHOT_MS;
+  const accumulatedTimerDrift = previousShots * BONUS_SHOT_TIMER_DRIFT_ALLOWANCE_PER_SHOT_MS;
   const isNearAuthoritativeClock = (actual: number, expected: number): boolean =>
     actual >= expected - BONUS_SHOT_STALE_TOLERANCE_MS - accumulatedTimerDrift &&
     actual <= expected + BONUS_SHOT_FUTURE_TOLERANCE_MS;

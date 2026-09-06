@@ -125,6 +125,15 @@ export interface BonusGameCard {
 export interface BonusCatalogResponse {
   games: BonusGameCard[];
   active_attempt: BonusGameCardAttempt | null;
+  attempt_allowances?: Record<BonusSkillCode, BonusAttemptAllowance>;
+}
+
+export interface BonusAttemptAllowance {
+  skill_code: BonusSkillCode;
+  daily_limit: number;
+  used: number;
+  remaining: number;
+  resets_at: string;
 }
 
 export interface BonusAttemptRules {
@@ -266,7 +275,8 @@ function normalizeCatalog(response: BonusCatalogResponse): BonusCatalogResponse 
       ...game,
       skill_code: game.skill_code ?? 'accuracy',
       qualification_rules:
-        game.qualification_rules ?? legacyQualificationRules({
+        game.qualification_rules ??
+        legacyQualificationRules({
           target_goals: game.target_goals,
           period_rules: game.period_rules,
         }),

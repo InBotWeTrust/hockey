@@ -14,12 +14,14 @@ interface ClaimableAchievementRow {
   reward_currency: number | string;
   reward_stars: number | string;
   reward_experience: number | string;
+  reward_tokens: number | string;
 }
 
 interface BalanceRow {
   currency_balance: number | string;
   star_balance: number | string;
   experience: number | string;
+  token_balance: number | string;
 }
 
 export const achievementRoutes: FastifyPluginAsync = async (app) => {
@@ -50,7 +52,7 @@ export const achievementRoutes: FastifyPluginAsync = async (app) => {
         if (lockedUser.rowCount === 0) throw new AppError('not_found', 'user not found', 404);
         const { rows } = await client.query<ClaimableAchievementRow>(
           `select ua.achievement_id, ua.claimed_at, a.title,
-                a.reward_currency, a.reward_stars, a.reward_experience
+                a.reward_currency, a.reward_stars, a.reward_experience, a.reward_tokens
            from user_achievements ua
            join achievements a on a.id = ua.achievement_id
           where ua.user_id = $1 and ua.achievement_id = $2
@@ -88,6 +90,28 @@ export const achievementRoutes: FastifyPluginAsync = async (app) => {
         const account = accountResult.rows[0];
         if (!account) throw new AppError('server_error', 'currency account missing', 500);
         await client.query(
+          `insert into user_reward_token_account (user_id) values ($1)
+           on conflict do nothing`,
+          [req.user.id],
+        );
+        const tokenAccountResult = await client.query<{ balance: number | string }>(
+          `update user_reward_token_account
+              set balance = balance + $2, updated_at = now()
+            where user_id = $1
+            returning balance`,
+          [req.user.id, row.reward_tokens],
+        );
+        const tokenAccount = tokenAccountResult.rows[0];
+        if (!tokenAccount) throw new AppError('server_error', 'reward token account missing', 500);
+        if (Number(row.reward_tokens) > 0) {
+          await client.query(
+            `insert into achievement_token_ledger
+               (user_id, achievement_id, amount, balance_after)
+             values ($1, $2, $3, $4)`,
+            [req.user.id, row.achievement_id, row.reward_tokens, tokenAccount.balance],
+          );
+        }
+        await client.query(
           `insert into currency_ledger
              (user_id, reason, available_delta, reserved_delta, balance_after, reserved_after, metadata)
            values ($1, 'achievement_reward', $2, 0, $3, $4, $5)`,
@@ -101,6 +125,7 @@ export const achievementRoutes: FastifyPluginAsync = async (app) => {
               title: `Награда за достижение «${row.title}»`,
               stars: Number(row.reward_stars),
               experience: Number(row.reward_experience),
+              tokens: Number(row.reward_tokens),
             }),
           ],
         );
@@ -119,9 +144,11 @@ export const achievementRoutes: FastifyPluginAsync = async (app) => {
         const balances = await app.pg.query<BalanceRow>(
           `select coalesce(uca.balance, 0)::int as currency_balance,
                 u.xp::int as star_balance,
-                u.experience::int as experience
+                u.experience::int as experience,
+                coalesce(urta.balance, 0)::int as token_balance
            from users u
            left join user_currency_account uca on uca.user_id = u.id
+           left join user_reward_token_account urta on urta.user_id = u.id
           where u.id = $1`,
           [req.user.id],
         );
@@ -133,11 +160,13 @@ export const achievementRoutes: FastifyPluginAsync = async (app) => {
             currency: Number(row.reward_currency),
             stars: Number(row.reward_stars),
             experience: Number(row.reward_experience),
+            tokens: Number(row.reward_tokens),
           },
           balances: {
             currencyBalance: Number(balance?.currency_balance ?? 0),
             starBalance: Number(balance?.star_balance ?? 0),
             experienceBalance: Number(balance?.experience ?? 0),
+            tokenBalance: Number(balance?.token_balance ?? 0),
           },
           unclaimedCount: achievements.filter(
             (achievement) => achievement.status === 'completed_unclaimed',
