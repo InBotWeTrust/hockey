@@ -4031,11 +4031,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
 	           join users ou on ou.id = m.opponent_user_id
 	          where (m.challenger_user_id = $1 or m.opponent_user_id = $1)
 	            and m.status = 'settled'
-	            and (
-	              m.source <> 'tournament'
-	              or coalesce((select (value #>> '{}')::boolean from game_settings
-	                            where key = 'tournaments.enabled'), false)
-	            )
+	            and m.source <> 'tournament'
 	            ${seasonFilterSql}
 	          order by coalesce(m.settled_at, m.created_at) desc, m.created_at desc
 	          limit ${limitParam}
@@ -4054,11 +4050,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
 	           from amateur_duel_match m
 	           join amateur_duel_participant p on p.match_id = m.id and p.user_id = $1
 	          where m.status = 'settled'
-	            and (
-	              m.source <> 'tournament'
-	              or coalesce((select (value #>> '{}')::boolean from game_settings
-	                            where key = 'tournaments.enabled'), false)
-	            )
+	            and m.source <> 'tournament'
 	            ${seasonFilterSql}`,
         statsParams,
       );
@@ -4069,11 +4061,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
 	               from amateur_duel_match m
 	              where (m.challenger_user_id = $1 or m.opponent_user_id = $1)
 	                and m.status = 'settled'
-	                and (
-	                  m.source <> 'tournament'
-	                  or coalesce((select (value #>> '{}')::boolean from game_settings
-	                                where key = 'tournaments.enabled'), false)
-	                )
+	                and m.source <> 'tournament'
 	             union
 	             select r.season_key
 	               from amateur_duel_rating r
@@ -4141,6 +4129,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       join users opponent_user on opponent_user.id = opponent.user_id
       where (m.challenger_user_id = $1 or m.opponent_user_id = $1)
         and m.status = 'settled'
+        and m.source <> 'tournament'
         and m.settled_at is not null
         and m.settled_reason = 'completed'
         and me.state = 'completed'

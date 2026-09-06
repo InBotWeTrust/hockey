@@ -1546,6 +1546,55 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(history.json().stats).toEqual({ duels: 1, wins: 1, points: 3 });
   });
 
+  it('keeps tournament duels out of ordinary duel history while tournaments are enabled', async () => {
+    const templateId = await createTemplate();
+
+    async function createSettledMatch(source: 'challenge' | 'tournament') {
+      const created = await challenge(templateId);
+      const matchId = String(created.json().match.id);
+      await pool.query(
+        `update amateur_duel_match
+            set source = $2, status = 'settled', season_key = '2026-01', settled_at = now(),
+                settled_reason = 'completed', winner_user_id = challenger_user_id,
+                outcome = 'challenger_win'
+          where id = $1`,
+        [matchId, source],
+      );
+      await pool.query(
+        `update amateur_duel_participant
+            set state = 'completed', shots_taken = 5,
+                goals = case when user_id = $2 then 3 else 1 end,
+                result_points = case when user_id = $2 then 3 else 0 end
+          where match_id = $1`,
+        [matchId, userA],
+      );
+      return matchId;
+    }
+
+    const ordinaryMatchId = await createSettledMatch('challenge');
+    const tournamentMatchId = await createSettledMatch('tournament');
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('tournaments.enabled', 'true'::jsonb, 'Турниры включены', 'test')
+       on conflict (key) do update set value = excluded.value`,
+    );
+
+    const history = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/history?season_key=2026-01',
+      headers: auth(tokenA),
+    });
+
+    expect(history.statusCode).toBe(200);
+    expect(history.json().matches.map((match: { id: string }) => match.id)).toEqual([
+      ordinaryMatchId,
+    ]);
+    expect(history.json().matches).not.toContainEqual(
+      expect.objectContaining({ id: tournamentMatchId }),
+    );
+    expect(history.json().stats).toEqual({ duels: 1, wins: 1, points: 3 });
+  });
+
   it('returns rating visibility and available Moscow seasons', async () => {
     await pool.query(
       `insert into amateur_duel_rating
@@ -1663,11 +1712,21 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       opponentState: 'completed',
       outcome: 'challenger_win',
     });
+    const tournamentId = await insertHistoryMatch({
+      settledAt: '2026-05-01T03:00:00.000Z',
+      settledReason: 'completed',
+      challengerState: 'completed',
+      opponentState: 'completed',
+      outcome: 'challenger_win',
+    });
     await pool.query(
-      `update amateur_duel_match
-          set source = 'tournament', home_user_id = $2, venue_policy = 'home_selected'
-        where id = $1`,
-      [includedId, userA],
+      `insert into game_settings (key, value, label, description)
+       values ('tournaments.enabled', 'true'::jsonb, 'Турниры включены', 'test')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    await pool.query(
+      `update amateur_duel_match set source = 'tournament' where id = $1`,
+      [tournamentId],
     );
     await insertHistoryMatch({
       settledAt: '2026-05-02T12:00:00.000Z',
@@ -1704,7 +1763,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(response.json().days).toEqual([
       expect.objectContaining({
         day: 30,
-        matches: [expect.objectContaining({ id: includedId, result: 'win', venue_role: 'home' })],
+        matches: [
+          expect.objectContaining({ id: includedId, result: 'win', venue_role: 'neutral' }),
+        ],
       }),
     ]);
   });
