@@ -16,6 +16,7 @@
     "access-code:create": "tsx src/auth/dev-access-code-cli.ts",
     "playoff:schedule-backfill": "tsx src/tournament/playoffScheduleBackfillCli.ts",
     "tournament:lifecycle-audit": "tsx src/tournament/automaticLifecycleAuditCli.ts",
+    "achievement:tournament-backfill": "tsx src/achievements/tournamentBackfillCli.ts",
     "push:worker": "tsx src/push/worker-cli.ts"
   },
   "dependencies": {
