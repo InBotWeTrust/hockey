@@ -936,6 +936,69 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(shot.statusCode).toBe(200);
   });
 
+  it.each([
+    [1, 200, false],
+    [0, 409, true],
+    [-1, 409, true],
+  ] as const)(
+    'ordinary accepted segment with tournament starting in %sms returns shot %s and DTO blocked=%s',
+    async (startsInMs, expectedStatus, blocked) => {
+      const now = new Date();
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(now);
+      try {
+        const matchId = (
+          await challenge(
+            await createTemplate({
+              periodDurationMs: 2 * 60 * 60_000,
+              periodRules: [
+                { periodNumber: 1, mode: 'quota', shotsLimit: 10, durationMs: 2 * 60 * 60_000 },
+              ],
+            }),
+          )
+        ).json().match.id;
+        expect((await acceptReadyAndStart(matchId)).statusCode).toBe(200);
+        // A legacy accepted segment is still live when an administrator schedules
+        // tournament play over it. Its original acceptance precedes the prelock.
+        await pool.query(
+          'update amateur_duel_participant set period_started_at = $3 where match_id = $1 and user_id = $2',
+          [matchId, userA, new Date(now.getTime() - 61 * 60_000 - 10_000)],
+        );
+        await scheduleTournamentLock(userA, startsInMs);
+        const state = await app.inject({
+          method: 'GET',
+          url: `/duel/amateur/matches/${matchId}`,
+          headers: auth(tokenA),
+        });
+        const shot = await app.inject({
+          method: 'POST',
+          url: `/duel/amateur/matches/${matchId}/shot`,
+          headers: auth(tokenA),
+          payload: {
+            shot_index: 1,
+            input: { tapTime: 61 * 60_000 + 10_000 },
+            claimed_result: 'goal',
+          },
+        });
+        expect(
+          { status: shot.statusCode, blocked: state.json().match.gameplay_lock?.blocked ?? false },
+          shot.json().error?.message,
+        ).toEqual({ status: expectedStatus, blocked });
+        expect(state.json().match.duel_lock).toEqual(state.json().match.gameplay_lock);
+        expect(
+          (
+            await pool.query(
+              'select count(*)::int as total from shot_session where amateur_duel_match_id = $1',
+              [matchId],
+            )
+          ).rows[0].total,
+        ).toBe(blocked ? 0 : 1);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it('does not let a preserved scheduled segment bypass a simultaneous active Classic game', async () => {
     const matchId = (await challenge(await createTemplate())).json().match.id;
     expect((await acceptReadyAndStart(matchId)).statusCode).toBe(200);

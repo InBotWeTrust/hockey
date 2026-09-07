@@ -100,16 +100,20 @@ async function getNearestScheduledTournamentBlocks(
          select participant.user_id, fixture.scheduled_starts_at as starts_at
            from tournament_fixture fixture
            join tournament tournament on tournament.id = fixture.tournament_id
+           left join tournament_round round on round.id = fixture.round_id
            join tournament_participant participant
              on participant.id in (fixture.home_participant_id, fixture.away_participant_id)
             and participant.user_id = any($1::uuid[])
             and participant.state = 'approved'
-          where tournament.status = 'regular'
+          where (tournament.status = 'regular'
+                 or (tournament.status = 'paused' and coalesce(round.stage, 'regular') = 'regular'))
             and tournament.regular_source = 'head_to_head'
             and fixture.scheduled_starts_at is not null
             and fixture.status in ('scheduled', 'open', 'active', 'paused')
          union all
-         select participant.user_id, game_day.first_game_starts_at as starts_at
+         select participant.user_id,
+                least(coalesce(game_day.rescheduled_starts_at, game_day.first_game_starts_at),
+                      attempt.scheduled_starts_at) as starts_at
            from tournament_fixture_attempt attempt
            join tournament_round_game_day game_day on game_day.id = attempt.round_game_day_id
            join tournament_fixture fixture on fixture.id = attempt.fixture_id
@@ -119,7 +123,7 @@ async function getNearestScheduledTournamentBlocks(
             and participant.user_id = any($1::uuid[])
             and participant.state = 'approved'
            left join tournament_playoff_series series on series.id = fixture.series_id
-          where tournament.status = 'playoff'
+          where tournament.status in ('playoff', 'paused')
             and game_day.status in ('scheduled', 'open')
             and fixture.status in ('conditional', 'scheduled', 'open', 'active', 'paused')
             and attempt.status in (
@@ -157,7 +161,7 @@ async function getActiveClassicTournamentUsers(
         where participant.user_id = any($1::uuid[])
           and participant.state = 'approved'
           and tournament.regular_source = 'classic'
-          and tournament.status = 'regular'
+          and tournament.status in ('regular', 'paused')
           and matchday.status <> 'cancelled'
           and session.state not in ('closed', 'expired')
           and exists(

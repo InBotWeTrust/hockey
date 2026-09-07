@@ -7,13 +7,16 @@ import { applyMigrations } from '../../src/db/migrations.js';
 import {
   GAMEPLAY_RECOVERY_MS,
   assertGameplayActionAllowed,
+  assertDailyShotGameplayAllowed,
   assertSafeSegmentStart,
   getGameplayLockState,
   getNearestScheduledTournamentBlock,
   getTournamentGameplayLockStates,
   lockUserGameplay,
+  toGameplayLockDto,
   type GameplayAction,
 } from '../../src/duel/gameplayLocks.js';
+import { rescheduleTournamentFixture } from '../../src/tournament/service.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -230,7 +233,7 @@ describe.skipIf(!hasIntegrationEnv)('scheduled tournament gameplay locks', () =>
   });
 
   async function createTournamentParticipants(input: {
-    status: 'regular' | 'playoff';
+    status: 'regular' | 'playoff' | 'paused';
     source: 'head_to_head' | 'classic';
   }): Promise<{ tournamentId: string; homeId: string; awayId: string }> {
     fixtureSequence += 1;
@@ -398,6 +401,123 @@ describe.skipIf(!hasIntegrationEnv)('scheduled tournament gameplay locks', () =>
     });
   });
 
+  it.each(['2026-09-08T16:00:00+03:00', '2026-09-08T20:00:00+03:00'])(
+    'uses the effective rescheduled playoff start %s for locks, safe starts and DTOs',
+    async (rescheduledStart) => {
+      const block = await createPlayoffBlock(at('2026-09-08T18:00:00+03:00'));
+      await pool.query("update tournament_fixture set status = 'scheduled' where id = $1", [
+        block.fixtureId,
+      ]);
+      await pool.query("update tournament_fixture_attempt set status = 'pending' where id = $1", [
+        block.attemptId,
+      ]);
+      const tournament = await pool.query<{ tournament_id: string }>(
+        'select tournament_id from tournament_fixture where id = $1',
+        [block.fixtureId],
+      );
+      const startsAt = at(rescheduledStart);
+      await rescheduleTournamentFixture(pool, {
+        tournamentId: tournament.rows[0]!.tournament_id,
+        fixtureId: block.fixtureId,
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 60 * 60_000),
+        reason: 'Gameplay lock reschedule regression',
+        adminUserId: userId,
+      });
+      const client = pool as unknown as PoolClient;
+      const beforePrelock = new Date(startsAt.getTime() - 61 * 60_000);
+      await expect(
+        getNearestScheduledTournamentBlock(client, userId, beforePrelock),
+      ).resolves.toMatchObject({ blocked: false, tournamentStartsAt: startsAt });
+      const state = await getNearestScheduledTournamentBlock(
+        client,
+        userId,
+        new Date(startsAt.getTime() - 60 * 60_000),
+      );
+      expect(toGameplayLockDto(state)).toEqual({
+        blocked: true,
+        reason: 'scheduled_tournament',
+        ends_at: null,
+        tournament_starts_at: startsAt.toISOString(),
+      });
+      const batched = await getTournamentGameplayLockStates(
+        client,
+        [userId, opponentId],
+        beforePrelock,
+      );
+      expect(batched.get(opponentId)).toMatchObject({
+        blocked: false,
+        tournamentStartsAt: startsAt,
+      });
+      await expect(
+        assertSafeSegmentStart(client, {
+          userId,
+          now: new Date(startsAt.getTime() - 81 * 60_000),
+          maxSegmentDurationMs: 20 * 60_000,
+        }),
+      ).resolves.toBeUndefined();
+      await expect(
+        assertSafeSegmentStart(client, {
+          userId,
+          now: new Date(startsAt.getTime() - 80 * 60_000),
+          maxSegmentDurationMs: 20 * 60_000,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      await expect(
+        assertDailyShotGameplayAllowed(client, userId, new Date(startsAt.getTime() - 1)),
+      ).resolves.toBeUndefined();
+      await expect(assertDailyShotGameplayAllowed(client, userId, startsAt)).rejects.toMatchObject({
+        statusCode: 409,
+      });
+    },
+  );
+
+  it.each(['regular', 'playoff'] as const)(
+    'keeps a paused %s fixture locked only until its unfinished game completes',
+    async (stage) => {
+      const startsAt = at('2026-09-08T18:00:00+03:00');
+      const fixture =
+        stage === 'regular'
+          ? await createRegularFixture(startsAt)
+          : await createPlayoffBlock(startsAt);
+      await pool.query(
+        `update tournament set status = 'paused'
+        where id = (select tournament_id from tournament_fixture where id = $1)`,
+        [fixture.fixtureId],
+      );
+      const client = pool as unknown as PoolClient;
+      const now = at('2026-09-08T18:05:00+03:00');
+      await expect(getNearestScheduledTournamentBlock(client, userId, now)).resolves.toMatchObject({
+        blocked: true,
+        tournamentStartsAt: startsAt,
+      });
+      await pool.query("update tournament_fixture set status = 'settled' where id = $1", [
+        fixture.fixtureId,
+      ]);
+      await expect(getNearestScheduledTournamentBlock(client, userId, now)).resolves.toEqual({
+        blocked: false,
+        reason: null,
+        endsAt: null,
+      });
+    },
+  );
+
+  it('keeps an earlier unfinished attempt locked when its game day is moved later', async () => {
+    const startsAt = at('2026-09-08T18:00:00+03:00');
+    const block = await createPlayoffBlock(startsAt);
+    await pool.query(
+      'update tournament_round_game_day set rescheduled_starts_at = $2 where id = $1',
+      [block.gameDayId, at('2026-09-08T20:00:00+03:00')],
+    );
+    await expect(
+      getNearestScheduledTournamentBlock(
+        pool as unknown as PoolClient,
+        userId,
+        at('2026-09-08T18:05:00+03:00'),
+      ),
+    ).resolves.toMatchObject({ blocked: true, tournamentStartsAt: startsAt });
+  });
+
   it('unlocks immediately after a regular fixture settles early', async () => {
     const fixture = await createRegularFixture(at('2026-09-08T18:00:00+03:00'));
     const now = at('2026-09-08T17:15:00+03:00');
@@ -455,24 +575,31 @@ describe.skipIf(!hasIntegrationEnv)('scheduled tournament gameplay locks', () =>
     });
   });
 
-  it('ignores playoff blocks whose series or whole game day completed', async () => {
-    const completedSeries = await createPlayoffBlock(at('2026-09-08T18:00:00+03:00'));
-    const completedDay = await createPlayoffBlock(at('2026-09-08T18:30:00+03:00'));
-    await pool.query(`update tournament_playoff_series set status = 'completed' where id = $1`, [
-      completedSeries.seriesId,
-    ]);
-    await pool.query(`update tournament_round_game_day set status = 'closed' where id = $1`, [
-      completedDay.gameDayId,
-    ]);
+  it.each(['playoff', 'paused'])(
+    'ignores %s blocks whose series or whole game day completed',
+    async (status) => {
+      const completedSeries = await createPlayoffBlock(at('2026-09-08T18:00:00+03:00'));
+      const completedDay = await createPlayoffBlock(at('2026-09-08T18:30:00+03:00'));
+      await pool.query(
+        'update tournament set status = $1 where id in (select tournament_id from tournament_fixture where id = any($2::uuid[]))',
+        [status, [completedSeries.fixtureId, completedDay.fixtureId]],
+      );
+      await pool.query(`update tournament_playoff_series set status = 'completed' where id = $1`, [
+        completedSeries.seriesId,
+      ]);
+      await pool.query(`update tournament_round_game_day set status = 'closed' where id = $1`, [
+        completedDay.gameDayId,
+      ]);
 
-    await expect(
-      getNearestScheduledTournamentBlock(
-        pool as unknown as PoolClient,
-        userId,
-        at('2026-09-08T17:30:00+03:00'),
-      ),
-    ).resolves.toEqual({ blocked: false, reason: null, endsAt: null });
-  });
+      await expect(
+        getNearestScheduledTournamentBlock(
+          pool as unknown as PoolClient,
+          userId,
+          at('2026-09-08T17:30:00+03:00'),
+        ),
+      ).resolves.toEqual({ blocked: false, reason: null, endsAt: null });
+    },
+  );
 
   it('rejects a daily segment that can reach the T-60 lock boundary', async () => {
     await createPlayoffBlock(at('2026-09-08T18:00:00+03:00'));
@@ -493,94 +620,105 @@ describe.skipIf(!hasIntegrationEnv)('scheduled tournament gameplay locks', () =>
     ).rejects.toMatchObject({ code: 'conflict', statusCode: 409 });
   });
 
-  it('activates the Classic lock on the first accepted shot until the session is terminal', async () => {
-    const participants = await createTournamentParticipants({
-      status: 'regular',
-      source: 'classic',
-    });
-    const matchday = await pool.query<{ id: string }>(
-      `insert into tournament_matchday
+  it.each(['regular', 'paused'] as const)(
+    'activates the %s Classic lock on the first accepted shot until the session is terminal',
+    async (status) => {
+      const participants = await createTournamentParticipants({
+        status,
+        source: 'classic',
+      });
+      const matchday = await pool.query<{ id: string }>(
+        `insert into tournament_matchday
          (tournament_id, number, local_date, starts_at, ends_at, status)
        values ($1, 1, '2026-09-08', $2, $3, 'open') returning id`,
-      [participants.tournamentId, at('2026-09-08T18:00:00+03:00'), at('2026-09-08T19:00:00+03:00')],
-    );
-    const session = await pool.query<{ id: string }>(
-      `insert into tournament_classic_session
+        [
+          participants.tournamentId,
+          at('2026-09-08T18:00:00+03:00'),
+          at('2026-09-08T19:00:00+03:00'),
+        ],
+      );
+      const session = await pool.query<{ id: string }>(
+        `insert into tournament_classic_session
          (tournament_id, participant_id, matchday_id, tournament_day, state,
           current_period, rules_snapshot, game_core_version, session_seed, closes_at)
        values ($1, $2, $3, 1, 'period_active', 1, '{}'::jsonb, 1, 'classic-seed', $4)
        returning id`,
-      [
-        participants.tournamentId,
-        participants.homeId,
-        matchday.rows[0]!.id,
-        at('2026-09-08T19:00:00+03:00'),
-      ],
-    );
-    const input = {
-      userId,
-      action: 'start_training' as const,
-      now: at('2026-09-08T20:30:00+03:00'),
-    };
+        [
+          participants.tournamentId,
+          participants.homeId,
+          matchday.rows[0]!.id,
+          at('2026-09-08T19:00:00+03:00'),
+        ],
+      );
+      const input = {
+        userId,
+        action: 'start_training' as const,
+        now: at('2026-09-08T20:30:00+03:00'),
+      };
 
-    await expect(getGameplayLockState(pool as unknown as PoolClient, input)).resolves.toEqual({
-      blocked: false,
-      reason: null,
-      endsAt: null,
-    });
-
-    await pool.query(
-      `insert into shot_session
-         (user_id, mode, tournament_classic_session_id, period_number, shot_index,
-          seed, input_payload, server_result, game_core_version, created_at)
-       values ($1, 'tournament_classic', $2, 1, 1, 'shot-seed', '{}'::jsonb, 'miss', 1, $3)`,
-      [userId, session.rows[0]!.id, at('2026-09-08T18:01:00+03:00')],
-    );
-    await pool.query(
-      `update tournament_classic_session
-          set state = 'break_active', period_started_at = null, break_started_at = $2
-        where id = $1`,
-      [session.rows[0]!.id, at('2026-09-08T18:02:00+03:00')],
-    );
-
-    await expect(getGameplayLockState(pool as unknown as PoolClient, input)).resolves.toEqual({
-      blocked: true,
-      reason: 'active_classic',
-      endsAt: null,
-    });
-    const overlapping = await createRegularFixture(at('2026-09-08T21:00:00+03:00'));
-    await expect(getGameplayLockState(pool as unknown as PoolClient, input)).resolves.toEqual({
-      blocked: true,
-      reason: 'active_classic',
-      endsAt: null,
-    });
-    const batched = await getTournamentGameplayLockStates(
-      pool as unknown as PoolClient,
-      [userId, opponentId],
-      input.now,
-    );
-    expect(batched.get(userId)).toEqual({ blocked: true, reason: 'active_classic', endsAt: null });
-    expect(batched.get(opponentId)).toMatchObject({
-      blocked: true,
-      reason: 'scheduled_tournament',
-    });
-
-    await pool.query("update tournament_fixture set status = 'settled' where id = $1", [
-      overlapping.fixtureId,
-    ]);
-
-    for (const terminalState of ['closed', 'expired'] as const) {
-      await pool.query(`update tournament_classic_session set state = $2 where id = $1`, [
-        session.rows[0]!.id,
-        terminalState,
-      ]);
       await expect(getGameplayLockState(pool as unknown as PoolClient, input)).resolves.toEqual({
         blocked: false,
         reason: null,
         endsAt: null,
       });
-    }
-  });
+
+      await pool.query(
+        `insert into shot_session
+         (user_id, mode, tournament_classic_session_id, period_number, shot_index,
+          seed, input_payload, server_result, game_core_version, created_at)
+       values ($1, 'tournament_classic', $2, 1, 1, 'shot-seed', '{}'::jsonb, 'miss', 1, $3)`,
+        [userId, session.rows[0]!.id, at('2026-09-08T18:01:00+03:00')],
+      );
+      await pool.query(
+        `update tournament_classic_session
+          set state = 'break_active', period_started_at = null, break_started_at = $2
+        where id = $1`,
+        [session.rows[0]!.id, at('2026-09-08T18:02:00+03:00')],
+      );
+
+      await expect(getGameplayLockState(pool as unknown as PoolClient, input)).resolves.toEqual({
+        blocked: true,
+        reason: 'active_classic',
+        endsAt: null,
+      });
+      const overlapping = await createRegularFixture(at('2026-09-08T21:00:00+03:00'));
+      await expect(getGameplayLockState(pool as unknown as PoolClient, input)).resolves.toEqual({
+        blocked: true,
+        reason: 'active_classic',
+        endsAt: null,
+      });
+      const batched = await getTournamentGameplayLockStates(
+        pool as unknown as PoolClient,
+        [userId, opponentId],
+        input.now,
+      );
+      expect(batched.get(userId)).toEqual({
+        blocked: true,
+        reason: 'active_classic',
+        endsAt: null,
+      });
+      expect(batched.get(opponentId)).toMatchObject({
+        blocked: true,
+        reason: 'scheduled_tournament',
+      });
+
+      await pool.query("update tournament_fixture set status = 'settled' where id = $1", [
+        overlapping.fixtureId,
+      ]);
+
+      for (const terminalState of ['closed', 'expired'] as const) {
+        await pool.query(`update tournament_classic_session set state = $2 where id = $1`, [
+          session.rows[0]!.id,
+          terminalState,
+        ]);
+        await expect(getGameplayLockState(pool as unknown as PoolClient, input)).resolves.toEqual({
+          blocked: false,
+          reason: null,
+          endsAt: null,
+        });
+      }
+    },
+  );
 });
 
 describe('gameplay serialization', () => {

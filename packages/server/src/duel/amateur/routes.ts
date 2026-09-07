@@ -3281,6 +3281,7 @@ async function buildMatchDto(
   if (
     duelLock?.reason === 'scheduled_tournament' &&
     duelLock.tournament_starts_at !== null &&
+    now.getTime() < Date.parse(duelLock.tournament_starts_at) &&
     me.state === 'period_active' &&
     me.period_started_at !== null &&
     me.period_started_at.getTime() <
@@ -5461,6 +5462,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           const acceptedBeforePrelock =
             lock.reason === 'scheduled_tournament' &&
             lock.tournamentStartsAt != null &&
+            now.getTime() < lock.tournamentStartsAt.getTime() &&
             participant.period_started_at.getTime() <
               lock.tournamentStartsAt.getTime() - GAMEPLAY_RECOVERY_MS &&
             !(await getActiveClassicTournamentLock(client, req.user.id)).blocked;
