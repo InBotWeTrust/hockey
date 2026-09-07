@@ -30,7 +30,6 @@ import { scheduleDailyCompletionSideEffect } from './completionSideEffects.js';
 import {
   assertGameplayActionAllowed,
   assertSafeSegmentStart,
-  assertTournamentGameplayAllowed,
   lockUserGameplay,
 } from '../gameplayLocks.js';
 
@@ -587,8 +586,8 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
 
   app.post('/duel/daily/period/start', { preHandler: [app.authenticate] }, async (req) => {
     const state = await withTransaction(app, async (client) => {
-      const now = new Date();
       await lockUserGameplay(client, req.user.id);
+      const now = new Date();
       const settings = await getGameSettings(client);
       await assertGameplayActionAllowed(client, {
         userId: req.user.id,
@@ -654,10 +653,9 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
     let closedAchievementEvent: DailyClosedAchievementEvent | null = null;
 
     const response = await withTransaction(app, async (client): Promise<ShotSubmitResponse> => {
-      const now = new Date();
       await lockUserGameplay(client, req.user.id);
+      const now = new Date();
       const settings = await getGameSettings(client);
-      await assertTournamentGameplayAllowed(client, req.user.id, now);
       const reconciled = await reconcileDayPool(client, req.user.id, now, settings.daily);
       const { pool, localToday } = reconciled;
       if (pool === null) {

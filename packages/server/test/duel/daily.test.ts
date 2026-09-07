@@ -297,14 +297,14 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(response.statusCode).toBe(409);
   });
 
-  it('rejects daily shots once the scheduled tournament lock begins', async () => {
+  it('allows an accepted daily period to continue after the scheduled lock begins', async () => {
     const started = await startPeriod();
     expect(started.statusCode).toBe(200);
     await createPlayoffDayBlock(new Date(Date.now() + 20 * 60_000));
 
     const response = await submitShot(1);
 
-    expect(response.statusCode).toBe(409);
+    expect(response.statusCode).toBe(200);
   });
 
   it('returns authoritative state without waiting for pending achievement recovery', async () => {

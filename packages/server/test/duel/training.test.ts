@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
@@ -9,6 +9,7 @@ import { applyMigrations } from '../../src/db/migrations.js';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { waitForDailyCompletionSideEffects } from '../../src/duel/daily/completionSideEffects.js';
+import { lockUserGameplay } from '../../src/duel/gameplayLocks.js';
 import {
   createTestPool,
   createTestRedis,
@@ -249,6 +250,23 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     };
   }
 
+  async function waitForAdvisoryWaiter(): Promise<void> {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const { rows } = await pool.query<{ waiting: boolean }>(
+        `select exists(
+           select 1
+             from pg_locks
+            where locktype = 'advisory'
+              and not granted
+              and database = (select oid from pg_database where datname = current_database())
+         ) as waiting`,
+      );
+      if (rows[0]?.waiting === true) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error('timed out waiting for gameplay advisory lock contention');
+  }
+
   it('initial state is idle', async () => {
     const state = await getState();
     expect(state.state).toBe('idle');
@@ -370,6 +388,35 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     const training = await startTraining(1);
 
     expect(training.statusCode).toBe(409);
+  });
+
+  it('rechecks the authoritative time after waiting for the gameplay lock', async () => {
+    const beforeBoundary = new Date();
+    const lockBoundary = new Date(beforeBoundary.getTime() + 1_000);
+    const tournamentStartsAt = new Date(lockBoundary.getTime() + 60 * 60_000);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(beforeBoundary);
+    await createPlayoffDayBlock({ firstGameStartsAt: tournamentStartsAt });
+    const locker = await pool.connect();
+    let lockerOpen = false;
+    try {
+      await locker.query('begin');
+      lockerOpen = true;
+      await lockUserGameplay(locker, userId);
+
+      const responsePromise = startTraining(1);
+      await waitForAdvisoryWaiter();
+      vi.setSystemTime(lockBoundary);
+      await locker.query('commit');
+      lockerOpen = false;
+
+      const response = await responsePromise;
+      expect(response.statusCode).toBe(409);
+    } finally {
+      if (lockerOpen) await locker.query('rollback');
+      locker.release();
+      vi.useRealTimers();
+    }
   });
 
   it('keeps training locked between games in the same tournament day block', async () => {

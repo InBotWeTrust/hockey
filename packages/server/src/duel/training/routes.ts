@@ -426,8 +426,8 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
     const { period_number: selectedPeriod } = parsed.data;
 
     const state = await withTransaction(app, async (client): Promise<TrainingStateResponse> => {
-      const now = new Date();
       await lockUserGameplay(client, req.user.id);
+      const now = new Date();
       const settings = await getGameSettings(client);
       await assertGameplayActionAllowed(client, {
         userId: req.user.id,
@@ -533,8 +533,8 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
     const response = await withTransaction(
       app,
       async (client): Promise<TrainingShotSubmitResponse> => {
-        const now = new Date();
         await lockUserGameplay(client, req.user.id);
+        const now = new Date();
         const settings = await getGameSettings(client);
         await assertTournamentGameplayAllowed(client, req.user.id, now);
         await assertTrainingAvailableDuringDaily(client, req.user.id, now, settings);
