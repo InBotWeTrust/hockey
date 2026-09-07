@@ -16,7 +16,6 @@ import {
   submitClassicGameShot,
 } from '../../src/tournament/classicGame.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
-import { finalizeDueTournamentDailyDays } from '../../src/tournament/dailyAggregate.js';
 import { openTournamentFixtureSegment } from '../../src/tournament/fixtureLifecycle.js';
 import { grantTournamentStageRewards } from '../../src/tournament/rewards.js';
 import {
@@ -60,7 +59,7 @@ const AUTOMATIC_STARTS_AT = new Date('2032-06-01T12:00:00.000Z');
 const AUTOMATIC_PLAYOFF_STARTS_AT = new Date('2032-06-04T13:00:00.000Z');
 const CLASSIC_SEED_SECRET = 'synthetic-classic-seed-at-least-16';
 
-type RegularSource = 'head_to_head' | 'daily_aggregate' | 'classic';
+type RegularSource = 'head_to_head' | 'classic';
 
 const REGULAR_REWARDS = [
   { place: 1, coins: 40, stars: 4, experience: 400 },
@@ -737,54 +736,6 @@ async function assertTerminalInvariants(
   ]);
 }
 
-async function seedDailySourceRows(pool: Pool): Promise<void> {
-  const goalsByPlayerAndDay = [
-    [27, 54, 45],
-    [36, 40, 72],
-    [18, 63, 9],
-    [45, 9, 27],
-  ];
-  for (const [playerIndex, userId] of PLAYER_IDS.entries()) {
-    for (let tournamentDay = 1; tournamentDay <= 3; tournamentDay += 1) {
-      const incomplete = userId === PLAYER_IDS[1] && tournamentDay === 2;
-      const localDate = await pool.query<{ local_date: string }>(
-        `select (($2::timestamptz at time zone timezone)::date + ($3::int - 1))::text
-                  as local_date
-           from users where id = $1`,
-        [userId, new Date('2032-06-01T12:00:00.000Z'), tournamentDay],
-      );
-      const dayPool = await pool.query<{ id: string }>(
-        `insert into day_pool
-           (user_id, day_date, state, current_period, closed_at, game_core_version, daily_seed)
-         values ($1, $2, 'closed', $3, $4, 1, $5) returning id`,
-        [
-          userId,
-          localDate.rows[0]!.local_date,
-          incomplete ? 2 : 3,
-          new Date(`2032-06-0${tournamentDay}T20:00:00.000Z`),
-          `synthetic:${userId}:${tournamentDay}`,
-        ],
-      );
-      const periodCount = incomplete ? 2 : 3;
-      const goals = goalsByPlayerAndDay[playerIndex]![tournamentDay - 1]!;
-      for (let period = 1; period <= periodCount; period += 1) {
-        await pool.query(
-          `insert into period_log
-             (day_pool_id, period_number, started_at, ended_at, shots_taken, goals, closed_reason)
-           values ($1, $2, $3, $4, 30, $5, 'quota')`,
-          [
-            dayPool.rows[0]!.id,
-            period,
-            new Date(`2032-06-0${tournamentDay}T1${period}:00:00.000Z`),
-            new Date(`2032-06-0${tournamentDay}T1${period}:10:00.000Z`),
-            incomplete ? 20 : goals / 3,
-          ],
-        );
-      }
-    }
-  }
-}
-
 async function tournamentStatus(pool: Pool, tournamentId: string): Promise<string> {
   const status = await pool.query<{ status: string }>(
     `select status from tournament where id = $1`,
@@ -798,19 +749,6 @@ async function settleAutomaticRegularSeason(
   tournamentId: string,
   regularSource: RegularSource,
 ): Promise<void> {
-  if (regularSource === 'daily_aggregate') {
-    await seedDailySourceRows(pool);
-    expect(await finalizeDueTournamentDailyDays(pool, AUTOMATIC_PLAYOFF_STARTS_AT)).toEqual({
-      finalizedDays: 3,
-      finalizedParticipants: 12,
-    });
-    await assertFinalAggregateResults(pool, tournamentId, {
-      completed: 11,
-      played: 11,
-      source: 'daily_aggregate',
-    });
-    return;
-  }
   if (regularSource === 'classic') {
     await playCompletedClassicOpeningDay(pool, tournamentId);
     expect(
@@ -819,7 +757,7 @@ async function settleAutomaticRegularSeason(
         seedSecret: CLASSIC_SEED_SECRET,
       }),
     ).toEqual({ finalizedDays: 2, finalizedParticipants: 8 });
-    await assertFinalAggregateResults(pool, tournamentId, {
+    await assertFinalClassicResults(pool, tournamentId, {
       completed: 4,
       played: 4,
       source: 'classic',
@@ -880,10 +818,10 @@ async function playCompletedClassicOpeningDay(pool: Pool, tournamentId: string):
   }
 }
 
-async function assertFinalAggregateResults(
+async function assertFinalClassicResults(
   pool: Pool,
   tournamentId: string,
-  expected: { completed: number; played: number; source: 'daily_aggregate' | 'classic' },
+  expected: { completed: number; played: number; source: 'classic' },
 ): Promise<void> {
   const result = await pool.query<{
     total: number;
@@ -1135,7 +1073,7 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
     await pool.end();
   });
 
-  it.each(['head_to_head', 'daily_aggregate', 'classic'] as const)(
+  it.each(['head_to_head', 'classic'] as const)(
     'runs the automatic lifecycle for %s through tournament completion',
     async (regularSource) => {
       await seedUsersAndPush(pool);
@@ -1295,7 +1233,7 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
     },
   );
 
-  it.each(['head_to_head', 'daily_aggregate', 'classic'] as const)(
+  it.each(['head_to_head', 'classic'] as const)(
     'blocks automatic %s scheduling without shrinking playoffs or duplicating admin notice',
     async (regularSource) => {
       await seedUsersAndPush(pool);
@@ -1569,227 +1507,6 @@ describe.skipIf(!hasIntegrationEnv)('synthetic tournament seasons', () => {
       expectedBalances: [
         { user_id: PLAYER_IDS[0], balance: 155, stars: 6, experience: 1_600 },
         { user_id: PLAYER_IDS[1], balance: 165, stars: 7, experience: 1_700 },
-        { user_id: PLAYER_IDS[2], balance: 215, stars: 12, experience: 2_200 },
-        { user_id: PLAYER_IDS[3], balance: 175, stars: 8, experience: 1_800 },
-      ],
-    });
-  });
-
-  it('runs a complete multi-timezone daily season and preserves its standings into playoffs', async () => {
-    await seedUsersAndPush(pool);
-    const duelTemplateId = await configureRewardingDuelTemplate(pool);
-    const title = 'Synthetic Daily Aggregate Cup';
-    const tournament = await createRegisteredTournament(pool, {
-      slug: 'synthetic-daily-season',
-      title,
-      startsAt: new Date('2032-06-01T12:00:00.000Z'),
-      regularSource: 'daily_aggregate',
-      duelTemplateId,
-    });
-    expect(await isTournamentFeatureEnabled(pool)).toBe(true);
-    await publishSyntheticSchedule(pool, tournament, title);
-    await seedDailySourceRows(pool);
-
-    expect(
-      await finalizeDueTournamentDailyDays(pool, new Date('2032-06-02T06:59:59.000Z')),
-    ).toEqual({ finalizedDays: 0, finalizedParticipants: 0 });
-    expect(
-      await finalizeDueTournamentDailyDays(pool, new Date('2032-06-02T07:00:00.000Z')),
-    ).toEqual({ finalizedDays: 1, finalizedParticipants: 4 });
-    expect(
-      await finalizeDueTournamentDailyDays(pool, new Date('2032-06-02T07:00:00.000Z')),
-    ).toEqual({ finalizedDays: 0, finalizedParticipants: 0 });
-    await expect(
-      startTournamentPlayoffs(pool, tournament.id, new Date('2032-06-02T08:00:00.000Z')),
-    ).rejects.toMatchObject({ code: 'conflict', statusCode: 409 });
-    const afterIncompleteDailyCoverage = await pool.query<{ status: string }>(
-      `select status from tournament where id = $1`,
-      [tournament.id],
-    );
-    expect(afterIncompleteDailyCoverage.rows[0]?.status).toBe('regular');
-    expect(
-      await finalizeDueTournamentDailyDays(pool, new Date('2032-06-03T07:00:00.000Z')),
-    ).toEqual({ finalizedDays: 1, finalizedParticipants: 4 });
-    expect(
-      await finalizeDueTournamentDailyDays(pool, new Date('2032-06-04T07:00:00.000Z')),
-    ).toEqual({ finalizedDays: 1, finalizedParticipants: 4 });
-    expect(
-      await finalizeDueTournamentDailyDays(pool, new Date('2032-06-04T07:01:00.000Z')),
-    ).toEqual({ finalizedDays: 0, finalizedParticipants: 0 });
-
-    const incomplete = await pool.query<{
-      completed: boolean;
-      goals: number;
-      shots: number;
-      accuracy: number;
-      place: number | null;
-      place_points: number;
-    }>(
-      `select result.completed, result.goals, result.shots,
-              result.accuracy::float8 as accuracy, result.place,
-              result.place_points::float8 as place_points
-         from tournament_daily_result result
-         join tournament_participant participant on participant.id = result.participant_id
-        where result.tournament_id = $1 and participant.user_id = $2
-          and result.tournament_day = 2`,
-      [tournament.id, PLAYER_IDS[1]],
-    );
-    expect(incomplete.rows[0]).toEqual({
-      completed: false,
-      goals: 0,
-      shots: 0,
-      accuracy: 0,
-      place: null,
-      place_points: 0,
-    });
-    const dailyStandings = await pool.query<{
-      user_id: string;
-      rank: number;
-      points: number;
-      metrics: { metric: string; countedDays: number[] };
-    }>(
-      `select participant.user_id, standing.rank, standing.points::float8 as points,
-              standing.metrics
-         from tournament_standing standing
-         join tournament_participant participant on participant.id = standing.participant_id
-        where standing.tournament_id = $1 order by standing.rank`,
-      [tournament.id],
-    );
-    expect(dailyStandings.rows).toEqual([
-      {
-        user_id: PLAYER_IDS[1],
-        rank: 1,
-        points: 0.6,
-        metrics: { metric: 'accuracy_average', countedDays: [3, 1] },
-      },
-      {
-        user_id: PLAYER_IDS[0],
-        rank: 2,
-        points: 0.55,
-        metrics: { metric: 'accuracy_average', countedDays: [2, 3] },
-      },
-      {
-        user_id: PLAYER_IDS[2],
-        rank: 3,
-        points: 0.45,
-        metrics: { metric: 'accuracy_average', countedDays: [2, 1] },
-      },
-      {
-        user_id: PLAYER_IDS[3],
-        rank: 4,
-        points: 0.4,
-        metrics: { metric: 'accuracy_average', countedDays: [1, 3] },
-      },
-    ]);
-    const standingsBeforePlayoffs = JSON.stringify(dailyStandings.rows);
-    const expectedStandingUserIds = dailyStandings.rows.map((row) => row.user_id);
-
-    await startAndCompletePlayoffs(pool, {
-      tournamentId: tournament.id,
-      tournamentTitle: title,
-      startsAt: new Date('2032-06-04T08:00:00.000Z'),
-      expectedFinalUserIds: [PLAYER_IDS[2], PLAYER_IDS[3], PLAYER_IDS[0], PLAYER_IDS[1]],
-    });
-    const standingsAfterPlayoffs = await pool.query<{
-      user_id: string;
-      rank: number;
-      points: number;
-      metrics: { metric: string; countedDays: number[] };
-    }>(
-      `select participant.user_id, standing.rank, standing.points::float8 as points,
-              standing.metrics
-         from tournament_standing standing
-         join tournament_participant participant on participant.id = standing.participant_id
-        where standing.tournament_id = $1 order by standing.rank`,
-      [tournament.id],
-    );
-    expect(JSON.stringify(standingsAfterPlayoffs.rows)).toBe(standingsBeforePlayoffs);
-
-    expect(await grantTournamentStageRewards(pool, tournament.id, 'regular')).toMatchObject({
-      granted: 0,
-    });
-    expect(await grantTournamentStageRewards(pool, tournament.id, 'playoff')).toMatchObject({
-      granted: 0,
-    });
-    await enqueueAudienceLifecyclePush(pool, {
-      tournamentId: tournament.id,
-      eventType: 'tournament.completed',
-      eventKey: `${tournament.id}:completed`,
-      tournamentTitle: title,
-    });
-    await assertTerminalInvariants(pool, {
-      tournamentId: tournament.id,
-      expectedStandingUserIds,
-      expectedResultPushes: 8,
-      expectedStageRewards: [
-        {
-          user_id: PLAYER_IDS[2],
-          stage: 'playoff',
-          place: 1,
-          coins: 100,
-          stars: 10,
-          experience: 1_000,
-        },
-        {
-          user_id: PLAYER_IDS[3],
-          stage: 'playoff',
-          place: 2,
-          coins: 70,
-          stars: 7,
-          experience: 700,
-        },
-        {
-          user_id: PLAYER_IDS[0],
-          stage: 'playoff',
-          place: 3,
-          coins: 40,
-          stars: 4,
-          experience: 400,
-        },
-        {
-          user_id: PLAYER_IDS[1],
-          stage: 'playoff',
-          place: 4,
-          coins: 20,
-          stars: 2,
-          experience: 200,
-        },
-        {
-          user_id: PLAYER_IDS[1],
-          stage: 'regular',
-          place: 1,
-          coins: 40,
-          stars: 4,
-          experience: 400,
-        },
-        {
-          user_id: PLAYER_IDS[0],
-          stage: 'regular',
-          place: 2,
-          coins: 30,
-          stars: 3,
-          experience: 300,
-        },
-        {
-          user_id: PLAYER_IDS[2],
-          stage: 'regular',
-          place: 3,
-          coins: 20,
-          stars: 2,
-          experience: 200,
-        },
-        {
-          user_id: PLAYER_IDS[3],
-          stage: 'regular',
-          place: 4,
-          coins: 10,
-          stars: 1,
-          experience: 100,
-        },
-      ],
-      expectedBalances: [
-        { user_id: PLAYER_IDS[0], balance: 165, stars: 7, experience: 1_700 },
-        { user_id: PLAYER_IDS[1], balance: 155, stars: 6, experience: 1_600 },
         { user_id: PLAYER_IDS[2], balance: 215, stars: 12, experience: 2_200 },
         { user_id: PLAYER_IDS[3], balance: 175, stars: 8, experience: 1_800 },
       ],

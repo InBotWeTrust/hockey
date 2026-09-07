@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DailyOverviewScreen } from './DailyOverviewScreen.js';
 
 const { fetchDailyStateMock, fetchDailyHistoryMock } = vi.hoisted(() => ({
@@ -105,6 +105,9 @@ function renderScreen(): void {
 }
 
 describe('DailyOverviewScreen', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
   beforeEach(() => {
     fetchDailyStateMock.mockReset().mockResolvedValue(dailyState);
     fetchDailyHistoryMock.mockReset().mockResolvedValue(historyResponse);
@@ -133,6 +136,25 @@ describe('DailyOverviewScreen', () => {
       background: 'transparent',
       boxShadow: 'none',
     });
+  });
+
+  it('shows recovery crossing midnight separately from the daily reset countdown', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-30T23:50:00.000Z'));
+    fetchDailyStateMock.mockResolvedValue({
+      ...dailyState,
+      server_now: '2026-08-30T23:50:00.000Z',
+      gameplay_lock: {
+        blocked: true,
+        reason: 'recent_gameplay',
+        ends_at: '2026-08-31T00:50:00.000Z',
+        tournament_starts_at: null,
+      },
+    });
+    renderScreen();
+    const lock = await screen.findByRole('status', { name: 'Блокировка игры' });
+    expect(lock).toHaveTextContent('Восстановление после игры');
+    expect(lock).toHaveTextContent('01:00:00');
+    expect(screen.getByLabelText(/^До конца дня:/)).toHaveTextContent('10:00');
   });
 
   it('shows daily history as a calendar with completed, incomplete and missed days', async () => {

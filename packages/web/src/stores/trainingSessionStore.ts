@@ -58,10 +58,19 @@ export const useTrainingSessionStore = create<TrainingSessionStoreState>()((set,
       set({ data, inFlight: false, error: null });
       return data;
     } catch (err) {
-      set({
-        inFlight: false,
-        error: err instanceof Error ? err.message : 'failed to start training',
-      });
+      const startError = err instanceof Error ? err.message : 'failed to start training';
+      try {
+        const data = await fetchTrainingState();
+        const resolved =
+          data.gameplay_lock?.blocked === true ||
+          (data.state === 'active' && data.selected_period === periodNumber);
+        set({ data, inFlight: false, error: resolved ? null : startError });
+      } catch {
+        set({
+          inFlight: false,
+          error: startError,
+        });
+      }
       return null;
     }
   },

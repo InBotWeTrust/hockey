@@ -1,4 +1,5 @@
 import { apiFetch } from './apiFetch.js';
+import type { GameplayLockDTO } from './gameplayLock.js';
 import type { GameRequestOptions } from './requestTimeout.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 import type { DailyPeriodSpeedPreset } from '@hockey/game-core';
@@ -20,6 +21,7 @@ export interface TrainingStateResponse {
   goalie_id: string;
   period_speed_presets: DailyPeriodSpeedPreset[];
   tournament_day_locked: boolean;
+  gameplay_lock?: GameplayLockDTO | null;
   tournament_day_starts_at: string | null;
 }
 

@@ -29,31 +29,28 @@ const PLAYER_ID = '00000000-0000-4000-8000-000000000972';
 const PLAYER_TWO_ID = '00000000-0000-4000-8000-000000000973';
 const DUEL_TEMPLATE_ID = '00000000-0000-4000-8000-000000000974';
 
-function automaticRules(
-  playoffSize: 2 | 4,
-  source: 'head_to_head' | 'daily_aggregate' = 'head_to_head',
-): TournamentRulesSnapshot {
+function automaticRules(playoffSize: 2 | 4): TournamentRulesSnapshot {
   return {
     config: parseTournamentConfig({
-      regularSource: source,
+      regularSource: 'head_to_head',
       participantLimit: 4,
       playoffSize,
       timezone: 'Europe/Moscow',
       registrationMode: 'open',
       visibility: 'public',
       entryFeeCoins: 0,
-      roundRobinCycles: source === 'head_to_head' ? 1 : null,
-      roundsPerDay: source === 'head_to_head' ? 1 : null,
-      firstRoundLocalTime: source === 'head_to_head' ? '16:00' : null,
-      fixtureWindowMs: source === 'head_to_head' ? 60_000 : null,
-      roundBreakMs: source === 'head_to_head' ? 0 : null,
-      dailyDays: source === 'daily_aggregate' ? 1 : null,
-      dailyMetric: source === 'daily_aggregate' ? 'goals_sum' : null,
+      roundRobinCycles: 1,
+      roundsPerDay: 1,
+      firstRoundLocalTime: '16:00',
+      fixtureWindowMs: 60_000,
+      roundBreakMs: 0,
+      dailyDays: null,
+      dailyMetric: null,
       bestDays: null,
     }),
     automaticLifecycleVersion: 1,
     duelLifecycleVersion: 2,
-    ...(source === 'head_to_head' ? { regularDuelTemplateId: DUEL_TEMPLATE_ID } : {}),
+    regularDuelTemplateId: DUEL_TEMPLATE_ID,
     eligibility: {
       minLevel: null,
       maxLevel: null,

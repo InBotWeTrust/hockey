@@ -3,14 +3,10 @@ import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { applyMigrations } from '../../src/db/migrations.js';
-import {
-  auditAutomaticTournamentLifecycle,
-  auditCompletedLegacyDailyTournamentLifecycle,
-} from '../../src/tournament/automaticLifecycleAudit.js';
+import { auditAutomaticTournamentLifecycle } from '../../src/tournament/automaticLifecycleAudit.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
 import {
   generateRegularSchedule,
-  publishRegularSchedule,
   type TournamentRulesSnapshot,
 } from '../../src/tournament/service.js';
 import {
@@ -24,10 +20,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 const CREATOR_ID = '00000000-0000-4000-8000-000000008001';
 const NOW = new Date('2030-09-01T12:00:00.000Z');
-const RECOVERY_NOW = new Date('2030-09-10T12:00:00.000Z');
 
 function legacyRules(
-  source: 'head_to_head' | 'daily_aggregate' | 'classic' = 'head_to_head',
+  source: 'head_to_head' | 'classic' = 'head_to_head',
   playoffSize: 2 | 4 = 4,
 ): TournamentRulesSnapshot {
   const base = {
@@ -115,7 +110,7 @@ async function seedLegacyTournament(
   pool: Pool,
   slug: string,
   input: {
-    source?: 'head_to_head' | 'daily_aggregate' | 'classic';
+    source?: 'head_to_head' | 'classic';
     participantCount?: number;
     playoffSize?: 2 | 4;
     userIdOffset?: number;
@@ -294,267 +289,6 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle audit', () =
       reasons: expect.arrayContaining(['regular_schedule_already_started']),
     });
     expect(await automaticMarker(pool, elapsed.id)).toBeNull();
-  });
-
-  it('blocks a legacy daily aggregate tournament with a persisted daily result', async () => {
-    const daily = await seedLegacyTournament(pool, 'legacy-audit-daily-result', {
-      source: 'daily_aggregate',
-    });
-    const participant = await pool.query<{ id: string }>(
-      `select id from tournament_participant where tournament_id = $1 order by id limit 1`,
-      [daily.id],
-    );
-    await pool.query(
-      `insert into tournament_daily_result
-         (tournament_id, participant_id, tournament_day, player_local_date, goals, shots,
-          accuracy, completed, finalized_at)
-       values ($1, $2, 1, '2030-09-02', 1, 2, 0.5, true, $3)`,
-      [daily.id, participant.rows[0]!.id, NOW],
-    );
-
-    const report = await auditAutomaticTournamentLifecycle(pool, {
-      tournamentId: daily.id,
-      now: NOW,
-      apply: true,
-    });
-
-    expect(report.tournaments[0]).toMatchObject({
-      status: 'blocked',
-      completedGameCount: expect.any(Number),
-      reasons: expect.arrayContaining(['games_already_started']),
-    });
-    expect(report.tournaments[0]!.completedGameCount).toBeGreaterThan(0);
-    expect(await automaticMarker(pool, daily.id)).toBeNull();
-  });
-
-  it('enables an ended legacy daily season and blocks an ineligible player without results', async () => {
-    const complete = await seedLegacyTournament(pool, 'legacy-audit-daily-complete', {
-      source: 'daily_aggregate',
-    });
-    const partial = await seedLegacyTournament(pool, 'legacy-audit-daily-partial', {
-      source: 'daily_aggregate',
-      userIdOffset: 100,
-    });
-    const misleading = await seedLegacyTournament(pool, 'legacy-audit-daily-misleading', {
-      source: 'daily_aggregate',
-      userIdOffset: 200,
-    });
-    for (const tournamentId of [complete.id, partial.id, misleading.id]) {
-      await generateRegularSchedule(pool, tournamentId, 1);
-      await publishRegularSchedule(pool, tournamentId);
-    }
-    const participants = await pool.query<{ id: string }>(
-      `select id from tournament_participant where tournament_id = $1 order by id`,
-      [complete.id],
-    );
-    for (const [participantIndex, participant] of participants.rows.entries()) {
-      for (let day = 1; day <= 3; day += 1) {
-        await pool.query(
-          `insert into tournament_daily_result
-             (tournament_id, participant_id, tournament_day, player_local_date, goals, shots,
-              accuracy, completed, finalized_at)
-           values ($1, $2, $3, $4, $5, 10, $6, true, $7)`,
-          [
-            complete.id,
-            participant.id,
-            day,
-            `2030-09-0${3 + day}`,
-            participantIndex + day,
-            (participantIndex + day) / 10,
-            NOW,
-          ],
-        );
-      }
-    }
-    const partialParticipant = await pool.query<{ id: string }>(
-      `select id from tournament_participant where tournament_id = $1 order by id limit 1`,
-      [partial.id],
-    );
-    await pool.query(
-      `insert into tournament_daily_result
-         (tournament_id, participant_id, tournament_day, player_local_date, goals, shots,
-          accuracy, completed, finalized_at)
-       values ($1, $2, 1, '2030-09-04', 1, 3, $3, true, $4)`,
-      [partial.id, partialParticipant.rows[0]!.id, 1 / 3, NOW],
-    );
-    const misleadingParticipants = await pool.query<{ id: string }>(
-      `select id from tournament_participant where tournament_id = $1 order by id`,
-      [misleading.id],
-    );
-    let insertedApprovedResults = 0;
-    for (const participant of misleadingParticipants.rows) {
-      for (let day = 1; day <= 3 && insertedApprovedResults < 11; day += 1) {
-        await pool.query(
-          `insert into tournament_daily_result
-             (tournament_id, participant_id, tournament_day, player_local_date, goals, shots,
-              accuracy, completed, finalized_at)
-           values ($1, $2, $3, $4, 1, 10, 0.1, true, $5)`,
-          [misleading.id, participant.id, day, `2030-09-0${3 + day}`, NOW],
-        );
-        insertedApprovedResults += 1;
-      }
-    }
-    const withdrawnUserId = '00000000-0000-4000-8000-000000008399';
-    await pool.query(
-      `insert into users (id, display_name, timezone, role)
-       values ($1, 'Withdrawn player', 'Europe/Moscow', 'player')`,
-      [withdrawnUserId],
-    );
-    await pool.query(
-      `insert into tournament_participant (tournament_id, user_id, state, joined_at)
-       values ($1, $2, 'withdrawn', $3)`,
-      [misleading.id, withdrawnUserId, NOW],
-    );
-
-    const report = await auditCompletedLegacyDailyTournamentLifecycle(pool, {
-      now: RECOVERY_NOW,
-      apply: true,
-    });
-
-    expect(report.tournaments).toHaveLength(2);
-    expect(report.tournaments).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: complete.id, status: 'enabled' }),
-        expect.objectContaining({ id: partial.id, status: 'enabled' }),
-      ]),
-    );
-    expect(await automaticMarker(pool, complete.id)).toBe(1);
-    expect(await automaticMarker(pool, partial.id)).toBe(1);
-    expect(await automaticMarker(pool, misleading.id)).toBeNull();
-    const ineligibleRecheck = await auditAutomaticTournamentLifecycle(pool, {
-      tournamentId: misleading.id,
-      now: RECOVERY_NOW,
-      apply: true,
-    });
-    expect(ineligibleRecheck.tournaments[0]).toMatchObject({
-      status: 'blocked',
-      reasons: expect.arrayContaining(['daily_roster_not_approved']),
-    });
-    expect(await automaticMarker(pool, misleading.id)).toBeNull();
-
-    const retry = await auditCompletedLegacyDailyTournamentLifecycle(pool, {
-      now: RECOVERY_NOW,
-      apply: true,
-    });
-    expect(retry.tournaments).toHaveLength(2);
-    expect(retry.tournaments).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: complete.id, status: 'enabled' }),
-        expect.objectContaining({ id: partial.id, status: 'enabled' }),
-      ]),
-    );
-    expect(retry.tournaments.every((tournament) => tournament.reconcile !== undefined)).toBe(true);
-
-    await pool.query(
-      `insert into tournament_round
-         (tournament_id, stage, number, name, starts_at, ends_at, status, rules_snapshot)
-       values ($1, 'playoff', 1, 'Conflicting playoff round', $2, $3, 'scheduled', '{}')`,
-      [complete.id, new Date('2030-09-04T12:00:00.000Z'), new Date('2030-09-05T12:00:00.000Z')],
-    );
-    const conflictedRetry = await auditAutomaticTournamentLifecycle(pool, {
-      tournamentId: complete.id,
-      now: RECOVERY_NOW,
-      apply: true,
-    });
-    expect(conflictedRetry.tournaments).toHaveLength(1);
-    expect(conflictedRetry.tournaments[0]).toMatchObject({
-      id: complete.id,
-      status: 'already_enabled',
-      reasons: expect.arrayContaining(['schedule_conflicts_with_published_configuration']),
-    });
-    expect(conflictedRetry.tournaments[0]?.reconcile).toBeUndefined();
-  });
-
-  it('recovers an ended legacy daily season when some approved players skipped tournament days', async () => {
-    const daily = await seedLegacyTournament(pool, 'legacy-audit-daily-skipped-days', {
-      source: 'daily_aggregate',
-      participantCount: 6,
-      playoffSize: 4,
-    });
-    await generateRegularSchedule(pool, daily.id, 1);
-    await publishRegularSchedule(pool, daily.id);
-    const participants = await pool.query<{ id: string }>(
-      `select id from tournament_participant where tournament_id = $1 order by id`,
-      [daily.id],
-    );
-    for (const [participantIndex, participant] of participants.rows.entries()) {
-      const playedDays = participantIndex < 3 ? 3 : participantIndex === 3 ? 1 : 0;
-      for (let day = 1; day <= playedDays; day += 1) {
-        await pool.query(
-          `insert into tournament_daily_result
-             (tournament_id, participant_id, tournament_day, player_local_date, goals, shots,
-              accuracy, completed, finalized_at)
-           values ($1, $2, $3, $4, $5, 100, $6, true, $7)`,
-          [
-            daily.id,
-            participant.id,
-            day,
-            `2030-09-0${3 + day}`,
-            90 - participantIndex * 5 - day,
-            (90 - participantIndex * 5 - day) / 100,
-            NOW,
-          ],
-        );
-      }
-    }
-
-    const report = await auditCompletedLegacyDailyTournamentLifecycle(pool, {
-      now: RECOVERY_NOW,
-      apply: true,
-    });
-
-    expect(report.tournaments).toHaveLength(1);
-    expect(report.tournaments[0]).toMatchObject({ id: daily.id, status: 'enabled' });
-    expect(await automaticMarker(pool, daily.id)).toBe(1);
-    const results = await pool.query<{
-      result_count: number;
-      completed_count: number;
-      zero_count: number;
-    }>(
-      `select count(*)::int as result_count,
-              count(*) filter (where completed)::int as completed_count,
-              count(*) filter (where goals = 0 and shots = 0)::int as zero_count
-         from tournament_daily_result where tournament_id = $1`,
-      [daily.id],
-    );
-    expect(results.rows[0]).toEqual({
-      result_count: 18,
-      completed_count: 10,
-      zero_count: 8,
-    });
-  });
-
-  it('does not recover a legacy daily season with a cancelled tournament day', async () => {
-    const daily = await seedLegacyTournament(pool, 'legacy-audit-daily-cancelled-day', {
-      source: 'daily_aggregate',
-    });
-    await generateRegularSchedule(pool, daily.id, 1);
-    await publishRegularSchedule(pool, daily.id);
-    await pool.query(
-      `update tournament_matchday set status = 'cancelled'
-        where tournament_id = $1 and number = 2`,
-      [daily.id],
-    );
-
-    const report = await auditCompletedLegacyDailyTournamentLifecycle(pool, {
-      now: RECOVERY_NOW,
-      apply: true,
-    });
-
-    expect(report.tournaments).toEqual([]);
-    expect(await automaticMarker(pool, daily.id)).toBeNull();
-
-    const lockedRecheck = await auditAutomaticTournamentLifecycle(pool, {
-      tournamentId: daily.id,
-      now: RECOVERY_NOW,
-      apply: true,
-    });
-    expect(lockedRecheck.tournaments[0]).toMatchObject({
-      id: daily.id,
-      status: 'blocked',
-      reasons: expect.arrayContaining(['daily_schedule_not_complete']),
-    });
-    expect(await automaticMarker(pool, daily.id)).toBeNull();
   });
 
   it('blocks a legacy Classic tournament with a persisted session and period', async () => {

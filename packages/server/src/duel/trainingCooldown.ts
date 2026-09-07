@@ -1,9 +1,13 @@
 import type { PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
+import {
+  GAMEPLAY_RECOVERY_MINUTES,
+  GAMEPLAY_RECOVERY_MS,
+  getGameplayLockState,
+} from './gameplayLocks.js';
 
-export const DEFAULT_TRAINING_TO_DAILY_COOLDOWN_MINUTES = 30;
-export const DEFAULT_TRAINING_TO_DAILY_COOLDOWN_MS =
-  DEFAULT_TRAINING_TO_DAILY_COOLDOWN_MINUTES * 60 * 1000;
+export const DEFAULT_TRAINING_TO_DAILY_COOLDOWN_MINUTES = GAMEPLAY_RECOVERY_MINUTES;
+export const DEFAULT_TRAINING_TO_DAILY_COOLDOWN_MS = GAMEPLAY_RECOVERY_MS;
 
 export function trainingDailyCooldownMs(minutes: number): number {
   if (!Number.isFinite(minutes)) return DEFAULT_TRAINING_TO_DAILY_COOLDOWN_MS;
@@ -16,18 +20,13 @@ export async function fetchTrainingCooldownEndsAt(
   now: Date,
   cooldownMs = DEFAULT_TRAINING_TO_DAILY_COOLDOWN_MS,
 ): Promise<Date | null> {
-  if (cooldownMs <= 0) return null;
-  const { rows } = await client.query<{ last_training_shot_at: Date | null }>(
-    `select max(created_at) as last_training_shot_at
-       from shot_session
-      where user_id = $1 and mode = 'training'`,
-    [userId],
-  );
-  const lastTrainingShotAt = rows[0]?.last_training_shot_at ?? null;
-  if (lastTrainingShotAt === null) return null;
-
-  const cooldownEndsAt = new Date(lastTrainingShotAt.getTime() + cooldownMs);
-  return cooldownEndsAt.getTime() > now.getTime() ? cooldownEndsAt : null;
+  const state = await getGameplayLockState(client, {
+    userId,
+    action: 'start_daily_period',
+    now,
+    recoveryMs: cooldownMs,
+  });
+  return state.reason === 'recent_gameplay' ? state.endsAt : null;
 }
 
 export async function assertTrainingCooldownExpired(

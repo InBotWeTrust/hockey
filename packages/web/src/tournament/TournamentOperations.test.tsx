@@ -275,9 +275,7 @@ describe('TournamentOperations', () => {
     expect(
       within(semifinalCard!).queryByRole('button', { name: 'Решить серию вручную' }),
     ).not.toBeInTheDocument();
-    fireEvent.click(
-      within(semifinalCard!).getByRole('button', { name: 'Открыть серию Серия 1' }),
-    );
+    fireEvent.click(within(semifinalCard!).getByRole('button', { name: 'Открыть серию Серия 1' }));
     let dialog = screen.getByRole('dialog', { name: 'Серия 1' });
     expect(within(dialog).getByText('1 сентября, начало в 10:00')).toBeInTheDocument();
     expect(within(dialog).getByText('Игра 1')).toBeInTheDocument();
@@ -472,7 +470,7 @@ describe('TournamentOperations', () => {
           tournament={{
             ...tournament(),
             status: 'scheduling',
-            regularSource: 'daily_aggregate',
+            regularSource: 'classic',
             startsAt: '2030-09-01T21:00:00.000Z',
             lifecycle: {
               action: 'await_manual_regular_start',
@@ -563,21 +561,6 @@ describe('TournamentOperations', () => {
               ...base.lifecycle,
               approvedParticipantCount: 1,
             },
-          }}
-          onBack={vi.fn()}
-          onEdit={vi.fn()}
-          onRemoved={vi.fn()}
-        />
-      </QueryClientProvider>,
-    );
-    expect(screen.queryByRole('button', { name: 'Создать календарь' })).not.toBeInTheDocument();
-
-    rerender(
-      <QueryClientProvider client={client}>
-        <TournamentOperations
-          tournament={{
-            ...base,
-            regularSource: 'daily_aggregate',
           }}
           onBack={vi.fn()}
           onEdit={vi.fn()}
@@ -1007,7 +990,7 @@ describe('TournamentOperations', () => {
     render(
       <QueryClientProvider client={client}>
         <TournamentOperations
-          tournament={{ ...tournament(), regularSource: 'daily_aggregate' }}
+          tournament={{ ...tournament(), regularSource: 'classic' }}
           onBack={vi.fn()}
           onEdit={onEdit}
           onRemoved={vi.fn()}

@@ -347,24 +347,26 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
       now: new Date('2026-08-23T12:00:01Z'),
     });
 
+    // Dismissal survives the local-day reset; the two following starts must fit
+    // within the daily allowance while still distinguishing preview revisions.
     const second = await startOrResumeBonusAttempt(pool, {
       userId,
       gameId: game.id,
-      now: new Date('2026-08-23T12:00:02Z'),
+      now: new Date('2026-08-24T12:00:02Z'),
       seedSecret: SEED_SECRET,
     });
     expect(second.attempt.previewRequired).toBe(false);
     await abandonBonusAttempt(pool, {
       userId,
       attemptId: second.attempt.id,
-      now: new Date('2026-08-23T12:00:03Z'),
+      now: new Date('2026-08-24T12:00:03Z'),
     });
     await pool.query('update bonus_game set preview_revision = 5 where id = $1', [game.id]);
 
     const revised = await startOrResumeBonusAttempt(pool, {
       userId,
       gameId: game.id,
-      now: new Date('2026-08-23T12:00:04Z'),
+      now: new Date('2026-08-24T12:00:04Z'),
       seedSecret: SEED_SECRET,
     });
     expect(revised.attempt.previewRequired).toBe(true);

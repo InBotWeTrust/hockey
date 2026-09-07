@@ -3,7 +3,6 @@ import { loadConfig } from '../config.js';
 import { loadDotEnv } from '../env.js';
 import { cleanupPushDeliveryLog, processPushDeliveryQueue } from './queue.js';
 import { runScheduledPushes } from './scheduled.js';
-import { finalizeDueTournamentDailyDays } from '../tournament/dailyAggregate.js';
 import { finalizeDueClassicTournamentDays } from '../tournament/classicGame.js';
 import { isTournamentFeatureEnabled } from '../tournament/service.js';
 
@@ -38,20 +37,10 @@ const pushOptions = {
 
 async function tick(): Promise<void> {
   const tournamentMaintenance = (await isTournamentFeatureEnabled(pool))
-    ? await (async () => {
-        const now = new Date();
-        const [daily, classic] = await Promise.all([
-          finalizeDueTournamentDailyDays(pool, now),
-          finalizeDueClassicTournamentDays(pool, {
-            now,
-            seedSecret: config.DAILY_SEED_SECRET,
-          }),
-        ]);
-        return {
-          finalizedDays: daily.finalizedDays + classic.finalizedDays,
-          finalizedParticipants: daily.finalizedParticipants + classic.finalizedParticipants,
-        };
-      })()
+    ? await finalizeDueClassicTournamentDays(pool, {
+        now: new Date(),
+        seedSecret: config.DAILY_SEED_SECRET,
+      })
     : { finalizedDays: 0, finalizedParticipants: 0 };
   const scheduled = await runScheduledPushes(pool, {
     ...pushOptions,

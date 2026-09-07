@@ -1020,14 +1020,14 @@ describe('AdminScreen', () => {
               },
               {
                 key: 'training.daily_cooldown_minutes',
-                label: 'Блокировка дневной игры',
+                label: 'Восстановление между режимами',
                 description:
-                  'Сколько минут дневная игра закрыта после первого броска в тренировке.',
+                  'Фиксированные 60 минут после последнего принятого броска. Каждый новый бросок начинает час заново.',
                 type: 'number',
-                defaultValue: 30,
-                min: 0,
-                max: 1440,
-                value: 30,
+                defaultValue: 60,
+                min: 60,
+                max: 60,
+                value: 60,
                 updatedAt: null,
                 updatedBy: null,
               },
@@ -1233,7 +1233,11 @@ describe('AdminScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
     fireEvent.click(await screen.findByText('Тренировка'));
     expect(await screen.findByText('Лимит тренировки')).toBeInTheDocument();
-    expect(await screen.findByText('Блокировка дневной игры')).toBeInTheDocument();
+    expect(await screen.findByText('Восстановление между режимами')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('60')).toHaveAttribute('readonly');
+    expect(
+      screen.getByRole('button', { name: 'Сохранить Восстановление между режимами' }),
+    ).toBeDisabled();
   });
 
   it('shows access denial for players', () => {

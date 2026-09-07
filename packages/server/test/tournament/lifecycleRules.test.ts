@@ -47,7 +47,7 @@ describe('normalizePublishedTournamentLifecycleRules', () => {
   it('marks an explicitly new tournament revision for automatic lifecycle v1', () => {
     const normalized = normalizePublishedTournamentLifecycleRules(
       {
-        config: { regularSource: 'daily_aggregate' },
+        config: { regularSource: 'classic' },
         playoffRounds: [],
       },
       { markNewAutomaticLifecycle: true },
@@ -60,7 +60,7 @@ describe('normalizePublishedTournamentLifecycleRules', () => {
   it('strips a client-supplied automatic lifecycle marker without new-create opt-in', () => {
     expect(
       normalizePublishedTournamentLifecycleRules({
-        config: { regularSource: 'daily_aggregate' },
+        config: { regularSource: 'classic' },
         playoffRounds: [],
         automaticLifecycleVersion: 1,
       }),
@@ -148,7 +148,7 @@ describe('normalizePublishedTournamentLifecycleRules', () => {
 
   it('defaults a one-day best-of-seven capacity to all seven games', () => {
     const normalized = normalizePublishedTournamentLifecycleRules({
-      config: { regularSource: 'daily_aggregate' },
+      config: { regularSource: 'classic' },
       playoffRounds: [
         {
           roundNumber: 1,

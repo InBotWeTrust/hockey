@@ -5,6 +5,8 @@ import type {
   StickEffects,
 } from '@hockey/game-core';
 import { apiFetch } from './apiFetch.js';
+import type { GameplayLockDTO } from './gameplayLock.js';
+export type { GameplayLockDTO } from './gameplayLock.js';
 import type { GameRequestOptions } from './requestTimeout.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 
@@ -220,6 +222,8 @@ export interface AmateurDuelPeriodLog {
 }
 
 export interface AmateurDuelMatch {
+  duel_lock?: GameplayLockDTO | null;
+  gameplay_lock?: GameplayLockDTO | null;
   id: string;
   template_id: string | null;
   status: AmateurDuelMatchStatus;
@@ -266,6 +270,7 @@ export interface AmateurDuelMatchState extends AmateurDuelMatch {
 }
 
 export interface AmateurOpponent {
+  format_locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
   userId: string;
   displayName: string;
   avatarUrl: string | null;
@@ -358,6 +363,8 @@ export interface AmateurDuelLoadoutSelection {
 function stampMatch<T extends AmateurDuelMatch>(match: T): T {
   return {
     ...match,
+    // Retain the old consumer field for one release, derived from the authoritative DTO.
+    ...(match.gameplay_lock === undefined ? {} : { duel_lock: match.gameplay_lock }),
     received_at_performance_ms: performance.now(),
   } as T;
 }
@@ -371,8 +378,18 @@ export function searchAmateurOpponents(q = '', limit = 20): Promise<{ users: Ama
   return apiFetch<{ users: AmateurOpponent[] }>(`/duel/amateur/opponents?${params.toString()}`);
 }
 
-export function fetchAmateurMatches(): Promise<{ matches: AmateurDuelMatch[] }> {
-  return apiFetch<{ matches: AmateurDuelMatch[] }>('/duel/amateur/matches').then((res) => ({
+export interface AmateurDuelOverview {
+  format_locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
+  matches: AmateurDuelMatch[];
+  duel_lock?: GameplayLockDTO | null;
+  gameplay_lock?: GameplayLockDTO | null;
+  matchmaking_enabled?: boolean;
+}
+
+export function fetchAmateurMatches(): Promise<AmateurDuelOverview> {
+  return apiFetch<AmateurDuelOverview>('/duel/amateur/matches').then((res) => ({
+    ...res,
+    ...(res.gameplay_lock === undefined ? {} : { duel_lock: res.gameplay_lock }),
     matches: res.matches.map(stampMatch),
   }));
 }

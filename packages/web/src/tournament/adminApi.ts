@@ -1,5 +1,9 @@
 import { apiFetch } from '../api/apiFetch.js';
-import type { TournamentBracketSeries, TournamentLifecycleDTO } from '../api/tournament.js';
+import type {
+  TournamentBracketSeries,
+  TournamentLifecycleDTO,
+  TournamentRegularSource,
+} from '../api/tournament.js';
 
 export interface AdminTournament {
   id: string;
@@ -8,7 +12,7 @@ export interface AdminTournament {
   description: string;
   imageUrl?: string | null;
   status: string;
-  regularSource: 'head_to_head' | 'daily_aggregate' | 'classic';
+  regularSource: TournamentRegularSource;
   revision: number;
   participantCount: number;
   lifecycle: TournamentLifecycleDTO;

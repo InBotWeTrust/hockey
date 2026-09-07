@@ -3,6 +3,8 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { ArrowLeft, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { gameplayLockCopy } from '../api/gameplayLock.js';
+import { useGameplayLockRefresh } from '../hooks/useGameplayLockRefresh.js';
 import {
   fetchDailyHistory,
   fetchDailyState,
@@ -241,6 +243,7 @@ export function DailyOverviewScreen(): JSX.Element {
     getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
   });
   const today = state.data;
+  useGameplayLockRefresh(today?.gameplay_lock);
   const historyGames = history.data?.pages.flatMap((page) => page.games) ?? [];
   const currentGame = liveDailyGame(today);
   const games = useMemo(() => {
@@ -327,6 +330,13 @@ export function DailyOverviewScreen(): JSX.Element {
         </div>
 
         <section aria-label="Сегодняшняя игра" style={{ display: 'grid', gap: 8 }}>
+          {today?.gameplay_lock?.blocked && (
+            <p role="status" aria-label="Блокировка игры">
+              {gameplayLockCopy(today.gameplay_lock, syncedNow)}
+              {today.gameplay_lock.ends_at &&
+                ` · ${formatDurationMs(timestampMs(today.gameplay_lock.ends_at) - syncedNow)}`}
+            </p>
+          )}
           <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
             Сегодня
           </div>

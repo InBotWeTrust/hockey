@@ -1,7 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
 import { finalizeClassicTournamentDay } from './classicGame.js';
-import { finalizeTournamentDailyDay } from './dailyAggregate.js';
 import { enqueueTournamentPush } from '../push/tournament.js';
 import { zonedDateTimeToUtc } from './schedule.js';
 import {
@@ -284,13 +283,7 @@ async function finalizeExpiredRegularDays(
   );
   for (const matchday of matchdays.rows) {
     try {
-      if (source === 'daily_aggregate') {
-        await finalizeTournamentDailyDay(pool, {
-          tournamentId: row.id,
-          tournamentDay: Number(matchday.number),
-          now: options.now,
-        });
-      } else if (options.classicSeedSecret !== undefined) {
+      if (options.classicSeedSecret !== undefined) {
         await finalizeClassicTournamentDay(pool, {
           tournamentId: row.id,
           tournamentDay: Number(matchday.number),
@@ -310,13 +303,13 @@ async function regularResultsCompleteByTournament(
 ): Promise<Map<string, boolean>> {
   const complete = new Map<string, boolean>();
   const headToHeadIds: string[] = [];
-  const aggregateDays: Array<{ tournamentId: string; dailyDays: number }> = [];
+  const classicDays: Array<{ tournamentId: string; dailyDays: number }> = [];
 
   for (const row of lifecycleRows) {
     if (row.rules_snapshot.config.regularSource === 'head_to_head') {
       headToHeadIds.push(row.id);
     } else {
-      aggregateDays.push({ tournamentId: row.id, dailyDays: row.rules_snapshot.config.dailyDays });
+      classicDays.push({ tournamentId: row.id, dailyDays: row.rules_snapshot.config.dailyDays });
     }
   }
 
@@ -347,7 +340,7 @@ async function regularResultsCompleteByTournament(
     }
   }
 
-  if (aggregateDays.length > 0) {
+  if (classicDays.length > 0) {
     const { rows } = await pool.query<{
       tournament_id: string;
       participant_count: number;
@@ -368,8 +361,8 @@ async function regularResultsCompleteByTournament(
           and result.tournament_day between 1 and input.daily_days
         group by input.tournament_id, input.daily_days`,
       [
-        aggregateDays.map(({ tournamentId }) => tournamentId),
-        aggregateDays.map(({ dailyDays }) => dailyDays),
+        classicDays.map(({ tournamentId }) => tournamentId),
+        classicDays.map(({ dailyDays }) => dailyDays),
       ],
     );
     for (const counts of rows) {

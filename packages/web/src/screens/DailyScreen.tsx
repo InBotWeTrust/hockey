@@ -95,6 +95,9 @@ import {
   arenaVideoCubeImage,
 } from './lockerRoomBackground.js';
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
+import { ordinaryDuelLockCopy, type GameplayLockDTO } from '../api/gameplayLock.js';
+import { useGameplayLockRefresh } from '../hooks/useGameplayLockRefresh.js';
+import { gameplayLockCopy } from '../api/gameplayLock.js';
 import {
   fetchMyInventory,
   patchEquipment,
@@ -171,7 +174,7 @@ interface ArenaEntry {
   meta: string;
   ctaLabel: string;
   disabled?: boolean;
-  scoreboard?: JSX.Element;
+  scoreboard?: JSX.Element | null;
   opponentName?: string;
   opponentAvatarUrl?: string | null;
   typeLabel?: string;
@@ -187,7 +190,6 @@ const DUEL_KIND_ARTWORK_IMAGES: Record<AmateurDuelKind, string> = {
 };
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
 const TRAINING_SPEED_OVERRIDES_STORAGE_KEY = 'hockey.trainingSpeedOverrides';
-const TOURNAMENT_TRAINING_LOCK_LEAD_MS = 30 * 60_000;
 const OPPONENT_ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const OPPONENT_RECENT_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
@@ -484,10 +486,9 @@ export function DailyScreen(): JSX.Element {
   const tournamentOrigin = routeParams.get('section') === 'tournaments';
   const tournamentId = routeParams.get('tournament');
   const tournamentFixtureId = routeParams.get('fixture');
+  const gameView = routeParams.get('view');
   const tournamentGameRoute =
-    tournamentOrigin &&
-    tournamentId !== null &&
-    (routeParams.get('view') === 'daily' || routeParams.get('view') === 'classic');
+    tournamentOrigin && tournamentId !== null && (gameView === 'daily' || gameView === 'classic');
   const tournamentGameContext = useQuery({
     queryKey: ['tournament-game-context', tournamentId],
     queryFn: () => fetchTournamentGameContext(tournamentId!),
@@ -519,11 +520,6 @@ export function DailyScreen(): JSX.Element {
     if (tournamentGameRoute) return;
     void refresh();
   }, [refresh, tournamentGameRoute]);
-
-  useEffect(() => {
-    if (tournamentGameContext.data?.action !== 'play_daily') return;
-    void refresh();
-  }, [refresh, tournamentGameContext.data?.action]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -581,10 +577,7 @@ export function DailyScreen(): JSX.Element {
         />
       );
     }
-    if (
-      tournamentGameContext.data.action !== 'play_daily' &&
-      tournamentGameContext.data.action !== 'play_classic'
-    ) {
+    if (tournamentGameContext.data.action !== 'play_classic') {
       return (
         <TournamentGameContextCard
           context={tournamentGameContext.data}
@@ -721,10 +714,7 @@ export function DailyScreen(): JSX.Element {
     navigate('/?view=amateur&from=sections', { replace: true });
   };
 
-  if (
-    (selectedLevel === 'beginner' && beginnerMode === 'daily' && dailyView === 'play') ||
-    tournamentGameContext.data?.action === 'play_daily'
-  ) {
+  if (selectedLevel === 'beginner' && beginnerMode === 'daily' && dailyView === 'play') {
     return (
       <DailyPlayView
         backLabel={tournamentOrigin ? 'К турниру' : 'К режимам'}
@@ -992,30 +982,20 @@ function GameHub({
   const breakEndsAt = data.break_ends_at ? new Date(data.break_ends_at).getTime() : 0;
   const periodEndsAt = data.period_ends_at ? new Date(data.period_ends_at).getTime() : 0;
   const nextDayAt = new Date(data.next_day_starts_at).getTime();
-  const trainingCooldownEndsAt = data.training_cooldown_ends_at
-    ? new Date(data.training_cooldown_ends_at).getTime()
+  const trainingCooldownEndsAt = data.gameplay_lock?.ends_at
+    ? new Date(data.gameplay_lock.ends_at).getTime()
     : 0;
   const [now, setNow] = useState(Date.now());
   const breakRemaining = Math.max(0, breakEndsAt - now);
   const periodRemaining = Math.max(0, periodEndsAt - now);
   const nextDayRemaining = Math.max(0, nextDayAt - now);
   const trainingCooldownRemaining = Math.max(0, trainingCooldownEndsAt - now);
-  const tournamentDayStartsAt = trainingData?.tournament_day_starts_at
-    ? new Date(trainingData.tournament_day_starts_at).getTime()
-    : 0;
-  const isDailyStartedAndIncomplete =
-    data.state === 'period_active' ||
-    data.state === 'break_active' ||
-    (data.state === 'idle' && data.current_period > 0 && data.current_period < data.total_periods);
-  const isTrainingLockedByDaily = isDailyStartedAndIncomplete;
+  const isTrainingLockedByDaily = trainingData?.gameplay_lock?.reason === 'recent_gameplay';
   const isTrainingLockedByTournament =
-    trainingData?.tournament_day_locked === true ||
-    (tournamentDayStartsAt > 0 && now >= tournamentDayStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS);
-  const isDailyLockedByTraining =
-    data.state === 'idle' &&
-    data.current_period === 0 &&
-    trainingCooldownEndsAt > 0 &&
-    trainingCooldownRemaining > 0;
+    trainingData?.gameplay_lock?.blocked === true && !isTrainingLockedByDaily;
+  const isDailyLockedByTraining = data.state === 'idle' && data.gameplay_lock?.blocked === true;
+  useGameplayLockRefresh(data.gameplay_lock);
+  useGameplayLockRefresh(trainingData?.gameplay_lock);
   const amateurUnlockGoalsRequired = Math.max(
     0,
     data.amateur_unlock_goals_required ?? DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED,
@@ -1045,13 +1025,8 @@ function GameHub({
 
   useEffect(() => {
     void refreshTraining();
-  }, [refreshTraining]);
-
-  useEffect(() => {
-    if (!isTrainingLockedByTournament) return undefined;
-    const id = window.setInterval(() => void refreshTraining(), 30_000);
-    return () => window.clearInterval(id);
-  }, [isTrainingLockedByTournament, refreshTraining]);
+    void refresh();
+  }, [refreshTraining, refresh]);
 
   useEffect(() => {
     if (
@@ -1072,16 +1047,6 @@ function GameHub({
     data.state,
     isDailyLockedByTraining,
   ]);
-
-  useEffect(() => {
-    const lockAt = tournamentDayStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS;
-    if (tournamentDayStartsAt <= 0 || now >= lockAt) return undefined;
-    const id = window.setTimeout(
-      () => setNow(Date.now()),
-      Math.min(2_147_000_000, Math.max(0, lockAt - Date.now() + 50)),
-    );
-    return () => window.clearTimeout(id);
-  }, [now, tournamentDayStartsAt]);
 
   useEffect(() => {
     if (data.state === 'period_active' && periodEndsAt > 0 && periodRemaining === 0) void refresh();
@@ -1109,7 +1074,9 @@ function GameHub({
   const dailyActionDisabled = pending || arenaActionId === 'daily' || isArenaLaunching;
   const dailyActionLabel = 'На лёд';
   const dailyEventTitle = isDailyLockedByTraining
-    ? 'Восстановление'
+    ? data.gameplay_lock?.reason === 'recent_gameplay'
+      ? 'Восстановление'
+      : 'Турнирная игра'
     : data.state === 'period_active'
       ? `${data.current_period}-й период`
       : data.state === 'break_active'
@@ -1141,10 +1108,10 @@ function GameHub({
             }
           : isDailyLockedByTraining
             ? {
-                timerLabel: 'До игры',
-                timer: formatHms(trainingCooldownRemaining),
+                timerLabel: trainingCooldownEndsAt > 0 ? 'До игры' : 'Статус',
+                timer: trainingCooldownEndsAt > 0 ? formatHms(trainingCooldownRemaining) : 'ИГРА',
                 activePeriod: null,
-                ariaLabel: `Восстановление. До игры ${formatHms(trainingCooldownRemaining)}`,
+                ariaLabel: `${gameplayLockCopy(data.gameplay_lock!, now)}${trainingCooldownEndsAt > 0 ? `. До игры ${formatHms(trainingCooldownRemaining)}` : ''}`,
               }
             : {
                 timerLabel: 'Время',
@@ -1154,12 +1121,9 @@ function GameHub({
               };
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
-  const trainingAvailability =
-    isTrainingLockedByDaily || isTrainingLockedByTournament
-      ? isTrainingLockedByTournament
-        ? 'Закрыта на время игр турнира'
-        : 'Закрыта до завершения игры'
-      : `${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`;
+  const trainingAvailability = trainingData?.gameplay_lock?.blocked
+    ? gameplayLockCopy(trainingData.gameplay_lock, now)
+    : `${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`;
 
   const runArenaLaunch = useCallback(
     async <T,>(
@@ -1299,7 +1263,7 @@ function GameHub({
       data.state === 'closed'
         ? 'День завершён, следующий старт после обновления.'
         : isDailyLockedByTraining
-          ? 'После тренировки нужно восстановиться.'
+          ? gameplayLockCopy(data.gameplay_lock!, now)
           : 'Главная игра дня на три периода.',
     meta:
       data.state === 'closed'
@@ -1335,6 +1299,8 @@ function GameHub({
     onEnter: handleOpenTraining,
   };
   const duelArenaEntries = activeDuelEvents.map<ArenaEntry>((event) => {
+    const eventLock =
+      event.source !== 'tournament' && event.duel_lock?.blocked ? event.duel_lock : null;
     const timing = duelEventTiming(event, now);
     const isIncomingInvite = isDuelInviteForMe(event);
     const invitePending =
@@ -1346,10 +1312,11 @@ function GameHub({
       eyebrow: 'Активная дуэль',
       eyebrowStatus: duelOutcomeText(event),
       title: event.opponent.display_name,
-      subtitle: '',
-      meta: `${timing.label}: ${timing.value}`,
+      subtitle: eventLock ? ordinaryDuelLockCopy(eventLock) : '',
+      meta: eventLock ? '' : `${timing.label}: ${timing.value}`,
       ctaLabel: arenaDuelCtaLabel(event, now),
       disabled:
+        (event.source !== 'tournament' && event.duel_lock?.blocked === true) ||
         isIncomingInvite ||
         arenaActionId === `duel-${event.id}` ||
         isArenaLaunching ||
@@ -1380,7 +1347,9 @@ function GameHub({
           <button
             type="button"
             className="btn arena-duel-invite-action arena-duel-invite-action--accept"
-            disabled={invitePending}
+            disabled={
+              invitePending || (event.source !== 'tournament' && event.duel_lock?.blocked === true)
+            }
             onClick={() => acceptArenaDuelMut.mutate(event.id)}
             style={{ minHeight: 34, fontSize: 'clamp(10px, 1.45vh, 12px)', padding: '0 10px' }}
           >
@@ -1389,7 +1358,7 @@ function GameHub({
         </div>
       ) : undefined,
       onEnter: () => void handleOpenDuel(event),
-      scoreboard: (
+      scoreboard: eventLock ? null : (
         <DailyHubScoreboard
           activePeriod={timing.activePeriod}
           ariaLabel={`${duelOutcomeText(event)}. ${timing.ariaLabel}`}
@@ -3953,10 +3922,12 @@ function DuelKindPreferencePicker({
   selected,
   onChange,
   onInfo,
+  locks,
 }: {
   selected: AmateurDuelKind[];
   onChange: (next: AmateurDuelKind[]) => void;
   onInfo: () => void;
+  locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
 }): JSX.Element {
   const selectedSet = new Set(selected);
   const toggleKind = (kind: AmateurDuelKind) => {
@@ -4002,6 +3973,8 @@ function DuelKindPreferencePicker({
             label={duelKindText(kind)}
             checked={selectedSet.has(kind)}
             active={selectedSet.has(kind)}
+            disabled={locks?.[kind]?.blocked === true}
+            title={locks?.[kind] ? ordinaryDuelLockCopy(locks[kind]!) : undefined}
             onClick={() => toggleKind(kind)}
           />
         ))}
@@ -4015,16 +3988,22 @@ function DuelKindPreferenceButton({
   checked,
   active,
   onClick,
+  disabled = false,
+  title,
 }: {
   label: string;
   checked: boolean;
   active: boolean;
   onClick: () => void;
+  disabled?: boolean;
+  title?: string | undefined;
 }): JSX.Element {
   return (
     <button
       type="button"
       aria-pressed={checked}
+      disabled={disabled}
+      title={title}
       onClick={onClick}
       style={{
         minWidth: 0,
@@ -4149,16 +4128,20 @@ function AmateurDuelsPage({
   const matches = useQuery({
     queryKey: ['amateur-duel', 'matches'],
     queryFn: fetchAmateurMatches,
+    refetchInterval: 15_000,
   });
+  const duelLock = matches.data?.duel_lock;
+  const duelBlocked = duelLock?.blocked === true;
+  useGameplayLockRefresh(duelLock);
   const opponents = useQuery({
     queryKey: ['amateur-duel', 'opponents', 'search', opponentQuery],
     queryFn: () => searchAmateurOpponents(opponentQuery, 12),
-    enabled: duelCreationMode === 'challenge' && opponentQuery.trim().length > 0,
+    enabled: !duelBlocked && duelCreationMode === 'challenge' && opponentQuery.trim().length > 0,
   });
   const onlineOpponents = useQuery({
     queryKey: ['amateur-duel', 'opponents', 'online'],
     queryFn: () => searchAmateurOpponents('', 12),
-    enabled: duelCreationMode === 'challenge',
+    enabled: !duelBlocked && duelCreationMode === 'challenge',
   });
   const rating = useQuery({
     queryKey: ['amateur-duel', 'rating', 'current'],
@@ -4174,6 +4157,9 @@ function AmateurDuelsPage({
 
   const matchmakingMut = useMutation({
     mutationFn: (duelKinds: AmateurDuelKind[]) => joinAmateurMatchmaking(duelKinds),
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
     onSuccess: (res) => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
       if (res.match) onOpenMatch(res.match.id);
@@ -4189,6 +4175,10 @@ function AmateurDuelsPage({
   const challengeMut = useMutation({
     mutationFn: (body: { template_id: string; opponent_user_id: string }) =>
       challengeAmateurDuel(body),
+    onError: () => {
+      setSelectedOpponent(null);
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
     onSuccess: () => {
       setSelectedOpponent(null);
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
@@ -4202,6 +4192,9 @@ function AmateurDuelsPage({
   });
   const acceptInviteMut = useMutation({
     mutationFn: (matchId: string) => acceptAmateurDuel(matchId),
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
     onSuccess: (_res, matchId) => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
       onOpenMatch(matchId);
@@ -4235,6 +4228,15 @@ function AmateurDuelsPage({
   const selectedTemplate = selectedTemplateId
     ? (templateItems.find((item) => item.id === selectedTemplateId) ?? null)
     : (templateItems[0] ?? null);
+  const formatLocks = matches.data?.format_locks;
+  const selectedFormatLock = selectedTemplate ? formatLocks?.[selectedTemplate.duel_kind] : null;
+  const selectedOpponentLock = selectedTemplate
+    ? selectedOpponent?.format_locks?.[selectedTemplate.duel_kind]
+    : null;
+  const challengeLock = duelLock ?? selectedFormatLock ?? selectedOpponentLock;
+  const eligibleMatchmakingKinds = matchmakingKinds.filter((kind) => !formatLocks?.[kind]?.blocked);
+  const unavailableFormat = DUEL_KIND_OPTIONS.find((kind) => formatLocks?.[kind]?.blocked);
+  const matchmakingFormatLock = unavailableFormat ? formatLocks?.[unavailableFormat] : null;
   const opponentOptions = opponentQuery.trim().length > 0 ? (opponents.data?.users ?? []) : [];
   const onlineOpponentOptions = (onlineOpponents.data?.users ?? []).filter((opponent) => {
     return isOpponentRecentlySeen(opponent.lastSeenAt);
@@ -4249,10 +4251,16 @@ function AmateurDuelsPage({
   const isMatchmakingExpired =
     matchmakingTicket !== null && matchmakingRemaining <= 0 && !matchmakingMut.isPending;
   const canStartMatchmaking =
+    !duelBlocked &&
     hasOpenDuelSlot &&
-    matchmakingKinds.length > 0 &&
+    eligibleMatchmakingKinds.length > 0 &&
     !matchmakingMut.isPending &&
     !isMatchmakingActive;
+
+  const resetMatchmaking = matchmakingMut.reset;
+  useEffect(() => {
+    if (duelBlocked) resetMatchmaking();
+  }, [duelBlocked, resetMatchmaking]);
 
   useEffect(() => {
     if (!selectedTemplateId && templateItems[0]) setSelectedTemplateId(templateItems[0].id);
@@ -4265,6 +4273,7 @@ function AmateurDuelsPage({
   }, [matchmakingTicket]);
 
   const canChallenge =
+    !challengeLock?.blocked &&
     hasOpenDuelSlot &&
     selectedTemplate !== null &&
     selectedOpponent !== null &&
@@ -4331,6 +4340,11 @@ function AmateurDuelsPage({
 
       {duelTab === 'game' && (
         <div className="duel-game-layout">
+          {duelBlocked && duelLock && (
+            <p role="status" className="modal-copy">
+              {ordinaryDuelLockCopy(duelLock)}
+            </p>
+          )}
           <section className="duel-section" aria-label="Текущие дуэли">
             <div className="section-label duel-section-title">
               Текущие дуэли ({openDuelSlotsUsed}/5)
@@ -4370,7 +4384,8 @@ function AmateurDuelsPage({
               {duelCreationMode === 'matchmaking' ? (
                 <>
                   <DuelKindPreferencePicker
-                    selected={matchmakingKinds}
+                    selected={eligibleMatchmakingKinds}
+                    {...(formatLocks === undefined ? {} : { locks: formatLocks })}
                     onChange={setMatchmakingKinds}
                     onInfo={() => setMatchmakingRulesOpen(true)}
                   />
@@ -4380,7 +4395,7 @@ function AmateurDuelsPage({
                     disabled={!canStartMatchmaking}
                     onClick={() => {
                       setMatchmakingNow(Date.now());
-                      matchmakingMut.mutate(matchmakingKinds);
+                      matchmakingMut.mutate(eligibleMatchmakingKinds);
                     }}
                   >
                     {matchmakingMut.isPending
@@ -4391,6 +4406,11 @@ function AmateurDuelsPage({
                           ? 'Искать снова'
                           : 'Начать поиск'}
                   </button>
+                  {!duelBlocked && matchmakingFormatLock && (
+                    <p role="status" className="modal-copy">
+                      Некоторые форматы недоступны. {ordinaryDuelLockCopy(matchmakingFormatLock)}
+                    </p>
+                  )}
                   {matchmakingTicket && (
                     <div
                       className="glass"
@@ -4433,6 +4453,11 @@ function AmateurDuelsPage({
                 </>
               ) : (
                 <>
+                  {!duelBlocked && challengeLock?.blocked && (
+                    <p role="status" className="modal-copy">
+                      {ordinaryDuelLockCopy(challengeLock)}
+                    </p>
+                  )}
                   {templateItems.length > 0 && selectedTemplate ? (
                     <>
                       <GlassSelect
@@ -4571,6 +4596,7 @@ function AmateurDuelsPage({
                     <input
                       className="duel-opponent-search__input"
                       aria-label="Поиск соперника"
+                      disabled={duelBlocked}
                       value={opponentQuery}
                       onChange={(event) => {
                         setOpponentQuery(event.target.value);
@@ -5332,13 +5358,21 @@ function DuelListCard({
           <button
             type="button"
             className="btn duel-invite-action duel-invite-action--accept"
-            disabled={inviteAnswerPending}
+            disabled={
+              inviteAnswerPending ||
+              (match.source !== 'tournament' && match.duel_lock?.blocked === true)
+            }
             onClick={onAcceptInvite}
             style={{ minHeight: 36, fontSize: 12 }}
           >
             Принять
           </button>
         </div>
+      )}
+      {match.source !== 'tournament' && match.duel_lock?.blocked && (
+        <p className="modal-copy" style={{ gridColumn: '1 / -1', margin: 0 }}>
+          {ordinaryDuelLockCopy(match.duel_lock)}
+        </p>
       )}
       {onCancelInvite && (
         <button
@@ -5407,6 +5441,16 @@ function AmateurDuelPlayView({
   const refresh = useAmateurDuelStore((s) => s.refresh);
   const ready = useAmateurDuelStore((s) => s.ready);
   const confirmTournamentLoadout = useAmateurDuelStore((s) => s.confirmTournamentLoadout);
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (match?.source !== 'tournament' || match.status !== 'settled') return;
+    void queryClient.invalidateQueries({ queryKey: ['tournaments'] });
+    void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    void queryClient.invalidateQueries({ queryKey: ['daily'] });
+    void queryClient.invalidateQueries({ queryKey: ['training'] });
+    void useDailyStore.getState().refresh();
+    void useTrainingSessionStore.getState().refresh();
+  }, [match?.source, match?.status, queryClient]);
   const startPeriod = useAmateurDuelStore((s) => s.startPeriod);
   const updateLoadout = useAmateurDuelStore((s) => s.updateLoadout);
   const optimisticAddShot = useAmateurDuelStore((s) => s.optimisticAddShot);
@@ -5563,6 +5607,8 @@ function AmateurDuelPlayView({
     () => (match ? createDuelConditionForMatch(match) : () => null),
     [match],
   );
+  const duelBlocked = match?.source !== 'tournament' && match?.duel_lock?.blocked === true;
+  useGameplayLockRefresh(match?.duel_lock);
 
   if (!match || match.id !== matchId) {
     return (
@@ -5574,11 +5620,26 @@ function AmateurDuelPlayView({
     );
   }
 
+  if (
+    duelBlocked &&
+    match.duel_lock &&
+    ['invited', 'ready_check', 'active'].includes(match.status)
+  ) {
+    return (
+      <ModeShell title="Дуэль" onBack={onBack}>
+        <p role="status" className="modal-copy">
+          {ordinaryDuelLockCopy(match.duel_lock)}
+        </p>
+      </ModeShell>
+    );
+  }
+
   const startsAt = new Date(match.starts_at).getTime();
   const endsAt = new Date(match.ends_at).getTime();
   const breakEndsAt = match.break_ends_at ? new Date(match.break_ends_at).getTime() : 0;
   const periodEndsAt = match.period_ends_at ? new Date(match.period_ends_at).getTime() : undefined;
   const canStart =
+    !duelBlocked &&
     match.status === 'active' &&
     match.me.state === 'accepted' &&
     now >= startsAt &&
@@ -5588,7 +5649,7 @@ function AmateurDuelPlayView({
     match.source === 'tournament' && match.rules.tournamentLoadoutLifecycleVersion === 1;
   const loadoutEditable = isDuelLoadoutEditable(match.source, match.me.state);
   const handleDirectDuelAction = async (): Promise<void> => {
-    if (inFlight) return;
+    if (inFlight || duelBlocked) return;
     const matchNow = duelMatchNowMs(match, now);
     if (match.status === 'ready_check' && match.me.state !== 'ready') {
       if (usesTournamentPeriodLoadout) preserveSelectedLoadoutAfterReadyRef.current = true;
@@ -5648,8 +5709,9 @@ function AmateurDuelPlayView({
     const showDirectResultModal =
       match.status === 'settled' && dismissedResultMatchId !== match.id && tournamentResultReady;
     const canRunDirectDuelAction =
-      (match.status === 'ready_check' && match.me.state !== 'ready') ||
-      canStartArenaDuelPeriod(match, duelMatchNowMs(match, now));
+      !duelBlocked &&
+      ((match.status === 'ready_check' && match.me.state !== 'ready') ||
+        canStartArenaDuelPeriod(match, duelMatchNowMs(match, now)));
     const { playerReady: meReady, goalieReady: opponentReady } =
       duelRinkReadyPresenceForMatch(match);
     const explainTournamentReadiness =
@@ -5687,6 +5749,7 @@ function AmateurDuelPlayView({
             inFlight ? 'ФИКСИРУЕМ...' : duelRinkPrimaryLabel(match, now).toUpperCase()
           }
           inactiveAction={canRunDirectDuelAction ? handleDirectDuelAction : undefined}
+          primaryActionBlocked={duelBlocked}
           readyPresence={{
             playerReady: meReady,
             goalieReady: opponentReady,
@@ -5828,7 +5891,7 @@ function AmateurDuelPlayView({
         <button
           type="button"
           className="btn btn--cta"
-          disabled={inFlight || match.me.state === 'ready'}
+          disabled={duelBlocked || inFlight || match.me.state === 'ready'}
           onClick={() => void ready({})}
         >
           {match.me.state === 'ready' ? 'Вы готовы' : inFlight ? 'Фиксируем...' : 'Готов'}
@@ -5849,7 +5912,8 @@ function AmateurDuelPlayView({
           playRouteTransitionOnMount={playRouteTransitionOnMount}
           onRouteTransitionConsumed={onRouteTransitionConsumed}
           onBack={onBack}
-          active={match.status === 'active'}
+          active={match.status === 'active' && !duelBlocked}
+          primaryActionBlocked={duelBlocked}
           seed={match.match_seed}
           goalieId={match.rules.goalieId}
           periodNumber={match.me.current_period}
@@ -8643,15 +8707,23 @@ function DailyPlayView({
     data.lifetime_total_goals >= amateurUnlockGoalsRequired
       ? AMATEUR_DAILY_COURT_BACKGROUND
       : undefined;
-  const trainingCooldownEndsAt = data.training_cooldown_ends_at
-    ? new Date(data.training_cooldown_ends_at).getTime()
+  const trainingCooldownEndsAt = data.gameplay_lock?.ends_at
+    ? new Date(data.gameplay_lock.ends_at).getTime()
     : 0;
   const trainingCooldownRemaining = Math.max(0, trainingCooldownEndsAt - now);
-  const isDailyLockedByTraining =
-    rawCanStartPeriod && trainingCooldownEndsAt > 0 && trainingCooldownRemaining > 0;
+  const isDailyLockedByTraining = rawCanStartPeriod && data.gameplay_lock?.blocked === true;
+  const isActiveDailyLocked =
+    data.state === 'period_active' &&
+    data.gameplay_lock?.blocked === true &&
+    (data.gameplay_lock.reason === 'active_classic' ||
+      (data.gameplay_lock.reason === 'scheduled_tournament' &&
+        (!data.gameplay_lock.tournament_starts_at ||
+          Date.parse(data.gameplay_lock.tournament_starts_at) <= Date.parse(data.server_now))));
+  useGameplayLockRefresh(data.gameplay_lock);
   const canStartPeriod = rawCanStartPeriod && !isDailyLockedByTraining;
-  const shouldSuppressRink = data.state !== 'period_active' || hasStatsModal;
-  const shouldShowIceCar = isBreak || isClosed || hasStatsModal || isDailyLockedByTraining;
+  const shouldSuppressRink = data.state !== 'period_active' || hasStatsModal || isActiveDailyLocked;
+  const shouldShowIceCar =
+    isBreak || isClosed || hasStatsModal || isDailyLockedByTraining || isActiveDailyLocked;
   const handleStartPeriod = useCallback(async (): Promise<DailyStateResponse | null> => {
     if (!canStartPeriod || pending) return null;
     return startPeriod();
@@ -8714,7 +8786,7 @@ function DailyPlayView({
         onRouteTransitionConsumed={onRouteTransitionConsumed}
         onBack={onBack}
         backLabel={backLabel}
-        active={data.state === 'period_active'}
+        active={data.state === 'period_active' && !isActiveDailyLocked}
         seed={data.daily_seed}
         goalieId={data.goalie_id}
         periodNumber={periodNumber}
@@ -8733,7 +8805,9 @@ function DailyPlayView({
             : isClosed
               ? formatHms(nextDayRemaining)
               : isDailyLockedByTraining
-                ? formatHms(trainingCooldownRemaining)
+                ? trainingCooldownEndsAt > 0
+                  ? formatHms(trainingCooldownRemaining)
+                  : 'ИГРА'
                 : data.state === 'idle'
                   ? '20:00'
                   : undefined
@@ -8750,8 +8824,8 @@ function DailyPlayView({
         scoreboardNotice={
           needsReconcile
             ? 'Проверяем результат'
-            : isDailyLockedByTraining
-              ? 'Нужно восстановиться'
+            : isDailyLockedByTraining || isActiveDailyLocked
+              ? gameplayLockCopy(data.gameplay_lock!, now)
               : undefined
         }
         shotButtonLabel={
@@ -8761,14 +8835,14 @@ function DailyPlayView({
               ? pending
                 ? 'НАЧИНАЕМ...'
                 : 'НАЧАТЬ'
-              : isBreak || isDailyLockedByTraining
+              : isBreak || isDailyLockedByTraining || isActiveDailyLocked
                 ? 'ЛЁД ГОТОВИТСЯ'
                 : isClosed
                   ? 'ИГРА ЗАВЕРШЕНА'
                   : undefined
         }
         inactiveAction={canStartPeriod ? handleStartPeriod : undefined}
-        primaryActionBlocked={needsReconcile}
+        primaryActionBlocked={needsReconcile || isActiveDailyLocked}
         entranceBeforeInactiveAction={true}
         periodEndsAt={data.state === 'period_active' ? periodEndsAt : undefined}
         onTimerExpired={refresh}
@@ -9153,6 +9227,8 @@ function ClassicTournamentPlayView({
   const optimisticAddShot = useClassicTournamentStore((state) => state.optimisticAddShot);
   const submitShot = useClassicTournamentStore((state) => state.submitShot);
   const applyState = useClassicTournamentStore((state) => state.applyState);
+  const queryClient = useQueryClient();
+  useGameplayLockRefresh(data?.gameplay_lock);
   const [now, setNow] = useState(Date.now());
   const [deferredState, setDeferredState] = useState<ClassicTournamentState | null>(null);
   const [statsModalState, setStatsModalState] = useState<ClassicTournamentState | null>(null);
@@ -9162,6 +9238,15 @@ function ClassicTournamentPlayView({
   );
 
   const summaryCandidate = deferredState ?? data;
+  useEffect(() => {
+    if (summaryCandidate?.state !== 'closed') return;
+    void queryClient.invalidateQueries({ queryKey: ['tournaments'] });
+    void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    void queryClient.invalidateQueries({ queryKey: ['daily'] });
+    void queryClient.invalidateQueries({ queryKey: ['training'] });
+    void useDailyStore.getState().refresh();
+    void useTrainingSessionStore.getState().refresh();
+  }, [summaryCandidate?.state, queryClient]);
   const summaryKey = summaryCandidate ? `classic:${summaryCandidate.session_id}` : '';
   const unseenPeriod =
     summaryCandidate &&
@@ -9179,10 +9264,11 @@ function ClassicTournamentPlayView({
   }, [data?.current_period, data?.loadout, data?.loadout_editable, data?.session_id]);
 
   useEffect(() => {
-    if (data?.state !== 'break_active' && data?.state !== 'closed') return undefined;
+    if (data?.state !== 'break_active' && data?.state !== 'closed' && !data?.gameplay_lock?.blocked)
+      return undefined;
     const timer = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(timer);
-  }, [data?.state]);
+  }, [data?.state, data?.gameplay_lock?.blocked]);
 
   useEffect(() => {
     if (statsModalState !== null || summaryCandidate === null || unseenPeriod === null) return;
@@ -9250,13 +9336,14 @@ function ClassicTournamentPlayView({
     );
   }
 
-  const active = data.state === 'period_active';
+  const locked = data.gameplay_lock?.blocked === true;
+  const active = data.state === 'period_active' && !locked;
   const breakEndsAt = data.break_ends_at ? timestampMs(data.break_ends_at) : 0;
   const periodEndsAt = data.period_ends_at ? timestampMs(data.period_ends_at) : 0;
   const closesAt = timestampMs(data.closes_at);
   const breakRemaining = Math.max(0, breakEndsAt - now);
   const closesRemaining = Math.max(0, closesAt - now);
-  const canStart = data.state === 'idle' && data.current_period < data.total_periods;
+  const canStart = data.state === 'idle' && data.current_period < data.total_periods && !locked;
   const nextPeriod = Math.min(data.total_periods, data.current_period + 1);
   const periodNumber = active ? data.current_period : canStart ? nextPeriod : data.current_period;
   const completedResult = data.result;
@@ -9268,7 +9355,7 @@ function ClassicTournamentPlayView({
     <>
       <PlayView<ClassicTournamentState>
         suppressedByModal={!active || shouldShowSummary}
-        showIceCar={data.state === 'break_active' && !shouldShowSummary}
+        showIceCar={(data.state === 'break_active' || locked) && !shouldShowSummary}
         onBack={onBack}
         backLabel="К турниру"
         active={active}
@@ -9286,13 +9373,17 @@ function ClassicTournamentPlayView({
         periodsTotal={data.total_periods}
         scoreboardPeriodsTotal={data.total_periods}
         timer={
-          data.state === 'break_active'
-            ? formatMs(breakRemaining)
-            : data.state === 'closed'
-              ? formatEventRemaining(closesRemaining)
-              : canStart
-                ? formatMs(data.period_duration_ms)
-                : undefined
+          locked
+            ? data.gameplay_lock?.ends_at
+              ? formatHms(Math.max(0, Date.parse(data.gameplay_lock.ends_at) - now))
+              : 'ИГРА'
+            : data.state === 'break_active'
+              ? formatMs(breakRemaining)
+              : data.state === 'closed'
+                ? formatEventRemaining(closesRemaining)
+                : canStart
+                  ? formatMs(data.period_duration_ms)
+                  : undefined
         }
         timerLabel={
           data.state === 'break_active'
@@ -9304,22 +9395,26 @@ function ClassicTournamentPlayView({
                 : undefined
         }
         scoreboardNotice={
-          data.state === 'closed' && completedResult !== null
-            ? `${completedResult.goals} шайб · точность ${Math.round(completedResult.accuracy * 100)}%`
-            : `${data.tournament_title} · ${data.tournament_day}-й тур`
+          locked
+            ? gameplayLockCopy(data.gameplay_lock!, now)
+            : data.state === 'closed' && completedResult !== null
+              ? `${completedResult.goals} шайб · точность ${Math.round(completedResult.accuracy * 100)}%`
+              : `${data.tournament_title} · ${data.tournament_day}-й тур`
         }
         shotButtonLabel={
-          canStart
-            ? inFlight
-              ? 'НАЧИНАЕМ...'
-              : data.current_period === 0
-                ? 'НАЧАТЬ'
-                : 'ПРОДОЛЖИТЬ'
-            : data.state === 'break_active'
-              ? 'ЛЁД ГОТОВИТСЯ'
-              : data.state === 'closed'
-                ? 'ИГРА ЗАВЕРШЕНА'
-                : undefined
+          locked
+            ? 'ЛЁД ГОТОВИТСЯ'
+            : canStart
+              ? inFlight
+                ? 'НАЧИНАЕМ...'
+                : data.current_period === 0
+                  ? 'НАЧАТЬ'
+                  : 'ПРОДОЛЖИТЬ'
+              : data.state === 'break_active'
+                ? 'ЛЁД ГОТОВИТСЯ'
+                : data.state === 'closed'
+                  ? 'ИГРА ЗАВЕРШЕНА'
+                  : undefined
         }
         inactiveAction={canStart ? () => startPeriod(selectedLoadout) : undefined}
         entranceBeforeInactiveAction
@@ -9640,13 +9735,11 @@ function TrainingPlayView({
   onRouteTransitionConsumed?: (() => void) | undefined;
 }): JSX.Element | null {
   const data = useTrainingSessionStore((s) => s.data);
-  const dailyData = useDailyStore((s) => s.data);
   const start = useTrainingSessionStore((s) => s.start);
   const optimisticAddShot = useTrainingSessionStore((s) => s.optimisticAddShot);
   const submitShot = useTrainingSessionStore((s) => s.submitShot);
   const applyState = useTrainingSessionStore((s) => s.applyState);
   const refreshDaily = useDailyStore((s) => s.refresh);
-  const refreshTraining = useTrainingSessionStore((s) => s.refresh);
   const userRole = useAuthStore((s) => s.user?.role);
   const experimentalTrainingCourt = useAuthStore((s) => s.user?.experimentalTrainingCourt);
   const [hitboxesVisible, setHitboxesVisible] = useState(() => readTrainingHitboxesVisible());
@@ -9665,19 +9758,8 @@ function TrainingPlayView({
     [data?.period_speed_presets, trainingPeriodNumber],
   );
   const effectiveTrainingSpeeds = trainingSpeedOverrides ?? trainingDefaultSpeeds;
-  const isTrainingLockedByDaily =
-    dailyData?.state === 'period_active' ||
-    dailyData?.state === 'break_active' ||
-    (dailyData?.state === 'idle' &&
-      dailyData.current_period > 0 &&
-      dailyData.current_period < dailyData.total_periods);
-  const tournamentStartsAt = data?.tournament_day_starts_at
-    ? new Date(data.tournament_day_starts_at).getTime()
-    : 0;
-  const isTrainingLockedByTournament =
-    data?.tournament_day_locked === true ||
-    (tournamentStartsAt > 0 && now >= tournamentStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS);
-  const isTrainingLocked = isTrainingLockedByDaily || isTrainingLockedByTournament;
+  const isTrainingLocked = data?.gameplay_lock?.blocked === true;
+  useGameplayLockRefresh(data?.gameplay_lock);
   const canStartTraining = data?.state === 'idle' && !isTrainingLocked;
   const handleHitboxesChange = useCallback((next: boolean): void => {
     setHitboxesVisible(next);
@@ -9710,22 +9792,6 @@ function TrainingPlayView({
     return () => window.clearInterval(id);
   }, [data?.state, isTrainingLocked]);
 
-  useEffect(() => {
-    const lockAt = tournamentStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS;
-    if (tournamentStartsAt <= 0 || now >= lockAt) return undefined;
-    const id = window.setTimeout(
-      () => setNow(Date.now()),
-      Math.min(2_147_000_000, Math.max(0, lockAt - Date.now() + 50)),
-    );
-    return () => window.clearTimeout(id);
-  }, [now, tournamentStartsAt]);
-
-  useEffect(() => {
-    if (!isTrainingLockedByTournament) return undefined;
-    const id = window.setInterval(() => void refreshTraining(), 30_000);
-    return () => window.clearInterval(id);
-  }, [isTrainingLockedByTournament, refreshTraining]);
-
   if (!data) return null;
 
   const isTrainingActive = data.state === 'active';
@@ -9733,41 +9799,21 @@ function TrainingPlayView({
   const isTrainingPlayable = isTrainingActive && !isTrainingLocked;
   const nextDayAt = new Date(data.next_day_starts_at).getTime();
   const nextDayRemaining = Math.max(0, nextDayAt - now);
-  const dailyPeriodEndsAt = dailyData?.period_ends_at
-    ? new Date(dailyData.period_ends_at).getTime()
-    : 0;
-  const dailyBreakEndsAt = dailyData?.break_ends_at
-    ? new Date(dailyData.break_ends_at).getTime()
-    : 0;
-  const dailyLockRemaining =
-    dailyData?.state === 'period_active' && dailyPeriodEndsAt > 0
-      ? Math.max(0, dailyPeriodEndsAt - now)
-      : dailyData?.state === 'break_active' && dailyBreakEndsAt > 0
-        ? Math.max(0, dailyBreakEndsAt - now)
-        : 0;
-  const tournamentStartsRemaining = Math.max(0, tournamentStartsAt - now);
-  const trainingTimer = isTrainingLockedByTournament
-    ? tournamentStartsRemaining > 0
-      ? formatMs(tournamentStartsRemaining)
-      : 'ИГРЫ'
-    : isTrainingLockedByDaily
-      ? dailyLockRemaining > 0
-        ? formatMs(dailyLockRemaining)
-        : 'ИГРА'
-      : isTrainingClosed
-        ? formatHms(nextDayRemaining)
-        : String(data.shots_limit);
-  const trainingTimerLabel = isTrainingLockedByTournament
-    ? tournamentStartsRemaining > 0
-      ? 'ДО НАЧАЛА'
+  const lockEnd = data.gameplay_lock?.ends_at ? Date.parse(data.gameplay_lock.ends_at) : 0;
+  const trainingTimer = isTrainingLocked
+    ? lockEnd > 0
+      ? formatHms(Math.max(0, lockEnd - now))
+      : 'ИГРА'
+    : isTrainingClosed
+      ? formatHms(nextDayRemaining)
+      : String(data.shots_limit);
+  const trainingTimerLabel = isTrainingLocked
+    ? lockEnd > 0
+      ? 'ДО ИГРЫ'
       : 'СТАТУС'
-    : isTrainingLockedByDaily
-      ? dailyLockRemaining > 0
-        ? 'ДО ИГРЫ'
-        : 'СТАТУС'
-      : isTrainingClosed
-        ? 'ДО ОБНОВЛЕНИЯ'
-        : 'ЛИМИТ';
+    : isTrainingClosed
+      ? 'ДО ОБНОВЛЕНИЯ'
+      : 'ЛИМИТ';
   return (
     <>
       <PlayView<TrainingStateResponse>
@@ -9793,15 +9839,7 @@ function TrainingPlayView({
         shotsTotal={data.shots_limit}
         timer={trainingTimer}
         timerLabel={trainingTimerLabel}
-        scoreboardNotice={
-          isTrainingLockedByTournament
-            ? tournamentStartsRemaining > 0
-              ? 'Скоро начнутся игры турнира'
-              : 'Идут игры турнира'
-            : isTrainingLockedByDaily
-              ? 'Игра уже начата'
-              : undefined
-        }
+        scoreboardNotice={isTrainingLocked ? gameplayLockCopy(data.gameplay_lock!, now) : undefined}
         shotButtonLabel={
           isTrainingPlayable
             ? undefined

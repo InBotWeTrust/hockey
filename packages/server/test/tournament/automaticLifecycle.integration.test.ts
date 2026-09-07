@@ -41,7 +41,7 @@ function minuteAfter(date: Date): Date {
   return new Date(date.getTime() + 60_000);
 }
 
-function rules(source: 'head_to_head' | 'daily_aggregate' | 'classic', playoffSize: 2 | 4) {
+function rules(source: 'head_to_head' | 'classic', playoffSize: 2 | 4) {
   const base = {
     participantLimit: 4,
     playoffSize,
@@ -127,7 +127,7 @@ function rules(source: 'head_to_head' | 'daily_aggregate' | 'classic', playoffSi
 async function seedAutomaticTournament(
   pool: Pool,
   input: {
-    source?: 'head_to_head' | 'daily_aggregate' | 'classic';
+    source?: 'head_to_head' | 'classic';
     approved: number;
     playoffSize: 2 | 4;
     subscribedAdmins?: number;
@@ -462,19 +462,12 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
     ).resolves.toMatchObject({ status: 'playoff', created: true, seriesCount: 1 });
   });
 
-  it('rejects recovery below two players, above the approved roster, and for daily or Classic tournaments', async () => {
+  it('rejects recovery below two players, above the approved roster, and for Classic tournaments', async () => {
     const tooFew = await seedAutomaticTournament(pool, {
       source: 'head_to_head',
       approved: 1,
       playoffSize: 4,
       slugSuffix: '-manual-too-few',
-    });
-    const daily = await seedAutomaticTournament(pool, {
-      source: 'daily_aggregate',
-      approved: 2,
-      playoffSize: 4,
-      slugSuffix: '-manual-daily',
-      playerIdBase: 1_200,
     });
     const classic = await seedAutomaticTournament(pool, {
       source: 'classic',
@@ -490,7 +483,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       slugSuffix: '-manual-too-large',
       playerIdBase: 1_400,
     });
-    for (const tournament of [tooFew, daily, classic, threePlayers]) {
+    for (const tournament of [tooFew, classic, threePlayers]) {
       await reconcileTournamentLifecycle(pool, { now: CLOSES_AT, tournamentId: tournament.id });
       await expect(
         generateRegularSchedule(pool, tournament.id, tournament.revision, {
@@ -501,7 +494,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
     }
   });
 
-  it.each(['daily_aggregate', 'classic'] as const)(
+  it.each(['classic'] as const)(
     'creates only matchdays for %s',
     async (source) => {
       const tournament = await seedAutomaticTournament(pool, {
@@ -524,7 +517,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
     },
   );
 
-  it.each(['daily_aggregate', 'classic'] as const)(
+  it.each(['classic'] as const)(
     'finalizes expired %s matchdays before it materializes duel-only playoffs',
     async (source) => {
       const tournament = await seedAutomaticTournament(pool, {
@@ -773,7 +766,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
 
   it('recovers a blocked tournament after an invited player is approved', async () => {
     const tournament = await seedAutomaticTournament(pool, {
-      source: 'daily_aggregate',
+      source: 'classic',
       approved: 3,
       playoffSize: 4,
       subscribedAdmins: 2,
@@ -1119,9 +1112,9 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
     expect(delivery.rows[0]!.count).toBe(2);
   });
 
-  it('does not finalize expired daily results for a legacy tournament or during dry-run', async () => {
+  it('does not finalize expired Classic results for a legacy tournament or during dry-run', async () => {
     const legacy = await seedAutomaticTournament(pool, {
-      source: 'daily_aggregate',
+      source: 'classic',
       approved: 4,
       playoffSize: 4,
     });
@@ -1135,7 +1128,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
     );
 
     const dryRun = await seedAutomaticTournament(pool, {
-      source: 'daily_aggregate',
+      source: 'classic',
       approved: 4,
       playoffSize: 4,
       slugSuffix: '-dry-run',
@@ -1232,7 +1225,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
     );
     const template = await pool.query<{ id: string }>(
       `select id from amateur_duel_template
-        where deleted_at is null and is_active
+        where deleted_at is null and is_active and duel_kind = 'express'
         order by starts_at, id limit 1`,
     );
     await pool.query(
@@ -1367,7 +1360,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
     );
     const template = await pool.query<{ id: string }>(
       `select id from amateur_duel_template
-        where deleted_at is null and is_active
+        where deleted_at is null and is_active and duel_kind = 'express'
         order by starts_at, id limit 1`,
     );
     await pool.query(
@@ -1612,7 +1605,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
 
   it('reports a changed lifecycle when it materializes a cutoff tie-break', async () => {
     const tournament = await seedAutomaticTournament(pool, {
-      source: 'daily_aggregate',
+      source: 'classic',
       approved: 4,
       playoffSize: 2,
     });
@@ -1626,6 +1619,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
     const report = await reconcileTournamentLifecycle(pool, {
       now: new Date('2030-10-27T15:00:00.000Z'),
       tournamentId: tournament.id,
+      classicSeedSecret: 'test-secret',
     });
     const tieBreaks = await pool.query<{ count: number }>(
       `select count(*)::int as count from tournament_round

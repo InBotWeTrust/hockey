@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { useAuthStore } from '../auth/authStore.js';
+import type { TournamentSummary } from '../api/tournament.js';
 import {
   approveAllAdminTournamentApplications,
   approveAdminTournamentParticipant,
@@ -9,6 +10,7 @@ import {
   generateAdminTournamentManualSchedule,
   rejectAdminTournamentApplication,
   startAdminTournamentRegularSeason,
+  type AdminTournament,
 } from './adminApi.js';
 
 describe('tournament admin API', () => {
@@ -24,6 +26,11 @@ describe('tournament admin API', () => {
           }),
       ),
     );
+  });
+
+  it('exposes only server-supported regular-season sources', () => {
+    expectTypeOf<AdminTournament['regularSource']>().toEqualTypeOf<'head_to_head' | 'classic'>();
+    expectTypeOf<TournamentSummary['regularSource']>().toEqualTypeOf<'head_to_head' | 'classic'>();
   });
 
   it('uses participant operations scoped to the selected tournament', async () => {
