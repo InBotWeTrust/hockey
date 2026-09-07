@@ -219,25 +219,34 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     return { attemptId: attempt.rows[0]!.id };
   }
 
-  async function createClassicTournamentDay(startsAt: Date): Promise<void> {
+  async function createClassicTournamentDay(startsAt: Date): Promise<{
+    tournamentId: string;
+    participantId: string;
+    matchdayId: string;
+  }> {
     const tournament = await pool.query<{ id: string }>(
       `insert into tournament (slug, title, status, regular_source, created_by)
        values ($1, 'Classic training lock', 'regular', 'classic', $2)
        returning id`,
       [`classic-training-lock-${Date.now()}-${Math.random()}`, userId],
     );
-    await pool.query(
+    const participant = await pool.query<{ id: string }>(
       `insert into tournament_participant (tournament_id, user_id, state)
-       values ($1, $2, 'approved')`,
+       values ($1, $2, 'approved') returning id`,
       [tournament.rows[0]!.id, userId],
     );
-    await pool.query(
+    const matchday = await pool.query<{ id: string }>(
       `insert into tournament_matchday
          (tournament_id, number, local_date, starts_at, ends_at, status)
        values ($1, 1, ($2::timestamptz at time zone 'Europe/Moscow')::date,
-               $2, $3, 'open')`,
+               $2, $3, 'open') returning id`,
       [tournament.rows[0]!.id, startsAt, new Date(startsAt.getTime() + 24 * 60 * 60_000)],
     );
+    return {
+      tournamentId: tournament.rows[0]!.id,
+      participantId: participant.rows[0]!.id,
+      matchdayId: matchday.rows[0]!.id,
+    };
   }
 
   it('initial state is idle', async () => {
@@ -390,8 +399,23 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     expect(training.statusCode).toBe(200);
   });
 
-  it('rejects training during a classic tournament game day', async () => {
+  it('allows training before a classic regular-season game has started', async () => {
     await createClassicTournamentDay(new Date(Date.now() + 20 * 60_000));
+
+    const training = await startTraining(1);
+
+    expect(training.statusCode).toBe(200);
+  });
+
+  it('rejects training after a classic regular-season game has started', async () => {
+    const day = await createClassicTournamentDay(new Date(Date.now() - 20 * 60_000));
+    await pool.query(
+      `insert into tournament_classic_session
+         (tournament_id, participant_id, matchday_id, tournament_day, state,
+          current_period, rules_snapshot, game_core_version, session_seed, closes_at)
+       values ($1, $2, $3, 1, 'period_active', 1, '{}'::jsonb, 1, 'seed', $4)`,
+      [day.tournamentId, day.participantId, day.matchdayId, new Date(Date.now() + 60 * 60_000)],
+    );
 
     const training = await startTraining(1);
 

@@ -365,7 +365,8 @@ async function getTournamentDayTrainingLock(
             and tournament.status = 'regular'
             and matchday.status <> 'cancelled'
             and matchday.ends_at > $2::timestamptz
-            and (session.id is null or session.state not in ('closed', 'expired'))
+            and session.current_period > 0
+            and session.state not in ('closed', 'expired')
          union all
          select game_day.first_game_starts_at as starts_at
            from tournament_fixture_attempt attempt
