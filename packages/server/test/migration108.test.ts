@@ -3,9 +3,11 @@ import { copyFile, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Pool } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { Pool, PoolClient } from 'pg';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyMigrations } from '../src/db/migrations.js';
+import { lockTournament } from '../src/tournament/locks.js';
+import { openTournamentFixtureSegment } from '../src/tournament/fixtureLifecycle.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from './helpers/testDb.js';
 
 const migrationsDir = path.resolve(
@@ -100,6 +102,81 @@ describe.skipIf(!hasIntegrationEnv)('migration 108 removes daily aggregate tourn
         input_payload: {},
         server_result: 'goal',
         game_core_version: 1,
+      },
+      remove,
+    );
+    for (const type of ['amateur_duel_settled', 'amateur_duel_inventory_reserved']) {
+      await insert(
+        'event_log',
+        {
+          user_id: users[0],
+          type,
+          payload: { match_id: match.id },
+        },
+        remove,
+      );
+    }
+    await insert(
+      'event_log',
+      {
+        user_id: users[0],
+        type: 'shot_mismatch',
+        payload: { mode: 'amateur_duel', amateur_duel_match_id: match.id },
+      },
+      remove,
+    );
+    // Similar-looking fields on unrelated events are not evidence of ownership.
+    await insert(
+      'event_log',
+      {
+        user_id: users[0],
+        type: 'diagnostic_note',
+        payload: { match_id: match.id },
+      },
+      false,
+    );
+    await insert(
+      'event_log',
+      {
+        user_id: users[0],
+        type: 'shot_mismatch',
+        payload: { match_id: match.id },
+      },
+      false,
+    );
+    await insert(
+      'currency_ledger',
+      {
+        user_id: users[0],
+        reason: 'duel_entry_fee',
+        available_delta: 0,
+        reserved_delta: 0,
+        balance_after: 0,
+        reserved_after: 0,
+        duel_match_id: match.id,
+      },
+      remove,
+    );
+    const template = await insert(
+      'amateur_duel_template',
+      {
+        title: 'Migration duel template',
+        is_active: false,
+        starts_at: startsAt,
+        ends_at: endsAt,
+        period_speed_presets: '[]',
+      },
+      false,
+    );
+    await insert(
+      'amateur_duel_matchmaking_ticket',
+      {
+        template_id: template.id,
+        user_id: users[0],
+        status: 'matched',
+        expires_at: endsAt,
+        matched_match_id: match.id,
+        duel_kinds: '["classic"]',
       },
       remove,
     );
@@ -485,6 +562,16 @@ describe.skipIf(!hasIntegrationEnv)('migration 108 removes daily aggregate tourn
       remove,
     );
     await insert(
+      'messages',
+      {
+        chat_id: channel.id,
+        sender_id: users[0],
+        content: 'Dispatch-only announcement',
+        metadata: { tournamentDispatchId: dispatch.id },
+      },
+      remove,
+    );
+    await insert(
       'message_reactions',
       { message_id: announcement.id, user_id: users[0], emoji: '👍' },
       remove,
@@ -576,6 +663,23 @@ describe.skipIf(!hasIntegrationEnv)('migration 108 removes daily aggregate tourn
     } finally {
       client.release();
     }
+  }
+
+  async function waitForAdvisoryWait(observer: PoolClient) {
+    await vi.waitFor(
+      async () => {
+        const result = await observer.query<{ count: number }>(
+          `select count(*)::int as count from pg_locks
+          where locktype = 'advisory' and not granted
+            and pg_backend_pid() = any(pg_blocking_pids(pid))`,
+        );
+        expect(
+          result.rows[0]!.count,
+          'the other connection waits for the tournament advisory lock',
+        ).toBe(1);
+      },
+      { interval: 10, timeout: 1500 },
+    );
   }
 
   beforeAll(async () => {
@@ -730,5 +834,158 @@ describe.skipIf(!hasIntegrationEnv)('migration 108 removes daily aggregate tourn
         )
       ).rows,
     ).toEqual([]);
+  });
+
+  it('waits for a runtime writer before capturing and deleting its newly linked duel', async () => {
+    const tournamentId = await seedTournament('daily_aggregate');
+    const fixture = await pool.query<{ id: string }>(
+      'select id from tournament_fixture where tournament_id = $1',
+      [tournamentId],
+    );
+    const writer = await pool.connect();
+    const migrator = await pool.connect();
+    let migrationResult: Promise<unknown> | undefined;
+    let writerOpen = false;
+    let migratorOpen = false;
+    const newDuelId = randomUUID();
+    try {
+      await writer.query('begin');
+      writerOpen = true;
+      await lockTournament(writer, String(tournamentId));
+      await migrator.query('begin');
+      migratorOpen = true;
+      migrationResult = migrator
+        .query(await readFile(path.join(migrationsDir, migrationName), 'utf8'))
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
+      await waitForAdvisoryWait(writer);
+
+      await writer.query(
+        `insert into amateur_duel_match
+           (id, challenger_user_id, opponent_user_id, status, source, rules_snapshot,
+            match_seed, starts_at, ends_at, game_core_version)
+         values ($1, $2, $3, 'active', 'tournament', '{}', 'late-duel', $4, $5, 1)`,
+        [newDuelId, users[0], users[1], startsAt, endsAt],
+      );
+      await writer.query(
+        `insert into tournament_fixture_segment (fixture_id, sequence_number, kind, duel_match_id, rules_snapshot)
+         values ($1, 3, 'overtime', $2, '{}')`,
+        [fixture.rows[0]!.id, newDuelId],
+      );
+      await writer.query(
+        `insert into event_log (user_id, type, payload)
+         values ($1, 'amateur_duel_inventory_reserved', jsonb_build_object('match_id', $2::text))`,
+        [users[0], newDuelId],
+      );
+      await writer.query('commit');
+      writerOpen = false;
+      expect(await migrationResult).toBeNull();
+      await migrator.query('commit');
+      migratorOpen = false;
+
+      expect(
+        (await pool.query('select id from tournament where id = $1', [tournamentId])).rows,
+      ).toEqual([]);
+      expect(
+        (await pool.query('select id from amateur_duel_match where id = $1', [newDuelId])).rows,
+      ).toEqual([]);
+      expect(
+        (await pool.query("select id from event_log where payload->>'match_id' = $1", [newDuelId]))
+          .rows,
+      ).toEqual([]);
+    } finally {
+      if (writerOpen) await writer.query('rollback');
+      await migrationResult;
+      if (migratorOpen) await migrator.query('rollback');
+      writer.release();
+      migrator.release();
+    }
+  });
+
+  it('keeps a later runtime writer waiting until commit and returns not found after removal', async () => {
+    const tournamentId = await seedTournament('daily_aggregate');
+    const fixture = await pool.query<{ id: string }>(
+      'select id from tournament_fixture where tournament_id = $1',
+      [tournamentId],
+    );
+    const migrator = await pool.connect();
+    let migratorOpen = false;
+    let writerResult: Promise<unknown> | undefined;
+    try {
+      await migrator.query('begin');
+      migratorOpen = true;
+      await migrator.query(await readFile(path.join(migrationsDir, migrationName), 'utf8'));
+      writerResult = openTournamentFixtureSegment(
+        pool,
+        {
+          tournamentId: String(tournamentId),
+          fixtureId: fixture.rows[0]!.id,
+          userId: users[0]!,
+          now: new Date(startsAt),
+        },
+        async () => {
+          throw new Error('A removed fixture must not create a duel');
+        },
+      ).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      await waitForAdvisoryWait(migrator);
+      await migrator.query('commit');
+      migratorOpen = false;
+      expect(await writerResult).toMatchObject({ code: 'not_found', statusCode: 404 });
+    } finally {
+      if (migratorOpen) await migrator.query('rollback');
+      await writerResult;
+      migrator.release();
+    }
+  });
+
+  it('preserves a tournament changed to a supported source while waiting for its runtime lock', async () => {
+    const tournamentId = await seedTournament('daily_aggregate');
+    const fixturesBefore = await pool.query('select * from tournament_fixture');
+    const duelsBefore = await pool.query('select * from amateur_duel_match');
+    const writer = await pool.connect();
+    const migrator = await pool.connect();
+    let migrationResult: Promise<unknown> | undefined;
+    let writerOpen = false;
+    let migratorOpen = false;
+    try {
+      await writer.query('begin');
+      writerOpen = true;
+      await lockTournament(writer, String(tournamentId));
+      await migrator.query('begin');
+      migratorOpen = true;
+      migrationResult = migrator
+        .query(await readFile(path.join(migrationsDir, migrationName), 'utf8'))
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
+      await waitForAdvisoryWait(writer);
+      const changed = await writer.query(
+        "update tournament set regular_source = 'classic' where id = $1 returning *",
+        [tournamentId],
+      );
+      await writer.query('commit');
+      writerOpen = false;
+      expect(await migrationResult).toBeNull();
+      await migrator.query('commit');
+      migratorOpen = false;
+
+      expect((await pool.query('select * from tournament')).rows).toEqual(changed.rows);
+      expect((await pool.query('select * from tournament_fixture')).rows).toEqual(
+        fixturesBefore.rows,
+      );
+      expect((await pool.query('select * from amateur_duel_match')).rows).toEqual(duelsBefore.rows);
+    } finally {
+      if (writerOpen) await writer.query('rollback');
+      await migrationResult;
+      if (migratorOpen) await migrator.query('rollback');
+      writer.release();
+      migrator.release();
+    }
   });
 });

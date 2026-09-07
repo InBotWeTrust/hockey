@@ -3,6 +3,28 @@
 create temporary table removed_daily_aggregate_tournament_ids on commit drop as
 select id from tournament where regular_source = 'daily_aggregate';
 
+-- The old server remains live during migrations. Acquire its tournament locks
+-- before snapshotting descendants so an in-flight fixture writer commits its
+-- newly linked duel before we collect IDs. Hold all locks until migration commit.
+do $$
+declare
+  target_id uuid;
+begin
+  for target_id in
+    select id from removed_daily_aggregate_tournament_ids order by id
+  loop
+    perform pg_advisory_xact_lock(hashtext('tournament:' || target_id));
+  end loop;
+end $$;
+
+-- A writer ahead of us may have changed a draft's source while we waited.
+-- Recheck ownership under the acquired locks before collecting any descendants.
+delete from removed_daily_aggregate_tournament_ids target
+ where not exists (
+   select 1 from tournament
+    where tournament.id = target.id and regular_source = 'daily_aggregate'
+ );
+
 -- Capture reverse references before deleting fixtures, whose FKs point to duels
 -- with ON DELETE SET NULL. A legacy link must never delete an ordinary duel.
 create temporary table removed_daily_aggregate_duel_ids on commit drop as
@@ -64,7 +86,15 @@ delete from chats
    and entity_id in (select id from removed_daily_aggregate_tournament_ids);
 
 delete from event_log
- where payload->>'tournament_id' in (select id::text from removed_daily_aggregate_tournament_ids);
+ where payload->>'tournament_id' in (select id::text from removed_daily_aggregate_tournament_ids)
+    or (
+      type in ('amateur_duel_settled', 'amateur_duel_inventory_reserved')
+      and payload->>'match_id' in (select id::text from removed_daily_aggregate_duel_ids)
+    )
+    or (
+      type = 'shot_mismatch'
+      and payload->>'amateur_duel_match_id' in (select id::text from removed_daily_aggregate_duel_ids)
+    );
 
 -- Remove owned history without issuing rewards, refunds or balance changes.
 delete from currency_ledger
