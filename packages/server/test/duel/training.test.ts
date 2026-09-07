@@ -272,6 +272,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     expect(state.state).toBe('idle');
     expect(state.shots_limit).toBe(TRAINING_SHOTS_LIMIT);
     expect(state.selected_period).toBeNull();
+    expect(state.gameplay_lock).toBeNull();
   });
 
   it('starts one training session for the local day', async () => {
@@ -339,15 +340,15 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     expect(shot.statusCode).toBe(409);
   });
 
-  it('rejects training start while a daily period is active', async () => {
+  it('allows training while an active daily period has no accepted shots', async () => {
     const daily = await startDailyPeriod();
     expect(daily.statusCode).toBe(200);
 
     const training = await startTraining(1);
-    expect(training.statusCode).toBe(409);
+    expect(training.statusCode).toBe(200);
   });
 
-  it('rejects training start between daily periods before the third period is complete', async () => {
+  it('allows training between incomplete daily periods without recent accepted shots', async () => {
     const daily = await startDailyPeriod();
     expect(daily.statusCode).toBe(200);
     await pool.query(
@@ -361,17 +362,43 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     );
 
     const training = await startTraining(1);
-    expect(training.statusCode).toBe(409);
+    expect(training.statusCode).toBe(200);
   });
 
-  it('rejects training shots once the daily game starts', async () => {
+  it('allows training shots after daily period setup without an accepted daily shot', async () => {
     const training = await startTraining(2);
     expect(training.statusCode).toBe(200);
     const daily = await startDailyPeriod();
     expect(daily.statusCode).toBe(200);
 
     const shot = await submitShot(1);
-    expect(shot.statusCode).toBe(409);
+    expect(shot.statusCode).toBe(200);
+  });
+
+  it('blocks training for one hour after an accepted daily shot even across an unfinished daily game', async () => {
+    expect((await startTraining(2)).statusCode).toBe(200);
+    expect((await startDailyPeriod()).statusCode).toBe(200);
+    const dailyShot = await app.inject({
+      method: 'POST',
+      url: '/duel/daily/shot',
+      headers: authHeader(),
+      payload: { shot_index: 1, input: { tapTime: 0 }, claimed_result: 'miss' },
+    });
+    expect(dailyShot.statusCode).toBe(200);
+    expect((await getState()).gameplay_lock).toMatchObject({
+      blocked: true,
+      reason: 'recent_gameplay',
+    });
+    expect((await startTraining(2)).statusCode).toBe(409);
+    expect((await submitShot(1)).statusCode).toBe(409);
+    await pool.query(
+      "update shot_session set created_at = now() - interval '61 minutes' where user_id = $1 and mode = 'daily'",
+      [userId],
+    );
+    expect((await getState()).gameplay_lock).toBeNull();
+    expect((await startTraining(2)).statusCode).toBe(200);
+    expect((await submitShot(1)).statusCode).toBe(200);
+    expect((await submitShot(2)).statusCode).toBe(200);
   });
 
   it('allows training 61 minutes before the first tournament game of the day', async () => {
@@ -453,7 +480,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     expect(training.statusCode).toBe(200);
   });
 
-  it('rejects training after a classic regular-season game has started', async () => {
+  it('rejects training after a Classic game accepts its first shot', async () => {
     const day = await createClassicTournamentDay(new Date(Date.now() - 20 * 60_000));
     await pool.query(
       `insert into tournament_classic_session
@@ -461,6 +488,13 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
           current_period, rules_snapshot, game_core_version, session_seed, closes_at)
        values ($1, $2, $3, 1, 'period_active', 1, '{}'::jsonb, 1, 'seed', $4)`,
       [day.tournamentId, day.participantId, day.matchdayId, new Date(Date.now() + 60 * 60_000)],
+    );
+    await pool.query(
+      `insert into shot_session
+      (user_id, mode, tournament_classic_session_id, period_number, shot_index, seed, input_payload, server_result, game_core_version)
+      select $1, 'tournament_classic', id, 1, 1, 'seed', '{}'::jsonb, 'miss', 1
+      from tournament_classic_session where tournament_id = $2`,
+      [userId, day.tournamentId],
     );
 
     const training = await startTraining(1);

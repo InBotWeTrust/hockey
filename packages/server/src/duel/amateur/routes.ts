@@ -37,7 +37,8 @@ import {
   getSafeSegmentStartLockFromState,
   lockUserGameplay,
   GAMEPLAY_RECOVERY_MS,
-  type GameplayLockReason,
+  toGameplayLockDto,
+  type GameplayLockDTO,
   type GameplayLockState,
 } from '../gameplayLocks.js';
 import { deriveAmateurDuelSeed, deriveShotSeed } from '../seed.js';
@@ -67,12 +68,6 @@ import {
 } from './periodLoadout.js';
 
 type MatchStatus = 'invited' | 'ready_check' | 'active' | 'settled' | 'cancelled' | 'expired';
-interface GameplayLockDTO {
-  blocked: boolean;
-  reason: GameplayLockReason;
-  ends_at: string | null;
-  tournament_starts_at: string | null;
-}
 
 async function duelLockDto(
   client: PoolClient,
@@ -88,14 +83,7 @@ async function duelLockDto(
 }
 
 function toDuelLockDto(lock: GameplayLockState): GameplayLockDTO | null {
-  return !lock.blocked || lock.reason === null
-    ? null
-    : {
-        blocked: true,
-        reason: lock.reason,
-        ends_at: lock.endsAt?.toISOString() ?? null,
-        tournament_starts_at: lock.tournamentStartsAt?.toISOString() ?? null,
-      };
+  return toGameplayLockDto(lock);
 }
 
 function duelAdmissionDurationMs(rules: DuelRulesSnapshot): number {
@@ -712,6 +700,7 @@ interface DuelParticipantDTO {
 
 interface DuelMatchDTO {
   duel_lock: GameplayLockDTO | null;
+  gameplay_lock: GameplayLockDTO | null;
   id: string;
   template_id: string | null;
   status: MatchStatus;
@@ -3304,6 +3293,7 @@ async function buildMatchDto(
     id: match.id,
     template_id: match.template_id,
     duel_lock: duelLock,
+    gameplay_lock: duelLock,
     status: match.status,
     source: match.source,
     ranked: match.ranked,
@@ -4236,6 +4226,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     return {
       matches: response.matches,
       duel_lock: response.duelLock,
+      gameplay_lock: response.duelLock,
       format_locks: response.formatLocks,
       matchmaking_enabled: response.duelLock === null,
     };

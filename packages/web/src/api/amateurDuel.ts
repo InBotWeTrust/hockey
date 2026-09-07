@@ -223,6 +223,7 @@ export interface AmateurDuelPeriodLog {
 
 export interface AmateurDuelMatch {
   duel_lock?: GameplayLockDTO | null;
+  gameplay_lock?: GameplayLockDTO | null;
   id: string;
   template_id: string | null;
   status: AmateurDuelMatchStatus;
@@ -362,6 +363,8 @@ export interface AmateurDuelLoadoutSelection {
 function stampMatch<T extends AmateurDuelMatch>(match: T): T {
   return {
     ...match,
+    // Retain the old consumer field for one release, derived from the authoritative DTO.
+    ...(match.gameplay_lock === undefined ? {} : { duel_lock: match.gameplay_lock }),
     received_at_performance_ms: performance.now(),
   } as T;
 }
@@ -379,12 +382,14 @@ export interface AmateurDuelOverview {
   format_locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
   matches: AmateurDuelMatch[];
   duel_lock?: GameplayLockDTO | null;
+  gameplay_lock?: GameplayLockDTO | null;
   matchmaking_enabled?: boolean;
 }
 
 export function fetchAmateurMatches(): Promise<AmateurDuelOverview> {
   return apiFetch<AmateurDuelOverview>('/duel/amateur/matches').then((res) => ({
     ...res,
+    ...(res.gameplay_lock === undefined ? {} : { duel_lock: res.gameplay_lock }),
     matches: res.matches.map(stampMatch),
   }));
 }

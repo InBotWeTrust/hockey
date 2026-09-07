@@ -220,6 +220,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(s.server_now).toEqual(expect.any(String));
     expect(s.previous_game).toBeNull();
     expect(s.training_cooldown_ends_at).toBeNull();
+    expect(s.gameplay_lock).toBeNull();
 
     const { rows } = await pool.query('select count(*)::int as n from day_pool');
     expect(rows[0].n).toBe(0);
@@ -244,6 +245,12 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
 
     const lockedState = await getState();
     expect(lockedState.training_cooldown_ends_at).not.toBeNull();
+    expect(lockedState.gameplay_lock).toEqual({
+      blocked: true,
+      reason: 'recent_gameplay',
+      ends_at: lockedState.training_cooldown_ends_at,
+      tournament_starts_at: null,
+    });
 
     const lockedStart = await startPeriod();
     expect(lockedStart.statusCode).toBe(409);
@@ -256,6 +263,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     );
     const unlockedState = await getState();
     expect(unlockedState.training_cooldown_ends_at).toBeNull();
+    expect(unlockedState.gameplay_lock).toBeNull();
 
     const start = await startPeriod();
     expect(start.statusCode).toBe(200);

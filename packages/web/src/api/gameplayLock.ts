@@ -7,6 +7,15 @@ export interface GameplayLockDTO {
   tournament_starts_at: string | null;
 }
 
+export function gameplayLockCopy(lock: GameplayLockDTO, now = Date.now()): string {
+  if (lock.reason === 'recent_gameplay') return 'Восстановление после игры';
+  if (lock.reason === 'active_classic') return 'Завершите текущую игру Classic';
+  const startsAt = lock.tournament_starts_at ? Date.parse(lock.tournament_starts_at) : NaN;
+  return startsAt > now
+    ? `До турнирной игры. Начало: ${new Date(startsAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}`
+    : 'До завершения турнирного блока';
+}
+
 export function ordinaryDuelLockCopy(lock: GameplayLockDTO): string {
   if (lock.reason === 'active_classic')
     return 'Завершите текущую турнирную игру, чтобы играть в обычные дуэли.';

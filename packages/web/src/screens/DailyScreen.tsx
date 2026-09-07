@@ -97,6 +97,7 @@ import {
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 import { ordinaryDuelLockCopy, type GameplayLockDTO } from '../api/gameplayLock.js';
 import { useGameplayLockRefresh } from '../hooks/useGameplayLockRefresh.js';
+import { gameplayLockCopy } from '../api/gameplayLock.js';
 import {
   fetchMyInventory,
   patchEquipment,
@@ -189,7 +190,6 @@ const DUEL_KIND_ARTWORK_IMAGES: Record<AmateurDuelKind, string> = {
 };
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
 const TRAINING_SPEED_OVERRIDES_STORAGE_KEY = 'hockey.trainingSpeedOverrides';
-const TOURNAMENT_TRAINING_LOCK_LEAD_MS = 30 * 60_000;
 const OPPONENT_ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const OPPONENT_RECENT_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
@@ -994,30 +994,20 @@ function GameHub({
   const breakEndsAt = data.break_ends_at ? new Date(data.break_ends_at).getTime() : 0;
   const periodEndsAt = data.period_ends_at ? new Date(data.period_ends_at).getTime() : 0;
   const nextDayAt = new Date(data.next_day_starts_at).getTime();
-  const trainingCooldownEndsAt = data.training_cooldown_ends_at
-    ? new Date(data.training_cooldown_ends_at).getTime()
+  const trainingCooldownEndsAt = data.gameplay_lock?.ends_at
+    ? new Date(data.gameplay_lock.ends_at).getTime()
     : 0;
   const [now, setNow] = useState(Date.now());
   const breakRemaining = Math.max(0, breakEndsAt - now);
   const periodRemaining = Math.max(0, periodEndsAt - now);
   const nextDayRemaining = Math.max(0, nextDayAt - now);
   const trainingCooldownRemaining = Math.max(0, trainingCooldownEndsAt - now);
-  const tournamentDayStartsAt = trainingData?.tournament_day_starts_at
-    ? new Date(trainingData.tournament_day_starts_at).getTime()
-    : 0;
-  const isDailyStartedAndIncomplete =
-    data.state === 'period_active' ||
-    data.state === 'break_active' ||
-    (data.state === 'idle' && data.current_period > 0 && data.current_period < data.total_periods);
-  const isTrainingLockedByDaily = isDailyStartedAndIncomplete;
+  const isTrainingLockedByDaily = trainingData?.gameplay_lock?.reason === 'recent_gameplay';
   const isTrainingLockedByTournament =
-    trainingData?.tournament_day_locked === true ||
-    (tournamentDayStartsAt > 0 && now >= tournamentDayStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS);
-  const isDailyLockedByTraining =
-    data.state === 'idle' &&
-    data.current_period === 0 &&
-    trainingCooldownEndsAt > 0 &&
-    trainingCooldownRemaining > 0;
+    trainingData?.gameplay_lock?.blocked === true && !isTrainingLockedByDaily;
+  const isDailyLockedByTraining = data.state === 'idle' && data.gameplay_lock?.blocked === true;
+  useGameplayLockRefresh(data.gameplay_lock);
+  useGameplayLockRefresh(trainingData?.gameplay_lock);
   const amateurUnlockGoalsRequired = Math.max(
     0,
     data.amateur_unlock_goals_required ?? DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED,
@@ -1047,13 +1037,8 @@ function GameHub({
 
   useEffect(() => {
     void refreshTraining();
-  }, [refreshTraining]);
-
-  useEffect(() => {
-    if (!isTrainingLockedByTournament) return undefined;
-    const id = window.setInterval(() => void refreshTraining(), 30_000);
-    return () => window.clearInterval(id);
-  }, [isTrainingLockedByTournament, refreshTraining]);
+    void refresh();
+  }, [refreshTraining, refresh]);
 
   useEffect(() => {
     if (
@@ -1074,16 +1059,6 @@ function GameHub({
     data.state,
     isDailyLockedByTraining,
   ]);
-
-  useEffect(() => {
-    const lockAt = tournamentDayStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS;
-    if (tournamentDayStartsAt <= 0 || now >= lockAt) return undefined;
-    const id = window.setTimeout(
-      () => setNow(Date.now()),
-      Math.min(2_147_000_000, Math.max(0, lockAt - Date.now() + 50)),
-    );
-    return () => window.clearTimeout(id);
-  }, [now, tournamentDayStartsAt]);
 
   useEffect(() => {
     if (data.state === 'period_active' && periodEndsAt > 0 && periodRemaining === 0) void refresh();
@@ -1111,7 +1086,9 @@ function GameHub({
   const dailyActionDisabled = pending || arenaActionId === 'daily' || isArenaLaunching;
   const dailyActionLabel = 'На лёд';
   const dailyEventTitle = isDailyLockedByTraining
-    ? 'Восстановление'
+    ? data.gameplay_lock?.reason === 'recent_gameplay'
+      ? 'Восстановление'
+      : 'Турнирная игра'
     : data.state === 'period_active'
       ? `${data.current_period}-й период`
       : data.state === 'break_active'
@@ -1144,7 +1121,7 @@ function GameHub({
           : isDailyLockedByTraining
             ? {
                 timerLabel: 'До игры',
-                timer: formatHms(trainingCooldownRemaining),
+                timer: trainingCooldownEndsAt > 0 ? formatHms(trainingCooldownRemaining) : 'ИГРА',
                 activePeriod: null,
                 ariaLabel: `Восстановление. До игры ${formatHms(trainingCooldownRemaining)}`,
               }
@@ -1156,12 +1133,9 @@ function GameHub({
               };
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
-  const trainingAvailability =
-    isTrainingLockedByDaily || isTrainingLockedByTournament
-      ? isTrainingLockedByTournament
-        ? 'Закрыта на время игр турнира'
-        : 'Закрыта до завершения игры'
-      : `${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`;
+  const trainingAvailability = trainingData?.gameplay_lock?.blocked
+    ? gameplayLockCopy(trainingData.gameplay_lock, now)
+    : `${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`;
 
   const runArenaLaunch = useCallback(
     async <T,>(
@@ -1301,7 +1275,7 @@ function GameHub({
       data.state === 'closed'
         ? 'День завершён, следующий старт после обновления.'
         : isDailyLockedByTraining
-          ? 'После тренировки нужно восстановиться.'
+          ? gameplayLockCopy(data.gameplay_lock!, now)
           : 'Главная игра дня на три периода.',
     meta:
       data.state === 'closed'
@@ -5479,6 +5453,16 @@ function AmateurDuelPlayView({
   const refresh = useAmateurDuelStore((s) => s.refresh);
   const ready = useAmateurDuelStore((s) => s.ready);
   const confirmTournamentLoadout = useAmateurDuelStore((s) => s.confirmTournamentLoadout);
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (match?.source !== 'tournament' || match.status !== 'settled') return;
+    void queryClient.invalidateQueries({ queryKey: ['tournaments'] });
+    void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    void queryClient.invalidateQueries({ queryKey: ['daily'] });
+    void queryClient.invalidateQueries({ queryKey: ['training'] });
+    void useDailyStore.getState().refresh();
+    void useTrainingSessionStore.getState().refresh();
+  }, [match?.source, match?.status, queryClient]);
   const startPeriod = useAmateurDuelStore((s) => s.startPeriod);
   const updateLoadout = useAmateurDuelStore((s) => s.updateLoadout);
   const optimisticAddShot = useAmateurDuelStore((s) => s.optimisticAddShot);
@@ -8735,12 +8719,12 @@ function DailyPlayView({
     data.lifetime_total_goals >= amateurUnlockGoalsRequired
       ? AMATEUR_DAILY_COURT_BACKGROUND
       : undefined;
-  const trainingCooldownEndsAt = data.training_cooldown_ends_at
-    ? new Date(data.training_cooldown_ends_at).getTime()
+  const trainingCooldownEndsAt = data.gameplay_lock?.ends_at
+    ? new Date(data.gameplay_lock.ends_at).getTime()
     : 0;
   const trainingCooldownRemaining = Math.max(0, trainingCooldownEndsAt - now);
-  const isDailyLockedByTraining =
-    rawCanStartPeriod && trainingCooldownEndsAt > 0 && trainingCooldownRemaining > 0;
+  const isDailyLockedByTraining = rawCanStartPeriod && data.gameplay_lock?.blocked === true;
+  useGameplayLockRefresh(data.gameplay_lock);
   const canStartPeriod = rawCanStartPeriod && !isDailyLockedByTraining;
   const shouldSuppressRink = data.state !== 'period_active' || hasStatsModal;
   const shouldShowIceCar = isBreak || isClosed || hasStatsModal || isDailyLockedByTraining;
@@ -8825,7 +8809,9 @@ function DailyPlayView({
             : isClosed
               ? formatHms(nextDayRemaining)
               : isDailyLockedByTraining
-                ? formatHms(trainingCooldownRemaining)
+                ? trainingCooldownEndsAt > 0
+                  ? formatHms(trainingCooldownRemaining)
+                  : 'ИГРА'
                 : data.state === 'idle'
                   ? '20:00'
                   : undefined
@@ -8843,7 +8829,7 @@ function DailyPlayView({
           needsReconcile
             ? 'Проверяем результат'
             : isDailyLockedByTraining
-              ? 'Нужно восстановиться'
+              ? gameplayLockCopy(data.gameplay_lock!, now)
               : undefined
         }
         shotButtonLabel={
@@ -9245,6 +9231,8 @@ function ClassicTournamentPlayView({
   const optimisticAddShot = useClassicTournamentStore((state) => state.optimisticAddShot);
   const submitShot = useClassicTournamentStore((state) => state.submitShot);
   const applyState = useClassicTournamentStore((state) => state.applyState);
+  const queryClient = useQueryClient();
+  useGameplayLockRefresh(data?.gameplay_lock);
   const [now, setNow] = useState(Date.now());
   const [deferredState, setDeferredState] = useState<ClassicTournamentState | null>(null);
   const [statsModalState, setStatsModalState] = useState<ClassicTournamentState | null>(null);
@@ -9254,6 +9242,15 @@ function ClassicTournamentPlayView({
   );
 
   const summaryCandidate = deferredState ?? data;
+  useEffect(() => {
+    if (summaryCandidate?.state !== 'closed') return;
+    void queryClient.invalidateQueries({ queryKey: ['tournaments'] });
+    void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    void queryClient.invalidateQueries({ queryKey: ['daily'] });
+    void queryClient.invalidateQueries({ queryKey: ['training'] });
+    void useDailyStore.getState().refresh();
+    void useTrainingSessionStore.getState().refresh();
+  }, [summaryCandidate?.state, queryClient]);
   const summaryKey = summaryCandidate ? `classic:${summaryCandidate.session_id}` : '';
   const unseenPeriod =
     summaryCandidate &&
@@ -9271,10 +9268,11 @@ function ClassicTournamentPlayView({
   }, [data?.current_period, data?.loadout, data?.loadout_editable, data?.session_id]);
 
   useEffect(() => {
-    if (data?.state !== 'break_active' && data?.state !== 'closed') return undefined;
+    if (data?.state !== 'break_active' && data?.state !== 'closed' && !data?.gameplay_lock?.blocked)
+      return undefined;
     const timer = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(timer);
-  }, [data?.state]);
+  }, [data?.state, data?.gameplay_lock?.blocked]);
 
   useEffect(() => {
     if (statsModalState !== null || summaryCandidate === null || unseenPeriod === null) return;
@@ -9342,13 +9340,14 @@ function ClassicTournamentPlayView({
     );
   }
 
-  const active = data.state === 'period_active';
+  const locked = data.gameplay_lock?.blocked === true;
+  const active = data.state === 'period_active' && !locked;
   const breakEndsAt = data.break_ends_at ? timestampMs(data.break_ends_at) : 0;
   const periodEndsAt = data.period_ends_at ? timestampMs(data.period_ends_at) : 0;
   const closesAt = timestampMs(data.closes_at);
   const breakRemaining = Math.max(0, breakEndsAt - now);
   const closesRemaining = Math.max(0, closesAt - now);
-  const canStart = data.state === 'idle' && data.current_period < data.total_periods;
+  const canStart = data.state === 'idle' && data.current_period < data.total_periods && !locked;
   const nextPeriod = Math.min(data.total_periods, data.current_period + 1);
   const periodNumber = active ? data.current_period : canStart ? nextPeriod : data.current_period;
   const completedResult = data.result;
@@ -9360,7 +9359,7 @@ function ClassicTournamentPlayView({
     <>
       <PlayView<ClassicTournamentState>
         suppressedByModal={!active || shouldShowSummary}
-        showIceCar={data.state === 'break_active' && !shouldShowSummary}
+        showIceCar={(data.state === 'break_active' || locked) && !shouldShowSummary}
         onBack={onBack}
         backLabel="К турниру"
         active={active}
@@ -9378,13 +9377,17 @@ function ClassicTournamentPlayView({
         periodsTotal={data.total_periods}
         scoreboardPeriodsTotal={data.total_periods}
         timer={
-          data.state === 'break_active'
-            ? formatMs(breakRemaining)
-            : data.state === 'closed'
-              ? formatEventRemaining(closesRemaining)
-              : canStart
-                ? formatMs(data.period_duration_ms)
-                : undefined
+          locked
+            ? data.gameplay_lock?.ends_at
+              ? formatHms(Math.max(0, Date.parse(data.gameplay_lock.ends_at) - now))
+              : 'ИГРА'
+            : data.state === 'break_active'
+              ? formatMs(breakRemaining)
+              : data.state === 'closed'
+                ? formatEventRemaining(closesRemaining)
+                : canStart
+                  ? formatMs(data.period_duration_ms)
+                  : undefined
         }
         timerLabel={
           data.state === 'break_active'
@@ -9396,22 +9399,26 @@ function ClassicTournamentPlayView({
                 : undefined
         }
         scoreboardNotice={
-          data.state === 'closed' && completedResult !== null
-            ? `${completedResult.goals} шайб · точность ${Math.round(completedResult.accuracy * 100)}%`
-            : `${data.tournament_title} · ${data.tournament_day}-й тур`
+          locked
+            ? gameplayLockCopy(data.gameplay_lock!, now)
+            : data.state === 'closed' && completedResult !== null
+              ? `${completedResult.goals} шайб · точность ${Math.round(completedResult.accuracy * 100)}%`
+              : `${data.tournament_title} · ${data.tournament_day}-й тур`
         }
         shotButtonLabel={
-          canStart
-            ? inFlight
-              ? 'НАЧИНАЕМ...'
-              : data.current_period === 0
-                ? 'НАЧАТЬ'
-                : 'ПРОДОЛЖИТЬ'
-            : data.state === 'break_active'
-              ? 'ЛЁД ГОТОВИТСЯ'
-              : data.state === 'closed'
-                ? 'ИГРА ЗАВЕРШЕНА'
-                : undefined
+          locked
+            ? 'ЛЁД ГОТОВИТСЯ'
+            : canStart
+              ? inFlight
+                ? 'НАЧИНАЕМ...'
+                : data.current_period === 0
+                  ? 'НАЧАТЬ'
+                  : 'ПРОДОЛЖИТЬ'
+              : data.state === 'break_active'
+                ? 'ЛЁД ГОТОВИТСЯ'
+                : data.state === 'closed'
+                  ? 'ИГРА ЗАВЕРШЕНА'
+                  : undefined
         }
         inactiveAction={canStart ? () => startPeriod(selectedLoadout) : undefined}
         entranceBeforeInactiveAction
@@ -9732,13 +9739,11 @@ function TrainingPlayView({
   onRouteTransitionConsumed?: (() => void) | undefined;
 }): JSX.Element | null {
   const data = useTrainingSessionStore((s) => s.data);
-  const dailyData = useDailyStore((s) => s.data);
   const start = useTrainingSessionStore((s) => s.start);
   const optimisticAddShot = useTrainingSessionStore((s) => s.optimisticAddShot);
   const submitShot = useTrainingSessionStore((s) => s.submitShot);
   const applyState = useTrainingSessionStore((s) => s.applyState);
   const refreshDaily = useDailyStore((s) => s.refresh);
-  const refreshTraining = useTrainingSessionStore((s) => s.refresh);
   const userRole = useAuthStore((s) => s.user?.role);
   const experimentalTrainingCourt = useAuthStore((s) => s.user?.experimentalTrainingCourt);
   const [hitboxesVisible, setHitboxesVisible] = useState(() => readTrainingHitboxesVisible());
@@ -9757,19 +9762,8 @@ function TrainingPlayView({
     [data?.period_speed_presets, trainingPeriodNumber],
   );
   const effectiveTrainingSpeeds = trainingSpeedOverrides ?? trainingDefaultSpeeds;
-  const isTrainingLockedByDaily =
-    dailyData?.state === 'period_active' ||
-    dailyData?.state === 'break_active' ||
-    (dailyData?.state === 'idle' &&
-      dailyData.current_period > 0 &&
-      dailyData.current_period < dailyData.total_periods);
-  const tournamentStartsAt = data?.tournament_day_starts_at
-    ? new Date(data.tournament_day_starts_at).getTime()
-    : 0;
-  const isTrainingLockedByTournament =
-    data?.tournament_day_locked === true ||
-    (tournamentStartsAt > 0 && now >= tournamentStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS);
-  const isTrainingLocked = isTrainingLockedByDaily || isTrainingLockedByTournament;
+  const isTrainingLocked = data?.gameplay_lock?.blocked === true;
+  useGameplayLockRefresh(data?.gameplay_lock);
   const canStartTraining = data?.state === 'idle' && !isTrainingLocked;
   const handleHitboxesChange = useCallback((next: boolean): void => {
     setHitboxesVisible(next);
@@ -9802,22 +9796,6 @@ function TrainingPlayView({
     return () => window.clearInterval(id);
   }, [data?.state, isTrainingLocked]);
 
-  useEffect(() => {
-    const lockAt = tournamentStartsAt - TOURNAMENT_TRAINING_LOCK_LEAD_MS;
-    if (tournamentStartsAt <= 0 || now >= lockAt) return undefined;
-    const id = window.setTimeout(
-      () => setNow(Date.now()),
-      Math.min(2_147_000_000, Math.max(0, lockAt - Date.now() + 50)),
-    );
-    return () => window.clearTimeout(id);
-  }, [now, tournamentStartsAt]);
-
-  useEffect(() => {
-    if (!isTrainingLockedByTournament) return undefined;
-    const id = window.setInterval(() => void refreshTraining(), 30_000);
-    return () => window.clearInterval(id);
-  }, [isTrainingLockedByTournament, refreshTraining]);
-
   if (!data) return null;
 
   const isTrainingActive = data.state === 'active';
@@ -9825,41 +9803,21 @@ function TrainingPlayView({
   const isTrainingPlayable = isTrainingActive && !isTrainingLocked;
   const nextDayAt = new Date(data.next_day_starts_at).getTime();
   const nextDayRemaining = Math.max(0, nextDayAt - now);
-  const dailyPeriodEndsAt = dailyData?.period_ends_at
-    ? new Date(dailyData.period_ends_at).getTime()
-    : 0;
-  const dailyBreakEndsAt = dailyData?.break_ends_at
-    ? new Date(dailyData.break_ends_at).getTime()
-    : 0;
-  const dailyLockRemaining =
-    dailyData?.state === 'period_active' && dailyPeriodEndsAt > 0
-      ? Math.max(0, dailyPeriodEndsAt - now)
-      : dailyData?.state === 'break_active' && dailyBreakEndsAt > 0
-        ? Math.max(0, dailyBreakEndsAt - now)
-        : 0;
-  const tournamentStartsRemaining = Math.max(0, tournamentStartsAt - now);
-  const trainingTimer = isTrainingLockedByTournament
-    ? tournamentStartsRemaining > 0
-      ? formatMs(tournamentStartsRemaining)
-      : 'ИГРЫ'
-    : isTrainingLockedByDaily
-      ? dailyLockRemaining > 0
-        ? formatMs(dailyLockRemaining)
-        : 'ИГРА'
-      : isTrainingClosed
-        ? formatHms(nextDayRemaining)
-        : String(data.shots_limit);
-  const trainingTimerLabel = isTrainingLockedByTournament
-    ? tournamentStartsRemaining > 0
-      ? 'ДО НАЧАЛА'
+  const lockEnd = data.gameplay_lock?.ends_at ? Date.parse(data.gameplay_lock.ends_at) : 0;
+  const trainingTimer = isTrainingLocked
+    ? lockEnd > 0
+      ? formatHms(Math.max(0, lockEnd - now))
+      : 'ИГРА'
+    : isTrainingClosed
+      ? formatHms(nextDayRemaining)
+      : String(data.shots_limit);
+  const trainingTimerLabel = isTrainingLocked
+    ? lockEnd > 0
+      ? 'ДО ИГРЫ'
       : 'СТАТУС'
-    : isTrainingLockedByDaily
-      ? dailyLockRemaining > 0
-        ? 'ДО ИГРЫ'
-        : 'СТАТУС'
-      : isTrainingClosed
-        ? 'ДО ОБНОВЛЕНИЯ'
-        : 'ЛИМИТ';
+    : isTrainingClosed
+      ? 'ДО ОБНОВЛЕНИЯ'
+      : 'ЛИМИТ';
   return (
     <>
       <PlayView<TrainingStateResponse>
@@ -9885,15 +9843,7 @@ function TrainingPlayView({
         shotsTotal={data.shots_limit}
         timer={trainingTimer}
         timerLabel={trainingTimerLabel}
-        scoreboardNotice={
-          isTrainingLockedByTournament
-            ? tournamentStartsRemaining > 0
-              ? 'Скоро начнутся игры турнира'
-              : 'Идут игры турнира'
-            : isTrainingLockedByDaily
-              ? 'Игра уже начата'
-              : undefined
-        }
+        scoreboardNotice={isTrainingLocked ? gameplayLockCopy(data.gameplay_lock!, now) : undefined}
         shotButtonLabel={
           isTrainingPlayable
             ? undefined

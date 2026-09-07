@@ -18,7 +18,6 @@ import {
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveDailySeed, deriveShotSeed } from '../seed.js';
-import { fetchTrainingCooldownEndsAt, trainingDailyCooldownMs } from '../trainingCooldown.js';
 import { reconcileDayPool, type DayPoolRow } from './reconcile.js';
 import {
   getConfiguredDailyPeriodSpeedPreset,
@@ -30,6 +29,10 @@ import { scheduleDailyCompletionSideEffect } from './completionSideEffects.js';
 import {
   assertGameplayActionAllowed,
   assertSafeSegmentStart,
+  getGameplayLockState,
+  getSafeSegmentStartLockState,
+  toGameplayLockDto,
+  type GameplayLockDTO,
   lockUserGameplay,
 } from '../gameplayLocks.js';
 
@@ -143,6 +146,7 @@ interface DailyStateResponse {
   recent_periods: PeriodLogEntry[];
   previous_game: DailyGameStats | null;
   training_cooldown_ends_at: string | null;
+  gameplay_lock: GameplayLockDTO | null;
 }
 
 async function fetchUserTimezone(client: PoolClient, userId: string): Promise<string> {
@@ -394,13 +398,22 @@ async function buildState(
 ): Promise<DailyStateResponse> {
   const timezone = await fetchUserTimezone(client, userId);
   const nextDay = await nextDayStartsAt(client, localToday, timezone);
-  const trainingCooldownEndsAt = await fetchTrainingCooldownEndsAt(
-    client,
+  let lock = await getGameplayLockState(client, {
     userId,
     now,
-    trainingDailyCooldownMs(settings.training.dailyCooldownMinutes),
-  );
-  const trainingCooldownEndsAtIso = trainingCooldownEndsAt?.toISOString() ?? null;
+    action: 'start_daily_period',
+  });
+  if (!lock.blocked && (pool === null || pool.state === 'idle')) {
+    lock = await getSafeSegmentStartLockState(client, {
+      userId,
+      now,
+      maxSegmentDurationMs: settings.daily.periodDurationMs,
+    });
+  }
+  const gameplayLock = toGameplayLockDto(lock);
+  // Compatibility for one release; clients must use gameplay_lock.
+  const trainingCooldownEndsAtIso =
+    gameplayLock?.reason === 'recent_gameplay' ? gameplayLock.ends_at : null;
   const previousGame = await fetchPreviousGameStats(client, userId);
 
   if (pool === null) {
@@ -429,6 +442,7 @@ async function buildState(
       recent_periods: [],
       previous_game: previousGame,
       training_cooldown_ends_at: trainingCooldownEndsAtIso,
+      gameplay_lock: gameplayLock,
     };
   }
 
@@ -482,6 +496,7 @@ async function buildState(
     recent_periods: recentPeriods,
     previous_game: previousGame,
     training_cooldown_ends_at: trainingCooldownEndsAtIso,
+    gameplay_lock: gameplayLock,
   };
 }
 

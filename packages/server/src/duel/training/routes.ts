@@ -16,7 +16,6 @@ import {
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveShotSeed, deriveTrainingSeed } from '../seed.js';
-import { reconcileDayPool, type DayPoolRow } from '../daily/reconcile.js';
 import { scheduleDailyCompletionSideEffect } from '../daily/completionSideEffects.js';
 import {
   getConfiguredDailyPeriodSpeedPreset,
@@ -25,8 +24,10 @@ import {
 } from '../gameSettings.js';
 import {
   assertGameplayActionAllowed,
-  assertTournamentGameplayAllowed,
   getTournamentGameplayLockState,
+  getGameplayLockState,
+  toGameplayLockDto,
+  type GameplayLockDTO,
   lockUserGameplay,
   type GameplayLockState,
 } from '../gameplayLocks.js';
@@ -84,6 +85,7 @@ interface TrainingStateResponse {
   goalie_id: string;
   period_speed_presets: DailyPeriodSpeedPreset[];
   tournament_day_locked: boolean;
+  gameplay_lock: GameplayLockDTO | null;
   tournament_day_starts_at: string | null;
 }
 
@@ -106,12 +108,6 @@ interface TrainingHistorySummary {
   completed_trainings: number;
   total_shots: number;
   total_goals: number;
-}
-
-function isDailyGameStartedAndIncomplete(pool: DayPoolRow | null, totalPeriods: number): boolean {
-  if (pool === null || pool.state === 'closed') return false;
-  if (pool.state === 'period_active' || pool.state === 'break_active') return true;
-  return pool.state === 'idle' && pool.current_period > 0 && pool.current_period < totalPeriods;
 }
 
 async function withTransaction<T>(
@@ -221,8 +217,10 @@ async function buildTrainingState(
   knownTournamentLock?: GameplayLockState,
 ): Promise<TrainingStateResponse> {
   const nextDay = await nextDayStartsAt(client, localToday, timezone);
-  const tournamentLock =
-    knownTournamentLock ?? (await getTournamentGameplayLockState(client, userId, now));
+  const tournamentLock = knownTournamentLock?.blocked
+    ? knownTournamentLock
+    : await getGameplayLockState(client, { userId, action: 'start_training', now });
+  const gameplayLock = toGameplayLockDto(tournamentLock);
   const tournamentDayLocked =
     tournamentLock.blocked &&
     (tournamentLock.reason === 'scheduled_tournament' ||
@@ -242,6 +240,7 @@ async function buildTrainingState(
       goalie_id: settings.training.goalieId,
       period_speed_presets: settings.daily.periodSpeedPresets,
       tournament_day_locked: tournamentDayLocked,
+      gameplay_lock: gameplayLock,
       tournament_day_starts_at: tournamentLock.tournamentStartsAt?.toISOString() ?? null,
     };
   }
@@ -261,6 +260,7 @@ async function buildTrainingState(
     goalie_id: settings.training.goalieId,
     period_speed_presets: settings.daily.periodSpeedPresets,
     tournament_day_locked: tournamentDayLocked,
+    gameplay_lock: gameplayLock,
     tournament_day_starts_at: tournamentLock.tournamentStartsAt?.toISOString() ?? null,
   };
 }
@@ -370,18 +370,6 @@ function assertTrainingTapTimeFresh(
   }
 }
 
-async function assertTrainingAvailableDuringDaily(
-  client: PoolClient,
-  userId: string,
-  now: Date,
-  settings: GameSettings,
-): Promise<void> {
-  const { pool } = await reconcileDayPool(client, userId, now, settings.daily);
-  if (isDailyGameStartedAndIncomplete(pool, settings.daily.totalPeriods)) {
-    throw new AppError('conflict', 'training is locked while the daily game is in progress', 409);
-  }
-}
-
 export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> = async (
   app,
   opts,
@@ -434,7 +422,6 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         action: 'start_training',
         now,
       });
-      await assertTrainingAvailableDuringDaily(client, req.user.id, now, settings);
       const tournamentLock = await getTournamentGameplayLockState(client, req.user.id, now);
       const { session, localToday, timezone } = await reconcileTrainingSession(
         client,
@@ -536,8 +523,11 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         await lockUserGameplay(client, req.user.id);
         const now = new Date();
         const settings = await getGameSettings(client);
-        await assertTournamentGameplayAllowed(client, req.user.id, now);
-        await assertTrainingAvailableDuringDaily(client, req.user.id, now, settings);
+        await assertGameplayActionAllowed(client, {
+          userId: req.user.id,
+          now,
+          action: 'start_training',
+        });
         const tournamentLock = await getTournamentGameplayLockState(client, req.user.id, now);
         const { session, localToday, timezone } = await reconcileTrainingSession(
           client,

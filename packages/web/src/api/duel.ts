@@ -1,4 +1,5 @@
 import { apiFetch } from './apiFetch.js';
+import type { GameplayLockDTO } from './gameplayLock.js';
 import type { GameRequestOptions } from './requestTimeout.js';
 import type { DailyPeriodSpeedPreset } from '@hockey/game-core';
 
@@ -65,6 +66,7 @@ export interface DailyStateResponse {
   recent_periods: PeriodLogEntry[];
   previous_game: DailyGameStats | null;
   training_cooldown_ends_at: string | null;
+  gameplay_lock?: GameplayLockDTO | null;
 }
 
 export interface ShotInputPayload {

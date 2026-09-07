@@ -11,9 +11,13 @@ import {
 } from '@hockey/game-core';
 import { grantStatAchievements } from '../achievements/service.js';
 import { deriveClassicTournamentSeed, deriveShotSeed } from '../duel/seed.js';
-import { getGameSettings } from '../duel/gameSettings.js';
-import { fetchTrainingCooldownEndsAt, trainingDailyCooldownMs } from '../duel/trainingCooldown.js';
-import { assertGameplayActionAllowed, lockUserGameplay } from '../duel/gameplayLocks.js';
+import {
+  assertGameplayActionAllowed,
+  getGameplayLockState,
+  toGameplayLockDto,
+  lockUserGameplay,
+  type GameplayLockDTO,
+} from '../duel/gameplayLocks.js';
 import { AppError } from '../plugins/errors.js';
 import { appendEvent } from '../duel/eventLog.js';
 import { parseTournamentConfig } from './config.js';
@@ -112,6 +116,7 @@ export interface ClassicGameState {
   recent_periods: ClassicPeriodLogEntry[];
   previous_game: null;
   training_cooldown_ends_at: string | null;
+  gameplay_lock: GameplayLockDTO | null;
   loadout: ClassicLoadoutSnapshot;
   loadout_editable: boolean;
   inventory_available: ClassicInventoryAvailabilityItem[];
@@ -1012,16 +1017,12 @@ async function buildState(
   userId: string,
   now: Date,
 ): Promise<ClassicGameState> {
-  const settings = await getGameSettings(client);
-  const trainingCooldownEndsAt =
-    session.current_period === 0
-      ? await fetchTrainingCooldownEndsAt(
-          client,
-          userId,
-          now,
-          trainingDailyCooldownMs(settings.training.dailyCooldownMinutes),
-        )
-      : null;
+  // Once this session has an accepted shot it must remain playable through completion.
+  const gameplayLock = (await hasAcceptedClassicShot(client, session.id))
+    ? null
+    : toGameplayLockDto(
+        await getGameplayLockState(client, { userId, now, action: 'start_classic' }),
+      );
   const periods = await fetchPeriods(client, session.id);
   const allShots = await client.query<{ shots: number | string; goals: number | string }>(
     `select count(*)::int as shots,
@@ -1151,7 +1152,10 @@ async function buildState(
       ended_at: period.ended_at.toISOString(),
     })),
     previous_game: null,
-    training_cooldown_ends_at: trainingCooldownEndsAt?.toISOString() ?? null,
+    // Compatibility for one release; use gameplay_lock for new clients.
+    training_cooldown_ends_at:
+      gameplayLock?.reason === 'recent_gameplay' ? gameplayLock.ends_at : null,
+    gameplay_lock: gameplayLock,
     loadout,
     loadout_editable: session.state === 'idle' || session.state === 'break_active',
     inventory_available: await fetchClassicInventoryAvailability(client, userId),

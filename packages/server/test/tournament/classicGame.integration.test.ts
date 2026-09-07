@@ -932,6 +932,12 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
       seedSecret: SEED_SECRET,
     });
     expect(state.training_cooldown_ends_at).toBe('2030-09-01T10:55:00.000Z');
+    expect(state.gameplay_lock).toEqual({
+      blocked: true,
+      reason: 'recent_gameplay',
+      ends_at: '2030-09-01T10:55:00.000Z',
+      tournament_starts_at: null,
+    });
 
     const started = await startClassicGamePeriod(pool, {
       userId: PLAYER_ID,
@@ -941,6 +947,7 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     });
     expect(started.state).toBe('period_active');
 
+    expect(started.gameplay_lock).toEqual(state.gameplay_lock);
     await expect(submitMiss(pool, 1, NOW)).rejects.toMatchObject({ statusCode: 409 });
     const accepted = await pool.query<{ shots: number }>(
       `select count(*)::int as shots

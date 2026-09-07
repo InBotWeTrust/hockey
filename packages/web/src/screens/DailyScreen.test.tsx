@@ -1775,10 +1775,62 @@ describe('DailyScreen', () => {
     expect(screen.queryByText('Закрыта на время игр турнира')).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['recent_gameplay', null, /Восстановление после игры/],
+    ['active_classic', null, /Завершите текущую игру Classic/],
+    ['scheduled_tournament', '2099-04-25T14:00:00.000Z', /До турнирной игры/],
+    ['scheduled_tournament', '2020-04-25T14:00:00.000Z', /До завершения турнирного блока/],
+  ] as const)('renders authoritative training lock %s (%s)', async (reason, startsAt, copy) => {
+    const locked = {
+      ...trainingIdleState,
+      gameplay_lock: {
+        blocked: true,
+        reason,
+        ends_at: reason === 'recent_gameplay' ? '2099-04-25T15:00:00.000Z' : null,
+        tournament_starts_at: startsAt,
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      return new Response(JSON.stringify(url.includes('/duel/training/') ? locked : baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith();
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать Тренировка' }));
+    expect(await screen.findByText(copy)).toBeInTheDocument();
+  });
+
+  it('ignores stale legacy training flags when gameplay_lock is null', async () => {
+    const unlocked = {
+      ...trainingIdleState,
+      gameplay_lock: null,
+      tournament_day_locked: true,
+      tournament_day_starts_at: '2020-04-25T14:00:00.000Z',
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      return new Response(JSON.stringify(url.includes('/duel/training/') ? unlocked : baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith();
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать Тренировка' }));
+    expect(await screen.findByText('0/500 бросков сегодня')).toBeInTheDocument();
+  });
+
   it('rechecks a tournament training lock every 30 seconds while the arena stays open', async () => {
     vi.useFakeTimers();
     const lockedTrainingState: TrainingStateResponse = {
       ...trainingIdleState,
+      gameplay_lock: {
+        blocked: true,
+        reason: 'scheduled_tournament',
+        ends_at: null,
+        tournament_starts_at: '2026-04-25T10:00:00.000Z',
+      },
       tournament_day_locked: true,
       tournament_day_starts_at: '2026-04-25T10:00:00.000Z',
     };
@@ -1803,7 +1855,7 @@ describe('DailyScreen', () => {
     renderWith();
     await act(async () => Promise.resolve());
     fireEvent.click(screen.getByRole('button', { name: 'Выбрать Тренировка' }));
-    expect(screen.getByText('Закрыта на время игр турнира')).toBeInTheDocument();
+    expect(screen.getByText('До завершения турнирного блока')).toBeInTheDocument();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
@@ -2610,6 +2662,7 @@ describe('DailyScreen', () => {
   });
 
   it('returns to the hub after dismissing fresh period stats and shows them again on break re-entry', async () => {
+    let periodCompleted = false;
     const future = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     const activeState: DailyStateResponse = {
       ...baseState,
@@ -2647,7 +2700,13 @@ describe('DailyScreen', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       return new Response(
-        JSON.stringify(url.includes('/duel/training/state') ? trainingIdleState : activeState),
+        JSON.stringify(
+          url.includes('/duel/training/state')
+            ? trainingIdleState
+            : periodCompleted
+              ? breakState
+              : activeState,
+        ),
         {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -2660,6 +2719,7 @@ describe('DailyScreen', () => {
     expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
 
     act(() => {
+      periodCompleted = true;
       useDailyStore.getState().setDeferredState(breakState);
     });
 
@@ -2995,10 +3055,21 @@ describe('DailyScreen', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes('/duel/training/state')) {
-        return new Response(JSON.stringify(trainingIdleState), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
+        return new Response(
+          JSON.stringify({
+            ...trainingIdleState,
+            gameplay_lock: {
+              blocked: true,
+              reason: 'recent_gameplay',
+              ends_at: new Date(Date.now() + 3_600_000).toISOString(),
+              tournament_starts_at: null,
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
       }
       return new Response(
         JSON.stringify({
@@ -3016,11 +3087,11 @@ describe('DailyScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Выбрать Тренировка' }));
     const trainingCard = await findArenaCta('Тренировка: Тренировка');
-    expect(screen.getByText('Закрыта до завершения игры')).toBeInTheDocument();
+    expect(screen.getByText('Восстановление после игры')).toBeInTheDocument();
     fireEvent.click(trainingCard);
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
-    expect(screen.getByText('Игра уже начата')).toBeInTheDocument();
+    expect(screen.getByText('Восстановление после игры')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Тренировка закрыта' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Тренировка', level: 1 })).not.toBeInTheDocument();
   });
@@ -3029,10 +3100,21 @@ describe('DailyScreen', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes('/duel/training/state')) {
-        return new Response(JSON.stringify(trainingActiveState), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
+        return new Response(
+          JSON.stringify({
+            ...trainingActiveState,
+            gameplay_lock: {
+              blocked: true,
+              reason: 'recent_gameplay',
+              ends_at: new Date(Date.now() + 3_600_000).toISOString(),
+              tournament_starts_at: null,
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
       }
       return new Response(
         JSON.stringify({
@@ -3049,7 +3131,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=training&play=1']);
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
-    expect(screen.getByText('Игра уже начата')).toBeInTheDocument();
+    expect(screen.getByText('Восстановление после игры')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
 
@@ -3061,6 +3143,12 @@ describe('DailyScreen', () => {
           JSON.stringify({
             ...trainingActiveState,
             tournament_day_locked: true,
+            gameplay_lock: {
+              blocked: true,
+              reason: 'scheduled_tournament',
+              ends_at: null,
+              tournament_starts_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+            },
             tournament_day_starts_at: new Date(Date.now() - 5 * 60_000).toISOString(),
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
@@ -3075,7 +3163,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=training&play=1']);
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
-    expect(screen.getByText('Идут игры турнира')).toBeInTheDocument();
+    expect(screen.getByText('До завершения турнирного блока')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
 
@@ -3215,6 +3303,12 @@ describe('DailyScreen', () => {
         JSON.stringify({
           ...baseState,
           training_cooldown_ends_at: cooldownEndsAt,
+          gameplay_lock: {
+            blocked: true,
+            reason: 'recent_gameplay',
+            ends_at: cooldownEndsAt,
+            tournament_starts_at: null,
+          },
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       );
@@ -3223,7 +3317,7 @@ describe('DailyScreen', () => {
 
     const dailyButton = await findArenaCta('Ежедневная игра: Восстановление');
     expect(screen.getByText('Восстановление')).toHaveClass('arena-cube-title--compact');
-    expect(screen.getByText('После тренировки нужно восстановиться.')).toHaveClass(
+    expect(screen.getByText('Восстановление после игры')).toHaveClass(
       'arena-cube-subtitle--compact',
     );
     const cooldownScoreboard = screen.getByLabelText(/^Восстановление\. До игры/);
@@ -3233,7 +3327,7 @@ describe('DailyScreen', () => {
     fireEvent.click(dailyButton);
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
-    expect(screen.getByText('Нужно восстановиться')).toBeInTheDocument();
+    expect(screen.getByText('Восстановление после игры')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Нужно восстановиться' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });

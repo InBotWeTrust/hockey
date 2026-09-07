@@ -71,3 +71,39 @@ it('refreshes the other modes when polling observes tournament completion', () =
   expect(daily).toHaveBeenCalledOnce();
   expect(training).toHaveBeenCalledOnce();
 });
+
+it('polls completion-bound locks every 30 seconds and refreshes on return to the hub', async () => {
+  vi.useFakeTimers();
+  const queryClient = new QueryClient();
+  queryClient.setQueryData(['tournaments', 'classic', 'active'], { games: [] });
+  const daily = vi.spyOn(useDailyStore.getState(), 'refresh').mockResolvedValue(undefined);
+  vi.spyOn(useTrainingSessionStore.getState(), 'refresh').mockResolvedValue(undefined);
+  function Lock() {
+    useGameplayLockRefresh({
+      blocked: true,
+      reason: 'active_classic',
+      ends_at: null,
+      tournament_starts_at: null,
+    });
+    return null;
+  }
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <Lock />
+    </QueryClientProvider>,
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(30_000);
+  });
+  expect(daily).toHaveBeenCalledOnce();
+  expect(queryClient.getQueryState(['tournaments', 'classic', 'active'])?.isInvalidated).toBe(true);
+  act(() => {
+    window.dispatchEvent(new Event('focus'));
+  });
+  expect(daily).toHaveBeenCalledTimes(2);
+  view.unmount();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(30_000);
+  });
+  expect(daily).toHaveBeenCalledTimes(2);
+});

@@ -21,6 +21,23 @@ export interface GameplayLockState {
   tournamentStartsAt?: Date | null;
 }
 
+export interface GameplayLockDTO {
+  blocked: boolean;
+  reason: GameplayLockReason;
+  ends_at: string | null;
+  tournament_starts_at: string | null;
+}
+
+export function toGameplayLockDto(state: GameplayLockState): GameplayLockDTO | null {
+  if (!state.blocked || state.reason === null) return null;
+  return {
+    blocked: true,
+    reason: state.reason,
+    ends_at: state.endsAt?.toISOString() ?? null,
+    tournament_starts_at: state.tournamentStartsAt?.toISOString() ?? null,
+  };
+}
+
 export interface GameplayLockInput {
   userId: string;
   action: GameplayAction;
