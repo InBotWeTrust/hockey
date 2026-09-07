@@ -350,7 +350,7 @@ describe('ChatRoomScreen', () => {
         dmCounterpart: {
           userId: OTHER_ID,
           displayName: 'Ультимейт Хоккей',
-          avatarUrl: '/icons/official-account.webp',
+          avatarUrl: '/api/media/old-official-avatar',
           lastSeenAt: null,
           lastReadAt: null,
           accountKind: 'official',
@@ -363,6 +363,10 @@ describe('ChatRoomScreen', () => {
     renderRoom('c1');
 
     expect(await screen.findByText('Официальный аккаунт')).toBeInTheDocument();
+    expect(document.querySelector('.chat-room-header__avatar img')).toHaveAttribute(
+      'src',
+      '/icons/official-account.webp',
+    );
     expect(screen.queryByRole('button', { name: 'Открыть профиль игрока' })).toBeNull();
   });
 

@@ -51,7 +51,7 @@ import { ChannelPostEditorSheet } from '../components/ChannelPostEditorSheet.js'
 import { ChannelPollComposerSheet } from '../components/ChannelPollComposerSheet.js';
 import { formatLastSeen } from '../lastSeen.js';
 import { switchMyReactionTo, removeMyReaction } from '../reactionsState.js';
-import { chatAvatarUrl } from '../chatAvatar.js';
+import { chatAvatarUrl, OFFICIAL_ACCOUNT_AVATAR_URL } from '../chatAvatar.js';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 
 const PAGE_SIZE = 50;
@@ -299,11 +299,11 @@ function DuelInviteActions({
       ? 'Дуэль принята'
       : resolution === 'completed'
         ? 'Дуэль завершена'
-      : resolution === 'declined'
-        ? 'Вы отклонили'
-        : resolution === 'unavailable'
-          ? 'Вызов уже недоступен'
-          : null;
+        : resolution === 'declined'
+          ? 'Вы отклонили'
+          : resolution === 'unavailable'
+            ? 'Вызов уже недоступен'
+            : null;
 
   return (
     <div
@@ -488,7 +488,9 @@ export function ChatRoomScreen(): JSX.Element {
           : chatMeta?.type === 'system'
             ? 'Системный канал'
             : 'Чат'));
-  const headerAvatarUrl = dmCounterpart?.avatarUrl ?? (chatMeta ? chatAvatarUrl(chatMeta) : null);
+  const headerAvatarUrl = isOfficialDialog
+    ? OFFICIAL_ACCOUNT_AVATAR_URL
+    : (dmCounterpart?.avatarUrl ?? (chatMeta ? chatAvatarUrl(chatMeta) : null));
   const chatSubtitle =
     chatMeta?.type === 'direct'
       ? isOfficialDialog
@@ -1455,10 +1457,7 @@ export function ChatRoomScreen(): JSX.Element {
           const duelInvite = parseDuelInviteMetadata(m.metadata);
           const duelInviteResolution = duelInvite
             ? (duelInviteResolutionByMatch[duelInvite.matchId] ??
-              resolveDuelInvite(
-                duelInvite,
-                duelInviteMatchById.get(duelInvite.matchId),
-              ))
+              resolveDuelInvite(duelInvite, duelInviteMatchById.get(duelInvite.matchId)))
             : undefined;
           const inviteActionSlot =
             duelInvite && !isOwn && !m.isDeleted ? (
