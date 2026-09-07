@@ -548,13 +548,26 @@ describe.skipIf(!hasIntegrationEnv)('scheduled tournament gameplay locks', () =>
       reason: 'active_classic',
       endsAt: null,
     });
+    const overlapping = await createRegularFixture(at('2026-09-08T21:00:00+03:00'));
+    await expect(getGameplayLockState(pool as unknown as PoolClient, input)).resolves.toEqual({
+      blocked: true,
+      reason: 'active_classic',
+      endsAt: null,
+    });
     const batched = await getTournamentGameplayLockStates(
       pool as unknown as PoolClient,
       [userId, opponentId],
       input.now,
     );
     expect(batched.get(userId)).toEqual({ blocked: true, reason: 'active_classic', endsAt: null });
-    expect(batched.get(opponentId)).toEqual({ blocked: false, reason: null, endsAt: null });
+    expect(batched.get(opponentId)).toMatchObject({
+      blocked: true,
+      reason: 'scheduled_tournament',
+    });
+
+    await pool.query("update tournament_fixture set status = 'settled' where id = $1", [
+      overlapping.fixtureId,
+    ]);
 
     for (const terminalState of ['closed', 'expired'] as const) {
       await pool.query(`update tournament_classic_session set state = $2 where id = $1`, [

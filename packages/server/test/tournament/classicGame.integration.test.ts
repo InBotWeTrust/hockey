@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Pool, PoolClient } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
@@ -160,6 +160,7 @@ async function configureIncompleteGamePolicy(
 }
 
 async function submitMiss(pool: Pool, shotIndex: number, now: Date): Promise<void> {
+  vi.setSystemTime(now);
   await submitClassicGameShot(pool, {
     userId: PLAYER_ID,
     tournamentId: TOURNAMENT_ID,
@@ -258,6 +259,30 @@ async function waitForAdvisoryWaiter(pool: Pool, minimumWaiting = 1): Promise<vo
   throw new Error('timed out waiting for Classic gameplay advisory lock contention');
 }
 
+async function seedScheduledFixture(pool: Pool, startsAt: Date): Promise<void> {
+  await pool.query(
+    `with cup as (
+       insert into tournament (slug, title, status, regular_source, created_by)
+       values ('scheduled-race-cup', 'Scheduled race cup', 'regular', 'head_to_head', $1) returning id
+     ), home as (
+       insert into tournament_participant (tournament_id, user_id, state)
+       select id, $2, 'approved' from cup returning id
+     ), away as (
+       insert into tournament_participant (tournament_id, user_id, state)
+       select id, $1, 'approved' from cup returning id
+     ), round as (
+       insert into tournament_round (tournament_id, stage, number, status)
+       select id, 'regular', 1, 'open' from cup returning id
+     )
+     insert into tournament_fixture
+       (tournament_id, round_id, fixture_number, home_participant_id,
+        away_participant_id, scheduled_starts_at, window_ends_at, status)
+     select cup.id, round.id, 1, home.id, away.id, $3, $3::timestamptz + interval '1 hour', 'scheduled'
+     from cup, round, home, away`,
+    [ADMIN_ID, PLAYER_ID, startsAt],
+  );
+}
+
 describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () => {
   let pool: Pool;
 
@@ -269,7 +294,11 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     await resetDatabase(pool);
     await applyMigrations(pool, MIGRATIONS_DIR);
     await seedClassicTournament(pool);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
   });
+
+  afterEach(() => vi.useRealTimers());
 
   afterAll(async () => {
     await pool.end();
@@ -1004,6 +1033,79 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     expect(shots.rows).toEqual([{ mode: 'daily', shots: 1 }]);
   });
 
+  it('rejects the first Classic shot when its advisory wait crosses T-60', async () => {
+    await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    await seedScheduledFixture(pool, new Date('2030-09-01T11:00:01.000Z'));
+    const gate = await pool.connect();
+    try {
+      await gate.query('begin');
+      await lockUserGameplay(gate, PLAYER_ID);
+      const pending = submitMiss(pool, 1, NOW);
+      const outcome = pending.then(
+        () => null,
+        (error: unknown) => error,
+      );
+      await waitForAdvisoryWaiter(pool);
+      vi.setSystemTime(new Date('2030-09-01T10:00:01.000Z'));
+      await gate.query('commit');
+      expect(await outcome).toMatchObject({ statusCode: 409 });
+      expect(
+        (await pool.query("select id from shot_session where mode = 'tournament_classic'"))
+          .rowCount,
+      ).toBe(0);
+    } finally {
+      await gate.query('rollback');
+      gate.release();
+    }
+  });
+
+  it('timestamps an accepted Classic shot and its mismatch event after the advisory wait', async () => {
+    const started = await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    const gate = await pool.connect();
+    try {
+      await gate.query('begin');
+      await lockUserGameplay(gate, PLAYER_ID);
+      const pending = submitClassicGameShot(pool, {
+        userId: PLAYER_ID,
+        tournamentId: TOURNAMENT_ID,
+        now: NOW,
+        seedSecret: SEED_SECRET,
+        shotIndex: 1,
+        input: { tapTime: 0 },
+        claimedResult: 'goal',
+      });
+      await waitForAdvisoryWaiter(pool);
+      vi.setSystemTime(new Date('2030-09-01T10:00:02.000Z'));
+      await gate.query('commit');
+      const shot = await pending;
+      expect(shot.state.server_now).toBe('2030-09-01T10:00:02.000Z');
+      const stored = await pool.query<{ created_at: Date }>(
+        'select created_at from shot_session where tournament_classic_session_id = $1',
+        [started.session_id],
+      );
+      expect(stored.rows[0]!.created_at.toISOString()).toBe('2030-09-01T10:00:02.000Z');
+      expect(shot.server_result).not.toBe('goal');
+      const event = await pool.query<{ created_at: Date }>(
+        "select created_at from event_log where user_id = $1 and type = 'shot_mismatch'",
+        [PLAYER_ID],
+      );
+      expect(event.rows[0]!.created_at.toISOString()).toBe('2030-09-01T10:00:02.000Z');
+    } finally {
+      await gate.query('rollback');
+      gate.release();
+    }
+  });
+
   it('rejects a real daily handler shot when the first Classic shot wins the lock race', async () => {
     const { databaseUrl, redisUrl } = getTestUrls();
     const app = await buildApp({
@@ -1058,6 +1160,16 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
 
       await expect(classicShot).resolves.toBeUndefined();
       await expect(dailyShot).resolves.toMatchObject({ statusCode: 409 });
+      await seedScheduledFixture(pool, new Date(NOW.getTime() + 30 * 60_000));
+      const refreshed = await app.inject({
+        method: 'GET',
+        url: '/duel/daily/state',
+        headers: { authorization },
+      });
+      expect(refreshed.json()).toMatchObject({
+        state: 'period_active',
+        gameplay_lock: { blocked: true, reason: 'active_classic' },
+      });
     } catch (error) {
       await gate.query('rollback').catch(() => undefined);
       throw error;

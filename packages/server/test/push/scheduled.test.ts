@@ -305,7 +305,9 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
       processQueue: false,
     });
 
-    expect(result.events.find((event) => event.eventType === 'tournament.readiness_ending')).toMatchObject({
+    expect(
+      result.events.find((event) => event.eventType === 'tournament.readiness_ending'),
+    ).toMatchObject({
       targets: 1,
       claimed: 1,
     });
@@ -883,7 +885,7 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
     });
   });
 
-  it('sends daily unlock after the training cooldown expires', async () => {
+  it('sends daily unlock after a full hour even when the legacy setting is 30 minutes', async () => {
     await pool.query(
       `insert into game_settings (key, value, label, description)
        values (
@@ -906,9 +908,18 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
     const fetchMock = vi.fn(async () => new Response('', { status: 201 }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await runScheduledPushes(pool, {
+    const early = await runScheduledPushes(pool, {
       ...vapid,
       now: new Date('2026-05-04T05:00:00.000Z'),
+    });
+    expect(
+      early.events.find((event) => event.eventType === 'daily.unlocked_after_training')?.targets ??
+        0,
+    ).toBe(0);
+
+    const result = await runScheduledPushes(pool, {
+      ...vapid,
+      now: new Date('2026-05-04T05:30:00.000Z'),
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);

@@ -7974,6 +7974,8 @@ function SettingEditor({
     return value;
   }, [setting.type, numberValue, value]);
   const dirty = value !== String(setting.value);
+  const readOnly =
+    setting.type === 'number' && setting.min !== undefined && setting.min === setting.max;
   const valid = setting.type !== 'number' || Number.isFinite(numberValue);
 
   const mutation = useMutation({
@@ -8006,6 +8008,7 @@ function SettingEditor({
           <input
             type="number"
             value={value}
+            readOnly={readOnly}
             inputMode={setting.step !== undefined && setting.step < 1 ? 'decimal' : 'numeric'}
             onChange={(event) => setValue(event.target.value)}
             min={setting.min}
@@ -8017,7 +8020,7 @@ function SettingEditor({
           type="button"
           className="icon-btn icon-btn--dark"
           onClick={() => mutation.mutate()}
-          disabled={mutation.isPending || !dirty || !valid}
+          disabled={readOnly || mutation.isPending || !dirty || !valid}
           title="Сохранить"
           aria-label={`Сохранить ${setting.label}`}
           style={{

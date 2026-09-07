@@ -1453,9 +1453,10 @@ export async function submitClassicGameShot(
 ): Promise<ClassicShotResponse> {
   return transaction(pool, async (client) => {
     await lockUserGameplay(client, input.userId);
-    const context = await requireContext(client, input.userId, input.tournamentId, input.now);
+    const now = new Date();
+    const context = await requireContext(client, input.userId, input.tournamentId, now);
     let session = await getOrCreateSession(client, context, input.userId, input.seedSecret);
-    session = await reconcileSession(client, context, session, input.now);
+    session = await reconcileSession(client, context, session, now);
     if (session.state !== 'period_active' || session.period_started_at === null) {
       throw new AppError('conflict', `cannot submit classic shot in state '${session.state}'`, 409);
     }
@@ -1463,7 +1464,7 @@ export async function submitClassicGameShot(
       await assertGameplayActionAllowed(client, {
         userId: input.userId,
         action: 'start_classic',
-        now: input.now,
+        now,
       });
     }
     const current = await aggregateCurrentPeriod(client, session.id, session.current_period);
@@ -1478,7 +1479,7 @@ export async function submitClassicGameShot(
     if (!Number.isFinite(input.input.tapTime) || input.input.tapTime < 0) {
       throw new AppError('bad_request', 'invalid classic shot time', 400);
     }
-    const elapsed = Math.max(0, input.now.getTime() - session.period_started_at.getTime());
+    const elapsed = Math.max(0, now.getTime() - session.period_started_at.getTime());
     if (
       input.input.tapTime > elapsed + 2_500 ||
       (current.lastTapTime !== null && input.input.tapTime < current.lastTapTime)
@@ -1591,8 +1592,8 @@ export async function submitClassicGameShot(
     await client.query(
       `insert into shot_session
          (user_id, mode, tournament_classic_session_id, period_number, shot_index,
-          seed, input_payload, server_result, game_core_version)
-       values ($1, 'tournament_classic', $2, $3, $4, $5, $6, $7, $8)`,
+          seed, input_payload, server_result, game_core_version, created_at)
+       values ($1, 'tournament_classic', $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         input.userId,
         session.id,
@@ -1602,6 +1603,7 @@ export async function submitClassicGameShot(
         JSON.stringify(shotInput),
         serverResult,
         session.game_core_version,
+        now,
       ],
     );
     await consumeClassicInventoryForShot(
@@ -1618,7 +1620,7 @@ export async function submitClassicGameShot(
         skates: condition.skatesConsumed,
         nutrition: condition.nutritionConsumed,
       },
-      input.now,
+      now,
     );
     const updatedUser = await client.query<{
       lifetime_shots_total: number;
@@ -1639,23 +1641,29 @@ export async function submitClassicGameShot(
       level: Number(user.level),
     });
     if (input.claimedResult !== serverResult) {
-      await appendEvent(client, input.userId, 'shot_mismatch', {
-        mode: 'tournament_classic',
-        tournament_id: context.tournamentId,
-        session_id: session.id,
-        period_number: session.current_period,
-        shot_index: input.shotIndex,
-        claimed: input.claimedResult,
-        server: serverResult,
-      });
+      await appendEvent(
+        client,
+        input.userId,
+        'shot_mismatch',
+        {
+          mode: 'tournament_classic',
+          tournament_id: context.tournamentId,
+          session_id: session.id,
+          period_number: session.current_period,
+          shot_index: input.shotIndex,
+          claimed: input.claimedResult,
+          server: serverResult,
+        },
+        now,
+      );
     }
     if (input.shotIndex >= session.rules_snapshot.shotsPerPeriod) {
-      session = await closePeriod(client, context, session, input.now, 'quota');
-      session = await reconcileSession(client, context, session, input.now);
+      session = await closePeriod(client, context, session, now, 'quota');
+      session = await reconcileSession(client, context, session, now);
     }
     return {
       server_result: serverResult,
-      state: await buildState(client, context, session, input.userId, input.now),
+      state: await buildState(client, context, session, input.userId, now),
     };
   });
 }

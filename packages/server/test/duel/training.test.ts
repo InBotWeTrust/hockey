@@ -446,6 +446,43 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     }
   });
 
+  it('persists post-lock training acceptance time and a full rolling hour after a transaction wait', async () => {
+    const arrivedAt = new Date();
+    const acceptedAt = new Date(arrivedAt.getTime() + 2_000);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(arrivedAt);
+    const gate = await pool.connect();
+    try {
+      expect((await startTraining(1)).statusCode).toBe(200);
+      await gate.query('begin');
+      await lockUserGameplay(gate, userId);
+      const pending = submitShot(1);
+      await waitForAdvisoryWaiter();
+      vi.setSystemTime(acceptedAt);
+      await gate.query('commit');
+      const response = await pending;
+      expect(response.statusCode).toBe(200);
+      expect(response.json().state.server_now).toBe(acceptedAt.toISOString());
+      const shot = await pool.query<{ created_at: Date }>(
+        "select created_at from shot_session where user_id = $1 and mode = 'training'",
+        [userId],
+      );
+      expect(shot.rows[0]!.created_at.toISOString()).toBe(acceptedAt.toISOString());
+      const daily = await app.inject({
+        method: 'GET',
+        url: '/duel/daily/state',
+        headers: authHeader(),
+      });
+      expect(daily.json().gameplay_lock.ends_at).toBe(
+        new Date(acceptedAt.getTime() + 3_600_000).toISOString(),
+      );
+    } finally {
+      await gate.query('rollback');
+      gate.release();
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps training locked between games in the same tournament day block', async () => {
     await createPlayoffDayBlock({
       firstGameStartsAt: new Date(Date.now() - 20 * 60_000),

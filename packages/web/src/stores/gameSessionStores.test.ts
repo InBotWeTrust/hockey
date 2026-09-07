@@ -373,6 +373,30 @@ describe('game session stores', () => {
     expect(useDailyStore.getState().error).toBeNull();
   });
 
+  it('refreshes the active daily period lock after a stale shot conflict', async () => {
+    const locked: DailyStateResponse = {
+      ...dailyState,
+      gameplay_lock: {
+        blocked: true,
+        reason: 'active_classic',
+        ends_at: null,
+        tournament_starts_at: null,
+      },
+    };
+    useDailyStore.setState({ data: { ...dailyState, gameplay_lock: null } });
+    vi.mocked(submitDailyShot).mockRejectedValueOnce(
+      new ApiError(409, 'conflict', 'gameplay is locked'),
+    );
+    vi.mocked(fetchDailyState).mockResolvedValueOnce(locked);
+
+    expect(
+      await useDailyStore
+        .getState()
+        .submitShot({ shotIndex: 1, input: { tapTime: 0 }, claimedResult: 'miss' }),
+    ).toBeNull();
+    expect(useDailyStore.getState()).toMatchObject({ data: locked, needsReconcile: false });
+  });
+
   it('keeps a daily shot locked until an ambiguous final-shot request is reconciled', async () => {
     vi.useFakeTimers();
     const optimistic = {

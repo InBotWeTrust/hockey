@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import { GAMEPLAY_RECOVERY_MINUTES } from './gameplayLocks.js';
 import {
   DAILY_PERIOD_SPEED_PRESETS,
   DEFAULT_DUEL_INVENTORY_TIMING,
@@ -215,8 +216,7 @@ const noInventorySkatesFields: Array<{
     field: 'stumbleOffsetMinPx',
     key: 'stumble_offset_min_px',
     label: 'Спотыкание: минимальный сдвиг',
-    description:
-      'Минимальный сдвиг позиции игрока в пикселях для механики спотыкания без коньков.',
+    description: 'Минимальный сдвиг позиции игрока в пикселях для механики спотыкания без коньков.',
     min: 0,
     max: 300,
   },
@@ -281,8 +281,7 @@ const noInventoryNutritionFields: Array<{
     field: 'fatigueStopDurationMs',
     key: 'fatigue_stop_duration_ms',
     label: 'Отдых: длительность',
-    description:
-      'Сколько миллисекунд игрок без питания стоит и не может бросать во время отдыха.',
+    description: 'Сколько миллисекунд игрок без питания стоит и не может бросать во время отдыха.',
     min: 0,
     max: 120_000,
   },
@@ -381,12 +380,13 @@ export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
   },
   {
     key: 'training.daily_cooldown_minutes',
-    label: 'Блокировка дневной игры',
-    description: 'Сколько минут дневная игра закрыта после первого броска в тренировке.',
+    label: 'Восстановление между режимами',
+    description:
+      'Фиксированные 60 минут после последнего принятого броска. Каждый новый бросок начинает час заново.',
     type: 'number',
-    defaultValue: 60,
-    min: 0,
-    max: 1440,
+    defaultValue: GAMEPLAY_RECOVERY_MINUTES,
+    min: GAMEPLAY_RECOVERY_MINUTES,
+    max: GAMEPLAY_RECOVERY_MINUTES,
   },
   {
     key: 'training.goalie_id',
@@ -504,7 +504,6 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
   const dailyGoalieId = String(values.get('daily.goalie_id') ?? 'rookie');
   const trainingGoalieId = String(values.get('training.goalie_id') ?? 'rookie');
   const trainingShotsLimit = Number(values.get('training.shots_limit'));
-  const trainingDailyCooldownMinutes = Number(values.get('training.daily_cooldown_minutes'));
   const amateurUnlockGoalsRequired = Number(values.get('amateur.unlock_goals_required'));
   const amateurRatingVisibility = String(values.get('amateur.rating_visibility'));
   const noInventorySkatesTiming = noInventorySkatesFields.reduce<DuelInventoryTiming>(
@@ -567,9 +566,7 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
     training: {
       goalieId: trainingGoalieId,
       shotsLimit: Number.isFinite(trainingShotsLimit) ? trainingShotsLimit : 500,
-      dailyCooldownMinutes: Number.isFinite(trainingDailyCooldownMinutes)
-        ? Math.max(0, Math.trunc(trainingDailyCooldownMinutes))
-        : 30,
+      dailyCooldownMinutes: GAMEPLAY_RECOVERY_MINUTES,
     },
     amateur: {
       unlockGoalsRequired: Number.isFinite(amateurUnlockGoalsRequired)

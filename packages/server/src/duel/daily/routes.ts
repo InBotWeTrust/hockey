@@ -27,7 +27,7 @@ import {
 import { refreshCompletedTournamentDailyResultsForUser } from '../../tournament/dailyAggregate.js';
 import { scheduleDailyCompletionSideEffect } from './completionSideEffects.js';
 import {
-  assertActiveClassicGameplayAllowed,
+  assertDailyShotGameplayAllowed,
   assertGameplayActionAllowed,
   assertSafeSegmentStart,
   getGameplayLockState,
@@ -701,7 +701,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
           new AppError('conflict', `cannot submit shot in state '${pool.state}'`, 409),
         );
       }
-      await assertActiveClassicGameplayAllowed(client, req.user.id);
+      await assertDailyShotGameplayAllowed(client, req.user.id, now);
 
       const cur = await aggregateCurrentPeriod(client, pool.id, pool.current_period);
       const expectedShotIndex = cur.shots + 1;
@@ -803,8 +803,8 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
       await client.query(
         `insert into shot_session
              (user_id, mode, day_pool_id, period_number, shot_index, seed,
-              input_payload, server_result, game_core_version)
-           values ($1, 'daily', $2, $3, $4, $5, $6, $7, $8)`,
+              input_payload, server_result, game_core_version, created_at)
+           values ($1, 'daily', $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           req.user.id,
           pool.id,
@@ -814,6 +814,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
           JSON.stringify(shotInput),
           serverResult,
           pool.game_core_version,
+          now,
         ],
       );
       await evaluateDailyShotAchievements(client, {

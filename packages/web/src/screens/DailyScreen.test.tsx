@@ -2387,6 +2387,98 @@ describe('DailyScreen', () => {
     expect(screen.getByText('Проверяем результат')).toBeInTheDocument();
   });
 
+  it.each([
+    ['active_classic', null, true, 'Завершите текущую игру Classic'],
+    ['active_classic', '2099-04-25T14:00:00.000Z', true, 'Завершите текущую игру Classic'],
+    ['scheduled_tournament', '2099-04-25T14:00:00.000Z', false, null],
+    ['scheduled_tournament', '2020-04-25T14:00:00.000Z', true, 'До завершения турнирного блока'],
+  ] as const)(
+    'obeys the active daily period lock %s at %s (blocked=%s)',
+    async (reason, startsAt, blocked, copy) => {
+      const active: DailyStateResponse = {
+        ...baseState,
+        state: 'period_active',
+        current_period: 1,
+        daily_seed: 'seed-abc',
+        server_now: new Date().toISOString(),
+        period_ends_at: new Date(Date.now() + 20 * 60_000).toISOString(),
+        gameplay_lock: { blocked: true, reason, ends_at: null, tournament_starts_at: startsAt },
+      };
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(JSON.stringify(active), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+      );
+      renderWith(['/?view=daily']);
+
+      const button = await screen.findByRole('button', {
+        name: blocked ? 'ЛЁД ГОТОВИТСЯ' : 'БРОСОК',
+      });
+      if (blocked) {
+        expect(button).toBeDisabled();
+        expect(screen.getByText(copy!)).toBeInTheDocument();
+      } else {
+        expect(button).toBeEnabled();
+      }
+    },
+  );
+
+  it('refreshes a stale daily shot 409 and disables retries while Classic remains active', async () => {
+    const active: DailyStateResponse = {
+      ...baseState,
+      state: 'period_active',
+      current_period: 1,
+      daily_seed: 'seed-abc',
+      server_now: new Date().toISOString(),
+      period_ends_at: new Date(Date.now() + 20 * 60_000).toISOString(),
+      gameplay_lock: null,
+    };
+    let rejected = false;
+    let shots = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/daily/shot')) {
+        shots += 1;
+        rejected = true;
+        return new Response(
+          JSON.stringify({ error: { code: 'conflict', message: 'gameplay is locked' } }),
+          {
+            status: 409,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          ...active,
+          gameplay_lock: rejected
+            ? {
+                blocked: true,
+                reason: 'active_classic',
+                ends_at: null,
+                tournament_starts_at: null,
+              }
+            : null,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    renderWith(['/?view=daily']);
+    expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeEnabled();
+    await act(async () => {
+      await useDailyStore
+        .getState()
+        .submitShot({ shotIndex: 1, input: { tapTime: 0 }, claimedResult: 'miss' });
+    });
+    const blockedButton = await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' });
+    expect(blockedButton).toBeDisabled();
+    expect(screen.getByText('Завершите текущую игру Classic')).toBeInTheDocument();
+    fireEvent.click(blockedButton);
+    expect(shots).toBe(1);
+  });
+
   it('returns from an active daily period to the modes hub', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(

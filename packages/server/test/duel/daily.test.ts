@@ -9,6 +9,7 @@ import { applyMigrations } from '../../src/db/migrations.js';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { waitForDailyCompletionSideEffects } from '../../src/duel/daily/completionSideEffects.js';
+import { lockUserGameplay } from '../../src/duel/gameplayLocks.js';
 import {
   createTestPool,
   createTestRedis,
@@ -313,6 +314,61 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     const response = await submitShot(1);
 
     expect(response.statusCode).toBe(200);
+  });
+
+  it('rejects an accepted daily period shot once the scheduled tournament block starts', async () => {
+    expect((await startPeriod()).statusCode).toBe(200);
+    await createPlayoffDayBlock(new Date(Date.now() - 1_000));
+
+    expect((await submitShot(1)).statusCode).toBe(409);
+    expect((await getState()).gameplay_lock).toMatchObject({ reason: 'scheduled_tournament' });
+    expect(
+      (await pool.query('select id from shot_session where user_id = $1', [userId])).rowCount,
+    ).toBe(0);
+  });
+
+  it('persists post-lock daily acceptance time and a full rolling hour after a transaction wait', async () => {
+    const arrivedAt = new Date();
+    const acceptedAt = new Date(arrivedAt.getTime() + 2_000);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(arrivedAt);
+    const gate = await pool.connect();
+    try {
+      expect((await startPeriod()).statusCode).toBe(200);
+      await gate.query('begin');
+      await lockUserGameplay(gate, userId);
+      const pending = submitShot(1);
+      await vi.waitFor(async () => {
+        const { rows } = await pool.query<{ waiting: number }>(
+          `select count(*)::int as waiting from pg_locks
+           where locktype = 'advisory' and not granted
+             and database = (select oid from pg_database where datname = current_database())`,
+        );
+        expect(rows[0]!.waiting).toBe(1);
+      });
+      vi.setSystemTime(acceptedAt);
+      await gate.query('commit');
+      const response = await pending;
+      expect(response.statusCode).toBe(200);
+      expect(response.json().state.server_now).toBe(acceptedAt.toISOString());
+      const shot = await pool.query<{ created_at: Date }>(
+        "select created_at from shot_session where user_id = $1 and mode = 'daily'",
+        [userId],
+      );
+      expect(shot.rows[0]!.created_at.toISOString()).toBe(acceptedAt.toISOString());
+      const training = await app.inject({
+        method: 'GET',
+        url: '/duel/training/state',
+        headers: authHeader(),
+      });
+      expect(training.json().gameplay_lock.ends_at).toBe(
+        new Date(acceptedAt.getTime() + 3_600_000).toISOString(),
+      );
+    } finally {
+      await gate.query('rollback');
+      gate.release();
+      vi.useRealTimers();
+    }
   });
 
   it('returns authoritative state without waiting for pending achievement recovery', async () => {

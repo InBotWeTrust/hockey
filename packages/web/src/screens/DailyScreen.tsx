@@ -8724,10 +8724,18 @@ function DailyPlayView({
     : 0;
   const trainingCooldownRemaining = Math.max(0, trainingCooldownEndsAt - now);
   const isDailyLockedByTraining = rawCanStartPeriod && data.gameplay_lock?.blocked === true;
+  const isActiveDailyLocked =
+    data.state === 'period_active' &&
+    data.gameplay_lock?.blocked === true &&
+    (data.gameplay_lock.reason === 'active_classic' ||
+      (data.gameplay_lock.reason === 'scheduled_tournament' &&
+        (!data.gameplay_lock.tournament_starts_at ||
+          Date.parse(data.gameplay_lock.tournament_starts_at) <= Date.parse(data.server_now))));
   useGameplayLockRefresh(data.gameplay_lock);
   const canStartPeriod = rawCanStartPeriod && !isDailyLockedByTraining;
-  const shouldSuppressRink = data.state !== 'period_active' || hasStatsModal;
-  const shouldShowIceCar = isBreak || isClosed || hasStatsModal || isDailyLockedByTraining;
+  const shouldSuppressRink = data.state !== 'period_active' || hasStatsModal || isActiveDailyLocked;
+  const shouldShowIceCar =
+    isBreak || isClosed || hasStatsModal || isDailyLockedByTraining || isActiveDailyLocked;
   const handleStartPeriod = useCallback(async (): Promise<DailyStateResponse | null> => {
     if (!canStartPeriod || pending) return null;
     return startPeriod();
@@ -8790,7 +8798,7 @@ function DailyPlayView({
         onRouteTransitionConsumed={onRouteTransitionConsumed}
         onBack={onBack}
         backLabel={backLabel}
-        active={data.state === 'period_active'}
+        active={data.state === 'period_active' && !isActiveDailyLocked}
         seed={data.daily_seed}
         goalieId={data.goalie_id}
         periodNumber={periodNumber}
@@ -8828,7 +8836,7 @@ function DailyPlayView({
         scoreboardNotice={
           needsReconcile
             ? 'Проверяем результат'
-            : isDailyLockedByTraining
+            : isDailyLockedByTraining || isActiveDailyLocked
               ? gameplayLockCopy(data.gameplay_lock!, now)
               : undefined
         }
@@ -8839,14 +8847,14 @@ function DailyPlayView({
               ? pending
                 ? 'НАЧИНАЕМ...'
                 : 'НАЧАТЬ'
-              : isBreak || isDailyLockedByTraining
+              : isBreak || isDailyLockedByTraining || isActiveDailyLocked
                 ? 'ЛЁД ГОТОВИТСЯ'
                 : isClosed
                   ? 'ИГРА ЗАВЕРШЕНА'
                   : undefined
         }
         inactiveAction={canStartPeriod ? handleStartPeriod : undefined}
-        primaryActionBlocked={needsReconcile}
+        primaryActionBlocked={needsReconcile || isActiveDailyLocked}
         entranceBeforeInactiveAction={true}
         periodEndsAt={data.state === 'period_active' ? periodEndsAt : undefined}
         onTimerExpired={refresh}

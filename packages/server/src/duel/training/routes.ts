@@ -587,8 +587,8 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         await client.query(
           `insert into shot_session
            (user_id, mode, training_session_id, period_number, shot_index, seed,
-            input_payload, server_result, game_core_version)
-         values ($1, 'training', $2, $3, $4, $5, $6, $7, $8)`,
+            input_payload, server_result, game_core_version, created_at)
+         values ($1, 'training', $2, $3, $4, $5, $6, $7, $8, $9)`,
           [
             req.user.id,
             session.id,
@@ -598,6 +598,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
             JSON.stringify(shotInput),
             serverResult,
             session.game_core_version,
+            now,
           ],
         );
 

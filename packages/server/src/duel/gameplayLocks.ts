@@ -186,12 +186,21 @@ export async function getActiveClassicTournamentLock(
     : NO_GAMEPLAY_LOCK;
 }
 
-export async function assertActiveClassicGameplayAllowed(
+export async function assertDailyShotGameplayAllowed(
   client: PoolClient,
   userId: string,
+  now: Date,
 ): Promise<void> {
-  const state = await getActiveClassicTournamentLock(client, userId);
-  if (state.blocked) throwGameplayLock(state);
+  const state = await getTournamentGameplayLockState(client, userId, now);
+  // An accepted period may continue through prelock, but never through active tournament play.
+  if (
+    state.blocked &&
+    (state.reason === 'active_classic' ||
+      (state.reason === 'scheduled_tournament' &&
+        (state.tournamentStartsAt?.getTime() ?? 0) <= now.getTime()))
+  ) {
+    throwGameplayLock(state);
+  }
 }
 
 export async function getTournamentGameplayLockStates(
@@ -205,10 +214,7 @@ export async function getTournamentGameplayLockStates(
   return new Map(
     userIds.map((userId) => {
       const state = scheduled.get(userId) ?? NO_GAMEPLAY_LOCK;
-      return [
-        userId,
-        state.blocked ? state : activeClassic.has(userId) ? ACTIVE_CLASSIC_LOCK : state,
-      ];
+      return [userId, activeClassic.has(userId) ? ACTIVE_CLASSIC_LOCK : state];
     }),
   );
 }
@@ -218,10 +224,9 @@ export async function getTournamentGameplayLockState(
   userId: string,
   now: Date,
 ): Promise<GameplayLockState> {
-  const scheduled = await getNearestScheduledTournamentBlock(client, userId, now);
-  if (scheduled.blocked) return scheduled;
   const activeClassic = await getActiveClassicTournamentLock(client, userId);
-  return activeClassic.blocked ? activeClassic : scheduled;
+  if (activeClassic.blocked) return activeClassic;
+  return getNearestScheduledTournamentBlock(client, userId, now);
 }
 
 export async function assertTournamentGameplayAllowed(

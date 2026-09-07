@@ -3,7 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { GAME_SETTING_DEFINITIONS } from '../src/duel/gameSettings.js';
+import {
+  GAME_SETTING_DEFINITIONS,
+  getGameSettings,
+  validateGameSettingValue,
+} from '../src/duel/gameSettings.js';
 import { applyMigrations } from '../src/db/migrations.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from './helpers/testDb.js';
 
@@ -12,6 +16,17 @@ const MIGRATIONS_DIR = path.resolve(__dirname, '../db/migrations');
 const MIGRATION_PATH = path.join(MIGRATIONS_DIR, '107_gameplay_cooldown_one_hour.sql');
 
 describe('gameplay recovery defaults', () => {
+  it.each([0, 30, 90, 1440])(
+    'keeps the rolling hour authoritative over legacy admin value %i',
+    async (value) => {
+      expect(validateGameSettingValue('training.daily_cooldown_minutes', value).value).toBe(60);
+      const settings = await getGameSettings({
+        query: async () => ({ rows: [{ key: 'training.daily_cooldown_minutes', value }] }),
+      } as unknown as Pool);
+      expect(settings.training.dailyCooldownMinutes).toBe(60);
+    },
+  );
+
   it('defaults the configured training-to-daily cooldown to 60 minutes', () => {
     const definition = GAME_SETTING_DEFINITIONS.find(
       (candidate) => candidate.key === 'training.daily_cooldown_minutes',
