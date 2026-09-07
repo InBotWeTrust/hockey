@@ -1821,6 +1821,38 @@ describe('DailyScreen', () => {
     expect(await screen.findByText('0/500 бросков сегодня')).toBeInTheDocument();
   });
 
+  it.each([
+    ['active_classic', 'Завершите текущую игру Classic'],
+    ['scheduled_tournament', 'До завершения турнирного блока'],
+  ] as const)(
+    'announces the actual %s daily lock without a recovery countdown',
+    async (reason, copy) => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+        const url = input instanceof Request ? input.url : String(input);
+        return new Response(
+          JSON.stringify(
+            url.includes('/duel/training/')
+              ? trainingIdleState
+              : {
+                  ...baseState,
+                  gameplay_lock: {
+                    blocked: true,
+                    reason,
+                    ends_at: null,
+                    tournament_starts_at: null,
+                  },
+                },
+          ),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      });
+      renderWith();
+      const scoreboard = await screen.findByLabelText(copy);
+      expect(scoreboard).toHaveTextContent('ИГРА');
+      expect(scoreboard.getAttribute('aria-label')).not.toMatch(/Восстановление|00:00:00/);
+    },
+  );
+
   it('rechecks a tournament training lock every 30 seconds while the arena stays open', async () => {
     vi.useFakeTimers();
     const lockedTrainingState: TrainingStateResponse = {
@@ -3320,7 +3352,7 @@ describe('DailyScreen', () => {
     expect(screen.getByText('Восстановление после игры')).toHaveClass(
       'arena-cube-subtitle--compact',
     );
-    const cooldownScoreboard = screen.getByLabelText(/^Восстановление\. До игры/);
+    const cooldownScoreboard = screen.getByLabelText(/^Восстановление после игры\. До игры/);
     expect(cooldownScoreboard).toHaveClass('daily-hub-scoreboard--timer-only');
     expect(within(cooldownScoreboard).getByText('До игры')).toBeInTheDocument();
     expect(within(cooldownScoreboard).queryByText('Период')).not.toBeInTheDocument();
@@ -3444,6 +3476,47 @@ describe('DailyScreen', () => {
       expect(startCall?.[1]?.body).toBe(JSON.stringify({ period_number: 1 }));
     });
   });
+
+  it.each([
+    ['scheduled_tournament', 'До завершения турнирного блока'],
+    ['active_classic', 'Завершите текущую игру Classic'],
+  ] as const)(
+    'refreshes a newly appeared %s lock after training start returns 409',
+    async (reason, copy) => {
+      let startRejected = false;
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (url.includes('/duel/training/start')) {
+          startRejected = true;
+          return new Response(
+            JSON.stringify({ error: { code: 'conflict', message: 'gameplay is locked' } }),
+            {
+              status: 409,
+              headers: { 'content-type': 'application/json' },
+            },
+          );
+        }
+        return new Response(
+          JSON.stringify(
+            url.includes('/duel/training/state')
+              ? {
+                  ...trainingIdleState,
+                  gameplay_lock: startRejected
+                    ? { blocked: true, reason, ends_at: null, tournament_starts_at: null }
+                    : null,
+                }
+              : baseState,
+          ),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      });
+      renderWith(['/?view=training&play=1']);
+      fireEvent.click(await screen.findByRole('button', { name: 'НАЧАТЬ' }));
+      expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
+      expect(screen.getByText(copy)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'НАЧАТЬ' })).not.toBeInTheDocument();
+    },
+  );
 
   it('lets admins override daily period speeds from the second training debug control', async () => {
     useAuthStore.getState().setSession({

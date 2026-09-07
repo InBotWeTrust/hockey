@@ -99,6 +99,39 @@ describe('game session stores', () => {
     expect(useTrainingSessionStore.getState().error).toBeNull();
   });
 
+  it('applies an authoritative gameplay lock after a failed training start', async () => {
+    const locked = {
+      ...trainingState,
+      gameplay_lock: {
+        blocked: true,
+        reason: 'active_classic' as const,
+        ends_at: null,
+        tournament_starts_at: null,
+      },
+    };
+    useTrainingSessionStore.setState({ data: { ...trainingState, gameplay_lock: null } });
+    vi.mocked(startTraining).mockRejectedValueOnce(new ApiError(409, 'conflict', 'Game locked'));
+    vi.mocked(fetchTrainingState).mockResolvedValueOnce(locked);
+    expect(await useTrainingSessionStore.getState().start(1)).toBeNull();
+    expect(useTrainingSessionStore.getState()).toMatchObject({
+      data: locked,
+      inFlight: false,
+      error: null,
+    });
+  });
+
+  it('keeps the original training start error when the recovery read also fails', async () => {
+    useTrainingSessionStore.setState({ data: trainingState });
+    vi.mocked(startTraining).mockRejectedValueOnce(new Error('Start unavailable'));
+    vi.mocked(fetchTrainingState).mockRejectedValueOnce(new Error('Recovery unavailable'));
+    expect(await useTrainingSessionStore.getState().start(1)).toBeNull();
+    expect(useTrainingSessionStore.getState()).toMatchObject({
+      data: trainingState,
+      inFlight: false,
+      error: 'Start unavailable',
+    });
+  });
+
   it('clears a stale amateur duel error when applying fresh state', () => {
     useAmateurDuelStore.setState({ match: null, error: 'internal error' });
 

@@ -1120,10 +1120,10 @@ function GameHub({
             }
           : isDailyLockedByTraining
             ? {
-                timerLabel: 'До игры',
+                timerLabel: trainingCooldownEndsAt > 0 ? 'До игры' : 'Статус',
                 timer: trainingCooldownEndsAt > 0 ? formatHms(trainingCooldownRemaining) : 'ИГРА',
                 activePeriod: null,
-                ariaLabel: `Восстановление. До игры ${formatHms(trainingCooldownRemaining)}`,
+                ariaLabel: `${gameplayLockCopy(data.gameplay_lock!, now)}${trainingCooldownEndsAt > 0 ? `. До игры ${formatHms(trainingCooldownRemaining)}` : ''}`,
               }
             : {
                 timerLabel: 'Время',
