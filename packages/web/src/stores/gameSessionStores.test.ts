@@ -132,6 +132,43 @@ describe('game session stores', () => {
     });
   });
 
+  it.each([
+    new TypeError('Network unavailable'),
+    new ApiError(503, 'service_unavailable', 'Start unavailable'),
+  ])(
+    'retains the original start error after a successful unlocked idle read: %s',
+    async (error) => {
+      const idle = {
+        ...trainingState,
+        state: 'idle' as const,
+        selected_period: null,
+        gameplay_lock: null,
+      };
+      useTrainingSessionStore.setState({ data: idle });
+      vi.mocked(startTraining).mockRejectedValueOnce(error);
+      vi.mocked(fetchTrainingState).mockResolvedValueOnce(idle);
+
+      expect(await useTrainingSessionStore.getState().start(1)).toBeNull();
+      expect(useTrainingSessionStore.getState()).toMatchObject({
+        data: idle,
+        inFlight: false,
+        error: error.message,
+      });
+    },
+  );
+
+  it('clears a failed start error when the read confirms the requested training period is active', async () => {
+    const active = { ...trainingState, gameplay_lock: null };
+    vi.mocked(startTraining).mockRejectedValueOnce(new TypeError('Response lost'));
+    vi.mocked(fetchTrainingState).mockResolvedValueOnce(active);
+    await useTrainingSessionStore.getState().start(1);
+    expect(useTrainingSessionStore.getState()).toMatchObject({
+      data: active,
+      inFlight: false,
+      error: null,
+    });
+  });
+
   it('clears a stale amateur duel error when applying fresh state', () => {
     useAmateurDuelStore.setState({ match: null, error: 'internal error' });
 
