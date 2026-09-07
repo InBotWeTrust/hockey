@@ -24,7 +24,6 @@ import {
   getGameSettings,
   type GameSettings,
 } from '../gameSettings.js';
-import { refreshCompletedTournamentDailyResultsForUser } from '../../tournament/dailyAggregate.js';
 import { scheduleDailyCompletionSideEffect } from './completionSideEffects.js';
 import {
   assertDailyShotGameplayAllowed,
@@ -915,22 +914,6 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
           app.log.warn(
             { err: error, userId: req.user.id, dayPoolId: event.dayPoolId },
             'failed to evaluate achievements after daily completion',
-          );
-        },
-      );
-    }
-    if (response.state.state === 'closed') {
-      scheduleDailyCompletionSideEffect(
-        async () => {
-          await refreshCompletedTournamentDailyResultsForUser(app.pg, {
-            userId: req.user.id,
-            now: new Date(),
-          });
-        },
-        (error) => {
-          app.log.warn(
-            { err: error, userId: req.user.id },
-            'failed to refresh tournament standings after daily completion',
           );
         },
       );

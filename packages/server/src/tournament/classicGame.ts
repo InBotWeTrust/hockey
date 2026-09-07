@@ -22,7 +22,7 @@ import { AppError } from '../plugins/errors.js';
 import { appendEvent } from '../duel/eventLog.js';
 import { parseTournamentConfig } from './config.js';
 import { resolveClassicResult } from './classic.js';
-import { rebuildDailyAggregateStandings, refreshDailyDayPlacements } from './dailyAggregate.js';
+import { rebuildClassicStandings, refreshClassicDayPlacements } from './classicStandings.js';
 import type { ClassicTournamentConfig, TournamentClassicRules } from './types.js';
 import type { DuelInventoryTiming } from '@hockey/game-core';
 
@@ -872,7 +872,7 @@ async function finalizeSessionResult(
       finalizedAt,
     ],
   );
-  await refreshDailyDayPlacements(client, context.tournamentId, context.tournamentDay, {
+  await refreshClassicDayPlacements(client, context.tournamentId, context.tournamentDay, {
     config: {
       regularSource: context.config.regularSource,
       dailyDays: context.config.dailyDays,
@@ -883,7 +883,7 @@ async function finalizeSessionResult(
       ? {}
       : { dailyPlacePoints: context.rulesSnapshot.dailyPlacePoints }),
   });
-  await rebuildDailyAggregateStandings(client, context.tournamentId, {
+  await rebuildClassicStandings(client, context.tournamentId, {
     config: {
       regularSource: context.config.regularSource,
       dailyDays: context.config.dailyDays,

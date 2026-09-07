@@ -67,43 +67,6 @@ const headToHeadSchema = z
     }
   });
 
-const dailyAggregateSchema = z
-  .object({
-    ...common,
-    regularSource: z.literal('daily_aggregate'),
-    roundRobinCycles: z.null(),
-    roundsPerDay: z.null(),
-    firstRoundLocalTime: z.null(),
-    fixtureWindowMs: z.null(),
-    roundBreakMs: z.null(),
-    dailyDays: z.number().int().min(1).max(366),
-    dailyMetric: z.enum(['goals_sum', 'accuracy_average', 'daily_place_points']),
-    bestDays: z.number().int().min(1).nullable(),
-  })
-  .superRefine((config, ctx) => {
-    if (config.participantLimit > 10_000) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['participantLimit'],
-        message: 'daily aggregate tournaments support at most 10000 participants',
-      });
-    }
-    if (config.playoffSize > config.participantLimit) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['playoffSize'],
-        message: 'playoff size cannot exceed participant limit',
-      });
-    }
-    if (config.bestDays !== null && config.bestDays > config.dailyDays) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['bestDays'],
-        message: 'best days cannot exceed regular-season days',
-      });
-    }
-  });
-
 const classicPeriodSpeedPresetSchema = z.object({
   periodNumber: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   goalFrequency: z.number().min(0.1).max(3),
@@ -172,7 +135,7 @@ const classicSchema = z
     }
   });
 
-const tournamentConfigSchema = z.union([headToHeadSchema, dailyAggregateSchema, classicSchema]);
+export const tournamentConfigSchema = z.union([headToHeadSchema, classicSchema]);
 
 export function parseTournamentConfig(input: unknown): TournamentConfig {
   return tournamentConfigSchema.parse(input) as TournamentConfig;

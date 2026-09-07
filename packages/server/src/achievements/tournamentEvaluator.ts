@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import type { TournamentRegularSource } from '../tournament/types.js';
 import { completeAchievementCandidates, type AchievementCompletionCandidate } from './service.js';
 import {
   accuracyAtLeast,
@@ -31,7 +32,7 @@ export interface TournamentAchievementDiagnostics {
 
 interface BoundaryRow {
   status: string;
-  regular_source: string;
+  regular_source: TournamentRegularSource;
   starts_at: Date | null;
   completed_at: Date | null;
   updated_at: Date;
@@ -318,7 +319,7 @@ export async function collectTournamentAchievementCandidates(
 async function loadRegularCompletionTimestamp(
   db: Queryable,
   tournamentId: string,
-  regularSource: string,
+  regularSource: TournamentRegularSource,
 ): Promise<Date | null> {
   if (regularSource === 'head_to_head') {
     const result = await db.query<{ achieved_at: Date | null }>(

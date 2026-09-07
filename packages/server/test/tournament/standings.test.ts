@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   awardSharedPlacePoints,
-  calculateDailyAggregateStandings,
+  calculateClassicStandings,
   rankHeadToHeadStandings,
 } from '../../src/tournament/standings.js';
 
-describe('daily aggregate standings', () => {
+describe('classic standings', () => {
   it('shares the average points for tied occupied places', () => {
     expect(
       awardSharedPlacePoints(
@@ -41,7 +41,7 @@ describe('daily aggregate standings', () => {
   });
 
   it('counts only complete days and keeps the best N results', () => {
-    const standings = calculateDailyAggregateStandings(
+    const standings = calculateClassicStandings(
       [
         { participantId: 'a', day: 1, goals: 10, shots: 20, completed: true },
         { participantId: 'a', day: 2, goals: 8, shots: 20, completed: true },
@@ -59,7 +59,7 @@ describe('daily aggregate standings', () => {
   });
 
   it('averages accuracy per completed day instead of pooling shots', () => {
-    const standings = calculateDailyAggregateStandings(
+    const standings = calculateClassicStandings(
       [
         { participantId: 'a', day: 1, goals: 1, shots: 1, completed: true },
         { participantId: 'a', day: 2, goals: 0, shots: 9, completed: true },
@@ -70,7 +70,7 @@ describe('daily aggregate standings', () => {
   });
 
   it('ranks tied classic totals by the summed duration of counted games', () => {
-    const standings = calculateDailyAggregateStandings(
+    const standings = calculateClassicStandings(
       [
         {
           participantId: 'slow',

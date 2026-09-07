@@ -226,11 +226,6 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.staging.yml \
             run --rm -T server-dev node packages/server/dist/onboarding/seedDevContentCli.js < /dev/null
 
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml \
-            run --rm -T -e TOURNAMENT_LIFECYCLE_RECONCILE=1 server-dev \
-              node packages/server/dist/tournament/automaticLifecycleAuditCli.js \
-              --completed-daily --apply < /dev/null
-
           if [ "$RESET_STAGING_ACHIEVEMENTS" = "true" ]; then
             docker compose -f docker-compose.yml -f docker-compose.staging.yml \
               run --rm -T server-dev node packages/server/dist/achievements/reset-dev-achievements-cli.js < /dev/null

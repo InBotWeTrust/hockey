@@ -1,8 +1,5 @@
 import { createPool } from '../db/pool.js';
-import {
-  auditAutomaticTournamentLifecycle,
-  auditCompletedLegacyDailyTournamentLifecycle,
-} from './automaticLifecycleAudit.js';
+import { auditAutomaticTournamentLifecycle } from './automaticLifecycleAudit.js';
 
 function optionValue(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -15,10 +12,9 @@ function optionValue(name: string): string | undefined {
 const apply = process.argv.includes('--apply');
 const tournamentSlug = optionValue('--tournament');
 const all = process.argv.includes('--all');
-const completedDaily = process.argv.includes('--completed-daily');
-const selectedModes = Number(tournamentSlug !== undefined) + Number(all) + Number(completedDaily);
+const selectedModes = Number(tournamentSlug !== undefined) + Number(all);
 if (selectedModes !== 1) {
-  throw new Error('Pass exactly one of --tournament <slug>, --all or --completed-daily');
+  throw new Error('Pass exactly one of --tournament <slug>, --all');
 }
 if (
   apply &&
@@ -40,13 +36,11 @@ try {
     tournamentId = tournament.rows[0]?.id;
     if (tournamentId === undefined) throw new Error('published tournament was not found');
   }
-  const report = completedDaily
-    ? await auditCompletedLegacyDailyTournamentLifecycle(pool, { now: new Date(), apply })
-    : await auditAutomaticTournamentLifecycle(pool, {
-        ...(tournamentId === undefined ? {} : { tournamentId }),
-        now: new Date(),
-        apply,
-      });
+  const report = await auditAutomaticTournamentLifecycle(pool, {
+    ...(tournamentId === undefined ? {} : { tournamentId }),
+    now: new Date(),
+    apply,
+  });
   console.log(JSON.stringify({ mode: apply ? 'apply' : 'dry-run', ...report }, null, 2));
   if (report.tournaments.some((tournament) => tournament.status === 'blocked')) {
     process.exitCode = 2;

@@ -1,4 +1,4 @@
-export type TournamentRegularSource = 'head_to_head' | 'daily_aggregate' | 'classic';
+export type TournamentRegularSource = 'head_to_head' | 'classic';
 export type TournamentRegistrationMode = 'open' | 'approval' | 'invite_only';
 export type TournamentVisibility = 'public' | 'hidden';
 export type TournamentDailyMetric = 'goals_sum' | 'accuracy_average' | 'daily_place_points';
@@ -62,18 +62,6 @@ export interface HeadToHeadTournamentConfig extends TournamentConfigBase {
   bestDays: null;
 }
 
-export interface DailyAggregateTournamentConfig extends TournamentConfigBase {
-  regularSource: 'daily_aggregate';
-  roundRobinCycles: null;
-  roundsPerDay: null;
-  firstRoundLocalTime: null;
-  fixtureWindowMs: null;
-  roundBreakMs: null;
-  dailyDays: number;
-  dailyMetric: TournamentDailyMetric;
-  bestDays: number | null;
-}
-
 export interface ClassicTournamentConfig extends TournamentConfigBase {
   regularSource: 'classic';
   roundRobinCycles: null;
@@ -87,7 +75,4 @@ export interface ClassicTournamentConfig extends TournamentConfigBase {
   classicRules: TournamentClassicRules;
 }
 
-export type TournamentConfig =
-  | HeadToHeadTournamentConfig
-  | DailyAggregateTournamentConfig
-  | ClassicTournamentConfig;
+export type TournamentConfig = HeadToHeadTournamentConfig | ClassicTournamentConfig;
