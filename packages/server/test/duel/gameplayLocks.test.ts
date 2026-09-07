@@ -6,6 +6,7 @@ import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import {
   GAMEPLAY_RECOVERY_MS,
+  recoveryEndsAt,
   assertGameplayActionAllowed,
   assertDailyShotGameplayAllowed,
   assertSafeSegmentStart,
@@ -56,12 +57,28 @@ function gameplayClient(activities: Activity[]) {
         current === null || activity.createdAt > current ? activity.createdAt : current,
       null,
     );
-    return { rows: [{ last_activity_at: latest }] } as QueryResult;
+    return {
+      rows: [
+        {
+          shot_session_id: latest === null ? undefined : 'shot-1',
+          last_activity_at: latest,
+          recovered_minutes: 0,
+        },
+      ],
+    } as QueryResult;
   });
   return { client: { query } as unknown as PoolClient, query };
 }
 
 describe('action-specific gameplay recovery', () => {
+  it('subtracts recovery-kit minutes from the exact activity window and caps at zero', () => {
+    const activityAt = at('2026-09-08T00:00:00+03:00');
+
+    expect(recoveryEndsAt(activityAt, 15)).toEqual(at('2026-09-08T00:45:00+03:00'));
+    expect(recoveryEndsAt(activityAt, 30)).toEqual(at('2026-09-08T00:30:00+03:00'));
+    expect(recoveryEndsAt(activityAt, 90)).toEqual(activityAt);
+  });
+
   it.each([
     ['training', undefined],
     ['daily', undefined],

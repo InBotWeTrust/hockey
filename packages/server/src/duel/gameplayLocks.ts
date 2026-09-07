@@ -4,6 +4,11 @@ import { AppError } from '../plugins/errors.js';
 export const GAMEPLAY_RECOVERY_MINUTES = 60;
 export const GAMEPLAY_RECOVERY_MS = 3_600_000;
 
+export function recoveryEndsAt(activityAt: Date, recoveredMinutes: number): Date {
+  const recoveredMs = Math.max(0, Math.min(GAMEPLAY_RECOVERY_MINUTES, recoveredMinutes)) * 60_000;
+  return new Date(activityAt.getTime() + GAMEPLAY_RECOVERY_MS - recoveredMs);
+}
+
 export type GameplayAction =
   | 'start_training'
   | 'start_daily_period'
@@ -50,6 +55,13 @@ export interface GameplayLockInput {
 }
 
 type RecoveryMode = 'training' | 'daily' | 'amateur_duel';
+
+export interface RecentGameplayRecovery {
+  shotSessionId: string;
+  activityAt: Date;
+  recoveredMinutes: number;
+  endsAt: Date;
+}
 
 const NO_GAMEPLAY_LOCK: GameplayLockState = {
   blocked: false,
@@ -328,27 +340,61 @@ export async function getGameplayLockState(
   const recoveryModes = recoveryModesForAction(input.action);
   if (recoveryMs <= 0 || recoveryModes.length === 0) return tournamentLock;
 
-  const { rows } = await client.query<{ last_activity_at: Date | null }>(
-    `select max(ss.created_at) as last_activity_at
-       from shot_session ss
-       left join amateur_duel_match m on m.id = ss.amateur_duel_match_id
-      where ss.user_id = $1
-        and (
-          ss.mode in ('training', 'daily')
-          or (ss.mode = 'amateur_duel' and m.source <> 'tournament')
-        )
-        and ss.mode = any($2::text[])`,
-    [input.userId, recoveryModes],
-  );
-  const lastActivityAt = rows[0]?.last_activity_at ?? null;
-  if (lastActivityAt === null) return tournamentLock;
-
-  const endsAt = new Date(lastActivityAt.getTime() + recoveryMs);
-  if (endsAt.getTime() <= input.now.getTime()) return tournamentLock;
+  const recovery = await getRecentGameplayRecovery(client, input);
+  if (recovery === null || recovery.endsAt.getTime() <= input.now.getTime()) return tournamentLock;
 
   return {
     blocked: true,
     reason: 'recent_gameplay',
+    endsAt: recovery.endsAt,
+  };
+}
+
+export async function getRecentGameplayRecovery(
+  client: PoolClient,
+  input: GameplayLockInput,
+): Promise<RecentGameplayRecovery | null> {
+  const recoveryMs = input.recoveryMs ?? GAMEPLAY_RECOVERY_MS;
+  const recoveryModes = recoveryModesForAction(input.action);
+  if (recoveryMs <= 0 || recoveryModes.length === 0) return null;
+  const { rows } = await client.query<{
+    shot_session_id?: string;
+    last_activity_at: Date | null;
+    recovered_minutes?: number | string;
+  }>(
+    `with latest as (
+       select ss.id, ss.created_at
+         from shot_session ss
+         left join amateur_duel_match m on m.id = ss.amateur_duel_match_id
+        where ss.user_id = $1
+          and (
+            ss.mode in ('training', 'daily')
+            or (ss.mode = 'amateur_duel' and m.source <> 'tournament')
+          )
+          and ss.mode = any($2::text[])
+        order by ss.created_at desc, ss.id desc
+        limit 1
+     )
+     select latest.id as shot_session_id, latest.created_at as last_activity_at,
+            coalesce(sum(application.recovery_minutes), 0)::int as recovered_minutes
+       from latest
+       left join recovery_kit_application application on application.shot_session_id = latest.id
+      group by latest.id, latest.created_at`,
+    [input.userId, recoveryModes],
+  );
+  const lastActivityAt = rows[0]?.last_activity_at ?? null;
+  const shotSessionId = rows[0]?.shot_session_id;
+  if (lastActivityAt === null || shotSessionId === undefined) return null;
+
+  const recoveredMinutes = Number(rows[0]?.recovered_minutes ?? 0);
+  const endsAt =
+    recoveryMs === GAMEPLAY_RECOVERY_MS
+      ? recoveryEndsAt(lastActivityAt, recoveredMinutes)
+      : new Date(lastActivityAt.getTime() + recoveryMs - recoveredMinutes * 60_000);
+  return {
+    shotSessionId,
+    activityAt: lastActivityAt,
+    recoveredMinutes,
     endsAt,
   };
 }

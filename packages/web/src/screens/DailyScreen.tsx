@@ -101,6 +101,7 @@ import { gameplayLockCopy } from '../api/gameplayLock.js';
 import {
   fetchMyInventory,
   patchEquipment,
+  useRecoveryKit,
   type InventoryEquipmentKind,
   type InventoryItem,
   type InventoryState,
@@ -4878,6 +4879,11 @@ function DuelLockerTab({
       queryClient.setQueryData(['inventory', 'me'], inventory);
     },
   });
+  const recoveryItems = inventoryQuery.data?.items.recovery ?? [];
+  const recoveryCount = recoveryItems.reduce((sum, item) => sum + item.chargesAvailable, 0);
+  const recoveryArtwork =
+    recoveryItems.find((item) => item.chargesAvailable > 0)?.imageUrl ??
+    '/inventory/recovery-30.webp';
 
   return (
     <>
@@ -4909,6 +4915,32 @@ function DuelLockerTab({
               />
             </section>
           ))}
+          <section className="duel-locker-kind-section" aria-label="Восстановление">
+            <div className="section-label duel-section-title duel-locker-kind-section__title">
+              Восстановление
+            </div>
+            <button
+              type="button"
+              className="glass duel-locker-slot"
+              onClick={onOpenInventory}
+              aria-label={`Наборы для восстановления: ${recoveryCount}`}
+            >
+              <span className="duel-locker-slot__artwork" aria-hidden="true">
+                <img
+                  src={recoveryArtwork}
+                  alt=""
+                  style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+                />
+              </span>
+              <span className="duel-locker-slot__copy amateur-hub-card__copy">
+                <strong className="duel-locker-slot__title">Наборы для восстановления</strong>
+                <span className="duel-locker-slot__status">
+                  {recoveryCount > 0 ? `В запасе: ${recoveryCount}` : 'Нет в запасе'}
+                </span>
+              </span>
+              <ChevronRight className="card-chevron" size={19} strokeWidth={2.7} aria-hidden="true" />
+            </button>
+          </section>
         </div>
       </section>
       <button type="button" className="btn btn--cta" onClick={onOpenInventory}>
@@ -8603,6 +8635,112 @@ interface DailyStatsModalState {
   state: DailyStateResponse['state'];
 }
 
+function RecoveryKitModal({
+  action,
+  onApplied,
+  onClose,
+}: {
+  action: 'start_daily_period' | 'start_classic';
+  onApplied: () => void | Promise<void>;
+  onClose: () => void;
+}): JSX.Element {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const inventory = useQuery<InventoryState>({
+    queryKey: ['inventory', 'me'],
+    queryFn: fetchMyInventory,
+  });
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const variants = Array.from(
+    new Map(
+      (inventory.data?.items.recovery ?? []).map((item) => [item.itemId ?? item.id, item]),
+    ).values(),
+  );
+  const stockFor = (itemId: string): number =>
+    (inventory.data?.items.recovery ?? [])
+      .filter((item) => (item.itemId ?? item.id) === itemId)
+      .reduce((sum, item) => sum + item.chargesAvailable, 0);
+  const selected = variants.find((item) => (item.itemId ?? item.id) === selectedItemId) ?? null;
+  const selectedStock = selected === null ? 0 : stockFor(selected.itemId ?? selected.id);
+  const mutation = useMutation({
+    mutationFn: (item: InventoryItem) =>
+      useRecoveryKit({
+        itemId: item.itemId ?? item.id,
+        action,
+        buyIfNeeded: stockFor(item.itemId ?? item.id) === 0,
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    onSuccess: async (result) => {
+      queryClient.setQueryData(['inventory', 'me'], result.inventory);
+      await onApplied();
+      onClose();
+    },
+  });
+
+  return (
+    <AccessibleModal
+      title="Сократить восстановление"
+      copy="Выберите одноразовый набор. Перед применением проверьте время и стоимость."
+      onRequestClose={onClose}
+      closeBlocked={mutation.isPending}
+      headerAction={
+        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+          <X size={15} />
+        </button>
+      }
+    >
+      <div className="recovery-kit-options">
+        {variants.map((item) => {
+          const itemId = item.itemId ?? item.id;
+          const stock = stockFor(itemId);
+          const minutes = item.effectRecoveryMinutes ?? 0;
+          return (
+            <button
+              type="button"
+              key={itemId}
+              className={`recovery-kit-option${selectedItemId === itemId ? ' recovery-kit-option--selected' : ''}`}
+              onClick={() => setSelectedItemId(itemId)}
+            >
+              <img src={item.imageUrl ?? '/inventory/recovery-30.webp'} alt="" />
+              <span>
+                <strong>{minutes === 60 ? '1 час' : `${minutes} минут`}</strong>
+                <small>{stock > 0 ? `В запасе: ${stock}` : `${item.currencyPrice} монет`}</small>
+              </span>
+              <DuelEquipmentSelectionRadio selected={selectedItemId === itemId} />
+            </button>
+          );
+        })}
+      </div>
+      {mutation.error && (
+        <p className="modal-copy" role="alert">
+          {mutation.error.message}
+        </p>
+      )}
+      <div className="modal-actions">
+        {mutation.isError && mutation.error.message.includes('currency') ? (
+          <button type="button" className="btn btn--ghost" onClick={() => navigate('/inventory')}>
+            В банк
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="modal-primary btn--cta"
+          disabled={selected === null || mutation.isPending}
+          onClick={() => selected && mutation.mutate(selected)}
+        >
+          {mutation.isPending
+            ? 'Применяем...'
+            : selected === null
+              ? 'Выберите набор'
+              : selectedStock > 0
+                ? 'Использовать набор'
+                : `Купить за ${selected.currencyPrice} и применить`}
+        </button>
+      </div>
+    </AccessibleModal>
+  );
+}
+
 function DailyPlayView({
   onBack,
   backLabel = 'К режимам',
@@ -8652,6 +8790,7 @@ function DailyPlayView({
   const breakEndsAt = data.break_ends_at ? new Date(data.break_ends_at).getTime() : undefined;
   const [now, setNow] = useState(Date.now());
   const [statsModal, setStatsModal] = useState<DailyStatsModalState | null>(null);
+  const [recoveryModalOpen, setRecoveryModalOpen] = useState(false);
 
   useEffect(() => {
     if (statsModal !== null) return;
@@ -8837,13 +8976,21 @@ function DailyPlayView({
               ? pending
                 ? 'НАЧИНАЕМ...'
                 : 'НАЧАТЬ'
-              : isBreak || isDailyLockedByTraining || isActiveDailyLocked
-                ? 'ЛЁД ГОТОВИТСЯ'
+              : isDailyLockedByTraining && data.gameplay_lock?.reason === 'recent_gameplay'
+                ? 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ'
+                : isBreak || isDailyLockedByTraining || isActiveDailyLocked
+                  ? 'ЛЁД ГОТОВИТСЯ'
                 : isClosed
                   ? 'ИГРА ЗАВЕРШЕНА'
                   : undefined
         }
-        inactiveAction={canStartPeriod ? handleStartPeriod : undefined}
+        inactiveAction={
+          canStartPeriod
+            ? handleStartPeriod
+            : isDailyLockedByTraining && data.gameplay_lock?.reason === 'recent_gameplay'
+              ? () => setRecoveryModalOpen(true)
+              : undefined
+        }
         primaryActionBlocked={needsReconcile || isActiveDailyLocked}
         entranceBeforeInactiveAction={true}
         periodEndsAt={data.state === 'period_active' ? periodEndsAt : undefined}
@@ -8854,6 +9001,13 @@ function DailyPlayView({
         applyResolvedState={applyDailyResolvedState}
         longCourtBackground={dailyCourtBackground}
       />
+      {recoveryModalOpen && (
+        <RecoveryKitModal
+          action="start_daily_period"
+          onApplied={refresh}
+          onClose={() => setRecoveryModalOpen(false)}
+        />
+      )}
       {statsModal && (
         <DailyGameStatsModal
           stats={statsModal.stats}
@@ -9234,6 +9388,7 @@ function ClassicTournamentPlayView({
   const [now, setNow] = useState(Date.now());
   const [deferredState, setDeferredState] = useState<ClassicTournamentState | null>(null);
   const [statsModalState, setStatsModalState] = useState<ClassicTournamentState | null>(null);
+  const [recoveryModalOpen, setRecoveryModalOpen] = useState(false);
   const [selectedLoadout, setSelectedLoadout] = useState<ClassicTournamentLoadoutSelection>({});
   const [selectedLoadoutKind, setSelectedLoadoutKind] = useState<InventoryEquipmentKind | null>(
     null,
@@ -9405,7 +9560,9 @@ function ClassicTournamentPlayView({
         }
         shotButtonLabel={
           locked
-            ? 'ЛЁД ГОТОВИТСЯ'
+            ? data.gameplay_lock?.reason === 'recent_gameplay'
+              ? 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ'
+              : 'ЛЁД ГОТОВИТСЯ'
             : canStart
               ? inFlight
                 ? 'НАЧИНАЕМ...'
@@ -9418,7 +9575,13 @@ function ClassicTournamentPlayView({
                   ? 'ИГРА ЗАВЕРШЕНА'
                   : undefined
         }
-        inactiveAction={canStart ? () => startPeriod(selectedLoadout) : undefined}
+        inactiveAction={
+          canStart
+            ? () => startPeriod(selectedLoadout)
+            : data.gameplay_lock?.reason === 'recent_gameplay'
+              ? () => setRecoveryModalOpen(true)
+              : undefined
+        }
         entranceBeforeInactiveAction
         periodEndsAt={active && periodEndsAt > 0 ? periodEndsAt : undefined}
         onTimerExpired={() => refresh(tournamentId)}
@@ -9437,6 +9600,13 @@ function ClassicTournamentPlayView({
           />
         }
       />
+      {recoveryModalOpen && (
+        <RecoveryKitModal
+          action="start_classic"
+          onApplied={() => refresh(tournamentId)}
+          onClose={() => setRecoveryModalOpen(false)}
+        />
+      )}
       {selectedLoadoutKind !== null && data.loadout_editable && (
         <ClassicRinkLoadoutModal
           kind={selectedLoadoutKind}

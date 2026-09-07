@@ -3401,7 +3401,9 @@ describe('DailyScreen', () => {
     expect(within(cooldownScoreboard).queryByText('Период')).not.toBeInTheDocument();
     fireEvent.click(dailyButton);
 
-    expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
+    expect(
+      await screen.findByRole('button', { name: 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ' }),
+    ).toBeEnabled();
     expect(screen.getByText('Восстановление после игры')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Нужно восстановиться' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();

@@ -298,6 +298,7 @@ const inventoryItemKindOptions: Array<GlassSelectOption<AdminInventoryItemKind>>
   { value: 'skates', label: 'Коньки' },
   { value: 'nutrition', label: 'Энергия' },
   { value: 'consumable', label: 'Расходник' },
+  { value: 'recovery', label: 'Восстановление' },
 ];
 
 const achievementCategoryOptions: Array<GlassSelectOption<AdminAchievementCategory>> = [
@@ -5739,6 +5740,9 @@ function InventoryEditor({
   const [effectFatigueHeavyMultiplier, setEffectFatigueHeavyMultiplier] = useState(
     fieldNumber(item?.effectFatigueHeavyMultiplier ?? 0.75),
   );
+  const [effectRecoveryMinutes, setEffectRecoveryMinutes] = useState(
+    fieldNumber(item?.effectRecoveryMinutes ?? 0),
+  );
   const parsedPriceRub = parseAdminIntegerInput(priceRub);
   const parsedCurrencyPrice = parseAdminIntegerInput(currencyPrice);
   const parsedChargesPerPurchase = parseAdminNumberInput(chargesPerPurchase);
@@ -5768,6 +5772,7 @@ function InventoryEditor({
   const parsedEffectFatigueAfterRestMs = parseAdminIntegerInput(effectFatigueAfterRestMs);
   const parsedEffectFatigueSlowMultiplier = parseAdminNumberInput(effectFatigueSlowMultiplier);
   const parsedEffectFatigueHeavyMultiplier = parseAdminNumberInput(effectFatigueHeavyMultiplier);
+  const parsedEffectRecoveryMinutes = parseAdminIntegerInput(effectRecoveryMinutes);
   const mutation = useMutation({
     mutationFn: async () => {
       const body: Required<AdminInventoryItemPatch> = {
@@ -5816,6 +5821,7 @@ function InventoryEditor({
         effectFatigueAfterRestMs: parsedEffectFatigueAfterRestMs,
         effectFatigueSlowMultiplier: parsedEffectFatigueSlowMultiplier,
         effectFatigueHeavyMultiplier: parsedEffectFatigueHeavyMultiplier,
+        effectRecoveryMinutes: parsedEffectRecoveryMinutes,
       };
       const saved =
         item === null
@@ -5862,8 +5868,9 @@ function InventoryEditor({
     parsedEffectFatigueAfterRestMs,
     parsedEffectFatigueSlowMultiplier,
     parsedEffectFatigueHeavyMultiplier,
+    parsedEffectRecoveryMinutes,
   ];
-  const canSave =
+  const canSaveBase =
     title.trim() !== '' &&
     numericValues.every(Number.isFinite) &&
     parsedPriceRub >= 0 &&
@@ -5885,15 +5892,22 @@ function InventoryEditor({
     parsedEffectFatigueSlowMultiplier <= 1 &&
     parsedEffectFatigueHeavyMultiplier >= 0 &&
     parsedEffectFatigueHeavyMultiplier <= 1;
+  const recoveryEffectValid =
+    itemKind !== 'recovery' ||
+    (parsedEffectRecoveryMinutes >= 1 && parsedEffectRecoveryMinutes <= 60);
+  const canSave = canSaveBase && recoveryEffectValid;
   const isStickItem = itemKind === 'stick';
   const isSkatesItem = itemKind === 'skates';
   const isNutritionItem = itemKind === 'nutrition';
+  const isRecoveryItem = itemKind === 'recovery';
   const editorIntro = isStickItem
     ? 'Скорость шайбы: 10 пунктов = +0.10.'
     : isSkatesItem
       ? 'Коньки расходуются в прокатах и управляют спотыканием без рабочего инвентаря.'
       : isNutritionItem
         ? 'Энергия задаётся в минутах, расход зависит от скорости игрока.'
+        : isRecoveryItem
+          ? 'Одноразовый набор сокращает только обычное восстановление после игры.'
         : 'Базовые параметры расходуемого предмета.';
 
   return createPortal(
@@ -6029,6 +6043,19 @@ function InventoryEditor({
             </div>
           </AdminField>
         </div>
+        {isRecoveryItem && (
+          <AdminField label="Снимает восстановление, минут">
+            <div style={adminInventoryFieldBodyStyle}>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={effectRecoveryMinutes}
+                onChange={(event) => setEffectRecoveryMinutes(event.target.value)}
+              />
+              <span style={adminInventoryHintStyle}>От 1 до 60 минут за одно использование.</span>
+            </div>
+          </AdminField>
+        )}
         {isStickItem && (
           <>
             <div

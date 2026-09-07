@@ -134,6 +134,7 @@ function mockProfileRequest(
                 chargesAvailable: 180_000,
               },
             ],
+            recovery: [],
           },
           equipped,
         }),
@@ -293,6 +294,7 @@ describe('ProfileScreen', () => {
       'Выбрать клюшку',
       'Выбрать коньки',
       'Выбрать питание',
+      'Восстановление: 0 наборов',
       'Открыть карьеру и награды',
       'Открыть достижение Снайпер недели',
       'Настройки',
@@ -406,14 +408,16 @@ describe('ProfileScreen', () => {
     });
   });
 
-  it('shows three visual equipment slots with selected items and remaining charges', async () => {
+  it('shows equipment plus the recovery stock in the inventory strip', async () => {
     mockProfileRequest();
     renderProfile();
 
-    const equipmentCard = await screen.findByLabelText('Активная экипировка');
+    const equipmentCard = await screen.findByLabelText('Инвентарь');
     expect(equipmentCard).toHaveTextContent('18КлюшкаЛедяной клинок');
     expect(equipmentCard).toHaveTextContent('7КонькиСеверный ход');
     expect(equipmentCard).toHaveTextContent('180 000ПитаниеЭнерго-гель');
+    expect(equipmentCard).toHaveTextContent('0ВосстановлениеНет в запасе');
+    expect(equipmentCard.querySelector('.profile-loadout')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Ледяной клинок' })).toHaveAttribute(
       'src',
       '/stick.webp',
@@ -423,6 +427,10 @@ describe('ProfileScreen', () => {
       '/skates.webp',
     );
     expect(screen.getByRole('img', { name: 'Энерго-гель' })).toHaveAttribute('src', '/food.webp');
+    expect(screen.getByRole('img', { name: 'Наборы для восстановления' })).toHaveAttribute(
+      'src',
+      '/inventory/recovery-30.webp',
+    );
   });
 
   it('shows base equipment artwork without a quantity badge for empty slots', async () => {
@@ -433,7 +441,7 @@ describe('ProfileScreen', () => {
     });
     renderProfile();
 
-    const equipmentCard = await screen.findByLabelText('Активная экипировка');
+    const equipmentCard = await screen.findByLabelText('Инвентарь');
     expect(equipmentCard).toHaveTextContent('КлюшкаНе выбрано');
     expect(equipmentCard).toHaveTextContent('КонькиНе выбрано');
     expect(equipmentCard).toHaveTextContent('ПитаниеНе выбрано');
@@ -467,7 +475,7 @@ describe('ProfileScreen', () => {
 
     renderProfile();
 
-    const profileCard = await screen.findByLabelText('Активная экипировка');
+    const profileCard = await screen.findByLabelText('Инвентарь');
     expect(profileCard.querySelector('.profile-equipment-panel')).toHaveClass('glass');
     expect(profileCard).not.toHaveClass('section-card-surface');
   });

@@ -339,7 +339,7 @@ interface AdminInventoryItemRow {
   title: string;
   description: string;
   price_rub: number;
-  item_kind: 'bundle' | 'stick' | 'skates' | 'nutrition' | 'consumable';
+  item_kind: 'bundle' | 'stick' | 'skates' | 'nutrition' | 'consumable' | 'recovery';
   currency_price: number;
   charges_per_purchase: number;
   low_stock_threshold: number;
@@ -375,6 +375,7 @@ interface AdminInventoryItemRow {
   effect_fatigue_after_rest_ms: number;
   effect_fatigue_slow_multiplier: string | number;
   effect_fatigue_heavy_multiplier: string | number;
+  effect_recovery_minutes: number;
   created_at: Date;
   updated_at: Date;
   payments_count?: string;
@@ -1348,6 +1349,7 @@ function mapInventoryItem(row: AdminInventoryItemRow) {
     effectFatigueAfterRestMs: row.effect_fatigue_after_rest_ms,
     effectFatigueSlowMultiplier: Number(row.effect_fatigue_slow_multiplier),
     effectFatigueHeavyMultiplier: Number(row.effect_fatigue_heavy_multiplier),
+    effectRecoveryMinutes: Number(row.effect_recovery_minutes),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     paymentsCount: Number(row.payments_count ?? 0),
@@ -3300,6 +3302,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
               i.effect_fatigue_after_rest_ms,
               i.effect_fatigue_slow_multiplier,
               i.effect_fatigue_heavy_multiplier,
+              i.effect_recovery_minutes,
               i.created_at,
               i.updated_at,
               count(p.id)::int as payments_count,
@@ -3339,6 +3342,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                  effect_fatigue_stop_start_ms, effect_fatigue_stop_duration_ms,
                  effect_fatigue_after_rest_ms, effect_fatigue_slow_multiplier,
                  effect_fatigue_heavy_multiplier,
+                 effect_recovery_minutes,
                  created_at, updated_at`,
       [body.data.photoUrl, body.data.title, body.data.description, body.data.priceRub],
     );
@@ -3392,6 +3396,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                 effect_fatigue_stop_start_ms, effect_fatigue_stop_duration_ms,
                 effect_fatigue_after_rest_ms, effect_fatigue_slow_multiplier,
                 effect_fatigue_heavy_multiplier,
+                effect_recovery_minutes,
                 created_at, updated_at`,
       values,
     );
