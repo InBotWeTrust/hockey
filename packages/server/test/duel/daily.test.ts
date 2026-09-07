@@ -146,6 +146,70 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     });
   }
 
+  async function createPlayoffDayBlock(firstGameStartsAt: Date): Promise<void> {
+    const opponent = await findOrCreateTelegramUser(pool, {
+      providerUid: `daily-lock-opponent-${Date.now()}-${Math.random()}`,
+      displayName: 'Opponent',
+      timezone: 'Europe/Moscow',
+    });
+    const tournament = await pool.query<{ id: string }>(
+      `insert into tournament (slug, title, status, regular_source, created_by)
+       values ($1, 'Daily lock cup', 'playoff', 'head_to_head', $2)
+       returning id`,
+      [`daily-lock-${Date.now()}-${Math.random()}`, userId],
+    );
+    const home = await pool.query<{ id: string }>(
+      `insert into tournament_participant (tournament_id, user_id, state)
+       values ($1, $2, 'approved') returning id`,
+      [tournament.rows[0]!.id, userId],
+    );
+    const away = await pool.query<{ id: string }>(
+      `insert into tournament_participant (tournament_id, user_id, state)
+       values ($1, $2, 'approved') returning id`,
+      [tournament.rows[0]!.id, opponent.id],
+    );
+    const round = await pool.query<{ id: string }>(
+      `insert into tournament_round (tournament_id, stage, number, status)
+       values ($1, 'playoff', 1, 'open') returning id`,
+      [tournament.rows[0]!.id],
+    );
+    const gameDay = await pool.query<{ id: string }>(
+      `insert into tournament_round_game_day
+         (round_id, day_number, local_date, first_game_local_time, first_game_starts_at,
+          max_result_bearing_games, readiness_duration, planned_start_interval, status)
+       values ($1, 1, ($2::timestamptz at time zone 'Europe/Moscow')::date, '18:00', $2,
+               7, interval '10 minutes', interval '15 minutes', 'open') returning id`,
+      [round.rows[0]!.id, firstGameStartsAt],
+    );
+    const fixture = await pool.query<{ id: string }>(
+      `insert into tournament_fixture
+         (tournament_id, round_id, fixture_number, home_participant_id,
+          away_participant_id, scheduled_starts_at, window_ends_at, status)
+       values ($1, $2, 1, $3, $4, $5, $6, 'active') returning id`,
+      [
+        tournament.rows[0]!.id,
+        round.rows[0]!.id,
+        home.rows[0]!.id,
+        away.rows[0]!.id,
+        firstGameStartsAt,
+        new Date(firstGameStartsAt.getTime() + 60 * 60_000),
+      ],
+    );
+    await pool.query(
+      `insert into tournament_fixture_attempt
+         (fixture_id, round_game_day_id, attempt_number, kind, status,
+          scheduled_starts_at, readiness_expires_at, hard_deadline_at, is_result_bearing)
+       values ($1, $2, 1, 'initial', 'active', $3, $4, $5, true)`,
+      [
+        fixture.rows[0]!.id,
+        gameDay.rows[0]!.id,
+        firstGameStartsAt,
+        new Date(firstGameStartsAt.getTime() + 10 * 60_000),
+        new Date(firstGameStartsAt.getTime() + 60 * 60_000),
+      ],
+    );
+  }
+
   it('initial state is idle with no day_pool', async () => {
     const s = await getState();
     expect(s.state).toBe('idle');
@@ -161,12 +225,12 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(rows[0].n).toBe(0);
   });
 
-  it('locks daily start for the configured cooldown after a training shot', async () => {
+  it('locks daily start for one hour after a training shot', async () => {
     await pool.query(
       `insert into game_settings (key, value, label, description)
        values (
          'training.daily_cooldown_minutes',
-         to_jsonb(30),
+         to_jsonb(60),
          'Блокировка дневной игры',
          'test'
        )
@@ -186,7 +250,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
 
     await pool.query(
       `update shot_session
-          set created_at = now() - interval '31 minutes'
+          set created_at = now() - interval '61 minutes'
         where user_id = $1 and mode = 'training'`,
       [userId],
     );
@@ -215,6 +279,32 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(rows[0].current_period).toBe(1);
     expect(rows[0].daily_seed).toMatch(/^[0-9a-f]{64}$/);
     expect(rows[0].game_core_version).toBeGreaterThan(0);
+  });
+
+  it('allows a daily period whose full duration ends before the T-60 boundary', async () => {
+    await createPlayoffDayBlock(new Date(Date.now() + 81 * 60_000));
+
+    const response = await startPeriod();
+
+    expect(response.statusCode).toBe(200);
+  });
+
+  it('rejects a daily period whose full duration can reach the T-60 boundary', async () => {
+    await createPlayoffDayBlock(new Date(Date.now() + 80 * 60_000));
+
+    const response = await startPeriod();
+
+    expect(response.statusCode).toBe(409);
+  });
+
+  it('rejects daily shots once the scheduled tournament lock begins', async () => {
+    const started = await startPeriod();
+    expect(started.statusCode).toBe(200);
+    await createPlayoffDayBlock(new Date(Date.now() + 20 * 60_000));
+
+    const response = await submitShot(1);
+
+    expect(response.statusCode).toBe(409);
   });
 
   it('returns authoritative state without waiting for pending achievement recovery', async () => {

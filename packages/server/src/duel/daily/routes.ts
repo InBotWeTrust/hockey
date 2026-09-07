@@ -18,11 +18,7 @@ import {
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveDailySeed, deriveShotSeed } from '../seed.js';
-import {
-  assertTrainingCooldownExpired,
-  fetchTrainingCooldownEndsAt,
-  trainingDailyCooldownMs,
-} from '../trainingCooldown.js';
+import { fetchTrainingCooldownEndsAt, trainingDailyCooldownMs } from '../trainingCooldown.js';
 import { reconcileDayPool, type DayPoolRow } from './reconcile.js';
 import {
   getConfiguredDailyPeriodSpeedPreset,
@@ -31,6 +27,12 @@ import {
 } from '../gameSettings.js';
 import { refreshCompletedTournamentDailyResultsForUser } from '../../tournament/dailyAggregate.js';
 import { scheduleDailyCompletionSideEffect } from './completionSideEffects.js';
+import {
+  assertGameplayActionAllowed,
+  assertSafeSegmentStart,
+  assertTournamentGameplayAllowed,
+  lockUserGameplay,
+} from '../gameplayLocks.js';
 
 const shotBodySchema = z.object({
   shot_index: z.number().int().min(1),
@@ -362,8 +364,7 @@ async function aggregateCurrentPeriod(
   return {
     shots: Number(rows[0]!.shots),
     goals: Number(rows[0]!.goals),
-    lastTapTime:
-      rows[0]!.last_tap_time === null ? null : Number(rows[0]!.last_tap_time),
+    lastTapTime: rows[0]!.last_tap_time === null ? null : Number(rows[0]!.last_tap_time),
   };
 }
 
@@ -546,10 +547,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
     scheduleDailyCompletionSideEffect(
       () => evaluatePendingDailyPeriodClosedAchievements(app.pg, userId),
       (error) => {
-        app.log.warn(
-          { err: error, userId },
-          'failed to recover pending daily period achievements',
-        );
+        app.log.warn({ err: error, userId }, 'failed to recover pending daily period achievements');
       },
     );
   };
@@ -590,23 +588,20 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
   app.post('/duel/daily/period/start', { preHandler: [app.authenticate] }, async (req) => {
     const state = await withTransaction(app, async (client) => {
       const now = new Date();
+      await lockUserGameplay(client, req.user.id);
       const settings = await getGameSettings(client);
-      const reconciled = await reconcileDayPool(
-        client,
-        req.user.id,
+      await assertGameplayActionAllowed(client, {
+        userId: req.user.id,
+        action: 'start_daily_period',
         now,
-        settings.daily,
-      );
+      });
+      await assertSafeSegmentStart(client, {
+        userId: req.user.id,
+        now,
+        maxSegmentDurationMs: settings.daily.periodDurationMs,
+      });
+      const reconciled = await reconcileDayPool(client, req.user.id, now, settings.daily);
       const { pool, timezone, localToday } = reconciled;
-      const isFirstDailyPeriod = pool === null || pool.current_period === 0;
-      if (isFirstDailyPeriod) {
-        await assertTrainingCooldownExpired(
-          client,
-          req.user.id,
-          now,
-          trainingDailyCooldownMs(settings.training.dailyCooldownMinutes),
-        );
-      }
 
       if (pool !== null) {
         if (pool.state !== 'idle') {
@@ -660,7 +655,9 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
 
     const response = await withTransaction(app, async (client): Promise<ShotSubmitResponse> => {
       const now = new Date();
+      await lockUserGameplay(client, req.user.id);
       const settings = await getGameSettings(client);
+      await assertTournamentGameplayAllowed(client, req.user.id, now);
       const reconciled = await reconcileDayPool(client, req.user.id, now, settings.daily);
       const { pool, localToday } = reconciled;
       if (pool === null) {

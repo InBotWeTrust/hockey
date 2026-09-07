@@ -356,16 +356,16 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     expect(shot.statusCode).toBe(409);
   });
 
-  it('allows training 31 minutes before the first tournament game of the day', async () => {
-    await createPlayoffDayBlock({ firstGameStartsAt: new Date(Date.now() + 31 * 60_000) });
+  it('allows training 61 minutes before the first tournament game of the day', async () => {
+    await createPlayoffDayBlock({ firstGameStartsAt: new Date(Date.now() + 61 * 60_000) });
 
     const training = await startTraining(1);
 
     expect(training.statusCode).toBe(200);
   });
 
-  it('rejects training from 30 minutes before the tournament day block starts', async () => {
-    await createPlayoffDayBlock({ firstGameStartsAt: new Date(Date.now() + 29 * 60_000) });
+  it('rejects training from 60 minutes before the tournament day block starts', async () => {
+    await createPlayoffDayBlock({ firstGameStartsAt: new Date(Date.now() + 59 * 60_000) });
 
     const training = await startTraining(1);
 
@@ -389,10 +389,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
       firstGameStartsAt: new Date(Date.now() - 20 * 60_000),
       attemptStatus: 'settled',
     });
-    await pool.query(
-      `update tournament_fixture_attempt set settled_at = now() where id = $1`,
-      [block.attemptId],
-    );
+    await pool.query(`update tournament_fixture_attempt set settled_at = now() where id = $1`, [
+      block.attemptId,
+    ]);
 
     const training = await startTraining(1);
 
@@ -546,7 +545,11 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     const firstShot = await submitShot(1);
 
     expect(firstShot.statusCode).toBe(200);
-    expect(firstShot.json().state).toMatchObject({ state: 'active', shots_limit: 2, shots_taken: 1 });
+    expect(firstShot.json().state).toMatchObject({
+      state: 'active',
+      shots_limit: 2,
+      shots_taken: 1,
+    });
     const { rows } = await pool.query<{ shots_limit: number }>(
       `select shots_limit from training_session where user_id = $1`,
       [userId],
