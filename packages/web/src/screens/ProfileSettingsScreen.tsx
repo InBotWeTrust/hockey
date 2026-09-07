@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Info, LogOut, X } from 'lucide-react';
+import { ArrowLeft, Check, Info, LogOut, RotateCcw, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useLogout } from '../auth/useLogout.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { triggerHaptic } from '../feedback/haptics.js';
+import { convertChatAvatarToWebp } from '../lib/chatAvatarImage.js';
+import { chatKeys } from '../lib/queryKeys.js';
 import { ProfileSupportSections } from './ProfileSupportSections.js';
 import type { ProfileData } from './profileTypes.js';
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
@@ -22,16 +24,109 @@ export function ProfileSettingsScreen(): JSX.Element {
   });
   const [grip, setGrip] = useState<'right' | 'left'>('right');
   const [gripInfoOpen, setGripInfoOpen] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [pendingAvatar, setPendingAvatar] = useState<File | null>(null);
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!pendingAvatar) {
+      setAvatarPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(pendingAvatar);
+    setAvatarPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [pendingAvatar]);
 
   useEffect(() => {
     if (!data) return;
     setGrip(data.grip);
+    setFirstName(data.customFirstName ?? data.tgFirstName ?? data.vkFirstName ?? '');
+    setLastName(data.customLastName ?? data.tgLastName ?? data.vkLastName ?? '');
     updateUser({
       grip: data.grip,
       displayName: data.displayName,
       ...(data.avatarUrl !== undefined ? { avatarUrl: data.avatarUrl } : {}),
     });
   }, [data, updateUser]);
+
+  const applyProfile = (profile: ProfileData): void => {
+    queryClient.setQueryData<ProfileData>(['profile'], profile);
+    void queryClient.invalidateQueries({ queryKey: chatKeys.all });
+    setFirstName(profile.customFirstName ?? profile.tgFirstName ?? profile.vkFirstName ?? '');
+    setLastName(profile.customLastName ?? profile.tgLastName ?? profile.vkLastName ?? '');
+    updateUser({
+      displayName: profile.displayName,
+      avatarUrl: profile.avatarUrl ?? null,
+      ...(profile.displaySource !== undefined ? { displaySource: profile.displaySource } : {}),
+      ...(profile.customFirstName !== undefined
+        ? { customFirstName: profile.customFirstName }
+        : {}),
+      ...(profile.customLastName !== undefined ? { customLastName: profile.customLastName } : {}),
+      ...(profile.customAvatarUrl !== undefined
+        ? { customAvatarUrl: profile.customAvatarUrl }
+        : {}),
+    });
+  };
+
+  const saveProfile = useMutation({
+    mutationFn: async () => {
+      let profile = data!;
+      if (profileNameChanged) {
+        profile = await apiFetch<ProfileData>('/me', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            customFirstName: firstName.trim(),
+            customLastName: lastName.trim(),
+          }),
+        });
+      }
+      if (pendingAvatar) {
+        const webp = await convertChatAvatarToWebp(pendingAvatar);
+        const avatar = await apiFetch<{
+          avatarUrl: string;
+          customAvatarUrl: string;
+          displaySource: 'custom';
+        }>('/me/avatar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'image/webp', 'X-File-Name': webp.name },
+          body: webp,
+        });
+        profile = { ...profile, ...avatar };
+      }
+      return profile;
+    },
+    onSuccess: (profile) => {
+      applyProfile(profile);
+      setPendingAvatar(null);
+      setProfileError(null);
+      triggerHaptic('success');
+    },
+    onError: (error: Error) => {
+      setProfileError(error.message);
+      triggerHaptic('error');
+    },
+  });
+
+  const restoreProfile = useMutation({
+    mutationFn: () =>
+      apiFetch<ProfileData>('/me', {
+        method: 'PATCH',
+        body: JSON.stringify({ displaySource: registrationProvider }),
+      }),
+    onSuccess: (profile) => {
+      applyProfile(profile);
+      setProfileError(null);
+      triggerHaptic('success');
+    },
+    onError: (error: Error) => {
+      setProfileError(error.message);
+      triggerHaptic('error');
+    },
+  });
 
   const { mutate: saveGrip, isPending: savingGrip } = useMutation({
     mutationFn: (nextGrip: 'right' | 'left') =>
@@ -71,6 +166,10 @@ export function ProfileSettingsScreen(): JSX.Element {
       : (data?.tgAvatarUrl ?? data?.avatarUrl ?? null);
   const accountId = data?.registrationProviderId ?? data?.id ?? '—';
   const accountIdLabel = registrationProvider === 'vk' ? 'VK ID' : 'TG ID';
+  const savedFirstName = data?.customFirstName ?? data?.tgFirstName ?? data?.vkFirstName ?? '';
+  const savedLastName = data?.customLastName ?? data?.tgLastName ?? data?.vkLastName ?? '';
+  const profileNameChanged =
+    firstName.trim() !== savedFirstName.trim() || lastName.trim() !== savedLastName.trim();
 
   return (
     <main
@@ -111,7 +210,101 @@ export function ProfileSettingsScreen(): JSX.Element {
                 {accountIdLabel} {accountId}
               </span>
             </span>
+            {data?.displaySource === 'custom' && (
+              <button
+                type="button"
+                className="icon-btn profile-registration-account__restore"
+                aria-label={`Вернуть профиль из ${providerLabel}`}
+                disabled={restoreProfile.isPending}
+                onClick={() => restoreProfile.mutate()}
+              >
+                <RotateCcw size={15} />
+              </button>
+            )}
           </div>
+
+          <div className="section-label">Профиль игрока</div>
+          <section className="profile-customization-card glass">
+            <div className="profile-customization-card__avatar-row">
+              <div className="profile-customization-card__avatar">
+                {avatarPreviewUrl || data?.avatarUrl ? (
+                  <img
+                    src={avatarPreviewUrl ?? data?.avatarUrl ?? undefined}
+                    alt="Текущий аватар"
+                  />
+                ) : (
+                  <span aria-hidden>{data?.displayName.charAt(0).toUpperCase() || '?'}</span>
+                )}
+              </div>
+              <div className="profile-customization-card__avatar-copy">
+                <strong>Аватар игрока</strong>
+                <span>JPG, PNG или WebP. Фото обрежется по центру.</span>
+                <button
+                  type="button"
+                  className="profile-customization-card__upload"
+                  disabled={saveProfile.isPending}
+                  onClick={() => avatarInputRef.current?.click()}
+                >
+                  {pendingAvatar ? 'Выбрать другое фото' : 'Изменить аватар'}
+                </button>
+                <input
+                  ref={avatarInputRef}
+                  className="profile-customization-card__file-input"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  aria-label="Загрузить аватар"
+                  disabled={saveProfile.isPending}
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    if (file) {
+                      setPendingAvatar(file);
+                      setProfileError(null);
+                    }
+                    event.currentTarget.value = '';
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="profile-customization-card__fields">
+              <label>
+                <span>Имя</span>
+                <input
+                  value={firstName}
+                  maxLength={60}
+                  autoComplete="given-name"
+                  onChange={(event) => setFirstName(event.target.value)}
+                />
+              </label>
+              <label>
+                <span>Фамилия</span>
+                <input
+                  value={lastName}
+                  maxLength={60}
+                  autoComplete="family-name"
+                  onChange={(event) => setLastName(event.target.value)}
+                />
+              </label>
+            </div>
+
+            {profileError && (
+              <div className="profile-customization-card__error">{profileError}</div>
+            )}
+
+            <button
+              type="button"
+              className="btn btn--cta profile-customization-card__save"
+              disabled={
+                saveProfile.isPending ||
+                firstName.trim().length === 0 ||
+                lastName.trim().length === 0 ||
+                (!profileNameChanged && pendingAvatar === null)
+              }
+              onClick={() => saveProfile.mutate()}
+            >
+              {saveProfile.isPending ? 'Сохраняем…' : 'Сохранить профиль'}
+            </button>
+          </section>
 
           <div className="section-label profile-settings-grip-label">
             <span>Хват игрока</span>
@@ -210,7 +403,8 @@ function GripOption({
   return (
     <button
       type="button"
-      className={active ? 'glass-dark' : 'glass'}
+      className={`profile-settings-grip-option ${active ? 'glass-dark' : 'glass'}`}
+      aria-pressed={active}
       onClick={onClick}
       disabled={disabled}
       style={{
@@ -226,6 +420,9 @@ function GripOption({
         opacity: disabled ? 0.6 : 1,
       }}
     >
+      <span className="profile-settings-grip-option__indicator" data-selected={active} aria-hidden>
+        {active && <Check size={12} strokeWidth={3} />}
+      </span>
       <div
         style={{
           position: 'relative',

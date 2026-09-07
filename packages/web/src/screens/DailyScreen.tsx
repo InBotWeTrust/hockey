@@ -990,7 +990,9 @@ function GameHub({
   const periodRemaining = Math.max(0, periodEndsAt - now);
   const nextDayRemaining = Math.max(0, nextDayAt - now);
   const trainingCooldownRemaining = Math.max(0, trainingCooldownEndsAt - now);
-  const isTrainingLockedByDaily = trainingData?.gameplay_lock?.reason === 'recent_gameplay';
+  const isTrainingLockedByDaily =
+    trainingData?.gameplay_lock?.reason === 'recent_gameplay' ||
+    trainingData?.gameplay_lock?.reason === 'active_daily';
   const isTrainingLockedByTournament =
     trainingData?.gameplay_lock?.blocked === true && !isTrainingLockedByDaily;
   const isDailyLockedByTraining = data.state === 'idle' && data.gameplay_lock?.blocked === true;

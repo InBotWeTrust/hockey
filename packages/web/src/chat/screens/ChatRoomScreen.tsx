@@ -54,7 +54,7 @@ import { ChannelPostEditorSheet } from '../components/ChannelPostEditorSheet.js'
 import { ChannelPollComposerSheet } from '../components/ChannelPollComposerSheet.js';
 import { formatLastSeen } from '../lastSeen.js';
 import { switchMyReactionTo, removeMyReaction } from '../reactionsState.js';
-import { chatAvatarUrl } from '../chatAvatar.js';
+import { chatAvatarUrl, OFFICIAL_ACCOUNT_AVATAR_URL } from '../chatAvatar.js';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 
 const PAGE_SIZE = 50;
@@ -499,7 +499,9 @@ export function ChatRoomScreen(): JSX.Element {
           : chatMeta?.type === 'system'
             ? 'Системный канал'
             : 'Чат'));
-  const headerAvatarUrl = dmCounterpart?.avatarUrl ?? (chatMeta ? chatAvatarUrl(chatMeta) : null);
+  const headerAvatarUrl = isOfficialDialog
+    ? OFFICIAL_ACCOUNT_AVATAR_URL
+    : (dmCounterpart?.avatarUrl ?? (chatMeta ? chatAvatarUrl(chatMeta) : null));
   const chatSubtitle =
     chatMeta?.type === 'direct'
       ? isOfficialDialog

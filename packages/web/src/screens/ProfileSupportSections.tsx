@@ -13,6 +13,7 @@ import {
   type PushSubscriptionPayload,
 } from '../api/push.js';
 import { getTelegramMiniApp } from '../auth/telegramMiniApp.js';
+import { OFFICIAL_ACCOUNT_AVATAR_URL } from '../chat/chatAvatar.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 
 type PushStatus =
@@ -897,7 +898,7 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
                 </SettingsSectionIcon>
               ) : (
                 <img
-                  src="/icons/official-account.webp"
+                  src={OFFICIAL_ACCOUNT_AVATAR_URL}
                   alt="Ультимейт Хоккей"
                   style={{
                     width: 44,

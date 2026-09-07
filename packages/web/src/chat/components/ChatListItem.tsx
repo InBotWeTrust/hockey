@@ -6,7 +6,7 @@ import { useChatStore } from '../chatStore.js';
 import { useLongPress } from '../useLongPress.js';
 import { UserAvatar } from './UserAvatar.js';
 import { messageBodyPreview } from '../messagePreview.js';
-import { chatAvatarUrl } from '../chatAvatar.js';
+import { chatAvatarUrl, directChatAvatarUrl } from '../chatAvatar.js';
 
 interface ChatListItemProps {
   chat: ChatDTO;
@@ -76,8 +76,7 @@ function ChatListItemImpl({
   const isSystem = chat.type === 'system';
   const isChannel = chat.type === 'channel';
   const isPinned = chat.pinnedAt !== null;
-  const avatarUrl =
-    chat.type === 'direct' ? (chat.dmCounterpart?.avatarUrl ?? null) : chatAvatarUrl(chat);
+  const avatarUrl = chat.type === 'direct' ? directChatAvatarUrl(chat) : chatAvatarUrl(chat);
   const unread = Math.max(chat.unreadCount, liveUnread);
   const suppressNextOpenRef = useRef(false);
 
