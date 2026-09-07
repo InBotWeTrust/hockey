@@ -362,8 +362,8 @@ describe('app backdrop variants', () => {
     expect(arenaVideoCubeImage('amateur')).toBe('/sprites/app-arena-cube-amateur.webp');
     expect(arenaVideoCubeImage('professional')).toBe('/sprites/app-arena-cube.webp');
     expect(arenaVideoCubeClass('amateur')).toBe('arena-video-cube__plate--amateur');
-    expect(arenaCourtImage('beginner')).toBe('/backgrounds/arena-beginner.webp');
-    expect(arenaCourtImage('amateur')).toBe('/backgrounds/arena-amateur.webp');
+    expect(arenaCourtImage('beginner')).toBe('/backgrounds/arena-beginner-reference-v4.webp');
+    expect(arenaCourtImage('amateur')).toBe('/backgrounds/arena-amateur-reference-v4.webp');
     expect(arenaCourtImage('professional')).toBe('/sprites/app-arena-ice.webp');
   });
 

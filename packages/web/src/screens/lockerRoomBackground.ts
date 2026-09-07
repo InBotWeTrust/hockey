@@ -19,7 +19,7 @@ export function arenaVideoCubeClass(level: CompetitionLevel | undefined): string
 }
 
 export function arenaCourtImage(level: CompetitionLevel | undefined): string {
-  if (level === 'beginner') return '/backgrounds/arena-beginner.webp';
-  if (level === 'amateur') return '/backgrounds/arena-amateur.webp';
+  if (level === 'beginner') return '/backgrounds/arena-beginner-reference-v4.webp';
+  if (level === 'amateur') return '/backgrounds/arena-amateur-reference-v4.webp';
   return '/sprites/app-arena-ice.webp';
 }
