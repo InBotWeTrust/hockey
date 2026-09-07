@@ -22,7 +22,7 @@
 ### Task 1: Persistence and seeded products
 
 **Files:**
-- Create: `packages/server/db/migrations/109_recovery_kits.sql`
+- Create: `packages/server/db/migrations/110_recovery_kits.sql`
 - Create: `packages/web/public/inventory/recovery-15.webp`
 - Create: `packages/web/public/inventory/recovery-30.webp`
 - Create: `packages/web/public/inventory/recovery-60.webp`

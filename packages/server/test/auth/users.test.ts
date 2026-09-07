@@ -24,11 +24,11 @@ describe.skipIf(!hasIntegrationEnv)('findOrCreateTelegramUser', () => {
 
   beforeEach(async () => {
     await pool.query(
-      'truncate users, auth_providers, user_wallet, user_equipment, user_sticks restart identity cascade',
+      'truncate users, auth_providers, user_equipment, user_sticks restart identity cascade',
     );
   });
 
-  it('creates user + wallet + equipment + starter stick + auth_providers row', async () => {
+  it('creates user + equipment + starter stick + auth_providers row without a legacy wallet', async () => {
     const user = await findOrCreateTelegramUser(pool, {
       providerUid: '100500',
       displayName: 'Egor',
@@ -36,10 +36,8 @@ describe.skipIf(!hasIntegrationEnv)('findOrCreateTelegramUser', () => {
       username: 'egor',
     });
     expect(user.id).toMatch(/^[0-9a-f-]{36}$/i);
-    const wallet = await pool.query('select * from user_wallet where user_id=$1', [user.id]);
-    expect(wallet.rowCount).toBe(1);
-    expect(wallet.rows[0].shots_current).toBe(25);
-    expect(wallet.rows[0].shots_max).toBe(25);
+    const walletTable = await pool.query("select to_regclass('public.user_wallet') as name");
+    expect(walletTable.rows[0].name).toBeNull();
     const eq = await pool.query('select * from user_equipment where user_id=$1', [user.id]);
     expect(eq.rows[0].equipped_stick).toBe('training');
     const sticks = await pool.query('select stick_id from user_sticks where user_id=$1', [user.id]);

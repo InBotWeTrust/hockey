@@ -64,7 +64,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/weekly-challenges/*', () => {
 
   beforeEach(async () => {
     await pool.query(
-      `truncate users, auth_providers, user_wallet, user_equipment, user_sticks,
+      `truncate users, auth_providers, user_equipment, user_sticks,
               weekly_challenges, weekly_challenge_tasks, weekly_challenge_participants,
               weekly_challenge_reward_claims
               restart identity cascade`,

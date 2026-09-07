@@ -91,14 +91,7 @@ function makeAdminUser() {
     ],
     providers: { telegram: { id: '42', username: 'regular' }, vk: null },
     wallet: {
-      shotsCurrent: 25,
-      shotsMax: 25,
-      shotsBonus: 0,
       coins: 0,
-      pucks: 0,
-      goldPucks: 0,
-      wheelSpins: 2,
-      trainingEnergy: 0,
     },
     pushNotifications: {
       subscribed: true,

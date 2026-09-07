@@ -280,14 +280,7 @@ export interface AdminUser {
     vk: { id: string; username: string | null } | null;
   };
   wallet: {
-    shotsCurrent: number;
-    shotsMax: number;
-    shotsBonus: number;
     coins: number;
-    pucks: number;
-    goldPucks: number;
-    wheelSpins: number;
-    trainingEnergy: number;
   };
   pushNotifications: {
     subscribed: boolean;

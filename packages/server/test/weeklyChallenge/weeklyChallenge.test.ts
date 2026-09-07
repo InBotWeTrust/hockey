@@ -65,7 +65,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
 
   beforeEach(async () => {
     await pool.query(
-      `truncate users, auth_providers, user_wallet, user_equipment, user_sticks,
+      `truncate users, auth_providers, user_equipment, user_sticks,
               user_currency_account, currency_ledger,
               training_session, day_pool, period_log, shot_session, event_log,
               weekly_challenges, weekly_challenge_tasks, weekly_challenge_participants,

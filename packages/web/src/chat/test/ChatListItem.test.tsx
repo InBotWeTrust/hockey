@@ -91,6 +91,29 @@ describe('ChatListItem', () => {
     expect(screen.getByText('Вы: Привет из лички')).toBeInTheDocument();
   });
 
+  it('uses the bundled avatar for the official account', () => {
+    setMe();
+
+    render(
+      <ChatListItem
+        chat={makeChat({
+          dmCounterpart: {
+            ...makeChat().dmCounterpart!,
+            displayName: 'Ультимейт Хоккей',
+            avatarUrl: '/api/media/old-official-avatar',
+            accountKind: 'official',
+          },
+        })}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(document.querySelector('img')).toHaveAttribute(
+      'src',
+      '/icons/official-account.webp?v=2',
+    );
+  });
+
   it('shows voice message fallback when the last message has audio metadata', () => {
     setMe();
 

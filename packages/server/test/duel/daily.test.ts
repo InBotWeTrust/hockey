@@ -75,7 +75,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
   beforeEach(async () => {
     await waitForDailyCompletionSideEffects();
     await pool.query(
-      `truncate users, auth_providers, user_wallet, user_equipment, user_sticks,
+      `truncate users, auth_providers, user_equipment, user_sticks,
               training_session, day_pool, period_log, shot_session, event_log
               restart identity cascade`,
     );

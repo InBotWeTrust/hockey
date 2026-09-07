@@ -2175,8 +2175,6 @@ function UserDetailsModal({
   const [lifetimeShots, setLifetimeShots] = useState(fieldNumber(user.lifetimeShotsTotal));
   const [lifetimeGoals, setLifetimeGoals] = useState(fieldNumber(user.lifetimeGoalsTotal));
   const [coins, setCoins] = useState(fieldNumber(user.wallet.coins));
-  const [shotsCurrent, setShotsCurrent] = useState(fieldNumber(user.wallet.shotsCurrent));
-  const [shotsMax, setShotsMax] = useState(fieldNumber(user.wallet.shotsMax));
   const [beginnerOnboardingCompleted, setBeginnerOnboardingCompleted] = useState(
     user.beginnerOnboardingCompleted,
   );
@@ -2194,8 +2192,6 @@ function UserDetailsModal({
     setLifetimeShots(fieldNumber(user.lifetimeShotsTotal));
     setLifetimeGoals(fieldNumber(user.lifetimeGoalsTotal));
     setCoins(fieldNumber(user.wallet.coins));
-    setShotsCurrent(fieldNumber(user.wallet.shotsCurrent));
-    setShotsMax(fieldNumber(user.wallet.shotsMax));
     setBeginnerOnboardingCompleted(user.beginnerOnboardingCompleted);
     setAmateurOnboardingCompleted(user.amateurOnboardingCompleted);
   }, [user]);
@@ -2246,8 +2242,6 @@ function UserDetailsModal({
       amateurOnboardingCompleted,
       wallet: {
         coins: Number(coins),
-        shotsCurrent: Number(shotsCurrent),
-        shotsMax: Number(shotsMax),
       },
     };
   }
@@ -2450,17 +2444,6 @@ function UserDetailsModal({
               </AdminField>
               <AdminField label="Опыт">
                 <input value={experience} onChange={(event) => setExperience(event.target.value)} />
-              </AdminField>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-              <AdminField label="Броски">
-                <input
-                  value={shotsCurrent}
-                  onChange={(event) => setShotsCurrent(event.target.value)}
-                />
-              </AdminField>
-              <AdminField label="Макс. бросков">
-                <input value={shotsMax} onChange={(event) => setShotsMax(event.target.value)} />
               </AdminField>
             </div>
           </section>
