@@ -9,6 +9,7 @@ import {
   Lock,
   Sparkles,
   Star,
+  Ticket,
   TrendingUp,
   X,
 } from 'lucide-react';
@@ -139,14 +140,14 @@ function statusIcon(achievement: AchievementDto): JSX.Element {
 }
 
 function rewardParts(
-  rewards: { currency: number; stars: number; experience: number },
+  rewards: { currency: number; stars: number; experience: number; tokens: number },
   opts: { plus?: boolean } = {},
 ): string[] {
   return rewardPartItems(rewards, opts).map((part) => part.text);
 }
 
 function rewardPartItems(
-  rewards: { currency: number; stars: number; experience: number },
+  rewards: { currency: number; stars: number; experience: number; tokens: number },
   opts: { plus?: boolean } = {},
 ): Array<{ tone: RewardTone; text: string }> {
   const prefix = opts.plus === true ? '+' : '';
@@ -158,6 +159,9 @@ function rewardPartItems(
     rewards.experience > 0
       ? { tone: 'experience' as const, text: `${prefix}${rewards.experience} опыта` }
       : null,
+    rewards.tokens > 0
+      ? { tone: 'token' as const, text: `${prefix}${rewards.tokens} токенов` }
+      : null,
   ].filter((part): part is { tone: RewardTone; text: string } => part !== null);
 }
 
@@ -166,6 +170,7 @@ function rewardText(achievement: AchievementDto): string {
     currency: achievement.rewardCurrency,
     stars: achievement.rewardStars,
     experience: achievement.rewardExperience,
+    tokens: achievement.rewardTokens ?? 0,
   }).join(' · ');
 }
 
@@ -187,6 +192,7 @@ export function AchievementsScreen({
     currency: number;
     stars: number;
     experience: number;
+    tokens: number;
   } | null>(null);
 
   const achievementsQuery = useQuery({
@@ -247,6 +253,7 @@ export function AchievementsScreen({
         currency: response.rewards.currency,
         stars: response.rewards.stars,
         experience: response.rewards.experience,
+        tokens: response.rewards.tokens ?? 0,
       });
       window.setTimeout(() => setClaimedReward(null), 2800);
     },
@@ -257,7 +264,7 @@ export function AchievementsScreen({
     <main
       className="screen"
       style={{
-        padding: 'calc(22px + var(--app-safe-top)) 24px 24px',
+        padding: 'calc(22px + var(--app-safe-top)) 14px 24px',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
       }}
@@ -396,6 +403,11 @@ export function AchievementsScreen({
                 icon={<TrendingUp size={13} />}
                 value={selected.rewardExperience}
                 tone="experience"
+              />
+              <RewardChip
+                icon={<Ticket size={13} />}
+                value={selected.rewardTokens ?? 0}
+                tone="token"
               />
             </div>
           )}

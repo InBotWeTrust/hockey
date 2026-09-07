@@ -80,7 +80,8 @@ describe.skipIf(!hasIntegrationEnv)('achievement claim routes', () => {
     const token = await issueAccessToken(userId);
     await app.pg.query(
       `update achievements
-          set reward_currency = 12, reward_stars = 3, reward_experience = 40
+          set reward_currency = 12, reward_stars = 3, reward_experience = 3,
+              reward_tokens = 2
         where id = 'first-goal'`,
     );
     await app.pg.query(
@@ -98,8 +99,13 @@ describe.skipIf(!hasIntegrationEnv)('achievement claim routes', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({
       achievement: { id: 'first-goal', status: 'claimed' },
-      balances: { currencyBalance: 12, starBalance: 3, experienceBalance: 40 },
-      rewards: { currency: 12, stars: 3, experience: 40 },
+      balances: {
+        currencyBalance: 12,
+        starBalance: 3,
+        experienceBalance: 3,
+        tokenBalance: 2,
+      },
+      rewards: { currency: 12, stars: 3, experience: 3, tokens: 2 },
     });
 
     const again = await app.inject({
@@ -113,7 +119,20 @@ describe.skipIf(!hasIntegrationEnv)('achievement claim routes', () => {
       `select xp, experience from users where id = $1`,
       [userId],
     );
-    expect(userRows.rows[0]).toMatchObject({ xp: 3, experience: 40 });
+    expect(userRows.rows[0]).toMatchObject({ xp: 3, experience: 3 });
+
+    const tokenRows = await app.pg.query<{ balance: number }>(
+      `select balance from user_reward_token_account where user_id = $1`,
+      [userId],
+    );
+    expect(tokenRows.rows).toEqual([{ balance: 2 }]);
+    const tokenLedgerRows = await app.pg.query<{ amount: number; balance_after: number }>(
+      `select amount, balance_after
+         from achievement_token_ledger
+        where user_id = $1 and achievement_id = 'first-goal'`,
+      [userId],
+    );
+    expect(tokenLedgerRows.rows).toEqual([{ amount: 2, balance_after: 2 }]);
 
     const ledgerRows = await app.pg.query<{
       available_delta: number;
@@ -131,8 +150,9 @@ describe.skipIf(!hasIntegrationEnv)('achievement claim routes', () => {
         balance_after: 12,
         metadata: {
           achievement_id: 'first-goal',
-          experience: 40,
+          experience: 3,
           stars: 3,
+          tokens: 2,
           title: 'Награда за достижение «Первая шайба»',
         },
       },
@@ -140,11 +160,11 @@ describe.skipIf(!hasIntegrationEnv)('achievement claim routes', () => {
 
     const inventory = await app.inject({
       method: 'GET',
-      url: '/inventory/me',
+      url: '/inventory/transactions?filter=credit&limit=20',
       headers: { authorization: `Bearer ${token}` },
     });
     expect(inventory.statusCode).toBe(200);
-    expect(inventory.json().transactionHistory).toEqual(
+    expect(inventory.json().transactions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           title: 'Награда за достижение «Первая шайба»',
@@ -153,7 +173,7 @@ describe.skipIf(!hasIntegrationEnv)('achievement claim routes', () => {
           amounts: [
             { currency: 'coin', value: 12 },
             { currency: 'star', value: 3 },
-            { currency: 'experience', value: 40 },
+            { currency: 'experience', value: 3 },
           ],
         }),
       ]),

@@ -1,25 +1,39 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CircleDollarSign, Sparkles, Star, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Check, CircleDollarSign, Sparkles, Star, TrendingUp } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { rewardColor, type RewardTone } from '../app/rewardColors.js';
-import { SegmentedTabs } from '../components/SegmentedTabs.js';
-import { triggerHaptic } from '../feedback/haptics.js';
+import { fetchWeeklyChallengeCatalog } from '../api/weeklyChallenge.js';
 import {
   claimWeeklyChallengeReward,
   declineWeeklyChallenge,
-  fetchWeeklyChallenge,
   joinWeeklyChallenge,
   type WeeklyChallenge,
+  type WeeklyChallengeCatalogResponse,
 } from '../api/weeklyChallenge.js';
+import { rewardColor, type RewardTone } from '../app/rewardColors.js';
+import { SegmentedTabs } from '../components/SegmentedTabs.js';
+import { triggerHaptic } from '../feedback/haptics.js';
 
 type AchievementPageTab = 'achievements' | 'challenges';
+type ChallengeFilter = keyof WeeklyChallengeCatalogResponse;
 
 const ACHIEVEMENT_PAGE_TABS: Array<{ id: AchievementPageTab; label: string }> = [
   { id: 'achievements', label: 'Задания' },
   { id: 'challenges', label: 'Челленджи' },
 ];
+
+const FILTERS: Array<{ id: ChallengeFilter; label: string }> = [
+  { id: 'active', label: 'Действующие' },
+  { id: 'future', label: 'Будущие' },
+  { id: 'completed', label: 'Пройденные' },
+];
+
+const EMPTY_TEXT: Record<ChallengeFilter, string> = {
+  active: 'Вы пока не участвуете в действующих челленджах',
+  future: 'Будущих челленджей пока нет',
+  completed: 'Вы пока не прошли ни одного челленджа',
+};
 
 function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU', { useGrouping: false }).format(value);
@@ -40,10 +54,10 @@ function dateText(value: string): string {
 
 function timerTargetText(challenge: WeeklyChallenge): { label: string; target: string } | null {
   if (challenge.status === 'not_open') {
-    return { label: 'До открытия входа', target: challenge.joinOpenAt };
+    return { label: 'Вход откроется через', target: challenge.joinOpenAt };
   }
   if (challenge.status === 'join_open') {
-    return { label: 'До старта', target: challenge.startAt };
+    return { label: 'Старт через', target: challenge.startAt };
   }
   if (challenge.status === 'running') {
     return { label: 'До окончания', target: challenge.endAt };
@@ -56,7 +70,7 @@ function formatRemaining(ms: number): string {
   const days = Math.floor(totalSeconds / 86400);
   const hours = Math.floor((totalSeconds % 86400) / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
-  if (days > 0) return `${days} д ${hours} ч ${minutes} мин`;
+  if (days > 0) return `${days} д ${hours} ч`;
   if (hours > 0) return `${hours} ч ${minutes} мин`;
   return `${minutes} мин`;
 }
@@ -76,7 +90,7 @@ function rewardPartItems(
     reward.experience > 0
       ? { tone: 'experience' as const, text: `${prefix}${numberText(reward.experience)}` }
       : null,
-  ].filter((part): part is { tone: RewardTone; text: string } => part !== null);
+  ].filter((part): part is Exclude<typeof part, null> => part !== null);
 }
 
 function RewardChip({
@@ -95,34 +109,20 @@ function RewardChip({
     <span
       aria-label={`${label}: ${value}`}
       title={`${label}: ${numberText(value)}`}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 5,
-        color,
-        fontSize: 18,
-        fontWeight: 950,
-        lineHeight: 1,
-        fontVariantNumeric: 'tabular-nums',
-        whiteSpace: 'nowrap',
-      }}
+      className="weekly-challenge-card__reward"
+      style={{ color }}
     >
-      <span
-        aria-hidden="true"
-        style={{
-          width: 20,
-          height: 20,
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flex: '0 0 20px',
-        }}
-      >
-        {icon}
-      </span>
+      <span aria-hidden="true">{icon}</span>
       <span>{numberText(value)}</span>
     </span>
   );
+}
+
+function firstVisibleFilter(catalog: WeeklyChallengeCatalogResponse): ChallengeFilter {
+  if (catalog.active.length > 0) return 'active';
+  if (catalog.future.length > 0) return 'future';
+  if (catalog.completed.length > 0) return 'completed';
+  return 'active';
 }
 
 export function WeeklyChallengeScreen({
@@ -135,18 +135,24 @@ export function WeeklyChallengeScreen({
   const backRoute = profileContext ? '/profile' : '/sections';
   const achievementsRoute = profileContext ? '/profile/achievements' : '/achievements';
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [filter, setFilter] = useState<ChallengeFilter>('active');
+  const [filterInitialized, setFilterInitialized] = useState(false);
   const [claimedReward, setClaimedReward] = useState<{
     title: string;
     reward: WeeklyChallenge['reward'];
   } | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
-  const query = useQuery({ queryKey: ['weekly-challenge'], queryFn: fetchWeeklyChallenge });
-  const challenge = query.data?.challenge ?? null;
-  const pendingRewards = query.data?.pendingRewards ?? [];
-  const timer = challenge ? timerTargetText(challenge) : null;
-  const remainingText = timer === null ? null : formatRemaining(Date.parse(timer.target) - nowMs);
-  const challengeAttention =
-    challenge?.canJoin === true || challenge?.canClaimReward === true || pendingRewards.length > 0;
+  const query = useQuery({
+    queryKey: ['weekly-challenge', 'catalog'],
+    queryFn: fetchWeeklyChallengeCatalog,
+  });
+  const catalog = query.data ?? { future: [], active: [], completed: [] };
+  const visibleChallenges = catalog[filter];
+  const selectedFilter = FILTERS.find((item) => item.id === filter) ?? FILTERS[0]!;
+  const challengeAttention = [...catalog.future, ...catalog.active, ...catalog.completed].some(
+    (challenge) => challenge.canJoin || challenge.canClaimReward,
+  );
+
   const join = useMutation({
     mutationFn: (id: string) => joinWeeklyChallenge(id),
     onSuccess: () => {
@@ -160,15 +166,12 @@ export function WeeklyChallengeScreen({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] }),
   });
   const claim = useMutation({
-    mutationFn: (challengeToClaim: WeeklyChallenge) =>
-      claimWeeklyChallengeReward(challengeToClaim.id),
-    onMutate: () => {
-      setClaimError(null);
-    },
-    onSuccess: (_response, challengeToClaim) => {
+    mutationFn: (challenge: WeeklyChallenge) => claimWeeklyChallengeReward(challenge.id),
+    onMutate: () => setClaimError(null),
+    onSuccess: (_response, challenge) => {
       triggerHaptic('success');
       setClaimError(null);
-      setClaimedReward({ title: challengeToClaim.title, reward: challengeToClaim.reward });
+      setClaimedReward({ title: challenge.title, reward: challenge.reward });
       window.setTimeout(() => setClaimedReward(null), 2800);
       void queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
     },
@@ -183,53 +186,26 @@ export function WeeklyChallengeScreen({
     return () => window.clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    if (query.data === undefined || filterInitialized) return;
+    setFilter(firstVisibleFilter(query.data));
+    setFilterInitialized(true);
+  }, [filterInitialized, query.data]);
+
   return (
-    <main
-      className="screen"
-      style={{
-        padding: 'calc(22px + var(--app-safe-top)) 24px 24px',
-        overflowY: 'auto',
-        WebkitOverflowScrolling: 'touch',
-      }}
-    >
-      <section
-        style={{
-          maxWidth: 760,
-          margin: '0 auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 14,
-          width: '100%',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+    <main className="screen weekly-challenge-screen">
+      <section className="weekly-challenge-screen__content">
+        <div className="weekly-challenge-screen__header">
           <button
             type="button"
-            className="icon-btn"
+            className="icon-btn weekly-challenge-screen__back"
             onClick={() => navigate(backRoute)}
             aria-label="Назад"
             title="Назад"
-            style={{
-              width: 40,
-              height: 40,
-              minWidth: 40,
-              minHeight: 40,
-              borderRadius: 999,
-              padding: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
           >
             <ArrowLeft size={16} />
           </button>
-          <h1
-            className="screen-title-on-arena"
-            style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}
-          >
-            Задания
-          </h1>
+          <h1 className="screen-title-on-arena weekly-challenge-screen__title">Задания</h1>
         </div>
 
         <SegmentedTabs
@@ -244,323 +220,225 @@ export function WeeklyChallengeScreen({
           }}
         />
 
-        {query.isLoading && (
-          <div className="glass" style={{ borderRadius: 20, padding: 18 }}>
-            Загрузка...
-          </div>
+        <div
+          className="segmented-tabs weekly-challenge-filters"
+          role="tablist"
+          aria-label="Фильтры челленджей"
+        >
+          {FILTERS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              className={`segmented-tabs__item weekly-challenge-filter${filter === item.id ? ' segmented-tabs__item--active' : ''}`}
+              aria-selected={filter === item.id}
+              onClick={() => setFilter(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        <h2 className="section-label weekly-challenge-section-title">
+          {selectedFilter.label} ({visibleChallenges.length})
+        </h2>
+
+        {query.isLoading && <p className="weekly-challenge-empty">Загружаем челленджи…</p>}
+        {!query.isLoading && visibleChallenges.length === 0 && (
+          <p className="weekly-challenge-empty">{EMPTY_TEXT[filter]}</p>
         )}
-
-        {!query.isLoading && !challenge && (
-          <div className="glass" style={{ borderRadius: 24, padding: 22 }}>
-            <h1 style={{ margin: 0, fontSize: 20 }}>На этой неделе активного челленджа нет</h1>
-            <p style={{ margin: '10px 0 0', color: 'var(--muted)', lineHeight: 1.5 }}>
-              Когда админ откроет новый челлендж, он появится здесь.
-            </p>
-          </div>
-        )}
-
-        {challenge && (
-          <div
-            className="glass"
-            style={{
-              borderRadius: 26,
-              padding: 16,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 14,
-            }}
-          >
-            <div>
-              <h1 style={{ margin: '4px 0 0', fontSize: 24, lineHeight: 1.1 }}>
-                {challenge.title}
-              </h1>
-              <div style={{ marginTop: 6, color: 'var(--muted)', fontSize: 12, fontWeight: 800 }}>
-                {dateText(challenge.startAt)} - {dateText(challenge.endAt)} МСК
-              </div>
-              {challenge.description && (
-                <p style={{ margin: '8px 0 0', color: 'var(--muted)', lineHeight: 1.5 }}>
-                  {challenge.description}
-                </p>
-              )}
-              {timer && remainingText && (
-                <div
-                  style={{
-                    marginTop: 10,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    color: 'var(--ink)',
-                    fontSize: 13,
-                    fontWeight: 900,
-                  }}
-                >
-                  <span style={{ color: 'var(--muted)', fontWeight: 800 }}>{timer.label}:</span>
-                  <span>{remainingText}</span>
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center' }}>
-              <RewardChip
-                label="Монеты"
-                value={challenge.reward.coins}
-                color={rewardColor('coin')}
-                icon={<CircleDollarSign size={20} strokeWidth={2.55} />}
-              />
-              <RewardChip
-                label="Звёзды"
-                value={challenge.reward.stars}
-                color={rewardColor('star')}
-                icon={<Star size={20} strokeWidth={2.55} fill="currentColor" />}
-              />
-              <RewardChip
-                label="Опыт"
-                value={challenge.reward.experience}
-                color={rewardColor('experience')}
-                icon={<TrendingUp size={20} strokeWidth={2.55} />}
-              />
-            </div>
-
-            <div style={{ display: 'grid', gap: 10 }}>
-              {challenge.tasks.map((task) => {
-                const percent =
-                  task.progress === null
-                    ? 0
-                    : Math.min(100, Math.round((task.progress / task.target) * 100));
-                return (
-                  <div
-                    key={task.id}
-                    style={{ padding: 12, borderRadius: 16, background: 'rgba(255,255,255,0.56)' }}
-                  >
-                    <div style={{ fontWeight: 900 }}>{task.title}</div>
-                    <div style={{ marginTop: 5, color: 'var(--muted)', fontSize: 13 }}>
-                      {task.progress === null
-                        ? `Цель: ${numberText(task.target)}`
-                        : `${numberText(task.progress)} / ${numberText(task.target)}`}
-                    </div>
-                    {task.progress !== null && (
-                      <div
-                        style={{
-                          marginTop: 9,
-                          height: 5,
-                          borderRadius: 999,
-                          background: 'rgba(15,23,42,0.1)',
-                          overflow: 'hidden',
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: `${percent}%`,
-                            height: '100%',
-                            background: 'var(--blue-accent)',
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {challenge.canJoin && (
-              <div style={{ display: 'grid', gridTemplateColumns: '0.82fr 1fr', gap: 10 }}>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => decline.mutate(challenge.id)}
-                  disabled={decline.isPending || join.isPending}
-                  style={{
-                    minHeight: 44,
-                    padding: '12px 0',
-                    fontSize: 13,
-                    background: '#dc2626',
-                    color: '#ffffff',
-                    border: '1px solid rgba(255, 255, 255, 0.72)',
-                    boxShadow: '0 8px 20px rgba(220, 38, 38, 0.22)',
-                    opacity: decline.isPending || join.isPending ? 0.68 : 1,
-                  }}
-                >
-                  Отклонить
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => join.mutate(challenge.id)}
-                  disabled={join.isPending || decline.isPending}
-                  style={{
-                    minHeight: 44,
-                    padding: '12px 0',
-                    fontSize: 13,
-                    background: '#16a34a',
-                    color: '#ffffff',
-                    border: '1px solid rgba(255, 255, 255, 0.72)',
-                    boxShadow: '0 8px 20px rgba(22, 163, 74, 0.22)',
-                    opacity: join.isPending || decline.isPending ? 0.68 : 1,
-                  }}
-                >
-                  Участвовать
-                </button>
-              </div>
-            )}
-            {!challenge.canJoin && challenge.declinedAt && !challenge.participant && (
-              <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--muted)' }}>
-                Участие отклонено
-              </div>
-            )}
-            {challenge.canClaimReward && (
-              <button
-                type="button"
-                className="btn btn--cta"
-                onClick={() => claim.mutate(challenge)}
-                disabled={claim.isPending}
-              >
-                Получить награду
-              </button>
-            )}
-            {claimError && (
-              <div
-                role="alert"
-                style={{
-                  marginTop: challenge.canClaimReward ? -4 : 0,
-                  color: '#dc2626',
-                  fontSize: 13,
-                  fontWeight: 900,
-                }}
-              >
-                {claimError}
-              </div>
-            )}
-            {challenge.participant?.rewardClaimedAt && (
-              <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--muted)' }}>
-                Награда получена
-              </div>
-            )}
-          </div>
-        )}
-
-        {pendingRewards.length > 0 && (
-          <div style={{ display: 'grid', gap: 10 }}>
-            {pendingRewards.map((rewardChallenge) => (
-              <PendingRewardCard
-                key={rewardChallenge.id}
-                challenge={rewardChallenge}
-                onClaim={() => claim.mutate(rewardChallenge)}
-                disabled={claim.isPending}
+        {!query.isLoading && visibleChallenges.length > 0 && (
+          <div className="weekly-challenge-list">
+            {visibleChallenges.map((challenge) => (
+              <ChallengeCard
+                key={challenge.id}
+                challenge={challenge}
+                nowMs={nowMs}
+                joinPending={join.isPending}
+                declinePending={decline.isPending}
+                claimPending={claim.isPending}
+                claimError={claimError}
+                onJoin={() => join.mutate(challenge.id)}
+                onDecline={() => decline.mutate(challenge.id)}
+                onClaim={() => claim.mutate(challenge)}
               />
             ))}
           </div>
         )}
       </section>
 
-      {claimedReward && (
-        <div
-          aria-live="polite"
-          style={{
-            position: 'fixed',
-            left: 18,
-            right: 18,
-            bottom: 'calc(88px + var(--app-safe-bottom))',
-            zIndex: 280,
-            display: 'flex',
-            justifyContent: 'center',
-            pointerEvents: 'none',
-          }}
-        >
-          <div
-            className="glass"
-            style={{
-              width: 'min(100%, 330px)',
-              borderRadius: 18,
-              padding: '14px 16px',
-              display: 'grid',
-              gridTemplateColumns: '34px minmax(0, 1fr)',
-              gap: 10,
-              alignItems: 'center',
-              animation: 'reward-pop 2.6s ease both',
-            }}
-          >
-            <Sparkles size={24} color="var(--reward-coin)" />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 950, color: 'var(--ink)' }}>
-                {claimedReward.title}
-              </div>
-              {rewardPartItems(claimedReward.reward, { plus: true }).length > 0 && (
-                <div
-                  style={{
-                    marginTop: 3,
-                    display: 'flex',
-                    gap: 6,
-                    flexWrap: 'wrap',
-                    fontSize: 12,
-                    fontWeight: 900,
-                  }}
-                >
-                  {rewardPartItems(claimedReward.reward, { plus: true }).map((part, index) => (
-                    <span key={part.tone} style={{ color: rewardColor(part.tone) }}>
-                      {index > 0 ? '· ' : ''}
-                      {part.text}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {claimedReward && <RewardToast title={claimedReward.title} reward={claimedReward.reward} />}
     </main>
   );
 }
 
-function PendingRewardCard({
+function ChallengeCard({
   challenge,
+  nowMs,
+  joinPending,
+  declinePending,
+  claimPending,
+  claimError,
+  onJoin,
+  onDecline,
   onClaim,
-  disabled,
 }: {
   challenge: WeeklyChallenge;
+  nowMs: number;
+  joinPending: boolean;
+  declinePending: boolean;
+  claimPending: boolean;
+  claimError: string | null;
+  onJoin: () => void;
+  onDecline: () => void;
   onClaim: () => void;
-  disabled: boolean;
 }): JSX.Element {
+  const timer = timerTargetText(challenge);
+  const remaining = timer === null ? null : formatRemaining(Date.parse(timer.target) - nowMs);
+  const statusText =
+    challenge.status === 'finished'
+      ? 'Пройден'
+      : challenge.status === 'running'
+        ? 'Идёт сейчас'
+        : 'Скоро';
+
   return (
-    <div
-      className="glass"
-      style={{ borderRadius: 22, padding: 16, display: 'grid', gap: 12 }}
-      aria-label={`Награда за челлендж ${challenge.title}`}
-    >
-      <div>
-        <div style={{ color: 'var(--ink)', fontSize: 16, fontWeight: 950 }}>Награда ждёт</div>
-        <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 13, fontWeight: 800 }}>
-          {challenge.title}
-        </div>
+    <article className="glass weekly-challenge-card">
+      <div className="weekly-challenge-card__topline">
+        <span className="weekly-challenge-card__status">{statusText}</span>
+        {timer !== null && remaining !== null && (
+          <span className="weekly-challenge-card__timer">
+            {timer.label} · {remaining}
+          </span>
+        )}
       </div>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div>
+        <h2 className="weekly-challenge-card__title">{challenge.title}</h2>
+        <div className="weekly-challenge-card__dates">
+          {dateText(challenge.startAt)} — {dateText(challenge.endAt)} МСК
+        </div>
+        {challenge.description && (
+          <p className="weekly-challenge-card__description">{challenge.description}</p>
+        )}
+      </div>
+
+      <div className="weekly-challenge-card__rewards" aria-label="Награда">
         <RewardChip
           label="Монеты"
           value={challenge.reward.coins}
           color={rewardColor('coin')}
-          icon={<CircleDollarSign size={20} strokeWidth={2.55} />}
+          icon={<CircleDollarSign size={16} strokeWidth={2.55} />}
         />
         <RewardChip
           label="Звёзды"
           value={challenge.reward.stars}
           color={rewardColor('star')}
-          icon={<Star size={20} strokeWidth={2.55} fill="currentColor" />}
+          icon={<Star size={16} strokeWidth={2.55} fill="currentColor" />}
         />
         <RewardChip
           label="Опыт"
           value={challenge.reward.experience}
           color={rewardColor('experience')}
-          icon={<TrendingUp size={20} strokeWidth={2.55} />}
+          icon={<TrendingUp size={16} strokeWidth={2.55} />}
         />
       </div>
-      <button
-        type="button"
-        className="btn btn--cta"
-        onClick={onClaim}
-        disabled={disabled}
-        style={{ minHeight: 44 }}
-      >
-        Получить награду
-      </button>
+
+      <ul className="weekly-challenge-task-list" aria-label={`Задачи челленджа ${challenge.title}`}>
+        {challenge.tasks.map((task) => {
+          const percent =
+            task.progress === null
+              ? 0
+              : Math.min(100, Math.round((task.progress / task.target) * 100));
+          return (
+            <li className="weekly-challenge-task" key={task.id}>
+              <div className="weekly-challenge-task__line">
+                <span className="weekly-challenge-task__title">
+                  {task.completed === true && (
+                    <Check
+                      className="weekly-challenge-task__check"
+                      size={14}
+                      strokeWidth={3}
+                      aria-hidden="true"
+                    />
+                  )}
+                  {task.title}
+                </span>
+                <span className="weekly-challenge-task__value">
+                  {task.progress === null
+                    ? `Цель ${numberText(task.target)}`
+                    : `${numberText(task.progress)} / ${numberText(task.target)}`}
+                </span>
+              </div>
+              {task.progress !== null && (
+                <div className="weekly-challenge-task__track" aria-hidden="true">
+                  <span style={{ width: `${percent}%` }} />
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      {challenge.canJoin && (
+        <div className="weekly-challenge-card__actions">
+          <button
+            type="button"
+            className="btn weekly-challenge-card__decline"
+            onClick={onDecline}
+            disabled={declinePending || joinPending}
+          >
+            Отклонить
+          </button>
+          <button
+            type="button"
+            className="btn btn--cta"
+            onClick={onJoin}
+            disabled={joinPending || declinePending}
+          >
+            Участвовать
+          </button>
+        </div>
+      )}
+      {challenge.canClaimReward && (
+        <button type="button" className="btn btn--cta" onClick={onClaim} disabled={claimPending}>
+          Получить награду
+        </button>
+      )}
+      {challenge.participant?.rewardClaimedAt && (
+        <div className="weekly-challenge-card__claimed">Награда получена</div>
+      )}
+      {claimError && challenge.canClaimReward && (
+        <div role="alert" className="weekly-challenge-card__error">
+          {claimError}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function RewardToast({
+  title,
+  reward,
+}: {
+  title: string;
+  reward: WeeklyChallenge['reward'];
+}): JSX.Element {
+  return (
+    <div className="weekly-challenge-reward-toast" aria-live="polite">
+      <div className="glass weekly-challenge-reward-toast__card">
+        <Sparkles size={24} color="var(--reward-coin)" />
+        <div>
+          <div className="weekly-challenge-reward-toast__title">{title}</div>
+          <div className="weekly-challenge-reward-toast__values">
+            {rewardPartItems(reward, { plus: true }).map((part, index) => (
+              <span key={part.tone} style={{ color: rewardColor(part.tone) }}>
+                {index > 0 ? '· ' : ''}
+                {part.text}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

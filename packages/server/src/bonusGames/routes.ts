@@ -9,6 +9,7 @@ import {
   abandonBonusAttempt,
   acknowledgeBonusPreview,
   BonusAttemptAlreadyActiveError,
+  fetchBonusAttemptAllowances,
   loadBonusAttemptDto,
   startBonusPeriod,
   startOrResumeBonusAttempt,
@@ -26,9 +27,7 @@ const attemptParamsSchema = z.object({ attemptId: z.string().uuid() }).strict();
 const unlockBodySchema = z
   .object({ expected_price_stars: z.number().int().min(0).max(10_000_000) })
   .strict();
-const previewAcknowledgeBodySchema = z
-  .object({ dismiss_future: z.boolean().optional() })
-  .strict();
+const previewAcknowledgeBodySchema = z.object({ dismiss_future: z.boolean().optional() }).strict();
 const loadoutSchema = z
   .object({
     stick: z.string().uuid().nullable().optional(),
@@ -36,9 +35,7 @@ const loadoutSchema = z
     nutrition: z.string().uuid().nullable().optional(),
   })
   .strict();
-const periodStartBodySchema = z
-  .object({ loadout: loadoutSchema.optional() })
-  .strict();
+const periodStartBodySchema = z.object({ loadout: loadoutSchema.optional() }).strict();
 const shotBodySchema = z
   .object({
     claimed_shot_index: z.number().int().min(1),
@@ -86,6 +83,10 @@ const SAFE_BONUS_ERRORS: Readonly<
   bonus_attempt_already_active: {
     statusCode: 409,
     message: 'another bonus attempt is already active',
+  },
+  bonus_daily_attempt_limit: {
+    statusCode: 409,
+    message: 'daily bonus attempt limit reached',
   },
   bonus_attempt_not_active: {
     statusCode: 409,
@@ -368,9 +369,26 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
       const now = new Date();
       await reconcileCurrentAttempt(app, request.user.id, now);
       const games = await listBonusGameCards(app.pg, request.user.id);
+      const attemptAllowances = await fetchBonusAttemptAllowances(app.pg, request.user.id, now);
       return {
         games: games.map(toCatalogGameHttpDto),
         active_attempt: games.find((game) => game.active_attempt !== null)?.active_attempt ?? null,
+        attempt_allowances: {
+          speed: {
+            skill_code: attemptAllowances.speed.skillCode,
+            daily_limit: attemptAllowances.speed.dailyLimit,
+            used: attemptAllowances.speed.used,
+            remaining: attemptAllowances.speed.remaining,
+            resets_at: attemptAllowances.speed.resetsAt,
+          },
+          accuracy: {
+            skill_code: attemptAllowances.accuracy.skillCode,
+            daily_limit: attemptAllowances.accuracy.dailyLimit,
+            used: attemptAllowances.accuracy.used,
+            remaining: attemptAllowances.accuracy.remaining,
+            resets_at: attemptAllowances.accuracy.resetsAt,
+          },
+        },
       };
     }),
   );

@@ -6,6 +6,7 @@ import {
   claimWeeklyChallengeReward,
   declineWeeklyChallenge,
   getCurrentWeeklyChallenge,
+  getWeeklyChallengeCatalog,
   joinWeeklyChallenge,
 } from './service.js';
 
@@ -34,10 +35,16 @@ export const weeklyChallengeRoutes: FastifyPluginAsync = async (app) => {
     getCurrentWeeklyChallenge(app.pg, req.user.id),
   );
 
+  app.get('/weekly-challenge/catalog', { preHandler: [app.authenticate] }, async (req) =>
+    getWeeklyChallengeCatalog(app.pg, req.user.id),
+  );
+
   app.post('/weekly-challenge/:id/join', { preHandler: [app.authenticate] }, async (req) => {
     const params = paramsSchema.safeParse(req.params);
     if (!params.success) throw new AppError('bad_request', 'invalid weekly challenge id', 400);
-    return withTransaction(app, (client) => joinWeeklyChallenge(client, params.data.id, req.user.id));
+    return withTransaction(app, (client) =>
+      joinWeeklyChallenge(client, params.data.id, req.user.id),
+    );
   });
 
   app.post('/weekly-challenge/:id/decline', { preHandler: [app.authenticate] }, async (req) => {

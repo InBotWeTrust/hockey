@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 vi.hoisted(() => {
   const prototype = globalThis.HTMLCanvasElement?.prototype;
@@ -16,6 +18,8 @@ import {
   DEFAULT_DUEL_INVENTORY_TIMING,
   STICK_NEUTRAL,
 } from '@hockey/game-core';
+
+const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 import {
   DailyScreen,
   DUEL_INVENTORY_ICON_GLASS_STYLE,
@@ -382,6 +386,20 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+describe('arena level presentation', () => {
+  it('raises only the amateur cube on regular and compact viewports', () => {
+    expect(designSystemCss).toMatch(
+      /\.arena-video-cube__plate--amateur\s*\{[^}]*top:\s*-11\.8vh;[^}]*width:\s*min\(85\.5%,\s*374px\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /@media \(max-height:\s*700px\)[\s\S]*?\.arena-video-cube__plate--amateur\s*\{[^}]*top:\s*-7vh;[^}]*width:\s*min\(84%,\s*344px\);/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.arena-video-cube__plate--beginner\s*\{\s*top:\s*-1vh;\s*\}/s,
+    );
+  });
 });
 
 describe('DailyScreen', () => {
@@ -2914,7 +2932,8 @@ describe('DailyScreen', () => {
     expect(await screen.findByRole('button', { name: 'На лёд' })).toBeInTheDocument();
     expect(screen.getByText('0/500')).toBeInTheDocument();
     expect(screen.getByText('ДО ОБНОВЛЕНИЯ')).toBeInTheDocument();
-    expect(screen.getByText('Скорости 1-го периода')).toBeInTheDocument();
+    expect(screen.getByText('Скорости 1-го периода')).toHaveClass('section-label');
+    expect(screen.getByText('Настройки')).toHaveClass('section-label', 'training-settings__title');
     expect(screen.getByText('0,50/с')).toBeInTheDocument();
 
     const trainingInfo = screen.getByRole('region', { name: 'Информация о тренировке' });
@@ -2928,6 +2947,9 @@ describe('DailyScreen', () => {
 
     const trainingSetup = screen.getByRole('region', { name: 'Настройка тренировки' });
     expect(trainingSetup).toHaveClass('mode-setup-card', 'training-config-card');
+    expect(trainingSetup.querySelector('.training-period-speeds__grid')).toHaveStyle({
+      gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    });
     expect(within(trainingSetup).getByRole('tab', { name: '1 период' })).toBeInTheDocument();
     expect(within(trainingSetup).getByRole('button', { name: 'На лёд' })).toBeInTheDocument();
   });
@@ -4590,6 +4612,8 @@ describe('DailyScreen', () => {
     renderWith(['/?view=amateur&section=duels']);
     fireEvent.click(await screen.findByRole('tab', { name: 'Раздевалка' }));
 
+    expect(document.querySelector('main.mode-shell')).toHaveClass('mode-shell--locker');
+    expect(document.querySelector('main.mode-shell')).toHaveClass('locker-room-bg--professional');
     expect(screen.queryByText('Доступный инвентарь')).not.toBeInTheDocument();
     const infoButton = screen.getByRole('button', { name: 'Что такое раздевалка' });
     expect(infoButton).toHaveClass('duel-section-info-btn');

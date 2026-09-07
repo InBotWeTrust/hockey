@@ -1,29 +1,40 @@
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { triggerHaptic } from '../feedback/haptics.js';
 import type { UseMutationResult } from '@tanstack/react-query';
-import { ArrowLeft, CircleDollarSign, RussianRuble, Sparkles, Star, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  CircleDollarSign,
+  Gift,
+  Landmark,
+  RussianRuble,
+  ShoppingBag,
+  Sparkles,
+  Star,
+  TrendingUp,
+  X,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import {
   fetchMyInventory,
+  fetchInventoryTransactions,
   purchaseInventoryItem,
-  type BankPurchase,
   type InventoryEquipmentKind,
   type InventoryItem,
-  type InventoryPurchase,
   type InventoryState,
   type InventoryTransaction,
   type InventoryTransactionAmount,
   type InventoryTransactionCurrency,
+  type InventoryTransactionFilter,
 } from '../api/inventory.js';
 import { artworkForInventoryItem } from './inventoryArtwork.js';
 import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
 
 type ShopTab = 'goods' | 'bank' | 'history';
-type HistoryFilter = 'all' | 'credit' | 'debit' | 'ruble';
+type HistoryFilter = InventoryTransactionFilter;
 
 const INVENTORY_KINDS: InventoryEquipmentKind[] = ['stick', 'skates', 'nutrition'];
 const SHOP_TABS: Array<{ id: ShopTab; label: string }> = [
@@ -103,66 +114,28 @@ function uniqueShopItems(items: InventoryItem[]): InventoryItem[] {
   return result;
 }
 
-function formatPurchaseDate(value: string): string {
+function formatTransactionTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return new Intl.DateTimeFormat('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
   }).format(date);
 }
 
-function bankStatusText(status: BankPurchase['status']): string {
-  if (status === 'paid') return 'Оплачено';
-  if (status === 'pending') return 'Ожидает оплаты';
-  if (status === 'failed') return 'Ошибка оплаты';
-  if (status === 'refunded') return 'Возврат';
-  return 'Отменено';
+function transactionDateKey(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return [date.getFullYear(), date.getMonth() + 1, date.getDate()].join('-');
 }
 
-function transactionFlowFromAmounts(
-  amounts: InventoryTransactionAmount[],
-): InventoryTransaction['flow'] {
-  if (amounts.some((amount) => amount.value > 0)) return 'credit';
-  if (amounts.some((amount) => amount.value < 0)) return 'debit';
-  return 'neutral';
-}
-
-function legacyTransactionHistory(
-  inventoryHistory: InventoryPurchase[],
-  bankHistory: BankPurchase[],
-): InventoryTransaction[] {
-  return [
-    ...inventoryHistory.map((purchase) => ({
-      id: `inventory-${purchase.id}`,
-      createdAt: purchase.createdAt,
-      title: purchase.title,
-      subtitle: `${formatPurchaseDate(purchase.createdAt)} · товар · ${formatInventoryResourceAmount(purchase.kind, purchase.chargesAdded)}`,
-      category: 'inventory' as const,
-      flow: 'debit' as const,
-      amounts: [{ currency: 'coin' as const, value: -Math.abs(purchase.tokensSpent) }],
-    })),
-    ...bankHistory.map((purchase) => {
-      const value =
-        purchase.status === 'refunded'
-          ? purchase.amountRub
-          : purchase.status === 'paid'
-            ? -purchase.amountRub
-            : purchase.amountRub;
-      const amounts = [{ currency: 'ruble' as const, value }];
-      return {
-        id: `bank-${purchase.id}`,
-        createdAt: purchase.createdAt,
-        title: purchase.title,
-        subtitle: `${formatPurchaseDate(purchase.createdAt)} · банк · ${bankStatusText(purchase.status)}`,
-        category: 'bank' as const,
-        flow: transactionFlowFromAmounts(amounts),
-        amounts,
-      };
-    }),
-  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+function transactionDateLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Без даты';
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+  }).format(date);
 }
 
 export function InventoryScreen(): JSX.Element {
@@ -198,10 +171,6 @@ export function InventoryScreen(): JSX.Element {
   const allItems = INVENTORY_KINDS.flatMap((kind) => inventory?.items[kind] ?? []);
   const hasAnyItems = allItems.length > 0;
   const tokens = inventory?.balances.tokens ?? 0;
-  const history = inventory?.purchaseHistory ?? [];
-  const bankHistory = inventory?.bankHistory ?? [];
-  const transactionHistory =
-    inventory?.transactionHistory ?? legacyTransactionHistory(history, bankHistory);
 
   const openPurchase = (item: InventoryItem): void => {
     purchaseMutation.reset();
@@ -213,7 +182,7 @@ export function InventoryScreen(): JSX.Element {
     <main
       className="screen"
       style={{
-        padding: 'calc(22px + var(--app-safe-top)) 24px 24px',
+        padding: 'calc(22px + var(--app-safe-top)) 14px 24px',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
       }}
@@ -262,7 +231,7 @@ export function InventoryScreen(): JSX.Element {
             className="screen-title-on-arena"
             style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}
           >
-            Инвентарь
+            Магазин
           </h1>
           <ShopBalanceBar tokens={tokens} stars={inventory?.balances.stars ?? 0} />
         </div>
@@ -286,7 +255,7 @@ export function InventoryScreen(): JSX.Element {
         ) : activeTab === 'bank' ? (
           <BankTab />
         ) : (
-          <TransactionHistorySection transactions={transactionHistory} />
+          <TransactionHistorySection />
         )}
       </section>
 
@@ -461,32 +430,20 @@ function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JS
       className="glass inventory-bank-card"
       style={{
         minWidth: 0,
-        minHeight: 178,
-        padding: 12,
+        minHeight: 104,
+        padding: 10,
         borderRadius: 22,
         display: 'grid',
-        gridTemplateRows: '1fr auto',
+        gridTemplateColumns: '52px minmax(0, 1fr) auto',
+        alignItems: 'center',
         gap: 10,
         overflow: 'hidden',
       }}
     >
-      <div style={{ display: 'grid', alignContent: 'start', gap: 8, minWidth: 0 }}>
-        <div
-          aria-hidden="true"
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: 16,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: rewardColor('coin'),
-            background: 'rgba(255,255,255,0.52)',
-            border: '1px solid rgba(255,255,255,0.72)',
-          }}
-        >
-          <CircleDollarSign size={22} strokeWidth={2.35} />
-        </div>
+      <div className="inventory-bank-card__icon" aria-hidden="true">
+        <CircleDollarSign size={24} strokeWidth={2.35} />
+      </div>
+      <div className="inventory-bank-card__copy">
         <h2
           style={{
             margin: 0,
@@ -499,32 +456,23 @@ function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JS
           {pack.title}
         </h2>
         <div style={{ color: rewardColor('coin'), fontSize: 19, fontWeight: 950, lineHeight: 1 }}>
-          {numberText(pack.tokens)}
+          {numberText(pack.tokens)} монет
         </div>
         <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800, lineHeight: 1.2 }}>
           {pack.note}
         </div>
-        <div style={{ color: 'var(--ink)', fontSize: 13, fontWeight: 950, lineHeight: 1.1 }}>
-          {rubText(pack.priceRub)}
-        </div>
       </div>
-      <button
-        type="button"
-        className="btn btn--cta"
-        disabled
-        aria-label={`Купить ${numberText(pack.tokens)} монет за ${rubText(pack.priceRub)}`}
-        style={{
-          minWidth: 0,
-          width: '100%',
-          minHeight: 34,
-          padding: '0 10px',
-          fontSize: 12,
-          opacity: 0.5,
-          cursor: 'not-allowed',
-        }}
-      >
-        Скоро
-      </button>
+      <div className="inventory-bank-card__action">
+        <strong>{rubText(pack.priceRub)}</strong>
+        <button
+          type="button"
+          className="btn btn--cta"
+          disabled
+          aria-label={`Купить ${numberText(pack.tokens)} монет за ${rubText(pack.priceRub)}`}
+        >
+          Скоро
+        </button>
+      </div>
     </article>
   );
 }
@@ -909,122 +857,103 @@ function PurchaseConfirmModal({
   );
 }
 
-function TransactionHistorySection({
-  transactions,
-}: {
-  transactions: InventoryTransaction[];
-}): JSX.Element {
+function TransactionHistorySection(): JSX.Element {
   const [filter, setFilter] = useState<HistoryFilter>('all');
-  const filteredEntries = transactions.filter((entry) => {
-    if (filter === 'credit') return entry.flow === 'credit';
-    if (filter === 'debit') return entry.flow === 'debit' && entry.category !== 'bank';
-    if (filter === 'ruble') return entry.amounts.some((amount) => amount.currency === 'ruble');
-    return true;
+  const history = useInfiniteQuery({
+    queryKey: ['inventory', 'transactions', filter],
+    queryFn: ({ pageParam }) => fetchInventoryTransactions(filter, pageParam, 20),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
+  const transactions = history.data?.pages.flatMap((page) => page.transactions) ?? [];
+  const groups = transactions.reduce<
+    Array<{ key: string; label: string; entries: InventoryTransaction[] }>
+  >((result, entry) => {
+    const key = transactionDateKey(entry.createdAt);
+    const current = result[result.length - 1];
+    if (current?.key === key) {
+      current.entries.push(entry);
+    } else {
+      result.push({ key, label: transactionDateLabel(entry.createdAt), entries: [entry] });
+    }
+    return result;
+  }, []);
 
   return (
     <section aria-label="История транзакций" style={{ display: 'grid', gap: 8 }}>
       <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
         История
       </div>
-      <div
-        aria-label="Фильтр истории"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-          gap: 6,
-        }}
-      >
-        {HISTORY_FILTERS.map((item) => {
-          const active = item.id === filter;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => setFilter(item.id)}
-              style={{
-                minWidth: 0,
-                minHeight: 30,
-                borderRadius: 999,
-                border: active
-                  ? '1px solid rgba(15,23,42,0.32)'
-                  : '1px solid rgba(255,255,255,0.7)',
-                background: active ? 'rgba(31,42,61,0.92)' : 'rgba(255,255,255,0.46)',
-                color: active ? '#fff' : 'var(--ink)',
-                fontSize: 10,
-                fontWeight: 900,
-                lineHeight: 1,
-                cursor: 'pointer',
-              }}
-            >
-              {item.label}
-            </button>
-          );
-        })}
+      <div className="inventory-history-filters">
+        <SegmentedTabs
+          items={HISTORY_FILTERS}
+          activeTab={filter}
+          ariaLabel="Фильтр истории"
+          onChange={setFilter}
+        />
       </div>
-      <div className="glass" style={{ borderRadius: 22, padding: 14, display: 'grid', gap: 10 }}>
-        {filteredEntries.length === 0 ? (
-          <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 750 }}>
-            Операций пока нет.
-          </div>
-        ) : (
-          filteredEntries.map((entry) => (
-            <div
-              key={entry.id}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'minmax(0, 1fr) auto',
-                gap: 10,
-                alignItems: 'center',
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <div
-                  style={{
-                    color: 'var(--ink)',
-                    fontSize: 13,
-                    fontWeight: 900,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {entry.title}
-                </div>
-                <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 11, fontWeight: 750 }}>
-                  {transactionSubtitleText(entry)}
-                </div>
-              </div>
-              <div
-                style={{
-                  display: 'grid',
-                  justifyItems: 'end',
-                  gap: 4,
-                }}
-              >
-                {entry.amounts.map((amount) => (
-                  <TransactionAmountBadge key={`${entry.id}-${amount.currency}`} amount={amount} />
+      {groups.length > 0 ? (
+        <div className="inventory-history-groups">
+          {groups.map((group) => (
+            <section key={group.key} className="inventory-history-group">
+              <h3 className="section-label">{group.label}</h3>
+              <div className="inventory-history-list" role="list" aria-label={`Операции за ${group.label}`}>
+                {group.entries.map((entry) => (
+                  <article key={entry.id} className="glass inventory-history-row" role="listitem">
+                    <div className={`inventory-history-row__icon inventory-history-row__icon--${entry.category}`} aria-hidden="true">
+                      {transactionCategoryIcon(entry)}
+                    </div>
+                    <div className="inventory-history-row__copy">
+                      <strong>{entry.title}</strong>
+                      <span>{formatTransactionTime(entry.createdAt)} · {transactionSubtitleText(entry)}</span>
+                    </div>
+                    <div className="inventory-history-row__amounts">
+                      {entry.amounts.map((amount) => (
+                        <TransactionAmountBadge key={`${entry.id}-${amount.currency}`} amount={amount} />
+                      ))}
+                    </div>
+                  </article>
                 ))}
               </div>
-            </div>
-          ))
-        )}
-      </div>
+            </section>
+          ))}
+        </div>
+      ) : null}
+      {history.isLoading ? <div className="inventory-history-empty">Загружаем операции…</div> : null}
+      {history.isError ? (
+        <div className="inventory-history-empty" role="alert">Не удалось загрузить историю.</div>
+      ) : null}
+      {!history.isLoading && !history.isError && groups.length === 0 ? (
+        <div className="inventory-history-empty">Операций пока нет.</div>
+      ) : null}
+      {history.hasNextPage ? (
+        <button
+          type="button"
+          className="btn btn--ghost inventory-history-load-more"
+          disabled={history.isFetchingNextPage}
+          onClick={() => void history.fetchNextPage()}
+        >
+          {history.isFetchingNextPage ? 'Загружаем…' : 'Загрузить ещё'}
+        </button>
+      ) : null}
     </section>
   );
 }
 
 function transactionSubtitleText(entry: InventoryTransaction): string {
   const parts = entry.subtitle.split(' · ').filter(Boolean);
-  if (parts[0] && Date.parse(parts[0])) {
-    return [formatPurchaseDate(entry.createdAt), ...parts.slice(1)].join(' · ');
-  }
-  return entry.subtitle;
+  return (parts.length > 1 ? parts.slice(1) : parts).join(' · ');
+}
+
+function transactionCategoryIcon(entry: InventoryTransaction): JSX.Element {
+  if (entry.category === 'reward') return <Gift size={18} strokeWidth={2.35} />;
+  if (entry.category === 'inventory') return <ShoppingBag size={18} strokeWidth={2.35} />;
+  if (entry.category === 'bank') return <Landmark size={18} strokeWidth={2.35} />;
+  return <Sparkles size={18} strokeWidth={2.35} />;
 }
 
 function transactionAmountColor(amount: InventoryTransactionAmount): string {
-  if (amount.value > 0) return '#0f766e';
+  if (amount.value < 0) return 'var(--red-deep)';
   if (amount.currency === 'coin') return rewardColor('coin');
   if (amount.currency === 'star') return rewardColor('star');
   if (amount.currency === 'experience') return rewardColor('experience');
@@ -1034,7 +963,7 @@ function transactionAmountColor(amount: InventoryTransactionAmount): string {
 function transactionAmountIcon(currency: InventoryTransactionCurrency): JSX.Element {
   if (currency === 'coin') return <CircleDollarSign size={13} strokeWidth={2.55} />;
   if (currency === 'star') return <Star size={13} strokeWidth={2.55} fill="currentColor" />;
-  if (currency === 'experience') return <Sparkles size={13} strokeWidth={2.35} />;
+  if (currency === 'experience') return <TrendingUp size={13} strokeWidth={2.35} />;
   return <RussianRuble size={13} strokeWidth={2.55} />;
 }
 

@@ -74,6 +74,7 @@ import { rewardColor } from '../app/rewardColors.js';
 import type { ScoreBoardOpponent } from '../components/ScoreBoard.js';
 import { GlassSelect } from '../components/GlassSelect.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
+import { TrainingHistorySection } from '../components/TrainingHistorySection.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
@@ -88,6 +89,12 @@ import type {
 import type { TrainingStateResponse } from '../api/training.js';
 import { fetchBonusGames } from '../api/bonusGames.js';
 import type { ProfileData } from './profileTypes.js';
+import {
+  arenaCourtImage,
+  arenaVideoCubeClass,
+  arenaVideoCubeImage,
+} from './lockerRoomBackground.js';
+import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 import {
   fetchMyInventory,
   patchEquipment,
@@ -246,8 +253,6 @@ function readTrainingSpeedOverrides(): SpeedOverrides | null {
 
 const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
 const AMATEUR_TOURNAMENT_COURT_BACKGROUND = '/sprites/amateur-tournament-court.webp';
-const ARENA_ICE_COURT_BACKGROUND = '/sprites/app-arena-ice.webp';
-const ARENA_CUBE_IMAGE = '/sprites/app-arena-cube.webp';
 const LEGACY_STANDARD_ARENA_BACKGROUNDS = new Set([
   '/sprites/arena-ice-court.webp',
   '/sprites/arena-ice-court-v2.webp',
@@ -969,6 +974,10 @@ function GameHub({
 }): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiFetch<ProfileData>('/me'),
+  });
   const data = useDailyStore((s) => s.data)!;
   const refresh = useDailyStore((s) => s.refresh);
   const trainingData = useTrainingSessionStore((s) => s.data);
@@ -1647,6 +1656,9 @@ function GameHub({
           entries={arenaEntries}
           activeIndex={activeCubeIndex}
           onActiveIndexChange={handleArenaActiveIndexChange}
+          cubeImage={arenaVideoCubeImage(profileQuery.data?.competitionLevel)}
+          cubeClass={arenaVideoCubeClass(profileQuery.data?.competitionLevel)}
+          backgroundImage={arenaCourtImage(profileQuery.data?.competitionLevel)}
         />
       </section>
 
@@ -1669,10 +1681,16 @@ function ArenaVideoCube({
   entries,
   activeIndex,
   onActiveIndexChange,
+  cubeImage,
+  cubeClass,
+  backgroundImage,
 }: {
   entries: ArenaEntry[];
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
+  cubeImage: string;
+  cubeClass: string;
+  backgroundImage: string;
 }): JSX.Element {
   const activeEntry = entries[Math.min(entries.length - 1, Math.max(0, activeIndex))] ?? entries[0];
   const hasManyEntries = entries.length > 1;
@@ -1737,12 +1755,12 @@ function ArenaVideoCube({
     >
       <img
         className="arena-video-cube__background"
-        src={ARENA_ICE_COURT_BACKGROUND}
+        src={backgroundImage}
         alt=""
         aria-hidden="true"
       />
-      <div className="arena-video-cube__plate">
-        <img className="arena-video-cube__cube" src={ARENA_CUBE_IMAGE} alt="" aria-hidden="true" />
+      <div className={`arena-video-cube__plate ${cubeClass}`}>
+        <img className="arena-video-cube__cube" src={cubeImage} alt="" aria-hidden="true" />
         <div
           className="arena-video-cube__screen"
           aria-label="Разделы на табло"
@@ -3255,16 +3273,18 @@ function ModeShell({
   onBack,
   children,
   variant = 'default',
+  className,
 }: {
   title: string;
   onBack: () => void;
   children: React.ReactNode;
   variant?: 'default' | 'section-hub';
+  className?: string;
 }): JSX.Element {
   const isSectionHub = variant === 'section-hub';
   return (
     <main
-      className={`screen mode-shell${isSectionHub ? ' mode-shell--section-hub' : ''}`}
+      className={`screen mode-shell${isSectionHub ? ' mode-shell--section-hub' : ''}${className ? ` ${className}` : ''}`}
       style={{
         padding: isSectionHub
           ? 'calc(18px + var(--app-safe-top)) 14px 24px'
@@ -3483,29 +3503,39 @@ function TrainingPlaceholder({
         )}
       </section>
       {!loading && canConfigureTraining && (
-        <section className="mode-setup-card training-config-card" aria-label="Настройка тренировки">
-          <SegmentedTabs
-            ariaLabel="Период тренировки"
-            items={[
-              { id: '1', label: '1 период' },
-              { id: '2', label: '2 период' },
-              { id: '3', label: '3 период' },
-            ]}
-            activeTab={String(selectedPeriod)}
-            disabled={inFlight}
-            onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
-          />
-          <PeriodSpeedSummary periodNumber={selectedPeriod} presets={data?.period_speed_presets} />
-          <button
-            type="button"
-            className="btn btn--cta"
-            disabled={inFlight}
-            onClick={() => void handleTrainingAction()}
+        <div className="training-settings">
+          <div className="section-label training-settings__title">Настройки</div>
+          <section
+            className="mode-setup-card training-config-card"
+            aria-label="Настройка тренировки"
           >
-            {trainingActionLabel}
-          </button>
-        </section>
+            <SegmentedTabs
+              ariaLabel="Период тренировки"
+              items={[
+                { id: '1', label: '1 период' },
+                { id: '2', label: '2 период' },
+                { id: '3', label: '3 период' },
+              ]}
+              activeTab={String(selectedPeriod)}
+              disabled={inFlight}
+              onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
+            />
+            <PeriodSpeedSummary
+              periodNumber={selectedPeriod}
+              presets={data?.period_speed_presets}
+            />
+            <button
+              type="button"
+              className="btn btn--cta"
+              disabled={inFlight}
+              onClick={() => void handleTrainingAction()}
+            >
+              {trainingActionLabel}
+            </button>
+          </section>
+        </div>
       )}
+      <TrainingHistorySection currentDayDate={data?.day_date ?? null} />
     </ModeShell>
   );
 }
@@ -4087,6 +4117,10 @@ function AmateurDuelsPage({
 }): JSX.Element {
   const navigate = useNavigate();
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiFetch<ProfileData>('/me'),
+  });
   const queryClient = useQueryClient();
   const [duelTab, setDuelTab] = useState<AmateurDuelTab>('game');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
@@ -4273,7 +4307,16 @@ function AmateurDuelsPage({
     });
 
   return (
-    <ModeShell title="Дуэли" onBack={onBack} variant="section-hub">
+    <ModeShell
+      title="Дуэли"
+      onBack={onBack}
+      variant="section-hub"
+      className={
+        duelTab === 'locker'
+          ? `mode-shell--locker ${lockerRoomBackgroundClass(profileQuery.data?.competitionLevel)}`
+          : ''
+      }
+    >
       <SegmentedTabs
         ariaLabel="Разделы дуэлей"
         activeTab={duelTab}
@@ -8394,6 +8437,7 @@ function PeriodSpeedSummary({
 
   return (
     <div
+      className="training-period-speeds"
       aria-label={`${periodNumber}-й период: скорости`}
       style={{
         padding: 12,
@@ -8406,24 +8450,19 @@ function PeriodSpeedSummary({
         gap: 10,
       }}
     >
-      <div
-        style={{
-          color: 'rgba(15, 23, 42, 0.58)',
-          fontSize: 10,
-          fontWeight: 900,
-          letterSpacing: '0.16em',
-          textTransform: 'uppercase',
-        }}
-      >
+      <div className="section-label training-period-speeds__title">
         Скорости {periodNumber}-го периода
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+      <div
+        className="training-period-speeds__grid"
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 4 }}
+      >
         {items.map((item) => (
           <div key={item.label} style={{ minWidth: 0 }}>
             <div
               style={{
                 color: 'rgba(15, 23, 42, 0.54)',
-                fontSize: 11,
+                fontSize: 'clamp(8px, 2.5vw, 10px)',
                 fontWeight: 800,
                 lineHeight: 1.1,
               }}
@@ -8434,7 +8473,7 @@ function PeriodSpeedSummary({
               style={{
                 marginTop: 3,
                 color: 'var(--ink)',
-                fontSize: 15,
+                fontSize: 'clamp(9px, 2.8vw, 12px)',
                 fontWeight: 900,
                 fontVariantNumeric: 'tabular-nums',
                 lineHeight: 1.1,

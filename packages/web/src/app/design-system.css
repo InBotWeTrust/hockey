@@ -47,6 +47,15 @@
   filter: none;
   transform: none;
 }
+.app-shell--arena.arena-bg--beginner::before {
+  background-image: url('/backgrounds/arena-beginner.webp');
+}
+.app-shell--arena.arena-bg--amateur::before {
+  background-image: url('/backgrounds/arena-amateur.webp');
+}
+.app-shell--arena.arena-bg--professional::before {
+  background-image: url('/sprites/app-arena-ice.webp');
+}
 .app-shell--arena::after {
   opacity: 0;
 }
@@ -754,8 +763,8 @@
 }
 
 .bottom-nav__icon-wrap--active {
-  background: linear-gradient(145deg, rgba(18, 57, 94, 0.98), rgba(8, 39, 70, 0.98));
-  border-color: rgba(137, 202, 250, 0.22);
+  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(15, 23, 42, 0.92);
   box-shadow:
     0 7px 16px rgba(5, 27, 50, 0.32),
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
@@ -1475,6 +1484,13 @@
 
 .bonus-games-skill-tabs .segmented-tabs {
   width: 100%;
+}
+
+.bonus-games-attempt-allowance {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
 }
 
 .bonus-games-rules {
@@ -3463,6 +3479,33 @@
   color: var(--ink);
 }
 
+.profile-screen--locker-bg,
+.mode-shell--locker {
+  background-color: #071427;
+}
+
+.locker-room-bg--beginner {
+  background:
+    linear-gradient(180deg, rgba(7, 20, 39, 0.12), rgba(7, 20, 39, 0.38)),
+    url('/backgrounds/locker-room-beginner.webp') center top / cover no-repeat;
+}
+
+.locker-room-bg--amateur {
+  background:
+    linear-gradient(180deg, rgba(7, 20, 39, 0.12), rgba(7, 20, 39, 0.38)),
+    url('/backgrounds/locker-room-amateur.webp') center top / cover no-repeat;
+}
+
+.locker-room-bg--professional {
+  background:
+    linear-gradient(180deg, rgba(7, 20, 39, 0.12), rgba(7, 20, 39, 0.38)),
+    url('/backgrounds/locker-room-detailed.webp') center top / cover no-repeat;
+}
+
+.mode-shell--locker {
+  background-attachment: local;
+}
+
 .profile-screen--status,
 .profile-detail-screen--status {
   display: grid;
@@ -4428,19 +4471,158 @@
   font-size: 18px;
 }
 
-.inventory-shop-grid,
 .inventory-bank-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
 .inventory-product-card {
-  min-height: 194px;
   padding: 10px;
   border-radius: 22px;
-  grid-template-rows: 96px minmax(0, 1fr) auto;
   gap: 8px;
+}
+
+.inventory-bank-card__icon {
+  width: 52px;
+  height: 52px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--reward-coin);
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.inventory-bank-card__copy {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.inventory-bank-card__action {
+  min-width: 78px;
+  display: grid;
+  justify-items: stretch;
+  gap: 8px;
+  text-align: center;
+}
+
+.inventory-bank-card__action strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.inventory-bank-card__action .btn {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 12px;
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.inventory-history-filters .segmented-tabs {
+  width: 100%;
+}
+
+.inventory-history-groups {
+  display: grid;
+  gap: 16px;
+}
+
+.inventory-history-group {
+  display: grid;
+  gap: 7px;
+}
+
+.inventory-history-group > h3 {
+  margin: 0;
+  padding: 2px 0;
+}
+
+.inventory-history-list {
+  display: grid;
+  gap: 7px;
+}
+
+.inventory-history-row {
+  min-width: 0;
+  min-height: 68px;
+  padding: 10px 11px;
+  border-radius: 19px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.inventory-history-row__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.inventory-history-row__icon--reward {
+  color: #0f766e;
+  background: rgba(13, 148, 136, 0.12);
+}
+
+.inventory-history-row__icon--inventory {
+  color: var(--reward-coin);
+  background: rgba(255, 184, 0, 0.12);
+}
+
+.inventory-history-row__copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.inventory-history-row__copy strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.inventory-history-row__copy span {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.inventory-history-row__amounts {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.inventory-history-empty {
+  margin: 10px 4px 0;
+  color: rgba(240, 246, 255, 0.86);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.45;
+  text-shadow: 0 1px 10px rgba(2, 8, 23, 0.5);
+}
+
+.inventory-history-load-more {
+  width: 100%;
+  min-height: 42px;
 }
 
 .inventory-product-card > button:first-child {
@@ -4476,17 +4658,9 @@
     font-size: 12px !important;
   }
 
-  .inventory-shop-grid,
-  .inventory-bank-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
-
   .inventory-product-card {
-    min-height: 188px;
     padding: 8px;
     border-radius: 19px;
-    grid-template-rows: 104px minmax(0, 1fr) auto;
     gap: 7px;
   }
 
@@ -4504,9 +4678,20 @@
   }
 
   .inventory-bank-card {
-    min-height: 166px !important;
+    min-height: 96px !important;
     padding: 10px !important;
     border-radius: 19px !important;
+  }
+
+  .inventory-history-row {
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .inventory-history-row__icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
   }
 }
 
@@ -5674,6 +5859,111 @@ button.daily-calendar__day:active {
   color: #713f12;
 }
 
+.training-history {
+  display: grid;
+  gap: 8px;
+}
+
+.training-settings {
+  display: grid;
+  gap: 8px;
+}
+
+.training-period-speeds__title.section-label {
+  margin: 0;
+  padding: 0;
+}
+
+.training-period-speeds__grid > div {
+  overflow: hidden;
+}
+
+.training-period-speeds__grid > div > div:last-child {
+  white-space: nowrap;
+}
+
+.training-settings__title,
+.training-history__title {
+  margin-left: -14px;
+}
+
+.training-history__content {
+  display: grid;
+  gap: 8px;
+}
+
+.training-history__state {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.training-history .daily-history-summary {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 22px;
+}
+
+.training-history-summary__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.training-history-summary__header h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.training-history-summary__header > strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.training-history-summary__tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.training-history-summary__tile {
+  min-width: 0;
+  padding: 9px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.48);
+  text-align: center;
+}
+
+.training-history-summary__tile span {
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.training-history-summary__tile strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.training-result-modal__summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .daily-calendar__day--active-today {
   animation: daily-calendar-active-pulse 1.8s ease-in-out infinite;
 }
@@ -6271,10 +6561,43 @@ button.daily-calendar__day:active {
   touch-action: pan-y;
 }
 
+.arena-video-cube__plate--amateur {
+  top: -11.8vh;
+  width: min(85.5%, 374px);
+}
+
+.arena-video-cube__plate--beginner {
+  top: -1vh;
+}
+
+.arena-video-cube__plate--beginner .arena-video-cube__screen {
+  left: 11.6%;
+  right: 11.6%;
+  top: 33.3%;
+  height: 48.2%;
+}
+
+.arena-video-cube__plate--amateur .arena-video-cube__screen {
+  left: 12.2%;
+  right: 12.2%;
+  top: 41.2%;
+  height: 47.2%;
+}
+
 @media (max-height: 700px) {
   .arena-video-cube__plate {
     top: 0;
     width: min(76%, 312px);
+  }
+
+
+  .arena-video-cube__plate--amateur {
+    top: -7vh;
+    width: min(84%, 344px);
+  }
+
+  .arena-video-cube__plate--beginner {
+    top: 0;
   }
 }
 
@@ -9866,6 +10189,23 @@ button.daily-calendar__day:active {
   text-shadow: 0 2px 9px rgba(3, 12, 24, 0.78);
 }
 
+.weekly-challenge-admin-task__fields {
+  grid-template-columns:
+    minmax(180px, 0.9fr) minmax(220px, 1.4fr) minmax(110px, 0.5fr) auto;
+}
+
+@media (max-width: 640px) {
+  .weekly-challenge-admin-task__fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .weekly-challenge-admin-task__remove.chip {
+    width: 100%;
+    justify-content: center;
+    align-self: stretch !important;
+  }
+}
+
 .admin-section-label {
   margin: 2px 0 -2px;
 }
@@ -10751,4 +11091,301 @@ button.daily-calendar__day:active {
 .app-shell--unified-glass .tournament-bracket-player--bronze-winner {
   background: rgba(205, 139, 85, 0.22);
   box-shadow: inset 0 0 0 1px rgba(158, 96, 47, 0.2);
+}
+
+/* Weekly challenge catalogue */
+.weekly-challenge-screen {
+  padding: calc(22px + var(--app-safe-top)) 14px 24px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.weekly-challenge-screen__content {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.weekly-challenge-screen__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.weekly-challenge-screen__back.icon-btn {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.weekly-challenge-screen__title {
+  min-width: 0;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.weekly-challenge-filters.segmented-tabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  width: 100%;
+  padding: 4px;
+}
+
+.weekly-challenge-filter.segmented-tabs__item {
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: clip;
+}
+
+.weekly-challenge-section-title {
+  margin: 2px 0 -2px;
+  padding-inline: 0;
+}
+
+.weekly-challenge-empty {
+  margin: 12px 4px 0;
+  color: rgba(240, 246, 255, 0.86);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.45;
+  text-shadow: 0 1px 10px rgba(2, 8, 23, 0.5);
+}
+
+.weekly-challenge-list {
+  display: grid;
+  gap: 10px;
+}
+
+.weekly-challenge-card {
+  padding: 15px 16px 16px;
+  border-radius: 22px;
+  display: grid;
+  gap: 10px;
+}
+
+.weekly-challenge-card__topline {
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.weekly-challenge-card__status {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.1);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+}
+
+.weekly-challenge-card__timer {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-align: right;
+}
+
+.weekly-challenge-card__title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 950;
+  line-height: 1.12;
+}
+
+.weekly-challenge-card__dates {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.weekly-challenge-card__description {
+  margin: 7px 0 0;
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.weekly-challenge-card__rewards {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.weekly-challenge-card__reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 950;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.weekly-challenge-card__reward > span:first-child {
+  width: 17px;
+  height: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.weekly-challenge-task-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid rgba(71, 85, 105, 0.13);
+}
+
+.weekly-challenge-task {
+  padding: 10px 0 9px;
+  border-bottom: 1px solid rgba(71, 85, 105, 0.13);
+}
+
+.weekly-challenge-task__line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.weekly-challenge-task__title {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.weekly-challenge-task__check {
+  flex: 0 0 auto;
+  color: #17233d;
+}
+
+.weekly-challenge-task__value {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.weekly-challenge-task__track {
+  height: 3px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.1);
+}
+
+.weekly-challenge-task__track > span {
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: var(--blue-accent);
+}
+
+.weekly-challenge-card__actions {
+  display: grid;
+  grid-template-columns: 0.82fr 1fr;
+  gap: 8px;
+}
+
+.weekly-challenge-card__actions .btn,
+.weekly-challenge-card > .btn {
+  min-height: 42px;
+  padding: 11px 14px;
+  font-size: 13px;
+}
+
+.weekly-challenge-card__decline.btn {
+  color: #b91c1c;
+  background: rgba(255, 255, 255, 0.48);
+  border-color: rgba(185, 28, 28, 0.2);
+  box-shadow: none;
+}
+
+.weekly-challenge-card__claimed {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.weekly-challenge-card__error {
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.weekly-challenge-reward-toast {
+  position: fixed;
+  z-index: 280;
+  right: 18px;
+  bottom: calc(88px + var(--app-safe-bottom));
+  left: 18px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.weekly-challenge-reward-toast__card {
+  width: min(100%, 330px);
+  padding: 14px 16px;
+  border-radius: 18px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  animation: reward-pop 2.6s ease both;
+}
+
+.weekly-challenge-reward-toast__title {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.weekly-challenge-reward-toast__values {
+  margin-top: 3px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+@media (max-width: 420px) {
+  .weekly-challenge-card {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
 }

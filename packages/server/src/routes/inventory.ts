@@ -46,9 +46,6 @@ interface InventoryState {
     nutritionItemId: string | null;
   };
   items: Record<EquipmentKind, InventoryItemDto[]>;
-  purchaseHistory: InventoryPurchaseDto[];
-  bankHistory: BankPurchaseDto[];
-  transactionHistory: InventoryTransactionDto[];
 }
 
 interface InventoryItemDto {
@@ -80,16 +77,6 @@ interface InventoryItemDto {
   };
   chargesAvailable: number;
   chargesReserved: number;
-}
-
-interface InventoryPurchaseDto {
-  id: string;
-  itemId: string | null;
-  title: string;
-  kind: EquipmentKind | null;
-  tokensSpent: number;
-  chargesAdded: number;
-  createdAt: string;
 }
 
 interface BankPurchaseDto {
@@ -137,6 +124,35 @@ const equipmentPatchSchema = z
 const itemParamsSchema = z.object({
   itemId: z.string().uuid(),
 });
+
+const transactionHistoryQuerySchema = z.object({
+  filter: z.enum(['all', 'credit', 'debit', 'ruble']).default('all'),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  cursor: z.string().min(1).max(512).optional(),
+});
+
+interface TransactionHistoryCursor {
+  createdAt: string;
+  id: string;
+}
+
+function encodeTransactionCursor(cursor: TransactionHistoryCursor): string {
+  return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+}
+
+function decodeTransactionCursor(value: string | undefined): TransactionHistoryCursor | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as unknown;
+    const result = z
+      .object({ createdAt: z.string().datetime(), id: z.string().min(1).max(100) })
+      .safeParse(parsed);
+    if (!result.success) throw new Error('invalid cursor');
+    return result.data;
+  } catch {
+    throw new AppError('bad_request', 'invalid transaction cursor', 400);
+  }
+}
 
 function pluralRu(value: number, one: string, few: string, many: string): string {
   const mod100 = Math.abs(value) % 100;
@@ -468,94 +484,6 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
     return active?.id ?? null;
   };
 
-  const { rows: historyRows } = await client.query<{
-    id: string;
-    available_delta: number;
-    created_at: Date;
-    metadata: {
-      inventory_item_id?: string;
-      title?: string;
-      item_kind?: EquipmentKind;
-      charges_added?: number;
-    };
-  }>(
-    `select id::text, available_delta, created_at, metadata
-       from currency_ledger
-      where user_id = $1
-        and reason = 'inventory_purchase'
-      order by created_at desc, id desc
-      limit 10`,
-    [userId],
-  );
-
-  const { rows: bankHistoryRows } = await client.query<{
-    id: string;
-    title: string;
-    amount_rub: number;
-    status: BankPurchaseDto['status'];
-    created_at: Date;
-    paid_at: Date | null;
-  }>(
-    `select id::text, title, amount_rub, status, created_at, paid_at
-       from payments
-      where user_id = $1
-      order by created_at desc, id desc
-      limit 20`,
-    [userId],
-  );
-
-  const { rows: transactionRows } = await client.query<{
-    id: string;
-    reason: string;
-    available_delta: number;
-    created_at: Date;
-    metadata: Record<string, unknown>;
-  }>(
-    `select id::text, reason, available_delta, created_at, metadata
-       from currency_ledger
-      where user_id = $1
-      order by created_at desc, id desc
-      limit 30`,
-    [userId],
-  );
-
-  const ledgerTransactions: InventoryTransactionDto[] = transactionRows
-    .map((row) => {
-      const metadata = row.metadata ?? {};
-      const amounts: InventoryTransactionAmountDto[] = [];
-      const coinDelta = Number(row.available_delta);
-      if (coinDelta !== 0) amounts.push({ currency: 'coin', value: coinDelta });
-      const stars = numberMetadata(metadata, 'stars');
-      if (stars !== 0) amounts.push({ currency: 'star', value: stars });
-      const experience = numberMetadata(metadata, 'experience');
-      if (experience !== 0) amounts.push({ currency: 'experience', value: experience });
-      if (amounts.length === 0) return null;
-      return {
-        id: `ledger-${row.id}`,
-        title: transactionTitle(row.reason, metadata),
-        subtitle: transactionSubtitle(row.created_at, row.reason, metadata),
-        category: transactionCategory(row.reason),
-        flow: transactionFlow(amounts),
-        amounts,
-        createdAt: row.created_at.toISOString(),
-      };
-    })
-    .filter((item): item is InventoryTransactionDto => item !== null);
-
-  const bankTransactions: InventoryTransactionDto[] = bankHistoryRows.map((row) => ({
-    id: `payment-${row.id}`,
-    title: row.title,
-    subtitle: `${row.created_at.toISOString()} · банк · ${bankStatusText(row.status)}`,
-    category: 'bank',
-    flow: bankTransactionFlow(row.status),
-    amounts: [{ currency: 'ruble', value: bankTransactionAmount(row) }],
-    createdAt: row.created_at.toISOString(),
-  }));
-
-  const transactionHistory = [...ledgerTransactions, ...bankTransactions]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 40);
-
   return {
     balances: {
       tokens: Number(account.balance),
@@ -567,24 +495,124 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
       nutritionItemId: activeEquipmentId('nutrition', account.equipped_nutrition_id),
     },
     items,
-    purchaseHistory: historyRows.map((row) => ({
+  };
+}
+
+async function fetchTransactionHistory(
+  client: DbClient,
+  userId: string,
+  filter: 'all' | 'credit' | 'debit' | 'ruble',
+  limit: number,
+  cursor: TransactionHistoryCursor | null,
+): Promise<{ transactions: InventoryTransactionDto[]; nextCursor: string | null }> {
+  const { rows } = await client.query<{
+    id: string;
+    source: 'ledger' | 'bank';
+    created_at: Date;
+    reason: string | null;
+    available_delta: number | null;
+    metadata: Record<string, unknown> | null;
+    title: string | null;
+    amount_rub: number | null;
+    status: BankPurchaseDto['status'] | null;
+    paid_at: Date | null;
+  }>(
+    `with history as (
+       select 'ledger-' || id::text as id,
+              'ledger'::text as source,
+              created_at,
+              reason,
+              available_delta,
+              metadata,
+              null::text as title,
+              null::int as amount_rub,
+              null::text as status,
+              null::timestamptz as paid_at,
+              coalesce(case when jsonb_typeof(metadata -> 'stars') = 'number' then (metadata ->> 'stars')::numeric else 0 end, 0) as stars_delta,
+              coalesce(case when jsonb_typeof(metadata -> 'experience') = 'number' then (metadata ->> 'experience')::numeric else 0 end, 0) as experience_delta
+         from currency_ledger
+        where user_id = $1
+       union all
+       select 'payment-' || id::text,
+              'bank'::text,
+              created_at,
+              null::text,
+              null::int,
+              null::jsonb,
+              title,
+              amount_rub,
+              status,
+              paid_at,
+              0::numeric,
+              0::numeric
+         from payments
+        where user_id = $1
+     )
+     select id, source, created_at, reason, available_delta, metadata, title,
+            amount_rub, status, paid_at
+       from history
+      where (source = 'bank' or available_delta <> 0 or stars_delta <> 0 or experience_delta <> 0)
+        and (
+        $2 = 'all'
+        or ($2 = 'ruble' and source = 'bank')
+        or ($2 = 'credit' and (
+          (source = 'ledger' and (available_delta > 0 or stars_delta > 0 or experience_delta > 0))
+          or (source = 'bank' and status = 'refunded')
+        ))
+        or ($2 = 'debit' and source = 'ledger'
+          and available_delta <= 0 and stars_delta <= 0 and experience_delta <= 0
+          and (available_delta < 0 or stars_delta < 0 or experience_delta < 0))
+      )
+        and ($3::timestamptz is null or (created_at, id) < ($3::timestamptz, $4::text))
+      order by created_at desc, id desc
+      limit $5`,
+    [userId, filter, cursor?.createdAt ?? null, cursor?.id ?? '', limit + 1],
+  );
+
+  const pageRows = rows.slice(0, limit);
+  const transactions = pageRows.map((row): InventoryTransactionDto => {
+    if (row.source === 'ledger') {
+      const metadata = row.metadata ?? {};
+      const amounts: InventoryTransactionAmountDto[] = [];
+      const coinDelta = Number(row.available_delta);
+      if (coinDelta !== 0) amounts.push({ currency: 'coin', value: coinDelta });
+      const stars = numberMetadata(metadata, 'stars');
+      if (stars !== 0) amounts.push({ currency: 'star', value: stars });
+      const experience = numberMetadata(metadata, 'experience');
+      if (experience !== 0) amounts.push({ currency: 'experience', value: experience });
+      return {
+        id: row.id,
+        title: transactionTitle(row.reason ?? '', metadata),
+        subtitle: transactionSubtitle(row.created_at, row.reason ?? '', metadata),
+        category: transactionCategory(row.reason ?? ''),
+        flow: transactionFlow(amounts),
+        amounts,
+        createdAt: row.created_at.toISOString(),
+      };
+    }
+    const status = row.status ?? 'canceled';
+    return {
       id: row.id,
-      itemId: row.metadata.inventory_item_id ?? null,
-      title: row.metadata.title ?? 'Покупка инвентаря',
-      kind: row.metadata.item_kind ?? null,
-      tokensSpent: Math.abs(Number(row.available_delta)),
-      chargesAdded: Number(row.metadata.charges_added ?? 0),
+      title: row.title ?? 'Операция банка',
+      subtitle: `${row.created_at.toISOString()} · банк · ${bankStatusText(status)}`,
+      category: 'bank',
+      flow: bankTransactionFlow(status),
+      amounts: [
+        {
+          currency: 'ruble',
+          value: bankTransactionAmount({ amount_rub: row.amount_rub ?? 0, status }),
+        },
+      ],
       createdAt: row.created_at.toISOString(),
-    })),
-    bankHistory: bankHistoryRows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      amountRub: Number(row.amount_rub),
-      status: row.status,
-      createdAt: row.created_at.toISOString(),
-      paidAt: row.paid_at?.toISOString() ?? null,
-    })),
-    transactionHistory,
+    };
+  });
+  const last = pageRows[pageRows.length - 1];
+  return {
+    transactions,
+    nextCursor:
+      rows.length > limit && last
+        ? encodeTransactionCursor({ createdAt: last.created_at.toISOString(), id: last.id })
+        : null,
   };
 }
 
@@ -668,6 +696,18 @@ async function purchaseInventoryItem(
 export const inventoryRoutes: FastifyPluginAsync = async (app) => {
   app.get('/inventory/me', { preHandler: [app.authenticate] }, async (req) => {
     return fetchInventoryState(app.pg, req.user.id);
+  });
+
+  app.get('/inventory/transactions', { preHandler: [app.authenticate] }, async (req) => {
+    const parsed = transactionHistoryQuerySchema.safeParse(req.query);
+    if (!parsed.success) throw new AppError('bad_request', 'invalid transaction history query', 400);
+    return fetchTransactionHistory(
+      app.pg,
+      req.user.id,
+      parsed.data.filter,
+      parsed.data.limit,
+      decodeTransactionCursor(parsed.data.cursor),
+    );
   });
 
   app.post('/inventory/items/:itemId/purchase', { preHandler: [app.authenticate] }, async (req) => {

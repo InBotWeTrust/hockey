@@ -4,6 +4,7 @@ import { AppError } from '../plugins/errors.js';
 import { fetchWeeklyChallengeProgress } from './progress.js';
 import { grantWeeklyChallengeReward } from './rewards.js';
 import type {
+  WeeklyChallengeCatalogResponse,
   WeeklyChallengeCurrentResponse,
   WeeklyChallengeDTO,
   WeeklyChallengeDeclineRow,
@@ -12,6 +13,7 @@ import type {
   WeeklyChallengeStatus,
   WeeklyChallengeTaskRow,
 } from './types.js';
+import { classifyWeeklyChallengeForCatalog } from './types.js';
 
 type Queryable = Pool | PoolClient;
 
@@ -47,6 +49,28 @@ async function fetchActiveChallenge(db: Queryable): Promise<WeeklyChallengeRow |
       limit 1`,
   );
   return rows[0] ?? null;
+}
+
+async function fetchCatalogChallenges(
+  db: Queryable,
+  userId: string,
+  now: Date,
+): Promise<WeeklyChallengeRow[]> {
+  const { rows } = await db.query<WeeklyChallengeRow>(
+    `select challenge.*
+       from weekly_challenges challenge
+      where challenge.start_at > $2
+         or exists (
+              select 1
+                from weekly_challenge_participants participant
+               where participant.challenge_id = challenge.id
+                 and participant.user_id = $1
+            )
+      order by challenge.start_at desc, challenge.id
+      limit 100`,
+    [userId, now],
+  );
+  return rows;
 }
 
 async function fetchChallengeForUpdate(
@@ -190,11 +214,11 @@ async function mapChallenge(
   const canJoin =
     participant === null &&
     decline === null &&
+    challenge.is_active &&
     challenge.join_enabled &&
     status !== 'not_open' &&
     status !== 'finished';
-  const canClaimReward =
-    participant !== null && rewardClaimedAt === null && allTasksCompleted;
+  const canClaimReward = participant !== null && rewardClaimedAt === null && allTasksCompleted;
 
   return {
     id: challenge.id,
@@ -244,6 +268,28 @@ export async function getCurrentWeeklyChallenge(
   }
   if (!challenge) return { challenge: null, pendingRewards };
   return { challenge: await mapChallenge(db, challenge, userId, now), pendingRewards };
+}
+
+export async function getWeeklyChallengeCatalog(
+  db: Queryable,
+  userId: string,
+  now = new Date(),
+): Promise<WeeklyChallengeCatalogResponse> {
+  const response: WeeklyChallengeCatalogResponse = {
+    future: [],
+    active: [],
+    completed: [],
+  };
+  const candidates = await fetchCatalogChallenges(db, userId, now);
+  for (const candidate of candidates) {
+    const challenge = await mapChallenge(db, candidate, userId, now);
+    const section = classifyWeeklyChallengeForCatalog(challenge);
+    if (section !== null) response[section].push(challenge);
+  }
+  response.future.sort((left, right) => left.startAt.localeCompare(right.startAt));
+  response.active.sort((left, right) => left.endAt.localeCompare(right.endAt));
+  response.completed.sort((left, right) => right.endAt.localeCompare(left.endAt));
+  return response;
 }
 
 export async function joinWeeklyChallenge(

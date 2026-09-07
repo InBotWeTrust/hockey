@@ -41,6 +41,11 @@ const shotBodySchema = z.object({
   claimed_result: z.enum(['goal', 'save', 'miss']),
 });
 
+const historyQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
 const TAP_TIME_FUTURE_TOLERANCE_MS = 2500;
 const TAP_TIME_STALE_TOLERANCE_MS = 12_000;
 const TAP_TIME_PAUSE_ALLOWANCE_PER_SHOT_MS = 2_000;
@@ -53,6 +58,7 @@ interface TrainingSessionRow {
   state: 'active' | 'closed';
   game_core_version: number;
   training_seed: string;
+  shots_limit: number;
   started_at: Date;
   closed_at: Date | null;
 }
@@ -77,6 +83,22 @@ interface TrainingStateResponse {
 interface TrainingShotSubmitResponse {
   server_result: 'goal' | 'save' | 'miss';
   state: TrainingStateResponse;
+}
+
+interface TrainingHistorySession {
+  day_date: string;
+  selected_period: number;
+  shots_limit: number;
+  total_shots: number;
+  total_goals: number;
+  completed: boolean;
+}
+
+interface TrainingHistorySummary {
+  played_trainings: number;
+  completed_trainings: number;
+  total_shots: number;
+  total_goals: number;
 }
 
 interface TournamentDayTrainingLock {
@@ -160,7 +182,7 @@ async function fetchTodayTrainingSession(
 ): Promise<TrainingSessionRow | null> {
   const { rows } = await client.query<TrainingSessionRow>(
     `select id, user_id, day_date::text as day_date, selected_period, state,
-            game_core_version, training_seed, started_at, closed_at
+            game_core_version, training_seed, shots_limit, started_at, closed_at
        from training_session
       where user_id = $1 and day_date = $2::date
       for update`,
@@ -224,7 +246,7 @@ async function buildTrainingState(
     selected_period: session.selected_period,
     shots_taken: stats.shots,
     goals: stats.goals,
-    shots_limit: settings.training.shotsLimit,
+    shots_limit: session.shots_limit,
     day_date: session.day_date,
     next_day_starts_at: nextDay,
     training_seed: session.training_seed,
@@ -234,6 +256,89 @@ async function buildTrainingState(
     period_speed_presets: settings.daily.periodSpeedPresets,
     tournament_day_locked: tournamentLock.locked,
     tournament_day_starts_at: tournamentLock.startsAt,
+  };
+}
+
+async function fetchTrainingHistory(
+  client: PoolClient,
+  userId: string,
+  limit: number,
+  offset: number,
+): Promise<{
+  sessions: TrainingHistorySession[];
+  hasMore: boolean;
+  nextOffset: number | null;
+  summary: TrainingHistorySummary;
+}> {
+  const { rows } = await client.query<{
+    day_date: string;
+    selected_period: number;
+    shots_limit: number;
+    total_shots: number;
+    total_goals: number;
+  }>(
+    `select to_char(ts.day_date, 'YYYY-MM-DD') as day_date,
+            ts.selected_period,
+            ts.shots_limit,
+            count(ss.id)::int as total_shots,
+            count(ss.id) filter (where ss.server_result = 'goal')::int as total_goals
+       from training_session ts
+       left join shot_session ss
+         on ss.training_session_id = ts.id
+        and ss.user_id = ts.user_id
+        and ss.mode = 'training'
+      where ts.user_id = $1
+      group by ts.id
+      order by ts.day_date desc, ts.started_at desc
+      limit $2 offset $3`,
+    [userId, limit + 1, offset],
+  );
+  const sessions = rows.slice(0, limit).map((row) => ({
+    day_date: row.day_date,
+    selected_period: Number(row.selected_period),
+    shots_limit: Number(row.shots_limit),
+    total_shots: Number(row.total_shots),
+    total_goals: Number(row.total_goals),
+    completed: Number(row.total_shots) >= Number(row.shots_limit),
+  }));
+  const { rows: summaryRows } = await client.query<TrainingHistorySummary>(
+    `with session_totals as (
+       select ts.id,
+              ts.shots_limit,
+              count(ss.id)::int as total_shots,
+              count(ss.id) filter (where ss.server_result = 'goal')::int as total_goals
+         from training_session ts
+         left join shot_session ss
+           on ss.training_session_id = ts.id
+          and ss.user_id = ts.user_id
+          and ss.mode = 'training'
+        where ts.user_id = $1
+        group by ts.id
+     )
+     select count(*) filter (where total_shots > 0)::int as played_trainings,
+            count(*) filter (where total_shots >= shots_limit)::int as completed_trainings,
+            coalesce(sum(total_shots), 0)::int as total_shots,
+            coalesce(sum(total_goals), 0)::int as total_goals
+       from session_totals`,
+    [userId],
+  );
+  const summary = summaryRows[0] ?? {
+    played_trainings: 0,
+    completed_trainings: 0,
+    total_shots: 0,
+    total_goals: 0,
+  };
+  const hasMore = rows.length > limit;
+  return {
+    sessions,
+    hasMore,
+    nextOffset: hasMore ? offset + sessions.length : null,
+    summary: {
+      played_trainings: Number(summary.played_trainings),
+      completed_trainings: Number(summary.completed_trainings),
+      total_shots: Number(summary.total_shots),
+      total_goals: Number(summary.total_goals),
+    },
   };
 }
 
@@ -369,6 +474,21 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
     }),
   );
 
+  app.get('/duel/training/history', { preHandler: [app.authenticate] }, async (req) => {
+    const parsed = historyQuerySchema.safeParse(req.query);
+    if (!parsed.success) throw new AppError('bad_request', 'invalid training history query', 400);
+    return withTransaction(app, async (client) => {
+      const now = new Date();
+      await reconcileTrainingSession(client, req.user.id, now);
+      return fetchTrainingHistory(
+        client,
+        req.user.id,
+        parsed.data.limit,
+        parsed.data.offset,
+      );
+    });
+  });
+
   app.post('/duel/training/start', { preHandler: [app.authenticate] }, async (req) => {
     const parsed = startBodySchema.safeParse(req.body);
     if (!parsed.success) {
@@ -397,7 +517,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
                 set selected_period = $1
               where id = $2
               returning id, user_id, day_date::text as day_date, selected_period, state,
-                        game_core_version, training_seed, started_at, closed_at`,
+                        game_core_version, training_seed, shots_limit, started_at, closed_at`,
             [selectedPeriod, session.id],
           );
           return buildTrainingState(
@@ -432,16 +552,24 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
       const { rows } = await client.query<TrainingSessionRow>(
         `insert into training_session
              (user_id, day_date, selected_period, state, game_core_version,
-              training_seed, started_at)
-           values ($1, $2::date, $3, 'active', $4, $5, $6)
+              training_seed, shots_limit, started_at)
+           values ($1, $2::date, $3, 'active', $4, $5, $6, $7)
            on conflict (user_id, day_date) do update
              set selected_period = case
                    when training_session.state = 'active' then excluded.selected_period
                    else training_session.selected_period
                  end
            returning id, user_id, day_date::text as day_date, selected_period, state,
-                     game_core_version, training_seed, started_at, closed_at`,
-        [req.user.id, localToday, selectedPeriod, GAME_CORE_VERSION, trainingSeed, now],
+                     game_core_version, training_seed, shots_limit, started_at, closed_at`,
+        [
+          req.user.id,
+          localToday,
+          selectedPeriod,
+          GAME_CORE_VERSION,
+          trainingSeed,
+          settings.training.shotsLimit,
+          now,
+        ],
       );
       const created = rows[0]!;
       await appendEvent(client, req.user.id, 'training_session_created', {
@@ -493,7 +621,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
       }
 
       const stats = await aggregateTraining(client, session.id);
-      if (stats.shots >= settings.training.shotsLimit) {
+      if (stats.shots >= session.shots_limit) {
         throw new AppError('conflict', 'training shot quota exhausted', 409);
       }
       const expectedShotIndex = stats.shots + 1;
@@ -563,7 +691,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         });
       }
 
-      if (expectedShotIndex >= settings.training.shotsLimit) {
+      if (expectedShotIndex >= session.shots_limit) {
         await client.query(
           `update training_session
               set state = 'closed', closed_at = $1
@@ -578,7 +706,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
           userId: req.user.id,
           trainingSessionId: session.id,
           dayDate: session.day_date,
-          shotsLimit: settings.training.shotsLimit,
+          shotsLimit: session.shots_limit,
           dailyTotalPeriods: settings.daily.totalPeriods,
           dailyShotsPerPeriod: settings.daily.shotsPerPeriod,
         });

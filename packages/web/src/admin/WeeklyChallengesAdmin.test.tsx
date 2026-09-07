@@ -89,5 +89,12 @@ describe('WeeklyChallengesAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
 
     expect(screen.getByText('Новый челлендж')).toBeInTheDocument();
+    const taskType = screen.getByRole('combobox', { name: 'Тип задания 1' });
+    const taskRow = taskType.closest('.weekly-challenge-admin-task__fields');
+    expect(taskRow).not.toBeNull();
+    expect(taskRow).toContainElement(screen.getByRole('button', { name: 'Удалить' }));
+    expect(screen.getByRole('button', { name: 'Удалить' })).toHaveClass(
+      'weekly-challenge-admin-task__remove',
+    );
   });
 });

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '../api/weeklyChallenge.js';
@@ -34,13 +34,13 @@ describe('WeeklyChallengeScreen', () => {
       id: '11111111-1111-1111-1111-111111111111',
       title: 'Неделя снайпера',
       description: 'Забрасывай шайбы.',
-      status: 'join_open',
+      status: 'running',
       joinOpenAt: '2026-06-01T09:00:00.000Z',
       startAt: '2026-06-02T09:00:00.000Z',
       endAt: '2026-06-09T09:00:00.000Z',
       joinEnabled: true,
-      reward: { coins: 100, stars: 5, experience: 50 },
-      participant: null,
+      reward: { coins: 100, stars: 50, experience: 50 },
+      participant: { joinedAt: '2026-06-01T10:00:00.000Z', rewardClaimedAt: null },
       declinedAt: null,
       tasks: [
         {
@@ -48,68 +48,109 @@ describe('WeeklyChallengeScreen', () => {
           type: 'goals_scored',
           title: '500 шайб',
           target: 500,
-          progress: null,
-          completed: null,
+          progress: 240,
+          completed: false,
         },
       ],
-      canJoin: true,
+      canJoin: false,
       canClaimReward: false,
       allTasksCompleted: false,
-      serverNow: '2026-06-01T10:00:00.000Z',
+      serverNow: '2026-06-03T10:00:00.000Z',
       ...overrides,
     };
   }
 
-  it('renders empty state when no active challenge exists', async () => {
-    vi.mocked(api.fetchWeeklyChallenge).mockResolvedValue({ challenge: null, pendingRewards: [] });
+  it('shows a plain readable empty state without another glass container', async () => {
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
+      future: [],
+      active: [],
+      completed: [],
+    });
 
     renderScreen();
 
-    expect(await screen.findByRole('heading', { name: 'Задания' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Задания' })).toBeInTheDocument();
+    const empty = await screen.findByText('Вы пока не участвуете в действующих челленджах');
+    expect(empty.closest('.glass')).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: 'Действующие (0)' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Челленджи', selected: true })).toBeInTheDocument();
-    expect(await screen.findByText('На этой неделе активного челленджа нет')).toBeInTheDocument();
   });
 
-  it('renders tasks and lets the user join', async () => {
-    vi.mocked(api.fetchWeeklyChallenge).mockResolvedValue({
-      challenge: challenge(),
-      pendingRewards: [],
-    });
-    vi.mocked(api.joinWeeklyChallenge).mockResolvedValue({ challenge: null, pendingRewards: [] });
-    vi.mocked(api.declineWeeklyChallenge).mockResolvedValue({
-      challenge: null,
-      pendingRewards: [],
+  it('filters future, active and completed personal challenges with counts', async () => {
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
+      future: [
+        challenge({
+          id: '22222222-2222-2222-2222-222222222222',
+          title: 'Следующая неделя',
+          status: 'not_open',
+          participant: null,
+          tasks: [{ ...challenge().tasks[0]!, progress: null, completed: null }],
+        }),
+      ],
+      active: [challenge()],
+      completed: [
+        challenge({
+          id: '33333333-3333-3333-3333-333333333333',
+          title: 'Пройденная неделя',
+          status: 'finished',
+          allTasksCompleted: true,
+          tasks: [{ ...challenge().tasks[0]!, progress: 500, completed: true }],
+        }),
+      ],
     });
 
     renderScreen();
 
     expect(await screen.findByText('Неделя снайпера')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Отклонить' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Участвовать' }));
-    await waitFor(() =>
-      expect(api.joinWeeklyChallenge).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111'),
+    const filters = screen.getByRole('tablist', { name: 'Фильтры челленджей' });
+    expect(filters).toHaveClass(
+      'segmented-tabs',
+      'weekly-challenge-filters',
     );
-    expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
+    expect(within(filters).queryByText('1')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Действующие (1)' })).toBeInTheDocument();
+    expect(screen.queryByText('Следующая неделя')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Будущие' }));
+    expect(screen.getByText('Следующая неделя')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Будущие (1)' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Пройденные' }));
+    expect(screen.getByText('Пройденная неделя')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Пройденные (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Действующие' })).toBeInTheDocument();
   });
 
-  it('renders an unclaimed reward from a previous challenge below the current challenge', async () => {
-    vi.mocked(api.fetchWeeklyChallenge).mockResolvedValue({
-      challenge: challenge({ id: '22222222-2222-2222-2222-222222222222' }),
-      pendingRewards: [
+  it('uses the first non-empty group when there is no active challenge', async () => {
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
+      future: [
         challenge({
-          id: '33333333-3333-3333-3333-333333333333',
-          title: 'Прошлая неделя',
-          status: 'finished',
-          canJoin: false,
-          canClaimReward: true,
-          allTasksCompleted: true,
-          participant: { joinedAt: '2026-05-20T09:00:00.000Z', rewardClaimedAt: null },
+          title: 'Скоро начнётся',
+          status: 'join_open',
+          participant: null,
+          canJoin: true,
+          tasks: [{ ...challenge().tasks[0]!, progress: null, completed: null }],
+        }),
+      ],
+      active: [],
+      completed: [],
+    });
+
+    renderScreen();
+
+    expect(await screen.findByText('Скоро начнётся')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Будущие', selected: true })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Будущие (1)' })).toBeInTheDocument();
+  });
+
+  it('renders tasks as compact rows instead of nested cards', async () => {
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
+      future: [],
+      active: [
+        challenge({
           tasks: [
+            challenge().tasks[0]!,
             {
-              id: 'task-previous',
-              type: 'goals_scored',
-              title: '1 шайба',
+              id: 'task-2',
+              type: 'duels_played',
+              title: 'Сыграть дуэль',
               target: 1,
               progress: 1,
               completed: true,
@@ -117,46 +158,53 @@ describe('WeeklyChallengeScreen', () => {
           ],
         }),
       ],
-    });
-    vi.mocked(api.claimWeeklyChallengeReward).mockResolvedValue({
-      challenge: challenge({ id: '22222222-2222-2222-2222-222222222222' }),
-      pendingRewards: [],
+      completed: [],
     });
 
     renderScreen();
 
-    expect(await screen.findByText('Неделя снайпера')).toBeInTheDocument();
-    expect(screen.getByText('Награда ждёт')).toBeInTheDocument();
-    expect(screen.getByText('Прошлая неделя')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Получить награду' }));
-    await waitFor(() =>
-      expect(api.claimWeeklyChallengeReward).toHaveBeenCalledWith(
-        '33333333-3333-3333-3333-333333333333',
-      ),
-    );
-    expect(await screen.findByText('+100')).toBeInTheDocument();
-    expect(await screen.findByText('· +5')).toBeInTheDocument();
-    expect(await screen.findByText('· +50')).toBeInTheDocument();
-    expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
+    const list = await screen.findByRole('list', { name: 'Задачи челленджа Неделя снайпера' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(list).getByText('240 / 500')).toBeInTheDocument();
+    expect(within(list).getByText('1 / 1')).toBeInTheDocument();
+    expect(list.querySelector('.weekly-challenge-task__check')).toBeInTheDocument();
   });
 
-  it('uses error haptics when claiming a reward fails', async () => {
-    vi.mocked(api.fetchWeeklyChallenge).mockResolvedValue({
-      challenge: challenge({
-        status: 'finished',
-        canJoin: false,
-        canClaimReward: true,
-        allTasksCompleted: true,
-        participant: { joinedAt: '2026-06-01T09:00:00.000Z', rewardClaimedAt: null },
-      }),
+  it('lets the player join a future challenge and claim a completed one', async () => {
+    const future = challenge({
+      id: '22222222-2222-2222-2222-222222222222',
+      title: 'Будущий челлендж',
+      status: 'join_open',
+      participant: null,
+      canJoin: true,
+      tasks: [{ ...challenge().tasks[0]!, progress: null, completed: null }],
+    });
+    const completed = challenge({
+      id: '33333333-3333-3333-3333-333333333333',
+      title: 'Готовая награда',
+      status: 'finished',
+      allTasksCompleted: true,
+      canClaimReward: true,
+      tasks: [{ ...challenge().tasks[0]!, progress: 500, completed: true }],
+    });
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
+      future: [future],
+      active: [],
+      completed: [completed],
+    });
+    vi.mocked(api.joinWeeklyChallenge).mockResolvedValue({ challenge: null, pendingRewards: [] });
+    vi.mocked(api.claimWeeklyChallengeReward).mockResolvedValue({
+      challenge: null,
       pendingRewards: [],
     });
-    vi.mocked(api.claimWeeklyChallengeReward).mockRejectedValue(new Error('Сервис недоступен'));
 
     renderScreen();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Получить награду' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Сервис недоступен');
-    expect(vibrate).toHaveBeenCalledWith([25, 35, 25]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Участвовать' }));
+    await waitFor(() => expect(api.joinWeeklyChallenge).toHaveBeenCalledWith(future.id));
+    fireEvent.click(screen.getByRole('tab', { name: 'Пройденные' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Получить награду' }));
+    await waitFor(() => expect(api.claimWeeklyChallengeReward).toHaveBeenCalledWith(completed.id));
+    expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
   });
 });

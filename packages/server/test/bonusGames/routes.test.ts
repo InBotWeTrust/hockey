@@ -205,6 +205,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     periods = PERIODS,
     targetGoals = periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
     breakDurationMs = 30_000,
+    skillCode = 'accuracy',
   }: {
     sortOrder?: number;
     status?: 'draft' | 'active' | 'archived';
@@ -213,6 +214,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     periods?: BonusPeriodRule[];
     targetGoals?: number;
     breakDurationMs?: number;
+    skillCode?: 'speed' | 'accuracy';
   } = {}): Promise<TestGame> {
     gameSequence += 1;
     const slug = `bonus-route-game-${gameSequence}`;
@@ -234,7 +236,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
           target_goals, qualification_rules, total_periods, break_duration_ms, period_rules,
           reward_coins, reward_stars, reward_experience, arena_theme_id,
           goalkeeper_ready_url, goalkeeper_save_url, revision)
-       values ($1, $2, 'accuracy', $3, $4, $5, $6, $7,
+       values ($1, $2, $16, $3, $4, $5, $6, $7,
                $8, $9::jsonb, $10, $11, $12::jsonb,
                100, 2, 50, $13, $14, $15, 7)
        returning id`,
@@ -258,6 +260,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
         arena.rows[0]!.id,
         `/goalies/${slug}-ready.webp`,
         `/goalies/${slug}-save.webp`,
+        skillCode,
       ],
     );
     return { id: game.rows[0]!.id, slug, arenaId: arena.rows[0]!.id };
@@ -271,6 +274,15 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     });
     expect(response.statusCode).toBe(201);
     return (response.json() as { attempt: AttemptDto }).attempt;
+  }
+
+  async function abandonAttempt(attemptId: string): Promise<void> {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/bonus-games/attempts/${attemptId}/abandon`,
+      headers,
+    });
+    expect(response.statusCode).toBe(200);
   }
 
   async function startPeriod(attemptId: string): Promise<AttemptDto> {
@@ -1184,6 +1196,46 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       active_attempt: { id: active.id, game_id: first.id },
     });
     expect(response.json().error.message).not.toContain(active.id);
+  });
+
+  it('allows two daily attempts per skill, including two on one game, and resets by local date', async () => {
+    const accuracy = await createGame({ skillCode: 'accuracy' });
+    const speed = await createGame({ skillCode: 'speed', sortOrder: 1 });
+
+    const firstAccuracy = await startAttempt(accuracy.id);
+    await abandonAttempt(firstAccuracy.id);
+    const secondAccuracy = await startAttempt(accuracy.id);
+    await abandonAttempt(secondAccuracy.id);
+
+    const exhausted = await app.inject({
+      method: 'POST',
+      url: `/bonus-games/${accuracy.id}/attempts`,
+      headers,
+    });
+    expect(exhausted.statusCode).toBe(409);
+    expect(exhausted.json().error).toEqual({
+      code: 'bonus_daily_attempt_limit',
+      message: 'daily bonus attempt limit reached',
+    });
+
+    const independentSpeed = await startAttempt(speed.id);
+    await abandonAttempt(independentSpeed.id);
+
+    const catalog = await app.inject({ method: 'GET', url: '/bonus-games', headers });
+    expect(catalog.statusCode).toBe(200);
+    expect(catalog.json().attempt_allowances).toMatchObject({
+      accuracy: { daily_limit: 2, used: 2, remaining: 0 },
+      speed: { daily_limit: 2, used: 1, remaining: 1 },
+    });
+
+    await pool.query(
+      `update bonus_game_daily_attempt_slot
+          set local_date = local_date - 1
+        where user_id = $1 and skill_code = 'accuracy'`,
+      [userId],
+    );
+    const nextLocalDay = await startAttempt(accuracy.id);
+    expect(nextLocalDay.game_id).toBe(accuracy.id);
   });
 
   it.each([

@@ -530,6 +530,97 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     expect(rows[0]?.input_payload).toMatchObject(configuredSpeeds);
   });
 
+  it('keeps the shots limit assigned when the training starts', async () => {
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('training.shots_limit', '2'::jsonb, 'test', 'test')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    const started = await startTraining(1);
+    expect(started.statusCode).toBe(200);
+    expect(started.json().shots_limit).toBe(2);
+
+    await pool.query(
+      `update game_settings set value = '1'::jsonb where key = 'training.shots_limit'`,
+    );
+    const firstShot = await submitShot(1);
+
+    expect(firstShot.statusCode).toBe(200);
+    expect(firstShot.json().state).toMatchObject({ state: 'active', shots_limit: 2, shots_taken: 1 });
+    const { rows } = await pool.query<{ shots_limit: number }>(
+      `select shots_limit from training_session where user_id = $1`,
+      [userId],
+    );
+    expect(rows[0]?.shots_limit).toBe(2);
+    await pool.query(
+      `update game_settings set value = '500'::jsonb where key = 'training.shots_limit'`,
+    );
+  });
+
+  it('returns paged training history and summary using each session limit', async () => {
+    const first = await startTraining(1);
+    expect(first.statusCode).toBe(200);
+    const { rows: sessionRows } = await pool.query<{ id: string }>(
+      `update training_session
+          set day_date = date '2026-08-29', state = 'closed', shots_limit = 2, closed_at = now()
+        where user_id = $1
+      returning id`,
+      [userId],
+    );
+    const sessionId = sessionRows[0]!.id;
+    await pool.query(
+      `insert into shot_session
+         (user_id, mode, training_session_id, period_number, shot_index, seed,
+          input_payload, server_result, game_core_version)
+       values
+         ($1, 'training', $2, 1, 1, 'history-1', '{}'::jsonb, 'goal', 1),
+         ($1, 'training', $2, 1, 2, 'history-2', '{}'::jsonb, 'save', 1)`,
+      [userId, sessionId],
+    );
+    const { rows: incompleteRows } = await pool.query<{ id: string }>(
+      `insert into training_session
+         (user_id, day_date, selected_period, state, game_core_version, training_seed,
+          shots_limit, started_at, closed_at)
+       values ($1, date '2026-08-28', 2, 'closed', 1, 'history-incomplete', 3, now(), now())
+       returning id`,
+      [userId],
+    );
+    await pool.query(
+      `insert into shot_session
+         (user_id, mode, training_session_id, period_number, shot_index, seed,
+          input_payload, server_result, game_core_version)
+       values ($1, 'training', $2, 2, 1, 'history-incomplete-1', '{}'::jsonb, 'save', 1)`,
+      [userId, incompleteRows[0]!.id],
+    );
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/duel/training/history?limit=1&offset=0',
+      headers: authHeader(),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      sessions: [
+        {
+          day_date: '2026-08-29',
+          shots_limit: 2,
+          total_shots: 2,
+          total_goals: 1,
+          completed: true,
+        },
+      ],
+      hasMore: true,
+      nextOffset: 1,
+      summary: {
+        played_trainings: 2,
+        completed_trainings: 1,
+        total_shots: 3,
+        total_goals: 1,
+      },
+    });
+  });
+
   it('closes after the 500th shot', async () => {
     await startTraining(1);
     for (let i = 1; i <= TRAINING_SHOTS_LIMIT; i += 1) {
