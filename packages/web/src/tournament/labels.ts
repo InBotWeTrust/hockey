@@ -1,3 +1,5 @@
+import type { TournamentRegularSource } from '../api/tournament.js';
+
 export function tournamentStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     draft: 'Черновик',
@@ -58,16 +60,16 @@ function formattedNumber(value: number, maximumFractionDigits: number): string {
 
 export function tournamentStandingValueLabel(
   rawValue: unknown,
-  regularSource: string,
+  regularSource: TournamentRegularSource,
   dailyMetric: string | null,
 ): string {
   const parsed = Number(rawValue);
   const value = Number.isFinite(parsed) ? parsed : 0;
-  if (regularSource !== 'head_to_head' && dailyMetric === 'goals_sum') {
+  if (regularSource === 'classic' && dailyMetric === 'goals_sum') {
     const goals = Math.round(value);
     return `${formattedNumber(goals, 0)} ${russianPlural(goals, 'гол', 'гола', 'голов')}`;
   }
-  if (regularSource !== 'head_to_head' && dailyMetric === 'accuracy_average') {
+  if (regularSource === 'classic' && dailyMetric === 'accuracy_average') {
     return `${formattedNumber(value * 100, 1)}%`;
   }
   const pointsLabel = Number.isInteger(value)

@@ -487,9 +487,7 @@ export function DailyScreen(): JSX.Element {
   const tournamentId = routeParams.get('tournament');
   const tournamentFixtureId = routeParams.get('fixture');
   const tournamentGameRoute =
-    tournamentOrigin &&
-    tournamentId !== null &&
-    (routeParams.get('view') === 'daily' || routeParams.get('view') === 'classic');
+    tournamentOrigin && tournamentId !== null && routeParams.get('view') === 'classic';
   const tournamentGameContext = useQuery({
     queryKey: ['tournament-game-context', tournamentId],
     queryFn: () => fetchTournamentGameContext(tournamentId!),
@@ -521,11 +519,6 @@ export function DailyScreen(): JSX.Element {
     if (tournamentGameRoute) return;
     void refresh();
   }, [refresh, tournamentGameRoute]);
-
-  useEffect(() => {
-    if (tournamentGameContext.data?.action !== 'play_daily') return;
-    void refresh();
-  }, [refresh, tournamentGameContext.data?.action]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -583,10 +576,7 @@ export function DailyScreen(): JSX.Element {
         />
       );
     }
-    if (
-      tournamentGameContext.data.action !== 'play_daily' &&
-      tournamentGameContext.data.action !== 'play_classic'
-    ) {
+    if (tournamentGameContext.data.action !== 'play_classic') {
       return (
         <TournamentGameContextCard
           context={tournamentGameContext.data}
@@ -723,10 +713,7 @@ export function DailyScreen(): JSX.Element {
     navigate('/?view=amateur&from=sections', { replace: true });
   };
 
-  if (
-    (selectedLevel === 'beginner' && beginnerMode === 'daily' && dailyView === 'play') ||
-    tournamentGameContext.data?.action === 'play_daily'
-  ) {
+  if (selectedLevel === 'beginner' && beginnerMode === 'daily' && dailyView === 'play') {
     return (
       <DailyPlayView
         backLabel={tournamentOrigin ? 'К турниру' : 'К режимам'}

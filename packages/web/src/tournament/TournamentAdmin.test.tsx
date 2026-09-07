@@ -95,9 +95,9 @@ describe('TournamentAdmin', () => {
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1: дней на раунд' })).toHaveValue(2);
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1: максимум игр в день' })).toHaveValue(4);
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1: минут на готовность' })).toHaveValue(5);
-    expect(screen.getByRole('spinbutton', { name: 'Раунд 1: длительность игры, минуты' })).toHaveValue(
-      20,
-    );
+    expect(
+      screen.getByRole('spinbutton', { name: 'Раунд 1: длительность игры, минуты' }),
+    ).toHaveValue(20);
     expect(screen.getByText('Время игр раунда 1')).toBeInTheDocument();
     expect(screen.getByText('Время игр раунда 2')).toBeInTheDocument();
     expect(
@@ -1179,7 +1179,7 @@ describe('TournamentAdmin', () => {
     expect(screen.queryByRole('textbox', { name: /порядок площадок/i })).not.toBeInTheDocument();
   });
 
-  it('uses visual tables and cards for daily points, rewards and notifications', async () => {
+  it('uses visual tables and cards for classic points, rewards and notifications', async () => {
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
     vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
     vi.spyOn(api, 'createAdminTournament').mockResolvedValue({
@@ -1189,7 +1189,7 @@ describe('TournamentAdmin', () => {
         title: 'Визуальный кубок',
         description: '',
         status: 'draft',
-        regularSource: 'daily_aggregate',
+        regularSource: 'classic',
         revision: 1,
         participantCount: 0,
         lifecycle: TEST_LIFECYCLE,
@@ -1209,7 +1209,7 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
     await screen.findByRole('combobox', { name: 'Регистрация' });
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
-    await chooseGlassOption('Формат', 'Результаты ежедневных игр');
+    await chooseGlassOption('Формат', 'Классика');
     expect(screen.getByRole('button', { name: 'Добавить место' })).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('10,8,6,5')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Добавить место' }));
@@ -1262,7 +1262,12 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
     await screen.findByRole('combobox', { name: 'Регистрация' });
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
-    await chooseGlassOption('Формат', 'Классика');
+    fireEvent.click(screen.getByRole('combobox', { name: 'Формат' }));
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Каждый с каждым',
+      'Классика',
+    ]);
+    fireEvent.click(screen.getByRole('option', { name: 'Классика' }));
 
     expect(screen.getByRole('spinbutton', { name: 'Бросков в периоде' })).toHaveValue(30);
     expect(screen.getByText('1-й период')).toBeInTheDocument();
@@ -1293,6 +1298,11 @@ describe('TournamentAdmin', () => {
         ),
       { timeout: 2_000 },
     );
+    expect(
+      [...vi.mocked(api.createAdminTournament).mock.calls, ...update.mock.calls].some((call) =>
+        JSON.stringify(call).includes('daily_aggregate'),
+      ),
+    ).toBe(false);
   });
 
   it('asks before closing when the draft has unsaved changes', async () => {
@@ -2094,9 +2104,9 @@ describe('TournamentAdmin', () => {
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1, день 2: количество игр' })).toHaveValue(
       1,
     );
-    expect(screen.getByRole('spinbutton', { name: 'Раунд 1: длительность игры, минуты' })).toHaveValue(
-      20,
-    );
+    expect(
+      screen.getByRole('spinbutton', { name: 'Раунд 1: длительность игры, минуты' }),
+    ).toHaveValue(20);
     fireEvent.change(
       screen.getByRole('spinbutton', { name: 'Раунд 1: длительность игры, минуты' }),
       { target: { value: '30' } },

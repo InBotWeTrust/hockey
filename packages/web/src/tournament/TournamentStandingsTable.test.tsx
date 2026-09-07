@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { TournamentStandingsTable } from './TournamentStandingsTable.js';
 
 describe('TournamentStandingsTable', () => {
-  it('renders daily goal standings as a full four-column table', () => {
+  it('renders classic goal standings as a full four-column table', () => {
     const longName = 'Очень длинное имя участника турнира';
     render(
       <TournamentStandingsTable
-        regularSource="daily_aggregate"
+        regularSource="classic"
         dailyMetric="goals_sum"
         playoffSize={2}
         rows={[
@@ -60,15 +60,16 @@ describe('TournamentStandingsTable', () => {
         dailyMetric={null}
         currentUserId="user-2"
         rows={[
-          { user_id: 'user-1', rank: 1, display_name: 'Первый', played: 5, wins: 5 },
-          { user_id: 'user-2', rank: 2, display_name: 'Вы', played: 5, wins: 3 },
-          { user_id: 'user-3', rank: 3, display_name: 'Третий', played: 5, wins: 2 },
-          { user_id: 'user-4', rank: 4, display_name: 'Четвёртый', played: 5, wins: 1 },
+          { user_id: 'user-1', rank: 1, display_name: 'Первый', played: 5, wins: 5, points: 15 },
+          { user_id: 'user-2', rank: 2, display_name: 'Вы', played: 5, wins: 3, points: 9 },
+          { user_id: 'user-3', rank: 3, display_name: 'Третий', played: 5, wins: 2, points: 6 },
+          { user_id: 'user-4', rank: 4, display_name: 'Четвёртый', played: 5, wins: 1, points: 3 },
         ]}
       />,
     );
 
     const rows = screen.getAllByRole('row').slice(1);
+    expect(within(rows[0]!).getAllByRole('cell').at(-1)).toHaveTextContent('15');
     expect(rows[0]).toHaveClass('tournament-standing-table__medal-place--gold');
     expect(rows[1]).toHaveClass('tournament-standing-table__current-user');
     expect(rows[1]).not.toHaveClass('tournament-standing-table__medal-place--silver');

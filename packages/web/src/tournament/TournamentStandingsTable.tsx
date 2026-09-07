@@ -1,17 +1,27 @@
+import type { TournamentRegularSource } from '../api/tournament.js';
+import { UserAvatar } from '../chat/components/UserAvatar.js';
+
 function displayNumber(rawValue: unknown, maximumFractionDigits = 2): string {
   const parsed = Number(rawValue);
   const value = Number.isFinite(parsed) ? parsed : 0;
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits }).format(value);
 }
 
-function resultColumn(regularSource: string, dailyMetric: string | null) {
-  if (regularSource !== 'head_to_head' && dailyMetric === 'accuracy_average') {
+function resultColumn(
+  regularSource: TournamentRegularSource,
+  dailyMetric: string | null,
+  isDuelRating: boolean,
+) {
+  if (isDuelRating) {
+    return { heading: 'Очки', value: (row: Record<string, unknown>) => displayNumber(row.points) };
+  }
+  if (regularSource === 'classic' && dailyMetric === 'accuracy_average') {
     return {
       heading: 'Точность',
       value: (row: Record<string, unknown>) => `${displayNumber(Number(row.points) * 100, 1)}%`,
     };
   }
-  if (regularSource !== 'head_to_head' && dailyMetric === 'daily_place_points') {
+  if (regularSource === 'classic' && dailyMetric === 'daily_place_points') {
     return { heading: 'Очки', value: (row: Record<string, unknown>) => displayNumber(row.points) };
   }
   return {
@@ -23,7 +33,7 @@ function resultColumn(regularSource: string, dailyMetric: string | null) {
 
 export function TournamentStandingsTable(props: {
   rows: Array<Record<string, unknown>>;
-  regularSource: string;
+  regularSource: TournamentRegularSource;
   dailyMetric: string | null;
   playoffSize?: number | null;
   currentUserId?: string | null;
@@ -31,9 +41,9 @@ export function TournamentStandingsTable(props: {
   resultHeading?: string;
   variant?: 'default' | 'duel-rating';
 }) {
-  const result = resultColumn(props.regularSource, props.dailyMetric);
   const playoffSize = Math.max(0, Math.floor(Number(props.playoffSize) || 0));
   const isDuelRating = props.variant === 'duel-rating';
+  const result = resultColumn(props.regularSource, props.dailyMetric, isDuelRating);
   return (
     <table
       className={`tournament-standing-table${isDuelRating ? ' tournament-standing-table--duel-rating' : ''}`}
@@ -74,14 +84,16 @@ export function TournamentStandingsTable(props: {
           return (
             <tr
               key={String(row.user_id ?? index)}
-              className={[
-                isPlayoffPlace ? 'tournament-standing-table__playoff-place' : '',
-                isCurrentUser ? 'tournament-standing-table__current-user' : '',
-                medalClass,
-                isClickable ? 'tournament-standing-table__clickable-row' : '',
-              ]
-                .filter(Boolean)
-                .join(' ') || undefined}
+              className={
+                [
+                  isPlayoffPlace ? 'tournament-standing-table__playoff-place' : '',
+                  isCurrentUser ? 'tournament-standing-table__current-user' : '',
+                  medalClass,
+                  isClickable ? 'tournament-standing-table__clickable-row' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ') || undefined
+              }
               onClick={isClickable ? () => props.onPlayerClick?.(row) : undefined}
             >
               <td>{displayNumber(row.rank ?? index + 1, 0)}</td>
@@ -119,4 +131,3 @@ export function TournamentStandingsTable(props: {
     </table>
   );
 }
-import { UserAvatar } from '../chat/components/UserAvatar.js';

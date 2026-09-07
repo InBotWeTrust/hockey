@@ -18,6 +18,7 @@ import {
 import { tournamentTimezoneLabel, tournamentTimezoneOptionLabel } from './timezoneLabel.js';
 import { TournamentOperations } from './TournamentOperations.js';
 import { participantsCountLabel, tournamentStatusLabel } from './labels.js';
+import type { TournamentRegularSource } from '../api/tournament.js';
 import { TournamentAdminField, TournamentAdminGroupHelp } from './TournamentAdminField.js';
 import {
   TournamentDraftSaveQueue,
@@ -34,8 +35,6 @@ const stages = [
   'Уведомления',
   'Проверка',
 ] as const;
-
-type RegularSource = 'head_to_head' | 'daily_aggregate' | 'classic';
 
 function tournamentSaveErrorMessage(error: unknown): string {
   if (error instanceof ApiError && error.code === 'playoff_round_started') {
@@ -97,7 +96,7 @@ interface TournamentDraft {
   title: string;
   description: string;
   imageUrl: string | null;
-  regularSource: RegularSource;
+  regularSource: TournamentRegularSource;
   registrationMode: RegistrationMode;
   visibility: Visibility;
   participantLimit: NumericDraftValue;
@@ -545,10 +544,7 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
     title: tournament.title,
     description: tournament.description,
     imageUrl: tournament.imageUrl ?? null,
-    regularSource:
-      config.regularSource === 'daily_aggregate' || config.regularSource === 'classic'
-        ? config.regularSource
-        : 'head_to_head',
+    regularSource: config.regularSource === 'classic' ? config.regularSource : 'head_to_head',
     registrationMode:
       config.registrationMode === 'approval' || config.registrationMode === 'invite_only'
         ? config.registrationMode
@@ -745,7 +741,7 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
       ? requiredInteger(draft.roundBreakMinutes, 'Пауза между турами, минуты', 0, 1_440)
       : null;
   const dailyDays =
-    draft.regularSource !== 'head_to_head'
+    draft.regularSource === 'classic'
       ? requiredInteger(draft.dailyDays, 'Дней регулярки', 1, 366)
       : null;
   const classicRules =
@@ -829,11 +825,8 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
           60_000,
         roundBreakMs:
           round.preserveLegacySchedule === true && round.scheduleTouched !== true
-            ? requiredInteger(
-                round.roundBreakMinutes,
-                `${prefix}: пауза после раунда, минуты`,
-                0,
-              ) * 60_000
+            ? requiredInteger(round.roundBreakMinutes, `${prefix}: пауза после раунда, минуты`, 0) *
+              60_000
             : 0,
         firstGameStartsAt: dateOrNull(round.firstGameNotBefore, draft.timezone),
         readinessMinutes: requiredInteger(
@@ -894,7 +887,7 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
               bestDays: null,
             }
           : {
-              regularSource: draft.regularSource,
+              regularSource: 'classic',
               participantLimit,
               playoffSize: draft.playoffSize,
               timezone: draft.timezone,
@@ -2284,24 +2277,23 @@ export function TournamentAdmin(): JSX.Element {
                   <div className="tournament-admin-grid">
                     <TournamentAdminField
                       label="Формат"
-                      help="«Каждый с каждым» создаёт личные дуэли; дневной зачёт берёт обычную ежедневную игру; «Классика» запускает отдельную турнирную игру с вашими настройками."
+                      help="«Каждый с каждым» создаёт личные дуэли; «Классика» запускает отдельную турнирную игру с вашими настройками."
                     >
                       <GlassSelect
                         ariaLabel="Формат"
                         value={draft.regularSource}
                         options={[
                           { value: 'head_to_head', label: 'Каждый с каждым' },
-                          { value: 'daily_aggregate', label: 'Результаты ежедневных игр' },
                           { value: 'classic', label: 'Классика' },
                         ]}
-                        onChange={(regularSource: RegularSource) =>
+                        onChange={(regularSource: TournamentRegularSource) =>
                           setDraft({ ...draft, regularSource })
                         }
                       />
                     </TournamentAdminField>
                     <TournamentAdminField
                       label="Участников"
-                      help="Максимум подтверждённых участников: до 64 для дуэлей и до 10 000 для дневного зачёта."
+                      help="Максимум подтверждённых участников: до 64 для дуэлей и до 10 000 для Классики."
                     >
                       <input
                         aria-label="Участников"
@@ -2811,15 +2803,7 @@ export function TournamentAdmin(): JSX.Element {
                                       'Ограничение на один день. В последний день система оставит только нужное число игр.',
                                     ],
                                   ] as Array<
-                                    [
-                                      (
-                                        | 'daysPerRound'
-                                        | 'maxGamesPerDay'
-                                      ),
-                                      string,
-                                      number,
-                                      string,
-                                    ]
+                                    ['daysPerRound' | 'maxGamesPerDay', string, number, string]
                                   >
                                 ).map(([field, label, min, help]) => (
                                   <TournamentAdminField key={field} label={label} help={help}>
@@ -2862,9 +2846,11 @@ export function TournamentAdmin(): JSX.Element {
                                 ],
                               ] as Array<
                                 [
-                                  | 'readinessMinutes'
-                                  | 'gameDurationMinutes'
-                                  | 'plannedStartIntervalMinutes',
+                                  (
+                                    | 'readinessMinutes'
+                                    | 'gameDurationMinutes'
+                                    | 'plannedStartIntervalMinutes'
+                                  ),
                                   string,
                                   string,
                                 ]
@@ -3026,12 +3012,8 @@ export function TournamentAdmin(): JSX.Element {
                       · {draft.visibility === 'public' ? 'виден в каталоге' : 'скрытый'}
                     </span>
                     <span>
-                      {draft.regularSource === 'head_to_head'
-                        ? 'Каждый с каждым'
-                        : draft.regularSource === 'classic'
-                          ? 'Классика'
-                          : 'Дневной зачёт'}{' '}
-                      · {draft.participantLimit} участников · плей-офф {draft.playoffSize}
+                      {draft.regularSource === 'head_to_head' ? 'Каждый с каждым' : 'Классика'} ·{' '}
+                      {draft.participantLimit} участников · плей-офф {draft.playoffSize}
                     </span>
                     <span>
                       {tournamentTimezoneLabel(draft.timezone)} ·{' '}

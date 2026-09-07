@@ -1050,12 +1050,12 @@ describe('TournamentCatalog', () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [
         {
-          id: 'daily-cup',
-          slug: 'daily-cup',
-          title: 'Ежедневный кубок',
+          id: 'classic-cup',
+          slug: 'classic-cup',
+          title: 'Кубок классики',
           description: '',
           status: 'regular',
-          regularSource: 'daily_aggregate',
+          regularSource: 'classic',
           visibility: 'public',
           revision: 1,
           participantCount: 8,
@@ -1099,7 +1099,7 @@ describe('TournamentCatalog', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Ежедневный кубок' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок классики' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
     expect(await screen.findByText('Август 2030')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Следующий месяц' }));
@@ -1942,7 +1942,7 @@ describe('TournamentCatalog', () => {
           title: 'Регистрация позже',
           description: '',
           status: 'registration',
-          regularSource: 'daily_aggregate',
+          regularSource: 'head_to_head',
           visibility: 'public',
           revision: 1,
           participantCount: 0,
@@ -2008,17 +2008,17 @@ describe('TournamentCatalog', () => {
     expect(screen.getByText('Заявка подтверждена')).toBeInTheDocument();
   });
 
-  it('shows daily aggregate matchdays even though the format has no fixtures', async () => {
+  it('shows classic matchdays even though the regular format has no fixtures', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(new Date('2030-09-02T12:00:00.000Z').getTime());
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [
         {
-          id: 'daily-1',
-          slug: 'daily-cup',
-          title: 'Ежедневный кубок',
+          id: 'classic-1',
+          slug: 'classic-cup',
+          title: 'Кубок классики',
           description: 'Четыре игровых дня',
           status: 'regular',
-          regularSource: 'daily_aggregate',
+          regularSource: 'classic',
           visibility: 'public',
           revision: 2,
           participantCount: 6,
@@ -2070,7 +2070,7 @@ describe('TournamentCatalog', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Ежедневный кубок' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок классики' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Расписание' }));
 
     expect(await screen.findByRole('grid', { name: 'Календарь турнира' })).toBeInTheDocument();
@@ -2092,10 +2092,10 @@ describe('TournamentCatalog', () => {
       'tournament-matchday-row--current',
     );
     expect(screen.getByText('2-й тур').closest('article')).toHaveTextContent('Сейчас');
-    fireEvent.click(screen.getByRole('button', { name: 'Открыть ежедневную игру' }));
-    expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent('view=daily');
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть турнирную игру' }));
+    expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent('view=classic');
     expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent('section=tournaments');
-    expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent('tournament=daily-1');
+    expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent('tournament=classic-1');
     expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent('tab=schedule');
 
     fireEvent.click(screen.getByRole('button', { name: /3 сентября.*игровой день/i }));

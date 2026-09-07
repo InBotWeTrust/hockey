@@ -10,6 +10,8 @@ export type TournamentStatus =
   | 'completed'
   | 'cancelled';
 
+export type TournamentRegularSource = 'head_to_head' | 'classic';
+
 export interface RegularSeasonPodiumCongratulation {
   id: string;
   tournamentId: string;
@@ -59,7 +61,7 @@ export interface TournamentSummary {
   description: string;
   imageUrl?: string | null;
   status: TournamentStatus;
-  regularSource: 'head_to_head' | 'daily_aggregate' | 'classic';
+  regularSource: TournamentRegularSource;
   visibility: 'public' | 'hidden';
   revision: number;
   participantCount: number;
@@ -191,7 +193,6 @@ export interface TournamentMatchdayResultCursor {
 }
 
 export type TournamentGameContextAction =
-  | 'play_daily'
   | 'play_classic'
   | 'round_completed'
   | 'not_started'
@@ -487,8 +488,7 @@ export function respondFixtureLiveProposal(fixtureId: string, proposalId: string
 }
 
 export function acknowledgeRegularSeasonPodiumCongratulation(congratulationId: string) {
-  return apiFetch<{ acknowledged: true }>(
-    `/tournaments/congratulations/${congratulationId}/read`,
-    { method: 'POST' },
-  );
+  return apiFetch<{ acknowledged: true }>(`/tournaments/congratulations/${congratulationId}/read`, {
+    method: 'POST',
+  });
 }
