@@ -136,9 +136,9 @@ function beginnerSteps(unlockGoalsRequired: number): SeedStep[] {
       description: 'Дождись своего момента и бросай. Второй попытки не будет.',
       ctaLabel: 'Что дальше?',
       tutorial: {
-        shooterFrequency: 0.5,
-        goalieFrequency: 0.1,
-        goalFrequency: 0.5,
+        shooterFrequency: 0.8,
+        goalieFrequency: 0.65,
+        goalFrequency: 0.55,
       },
     },
     {

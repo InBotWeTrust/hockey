@@ -175,9 +175,9 @@ describe.skipIf(!hasIntegrationEnv)('seedDevOnboarding', () => {
       title: 'Один бросок',
       object_key: null,
       tutorial_config: {
-        shooterFrequency: 0.5,
-        goalieFrequency: 0.1,
-        goalFrequency: 0.5,
+        shooterFrequency: 0.8,
+        goalieFrequency: 0.65,
+        goalFrequency: 0.55,
       },
     });
     expect(beginner[5]!.description).toContain('4321');
