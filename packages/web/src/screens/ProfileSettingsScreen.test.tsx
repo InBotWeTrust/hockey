@@ -426,7 +426,7 @@ describe('ProfileSettingsScreen', () => {
     expect(screen.getByText('Официальный аккаунт')).toBeInTheDocument();
     expect(screen.getByAltText('Ультимейт Хоккей')).toHaveAttribute(
       'src',
-      '/icons/official-account.webp',
+      '/icons/official-account.webp?v=2',
     );
     fireEvent.click(openButton);
 

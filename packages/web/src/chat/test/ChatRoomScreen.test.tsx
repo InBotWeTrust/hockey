@@ -431,7 +431,7 @@ describe('ChatRoomScreen', () => {
     expect(await screen.findByText('Официальный аккаунт')).toBeInTheDocument();
     expect(document.querySelector('.chat-room-header__avatar img')).toHaveAttribute(
       'src',
-      '/icons/official-account.webp',
+      '/icons/official-account.webp?v=2',
     );
     expect(screen.queryByRole('button', { name: 'Открыть профиль игрока' })).toBeNull();
   });

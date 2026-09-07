@@ -1,6 +1,6 @@
 import type { ChatDTO } from './api.js';
 
-export const OFFICIAL_ACCOUNT_AVATAR_URL = '/icons/official-account.webp';
+export const OFFICIAL_ACCOUNT_AVATAR_URL = '/icons/official-account.webp?v=2';
 
 export function directChatAvatarUrl(chat: ChatDTO): string | null {
   if (chat.dmCounterpart?.accountKind === 'official') return OFFICIAL_ACCOUNT_AVATAR_URL;

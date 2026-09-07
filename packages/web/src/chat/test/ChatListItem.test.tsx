@@ -108,7 +108,10 @@ describe('ChatListItem', () => {
       />,
     );
 
-    expect(document.querySelector('img')).toHaveAttribute('src', '/icons/official-account.webp');
+    expect(document.querySelector('img')).toHaveAttribute(
+      'src',
+      '/icons/official-account.webp?v=2',
+    );
   });
 
   it('shows voice message fallback when the last message has audio metadata', () => {
