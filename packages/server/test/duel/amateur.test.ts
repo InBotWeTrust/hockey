@@ -387,6 +387,24 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     return rows[0]!.id;
   }
 
+  async function createLongPeriodLoadout() {
+    const skates = await createInventoryItem('skates', 'Gameplay lock skates');
+    const nutrition = await createInventoryItem('nutrition', 'Gameplay lock nutrition');
+    await pool.query(
+      `update admin_inventory_items
+          set duel_period_cost = 0,
+              resource_unit = case when id = $1 then 'distance' else 'energy_ms' end
+        where id = any($2::uuid[])`,
+      [skates, [skates, nutrition]],
+    );
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 100000), ($1, $3, 14400000)`,
+      [userA, skates, nutrition],
+    );
+    return { skates, nutrition };
+  }
+
   async function acceptReadyAndStart(
     matchId: string,
     opts: { token?: string; loadout?: Record<string, string | null> } = {},
@@ -915,7 +933,17 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
 
   it('preserves a timed segment accepted before the scheduled prelock boundary', async () => {
     const matchId = (await challenge(await createTemplate())).json().match.id;
-    expect((await acceptReadyAndStart(matchId)).statusCode).toBe(200);
+    expect(
+      (await acceptReadyAndStart(matchId, { loadout: await createLongPeriodLoadout() })).statusCode,
+    ).toBe(200);
+    // A valid random no-skates interval is 48 rolls: at 0.8 Hz the player
+    // stumbles exactly at this test's 120-second tap. Keep that adverse case.
+    await pool.query(
+      `update amateur_duel_match set rules_snapshot = jsonb_set(jsonb_set(rules_snapshot,
+         '{noInventoryTiming,skates,stumbleIntervalMinRolls}', '48'),
+         '{noInventoryTiming,skates,stumbleIntervalMaxRolls}', '48') where id = $1`,
+      [matchId],
+    );
     await pool.query(
       "update amateur_duel_participant set period_started_at = now() - interval '2 minutes' where match_id=$1 and user_id=$2",
       [matchId, userA],
@@ -933,7 +961,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       headers: auth(tokenA),
       payload: { shot_index: 1, input: { tapTime: 120_000 }, claimed_result: 'goal' },
     });
-    expect(shot.statusCode).toBe(200);
+    expect(shot.statusCode, shot.json().error?.message).toBe(200);
   });
 
   it.each([
@@ -957,7 +985,10 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
             }),
           )
         ).json().match.id;
-        expect((await acceptReadyAndStart(matchId)).statusCode).toBe(200);
+        expect(
+          (await acceptReadyAndStart(matchId, { loadout: await createLongPeriodLoadout() }))
+            .statusCode,
+        ).toBe(200);
         // A legacy accepted segment is still live when an administrator schedules
         // tournament play over it. Its original acceptance precedes the prelock.
         await pool.query(
