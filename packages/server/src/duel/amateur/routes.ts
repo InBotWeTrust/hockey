@@ -31,11 +31,14 @@ import {
   assertSafeSegmentStart,
   assertTournamentGameplayAllowed,
   getTournamentGameplayLockState,
+  getTournamentGameplayLockStates,
   getActiveClassicTournamentLock,
   getSafeSegmentStartLockState,
+  getSafeSegmentStartLockFromState,
   lockUserGameplay,
   GAMEPLAY_RECOVERY_MS,
   type GameplayLockReason,
+  type GameplayLockState,
 } from '../gameplayLocks.js';
 import { deriveAmateurDuelSeed, deriveShotSeed } from '../seed.js';
 import { resolveDefaultArena } from '../../arenas/service.js';
@@ -81,6 +84,10 @@ async function duelLockDto(
   if (!lock.blocked && maxSegmentDurationMs !== undefined) {
     lock = await getSafeSegmentStartLockState(client, { userId, now, maxSegmentDurationMs });
   }
+  return toDuelLockDto(lock);
+}
+
+function toDuelLockDto(lock: GameplayLockState): GameplayLockDTO | null {
   return !lock.blocked || lock.reason === null
     ? null
     : {
@@ -4125,21 +4132,35 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           limit $3`,
         [req.user.id, query.q, query.limit, settings.amateur.unlockGoalsRequired],
       );
-      const available = [];
-      for (const row of rows) {
-        if (!(await getTournamentGameplayLockState(client, row.id, new Date())).blocked)
-          available.push({
-            ...row,
-            format_locks: await duelFormatLocks(client, row.id, new Date()),
-          });
-      }
+      const now = new Date();
+      const templates = await fetchMatchmakingTemplates(
+        client,
+        ['express', 'express_plus', 'classic'],
+        now,
+        false,
+      );
+      const formatDurations = templates.map((template) => ({
+        kind: template.duel_kind,
+        durationMs: duelAdmissionDurationMs(makeRulesSnapshot(template, settings)),
+      }));
+      const locks = await getTournamentGameplayLockStates(
+        client,
+        rows.map((row) => row.id),
+        now,
+      );
+      const available = rows.filter((row) => !locks.get(row.id)!.blocked);
       return {
         users: available.map((row) => ({
           userId: row.id,
           displayName: row.display_name,
           avatarUrl: row.avatar_url,
           lastSeenAt: row.last_seen_at?.toISOString() ?? null,
-          format_locks: row.format_locks,
+          format_locks: Object.fromEntries(
+            formatDurations.map(({ kind, durationMs }) => [
+              kind,
+              toDuelLockDto(getSafeSegmentStartLockFromState(locks.get(row.id)!, now, durationMs)),
+            ]),
+          ),
         })),
       };
     });

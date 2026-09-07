@@ -10,6 +10,7 @@ import {
   assertSafeSegmentStart,
   getGameplayLockState,
   getNearestScheduledTournamentBlock,
+  getTournamentGameplayLockStates,
   lockUserGameplay,
   type GameplayAction,
 } from '../../src/duel/gameplayLocks.js';
@@ -521,6 +522,13 @@ describe.skipIf(!hasIntegrationEnv)('scheduled tournament gameplay locks', () =>
       reason: 'active_classic',
       endsAt: null,
     });
+    const batched = await getTournamentGameplayLockStates(
+      pool as unknown as PoolClient,
+      [userId, opponentId],
+      input.now,
+    );
+    expect(batched.get(userId)).toEqual({ blocked: true, reason: 'active_classic', endsAt: null });
+    expect(batched.get(opponentId)).toEqual({ blocked: false, reason: null, endsAt: null });
 
     for (const terminalState of ['closed', 'expired'] as const) {
       await pool.query(`update tournament_classic_session set state = $2 where id = $1`, [

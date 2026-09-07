@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
-import type { Pool, PoolClient } from 'pg';
+import { Client, type Pool, type PoolClient } from 'pg';
 import { getGameplayLockState } from '../../src/duel/gameplayLocks.js';
 import { buildApp } from '../../src/app.js';
 import { createJwt } from '../../src/auth/jwt.js';
@@ -545,6 +545,61 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         (r) => r.matchmaking_enabled,
       ),
     ).toBe(true);
+  });
+
+  it('uses a constant query count for 1 and 50 opponents while preserving per-format locks', async () => {
+    await createTemplate({ duelKind: 'classic', readyDurationMs: 60_000 });
+    await createTemplate({ duelKind: 'express', readyDurationMs: 60_000 });
+    await createTemplate({ duelKind: 'express_plus', readyDurationMs: 60_000 });
+    for (let index = 0; index < 49; index += 1) await createOpponent(index);
+    await scheduleTournamentLock(userB, 3_600_000 + 300_000);
+    const search = (limit: number) =>
+      app.inject({
+        method: 'GET',
+        url: `/duel/amateur/opponents?limit=${limit}`,
+        headers: auth(tokenA),
+      });
+    await search(1); // Warm the authenticated presence throttle before measuring.
+    const queries = vi.spyOn(Client.prototype, 'query');
+    const countSearchQueries = () => {
+      const candidateIndex = queries.mock.calls.findIndex((call) =>
+        String(call[0]).includes('select id, display_name, avatar_url, last_seen_at'),
+      );
+      expect(candidateIndex).toBeGreaterThanOrEqual(0);
+      const connection = queries.mock.instances[candidateIndex];
+      const transactionQueries = queries.mock.calls
+        .filter((_, index) => queries.mock.instances[index] === connection)
+        .map((call) => String(call[0]));
+      const start = transactionQueries.indexOf('begin');
+      const end = transactionQueries.indexOf('commit', start);
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(end).toBeGreaterThan(start);
+      return end - start + 1;
+    };
+    try {
+      expect((await search(1)).json().users).toHaveLength(1);
+      const singleCount = countSearchQueries();
+      queries.mockClear();
+      const response = await search(50);
+      const fiftyCount = countSearchQueries();
+      expect(response.statusCode).toBe(200);
+      const users = response.json().users;
+      expect(users).toHaveLength(50);
+      const scheduled = users.find((user: { userId: string }) => user.userId === userB);
+      expect(scheduled.format_locks.classic).toMatchObject({
+        blocked: true,
+        reason: 'scheduled_tournament',
+      });
+      expect(scheduled.format_locks.express).toBeNull();
+      expect(
+        users.find((user: { userId: string }) => user.userId !== userB).format_locks.classic,
+      ).toBeNull();
+      console.info('opponent query counts', { one: singleCount, fifty: fiftyCount });
+      expect(fiftyCount).toBe(singleCount);
+      expect(fiftyCount).toBeLessThanOrEqual(15);
+    } finally {
+      queries.mockRestore();
+    }
   });
 
   it('keeps cancellation and terminal match history usable during a tournament lock', async () => {

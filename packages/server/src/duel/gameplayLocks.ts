@@ -72,34 +72,34 @@ export async function lockUserGameplay(client: PoolClient, userId: string): Prom
   await client.query("select pg_advisory_xact_lock(hashtext('gameplay:' || $1))", [userId]);
 }
 
-export async function getNearestScheduledTournamentBlock(
+async function getNearestScheduledTournamentBlocks(
   client: PoolClient,
-  userId: string,
+  userIds: string[],
   now: Date,
-): Promise<GameplayLockState> {
-  const { rows } = await client.query<{ starts_at: Date }>(
-    `select candidate.starts_at
+): Promise<Map<string, GameplayLockState>> {
+  const { rows } = await client.query<{ user_id: string; starts_at: Date }>(
+    `select candidate.user_id, min(candidate.starts_at) as starts_at
        from (
-         select fixture.scheduled_starts_at as starts_at
+         select participant.user_id, fixture.scheduled_starts_at as starts_at
            from tournament_fixture fixture
            join tournament tournament on tournament.id = fixture.tournament_id
            join tournament_participant participant
              on participant.id in (fixture.home_participant_id, fixture.away_participant_id)
-            and participant.user_id = $1
+            and participant.user_id = any($1::uuid[])
             and participant.state = 'approved'
           where tournament.status = 'regular'
             and tournament.regular_source = 'head_to_head'
             and fixture.scheduled_starts_at is not null
             and fixture.status in ('scheduled', 'open', 'active', 'paused')
          union all
-         select game_day.first_game_starts_at as starts_at
+         select participant.user_id, game_day.first_game_starts_at as starts_at
            from tournament_fixture_attempt attempt
            join tournament_round_game_day game_day on game_day.id = attempt.round_game_day_id
            join tournament_fixture fixture on fixture.id = attempt.fixture_id
            join tournament tournament on tournament.id = fixture.tournament_id
            join tournament_participant participant
              on participant.id in (fixture.home_participant_id, fixture.away_participant_id)
-            and participant.user_id = $1
+            and participant.user_id = any($1::uuid[])
             and participant.state = 'approved'
            left join tournament_playoff_series series on series.id = fixture.series_id
           where tournament.status = 'playoff'
@@ -110,26 +110,34 @@ export async function getNearestScheduledTournamentBlock(
             )
             and (series.id is null or series.status in ('pending', 'scheduled', 'active', 'paused'))
        ) candidate
-      order by candidate.starts_at
-      limit 1`,
-    [userId],
+      group by candidate.user_id`,
+    [userIds],
   );
-  const startsAt = rows[0]?.starts_at;
-  return startsAt === undefined ? NO_GAMEPLAY_LOCK : scheduledTournamentLock(startsAt, now);
+  return new Map(rows.map((row) => [row.user_id, scheduledTournamentLock(row.starts_at, now)]));
 }
 
-export async function getActiveClassicTournamentLock(
+export async function getNearestScheduledTournamentBlock(
   client: PoolClient,
   userId: string,
+  now: Date,
 ): Promise<GameplayLockState> {
-  const { rows } = await client.query<{ active: boolean }>(
-    `select exists(
-       select 1
+  return (
+    (await getNearestScheduledTournamentBlocks(client, [userId], now)).get(userId) ??
+    NO_GAMEPLAY_LOCK
+  );
+}
+
+async function getActiveClassicTournamentUsers(
+  client: PoolClient,
+  userIds: string[],
+): Promise<Set<string>> {
+  const { rows } = await client.query<{ user_id: string }>(
+    `select distinct participant.user_id
          from tournament_classic_session session
          join tournament_participant participant on participant.id = session.participant_id
          join tournament tournament on tournament.id = session.tournament_id
          join tournament_matchday matchday on matchday.id = session.matchday_id
-        where participant.user_id = $1
+        where participant.user_id = any($1::uuid[])
           and participant.state = 'approved'
           and tournament.regular_source = 'classic'
           and tournament.status = 'regular'
@@ -140,16 +148,44 @@ export async function getActiveClassicTournamentLock(
               from shot_session shot
              where shot.mode = 'tournament_classic'
                and shot.tournament_classic_session_id = session.id
-          )
-     ) as active`,
-    [userId],
+          )`,
+    [userIds],
   );
-  if (rows[0]?.active !== true) return NO_GAMEPLAY_LOCK;
-  return {
-    blocked: true,
-    reason: 'active_classic',
-    endsAt: null,
-  };
+  return new Set(rows.map((row) => row.user_id));
+}
+
+const ACTIVE_CLASSIC_LOCK: GameplayLockState = {
+  blocked: true,
+  reason: 'active_classic',
+  endsAt: null,
+};
+
+export async function getActiveClassicTournamentLock(
+  client: PoolClient,
+  userId: string,
+): Promise<GameplayLockState> {
+  return (await getActiveClassicTournamentUsers(client, [userId])).has(userId)
+    ? ACTIVE_CLASSIC_LOCK
+    : NO_GAMEPLAY_LOCK;
+}
+
+export async function getTournamentGameplayLockStates(
+  client: PoolClient,
+  userIds: string[],
+  now: Date,
+): Promise<Map<string, GameplayLockState>> {
+  if (userIds.length === 0) return new Map();
+  const scheduled = await getNearestScheduledTournamentBlocks(client, userIds, now);
+  const activeClassic = await getActiveClassicTournamentUsers(client, userIds);
+  return new Map(
+    userIds.map((userId) => {
+      const state = scheduled.get(userId) ?? NO_GAMEPLAY_LOCK;
+      return [
+        userId,
+        state.blocked ? state : activeClassic.has(userId) ? ACTIVE_CLASSIC_LOCK : state,
+      ];
+    }),
+  );
 }
 
 export async function getTournamentGameplayLockState(
@@ -177,11 +213,19 @@ export async function getSafeSegmentStartLockState(
   input: { userId: string; now: Date; maxSegmentDurationMs: number },
 ): Promise<GameplayLockState> {
   const state = await getNearestScheduledTournamentBlock(client, input.userId, input.now);
+  return getSafeSegmentStartLockFromState(state, input.now, input.maxSegmentDurationMs);
+}
+
+export function getSafeSegmentStartLockFromState(
+  state: GameplayLockState,
+  now: Date,
+  maxSegmentDurationMs: number,
+): GameplayLockState {
+  if (state.blocked) return state;
   if (state.tournamentStartsAt === undefined || state.tournamentStartsAt === null)
     return NO_GAMEPLAY_LOCK;
   const lockStartsAt = state.tournamentStartsAt.getTime() - GAMEPLAY_RECOVERY_MS;
-  if (input.now.getTime() + Math.max(0, input.maxSegmentDurationMs) < lockStartsAt)
-    return NO_GAMEPLAY_LOCK;
+  if (now.getTime() + Math.max(0, maxSegmentDurationMs) < lockStartsAt) return NO_GAMEPLAY_LOCK;
   return {
     blocked: true,
     reason: 'scheduled_tournament',
