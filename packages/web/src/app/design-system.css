@@ -48,10 +48,10 @@
   transform: none;
 }
 .app-shell--arena.arena-bg--beginner::before {
-  background-image: url('/backgrounds/arena-beginner-reference-v4.webp');
+  background-image: url('/backgrounds/arena-beginner-reference-v8.webp');
 }
 .app-shell--arena.arena-bg--amateur::before {
-  background-image: url('/backgrounds/arena-amateur-reference-v4.webp');
+  background-image: url('/backgrounds/arena-amateur-reference-v6.webp');
 }
 .app-shell--arena.arena-bg--professional::before {
   background-image: url('/sprites/app-arena-ice.webp');
