@@ -479,6 +479,50 @@ describe('DailyScreen', () => {
     ).toBe(false);
   });
 
+  it('resolves a classic tournament game when the tournament URL still says daily', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/classic-1/game-context')
+        ? { action: 'play_classic', tournamentDay: 1, result: null, message: null }
+        : url.includes('/tournaments/classic-1/classic/state')
+          ? classicIdleState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=daily&section=tournaments&tournament=classic-1&tab=schedule']);
+
+    expect(await screen.findByText('Кубок классики · 1-й тур')).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/duel/daily/state')),
+    ).toBe(false);
+  });
+
+  it('does not route a removed daily tournament context into the ordinary daily game', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/stale-daily/game-context')
+        ? { action: 'play_daily', tournamentDay: 1, result: null, message: null }
+        : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=daily&section=tournaments&tournament=stale-daily&tab=schedule']);
+
+    expect(await screen.findByRole('heading', { name: 'Турнирная игра' })).toBeInTheDocument();
+    expect(screen.getByText('Не удалось проверить доступ к турнирной игре.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/duel/daily/state')),
+    ).toBe(false);
+  });
+
   it('shows classic inventory circles and submits the selected loadout with period start', async () => {
     const stick = {
       id: '00000000-0000-4000-8000-000000000901',

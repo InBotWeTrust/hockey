@@ -521,6 +521,24 @@ function rewardsDraft(value: unknown): string {
     : '';
 }
 
+const UNSUPPORTED_REGULAR_SOURCE_NOTICE =
+  'Этот турнир использует неподдерживаемый формат регулярного сезона и не может быть отредактирован.';
+
+class UnsupportedRegularSourceError extends Error {
+  constructor() {
+    super(UNSUPPORTED_REGULAR_SOURCE_NOTICE);
+  }
+}
+
+function editableRegularSource(
+  tournament: AdminTournament,
+  config: Record<string, unknown>,
+): TournamentRegularSource {
+  const regularSource = config.regularSource ?? tournament.regularSource;
+  if (regularSource === 'head_to_head' || regularSource === 'classic') return regularSource;
+  throw new UnsupportedRegularSourceError();
+}
+
 function draftFromTournament(tournament: AdminTournament): TournamentDraft {
   const next = freshDraft();
   const rules = objectValue(tournament.rules);
@@ -544,7 +562,7 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
     title: tournament.title,
     description: tournament.description,
     imageUrl: tournament.imageUrl ?? null,
-    regularSource: config.regularSource === 'classic' ? config.regularSource : 'head_to_head',
+    regularSource: editableRegularSource(tournament, config),
     registrationMode:
       config.registrationMode === 'approval' || config.registrationMode === 'invite_only'
         ? config.registrationMode
@@ -1953,10 +1971,19 @@ export function TournamentAdmin(): JSX.Element {
         notice={saveNotice}
         onEdit={(initialStage = 0, scheduleOnly = false) => {
           setSaveNotice(null);
+          let nextDraft: TournamentDraft;
+          try {
+            nextDraft = draftFromTournament(selectedTournament);
+          } catch (error) {
+            if (error instanceof UnsupportedRegularSourceError) {
+              setSaveNotice(error.message);
+              return;
+            }
+            throw error;
+          }
           artworkUploadGeneration.current += 1;
           artworkUpload.reset();
           setEditingTournament(selectedTournament);
-          const nextDraft = draftFromTournament(selectedTournament);
           setDraft(nextDraft);
           const snapshot = JSON.stringify(serializeDraft(nextDraft));
           lastSavedSnapshot.current = snapshot;

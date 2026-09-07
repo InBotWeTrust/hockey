@@ -486,8 +486,9 @@ export function DailyScreen(): JSX.Element {
   const tournamentOrigin = routeParams.get('section') === 'tournaments';
   const tournamentId = routeParams.get('tournament');
   const tournamentFixtureId = routeParams.get('fixture');
+  const gameView = routeParams.get('view');
   const tournamentGameRoute =
-    tournamentOrigin && tournamentId !== null && routeParams.get('view') === 'classic';
+    tournamentOrigin && tournamentId !== null && (gameView === 'daily' || gameView === 'classic');
   const tournamentGameContext = useQuery({
     queryKey: ['tournament-game-context', tournamentId],
     queryFn: () => fetchTournamentGameContext(tournamentId!),

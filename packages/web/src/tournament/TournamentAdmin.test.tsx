@@ -232,6 +232,42 @@ describe('TournamentAdmin', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Изменения сохранены.');
   });
 
+  it('blocks editing a stale daily aggregate tournament without saving a converted source', async () => {
+    const staleTournament = {
+      ...dstOverlapTournament(),
+      id: '00000000-0000-4000-8000-000000000942',
+      title: 'Устаревший дневной турнир',
+      regularSource: 'daily_aggregate',
+      rules: {
+        config: {
+          regularSource: 'daily_aggregate',
+          timezone: 'Europe/Moscow',
+        },
+      },
+    } as unknown as api.AdminTournament;
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [staleTournament] });
+    vi.spyOn(api, 'fetchAdminTournamentParticipants').mockResolvedValue({ participants: [] });
+    const update = vi.spyOn(api, 'updateAdminTournament');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Открыть Устаревший дневной турнир' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Действия турнира' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать турнир' }));
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Этот турнир использует неподдерживаемый формат регулярного сезона и не может быть отредактирован.',
+    );
+    expect(screen.queryByRole('dialog', { name: 'Создание турнира' })).not.toBeInTheDocument();
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('uses compact described fields, custom selects and collapsed advanced settings', async () => {
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
     vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });

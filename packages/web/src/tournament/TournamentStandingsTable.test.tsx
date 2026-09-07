@@ -52,6 +52,45 @@ describe('TournamentStandingsTable', () => {
     expect(document.querySelector('.tournament-standing-table-wrap')).not.toBeInTheDocument();
   });
 
+  it('renders Classic average accuracy as a percentage', () => {
+    render(
+      <TournamentStandingsTable
+        regularSource="classic"
+        dailyMetric="accuracy_average"
+        rows={[{ rank: 1, display_name: 'Точный', played: 1, points: '0.4567' }]}
+      />,
+    );
+
+    expect(screen.getByRole('columnheader', { name: 'Точность' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '45,7%' })).toBeInTheDocument();
+  });
+
+  it('renders Classic place points as points', () => {
+    render(
+      <TournamentStandingsTable
+        regularSource="classic"
+        dailyMetric="daily_place_points"
+        rows={[{ rank: 1, display_name: 'Лидер', played: 2, points: '10.0000' }]}
+      />,
+    );
+
+    expect(screen.getByRole('columnheader', { name: 'Очки' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '10' })).toBeInTheDocument();
+  });
+
+  it('renders ordinary head-to-head goals from goals_for', () => {
+    render(
+      <TournamentStandingsTable
+        regularSource="head_to_head"
+        dailyMetric={null}
+        rows={[{ rank: 1, display_name: 'Нападающий', played: 3, goals_for: 7, points: 99 }]}
+      />,
+    );
+
+    expect(screen.getByRole('columnheader', { name: 'Шайбы' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '7' })).toBeInTheDocument();
+  });
+
   it('marks duel rating medal places while keeping the current-user highlight primary', () => {
     render(
       <TournamentStandingsTable
