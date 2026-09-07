@@ -162,20 +162,6 @@ describe('evaluateTournamentLifecycle', () => {
         regular_results_complete: false,
       },
       {
-        id: 'regular-daily',
-        status: 'regular',
-        current_revision: 1,
-        registration_opens_at: null,
-        registration_closes_at: null,
-        rules_snapshot: {
-          automaticLifecycleVersion: 1,
-          config: { regularSource: 'daily_aggregate', playoffSize: 2, dailyDays: 1 },
-        },
-        approved_participant_count: 2,
-        schedule_exists: true,
-        regular_results_complete: false,
-      },
-      {
         id: 'regular-classic',
         status: 'regular',
         current_revision: 1,
@@ -217,12 +203,6 @@ describe('evaluateTournamentLifecycle', () => {
           return {
             rows: [
               {
-                tournament_id: 'regular-daily',
-                participant_count: 2,
-                result_count: 2,
-                daily_days: 1,
-              },
-              {
                 tournament_id: 'regular-classic',
                 participant_count: 2,
                 result_count: 2,
@@ -247,11 +227,10 @@ describe('evaluateTournamentLifecycle', () => {
     expect(readinessQueries).toHaveLength(2);
     expect(readinessQueries.map(({ values }) => values?.[0])).toEqual([
       ['regular-head-to-head'],
-      ['regular-daily', 'regular-classic'],
+      ['regular-classic'],
     ]);
     expect(lifecycle.get('registration')?.action).toBe('registration_waiting');
     expect(lifecycle.get('regular-head-to-head')?.action).toBe('playoff_schedule_missing');
-    expect(lifecycle.get('regular-daily')?.action).toBe('playoff_schedule_missing');
     expect(lifecycle.get('regular-classic')?.action).toBe('playoff_schedule_missing');
     expect(lifecycle.get('completed')?.action).toBe('terminal');
   });

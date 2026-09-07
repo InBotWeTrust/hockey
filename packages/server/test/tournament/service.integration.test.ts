@@ -389,11 +389,11 @@ function playoffTournamentRules(
   };
 }
 
-function dailyPlayoffTournamentRules(): TournamentRulesSnapshot {
+function classicPlayoffTournamentRules(): TournamentRulesSnapshot {
   return {
     ...rules(0),
     config: parseTournamentConfig({
-      regularSource: 'daily_aggregate',
+      regularSource: 'classic',
       participantLimit: 4,
       playoffSize: 2,
       timezone: 'Europe/Moscow',
@@ -408,6 +408,20 @@ function dailyPlayoffTournamentRules(): TournamentRulesSnapshot {
       dailyDays: 1,
       dailyMetric: 'accuracy_average',
       bestDays: 1,
+      classicRules: {
+        goalieId: 'rookie',
+        shotsPerPeriod: 30,
+        periodDurationMs: 1_200_000,
+        breakDurationMs: 900_000,
+        incompleteResultPolicy: 'completed_game',
+        periodSpeedPresets: [1, 2, 3].map((periodNumber) => ({
+          periodNumber,
+          goalFrequency: 0.5,
+          goalieFrequency: 0.5,
+          shooterFrequency: 0.5,
+          puckSpeedPerMs: 0.5,
+        })),
+      },
     }),
     tieBreakDuelTemplateId: '00000000-0000-4000-8000-000000000803',
     tieBreakGameWindowMs: 1_800_000,
@@ -464,7 +478,7 @@ async function prepareTournamentForPlayoffs(
   return participantIds;
 }
 
-async function prepareDailyTournamentForPlayoffs(
+async function prepareClassicTournamentForPlayoffs(
   pool: Pool,
   tournamentId: string,
   points: readonly [number, number, number, number] = [0.9, 0.5, 0.5, 0.1],
@@ -1650,7 +1664,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
   it('shifts a generated daily schedule before the regular season starts', async () => {
     await seedUsers(pool, 0);
     const duelTemplateId = await activeTournamentDuelTemplateId(pool);
-    const tournamentRules = dailyPlayoffTournamentRules();
+    const tournamentRules = classicPlayoffTournamentRules();
     tournamentRules.config = parseTournamentConfig({
       ...tournamentRules.config,
       dailyDays: 3,
@@ -1703,7 +1717,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
 
   it('shifts an unstarted daily schedule to the current tournament day while it is still open', async () => {
     await seedUsers(pool, 0);
-    const tournamentRules = dailyPlayoffTournamentRules();
+    const tournamentRules = classicPlayoffTournamentRules();
     const tournament = await createPublishedTournament(
       pool,
       'shift-generated-daily-schedule-to-current-day',
@@ -1730,7 +1744,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
 
   it('rejects a whole-calendar shift after a regular result exists', async () => {
     await seedUsers(pool, 0);
-    const tournamentRules = dailyPlayoffTournamentRules();
+    const tournamentRules = classicPlayoffTournamentRules();
     const tournament = await createPublishedTournament(
       pool,
       'reject-started-regular-schedule-shift',
@@ -1765,7 +1779,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       pool,
       'admin-api-schedule-shift',
       0,
-      dailyPlayoffTournamentRules(),
+      classicPlayoffTournamentRules(),
     );
     await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
     await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
@@ -1812,9 +1826,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     }
   });
 
-  it('returns generated matchdays for a daily aggregate schedule without fixtures', async () => {
+  it('returns generated matchdays for a Classic schedule without fixtures', async () => {
     await seedUsers(pool, 0);
-    const dailyRules = dailyPlayoffTournamentRules();
+    const dailyRules = classicPlayoffTournamentRules();
     dailyRules.config = parseTournamentConfig({
       ...dailyRules.config,
       dailyDays: 4,
@@ -1822,7 +1836,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     });
     const tournament = await createPublishedTournament(
       pool,
-      'daily-aggregate-visible-schedule',
+      'classic-visible-schedule',
       0,
       dailyRules,
     );
@@ -1843,7 +1857,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
 
   it('returns the authenticated player daily result with the matching tournament day', async () => {
     await seedUsers(pool, 0);
-    const dailyRules = dailyPlayoffTournamentRules();
+    const dailyRules = classicPlayoffTournamentRules();
     dailyRules.config = parseTournamentConfig({
       ...dailyRules.config,
       dailyDays: 2,
@@ -1851,7 +1865,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     });
     const tournament = await createPublishedTournament(
       pool,
-      'daily-aggregate-player-result',
+      'classic-player-result',
       0,
       dailyRules,
     );
@@ -1880,33 +1894,26 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(matchdays[1]).toMatchObject({ number: 2, myResult: null });
   });
 
-  it('refreshes completed daily results before returning the public schedule and day results', async () => {
+  it('returns completed Classic results in the public schedule and paginated day results', async () => {
     await seedUsers(pool, 0);
     const tournament = await createPublishedTournament(
       pool,
-      'daily-results-public-refresh',
+      'classic-results-public-pagination',
       0,
-      dailyPlayoffTournamentRules(),
+      classicPlayoffTournamentRules(),
     );
     for (const playerId of PLAYER_IDS) await applyToTournament(pool, tournament.id, playerId);
     await generateRegularSchedule(pool, tournament.id, tournament.revision);
     await publishRegularSchedule(pool, tournament.id);
     for (const [index, playerId] of PLAYER_IDS.entries()) {
-      const dayPool = await pool.query<{ id: string }>(
-        `insert into day_pool
-           (user_id, day_date, state, current_period, closed_at, game_core_version, daily_seed)
-         values ($1, '2030-09-01', 'closed', 3, '2030-09-01T18:00:00Z', 1, $2)
-         returning id`,
-        [playerId, `public-results-${index}`],
-      );
       await pool.query(
-        `insert into period_log
-           (day_pool_id, period_number, started_at, ended_at, shots_taken, goals, closed_reason)
-         values
-           ($1, 1, '2030-09-01T12:00:00Z', '2030-09-01T12:10:00Z', 30, $2, 'quota'),
-           ($1, 2, '2030-09-01T13:00:00Z', '2030-09-01T13:10:00Z', 30, $2, 'quota'),
-           ($1, 3, '2030-09-01T14:00:00Z', '2030-09-01T14:10:00Z', 30, $2, 'quota')`,
-        [dayPool.rows[0]!.id, index + 1],
+        `insert into tournament_daily_result
+           (tournament_id, participant_id, tournament_day, player_local_date,
+            goals, shots, accuracy, completed, source_snapshot, finalized_at)
+         select $1, id, 1, '2030-09-01', $3::int, 90, $3::int::numeric / 90,
+                true, '{"source":"tournament_classic"}'::jsonb, '2030-09-01T18:00:00Z'
+           from tournament_participant where tournament_id = $1 and user_id = $2`,
+        [tournament.id, playerId, (index + 1) * 3],
       );
     }
     await pool.query(
@@ -2124,7 +2131,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
   describe('game context', () => {
     it('allows an approved player to open only the currently active daily matchday', async () => {
       await seedUsers(pool, 0);
-      const dailyRules = dailyPlayoffTournamentRules();
+      const dailyRules = classicPlayoffTournamentRules();
       dailyRules.config = parseTournamentConfig({
         ...dailyRules.config,
         dailyDays: 2,
@@ -2143,7 +2150,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
           now: new Date('2030-09-02T12:00:00.000Z'),
         }),
       ).resolves.toEqual({
-        action: 'play_daily',
+        action: 'play_classic',
         tournamentDay: 2,
         result: null,
         message: null,
@@ -2180,7 +2187,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         pool,
         'daily-completed-game-context',
         0,
-        dailyPlayoffTournamentRules(),
+        classicPlayoffTournamentRules(),
       );
       const application = await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
       await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
@@ -2214,7 +2221,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
         pool,
         'daily-incomplete-game-context',
         0,
-        dailyPlayoffTournamentRules(),
+        classicPlayoffTournamentRules(),
       );
       const application = await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
       await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
@@ -2244,7 +2251,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
 
     it('distinguishes classic, non-participant, pre-start, playoff and completed tournament states', async () => {
       await seedUsers(pool, 0);
-      const classicRules = dailyPlayoffTournamentRules();
+      const classicRules = classicPlayoffTournamentRules();
       classicRules.config = parseTournamentConfig({
         ...classicRules.config,
         regularSource: 'classic',
@@ -2347,16 +2354,16 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     });
   });
 
-  it('shows every approved daily aggregate participant with zeroes when the regular season starts', async () => {
+  it('shows every approved Classic participant with zeroes when the regular season starts', async () => {
     await seedUsers(pool, 0);
     await pool.query(`update users set avatar_url = '/player-one.webp' where id = $1`, [
       PLAYER_IDS[0],
     ]);
     const tournament = await createPublishedTournament(
       pool,
-      'daily-aggregate-zero-standings',
+      'classic-zero-standings',
       0,
-      dailyPlayoffTournamentRules(),
+      classicPlayoffTournamentRules(),
     );
     await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
     await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
@@ -6810,9 +6817,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       pool,
       'daily-playoff-cutoff-tie',
       0,
-      dailyPlayoffTournamentRules(),
+      classicPlayoffTournamentRules(),
     );
-    const participantIds = await prepareDailyTournamentForPlayoffs(pool, tournament.id);
+    const participantIds = await prepareClassicTournamentForPlayoffs(pool, tournament.id);
 
     await expect(
       startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-02T08:00:00.000Z')),
@@ -6859,9 +6866,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       pool,
       'daily-playoff-resolved-cutoff-tie',
       0,
-      dailyPlayoffTournamentRules(),
+      classicPlayoffTournamentRules(),
     );
-    const participantIds = await prepareDailyTournamentForPlayoffs(pool, tournament.id);
+    const participantIds = await prepareClassicTournamentForPlayoffs(pool, tournament.id);
     await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-02T08:00:00.000Z'));
     const tieBreakFixture = await pool.query<{
       id: string;
@@ -6953,9 +6960,9 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       pool,
       'daily-playoff-cyclic-cutoff-tie',
       0,
-      dailyPlayoffTournamentRules(),
+      classicPlayoffTournamentRules(),
     );
-    const participantIds = await prepareDailyTournamentForPlayoffs(
+    const participantIds = await prepareClassicTournamentForPlayoffs(
       pool,
       tournament.id,
       [0.9, 0.5, 0.5, 0.5],

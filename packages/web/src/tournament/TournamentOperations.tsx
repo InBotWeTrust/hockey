@@ -1340,7 +1340,7 @@ export function TournamentOperations({
           (standings.data?.standings.length ? (
             <TournamentStandingsTable
               rows={standings.data.standings}
-              regularSource={String(tournament.rules?.config?.regularSource ?? '')}
+              regularSource={tournament.regularSource}
               playoffSize={Number(tournament.rules?.config?.playoffSize ?? 0)}
               dailyMetric={
                 typeof tournament.rules?.config?.dailyMetric === 'string'

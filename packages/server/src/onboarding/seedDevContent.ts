@@ -53,6 +53,7 @@ export interface SeedDevOnboardingOptions {
   objectStorage: ObjectStorageClient;
   ownerUserId: string;
   assetDirectory: string;
+  replaceBeginner?: boolean;
 }
 
 const amateurSteps: SeedStep[] = [
@@ -115,68 +116,66 @@ function beginnerSteps(unlockGoalsRequired: number): SeedStep[] {
   return [
     {
       kind: 'informational',
-      title: 'Всё начинается здесь',
+      title: 'Последний на льду',
       description:
-        'Ты решил всерьёз заняться хоккеем. Пока твоя арена — обычный двор. Именно здесь начинается путь в любительскую лигу.',
-      ctaLabel: 'Далее',
-      assetName: 'beginner-story-example.webp',
+        'Двор давно опустел. Ты уже собираешься уходить, когда у борта появляется незнакомец. Он смотрит на клюшку в твоих руках.\n\n— Хочешь когда-нибудь играть по-настоящему?',
+      ctaLabel: 'Хочу',
+      assetName: 'beginner-last-on-ice.webp',
     },
     {
       kind: 'informational',
-      title: 'Поймай момент',
+      title: 'Один бросок',
       description:
-        'Игрок, вратарь и ворота двигаются. Следи за ними и бросай, когда путь к воротам открыт.',
-      ctaLabel: 'Попробовать',
-      assetName: 'beginner-gameplay-example.webp',
+        'Незнакомец кивает на ворота.\n\n— Тогда покажи мне. Один бросок. Не торопись — дождись своего момента.',
+      ctaLabel: 'Выйти на лёд',
+      assetName: 'beginner-one-shot.webp',
     },
     {
       kind: 'tutorial_shot',
-      title: 'Забей первую шайбу',
-      description:
-        'Поймай момент и забей свою первую шайбу. После промаха можно сразу бросить ещё раз.',
-      ctaLabel: 'Далее',
+      title: 'Один бросок',
+      description: 'Дождись своего момента и бросай. Второй попытки не будет.',
+      ctaLabel: 'Что дальше?',
       tutorial: {
-        shooterFrequency: 0.12,
+        shooterFrequency: 0.5,
         goalieFrequency: 0.1,
-        goalFrequency: 0.08,
+        goalFrequency: 0.5,
       },
     },
     {
       kind: 'informational',
-      title: 'Играй каждый день',
+      title: 'Приходи каждый день',
       description:
-        'В дневной игре тебя ждут три периода. Выходи на лёд каждый день, забивай и двигайся вперёд.',
-      ctaLabel: 'Далее',
+        'Незнакомец направляется к выходу, но у калитки останавливается.\n\n— Каждый день у тебя будет три периода. Используй их, чтобы научиться видеть момент и забивать стабильно. Я буду следить за твоими результатами.',
+      ctaLabel: 'Я готов',
       assetName: 'beginner-daily-game.webp',
     },
     {
       kind: 'informational',
-      title: 'Тренируйся',
+      title: 'Одной игры мало',
       description:
-        'Раз в 24 часа тебе доступна тренировка на 50 бросков. Выбирай модель периода и отрабатывай точность.',
-      ctaLabel: 'Далее',
+        'На следующий вечер незнакомец уже ждёт тебя у коробки.\n\n— Игра показывает твой результат. Тренировка меняет тебя. Раз в сутки у тебя есть 50 бросков — выбирай скорость любого из трёх периодов и отрабатывай момент.',
+      ctaLabel: 'Буду тренироваться',
       assetName: 'beginner-training.webp',
     },
     {
       kind: 'informational',
-      title: 'Дорога в любители',
-      description: `Забей ${unlockGoalsRequired} голов в дневной игре, чтобы открыть любительскую лигу.`,
-      ctaLabel: 'Далее',
+      title: `${unlockGoalsRequired} шайб`,
+      description: `После тренировки незнакомец наконец называет условие.\n\n— Забей ${unlockGoalsRequired} шайб в дневных играх. Тренируйся сколько потребуется, но в зачёт пойдут только голы в настоящей игре. Справишься — я покажу тебе хоккей за пределами этого двора.`,
+      ctaLabel: 'Я справлюсь',
       assetName: 'beginner-road-to-amateur.webp',
     },
     {
       kind: 'informational',
-      title: 'Что ждёт впереди',
+      title: 'За пределами двора',
       description:
-        'В любителях откроются дуэли, турниры, бонусные игры и инвентарь. Сначала докажи себя во дворе.',
-      ctaLabel: 'Далее',
+        'Незнакомец смотрит туда, где над городом горят огни большой арены.\n\n— В любителях ты встретишь настоящих соперников в дуэлях, будешь бороться за места в турнирах, открывать бонусные игры и собирать собственную экипировку.\n\nНо сначала заслужи право выйти со двора.',
+      ctaLabel: 'Я готов',
       assetName: 'beginner-amateur-preview.webp',
     },
     {
       kind: 'informational',
       title: 'Начни свой путь',
-      description:
-        'Первая площадка ждёт. Поймай момент, забей и сделай первый шаг к любительской лиге.',
+      description: `На следующий вечер незнакомца на площадке нет.\n\nНа борту свежая надпись:\n\n0 / ${unlockGoalsRequired}\n\nИ ниже всего одна строка:\n\n«Увидимся, когда закончишь».`,
       ctaLabel: 'Выйти на лёд',
       assetName: 'beginner-start-journey.webp',
     },
@@ -191,8 +190,15 @@ function assetKey(body: Buffer): string {
 async function loadAsset(assetDirectory: string, name: string): Promise<LoadedAsset> {
   const body = await readFile(path.join(assetDirectory, name));
   const metadata = await sharp(body, { failOn: 'warning' }).metadata();
-  if (metadata.format !== 'webp' || metadata.width !== 1200 || metadata.height !== 1200) {
-    throw new Error(`onboarding seed asset must be a 1200x1200 WebP: ${name}`);
+  const expectedSize = name.startsWith('beginner-') ? 800 : 1200;
+  if (
+    metadata.format !== 'webp' ||
+    metadata.width !== expectedSize ||
+    metadata.height !== expectedSize
+  ) {
+    throw new Error(
+      `onboarding seed asset must be a ${expectedSize}x${expectedSize} WebP: ${name}`,
+    );
   }
   return { name, body, key: assetKey(body) };
 }
@@ -220,9 +226,10 @@ async function seedChain(
   mediaIds: ReadonlyMap<string, string>,
   objectStorage: ObjectStorageClient,
   ownerUserId: string,
+  replace = false,
 ): Promise<SeedChainResult> {
   const currentVersionId = await publishedVersionId(client, chainKey);
-  if (currentVersionId !== null) {
+  if (currentVersionId !== null && !replace) {
     await client.query(
       `update onboarding_chain
           set enforcement_enabled = true, updated_at = now()
@@ -306,7 +313,7 @@ export async function seedDevOnboarding(
     );
     const existingBeginnerVersion = publishedByChain.get('beginner');
     const existingAmateurVersion = publishedByChain.get('amateur');
-    if (existingBeginnerVersion && existingAmateurVersion) {
+    if (existingBeginnerVersion && existingAmateurVersion && !options.replaceBeginner) {
       await client.query(
         `update onboarding_chain
             set enforcement_enabled = true, updated_at = now()
@@ -378,6 +385,7 @@ export async function seedDevOnboarding(
       mediaIdByName,
       options.objectStorage,
       options.ownerUserId,
+      options.replaceBeginner ?? false,
     );
     const amateur = await seedChain(
       client,

@@ -16,13 +16,21 @@ import {
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveShotSeed, deriveTrainingSeed } from '../seed.js';
-import { reconcileDayPool, type DayPoolRow } from '../daily/reconcile.js';
 import { scheduleDailyCompletionSideEffect } from '../daily/completionSideEffects.js';
 import {
   getConfiguredDailyPeriodSpeedPreset,
   getGameSettings,
   type GameSettings,
 } from '../gameSettings.js';
+import {
+  assertGameplayActionAllowed,
+  getTournamentGameplayLockState,
+  getGameplayLockState,
+  toGameplayLockDto,
+  type GameplayLockDTO,
+  lockUserGameplay,
+  type GameplayLockState,
+} from '../gameplayLocks.js';
 
 const startBodySchema = z.object({
   period_number: z.number().int().min(1).max(3),
@@ -77,6 +85,7 @@ interface TrainingStateResponse {
   goalie_id: string;
   period_speed_presets: DailyPeriodSpeedPreset[];
   tournament_day_locked: boolean;
+  gameplay_lock: GameplayLockDTO | null;
   tournament_day_starts_at: string | null;
 }
 
@@ -99,17 +108,6 @@ interface TrainingHistorySummary {
   completed_trainings: number;
   total_shots: number;
   total_goals: number;
-}
-
-interface TournamentDayTrainingLock {
-  locked: boolean;
-  startsAt: string | null;
-}
-
-function isDailyGameStartedAndIncomplete(pool: DayPoolRow | null, totalPeriods: number): boolean {
-  if (pool === null || pool.state === 'closed') return false;
-  if (pool.state === 'period_active' || pool.state === 'break_active') return true;
-  return pool.state === 'idle' && pool.current_period > 0 && pool.current_period < totalPeriods;
 }
 
 async function withTransaction<T>(
@@ -216,11 +214,17 @@ async function buildTrainingState(
   timezone: string,
   settings: GameSettings,
   now: Date,
-  knownTournamentLock?: TournamentDayTrainingLock,
+  knownTournamentLock?: GameplayLockState,
 ): Promise<TrainingStateResponse> {
   const nextDay = await nextDayStartsAt(client, localToday, timezone);
-  const tournamentLock =
-    knownTournamentLock ?? (await getTournamentDayTrainingLock(client, userId, now));
+  const tournamentLock = knownTournamentLock?.blocked
+    ? knownTournamentLock
+    : await getGameplayLockState(client, { userId, action: 'start_training', now });
+  const gameplayLock = toGameplayLockDto(tournamentLock);
+  const tournamentDayLocked =
+    tournamentLock.blocked &&
+    (tournamentLock.reason === 'scheduled_tournament' ||
+      tournamentLock.reason === 'active_classic');
   if (session === null) {
     return {
       state: 'idle',
@@ -235,8 +239,9 @@ async function buildTrainingState(
       server_now: now.toISOString(),
       goalie_id: settings.training.goalieId,
       period_speed_presets: settings.daily.periodSpeedPresets,
-      tournament_day_locked: tournamentLock.locked,
-      tournament_day_starts_at: tournamentLock.startsAt,
+      tournament_day_locked: tournamentDayLocked,
+      gameplay_lock: gameplayLock,
+      tournament_day_starts_at: tournamentLock.tournamentStartsAt?.toISOString() ?? null,
     };
   }
 
@@ -254,8 +259,9 @@ async function buildTrainingState(
     server_now: now.toISOString(),
     goalie_id: settings.training.goalieId,
     period_speed_presets: settings.daily.periodSpeedPresets,
-    tournament_day_locked: tournamentLock.locked,
-    tournament_day_starts_at: tournamentLock.startsAt,
+    tournament_day_locked: tournamentDayLocked,
+    gameplay_lock: gameplayLock,
+    tournament_day_starts_at: tournamentLock.tournamentStartsAt?.toISOString() ?? null,
   };
 }
 
@@ -342,59 +348,6 @@ async function fetchTrainingHistory(
   };
 }
 
-async function getTournamentDayTrainingLock(
-  client: PoolClient,
-  userId: string,
-  now: Date,
-): Promise<TournamentDayTrainingLock> {
-  const { rows } = await client.query<{ starts_at: Date }>(
-    `select candidate.starts_at
-       from (
-         select matchday.starts_at
-           from tournament_matchday matchday
-           join tournament tournament on tournament.id = matchday.tournament_id
-           join tournament_participant participant
-             on participant.tournament_id = tournament.id
-            and participant.user_id = $1
-            and participant.state = 'approved'
-           left join tournament_classic_session session
-             on session.tournament_id = tournament.id
-            and session.participant_id = participant.id
-            and session.tournament_day = matchday.number
-          where tournament.regular_source = 'classic'
-            and tournament.status = 'regular'
-            and matchday.status <> 'cancelled'
-            and matchday.ends_at > $2::timestamptz
-            and session.current_period > 0
-            and session.state not in ('closed', 'expired')
-         union all
-         select game_day.first_game_starts_at as starts_at
-           from tournament_fixture_attempt attempt
-           join tournament_round_game_day game_day on game_day.id = attempt.round_game_day_id
-           join tournament_fixture fixture on fixture.id = attempt.fixture_id
-           join tournament tournament on tournament.id = fixture.tournament_id
-           join tournament_participant participant
-             on participant.id in (fixture.home_participant_id, fixture.away_participant_id)
-            and participant.user_id = $1
-            and participant.state = 'approved'
-          where tournament.status = 'playoff'
-            and game_day.status <> 'cancelled'
-            and attempt.status in (
-              'pending', 'ready_check', 'active', 'needs_reschedule', 'needs_admin_decision'
-            )
-       ) candidate
-      order by candidate.starts_at
-      limit 1`,
-    [userId, now],
-  );
-  return {
-    locked:
-      rows[0] !== undefined &&
-      rows[0].starts_at.getTime() <= now.getTime() + 30 * 60_000,
-    startsAt: rows[0]?.starts_at.toISOString() ?? null,
-  };
-}
-
 function assertTrainingTapTimeFresh(
   session: TrainingSessionRow,
   previousShots: number,
@@ -417,34 +370,6 @@ function assertTrainingTapTimeFresh(
   }
 }
 
-async function assertTrainingAvailableDuringDaily(
-  client: PoolClient,
-  userId: string,
-  now: Date,
-  settings: GameSettings,
-): Promise<void> {
-  const { pool } = await reconcileDayPool(client, userId, now, settings.daily);
-  if (isDailyGameStartedAndIncomplete(pool, settings.daily.totalPeriods)) {
-    throw new AppError('conflict', 'training is locked while the daily game is in progress', 409);
-  }
-}
-
-async function assertTrainingAvailableDuringTournament(
-  client: PoolClient,
-  userId: string,
-  now: Date,
-): Promise<TournamentDayTrainingLock> {
-  const lock = await getTournamentDayTrainingLock(client, userId, now);
-  if (lock.locked) {
-    throw new AppError(
-      'conflict',
-      'training is locked during the tournament game day block',
-      409,
-    );
-  }
-  return lock;
-}
-
 export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> = async (
   app,
   opts,
@@ -453,10 +378,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
     scheduleDailyCompletionSideEffect(
       () => evaluatePendingDailyPeriodClosedAchievements(app.pg, userId),
       (error) => {
-        app.log.warn(
-          { err: error, userId },
-          'failed to recover pending daily period achievements',
-        );
+        app.log.warn({ err: error, userId }, 'failed to recover pending daily period achievements');
       },
     );
   };
@@ -480,12 +402,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
     return withTransaction(app, async (client) => {
       const now = new Date();
       await reconcileTrainingSession(client, req.user.id, now);
-      return fetchTrainingHistory(
-        client,
-        req.user.id,
-        parsed.data.limit,
-        parsed.data.offset,
-      );
+      return fetchTrainingHistory(client, req.user.id, parsed.data.limit, parsed.data.offset);
     });
   });
 
@@ -497,14 +414,15 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
     const { period_number: selectedPeriod } = parsed.data;
 
     const state = await withTransaction(app, async (client): Promise<TrainingStateResponse> => {
+      await lockUserGameplay(client, req.user.id);
       const now = new Date();
       const settings = await getGameSettings(client);
-      await assertTrainingAvailableDuringDaily(client, req.user.id, now, settings);
-      const tournamentLock = await assertTrainingAvailableDuringTournament(
-        client,
-        req.user.id,
+      await assertGameplayActionAllowed(client, {
+        userId: req.user.id,
+        action: 'start_training',
         now,
-      );
+      });
+      const tournamentLock = await getTournamentGameplayLockState(client, req.user.id, now);
       const { session, localToday, timezone } = await reconcileTrainingSession(
         client,
         req.user.id,
@@ -599,132 +517,137 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
     }
     const body = parsed.data;
 
-    const response = await withTransaction(app, async (client): Promise<TrainingShotSubmitResponse> => {
-      const now = new Date();
-      const settings = await getGameSettings(client);
-      await assertTrainingAvailableDuringDaily(client, req.user.id, now, settings);
-      const tournamentLock = await assertTrainingAvailableDuringTournament(
-        client,
-        req.user.id,
-        now,
-      );
-      const { session, localToday, timezone } = await reconcileTrainingSession(
-        client,
-        req.user.id,
-        now,
-      );
-      if (session === null) {
-        throw new AppError('conflict', 'no active training session', 409);
-      }
-      if (session.state !== 'active') {
-        throw new AppError('conflict', 'training session is closed', 409);
-      }
-
-      const stats = await aggregateTraining(client, session.id);
-      if (stats.shots >= session.shots_limit) {
-        throw new AppError('conflict', 'training shot quota exhausted', 409);
-      }
-      const expectedShotIndex = stats.shots + 1;
-      if (body.shot_index !== expectedShotIndex) {
-        throw new AppError(
-          'conflict',
-          `shot_index mismatch: expected ${expectedShotIndex}, got ${body.shot_index}`,
-          409,
-        );
-      }
-      assertTrainingTapTimeFresh(session, stats.shots, body.input.tapTime, now);
-
-      const shotSeed = deriveShotSeed(
-        session.training_seed,
-        session.selected_period,
-        body.shot_index,
-      );
-      const periodSpeeds = getConfiguredDailyPeriodSpeedPreset(
-        settings.daily.periodSpeedPresets,
-        session.selected_period,
-      );
-      const shotInput = {
-        tapTime: body.input.tapTime,
-        ...(body.input.shooterTapTime !== undefined
-          ? { shooterTapTime: body.input.shooterTapTime }
-          : {}),
-        puckSpeedPerMs: periodSpeeds.puckSpeedPerMs,
-        shooterFrequency: periodSpeeds.shooterFrequency,
-        goalieFrequency: periodSpeeds.goalieFrequency,
-        goalFrequency: periodSpeeds.goalFrequency,
-      };
-      const result = resolvePerspectiveCourtShot(
-        shotInput,
-        getGoalie(settings.training.goalieId),
-        shotSeed,
-        body.shot_index,
-        STICK_NEUTRAL,
-        getSessionPhaseOffsets(session.training_seed),
-      );
-      const serverResult: 'goal' | 'save' | 'miss' = result.type;
-
-      await client.query(
-        `insert into shot_session
-           (user_id, mode, training_session_id, period_number, shot_index, seed,
-            input_payload, server_result, game_core_version)
-         values ($1, 'training', $2, $3, $4, $5, $6, $7, $8)`,
-        [
+    const response = await withTransaction(
+      app,
+      async (client): Promise<TrainingShotSubmitResponse> => {
+        await lockUserGameplay(client, req.user.id);
+        const now = new Date();
+        const settings = await getGameSettings(client);
+        await assertGameplayActionAllowed(client, {
+          userId: req.user.id,
+          now,
+          action: 'start_training',
+        });
+        const tournamentLock = await getTournamentGameplayLockState(client, req.user.id, now);
+        const { session, localToday, timezone } = await reconcileTrainingSession(
+          client,
           req.user.id,
-          session.id,
+          now,
+        );
+        if (session === null) {
+          throw new AppError('conflict', 'no active training session', 409);
+        }
+        if (session.state !== 'active') {
+          throw new AppError('conflict', 'training session is closed', 409);
+        }
+
+        const stats = await aggregateTraining(client, session.id);
+        if (stats.shots >= session.shots_limit) {
+          throw new AppError('conflict', 'training shot quota exhausted', 409);
+        }
+        const expectedShotIndex = stats.shots + 1;
+        if (body.shot_index !== expectedShotIndex) {
+          throw new AppError(
+            'conflict',
+            `shot_index mismatch: expected ${expectedShotIndex}, got ${body.shot_index}`,
+            409,
+          );
+        }
+        assertTrainingTapTimeFresh(session, stats.shots, body.input.tapTime, now);
+
+        const shotSeed = deriveShotSeed(
+          session.training_seed,
           session.selected_period,
           body.shot_index,
+        );
+        const periodSpeeds = getConfiguredDailyPeriodSpeedPreset(
+          settings.daily.periodSpeedPresets,
+          session.selected_period,
+        );
+        const shotInput = {
+          tapTime: body.input.tapTime,
+          ...(body.input.shooterTapTime !== undefined
+            ? { shooterTapTime: body.input.shooterTapTime }
+            : {}),
+          puckSpeedPerMs: periodSpeeds.puckSpeedPerMs,
+          shooterFrequency: periodSpeeds.shooterFrequency,
+          goalieFrequency: periodSpeeds.goalieFrequency,
+          goalFrequency: periodSpeeds.goalFrequency,
+        };
+        const result = resolvePerspectiveCourtShot(
+          shotInput,
+          getGoalie(settings.training.goalieId),
           shotSeed,
-          JSON.stringify(shotInput),
-          serverResult,
-          session.game_core_version,
-        ],
-      );
+          body.shot_index,
+          STICK_NEUTRAL,
+          getSessionPhaseOffsets(session.training_seed),
+        );
+        const serverResult: 'goal' | 'save' | 'miss' = result.type;
 
-      if (body.claimed_result !== serverResult) {
-        await appendEvent(client, req.user.id, 'shot_mismatch', {
-          mode: 'training',
-          training_session_id: session.id,
-          period_number: session.selected_period,
-          shot_index: body.shot_index,
-          claimed_result: body.claimed_result,
-          server_result: serverResult,
-        });
-      }
-
-      if (expectedShotIndex >= session.shots_limit) {
         await client.query(
-          `update training_session
+          `insert into shot_session
+           (user_id, mode, training_session_id, period_number, shot_index, seed,
+            input_payload, server_result, game_core_version, created_at)
+         values ($1, 'training', $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            req.user.id,
+            session.id,
+            session.selected_period,
+            body.shot_index,
+            shotSeed,
+            JSON.stringify(shotInput),
+            serverResult,
+            session.game_core_version,
+            now,
+          ],
+        );
+
+        if (body.claimed_result !== serverResult) {
+          await appendEvent(client, req.user.id, 'shot_mismatch', {
+            mode: 'training',
+            training_session_id: session.id,
+            period_number: session.selected_period,
+            shot_index: body.shot_index,
+            claimed_result: body.claimed_result,
+            server_result: serverResult,
+          });
+        }
+
+        if (expectedShotIndex >= session.shots_limit) {
+          await client.query(
+            `update training_session
               set state = 'closed', closed_at = $1
             where id = $2`,
-          [now, session.id],
-        );
-        await appendEvent(client, req.user.id, 'training_session_closed', {
-          training_session_id: session.id,
-          closed_reason: 'quota',
-        });
-        await evaluateTrainingClosedAchievements(client, {
-          userId: req.user.id,
-          trainingSessionId: session.id,
-          dayDate: session.day_date,
-          shotsLimit: session.shots_limit,
-          dailyTotalPeriods: settings.daily.totalPeriods,
-          dailyShotsPerPeriod: settings.daily.shotsPerPeriod,
-        });
-      }
+            [now, session.id],
+          );
+          await appendEvent(client, req.user.id, 'training_session_closed', {
+            training_session_id: session.id,
+            closed_reason: 'quota',
+          });
+          await evaluateTrainingClosedAchievements(client, {
+            userId: req.user.id,
+            trainingSessionId: session.id,
+            dayDate: session.day_date,
+            shotsLimit: session.shots_limit,
+            dailyTotalPeriods: settings.daily.totalPeriods,
+            dailyShotsPerPeriod: settings.daily.shotsPerPeriod,
+          });
+        }
 
-      const nextSession = await fetchTodayTrainingSession(client, req.user.id, localToday);
-      const state = await buildTrainingState(
-        client,
-        req.user.id,
-        nextSession,
-        localToday,
-        timezone,
-        settings,
-        now,
-        tournamentLock,
-      );
-      return { server_result: serverResult, state };
-    });
+        const nextSession = await fetchTodayTrainingSession(client, req.user.id, localToday);
+        const state = await buildTrainingState(
+          client,
+          req.user.id,
+          nextSession,
+          localToday,
+          timezone,
+          settings,
+          now,
+          tournamentLock,
+        );
+        return { server_result: serverResult, state };
+      },
+    );
     schedulePendingAchievementRecovery(req.user.id);
     return response;
   });

@@ -8,33 +8,20 @@ import type * as OnboardingApi from '../api/onboarding.js';
 import { completeOnboarding, recordStepView } from '../api/onboarding.js';
 import { OnboardingFlow } from './OnboardingFlow.js';
 
-let tutorialGoalConfirmed = false;
-
 vi.mock('./TutorialShotStep.js', () => ({
   TutorialShotStep: ({
-    goalConfirmed,
-    canGoBack,
     onGoalConfirmed,
-    onBack,
     onContinue,
   }: {
     goalConfirmed: boolean;
-    canGoBack: boolean;
     onGoalConfirmed: () => void;
-    onBack: () => void;
     onContinue: () => void;
   }) => {
-    tutorialGoalConfirmed = goalConfirmed;
     return (
       <div data-testid="tutorial-step">
         <button type="button" onClick={onGoalConfirmed}>
           Confirm goal
         </button>
-        {canGoBack && (
-          <button type="button" onClick={onBack}>
-            Tutorial Back
-          </button>
-        )}
         <button type="button" onClick={onContinue}>
           Tutorial Next
         </button>
@@ -101,7 +88,6 @@ const required: OnboardingRequired = {
 
 describe('OnboardingFlow', () => {
   beforeEach(() => {
-    tutorialGoalConfirmed = false;
     vi.mocked(recordStepView).mockReset().mockResolvedValue({ viewed: true });
     vi.mocked(completeOnboarding).mockReset();
   });
@@ -115,9 +101,7 @@ describe('OnboardingFlow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
     expect(screen.getByText('2 из 3')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Назад' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    expect(screen.queryByRole('button', { name: 'Назад' })).not.toBeInTheDocument();
 
     await waitFor(() => expect(recordStepView).toHaveBeenCalledTimes(2));
   });
@@ -228,7 +212,7 @@ describe('OnboardingFlow', () => {
     expect(onboardingCss).toMatch(/overflow-y:\s*auto/);
   });
 
-  it('preserves a confirmed tutorial goal across Back and forward in the same run', async () => {
+  it('keeps tutorial navigation forward-only', async () => {
     const tutorialRequired: OnboardingRequired = {
       chain: 'beginner',
       versionId: 'beginner-v1',
@@ -250,11 +234,7 @@ describe('OnboardingFlow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
     await screen.findByTestId('tutorial-step');
     fireEvent.click(screen.getByRole('button', { name: 'Confirm goal' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Tutorial Back' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
-
-    expect(await screen.findByTestId('tutorial-step')).toBeInTheDocument();
-    expect(tutorialGoalConfirmed).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Tutorial Back' })).not.toBeInTheDocument();
   });
 
   it('does not decrement below zero when tutorial is the first published step', async () => {

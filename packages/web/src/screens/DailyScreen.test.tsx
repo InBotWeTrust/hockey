@@ -427,10 +427,10 @@ describe('DailyScreen', () => {
     ).toEqual({ label: 'Следующая игра через:', value: '04:50', countdown: true });
   });
 
-  it('does not load the ordinary daily game from a completed tournament URL', async () => {
+  it('does not load the ordinary daily game from a completed classic tournament URL', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
-      const body = url.includes('/tournaments/daily-1/game-context')
+      const body = url.includes('/tournaments/classic-1/game-context')
         ? {
             action: 'waiting_playoff',
             tournamentDay: 1,
@@ -444,7 +444,7 @@ describe('DailyScreen', () => {
       });
     });
 
-    renderWith(['/?view=daily&section=tournaments&tournament=daily-1&tab=schedule']);
+    renderWith(['/?view=classic&section=tournaments&tournament=classic-1&tab=schedule']);
 
     expect(
       await screen.findByText('Регулярный сезон завершён. Ожидаем начала плей-офф.'),
@@ -474,6 +474,50 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByText('Кубок классики · 1-й тур')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'НАЧАТЬ' })).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/duel/daily/state')),
+    ).toBe(false);
+  });
+
+  it('resolves a classic tournament game when the tournament URL still says daily', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/classic-1/game-context')
+        ? { action: 'play_classic', tournamentDay: 1, result: null, message: null }
+        : url.includes('/tournaments/classic-1/classic/state')
+          ? classicIdleState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=daily&section=tournaments&tournament=classic-1&tab=schedule']);
+
+    expect(await screen.findByText('Кубок классики · 1-й тур')).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/duel/daily/state')),
+    ).toBe(false);
+  });
+
+  it('does not route a removed daily tournament context into the ordinary daily game', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/stale-daily/game-context')
+        ? { action: 'play_daily', tournamentDay: 1, result: null, message: null }
+        : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=daily&section=tournaments&tournament=stale-daily&tab=schedule']);
+
+    expect(await screen.findByRole('heading', { name: 'Турнирная игра' })).toBeInTheDocument();
+    expect(screen.getByText('Не удалось проверить доступ к турнирной игре.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes('/duel/daily/state')),
     ).toBe(false);
@@ -895,58 +939,10 @@ describe('DailyScreen', () => {
     expect(screen.getByRole('button', { name: 'ИГРА ЗАВЕРШЕНА' })).toBeDisabled();
   });
 
-  it('opens the daily tournament game when the URL incorrectly says classic', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = input instanceof Request ? input.url : String(input);
-      const body = url.includes('/tournaments/daily-1/game-context')
-        ? { action: 'play_daily', tournamentDay: 1, result: null, message: null }
-        : baseState;
-      return new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    });
-
-    renderWith(['/?view=classic&section=tournaments&tournament=daily-1&tab=schedule']);
-
-    await waitFor(() => {
-      expect(
-        fetchMock.mock.calls.some(([input]) => String(input).includes('/duel/daily/state')),
-      ).toBe(true);
-    });
-    expect(
-      fetchMock.mock.calls.some(([input]) =>
-        String(input).includes('/tournaments/daily-1/classic/state'),
-      ),
-    ).toBe(false);
-  });
-
-  it('opens the classic tournament game when the URL incorrectly says daily', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = input instanceof Request ? input.url : String(input);
-      const body = url.includes('/tournaments/classic-1/game-context')
-        ? { action: 'play_classic', tournamentDay: 1, result: null, message: null }
-        : url.includes('/tournaments/classic-1/classic/state')
-          ? classicIdleState
-          : baseState;
-      return new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    });
-
-    renderWith(['/?view=daily&section=tournaments&tournament=classic-1&tab=schedule']);
-
-    expect(await screen.findByText('Кубок классики · 1-й тур')).toBeInTheDocument();
-    expect(
-      fetchMock.mock.calls.some(([input]) => String(input).includes('/duel/daily/state')),
-    ).toBe(false);
-  });
-
   it('shows a credited incomplete tournament result', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
-      const body = url.includes('/tournaments/daily-incomplete/game-context')
+      const body = url.includes('/tournaments/classic-incomplete/game-context')
         ? {
             action: 'waiting_playoff',
             tournamentDay: 1,
@@ -960,7 +956,7 @@ describe('DailyScreen', () => {
       });
     });
 
-    renderWith(['/?view=daily&section=tournaments&tournament=daily-incomplete&tab=schedule']);
+    renderWith(['/?view=classic&section=tournaments&tournament=classic-incomplete&tab=schedule']);
 
     expect(
       await screen.findByText('Незавершённая игра зачтена по правилам турнира.'),
@@ -1775,10 +1771,94 @@ describe('DailyScreen', () => {
     expect(screen.queryByText('Закрыта на время игр турнира')).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['recent_gameplay', null, /Восстановление после игры/],
+    ['active_classic', null, /Завершите текущую игру в турнире/],
+    ['scheduled_tournament', '2099-04-25T14:00:00.000Z', /До турнирной игры/],
+    ['scheduled_tournament', '2020-04-25T14:00:00.000Z', /До завершения турнирного блока/],
+  ] as const)('renders authoritative training lock %s (%s)', async (reason, startsAt, copy) => {
+    const locked = {
+      ...trainingIdleState,
+      gameplay_lock: {
+        blocked: true,
+        reason,
+        ends_at: reason === 'recent_gameplay' ? '2099-04-25T15:00:00.000Z' : null,
+        tournament_starts_at: startsAt,
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      return new Response(JSON.stringify(url.includes('/duel/training/') ? locked : baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith();
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать Тренировка' }));
+    expect(await screen.findByText(copy)).toBeInTheDocument();
+  });
+
+  it('ignores stale legacy training flags when gameplay_lock is null', async () => {
+    const unlocked = {
+      ...trainingIdleState,
+      gameplay_lock: null,
+      tournament_day_locked: true,
+      tournament_day_starts_at: '2020-04-25T14:00:00.000Z',
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      return new Response(JSON.stringify(url.includes('/duel/training/') ? unlocked : baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith();
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать Тренировка' }));
+    expect(await screen.findByText('0/500 бросков сегодня')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['active_classic', 'Завершите текущую игру в турнире'],
+    ['scheduled_tournament', 'До завершения турнирного блока'],
+  ] as const)(
+    'announces the actual %s daily lock without a recovery countdown',
+    async (reason, copy) => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+        const url = input instanceof Request ? input.url : String(input);
+        return new Response(
+          JSON.stringify(
+            url.includes('/duel/training/')
+              ? trainingIdleState
+              : {
+                  ...baseState,
+                  gameplay_lock: {
+                    blocked: true,
+                    reason,
+                    ends_at: null,
+                    tournament_starts_at: null,
+                  },
+                },
+          ),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      });
+      renderWith();
+      const scoreboard = await screen.findByLabelText(copy);
+      expect(scoreboard).toHaveTextContent('ИГРА');
+      expect(scoreboard.getAttribute('aria-label')).not.toMatch(/Восстановление|00:00:00/);
+    },
+  );
+
   it('rechecks a tournament training lock every 30 seconds while the arena stays open', async () => {
     vi.useFakeTimers();
     const lockedTrainingState: TrainingStateResponse = {
       ...trainingIdleState,
+      gameplay_lock: {
+        blocked: true,
+        reason: 'scheduled_tournament',
+        ends_at: null,
+        tournament_starts_at: '2026-04-25T10:00:00.000Z',
+      },
       tournament_day_locked: true,
       tournament_day_starts_at: '2026-04-25T10:00:00.000Z',
     };
@@ -1803,7 +1883,7 @@ describe('DailyScreen', () => {
     renderWith();
     await act(async () => Promise.resolve());
     fireEvent.click(screen.getByRole('button', { name: 'Выбрать Тренировка' }));
-    expect(screen.getByText('Закрыта на время игр турнира')).toBeInTheDocument();
+    expect(screen.getByText('До завершения турнирного блока')).toBeInTheDocument();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
@@ -1949,6 +2029,43 @@ describe('DailyScreen', () => {
     expect(
       await screen.findByRole('article', { name: 'Тренировка: Тренировка' }),
     ).toBeInTheDocument();
+  });
+
+  it('explains a safe-start lock on the arena card before T-60', async () => {
+    const activeMatch = {
+      ...settledDuelMatch,
+      status: 'active',
+      outcome: null,
+      settled_at: null,
+      starts_at: new Date(Date.now() - 60_000).toISOString(),
+      ends_at: new Date(Date.now() + 3_600_000).toISOString(),
+      server_now: new Date().toISOString(),
+      me: { ...settledDuelMatch.me, state: 'accepted', current_period: 0 },
+      duel_lock: {
+        blocked: true,
+        reason: 'scheduled_tournament',
+        ends_at: null,
+        tournament_starts_at: new Date(Date.now() + 65 * 60_000).toISOString(),
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/duel/amateur/events')
+        ? { events: [activeMatch] }
+        : url.includes('/duel/training/state')
+          ? trainingIdleState
+          : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=arena']);
+    const card = await screen.findByRole('article', { name: 'Активная дуэль: Duel Opponent' });
+    expect(
+      within(card).getByText(/Обычные дуэли недоступны перед турнирной игрой/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'На лёд' })).not.toBeInTheDocument();
   });
 
   it('shows outgoing and incoming duel invites from the current player perspective', async () => {
@@ -2266,6 +2383,98 @@ describe('DailyScreen', () => {
     expect(screen.getByText('Проверяем результат')).toBeInTheDocument();
   });
 
+  it.each([
+    ['active_classic', null, true, 'Завершите текущую игру в турнире'],
+    ['active_classic', '2099-04-25T14:00:00.000Z', true, 'Завершите текущую игру в турнире'],
+    ['scheduled_tournament', '2099-04-25T14:00:00.000Z', false, null],
+    ['scheduled_tournament', '2020-04-25T14:00:00.000Z', true, 'До завершения турнирного блока'],
+  ] as const)(
+    'obeys the active daily period lock %s at %s (blocked=%s)',
+    async (reason, startsAt, blocked, copy) => {
+      const active: DailyStateResponse = {
+        ...baseState,
+        state: 'period_active',
+        current_period: 1,
+        daily_seed: 'seed-abc',
+        server_now: new Date().toISOString(),
+        period_ends_at: new Date(Date.now() + 20 * 60_000).toISOString(),
+        gameplay_lock: { blocked: true, reason, ends_at: null, tournament_starts_at: startsAt },
+      };
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(JSON.stringify(active), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+      );
+      renderWith(['/?view=daily']);
+
+      const button = await screen.findByRole('button', {
+        name: blocked ? 'ЛЁД ГОТОВИТСЯ' : 'БРОСОК',
+      });
+      if (blocked) {
+        expect(button).toBeDisabled();
+        expect(screen.getByText(copy!)).toBeInTheDocument();
+      } else {
+        expect(button).toBeEnabled();
+      }
+    },
+  );
+
+  it('refreshes a stale daily shot 409 and disables retries while Classic remains active', async () => {
+    const active: DailyStateResponse = {
+      ...baseState,
+      state: 'period_active',
+      current_period: 1,
+      daily_seed: 'seed-abc',
+      server_now: new Date().toISOString(),
+      period_ends_at: new Date(Date.now() + 20 * 60_000).toISOString(),
+      gameplay_lock: null,
+    };
+    let rejected = false;
+    let shots = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/daily/shot')) {
+        shots += 1;
+        rejected = true;
+        return new Response(
+          JSON.stringify({ error: { code: 'conflict', message: 'gameplay is locked' } }),
+          {
+            status: 409,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          ...active,
+          gameplay_lock: rejected
+            ? {
+                blocked: true,
+                reason: 'active_classic',
+                ends_at: null,
+                tournament_starts_at: null,
+              }
+            : null,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    renderWith(['/?view=daily']);
+    expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeEnabled();
+    await act(async () => {
+      await useDailyStore
+        .getState()
+        .submitShot({ shotIndex: 1, input: { tapTime: 0 }, claimedResult: 'miss' });
+    });
+    const blockedButton = await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' });
+    expect(blockedButton).toBeDisabled();
+    expect(screen.getByText('Завершите текущую игру в турнире')).toBeInTheDocument();
+    fireEvent.click(blockedButton);
+    expect(shots).toBe(1);
+  });
+
   it('returns from an active daily period to the modes hub', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
@@ -2388,51 +2597,6 @@ describe('DailyScreen', () => {
 
     await screen.findByRole('article', { name: /Ежедневная игра/ });
     expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
-  });
-
-  it('returns from a tournament daily game to that tournament schedule', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = input instanceof Request ? input.url : String(input);
-      const body = url.includes('/tournaments/daily-1/game-context')
-        ? { action: 'play_daily', tournamentDay: 1, result: null, message: null }
-        : {
-            ...baseState,
-            state: 'period_active',
-            current_period: 1,
-            current_period_shots: 4,
-            current_period_goals: 2,
-            daily_seed: 'seed-abc',
-            period_ends_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-          };
-      return new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    });
-    function LocationProbe() {
-      return <output aria-label="Текущий адрес">{useLocation().search}</output>;
-    }
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={client}>
-        <MemoryRouter
-          initialEntries={[
-            '/?view=daily&section=tournaments&tournament=daily-1&tab=schedule&from=sections',
-          ]}
-        >
-          <DailyScreen />
-          <LocationProbe />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-
-    expect(await screen.findByRole('button', { name: 'К турниру' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'К режимам' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'К турниру' }));
-
-    expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent(
-      'view=amateur&section=tournaments&tournament=daily-1&tab=schedule&from=sections',
-    );
   });
 
   it('keeps the third period playable instead of showing the closed-day modal', async () => {
@@ -2573,6 +2737,7 @@ describe('DailyScreen', () => {
   });
 
   it('returns to the hub after dismissing fresh period stats and shows them again on break re-entry', async () => {
+    let periodCompleted = false;
     const future = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     const activeState: DailyStateResponse = {
       ...baseState,
@@ -2610,7 +2775,13 @@ describe('DailyScreen', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       return new Response(
-        JSON.stringify(url.includes('/duel/training/state') ? trainingIdleState : activeState),
+        JSON.stringify(
+          url.includes('/duel/training/state')
+            ? trainingIdleState
+            : periodCompleted
+              ? breakState
+              : activeState,
+        ),
         {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -2623,6 +2794,7 @@ describe('DailyScreen', () => {
     expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
 
     act(() => {
+      periodCompleted = true;
       useDailyStore.getState().setDeferredState(breakState);
     });
 
@@ -2958,10 +3130,21 @@ describe('DailyScreen', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes('/duel/training/state')) {
-        return new Response(JSON.stringify(trainingIdleState), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
+        return new Response(
+          JSON.stringify({
+            ...trainingIdleState,
+            gameplay_lock: {
+              blocked: true,
+              reason: 'recent_gameplay',
+              ends_at: new Date(Date.now() + 3_600_000).toISOString(),
+              tournament_starts_at: null,
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
       }
       return new Response(
         JSON.stringify({
@@ -2979,11 +3162,11 @@ describe('DailyScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Выбрать Тренировка' }));
     const trainingCard = await findArenaCta('Тренировка: Тренировка');
-    expect(screen.getByText('Закрыта до завершения игры')).toBeInTheDocument();
+    expect(screen.getByText('Восстановление после игры')).toBeInTheDocument();
     fireEvent.click(trainingCard);
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
-    expect(screen.getByText('Игра уже начата')).toBeInTheDocument();
+    expect(screen.getByText('Восстановление после игры')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Тренировка закрыта' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Тренировка', level: 1 })).not.toBeInTheDocument();
   });
@@ -2992,10 +3175,21 @@ describe('DailyScreen', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes('/duel/training/state')) {
-        return new Response(JSON.stringify(trainingActiveState), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
+        return new Response(
+          JSON.stringify({
+            ...trainingActiveState,
+            gameplay_lock: {
+              blocked: true,
+              reason: 'recent_gameplay',
+              ends_at: new Date(Date.now() + 3_600_000).toISOString(),
+              tournament_starts_at: null,
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
       }
       return new Response(
         JSON.stringify({
@@ -3012,7 +3206,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=training&play=1']);
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
-    expect(screen.getByText('Игра уже начата')).toBeInTheDocument();
+    expect(screen.getByText('Восстановление после игры')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
 
@@ -3024,6 +3218,12 @@ describe('DailyScreen', () => {
           JSON.stringify({
             ...trainingActiveState,
             tournament_day_locked: true,
+            gameplay_lock: {
+              blocked: true,
+              reason: 'scheduled_tournament',
+              ends_at: null,
+              tournament_starts_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+            },
             tournament_day_starts_at: new Date(Date.now() - 5 * 60_000).toISOString(),
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
@@ -3038,7 +3238,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=training&play=1']);
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
-    expect(screen.getByText('Идут игры турнира')).toBeInTheDocument();
+    expect(screen.getByText('До завершения турнирного блока')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
 
@@ -3178,6 +3378,12 @@ describe('DailyScreen', () => {
         JSON.stringify({
           ...baseState,
           training_cooldown_ends_at: cooldownEndsAt,
+          gameplay_lock: {
+            blocked: true,
+            reason: 'recent_gameplay',
+            ends_at: cooldownEndsAt,
+            tournament_starts_at: null,
+          },
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       );
@@ -3186,17 +3392,17 @@ describe('DailyScreen', () => {
 
     const dailyButton = await findArenaCta('Ежедневная игра: Восстановление');
     expect(screen.getByText('Восстановление')).toHaveClass('arena-cube-title--compact');
-    expect(screen.getByText('После тренировки нужно восстановиться.')).toHaveClass(
+    expect(screen.getByText('Восстановление после игры')).toHaveClass(
       'arena-cube-subtitle--compact',
     );
-    const cooldownScoreboard = screen.getByLabelText(/^Восстановление\. До игры/);
+    const cooldownScoreboard = screen.getByLabelText(/^Восстановление после игры\. До игры/);
     expect(cooldownScoreboard).toHaveClass('daily-hub-scoreboard--timer-only');
     expect(within(cooldownScoreboard).getByText('До игры')).toBeInTheDocument();
     expect(within(cooldownScoreboard).queryByText('Период')).not.toBeInTheDocument();
     fireEvent.click(dailyButton);
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
-    expect(screen.getByText('Нужно восстановиться')).toBeInTheDocument();
+    expect(screen.getByText('Восстановление после игры')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Нужно восстановиться' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
@@ -3313,6 +3519,47 @@ describe('DailyScreen', () => {
       expect(startCall?.[1]?.body).toBe(JSON.stringify({ period_number: 1 }));
     });
   });
+
+  it.each([
+    ['scheduled_tournament', 'До завершения турнирного блока'],
+    ['active_classic', 'Завершите текущую игру в турнире'],
+  ] as const)(
+    'refreshes a newly appeared %s lock after training start returns 409',
+    async (reason, copy) => {
+      let startRejected = false;
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (url.includes('/duel/training/start')) {
+          startRejected = true;
+          return new Response(
+            JSON.stringify({ error: { code: 'conflict', message: 'gameplay is locked' } }),
+            {
+              status: 409,
+              headers: { 'content-type': 'application/json' },
+            },
+          );
+        }
+        return new Response(
+          JSON.stringify(
+            url.includes('/duel/training/state')
+              ? {
+                  ...trainingIdleState,
+                  gameplay_lock: startRejected
+                    ? { blocked: true, reason, ends_at: null, tournament_starts_at: null }
+                    : null,
+                }
+              : baseState,
+          ),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      });
+      renderWith(['/?view=training&play=1']);
+      fireEvent.click(await screen.findByRole('button', { name: 'НАЧАТЬ' }));
+      expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
+      expect(screen.getByText(copy)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'НАЧАТЬ' })).not.toBeInTheDocument();
+    },
+  );
 
   it('lets admins override daily period speeds from the second training debug control', async () => {
     useAuthStore.getState().setSession({
@@ -4855,6 +5102,146 @@ describe('DailyScreen', () => {
         duel_kinds: ['express', 'classic'],
       });
     });
+  });
+
+  it('disables ordinary duel search during a tournament lock without sending a join', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/duel/amateur/matches')
+        ? {
+            matches: [],
+            duel_lock: {
+              blocked: true,
+              reason: 'active_classic',
+              ends_at: null,
+              tournament_starts_at: null,
+            },
+            matchmaking_enabled: false,
+          }
+        : url.includes('/duel/amateur/templates')
+          ? { templates: challengeTemplates }
+          : url.includes('/duel/amateur/rating')
+            ? { season_key: '2026-09', rating: [] }
+            : url.includes('/duel/training/state')
+              ? trainingIdleState
+              : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    const search = await screen.findByRole('button', { name: 'Начать поиск' });
+    await waitFor(() => expect(search).toBeDisabled());
+    expect(
+      screen.getByText('Завершите текущую турнирную игру, чтобы играть в обычные дуэли.'),
+    ).toBeInTheDocument();
+    fireEvent.click(search);
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/matchmaking/join')),
+    ).toBe(false);
+  });
+
+  it('disables unsafe duel formats before T-60 while still joining a safe shorter format', async () => {
+    const start = new Date(Date.now() + 65 * 60_000).toISOString();
+    const lock = {
+      blocked: true,
+      reason: 'scheduled_tournament',
+      ends_at: null,
+      tournament_starts_at: start,
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/duel/amateur/matches')
+        ? {
+            matches: [],
+            duel_lock: null,
+            format_locks: { classic: lock, express_plus: lock, express: null },
+          }
+        : url.includes('/duel/amateur/templates')
+          ? { templates: challengeTemplates }
+          : url.includes('/duel/amateur/rating')
+            ? { season_key: '2026-09', rating: [] }
+            : url.includes('/duel/training/state')
+              ? trainingIdleState
+              : url.includes('/matchmaking/join')
+                ? {
+                    ticket: {
+                      id: 'queued',
+                      status: 'queued',
+                      expires_at: new Date(Date.now() + 120_000).toISOString(),
+                      duel_kinds: ['express'],
+                    },
+                  }
+                : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    const classic = await screen.findByRole('button', { name: 'Классика' });
+    await waitFor(() => expect(classic).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Экспресс' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([input]) =>
+        String(input).includes('/matchmaking/join'),
+      );
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ duel_kinds: ['express'] });
+    });
+    fireEvent.click(screen.getByRole('tab', { name: 'Вызвать' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Шаблон дуэли' }));
+    fireEvent.click(await screen.findByRole('option', { name: /Классика \(3 периода/ }));
+    expect(screen.getByText(/Обычные дуэли недоступны перед турнирной игрой/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Выберите соперника' })).toBeDisabled();
+  });
+
+  it('disables concrete formats after a stale safe-start 409 refetch even when the current lock is null', async () => {
+    let unsafe = false;
+    const lock = {
+      blocked: true,
+      reason: 'scheduled_tournament',
+      ends_at: null,
+      tournament_starts_at: new Date(Date.now() + 65 * 60_000).toISOString(),
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/matchmaking/join')) {
+        unsafe = true;
+        return new Response(
+          JSON.stringify({ error: { code: 'conflict', message: 'gameplay is locked' } }),
+          { status: 409, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      const data = url.includes('/duel/amateur/matches')
+        ? {
+            matches: [],
+            duel_lock: null,
+            format_locks: unsafe ? { classic: lock, express_plus: lock, express: lock } : {},
+          }
+        : url.includes('/duel/amateur/templates')
+          ? { templates: challengeTemplates }
+          : url.includes('/duel/amateur/rating')
+            ? { season_key: '2026-09', rating: [] }
+            : url.includes('/duel/training/state')
+              ? trainingIdleState
+              : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    const button = await screen.findByRole('button', { name: 'Начать поиск' });
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Классика' })).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Начать поиск' })).toBeDisabled();
+    expect(screen.getByText(/Некоторые форматы недоступны/)).toBeInTheDocument();
   });
 
   it('lets a challenger cancel an unanswered duel invite from the current duels list', async () => {

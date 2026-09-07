@@ -508,7 +508,7 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     const bronzeLoser = await loginTelegram({ id: '74', first_name: 'Bronze loser' });
     const tournament = await app.pg.query<{ id: string }>(
       `insert into tournament (slug, title, status, regular_source, created_by)
-       values ('profile-live-playoff-summary', 'Profile live playoff summary', 'active', 'head_to_head', $1)
+       values ('profile-live-playoff-summary', 'Profile live playoff summary', 'playoff', 'head_to_head', $1)
        returning id`,
       [champion.user.id],
     );
@@ -529,12 +529,12 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     );
     const final = await app.pg.query<{ id: string }>(
       `insert into tournament_round (tournament_id, stage, number, status)
-       values ($1, 'playoff', 2, 'active') returning id`,
+       values ($1, 'playoff', 2, 'open') returning id`,
       [tournamentId],
     );
     const bronze = await app.pg.query<{ id: string }>(
       `insert into tournament_round (tournament_id, stage, number, status)
-       values ($1, 'third_place', 2, 'active') returning id`,
+       values ($1, 'third_place', 2, 'open') returning id`,
       [tournamentId],
     );
     const championParticipant = participantByUser.get(champion.user.id)!;

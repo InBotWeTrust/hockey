@@ -129,7 +129,7 @@ async function requireCompletionEvidence(client: PoolClient, run: OnboardingRunR
   const { rows } = await client.query<{
     all_steps_viewed: boolean;
     has_tutorial: boolean;
-    has_tutorial_goal: boolean;
+    has_tutorial_attempt: boolean;
   }>(
     `select not exists (
               select 1
@@ -161,17 +161,16 @@ async function requireCompletionEvidence(client: PoolClient, run: OnboardingRunR
                  and event.user_id = $3
                  and event.chain_key = $4
                  and event.version_id = $2
-                 and event.kind = 'tutorial_goal'
-                 and event.result = 'goal'
-            ) as has_tutorial_goal`,
+                 and event.kind = 'tutorial_attempt'
+            ) as has_tutorial_attempt`,
     [run.id, run.version_id, run.user_id, run.chain_key],
   );
   const evidence = rows[0]!;
   if (!evidence.all_steps_viewed) {
     throw new AppError('onboarding_steps_incomplete', 'all onboarding steps must be viewed', 409);
   }
-  if (evidence.has_tutorial && !evidence.has_tutorial_goal) {
-    throw new AppError('onboarding_tutorial_goal_required', 'tutorial goal is required', 409);
+  if (evidence.has_tutorial && !evidence.has_tutorial_attempt) {
+    throw new AppError('onboarding_tutorial_shot_required', 'tutorial shot is required', 409);
   }
 }
 

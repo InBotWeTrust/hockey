@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseTournamentConfig } from '../../src/tournament/config.js';
+import { parseTournamentConfig, tournamentConfigSchema } from '../../src/tournament/config.js';
 import { canTransitionTournament } from '../../src/tournament/lifecycle.js';
 
 const baseConfig = {
@@ -39,25 +39,28 @@ describe('tournament config', () => {
     ).toThrow('round windows must fit inside one day');
   });
 
-  it('enforces format-specific participant limits', () => {
+  it('enforces head-to-head participant limits', () => {
     expect(() => parseTournamentConfig({ ...baseConfig, participantLimit: 65 })).toThrow(
       'head-to-head tournaments support at most 64 participants',
     );
+  });
 
-    const daily = parseTournamentConfig({
-      ...baseConfig,
-      regularSource: 'daily_aggregate',
-      participantLimit: 10_000,
-      roundRobinCycles: null,
-      roundsPerDay: null,
-      firstRoundLocalTime: null,
-      fixtureWindowMs: null,
-      roundBreakMs: null,
-      dailyDays: 30,
-      dailyMetric: 'goals_sum',
-      bestDays: 20,
-    });
-    expect(daily.participantLimit).toBe(10_000);
+  it('rejects stale daily-aggregate configurations instead of coercing them', () => {
+    expect(
+      tournamentConfigSchema.safeParse({
+        ...baseConfig,
+        regularSource: 'daily_aggregate',
+        participantLimit: 10_000,
+        roundRobinCycles: null,
+        roundsPerDay: null,
+        firstRoundLocalTime: null,
+        fixtureWindowMs: null,
+        roundBreakMs: null,
+        dailyDays: 30,
+        dailyMetric: 'goals_sum',
+        bestDays: 20,
+      }).success,
+    ).toBe(false);
   });
 
   it('accepts a configurable three-period classic regular season', () => {

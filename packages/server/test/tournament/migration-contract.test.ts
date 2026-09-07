@@ -1,5 +1,10 @@
 import { readFile } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import type { Pool } from 'pg';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { applyMigrations } from '../../src/db/migrations.js';
+import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
 
 const migrationUrl = new URL('../../db/migrations/061_tournaments.sql', import.meta.url);
 const concurrencyMigrationUrl = new URL(
@@ -50,6 +55,42 @@ const readinessHintPreferenceMigrationUrl = new URL(
   '../../db/migrations/093_tournament_readiness_hint_preference.sql',
   import.meta.url,
 );
+
+describe.skipIf(!hasIntegrationEnv)('current tournament source database contract', () => {
+  let pool: Pool;
+  const creatorId = randomUUID();
+
+  beforeAll(async () => {
+    pool = createTestPool();
+    await resetDatabase(pool);
+    await applyMigrations(pool, fileURLToPath(new URL('../../db/migrations', import.meta.url)));
+    await pool.query(
+      "insert into users (id, display_name, timezone) values ($1, 'Creator', 'UTC')",
+      [creatorId],
+    );
+  });
+
+  afterAll(async () => {
+    await pool?.end();
+  });
+
+  it.each(['head_to_head', 'classic'])('accepts new %s tournaments', async (source) => {
+    const result = await pool.query(
+      'insert into tournament (slug, title, regular_source, created_by) values ($1, $1, $1, $2) returning regular_source',
+      [source, creatorId],
+    );
+    expect(result.rows).toEqual([{ regular_source: source }]);
+  });
+
+  it('rejects new daily aggregate tournaments at the database boundary', async () => {
+    await expect(
+      pool.query(
+        "insert into tournament (slug, title, regular_source, created_by) values ('legacy', 'Legacy', 'daily_aggregate', $1)",
+        [creatorId],
+      ),
+    ).rejects.toMatchObject({ code: '23514', constraint: 'tournament_regular_source_check' });
+  });
+});
 
 describe('tournament migration contract', () => {
   it('creates the complete tournament orchestration schema', async () => {

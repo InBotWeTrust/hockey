@@ -70,14 +70,16 @@ export function AmateurDuelRatingTab({
         {rating.isLoading ? (
           <div className="duel-state-card">Загрузка рейтинга…</div>
         ) : rating.isError ? (
-          <div className="duel-state-card duel-state-card--error">Не удалось загрузить рейтинг.</div>
+          <div className="duel-state-card duel-state-card--error">
+            Не удалось загрузить рейтинг.
+          </div>
         ) : rows.length === 0 ? (
           <p className="duel-rating-empty">Рейтинг появится после первых завершённых дуэлей.</p>
         ) : (
           <TournamentStandingsTable
             rows={rows}
-            regularSource="rating"
-            dailyMetric="daily_place_points"
+            regularSource="head_to_head"
+            dailyMetric={null}
             resultHeading="Очки"
             variant="duel-rating"
             currentUserId={currentUserId}

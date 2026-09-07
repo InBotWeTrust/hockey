@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type {
   TournamentFixture,
   TournamentMatchday,
+  TournamentRegularSource,
   TournamentScheduleDay,
   TournamentStatus,
 } from '../api/tournament.js';
@@ -20,7 +21,7 @@ interface TournamentScheduleCalendarProps {
   hasMoreOtherGames?: boolean;
   onLoadOtherGames?: () => void;
   matchdays: TournamentMatchday[];
-  regularSource: 'head_to_head' | 'daily_aggregate' | 'classic';
+  regularSource: TournamentRegularSource;
   tournamentStatus: TournamentStatus;
   currentUserId: string | null;
   isParticipant: boolean;
@@ -31,7 +32,7 @@ interface TournamentScheduleCalendarProps {
   fixtureDetailsMode?: 'modal' | 'inline';
   renderFixture: (fixture: TournamentFixture, mine: boolean, inSeries?: boolean) => ReactNode;
   formatDateTime: (value: string) => string;
-  onOpenDailyGame?: () => void;
+  onOpenClassicGame?: () => void;
   renderMatchdayResults?: (matchday: TournamentMatchday) => ReactNode;
 }
 
@@ -145,8 +146,7 @@ function seriesScore(
 
 export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProps) {
   const fixtureDetailsMode = props.fixtureDetailsMode ?? 'modal';
-  const showsFixturesInline =
-    fixtureDetailsMode === 'inline' || props.regularSource !== 'head_to_head';
+  const showsFixturesInline = fixtureDetailsMode === 'inline' || props.regularSource === 'classic';
   const today = datePartsInTimezone(Date.now(), props.timezone) ?? {
     year: new Date().getUTCFullYear(),
     month: new Date().getUTCMonth() + 1,
@@ -192,7 +192,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
     () =>
       Array.from(
         new Set([
-          ...(props.regularSource !== 'head_to_head'
+          ...(props.regularSource === 'classic'
             ? [
                 ...props.matchdays.map((matchday) => matchday.localDate),
                 ...(props.fixtureDays ?? []).map((day) => day.localDate),
@@ -295,9 +295,10 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
   );
   const hasLazyOtherGames = props.hasOtherGames ?? false;
   const lazyOtherGamesHidden = hasLazyOtherGames && !props.otherGamesLoaded;
-  const visibleOtherFixtures = hasLazyOtherGames || selectedFixturesExpanded
-    ? otherSelectedFixtures
-    : otherSelectedFixtures.slice(0, 4);
+  const visibleOtherFixtures =
+    hasLazyOtherGames || selectedFixturesExpanded
+      ? otherSelectedFixtures
+      : otherSelectedFixtures.slice(0, 4);
   const selectedMatchday = matchdaysByDate.get(selectedDate);
   const selectedMatchdayIsActive =
     selectedMatchday !== undefined &&
@@ -348,7 +349,9 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
                 </span>
                 <span className="tournament-schedule-series__matchup">
                   <strong>{first.home?.name ?? 'Участник'}</strong>
-                  <b>{score.home}:{score.away}</b>
+                  <b>
+                    {score.home}:{score.away}
+                  </b>
                   <strong>{first.away?.name ?? 'Участник'}</strong>
                 </span>
               </button>
@@ -384,7 +387,8 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
           <div className="tournament-fixture-list">
             {renderFixtureCollection(visibleOtherFixtures, false)}
           </div>
-          {hasLazyOtherGames && props.onLoadOtherGames &&
+          {hasLazyOtherGames &&
+            props.onLoadOtherGames &&
             (!props.otherGamesLoaded || props.hasMoreOtherGames) && (
               <button
                 type="button"
@@ -456,12 +460,11 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
           const fixtures = fixturesByDate.get(key) ?? [];
           const daySummary = props.fixtureDays?.find((day) => day.localDate === key);
           const matchday = matchdaysByDate.get(key);
-          const hasEvents =
-            showsFixturesInline
-              ? matchday !== undefined || fixtures.length > 0
-              : props.regularSource !== 'head_to_head'
-                ? matchday !== undefined
-                : (daySummary?.hasGames ?? fixtures.length > 0);
+          const hasEvents = showsFixturesInline
+            ? matchday !== undefined || fixtures.length > 0
+            : props.regularSource === 'classic'
+              ? matchday !== undefined
+              : (daySummary?.hasGames ?? fixtures.length > 0);
           const hasPlayoff =
             playoffDateKeys.includes(key) ||
             daySummary?.hasPlayoff === true ||
@@ -470,12 +473,12 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
             );
           const hasRegular = hasEvents && !hasPlayoff;
           const mine =
-            props.regularSource !== 'head_to_head' && !hasPlayoff
+            props.regularSource === 'classic' && !hasPlayoff
               ? hasEvents && props.isParticipant
               : (daySummary?.hasMyGame ??
                 fixtures.some((fixture) => isMine(fixture, props.currentUserId)));
           const descriptions = [spokenDate(visibleMonth.year, visibleMonth.month, day)];
-          if (props.regularSource !== 'head_to_head' && matchday !== undefined)
+          if (props.regularSource === 'classic' && matchday !== undefined)
             descriptions.push('игровой день');
           if (
             fixtures.length > 0 &&
@@ -546,7 +549,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
         </li>
       </ul>
 
-      {props.regularSource !== 'head_to_head' && (
+      {props.regularSource === 'classic' && (
         <div className="tournament-calendar__details" aria-live="polite">
           <h4>
             {spokenDate(...(selectedDate.split('-').map(Number) as [number, number, number]))}
@@ -568,8 +571,8 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
                   <div className="tournament-matchday-result" aria-label="Ваш результат игры">
                     <strong>Ваш результат</strong>
                     <span>
-                      {selectedMatchday.myResult.goals} {puckWord(selectedMatchday.myResult.goals)} из{' '}
-                      {selectedMatchday.myResult.shots} · точность{' '}
+                      {selectedMatchday.myResult.goals} {puckWord(selectedMatchday.myResult.goals)}{' '}
+                      из {selectedMatchday.myResult.shots} · точность{' '}
                       {Math.round(selectedMatchday.myResult.accuracy * 100)}%
                     </span>
                   </div>
@@ -581,23 +584,19 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
                 selectedMatchdayIsActive &&
                 selectedMatchday.myResult?.completed !== true &&
                 props.tournamentStatus === 'regular' &&
-                props.onOpenDailyGame && (
-                  <button type="button" className="btn btn--cta" onClick={props.onOpenDailyGame}>
-                    {props.regularSource === 'classic'
-                      ? 'Открыть турнирную игру'
-                      : 'Открыть ежедневную игру'}
+                props.onOpenClassicGame && (
+                  <button type="button" className="btn btn--cta" onClick={props.onOpenClassicGame}>
+                    Открыть турнирную игру
                   </button>
                 )}
             </>
           )}
-          {showsFixturesInline && (selectedFixtures.length > 0 || hasLazyOtherGames) && (
-            renderSelectedFixtureSections()
-          )}
+          {showsFixturesInline &&
+            (selectedFixtures.length > 0 || hasLazyOtherGames) &&
+            renderSelectedFixtureSections()}
           {selectedMatchday === undefined &&
             selectedFixtures.length === 0 &&
-            !hasLazyOtherGames && (
-            <p>В этот день игр нет.</p>
-          )}
+            !hasLazyOtherGames && <p>В этот день игр нет.</p>}
         </div>
       )}
 

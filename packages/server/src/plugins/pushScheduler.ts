@@ -3,7 +3,6 @@ import fp from 'fastify-plugin';
 import { cleanupPushDeliveryLog, processPushDeliveryQueue } from '../push/queue.js';
 import { runScheduledPushes } from '../push/scheduled.js';
 import type { PushVapidOptions } from '../push/service.js';
-import { finalizeDueTournamentDailyDays } from '../tournament/dailyAggregate.js';
 import { finalizeDueClassicTournamentDays } from '../tournament/classicGame.js';
 import { isTournamentFeatureEnabled } from '../tournament/service.js';
 
@@ -30,25 +29,14 @@ const plugin: FastifyPluginAsync<PushSchedulerPluginOptions> = async (app, opts)
     running = true;
     try {
       const tournamentMaintenance =
-        opts.scheduleEnabled === false || !(await isTournamentFeatureEnabled(app.pg))
+        opts.scheduleEnabled === false ||
+        opts.tournamentGameSeedSecret === undefined ||
+        !(await isTournamentFeatureEnabled(app.pg))
           ? { finalizedDays: 0, finalizedParticipants: 0 }
-          : await (async () => {
-              const now = new Date();
-              const [daily, classic] = await Promise.all([
-                finalizeDueTournamentDailyDays(app.pg, now),
-                opts.tournamentGameSeedSecret === undefined
-                  ? Promise.resolve({ finalizedDays: 0, finalizedParticipants: 0 })
-                  : finalizeDueClassicTournamentDays(app.pg, {
-                      now,
-                      seedSecret: opts.tournamentGameSeedSecret,
-                    }),
-              ]);
-              return {
-                finalizedDays: daily.finalizedDays + classic.finalizedDays,
-                finalizedParticipants:
-                  daily.finalizedParticipants + classic.finalizedParticipants,
-              };
-            })();
+          : await finalizeDueClassicTournamentDays(app.pg, {
+              now: new Date(),
+              seedSecret: opts.tournamentGameSeedSecret,
+            });
       const result =
         opts.scheduleEnabled === false
           ? {

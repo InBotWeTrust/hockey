@@ -99,6 +99,76 @@ describe('game session stores', () => {
     expect(useTrainingSessionStore.getState().error).toBeNull();
   });
 
+  it('applies an authoritative gameplay lock after a failed training start', async () => {
+    const locked = {
+      ...trainingState,
+      gameplay_lock: {
+        blocked: true,
+        reason: 'active_classic' as const,
+        ends_at: null,
+        tournament_starts_at: null,
+      },
+    };
+    useTrainingSessionStore.setState({ data: { ...trainingState, gameplay_lock: null } });
+    vi.mocked(startTraining).mockRejectedValueOnce(new ApiError(409, 'conflict', 'Game locked'));
+    vi.mocked(fetchTrainingState).mockResolvedValueOnce(locked);
+    expect(await useTrainingSessionStore.getState().start(1)).toBeNull();
+    expect(useTrainingSessionStore.getState()).toMatchObject({
+      data: locked,
+      inFlight: false,
+      error: null,
+    });
+  });
+
+  it('keeps the original training start error when the recovery read also fails', async () => {
+    useTrainingSessionStore.setState({ data: trainingState });
+    vi.mocked(startTraining).mockRejectedValueOnce(new Error('Start unavailable'));
+    vi.mocked(fetchTrainingState).mockRejectedValueOnce(new Error('Recovery unavailable'));
+    expect(await useTrainingSessionStore.getState().start(1)).toBeNull();
+    expect(useTrainingSessionStore.getState()).toMatchObject({
+      data: trainingState,
+      inFlight: false,
+      error: 'Start unavailable',
+    });
+  });
+
+  it.each([
+    new TypeError('Network unavailable'),
+    new ApiError(503, 'service_unavailable', 'Start unavailable'),
+  ])(
+    'retains the original start error after a successful unlocked idle read: %s',
+    async (error) => {
+      const idle = {
+        ...trainingState,
+        state: 'idle' as const,
+        selected_period: null,
+        gameplay_lock: null,
+      };
+      useTrainingSessionStore.setState({ data: idle });
+      vi.mocked(startTraining).mockRejectedValueOnce(error);
+      vi.mocked(fetchTrainingState).mockResolvedValueOnce(idle);
+
+      expect(await useTrainingSessionStore.getState().start(1)).toBeNull();
+      expect(useTrainingSessionStore.getState()).toMatchObject({
+        data: idle,
+        inFlight: false,
+        error: error.message,
+      });
+    },
+  );
+
+  it('clears a failed start error when the read confirms the requested training period is active', async () => {
+    const active = { ...trainingState, gameplay_lock: null };
+    vi.mocked(startTraining).mockRejectedValueOnce(new TypeError('Response lost'));
+    vi.mocked(fetchTrainingState).mockResolvedValueOnce(active);
+    await useTrainingSessionStore.getState().start(1);
+    expect(useTrainingSessionStore.getState()).toMatchObject({
+      data: active,
+      inFlight: false,
+      error: null,
+    });
+  });
+
   it('clears a stale amateur duel error when applying fresh state', () => {
     useAmateurDuelStore.setState({ match: null, error: 'internal error' });
 
@@ -301,6 +371,30 @@ describe('game session stores', () => {
     if (result) useDailyStore.getState().applyState(result.state);
     expect(useDailyStore.getState().data).toEqual(completedState);
     expect(useDailyStore.getState().error).toBeNull();
+  });
+
+  it('refreshes the active daily period lock after a stale shot conflict', async () => {
+    const locked: DailyStateResponse = {
+      ...dailyState,
+      gameplay_lock: {
+        blocked: true,
+        reason: 'active_classic',
+        ends_at: null,
+        tournament_starts_at: null,
+      },
+    };
+    useDailyStore.setState({ data: { ...dailyState, gameplay_lock: null } });
+    vi.mocked(submitDailyShot).mockRejectedValueOnce(
+      new ApiError(409, 'conflict', 'gameplay is locked'),
+    );
+    vi.mocked(fetchDailyState).mockResolvedValueOnce(locked);
+
+    expect(
+      await useDailyStore
+        .getState()
+        .submitShot({ shotIndex: 1, input: { tapTime: 0 }, claimedResult: 'miss' }),
+    ).toBeNull();
+    expect(useDailyStore.getState()).toMatchObject({ data: locked, needsReconcile: false });
   });
 
   it('keeps a daily shot locked until an ambiguous final-shot request is reconciled', async () => {

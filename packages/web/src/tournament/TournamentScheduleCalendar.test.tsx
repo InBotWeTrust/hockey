@@ -155,7 +155,7 @@ describe('TournamentScheduleCalendar', () => {
     expect(screen.queryByText('Игра 1')).not.toBeInTheDocument();
   });
 
-  it('renders playoff fixtures inline for a tournament with daily regular games by default', () => {
+  it('renders playoff fixtures inline for a classic tournament by default', () => {
     const playoffFixture = {
       ...fixture(1),
       stage: 'playoff',
@@ -165,7 +165,7 @@ describe('TournamentScheduleCalendar', () => {
       <TournamentScheduleCalendar
         fixtures={[playoffFixture]}
         matchdays={[]}
-        regularSource="daily_aggregate"
+        regularSource="classic"
         tournamentStatus="playoff"
         currentUserId={null}
         isParticipant={false}
@@ -263,21 +263,17 @@ describe('TournamentScheduleCalendar', () => {
     );
 
     expect(
-      screen
-        .getByRole('button', { name: /1 сентября.*плей-офф/i })
-        .querySelector('i'),
+      screen.getByRole('button', { name: /1 сентября.*плей-офф/i }).querySelector('i'),
     ).not.toBeInTheDocument();
     expect(
-      screen
-        .getByRole('button', { name: /2 сентября.*плей-офф.*ваша игра/i })
-        .querySelector('i'),
+      screen.getByRole('button', { name: /2 сентября.*плей-офф.*ваша игра/i }).querySelector('i'),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /3 сентября.*плей-офф/i }).querySelector('i'),
     ).not.toBeInTheDocument();
   });
 
-  it('marks every regular daily matchday for a participating user', () => {
+  it('marks every regular classic matchday for a participating user', () => {
     render(
       <TournamentScheduleCalendar
         fixtures={[]}
@@ -299,7 +295,7 @@ describe('TournamentScheduleCalendar', () => {
             myResult: null,
           },
         ]}
-        regularSource="daily_aggregate"
+        regularSource="classic"
         tournamentStatus="regular"
         currentUserId="me"
         isParticipant
@@ -318,7 +314,7 @@ describe('TournamentScheduleCalendar', () => {
     }
   });
 
-  it('shows a completed daily result instead of the open-game button', () => {
+  it('shows a completed classic result instead of the open-game button', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2030-09-01T12:00:00.000Z'));
 
@@ -340,7 +336,7 @@ describe('TournamentScheduleCalendar', () => {
             },
           },
         ]}
-        regularSource="daily_aggregate"
+        regularSource="classic"
         tournamentStatus="regular"
         currentUserId="me"
         isParticipant
@@ -349,7 +345,7 @@ describe('TournamentScheduleCalendar', () => {
         rangeEndsAt="2030-09-02T00:00:00.000Z"
         renderFixture={() => null}
         formatDateTime={(value) => value}
-        onOpenDailyGame={vi.fn()}
+        onOpenClassicGame={vi.fn()}
         renderMatchdayResults={(matchday) => (
           <section aria-label="Прошедшие игры дня">Результаты тура {matchday.number}</section>
         )}
@@ -360,12 +356,12 @@ describe('TournamentScheduleCalendar', () => {
     expect(screen.getByText('37 шайб из 90 · точность 41%')).toBeInTheDocument();
     expect(screen.getByLabelText('Прошедшие игры дня')).toHaveTextContent('Результаты тура 1');
     expect(
-      screen.queryByRole('button', { name: 'Открыть ежедневную игру' }),
+      screen.queryByRole('button', { name: 'Открыть турнирную игру' }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/место/i)).not.toBeInTheDocument();
   });
 
-  it('keeps the daily-game button while the current game is unfinished', () => {
+  it('keeps the classic-game button while the current game is unfinished', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2030-09-01T12:00:00.000Z'));
 
@@ -382,7 +378,7 @@ describe('TournamentScheduleCalendar', () => {
             myResult: null,
           },
         ]}
-        regularSource="daily_aggregate"
+        regularSource="classic"
         tournamentStatus="regular"
         currentUserId="me"
         isParticipant
@@ -391,11 +387,11 @@ describe('TournamentScheduleCalendar', () => {
         rangeEndsAt="2030-09-02T00:00:00.000Z"
         renderFixture={() => null}
         formatDateTime={(value) => value}
-        onOpenDailyGame={vi.fn()}
+        onOpenClassicGame={vi.fn()}
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'Открыть ежедневную игру' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открыть турнирную игру' })).toBeInTheDocument();
     expect(screen.queryByText('Ваш результат')).not.toBeInTheDocument();
   });
 
@@ -416,7 +412,7 @@ describe('TournamentScheduleCalendar', () => {
             myResult: null,
           },
         ]}
-        regularSource="daily_aggregate"
+        regularSource="classic"
         tournamentStatus="scheduling"
         currentUserId="me"
         isParticipant
@@ -425,12 +421,12 @@ describe('TournamentScheduleCalendar', () => {
         rangeEndsAt="2030-09-02T00:00:00.000Z"
         renderFixture={() => null}
         formatDateTime={(value) => value}
-        onOpenDailyGame={vi.fn()}
+        onOpenClassicGame={vi.fn()}
       />,
     );
 
     expect(
-      screen.queryByRole('button', { name: 'Открыть ежедневную игру' }),
+      screen.queryByRole('button', { name: 'Открыть турнирную игру' }),
     ).not.toBeInTheDocument();
     expect(screen.getByText('Ожидает запуска')).toBeInTheDocument();
     expect(screen.queryByText('Сейчас')).not.toBeInTheDocument();
@@ -454,7 +450,7 @@ describe('TournamentScheduleCalendar', () => {
             myResult: null,
           },
         ]}
-        regularSource="daily_aggregate"
+        regularSource="classic"
         tournamentStatus="paused"
         currentUserId="me"
         isParticipant
@@ -463,7 +459,7 @@ describe('TournamentScheduleCalendar', () => {
         rangeEndsAt="2030-09-02T00:00:00.000Z"
         renderFixture={() => null}
         formatDateTime={(value) => value}
-        onOpenDailyGame={vi.fn()}
+        onOpenClassicGame={vi.fn()}
       />,
     );
 
@@ -497,7 +493,7 @@ describe('TournamentScheduleCalendar', () => {
         rangeEndsAt="2030-09-02T13:00:00.000Z"
         renderFixture={() => null}
         formatDateTime={(value) => value}
-        onOpenDailyGame={vi.fn()}
+        onOpenClassicGame={vi.fn()}
       />,
     );
 
@@ -532,7 +528,7 @@ describe('TournamentScheduleCalendar', () => {
         rangeEndsAt="2030-09-02T00:00:00.000Z"
         renderFixture={() => null}
         formatDateTime={(value) => value}
-        onOpenDailyGame={openGame}
+        onOpenClassicGame={openGame}
       />,
     );
 
@@ -554,7 +550,7 @@ describe('TournamentScheduleCalendar', () => {
             myResult: null,
           },
         ]}
-        regularSource="daily_aggregate"
+        regularSource="classic"
         tournamentStatus="regular"
         currentUserId="me"
         isParticipant
@@ -585,7 +581,7 @@ describe('TournamentScheduleCalendar', () => {
             myResult: null,
           },
         ]}
-        regularSource="daily_aggregate"
+        regularSource="classic"
         tournamentStatus="regular"
         currentUserId="me"
         isParticipant
@@ -605,7 +601,7 @@ describe('TournamentScheduleCalendar', () => {
     );
   });
 
-  it('extends a daily tournament range to published playoff fixtures', () => {
+  it('extends a classic tournament range to published playoff fixtures', () => {
     const playoffFixture: TournamentFixture = {
       ...fixture(7),
       stage: 'playoff',
@@ -625,7 +621,7 @@ describe('TournamentScheduleCalendar', () => {
             myResult: null,
           },
         ]}
-        regularSource="daily_aggregate"
+        regularSource="classic"
         tournamentStatus="regular"
         currentUserId="me"
         isParticipant
@@ -694,7 +690,9 @@ describe('TournamentScheduleCalendar', () => {
       timezone: 'Europe/Moscow',
       rangeStartsAt: '2030-09-10T00:00:00.000Z',
       rangeEndsAt: '2030-09-10T23:59:59.000Z',
-      renderFixture: (item: TournamentFixture) => <article key={item.id}>{item.home?.name}</article>,
+      renderFixture: (item: TournamentFixture) => (
+        <article key={item.id}>{item.home?.name}</article>
+      ),
       formatDateTime: (value: string) => value,
     };
     const { rerender } = render(
@@ -732,31 +730,36 @@ describe('TournamentScheduleCalendar', () => {
   });
 
   it('groups playoff fixtures into an expandable series with one day start time', () => {
-    const playoffGames = [1, 2, 3].map((gameNumber) => ({
-      ...fixture(gameNumber, true),
-      stage: 'playoff',
-      roundNumber: 2,
-      scheduledStartsAt: null,
-      seriesId: 'series-1',
-      gameNumber,
-      seriesWinsRequired: 2,
-      gameDay: {
-        id: 'day-1',
-        dayNumber: 1,
-        localDate: '2030-09-04',
-        startsAt: '2030-09-04T10:00:00.000Z',
-      },
-      home: { userId: 'me', name: 'Моя игра' },
-      away: { userId: 'opponent', name: 'Соперник' },
-      status: gameNumber < 3 ? 'settled' : 'conditional',
-      winnerUserId: gameNumber === 1 ? 'me' : gameNumber === 2 ? 'opponent' : null,
-      score: gameNumber < 3 ? { home: 54, away: 50 } : { home: 0, away: 0 },
-    } satisfies TournamentFixture));
+    const playoffGames = [1, 2, 3].map(
+      (gameNumber) =>
+        ({
+          ...fixture(gameNumber, true),
+          stage: 'playoff',
+          roundNumber: 2,
+          scheduledStartsAt: null,
+          seriesId: 'series-1',
+          gameNumber,
+          seriesWinsRequired: 2,
+          gameDay: {
+            id: 'day-1',
+            dayNumber: 1,
+            localDate: '2030-09-04',
+            startsAt: '2030-09-04T10:00:00.000Z',
+          },
+          home: { userId: 'me', name: 'Моя игра' },
+          away: { userId: 'opponent', name: 'Соперник' },
+          status: gameNumber < 3 ? 'settled' : 'conditional',
+          winnerUserId: gameNumber === 1 ? 'me' : gameNumber === 2 ? 'opponent' : null,
+          score: gameNumber < 3 ? { home: 54, away: 50 } : { home: 0, away: 0 },
+        }) satisfies TournamentFixture,
+    );
 
     render(
       <TournamentScheduleCalendar
         fixtures={playoffGames}
-        fixtureDays={[{ localDate: '2030-09-04', hasGames: true, hasMyGame: true, hasPlayoff: true }]}
+        fixtureDays={[
+          { localDate: '2030-09-04', hasGames: true, hasMyGame: true, hasPlayoff: true },
+        ]}
         selectedDate="2030-09-04"
         matchdays={[]}
         regularSource="classic"
@@ -768,7 +771,8 @@ describe('TournamentScheduleCalendar', () => {
         rangeEndsAt="2030-09-10T23:59:59.000Z"
         renderFixture={(item, _mine, inSeries) => (
           <article key={item.id}>
-            Детали игры {item.gameNumber}{inSeries ? '' : ' · индивидуальное время'}
+            Детали игры {item.gameNumber}
+            {inSeries ? '' : ' · индивидуальное время'}
           </article>
         )}
         formatDateTime={(value) => value}
@@ -862,8 +866,7 @@ describe('TournamentScheduleCalendar', () => {
         id: gameNumber < 5 ? 'day-1' : 'day-2',
         dayNumber: gameNumber < 5 ? 1 : 2,
         localDate: gameNumber < 5 ? '2030-09-04' : '2030-09-05',
-        startsAt:
-          gameNumber < 5 ? '2030-09-04T10:00:00.000Z' : '2030-09-05T10:00:00.000Z',
+        startsAt: gameNumber < 5 ? '2030-09-04T10:00:00.000Z' : '2030-09-05T10:00:00.000Z',
       },
       home: { userId: 'me', name: 'Sirius' },
       away: { userId: 'opponent', name: 'Egor' },

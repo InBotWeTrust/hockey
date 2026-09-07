@@ -77,17 +77,17 @@ export interface DailyResultInput {
   durationMs?: number;
 }
 
-export interface DailyAggregateStanding {
+export interface ClassicStanding {
   participantId: string;
   value: number;
   countedDays: number[];
   totalDurationMs?: number;
 }
 
-export function calculateDailyAggregateStandings(
+export function calculateClassicStandings(
   results: DailyResultInput[],
   options: { metric: TournamentDailyMetric; bestDays: number | null },
-): DailyAggregateStanding[] {
+): ClassicStanding[] {
   const byParticipant = new Map<
     string,
     Array<{ day: number; value: number; durationMs: number | null }>

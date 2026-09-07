@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { ApiError } from '../api/apiFetch.js';
 import {
   fetchAmateurMatch,
   confirmTournamentDuelLoadout,
@@ -83,6 +84,9 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
       set({ match, inFlight: false, error: null });
       return match;
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409 && get().match === current) {
+        await get().refresh();
+      }
       set({
         inFlight: false,
         error: err instanceof Error ? err.message : 'failed to ready duel',

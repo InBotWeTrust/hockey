@@ -93,7 +93,9 @@ export interface ClassicTournamentInventoryItem {
   timing?: DuelInventoryTiming;
 }
 
-export interface ClassicTournamentLoadout { items: ClassicTournamentInventoryItem[] }
+export interface ClassicTournamentLoadout {
+  items: ClassicTournamentInventoryItem[];
+}
 
 export interface ClassicTournamentInventoryConsumption {
   id: string;

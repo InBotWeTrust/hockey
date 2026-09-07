@@ -30,6 +30,9 @@ import {
   type AmateurDuelInviteMessageMetadata,
   type UserPickerItem,
 } from '../api.js';
+import { ordinaryDuelLockCopy, type GameplayLockDTO } from '../../api/gameplayLock.js';
+import { ApiError } from '../../api/apiFetch.js';
+import { useGameplayLockRefresh } from '../../hooks/useGameplayLockRefresh.js';
 import {
   acceptAmateurDuel,
   declineAmateurDuel,
@@ -285,12 +288,14 @@ function DuelInviteActions({
   invite,
   resolution,
   pending,
+  lock,
   onAccept,
   onDecline,
 }: {
   invite: AmateurDuelInviteMessageMetadata;
   resolution: DuelInviteResolution | undefined;
   pending: boolean;
+  lock: GameplayLockDTO | null | undefined;
   onAccept: () => void;
   onDecline: () => void;
 }): JSX.Element {
@@ -323,6 +328,11 @@ function DuelInviteActions({
         />
         <DuelInviteMetric label="Ответить" value={formatInviteReplyWindow(invite)} />
       </div>
+      {lock?.blocked && !status && (
+        <p className="modal-copy" style={{ margin: 0 }}>
+          {ordinaryDuelLockCopy(lock)}
+        </p>
+      )}
       {status ? (
         <div
           style={{
@@ -342,7 +352,7 @@ function DuelInviteActions({
           <button
             type="button"
             className="btn"
-            disabled={pending}
+            disabled={pending || lock?.blocked === true}
             onClick={onAccept}
             style={{
               minHeight: 36,
@@ -475,6 +485,7 @@ export function ChatRoomScreen(): JSX.Element {
     }
     return map;
   }, [duelMatchesQuery.data?.matches]);
+  useGameplayLockRefresh(duelMatchesQuery.data?.duel_lock);
   const chatMeta = chatListQuery.data?.find((c) => c.id === chatId);
   const isChannel = chatMeta?.type === 'channel';
   const dmCounterpart = chatMeta?.type === 'direct' ? chatMeta.dmCounterpart : null;
@@ -1079,8 +1090,15 @@ export function ChatRoomScreen(): JSX.Element {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
       navigate(`/?view=amateur&match=${encodeURIComponent(matchId)}&play=1`);
     },
-    onError: (_err, matchId) => {
-      setDuelInviteResolutionByMatch((prev) => ({ ...prev, [matchId]: 'unavailable' }));
+    onError: (err, matchId) => {
+      setDuelInviteResolutionByMatch((prev) => {
+        if (err instanceof ApiError && err.status === 409) {
+          const next = { ...prev };
+          delete next[matchId];
+          return next;
+        }
+        return { ...prev, [matchId]: 'unavailable' };
+      });
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
   });
@@ -1463,6 +1481,10 @@ export function ChatRoomScreen(): JSX.Element {
             duelInvite && !isOwn && !m.isDeleted ? (
               <DuelInviteActions
                 invite={duelInvite}
+                lock={
+                  duelInviteMatchById.get(duelInvite.matchId)?.duel_lock ??
+                  duelMatchesQuery.data?.duel_lock
+                }
                 resolution={duelInviteResolution}
                 pending={
                   (acceptDuelInviteMut.isPending &&

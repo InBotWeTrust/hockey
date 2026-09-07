@@ -43,7 +43,7 @@ import {
   type PlayoffParticipantSource,
 } from './playoffs.js';
 import { rebuildHeadToHeadStandings } from './standingsPersistence.js';
-import { rebuildDailyAggregateStandings } from './dailyAggregate.js';
+import { rebuildClassicStandings } from './classicStandings.js';
 import { advanceTournamentPlayoffSeries } from './playoffSeriesLifecycle.js';
 import { enqueueTournamentFixtureResultPush } from './fixtureNotifications.js';
 import { lockTournament, lockTournamentFixture } from './locks.js';
@@ -2761,10 +2761,10 @@ export async function publishRegularSchedule(pool: Pool, tournamentId: string) {
     );
     const publishedConfig = current.rules_snapshot.config;
     if (
-      current.regular_source !== 'head_to_head' &&
-      publishedConfig.regularSource !== 'head_to_head'
+      current.regular_source === 'classic' &&
+      publishedConfig.regularSource === 'classic'
     ) {
-      await rebuildDailyAggregateStandings(client, tournamentId, {
+      await rebuildClassicStandings(client, tournamentId, {
         ...current.rules_snapshot,
         config: publishedConfig,
       });
@@ -3256,7 +3256,6 @@ export async function getTournamentMatchdayResults(
 }
 
 export type TournamentGameContextAction =
-  | 'play_daily'
   | 'play_classic'
   | 'round_completed'
   | 'not_started'
@@ -3397,7 +3396,7 @@ export async function getTournamentGameContext(
       );
     }
     return tournamentGameContext(
-      row.regular_source === 'classic' ? 'play_classic' : 'play_daily',
+      'play_classic',
       Number(activeMatchday.number),
       result,
       null,
@@ -3483,7 +3482,7 @@ async function refreshLegacyClassicStandings(pool: Pool, tournamentId: string): 
   const client = await pool.connect();
   try {
     await client.query('begin');
-    await rebuildDailyAggregateStandings(client, tournamentId, {
+    await rebuildClassicStandings(client, tournamentId, {
       config: {
         regularSource: rules.config.regularSource,
         dailyDays: rules.config.dailyDays,

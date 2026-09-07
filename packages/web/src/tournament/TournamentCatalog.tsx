@@ -516,7 +516,7 @@ function TournamentRules({ tournament }: { tournament: TournamentSummary }): JSX
   const stageRewards = objectValue(tournament.rules.stageRewards);
   const regularRewards = Array.isArray(stageRewards.regular) ? stageRewards.regular : [];
   const playoffRewards = Array.isArray(stageRewards.playoff) ? stageRewards.playoff : [];
-  const regularSource = config.regularSource ?? tournament.regularSource;
+  const regularSource = tournament.regularSource;
   const cycles = numberValue(config.roundRobinCycles, 1);
   const roundsPerDay = numberValue(config.roundsPerDay, 1);
   const dailyMetricLabels: Record<string, string> = {
@@ -540,11 +540,9 @@ function TournamentRules({ tournament }: { tournament: TournamentSummary }): JSX
     : '';
   const aggregateDescription = `Турнир продлится ${numberValue(config.dailyDays)} ${pluralRu(numberValue(config.dailyDays), 'день', 'дня', 'дней')}. Результат каждого дня определяется ${dailyMetricLabels[String(config.dailyMetric ?? 'goals_sum')] ?? 'по количеству голов'}. ${config.bestDays === null || config.bestDays === undefined ? 'В итог войдут результаты всех дней.' : `В итог войдут лучшие ${String(config.bestDays)} ${pluralRu(numberValue(config.bestDays), 'день', 'дня', 'дней')}.`}`;
   const regularDescription =
-    regularSource === 'daily_aggregate'
-      ? aggregateDescription
-      : regularSource === 'classic'
-        ? `${aggregateDescription} В каждом туре — отдельная игра «Классика»: 3 периода по ${numberValue(classicRules.shotsPerPeriod)} ${pluralRu(numberValue(classicRules.shotsPerPeriod), 'броску', 'броска', 'бросков')}, по ${numberValue(classicRules.periodDurationMs) / 60_000} мин. Перерыв — ${numberValue(classicRules.breakDurationMs) / 60_000} мин. Если игру не закончить, ${classicIncompleteLabels[String(classicRules.incompleteResultPolicy ?? 'completed_game')] ?? classicIncompleteLabels.completed_game}. ${classicSpeedDescription.length > 0 ? `Скорости: ${classicSpeedDescription}.` : ''}`
-        : `Каждый сыграет с каждым ${cycles === 1 ? 'один раз' : `${cycles} ${pluralRu(cycles, 'раз', 'раза', 'раз')}`}. Каждый день ${roundsPerDay === 1 ? 'проходит один тур' : `проходит ${roundsPerDay} ${pluralRu(roundsPerDay, 'тур', 'тура', 'туров')}`}. Первый тур начнётся ${tournamentDateLabel(tournament.startsAt, String(config.timezone ?? 'Europe/Moscow'))}.`;
+    regularSource === 'classic'
+      ? `${aggregateDescription} В каждом туре — отдельная игра «Классика»: 3 периода по ${numberValue(classicRules.shotsPerPeriod)} ${pluralRu(numberValue(classicRules.shotsPerPeriod), 'броску', 'броска', 'бросков')}, по ${numberValue(classicRules.periodDurationMs) / 60_000} мин. Перерыв — ${numberValue(classicRules.breakDurationMs) / 60_000} мин. Если игру не закончить, ${classicIncompleteLabels[String(classicRules.incompleteResultPolicy ?? 'completed_game')] ?? classicIncompleteLabels.completed_game}. ${classicSpeedDescription.length > 0 ? `Скорости: ${classicSpeedDescription}.` : ''}`
+      : `Каждый сыграет с каждым ${cycles === 1 ? 'один раз' : `${cycles} ${pluralRu(cycles, 'раз', 'раза', 'раз')}`}. Каждый день ${roundsPerDay === 1 ? 'проходит один тур' : `проходит ${roundsPerDay} ${pluralRu(roundsPerDay, 'тур', 'тура', 'туров')}`}. Первый тур начнётся ${tournamentDateLabel(tournament.startsAt, String(config.timezone ?? 'Europe/Moscow'))}.`;
 
   return (
     <div className="tournament-rules">
@@ -825,7 +823,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
           ) : standings.data?.standings.length ? (
             <TournamentStandingsTable
               rows={standings.data.standings}
-              regularSource={String(tournament.rules.config.regularSource ?? '')}
+              regularSource={tournament.regularSource}
               playoffSize={Number(tournament.rules.config.playoffSize ?? 0)}
               currentUserId={currentUserId}
               onPlayerClick={(row) => {
@@ -880,9 +878,9 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               rangeStartsAt={tournament.startsAt}
               rangeEndsAt={tournament.completedAt ?? tournament.projectedEndsAt ?? null}
               playoffStartsAt={tournamentPlayoffStartsAt(tournament)}
-              onOpenDailyGame={() => {
+              onOpenClassicGame={() => {
                 const params = new URLSearchParams({
-                  view: tournament.regularSource === 'classic' ? 'classic' : 'daily',
+                  view: 'classic',
                   section: 'tournaments',
                   tournament: tournament.id,
                   tab: 'schedule',

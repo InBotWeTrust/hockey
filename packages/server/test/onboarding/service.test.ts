@@ -244,6 +244,24 @@ describe.skipIf(!hasIntegrationEnv)('onboarding applicability service', () => {
     }
   });
 
+  it('versions bundled beginner image URLs by media object id', async () => {
+    const { mediaIds } = await publishChain('beginner');
+    const mediaId = mediaIds[0]!;
+    await pool.query(`update media_objects set original_name = 'beginner-scene.webp' where id = $1`, [
+      mediaId,
+    ]);
+
+    const published = await loadPublishedVersion(pool, 'beginner', MEDIA_SECRET);
+    const information = published?.steps[0];
+
+    expect(information?.kind).toBe('informational');
+    if (information?.kind === 'informational') {
+      expect(information.imageUrl).toBe(
+        `/onboarding/reference/beginner-scene.webp?v=${mediaId}`,
+      );
+    }
+  });
+
   it('starts the required chain with admin-reset source after a later reset', async () => {
     const { versionId } = await publishChain('beginner');
     const userId = await createUser({});
