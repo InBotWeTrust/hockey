@@ -243,18 +243,16 @@ async function seedClassicConditionItem(
   return itemId;
 }
 
-async function waitForAdvisoryWaiter(pool: Pool): Promise<void> {
+async function waitForAdvisoryWaiter(pool: Pool, minimumWaiting = 1): Promise<void> {
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    const { rows } = await pool.query<{ waiting: boolean }>(
-      `select exists(
-         select 1
-           from pg_locks
-          where locktype = 'advisory'
-            and not granted
-            and database = (select oid from pg_database where datname = current_database())
-       ) as waiting`,
+    const { rows } = await pool.query<{ waiting: number }>(
+      `select count(*)::int as waiting
+         from pg_locks
+        where locktype = 'advisory'
+          and not granted
+          and database = (select oid from pg_database where datname = current_database())`,
     );
-    if (rows[0]?.waiting === true) return;
+    if ((rows[0]?.waiting ?? 0) >= minimumWaiting) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error('timed out waiting for Classic gameplay advisory lock contention');
@@ -1004,6 +1002,79 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
       [PLAYER_ID],
     );
     expect(shots.rows).toEqual([{ mode: 'daily', shots: 1 }]);
+  });
+
+  it('rejects a real daily handler shot when the first Classic shot wins the lock race', async () => {
+    const { databaseUrl, redisUrl } = getTestUrls();
+    const app = await buildApp({
+      config: {
+        NODE_ENV: 'test',
+        HOST: '0.0.0.0',
+        PORT: 3000,
+        LOG_LEVEL: 'warn',
+        DATABASE_URL: databaseUrl,
+        REDIS_URL: redisUrl,
+        JWT_SECRET,
+        REFRESH_SECRET,
+        TELEGRAM_BOT_TOKEN: 'classic-game-race-bot-token',
+        DAILY_SEED_SECRET: SEED_SECRET,
+      },
+      pushSchedulerEnabled: false,
+      pushWorkerEnabled: false,
+      tournamentLifecycleEnabled: false,
+    });
+    await app.ready();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const authorization = `Bearer ${await jwt.issueAccessToken({ sub: PLAYER_ID })}`;
+    const gate = await pool.connect();
+    try {
+      const dailyStarted = await app.inject({
+        method: 'POST',
+        url: '/duel/daily/period/start',
+        headers: { authorization },
+      });
+      expect(dailyStarted.statusCode).toBe(200);
+      await startClassicGamePeriod(pool, {
+        userId: PLAYER_ID,
+        tournamentId: TOURNAMENT_ID,
+        now: NOW,
+        seedSecret: SEED_SECRET,
+      });
+
+      await gate.query('begin');
+      await lockUserGameplay(gate, PLAYER_ID);
+      const classicShot = submitMiss(pool, 1, NOW);
+      await waitForAdvisoryWaiter(pool);
+      const dailyShot = app.inject({
+        method: 'POST',
+        url: '/duel/daily/shot',
+        headers: { authorization },
+        payload: { shot_index: 1, input: { tapTime: 0 }, claimed_result: 'miss' },
+      });
+      await waitForAdvisoryWaiter(pool, 2);
+      await gate.query('commit');
+
+      await expect(classicShot).resolves.toBeUndefined();
+      await expect(dailyShot).resolves.toMatchObject({ statusCode: 409 });
+    } catch (error) {
+      await gate.query('rollback').catch(() => undefined);
+      throw error;
+    } finally {
+      gate.release();
+      vi.useRealTimers();
+      await app.close();
+    }
+
+    const shots = await pool.query<{ mode: string; shots: number }>(
+      `select mode, count(*)::int as shots
+         from shot_session
+        where user_id = $1 and mode in ('daily', 'tournament_classic')
+        group by mode order by mode`,
+      [PLAYER_ID],
+    );
+    expect(shots.rows).toEqual([{ mode: 'tournament_classic', shots: 1 }]);
   });
 
   it('finalizes a missed game once at the tournament-day deadline', async () => {

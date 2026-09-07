@@ -136,6 +136,32 @@ describe('action-specific gameplay recovery', () => {
   );
 
   it.each([
+    ['challenge', 'start_training'],
+    ['challenge', 'start_daily_period'],
+    ['matchmaking', 'start_training'],
+    ['matchmaking', 'start_daily_period'],
+  ] satisfies Array<[NonNullable<Activity['duelSource']>, GameplayAction]>)(
+    'keeps %s duel recovery from blocking %s',
+    async (duelSource, action) => {
+      const { client } = gameplayClient([
+        {
+          mode: 'amateur_duel',
+          duelSource,
+          createdAt: at('2026-09-08T00:10:00+03:00'),
+        },
+      ]);
+
+      await expect(
+        getGameplayLockState(client, {
+          userId: 'player-1',
+          action,
+          now: at('2026-09-08T00:20:00+03:00'),
+        }),
+      ).resolves.toEqual({ blocked: false, reason: null, endsAt: null });
+    },
+  );
+
+  it.each([
     'start_ordinary_duel',
     'ordinary_duel_shot',
     'continue_classic',

@@ -186,6 +186,14 @@ export async function getActiveClassicTournamentLock(
     : NO_GAMEPLAY_LOCK;
 }
 
+export async function assertActiveClassicGameplayAllowed(
+  client: PoolClient,
+  userId: string,
+): Promise<void> {
+  const state = await getActiveClassicTournamentLock(client, userId);
+  if (state.blocked) throwGameplayLock(state);
+}
+
 export async function getTournamentGameplayLockStates(
   client: PoolClient,
   userIds: string[],
