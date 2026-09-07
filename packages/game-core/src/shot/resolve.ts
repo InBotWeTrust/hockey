@@ -10,6 +10,29 @@ import type { SessionPhaseOffsets } from '../session.js';
 export const GOAL_HITBOX_MARGIN = 1; // shrink goal opening by N px per side
 export const GOALIE_HITBOX_EXPAND = 6; // expand goalie AABB by N px total (3 per side)
 
+export function resolveEmptyGoalShot(
+  input: ShotInput,
+  cfg: GoalieConfig,
+  phaseOffsets?: SessionPhaseOffsets,
+): Extract<ShotResult, { type: 'goal' | 'miss' }> {
+  const speed = input.puckSpeedPerMs ?? PUCK_SPEED_PER_MS;
+  const shooterTime = input.shooterTapTime ?? input.tapTime;
+  const shooterX = simulateShooter(
+    shooterTime + (phaseOffsets?.shooter ?? 0),
+    input.shooterFrequency,
+  ).x;
+  const effectiveCfg = {
+    ...cfg,
+    goalFrequency: input.goalFrequency ?? cfg.goalFrequency,
+  };
+  const tGoalCross = input.tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed;
+  const goalOffset = simulateGoal(effectiveCfg, tGoalCross, phaseOffsets?.goal ?? 0).offsetX;
+  const xMin = GOAL_OPENING.xMin + goalOffset + GOAL_HITBOX_MARGIN;
+  const xMax = GOAL_OPENING.xMax + goalOffset - GOAL_HITBOX_MARGIN;
+  if (shooterX < xMin || shooterX > xMax) return { type: 'miss', reason: 'wide' };
+  return { type: 'goal', hitPoint: { x: shooterX, y: GOAL_OPENING.y } };
+}
+
 export function resolveShot(
   input: ShotInput,
   cfg: GoalieConfig,

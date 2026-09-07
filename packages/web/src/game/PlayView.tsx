@@ -319,6 +319,10 @@ export interface PlayViewProps<TState> {
   resultCopy?: Partial<Record<ResultModalKind, string>> | undefined;
   onSubmitError?: ((error: unknown) => void) | undefined;
   hideBackAction?: boolean | undefined;
+  hideGoalie?: boolean | undefined;
+  hideSoundAction?: boolean | undefined;
+  hideRinkScoreboard?: boolean | undefined;
+  onResultComplete?: (() => void) | undefined;
   reduceMotion?: boolean | undefined;
 }
 
@@ -591,6 +595,10 @@ export function PlayView<TState>({
   resultCopy,
   onSubmitError,
   hideBackAction = false,
+  hideGoalie = false,
+  hideSoundAction = false,
+  hideRinkScoreboard = false,
+  onResultComplete,
   reduceMotion = false,
 }: PlayViewProps<TState>): JSX.Element {
   const session: PlaySessionSnapshot = useMemo(
@@ -1232,6 +1240,7 @@ export function PlayView<TState>({
       layer.addChild(iceCar.container);
       layer.addChild(goal.container);
       layer.addChild(goalie.container);
+      goalie.container.visible = !hideGoalie;
       layer.addChild(player.container);
       layer.addChild(puck.container);
       layer.addChild(hitboxes.container);
@@ -1625,6 +1634,7 @@ export function PlayView<TState>({
       if (result.type === 'save') goalie.setSavePose(false);
       if (freezeRenderingDuringResult && tickerRef.current) loop.attach(tickerRef.current);
       setIsShowingResult(false);
+      onResultComplete?.();
       setResultDisplayKind(null);
       shotAnimationInProgressRef.current = false;
       setIsShotInProgress(false);
@@ -1749,19 +1759,21 @@ export function PlayView<TState>({
       design="long"
       longBackground={longCourtBackground}
       scoreboard={
-        <GameScoreboard
-          {...buildGameScoreboardModel({
-            period: periodNumber,
-            periodsTotal,
-            timer: timerValue,
-            timerLabel: timerLabel ?? 'ВРЕМЯ',
-            goals: visibleScoreboardGoals,
-            shots: visibleScoreboardShots,
-            ...(shotsTotal !== undefined ? { shotsTotal } : {}),
-            ...(visibleScoreboardNotice !== undefined ? { notice: visibleScoreboardNotice } : {}),
-            ...(scoreboardOpponent !== undefined ? { opponent: scoreboardOpponent } : {}),
-          })}
-        />
+        hideRinkScoreboard ? undefined : (
+          <GameScoreboard
+            {...buildGameScoreboardModel({
+              period: periodNumber,
+              periodsTotal,
+              timer: timerValue,
+              timerLabel: timerLabel ?? 'ВРЕМЯ',
+              goals: visibleScoreboardGoals,
+              shots: visibleScoreboardShots,
+              ...(shotsTotal !== undefined ? { shotsTotal } : {}),
+              ...(visibleScoreboardNotice !== undefined ? { notice: visibleScoreboardNotice } : {}),
+              ...(scoreboardOpponent !== undefined ? { opponent: scoreboardOpponent } : {}),
+            })}
+          />
+        )
       }
     />
   );
@@ -1980,24 +1992,28 @@ export function PlayView<TState>({
         >
           {effectiveShotButtonLabel}
         </button>
-        <button
-          type="button"
-          aria-label="Звук в разработке"
-          title="Звук в разработке"
-          onClick={showSoundToast}
-          className="icon-btn"
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: 20,
-            background: 'rgba(15, 23, 42, 0.1)',
-            color: 'var(--muted)',
-            border: '1px solid rgba(15, 23, 42, 0.08)',
-            opacity: 0.72,
-          }}
-        >
-          <VolumeX size={22} />
-        </button>
+        {hideSoundAction ? (
+          <span aria-hidden="true" />
+        ) : (
+          <button
+            type="button"
+            aria-label="Звук в разработке"
+            title="Звук в разработке"
+            onClick={showSoundToast}
+            className="icon-btn"
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 20,
+              background: 'rgba(15, 23, 42, 0.1)',
+              color: 'var(--muted)',
+              border: '1px solid rgba(15, 23, 42, 0.08)',
+              opacity: 0.72,
+            }}
+          >
+            <VolumeX size={22} />
+          </button>
+        )}
       </div>
 
       <div
