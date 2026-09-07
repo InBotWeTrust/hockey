@@ -95,7 +95,7 @@ import {
   arenaVideoCubeImage,
 } from './lockerRoomBackground.js';
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
-import { ordinaryDuelLockCopy } from '../api/gameplayLock.js';
+import { ordinaryDuelLockCopy, type GameplayLockDTO } from '../api/gameplayLock.js';
 import { useGameplayLockRefresh } from '../hooks/useGameplayLockRefresh.js';
 import {
   fetchMyInventory,
@@ -173,7 +173,7 @@ interface ArenaEntry {
   meta: string;
   ctaLabel: string;
   disabled?: boolean;
-  scoreboard?: JSX.Element;
+  scoreboard?: JSX.Element | null;
   opponentName?: string;
   opponentAvatarUrl?: string | null;
   typeLabel?: string;
@@ -1337,6 +1337,8 @@ function GameHub({
     onEnter: handleOpenTraining,
   };
   const duelArenaEntries = activeDuelEvents.map<ArenaEntry>((event) => {
+    const eventLock =
+      event.source !== 'tournament' && event.duel_lock?.blocked ? event.duel_lock : null;
     const timing = duelEventTiming(event, now);
     const isIncomingInvite = isDuelInviteForMe(event);
     const invitePending =
@@ -1348,8 +1350,8 @@ function GameHub({
       eyebrow: 'Активная дуэль',
       eyebrowStatus: duelOutcomeText(event),
       title: event.opponent.display_name,
-      subtitle: '',
-      meta: `${timing.label}: ${timing.value}`,
+      subtitle: eventLock ? ordinaryDuelLockCopy(eventLock) : '',
+      meta: eventLock ? '' : `${timing.label}: ${timing.value}`,
       ctaLabel: arenaDuelCtaLabel(event, now),
       disabled:
         (event.source !== 'tournament' && event.duel_lock?.blocked === true) ||
@@ -1394,7 +1396,7 @@ function GameHub({
         </div>
       ) : undefined,
       onEnter: () => void handleOpenDuel(event),
-      scoreboard: (
+      scoreboard: eventLock ? null : (
         <DailyHubScoreboard
           activePeriod={timing.activePeriod}
           ariaLabel={`${duelOutcomeText(event)}. ${timing.ariaLabel}`}
@@ -3958,10 +3960,12 @@ function DuelKindPreferencePicker({
   selected,
   onChange,
   onInfo,
+  locks,
 }: {
   selected: AmateurDuelKind[];
   onChange: (next: AmateurDuelKind[]) => void;
   onInfo: () => void;
+  locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
 }): JSX.Element {
   const selectedSet = new Set(selected);
   const toggleKind = (kind: AmateurDuelKind) => {
@@ -4007,6 +4011,8 @@ function DuelKindPreferencePicker({
             label={duelKindText(kind)}
             checked={selectedSet.has(kind)}
             active={selectedSet.has(kind)}
+            disabled={locks?.[kind]?.blocked === true}
+            title={locks?.[kind] ? ordinaryDuelLockCopy(locks[kind]!) : undefined}
             onClick={() => toggleKind(kind)}
           />
         ))}
@@ -4020,16 +4026,22 @@ function DuelKindPreferenceButton({
   checked,
   active,
   onClick,
+  disabled = false,
+  title,
 }: {
   label: string;
   checked: boolean;
   active: boolean;
   onClick: () => void;
+  disabled?: boolean;
+  title?: string | undefined;
 }): JSX.Element {
   return (
     <button
       type="button"
       aria-pressed={checked}
+      disabled={disabled}
+      title={title}
       onClick={onClick}
       style={{
         minWidth: 0,
@@ -4254,6 +4266,15 @@ function AmateurDuelsPage({
   const selectedTemplate = selectedTemplateId
     ? (templateItems.find((item) => item.id === selectedTemplateId) ?? null)
     : (templateItems[0] ?? null);
+  const formatLocks = matches.data?.format_locks;
+  const selectedFormatLock = selectedTemplate ? formatLocks?.[selectedTemplate.duel_kind] : null;
+  const selectedOpponentLock = selectedTemplate
+    ? selectedOpponent?.format_locks?.[selectedTemplate.duel_kind]
+    : null;
+  const challengeLock = duelLock ?? selectedFormatLock ?? selectedOpponentLock;
+  const eligibleMatchmakingKinds = matchmakingKinds.filter((kind) => !formatLocks?.[kind]?.blocked);
+  const unavailableFormat = DUEL_KIND_OPTIONS.find((kind) => formatLocks?.[kind]?.blocked);
+  const matchmakingFormatLock = unavailableFormat ? formatLocks?.[unavailableFormat] : null;
   const opponentOptions = opponentQuery.trim().length > 0 ? (opponents.data?.users ?? []) : [];
   const onlineOpponentOptions = (onlineOpponents.data?.users ?? []).filter((opponent) => {
     return isOpponentRecentlySeen(opponent.lastSeenAt);
@@ -4270,7 +4291,7 @@ function AmateurDuelsPage({
   const canStartMatchmaking =
     !duelBlocked &&
     hasOpenDuelSlot &&
-    matchmakingKinds.length > 0 &&
+    eligibleMatchmakingKinds.length > 0 &&
     !matchmakingMut.isPending &&
     !isMatchmakingActive;
 
@@ -4290,7 +4311,7 @@ function AmateurDuelsPage({
   }, [matchmakingTicket]);
 
   const canChallenge =
-    !duelBlocked &&
+    !challengeLock?.blocked &&
     hasOpenDuelSlot &&
     selectedTemplate !== null &&
     selectedOpponent !== null &&
@@ -4401,7 +4422,8 @@ function AmateurDuelsPage({
               {duelCreationMode === 'matchmaking' ? (
                 <>
                   <DuelKindPreferencePicker
-                    selected={matchmakingKinds}
+                    selected={eligibleMatchmakingKinds}
+                    {...(formatLocks === undefined ? {} : { locks: formatLocks })}
                     onChange={setMatchmakingKinds}
                     onInfo={() => setMatchmakingRulesOpen(true)}
                   />
@@ -4411,7 +4433,7 @@ function AmateurDuelsPage({
                     disabled={!canStartMatchmaking}
                     onClick={() => {
                       setMatchmakingNow(Date.now());
-                      matchmakingMut.mutate(matchmakingKinds);
+                      matchmakingMut.mutate(eligibleMatchmakingKinds);
                     }}
                   >
                     {matchmakingMut.isPending
@@ -4422,6 +4444,11 @@ function AmateurDuelsPage({
                           ? 'Искать снова'
                           : 'Начать поиск'}
                   </button>
+                  {!duelBlocked && matchmakingFormatLock && (
+                    <p role="status" className="modal-copy">
+                      Некоторые форматы недоступны. {ordinaryDuelLockCopy(matchmakingFormatLock)}
+                    </p>
+                  )}
                   {matchmakingTicket && (
                     <div
                       className="glass"
@@ -4464,6 +4491,11 @@ function AmateurDuelsPage({
                 </>
               ) : (
                 <>
+                  {!duelBlocked && challengeLock?.blocked && (
+                    <p role="status" className="modal-copy">
+                      {ordinaryDuelLockCopy(challengeLock)}
+                    </p>
+                  )}
                   {templateItems.length > 0 && selectedTemplate ? (
                     <>
                       <GlassSelect

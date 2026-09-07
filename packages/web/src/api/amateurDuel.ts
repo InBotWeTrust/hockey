@@ -269,6 +269,7 @@ export interface AmateurDuelMatchState extends AmateurDuelMatch {
 }
 
 export interface AmateurOpponent {
+  format_locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
   userId: string;
   displayName: string;
   avatarUrl: string | null;
@@ -375,6 +376,7 @@ export function searchAmateurOpponents(q = '', limit = 20): Promise<{ users: Ama
 }
 
 export interface AmateurDuelOverview {
+  format_locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
   matches: AmateurDuelMatch[];
   duel_lock?: GameplayLockDTO | null;
   matchmaking_enabled?: boolean;

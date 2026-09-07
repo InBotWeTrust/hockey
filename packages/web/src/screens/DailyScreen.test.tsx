@@ -1951,6 +1951,43 @@ describe('DailyScreen', () => {
     ).toBeInTheDocument();
   });
 
+  it('explains a safe-start lock on the arena card before T-60', async () => {
+    const activeMatch = {
+      ...settledDuelMatch,
+      status: 'active',
+      outcome: null,
+      settled_at: null,
+      starts_at: new Date(Date.now() - 60_000).toISOString(),
+      ends_at: new Date(Date.now() + 3_600_000).toISOString(),
+      server_now: new Date().toISOString(),
+      me: { ...settledDuelMatch.me, state: 'accepted', current_period: 0 },
+      duel_lock: {
+        blocked: true,
+        reason: 'scheduled_tournament',
+        ends_at: null,
+        tournament_starts_at: new Date(Date.now() + 65 * 60_000).toISOString(),
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/duel/amateur/events')
+        ? { events: [activeMatch] }
+        : url.includes('/duel/training/state')
+          ? trainingIdleState
+          : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=arena']);
+    const card = await screen.findByRole('article', { name: 'Активная дуэль: Duel Opponent' });
+    expect(
+      within(card).getByText(/Обычные дуэли недоступны перед турнирной игрой/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'На лёд' })).not.toBeInTheDocument();
+  });
+
   it('shows outgoing and incoming duel invites from the current player perspective', async () => {
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     const outgoingInvite: AmateurDuelMatchState = {
@@ -4895,6 +4932,106 @@ describe('DailyScreen', () => {
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes('/matchmaking/join')),
     ).toBe(false);
+  });
+
+  it('disables unsafe duel formats before T-60 while still joining a safe shorter format', async () => {
+    const start = new Date(Date.now() + 65 * 60_000).toISOString();
+    const lock = {
+      blocked: true,
+      reason: 'scheduled_tournament',
+      ends_at: null,
+      tournament_starts_at: start,
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/duel/amateur/matches')
+        ? {
+            matches: [],
+            duel_lock: null,
+            format_locks: { classic: lock, express_plus: lock, express: null },
+          }
+        : url.includes('/duel/amateur/templates')
+          ? { templates: challengeTemplates }
+          : url.includes('/duel/amateur/rating')
+            ? { season_key: '2026-09', rating: [] }
+            : url.includes('/duel/training/state')
+              ? trainingIdleState
+              : url.includes('/matchmaking/join')
+                ? {
+                    ticket: {
+                      id: 'queued',
+                      status: 'queued',
+                      expires_at: new Date(Date.now() + 120_000).toISOString(),
+                      duel_kinds: ['express'],
+                    },
+                  }
+                : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    const classic = await screen.findByRole('button', { name: 'Классика' });
+    await waitFor(() => expect(classic).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Экспресс' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([input]) =>
+        String(input).includes('/matchmaking/join'),
+      );
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ duel_kinds: ['express'] });
+    });
+    fireEvent.click(screen.getByRole('tab', { name: 'Вызвать' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Шаблон дуэли' }));
+    fireEvent.click(await screen.findByRole('option', { name: /Классика \(3 периода/ }));
+    expect(screen.getByText(/Обычные дуэли недоступны перед турнирной игрой/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Выберите соперника' })).toBeDisabled();
+  });
+
+  it('disables concrete formats after a stale safe-start 409 refetch even when the current lock is null', async () => {
+    let unsafe = false;
+    const lock = {
+      blocked: true,
+      reason: 'scheduled_tournament',
+      ends_at: null,
+      tournament_starts_at: new Date(Date.now() + 65 * 60_000).toISOString(),
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/matchmaking/join')) {
+        unsafe = true;
+        return new Response(
+          JSON.stringify({ error: { code: 'conflict', message: 'gameplay is locked' } }),
+          { status: 409, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      const data = url.includes('/duel/amateur/matches')
+        ? {
+            matches: [],
+            duel_lock: null,
+            format_locks: unsafe ? { classic: lock, express_plus: lock, express: lock } : {},
+          }
+        : url.includes('/duel/amateur/templates')
+          ? { templates: challengeTemplates }
+          : url.includes('/duel/amateur/rating')
+            ? { season_key: '2026-09', rating: [] }
+            : url.includes('/duel/training/state')
+              ? trainingIdleState
+              : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    const button = await screen.findByRole('button', { name: 'Начать поиск' });
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Классика' })).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Начать поиск' })).toBeDisabled();
+    expect(screen.getByText(/Некоторые форматы недоступны/)).toBeInTheDocument();
   });
 
   it('lets a challenger cancel an unanswered duel invite from the current duels list', async () => {

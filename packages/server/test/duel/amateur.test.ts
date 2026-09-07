@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
+import { getGameplayLockState } from '../../src/duel/gameplayLocks.js';
 import { buildApp } from '../../src/app.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
@@ -560,6 +561,179 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       (await app.inject({ method: 'GET', url: '/duel/amateur/history', headers: auth(tokenA) }))
         .statusCode,
     ).toBe(200);
+  });
+
+  it('skips a queued candidate whose selected format became unsafe and matches a later candidate', async () => {
+    const templateId = await createTemplate({ periodDurationMs: 120_000, readyDurationMs: 60_000 });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/duel/amateur/matchmaking/join',
+          headers: auth(tokenB),
+          payload: { duel_kinds: ['classic'] },
+        })
+      ).statusCode,
+    ).toBe(200);
+    await scheduleTournamentLock(userB, 3_600_000 + 150_000);
+    const laterUser = await createOpponent(98);
+    await pool.query(
+      "insert into amateur_duel_matchmaking_ticket (template_id, user_id, expires_at, duel_kinds) values ($1, $2, now() + interval '2 minutes', '[\"classic\"]'::jsonb)",
+      [templateId, laterUser],
+    );
+    const joined = await app.inject({
+      method: 'POST',
+      url: '/duel/amateur/matchmaking/join',
+      headers: auth(tokenA),
+      payload: { duel_kinds: ['classic'] },
+    });
+    expect(joined.statusCode).toBe(200);
+    expect(joined.json().match.opponent.user_id).toBe(laterUser);
+  });
+
+  it('exposes per-format safe starts and keeps a shorter selected format joinable', async () => {
+    await createTemplate({
+      duelKind: 'classic',
+      periodDurationMs: 1_200_000,
+      readyDurationMs: 60_000,
+    });
+    await createTemplate({
+      duelKind: 'express',
+      periodDurationMs: 60_000,
+      readyDurationMs: 60_000,
+    });
+    await scheduleTournamentLock(userA, 3_600_000 + 300_000);
+    const overview = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/matches',
+      headers: auth(tokenA),
+    });
+    expect(overview.json().duel_lock).toBeNull();
+    expect(overview.json().format_locks.classic).toMatchObject({
+      blocked: true,
+      reason: 'scheduled_tournament',
+    });
+    expect(overview.json().format_locks.express).toBeNull();
+    const joined = await app.inject({
+      method: 'POST',
+      url: '/duel/amateur/matchmaking/join',
+      headers: auth(tokenA),
+      payload: { duel_kinds: ['classic', 'express'] },
+    });
+    expect(joined.statusCode).toBe(200);
+    expect(joined.json().ticket.duel_kinds).toEqual(['express']);
+  });
+
+  it('keeps an invitation readable after its template is soft deleted', async () => {
+    const templateId = await createTemplate();
+    const matchId = (await challenge(templateId)).json().match.id;
+    await pool.query('update amateur_duel_template set deleted_at = now() where id = $1', [
+      templateId,
+    ]);
+    const response = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${matchId}`,
+      headers: auth(tokenB),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().match.id).toBe(matchId);
+  });
+
+  it('exposes safe-start locks for invitation acceptance, readiness and the next period before T-60', async () => {
+    const templateId = await createTemplate({ periodDurationMs: 120_000, readyDurationMs: 60_000 });
+    const matchId = (await challenge(templateId)).json().match.id;
+    const tournamentId = await scheduleTournamentLock(userA, 3_600_000 + 150_000);
+    const read = () =>
+      app.inject({ method: 'GET', url: `/duel/amateur/matches/${matchId}`, headers: auth(tokenB) });
+    expect((await read()).json().match.duel_lock).toMatchObject({
+      blocked: true,
+      reason: 'scheduled_tournament',
+    });
+    await pool.query("update tournament_fixture set status='settled' where tournament_id=$1", [
+      tournamentId,
+    ]);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/duel/amateur/matches/${matchId}/accept`,
+          headers: auth(tokenB),
+        })
+      ).statusCode,
+    ).toBe(200);
+    await pool.query("update tournament_fixture set status='scheduled' where tournament_id=$1", [
+      tournamentId,
+    ]);
+    expect((await read()).json().match.duel_lock?.blocked).toBe(true);
+    await pool.query("update tournament_fixture set status='settled' where tournament_id=$1", [
+      tournamentId,
+    ]);
+    await acceptReadyAndStart(matchId);
+    await pool.query(
+      "update tournament_fixture set status='scheduled', scheduled_starts_at=now() + interval '61 minutes' where tournament_id=$1",
+      [tournamentId],
+    );
+    await pool.query(
+      "update amateur_duel_participant set state='accepted', current_period=0, period_started_at=null where match_id=$1 and user_id=$2",
+      [matchId, userA],
+    );
+    const next = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${matchId}`,
+      headers: auth(tokenA),
+    });
+    expect(next.json().match.duel_lock?.blocked).toBe(true);
+  });
+
+  it('timestamps an accepted ordinary shot after the gameplay-lock wait and recovers exactly one hour later', async () => {
+    const matchId = (await challenge(await createTemplate())).json().match.id;
+    expect((await acceptReadyAndStart(matchId)).statusCode).toBe(200);
+    const blocker = await pool.connect();
+    let accepted;
+    let releasedAt = 0;
+    try {
+      await blocker.query('begin');
+      const backend = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid');
+      await blocker.query("select pg_advisory_xact_lock(hashtext('gameplay:' || $1))", [userA]);
+      const pending = app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${matchId}/shot`,
+        headers: auth(tokenA),
+        payload: { shot_index: 1, input: { tapTime: 1000 }, claimed_result: 'goal' },
+      });
+      await waitForBlockedWriter(pool, backend.rows[0]!.pid, /pg_advisory_xact_lock/i);
+      releasedAt = Date.now();
+      await blocker.query('commit');
+      accepted = await pending;
+    } finally {
+      await blocker.query('rollback');
+      blocker.release();
+    }
+    expect(accepted.statusCode).toBe(200);
+    const acceptedAt = new Date(accepted.json().match.server_now);
+    const shot = (
+      await pool.query<{ created_at: Date }>(
+        'select created_at from shot_session where amateur_duel_match_id=$1',
+        [matchId],
+      )
+    ).rows[0]!;
+    expect(shot.created_at.getTime()).toBeGreaterThanOrEqual(releasedAt);
+    expect(shot.created_at.toISOString()).toBe(acceptedAt.toISOString());
+    const endsAt = new Date(acceptedAt.getTime() + 3_600_000);
+    expect(
+      await getGameplayLockState(pool as unknown as PoolClient, {
+        userId: userA,
+        action: 'start_classic',
+        now: new Date(endsAt.getTime() - 1),
+      }),
+    ).toMatchObject({ blocked: true, endsAt });
+    expect(
+      await getGameplayLockState(pool as unknown as PoolClient, {
+        userId: userA,
+        action: 'start_classic',
+        now: endsAt,
+      }),
+    ).toMatchObject({ blocked: false });
   });
 
   it('does not use recovery from an ordinary shot to block invitations or matchmaking', async () => {

@@ -172,20 +172,30 @@ export async function assertTournamentGameplayAllowed(
   if (state.blocked) throwGameplayLock(state);
 }
 
-export async function assertSafeSegmentStart(
+export async function getSafeSegmentStartLockState(
   client: PoolClient,
   input: { userId: string; now: Date; maxSegmentDurationMs: number },
-): Promise<void> {
+): Promise<GameplayLockState> {
   const state = await getNearestScheduledTournamentBlock(client, input.userId, input.now);
-  if (state.tournamentStartsAt === undefined || state.tournamentStartsAt === null) return;
+  if (state.tournamentStartsAt === undefined || state.tournamentStartsAt === null)
+    return NO_GAMEPLAY_LOCK;
   const lockStartsAt = state.tournamentStartsAt.getTime() - GAMEPLAY_RECOVERY_MS;
-  if (input.now.getTime() + Math.max(0, input.maxSegmentDurationMs) < lockStartsAt) return;
-  throwGameplayLock({
+  if (input.now.getTime() + Math.max(0, input.maxSegmentDurationMs) < lockStartsAt)
+    return NO_GAMEPLAY_LOCK;
+  return {
     blocked: true,
     reason: 'scheduled_tournament',
     endsAt: null,
     tournamentStartsAt: state.tournamentStartsAt,
-  });
+  };
+}
+
+export async function assertSafeSegmentStart(
+  client: PoolClient,
+  input: { userId: string; now: Date; maxSegmentDurationMs: number },
+): Promise<void> {
+  const state = await getSafeSegmentStartLockState(client, input);
+  if (state.blocked) throwGameplayLock(state);
 }
 
 export async function getGameplayLockState(
