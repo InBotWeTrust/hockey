@@ -5,6 +5,8 @@ import type {
   StickEffects,
 } from '@hockey/game-core';
 import { apiFetch } from './apiFetch.js';
+import type { GameplayLockDTO } from './gameplayLock.js';
+export type { GameplayLockDTO } from './gameplayLock.js';
 import type { GameRequestOptions } from './requestTimeout.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 
@@ -220,6 +222,7 @@ export interface AmateurDuelPeriodLog {
 }
 
 export interface AmateurDuelMatch {
+  duel_lock?: GameplayLockDTO | null;
   id: string;
   template_id: string | null;
   status: AmateurDuelMatchStatus;
@@ -371,8 +374,15 @@ export function searchAmateurOpponents(q = '', limit = 20): Promise<{ users: Ama
   return apiFetch<{ users: AmateurOpponent[] }>(`/duel/amateur/opponents?${params.toString()}`);
 }
 
-export function fetchAmateurMatches(): Promise<{ matches: AmateurDuelMatch[] }> {
-  return apiFetch<{ matches: AmateurDuelMatch[] }>('/duel/amateur/matches').then((res) => ({
+export interface AmateurDuelOverview {
+  matches: AmateurDuelMatch[];
+  duel_lock?: GameplayLockDTO | null;
+  matchmaking_enabled?: boolean;
+}
+
+export function fetchAmateurMatches(): Promise<AmateurDuelOverview> {
+  return apiFetch<AmateurDuelOverview>('/duel/amateur/matches').then((res) => ({
+    ...res,
     matches: res.matches.map(stampMatch),
   }));
 }

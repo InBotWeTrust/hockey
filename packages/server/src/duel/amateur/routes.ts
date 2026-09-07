@@ -27,6 +27,15 @@ import { AppError } from '../../plugins/errors.js';
 import { enqueueDuelPush } from '../../push/duel.js';
 import { appendEvent } from '../eventLog.js';
 import { getGameSettings } from '../gameSettings.js';
+import {
+  assertSafeSegmentStart,
+  assertTournamentGameplayAllowed,
+  getTournamentGameplayLockState,
+  getActiveClassicTournamentLock,
+  lockUserGameplay,
+  GAMEPLAY_RECOVERY_MS,
+  type GameplayLockReason,
+} from '../gameplayLocks.js';
 import { deriveAmateurDuelSeed, deriveShotSeed } from '../seed.js';
 import { resolveDefaultArena } from '../../arenas/service.js';
 import type { ArenaSnapshot, MatchmakingVenuePolicy } from '../../arenas/types.js';
@@ -54,6 +63,65 @@ import {
 } from './periodLoadout.js';
 
 type MatchStatus = 'invited' | 'ready_check' | 'active' | 'settled' | 'cancelled' | 'expired';
+interface GameplayLockDTO {
+  blocked: boolean;
+  reason: GameplayLockReason;
+  ends_at: string | null;
+  tournament_starts_at: string | null;
+}
+
+async function duelLockDto(
+  client: PoolClient,
+  userId: string,
+  now: Date,
+): Promise<GameplayLockDTO | null> {
+  const lock = await getTournamentGameplayLockState(client, userId, now);
+  return !lock.blocked || lock.reason === null
+    ? null
+    : {
+        blocked: true,
+        reason: lock.reason,
+        ends_at: lock.endsAt?.toISOString() ?? null,
+        tournament_starts_at: lock.tournamentStartsAt?.toISOString() ?? null,
+      };
+}
+
+async function lockDuelPlayers(client: PoolClient, userIds: string[]): Promise<void> {
+  for (const userId of [...new Set(userIds)].sort()) await lockUserGameplay(client, userId);
+}
+
+async function lockMatchGameplay(client: PoolClient, matchId: string): Promise<void> {
+  // Read immutable participants before acquiring match rows, keeping gameplay locks first.
+  const { rows } = await client.query<{ challenger_user_id: string; opponent_user_id: string }>(
+    "select challenger_user_id, opponent_user_id from amateur_duel_match where id = $1 and source <> 'tournament'",
+    [matchId],
+  );
+  if (rows[0])
+    await lockDuelPlayers(client, [rows[0].challenger_user_id, rows[0].opponent_user_id]);
+}
+
+async function assertOrdinaryDuelStart(
+  client: PoolClient,
+  userIds: string[],
+  rules: DuelRulesSnapshot,
+  now: Date,
+): Promise<void> {
+  for (const userId of userIds) {
+    await assertTournamentGameplayAllowed(client, userId, now);
+    await assertSafeSegmentStart(client, {
+      userId,
+      now,
+      maxSegmentDurationMs: rules.readyDurationMs + getDuelPeriodRule(rules, 1).durationMs,
+    });
+  }
+}
+
+async function cancelLockedMatchmakingTicket(client: PoolClient, userId: string): Promise<void> {
+  await client.query(
+    "update amateur_duel_matchmaking_ticket set status = 'cancelled', updated_at = now() where user_id = $1 and status = 'queued'",
+    [userId],
+  );
+}
 type ParticipantState =
   | 'invited'
   | 'loadout_pending'
@@ -603,6 +671,7 @@ interface DuelParticipantDTO {
 }
 
 interface DuelMatchDTO {
+  duel_lock: GameplayLockDTO | null;
   id: string;
   template_id: string | null;
   status: MatchStatus;
@@ -3144,9 +3213,31 @@ async function buildMatchDto(
     opponent.state === 'period_active'
       ? await fetchCurrentPeriodStats(client, match.id, opponent.user_id, opponent.current_period)
       : null;
+  let duelLock =
+    match.source === 'tournament' || isTerminalMatchStatus(match.status)
+      ? null
+      : await duelLockDto(client, currentUserId, now);
+  if (
+    match.source !== 'tournament' &&
+    (match.status === 'invited' || match.status === 'ready_check')
+  ) {
+    duelLock ??= await duelLockDto(client, opponent.user_id, now);
+  }
+  if (
+    duelLock?.reason === 'scheduled_tournament' &&
+    duelLock.tournament_starts_at !== null &&
+    me.state === 'period_active' &&
+    me.period_started_at !== null &&
+    me.period_started_at.getTime() <
+      Date.parse(duelLock.tournament_starts_at) - GAMEPLAY_RECOVERY_MS &&
+    !(await getActiveClassicTournamentLock(client, currentUserId)).blocked
+  ) {
+    duelLock = null;
+  }
   return {
     id: match.id,
     template_id: match.template_id,
+    duel_lock: duelLock,
     status: match.status,
     source: match.source,
     ranked: match.ranked,
@@ -3975,8 +4066,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           limit $3`,
         [req.user.id, query.q, query.limit, settings.amateur.unlockGoalsRequired],
       );
+      const available = [];
+      for (const row of rows) {
+        if (!(await getTournamentGameplayLockState(client, row.id, new Date())).blocked)
+          available.push(row);
+      }
       return {
-        users: rows.map((row) => ({
+        users: available.map((row) => ({
           userId: row.id,
           displayName: row.display_name,
           avatarUrl: row.avatar_url,
@@ -3987,6 +4083,12 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
   });
 
   app.get('/duel/amateur/matches', { preHandler: [app.authenticate] }, async (req) => {
+    await withTransaction(app, async (client) => {
+      await lockUserGameplay(client, req.user.id);
+      if ((await getTournamentGameplayLockState(client, req.user.id, new Date())).blocked) {
+        await cancelLockedMatchmakingTicket(client, req.user.id);
+      }
+    });
     const response = await withTransaction(app, async (client) => {
       const now = new Date();
       const { rows } = await client.query<DuelMatchRow>(
@@ -4037,6 +4139,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       }
       return {
         matches,
+        duelLock: await duelLockDto(client, req.user.id, new Date()),
         changedMatchIds: [...changedMatchIds],
         newlySettledRegularFixtures: [...newlySettledRegularFixtures.values()],
       };
@@ -4045,7 +4148,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       await publishDuelFixtureProgress(app, matchId);
     }
     await reconcileNewlySettledRegularFixtures(app, response.newlySettledRegularFixtures);
-    return { matches: response.matches };
+    return {
+      matches: response.matches,
+      duel_lock: response.duelLock,
+      matchmaking_enabled: response.duelLock === null,
+    };
   });
 
   app.get('/duel/amateur/history', { preHandler: [app.authenticate] }, async (req) => {
@@ -4334,6 +4441,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     }
 
     const result = await withTransaction(app, async (client) => {
+      await lockDuelPlayers(client, [req.user.id, opponentUserId]);
       const now = new Date();
       await assertAmateurEligible(client, req.user.id);
       await assertAmateurEligible(client, opponentUserId);
@@ -4341,6 +4449,12 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       if (!template.is_active) throw new AppError('conflict', 'duel template is inactive', 409);
       if (now >= template.ends_at)
         throw new AppError('conflict', 'duel template window is closed', 409);
+      await assertOrdinaryDuelStart(
+        client,
+        [req.user.id, opponentUserId],
+        makeRulesSnapshot(template, await getGameSettings(client)),
+        now,
+      );
       const { match, rules } = await createOpenMatch(client, {
         template,
         challengerUserId: req.user.id,
@@ -4404,8 +4518,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     async (req) => {
       const params = z.object({ matchId: uuid }).parse(req.params);
       const accepted = await withTransaction(app, async (client) => {
-        const now = new Date();
+        await lockMatchGameplay(client, params.matchId);
         let match = await fetchPlayableMatchForUpdate(client, params.matchId);
+        const now = new Date();
         if (match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'only challenged player can accept duel', 403);
         }
@@ -4421,6 +4536,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         if (now >= template.ends_at) throw new AppError('conflict', 'duel window is closed', 409);
         const settings = await getGameSettings(client);
         const rules = makeRulesSnapshot(template, settings);
+        if (match.source !== 'tournament')
+          await assertOrdinaryDuelStart(
+            client,
+            [match.challenger_user_id, match.opponent_user_id],
+            rules,
+            now,
+          );
         const readyExpiresAt = new Date(now.getTime() + rules.readyDurationMs);
         const { rows } = await client.query<DuelMatchRow>(
           `update amateur_duel_match
@@ -4611,12 +4733,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       const parsed = readyBodySchema.safeParse(req.body);
       if (!parsed.success) throw new AppError('bad_request', 'invalid duel ready payload', 400);
       const response = await withTransaction(app, async (client) => {
+        await lockMatchGameplay(client, params.matchId);
+        const lockedMatch = await fetchPlayableMatchForUpdate(client, params.matchId);
         const now = new Date();
-        const reconciled = await reconcileMatch(
-          client,
-          await fetchPlayableMatchForUpdate(client, params.matchId),
-          now,
-        );
+        const reconciled = await reconcileMatch(client, lockedMatch, now);
         let match = reconciled.match;
         if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'duel match access denied', 403);
@@ -4639,6 +4759,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           };
         }
         const rules = parseRulesSnapshot(match.rules_snapshot);
+        if (match.source !== 'tournament')
+          await assertOrdinaryDuelStart(
+            client,
+            [match.challenger_user_id, match.opponent_user_id],
+            rules,
+            now,
+          );
         const loadout =
           match.source === 'tournament' && usesTournamentPeriodLoadoutLifecycle(rules)
             ? emptyLoadout(rules.powerCap)
@@ -4824,8 +4951,16 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
   app.post('/duel/amateur/matchmaking/join', { preHandler: [app.authenticate] }, async (req) => {
     const body = matchmakingJoinSchema.safeParse(req.body);
     if (!body.success) throw new AppError('bad_request', 'invalid matchmaking payload', 400);
-    return withTransaction(app, async (client) => {
-      const now = new Date();
+    const result = await withTransaction(app, async (client) => {
+      await lockUserGameplay(client, req.user.id);
+      let now = new Date();
+      const lock = await duelLockDto(client, req.user.id, now);
+      if (lock !== null) {
+        await cancelLockedMatchmakingTicket(client, req.user.id);
+        return {
+          lockError: new AppError('conflict', 'gameplay is locked', 409, { gameplayLock: lock }),
+        };
+      }
       await assertAmateurEligible(client, req.user.id);
       const templateFromLegacyPayload = body.data.template_id
         ? await fetchTemplate(client, body.data.template_id)
@@ -4841,6 +4976,14 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       if (templates.length === 0) {
         throw new AppError('conflict', 'matchmaking is unavailable for selected duels', 409);
       }
+      const settings = await getGameSettings(client);
+      for (const template of templates)
+        await assertOrdinaryDuelStart(
+          client,
+          [req.user.id],
+          makeRulesSnapshot(template, settings),
+          now,
+        );
       await assertOpenDuelSlots(client, [req.user.id]);
       const templatesByKind = new Map(templates.map((template) => [template.duel_kind, template]));
       await client.query(
@@ -4877,12 +5020,27 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           for update skip locked`,
         [req.user.id, now],
       );
-      const opponentTicket = opponent.rows.find((ticket) => {
+      let opponentTicket: (typeof opponent.rows)[number] | undefined;
+      for (const ticket of opponent.rows) {
         const opponentKinds = duelKindsFromUnknown(ticket.duel_kinds, requestedKinds);
-        return requestedKinds.some(
-          (kind) => opponentKinds.includes(kind) && templatesByKind.has(kind),
+        if (
+          !requestedKinds.some((kind) => opponentKinds.includes(kind) && templatesByKind.has(kind))
+        )
+          continue;
+        // Never wait for another player's lock while holding our own in matchmaking.
+        const acquired = await client.query<{ locked: boolean }>(
+          "select pg_try_advisory_xact_lock(hashtext('gameplay:' || $1)) as locked",
+          [ticket.user_id],
         );
-      });
+        if (!acquired.rows[0]?.locked) continue;
+        now = new Date();
+        if ((await getTournamentGameplayLockState(client, ticket.user_id, now)).blocked) {
+          await cancelLockedMatchmakingTicket(client, ticket.user_id);
+          continue;
+        }
+        opponentTicket = ticket;
+        break;
+      }
       if (!opponentTicket) {
         const expiresAt = new Date(now.getTime() + MATCHMAKING_TIMEOUT_MS);
         const primaryTemplate = templates[0]!;
@@ -4912,6 +5070,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       );
       if (!matchedKind) throw new AppError('conflict', 'matchmaking opponent is unavailable', 409);
       const template = templatesByKind.get(matchedKind)!;
+      now = new Date();
+      await assertOrdinaryDuelStart(
+        client,
+        [req.user.id, opponentTicket.user_id],
+        makeRulesSnapshot(template, settings),
+        now,
+      );
       await assertAmateurEligible(client, opponentTicket.user_id);
       const { match } = await createOpenMatch(client, {
         template,
@@ -4928,6 +5093,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       );
       return { match: await buildMatchDto(client, match, req.user.id, now) };
     });
+    if ('lockError' in result) throw result.lockError;
+    return result;
   });
 
   app.post('/duel/amateur/matchmaking/leave', { preHandler: [app.authenticate] }, async (req) => {
@@ -5042,14 +5209,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       const parsed = startPeriodBodySchema.safeParse(req.body ?? {});
       if (!parsed.success) throw new AppError('bad_request', 'invalid duel period payload', 400);
       const response = await withTransaction(app, async (client) => {
+        await lockMatchGameplay(client, params.matchId);
+        const lockedMatch = await fetchPlayableMatchForUpdate(client, params.matchId);
         const now = new Date();
-        let match = (
-          await reconcileMatch(
-            client,
-            await fetchPlayableMatchForUpdate(client, params.matchId),
-            now,
-          )
-        ).match;
+        let match = (await reconcileMatch(client, lockedMatch, now)).match;
         if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'duel match access denied', 403);
         }
@@ -5079,6 +5242,15 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         }
         if (participant.current_period >= rules.totalPeriods) {
           throw new AppError('conflict', 'all duel periods completed', 409);
+        }
+        if (match.source !== 'tournament') {
+          await assertTournamentGameplayAllowed(client, req.user.id, now);
+          await assertSafeSegmentStart(client, {
+            userId: req.user.id,
+            now,
+            maxSegmentDurationMs: getDuelPeriodRule(rules, participant.current_period + 1)
+              .durationMs,
+          });
         }
         if (
           match.source === 'tournament' &&
@@ -5146,14 +5318,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       const body = parsed.data;
 
       const response = await withTransaction(app, async (client) => {
+        await lockMatchGameplay(client, params.matchId);
+        const lockedMatch = await fetchPlayableMatchForUpdate(client, params.matchId);
         const now = new Date();
-        let match = (
-          await reconcileMatch(
-            client,
-            await fetchPlayableMatchForUpdate(client, params.matchId),
-            now,
-          )
-        ).match;
+        let match = (await reconcileMatch(client, lockedMatch, now)).match;
         if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
           throw new AppError('forbidden', 'duel match access denied', 403);
         }
@@ -5170,6 +5338,17 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         if (!participant) throw new AppError('forbidden', 'duel match access denied', 403);
         if (participant.state !== 'period_active' || participant.period_started_at === null) {
           throw new AppError('conflict', `cannot submit shot in state '${participant.state}'`, 409);
+        }
+        if (match.source !== 'tournament') {
+          const lock = await getTournamentGameplayLockState(client, req.user.id, now);
+          const acceptedBeforePrelock =
+            lock.reason === 'scheduled_tournament' &&
+            lock.tournamentStartsAt != null &&
+            participant.period_started_at.getTime() <
+              lock.tournamentStartsAt.getTime() - GAMEPLAY_RECOVERY_MS &&
+            !(await getActiveClassicTournamentLock(client, req.user.id)).blocked;
+          if (!acceptedBeforePrelock)
+            await assertTournamentGameplayAllowed(client, req.user.id, now);
         }
         const cur = await fetchCurrentPeriodStats(
           client,

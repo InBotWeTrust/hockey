@@ -172,6 +172,53 @@ describe('ChatRoomScreen', () => {
     expect(await screen.findByText('Вы отклонили')).toBeInTheDocument();
   });
 
+  it('keeps chat and decline usable but disables accepting a tournament-locked invitation', async () => {
+    const accept = vi.spyOn(amateurDuelApi, 'acceptAmateurDuel');
+    const decline = vi
+      .spyOn(amateurDuelApi, 'declineAmateurDuel')
+      .mockResolvedValue({ match: {} as amateurDuelApi.AmateurDuelMatchState });
+    vi.mocked(amateurDuelApi.fetchAmateurMatches).mockResolvedValue({
+      matches: [],
+      duel_lock: {
+        blocked: true,
+        reason: 'active_classic',
+        ends_at: null,
+        tournament_starts_at: null,
+      },
+    } as Awaited<ReturnType<typeof amateurDuelApi.fetchAmateurMatches>>);
+    vi.mocked(api.fetchMessages).mockResolvedValue([
+      {
+        ...msgFromOther,
+        metadata: {
+          type: 'amateur_duel_invite',
+          matchId: '11111111-1111-1111-1111-111111111111',
+          templateTitle: 'Классическая дуэль',
+          challengerName: 'Иван',
+          startsAt: '2030-05-04T10:00:00.000Z',
+          endsAt: '2030-05-04T12:00:00.000Z',
+          totalPeriods: 3,
+          shotsPerPeriod: 30,
+          periodDurationMs: 1_200_000,
+          breakDurationMs: 900_000,
+          stakeAmount: 0,
+          entryFeeAmount: 0,
+          bankAmount: 0,
+        },
+      },
+    ]);
+    renderRoom('c1');
+    const button = await screen.findByRole('button', { name: 'Принять' });
+    await waitFor(() => expect(button).toBeDisabled());
+    fireEvent.click(button);
+    expect(accept).not.toHaveBeenCalled();
+    expect(screen.getByText('привет')).toBeInTheDocument();
+    expect(
+      screen.getByText('Завершите текущую турнирную игру, чтобы играть в обычные дуэли.'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Отклонить' }));
+    await waitFor(() => expect(decline).toHaveBeenCalled());
+  });
+
   it('does not restore actions for an expired invite missing from recent matches', async () => {
     vi.mocked(api.fetchMessages).mockResolvedValue([
       {

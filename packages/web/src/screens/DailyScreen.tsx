@@ -95,6 +95,8 @@ import {
   arenaVideoCubeImage,
 } from './lockerRoomBackground.js';
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
+import { ordinaryDuelLockCopy } from '../api/gameplayLock.js';
+import { useGameplayLockRefresh } from '../hooks/useGameplayLockRefresh.js';
 import {
   fetchMyInventory,
   patchEquipment,
@@ -1350,6 +1352,7 @@ function GameHub({
       meta: `${timing.label}: ${timing.value}`,
       ctaLabel: arenaDuelCtaLabel(event, now),
       disabled:
+        (event.source !== 'tournament' && event.duel_lock?.blocked === true) ||
         isIncomingInvite ||
         arenaActionId === `duel-${event.id}` ||
         isArenaLaunching ||
@@ -1380,7 +1383,9 @@ function GameHub({
           <button
             type="button"
             className="btn arena-duel-invite-action arena-duel-invite-action--accept"
-            disabled={invitePending}
+            disabled={
+              invitePending || (event.source !== 'tournament' && event.duel_lock?.blocked === true)
+            }
             onClick={() => acceptArenaDuelMut.mutate(event.id)}
             style={{ minHeight: 34, fontSize: 'clamp(10px, 1.45vh, 12px)', padding: '0 10px' }}
           >
@@ -4149,16 +4154,20 @@ function AmateurDuelsPage({
   const matches = useQuery({
     queryKey: ['amateur-duel', 'matches'],
     queryFn: fetchAmateurMatches,
+    refetchInterval: 15_000,
   });
+  const duelLock = matches.data?.duel_lock;
+  const duelBlocked = duelLock?.blocked === true;
+  useGameplayLockRefresh(duelLock);
   const opponents = useQuery({
     queryKey: ['amateur-duel', 'opponents', 'search', opponentQuery],
     queryFn: () => searchAmateurOpponents(opponentQuery, 12),
-    enabled: duelCreationMode === 'challenge' && opponentQuery.trim().length > 0,
+    enabled: !duelBlocked && duelCreationMode === 'challenge' && opponentQuery.trim().length > 0,
   });
   const onlineOpponents = useQuery({
     queryKey: ['amateur-duel', 'opponents', 'online'],
     queryFn: () => searchAmateurOpponents('', 12),
-    enabled: duelCreationMode === 'challenge',
+    enabled: !duelBlocked && duelCreationMode === 'challenge',
   });
   const rating = useQuery({
     queryKey: ['amateur-duel', 'rating', 'current'],
@@ -4174,6 +4183,9 @@ function AmateurDuelsPage({
 
   const matchmakingMut = useMutation({
     mutationFn: (duelKinds: AmateurDuelKind[]) => joinAmateurMatchmaking(duelKinds),
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
     onSuccess: (res) => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
       if (res.match) onOpenMatch(res.match.id);
@@ -4189,6 +4201,10 @@ function AmateurDuelsPage({
   const challengeMut = useMutation({
     mutationFn: (body: { template_id: string; opponent_user_id: string }) =>
       challengeAmateurDuel(body),
+    onError: () => {
+      setSelectedOpponent(null);
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
     onSuccess: () => {
       setSelectedOpponent(null);
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
@@ -4202,6 +4218,9 @@ function AmateurDuelsPage({
   });
   const acceptInviteMut = useMutation({
     mutationFn: (matchId: string) => acceptAmateurDuel(matchId),
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
     onSuccess: (_res, matchId) => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
       onOpenMatch(matchId);
@@ -4249,10 +4268,16 @@ function AmateurDuelsPage({
   const isMatchmakingExpired =
     matchmakingTicket !== null && matchmakingRemaining <= 0 && !matchmakingMut.isPending;
   const canStartMatchmaking =
+    !duelBlocked &&
     hasOpenDuelSlot &&
     matchmakingKinds.length > 0 &&
     !matchmakingMut.isPending &&
     !isMatchmakingActive;
+
+  const resetMatchmaking = matchmakingMut.reset;
+  useEffect(() => {
+    if (duelBlocked) resetMatchmaking();
+  }, [duelBlocked, resetMatchmaking]);
 
   useEffect(() => {
     if (!selectedTemplateId && templateItems[0]) setSelectedTemplateId(templateItems[0].id);
@@ -4265,6 +4290,7 @@ function AmateurDuelsPage({
   }, [matchmakingTicket]);
 
   const canChallenge =
+    !duelBlocked &&
     hasOpenDuelSlot &&
     selectedTemplate !== null &&
     selectedOpponent !== null &&
@@ -4331,6 +4357,11 @@ function AmateurDuelsPage({
 
       {duelTab === 'game' && (
         <div className="duel-game-layout">
+          {duelBlocked && duelLock && (
+            <p role="status" className="modal-copy">
+              {ordinaryDuelLockCopy(duelLock)}
+            </p>
+          )}
           <section className="duel-section" aria-label="Текущие дуэли">
             <div className="section-label duel-section-title">
               Текущие дуэли ({openDuelSlotsUsed}/5)
@@ -4571,6 +4602,7 @@ function AmateurDuelsPage({
                     <input
                       className="duel-opponent-search__input"
                       aria-label="Поиск соперника"
+                      disabled={duelBlocked}
                       value={opponentQuery}
                       onChange={(event) => {
                         setOpponentQuery(event.target.value);
@@ -5332,13 +5364,21 @@ function DuelListCard({
           <button
             type="button"
             className="btn duel-invite-action duel-invite-action--accept"
-            disabled={inviteAnswerPending}
+            disabled={
+              inviteAnswerPending ||
+              (match.source !== 'tournament' && match.duel_lock?.blocked === true)
+            }
             onClick={onAcceptInvite}
             style={{ minHeight: 36, fontSize: 12 }}
           >
             Принять
           </button>
         </div>
+      )}
+      {match.source !== 'tournament' && match.duel_lock?.blocked && (
+        <p className="modal-copy" style={{ gridColumn: '1 / -1', margin: 0 }}>
+          {ordinaryDuelLockCopy(match.duel_lock)}
+        </p>
       )}
       {onCancelInvite && (
         <button
@@ -5563,6 +5603,8 @@ function AmateurDuelPlayView({
     () => (match ? createDuelConditionForMatch(match) : () => null),
     [match],
   );
+  const duelBlocked = match?.source !== 'tournament' && match?.duel_lock?.blocked === true;
+  useGameplayLockRefresh(match?.duel_lock);
 
   if (!match || match.id !== matchId) {
     return (
@@ -5574,11 +5616,26 @@ function AmateurDuelPlayView({
     );
   }
 
+  if (
+    duelBlocked &&
+    match.duel_lock &&
+    ['invited', 'ready_check', 'active'].includes(match.status)
+  ) {
+    return (
+      <ModeShell title="Дуэль" onBack={onBack}>
+        <p role="status" className="modal-copy">
+          {ordinaryDuelLockCopy(match.duel_lock)}
+        </p>
+      </ModeShell>
+    );
+  }
+
   const startsAt = new Date(match.starts_at).getTime();
   const endsAt = new Date(match.ends_at).getTime();
   const breakEndsAt = match.break_ends_at ? new Date(match.break_ends_at).getTime() : 0;
   const periodEndsAt = match.period_ends_at ? new Date(match.period_ends_at).getTime() : undefined;
   const canStart =
+    !duelBlocked &&
     match.status === 'active' &&
     match.me.state === 'accepted' &&
     now >= startsAt &&
@@ -5588,7 +5645,7 @@ function AmateurDuelPlayView({
     match.source === 'tournament' && match.rules.tournamentLoadoutLifecycleVersion === 1;
   const loadoutEditable = isDuelLoadoutEditable(match.source, match.me.state);
   const handleDirectDuelAction = async (): Promise<void> => {
-    if (inFlight) return;
+    if (inFlight || duelBlocked) return;
     const matchNow = duelMatchNowMs(match, now);
     if (match.status === 'ready_check' && match.me.state !== 'ready') {
       if (usesTournamentPeriodLoadout) preserveSelectedLoadoutAfterReadyRef.current = true;
@@ -5648,8 +5705,9 @@ function AmateurDuelPlayView({
     const showDirectResultModal =
       match.status === 'settled' && dismissedResultMatchId !== match.id && tournamentResultReady;
     const canRunDirectDuelAction =
-      (match.status === 'ready_check' && match.me.state !== 'ready') ||
-      canStartArenaDuelPeriod(match, duelMatchNowMs(match, now));
+      !duelBlocked &&
+      ((match.status === 'ready_check' && match.me.state !== 'ready') ||
+        canStartArenaDuelPeriod(match, duelMatchNowMs(match, now)));
     const { playerReady: meReady, goalieReady: opponentReady } =
       duelRinkReadyPresenceForMatch(match);
     const explainTournamentReadiness =
@@ -5687,6 +5745,7 @@ function AmateurDuelPlayView({
             inFlight ? 'ФИКСИРУЕМ...' : duelRinkPrimaryLabel(match, now).toUpperCase()
           }
           inactiveAction={canRunDirectDuelAction ? handleDirectDuelAction : undefined}
+          primaryActionBlocked={duelBlocked}
           readyPresence={{
             playerReady: meReady,
             goalieReady: opponentReady,
@@ -5828,7 +5887,7 @@ function AmateurDuelPlayView({
         <button
           type="button"
           className="btn btn--cta"
-          disabled={inFlight || match.me.state === 'ready'}
+          disabled={duelBlocked || inFlight || match.me.state === 'ready'}
           onClick={() => void ready({})}
         >
           {match.me.state === 'ready' ? 'Вы готовы' : inFlight ? 'Фиксируем...' : 'Готов'}
@@ -5849,7 +5908,8 @@ function AmateurDuelPlayView({
           playRouteTransitionOnMount={playRouteTransitionOnMount}
           onRouteTransitionConsumed={onRouteTransitionConsumed}
           onBack={onBack}
-          active={match.status === 'active'}
+          active={match.status === 'active' && !duelBlocked}
+          primaryActionBlocked={duelBlocked}
           seed={match.match_seed}
           goalieId={match.rules.goalieId}
           periodNumber={match.me.current_period}

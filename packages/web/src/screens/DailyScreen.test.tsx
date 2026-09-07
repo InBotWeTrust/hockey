@@ -4857,6 +4857,46 @@ describe('DailyScreen', () => {
     });
   });
 
+  it('disables ordinary duel search during a tournament lock without sending a join', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/duel/amateur/matches')
+        ? {
+            matches: [],
+            duel_lock: {
+              blocked: true,
+              reason: 'active_classic',
+              ends_at: null,
+              tournament_starts_at: null,
+            },
+            matchmaking_enabled: false,
+          }
+        : url.includes('/duel/amateur/templates')
+          ? { templates: challengeTemplates }
+          : url.includes('/duel/amateur/rating')
+            ? { season_key: '2026-09', rating: [] }
+            : url.includes('/duel/training/state')
+              ? trainingIdleState
+              : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    const search = await screen.findByRole('button', { name: 'Начать поиск' });
+    await waitFor(() => expect(search).toBeDisabled());
+    expect(
+      screen.getByText('Завершите текущую турнирную игру, чтобы играть в обычные дуэли.'),
+    ).toBeInTheDocument();
+    fireEvent.click(search);
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/matchmaking/join')),
+    ).toBe(false);
+  });
+
   it('lets a challenger cancel an unanswered duel invite from the current duels list', async () => {
     const invitedMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,

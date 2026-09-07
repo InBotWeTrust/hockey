@@ -118,7 +118,7 @@ export async function getNearestScheduledTournamentBlock(
   return startsAt === undefined ? NO_GAMEPLAY_LOCK : scheduledTournamentLock(startsAt, now);
 }
 
-async function getActiveClassicTournamentLock(
+export async function getActiveClassicTournamentLock(
   client: PoolClient,
   userId: string,
 ): Promise<GameplayLockState> {
