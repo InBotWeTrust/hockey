@@ -11,6 +11,12 @@ import {
 } from '@hockey/game-core';
 import { grantStatAchievements } from '../achievements/service.js';
 import { deriveClassicTournamentSeed, deriveShotSeed } from '../duel/seed.js';
+import { getGameSettings } from '../duel/gameSettings.js';
+import {
+  assertTrainingCooldownExpired,
+  fetchTrainingCooldownEndsAt,
+  trainingDailyCooldownMs,
+} from '../duel/trainingCooldown.js';
 import { AppError } from '../plugins/errors.js';
 import { appendEvent } from '../duel/eventLog.js';
 import { parseTournamentConfig } from './config.js';
@@ -108,7 +114,7 @@ export interface ClassicGameState {
   base_period_speed_presets: TournamentClassicRules['periodSpeedPresets'];
   recent_periods: ClassicPeriodLogEntry[];
   previous_game: null;
-  training_cooldown_ends_at: null;
+  training_cooldown_ends_at: string | null;
   loadout: ClassicLoadoutSnapshot;
   loadout_editable: boolean;
   inventory_available: ClassicInventoryAvailabilityItem[];
@@ -996,6 +1002,16 @@ async function buildState(
   userId: string,
   now: Date,
 ): Promise<ClassicGameState> {
+  const settings = await getGameSettings(client);
+  const trainingCooldownEndsAt =
+    session.current_period === 0
+      ? await fetchTrainingCooldownEndsAt(
+          client,
+          userId,
+          now,
+          trainingDailyCooldownMs(settings.training.dailyCooldownMinutes),
+        )
+      : null;
   const periods = await fetchPeriods(client, session.id);
   const allShots = await client.query<{ shots: number | string; goals: number | string }>(
     `select count(*)::int as shots,
@@ -1125,7 +1141,7 @@ async function buildState(
       ended_at: period.ended_at.toISOString(),
     })),
     previous_game: null,
-    training_cooldown_ends_at: null,
+    training_cooldown_ends_at: trainingCooldownEndsAt?.toISOString() ?? null,
     loadout,
     loadout_editable: session.state === 'idle' || session.state === 'break_active',
     inventory_available: await fetchClassicInventoryAvailability(client, userId),
@@ -1376,6 +1392,15 @@ export async function startClassicGamePeriod(
     }
     if (session.current_period >= 3) {
       throw new AppError('conflict', 'all classic periods are completed', 409);
+    }
+    if (session.current_period === 0) {
+      const settings = await getGameSettings(client);
+      await assertTrainingCooldownExpired(
+        client,
+        input.userId,
+        input.now,
+        trainingDailyCooldownMs(settings.training.dailyCooldownMinutes),
+      );
     }
     const periodNumber = session.current_period + 1;
     const loadout = await resolveClassicLoadout(client, input.userId, input.loadout);

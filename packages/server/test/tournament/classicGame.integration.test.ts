@@ -170,6 +170,23 @@ async function submitMiss(pool: Pool, shotIndex: number, now: Date): Promise<voi
   });
 }
 
+async function seedRecentTrainingShot(pool: Pool, createdAt: Date): Promise<void> {
+  const { rows } = await pool.query<{ id: string }>(
+    `insert into training_session
+       (user_id, day_date, selected_period, state, game_core_version, training_seed, started_at)
+     values ($1, '2030-09-01', 1, 'active', 1, 'training-seed', $2)
+     returning id`,
+    [PLAYER_ID, createdAt],
+  );
+  await pool.query(
+    `insert into shot_session
+       (user_id, mode, training_session_id, period_number, shot_index, seed,
+        input_payload, server_result, game_core_version, created_at)
+     values ($1, 'training', $2, 1, 1, 'shot-seed', '{}'::jsonb, 'miss', 1, $3)`,
+    [PLAYER_ID, rows[0]!.id, createdAt],
+  );
+}
+
 async function seedClassicShotStick(pool: Pool, chargesAvailable: number): Promise<string> {
   const { rows } = await pool.query<{ id: string }>(
     `update admin_inventory_items
@@ -815,6 +832,27 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
       vi.useRealTimers();
       await app.close();
     }
+  });
+
+  it('blocks the first classic regular-season period for 30 minutes after training', async () => {
+    await seedRecentTrainingShot(pool, new Date(NOW.getTime() - 5 * 60_000));
+
+    const state = await getClassicGameState(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    expect(state.training_cooldown_ends_at).toBe('2030-09-01T10:25:00.000Z');
+
+    await expect(
+      startClassicGamePeriod(pool, {
+        userId: PLAYER_ID,
+        tournamentId: TOURNAMENT_ID,
+        now: NOW,
+        seedSecret: SEED_SECRET,
+      }),
+    ).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it('finalizes a missed game once at the tournament-day deadline', async () => {
