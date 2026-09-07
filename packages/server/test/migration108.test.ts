@@ -8,6 +8,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { applyMigrations } from '../src/db/migrations.js';
 import { lockTournament } from '../src/tournament/locks.js';
 import { openTournamentFixtureSegment } from '../src/tournament/fixtureLifecycle.js';
+import {
+  dispatchTournamentCommunication,
+  reconcilePlayoffDayStartingCommunications,
+} from '../src/tournament/communications.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from './helpers/testDb.js';
 
 const migrationsDir = path.resolve(
@@ -519,6 +523,15 @@ describe.skipIf(!hasIntegrationEnv)('migration 108 removes daily aggregate tourn
       'event_log',
       {
         user_id: users[0],
+        type: 'admin_tournament_lifecycle_enabled',
+        payload: { tournamentId: tournament.id, automaticLifecycleVersion: 1 },
+      },
+      remove,
+    );
+    await insert(
+      'event_log',
+      {
+        user_id: users[0],
         type: 'admin_tournament_application_rejected',
         payload: { tournament_id: tournament.id, participant_id: home },
       },
@@ -835,6 +848,152 @@ describe.skipIf(!hasIntegrationEnv)('migration 108 removes daily aggregate tourn
       ).rows,
     ).toEqual([]);
   });
+
+  it.each([
+    ['dispatch', 'messages'],
+    ['dispatch', 'push_delivery_log'],
+    ['playoff-day', 'messages'],
+    ['playoff-day', 'push_delivery_log'],
+  ] as const)(
+    'prevents an old %s writer from recreating %s after migration commits',
+    async (writerKind, table) => {
+      const retiredId = String(await seedTournament('daily_aggregate'));
+      const supportedId = String(await seedTournament('classic'));
+      await pool.query(
+        "update tournament_fixture set status = 'scheduled' where tournament_id = any($1::uuid[])",
+        [[retiredId, supportedId]],
+      );
+      if (table === 'push_delivery_log') {
+        for (const userId of users.slice(0, 2)) {
+          await insert(
+            'push_subscriptions',
+            {
+              user_id: userId,
+              endpoint: `https://push.example/${userId}`,
+              p256dh: 'key',
+              auth: 'auth',
+            },
+            false,
+          );
+        }
+      }
+
+      // Keep the real old communications implementation, SQL and transaction
+      // boundaries. Only pause its next write after it has loaded its snapshot
+      // and acquired its own dispatch/playoff-day session advisory lock.
+      let resumeWriter!: () => void;
+      const resume = new Promise<void>((resolve) => {
+        resumeWriter = resolve;
+      });
+      let paused = false;
+      const pauseQuery = (query: Pool['query']) => async (sql: string, values?: unknown[]) => {
+        if (!paused && sql.includes(`insert into ${table}`)) {
+          paused = true;
+          await resume;
+        }
+        return query(sql, values);
+      };
+      const oldPool = new Proxy(pool, {
+        get(target, property) {
+          if (property === 'query') return pauseQuery(target.query.bind(target));
+          if (property === 'connect')
+            return async () => {
+              const client = await target.connect();
+              return new Proxy(client, {
+                get(connection, key) {
+                  if (key === 'query') return pauseQuery(connection.query.bind(connection));
+                  const value = Reflect.get(connection, key);
+                  return typeof value === 'function' ? value.bind(connection) : value;
+                },
+              });
+            };
+          const value = Reflect.get(target, property);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      const communicate = async (tournamentId: string) => {
+        const publisher = { publish: async () => undefined };
+        if (writerKind === 'dispatch') {
+          return dispatchTournamentCommunication(oldPool, publisher, {
+            tournamentId,
+            idempotencyKey: randomUUID(),
+            kind: table === 'messages' ? 'direct_message' : 'push',
+            audience: 'approved',
+            title: 'Concurrent announcement',
+            body: 'Concurrent announcement',
+            createdBy: users[2]!,
+            systemUserId: users[2]!,
+          });
+        }
+        const fixture = await pool.query<{ id: string }>(
+          'select id from tournament_fixture where tournament_id = $1',
+          [tournamentId],
+        );
+        return reconcilePlayoffDayStartingCommunications(oldPool, {
+          now: new Date('2026-09-07T07:45:00Z'),
+          fixtureId: fixture.rows[0]!.id,
+          systemUserId: users[2]!,
+          publisher,
+        });
+      };
+      const writer = communicate(retiredId).then(
+        (value) => value,
+        (error: unknown) => error,
+      );
+      try {
+        await vi.waitFor(() => expect(paused, 'old writer reached the real insert').toBe(true));
+        const retiredOwners = await pool.query<{ id: string }>(
+          'select id from tournament_dispatch where tournament_id = $1',
+          [retiredId],
+        );
+        await runMigration();
+        resumeWriter();
+        await writer;
+        expect(
+          (
+            await pool.query(`select id from messages where metadata->>'tournamentId' = $1`, [
+              retiredId,
+            ])
+          ).rows,
+          'no stale messages survive',
+        ).toEqual([]);
+        expect(
+          (
+            await pool.query(
+              `select id from push_delivery_log where event_type like 'tournament.%'
+             and split_part(event_key, ':', 1) = any($1::text[])`,
+              [[retiredId, ...retiredOwners.rows.map((row) => row.id)]],
+            )
+          ).rows,
+          'no stale pushes survive',
+        ).toEqual([]);
+
+        // The same real writers must remain usable for a supported tournament.
+        await communicate(supportedId);
+        const supportedOwners = await pool.query<{ id: string }>(
+          'select id from tournament_dispatch where tournament_id = $1',
+          [supportedId],
+        );
+        const surviving =
+          table === 'messages'
+            ? await pool.query(
+                `select id from messages where content like '%Concurrent announcement%'
+               and metadata->>'tournamentId' = $1 or metadata->>'type' = 'tournament_playoff_day_starting'
+               and metadata->>'tournamentId' = $1`,
+                [supportedId],
+              )
+            : await pool.query(
+                `select id from push_delivery_log where event_type like 'tournament.%'
+               and split_part(event_key, ':', 1) = any($1::text[]) and event_key not like '%:notification'`,
+                [[supportedId, ...supportedOwners.rows.map((row) => row.id)]],
+              );
+        expect(surviving.rows.length, 'supported communications still write').toBeGreaterThan(0);
+      } finally {
+        resumeWriter();
+        await writer;
+      }
+    },
+  );
 
   it('waits for a runtime writer before capturing and deleting its newly linked duel', async () => {
     const tournamentId = await seedTournament('daily_aggregate');

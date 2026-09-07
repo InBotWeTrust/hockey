@@ -25,6 +25,12 @@ delete from removed_daily_aggregate_tournament_ids target
     where tournament.id = target.id and regular_source = 'daily_aggregate'
  );
 
+-- Old communications writers use separate session locks and keep their loaded
+-- snapshots across multiple transactions. Stop writes while collecting dispatch
+-- IDs and installing the durable guard; a new dispatch queued behind this lock
+-- will fail its tournament FK after commit. Existing snapshots are guarded below.
+lock table tournament_dispatch, messages, push_delivery_log in share row exclusive mode;
+
 -- Capture reverse references before deleting fixtures, whose FKs point to duels
 -- with ON DELETE SET NULL. A legacy link must never delete an ordinary duel.
 create temporary table removed_daily_aggregate_duel_ids on commit drop as
@@ -66,6 +72,56 @@ union
 select id from tournament_dispatch
  where tournament_id in (select id from removed_daily_aggregate_tournament_ids);
 
+-- Keep only exact retired owner IDs, with no user data or tournament contents.
+-- These tombstones must outlive this transaction: an already running old binary
+-- can resume a loaded snapshot after migration commit, without taking our locks.
+create table if not exists retired_tournament_communication_owner (
+  owner_id text primary key,
+  is_tournament boolean not null,
+  is_dispatch boolean not null
+);
+insert into retired_tournament_communication_owner (owner_id, is_tournament, is_dispatch)
+select owner.id::text,
+       exists (select 1 from removed_daily_aggregate_tournament_ids where id = owner.id),
+       exists (select 1 from tournament_dispatch where id = owner.id)
+  from removed_daily_aggregate_notification_owner_ids owner
+on conflict (owner_id) do nothing;
+
+create or replace function reject_retired_tournament_message() returns trigger
+language plpgsql as $$
+begin
+  if exists (
+    select 1 from retired_tournament_communication_owner
+     where (is_tournament and owner_id = new.metadata->>'tournamentId')
+        or (is_dispatch and owner_id = new.metadata->>'tournamentDispatchId')
+  ) then
+    raise exception 'tournament communication owner was removed' using errcode = '23503';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists reject_retired_tournament_message on messages;
+create trigger reject_retired_tournament_message
+before insert or update of metadata on messages
+for each row execute function reject_retired_tournament_message();
+
+create or replace function reject_retired_tournament_push() returns trigger
+language plpgsql as $$
+begin
+  if new.event_type like 'tournament.%' and exists (
+    select 1 from retired_tournament_communication_owner
+     where owner_id = split_part(new.event_key, ':', 1)
+  ) then
+    raise exception 'tournament communication owner was removed' using errcode = '23503';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists reject_retired_tournament_push on push_delivery_log;
+create trigger reject_retired_tournament_push
+before insert or update of event_type, event_key on push_delivery_log
+for each row execute function reject_retired_tournament_push();
+
 delete from push_delivery_log
  where event_type like 'tournament.%'
    and split_part(event_key, ':', 1) in (
@@ -87,6 +143,10 @@ delete from chats
 
 delete from event_log
  where payload->>'tournament_id' in (select id::text from removed_daily_aggregate_tournament_ids)
+    or (
+      type = 'admin_tournament_lifecycle_enabled'
+      and payload->>'tournamentId' in (select id::text from removed_daily_aggregate_tournament_ids)
+    )
     or (
       type in ('amateur_duel_settled', 'amateur_duel_inventory_reserved')
       and payload->>'match_id' in (select id::text from removed_daily_aggregate_duel_ids)
