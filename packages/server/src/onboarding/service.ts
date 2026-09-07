@@ -340,7 +340,7 @@ function mapPublishedStep(row: PublishedStepRow, mediaAccessSecret: string): Onb
       ctaLabel: row.cta_label,
       imageUrl:
         row.media_original_name?.startsWith('beginner-') === true
-          ? `/onboarding/reference/${row.media_original_name}`
+          ? `/onboarding/reference/${row.media_original_name}?v=${row.media_object_id}`
           : createMediaProxyUrl(mediaAccessSecret, row.media_object_id),
     };
   }
