@@ -25,10 +25,10 @@ const ASSET_NAMES = [
   'amateur-welcome.webp',
   'beginner-amateur-preview.webp',
   'beginner-daily-game.webp',
-  'beginner-gameplay-example.webp',
+  'beginner-last-on-ice.webp',
+  'beginner-one-shot.webp',
   'beginner-road-to-amateur.webp',
   'beginner-start-journey.webp',
-  'beginner-story-example.webp',
   'beginner-training.webp',
 ] as const;
 
@@ -81,8 +81,8 @@ describe.skipIf(!hasIntegrationEnv)('seedDevOnboarding', () => {
     for (const [index, name] of ASSET_NAMES.entries()) {
       const body = await sharp({
         create: {
-          width: 1200,
-          height: 1200,
+          width: name.startsWith('beginner-') ? 800 : 1200,
+          height: name.startsWith('beginner-') ? 800 : 1200,
           channels: 3,
           background: { r: 10 + index, g: 30, b: 80 },
         },
@@ -172,12 +172,12 @@ describe.skipIf(!hasIntegrationEnv)('seedDevOnboarding', () => {
     expect(beginner[2]).toMatchObject({
       position: 3,
       kind: 'tutorial_shot',
-      title: 'Забей первую шайбу',
+      title: 'Один бросок',
       object_key: null,
       tutorial_config: {
-        shooterFrequency: 0.12,
+        shooterFrequency: 0.5,
         goalieFrequency: 0.1,
-        goalFrequency: 0.08,
+        goalFrequency: 0.5,
       },
     });
     expect(beginner[5]!.description).toContain('4321');

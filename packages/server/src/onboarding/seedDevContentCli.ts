@@ -48,6 +48,7 @@ async function main(): Promise<void> {
       objectStorage,
       ownerUserId: config.SYSTEM_USER_ID,
       assetDirectory,
+      replaceBeginner: process.env.ONBOARDING_REPLACE_BEGINNER === 'true',
     });
     process.stdout.write(`[onboarding:seed-dev] ${JSON.stringify(result)}\n`);
   } finally {

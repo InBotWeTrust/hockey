@@ -6,6 +6,7 @@ import {
   type OnboardingRequiredResponse,
 } from '../api/onboarding.js';
 import './onboarding.css';
+import { OnboardingCopy } from './OnboardingCopy.js';
 import { TutorialShotStep } from './TutorialShotStep.js';
 
 interface OnboardingFlowProps {
@@ -128,18 +129,13 @@ export function OnboardingFlow({
             runId={runId}
             step={step}
             goalConfirmed={confirmedTutorialSteps.current.has(step.id)}
-            canGoBack={stepIndex > 0}
             onGoalConfirmed={() => confirmedTutorialSteps.current.add(step.id)}
-            onBack={() => setStepIndex((current) => Math.max(0, current - 1))}
             onContinue={advance}
             {...(tutorialApi ? { tutorialApi } : {})}
           />
         )}
         {step.kind === 'informational' && (
-          <div className="onboarding-flow__copy">
-            <h1>{step.title}</h1>
-            <p>{step.description}</p>
-          </div>
+          <OnboardingCopy title={step.title} description={step.description} />
         )}
       </section>
       {step.kind === 'informational' && (
@@ -162,16 +158,6 @@ export function OnboardingFlow({
             </div>
           )}
           <div className="onboarding-flow__actions">
-            {stepIndex > 0 && (
-              <button
-                className="btn btn--ghost"
-                type="button"
-                onClick={() => setStepIndex((current) => current - 1)}
-                disabled={completing}
-              >
-                Назад
-              </button>
-            )}
             <button className="btn btn--cta" type="button" onClick={advance} disabled={completing}>
               {completing ? 'Завершаем…' : step.ctaLabel}
             </button>

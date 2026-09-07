@@ -51,13 +51,15 @@ export interface OnboardingTutorialSession {
     goalieFrequency: number;
     goalFrequency: number;
   };
-  goalConfirmed: boolean;
+  result?: 'goal' | 'miss' | null;
+  goalConfirmed?: boolean;
 }
 
 export interface OnboardingTutorialShotResponse {
   serverResult: 'goal' | 'save' | 'miss';
   nextShotIndex: number;
-  goalConfirmed: boolean;
+  result?: 'goal' | 'miss';
+  goalConfirmed?: boolean;
 }
 
 export const onboardingQueryKeys = {

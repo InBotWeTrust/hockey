@@ -16,7 +16,12 @@ export {
 export { simulateShooter } from './shooter/simulate.js';
 export type { ShotInput, ShotResult, StickEffects } from './shot/types.js';
 export { STICK_NEUTRAL, PUCK_SPEED_PER_MS } from './shot/types.js';
-export { resolveShot, GOAL_HITBOX_MARGIN, GOALIE_HITBOX_EXPAND } from './shot/resolve.js';
+export {
+  resolveShot,
+  resolveEmptyGoalShot,
+  GOAL_HITBOX_MARGIN,
+  GOALIE_HITBOX_EXPAND,
+} from './shot/resolve.js';
 export {
   PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
   PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET,

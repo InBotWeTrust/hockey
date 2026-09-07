@@ -1,11 +1,9 @@
 import { createHmac } from 'node:crypto';
 import {
   GAME_CORE_VERSION,
-  STICK_NEUTRAL,
-  deriveShotSeed,
   getGoalie,
   getSessionPhaseOffsets,
-  resolveShot,
+  resolveEmptyGoalShot,
   type ShotResult,
 } from '@hockey/game-core';
 import type { Pool, PoolClient } from 'pg';
@@ -48,6 +46,7 @@ interface PublishedStepRow {
   description: string | null;
   cta_label: string | null;
   media_object_id: string | null;
+  media_original_name: string | null;
   tutorial_config: unknown;
 }
 
@@ -61,6 +60,7 @@ const tutorialRunStateSchema = z
     seed: z.string().regex(/^[0-9a-f]{64}$/),
     gameCoreVersion: z.number().int().positive(),
     nextShotIndex: z.number().int().positive(),
+    result: z.enum(['goal', 'miss']).nullable().optional(),
     stepId: z.string().uuid(),
     speeds: onboardingTutorialConfigSchema,
   })
@@ -82,6 +82,7 @@ interface TutorialSessionDTO {
   goalieId: 'rookie';
   gameCoreVersion: number;
   speeds: TutorialRunState['speeds'];
+  result: 'goal' | 'miss' | null;
   goalConfirmed: boolean;
 }
 
@@ -97,6 +98,7 @@ interface TutorialShotInput {
 interface TutorialShotDTO {
   serverResult: ShotResult['type'];
   nextShotIndex: number;
+  result: 'goal' | 'miss';
   goalConfirmed: boolean;
 }
 
@@ -116,25 +118,15 @@ function deriveTutorialSeed(run: TutorialRunIdentity, secret: string): string {
     .digest('hex');
 }
 
-async function hasTutorialGoal(db: Queryable, runId: string): Promise<boolean> {
-  const { rows } = await db.query<{ goal_confirmed: boolean }>(
-    `select exists (
-       select 1 from onboarding_event
-        where run_id = $1 and kind = 'tutorial_goal' and result = 'goal'
-     ) as goal_confirmed`,
-    [runId],
-  );
-  return rows[0]!.goal_confirmed;
-}
-
-function tutorialSessionDto(state: TutorialRunState, goalConfirmed: boolean): TutorialSessionDTO {
+function tutorialSessionDto(state: TutorialRunState): TutorialSessionDTO {
   return {
     seed: state.seed,
     shotIndex: state.nextShotIndex,
     goalieId: 'rookie',
     gameCoreVersion: state.gameCoreVersion,
     speeds: state.speeds,
-    goalConfirmed,
+    result: state.result ?? null,
+    goalConfirmed: state.result === 'goal',
   };
 }
 
@@ -145,7 +137,7 @@ export async function startTutorialSession(
 ): Promise<TutorialSessionDTO> {
   if (run.tutorialState !== null) {
     const state = tutorialRunStateSchema.parse(run.tutorialState);
-    return tutorialSessionDto(state, await hasTutorialGoal(db, run.id));
+    return tutorialSessionDto(state);
   }
 
   const { rows } = await db.query<{ id: string; tutorial_config: unknown }>(
@@ -169,6 +161,7 @@ export async function startTutorialSession(
     seed: deriveTutorialSeed(run, secret),
     gameCoreVersion: GAME_CORE_VERSION,
     nextShotIndex: 1,
+    result: null,
     stepId: tutorialStep.id,
     speeds: onboardingTutorialConfigSchema.parse(tutorialStep.tutorial_config),
   };
@@ -176,7 +169,7 @@ export async function startTutorialSession(
     run.id,
     JSON.stringify(state),
   ]);
-  return tutorialSessionDto(state, false);
+  return tutorialSessionDto(state);
 }
 
 export async function submitTutorialShot(
@@ -192,6 +185,13 @@ export async function submitTutorialShot(
     );
   }
   const state = tutorialRunStateSchema.parse(run.tutorialState);
+  if (state.result) {
+    throw new AppError(
+      'onboarding_tutorial_already_shot',
+      'tutorial shot is already completed',
+      409,
+    );
+  }
   if (state.gameCoreVersion !== GAME_CORE_VERSION) {
     throw new AppError(
       'onboarding_game_core_version_mismatch',
@@ -214,14 +214,12 @@ export async function submitTutorialShot(
     goalieFrequency: state.speeds.goalieFrequency,
     goalFrequency: state.speeds.goalFrequency,
   };
-  const serverResult = resolveShot(
+  const resolved = resolveEmptyGoalShot(
     shotInput,
     getGoalie('rookie'),
-    deriveShotSeed(state.seed, 1, state.nextShotIndex),
-    state.nextShotIndex,
-    STICK_NEUTRAL,
     getSessionPhaseOffsets(state.seed),
   ).type;
+  const serverResult: 'goal' | 'miss' = resolved;
   await db.query(
     `insert into onboarding_event
        (run_id, user_id, chain_key, version_id, step_id, kind, result, attempt_number)
@@ -236,17 +234,7 @@ export async function submitTutorialShot(
       state.nextShotIndex,
     ],
   );
-  if (serverResult === 'goal') {
-    await db.query(
-      `insert into onboarding_event
-         (run_id, user_id, chain_key, version_id, step_id, kind, result, attempt_number)
-       values ($1, $2, $3, $4, $5, 'tutorial_goal', 'goal', $6)
-       on conflict (run_id) where kind = 'tutorial_goal' do nothing`,
-      [run.id, run.userId, run.chainKey, run.versionId, state.stepId, state.nextShotIndex],
-    );
-  }
-
-  const nextState = { ...state, nextShotIndex: state.nextShotIndex + 1 };
+  const nextState = { ...state, nextShotIndex: state.nextShotIndex + 1, result: serverResult };
   await db.query('update onboarding_run set tutorial_state = $2::jsonb where id = $1', [
     run.id,
     JSON.stringify(nextState),
@@ -254,7 +242,8 @@ export async function submitTutorialShot(
   return {
     serverResult,
     nextShotIndex: nextState.nextShotIndex,
-    goalConfirmed: serverResult === 'goal' || (await hasTutorialGoal(db, run.id)),
+    result: serverResult,
+    goalConfirmed: serverResult === 'goal',
   };
 }
 
@@ -349,7 +338,10 @@ function mapPublishedStep(row: PublishedStepRow, mediaAccessSecret: string): Onb
       title: row.title,
       description: row.description,
       ctaLabel: row.cta_label,
-      imageUrl: createMediaProxyUrl(mediaAccessSecret, row.media_object_id),
+      imageUrl:
+        row.media_original_name?.startsWith('beginner-') === true
+          ? `/onboarding/reference/${row.media_original_name}`
+          : createMediaProxyUrl(mediaAccessSecret, row.media_object_id),
     };
   }
   return {
@@ -377,12 +369,14 @@ export async function loadPublishedVersion(
             step.description,
             step.cta_label,
             step.media_object_id,
+            media.original_name as media_original_name,
             step.tutorial_config
        from onboarding_chain chain
        join onboarding_version version
          on version.id = chain.current_published_version_id
         and version.status = 'published'
        left join onboarding_step step on step.version_id = version.id
+       left join media_objects media on media.id = step.media_object_id
       where chain.key = $1
       order by step.position asc nulls last`,
     [chainKey],
