@@ -1,10 +1,11 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
+import { getGameplayLockState, lockUserGameplay } from '../../src/duel/gameplayLocks.js';
 import {
   finalizeDueClassicTournamentDays,
   getClassicGameState,
@@ -242,6 +243,23 @@ async function seedClassicConditionItem(
   return itemId;
 }
 
+async function waitForAdvisoryWaiter(pool: Pool): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const { rows } = await pool.query<{ waiting: boolean }>(
+      `select exists(
+         select 1
+           from pg_locks
+          where locktype = 'advisory'
+            and not granted
+            and database = (select oid from pg_database where datname = current_database())
+       ) as waiting`,
+    );
+    if (rows[0]?.waiting === true) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error('timed out waiting for Classic gameplay advisory lock contention');
+}
+
 describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () => {
   let pool: Pool;
 
@@ -285,6 +303,76 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     ]);
     const sessions = await pool.query(`select id from tournament_classic_session`);
     expect(sessions.rowCount).toBe(1);
+  });
+
+  it('does not activate the Classic gameplay lock before the first accepted shot', async () => {
+    await getClassicGameState(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    await expect(
+      getGameplayLockState(pool as unknown as PoolClient, {
+        userId: PLAYER_ID,
+        action: 'start_training',
+        now: NOW,
+      }),
+    ).resolves.toMatchObject({ blocked: false });
+
+    await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+
+    await expect(
+      getGameplayLockState(pool as unknown as PoolClient, {
+        userId: PLAYER_ID,
+        action: 'start_training',
+        now: NOW,
+      }),
+    ).resolves.toMatchObject({ blocked: false });
+  });
+
+  it('keeps an accepted Classic game locked beyond one hour until all periods complete', async () => {
+    await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    await submitMiss(pool, 1, NOW);
+
+    for (const now of [NOW, new Date(NOW.getTime() + 61 * 60_000)]) {
+      await expect(
+        getGameplayLockState(pool as unknown as PoolClient, {
+          userId: PLAYER_ID,
+          action: 'start_training',
+          now,
+        }),
+      ).resolves.toEqual({ blocked: true, reason: 'active_classic', endsAt: null });
+    }
+
+    for (let period = 2; period <= 3; period += 1) {
+      const now = new Date(NOW.getTime() + period);
+      await startClassicGamePeriod(pool, {
+        userId: PLAYER_ID,
+        tournamentId: TOURNAMENT_ID,
+        now,
+        seedSecret: SEED_SECRET,
+      });
+      await submitMiss(pool, 1, now);
+    }
+
+    await expect(
+      getGameplayLockState(pool as unknown as PoolClient, {
+        userId: PLAYER_ID,
+        action: 'start_training',
+        now: new Date(NOW.getTime() + 3),
+      }),
+    ).resolves.toEqual({ blocked: false, reason: null, endsAt: null });
   });
 
   it('uses a partial shot-stick balance and continues with the base stick after depletion', async () => {
@@ -834,7 +922,7 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     }
   });
 
-  it('blocks the first classic regular-season period for 30 minutes after training', async () => {
+  it('allows period setup but rejects the first Classic shot during recent gameplay', async () => {
     await seedRecentTrainingShot(pool, new Date(NOW.getTime() - 5 * 60_000));
 
     const state = await getClassicGameState(pool, {
@@ -843,16 +931,72 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
       now: NOW,
       seedSecret: SEED_SECRET,
     });
-    expect(state.training_cooldown_ends_at).toBe('2030-09-01T10:25:00.000Z');
+    expect(state.training_cooldown_ends_at).toBe('2030-09-01T10:55:00.000Z');
 
-    await expect(
-      startClassicGamePeriod(pool, {
-        userId: PLAYER_ID,
-        tournamentId: TOURNAMENT_ID,
-        now: NOW,
-        seedSecret: SEED_SECRET,
-      }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    const started = await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    expect(started.state).toBe('period_active');
+
+    await expect(submitMiss(pool, 1, NOW)).rejects.toMatchObject({ statusCode: 409 });
+    const accepted = await pool.query<{ shots: number }>(
+      `select count(*)::int as shots
+         from shot_session
+        where mode = 'tournament_classic'`,
+    );
+    expect(accepted.rows[0]!.shots).toBe(0);
+  });
+
+  it('serializes a daily shot against the first Classic shot', async () => {
+    await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    const dailyClient = await pool.connect();
+    try {
+      await dailyClient.query('begin');
+      await lockUserGameplay(dailyClient, PLAYER_ID);
+      const dayPool = await dailyClient.query<{ id: string }>(
+        `insert into day_pool
+           (user_id, day_date, state, current_period, period_started_at,
+            game_core_version, daily_seed)
+         values ($1, '2030-09-01', 'period_active', 1, $2, 1, 'daily-seed')
+         returning id`,
+        [PLAYER_ID, NOW],
+      );
+      await dailyClient.query(
+        `insert into shot_session
+           (user_id, mode, day_pool_id, period_number, shot_index, seed,
+            input_payload, server_result, game_core_version, created_at)
+         values ($1, 'daily', $2, 1, 1, 'daily-shot-seed', '{}'::jsonb, 'miss', 1, $3)`,
+        [PLAYER_ID, dayPool.rows[0]!.id, NOW],
+      );
+
+      const classicShot = submitMiss(pool, 1, NOW);
+      await waitForAdvisoryWaiter(pool);
+      await dailyClient.query('commit');
+
+      await expect(classicShot).rejects.toMatchObject({ statusCode: 409 });
+    } catch (error) {
+      await dailyClient.query('rollback').catch(() => undefined);
+      throw error;
+    } finally {
+      dailyClient.release();
+    }
+
+    const shots = await pool.query<{ mode: string; shots: number }>(
+      `select mode, count(*)::int as shots
+         from shot_session
+        where user_id = $1 and mode in ('daily', 'tournament_classic')
+        group by mode order by mode`,
+      [PLAYER_ID],
+    );
+    expect(shots.rows).toEqual([{ mode: 'daily', shots: 1 }]);
   });
 
   it('finalizes a missed game once at the tournament-day deadline', async () => {

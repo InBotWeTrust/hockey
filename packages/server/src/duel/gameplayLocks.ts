@@ -121,7 +121,6 @@ export async function getNearestScheduledTournamentBlock(
 async function getActiveClassicTournamentLock(
   client: PoolClient,
   userId: string,
-  now: Date,
 ): Promise<GameplayLockState> {
   const { rows } = await client.query<{ active: boolean }>(
     `select exists(
@@ -135,11 +134,15 @@ async function getActiveClassicTournamentLock(
           and tournament.regular_source = 'classic'
           and tournament.status = 'regular'
           and matchday.status <> 'cancelled'
-          and matchday.ends_at > $2::timestamptz
-          and session.current_period > 0
           and session.state not in ('closed', 'expired')
+          and exists(
+            select 1
+              from shot_session shot
+             where shot.mode = 'tournament_classic'
+               and shot.tournament_classic_session_id = session.id
+          )
      ) as active`,
-    [userId, now],
+    [userId],
   );
   if (rows[0]?.active !== true) return NO_GAMEPLAY_LOCK;
   return {
@@ -156,7 +159,7 @@ export async function getTournamentGameplayLockState(
 ): Promise<GameplayLockState> {
   const scheduled = await getNearestScheduledTournamentBlock(client, userId, now);
   if (scheduled.blocked) return scheduled;
-  const activeClassic = await getActiveClassicTournamentLock(client, userId, now);
+  const activeClassic = await getActiveClassicTournamentLock(client, userId);
   return activeClassic.blocked ? activeClassic : scheduled;
 }
 

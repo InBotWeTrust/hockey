@@ -204,7 +204,7 @@ describe.skipIf(!hasIntegrationEnv)('scheduled tournament gameplay locks', () =>
 
   async function createTournamentParticipants(input: {
     status: 'regular' | 'playoff';
-    source: 'head_to_head';
+    source: 'head_to_head' | 'classic';
   }): Promise<{ tournamentId: string; homeId: string; awayId: string }> {
     fixtureSequence += 1;
     const tournament = await pool.query<{ id: string }>(
@@ -464,6 +464,75 @@ describe.skipIf(!hasIntegrationEnv)('scheduled tournament gameplay locks', () =>
         maxSegmentDurationMs: 20 * 60_000,
       }),
     ).rejects.toMatchObject({ code: 'conflict', statusCode: 409 });
+  });
+
+  it('activates the Classic lock on the first accepted shot until the session is terminal', async () => {
+    const participants = await createTournamentParticipants({
+      status: 'regular',
+      source: 'classic',
+    });
+    const matchday = await pool.query<{ id: string }>(
+      `insert into tournament_matchday
+         (tournament_id, number, local_date, starts_at, ends_at, status)
+       values ($1, 1, '2026-09-08', $2, $3, 'open') returning id`,
+      [participants.tournamentId, at('2026-09-08T18:00:00+03:00'), at('2026-09-08T19:00:00+03:00')],
+    );
+    const session = await pool.query<{ id: string }>(
+      `insert into tournament_classic_session
+         (tournament_id, participant_id, matchday_id, tournament_day, state,
+          current_period, rules_snapshot, game_core_version, session_seed, closes_at)
+       values ($1, $2, $3, 1, 'period_active', 1, '{}'::jsonb, 1, 'classic-seed', $4)
+       returning id`,
+      [
+        participants.tournamentId,
+        participants.homeId,
+        matchday.rows[0]!.id,
+        at('2026-09-08T19:00:00+03:00'),
+      ],
+    );
+    const input = {
+      userId,
+      action: 'start_training' as const,
+      now: at('2026-09-08T20:30:00+03:00'),
+    };
+
+    await expect(getGameplayLockState(pool as unknown as PoolClient, input)).resolves.toEqual({
+      blocked: false,
+      reason: null,
+      endsAt: null,
+    });
+
+    await pool.query(
+      `insert into shot_session
+         (user_id, mode, tournament_classic_session_id, period_number, shot_index,
+          seed, input_payload, server_result, game_core_version, created_at)
+       values ($1, 'tournament_classic', $2, 1, 1, 'shot-seed', '{}'::jsonb, 'miss', 1, $3)`,
+      [userId, session.rows[0]!.id, at('2026-09-08T18:01:00+03:00')],
+    );
+    await pool.query(
+      `update tournament_classic_session
+          set state = 'break_active', period_started_at = null, break_started_at = $2
+        where id = $1`,
+      [session.rows[0]!.id, at('2026-09-08T18:02:00+03:00')],
+    );
+
+    await expect(getGameplayLockState(pool as unknown as PoolClient, input)).resolves.toEqual({
+      blocked: true,
+      reason: 'active_classic',
+      endsAt: null,
+    });
+
+    for (const terminalState of ['closed', 'expired'] as const) {
+      await pool.query(`update tournament_classic_session set state = $2 where id = $1`, [
+        session.rows[0]!.id,
+        terminalState,
+      ]);
+      await expect(getGameplayLockState(pool as unknown as PoolClient, input)).resolves.toEqual({
+        blocked: false,
+        reason: null,
+        endsAt: null,
+      });
+    }
   });
 });
 

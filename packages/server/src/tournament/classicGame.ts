@@ -12,11 +12,8 @@ import {
 import { grantStatAchievements } from '../achievements/service.js';
 import { deriveClassicTournamentSeed, deriveShotSeed } from '../duel/seed.js';
 import { getGameSettings } from '../duel/gameSettings.js';
-import {
-  assertTrainingCooldownExpired,
-  fetchTrainingCooldownEndsAt,
-  trainingDailyCooldownMs,
-} from '../duel/trainingCooldown.js';
+import { fetchTrainingCooldownEndsAt, trainingDailyCooldownMs } from '../duel/trainingCooldown.js';
+import { assertGameplayActionAllowed, lockUserGameplay } from '../duel/gameplayLocks.js';
 import { AppError } from '../plugins/errors.js';
 import { appendEvent } from '../duel/eventLog.js';
 import { parseTournamentConfig } from './config.js';
@@ -502,6 +499,19 @@ async function aggregateCurrentPeriod(
     goals: Number(row.goals),
     lastTapTime: row.last_tap_time === null ? null : Number(row.last_tap_time),
   };
+}
+
+async function hasAcceptedClassicShot(client: PoolClient, sessionId: string): Promise<boolean> {
+  const { rows } = await client.query<{ accepted: boolean }>(
+    `select exists(
+       select 1
+         from shot_session
+        where mode = 'tournament_classic'
+          and tournament_classic_session_id = $1
+     ) as accepted`,
+    [sessionId],
+  );
+  return rows[0]?.accepted === true;
 }
 
 async function fetchPeriods(client: PoolClient, sessionId: string): Promise<ClassicPeriodRow[]> {
@@ -1393,15 +1403,6 @@ export async function startClassicGamePeriod(
     if (session.current_period >= 3) {
       throw new AppError('conflict', 'all classic periods are completed', 409);
     }
-    if (session.current_period === 0) {
-      const settings = await getGameSettings(client);
-      await assertTrainingCooldownExpired(
-        client,
-        input.userId,
-        input.now,
-        trainingDailyCooldownMs(settings.training.dailyCooldownMinutes),
-      );
-    }
     const periodNumber = session.current_period + 1;
     const loadout = await resolveClassicLoadout(client, input.userId, input.loadout);
     await client.query(
@@ -1447,11 +1448,19 @@ export async function submitClassicGameShot(
   },
 ): Promise<ClassicShotResponse> {
   return transaction(pool, async (client) => {
+    await lockUserGameplay(client, input.userId);
     const context = await requireContext(client, input.userId, input.tournamentId, input.now);
     let session = await getOrCreateSession(client, context, input.userId, input.seedSecret);
     session = await reconcileSession(client, context, session, input.now);
     if (session.state !== 'period_active' || session.period_started_at === null) {
       throw new AppError('conflict', `cannot submit classic shot in state '${session.state}'`, 409);
+    }
+    if (!(await hasAcceptedClassicShot(client, session.id))) {
+      await assertGameplayActionAllowed(client, {
+        userId: input.userId,
+        action: 'start_classic',
+        now: input.now,
+      });
     }
     const current = await aggregateCurrentPeriod(client, session.id, session.current_period);
     const expectedShotIndex = current.shots + 1;
