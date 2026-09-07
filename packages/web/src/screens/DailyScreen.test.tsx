@@ -1773,7 +1773,7 @@ describe('DailyScreen', () => {
 
   it.each([
     ['recent_gameplay', null, /Восстановление после игры/],
-    ['active_classic', null, /Завершите текущую игру Classic/],
+    ['active_classic', null, /Завершите текущую игру в турнире/],
     ['scheduled_tournament', '2099-04-25T14:00:00.000Z', /До турнирной игры/],
     ['scheduled_tournament', '2020-04-25T14:00:00.000Z', /До завершения турнирного блока/],
   ] as const)('renders authoritative training lock %s (%s)', async (reason, startsAt, copy) => {
@@ -1818,7 +1818,7 @@ describe('DailyScreen', () => {
   });
 
   it.each([
-    ['active_classic', 'Завершите текущую игру Classic'],
+    ['active_classic', 'Завершите текущую игру в турнире'],
     ['scheduled_tournament', 'До завершения турнирного блока'],
   ] as const)(
     'announces the actual %s daily lock without a recovery countdown',
@@ -2384,8 +2384,8 @@ describe('DailyScreen', () => {
   });
 
   it.each([
-    ['active_classic', null, true, 'Завершите текущую игру Classic'],
-    ['active_classic', '2099-04-25T14:00:00.000Z', true, 'Завершите текущую игру Classic'],
+    ['active_classic', null, true, 'Завершите текущую игру в турнире'],
+    ['active_classic', '2099-04-25T14:00:00.000Z', true, 'Завершите текущую игру в турнире'],
     ['scheduled_tournament', '2099-04-25T14:00:00.000Z', false, null],
     ['scheduled_tournament', '2020-04-25T14:00:00.000Z', true, 'До завершения турнирного блока'],
   ] as const)(
@@ -2470,7 +2470,7 @@ describe('DailyScreen', () => {
     });
     const blockedButton = await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' });
     expect(blockedButton).toBeDisabled();
-    expect(screen.getByText('Завершите текущую игру Classic')).toBeInTheDocument();
+    expect(screen.getByText('Завершите текущую игру в турнире')).toBeInTheDocument();
     fireEvent.click(blockedButton);
     expect(shots).toBe(1);
   });
@@ -3522,7 +3522,7 @@ describe('DailyScreen', () => {
 
   it.each([
     ['scheduled_tournament', 'До завершения турнирного блока'],
-    ['active_classic', 'Завершите текущую игру Classic'],
+    ['active_classic', 'Завершите текущую игру в турнире'],
   ] as const)(
     'refreshes a newly appeared %s lock after training start returns 409',
     async (reason, copy) => {

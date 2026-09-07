@@ -1,4 +1,8 @@
-export type GameplayLockReason = 'recent_gameplay' | 'scheduled_tournament' | 'active_classic';
+export type GameplayLockReason =
+  | 'recent_gameplay'
+  | 'scheduled_tournament'
+  | 'active_classic'
+  | 'active_daily';
 
 export interface GameplayLockDTO {
   blocked: boolean;
@@ -9,7 +13,8 @@ export interface GameplayLockDTO {
 
 export function gameplayLockCopy(lock: GameplayLockDTO, now = Date.now()): string {
   if (lock.reason === 'recent_gameplay') return 'Восстановление после игры';
-  if (lock.reason === 'active_classic') return 'Завершите текущую игру Classic';
+  if (lock.reason === 'active_daily') return 'Завершите ежедневную игру';
+  if (lock.reason === 'active_classic') return 'Завершите текущую игру в турнире';
   const startsAt = lock.tournament_starts_at ? Date.parse(lock.tournament_starts_at) : NaN;
   return startsAt > now
     ? `До турнирной игры. Начало: ${new Date(startsAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}`
@@ -17,6 +22,8 @@ export function gameplayLockCopy(lock: GameplayLockDTO, now = Date.now()): strin
 }
 
 export function ordinaryDuelLockCopy(lock: GameplayLockDTO): string {
+  if (lock.reason === 'active_daily')
+    return 'Завершите ежедневную игру, чтобы играть в обычные дуэли.';
   if (lock.reason === 'active_classic')
     return 'Завершите текущую турнирную игру, чтобы играть в обычные дуэли.';
   if (lock.reason === 'scheduled_tournament') {

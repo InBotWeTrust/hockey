@@ -375,7 +375,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     expect(shot.statusCode).toBe(200);
   });
 
-  it('blocks training for one hour after an accepted daily shot even across an unfinished daily game', async () => {
+  it('blocks training until a started daily game is completed, regardless of shot age', async () => {
     expect((await startTraining(2)).statusCode).toBe(200);
     expect((await startDailyPeriod()).statusCode).toBe(200);
     const dailyShot = await app.inject({
@@ -387,7 +387,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     expect(dailyShot.statusCode).toBe(200);
     expect((await getState()).gameplay_lock).toMatchObject({
       blocked: true,
-      reason: 'recent_gameplay',
+      reason: 'active_daily',
     });
     expect((await startTraining(2)).statusCode).toBe(409);
     expect((await submitShot(1)).statusCode).toBe(409);
@@ -395,10 +395,40 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
       "update shot_session set created_at = now() - interval '61 minutes' where user_id = $1 and mode = 'daily'",
       [userId],
     );
+    expect((await getState()).gameplay_lock).toMatchObject({
+      blocked: true,
+      reason: 'active_daily',
+      ends_at: null,
+    });
+    expect((await startTraining(2)).statusCode).toBe(409);
+    expect((await submitShot(1)).statusCode).toBe(409);
+  });
+
+  it('unlocks training immediately after a started daily game is completed', async () => {
+    expect((await startDailyPeriod()).statusCode).toBe(200);
+    const dailyShot = await app.inject({
+      method: 'POST',
+      url: '/duel/daily/shot',
+      headers: authHeader(),
+      payload: { shot_index: 1, input: { tapTime: 0 }, claimed_result: 'miss' },
+    });
+    expect(dailyShot.statusCode).toBe(200);
+    expect((await getState()).gameplay_lock).toMatchObject({
+      blocked: true,
+      reason: 'active_daily',
+    });
+
+    await pool.query(
+      `update day_pool
+          set state = 'closed',
+              current_period = 3,
+              closed_at = now()
+        where user_id = $1`,
+      [userId],
+    );
+
     expect((await getState()).gameplay_lock).toBeNull();
     expect((await startTraining(2)).statusCode).toBe(200);
-    expect((await submitShot(1)).statusCode).toBe(200);
-    expect((await submitShot(2)).statusCode).toBe(200);
   });
 
   it('allows training 61 minutes before the first tournament game of the day', async () => {

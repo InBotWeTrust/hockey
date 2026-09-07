@@ -12,7 +12,11 @@ export type GameplayAction =
   | 'start_classic'
   | 'continue_classic';
 
-export type GameplayLockReason = 'recent_gameplay' | 'scheduled_tournament' | 'active_classic';
+export type GameplayLockReason =
+  | 'recent_gameplay'
+  | 'scheduled_tournament'
+  | 'active_classic'
+  | 'active_daily';
 
 export interface GameplayLockState {
   blocked: boolean;
@@ -73,7 +77,7 @@ function throwGameplayLock(state: GameplayLockState): never {
 function recoveryModesForAction(action: GameplayAction): readonly RecoveryMode[] {
   switch (action) {
     case 'start_training':
-      return ['daily'];
+      return [];
     case 'start_daily_period':
       return ['training'];
     case 'start_classic':
@@ -83,6 +87,38 @@ function recoveryModesForAction(action: GameplayAction): readonly RecoveryMode[]
     case 'continue_classic':
       return [];
   }
+}
+
+const ACTIVE_DAILY_LOCK: GameplayLockState = {
+  blocked: true,
+  reason: 'active_daily',
+  endsAt: null,
+};
+
+async function getActiveDailyLock(
+  client: PoolClient,
+  userId: string,
+  now: Date,
+): Promise<GameplayLockState> {
+  const { rows } = await client.query<{ active: boolean }>(
+    `select exists(
+       select 1
+         from day_pool pool
+         join users player on player.id = pool.user_id
+        where pool.user_id = $1
+          and pool.day_date = ($2::timestamptz at time zone player.timezone)::date
+          and pool.state <> 'closed'
+          and exists(
+            select 1
+              from shot_session shot
+             where shot.user_id = pool.user_id
+               and shot.mode = 'daily'
+               and shot.day_pool_id = pool.id
+          )
+     ) as active`,
+    [userId, now],
+  );
+  return rows[0]?.active === true ? ACTIVE_DAILY_LOCK : NO_GAMEPLAY_LOCK;
 }
 
 export async function lockUserGameplay(client: PoolClient, userId: string): Promise<void> {
@@ -282,6 +318,11 @@ export async function getGameplayLockState(
 ): Promise<GameplayLockState> {
   const tournamentLock = await getTournamentGameplayLockState(client, input.userId, input.now);
   if (tournamentLock.blocked) return tournamentLock;
+
+  if (input.action === 'start_training') {
+    const dailyLock = await getActiveDailyLock(client, input.userId, input.now);
+    if (dailyLock.blocked) return dailyLock;
+  }
 
   const recoveryMs = input.recoveryMs ?? GAMEPLAY_RECOVERY_MS;
   const recoveryModes = recoveryModesForAction(input.action);

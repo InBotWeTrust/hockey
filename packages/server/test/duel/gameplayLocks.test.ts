@@ -40,6 +40,11 @@ function gameplayClient(activities: Activity[]) {
     if (sql.includes('tournament_classic_session')) {
       return { rows: [{ active: false }] } as unknown as QueryResult;
     }
+    if (sql.includes('from day_pool pool')) {
+      return {
+        rows: [{ active: activities.some((activity) => activity.mode === 'daily') }],
+      } as unknown as QueryResult;
+    }
     const requestedModes = (values?.[1] ?? []) as ActivityMode[];
     const accepted = activities.filter(
       (activity) =>
@@ -119,13 +124,13 @@ describe('action-specific gameplay recovery', () => {
   });
 
   it.each([
-    ['training', 'start_training', false],
-    ['training', 'start_daily_period', true],
-    ['daily', 'start_daily_period', false],
-    ['daily', 'start_training', true],
-  ] satisfies Array<[ActivityMode, GameplayAction, boolean]>)(
+    ['training', 'start_training', false, null],
+    ['training', 'start_daily_period', true, 'recent_gameplay'],
+    ['daily', 'start_daily_period', false, null],
+    ['daily', 'start_training', true, 'active_daily'],
+  ] satisfies Array<[ActivityMode, GameplayAction, boolean, string | null]>)(
     'keeps %s continuation available while action %s blocked=%s',
-    async (mode, action, blocked) => {
+    async (mode, action, blocked, reason) => {
       const { client } = gameplayClient([{ mode, createdAt: at('2026-09-08T00:10:00+03:00') }]);
 
       await expect(
@@ -134,7 +139,7 @@ describe('action-specific gameplay recovery', () => {
           action,
           now: at('2026-09-08T00:20:00+03:00'),
         }),
-      ).resolves.toMatchObject({ blocked, reason: blocked ? 'recent_gameplay' : null });
+      ).resolves.toMatchObject({ blocked, reason });
     },
   );
 

@@ -327,7 +327,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     ).toBe(0);
   });
 
-  it('persists post-lock daily acceptance time and a full rolling hour after a transaction wait', async () => {
+  it('persists post-lock daily acceptance time and exposes an active daily lock', async () => {
     const arrivedAt = new Date();
     const acceptedAt = new Date(arrivedAt.getTime() + 2_000);
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -361,9 +361,12 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
         url: '/duel/training/state',
         headers: authHeader(),
       });
-      expect(training.json().gameplay_lock.ends_at).toBe(
-        new Date(acceptedAt.getTime() + 3_600_000).toISOString(),
-      );
+      expect(training.json().gameplay_lock).toEqual({
+        blocked: true,
+        reason: 'active_daily',
+        ends_at: null,
+        tournament_starts_at: null,
+      });
     } finally {
       await gate.query('rollback');
       gate.release();
