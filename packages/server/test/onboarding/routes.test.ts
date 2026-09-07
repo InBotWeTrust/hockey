@@ -294,8 +294,6 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
               u.experience,
               u.lifetime_shots_total,
               u.lifetime_goals_total,
-              (select to_jsonb(wallet) - 'shots_updated_at'
-                 from user_wallet wallet where wallet.user_id = u.id) as wallet,
               (select to_jsonb(currency) - array['created_at', 'updated_at']::text[]
                  from user_currency_account currency where currency.user_id = u.id) as currency,
               (select count(*)::int from goalie_progress where user_id = u.id) as goalie_progress,
@@ -380,12 +378,6 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
       { position: 1, kind: 'tutorial_shot', tutorial: speeds },
     ]);
     const user = await createUser();
-    await pool.query(
-      `insert into user_wallet
-         (user_id, shots_current, shots_max, shots_bonus, pucks, gold_pucks, wheel_spins, training_energy)
-       values ($1, 17, 25, 3, 41, 2, 1, 4)`,
-      [user.userId],
-    );
     await pool.query(
       `insert into user_currency_account (user_id, balance, reserved_balance)
        values ($1, 29, 7)`,

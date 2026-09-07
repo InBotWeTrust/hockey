@@ -66,7 +66,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
 
   beforeEach(async () => {
     await pool.query(
-      `truncate users, auth_providers, user_wallet, user_equipment, user_sticks,
+      `truncate users, auth_providers, user_equipment, user_sticks,
               training_session, day_pool, period_log, shot_session, event_log,
               payments, admin_inventory_items, feedback_messages,
               push_delivery_log, push_subscriptions, user_push_preferences

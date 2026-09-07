@@ -549,6 +549,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '106_achievement_bonus_economy.sql',
       '107_gameplay_cooldown_one_hour.sql',
       '108_remove_daily_aggregate_tournaments.sql',
+      '109_drop_legacy_user_wallet.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -1313,6 +1314,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '106_achievement_bonus_economy.sql',
       '107_gameplay_cooldown_one_hour.sql',
       '108_remove_daily_aggregate_tournaments.sql',
+      '109_drop_legacy_user_wallet.sql',
     ]);
 
     const activeInventory = await pool.query<{

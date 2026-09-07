@@ -211,6 +211,7 @@ describe.skipIf(!hasIntegrationEnv)('071 accuracy World Tour migration', () => {
       '106_achievement_bonus_economy.sql',
       '107_gameplay_cooldown_one_hour.sql',
       '108_remove_daily_aggregate_tournaments.sql',
+      '109_drop_legacy_user_wallet.sql',
     ]);
 
     const preserved = await pool.query<{

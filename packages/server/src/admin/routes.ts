@@ -248,14 +248,7 @@ interface AdminUserRow {
   vk_last_name: string | null;
   vk_avatar_url: string | null;
   vk_username: string | null;
-  shots_current: number;
-  shots_max: number;
-  shots_bonus: number;
   currency_balance: string;
-  pucks: string;
-  gold_pucks: string;
-  wheel_spins: number;
-  training_energy: number;
   push_subscription_count: string;
   push_chat_new_dialog_message: boolean;
   push_daily_game: boolean;
@@ -500,14 +493,7 @@ const userPatchSchema = z
     amateurOnboardingCompleted: z.boolean().optional(),
     wallet: z
       .object({
-        shotsCurrent: z.number().int().min(0).max(100_000).optional(),
-        shotsMax: z.number().int().min(1).max(100_000).optional(),
-        shotsBonus: z.number().int().min(0).max(100_000).optional(),
         coins: z.number().int().min(0).max(9_000_000_000).optional(),
-        pucks: z.number().int().min(0).max(9_000_000_000).optional(),
-        goldPucks: z.number().int().min(0).max(9_000_000_000).optional(),
-        wheelSpins: z.number().int().min(0).max(100_000).optional(),
-        trainingEnergy: z.number().int().min(0).max(100_000).optional(),
       })
       .optional(),
   })
@@ -1242,14 +1228,7 @@ function mapUser(row: AdminUserRow) {
       vk: row.vk_id !== null ? { id: row.vk_id, username: row.vk_username } : null,
     },
     wallet: {
-      shotsCurrent: row.shots_current,
-      shotsMax: row.shots_max,
-      shotsBonus: row.shots_bonus,
       coins: Number(row.currency_balance),
-      pucks: Number(row.pucks),
-      goldPucks: Number(row.gold_pucks),
-      wheelSpins: row.wheel_spins,
-      trainingEnergy: row.training_energy,
     },
     pushNotifications: {
       subscribed: pushSubscriptionCount > 0,
@@ -1860,14 +1839,7 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
             u.vk_last_name,
             u.vk_avatar_url,
             u.vk_username,
-            coalesce(w.shots_current, 0) as shots_current,
-            coalesce(w.shots_max, 25) as shots_max,
-            coalesce(w.shots_bonus, 0) as shots_bonus,
             coalesce(uca.balance, 0) as currency_balance,
-            coalesce(w.pucks, 0) as pucks,
-            coalesce(w.gold_pucks, 0) as gold_pucks,
-            coalesce(w.wheel_spins, 0) as wheel_spins,
-            coalesce(w.training_energy, 0) as training_energy,
             coalesce(push.subscription_count, 0) as push_subscription_count,
             coalesce(push.subscription_count, 0) > 0
               and coalesce(pref.chat_new_dialog_message, true) as push_chat_new_dialog_message,
@@ -1882,7 +1854,6 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
             coalesce(push.subscription_count, 0) > 0
               and coalesce(pref.game_news, true) as push_game_news
        from users u
-       left join user_wallet w on w.user_id = u.id
        left join user_currency_account uca on uca.user_id = u.id
        left join users blocker on blocker.id = u.blocked_by
        left join auth_providers tg
@@ -3486,14 +3457,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                       u.vk_last_name,
                       u.vk_avatar_url,
                       u.vk_username,
-                      coalesce(w.shots_current, 0) as shots_current,
-                      coalesce(w.shots_max, 25) as shots_max,
-                      coalesce(w.shots_bonus, 0) as shots_bonus,
                       coalesce(uca.balance, 0) as currency_balance,
-                      coalesce(w.pucks, 0) as pucks,
-                      coalesce(w.gold_pucks, 0) as gold_pucks,
-                      coalesce(w.wheel_spins, 0) as wheel_spins,
-                      coalesce(w.training_energy, 0) as training_energy,
                       coalesce(push.subscription_count, 0) as push_subscription_count,
                       coalesce(push.subscription_count, 0) > 0
                         and coalesce(pref.chat_new_dialog_message, true) as push_chat_new_dialog_message,
@@ -3508,7 +3472,6 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                       coalesce(push.subscription_count, 0) > 0
                         and coalesce(pref.game_news, true) as push_game_news
                  from users u
-                 left join user_wallet w on w.user_id = u.id
                  left join user_currency_account uca on uca.user_id = u.id
                  left join users blocker on blocker.id = u.blocked_by
                  left join auth_providers tg
@@ -3773,49 +3736,6 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
 
       const wallet = body.data.wallet;
       if (wallet !== undefined && Object.keys(wallet).length > 0) {
-        const walletAssignments: string[] = [];
-        const walletValues: unknown[] = [];
-        if (wallet.shotsCurrent !== undefined) {
-          addAssignment(walletAssignments, walletValues, 'shots_current', wallet.shotsCurrent);
-          changed.push('wallet.shotsCurrent');
-        }
-        if (wallet.shotsMax !== undefined) {
-          addAssignment(walletAssignments, walletValues, 'shots_max', wallet.shotsMax);
-          changed.push('wallet.shotsMax');
-        }
-        if (wallet.shotsBonus !== undefined) {
-          addAssignment(walletAssignments, walletValues, 'shots_bonus', wallet.shotsBonus);
-          changed.push('wallet.shotsBonus');
-        }
-        if (wallet.pucks !== undefined) {
-          addAssignment(walletAssignments, walletValues, 'pucks', wallet.pucks);
-          changed.push('wallet.pucks');
-        }
-        if (wallet.goldPucks !== undefined) {
-          addAssignment(walletAssignments, walletValues, 'gold_pucks', wallet.goldPucks);
-          changed.push('wallet.goldPucks');
-        }
-        if (wallet.wheelSpins !== undefined) {
-          addAssignment(walletAssignments, walletValues, 'wheel_spins', wallet.wheelSpins);
-          changed.push('wallet.wheelSpins');
-        }
-        if (wallet.trainingEnergy !== undefined) {
-          addAssignment(walletAssignments, walletValues, 'training_energy', wallet.trainingEnergy);
-          changed.push('wallet.trainingEnergy');
-        }
-        if (walletAssignments.length > 0) {
-          await client.query(
-            'insert into user_wallet (user_id) values ($1) on conflict do nothing',
-            [params.userId],
-          );
-          walletValues.push(params.userId);
-          await client.query(
-            `update user_wallet
-                set ${walletAssignments.join(', ')}
-              where user_id = $${walletValues.length}`,
-            walletValues,
-          );
-        }
         if (wallet.coins !== undefined) {
           await client.query(
             `insert into user_currency_account (user_id, balance)

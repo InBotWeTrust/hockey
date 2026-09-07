@@ -88,7 +88,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
 
   beforeEach(async () => {
     await pool.query(
-      `truncate users, auth_providers, user_wallet, user_equipment, user_sticks,
+      `truncate users, auth_providers, user_equipment, user_sticks,
               user_currency_account, user_inventory_item,
               amateur_duel_template, amateur_duel_match, amateur_duel_participant,
               amateur_duel_period_log, amateur_duel_rating, amateur_duel_matchmaking_ticket,

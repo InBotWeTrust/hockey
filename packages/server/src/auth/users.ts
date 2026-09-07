@@ -285,7 +285,6 @@ export async function findOrCreateTelegramUser(
        values ($1, $2, $3, $4, $5)`,
       [providerId, userId, 'telegram', input.providerUid, providerData],
     );
-    await client.query('insert into user_wallet (user_id) values ($1)', [userId]);
     await client.query('insert into user_equipment (user_id) values ($1)', [userId]);
     await client.query("insert into user_sticks (user_id, stick_id) values ($1, 'training')", [
       userId,
@@ -559,7 +558,6 @@ export async function findOrLinkOrCreateVkUser(
        values ($1, $2, 'vk', $3, $4)`,
       [randomUUID(), userId, providerUid, vkProviderData(input.profile)],
     );
-    await client.query('insert into user_wallet (user_id) values ($1)', [userId]);
     await client.query('insert into user_equipment (user_id) values ($1)', [userId]);
     await client.query("insert into user_sticks (user_id, stick_id) values ($1, 'training')", [
       userId,

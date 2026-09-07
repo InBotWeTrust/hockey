@@ -86,7 +86,7 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/vk', () => {
 
   beforeEach(async () => {
     await app.pg.query(
-      'truncate users, auth_providers, user_wallet, user_equipment, user_sticks restart identity cascade',
+      'truncate users, auth_providers, user_equipment, user_sticks restart identity cascade',
     );
     await app.redis.flushdb();
     vi.restoreAllMocks();
