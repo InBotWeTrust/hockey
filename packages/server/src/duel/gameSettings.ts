@@ -384,7 +384,7 @@ export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
     label: 'Блокировка дневной игры',
     description: 'Сколько минут дневная игра закрыта после первого броска в тренировке.',
     type: 'number',
-    defaultValue: 30,
+    defaultValue: 60,
     min: 0,
     max: 1440,
   },
