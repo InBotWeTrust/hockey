@@ -3392,17 +3392,19 @@ describe('DailyScreen', () => {
 
     const dailyButton = await findArenaCta('Ежедневная игра: Восстановление');
     expect(screen.getByText('Восстановление')).toHaveClass('arena-cube-title--compact');
-    expect(screen.getByText('Восстановление после игры')).toHaveClass(
+    expect(screen.getByText('Восстановление после тренировки')).toHaveClass(
       'arena-cube-subtitle--compact',
     );
-    const cooldownScoreboard = screen.getByLabelText(/^Восстановление после игры\. До игры/);
+    const cooldownScoreboard = screen.getByLabelText(/^Восстановление после тренировки\. До игры/);
     expect(cooldownScoreboard).toHaveClass('daily-hub-scoreboard--timer-only');
     expect(within(cooldownScoreboard).getByText('До игры')).toBeInTheDocument();
     expect(within(cooldownScoreboard).queryByText('Период')).not.toBeInTheDocument();
     fireEvent.click(dailyButton);
 
-    expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
-    expect(screen.getByText('Восстановление после игры')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ' }),
+    ).toBeEnabled();
+    expect(screen.getByText('Восстановление после тренировки')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Нужно восстановиться' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });

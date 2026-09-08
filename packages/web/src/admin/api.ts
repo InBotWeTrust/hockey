@@ -405,13 +405,20 @@ export interface AdminInventoryItem {
   effectFatigueAfterRestMs?: number;
   effectFatigueSlowMultiplier?: number;
   effectFatigueHeavyMultiplier?: number;
+  effectRecoveryMinutes?: number;
   createdAt: string;
   updatedAt: string;
   paymentsCount: number;
   paidRevenueRub: number;
 }
 
-export type AdminInventoryItemKind = 'bundle' | 'stick' | 'skates' | 'nutrition' | 'consumable';
+export type AdminInventoryItemKind =
+  | 'bundle'
+  | 'stick'
+  | 'skates'
+  | 'nutrition'
+  | 'consumable'
+  | 'recovery';
 export type AdminInventoryResourceUnit = 'period' | 'shot' | 'distance' | 'energy_ms';
 
 export interface AdminDuelPeriodSpeedPreset {
@@ -961,6 +968,7 @@ export interface AdminInventoryGameplayPatch {
   effectFatigueAfterRestMs?: number;
   effectFatigueSlowMultiplier?: number;
   effectFatigueHeavyMultiplier?: number;
+  effectRecoveryMinutes?: number;
 }
 
 export type AdminDuelTemplateInput = Omit<

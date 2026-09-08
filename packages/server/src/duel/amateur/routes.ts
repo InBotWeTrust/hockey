@@ -340,7 +340,7 @@ const matchmakingLeaveSchema = z.object({ template_id: uuid.optional() }).option
 
 const inventoryItemPatchSchema = z
   .object({
-    itemKind: z.enum(['bundle', 'stick', 'skates', 'nutrition', 'consumable']).optional(),
+    itemKind: z.enum(['bundle', 'stick', 'skates', 'nutrition', 'consumable', 'recovery']).optional(),
     rarity: z.enum(['common', 'rare', 'epic', 'legendary']).optional(),
     currencyPrice: z.number().int().min(0).max(9_000_000_000).optional(),
     chargesPerPurchase: z.number().int().min(0).max(100_000).optional(),
@@ -381,6 +381,7 @@ const inventoryItemPatchSchema = z
     effectFatigueAfterRestMs: z.number().int().min(0).max(600_000).optional(),
     effectFatigueSlowMultiplier: z.number().min(0).max(1).optional(),
     effectFatigueHeavyMultiplier: z.number().min(0).max(1).optional(),
+    effectRecoveryMinutes: z.number().int().min(0).max(60).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, 'no changes');
 
@@ -6265,6 +6266,12 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         values,
         'effect_fatigue_heavy_multiplier',
         body.data.effectFatigueHeavyMultiplier,
+      );
+      addPatch(
+        assignments,
+        values,
+        'effect_recovery_minutes',
+        body.data.effectRecoveryMinutes,
       );
       values.push(params.itemId);
       const { rowCount } = await app.pg.query(

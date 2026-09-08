@@ -1,10 +1,10 @@
-import type { InventoryEquipmentKind, InventoryItem } from '../api/inventory.js';
+import type { InventoryKind, InventoryItem } from '../api/inventory.js';
 
 type InventoryResourceUnit = NonNullable<InventoryItem['resourceUnit']>;
 type DisplayResourceUnit = Exclude<InventoryResourceUnit, 'period'> | 'charge';
 
 const RESOURCE_UNIT_BY_KIND: Record<
-  InventoryEquipmentKind,
+  Exclude<InventoryKind, 'recovery'>,
   Exclude<InventoryResourceUnit, 'period'>
 > = {
   stick: 'shot',
@@ -27,16 +27,17 @@ function pluralRu(value: number, one: string, few: string, many: string): string
 }
 
 function effectiveResourceUnit(
-  kind: InventoryEquipmentKind | null | undefined,
+  kind: InventoryKind | null | undefined,
   unit: InventoryItem['resourceUnit'] | undefined,
 ): DisplayResourceUnit {
   if (unit && unit !== 'period') return unit;
+  if (kind === 'recovery') return 'charge';
   if (!kind) return 'charge';
   return RESOURCE_UNIT_BY_KIND[kind];
 }
 
 export function formatInventoryResourceAmount(
-  kind: InventoryEquipmentKind | null | undefined,
+  kind: InventoryKind | null | undefined,
   amount: number,
   unit?: InventoryItem['resourceUnit'],
 ): string {
@@ -64,7 +65,7 @@ export function formatInventoryResourceAmount(
 }
 
 export function formatInventoryBadgeAmount(
-  kind: InventoryEquipmentKind | null | undefined,
+  kind: InventoryKind | null | undefined,
   amount: number,
   unit?: InventoryItem['resourceUnit'],
 ): string {

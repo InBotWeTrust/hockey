@@ -1,13 +1,15 @@
 import { apiFetch } from './apiFetch.js';
 import type { DuelInventoryResourceUnit, DuelInventoryTiming } from '@hockey/game-core';
+import type { GameplayLockDTO } from './gameplayLock.js';
 
 export type InventoryEquipmentKind = 'stick' | 'skates' | 'nutrition';
+export type InventoryKind = InventoryEquipmentKind | 'recovery';
 
 export interface InventoryItem {
   id: string;
   itemId?: string;
   instanceId?: string | null;
-  kind: InventoryEquipmentKind;
+  kind: InventoryKind;
   title: string;
   description: string;
   imageUrl: string | null;
@@ -20,6 +22,7 @@ export interface InventoryItem {
   powerScore: number;
   duelPeriodCost: number;
   effectPuckSpeedPoints?: number;
+  effectRecoveryMinutes?: number;
   timing?: DuelInventoryTiming;
   chargesAvailable: number;
   chargesReserved: number;
@@ -29,7 +32,7 @@ export interface InventoryPurchase {
   id: string;
   itemId: string | null;
   title: string;
-  kind: InventoryEquipmentKind | null;
+  kind: InventoryKind | null;
   tokensSpent: number;
   chargesAdded: number;
   createdAt: string;
@@ -79,7 +82,7 @@ export interface InventoryState {
     skatesItemId: string | null;
     nutritionItemId: string | null;
   };
-  items: Record<InventoryEquipmentKind, InventoryItem[]>;
+  items: Record<InventoryKind, InventoryItem[]>;
   purchaseHistory?: InventoryPurchase[];
   bankHistory?: BankPurchase[];
   transactionHistory?: InventoryTransaction[];
@@ -115,5 +118,25 @@ export function patchEquipment(patch: EquipmentPatch): Promise<InventoryState> {
 export function purchaseInventoryItem(itemId: string): Promise<InventoryState> {
   return apiFetch<InventoryState>(`/inventory/items/${itemId}/purchase`, {
     method: 'POST',
+  });
+}
+
+export interface UseRecoveryKitInput {
+  itemId: string;
+  action: 'start_daily_period' | 'start_classic';
+  buyIfNeeded: boolean;
+  idempotencyKey: string;
+}
+
+export interface UseRecoveryKitResponse {
+  inventory: InventoryState;
+  gameplayLock: GameplayLockDTO | null;
+  appliedMinutes: number;
+}
+
+export function useRecoveryKit(input: UseRecoveryKitInput): Promise<UseRecoveryKitResponse> {
+  return apiFetch<UseRecoveryKitResponse>('/inventory/recovery/use', {
+    method: 'POST',
+    body: JSON.stringify(input),
   });
 }

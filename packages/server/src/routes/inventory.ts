@@ -2,8 +2,16 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
+import {
+  getGameplayLockState,
+  getRecentGameplayRecovery,
+  lockUserGameplay,
+  toGameplayLockDto,
+  type GameplayAction,
+} from '../duel/gameplayLocks.js';
 
 type EquipmentKind = 'stick' | 'skates' | 'nutrition';
+type InventoryKind = EquipmentKind | 'recovery';
 type ResourceUnit = 'period' | 'shot' | 'distance' | 'energy_ms';
 type DbClient = Pick<PoolClient, 'query'>;
 
@@ -11,7 +19,7 @@ interface InventoryItemRow {
   id: string;
   item_id: string;
   instance_id: string | null;
-  item_kind: EquipmentKind;
+  item_kind: InventoryKind;
   title: string;
   description: string;
   photo_url: string | null;
@@ -31,6 +39,7 @@ interface InventoryItemRow {
   effect_nutrition_stop_ms: number;
   effect_fatigue_delay_ms: number;
   effect_fatigue_speed_multiplier: string | number;
+  effect_recovery_minutes: number;
   charges_available: number;
   charges_reserved: number;
 }
@@ -45,14 +54,14 @@ interface InventoryState {
     skatesItemId: string | null;
     nutritionItemId: string | null;
   };
-  items: Record<EquipmentKind, InventoryItemDto[]>;
+  items: Record<InventoryKind, InventoryItemDto[]>;
 }
 
 interface InventoryItemDto {
   id: string;
   itemId: string;
   instanceId: string | null;
-  kind: EquipmentKind;
+  kind: InventoryKind;
   title: string;
   description: string;
   imageUrl: string | null;
@@ -65,6 +74,7 @@ interface InventoryItemDto {
   powerScore: number;
   duelPeriodCost: number;
   effectPuckSpeedPoints: number;
+  effectRecoveryMinutes: number;
   timing: {
     stumbleIntervalMinMs: number;
     stumbleIntervalMaxMs: number;
@@ -125,6 +135,13 @@ const itemParamsSchema = z.object({
   itemId: z.string().uuid(),
 });
 
+const useRecoveryKitSchema = z.object({
+  itemId: z.string().uuid(),
+  action: z.enum(['start_daily_period', 'start_classic']),
+  buyIfNeeded: z.boolean().default(false),
+  idempotencyKey: z.string().uuid(),
+});
+
 const transactionHistoryQuerySchema = z.object({
   filter: z.enum(['all', 'credit', 'debit', 'ruble']).default('all'),
   limit: z.coerce.number().int().min(1).max(50).default(20),
@@ -181,6 +198,7 @@ function defaultResourceUnitForKind(kind: string | null): ResourceUnit | null {
   if (kind === 'stick') return 'shot';
   if (kind === 'skates') return 'distance';
   if (kind === 'nutrition') return 'energy_ms';
+  if (kind === 'recovery') return 'period';
   return null;
 }
 
@@ -206,7 +224,7 @@ function transactionFlow(amounts: InventoryTransactionAmountDto[]): TransactionF
 }
 
 function transactionCategory(reason: string): TransactionCategory {
-  if (reason === 'inventory_purchase') return 'inventory';
+  if (reason === 'inventory_purchase' || reason === 'recovery_kit_use') return 'inventory';
   if (
     reason === 'weekly_challenge_reward' ||
     reason === 'duel_reward' ||
@@ -248,6 +266,10 @@ function transactionSubtitle(
     if (resourceUnit && chargesAdded > 0) {
       parts.push(resourceLabel(resourceUnit, chargesAdded));
     }
+  } else if (reason === 'recovery_kit_use') {
+    parts.push('восстановление');
+    const recoveryMinutes = numberMetadata(metadata, 'recovery_minutes');
+    if (recoveryMinutes > 0) parts.push(`−${recoveryMinutes} минут`);
   } else if (reason === 'weekly_challenge_reward' || reason === 'achievement_reward') {
     parts.push('награда');
   } else if (reason.startsWith('duel_')) {
@@ -418,6 +440,7 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
             i.effect_stumble_duration_min_ms, i.effect_stumble_duration_max_ms,
             i.effect_nutrition_slowdown_ms, i.effect_nutrition_stop_ms,
             i.effect_fatigue_delay_ms, i.effect_fatigue_speed_multiplier,
+            i.effect_recovery_minutes,
             case
               when instance.id is not null then instance.charges_available
               else coalesce(legacy.charges_available, 0)
@@ -432,15 +455,16 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
        left join user_inventory_item legacy
          on legacy.inventory_item_id = i.id and legacy.user_id = $1 and instance.id is null
       where i.deleted_at is null
-        and i.item_kind in ('stick', 'skates', 'nutrition')
+        and i.item_kind in ('stick', 'skates', 'nutrition', 'recovery')
       order by i.item_kind, i.currency_price, i.title, instance.created_at nulls first, instance.id`,
     [userId],
   );
 
-  const items: Record<EquipmentKind, InventoryItemDto[]> = {
+  const items: Record<InventoryKind, InventoryItemDto[]> = {
     stick: [],
     skates: [],
     nutrition: [],
+    recovery: [],
   };
   for (const row of rows) {
     const chargesAvailable = Number(row.charges_available);
@@ -461,6 +485,7 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
       powerScore: Number(row.power_score),
       duelPeriodCost: Number(row.duel_period_cost),
       effectPuckSpeedPoints: Number(row.effect_puck_speed_points),
+      effectRecoveryMinutes: Number(row.effect_recovery_minutes),
       timing: {
         stumbleIntervalMinMs: Number(row.effect_stumble_interval_min_ms),
         stumbleIntervalMaxMs: Number(row.effect_stumble_interval_max_ms),
@@ -626,7 +651,7 @@ async function purchaseInventoryItem(
   const { rows: itemRows } = await client.query<{
     id: string;
     title: string;
-    item_kind: EquipmentKind;
+    item_kind: InventoryKind;
     currency_price: number;
     charges_per_purchase: number;
   }>(
@@ -634,7 +659,7 @@ async function purchaseInventoryItem(
        from admin_inventory_items
       where id = $1
         and deleted_at is null
-        and item_kind in ('stick', 'skates', 'nutrition')`,
+        and item_kind in ('stick', 'skates', 'nutrition', 'recovery')`,
     [itemId],
   );
   const item = itemRows[0];
@@ -693,6 +718,155 @@ async function purchaseInventoryItem(
   return fetchInventoryState(client, userId);
 }
 
+async function useRecoveryKit(
+  client: PoolClient,
+  userId: string,
+  input: z.infer<typeof useRecoveryKitSchema>,
+): Promise<{
+  inventory: InventoryState;
+  gameplayLock: ReturnType<typeof toGameplayLockDto>;
+  appliedMinutes: number;
+}> {
+  await ensureInventoryRows(client, userId);
+  await lockUserGameplay(client, userId);
+
+  const replay = await client.query<{ recovery_minutes: number }>(
+    `select recovery_minutes
+       from recovery_kit_application
+      where user_id = $1 and idempotency_key = $2`,
+    [userId, input.idempotencyKey],
+  );
+  if (replay.rows[0]) {
+    const lock = await getGameplayLockState(client, {
+      userId,
+      action: input.action as GameplayAction,
+      now: new Date(),
+    });
+    return {
+      inventory: await fetchInventoryState(client, userId),
+      gameplayLock: toGameplayLockDto(lock),
+      appliedMinutes: Number(replay.rows[0].recovery_minutes),
+    };
+  }
+
+  const now = new Date();
+  const lock = await getGameplayLockState(client, {
+    userId,
+    action: input.action as GameplayAction,
+    now,
+  });
+  if (!lock.blocked || lock.reason !== 'recent_gameplay') {
+    throw new AppError('conflict', 'recovery kit cannot be used for this lock', 409);
+  }
+  const recovery = await getRecentGameplayRecovery(client, {
+    userId,
+    action: input.action as GameplayAction,
+    now,
+  });
+  if (recovery === null || recovery.endsAt.getTime() <= now.getTime()) {
+    throw new AppError('conflict', 'gameplay recovery already finished', 409);
+  }
+
+  const itemResult = await client.query<{
+    id: string;
+    title: string;
+    effect_recovery_minutes: number;
+  }>(
+    `select id, title, effect_recovery_minutes
+       from admin_inventory_items
+      where id = $1
+        and item_kind = 'recovery'
+        and deleted_at is null
+        and effect_recovery_minutes > 0
+      for update`,
+    [input.itemId],
+  );
+  const item = itemResult.rows[0];
+  if (!item) throw new AppError('not_found', 'recovery kit not found', 404);
+
+  const findInstance = async (): Promise<string | null> => {
+    const result = await client.query<{ id: string }>(
+      `select id
+         from user_inventory_instance
+        where user_id = $1
+          and inventory_item_id = $2
+          and charges_available > 0
+        order by created_at, id
+        limit 1
+        for update`,
+      [userId, item.id],
+    );
+    return result.rows[0]?.id ?? null;
+  };
+
+  let instanceId = await findInstance();
+  if (instanceId === null && input.buyIfNeeded) {
+    await purchaseInventoryItem(client, userId, item.id);
+    instanceId = await findInstance();
+  }
+  if (instanceId === null) throw new AppError('conflict', 'recovery kit is not owned', 409);
+
+  const consumed = await client.query<{ id: string }>(
+    `update user_inventory_instance
+        set charges_available = charges_available - 1,
+            updated_at = now()
+      where id = $1 and user_id = $2 and charges_available > 0
+      returning id`,
+    [instanceId, userId],
+  );
+  if (!consumed.rows[0]) throw new AppError('conflict', 'recovery kit is not owned', 409);
+
+  const appliedMinutes = Number(item.effect_recovery_minutes);
+  await client.query(
+    `insert into recovery_kit_application
+       (user_id, shot_session_id, inventory_item_id, inventory_instance_id,
+        recovery_minutes, idempotency_key)
+     values ($1, $2, $3, $4, $5, $6)`,
+    [
+      userId,
+      recovery.shotSessionId,
+      item.id,
+      instanceId,
+      appliedMinutes,
+      input.idempotencyKey,
+    ],
+  );
+  await syncLegacyInventoryAggregate(client, userId, item.id);
+
+  const account = await client.query<{ balance: number; reserved_balance: number }>(
+    `select balance, reserved_balance from user_currency_account where user_id = $1`,
+    [userId],
+  );
+  await client.query(
+    `insert into currency_ledger
+       (user_id, reason, available_delta, reserved_delta, balance_after, reserved_after, metadata)
+     values ($1, 'recovery_kit_use', 0, 0, $2, $3, $4)`,
+    [
+      userId,
+      Number(account.rows[0]?.balance ?? 0),
+      Number(account.rows[0]?.reserved_balance ?? 0),
+      JSON.stringify({
+        title: 'Использован набор для восстановления',
+        inventory_item_id: item.id,
+        item_kind: 'recovery',
+        recovery_minutes: appliedMinutes,
+        shot_session_id: recovery.shotSessionId,
+      }),
+    ],
+  );
+
+  const nextLock = await getGameplayLockState(client, {
+    userId,
+    action: input.action as GameplayAction,
+    now,
+  });
+  return {
+    inventory: await fetchInventoryState(client, userId),
+    gameplayLock: toGameplayLockDto(nextLock),
+    appliedMinutes,
+  };
+}
+
 export const inventoryRoutes: FastifyPluginAsync = async (app) => {
   app.get('/inventory/me', { preHandler: [app.authenticate] }, async (req) => {
     return fetchInventoryState(app.pg, req.user.id);
@@ -720,6 +894,24 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
       const state = await purchaseInventoryItem(client, req.user.id, params.data.itemId);
       await client.query('commit');
       return state;
+    } catch (err) {
+      await client.query('rollback').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post('/inventory/recovery/use', { preHandler: [app.authenticate] }, async (req) => {
+    const body = useRecoveryKitSchema.safeParse(req.body);
+    if (!body.success) throw new AppError('bad_request', 'invalid recovery kit payload', 400);
+
+    const client = await app.pg.connect();
+    try {
+      await client.query('begin');
+      const result = await useRecoveryKit(client, req.user.id, body.data);
+      await client.query('commit');
+      return result;
     } catch (err) {
       await client.query('rollback').catch(() => undefined);
       throw err;

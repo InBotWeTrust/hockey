@@ -113,15 +113,20 @@ function EquipmentPanel({
     ['skatesItemId', 'Коньки', 'коньки', 'Базовые коньки', 'skates'],
     ['nutritionItemId', 'Питание', 'питание', 'Базовое питание', 'nutrition'],
   ] as const;
+  const recoveryItems = inventory?.items.recovery ?? [];
+  const recoveryCount = recoveryItems.reduce((sum, item) => sum + item.chargesAvailable, 0);
+  const recoveryArtwork =
+    recoveryItems.find((item) => item.chargesAvailable > 0)?.imageUrl ??
+    '/inventory/recovery-30.webp';
   return (
-    <section className="profile-equipment-section" aria-label="Активная экипировка">
+    <section className="profile-equipment-section" aria-label="Инвентарь">
       <button
         type="button"
         className="section-label profile-section-label"
         aria-label="Открыть инвентарь"
         onClick={onOpen}
       >
-        Активная экипировка
+        Инвентарь
       </button>
       <div className="profile-equipment-panel glass">
         <span className="profile-loadout" aria-label="Выбранная экипировка">
@@ -153,6 +158,25 @@ function EquipmentPanel({
               </button>
             );
           })}
+          <button
+            type="button"
+            className={`profile-loadout-slot${recoveryCount === 0 ? ' profile-loadout-slot--empty' : ''}`}
+            aria-label={`Восстановление: ${recoveryCount} наборов`}
+            onClick={onOpen}
+          >
+            <span className="profile-loadout-slot__image">
+              <img src={recoveryArtwork} alt="Наборы для восстановления" />
+              <strong>
+                <FittedOneLineText maxFontSize={9} minFontSize={5}>
+                  {formatProfileNumber(recoveryCount)}
+                </FittedOneLineText>
+              </strong>
+            </span>
+            <span className="profile-loadout-slot__kind">Восстановление</span>
+            <span className="profile-loadout-slot__title">
+              {recoveryCount > 0 ? 'Наборы' : 'Нет в запасе'}
+            </span>
+          </button>
         </span>
       </div>
     </section>

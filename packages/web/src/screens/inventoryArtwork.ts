@@ -56,5 +56,6 @@ export function artworkForInventoryItem(item: InventoryArtworkItem): string {
   if (item.imageUrl && !LEGACY_GROUP_ARTWORK.has(item.imageUrl)) {
     return versionInventoryArtwork(item.imageUrl);
   }
+  if (item.kind === 'recovery') return versionInventoryArtwork('/inventory/recovery-30.webp');
   return FALLBACK_ARTWORK[item.kind][tierFor(item)];
 }

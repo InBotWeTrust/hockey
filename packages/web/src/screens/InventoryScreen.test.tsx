@@ -8,7 +8,7 @@ import { InventoryScreen } from './InventoryScreen.js';
 const emptyInventory: InventoryState = {
   balances: { tokens: 1000, stars: 2, experience: 77 },
   equipped: { stickItemId: null, skatesItemId: null, nutritionItemId: null },
-  items: { stick: [], skates: [], nutrition: [] },
+  items: { stick: [], skates: [], nutrition: [], recovery: [] },
 };
 
 const inventoryWithItems: InventoryState = {
@@ -68,6 +68,56 @@ const inventoryWithItems: InventoryState = {
         duelPeriodCost: 1,
         chargesAvailable: 300_000,
         chargesReserved: 1,
+      },
+    ],
+    recovery: [
+      {
+        id: 'recovery-15',
+        kind: 'recovery',
+        title: 'Малый набор для восстановления',
+        description: 'Сокращает текущее восстановление на 15 минут.',
+        imageUrl: '/inventory/recovery-15.webp',
+        currencyPrice: 600,
+        chargesPerPurchase: 1,
+        resourceUnit: 'period',
+        rarity: 'common',
+        powerScore: 0,
+        duelPeriodCost: 0,
+        effectRecoveryMinutes: 15,
+        chargesAvailable: 0,
+        chargesReserved: 0,
+      },
+      {
+        id: 'recovery-30',
+        kind: 'recovery',
+        title: 'Набор для восстановления',
+        description: 'Сокращает текущее восстановление на 30 минут.',
+        imageUrl: '/inventory/recovery-30.webp',
+        currencyPrice: 1000,
+        chargesPerPurchase: 1,
+        resourceUnit: 'period',
+        rarity: 'rare',
+        powerScore: 0,
+        duelPeriodCost: 0,
+        effectRecoveryMinutes: 30,
+        chargesAvailable: 0,
+        chargesReserved: 0,
+      },
+      {
+        id: 'recovery-60',
+        kind: 'recovery',
+        title: 'Большой набор для восстановления',
+        description: 'Полностью снимает часовое восстановление.',
+        imageUrl: '/inventory/recovery-60.webp',
+        currencyPrice: 1800,
+        chargesPerPurchase: 1,
+        resourceUnit: 'period',
+        rarity: 'legendary',
+        powerScore: 0,
+        duelPeriodCost: 0,
+        effectRecoveryMinutes: 60,
+        chargesAvailable: 0,
+        chargesReserved: 0,
       },
     ],
   },
@@ -257,6 +307,22 @@ describe('InventoryScreen', () => {
     expect(screen.getAllByRole('button', { name: /Подробнее о Бронзовая клюшка/i })).toHaveLength(
       1,
     );
+  });
+
+  it('shows the three recovery kits with their agreed durations and prices', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory();
+
+    const recovery = await screen.findByRole('region', { name: 'Восстановление' });
+    expect(within(recovery).getByText('Малый набор для восстановления')).toBeInTheDocument();
+    expect(within(recovery).getByText('Набор для восстановления')).toBeInTheDocument();
+    expect(within(recovery).getByText('Большой набор для восстановления')).toBeInTheDocument();
+    expect(within(recovery).getByText('Снимает 15 минут')).toBeInTheDocument();
+    expect(within(recovery).getByText('Снимает 30 минут')).toBeInTheDocument();
+    expect(within(recovery).getByText('Снимает 1 час')).toBeInTheDocument();
+    expect(within(recovery).getByLabelText('600 монет')).toBeInTheDocument();
+    expect(within(recovery).getAllByLabelText(/1.000 монет/)).not.toHaveLength(0);
+    expect(within(recovery).getAllByLabelText(/1.800 монет/)).not.toHaveLength(0);
   });
 
   it('reserves two product description lines in shop cards', async () => {

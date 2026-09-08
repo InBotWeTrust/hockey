@@ -231,9 +231,6 @@ export function evaluateTournamentLifecycle(
     if (snapshot.playoffStartsAt === null) {
       return decision(snapshot, 'playoff_schedule_missing', null, 'playoff_schedule_missing');
     }
-    if (now < snapshot.playoffStartsAt) {
-      return decision(snapshot, 'await_playoff_time', snapshot.playoffStartsAt);
-    }
     return decision(snapshot, 'start_playoff');
   }
 

@@ -1946,6 +1946,73 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(history.json().nextCursor).toBeNull();
   });
 
+  it('uses one recovery kit for the exact latest gameplay window and is idempotent', async () => {
+    const recoveryItemId = '10900000-0000-4000-8000-000000000030';
+    const instanceId = await createInventoryInstance(userA, recoveryItemId, 2);
+    const training = await pool.query<{ id: string }>(
+      `insert into training_session
+         (user_id, day_date, selected_period, state, game_core_version, training_seed)
+       values ($1, (now() at time zone 'Europe/Moscow')::date, 1, 'active', 1, 'recovery-test')
+       returning id`,
+      [userA],
+    );
+    const shot = await pool.query<{ id: string; created_at: Date }>(
+      `insert into shot_session
+         (user_id, mode, training_session_id, period_number, shot_index, seed,
+          input_payload, server_result, game_core_version)
+       values ($1, 'training', $2, 1, 1, 'recovery-shot', '{}'::jsonb, 'save', 1)
+       returning id, created_at`,
+      [userA, training.rows[0]!.id],
+    );
+    const idempotencyKey = '10900000-0000-4000-8000-000000000001';
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/inventory/recovery/use',
+      headers: auth(tokenA),
+      payload: {
+        itemId: recoveryItemId,
+        action: 'start_daily_period',
+        buyIfNeeded: false,
+        idempotencyKey,
+      },
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(first.json()).toMatchObject({
+      appliedMinutes: 30,
+      gameplayLock: { blocked: true, reason: 'recent_gameplay' },
+    });
+    expect(Date.parse(first.json().gameplayLock.ends_at)).toBe(
+      shot.rows[0]!.created_at.getTime() + 30 * 60_000,
+    );
+
+    const replay = await app.inject({
+      method: 'POST',
+      url: '/inventory/recovery/use',
+      headers: auth(tokenA),
+      payload: {
+        itemId: recoveryItemId,
+        action: 'start_daily_period',
+        buyIfNeeded: false,
+        idempotencyKey,
+      },
+    });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json().appliedMinutes).toBe(30);
+
+    const instance = await pool.query<{ charges_available: number }>(
+      `select charges_available from user_inventory_instance where id = $1`,
+      [instanceId],
+    );
+    expect(instance.rows[0]?.charges_available).toBe(1);
+    const applications = await pool.query<{ count: number }>(
+      `select count(*)::int as count from recovery_kit_application where user_id = $1`,
+      [userA],
+    );
+    expect(applications.rows[0]?.count).toBe(1);
+  });
+
   it('paginates and filters inventory transaction history', async () => {
     await pool.query(
       `insert into currency_ledger

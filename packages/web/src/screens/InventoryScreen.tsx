@@ -22,7 +22,7 @@ import {
   fetchMyInventory,
   fetchInventoryTransactions,
   purchaseInventoryItem,
-  type InventoryEquipmentKind,
+  type InventoryKind,
   type InventoryItem,
   type InventoryState,
   type InventoryTransaction,
@@ -36,7 +36,7 @@ import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
 type ShopTab = 'goods' | 'bank' | 'history';
 type HistoryFilter = InventoryTransactionFilter;
 
-const INVENTORY_KINDS: InventoryEquipmentKind[] = ['stick', 'skates', 'nutrition'];
+const INVENTORY_KINDS: InventoryKind[] = ['stick', 'skates', 'nutrition', 'recovery'];
 const SHOP_TABS: Array<{ id: ShopTab; label: string }> = [
   { id: 'goods', label: 'Товары' },
   { id: 'bank', label: 'Банк' },
@@ -73,10 +73,11 @@ const BANK_PACKAGES = [
   },
 ] as const;
 
-const KIND_META: Record<InventoryEquipmentKind, { title: string }> = {
+const KIND_META: Record<InventoryKind, { title: string }> = {
   stick: { title: 'Клюшки' },
   skates: { title: 'Коньки' },
   nutrition: { title: 'Питание' },
+  recovery: { title: 'Восстановление' },
 };
 
 function numberText(value: number): string {
@@ -92,11 +93,16 @@ function rubText(value: number): string {
 }
 
 function purchaseBundleLabel(item: InventoryItem): string {
+  if (item.kind === 'recovery') {
+    const minutes = item.effectRecoveryMinutes ?? 0;
+    return minutes === 60 ? 'Снимает 1 час' : `Снимает ${minutes} минут`;
+  }
   const count = item.chargesPerPurchase || item.chargesAvailable || 5;
   return formatInventoryResourceAmount(item.kind, count, item.resourceUnit);
 }
 
 function addedInventoryTitle(item: InventoryItem): string {
+  if (item.kind === 'recovery') return `${item.title} добавлен`;
   if (item.kind === 'skates') return `${item.title} добавлены`;
   if (item.kind === 'nutrition') return `${item.title} добавлено`;
   return `${item.title} добавлена`;
