@@ -97,7 +97,7 @@ import {
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 import { ordinaryDuelLockCopy, type GameplayLockDTO } from '../api/gameplayLock.js';
 import { useGameplayLockRefresh } from '../hooks/useGameplayLockRefresh.js';
-import { gameplayLockCopy } from '../api/gameplayLock.js';
+import { dailyGameplayLockCopy, gameplayLockCopy } from '../api/gameplayLock.js';
 import {
   fetchMyInventory,
   patchEquipment,
@@ -1114,7 +1114,7 @@ function GameHub({
                 timerLabel: trainingCooldownEndsAt > 0 ? 'До игры' : 'Статус',
                 timer: trainingCooldownEndsAt > 0 ? formatHms(trainingCooldownRemaining) : 'ИГРА',
                 activePeriod: null,
-                ariaLabel: `${gameplayLockCopy(data.gameplay_lock!, now)}${trainingCooldownEndsAt > 0 ? `. До игры ${formatHms(trainingCooldownRemaining)}` : ''}`,
+                ariaLabel: `${dailyGameplayLockCopy(data.gameplay_lock!, now)}${trainingCooldownEndsAt > 0 ? `. До игры ${formatHms(trainingCooldownRemaining)}` : ''}`,
               }
             : {
                 timerLabel: 'Время',
@@ -1266,7 +1266,7 @@ function GameHub({
       data.state === 'closed'
         ? 'День завершён, следующий старт после обновления.'
         : isDailyLockedByTraining
-          ? gameplayLockCopy(data.gameplay_lock!, now)
+          ? dailyGameplayLockCopy(data.gameplay_lock!, now)
           : 'Главная игра дня на три периода.',
     meta:
       data.state === 'closed'
@@ -8966,7 +8966,7 @@ function DailyPlayView({
           needsReconcile
             ? 'Проверяем результат'
             : isDailyLockedByTraining || isActiveDailyLocked
-              ? gameplayLockCopy(data.gameplay_lock!, now)
+              ? dailyGameplayLockCopy(data.gameplay_lock!, now)
               : undefined
         }
         shotButtonLabel={

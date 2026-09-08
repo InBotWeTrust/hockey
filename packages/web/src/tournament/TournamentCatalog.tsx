@@ -152,7 +152,24 @@ export function fixtureCanOpen(fixture: TournamentFixture, now = Date.now()): bo
 }
 
 function fixtureTimeLabel(fixture: TournamentFixture, timezone: string, finished: boolean): string {
-  if (!finished) return 'Время игры появится после предыдущего результата';
+  if (!finished) {
+    const blockStartsAt = fixture.gameDay?.startsAt;
+    if (blockStartsAt) {
+      const date = new Date(blockStartsAt);
+      if (Number.isFinite(date.getTime())) {
+        try {
+          return `Начало игрового блока: ${new Intl.DateTimeFormat('ru-RU', {
+            timeZone: timezone,
+            hour: '2-digit',
+            minute: '2-digit',
+          }).format(date)}`;
+        } catch {
+          // Fall through to the neutral sequential-game copy.
+        }
+      }
+    }
+    return 'Время игры появится после предыдущего результата';
+  }
   const displayValue = fixture.actualStartsAt ?? fixture.scheduledStartsAt;
   if (displayValue === null || displayValue === undefined) return 'Время ещё не назначено';
   const startsAt = new Date(displayValue);
@@ -951,7 +968,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                         </span>
                       </div>
                     </div>
-                    {(finished || mine) && (
+                    {(finished || (mine && playable)) && (
                       <div className="tournament-fixture-card__footer">
                         <div>
                           {finished && (

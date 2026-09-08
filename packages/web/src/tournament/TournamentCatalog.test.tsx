@@ -1242,6 +1242,12 @@ describe('TournamentCatalog', () => {
       },
       {
         id: 'future-playoff',
+        gameDay: {
+          id: 'playoff-day-1',
+          dayNumber: 1,
+          localDate: '2030-09-01',
+          startsAt: '2030-09-01T15:00:00.000Z',
+        },
         fixtureNumber: 2,
         stage: 'playoff',
         roundNumber: 1,
@@ -1283,10 +1289,9 @@ describe('TournamentCatalog', () => {
     expect(screen.getByText('Первый — Второй')).not.toHaveTextContent('(1)');
     expect(screen.getByText('(1) Первый — (4) Третий')).toBeInTheDocument();
     expect(screen.getByText(/1 сентября.*10:07/)).toBeInTheDocument();
-    expect(
-      screen.getByText('Время игры появится после предыдущего результата'),
-    ).toBeInTheDocument();
-    expect(screen.queryByText('15:00')).not.toBeInTheDocument();
+    expect(screen.getByText('Начало игрового блока: 18:00')).toBeInTheDocument();
+    const futureCard = screen.getByText('(1) Первый — (4) Третий').closest('article');
+    expect(futureCard?.querySelector('.tournament-fixture-card__footer')).toBeNull();
   });
 
   it('shows playoff rounds, seeds, avatars and the path to the final', async () => {

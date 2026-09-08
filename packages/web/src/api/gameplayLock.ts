@@ -21,6 +21,12 @@ export function gameplayLockCopy(lock: GameplayLockDTO, now = Date.now()): strin
     : 'До завершения турнирного блока';
 }
 
+export function dailyGameplayLockCopy(lock: GameplayLockDTO, now = Date.now()): string {
+  return lock.reason === 'recent_gameplay'
+    ? 'Восстановление после тренировки'
+    : gameplayLockCopy(lock, now);
+}
+
 export function ordinaryDuelLockCopy(lock: GameplayLockDTO): string {
   if (lock.reason === 'active_daily')
     return 'Завершите ежедневную игру, чтобы играть в обычные дуэли.';

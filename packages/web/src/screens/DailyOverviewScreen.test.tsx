@@ -152,7 +152,7 @@ describe('DailyOverviewScreen', () => {
     });
     renderScreen();
     const lock = await screen.findByRole('status', { name: 'Блокировка игры' });
-    expect(lock).toHaveTextContent('Восстановление после игры');
+    expect(lock).toHaveTextContent('Восстановление после тренировки');
     expect(lock).toHaveTextContent('01:00:00');
     expect(screen.getByLabelText(/^До конца дня:/)).toHaveTextContent('10:00');
   });

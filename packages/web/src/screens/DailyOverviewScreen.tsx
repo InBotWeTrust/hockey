@@ -3,7 +3,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { ArrowLeft, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AccessibleModal } from '../components/AccessibleModal.js';
-import { gameplayLockCopy } from '../api/gameplayLock.js';
+import { dailyGameplayLockCopy } from '../api/gameplayLock.js';
 import { useGameplayLockRefresh } from '../hooks/useGameplayLockRefresh.js';
 import {
   fetchDailyHistory,
@@ -332,7 +332,7 @@ export function DailyOverviewScreen(): JSX.Element {
         <section aria-label="Сегодняшняя игра" style={{ display: 'grid', gap: 8 }}>
           {today?.gameplay_lock?.blocked && (
             <p role="status" aria-label="Блокировка игры">
-              {gameplayLockCopy(today.gameplay_lock, syncedNow)}
+              {dailyGameplayLockCopy(today.gameplay_lock, syncedNow)}
               {today.gameplay_lock.ends_at &&
                 ` · ${formatDurationMs(timestampMs(today.gameplay_lock.ends_at) - syncedNow)}`}
             </p>
