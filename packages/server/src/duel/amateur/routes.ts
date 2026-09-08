@@ -4092,7 +4092,6 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       })
       .parse(req.query);
     return withTransaction(app, async (client) => {
-      await assertFullAmateurAccess(client, req.user.id);
       const settings = await getGameSettings(client);
       const { rows } = await client.query<{
         id: string;

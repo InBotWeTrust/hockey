@@ -1501,14 +1501,17 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     ]);
   });
 
-  it('does not expose duel opponents to beginners or include beginners', async () => {
+  it('lets beginners browse eligible duel opponents without listing other beginners', async () => {
     await pool.query(`update users set level = 1, lifetime_goals_total = 0 where id = $1`, [userA]);
-    const lockedSearch = await app.inject({
+    const beginnerSearch = await app.inject({
       method: 'GET',
       url: '/duel/amateur/opponents',
       headers: auth(tokenA),
     });
-    expect(lockedSearch.statusCode).toBe(403);
+    expect(beginnerSearch.statusCode).toBe(200);
+    expect(beginnerSearch.json().users).toEqual([
+      expect.objectContaining({ userId: userB, displayName: 'Player B' }),
+    ]);
 
     await pool.query(`update users set level = 2 where id = $1`, [userA]);
     await pool.query(`update users set level = 1, lifetime_goals_total = 0 where id = $1`, [userB]);
