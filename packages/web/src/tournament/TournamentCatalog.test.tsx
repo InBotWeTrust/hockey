@@ -153,7 +153,8 @@ describe('TournamentCatalog', () => {
       </MemoryRouter>,
     );
 
-    const empty = await screen.findByText('Турниров пока нет.');
+    expect(await screen.findByRole('heading', { name: 'Действующие (0)' })).toBeInTheDocument();
+    const empty = screen.getByText('Действующих турниров пока нет');
     expect(empty).toHaveClass('tournament-catalog__empty');
   });
 
@@ -566,7 +567,7 @@ describe('TournamentCatalog', () => {
     );
   });
 
-  it('groups tournaments by lifecycle and shows artwork with player-specific statuses', async () => {
+  it('filters tournaments by lifecycle with challenge-style tabs and counted section headings', async () => {
     vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
       tournaments: [
         {
@@ -637,25 +638,37 @@ describe('TournamentCatalog', () => {
       </MemoryRouter>,
     );
 
-    const sectionHeadings = [
-      await screen.findByRole('heading', { name: 'Активные турниры' }),
-      screen.getByRole('heading', { name: 'Предстоящие' }),
-      screen.getByRole('heading', { name: 'Завершённые' }),
-    ];
-    for (const heading of sectionHeadings) {
-      expect(heading.className).toBe('section-label sections-group__title');
-    }
+    expect(await screen.findByRole('tab', { name: 'Действующие' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByRole('tab', { name: 'Будущие' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Пройденные' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Действующие (1)' })).toHaveClass(
+      'section-label',
+      'tournament-catalog__section-title',
+    );
     expect(screen.getByText('Вы участвуете')).toBeInTheDocument();
-    expect(screen.getByText('Заявка подана')).toBeInTheDocument();
-    expect(screen.getByText('Ваше место: 2')).toBeInTheDocument();
+    expect(screen.queryByText('Заявка подана')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ваше место: 2')).not.toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Активный кубок' })).toHaveAttribute(
       'src',
       '/media/active.webp',
     );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Будущие' }));
+    expect(screen.getByRole('heading', { name: 'Будущие (1)' })).toBeInTheDocument();
+    expect(screen.getByText('Заявка подана')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Будущий кубок' })).toHaveAttribute(
       'src',
       '/modes/tournaments.webp',
     );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Пройденные' }));
+    expect(screen.getByRole('heading', { name: 'Пройденные (1)' })).toBeInTheDocument();
+    expect(screen.getByText('Ваше место: 2')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Действующие' }));
     fireEvent.error(screen.getByRole('img', { name: 'Активный кубок' }));
     expect(screen.getByRole('img', { name: 'Активный кубок' })).toHaveAttribute(
       'src',

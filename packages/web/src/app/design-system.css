@@ -7413,12 +7413,18 @@ button.daily-calendar__day:active {
 }
 
 .tournament-catalog__empty {
-  padding: 8px 2px;
+  margin: 12px 4px 0;
+  padding: 0;
   color: rgba(244, 250, 255, 0.94);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 750;
   line-height: 1.45;
   text-shadow: 0 2px 9px rgba(3, 12, 24, 0.78);
+}
+
+.tournament-catalog__section-title {
+  margin: 2px 0 -2px;
+  padding-inline: 0;
 }
 
 .tournament-wizard input[type='number'],
