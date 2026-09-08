@@ -433,6 +433,159 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     });
   }
 
+  async function createActiveMatch(startPeriod = false): Promise<string> {
+    const matchId = String((await challenge(await createTemplate())).json().match.id);
+    const accepted = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+    expect(accepted.statusCode).toBe(200);
+    for (const token of [tokenA, tokenB]) {
+      const ready = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${matchId}/ready`,
+        headers: auth(token),
+        payload: { loadout: {} },
+      });
+      expect(ready.statusCode).toBe(200);
+    }
+    if (startPeriod) {
+      const started = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${matchId}/period/start`,
+        headers: auth(tokenA),
+      });
+      expect(started.statusCode).toBe(200);
+    }
+    return matchId;
+  }
+
+  async function snapshotRestrictedAmateurState(): Promise<Record<string, unknown>> {
+    const queries = {
+      users: pool.query(
+        `select id, level, xp, experience, lifetime_shots_total, lifetime_goals_total
+           from users
+          where id = any($1::uuid[])
+          order by id`,
+        [[userA, userB]],
+      ),
+      matches: pool.query(
+        `select to_jsonb(duel_match) - 'created_at' - 'updated_at' as row
+           from amateur_duel_match duel_match
+          order by duel_match.id`,
+      ),
+      participants: pool.query(
+        `select to_jsonb(participant) - 'created_at' - 'updated_at' as row
+           from amateur_duel_participant participant
+          order by participant.match_id, participant.user_id`,
+      ),
+      periodLogs: pool.query(
+        `select to_jsonb(period_log) - 'created_at' as row
+           from amateur_duel_period_log period_log
+          order by period_log.id`,
+      ),
+      tickets: pool.query(
+        `select to_jsonb(ticket) - 'created_at' - 'updated_at' as row
+           from amateur_duel_matchmaking_ticket ticket
+          order by ticket.id`,
+      ),
+      shots: pool.query(
+        `select to_jsonb(shot) - 'created_at' as row
+           from shot_session shot
+          where shot.mode = 'amateur_duel'
+          order by shot.id`,
+      ),
+      inventoryInstances: pool.query(
+        `select to_jsonb(instance) - 'created_at' - 'updated_at' as row
+           from user_inventory_instance instance
+          where instance.user_id = $1
+          order by instance.id`,
+        [userA],
+      ),
+      legacyInventory: pool.query(
+        `select to_jsonb(inventory) - 'created_at' - 'updated_at' as row
+           from user_inventory_item inventory
+          where inventory.user_id = $1
+          order by inventory.inventory_item_id`,
+        [userA],
+      ),
+      currencyAccounts: pool.query(
+        `select to_jsonb(account) - 'created_at' - 'updated_at' as row
+           from user_currency_account account
+          where account.user_id = any($1::uuid[])
+          order by account.user_id`,
+        [[userA, userB]],
+      ),
+      currencyLedger: pool.query(
+        `select to_jsonb(ledger) - 'created_at' as row
+           from currency_ledger ledger
+          where ledger.user_id = any($1::uuid[])
+          order by ledger.id`,
+        [[userA, userB]],
+      ),
+      ratings: pool.query(
+        `select to_jsonb(rating) - 'updated_at' as row
+           from amateur_duel_rating rating
+          where rating.user_id = any($1::uuid[])
+          order by rating.season_key, rating.user_id`,
+        [[userA, userB]],
+      ),
+      ratingMatches: pool.query(
+        `select to_jsonb(rating_match) - 'created_at' as row
+           from amateur_duel_rating_match rating_match
+          where rating_match.user_id = any($1::uuid[])
+          order by rating_match.match_id, rating_match.user_id`,
+        [[userA, userB]],
+      ),
+      achievements: pool.query(
+        `select to_jsonb(user_achievement) as row
+           from user_achievements user_achievement
+          where user_achievement.user_id = any($1::uuid[])
+          order by user_achievement.user_id, user_achievement.achievement_id`,
+        [[userA, userB]],
+      ),
+      achievementProgress: pool.query(
+        `select to_jsonb(progress) - 'updated_at' as row
+           from achievement_progress progress
+          where progress.user_id = any($1::uuid[])
+          order by progress.user_id, progress.key`,
+        [[userA, userB]],
+      ),
+      rewardTokens: pool.query(
+        `select to_jsonb(account) - 'created_at' - 'updated_at' as row
+           from user_reward_token_account account
+          where account.user_id = any($1::uuid[])
+          order by account.user_id`,
+        [[userA, userB]],
+      ),
+      achievementTokenLedger: pool.query(
+        `select to_jsonb(ledger) - 'created_at' as row
+           from achievement_token_ledger ledger
+          where ledger.user_id = any($1::uuid[])
+          order by ledger.id`,
+        [[userA, userB]],
+      ),
+      events: pool.query(
+        `select to_jsonb(event) - 'created_at' as row
+           from event_log event
+          where event.user_id = any($1::uuid[])
+          order by event.id`,
+        [[userA, userB]],
+      ),
+      messages: pool.query(
+        `select to_jsonb(chat_message) - 'created_at' - 'updated_at' as row
+           from messages chat_message
+          order by chat_message.id`,
+      ),
+    };
+    return Object.fromEntries(
+      await Promise.all(
+        Object.entries(queries).map(async ([key, query]) => [key, (await query).rows] as const),
+      ),
+    );
+  }
+
   async function scheduleTournamentLock(userId = userA, startsInMs = 30 * 60_000) {
     const startsAt = new Date(Date.now() + startsInMs);
     const tournament = await pool.query<{ id: string }>(
@@ -1500,6 +1653,201 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       expect.objectContaining({ balance: 100, reserved_balance: 0 }),
     ]);
   });
+
+  it.each([
+    {
+      label: 'decline',
+      setup: async () => {
+        const templateId = await createTemplate();
+        const created = await app.inject({
+          method: 'POST',
+          url: '/duel/amateur/challenge',
+          headers: auth(tokenB),
+          payload: { template_id: templateId, opponent_user_id: userA },
+        });
+        expect(created.statusCode).toBe(200);
+        return {
+          method: 'POST' as const,
+          url: `/duel/amateur/matches/${String(created.json().match.id)}/decline`,
+        };
+      },
+    },
+    {
+      label: 'cancel',
+      setup: async () => {
+        const matchId = String((await challenge(await createTemplate())).json().match.id);
+        return { method: 'POST' as const, url: `/duel/amateur/matches/${matchId}/cancel` };
+      },
+    },
+    {
+      label: 'ready',
+      setup: async () => {
+        const matchId = String((await challenge(await createTemplate())).json().match.id);
+        const accepted = await app.inject({
+          method: 'POST',
+          url: `/duel/amateur/matches/${matchId}/accept`,
+          headers: auth(tokenB),
+        });
+        expect(accepted.statusCode).toBe(200);
+        return {
+          method: 'POST' as const,
+          url: `/duel/amateur/matches/${matchId}/ready`,
+          payload: { loadout: {} },
+        };
+      },
+    },
+    {
+      label: 'tournament loadout confirmation',
+      setup: async () => {
+        const matchId = await createActiveMatch();
+        await pool.query(
+          `update game_settings set value = 'true'::jsonb where key = 'tournaments.enabled'`,
+        );
+        await pool.query(
+          `update amateur_duel_match
+              set source = 'tournament',
+                  ranked = false,
+                  rules_snapshot = jsonb_set(
+                    rules_snapshot,
+                    '{tournamentLoadoutLifecycleVersion}',
+                    '1'::jsonb
+                  )
+            where id = $1`,
+          [matchId],
+        );
+        await attachTournamentHierarchy(matchId, {
+          slug: 'beginner-retained-loadout',
+          tournamentStatus: 'regular',
+          fixtureStatus: 'active',
+          segmentStatus: 'active',
+        });
+        return {
+          method: 'POST' as const,
+          url: `/duel/amateur/matches/${matchId}/tournament-loadout`,
+          payload: { loadout: {} },
+        };
+      },
+    },
+    {
+      label: 'matchmaking leave',
+      setup: async () => {
+        const templateId = await createTemplate();
+        const joined = await app.inject({
+          method: 'POST',
+          url: '/duel/amateur/matchmaking/join',
+          headers: auth(tokenA),
+          payload: { template_id: templateId },
+        });
+        expect(joined.statusCode).toBe(200);
+        return { method: 'POST' as const, url: '/duel/amateur/matchmaking/leave', payload: {} };
+      },
+    },
+    {
+      label: 'matchmaking rejoin before retained-ticket cancellation',
+      setup: async () => {
+        const templateId = await createTemplate({
+          periodDurationMs: 120_000,
+          readyDurationMs: 60_000,
+        });
+        const joined = await app.inject({
+          method: 'POST',
+          url: '/duel/amateur/matchmaking/join',
+          headers: auth(tokenA),
+          payload: { template_id: templateId },
+        });
+        expect(joined.statusCode).toBe(200);
+        await scheduleTournamentLock(userA, 3_600_000 + 150_000);
+        return {
+          method: 'POST' as const,
+          url: '/duel/amateur/matchmaking/join',
+          payload: { template_id: templateId },
+        };
+      },
+    },
+    {
+      label: 'active loadout update',
+      setup: async () => {
+        const stickId = await createInventoryItem('stick', 'Retained beginner stick');
+        await pool.query(
+          `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+           values ($1, $2, 2)`,
+          [userA, stickId],
+        );
+        const matchId = await createActiveMatch(true);
+        return {
+          method: 'PATCH' as const,
+          url: `/duel/amateur/matches/${matchId}/loadout`,
+          payload: { loadout: { stick: stickId } },
+        };
+      },
+    },
+    {
+      label: 'period start',
+      setup: async () => {
+        const matchId = await createActiveMatch();
+        return {
+          method: 'POST' as const,
+          url: `/duel/amateur/matches/${matchId}/period/start`,
+          payload: {},
+        };
+      },
+    },
+    {
+      label: 'shot',
+      setup: async () => {
+        const matchId = await createActiveMatch(true);
+        return {
+          method: 'POST' as const,
+          url: `/duel/amateur/matches/${matchId}/shot`,
+          payload: { shot_index: 1, input: { tapTime: 1000 }, claimed_result: 'goal' },
+        };
+      },
+    },
+    {
+      label: 'settlement',
+      setup: async () => {
+        const matchId = await createActiveMatch();
+        await pool.query(
+          `update amateur_duel_match
+              set starts_at = now() - interval '2 minutes',
+                  ends_at = now() - interval '1 minute'
+            where id = $1`,
+          [matchId],
+        );
+        return { method: 'POST' as const, url: `/duel/amateur/matches/${matchId}/settle` };
+      },
+    },
+  ])(
+    'rejects retained Amateur $label mutations for a demoted beginner without side effects',
+    async ({ setup }) => {
+      const request = await setup();
+      await pool.query(`update users set level = 1, lifetime_goals_total = 116 where id = $1`, [
+        userA,
+      ]);
+      const before = await snapshotRestrictedAmateurState();
+      const publish = vi.spyOn(app.realtime, 'publish');
+
+      try {
+        const response = await app.inject({
+          method: request.method,
+          url: request.url,
+          headers: auth(tokenA),
+          ...(request.payload === undefined ? {} : { payload: request.payload }),
+        });
+
+        expect(response.statusCode).toBe(403);
+        expect(response.json().error).toEqual({
+          code: 'amateur_level_required',
+          message: 'amateur league is locked',
+          details: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+        });
+        expect(await snapshotRestrictedAmateurState()).toEqual(before);
+        expect(publish).not.toHaveBeenCalled();
+      } finally {
+        publish.mockRestore();
+      }
+    },
+  );
 
   it('lets beginners browse eligible duel opponents without listing other beginners', async () => {
     await pool.query(`update users set level = 1, lifetime_goals_total = 0 where id = $1`, [userA]);
