@@ -401,7 +401,7 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
 
     const tournament = await app.pg.query<{ id: string }>(
       `insert into tournament (slug, title, status, regular_source, starts_at, created_by)
-       values ('profile-trophy-summary', 'Profile trophy summary', 'completed', 'head_to_head', '2026-08-01T10:00:00Z', $1)
+       values ('profile-trophy-summary', 'Profile trophy summary', 'playoff', 'head_to_head', '2026-08-01T10:00:00Z', $1)
        returning id`,
       [champion.user.id],
     );
@@ -454,6 +454,17 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
         bronzeWinnerParticipant,
       ],
     );
+    await app.pg.query(
+      `update tournament set status = 'completed', completed_at = '2026-08-08T22:00:00Z'
+        where id = $1`,
+      [tournamentId],
+    );
+    const savedPlacements = await app.pg.query<{ place: number }>(
+      `select place from tournament_placement_history
+        where source_tournament_id = $1 and stage = 'playoff' order by place`,
+      [tournamentId],
+    );
+    expect(savedPlacements.rows.map((row) => Number(row.place))).toEqual([1, 2, 3, 4]);
 
     const fetchSummary = async (accessToken: string) => {
       const response = await app.inject({
@@ -491,6 +502,41 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
       trophyDetails: {
         tournamentChampionships: [
           {
+            title: 'Profile trophy summary',
+            startsAt: '2026-08-01T10:00:00.000Z',
+            endsAt: '2026-08-08T22:00:00.000Z',
+            result: 'Победа в финале',
+          },
+        ],
+      },
+    });
+
+    await app.pg.query(`delete from tournament where id = $1`, [tournamentId]);
+
+    await expect(fetchSummary(champion.accessToken)).resolves.toMatchObject({
+      tournamentChampionships: 1,
+      tournamentPodiums: 0,
+    });
+    await expect(fetchSummary(runnerUp.accessToken)).resolves.toMatchObject({
+      tournamentChampionships: 0,
+      tournamentPodiums: 1,
+    });
+    await expect(fetchSummary(bronzeWinner.accessToken)).resolves.toMatchObject({
+      tournamentChampionships: 0,
+      tournamentPodiums: 1,
+    });
+
+    const archivedChampionProfile = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { authorization: `Bearer ${champion.accessToken}` },
+    });
+    expect(archivedChampionProfile.statusCode).toBe(200);
+    expect(archivedChampionProfile.json()).toMatchObject({
+      trophyDetails: {
+        tournamentChampionships: [
+          {
+            id: `${tournamentId}:Победа в финале`,
             title: 'Profile trophy summary',
             startsAt: '2026-08-01T10:00:00.000Z',
             endsAt: '2026-08-08T22:00:00.000Z',

@@ -8,7 +8,10 @@ import {
   type UserPickerItem,
   type UserPublicProfileDTO,
 } from '../api.js';
-import { fetchAmateurMatches } from '../../api/amateurDuel.js';
+import {
+  checkAmateurDuelChallengeAvailability,
+  fetchAmateurMatches,
+} from '../../api/amateurDuel.js';
 import { chatKeys, userKeys } from '../../lib/queryKeys.js';
 import { UserAvatar } from './UserAvatar.js';
 import type { ProfileAchievement } from '../../screens/profileTypes.js';
@@ -23,6 +26,7 @@ import { useAuthStore } from '../../auth/authStore.js';
 import { DuelChallengeModal, hasOpenDuelWithUser } from './DuelChallengeModal.js';
 import { Sheet } from '../../components/Sheet.js';
 import { TrophyHistoryModal, type TrophySectionKey } from '../../screens/ProfileScreen.js';
+import { AppToast } from '../../components/AppToast.js';
 
 interface UserProfileSheetProps {
   sender: UserPickerItem | null;
@@ -219,6 +223,15 @@ function UserProfileSheetContent({
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
   const [selectedTrophy, setSelectedTrophy] = useState<TrophySectionKey | null>(null);
   const [duelPickerOpen, setDuelPickerOpen] = useState(false);
+  const [duelToast, setDuelToast] = useState<string | null>(null);
+
+  const challengeAvailability = useMutation({
+    mutationFn: () => checkAmateurDuelChallengeAvailability(senderId),
+    onSuccess: () => setDuelPickerOpen(true),
+    onError: (error) => {
+      setDuelToast(error instanceof Error ? error.message : 'Не удалось проверить доступность дуэли');
+    },
+  });
 
   const { mutate, isPending } = useMutation({
     mutationFn: (otherUserId: string) => findOrCreateDM(otherUserId),
@@ -339,8 +352,8 @@ function UserProfileSheetContent({
               <button
                 type="button"
                 className="btn btn--cta"
-                onClick={() => setDuelPickerOpen(true)}
-                disabled={hasOpenDuel}
+                onClick={() => challengeAvailability.mutate()}
+                disabled={hasOpenDuel || challengeAvailability.isPending}
                 style={{ marginTop: 14, padding: '14px 0', fontSize: 15, fontWeight: 600 }}
               >
                 {hasOpenDuel ? 'Дуэль уже открыта' : 'Вызвать на дуэль'}
@@ -383,7 +396,11 @@ function UserProfileSheetContent({
             onCreated={() => {
               setDuelPickerOpen(false);
             }}
+            onBlocked={setDuelToast}
           />
+        )}
+        {duelToast !== null && (
+          <AppToast message={duelToast} onDismiss={() => setDuelToast(null)} />
         )}
       </div>
     </Sheet>

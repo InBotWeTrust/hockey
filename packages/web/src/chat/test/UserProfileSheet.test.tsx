@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { UserProfileSheet } from '../components/UserProfileSheet.js';
 import * as api from '../api.js';
 import * as amateurDuelApi from '../../api/amateurDuel.js';
+import { ApiError } from '../../api/apiFetch.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import type { DailyStateResponse } from '../../api/duel.js';
 import { useDailyStore } from '../../stores/dailyStore.js';
@@ -94,6 +95,9 @@ describe('UserProfileSheet', () => {
     vi.spyOn(api, 'findOrCreateDM').mockResolvedValue({ chatId: 'dm1', created: false });
     vi.spyOn(api, 'fetchUserProfile').mockResolvedValue(publicProfile);
     vi.spyOn(amateurDuelApi, 'fetchAmateurMatches').mockResolvedValue({ matches: [] });
+    vi.spyOn(amateurDuelApi, 'checkAmateurDuelChallengeAvailability').mockResolvedValue({
+      available: true,
+    });
     vi.spyOn(amateurDuelApi, 'fetchAmateurTemplates').mockResolvedValue({
       templates: [
         {
@@ -407,6 +411,38 @@ describe('UserProfileSheet', () => {
     await waitFor(() => expect(qc.isFetching()).toBe(0));
     await waitFor(() => expect(qc.isMutating()).toBe(0));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('shows a toast without opening duel setup for a future playoff opponent', async () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'rtok',
+      user: { id: 'me', displayName: 'Me' },
+    });
+    vi.mocked(api.fetchUserProfile).mockImplementation(async (userId) =>
+      userId === 'me' ? { ...publicProfile, id: 'me' } : publicProfile,
+    );
+    vi.mocked(amateurDuelApi.checkAmateurDuelChallengeAvailability).mockRejectedValueOnce(
+      new ApiError(
+        409,
+        'playoff_opponent_blocked',
+        'Это ваш соперник в плей-офф. Сначала сыграйте серию — после этого обычная дуэль станет доступна.',
+      ),
+    );
+
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
+      onClose: vi.fn(),
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /вызвать на дуэль/i }));
+
+    const toast = await screen.findByRole('status');
+    expect(toast).toHaveClass('duel-challenge-toast');
+    expect(toast).toHaveTextContent(
+      'Это ваш соперник в плей-офф. Сначала сыграйте серию — после этого обычная дуэль станет доступна.',
+    );
+    expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument();
+    expect(amateurDuelApi.challengeAmateurDuel).not.toHaveBeenCalled();
   });
 
   it('closes the duel type modal with Escape without closing the profile sheet', async () => {

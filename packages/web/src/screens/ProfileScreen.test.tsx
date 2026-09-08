@@ -206,7 +206,10 @@ describe('ProfileScreen', () => {
     expect(screen.getByLabelText('Опыт: 77')).toBeInTheDocument();
     expect(screen.getByTestId('profile-balance-icon-coins')).toBeInTheDocument();
     expect(screen.getByTestId('profile-balance-icon-stars')).toBeInTheDocument();
-    expect(screen.getByTestId('profile-balance-icon-stars')).toHaveAttribute('fill', 'currentColor');
+    expect(screen.getByTestId('profile-balance-icon-stars')).toHaveAttribute(
+      'fill',
+      'currentColor',
+    );
     expect(screen.getByTestId('profile-balance-icon-experience')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Статистика' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Открыть инвентарь' })).toBeInTheDocument();
@@ -230,6 +233,32 @@ describe('ProfileScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть инвентарь' }));
     expect(screen.getByText('equipment screen')).toBeInTheDocument();
+  });
+
+  it('links to the official VK and Telegram communities from the profile', async () => {
+    mockProfileRequest();
+
+    renderProfile();
+
+    expect(await screen.findByText('Сообщества')).toHaveClass('profile-section-label');
+    expect(screen.getByRole('link', { name: 'Открыть сообщество ВКонтакте' })).toHaveAttribute(
+      'href',
+      'https://vk.ru/ultimate_hockey',
+    );
+    expect(screen.getByRole('link', { name: 'Открыть канал в Telegram' })).toHaveAttribute(
+      'href',
+      'https://t.me/ultimate_hockey',
+    );
+    expect(screen.getByTestId('profile-community-icon-vk')).toBeInTheDocument();
+    expect(screen.getByTestId('profile-community-icon-telegram')).toBeInTheDocument();
+    expect(screen.getByTestId('profile-community-icon-telegram').querySelector('img')).toHaveAttribute(
+      'src',
+      '/icons/telegram-community-v2.png',
+    );
+    for (const link of screen.getAllByRole('link')) {
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noreferrer');
+    }
   });
 
   it('opens the matching equipment picker from an equipped item', async () => {
@@ -347,10 +376,9 @@ describe('ProfileScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /победы в регулярке/i }));
 
-    expect(screen.getByRole('img', { name: 'Чемпионат с очень длинным названием' })).toHaveAttribute(
-      'src',
-      '/modes/tournaments.webp',
-    );
+    expect(
+      screen.getByRole('img', { name: 'Чемпионат с очень длинным названием' }),
+    ).toHaveAttribute('src', '/modes/tournaments.webp');
   });
 
   it('keeps a zero trophy section non-interactive', async () => {

@@ -380,6 +380,11 @@ describe('AchievementsScreen', () => {
       );
     });
     expect(await screen.findByText('+10 монет')).toBeInTheDocument();
+    const rewardToast = screen.getByRole('status');
+    expect(rewardToast).toHaveClass('achievement-reward-toast');
+    expect(rewardToast).toHaveTextContent('Награда за достижение начислена');
+    expect(rewardToast).toHaveTextContent('Награда ждёт');
+    expect(screen.getByTestId('achievement-reward-icon-coins')).toBeInTheDocument();
     expect(screen.queryByText('+0 зв.', { exact: false })).toBeNull();
     expect(screen.queryByText('+0 опыта', { exact: false })).toBeNull();
     expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);

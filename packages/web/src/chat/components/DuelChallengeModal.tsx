@@ -23,6 +23,7 @@ interface DuelChallengeModalProps {
   opponentName: string;
   onClose: () => void;
   onCreated: () => void;
+  onBlocked?: (message: string) => void;
 }
 
 const OPEN_DUEL_STATUSES = new Set(['invited', 'ready_check', 'active']);
@@ -103,6 +104,7 @@ export function DuelChallengeModal({
   opponentName,
   onClose,
   onCreated,
+  onBlocked,
 }: DuelChallengeModalProps): JSX.Element {
   const queryClient = useQueryClient();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
@@ -139,13 +141,24 @@ export function DuelChallengeModal({
   const challengeMutation = useMutation({
     mutationFn: (templateId: string) =>
       challengeAmateurDuel({ template_id: templateId, opponent_user_id: opponentUserId }),
-    onMutate: () => setError(null),
+    onMutate: () => {
+      setError(null);
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
       onCreated();
     },
     onError: (err) => {
-      setError(amateurAccessDetailsFromError(err) === null ? challengeErrorText(err) : null);
+      if (amateurAccessDetailsFromError(err) !== null) {
+        setError(null);
+        return;
+      }
+      if (err instanceof ApiError && err.code === 'playoff_opponent_blocked' && onBlocked) {
+        onClose();
+        onBlocked(err.message);
+        return;
+      }
+      setError(challengeErrorText(err));
     },
   });
 

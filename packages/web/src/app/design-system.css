@@ -3905,7 +3905,8 @@
 
 .profile-equipment-section,
 .profile-career-section,
-.profile-settings-section {
+.profile-settings-section,
+.profile-community-section {
   display: grid;
   gap: 7px;
 }
@@ -4364,6 +4365,85 @@
 }
 
 .profile-utility-card > svg {
+  width: 14px;
+  height: 14px;
+  color: var(--muted-soft);
+}
+
+.profile-community-list {
+  display: grid;
+  gap: 8px;
+}
+
+.profile-community-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: 19px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.profile-community-card:active {
+  transform: scale(0.985);
+}
+
+.profile-community-card__icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.profile-community-card__icon--vk {
+  overflow: hidden;
+}
+
+.profile-community-card__icon--vk img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.profile-community-card__icon--telegram {
+  background: linear-gradient(145deg, #38bdf8, #168acd);
+  overflow: hidden;
+}
+
+.profile-community-card__icon--telegram img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.profile-community-card__copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.profile-community-card__copy strong {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.profile-community-card__copy small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.profile-community-card > svg {
   width: 14px;
   height: 14px;
   color: var(--muted-soft);
@@ -7413,12 +7493,18 @@ button.daily-calendar__day:active {
 }
 
 .tournament-catalog__empty {
-  padding: 8px 2px;
+  margin: 12px 4px 0;
+  padding: 0;
   color: rgba(244, 250, 255, 0.94);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 750;
   line-height: 1.45;
   text-shadow: 0 2px 9px rgba(3, 12, 24, 0.78);
+}
+
+.tournament-catalog__section-title {
+  margin: 2px 0 -2px;
+  padding-inline: 0;
 }
 
 .tournament-wizard input[type='number'],
@@ -11572,6 +11658,93 @@ button.daily-calendar__day:active {
   color: #dc2626;
   font-size: 12px;
   font-weight: 900;
+}
+
+.duel-challenge-toast,
+.achievement-reward-toast {
+  position: fixed;
+  z-index: 380;
+  top: calc(var(--app-safe-top) + 14px);
+  left: 50%;
+  width: min(440px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  padding: 11px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 16px;
+  background: rgba(30, 41, 59, 0.94);
+  box-shadow: 0 14px 38px rgba(15, 23, 42, 0.28);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  animation: duel-challenge-toast-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.achievement-reward-toast {
+  width: min(398px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.achievement-reward-toast__status {
+  display: block;
+  font-size: 12px;
+  font-weight: 650;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.achievement-reward-toast__title {
+  display: block;
+  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.achievement-reward-toast__values {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.achievement-reward-toast__value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.duel-challenge-toast__title,
+.duel-challenge-toast__copy {
+  display: block;
+}
+
+.duel-challenge-toast__title {
+  font-weight: 850;
+}
+
+.duel-challenge-toast__copy {
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+@keyframes duel-challenge-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -18px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .duel-challenge-toast,
+  .achievement-reward-toast {
+    animation: none;
+  }
 }
 
 .weekly-challenge-reward-toast {

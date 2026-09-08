@@ -438,6 +438,13 @@ export function challengeAmateurDuel(body: {
   );
 }
 
+export function checkAmateurDuelChallengeAvailability(
+  opponentUserId: string,
+): Promise<{ available: true }> {
+  const query = new URLSearchParams({ opponent_user_id: opponentUserId });
+  return apiFetch<{ available: true }>(`/duel/amateur/challenge/availability?${query.toString()}`);
+}
+
 export function acceptAmateurDuel(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
   return amateurMutation(
     apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/accept`, {

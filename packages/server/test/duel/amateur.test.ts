@@ -619,6 +619,166 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     return tournamentId;
   }
 
+  async function createPlayoffSeriesPair(
+    firstUserId = userA,
+    secondUserId = userB,
+    status: 'pending' | 'scheduled' | 'active' | 'completed' | 'paused' | 'cancelled' =
+      'scheduled',
+  ) {
+    const tournament = await pool.query<{ id: string }>(
+      `insert into tournament (slug, title, status, regular_source, created_by)
+       values ($1, 'Playoff opponent cup', 'playoff', 'head_to_head', $2)
+       returning id`,
+      [`playoff-opponent-${firstUserId}-${secondUserId}`, firstUserId],
+    );
+    const participants = await pool.query<{ id: string; user_id: string }>(
+      `insert into tournament_participant (tournament_id, user_id, state, seed)
+       values ($1, $2, 'approved', 1), ($1, $3, 'approved', 2)
+       returning id, user_id`,
+      [tournament.rows[0]!.id, firstUserId, secondUserId],
+    );
+    const firstParticipantId = participants.rows.find(
+      (participant) => participant.user_id === firstUserId,
+    )!.id;
+    const secondParticipantId = participants.rows.find(
+      (participant) => participant.user_id === secondUserId,
+    )!.id;
+    const round = await pool.query<{ id: string }>(
+      `insert into tournament_round (tournament_id, stage, number, status)
+       values ($1, 'playoff', 1, 'scheduled') returning id`,
+      [tournament.rows[0]!.id],
+    );
+    const series = await pool.query<{ id: string }>(
+      `insert into tournament_playoff_series
+         (tournament_id, round_id, bracket_position, higher_seed_participant_id,
+          lower_seed_participant_id, wins_required, home_sequence, status)
+       values ($1, $2, 1, $3, $4, 4, '["higher","lower"]'::jsonb, $5)
+       returning id`,
+      [
+        tournament.rows[0]!.id,
+        round.rows[0]!.id,
+        firstParticipantId,
+        secondParticipantId,
+        status,
+      ],
+    );
+    return series.rows[0]!.id;
+  }
+
+  it('hides a future playoff opponent from ordinary duel search until the series ends', async () => {
+    await createTemplate();
+    const seriesId = await createPlayoffSeriesPair();
+
+    const blocked = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/opponents',
+      headers: auth(tokenA),
+    });
+    expect(blocked.statusCode).toBe(200);
+    expect(blocked.json().users.map((user: { userId: string }) => user.userId)).not.toContain(userB);
+
+    await pool.query("update tournament_playoff_series set status = 'completed' where id = $1", [
+      seriesId,
+    ]);
+    const available = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/opponents',
+      headers: auth(tokenA),
+    });
+    expect(available.json().users.map((user: { userId: string }) => user.userId)).toContain(userB);
+  });
+
+  it.each(['pending', 'scheduled', 'active', 'paused'] as const)(
+    'rejects a direct ordinary challenge against a %s playoff opponent',
+    async (seriesStatus) => {
+      const templateId = await createTemplate();
+      await createPlayoffSeriesPair(userA, userB, seriesStatus);
+
+      const response = await challenge(templateId);
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error).toMatchObject({ code: 'playoff_opponent_blocked' });
+      expect(
+        (await pool.query('select count(*)::int as total from amateur_duel_match')).rows[0].total,
+      ).toBe(0);
+    },
+  );
+
+  it('rejects opening ordinary duel setup for a future playoff opponent', async () => {
+    await createPlayoffSeriesPair();
+
+    const blocked = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/challenge/availability?opponent_user_id=${userB}`,
+      headers: auth(tokenA),
+    });
+
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().error).toMatchObject({ code: 'playoff_opponent_blocked' });
+  });
+
+  it('allows opening ordinary duel setup after the playoff series finishes', async () => {
+    const seriesId = await createPlayoffSeriesPair();
+    await pool.query("update tournament_playoff_series set status = 'completed' where id = $1", [
+      seriesId,
+    ]);
+
+    const available = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/challenge/availability?opponent_user_id=${userB}`,
+      headers: auth(tokenA),
+    });
+
+    expect(available.statusCode).toBe(200);
+    expect(available.json()).toEqual({ available: true });
+  });
+
+  it('rechecks the playoff pairing when an older ordinary invitation is accepted', async () => {
+    const matchId = (await challenge(await createTemplate())).json().match.id;
+    await createPlayoffSeriesPair();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toMatchObject({ code: 'playoff_opponent_blocked' });
+  });
+
+  it('skips a queued future playoff opponent during ordinary matchmaking', async () => {
+    const templateId = await createTemplate();
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/duel/amateur/matchmaking/join',
+          headers: auth(tokenB),
+          payload: { duel_kinds: ['classic'] },
+        })
+      ).statusCode,
+    ).toBe(200);
+    await createPlayoffSeriesPair();
+    const laterUser = await createOpponent(101);
+    await pool.query(
+      `insert into amateur_duel_matchmaking_ticket
+         (template_id, user_id, expires_at, duel_kinds)
+       values ($1, $2, now() + interval '2 minutes', '["classic"]'::jsonb)`,
+      [templateId, laterUser],
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/duel/amateur/matchmaking/join',
+      headers: auth(tokenA),
+      payload: { duel_kinds: ['classic'] },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().match.opponent.user_id).toBe(laterUser);
+  });
+
   it.each(['challenger', 'opponent'])(
     'blocks challenge when the %s has a tournament lock',
     async (side) => {

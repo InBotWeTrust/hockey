@@ -67,6 +67,10 @@ import {
   TOURNAMENT_PERIOD_LOADOUT_LIFECYCLE_VERSION,
   usesTournamentPeriodLoadoutLifecycle,
 } from './periodLoadout.js';
+import {
+  assertNotPlayoffOpponents,
+  getBlockedPlayoffOpponentIds,
+} from './playoffOpponentLock.js';
 
 type MatchStatus = 'invited' | 'ready_check' | 'active' | 'settled' | 'cancelled' | 'expired';
 
@@ -4084,6 +4088,20 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     };
   });
 
+  app.get(
+    '/duel/amateur/challenge/availability',
+    { preHandler: [app.authenticate] },
+    async (req) => {
+      const query = z
+        .object({ opponent_user_id: z.string().uuid() })
+        .parse(req.query);
+      return withTransaction(app, async (client) => {
+        await assertNotPlayoffOpponents(client, req.user.id, query.opponent_user_id);
+        return { available: true };
+      });
+    },
+  );
+
   app.get('/duel/amateur/opponents', { preHandler: [app.authenticate] }, async (req) => {
     const query = z
       .object({
@@ -4126,7 +4144,14 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         rows.map((row) => row.id),
         now,
       );
-      const available = rows.filter((row) => !locks.get(row.id)!.blocked);
+      const playoffOpponents = await getBlockedPlayoffOpponentIds(
+        client,
+        req.user.id,
+        rows.map((row) => row.id),
+      );
+      const available = rows.filter(
+        (row) => !locks.get(row.id)!.blocked && !playoffOpponents.has(row.id),
+      );
       return {
         users: available.map((row) => ({
           userId: row.id,
@@ -4510,6 +4535,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       const now = new Date();
       await assertFullAmateurAccess(client, req.user.id);
       await assertFullAmateurAccess(client, opponentUserId);
+      await assertNotPlayoffOpponents(client, req.user.id, opponentUserId);
       const template = await fetchTemplate(client, templateId);
       if (!template.is_active) throw new AppError('conflict', 'duel template is inactive', 409);
       if (now >= template.ends_at)
@@ -4594,6 +4620,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         }
         await assertFullAmateurAccess(client, match.challenger_user_id);
         await assertFullAmateurAccess(client, match.opponent_user_id);
+        if (match.source !== 'tournament') {
+          await assertNotPlayoffOpponents(
+            client,
+            match.challenger_user_id,
+            match.opponent_user_id,
+          );
+        }
         const template = match.template_id ? await fetchTemplate(client, match.template_id) : null;
         if (!template || !template.is_active) {
           throw new AppError('conflict', 'duel template is inactive', 409);
@@ -5108,9 +5141,15 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           for update skip locked`,
         [req.user.id, now],
       );
+      const playoffOpponents = await getBlockedPlayoffOpponentIds(
+        client,
+        req.user.id,
+        opponent.rows.map((ticket) => ticket.user_id),
+      );
       let opponentTicket: (typeof opponent.rows)[number] | undefined;
       let matchedKind: DuelKind | undefined;
       for (const ticket of opponent.rows) {
+        if (playoffOpponents.has(ticket.user_id)) continue;
         const opponentKinds = duelKindsFromUnknown(ticket.duel_kinds, requestedKinds);
         if (
           !eligibleKinds.some((kind) => opponentKinds.includes(kind) && templatesByKind.has(kind))

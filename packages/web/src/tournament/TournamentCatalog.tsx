@@ -38,6 +38,34 @@ import { TournamentMatchdayResults } from './TournamentMatchdayResults.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 
 type TournamentTab = 'standings' | 'schedule' | 'playoff' | 'rules';
+type TournamentCatalogFilter = 'active' | 'future' | 'completed';
+
+const TOURNAMENT_CATALOG_FILTERS: Array<{ id: TournamentCatalogFilter; label: string }> = [
+  { id: 'active', label: 'Действующие' },
+  { id: 'future', label: 'Будущие' },
+  { id: 'completed', label: 'Пройденные' },
+];
+
+const TOURNAMENT_CATALOG_EMPTY_TEXT: Record<TournamentCatalogFilter, string> = {
+  active: 'Действующих турниров пока нет',
+  future: 'Будущих турниров пока нет',
+  completed: 'Пройденных турниров пока нет',
+};
+
+function tournamentCatalogFilter(status: TournamentSummary['status']): TournamentCatalogFilter {
+  if (['regular', 'playoff', 'paused'].includes(status)) return 'active';
+  if (['registration', 'registration_blocked', 'scheduling'].includes(status)) return 'future';
+  return 'completed';
+}
+
+function firstTournamentCatalogFilter(
+  groups: Record<TournamentCatalogFilter, TournamentSummary[]>,
+): TournamentCatalogFilter {
+  if (groups.active.length > 0) return 'active';
+  if (groups.future.length > 0) return 'future';
+  if (groups.completed.length > 0) return 'completed';
+  return 'active';
+}
 
 const activeTournamentTabs: Array<{ key: TournamentTab; label: string }> = [
   { key: 'standings', label: 'Таблица' },
@@ -1154,6 +1182,8 @@ export function TournamentCatalog({
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(() =>
     new URLSearchParams(location.search).get('tournament'),
   );
+  const [filter, setFilter] = useState<TournamentCatalogFilter>('active');
+  const [filterInitialized, setFilterInitialized] = useState(false);
   const selectedId = selectedTournamentId === undefined ? internalSelectedId : selectedTournamentId;
   const setSelectedId = (tournamentId: string | null): void => {
     setInternalSelectedId(tournamentId);
@@ -1161,44 +1191,48 @@ export function TournamentCatalog({
   };
   const catalog = useQuery({ queryKey: ['tournaments'], queryFn: fetchTournaments });
   const tournaments = catalog.data?.tournaments ?? [];
+  const groups: Record<TournamentCatalogFilter, TournamentSummary[]> = {
+    active: tournaments.filter(
+      (tournament) => tournamentCatalogFilter(tournament.status) === 'active',
+    ),
+    future: tournaments.filter(
+      (tournament) => tournamentCatalogFilter(tournament.status) === 'future',
+    ),
+    completed: tournaments.filter(
+      (tournament) => tournamentCatalogFilter(tournament.status) === 'completed',
+    ),
+  };
+  const visibleTournaments = groups[filter];
+  const selectedFilter =
+    TOURNAMENT_CATALOG_FILTERS.find((item) => item.id === filter) ?? TOURNAMENT_CATALOG_FILTERS[0]!;
   const selected = tournaments.find((tournament) => tournament.id === selectedId);
+
+  useEffect(() => {
+    if (catalog.data === undefined || filterInitialized) return;
+    setFilter(firstTournamentCatalogFilter(groups));
+    setFilterInitialized(true);
+  }, [catalog.data, filterInitialized]);
+
   if (selected) return <TournamentDetails tournament={selected} />;
   if (catalog.isLoading) return <div role="status">Загрузка турниров…</div>;
   if (catalog.isError) return <div role="status">Турниры пока недоступны.</div>;
-  if (tournaments.length === 0) {
-    return (
-      <div role="status" className="tournament-catalog__empty">
-        Турниров пока нет.
-      </div>
-    );
-  }
-  const sections = [
-    {
-      title: 'Активные турниры',
-      tournaments: tournaments.filter((tournament) =>
-        ['regular', 'playoff', 'paused'].includes(tournament.status),
-      ),
-    },
-    {
-      title: 'Предстоящие',
-      tournaments: tournaments.filter((tournament) =>
-        ['registration', 'registration_blocked', 'scheduling'].includes(tournament.status),
-      ),
-    },
-    {
-      title: 'Завершённые',
-      tournaments: tournaments.filter((tournament) =>
-        ['completed', 'cancelled'].includes(tournament.status),
-      ),
-    },
-  ].filter((section) => section.tournaments.length > 0);
   return (
     <div className="tournament-catalog">
-      {sections.map((section) => (
-        <section key={section.title} className="tournament-catalog__section">
-          <h2 className="section-label sections-group__title">{section.title}</h2>
+      <SegmentedTabs
+        items={TOURNAMENT_CATALOG_FILTERS}
+        activeTab={filter}
+        ariaLabel="Фильтры турниров"
+        onChange={setFilter}
+      />
+      <h2 className="section-label tournament-catalog__section-title">
+        {selectedFilter.label} ({visibleTournaments.length})
+      </h2>
+      {visibleTournaments.length === 0 ? (
+        <p className="tournament-catalog__empty">{TOURNAMENT_CATALOG_EMPTY_TEXT[filter]}</p>
+      ) : (
+        <section className="tournament-catalog__section">
           <div className="tournament-catalog__cards">
-            {section.tournaments.map((tournament) => (
+            {visibleTournaments.map((tournament) => (
               <button
                 key={tournament.id}
                 type="button"
@@ -1243,7 +1277,7 @@ export function TournamentCatalog({
             ))}
           </div>
         </section>
-      ))}
+      )}
     </div>
   );
 }
