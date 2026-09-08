@@ -21,6 +21,7 @@ export interface ActiveClassicTournamentGame {
   current_period: number;
   total_shots: number;
   total_goals: number;
+  gameplay_lock: DailyStateResponse['gameplay_lock'];
 }
 
 export interface ActivePlayoffTournamentGame {

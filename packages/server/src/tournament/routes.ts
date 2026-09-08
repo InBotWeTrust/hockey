@@ -83,6 +83,7 @@ import {
   requestTournamentSeriesWinnerDecision,
 } from './seriesAdminDecisions.js';
 import { acknowledgeRegularSeasonPodiumCongratulation } from './podiumCongratulations.js';
+import { getGameplayLockState, toGameplayLockDto } from '../duel/gameplayLocks.js';
 
 const uuid = z.string().uuid();
 const nullableDate = z.string().datetime({ offset: true }).nullable().default(null);
@@ -274,9 +275,36 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       ...(options.systemUserId === undefined ? {} : { systemUserId: options.systemUserId }),
       invalidateUnreadCache: (userId) => invalidateUnreadCache(app.redis, userId),
     });
-    return {
-      games: await listActiveClassicGames(app.pg, { userId: req.user.id, now }),
-    };
+    const games = await listActiveClassicGames(app.pg, { userId: req.user.id, now });
+    const hasUnstartedClassic = games.some(
+      (game) =>
+        game.kind === 'classic' &&
+        (game.state === 'available' || game.state === 'idle') &&
+        game.current_period === 0,
+    );
+    if (!hasUnstartedClassic) return { games };
+
+    const client = await app.pg.connect();
+    try {
+      const gameplayLock = toGameplayLockDto(
+        await getGameplayLockState(client, {
+          userId: req.user.id,
+          action: 'start_classic',
+          now,
+        }),
+      );
+      return {
+        games: games.map((game) =>
+          game.kind === 'classic' &&
+          (game.state === 'available' || game.state === 'idle') &&
+          game.current_period === 0
+            ? { ...game, gameplay_lock: gameplayLock }
+            : game,
+        ),
+      };
+    } finally {
+      client.release();
+    }
   });
 
   app.get('/tournaments/:tournamentId/classic/state', authenticated, async (req) => {

@@ -996,6 +996,10 @@ function GameHub({
   const refreshTraining = useTrainingSessionStore((s) => s.refresh);
   const [modeInfoModal, setModeInfoModal] = useState<ModeInfoModalContent | null>(null);
   const [duelStatsMatch, setDuelStatsMatch] = useState<AmateurDuelMatch | null>(null);
+  const [recoveryTarget, setRecoveryTarget] = useState<{
+    action: 'start_daily_period' | 'start_classic';
+    tournamentId?: string;
+  } | null>(null);
   const [arenaActionId, setArenaActionId] = useState<string | null>(null);
   const pending = useDailyStore((s) => s.inFlight);
   const nextPeriod = data.current_period === 0 ? 1 : data.current_period + 1;
@@ -1095,7 +1099,10 @@ function GameHub({
   const isDailyInProgress = data.state === 'period_active' || data.state === 'break_active';
   const isArenaLaunching = false;
   const dailyActionDisabled = pending || arenaActionId === 'daily' || isArenaLaunching;
-  const dailyActionLabel = 'На лёд';
+  const dailyActionLabel =
+    isDailyLockedByTraining && data.gameplay_lock?.reason === 'recent_gameplay'
+      ? 'Сократить восстановление'
+      : 'На лёд';
   const dailyEventTitle = isDailyLockedByTraining
     ? data.gameplay_lock?.reason === 'recent_gameplay'
       ? 'Восстановление'
@@ -1163,6 +1170,10 @@ function GameHub({
 
   const handleDailyAction = async (): Promise<void> => {
     if (pending || arenaActionId === 'daily' || isArenaLaunching) return;
+    if (isDailyLockedByTraining && data.gameplay_lock?.reason === 'recent_gameplay') {
+      setRecoveryTarget({ action: 'start_daily_period' });
+      return;
+    }
     await runArenaLaunch(
       'daily',
       async () => null,
@@ -1529,29 +1540,64 @@ function GameHub({
         game.state === 'break_active' ||
         (game.state === 'idle' && game.current_period > 0);
       const completed = game.state === 'closed';
+      const gameplayLock = !started && !completed ? game.gameplay_lock : null;
+      const locked = gameplayLock?.blocked === true;
+      const lockedByRecovery = locked && gameplayLock.reason === 'recent_gameplay';
+      const recoveryRemaining = gameplayLock?.ends_at
+        ? Math.max(0, timestampMs(gameplayLock.ends_at) - now)
+        : 0;
       return {
         id: `classic-${game.tournament_id}`,
         kind: 'classic',
         eyebrow: `Турнир · ${game.tournament_day}-й тур`,
         title: game.tournament_title,
-        subtitle: completed
+        subtitle: locked
+          ? gameplayLockCopy(gameplayLock, now)
+          : completed
           ? 'Игра завершена, результат сохранён.'
           : started
             ? 'Турнирная игра уже начата.'
             : 'Отдельная игра по правилам турнира',
-        ...(!completed && !started
+        ...(!completed && !started && !locked
           ? { subtitleLines: ['Отдельная игра', 'по правилам турнира'] as [string, string] }
           : {}),
-        meta: completed
+        meta: locked
+          ? 'Турнирная игра временно недоступна.'
+          : completed
           ? ''
           : `${game.current_period > 0 ? `${game.current_period}-й период` : 'Три периода'} · до ${formatEventRemaining(deadlineRemaining)}`,
-        ctaLabel: started ? 'Продолжить' : 'Начать',
-        disabled: completed,
-        onEnter: () =>
+        ctaLabel: lockedByRecovery
+          ? 'Сократить восстановление'
+          : locked
+            ? 'Лёд готовится'
+            : started
+              ? 'Продолжить'
+              : 'Начать',
+        disabled: completed || (locked && !lockedByRecovery),
+        onEnter: () => {
+          if (lockedByRecovery) {
+            setRecoveryTarget({ action: 'start_classic', tournamentId: game.tournament_id });
+            return;
+          }
+          if (locked) return;
           navigate(`/?view=classic&tournament=${encodeURIComponent(game.tournament_id)}`, {
             replace: true,
-          }),
-        ...(completed
+          });
+        },
+        ...(locked
+          ? {
+              scoreboard: (
+                <DailyHubScoreboard
+                  activePeriod={null}
+                  ariaLabel={`${gameplayLockCopy(gameplayLock, now)}. До игры ${formatHms(recoveryRemaining)}`}
+                  periodsTotal={3}
+                  timer={gameplayLock.ends_at ? formatHms(recoveryRemaining) : 'ИГРА'}
+                  timerLabel={gameplayLock.ends_at ? 'До игры' : 'Статус'}
+                  timerOnly
+                />
+              ),
+            }
+          : completed
           ? {
               scoreboard: (
                 <DailyHubScoreboard
@@ -1678,6 +1724,23 @@ function GameHub({
 
       {duelStatsCurrentMatch && (
         <DuelStatsModal match={duelStatsCurrentMatch} onClose={() => setDuelStatsMatch(null)} />
+      )}
+      {recoveryTarget && (
+        <RecoveryKitModal
+          action={recoveryTarget.action}
+          onApplied={async () => {
+            await refresh();
+            await queryClient.invalidateQueries({
+              queryKey: ['tournaments', 'classic', 'active'],
+            });
+            if (recoveryTarget.tournamentId !== undefined) {
+              await queryClient.refetchQueries({
+                queryKey: ['tournaments', 'classic', 'active'],
+              });
+            }
+          }}
+          onClose={() => setRecoveryTarget(null)}
+        />
       )}
     </main>
   );
@@ -1867,8 +1930,11 @@ function ArenaVideoCube({
                 padding: '0 16px',
                 boxSizing: 'border-box',
                 justifyContent: 'center',
-                fontSize: 'clamp(12px, 1.65vh, 14px)',
-                fontWeight: 900,
+                fontSize:
+                  activeEntry.ctaLabel === 'Сократить восстановление'
+                    ? 'clamp(11px, 1.4vh, 12px)'
+                    : 'clamp(12px, 1.65vh, 14px)',
+                fontWeight: activeEntry.ctaLabel === 'Сократить восстановление' ? 700 : 900,
                 letterSpacing: '0.06em',
                 lineHeight: 1,
                 background:
@@ -2046,7 +2112,9 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
             style={{
               color: '#f7feff',
               fontSize: entry.compactTitle
-                ? 'clamp(13px, 2vh, 17px)'
+                ? entry.title === 'Восстановление'
+                  ? '19px'
+                  : 'clamp(13px, 2vh, 17px)'
                 : entry.title.length > 28
                   ? 'clamp(13px, 2.05vh, 17px)'
                   : 'clamp(16px, 2.65vh, 22px)',
@@ -8901,7 +8969,6 @@ function DailyPlayView({
   const breakEndsAt = data.break_ends_at ? new Date(data.break_ends_at).getTime() : undefined;
   const [now, setNow] = useState(Date.now());
   const [statsModal, setStatsModal] = useState<DailyStatsModalState | null>(null);
-  const [recoveryModalOpen, setRecoveryModalOpen] = useState(false);
 
   useEffect(() => {
     if (statsModal !== null) return;
@@ -9086,20 +9153,14 @@ function DailyPlayView({
               ? pending
                 ? 'НАЧИНАЕМ...'
                 : 'НАЧАТЬ'
-              : isDailyLockedByTraining && data.gameplay_lock?.reason === 'recent_gameplay'
-                ? 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ'
-                : isBreak || isDailyLockedByTraining || isActiveDailyLocked
+              : isBreak || isDailyLockedByTraining || isActiveDailyLocked
                   ? 'ЛЁД ГОТОВИТСЯ'
                   : isClosed
                     ? 'ИГРА ЗАВЕРШЕНА'
                     : undefined
         }
         inactiveAction={
-          canStartPeriod
-            ? handleStartPeriod
-            : isDailyLockedByTraining && data.gameplay_lock?.reason === 'recent_gameplay'
-              ? () => setRecoveryModalOpen(true)
-              : undefined
+          canStartPeriod ? handleStartPeriod : undefined
         }
         primaryActionBlocked={needsReconcile || isActiveDailyLocked}
         entranceBeforeInactiveAction={true}
@@ -9112,13 +9173,6 @@ function DailyPlayView({
         longCourtBackground={dailyCourtBackground}
         {...dailyCharacterVisuals(usesAmateurCourt)}
       />
-      {recoveryModalOpen && (
-        <RecoveryKitModal
-          action="start_daily_period"
-          onApplied={refresh}
-          onClose={() => setRecoveryModalOpen(false)}
-        />
-      )}
       {statsModal && (
         <DailyGameStatsModal
           stats={statsModal.stats}
@@ -9506,7 +9560,6 @@ function ClassicTournamentPlayView({
   const [now, setNow] = useState(Date.now());
   const [deferredState, setDeferredState] = useState<ClassicTournamentState | null>(null);
   const [statsModalState, setStatsModalState] = useState<ClassicTournamentState | null>(null);
-  const [recoveryModalOpen, setRecoveryModalOpen] = useState(false);
   const [selectedLoadout, setSelectedLoadout] = useState<ClassicTournamentLoadoutSelection>({});
   const [selectedLoadoutKind, setSelectedLoadoutKind] = useState<InventoryEquipmentKind | null>(
     null,
@@ -9681,9 +9734,7 @@ function ClassicTournamentPlayView({
         }
         shotButtonLabel={
           locked
-            ? data.gameplay_lock?.reason === 'recent_gameplay'
-              ? 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ'
-              : 'ЛЁД ГОТОВИТСЯ'
+            ? 'ЛЁД ГОТОВИТСЯ'
             : canStart
               ? inFlight
                 ? 'НАЧИНАЕМ...'
@@ -9704,9 +9755,7 @@ function ClassicTournamentPlayView({
             ? showAmateurRestriction
             : canStart
               ? () => startPeriod(selectedLoadout)
-              : data.gameplay_lock?.reason === 'recent_gameplay'
-                ? () => setRecoveryModalOpen(true)
-                : undefined
+              : undefined
         }
         entranceBeforeInactiveAction={amateurAccess.hasFullAccess}
         periodEndsAt={active && periodEndsAt > 0 ? periodEndsAt : undefined}
@@ -9732,13 +9781,6 @@ function ClassicTournamentPlayView({
           />
         }
       />
-      {recoveryModalOpen && (
-        <RecoveryKitModal
-          action="start_classic"
-          onApplied={() => refresh(tournamentId)}
-          onClose={() => setRecoveryModalOpen(false)}
-        />
-      )}
       {selectedLoadoutKind !== null && data.loadout_editable && (
         <ClassicRinkLoadoutModal
           kind={selectedLoadoutKind}
