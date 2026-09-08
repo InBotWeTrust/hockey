@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { apiFetch, ApiError, __resetRefreshStateForTests, refreshAccessToken } from './apiFetch.js';
+import {
+  apiFetch,
+  ApiError,
+  __resetRefreshStateForTests,
+  isAmateurLevelRequired,
+  refreshAccessToken,
+} from './apiFetch.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { AuthUser } from '../auth/authStore.js';
 
@@ -80,6 +86,42 @@ describe('apiFetch', () => {
         availableSlots: 2,
         pendingCount: 3,
       },
+    });
+  });
+
+  it('recognizes only the stable Amateur access ApiError code', () => {
+    expect(
+      isAmateurLevelRequired(
+        new ApiError(403, 'amateur_level_required', 'internal copy', {
+          goalsRemaining: 184,
+          unlockGoalsRequired: 300,
+        }),
+      ),
+    ).toBe(true);
+    expect(isAmateurLevelRequired(new ApiError(403, 'forbidden', 'internal copy'))).toBe(false);
+    expect(isAmateurLevelRequired({ code: 'amateur_level_required', message: 'lookalike' })).toBe(
+      false,
+    );
+  });
+
+  it('preserves Amateur restriction details but never exposes its raw server message', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJson(
+        {
+          error: {
+            code: 'amateur_level_required',
+            message: 'database policy denied',
+            details: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+          },
+        },
+        { status: 403 },
+      ),
+    );
+
+    await expect(apiFetch('/duel/amateur/matches')).rejects.toMatchObject({
+      code: 'amateur_level_required',
+      message: 'Не удалось выполнить запрос. Попробуйте ещё раз.',
+      details: { goalsRemaining: 184, unlockGoalsRequired: 300 },
     });
   });
 

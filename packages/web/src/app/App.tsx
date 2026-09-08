@@ -8,6 +8,7 @@ import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { BottomNav, isBottomNavVisible } from '../components/BottomNav.js';
 import { DuelInviteToast } from '../components/DuelInviteToast.js';
+import { AmateurAccessToast } from '../amateur/AmateurAccessToast.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
 import { OfflineBanner } from '../chat/components/OfflineBanner.js';
 import { useChatSocket } from '../chat/useChatSocket.js';
@@ -200,6 +201,7 @@ function AppExperience(): JSX.Element {
     <>
       <ChatRealtime />
       <DuelInviteToast />
+      <AmateurAccessToast />
       <div
         className={`app-shell ${surfaceClassName}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
         style={{

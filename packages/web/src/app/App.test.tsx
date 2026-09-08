@@ -6,6 +6,10 @@ import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
+import {
+  showAmateurAccessToast,
+  useAmateurAccessToastStore,
+} from '../amateur/amateurAccessStore.js';
 import { App, RouteLoading, appBackdropClassName, appSurfaceClassName } from './App.js';
 import { fetchRequiredOnboarding, recordStepView, startOnboarding } from '../api/onboarding.js';
 import type * as OnboardingApi from '../api/onboarding.js';
@@ -95,6 +99,7 @@ describe('App routing + auth', () => {
       requestEpoch: 0,
       receivedAtPerformanceMs: null,
     });
+    useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
   });
 
   it('gates a direct authenticated URL and hides routed content and app chrome', async () => {
@@ -182,6 +187,15 @@ describe('App routing + auth', () => {
     });
     renderAt('/');
     expect(screen.getByText('home content')).toBeInTheDocument();
+  });
+
+  it('mounts one shared Amateur access toast for the whole app', () => {
+    act(() => showAmateurAccessToast({ goalsRemaining: 184, unlockGoalsRequired: 300 }));
+
+    render(<App />);
+
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.getByText('Нужен статус «Любитель»')).toBeInTheDocument();
   });
 
   it('guards /duel/:goalieId as well', () => {

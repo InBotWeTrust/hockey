@@ -47,6 +47,10 @@ export class ApiError extends Error {
   }
 }
 
+export function isAmateurLevelRequired(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.code === 'amateur_level_required';
+}
+
 function localizeServerError(message: string, code: string): string {
   return (
     SERVER_ERROR_MESSAGES[message] ?? SERVER_ERROR_MESSAGES[code] ?? GENERIC_SERVER_ERROR_MESSAGE
