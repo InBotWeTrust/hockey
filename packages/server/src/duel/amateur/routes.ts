@@ -350,7 +350,7 @@ const inventoryItemPatchSchema = z
       .optional(),
     rarity: z.enum(['common', 'rare', 'epic', 'legendary']).optional(),
     currencyPrice: z.number().int().min(0).max(9_000_000_000).optional(),
-    chargesPerPurchase: z.number().int().min(0).max(100_000).optional(),
+    chargesPerPurchase: z.number().int().min(0).max(100_000_000).optional(),
     lowStockThreshold: z.number().int().min(0).max(10_000_000).optional(),
     duelPeriodCost: z.number().int().min(0).max(100_000).optional(),
     powerScore: z.number().int().min(0).max(100_000).optional(),

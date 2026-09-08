@@ -1056,4 +1056,52 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
     });
     expect(afterDelete.json()).toMatchObject({ items: [] });
   });
+
+  it('allows nutrition inventory measured in milliseconds', async () => {
+    const createdItem = await app.inject({
+      method: 'POST',
+      url: '/admin/inventory',
+      headers: auth(adminToken),
+      payload: {
+        title: 'Энерго-комплекс',
+        description: 'Питание на 300 минут активной игры',
+        priceRub: 0,
+      },
+    });
+    expect(createdItem.statusCode).toBe(200);
+
+    const itemId = createdItem.json().item.id;
+    const gameplay = await app.inject({
+      method: 'PATCH',
+      url: `/admin/inventory/${itemId}/gameplay`,
+      headers: auth(adminToken),
+      payload: {
+        itemKind: 'nutrition',
+        currencyPrice: 24_950,
+        chargesPerPurchase: 18_000_000,
+        resourceUnit: 'energy_ms',
+      },
+    });
+
+    expect(gameplay.statusCode).toBe(200);
+    expect(gameplay.json()).toEqual({ ok: true });
+
+    const inventory = await app.inject({
+      method: 'GET',
+      url: '/admin/inventory',
+      headers: auth(adminToken),
+    });
+    expect(inventory.statusCode).toBe(200);
+    expect(inventory.json().items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: itemId,
+          itemKind: 'nutrition',
+          currencyPrice: 24_950,
+          chargesPerPurchase: 18_000_000,
+          resourceUnit: 'energy_ms',
+        }),
+      ]),
+    );
+  });
 });
