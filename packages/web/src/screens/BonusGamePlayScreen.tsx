@@ -29,14 +29,8 @@ import type { GoalieOptions } from '../game/renderer/Goalie.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
 import { useOnboardingGate } from '../onboarding/OnboardingGate.js';
-import {
-  qualificationDescription,
-  qualificationProgress,
-} from '../game/bonusGameQualification.js';
-import {
-  versionBonusGameArtwork,
-  versionBonusGameGoalkeeper,
-} from '../game/bonusGameArtwork.js';
+import { qualificationDescription, qualificationProgress } from '../game/bonusGameQualification.js';
+import { versionBonusGameArtwork, versionBonusGameGoalkeeper } from '../game/bonusGameArtwork.js';
 
 const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpriteUrl'> = {
   visualYScale: PERSPECTIVE_COURT_VISUAL_Y_SCALE,
@@ -405,7 +399,11 @@ function BonusInventoryPicker({
       cardClassName="bonus-game-inventory-modal"
     >
       {inventory.isLoading ? <p className="modal-copy">Загружаем инвентарь…</p> : null}
-      {inventory.isError ? <p className="modal-copy" role="alert">Не удалось загрузить инвентарь.</p> : null}
+      {inventory.isError ? (
+        <p className="modal-copy" role="alert">
+          Не удалось загрузить инвентарь.
+        </p>
+      ) : null}
       <div className="bonus-game-inventory-fields">
         {kinds.map(({ kind, label }) => (
           <label key={kind}>
@@ -413,9 +411,7 @@ function BonusInventoryPicker({
             <select
               value={selection[kind] ?? ''}
               disabled={busy || inventory.isLoading}
-              onChange={(event) =>
-                onChange({ ...selection, [kind]: event.target.value || null })
-              }
+              onChange={(event) => onChange({ ...selection, [kind]: event.target.value || null })}
             >
               <option value="">Без предмета</option>
               {(inventory.data?.items[kind] ?? [])
@@ -456,6 +452,7 @@ export function BonusGamePlayScreen(): JSX.Element {
   const attempt = useBonusGameStore((state) => state.attempt);
   const loading = useBonusGameStore((state) => state.loading);
   const error = useBonusGameStore((state) => state.error);
+  const errorCode = useBonusGameStore((state) => state.errorCode);
   const inFlight = useBonusGameStore((state) => state.inFlight);
   const needsReconcile = useBonusGameStore((state) => state.needsReconcile);
   const receivedAtPerformanceMs = useBonusGameStore((state) => state.receivedAtPerformanceMs);
@@ -642,9 +639,7 @@ export function BonusGamePlayScreen(): JSX.Element {
       ? undefined
       : localPeriodEndsAt + futureBonusPeriodDurationMs(attempt);
   const idleTimerMs =
-    attempt.rules.skill_code === 'speed'
-      ? futureBonusPeriodDurationMs(attempt)
-      : rule.duration_ms;
+    attempt.rules.skill_code === 'speed' ? futureBonusPeriodDurationMs(attempt) : rule.duration_ms;
   const goalieConfig = goalieConfigFor(attempt, rule);
   const speedOverrides = speedOverridesFor(rule, attempt.current_loadout);
   const stickItem = attempt.current_loadout?.items.find((item) => item.kind === 'stick');
@@ -805,7 +800,7 @@ export function BonusGamePlayScreen(): JSX.Element {
           closeBlocked={isConfirmingAbandon}
           onClose={() => setConfirmAbandon(false)}
         >
-          {error ? (
+          {error && errorCode !== 'amateur_level_required' ? (
             <p role="alert" className="bonus-game-abandon-error">
               {error}
             </p>

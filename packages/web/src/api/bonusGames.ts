@@ -1,5 +1,6 @@
 import { apiFetch } from './apiFetch.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
+import { showAmateurLevelRequiredError } from '../amateur/amateurAccess.js';
 
 export type BonusGameCardState =
   | 'level_locked'
@@ -216,6 +217,13 @@ interface BonusRequestOptions {
   signal?: AbortSignal;
 }
 
+function bonusMutation<T>(request: Promise<T>): Promise<T> {
+  return request.catch((error: unknown) => {
+    showAmateurLevelRequiredError(error);
+    throw error;
+  });
+}
+
 function legacyQualificationRules(input: {
   target_goals: number;
   periods?: BonusPeriodRule[];
@@ -312,44 +320,56 @@ export const purchaseBonusGame = ({
   gameId: string;
   expectedPriceStars: number;
 }): Promise<BonusUnlockResponse> =>
-  apiFetch<BonusUnlockResponse>(`/bonus-games/${gameId}/unlock`, {
-    method: 'POST',
-    body: JSON.stringify({ expected_price_stars: expectedPriceStars }),
-  });
+  bonusMutation(
+    apiFetch<BonusUnlockResponse>(`/bonus-games/${gameId}/unlock`, {
+      method: 'POST',
+      body: JSON.stringify({ expected_price_stars: expectedPriceStars }),
+    }),
+  );
 
 export const startBonusAttempt = (gameId: string): Promise<BonusAttemptResponse> =>
-  apiFetch<BonusAttemptResponse>(`/bonus-games/${gameId}/attempts`, { method: 'POST' });
+  bonusMutation(
+    apiFetch<BonusAttemptResponse>(`/bonus-games/${gameId}/attempts`, { method: 'POST' }),
+  );
 
 export const startBonusPeriod = (
   attemptId: string,
   loadout?: BonusPeriodLoadoutSelection,
 ): Promise<BonusAttemptResponse> =>
-  apiFetch<BonusAttemptResponse>(`/bonus-games/attempts/${attemptId}/period/start`, {
-    method: 'POST',
-    body: JSON.stringify(loadout === undefined ? {} : { loadout }),
-  }).then(normalizeAttemptResponse);
+  bonusMutation(
+    apiFetch<BonusAttemptResponse>(`/bonus-games/attempts/${attemptId}/period/start`, {
+      method: 'POST',
+      body: JSON.stringify(loadout === undefined ? {} : { loadout }),
+    }).then(normalizeAttemptResponse),
+  );
 
 export const acknowledgeBonusPreview = (
   attemptId: string,
   dismissFuture: boolean,
 ): Promise<BonusAttemptResponse> =>
-  apiFetch<BonusAttemptResponse>(`/bonus-games/attempts/${attemptId}/preview/acknowledge`, {
-    method: 'POST',
-    body: JSON.stringify({ dismiss_future: dismissFuture }),
-  }).then(normalizeAttemptResponse);
+  bonusMutation(
+    apiFetch<BonusAttemptResponse>(`/bonus-games/attempts/${attemptId}/preview/acknowledge`, {
+      method: 'POST',
+      body: JSON.stringify({ dismiss_future: dismissFuture }),
+    }).then(normalizeAttemptResponse),
+  );
 
 export const submitBonusShot = (
   attemptId: string,
   body: BonusShotRequest,
   options?: BonusRequestOptions,
 ): Promise<BonusShotResponse> =>
-  apiFetch<BonusShotResponse>(`/bonus-games/attempts/${attemptId}/shot`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-    ...(options?.signal === undefined ? {} : { signal: options.signal }),
-  }).then((response) => ({ ...response, attempt: normalizeBonusAttempt(response.attempt) }));
+  bonusMutation(
+    apiFetch<BonusShotResponse>(`/bonus-games/attempts/${attemptId}/shot`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      ...(options?.signal === undefined ? {} : { signal: options.signal }),
+    }).then((response) => ({ ...response, attempt: normalizeBonusAttempt(response.attempt) })),
+  );
 
 export const abandonBonusAttempt = (attemptId: string): Promise<BonusAttemptResponse> =>
-  apiFetch<BonusAttemptResponse>(`/bonus-games/attempts/${attemptId}/abandon`, {
-    method: 'POST',
-  }).then(normalizeAttemptResponse);
+  bonusMutation(
+    apiFetch<BonusAttemptResponse>(`/bonus-games/attempts/${attemptId}/abandon`, {
+      method: 'POST',
+    }).then(normalizeAttemptResponse),
+  );

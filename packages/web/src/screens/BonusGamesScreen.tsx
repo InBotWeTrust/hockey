@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
@@ -19,12 +19,15 @@ import {
   type BonusGameCard,
   type BonusSkillCode,
 } from '../api/bonusGames.js';
-import { ApiError } from '../api/apiFetch.js';
+import { ApiError, isAmateurLevelRequired } from '../api/apiFetch.js';
+import { deriveAmateurAccess, guardAmateurMutation } from '../amateur/amateurAccess.js';
+import { useAuthStore } from '../auth/authStore.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { qualificationDescription } from '../game/bonusGameQualification.js';
 import { versionBonusGameArtwork } from '../game/bonusGameArtwork.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
+import { useDailyStore } from '../stores/dailyStore.js';
 
 const SAFE_UI_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
 const LAST_SKILL_STORAGE_KEY = 'bonus-games:last-skill';
@@ -56,6 +59,22 @@ function isPlayable(game: BonusGameCard): boolean {
 export function BonusGamesScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
+  const dailyData = useDailyStore((state) => state.data);
+  const refreshDaily = useDailyStore((state) => state.refresh);
+  const progressRequestRef = useRef(false);
+  useEffect(() => {
+    if (competitionLevel !== 'beginner' || dailyData !== null || progressRequestRef.current) {
+      return;
+    }
+    progressRequestRef.current = true;
+    void refreshDaily();
+  }, [competitionLevel, dailyData, refreshDaily]);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel,
+    qualifyingGoals: dailyData?.lifetime_total_goals,
+    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
+  });
   const [switchGame, setSwitchGame] = useState<BonusGameCard | null>(null);
   const switchAttemptRequestRef = useRef(false);
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -81,6 +100,10 @@ export function BonusGamesScreen(): JSX.Element {
   };
 
   const performGameAction = (game: BonusGameCard): void => {
+    if (game.state === 'level_locked') {
+      guardAmateurMutation(amateurAccess, () => undefined);
+      return;
+    }
     if (game.state === 'in_progress' || game.active_attempt !== null) {
       navigate(
         `/bonus-games/${game.id}/play?attempt=${encodeURIComponent(game.active_attempt!.id)}`,
@@ -269,7 +292,7 @@ export function BonusGamesScreen(): JSX.Element {
           </div>
         ) : null}
 
-        {startMutation.isError && (
+        {startMutation.isError && !isAmateurLevelRequired(startMutation.error) && (
           <div className="bonus-games-catalog__notice" role="alert">
             {safeUiError(startMutation.error)}
           </div>
@@ -288,7 +311,7 @@ export function BonusGamesScreen(): JSX.Element {
             setSwitchGame(null);
           }}
         >
-          {switchAttemptMutation.isError ? (
+          {switchAttemptMutation.isError && !isAmateurLevelRequired(switchAttemptMutation.error) ? (
             <p role="alert" className="bonus-game-abandon-error">
               {safeUiError(switchAttemptMutation.error)}
             </p>
@@ -354,7 +377,8 @@ function BonusGameCard({
   compact?: boolean;
 }): JSX.Element {
   const isContinuable = game.active_attempt !== null || game.state === 'in_progress';
-  const canAct = isContinuable || (isPlayable(game) && canStartNewAttempt);
+  const explainsLevelLock = game.state === 'level_locked';
+  const canAct = isContinuable || explainsLevelLock || (isPlayable(game) && canStartNewAttempt);
   const visibleActionLabel =
     !isContinuable && isPlayable(game) && !canStartNewAttempt ? 'Попытки закончились' : label;
   const firstClearRewards = [
@@ -422,7 +446,7 @@ function BonusGameCard({
           <Check size={13} strokeWidth={3} aria-hidden="true" />
         </span>
       )}
-      {compact && !canAct && (
+      {compact && !isContinuable && !isPlayable(game) && (
         <span className="bonus-game-card__completed-pill" aria-label="Игра закрыта">
           <LockKeyhole size={13} strokeWidth={2.6} aria-hidden="true" />
         </span>

@@ -3,7 +3,17 @@ import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-quer
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STICK_NEUTRAL } from '@hockey/game-core';
-import type { BonusGameAttempt } from '../api/bonusGames.js';
+import {
+  abandonBonusAttempt,
+  acknowledgeBonusPreview,
+  purchaseBonusGame,
+  startBonusAttempt,
+  startBonusPeriod,
+  submitBonusShot,
+  type BonusGameAttempt,
+} from '../api/bonusGames.js';
+import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
+import { useAuthStore } from '../auth/authStore.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
 
 const playViewProbe = vi.hoisted(() => vi.fn());
@@ -243,6 +253,7 @@ function deferred<T>() {
 describe('BonusGamePlayScreen', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
     setStore();
   });
 
@@ -288,7 +299,9 @@ describe('BonusGamePlayScreen', () => {
     expect(qualification).toBeInTheDocument();
     expect(qualification.querySelector('.bonus-game-preview-modal__condition-icon')).not.toBeNull();
     const acknowledgeButton = screen.getByRole('button', { name: 'К игре' });
-    expect(screen.queryByRole('checkbox', { name: 'Больше не показывать' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('checkbox', { name: 'Больше не показывать' }),
+    ).not.toBeInTheDocument();
     fireEvent.click(acknowledgeButton);
 
     await waitFor(() => expect(acknowledgePreview).toHaveBeenCalledWith(false));
@@ -345,15 +358,12 @@ describe('BonusGamePlayScreen', () => {
       goals: 18,
       shotsTotal: 50,
       stickEffects: STICK_NEUTRAL,
-      longCourtBackground:
-        '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
+      longCourtBackground: '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
       initialSceneElapsedMs: 6_000,
       initialShooterElapsedMs: 4_800,
       goalieOptions: {
-        idleSpriteUrl:
-          '/bonus-games/goalkeepers/beach-ready.webp?v=20260831-goalkeeper-framing-v1',
-        saveSpriteUrl:
-          '/bonus-games/goalkeepers/beach-save.webp?v=20260831-goalkeeper-framing-v1',
+        idleSpriteUrl: '/bonus-games/goalkeepers/beach-ready.webp?v=20260831-goalkeeper-framing-v1',
+        saveSpriteUrl: '/bonus-games/goalkeepers/beach-save.webp?v=20260831-goalkeeper-framing-v1',
         visualYScale: 0.72,
         visualYOffset: 62,
         visualXScale: 0.9,
@@ -859,7 +869,9 @@ describe('BonusGamePlayScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
     expect(abandon).not.toHaveBeenCalled();
     const dialog = screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' });
-    expect(dialog).toHaveTextContent('При выходе текущая попытка завершится, а прогресс потеряется.');
+    expect(dialog).toHaveTextContent(
+      'При выходе текущая попытка завершится, а прогресс потеряется.',
+    );
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(abandon).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog', { name: 'Выйти из бонусной игры?' })).toBeNull();
@@ -972,5 +984,62 @@ describe('BonusGamePlayScreen', () => {
     expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games/game-1/play');
     expect(screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' })).toBeInTheDocument();
     expect(refreshAfterGameExit).not.toHaveBeenCalled();
+  });
+
+  it('does not duplicate an Amateur access toast with a generic abandon error', () => {
+    setStore({
+      error: 'Не удалось выполнить запрос. Попробуйте ещё раз.',
+      errorCode: 'amateur_level_required',
+    });
+    renderScreen();
+
+    fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' });
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+    expect(dialog).not.toHaveTextContent('Не удалось выполнить запрос. Попробуйте ещё раз.');
+  });
+});
+
+describe('Bonus Game Amateur access mutation fallback', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    useAuthStore.setState({ accessToken: 'TOKEN', refreshToken: null });
+    useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 'amateur_level_required',
+            message: 'internal policy',
+            details: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+          },
+        }),
+        { status: 403, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+  });
+
+  it.each([
+    ['unlock', () => purchaseBonusGame({ gameId: 'game-3', expectedPriceStars: 4 })],
+    ['attempt creation', () => startBonusAttempt('game-3')],
+    ['period start', () => startBonusPeriod('attempt-3')],
+    ['preview acknowledgement', () => acknowledgeBonusPreview('attempt-3', false)],
+    [
+      'shot',
+      () =>
+        submitBonusShot('attempt-3', {
+          claimed_shot_index: 1,
+          input: { tapTime: 2_000, shooterTapTime: 1_000 },
+          claimed_result: 'goal',
+        }),
+    ],
+    ['abandon', () => abandonBonusAttempt('attempt-3')],
+  ])('maps a stale Amateur access rejection for %s exactly once', async (_label, mutate) => {
+    await expect(mutate()).rejects.toMatchObject({ code: 'amateur_level_required' });
+    expect(useAmateurAccessToastStore.getState()).toMatchObject({
+      sequence: 1,
+      toast: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+    });
   });
 });

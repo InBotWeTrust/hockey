@@ -2,6 +2,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
+import { useAuthStore } from '../auth/authStore.js';
+import type { DailyStateResponse } from '../api/duel.js';
+import { useDailyStore } from '../stores/dailyStore.js';
 import { BonusGamesScreen } from './BonusGamesScreen.js';
 
 function LocationProbe(): JSX.Element {
@@ -69,6 +73,7 @@ function mockCatalog(
     abandonFailure?: unknown;
     speedRemaining?: number;
     accuracyRemaining?: number;
+    dailyAccess?: { qualifyingGoals: number; unlockGoalsRequired: number };
   } = {},
 ): void {
   const {
@@ -77,6 +82,7 @@ function mockCatalog(
     abandonFailure,
     speedRemaining = 2,
     accuracyRemaining = 2,
+    dailyAccess,
   } = options;
   vi.spyOn(globalThis, 'fetch').mockImplementation(
     (input: RequestInfo | URL, init?: RequestInit) => {
@@ -104,6 +110,17 @@ function mockCatalog(
               status: 200,
               headers: { 'Content-Type': 'application/json' },
             },
+          ),
+        );
+      }
+      if (url.endsWith('/api/duel/daily/state') && dailyAccess !== undefined) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              lifetime_total_goals: dailyAccess.qualifyingGoals,
+              amateur_unlock_goals_required: dailyAccess.unlockGoalsRequired,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
           ),
         );
       }
@@ -181,6 +198,143 @@ describe('BonusGamesScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
+    useAuthStore.setState({
+      accessToken: null,
+      refreshToken: null,
+      user: null,
+    });
+    useDailyStore.setState({ data: null });
+    useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
+  });
+
+  it('keeps the first two beginner games on their normal paths and explains third games without a request', async () => {
+    useAuthStore.setState({
+      user: {
+        id: 'beginner-1',
+        displayName: 'Новичок',
+        competitionLevel: 'beginner',
+      },
+    });
+    useDailyStore.setState({
+      data: {
+        lifetime_total_goals: 116,
+        amateur_unlock_goals_required: 300,
+      } as DailyStateResponse,
+    });
+    mockCatalog([
+      card({ id: 'speed-1', title: 'Скорость 1', skill_code: 'speed', sort_order: 10 }),
+      card({
+        id: 'speed-2',
+        title: 'Скорость 2',
+        skill_code: 'speed',
+        sort_order: 20,
+        state: 'sequence_locked',
+        is_unlocked: false,
+        prerequisite: { game_id: 'speed-1', title: 'Скорость 1' },
+      }),
+      card({
+        id: 'speed-3',
+        title: 'Скорость 3',
+        skill_code: 'speed',
+        sort_order: 30,
+        state: 'level_locked',
+        is_unlocked: false,
+      }),
+      card({
+        id: 'accuracy-1',
+        title: 'Точность 1',
+        skill_code: 'accuracy',
+        sort_order: 10,
+        state: 'completed',
+        is_completed: true,
+      }),
+      card({
+        id: 'accuracy-2',
+        title: 'Точность 2',
+        skill_code: 'accuracy',
+        sort_order: 20,
+        access_type: 'paid',
+        unlock_price_stars: 4,
+        state: 'purchase_required',
+        is_unlocked: false,
+        prerequisite: { game_id: 'accuracy-1', title: 'Точность 1' },
+      }),
+      card({
+        id: 'accuracy-3',
+        title: 'Точность 3',
+        skill_code: 'accuracy',
+        sort_order: 30,
+        state: 'level_locked',
+        is_unlocked: false,
+      }),
+    ]);
+    renderCatalog();
+
+    expect(await screen.findByRole('button', { name: 'Играть' })).toBeEnabled();
+    expect(
+      within(screen.getByRole('heading', { name: 'Скорость 2' }).closest('article')!).queryByRole(
+        'button',
+      ),
+    ).toBeNull();
+    const speedThird = screen.getByRole('heading', { name: 'Скорость 3' }).closest('article')!;
+    fireEvent.click(within(speedThird).getByRole('button', { name: 'Закрыта' }));
+    expect(useAmateurAccessToastStore.getState()).toMatchObject({
+      sequence: 1,
+      toast: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Точность' }));
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeEnabled();
+    expect(
+      within(screen.getByRole('heading', { name: 'Точность 2' }).closest('article')!).queryByRole(
+        'button',
+      ),
+    ).toBeNull();
+    const accuracyThird = screen.getByRole('heading', { name: 'Точность 3' }).closest('article')!;
+    fireEvent.click(within(accuracyThird).getByRole('button', { name: 'Закрыта' }));
+    expect(useAmateurAccessToastStore.getState()).toMatchObject({
+      sequence: 2,
+      toast: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+    });
+
+    expect(
+      vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),
+    ).toHaveLength(0);
+  });
+
+  it('loads missing beginner progress before explaining a level-locked game', async () => {
+    useAuthStore.setState({
+      user: {
+        id: 'beginner-direct',
+        displayName: 'Новичок',
+        competitionLevel: 'beginner',
+      },
+    });
+    mockCatalog(
+      [
+        card({ id: 'speed-1', title: 'Скорость 1' }),
+        card({
+          id: 'speed-3',
+          title: 'Скорость 3',
+          sort_order: 30,
+          state: 'level_locked',
+          is_unlocked: false,
+        }),
+      ],
+      { dailyAccess: { qualifyingGoals: 116, unlockGoalsRequired: 300 } },
+    );
+    renderCatalog();
+
+    const lockedCard = (await screen.findByRole('heading', { name: 'Скорость 3' })).closest(
+      'article',
+    )!;
+    await waitFor(() => expect(useDailyStore.getState().data).not.toBeNull());
+    fireEvent.click(within(lockedCard).getByRole('button', { name: 'Закрыта' }));
+
+    expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
+      goalsRemaining: 184,
+      unlockGoalsRequired: 300,
+    });
   });
 
   it('switches independent skill tabs and remembers the last selected skill', async () => {
