@@ -19,7 +19,7 @@ export interface AmateurAccessSnapshot {
 
 function parseNonNegativeInteger(value: unknown): number | null {
   if (typeof value !== 'number' && typeof value !== 'string') return null;
-  if (typeof value === 'string' && value.trim() === '') return null;
+  if (typeof value === 'string' && !/^(0|[1-9]\d*)$/.test(value)) return null;
 
   const parsed = typeof value === 'number' ? value : Number(value);
   if (!Number.isSafeInteger(parsed) || !Number.isFinite(parsed)) return null;
@@ -39,13 +39,16 @@ export function deriveAmateurAccess(input: AmateurAccessInput): AmateurAccessSna
     qualifyingGoals === null || unlockGoalsRequired === null
       ? null
       : Math.max(0, unlockGoalsRequired - qualifyingGoals);
+  const hasCompleteProgress = qualifyingGoals !== null && unlockGoalsRequired !== null;
 
   return {
     competitionLevel,
     qualifyingGoals,
     unlockGoalsRequired,
     goalsRemaining,
-    hasFullAccess: competitionLevel === 'amateur' || competitionLevel === 'professional',
+    hasFullAccess:
+      hasCompleteProgress &&
+      (competitionLevel === 'amateur' || competitionLevel === 'professional'),
   };
 }
 

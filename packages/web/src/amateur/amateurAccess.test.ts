@@ -38,6 +38,65 @@ describe('Amateur access helpers', () => {
     ).toMatchObject({ hasFullAccess: false, goalsRemaining: 0 });
   });
 
+  it.each(['amateur', 'professional'] as const)(
+    'does not authorize a %s level until the complete progress snapshot is available',
+    (competitionLevel) => {
+      expect(deriveAmateurAccess({ competitionLevel })).toMatchObject({
+        hasFullAccess: false,
+        qualifyingGoals: null,
+        unlockGoalsRequired: null,
+        goalsRemaining: null,
+      });
+      expect(deriveAmateurAccess({ competitionLevel, qualifyingGoals: 300 })).toMatchObject({
+        hasFullAccess: false,
+        unlockGoalsRequired: null,
+        goalsRemaining: null,
+      });
+      expect(deriveAmateurAccess({ competitionLevel, unlockGoalsRequired: 300 })).toMatchObject({
+        hasFullAccess: false,
+        qualifyingGoals: null,
+        goalsRemaining: null,
+      });
+    },
+  );
+
+  it.each(['amateur', 'professional'] as const)(
+    'does not authorize a %s level with malformed progress values',
+    (competitionLevel) => {
+      expect(
+        deriveAmateurAccess({
+          competitionLevel,
+          qualifyingGoals: 'not-a-count',
+          unlockGoalsRequired: 300,
+        }),
+      ).toMatchObject({ hasFullAccess: false, qualifyingGoals: null, goalsRemaining: null });
+      expect(
+        deriveAmateurAccess({
+          competitionLevel,
+          qualifyingGoals: 300,
+          unlockGoalsRequired: Number.NaN,
+        }),
+      ).toMatchObject({ hasFullAccess: false, unlockGoalsRequired: null, goalsRemaining: null });
+    },
+  );
+
+  it('authorizes Amateur and professional levels with a complete valid progress snapshot', () => {
+    expect(
+      deriveAmateurAccess({
+        competitionLevel: 'amateur',
+        qualifyingGoals: 300,
+        unlockGoalsRequired: 300,
+      }).hasFullAccess,
+    ).toBe(true);
+    expect(
+      deriveAmateurAccess({
+        competitionLevel: 'professional',
+        qualifyingGoals: 512,
+        unlockGoalsRequired: 300,
+      }).hasFullAccess,
+    ).toBe(true);
+  });
+
   it('sanitizes numeric server details without accepting ambiguous values', () => {
     const error = new ApiError(403, 'amateur_level_required', 'internal copy', {
       goalsRemaining: '184',
@@ -66,6 +125,27 @@ describe('Amateur access helpers', () => {
       ),
     ).toBeNull();
   });
+
+  it.each(['3e2', '0x12c', '+300', ' 300', '300 ', '300.0', '0300', '-4'])(
+    'rejects the ambiguous count string %j',
+    (ambiguousCount) => {
+      expect(
+        amateurAccessDetailsFromError(
+          new ApiError(403, 'amateur_level_required', 'internal copy', {
+            goalsRemaining: ambiguousCount,
+            unlockGoalsRequired: 300,
+          }),
+        ),
+      ).toBeNull();
+      expect(
+        deriveAmateurAccess({
+          competitionLevel: 'amateur',
+          qualifyingGoals: 300,
+          unlockGoalsRequired: ambiguousCount,
+        }).hasFullAccess,
+      ).toBe(false);
+    },
+  );
 
   it('clamps negative and inconsistent remaining goals before presenting them', () => {
     expect(
