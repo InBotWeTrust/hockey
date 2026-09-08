@@ -72,6 +72,8 @@ function mockCatalog(
     catalogFailure?: unknown;
     startFailure?: unknown;
     abandonFailure?: unknown;
+    unlockFailure?: unknown;
+    unlockStarBalance?: number;
     speedRemaining?: number;
     accuracyRemaining?: number;
     dailyAccess?: { qualifyingGoals: number; unlockGoalsRequired: number };
@@ -81,6 +83,8 @@ function mockCatalog(
     catalogFailure,
     startFailure,
     abandonFailure,
+    unlockFailure,
+    unlockStarBalance = 6,
     speedRemaining = 2,
     accuracyRemaining = 2,
     dailyAccess,
@@ -123,6 +127,23 @@ function mockCatalog(
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           ),
+        );
+      }
+      if (url.match(/\/api\/bonus-games\/[^/]+\/unlock$/) && init?.method === 'POST') {
+        if (unlockFailure !== undefined) return Promise.reject(unlockFailure);
+        const gameId = url.match(/\/api\/bonus-games\/([^/]+)\/unlock$/)?.[1];
+        const unlocked = games.find((game) => (game as { id?: unknown }).id === gameId) as
+          | { state?: unknown; is_unlocked?: unknown }
+          | undefined;
+        if (unlocked !== undefined) {
+          unlocked.state = 'available';
+          unlocked.is_unlocked = true;
+        }
+        return Promise.resolve(
+          new Response(JSON.stringify({ unlocked: true, star_balance: unlockStarBalance }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
         );
       }
       if (
@@ -181,7 +202,7 @@ function mockCatalog(
   );
 }
 
-function renderCatalog(): void {
+function renderCatalog(): QueryClient {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -193,6 +214,7 @@ function renderCatalog(): void {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return client;
 }
 
 describe('BonusGamesScreen', () => {
@@ -287,10 +309,11 @@ describe('BonusGamesScreen', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Точность' }));
     expect(screen.getByRole('button', { name: 'Повторить' })).toBeEnabled();
     expect(
-      within(screen.getByRole('heading', { name: 'Точность 2' }).closest('article')!).queryByRole(
+      within(screen.getByRole('heading', { name: 'Точность 2' }).closest('article')!).getByRole(
         'button',
+        { name: 'Открыть за 4 звезды' },
       ),
-    ).toBeNull();
+    ).toBeEnabled();
     const accuracyThird = screen.getByRole('heading', { name: 'Точность 3' }).closest('article')!;
     fireEvent.click(within(accuracyThird).getByRole('button', { name: 'Закрыта' }));
     expect(useAmateurAccessToastStore.getState()).toMatchObject({
@@ -301,6 +324,196 @@ describe('BonusGamesScreen', () => {
     expect(
       vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),
     ).toHaveLength(0);
+  });
+
+  it('shows the paid second-game price in a standard confirmation modal and cancels safely', async () => {
+    localStorage.setItem('bonus-games:last-skill', 'accuracy');
+    mockCatalog([
+      card({
+        id: 'accuracy-1',
+        title: 'Точность 1',
+        skill_code: 'accuracy',
+        state: 'completed',
+        is_completed: true,
+      }),
+      card({
+        id: 'accuracy-2',
+        title: 'Точность 2',
+        skill_code: 'accuracy',
+        sort_order: 2,
+        access_type: 'paid',
+        unlock_price_stars: 4,
+        state: 'purchase_required',
+        is_unlocked: false,
+      }),
+    ]);
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 4 звезды' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Открыть бонусную игру?' });
+    expect(dialog).toHaveClass('modal-card');
+    expect(dialog.closest('.modal-backdrop')).not.toBeNull();
+    expect(dialog.querySelector('.modal-header .modal-title')).toHaveTextContent(
+      'Открыть бонусную игру?',
+    );
+    expect(dialog.querySelector('.modal-copy')).toHaveTextContent(
+      'Открыть «Точность 2» за 4 звезды?',
+    );
+    expect(dialog.querySelector('.modal-actions')).not.toBeNull();
+    expect(within(dialog).getByRole('button', { name: 'Открыть за 4 звезды' })).toHaveClass(
+      'modal-primary',
+      'btn--cta',
+    );
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Отмена' }));
+
+    expect(screen.queryByRole('dialog', { name: 'Открыть бонусную игру?' })).toBeNull();
+    expect(
+      vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),
+    ).toHaveLength(0);
+  });
+
+  it('purchases with the confirmed price, refreshes state and then starts through the normal flow', async () => {
+    useAuthStore.setState({
+      user: {
+        id: 'beginner-purchase',
+        displayName: 'Новичок',
+        competitionLevel: 'beginner',
+      },
+    });
+    useDailyStore.setState({
+      data: {
+        lifetime_total_goals: 116,
+        amateur_unlock_goals_required: 300,
+      } as DailyStateResponse,
+    });
+    localStorage.setItem('bonus-games:last-skill', 'accuracy');
+    const games = [
+      card({
+        id: 'accuracy-1',
+        title: 'Точность 1',
+        skill_code: 'accuracy',
+        state: 'completed',
+        is_completed: true,
+      }),
+      card({
+        id: 'accuracy-2',
+        title: 'Точность 2',
+        skill_code: 'accuracy',
+        sort_order: 2,
+        access_type: 'paid',
+        unlock_price_stars: 4,
+        state: 'purchase_required',
+        is_unlocked: false,
+      }),
+    ];
+    mockCatalog(games, {
+      unlockStarBalance: 6,
+      dailyAccess: { qualifyingGoals: 117, unlockGoalsRequired: 300 },
+    });
+    const client = renderCatalog();
+    client.setQueryData(['profile'], { starBalance: 10 });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 4 звезды' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Открыть бонусную игру?' })).getByRole('button', {
+        name: 'Открыть за 4 звезды',
+      }),
+    );
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Играть' })).toBeEnabled());
+    expect(client.getQueryState(['profile'])?.isInvalidated).toBe(true);
+    await waitFor(() => expect(useDailyStore.getState().data?.lifetime_total_goals).toBe(117));
+
+    const unlockCall = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.find(([input]) => String(input) === '/api/bonus-games/accuracy-2/unlock');
+    expect(unlockCall?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ expected_price_stars: 4 }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Играть' }));
+    await waitFor(() =>
+      expect(screen.getByLabelText('location')).toHaveTextContent(
+        '/bonus-games/accuracy-2/play?attempt=attempt-new',
+      ),
+    );
+  });
+
+  it('keeps the purchase modal open with a localized insufficient-stars error', async () => {
+    localStorage.setItem('bonus-games:last-skill', 'accuracy');
+    mockCatalog(
+      [
+        card({
+          id: 'accuracy-2',
+          title: 'Точность 2',
+          skill_code: 'accuracy',
+          sort_order: 2,
+          access_type: 'paid',
+          unlock_price_stars: 4,
+          state: 'purchase_required',
+          is_unlocked: false,
+        }),
+      ],
+      {
+        unlockFailure: new ApiError(
+          409,
+          'bonus_insufficient_stars',
+          'Недостаточно звёзд для открытия бонус-игры.',
+        ),
+      },
+    );
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 4 звезды' }));
+    const dialog = screen.getByRole('dialog', { name: 'Открыть бонусную игру?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Открыть за 4 звезды' }));
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Недостаточно звёзд для открытия бонус-игры.',
+    );
+    expect(dialog).not.toHaveTextContent('bonus_insufficient_stars');
+  });
+
+  it('shows one shared toast for a stale purchase rejection without exposing server codes', async () => {
+    localStorage.setItem('bonus-games:last-skill', 'accuracy');
+    mockCatalog(
+      [
+        card({
+          id: 'accuracy-2',
+          title: 'Точность 2',
+          skill_code: 'accuracy',
+          sort_order: 2,
+          access_type: 'paid',
+          unlock_price_stars: 4,
+          state: 'purchase_required',
+          is_unlocked: false,
+        }),
+      ],
+      {
+        unlockFailure: new ApiError(403, 'amateur_level_required', 'internal policy', {
+          goalsRemaining: 184,
+          unlockGoalsRequired: 300,
+        }),
+      },
+    );
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 4 звезды' }));
+    const dialog = screen.getByRole('dialog', { name: 'Открыть бонусную игру?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Открыть за 4 звезды' }));
+
+    await waitFor(() =>
+      expect(useAmateurAccessToastStore.getState()).toMatchObject({
+        sequence: 1,
+        toast: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+      }),
+    );
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+    expect(dialog).not.toHaveTextContent('amateur_level_required');
+    expect(dialog).not.toHaveTextContent('internal policy');
   });
 
   it('loads missing beginner progress before explaining a level-locked game', async () => {

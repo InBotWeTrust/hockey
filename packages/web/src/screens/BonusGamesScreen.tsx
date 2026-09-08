@@ -9,12 +9,14 @@ import {
   LockKeyhole,
   Star,
   TrendingUp,
+  X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import {
   fetchBonusGames,
   abandonBonusAttempt,
+  purchaseBonusGame,
   startBonusAttempt,
   type BonusGameCard,
   type BonusSkillCode,
@@ -53,6 +55,9 @@ function actionLabel(game: BonusGameCard): string {
   if (game.state === 'in_progress' || game.active_attempt !== null) return 'Продолжить';
   if (game.state === 'completed') return 'Повторить';
   if (game.state === 'available') return 'Играть';
+  if (game.state === 'purchase_required') {
+    return `Открыть за ${numberText(game.unlock_price_stars)} звезды`;
+  }
   return game.state === 'archived' ? 'Недоступна' : 'Закрыта';
 }
 
@@ -80,6 +85,7 @@ export function BonusGamesScreen(): JSX.Element {
     unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
   });
   const [switchGame, setSwitchGame] = useState<BonusGameCard | null>(null);
+  const [purchaseGame, setPurchaseGame] = useState<BonusGameCard | null>(null);
   const switchAttemptRequestRef = useRef(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() =>
@@ -95,6 +101,17 @@ export function BonusGamesScreen(): JSX.Element {
       );
     },
   });
+  const purchaseMutation = useMutation({
+    mutationFn: purchaseBonusGame,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['bonus-games'] }),
+        queryClient.invalidateQueries({ queryKey: ['profile'] }),
+        refreshDaily(),
+      ]);
+      setPurchaseGame(null);
+    },
+  });
   const activeAttempt = catalogQuery.data?.active_attempt ?? null;
   const allGames = catalogQuery.data?.games ?? [];
   const activeGame = allGames.find((game) => game.active_attempt?.id === activeAttempt?.id);
@@ -106,6 +123,11 @@ export function BonusGamesScreen(): JSX.Element {
   const performGameAction = (game: BonusGameCard): void => {
     if (game.state === 'level_locked') {
       guardAmateurMutation(amateurAccess, () => undefined);
+      return;
+    }
+    if (game.state === 'purchase_required') {
+      purchaseMutation.reset();
+      setPurchaseGame(game);
       return;
     }
     if (game.state === 'in_progress' || game.active_attempt !== null) {
@@ -307,6 +329,67 @@ export function BonusGamesScreen(): JSX.Element {
         )}
       </section>
       {rulesOpen && <BonusGamesRulesModal onClose={() => setRulesOpen(false)} />}
+      {purchaseGame !== null ? (
+        <AccessibleModal
+          title="Открыть бонусную игру?"
+          copy={`Открыть «${purchaseGame.title}» за ${numberText(purchaseGame.unlock_price_stars)} звезды?`}
+          closeBlocked={purchaseMutation.isPending}
+          onRequestClose={() => {
+            if (purchaseMutation.isPending) return;
+            purchaseMutation.reset();
+            setPurchaseGame(null);
+          }}
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть окно"
+              disabled={purchaseMutation.isPending}
+              onClick={() => {
+                purchaseMutation.reset();
+                setPurchaseGame(null);
+              }}
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
+          }
+        >
+          {purchaseMutation.isError &&
+          !wasAmateurLevelRequiredErrorHandled(purchaseMutation.error) ? (
+            <p role="alert" className="bonus-game-abandon-error">
+              {safeUiError(purchaseMutation.error)}
+            </p>
+          ) : null}
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={purchaseMutation.isPending}
+              onClick={() => {
+                purchaseMutation.reset();
+                setPurchaseGame(null);
+              }}
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              className="modal-primary btn btn--cta"
+              disabled={purchaseMutation.isPending}
+              onClick={() =>
+                purchaseMutation.mutate({
+                  gameId: purchaseGame.id,
+                  expectedPriceStars: purchaseGame.unlock_price_stars,
+                })
+              }
+            >
+              {purchaseMutation.isPending
+                ? 'Открываем…'
+                : `Открыть за ${numberText(purchaseGame.unlock_price_stars)} звезды`}
+            </button>
+          </div>
+        </AccessibleModal>
+      ) : null}
       {switchGame !== null && activeAttempt !== null && activeGame !== undefined ? (
         <AccessibleModal
           title="Уже идёт другая игра"
@@ -387,7 +470,9 @@ function BonusGameCard({
 }): JSX.Element {
   const isContinuable = game.active_attempt !== null || game.state === 'in_progress';
   const explainsLevelLock = game.state === 'level_locked';
-  const canAct = isContinuable || explainsLevelLock || (isPlayable(game) && canStartNewAttempt);
+  const isPurchasable = game.state === 'purchase_required';
+  const canAct =
+    isContinuable || explainsLevelLock || isPurchasable || (isPlayable(game) && canStartNewAttempt);
   const visibleActionLabel =
     !isContinuable && isPlayable(game) && !canStartNewAttempt ? 'Попытки закончились' : label;
   const firstClearRewards = [
