@@ -10,7 +10,7 @@ import {
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Target } from 'lucide-react';
+import { CircleDollarSign, Star, Target, TrendingUp } from 'lucide-react';
 import type {
   BonusGameAttempt,
   BonusPeriodLoadoutSelection,
@@ -279,6 +279,40 @@ function BonusResult({
   else copy = 'Повтор завершён без награды';
   const accuracy =
     attempt.shots_taken > 0 ? Math.round((attempt.goals / attempt.shots_taken) * 100) : 0;
+  const rewardParts = [
+    attempt.reward.coins > 0
+      ? {
+          label: 'Монеты',
+          value: attempt.reward.coins,
+          text: formatRussianCount(attempt.reward.coins, 'монета', 'монеты', 'монет'),
+          tone: 'coin' as const,
+          icon: <CircleDollarSign size={15} strokeWidth={2.4} aria-hidden="true" />,
+        }
+      : null,
+    attempt.reward.experience > 0
+      ? {
+          label: 'Опыт',
+          value: attempt.reward.experience,
+          text: formatRussianCount(
+            attempt.reward.experience,
+            'очко опыта',
+            'очка опыта',
+            'очков опыта',
+          ),
+          tone: 'experience' as const,
+          icon: <TrendingUp size={15} strokeWidth={2.4} aria-hidden="true" />,
+        }
+      : null,
+    attempt.reward.stars > 0
+      ? {
+          label: 'Звёзды',
+          value: attempt.reward.stars,
+          text: formatRussianCount(attempt.reward.stars, 'звезда', 'звезды', 'звёзд'),
+          tone: 'star' as const,
+          icon: <Star size={15} fill="currentColor" strokeWidth={2.4} aria-hidden="true" />,
+        }
+      : null,
+  ].filter((part): part is NonNullable<typeof part> => part !== null);
 
   return (
     <AccessibleModal
@@ -301,19 +335,22 @@ function BonusResult({
         <BonusResultMetric label="Броски" value={String(attempt.shots_taken)} />
         <BonusResultMetric label="Точность" value={`${accuracy}%`} />
       </div>
-      {kind === 'completed' && attempt.reward_granted ? (
+      {kind === 'completed' && attempt.reward_granted && rewardParts.length > 0 ? (
         <div className="bonus-game-result-reward">
           <span className="bonus-game-result-reward-label">Награда</span>
-          <p>
-            {formatRussianCount(attempt.reward.coins, 'монета', 'монеты', 'монет')} ·{' '}
-            {formatRussianCount(
-              attempt.reward.experience,
-              'очко опыта',
-              'очка опыта',
-              'очков опыта',
-            )}{' '}
-            · {formatRussianCount(attempt.reward.stars, 'звезда', 'звезды', 'звёзд')}
-          </p>
+          <div className="bonus-game-result-reward-values">
+            {rewardParts.map((part) => (
+              <span
+                key={part.tone}
+                className="bonus-game-result-reward-value"
+                aria-label={`${part.label}: ${part.value}`}
+                style={{ color: `var(--reward-${part.tone})` }}
+              >
+                {part.icon}
+                {part.text}
+              </span>
+            ))}
+          </div>
         </div>
       ) : null}
       <div className="modal-actions bonus-game-result-actions">

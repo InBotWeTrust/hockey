@@ -27,7 +27,6 @@ import { DuelChallengeModal, hasOpenDuelWithUser } from './DuelChallengeModal.js
 import { Sheet } from '../../components/Sheet.js';
 import { TrophyHistoryModal, type TrophySectionKey } from '../../screens/ProfileScreen.js';
 import { CommunityLinks } from '../../components/CommunityLinks.js';
-import { OFFICIAL_ACCOUNT_AVATAR_URL } from '../chatAvatar.js';
 import { AppToast } from '../../components/AppToast.js';
 
 interface UserProfileSheetProps {
@@ -260,18 +259,14 @@ function OfficialAccountSheet({
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div className="glass" style={{ padding: 16, borderRadius: 20, textAlign: 'center' }}>
-          <UserAvatar
-            avatarUrl={OFFICIAL_ACCOUNT_AVATAR_URL}
-            name={sender.displayName}
-            size={76}
-            alt={sender.displayName}
-          />
-          <h3 style={{ margin: '10px 0 3px', color: 'var(--ink)', fontSize: 20 }}>
-            {sender.displayName}
-          </h3>
-          <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 700 }}>
-            Новости игры, обновления и поддержка
+        <div
+          className="official-account-hero"
+          data-testid="official-account-hero"
+          style={{ backgroundImage: 'url("/icons/official-account-cover.webp")' }}
+        >
+          <div className="official-account-hero__caption">
+            <h3>{sender.displayName}</h3>
+            <div>Новости игры, обновления и поддержка</div>
           </div>
         </div>
         <CommunityLinks />

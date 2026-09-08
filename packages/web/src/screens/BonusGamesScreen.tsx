@@ -38,6 +38,16 @@ import { useDailyStore } from '../stores/dailyStore.js';
 const SAFE_UI_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
 const LAST_SKILL_STORAGE_KEY = 'bonus-games:last-skill';
 
+function formatAttemptResetCountdown(resetsAt: string, nowMs: number): string | null {
+  const resetMs = Date.parse(resetsAt);
+  if (!Number.isFinite(resetMs)) return null;
+  const totalSeconds = Math.max(0, Math.ceil((resetMs - nowMs) / 1_000));
+  const hours = String(Math.floor(totalSeconds / 3_600)).padStart(2, '0');
+  const minutes = String(Math.floor((totalSeconds % 3_600) / 60)).padStart(2, '0');
+  const seconds = String(totalSeconds % 60).padStart(2, '0');
+  return `${hours}:${minutes}:${seconds}`;
+}
+
 const skillLabels: Record<BonusSkillCode, string> = {
   speed: 'Скорость',
   accuracy: 'Точность',
@@ -91,6 +101,8 @@ export function BonusGamesScreen(): JSX.Element {
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() =>
     localStorage.getItem(LAST_SKILL_STORAGE_KEY) === 'accuracy' ? 'accuracy' : 'speed',
   );
+  const [allowanceNowMs, setAllowanceNowMs] = useState(() => Date.now());
+  const refreshedAllowanceResetRef = useRef<string | null>(null);
   const catalogQuery = useQuery({ queryKey: ['bonus-games'], queryFn: fetchBonusGames });
   const startMutation = useMutation({
     mutationFn: startBonusAttempt,
@@ -172,6 +184,27 @@ export function BonusGamesScreen(): JSX.Element {
   };
   const games = allGames.filter((game) => game.skill_code === selectedSkill);
   const selectedAllowance = catalogQuery.data?.attempt_allowances?.[selectedSkill];
+  const allowanceCountdown =
+    selectedAllowance === undefined
+      ? null
+      : formatAttemptResetCountdown(selectedAllowance.resets_at, allowanceNowMs);
+  useEffect(() => {
+    if (selectedAllowance === undefined || allowanceCountdown === null) return;
+    if (Date.parse(selectedAllowance.resets_at) <= allowanceNowMs) return;
+    const interval = window.setInterval(() => setAllowanceNowMs(Date.now()), 1_000);
+    return () => window.clearInterval(interval);
+  }, [selectedAllowance, allowanceCountdown, allowanceNowMs]);
+  useEffect(() => {
+    if (
+      selectedAllowance === undefined ||
+      allowanceCountdown !== '00:00:00' ||
+      refreshedAllowanceResetRef.current === selectedAllowance.resets_at
+    ) {
+      return;
+    }
+    refreshedAllowanceResetRef.current = selectedAllowance.resets_at;
+    void catalogQuery.refetch();
+  }, [allowanceCountdown, catalogQuery, selectedAllowance]);
   const canStartNewAttempt = selectedAllowance === undefined || selectedAllowance.remaining > 0;
   const selectSkill = (skill: BonusSkillCode): void => {
     setSelectedSkill(skill);
@@ -239,11 +272,15 @@ export function BonusGamesScreen(): JSX.Element {
           />
         </div>
 
-        {catalogQuery.data?.attempt_allowances?.[selectedSkill] ? (
-          <p className="bonus-games-attempt-allowance">
-            Попытки сегодня: {catalogQuery.data.attempt_allowances[selectedSkill]!.remaining} из{' '}
-            {catalogQuery.data.attempt_allowances[selectedSkill]!.daily_limit}
-          </p>
+        {selectedAllowance ? (
+          <div className="bonus-games-attempt-allowance" role="status" aria-live="polite">
+            <strong>
+              {selectedAllowance.remaining} из {selectedAllowance.daily_limit} попыток
+            </strong>
+            {allowanceCountdown !== null ? (
+              <span>До обновления {allowanceCountdown}</span>
+            ) : null}
+          </div>
         ) : null}
 
         {catalogQuery.isLoading ? (
@@ -499,11 +536,7 @@ function BonusGameCard({
     (total, period) => total + (period.shots_limit ?? 0),
     0,
   );
-  const artworkIsLocked =
-    compact &&
-    (game.state === 'level_locked' ||
-      game.state === 'sequence_locked' ||
-      game.state === 'archived');
+  const artworkIsLocked = compact && !isContinuable && !isPlayable(game);
   const isWorldTourArtwork = game.arena.thumbnail_url.includes('/bonus-games/world-tour/');
   const featuredArtworkPosition =
     featured && isWorldTourArtwork

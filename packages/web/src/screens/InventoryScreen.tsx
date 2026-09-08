@@ -153,6 +153,7 @@ export function InventoryScreen(): JSX.Element {
   const [purchaseNotice, setPurchaseNotice] = useState<{
     title: string;
     amount: string;
+    imageUrl: string;
   } | null>(null);
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
@@ -167,6 +168,7 @@ export function InventoryScreen(): JSX.Element {
       setPurchaseNotice({
         title: addedInventoryTitle(item),
         amount: `+${purchaseBundleLabel(item)} в инвентарь`,
+        imageUrl: artworkForInventoryItem(item),
       });
       window.setTimeout(() => setPurchaseNotice(null), 2800);
     },
@@ -294,47 +296,19 @@ export function InventoryScreen(): JSX.Element {
 
       {purchaseNotice && (
         <div
+          role="status"
           aria-live="polite"
-          style={{
-            position: 'fixed',
-            left: 18,
-            right: 18,
-            bottom: 'calc(88px + var(--app-safe-bottom))',
-            zIndex: 280,
-            display: 'flex',
-            justifyContent: 'center',
-            pointerEvents: 'none',
-          }}
+          className="inventory-purchase-toast"
         >
-          <div
-            className="glass"
-            style={{
-              width: 'min(100%, 330px)',
-              borderRadius: 18,
-              padding: '14px 16px',
-              display: 'grid',
-              gridTemplateColumns: '34px minmax(0, 1fr)',
-              gap: 10,
-              alignItems: 'center',
-              animation: 'reward-pop 2.6s ease both',
-            }}
-          >
-            <Sparkles size={24} color="#0f766e" />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 950, color: 'var(--ink)' }}>
-                {purchaseNotice.title}
-              </div>
-              <div
-                style={{
-                  marginTop: 3,
-                  color: '#0f766e',
-                  fontSize: 12,
-                  fontWeight: 900,
-                }}
-              >
-                {purchaseNotice.amount}
-              </div>
-            </div>
+          <img
+            className="inventory-purchase-toast__artwork"
+            src={purchaseNotice.imageUrl}
+            alt={purchaseNotice.title.replace(/ (добавлен|добавлена|добавлены|добавлено)$/, '')}
+          />
+          <div className="inventory-purchase-toast__content">
+            <span className="inventory-purchase-toast__status">Покупка добавлена</span>
+            <strong>{purchaseNotice.title}</strong>
+            <span className="inventory-purchase-toast__amount">{purchaseNotice.amount}</span>
           </div>
         </div>
       )}

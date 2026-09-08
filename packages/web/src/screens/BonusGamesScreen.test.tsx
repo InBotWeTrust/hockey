@@ -76,6 +76,7 @@ function mockCatalog(
     unlockStarBalance?: number;
     speedRemaining?: number;
     accuracyRemaining?: number;
+    resetsAt?: string;
     dailyAccess?: { qualifyingGoals: number; unlockGoalsRequired: number };
   } = {},
 ): void {
@@ -87,6 +88,7 @@ function mockCatalog(
     unlockStarBalance = 6,
     speedRemaining = 2,
     accuracyRemaining = 2,
+    resetsAt = '2026-08-25T00:00:00.000Z',
     dailyAccess,
   } = options;
   vi.spyOn(globalThis, 'fetch').mockImplementation(
@@ -103,11 +105,19 @@ function mockCatalog(
                   .map((game) => (game as { active_attempt?: unknown }).active_attempt)
                   .find((attempt) => attempt != null) ?? null,
               attempt_allowances: {
-                speed: { daily_limit: 2, used: 2 - speedRemaining, remaining: speedRemaining },
+                speed: {
+                  skill_code: 'speed',
+                  daily_limit: 2,
+                  used: 2 - speedRemaining,
+                  remaining: speedRemaining,
+                  resets_at: resetsAt,
+                },
                 accuracy: {
+                  skill_code: 'accuracy',
                   daily_limit: 2,
                   used: 2 - accuracyRemaining,
                   remaining: accuracyRemaining,
+                  resets_at: resetsAt,
                 },
               },
             }),
@@ -228,6 +238,18 @@ describe('BonusGamesScreen', () => {
     });
     useDailyStore.setState({ data: null });
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
+  });
+
+  it('shows a readable attempt allowance and counts down to its reset', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-24T23:59:55.000Z'));
+    mockCatalog([card({ state: 'available', is_unlocked: true })], {
+      speedRemaining: 1,
+      resetsAt: '2026-08-25T00:00:00.000Z',
+    });
+    renderCatalog();
+
+    expect(await screen.findByText('1 из 2 попыток')).toBeInTheDocument();
+    expect(screen.getByText('До обновления 00:00:05')).toBeInTheDocument();
   });
 
   it('keeps the first two beginner games on their normal paths and explains third games without a request', async () => {
@@ -1094,6 +1116,25 @@ describe('BonusGamesScreen', () => {
     expect(artwork).toHaveClass('bonus-game-card__artwork--locked');
   });
 
+  it('renders purchase-required game artwork in black and white', async () => {
+    mockCatalog([
+      card({ id: 'beach', title: 'Пляж' }),
+      card({
+        id: 'paid-game',
+        title: 'Платная игра',
+        sort_order: 2,
+        state: 'purchase_required',
+        access_type: 'paid',
+        unlock_price_stars: 5,
+      }),
+    ]);
+    renderCatalog();
+
+    const paidCard = (await screen.findByRole('heading', { name: 'Платная игра' })).closest('article');
+    expect(paidCard).not.toBeNull();
+    expect(within(paidCard!).getByRole('img')).toHaveClass('bonus-game-card__artwork--locked');
+  });
+
   it('labels the featured qualification as the current game', async () => {
     mockCatalog([card({})]);
     renderCatalog();
@@ -1194,16 +1235,16 @@ describe('BonusGamesScreen', () => {
     );
     renderCatalog();
 
-    expect(await screen.findByText('Попытки сегодня: 1 из 2')).toBeInTheDocument();
+    expect(await screen.findByText('1 из 2 попыток')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Точность' }));
-    expect(screen.getByText('Попытки сегодня: 2 из 2')).toBeInTheDocument();
+    expect(screen.getByText('2 из 2 попыток')).toBeInTheDocument();
   });
 
   it('blocks a new attempt when the selected skill has no attempts left', async () => {
     mockCatalog([card({})], { speedRemaining: 0 });
     renderCatalog();
 
-    expect(await screen.findByText('Попытки сегодня: 0 из 2')).toBeInTheDocument();
+    expect(await screen.findByText('0 из 2 попыток')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Попытки закончились' })).toBeDisabled();
     expect(
       vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),

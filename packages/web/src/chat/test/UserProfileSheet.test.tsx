@@ -278,6 +278,10 @@ describe('UserProfileSheet', () => {
 
     expect(screen.getByRole('heading', { name: 'Ультимейт Хоккей' })).toBeInTheDocument();
     expect(screen.getByText('Официальный аккаунт')).toBeInTheDocument();
+    expect(screen.getByTestId('official-account-hero')).toHaveStyle({
+      backgroundImage: 'url("/icons/official-account-cover.webp")',
+    });
+    expect(screen.queryByRole('img', { name: 'Ультимейт Хоккей' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Открыть сообщество ВКонтакте' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Открыть канал в Telegram' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Написать в личку' })).toBeInTheDocument();
