@@ -424,6 +424,31 @@ describe('PlayView', () => {
     expect(scoreboard.textContent).toContain('БРОСКИ01/30');
   });
 
+  it('can display a scoreboard period independently from the simulation period', () => {
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="training-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={3}
+        scoreboardPeriodNumber={1}
+        scoreboardPeriodsTotal={1}
+        goals={0}
+        shots={0}
+        shotsTotal={500}
+        optimisticAddShot={() => undefined}
+        submitShot={async () => null}
+        applyState={() => undefined}
+      />,
+    );
+
+    expect(screen.getByLabelText('Игровое табло')).toHaveTextContent('ПЕРИОД1/1');
+  });
+
   it('blocks the primary action without stopping an active scene', () => {
     render(
       <PlayView

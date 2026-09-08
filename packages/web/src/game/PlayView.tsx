@@ -246,6 +246,7 @@ export interface PlayViewProps<TState> {
   goalieId: string | null;
   goalieConfig?: GoalieConfig | undefined;
   periodNumber: number;
+  scoreboardPeriodNumber?: number;
   periodSpeedPresets?: readonly DailyPeriodSpeedPreset[] | undefined;
   speedOverrides?: SpeedOverrides | undefined;
   stickEffects?: StickEffects | undefined;
@@ -536,6 +537,7 @@ export function PlayView<TState>({
   goalieId,
   goalieConfig,
   periodNumber,
+  scoreboardPeriodNumber,
   periodSpeedPresets,
   speedOverrides,
   stickEffects = STICK_NEUTRAL,
@@ -1762,8 +1764,8 @@ export function PlayView<TState>({
         hideRinkScoreboard ? undefined : (
           <GameScoreboard
             {...buildGameScoreboardModel({
-              period: periodNumber,
-              periodsTotal,
+              period: scoreboardPeriodNumber ?? periodNumber,
+              periodsTotal: scoreboardPeriodsTotal ?? periodsTotal,
               timer: timerValue,
               timerLabel: timerLabel ?? 'ВРЕМЯ',
               goals: visibleScoreboardGoals,
@@ -1832,7 +1834,7 @@ export function PlayView<TState>({
       >
         {!hideScoreboard && (
           <ScoreBoard
-            period={periodNumber}
+            period={scoreboardPeriodNumber ?? periodNumber}
             periodsTotal={scoreboardPeriodsTotal ?? periodsTotal}
             timer={timerValue}
             timerLabel={timerLabel}

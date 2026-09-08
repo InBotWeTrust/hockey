@@ -10123,6 +10123,7 @@ function TrainingPlayView({
         seed={data.training_seed}
         goalieId={data.goalie_id}
         periodNumber={data.selected_period ?? selectedPeriod}
+        scoreboardPeriodNumber={1}
         scoreboardPeriodsTotal={1}
         periodSpeedPresets={data.period_speed_presets}
         speedOverrides={trainingSpeedOverrides ?? undefined}

@@ -3738,7 +3738,7 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
 
-  it('keeps multi-period rink metrics in one compact four-column row', async () => {
+  it('shows training as one period regardless of the selected speed model', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes('/duel/training/state')) {
@@ -3760,7 +3760,7 @@ describe('DailyScreen', () => {
       gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
     });
     expect(within(scoreboard).getByText('ПЕРИОД')).toBeInTheDocument();
-    expect(within(scoreboard).getByText('2/3')).toBeInTheDocument();
+    expect(within(scoreboard).getByText('1/1')).toBeInTheDocument();
     expect(within(scoreboard).getByText('БРОСКИ')).toBeInTheDocument();
     expect(within(scoreboard).getByText('12/500')).toBeInTheDocument();
   });
