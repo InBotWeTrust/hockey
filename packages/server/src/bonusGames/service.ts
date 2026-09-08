@@ -457,6 +457,7 @@ export async function startOrResumeBonusAttempt(
     await assertBonusGameAccessibleToUser(client, input.userId, input.gameId);
     const active = await fetchActiveAttempt(client, input.userId);
     if (active !== null) {
+      await assertBonusGameAccessibleToUser(client, input.userId, active.bonus_game_id);
       const reconciled = await reconcileBonusAttempt(client, active, input.now);
       terminalReconcilePerformed = reconciled.status !== 'active';
       if (reconciled.status === 'active') {

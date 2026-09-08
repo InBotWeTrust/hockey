@@ -785,6 +785,72 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     },
   );
 
+  it('authorizes an ineligible active attempt before reconciling it through another game start', async () => {
+    const activeGame = await createGame({ sortOrder: 10 });
+    const eligibleGame = await createGame({ sortOrder: 20 });
+    await createGame({ sortOrder: 30 });
+    const attempt = await startAttempt(activeGame.id);
+    await startPeriod(attempt.id);
+    await pool.query(
+      `update bonus_game_attempt
+          set period_started_at = clock_timestamp() - interval '10 minutes'
+        where id = $1`,
+      [attempt.id],
+    );
+    await pool.query('update bonus_game set sort_order = 90 where id = $1', [activeGame.id]);
+    await pool.query('update users set level = 1 where id = $1', [userId]);
+
+    const snapshot = async () => {
+      const { rows } = await pool.query<{
+        status: string;
+        state: string;
+        current_period: number;
+        period_started_at: Date | null;
+        closed_at: Date | null;
+        attempts: number;
+        period_logs: number;
+        daily_slots: number;
+        shots: number;
+        economy_events: number;
+        currency_accounts: number;
+      }>(
+        `select attempt.status, attempt.state, attempt.current_period::int,
+                attempt.period_started_at, attempt.closed_at,
+                (select count(*)::int from bonus_game_attempt
+                  where user_id = attempt.user_id) as attempts,
+                (select count(*)::int from bonus_game_period_log
+                  where attempt_id = attempt.id) as period_logs,
+                (select count(*)::int from bonus_game_daily_attempt_slot
+                  where user_id = attempt.user_id) as daily_slots,
+                (select count(*)::int from shot_session
+                  where bonus_game_attempt_id = attempt.id) as shots,
+                (select count(*)::int from bonus_game_economy_event
+                  where user_id = attempt.user_id) as economy_events,
+                (select count(*)::int from user_currency_account
+                  where user_id = attempt.user_id) as currency_accounts
+           from bonus_game_attempt attempt
+          where attempt.id = $1`,
+        [attempt.id],
+      );
+      return rows[0]!;
+    };
+    const before = await snapshot();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/bonus-games/${eligibleGame.id}/attempts`,
+      headers,
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json().error).toEqual({
+      code: 'amateur_level_required',
+      message: 'amateur league is locked',
+      details: { goalsRemaining: 300, unlockGoalsRequired: 300 },
+    });
+    expect(await snapshot()).toEqual(before);
+  });
+
   it('reports current-period shots separately from prior-period totals', async () => {
     const secondPeriod: BonusPeriodRule = { ...PERIODS[0]!, periodNumber: 2 };
     const game = await createGame({
