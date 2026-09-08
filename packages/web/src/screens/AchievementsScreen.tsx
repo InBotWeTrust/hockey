@@ -480,7 +480,9 @@ export function AchievementsScreen({
                 key={part.tone}
                 style={{ color: rewardColor(part.tone) }}
               >
-                {rewardToastIcon(part.tone)}
+                <span className="achievement-reward-toast__icon" aria-hidden="true">
+                  {rewardToastIcon(part.tone)}
+                </span>
                 {part.text}
               </span>
             ))}
