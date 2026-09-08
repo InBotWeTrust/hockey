@@ -385,6 +385,9 @@ describe('AchievementsScreen', () => {
     expect(rewardToast).toHaveTextContent('Награда за достижение начислена');
     expect(rewardToast).toHaveTextContent('Награда ждёт');
     expect(screen.getByTestId('achievement-reward-icon-coins')).toBeInTheDocument();
+    expect(screen.getByTestId('achievement-reward-icon-coins').parentElement).toHaveClass(
+      'achievement-reward-toast__icon',
+    );
     expect(screen.queryByText('+0 зв.', { exact: false })).toBeNull();
     expect(screen.queryByText('+0 опыта', { exact: false })).toBeNull();
     expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);

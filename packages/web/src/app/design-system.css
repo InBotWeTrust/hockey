@@ -11762,6 +11762,25 @@ button.daily-calendar__day:active {
   font-weight: 700;
 }
 
+.achievement-reward-toast__icon {
+  width: 23px;
+  height: 23px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 23px;
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.1),
+    0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.achievement-reward-toast__icon svg {
+  display: block;
+}
+
 .duel-challenge-toast__title,
 .duel-challenge-toast__copy {
   display: block;
