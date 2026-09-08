@@ -104,10 +104,12 @@ function EquipmentPanel({
   inventory,
   onOpen,
   onChoose,
+  onOpenRecovery,
 }: {
   inventory: InventoryState | undefined;
   onOpen: () => void;
   onChoose: (kind: keyof InventoryState['equipped']) => void;
+  onOpenRecovery: () => void;
 }): JSX.Element {
   const slots = [
     ['stickItemId', 'Клюшка', 'клюшку', 'Базовая клюшка', 'stick'],
@@ -163,7 +165,7 @@ function EquipmentPanel({
             type="button"
             className={`profile-loadout-slot${recoveryCount === 0 ? ' profile-loadout-slot--empty' : ''}`}
             aria-label={`Восстановление: ${recoveryCount} наборов`}
-            onClick={onOpen}
+            onClick={onOpenRecovery}
           >
             <span className="profile-loadout-slot__image">
               <img src={recoveryArtwork} alt="Наборы для восстановления" />
@@ -181,6 +183,57 @@ function EquipmentPanel({
         </span>
       </div>
     </section>
+  );
+}
+
+function formatRecoveryDuration(minutes: number): string {
+  if (minutes === 60) return '1 час';
+  return `${minutes} минут`;
+}
+
+function RecoveryStockModal({
+  inventory,
+  onClose,
+  onOpenShop,
+}: {
+  inventory: InventoryState | undefined;
+  onClose: () => void;
+  onOpenShop: () => void;
+}): JSX.Element {
+  const items = (inventory?.items.recovery ?? []).filter((item) => item.chargesAvailable > 0);
+  return (
+    <AccessibleModal
+      title="Наборы для восстановления"
+      ariaLabel="Наборы для восстановления"
+      onRequestClose={onClose}
+      headerAction={
+        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+          <X size={15} />
+        </button>
+      }
+    >
+      {items.length > 0 ? (
+        <div className="profile-picker-list">
+          {items.map((item) => (
+            <article className="profile-picker-item profile-recovery-stock-item" key={item.id}>
+              <img src={item.imageUrl ?? '/inventory/recovery-30.webp'} alt="" />
+              <span>
+                <strong>{item.title}</strong>
+                <small>Снимает {formatRecoveryDuration(item.effectRecoveryMinutes ?? 0)}</small>
+                <small>В запасе: {formatProfileNumber(item.chargesAvailable)}</small>
+              </span>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="modal-copy">Наборов восстановления пока нет в запасе.</p>
+      )}
+      <div className="modal-actions">
+        <button type="button" className="modal-primary btn btn--cta" onClick={onOpenShop}>
+          Перейти в магазин
+        </button>
+      </div>
+    </AccessibleModal>
   );
 }
 
@@ -473,6 +526,7 @@ export function ProfileScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [pickerKind, setPickerKind] = useState<keyof InventoryState['equipped'] | null>(null);
+  const [recoveryStockOpen, setRecoveryStockOpen] = useState(false);
   const [selectedAchievement, setSelectedAchievement] = useState<
     ProfileData['achievements'][number] | null
   >(null);
@@ -592,6 +646,7 @@ export function ProfileScreen(): JSX.Element {
           inventory={inventoryQuery.data}
           onOpen={() => navigate('/profile/equipment')}
           onChoose={setPickerKind}
+          onOpenRecovery={() => setRecoveryStockOpen(true)}
         />
         <CareerPanel
           profile={profile}
@@ -627,6 +682,13 @@ export function ProfileScreen(): JSX.Element {
           onSelect={(item) =>
             equipmentMutation.mutate({ [pickerKind]: item?.instanceId ?? item?.id ?? null })
           }
+        />
+      ) : null}
+      {recoveryStockOpen ? (
+        <RecoveryStockModal
+          inventory={inventoryQuery.data}
+          onClose={() => setRecoveryStockOpen(false)}
+          onOpenShop={() => navigate('/inventory')}
         />
       ) : null}
       {selectedAchievement !== null ? (

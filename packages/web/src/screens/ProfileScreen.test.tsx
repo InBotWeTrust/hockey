@@ -83,6 +83,15 @@ function mockProfileRequest(
     skatesItemId: 'skates-1',
     nutritionItemId: 'food-1',
   },
+  recovery: Array<{
+    id: string;
+    kind: 'recovery';
+    title: string;
+    imageUrl: string;
+    resourceUnit: 'charge';
+    chargesAvailable: number;
+    effectRecoveryMinutes: number;
+  }> = [],
 ): void {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input.toString();
@@ -134,7 +143,7 @@ function mockProfileRequest(
                 chargesAvailable: 180_000,
               },
             ],
-            recovery: [],
+            recovery,
           },
           equipped,
         }),
@@ -174,6 +183,7 @@ function renderProfile(): void {
           <Route path="/profile/equipment" element={<div>equipment screen</div>} />
           <Route path="/profile/achievements" element={<div>achievements screen</div>} />
           <Route path="/profile/settings" element={<div>settings screen</div>} />
+          <Route path="/inventory" element={<div>inventory shop</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -459,6 +469,53 @@ describe('ProfileScreen', () => {
       'src',
       '/inventory/recovery-30.webp',
     );
+  });
+
+  it('opens recovery stock details instead of the generic equipment page', async () => {
+    mockProfileRequest(200, profile, undefined, [
+      {
+        id: 'recovery-15',
+        kind: 'recovery',
+        title: 'Малый набор для восстановления',
+        imageUrl: '/inventory/recovery-15.webp',
+        resourceUnit: 'charge',
+        chargesAvailable: 2,
+        effectRecoveryMinutes: 15,
+      },
+      {
+        id: 'recovery-60',
+        kind: 'recovery',
+        title: 'Большой набор для восстановления',
+        imageUrl: '/inventory/recovery-60.webp',
+        resourceUnit: 'charge',
+        chargesAvailable: 1,
+        effectRecoveryMinutes: 60,
+      },
+    ]);
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Восстановление: 3 наборов' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Наборы для восстановления' });
+    expect(dialog).toHaveTextContent('Малый набор для восстановления');
+    expect(dialog).toHaveTextContent('Снимает 15 минут');
+    expect(dialog).toHaveTextContent('В запасе: 2');
+    expect(dialog).toHaveTextContent('Большой набор для восстановления');
+    expect(dialog).toHaveTextContent('Снимает 1 час');
+    expect(dialog).toHaveTextContent('В запасе: 1');
+    expect(screen.queryByText('equipment screen')).not.toBeInTheDocument();
+  });
+
+  it('offers the shop when there are no recovery kits in stock', async () => {
+    mockProfileRequest();
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Восстановление: 0 наборов' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Наборы для восстановления' });
+    expect(dialog).toHaveTextContent('Наборов восстановления пока нет в запасе.');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Перейти в магазин' }));
+    expect(screen.getByText('inventory shop')).toBeInTheDocument();
   });
 
   it('shows base equipment artwork without a quantity badge for empty slots', async () => {
