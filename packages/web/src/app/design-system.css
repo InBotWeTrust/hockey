@@ -1487,10 +1487,26 @@
 }
 
 .bonus-games-attempt-allowance {
-  margin: 10px 0 0;
-  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 11px 3px 0;
+  color: rgba(255, 255, 255, 0.96);
   font-size: 12px;
-  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  text-shadow: 0 1px 3px rgba(8, 15, 27, 0.92), 0 0 10px rgba(8, 15, 27, 0.5);
+}
+
+.bonus-games-attempt-allowance strong {
+  font-weight: 900;
+}
+
+.bonus-games-attempt-allowance span {
+  color: rgba(255, 255, 255, 0.82);
+  font-weight: 750;
+  white-space: nowrap;
 }
 
 .bonus-games-rules {
@@ -2189,12 +2205,77 @@
   text-transform: uppercase;
 }
 
-.bonus-game-result-reward p {
-  margin: 6px 0 0;
-  color: rgba(15, 23, 42, 0.72);
+.bonus-game-result-reward-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 12px;
+  margin-top: 7px;
+}
+
+.bonus-game-result-reward-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12px;
-  font-weight: 800;
-  line-height: 1.4;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.inventory-purchase-toast {
+  position: fixed;
+  z-index: 380;
+  right: 16px;
+  bottom: calc(88px + var(--app-safe-bottom));
+  left: 16px;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  width: min(390px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 8px;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  border-radius: 17px;
+  background: rgba(30, 41, 59, 0.95);
+  box-shadow: 0 14px 38px rgba(15, 23, 42, 0.3);
+  color: #fff;
+  pointer-events: none;
+  animation: duel-challenge-toast-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.inventory-purchase-toast__artwork {
+  width: 52px;
+  height: 52px;
+  border: 1px solid rgba(255, 255, 255, 0.68);
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.inventory-purchase-toast__content {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.inventory-purchase-toast__status {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.inventory-purchase-toast__content strong {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inventory-purchase-toast__amount {
+  color: #6ee7b7;
+  font-size: 12px;
+  font-weight: 850;
 }
 
 .bonus-game-result-actions {
@@ -3906,6 +3987,48 @@
 .profile-equipment-section,
 .profile-career-section,
 .profile-settings-section,
+.official-account-hero {
+  position: relative;
+  display: flex;
+  min-height: 200px;
+  align-items: flex-end;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  border-radius: 20px;
+  background-color: #18263a;
+  background-position: center;
+  background-size: cover;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.16);
+}
+
+.official-account-hero__caption {
+  width: calc(100% - 24px);
+  margin: 0 12px 12px;
+  padding: 10px 14px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 14px;
+  background: rgba(9, 19, 35, 0.78);
+  box-shadow: 0 8px 22px rgba(3, 8, 18, 0.24);
+  color: #fff;
+  text-align: center;
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+}
+
+.official-account-hero__caption h3 {
+  margin: 0 0 2px;
+  color: #fff;
+  font-size: clamp(18px, 5.3vw, 21px);
+  line-height: 1.15;
+}
+
+.official-account-hero__caption div {
+  color: rgba(240, 246, 255, 0.9);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .profile-community-section {
   display: grid;
   gap: 7px;

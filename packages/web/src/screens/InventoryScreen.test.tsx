@@ -527,6 +527,11 @@ describe('InventoryScreen', () => {
     expect(await screen.findByLabelText('Монеты: 880')).toBeInTheDocument();
     expect(await screen.findByText('Бронзовая клюшка добавлена')).toBeInTheDocument();
     expect(screen.getByText('+5 бросков в инвентарь')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveClass('inventory-purchase-toast');
+    expect(screen.getByRole('img', { name: 'Бронзовая клюшка' })).toHaveAttribute(
+      'src',
+      '/inventory/stick-bronze.webp?v=20260830-base-equipment-v1',
+    );
     expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/inventory/items/stick-bronze/purchase',
       expect.objectContaining({ method: 'POST' }),

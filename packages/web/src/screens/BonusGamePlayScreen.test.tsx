@@ -850,8 +850,27 @@ describe('BonusGamePlayScreen', () => {
     renderScreen();
 
     const dialog = screen.getByRole('dialog', { name: 'Игра пройдена' });
-    expect(within(dialog).getByText('21 монета · 25 очков опыта · 22 звезды')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Монеты: 21')).toHaveTextContent('21 монета');
+    expect(within(dialog).getByLabelText('Опыт: 25')).toHaveTextContent('25 очков опыта');
+    expect(within(dialog).getByLabelText('Звёзды: 22')).toHaveTextContent('22 звезды');
     expect(within(dialog).queryByText('Площадка «Пляж» открыта')).not.toBeInTheDocument();
+  });
+
+  it('omits the reward section when a completed game grants only zero values', () => {
+    setStore({
+      attempt: attempt({
+        status: 'completed',
+        state: 'closed',
+        period_started_at: null,
+        period_ends_at: null,
+        reward_granted: true,
+        reward: { coins: 0, stars: 0, experience: 0 },
+      }),
+    });
+    renderScreen();
+
+    const dialog = screen.getByRole('dialog', { name: 'Игра пройдена' });
+    expect(within(dialog).queryByText('Награда')).not.toBeInTheDocument();
   });
 
   it('keeps the attempt active until the exit prompt is explicitly confirmed', async () => {
