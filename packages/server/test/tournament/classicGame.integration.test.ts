@@ -949,6 +949,88 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     }
   });
 
+  it('rejects beginner Classic period start and shot before creating gameplay state', async () => {
+    await pool.query(`update users set level = 1, lifetime_goals_total = 17 where id = $1`, [
+      PLAYER_ID,
+    ]);
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('amateur.unlock_goals_required', '300'::jsonb, 'Порог любителей', 'preview test')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    const { databaseUrl, redisUrl } = getTestUrls();
+    const app = await buildApp({
+      config: {
+        NODE_ENV: 'test',
+        HOST: '0.0.0.0',
+        PORT: 3000,
+        LOG_LEVEL: 'warn',
+        DATABASE_URL: databaseUrl,
+        REDIS_URL: redisUrl,
+        JWT_SECRET,
+        REFRESH_SECRET,
+        TELEGRAM_BOT_TOKEN: 'classic-game-beginner-preview-bot',
+        DAILY_SEED_SECRET: SEED_SECRET,
+      },
+      pushSchedulerEnabled: false,
+      pushWorkerEnabled: false,
+      tournamentLifecycleEnabled: false,
+    });
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const authorization = `Bearer ${await jwt.issueAccessToken({ sub: PLAYER_ID })}`;
+    const expectedError = {
+      error: {
+        code: 'amateur_level_required',
+        message: 'amateur league is locked',
+        details: { goalsRemaining: 283, unlockGoalsRequired: 300 },
+      },
+    };
+    try {
+      const start = await app.inject({
+        method: 'POST',
+        url: `/tournaments/${TOURNAMENT_ID}/classic/period/start`,
+        headers: { authorization },
+      });
+      expect(start.statusCode).toBe(403);
+      expect(start.json()).toEqual(expectedError);
+      await expect(
+        pool.query(
+          `select session.id
+             from tournament_classic_session session
+             join tournament_participant participant on participant.id = session.participant_id
+            where participant.user_id = $1`,
+          [PLAYER_ID],
+        ),
+      ).resolves.toMatchObject({ rowCount: 0 });
+
+      await pool.query(`update users set level = 2 where id = $1`, [PLAYER_ID]);
+      await startClassicGamePeriod(pool, {
+        userId: PLAYER_ID,
+        tournamentId: TOURNAMENT_ID,
+        now: NOW,
+        seedSecret: SEED_SECRET,
+      });
+      await pool.query(`update users set level = 1 where id = $1`, [PLAYER_ID]);
+
+      const shot = await app.inject({
+        method: 'POST',
+        url: `/tournaments/${TOURNAMENT_ID}/classic/shot`,
+        headers: { authorization },
+        payload: { shot_index: 1, input: { tapTime: 0 }, claimed_result: 'miss' },
+      });
+      expect(shot.statusCode).toBe(403);
+      expect(shot.json()).toEqual(expectedError);
+      const shots = await pool.query<{ count: number }>(
+        `select count(*)::int as count from shot_session
+          where user_id = $1 and mode = 'tournament_classic'`,
+        [PLAYER_ID],
+      );
+      expect(shots.rows[0]?.count).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('allows period setup but rejects the first Classic shot during recent gameplay', async () => {
     await seedRecentTrainingShot(pool, new Date(NOW.getTime() - 5 * 60_000));
 

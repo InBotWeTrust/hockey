@@ -3,6 +3,7 @@ import sharp, { type Metadata } from 'sharp';
 import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import { createTournamentDuelMatch } from '../duel/amateur/routes.js';
+import { assertFullAmateurAccess } from '../profile/amateurAccess.js';
 import { parseTournamentConfig } from './config.js';
 import { normalizePublishedTournamentLifecycleRules } from './lifecycleRules.js';
 import {
@@ -293,6 +294,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     const body = z.object({ loadout: classicLoadoutSchema.optional() }).parse(req.body ?? {});
+    await assertFullAmateurAccess(app.pg, req.user.id);
     return startClassicGamePeriod(app.pg, {
       userId: req.user.id,
       tournamentId: params.tournamentId,
@@ -316,6 +318,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     const body = classicShotSchema.parse(req.body);
+    await assertFullAmateurAccess(app.pg, req.user.id);
     const result = await submitClassicGameShot(app.pg, {
       userId: req.user.id,
       tournamentId: params.tournamentId,
@@ -467,6 +470,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     async (req) => {
       await requireTournamentFeature(app);
       const params = z.object({ tournamentId: uuid, fixtureId: uuid }).parse(req.params);
+      await assertFullAmateurAccess(app.pg, req.user.id);
       let opened;
       try {
         opened = await openTournamentFixtureSegment(
@@ -550,6 +554,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     await requireTournamentFeature(app);
     const params = z.object({ fixtureId: uuid }).parse(req.params);
     const body = z.object({ proposedAt: z.string().datetime({ offset: true }) }).parse(req.body);
+    await assertFullAmateurAccess(app.pg, req.user.id);
     const proposal = await proposeFixtureLiveTime(app.pg, {
       fixtureId: params.fixtureId,
       userId: req.user.id,
@@ -571,6 +576,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       await requireTournamentFeature(app);
       const params = z.object({ fixtureId: uuid, proposalId: uuid }).parse(req.params);
       const body = z.object({ accept: z.boolean() }).parse(req.body);
+      await assertFullAmateurAccess(app.pg, req.user.id);
       const response = await respondFixtureLiveProposal(app.pg, {
         ...params,
         userId: req.user.id,
@@ -589,6 +595,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.post('/tournaments/:tournamentId/applications', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await assertFullAmateurAccess(app.pg, req.user.id);
     const result = await applyToTournament(app.pg, params.tournamentId, req.user.id);
     await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     return result;
@@ -597,6 +604,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.delete('/tournaments/:tournamentId/applications/me', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
+    await assertFullAmateurAccess(app.pg, req.user.id);
     return withdrawTournamentApplication(app.pg, params.tournamentId, req.user.id);
   });
 
