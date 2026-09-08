@@ -16,6 +16,7 @@ import {
   withGameRequestReconciliation,
 } from '../api/requestTimeout.js';
 import type { ShotResultType } from '../api/duel.js';
+import { wasAmateurLevelRequiredErrorHandled } from '../amateur/amateurAccess.js';
 
 interface PendingBonusShot {
   attempt: BonusGameAttempt;
@@ -29,6 +30,7 @@ interface BonusGameStoreState {
   loading: boolean;
   error: string | null;
   errorCode: string | null;
+  errorHandledByAmateurToast: boolean;
   inFlight: boolean;
   needsReconcile: boolean;
   requestEpoch: number;
@@ -56,9 +58,18 @@ interface BonusGameStoreState {
 
 let shotInFlight = false;
 
-function errorDetails(error: unknown, fallback: string): { message: string; code: string | null } {
-  if (error instanceof ApiError) return { message: error.message, code: error.code };
-  return { message: fallback, code: null };
+function errorDetails(
+  error: unknown,
+  fallback: string,
+): { message: string; code: string | null; handledByAmateurToast: boolean } {
+  if (error instanceof ApiError) {
+    return {
+      message: error.message,
+      code: error.code,
+      handledByAmateurToast: wasAmateurLevelRequiredErrorHandled(error),
+    };
+  }
+  return { message: fallback, code: null, handledByAmateurToast: false };
 }
 
 function applyServerAttempt(
@@ -74,6 +85,7 @@ function applyServerAttempt(
     loading: false,
     error: null,
     errorCode: null,
+    errorHandledByAmateurToast: false,
     needsReconcile: false,
     requestEpoch: get().requestEpoch + 1,
     receivedAtPerformanceMs:
@@ -92,6 +104,7 @@ function beginMutation(
     loading: false,
     error: null,
     errorCode: null,
+    errorHandledByAmateurToast: false,
     pendingShot: null,
     requestEpoch: get().requestEpoch + 1,
   });
@@ -100,7 +113,7 @@ function beginMutation(
 function recordMutationFailure(
   set: (partial: Partial<BonusGameStoreState>) => void,
   get: () => BonusGameStoreState,
-  details: { message: string; code: string | null },
+  details: { message: string; code: string | null; handledByAmateurToast: boolean },
 ): void {
   // Reads may have been issued after beginMutation. Invalidate them atomically
   // with the ambiguity lock so none can clear this failure before a fresh read.
@@ -110,6 +123,7 @@ function recordMutationFailure(
     loading: false,
     error: details.message,
     errorCode: details.code,
+    errorHandledByAmateurToast: details.handledByAmateurToast,
     needsReconcile: true,
     pendingShot: null,
     optimisticShotBase: null,
@@ -124,6 +138,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   loading: false,
   error: null,
   errorCode: null,
+  errorHandledByAmateurToast: false,
   inFlight: false,
   needsReconcile: false,
   requestEpoch: 0,
@@ -146,7 +161,12 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
         return null;
       }
       const details = errorDetails(error, 'Не удалось загрузить бонус-попытку.');
-      set({ loading: false, error: details.message, errorCode: details.code });
+      set({
+        loading: false,
+        error: details.message,
+        errorCode: details.code,
+        errorHandledByAmateurToast: details.handledByAmateurToast,
+      });
       return null;
     }
   },
@@ -168,7 +188,12 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
         return null;
       }
       const details = errorDetails(error, 'Не удалось загрузить бонус-попытку.');
-      set({ loading: false, error: details.message, errorCode: details.code });
+      set({
+        loading: false,
+        error: details.message,
+        errorCode: details.code,
+        errorHandledByAmateurToast: details.handledByAmateurToast,
+      });
       return null;
     }
   },
@@ -186,6 +211,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
       loading: false,
       error: null,
       errorCode: null,
+      errorHandledByAmateurToast: false,
       inFlight: false,
       needsReconcile: false,
       requestEpoch: get().requestEpoch + 1,
@@ -204,8 +230,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
         shots_taken: attempt.shots_taken + 1,
         current_period_shots_taken: attempt.current_period_shots_taken + 1,
         goals: attempt.goals + (claimed === 'goal' ? 1 : 0),
-        current_goal_streak:
-          claimed === 'goal' ? attempt.current_goal_streak + 1 : 0,
+        current_goal_streak: claimed === 'goal' ? attempt.current_goal_streak + 1 : 0,
         best_goal_streak:
           claimed === 'goal'
             ? Math.max(attempt.best_goal_streak, attempt.current_goal_streak + 1)
@@ -290,6 +315,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
           loading: false,
           error: null,
           errorCode: null,
+          errorHandledByAmateurToast: false,
           needsReconcile: false,
           requestEpoch: get().requestEpoch + 1,
         });

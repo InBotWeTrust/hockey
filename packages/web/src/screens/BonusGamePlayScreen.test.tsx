@@ -222,6 +222,7 @@ function setStore(overrides: Partial<ReturnType<typeof useBonusGameStore.getStat
     loading: false,
     error: null,
     errorCode: null,
+    errorHandledByAmateurToast: false,
     inFlight: false,
     needsReconcile: false,
     requestEpoch: 0,
@@ -990,6 +991,7 @@ describe('BonusGamePlayScreen', () => {
     setStore({
       error: 'Не удалось выполнить запрос. Попробуйте ещё раз.',
       errorCode: 'amateur_level_required',
+      errorHandledByAmateurToast: true,
     });
     renderScreen();
 
@@ -998,6 +1000,22 @@ describe('BonusGamePlayScreen', () => {
     const dialog = screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' });
     expect(within(dialog).queryByRole('alert')).toBeNull();
     expect(dialog).not.toHaveTextContent('Не удалось выполнить запрос. Попробуйте ещё раз.');
+  });
+
+  it('keeps the generic abandon fallback when Amateur access details were not handled', () => {
+    setStore({
+      error: 'Не удалось выполнить запрос. Попробуйте ещё раз.',
+      errorCode: 'amateur_level_required',
+      errorHandledByAmateurToast: false,
+    });
+    renderScreen();
+
+    fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Выйти из бонусной игры?' });
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      'Не удалось выполнить запрос. Попробуйте ещё раз.',
+    );
   });
 });
 

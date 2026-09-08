@@ -94,6 +94,7 @@ describe('App routing + auth', () => {
       loading: false,
       error: null,
       errorCode: null,
+      errorHandledByAmateurToast: false,
       inFlight: false,
       needsReconcile: false,
       requestEpoch: 0,

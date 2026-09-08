@@ -4,6 +4,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
 import { useAuthStore } from '../auth/authStore.js';
+import { ApiError } from '../api/apiFetch.js';
 import type { DailyStateResponse } from '../api/duel.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { BonusGamesScreen } from './BonusGamesScreen.js';
@@ -394,6 +395,59 @@ describe('BonusGamesScreen', () => {
     expect(screen.getByLabelText('location')).toHaveTextContent(
       '/bonus-games/speed-beach/play?attempt=attempt-speed',
     );
+  });
+
+  it('explains a level-locked game without offering to abandon an active attempt', async () => {
+    useAuthStore.setState({
+      user: {
+        id: 'beginner-active',
+        displayName: 'Новичок',
+        competitionLevel: 'beginner',
+      },
+    });
+    useDailyStore.setState({
+      data: {
+        lifetime_total_goals: 116,
+        amateur_unlock_goals_required: 300,
+      } as DailyStateResponse,
+    });
+    mockCatalog([
+      card({
+        id: 'speed-beach',
+        title: 'Скоростной пляж',
+        state: 'in_progress',
+        active_attempt: {
+          id: 'attempt-speed',
+          game_id: 'speed-beach',
+          state: 'period_active',
+          current_period: 1,
+          period_started_at: '2026-08-26T12:00:00.000Z',
+          break_started_at: null,
+          shots_taken: 4,
+          goals: 2,
+        },
+      }),
+      card({
+        id: 'accuracy-locked',
+        title: 'Закрытая точность',
+        skill_code: 'accuracy',
+        state: 'level_locked',
+        is_unlocked: false,
+      }),
+    ]);
+    localStorage.setItem('bonus-games:last-skill', 'accuracy');
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Закрыта' }));
+
+    expect(screen.queryByRole('dialog', { name: 'Уже идёт другая игра' })).toBeNull();
+    expect(useAmateurAccessToastStore.getState()).toMatchObject({
+      sequence: 1,
+      toast: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+    });
+    expect(
+      vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),
+    ).toHaveLength(0);
   });
 
   it('abandons the active attempt before starting the selected game', async () => {
@@ -963,6 +1017,25 @@ describe('BonusGamesScreen', () => {
       'Не удалось выполнить запрос. Попробуйте ещё раз.',
     );
     expect(screen.queryByText('private start failure')).toBeNull();
+  });
+
+  it('keeps the generic fallback when Amateur access details are malformed', async () => {
+    mockCatalog([card({})], {
+      startFailure: new ApiError(
+        403,
+        'amateur_level_required',
+        'Не удалось выполнить запрос. Попробуйте ещё раз.',
+        { goalsRemaining: 'unknown' },
+      ),
+    });
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не удалось выполнить запрос. Попробуйте ещё раз.',
+    );
+    expect(useAmateurAccessToastStore.getState()).toMatchObject({ sequence: 0, toast: null });
   });
 
   it('does not request inventory balances or paid unlocks', async () => {

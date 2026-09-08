@@ -5,6 +5,7 @@ import {
   deriveAmateurAccess,
   guardAmateurMutation,
   showAmateurLevelRequiredError,
+  wasAmateurLevelRequiredErrorHandled,
 } from './amateurAccess.js';
 import { useAmateurAccessToastStore } from './amateurAccessStore.js';
 
@@ -193,14 +194,14 @@ describe('Amateur access helpers', () => {
   });
 
   it('maps a structured server restriction to the shared toast without raw copy', () => {
-    const handled = showAmateurLevelRequiredError(
-      new ApiError(403, 'amateur_level_required', 'database policy denied', {
-        goalsRemaining: 184,
-        unlockGoalsRequired: 300,
-      }),
-    );
+    const error = new ApiError(403, 'amateur_level_required', 'database policy denied', {
+      goalsRemaining: 184,
+      unlockGoalsRequired: 300,
+    });
+    const handled = showAmateurLevelRequiredError(error);
 
     expect(handled).toBe(true);
+    expect(wasAmateurLevelRequiredErrorHandled(error)).toBe(true);
     expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
       goalsRemaining: 184,
       unlockGoalsRequired: 300,
@@ -208,15 +209,13 @@ describe('Amateur access helpers', () => {
   });
 
   it('leaves malformed or unrelated API failures to generic error handling', () => {
+    const malformed = new ApiError(403, 'amateur_level_required', 'internal copy', {
+      goalsRemaining: 'many',
+      unlockGoalsRequired: 300,
+    });
     expect(showAmateurLevelRequiredError(new Error('offline'))).toBe(false);
-    expect(
-      showAmateurLevelRequiredError(
-        new ApiError(403, 'amateur_level_required', 'internal copy', {
-          goalsRemaining: 'many',
-          unlockGoalsRequired: 300,
-        }),
-      ),
-    ).toBe(false);
+    expect(showAmateurLevelRequiredError(malformed)).toBe(false);
+    expect(wasAmateurLevelRequiredErrorHandled(malformed)).toBe(false);
     expect(useAmateurAccessToastStore.getState().toast).toBeNull();
   });
 });

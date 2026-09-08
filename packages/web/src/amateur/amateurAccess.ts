@@ -1,6 +1,8 @@
 import { isAmateurLevelRequired } from '../api/apiFetch.js';
 import { showAmateurAccessToast, type AmateurAccessDetails } from './amateurAccessStore.js';
 
+const handledAmateurLevelRequiredErrors = new WeakSet<object>();
+
 export type AmateurCompetitionLevel = 'beginner' | 'amateur' | 'professional';
 
 export interface AmateurAccessInput {
@@ -69,7 +71,18 @@ export function showAmateurLevelRequiredError(error: unknown): boolean {
   const details = amateurAccessDetailsFromError(error);
   if (details === null) return false;
   showAmateurAccessToast(details);
+  if (error !== null && (typeof error === 'object' || typeof error === 'function')) {
+    handledAmateurLevelRequiredErrors.add(error);
+  }
   return true;
+}
+
+export function wasAmateurLevelRequiredErrorHandled(error: unknown): boolean {
+  return (
+    error !== null &&
+    (typeof error === 'object' || typeof error === 'function') &&
+    handledAmateurLevelRequiredErrors.has(error)
+  );
 }
 
 export function guardAmateurMutation(access: AmateurAccessSnapshot, action: () => void): void {

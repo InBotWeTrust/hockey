@@ -452,7 +452,7 @@ export function BonusGamePlayScreen(): JSX.Element {
   const attempt = useBonusGameStore((state) => state.attempt);
   const loading = useBonusGameStore((state) => state.loading);
   const error = useBonusGameStore((state) => state.error);
-  const errorCode = useBonusGameStore((state) => state.errorCode);
+  const errorHandledByAmateurToast = useBonusGameStore((state) => state.errorHandledByAmateurToast);
   const inFlight = useBonusGameStore((state) => state.inFlight);
   const needsReconcile = useBonusGameStore((state) => state.needsReconcile);
   const receivedAtPerformanceMs = useBonusGameStore((state) => state.receivedAtPerformanceMs);
@@ -800,7 +800,7 @@ export function BonusGamePlayScreen(): JSX.Element {
           closeBlocked={isConfirmingAbandon}
           onClose={() => setConfirmAbandon(false)}
         >
-          {error && errorCode !== 'amateur_level_required' ? (
+          {error && !errorHandledByAmateurToast ? (
             <p role="alert" className="bonus-game-abandon-error">
               {error}
             </p>

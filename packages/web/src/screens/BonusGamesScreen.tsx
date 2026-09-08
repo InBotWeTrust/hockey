@@ -19,8 +19,12 @@ import {
   type BonusGameCard,
   type BonusSkillCode,
 } from '../api/bonusGames.js';
-import { ApiError, isAmateurLevelRequired } from '../api/apiFetch.js';
-import { deriveAmateurAccess, guardAmateurMutation } from '../amateur/amateurAccess.js';
+import { ApiError } from '../api/apiFetch.js';
+import {
+  deriveAmateurAccess,
+  guardAmateurMutation,
+  wasAmateurLevelRequiredErrorHandled,
+} from '../amateur/amateurAccess.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
@@ -133,6 +137,10 @@ export function BonusGamesScreen(): JSX.Element {
   };
 
   const openGame = (game: BonusGameCard): void => {
+    if (game.state === 'level_locked') {
+      performGameAction(game);
+      return;
+    }
     if (activeAttempt !== null && game.active_attempt === null) {
       switchAttemptMutation.reset();
       setSwitchGame(game);
@@ -292,7 +300,7 @@ export function BonusGamesScreen(): JSX.Element {
           </div>
         ) : null}
 
-        {startMutation.isError && !isAmateurLevelRequired(startMutation.error) && (
+        {startMutation.isError && !wasAmateurLevelRequiredErrorHandled(startMutation.error) && (
           <div className="bonus-games-catalog__notice" role="alert">
             {safeUiError(startMutation.error)}
           </div>
@@ -311,7 +319,8 @@ export function BonusGamesScreen(): JSX.Element {
             setSwitchGame(null);
           }}
         >
-          {switchAttemptMutation.isError && !isAmateurLevelRequired(switchAttemptMutation.error) ? (
+          {switchAttemptMutation.isError &&
+          !wasAmateurLevelRequiredErrorHandled(switchAttemptMutation.error) ? (
             <p role="alert" className="bonus-game-abandon-error">
               {safeUiError(switchAttemptMutation.error)}
             </p>

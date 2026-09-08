@@ -128,6 +128,7 @@ describe('bonusGameStore', () => {
       loading: false,
       error: null,
       errorCode: null,
+      errorHandledByAmateurToast: false,
       inFlight: false,
       needsReconcile: false,
       requestEpoch: 0,
@@ -756,10 +757,9 @@ describe('bonusGameStore', () => {
 
     for (let shotIndex = 1; shotIndex <= 4; shotIndex += 1) {
       expect(useBonusGameStore.getState().canSubmitShot()).toBe(true);
-      const result = await useBonusGameStore.getState().submitShot(
-        { ...shot, claimed_shot_index: shotIndex },
-        { deferApply: true },
-      );
+      const result = await useBonusGameStore
+        .getState()
+        .submitShot({ ...shot, claimed_shot_index: shotIndex }, { deferApply: true });
 
       expect(result?.attempt.shots_taken).toBe(shotIndex);
       expect(useBonusGameStore.getState().canSubmitShot()).toBe(false);
