@@ -4184,10 +4184,10 @@
   -webkit-line-clamp: 2;
 }
 
-.profile-career-empty {
-  padding: 13px;
-  border-radius: 15px;
-  background: rgba(255, 255, 255, 0.34);
+.profile-career-empty-copy {
+  display: block;
+  width: 100%;
+  padding: 14px 6px;
   color: var(--muted);
   font-size: 11px;
   font-weight: 750;
@@ -11709,4 +11709,7 @@ button.daily-calendar__day:active {
     padding-right: 14px;
     padding-left: 14px;
   }
+}
+.user-avatar__initial::before {
+  content: attr(data-initial);
 }

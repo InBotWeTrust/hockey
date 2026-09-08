@@ -67,6 +67,7 @@ describe('BottomNav remembered navigation', () => {
         displayName: 'Egor',
         role: 'admin',
         experimentalTrainingCourt: false,
+        competitionLevel: 'amateur',
       },
     });
   });
@@ -544,6 +545,44 @@ describe('BottomNav remembered navigation', () => {
     renderBottomNav('/profile');
 
     expect(await screen.findByLabelText('События разделов: 4')).toHaveTextContent('4');
+  });
+
+  it('does not count weekly challenge actions for a beginner', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/weekly-challenge/current')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              challenge: { id: 'challenge-1', canJoin: true },
+              pendingRewards: [{ id: 'challenge-old', canClaimReward: true }],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      if (url.endsWith('/api/achievements')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ achievements: [], unclaimedCount: 0 }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/События разделов:/)).toBeNull();
+    });
   });
 
   it('refreshes missing grip for persisted auth sessions', async () => {

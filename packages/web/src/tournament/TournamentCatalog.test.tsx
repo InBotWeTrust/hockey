@@ -736,7 +736,7 @@ describe('TournamentCatalog', () => {
     expect(screen.getByRole('img', { name: 'Первый' })).toHaveAttribute('src', '/first.webp');
     fireEvent.error(screen.getByRole('img', { name: 'Первый' }));
     expect(screen.queryByRole('img', { name: 'Первый' })).not.toBeInTheDocument();
-    expect(dialog.querySelector('.tournament-participants-list__avatar')).toHaveTextContent('П');
+    expect(dialog.querySelector('.tournament-participants-list__avatar [data-initial="П"]')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть список участников' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Участники' })).toBeNull());
   });

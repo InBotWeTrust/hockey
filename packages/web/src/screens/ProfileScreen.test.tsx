@@ -470,6 +470,19 @@ describe('ProfileScreen', () => {
     expect(career.querySelector('.profile-career-list')).toHaveClass('profile-career-list--scroll');
   });
 
+  it('shows the empty achievement message directly in the shared career panel', async () => {
+    mockProfileRequest(200, { ...profile, achievements: [] });
+    renderProfile();
+
+    const career = await screen.findByLabelText('Награды и достижения');
+    const panel = career.querySelector('.profile-career-panel');
+    const emptyCopy = screen.getByText('Первая награда ещё впереди');
+
+    expect(emptyCopy.parentElement).toBe(panel);
+    expect(emptyCopy).toHaveClass('profile-career-empty-copy');
+    expect(emptyCopy).not.toHaveClass('glass');
+  });
+
   it('uses the shared glass surface treatment for the new profile sections', async () => {
     mockProfileRequest();
 
