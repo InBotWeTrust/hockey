@@ -7,7 +7,6 @@ import {
   Circle,
   CircleDollarSign,
   Lock,
-  Sparkles,
   Star,
   Ticket,
   TrendingUp,
@@ -174,6 +173,41 @@ function rewardText(achievement: AchievementDto): string {
   }).join(' · ');
 }
 
+function rewardToastIcon(tone: RewardTone): JSX.Element {
+  if (tone === 'coin') {
+    return (
+      <CircleDollarSign
+        size={15}
+        strokeWidth={2.55}
+        data-testid="achievement-reward-icon-coins"
+        aria-hidden="true"
+      />
+    );
+  }
+  if (tone === 'star') {
+    return (
+      <Star
+        size={15}
+        strokeWidth={2.55}
+        fill="currentColor"
+        data-testid="achievement-reward-icon-stars"
+        aria-hidden="true"
+      />
+    );
+  }
+  if (tone === 'experience') {
+    return (
+      <TrendingUp
+        size={15}
+        strokeWidth={2.55}
+        data-testid="achievement-reward-icon-experience"
+        aria-hidden="true"
+      />
+    );
+  }
+  return <Ticket size={15} strokeWidth={2.55} aria-hidden="true" />;
+}
+
 export function AchievementsScreen({
   profileContext = false,
 }: {
@@ -255,7 +289,7 @@ export function AchievementsScreen({
         experience: response.rewards.experience,
         tokens: response.rewards.tokens ?? 0,
       });
-      window.setTimeout(() => setClaimedReward(null), 2800);
+      window.setTimeout(() => setClaimedReward(null), 5000);
     },
     onError: () => triggerHaptic('error'),
   });
@@ -428,56 +462,25 @@ export function AchievementsScreen({
 
       {claimedReward && (
         <div
+          role="status"
           aria-live="polite"
-          style={{
-            position: 'fixed',
-            left: 18,
-            right: 18,
-            bottom: 'calc(88px + var(--app-safe-bottom))',
-            zIndex: 280,
-            display: 'flex',
-            justifyContent: 'center',
-            pointerEvents: 'none',
-          }}
+          className="achievement-reward-toast"
         >
-          <div
-            className="glass"
-            style={{
-              width: 'min(100%, 330px)',
-              borderRadius: 18,
-              padding: '14px 16px',
-              display: 'grid',
-              gridTemplateColumns: '34px minmax(0, 1fr)',
-              gap: 10,
-              alignItems: 'center',
-              animation: 'reward-pop 2.6s ease both',
-            }}
-          >
-            <Sparkles size={24} color="#0f766e" />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 950, color: 'var(--ink)' }}>
-                {claimedReward.title}
-              </div>
-              {rewardPartItems(claimedReward, { plus: true }).length > 0 && (
-                <div
-                  style={{
-                    marginTop: 3,
-                    display: 'flex',
-                    gap: 6,
-                    flexWrap: 'wrap',
-                    fontSize: 12,
-                    fontWeight: 900,
-                  }}
-                >
-                  {rewardPartItems(claimedReward, { plus: true }).map((part, index) => (
-                    <span key={part.tone} style={{ color: rewardColor(part.tone) }}>
-                      {index > 0 ? '· ' : ''}
-                      {part.text}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
+          <span className="achievement-reward-toast__status">
+            Награда за достижение начислена
+          </span>
+          <strong className="achievement-reward-toast__title">{claimedReward.title}</strong>
+          <div className="achievement-reward-toast__values">
+            {rewardPartItems(claimedReward, { plus: true }).map((part) => (
+              <span
+                className="achievement-reward-toast__value"
+                key={part.tone}
+                style={{ color: rewardColor(part.tone) }}
+              >
+                {rewardToastIcon(part.tone)}
+                {part.text}
+              </span>
+            ))}
           </div>
         </div>
       )}

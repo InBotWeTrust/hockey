@@ -109,11 +109,23 @@ export async function fetchTrophySummary(db: Queryable, userId: string): Promise
           join tournament_participant participant on participant.id = standing.participant_id
           join tournament tournament_record on tournament_record.id = standing.tournament_id
          where participant.user_id = $1 and standing.rank = 1
-           and tournament_record.status = 'completed') as regular_season_wins,
+           and tournament_record.status = 'completed') +
+       (select count(*)::int
+          from tournament_placement_history history
+         where history.user_id = $1 and history.stage = 'regular' and history.place = 1
+           and not exists (
+             select 1 from tournament where tournament.id = history.source_tournament_id
+           )) as regular_season_wins,
        (select count(distinct final.tournament_id)::int
           from completed_playoff_finals final
           join tournament_participant winner on winner.id = final.winner_participant_id
-         where winner.user_id = $1) as tournament_championships,
+         where winner.user_id = $1) +
+       (select count(*)::int
+          from tournament_placement_history history
+         where history.user_id = $1 and history.stage = 'playoff' and history.place = 1
+           and not exists (
+             select 1 from tournament where tournament.id = history.source_tournament_id
+           )) as tournament_championships,
        (select count(*)::int
           from tournament_standing standing
           join tournament_participant participant on participant.id = standing.participant_id
@@ -123,7 +135,13 @@ export async function fetchTrophySummary(db: Queryable, userId: string): Promise
        (select count(*)::int
           from playoff_podiums podium
           join tournament_participant participant on participant.id = podium.participant_id
-         where participant.user_id = $1) as tournament_podiums,
+         where participant.user_id = $1) +
+       (select count(*)::int
+          from tournament_placement_history history
+         where history.user_id = $1 and history.place in (2, 3)
+           and not exists (
+             select 1 from tournament where tournament.id = history.source_tournament_id
+           )) as tournament_podiums,
        (select count(*)::int from weekly_challenge_reward_claims where user_id = $1)
          as completed_challenges`,
     [userId],
@@ -195,13 +213,41 @@ export async function fetchTrophyDetails(db: Queryable, userId: string): Promise
          from tournament_playoff_series series
          join tournament_participant participant on participant.id = series.winner_participant_id
         where series.kind = 'third_place' and series.status = 'completed'
+       union all
+       select history.source_tournament_id, history.user_id,
+              case
+                when history.stage = 'regular' and history.place = 1 then 'regularSeasonWins'::text
+                when history.stage = 'playoff' and history.place = 1 then 'tournamentChampionships'::text
+                else 'tournamentPodiums'::text
+              end,
+              case
+                when history.stage = 'regular' and history.place = 1
+                  then 'Победа в регулярном чемпионате'
+                when history.stage = 'regular' then history.place || '-е место в регулярном чемпионате'
+                when history.place = 1 then 'Победа в финале'
+                else history.place || '-е место'
+              end
+         from tournament_placement_history history
+        where history.place <= 3
+          and not exists (
+            select 1 from tournament where tournament.id = history.source_tournament_id
+          )
      )
-     select awards.category, tournament_record.id, tournament_record.title, tournament_record.image_url,
-            coalesce(tournament_record.starts_at, tournament_schedule.starts_at) as starts_at,
-            coalesce(tournament_schedule.ends_at, tournament_record.completed_at) as ends_at,
+     select awards.category, awards.tournament_id as id,
+            coalesce(tournament_record.title, history.tournament_title) as title,
+            coalesce(tournament_record.image_url, history.tournament_image_url) as image_url,
+            coalesce(tournament_record.starts_at, tournament_schedule.starts_at,
+                     history.tournament_starts_at) as starts_at,
+            coalesce(tournament_schedule.ends_at, tournament_record.completed_at,
+                     history.tournament_ends_at) as ends_at,
             awards.result
        from awards
-       join tournament tournament_record on tournament_record.id = awards.tournament_id
+       left join tournament tournament_record on tournament_record.id = awards.tournament_id
+       left join tournament_placement_history history
+         on history.source_tournament_id = awards.tournament_id
+        and history.user_id = awards.user_id
+        and history.stage = case when awards.category = 'regularSeasonWins'
+                               then 'regular' else 'playoff' end
        left join lateral (
          select min(schedule_window.starts_at) as starts_at, max(schedule_window.ends_at) as ends_at
            from (
@@ -220,8 +266,9 @@ export async function fetchTrophyDetails(db: Queryable, userId: string): Promise
            ) schedule_window
        ) tournament_schedule on true
       where awards.user_id = $1
-      order by tournament_record.completed_at desc nulls last, tournament_record.starts_at desc nulls last,
-               tournament_record.id desc`,
+      order by coalesce(tournament_record.completed_at, history.tournament_ends_at) desc nulls last,
+               coalesce(tournament_record.starts_at, history.tournament_starts_at) desc nulls last,
+               awards.tournament_id desc`,
     [userId],
   );
   const { rows: challengeRows } = await db.query<{

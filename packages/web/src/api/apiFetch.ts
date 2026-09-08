@@ -33,6 +33,8 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   playoff_round_schedule_order:
     'Следующий раунд начинается раньше окончания предыдущего. Перенесите его даты вперёд.',
   tournament_schedule_date_not_future: 'Выберите будущую дату первого тура.',
+  playoff_opponent_blocked:
+    'Это ваш соперник в плей-офф. Сначала сыграйте серию — после этого обычная дуэль станет доступна.',
 };
 
 export class ApiError extends Error {

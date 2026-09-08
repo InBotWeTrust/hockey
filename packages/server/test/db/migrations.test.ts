@@ -551,6 +551,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '108_remove_daily_aggregate_tournaments.sql',
       '109_drop_legacy_user_wallet.sql',
       '110_recovery_kits.sql',
+      '111_tournament_placement_history.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -576,6 +577,14 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       `select value #>> '{}' as value from game_settings where key = 'amateur.rating_visibility'`,
     );
     expect(ratingVisibility.rows[0]?.value).toBe('enabled');
+
+    const tournamentSourceConstraint = await pool.query<{ definition: string }>(
+      `select pg_get_constraintdef(oid) as definition
+         from pg_constraint
+        where conrelid = 'tournament'::regclass
+          and conname = 'tournament_regular_source_check'`,
+    );
+    expect(tournamentSourceConstraint.rows[0]?.definition).toContain('daily_aggregate');
 
     const mixTemplate = await pool.query<{ period_speed_presets: unknown }>(
       `select period_speed_presets
@@ -1317,6 +1326,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '108_remove_daily_aggregate_tournaments.sql',
       '109_drop_legacy_user_wallet.sql',
       '110_recovery_kits.sql',
+      '111_tournament_placement_history.sql',
     ]);
 
     const activeInventory = await pool.query<{

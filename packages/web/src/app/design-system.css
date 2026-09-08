@@ -11574,6 +11574,93 @@ button.daily-calendar__day:active {
   font-weight: 900;
 }
 
+.duel-challenge-toast,
+.achievement-reward-toast {
+  position: fixed;
+  z-index: 380;
+  top: calc(var(--app-safe-top) + 14px);
+  left: 50%;
+  width: min(440px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  padding: 11px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 16px;
+  background: rgba(30, 41, 59, 0.94);
+  box-shadow: 0 14px 38px rgba(15, 23, 42, 0.28);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  animation: duel-challenge-toast-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.achievement-reward-toast {
+  width: min(398px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.achievement-reward-toast__status {
+  display: block;
+  font-size: 12px;
+  font-weight: 650;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.achievement-reward-toast__title {
+  display: block;
+  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.achievement-reward-toast__values {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.achievement-reward-toast__value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.duel-challenge-toast__title,
+.duel-challenge-toast__copy {
+  display: block;
+}
+
+.duel-challenge-toast__title {
+  font-weight: 850;
+}
+
+.duel-challenge-toast__copy {
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+@keyframes duel-challenge-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -18px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .duel-challenge-toast,
+  .achievement-reward-toast {
+    animation: none;
+  }
+}
+
 .weekly-challenge-reward-toast {
   position: fixed;
   z-index: 280;

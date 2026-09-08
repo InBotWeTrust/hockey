@@ -6,6 +6,7 @@ import { UserProfileScreen } from '../screens/UserProfileScreen.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import * as api from '../api.js';
 import * as amateurDuelApi from '../../api/amateurDuel.js';
+import { ApiError } from '../../api/apiFetch.js';
 
 function renderPublicProfile(): void {
   const qc = new QueryClient({
@@ -59,6 +60,9 @@ describe('UserProfileScreen', () => {
     });
     vi.spyOn(api, 'findOrCreateDM').mockResolvedValue({ chatId: 'dm1', created: false });
     vi.spyOn(amateurDuelApi, 'fetchAmateurMatches').mockResolvedValue({ matches: [] });
+    vi.spyOn(amateurDuelApi, 'checkAmateurDuelChallengeAvailability').mockResolvedValue({
+      available: true,
+    });
   });
 
   afterEach(() => {
@@ -81,5 +85,23 @@ describe('UserProfileScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: /Первая шайба.*получено/i }));
     expect(screen.getByRole('dialog', { name: 'Первая шайба' })).toBeInTheDocument();
     expect(screen.getByText('Первый гол всегда самый шумный.')).toBeInTheDocument();
+  });
+
+  it('shows a toast without opening duel setup for a future playoff opponent', async () => {
+    vi.mocked(amateurDuelApi.checkAmateurDuelChallengeAvailability).mockRejectedValueOnce(
+      new ApiError(
+        409,
+        'playoff_opponent_blocked',
+        'Это ваш соперник в плей-офф. Сначала сыграйте серию — после этого обычная дуэль станет доступна.',
+      ),
+    );
+    renderPublicProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: /вызвать на дуэль/i }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Это ваш соперник в плей-офф. Сначала сыграйте серию — после этого обычная дуэль станет доступна.',
+    );
+    expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument();
   });
 });

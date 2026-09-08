@@ -53,6 +53,26 @@ describe('apiFetch', () => {
     await expect(apiFetch('/x')).rejects.toBeInstanceOf(ApiError);
   });
 
+  it('localizes a blocked challenge against a playoff opponent', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJson(
+        {
+          error: {
+            code: 'playoff_opponent_blocked',
+            message: 'playoff opponent is unavailable for ordinary duels',
+          },
+        },
+        { status: 409 },
+      ),
+    );
+
+    await expect(apiFetch('/duel/amateur/challenge')).rejects.toMatchObject({
+      code: 'playoff_opponent_blocked',
+      message:
+        'Это ваш соперник в плей-офф. Сначала сыграйте серию — после этого обычная дуэль станет доступна.',
+    });
+  });
+
   it('preserves public error details for client-side recovery copy', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       mockJson(
