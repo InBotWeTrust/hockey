@@ -97,18 +97,24 @@ export function SectionsScreen(): JSX.Element {
       achievement.status === 'claimed' || achievement.status === 'completed_unclaimed',
   ).length;
   const achievementsUnclaimedCount = achievementsQuery.data?.unclaimedCount ?? 0;
+  const weeklyChallengesAvailable =
+    profileQuery.data?.competitionLevel === 'amateur' ||
+    profileQuery.data?.competitionLevel === 'professional';
   const weeklyCanClaimReward =
-    weeklyChallenge.data?.challenge?.canClaimReward === true ||
-    (weeklyChallenge.data?.pendingRewards?.length ?? 0) > 0;
+    weeklyChallengesAvailable &&
+    (weeklyChallenge.data?.challenge?.canClaimReward === true ||
+      (weeklyChallenge.data?.pendingRewards?.length ?? 0) > 0);
   const weeklyNeedsDecision =
-    weeklyChallenge.data?.challenge?.canJoin === true || weeklyCanClaimReward;
+    weeklyChallengesAvailable &&
+    (weeklyChallenge.data?.challenge?.canJoin === true || weeklyCanClaimReward);
   const sectionTasksActionCount =
     achievementsUnclaimedCount +
+    (weeklyChallengesAvailable &&
     (weeklyChallenge.data?.challenge?.canJoin === true ||
-    weeklyChallenge.data?.challenge?.canClaimReward === true
+      weeklyChallenge.data?.challenge?.canClaimReward === true)
       ? 1
       : 0) +
-    (weeklyChallenge.data?.pendingRewards?.length ?? 0);
+    (weeklyChallengesAvailable ? (weeklyChallenge.data?.pendingRewards?.length ?? 0) : 0);
   const achievementsMeta = `${numberText(achievementsCompletedCount)}/${numberText(achievements.length)} наград`;
 
   const openAmateurs = (): void => {

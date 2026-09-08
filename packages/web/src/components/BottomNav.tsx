@@ -174,7 +174,8 @@ export function BottomNav(): JSX.Element | null {
       !isDemo &&
       (user?.role === undefined ||
         user?.experimentalTrainingCourt === undefined ||
-        user?.grip === undefined),
+        user?.grip === undefined ||
+        user?.competitionLevel === undefined),
   });
 
   useEffect(() => {
@@ -189,6 +190,9 @@ export function BottomNav(): JSX.Element | null {
       patch.experimentalTrainingCourt = refreshedUser.experimentalTrainingCourt;
     }
     if (refreshedUser.grip !== undefined) patch.grip = refreshedUser.grip;
+    if (refreshedUser.competitionLevel !== undefined) {
+      patch.competitionLevel = refreshedUser.competitionLevel;
+    }
     if (Object.keys(patch).length > 0) {
       updateUser(patch);
     }
@@ -230,14 +234,18 @@ export function BottomNav(): JSX.Element | null {
     (classicTournamentGames?.games ?? []).filter(
       (game) => game.state !== 'closed' && String(game.state) !== 'completed',
     ).length;
+  const competitionLevel = user?.competitionLevel ?? refreshedUser?.competitionLevel;
+  const weeklyChallengesAvailable =
+    competitionLevel === 'amateur' || competitionLevel === 'professional';
   const currentSectionActionCount =
-    weeklyChallenge?.challenge?.canJoin === true ||
-    weeklyChallenge?.challenge?.canClaimReward === true
+    weeklyChallengesAvailable &&
+    (weeklyChallenge?.challenge?.canJoin === true ||
+      weeklyChallenge?.challenge?.canClaimReward === true)
       ? 1
       : 0;
   const sectionActionCount =
     currentSectionActionCount +
-    (weeklyChallenge?.pendingRewards?.length ?? 0) +
+    (weeklyChallengesAvailable ? (weeklyChallenge?.pendingRewards?.length ?? 0) : 0) +
     (achievements?.unclaimedCount ?? 0);
   const openLastGameRoute = (): void => {
     rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);

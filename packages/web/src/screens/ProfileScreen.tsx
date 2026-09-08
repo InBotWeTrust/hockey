@@ -196,7 +196,7 @@ function CareerPanel({
             ))}
           </span>
         ) : (
-          <span className="profile-career-empty">Первая награда ещё впереди</span>
+          <span className="profile-career-empty-copy">Первая награда ещё впереди</span>
         )}
       </div>
     </section>

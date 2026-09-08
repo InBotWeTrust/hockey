@@ -53,7 +53,7 @@ function mockSectionsApi({
   dailyLifetimeTotalGoals = 300,
   dailyAmateurUnlockGoalsRequired = 300,
   dailyTotalShots = 0,
-  profileCompetitionLevel,
+  profileCompetitionLevel = 'amateur',
   profileRequest,
   pendingTournamentCongratulations = [],
   acknowledgementRequest,
@@ -455,5 +455,19 @@ describe('SectionsScreen', () => {
     expect(await screen.findByText('2/3 наград')).toBeInTheDocument();
     expect(screen.getByLabelText('Требуется действие')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Челлендж недели' })).toBeNull();
+  });
+
+  it('hides weekly challenge attention for beginners while keeping achievement attention', async () => {
+    mockSectionsApi({
+      profileCompetitionLevel: 'beginner',
+      achievements: [],
+      achievementsUnclaimedCount: 0,
+      weeklyChallenge: { id: 'challenge-1', title: 'Неделя снайпера', canJoin: true },
+      weeklyPendingRewards: [{ id: 'challenge-old', title: 'Прошлая неделя' }],
+    });
+    renderSections();
+
+    expect(await screen.findByText('0/0 наград')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Требуется действие')).toBeNull();
   });
 });

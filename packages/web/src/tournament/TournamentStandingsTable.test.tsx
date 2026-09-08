@@ -43,7 +43,7 @@ describe('TournamentStandingsTable', () => {
       'src',
       '/qa-player-2.webp',
     );
-    expect(within(rows[1]!).getByText('Q')).toBeInTheDocument();
+    expect(rows[1]!.querySelector('[data-initial="Q"]')).not.toBeNull();
     const lastRowCells = within(rows[2]!).getAllByRole('cell');
     expect(lastRowCells[0]).toHaveTextContent('3');
     expect(within(rows[2]!).getByText(longName)).toHaveAttribute('title', longName);

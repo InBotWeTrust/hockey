@@ -8,6 +8,7 @@ export interface AuthUser {
   experimentalTrainingCourt?: boolean;
   avatarUrl?: string | null;
   grip?: 'left' | 'right';
+  competitionLevel?: 'beginner' | 'amateur' | 'professional';
   currencyBalance?: number;
   starBalance?: number;
   displaySource?: 'telegram' | 'vk' | 'custom';
