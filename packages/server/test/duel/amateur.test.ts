@@ -1463,14 +1463,42 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   it('rejects duel challenges from beginners and against beginners', async () => {
     const templateId = await createTemplate();
 
-    await pool.query(`update users set level = 1, lifetime_goals_total = 0 where id = $1`, [userA]);
+    await pool.query(`update users set level = 1, lifetime_goals_total = 116 where id = $1`, [
+      userA,
+    ]);
     const fromBeginner = await challenge(templateId);
     expect(fromBeginner.statusCode).toBe(403);
+    expect(fromBeginner.json().error).toMatchObject({
+      code: 'amateur_level_required',
+      details: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+    });
 
     await pool.query(`update users set level = 2 where id = $1`, [userA]);
-    await pool.query(`update users set level = 1, lifetime_goals_total = 0 where id = $1`, [userB]);
+    await pool.query(`update users set level = 1, lifetime_goals_total = 116 where id = $1`, [
+      userB,
+    ]);
     const againstBeginner = await challenge(templateId);
     expect(againstBeginner.statusCode).toBe(403);
+    expect(againstBeginner.json().error).toMatchObject({
+      code: 'amateur_level_required',
+      details: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+    });
+
+    const [{ rows: matches }, { rows: balances }] = await Promise.all([
+      pool.query(`select id from amateur_duel_match`),
+      pool.query<{ user_id: string; balance: number; reserved_balance: number }>(
+        `select user_id, balance, reserved_balance
+           from user_currency_account
+          where user_id = any($1::uuid[])
+          order by user_id`,
+        [[userA, userB]],
+      ),
+    ]);
+    expect(matches).toEqual([]);
+    expect(balances).toEqual([
+      expect.objectContaining({ balance: 100, reserved_balance: 0 }),
+      expect.objectContaining({ balance: 100, reserved_balance: 0 }),
+    ]);
   });
 
   it('does not expose duel opponents to beginners or include beginners', async () => {

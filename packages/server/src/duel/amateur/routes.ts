@@ -24,6 +24,7 @@ import { findOrCreateDM, markChatAsRead, sendMessage } from '../../chat/service.
 import { evaluateDuelSettledAchievements } from '../../achievements/engine.js';
 import { grantStatAchievements } from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
+import { assertFullAmateurAccess } from '../../profile/amateurAccess.js';
 import { enqueueDuelPush } from '../../push/duel.js';
 import { appendEvent } from '../eventLog.js';
 import { getGameSettings } from '../gameSettings.js';
@@ -340,7 +341,9 @@ const matchmakingLeaveSchema = z.object({ template_id: uuid.optional() }).option
 
 const inventoryItemPatchSchema = z
   .object({
-    itemKind: z.enum(['bundle', 'stick', 'skates', 'nutrition', 'consumable', 'recovery']).optional(),
+    itemKind: z
+      .enum(['bundle', 'stick', 'skates', 'nutrition', 'consumable', 'recovery'])
+      .optional(),
     rarity: z.enum(['common', 'rare', 'epic', 'legendary']).optional(),
     currencyPrice: z.number().int().min(0).max(9_000_000_000).optional(),
     chargesPerPurchase: z.number().int().min(0).max(100_000).optional(),
@@ -1505,22 +1508,6 @@ function tournamentTemplateFromSnapshot(input: {
     created_at: input.now,
     updated_at: input.now,
   };
-}
-
-async function assertAmateurEligible(client: PoolClient, userId: string): Promise<void> {
-  const settings = await getGameSettings(client);
-  const { rows } = await client.query<{ level: number; lifetime_goals_total: number }>(
-    `select level, lifetime_goals_total from users where id = $1`,
-    [userId],
-  );
-  const row = rows[0];
-  if (!row) throw new AppError('not_found', 'user not found', 404);
-  if (
-    Number(row.level) < 2 &&
-    Number(row.lifetime_goals_total) < settings.amateur.unlockGoalsRequired
-  ) {
-    throw new AppError('forbidden', 'amateur league is locked', 403);
-  }
 }
 
 async function ensureCurrencyAccount(client: PoolClient, userId: string): Promise<void> {
@@ -4105,7 +4092,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       })
       .parse(req.query);
     return withTransaction(app, async (client) => {
-      await assertAmateurEligible(client, req.user.id);
+      await assertFullAmateurAccess(client, req.user.id);
       const settings = await getGameSettings(client);
       const { rows } = await client.query<{
         id: string;
@@ -4522,8 +4509,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     const result = await withTransaction(app, async (client) => {
       await lockDuelPlayers(client, [req.user.id, opponentUserId]);
       const now = new Date();
-      await assertAmateurEligible(client, req.user.id);
-      await assertAmateurEligible(client, opponentUserId);
+      await assertFullAmateurAccess(client, req.user.id);
+      await assertFullAmateurAccess(client, opponentUserId);
       const template = await fetchTemplate(client, templateId);
       if (!template.is_active) throw new AppError('conflict', 'duel template is inactive', 409);
       if (now >= template.ends_at)
@@ -4606,8 +4593,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         if (match.status !== 'invited') {
           throw new AppError('conflict', 'duel challenge is not pending', 409);
         }
-        await assertAmateurEligible(client, match.challenger_user_id);
-        await assertAmateurEligible(client, match.opponent_user_id);
+        await assertFullAmateurAccess(client, match.challenger_user_id);
+        await assertFullAmateurAccess(client, match.opponent_user_id);
         const template = match.template_id ? await fetchTemplate(client, match.template_id) : null;
         if (!template || !template.is_active) {
           throw new AppError('conflict', 'duel template is inactive', 409);
@@ -5040,7 +5027,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           lockError: new AppError('conflict', 'gameplay is locked', 409, { gameplayLock: lock }),
         };
       }
-      await assertAmateurEligible(client, req.user.id);
+      await assertFullAmateurAccess(client, req.user.id);
       const templateFromLegacyPayload = body.data.template_id
         ? await fetchTemplate(client, body.data.template_id)
         : null;
@@ -5196,7 +5183,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       }
       if (!matchedKind) throw new AppError('conflict', 'matchmaking opponent is unavailable', 409);
       const template = templatesByKind.get(matchedKind)!;
-      await assertAmateurEligible(client, opponentTicket.user_id);
+      await assertFullAmateurAccess(client, opponentTicket.user_id);
       const { match } = await createOpenMatch(client, {
         template,
         challengerUserId: opponentTicket.user_id,
@@ -6267,12 +6254,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         'effect_fatigue_heavy_multiplier',
         body.data.effectFatigueHeavyMultiplier,
       );
-      addPatch(
-        assignments,
-        values,
-        'effect_recovery_minutes',
-        body.data.effectRecoveryMinutes,
-      );
+      addPatch(assignments, values, 'effect_recovery_minutes', body.data.effectRecoveryMinutes);
       values.push(params.itemId);
       const { rowCount } = await app.pg.query(
         `update admin_inventory_items
