@@ -24,6 +24,7 @@ import {
   DailyScreen,
   DUEL_INVENTORY_ICON_GLASS_STYLE,
   createClassicTournamentCondition,
+  dailyCharacterVisuals,
   duelBackLabel,
   duelEquipmentEffectLabel,
   duelEventTiming,
@@ -116,6 +117,24 @@ const trainingActiveState: TrainingStateResponse = {
   training_seed: 'a'.repeat(64),
   started_at: '2026-04-25T11:55:00.000Z',
 };
+
+describe('daily character visuals', () => {
+  it('uses street characters only for the beginner court', () => {
+    expect(dailyCharacterVisuals(false)).toMatchObject({
+      playerOptions: {
+        spriteUrls: {
+          left: '/sprites/street-player-left.webp',
+          right: '/sprites/street-player-right.webp',
+        },
+      },
+      goalieOptions: {
+        idleSpriteUrl: '/sprites/training-goalie-amateur.webp',
+        saveSpriteUrl: '/sprites/training-goalie-amateur-save.webp',
+      },
+    });
+    expect(dailyCharacterVisuals(true)).toEqual({});
+  });
+});
 
 const challengeTemplates = [
   {

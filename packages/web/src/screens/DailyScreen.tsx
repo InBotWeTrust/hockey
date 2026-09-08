@@ -261,6 +261,15 @@ function readTrainingSpeedOverrides(): SpeedOverrides | null {
 
 const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
 const AMATEUR_TOURNAMENT_COURT_BACKGROUND = '/sprites/amateur-tournament-court.webp';
+
+export function dailyCharacterVisuals(usesAmateurCourt: boolean) {
+  return usesAmateurCourt
+    ? {}
+    : {
+        playerOptions: TRAINING_STREET_PLAYER_OPTIONS,
+        goalieOptions: TRAINING_AMATEUR_GOALIE_OPTIONS,
+      };
+}
 const LEGACY_STANDARD_ARENA_BACKGROUNDS = new Set([
   '/sprites/arena-ice-court.webp',
   '/sprites/arena-ice-court-v2.webp',
@@ -8935,12 +8944,11 @@ function DailyPlayView({
     0,
     data.amateur_unlock_goals_required ?? DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED,
   );
-  const dailyCourtBackground =
+  const usesAmateurCourt =
     profileQuery.data?.competitionLevel === 'amateur' ||
     profileQuery.data?.competitionLevel === 'professional' ||
-    data.lifetime_total_goals >= amateurUnlockGoalsRequired
-      ? AMATEUR_DAILY_COURT_BACKGROUND
-      : undefined;
+    data.lifetime_total_goals >= amateurUnlockGoalsRequired;
+  const dailyCourtBackground = usesAmateurCourt ? AMATEUR_DAILY_COURT_BACKGROUND : undefined;
   const trainingCooldownEndsAt = data.gameplay_lock?.ends_at
     ? new Date(data.gameplay_lock.ends_at).getTime()
     : 0;
@@ -9093,6 +9101,7 @@ function DailyPlayView({
         applyState={applyState}
         applyResolvedState={applyDailyResolvedState}
         longCourtBackground={dailyCourtBackground}
+        {...dailyCharacterVisuals(usesAmateurCourt)}
       />
       {recoveryModalOpen && (
         <RecoveryKitModal
