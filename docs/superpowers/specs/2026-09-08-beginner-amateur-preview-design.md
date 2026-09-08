@@ -115,6 +115,18 @@ If persistence is needed for configurable preview limits later, it is out of sco
 
 Existing beginners who previously obtained Amateur data retain it. They may view that data, but cannot create new Amateur-only mutations unless covered by the Bonus Games exception or they regain Amateur status.
 
+## Profile Inventory Artwork Regression
+
+The profile inventory destination must render meaningful artwork for every equipment slot, including an empty beginner inventory. An unequipped slot must use the existing base artwork for its equipment kind:
+
+- stick: `/inventory/stick-base.webp`;
+- skates: `/inventory/skates-base.webp`;
+- nutrition: `/inventory/nutrition-none.webp`.
+
+The empty-slot copy remains `Не выбрано` and `Выберите вещь в магазине`. The image area must never become an empty light square merely because the inventory API returns a null equipped item or an item without `imageUrl`.
+
+The profile overview and the separate `/profile/equipment` destination must use the same centralized inventory artwork fallback helper. Valid item artwork still takes priority. Broken image loading should fall back to the same base artwork instead of leaving a blank surface.
+
 ## Failure Handling
 
 - If profile or progress data is still loading, the UI allows read-only navigation but does not optimistically authorize an Amateur mutation.
@@ -145,6 +157,8 @@ Web tests cover:
 - allowed first-two Bonus Game actions;
 - locked third-game feedback;
 - expected server errors producing the same toast without raw codes.
+- base artwork for empty stick, skates, and nutrition slots in both profile inventory surfaces;
+- fallback after a missing or failed equipment image URL.
 
 Rendered QA verifies beginner, Amateur, and professional accounts on compact and normal mobile viewports. It includes direct URLs to an Amateur mutation and to a third Bonus Game to confirm the server-backed restriction.
 
@@ -166,3 +180,4 @@ Rendered QA verifies beginner, Amateur, and professional accounts on compact and
 5. Games three and later remain visible but cannot be started or purchased by beginners.
 6. Amateur and professional behavior is unchanged.
 7. No Bonus Game goal contributes to Amateur unlock progress.
+8. A beginner with no equipped inventory sees the base stick, skates, and nutrition artwork instead of blank image placeholders.
