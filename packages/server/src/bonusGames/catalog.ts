@@ -1,6 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
-import { getGameSettings } from '../duel/gameSettings.js';
-import { resolveCompetitionLevel } from '../profile/summary.js';
+import { assertFullAmateurAccess, resolveAmateurAccess } from '../profile/amateurAccess.js';
 import { normalizeBonusQualificationRules, type BonusQualificationRules } from './qualification.js';
 import type {
   BonusGameAccessType,
@@ -12,6 +11,55 @@ import type {
 } from './types.js';
 
 type Queryable = Pool | PoolClient;
+
+export const BEGINNER_BONUS_GAME_LIMIT_PER_SKILL = 2 as const;
+export const BONUS_GAME_CATALOG_LOCK_CLASS_ID = 0x42474d45;
+export const BONUS_GAME_CATALOG_LOCK_OBJECT_ID = 1;
+
+/**
+ * Catalog readers take the shared side of this transaction-scoped protocol.
+ * Every admin transaction that mutates bonus-game activation/order must take
+ * `lockBonusGameCatalogForMutation` before reading or writing the catalog.
+ */
+export async function lockBonusGameCatalogForRead(client: PoolClient): Promise<void> {
+  await client.query('select pg_advisory_xact_lock_shared($1::int, $2::int)', [
+    BONUS_GAME_CATALOG_LOCK_CLASS_ID,
+    BONUS_GAME_CATALOG_LOCK_OBJECT_ID,
+  ]);
+}
+
+export async function lockBonusGameCatalogForMutation(client: PoolClient): Promise<void> {
+  await client.query('select pg_advisory_xact_lock($1::int, $2::int)', [
+    BONUS_GAME_CATALOG_LOCK_CLASS_ID,
+    BONUS_GAME_CATALOG_LOCK_OBJECT_ID,
+  ]);
+}
+
+export async function assertBonusGameAccessibleToUser(
+  db: Queryable,
+  userId: string,
+  gameId: string,
+): Promise<void> {
+  const access = await resolveAmateurAccess(db, userId);
+  if (access.hasFullAccess) return;
+
+  const { rows } = await db.query<{ category_position: number }>(
+    `select category_position
+       from (
+         select id,
+                row_number() over (partition by skill_code order by sort_order, id)::int
+                  as category_position
+           from bonus_game
+          where status = 'active'
+       ) active_games
+      where id = $1`,
+    [gameId],
+  );
+  const position = rows[0]?.category_position;
+  if (position === undefined || Number(position) > BEGINNER_BONUS_GAME_LIMIT_PER_SKILL) {
+    await assertFullAmateurAccess(db, userId);
+  }
+}
 
 export type BonusGameCardState =
   | 'level_locked'
@@ -69,11 +117,6 @@ export interface BonusGameCardDto {
   active_attempt: BonusGameCardAttemptDto | null;
 }
 
-interface UserAccessRow {
-  level: number;
-  lifetime_goals_total: number;
-}
-
 interface CatalogRow {
   id: string;
   slug: string;
@@ -118,6 +161,7 @@ interface CatalogRow {
   attempt_goals: number | null;
   attempt_rules_snapshot: BonusRulesSnapshot | null;
   attempt_reward_snapshot: BonusRewardSnapshot | null;
+  category_position: number | null;
 }
 
 function toIso(value: Date | null): string | null {
@@ -126,7 +170,13 @@ function toIso(value: Date | null): string | null {
 
 function deriveCardState(row: CatalogRow, hasAmateurAccess: boolean): BonusGameCardState {
   if (row.status === 'archived') return 'archived';
-  if (!hasAmateurAccess) return 'level_locked';
+  if (
+    !hasAmateurAccess &&
+    (row.category_position === null ||
+      Number(row.category_position) > BEGINNER_BONUS_GAME_LIMIT_PER_SKILL)
+  ) {
+    return 'level_locked';
+  }
   if (row.attempt_id !== null) return 'in_progress';
   if (row.completion_id !== null) return 'completed';
   if (row.predecessor_id !== null && !row.predecessor_completed) return 'sequence_locked';
@@ -160,33 +210,24 @@ export async function listBonusGameCards(
   db: Queryable,
   userId: string,
 ): Promise<BonusGameCardDto[]> {
-  const [settings, user] = await Promise.all([
-    getGameSettings(db),
-    db.query<UserAccessRow>(
-      `select level, lifetime_goals_total
-         from users
-        where id = $1`,
-      [userId],
-    ),
-  ]);
-  const userRow = user.rows[0];
-  const hasAmateurAccess =
-    userRow !== undefined &&
-    resolveCompetitionLevel(
-      Number(userRow.level),
-      Number(userRow.lifetime_goals_total),
-      settings.amateur.unlockGoalsRequired,
-    ) !== 'beginner';
+  const access = await resolveAmateurAccess(db, userId);
 
   const { rows } = await db.query<CatalogRow>(
-    `with catalog_games as (
+    `with active_positions as (
+       select id,
+              row_number() over (partition by skill_code order by sort_order, id)::int
+                as category_position
+         from bonus_game
+        where status = 'active'
+     ), catalog_games as (
        select bg.*,
+              active_positions.category_position,
               case when bg.status = 'active' then (
                 select previous.id
                   from bonus_game previous
                  where previous.status = 'active'
                    and previous.skill_code = bg.skill_code
-                   and previous.sort_order < bg.sort_order
+                   and (previous.sort_order, previous.id) < (bg.sort_order, bg.id)
                  order by previous.sort_order desc, previous.id desc
                  limit 1
               ) else null end as predecessor_id
@@ -195,11 +236,12 @@ export async function listBonusGameCards(
                   from bonus_game previous
                  where previous.status = 'active'
                    and previous.skill_code = bg.skill_code
-                   and previous.sort_order < bg.sort_order
+                   and (previous.sort_order, previous.id) < (bg.sort_order, bg.id)
                  order by previous.sort_order desc, previous.id desc
                  limit 1
               ) else null end as predecessor_title
          from bonus_game bg
+         left join active_positions on active_positions.id = bg.id
         where bg.status = 'active'
            or (
              bg.status = 'archived'
@@ -236,7 +278,8 @@ export async function listBonusGameCards(
             attempt.shots_taken as attempt_shots_taken,
             attempt.goals as attempt_goals,
             attempt.rules_snapshot as attempt_rules_snapshot,
-            attempt.reward_snapshot as attempt_reward_snapshot
+            attempt.reward_snapshot as attempt_reward_snapshot,
+            game.category_position
        from catalog_games game
        join arena_theme arena on arena.id = game.arena_theme_id
        left join user_bonus_game_completion predecessor_completion
@@ -255,7 +298,7 @@ export async function listBonusGameCards(
   );
 
   return rows.map((row) => {
-    const state = deriveCardState(row, hasAmateurAccess);
+    const state = deriveCardState(row, access.hasFullAccess);
     const activeRules = row.attempt_id === null ? null : row.attempt_rules_snapshot;
     const periodRules = activeRules?.periods ?? row.period_rules;
     const targetGoals = activeRules?.targetGoals ?? Number(row.target_goals);

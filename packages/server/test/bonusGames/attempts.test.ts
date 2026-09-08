@@ -554,14 +554,18 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     const first = await createGame({ sortOrder: 1 });
     const paid = await createGame({ sortOrder: 2, accessType: 'paid', price: 2 });
 
-    await expect(
-      startOrResumeBonusAttempt(pool, {
-        userId: beginnerId,
-        gameId: first.id,
-        now: NOW,
-        seedSecret: SEED_SECRET,
-      }),
-    ).rejects.toMatchObject({ code: 'bonus_level_locked' });
+    const beginnerAttempt = await startOrResumeBonusAttempt(pool, {
+      userId: beginnerId,
+      gameId: first.id,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    expect(beginnerAttempt).toMatchObject({ created: true, attempt: { gameId: first.id } });
+    await abandonBonusAttempt(pool, {
+      userId: beginnerId,
+      attemptId: beginnerAttempt.attempt.id,
+      now: new Date('2026-08-23T12:00:01Z'),
+    });
     await expect(
       startOrResumeBonusAttempt(pool, {
         userId: amateurId,
@@ -653,6 +657,101 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
         seedSecret: SEED_SECRET,
       }),
     ).resolves.toMatchObject({ created: true, attempt: { gameId: paid.id } });
+  });
+
+  it('keeps both beginner preview games replayable and blocks game three before state changes', async () => {
+    const userId = await createUser({ level: 1 });
+    const first = await createGame({ sortOrder: 10 });
+    const second = await createGame({ sortOrder: 40 });
+    const third = await createGame({ sortOrder: 90 });
+
+    await expect(
+      startOrResumeBonusAttempt(pool, {
+        userId,
+        gameId: second.id,
+        now: NOW,
+        seedSecret: SEED_SECRET,
+      }),
+    ).rejects.toMatchObject({ code: 'bonus_previous_game_required' });
+
+    const complete = async (game: TestGame, now: Date) => {
+      const created = await startOrResumeBonusAttempt(pool, {
+        userId,
+        gameId: game.id,
+        now,
+        seedSecret: SEED_SECRET,
+      });
+      await pool.query(
+        `update bonus_game_attempt
+            set status = 'completed', state = 'closed', current_period = 2,
+                closed_at = $2, updated_at = $2
+          where id = $1`,
+        [created.attempt.id, now],
+      );
+      await pool.query(
+        `insert into user_bonus_game_completion
+           (user_id, bonus_game_id, attempt_id, reward_snapshot, completed_at)
+         values ($1, $2, $3, $4::jsonb, $5)`,
+        [
+          userId,
+          game.id,
+          created.attempt.id,
+          JSON.stringify({ coins: 100, stars: 1, experience: 50 }),
+          now,
+        ],
+      );
+    };
+
+    await complete(first, NOW);
+    await complete(second, new Date('2026-08-24T12:00:00Z'));
+
+    const replayFirst = await startOrResumeBonusAttempt(pool, {
+      userId,
+      gameId: first.id,
+      now: new Date('2026-08-25T12:00:00Z'),
+      seedSecret: SEED_SECRET,
+    });
+    expect(replayFirst).toMatchObject({ created: true, attempt: { gameId: first.id } });
+    await abandonBonusAttempt(pool, {
+      userId,
+      attemptId: replayFirst.attempt.id,
+      now: new Date('2026-08-25T12:00:01Z'),
+    });
+
+    const replaySecond = await startOrResumeBonusAttempt(pool, {
+      userId,
+      gameId: second.id,
+      now: new Date('2026-08-26T12:00:00Z'),
+      seedSecret: SEED_SECRET,
+    });
+    expect(replaySecond).toMatchObject({ created: true, attempt: { gameId: second.id } });
+    await abandonBonusAttempt(pool, {
+      userId,
+      attemptId: replaySecond.attempt.id,
+      now: new Date('2026-08-26T12:00:01Z'),
+    });
+
+    await expect(
+      startOrResumeBonusAttempt(pool, {
+        userId,
+        gameId: third.id,
+        now: new Date('2026-08-27T12:00:00Z'),
+        seedSecret: SEED_SECRET,
+      }),
+    ).rejects.toMatchObject({
+      code: 'amateur_level_required',
+      details: { goalsRemaining: 300, unlockGoalsRequired: 300 },
+    });
+    const thirdState = await pool.query<{ attempts: number; slots: number }>(
+      `select
+         (select count(*)::int from bonus_game_attempt
+           where user_id = $1 and bonus_game_id = $2) as attempts,
+         (select count(*)::int from bonus_game_daily_attempt_slot slot
+           join bonus_game_attempt attempt on attempt.id = slot.attempt_id
+          where slot.user_id = $1 and attempt.bonus_game_id = $2) as slots`,
+      [userId, third.id],
+    );
+    expect(thirdState.rows[0]).toEqual({ attempts: 0, slots: 0 });
   });
 
   it('snapshots rules, reward, arena, media, revision, core version, and secret seed', async () => {

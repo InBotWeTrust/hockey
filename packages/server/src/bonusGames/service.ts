@@ -10,10 +10,8 @@ import {
 } from '@hockey/game-core';
 import type { Pool, PoolClient } from 'pg';
 import { appendEvent } from '../duel/eventLog.js';
-import { getGameSettings } from '../duel/gameSettings.js';
 import { deriveBonusAttemptSeed, deriveShotSeed } from '../duel/seed.js';
 import { AppError } from '../plugins/errors.js';
-import { resolveCompetitionLevel } from '../profile/summary.js';
 import {
   consumePeriodLoadout,
   hasPeriodLoadoutSelection,
@@ -25,6 +23,7 @@ import {
   lockBonusEconomyBalances,
   type BalanceSnapshot,
 } from './economy.js';
+import { assertBonusGameAccessibleToUser, lockBonusGameCatalogForRead } from './catalog.js';
 import { closeBonusPeriod, reconcileBonusAttempt } from './reconcile.js';
 import {
   advanceGoalStreak,
@@ -47,8 +46,6 @@ import {
 } from './types.js';
 
 interface LockedUserRow {
-  level: number;
-  lifetime_goals_total: number;
   timezone: string;
 }
 
@@ -91,27 +88,11 @@ export class BonusAttemptAlreadyActiveError extends AppError {
   }
 }
 
-export const BONUS_GAME_CATALOG_LOCK_CLASS_ID = 0x42474d45;
-export const BONUS_GAME_CATALOG_LOCK_OBJECT_ID = 1;
-
-/**
- * Catalog readers take the shared side of this transaction-scoped protocol.
- * Every admin transaction that mutates bonus-game activation/order must take
- * `lockBonusGameCatalogForMutation` before reading or writing the catalog.
- */
-export async function lockBonusGameCatalogForRead(client: PoolClient): Promise<void> {
-  await client.query('select pg_advisory_xact_lock_shared($1::int, $2::int)', [
-    BONUS_GAME_CATALOG_LOCK_CLASS_ID,
-    BONUS_GAME_CATALOG_LOCK_OBJECT_ID,
-  ]);
-}
-
-export async function lockBonusGameCatalogForMutation(client: PoolClient): Promise<void> {
-  await client.query('select pg_advisory_xact_lock($1::int, $2::int)', [
-    BONUS_GAME_CATALOG_LOCK_CLASS_ID,
-    BONUS_GAME_CATALOG_LOCK_OBJECT_ID,
-  ]);
-}
+export {
+  BONUS_GAME_CATALOG_LOCK_CLASS_ID,
+  BONUS_GAME_CATALOG_LOCK_OBJECT_ID,
+  lockBonusGameCatalogForMutation,
+} from './catalog.js';
 
 interface StartableGameRow {
   id: string;
@@ -149,7 +130,7 @@ interface StartableGameRow {
 }
 
 const EXPECTED_START_ERROR_CODES_AFTER_RECONCILE = new Set([
-  'bonus_level_locked',
+  'amateur_level_required',
   'bonus_previous_game_required',
   'bonus_purchase_required',
   'bonus_game_inactive',
@@ -233,7 +214,7 @@ export async function loadBonusAttemptDto(
 
 async function lockUser(client: PoolClient, userId: string): Promise<LockedUserRow> {
   const { rows } = await client.query<LockedUserRow>(
-    `select level, lifetime_goals_total, timezone
+    `select timezone
        from users
       where id = $1
       for update`,
@@ -415,7 +396,7 @@ async function fetchStartableGame(
            from bonus_game previous
           where previous.status = 'active'
             and previous.skill_code = game.skill_code
-            and previous.sort_order < game.sort_order
+            and (previous.sort_order, previous.id) < (game.sort_order, game.id)
           order by previous.sort_order desc, previous.id desc
           limit 1
        ) predecessor on true
@@ -472,6 +453,8 @@ export async function startOrResumeBonusAttempt(
   let terminalReconcilePerformed = false;
   try {
     const user = await lockUser(client, input.userId);
+    await lockBonusGameCatalogForRead(client);
+    await assertBonusGameAccessibleToUser(client, input.userId, input.gameId);
     const active = await fetchActiveAttempt(client, input.userId);
     if (active !== null) {
       const reconciled = await reconcileBonusAttempt(client, active, input.now);
@@ -490,17 +473,7 @@ export async function startOrResumeBonusAttempt(
     }
 
     if (deferredError === null) {
-      await lockBonusGameCatalogForRead(client);
-      const settings = await getGameSettings(client);
       const game = await fetchStartableGame(client, input.userId, input.gameId);
-      const competitionLevel = resolveCompetitionLevel(
-        Number(user.level),
-        Number(user.lifetime_goals_total),
-        settings.amateur.unlockGoalsRequired,
-      );
-      if (competitionLevel === 'beginner') {
-        throw new AppError('bonus_level_locked', 'bonus games require amateur access', 403);
-      }
       if (game.predecessor_id !== null && !game.predecessor_completed) {
         throw new AppError(
           'bonus_previous_game_required',
@@ -635,6 +608,8 @@ export async function startBonusPeriod(
   try {
     await lockUser(client, input.userId);
     const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
+    await lockBonusGameCatalogForRead(client);
+    await assertBonusGameAccessibleToUser(client, input.userId, owned.bonus_game_id);
     const attempt = await reconcileBonusAttempt(client, owned, input.now);
     if (attempt.status !== 'active') {
       deferredError = new AppError('bonus_attempt_not_active', 'bonus attempt is not active', 409);
@@ -694,6 +669,8 @@ export async function acknowledgeBonusPreview(
   try {
     await lockUser(client, input.userId);
     const attempt = await fetchOwnedAttempt(client, input.userId, input.attemptId);
+    await lockBonusGameCatalogForRead(client);
+    await assertBonusGameAccessibleToUser(client, input.userId, attempt.bonus_game_id);
     if (attempt.status !== 'active') {
       throw new AppError('bonus_attempt_not_active', 'bonus attempt is not active', 409);
     }
@@ -740,6 +717,8 @@ export async function abandonBonusAttempt(
   try {
     await lockUser(client, input.userId);
     const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
+    await lockBonusGameCatalogForRead(client);
+    await assertBonusGameAccessibleToUser(client, input.userId, owned.bonus_game_id);
     const attempt = await reconcileBonusAttempt(client, owned, input.now);
     if (attempt.status !== 'active') {
       deferredError = new AppError('bonus_attempt_not_active', 'bonus attempt is not active', 409);
@@ -984,6 +963,8 @@ export async function submitBonusShot(
     // Keep the global economy lock order stable: users, currency account, attempt.
     let balances = await lockBonusEconomyBalances(client, input.userId, input.now);
     const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
+    await lockBonusGameCatalogForRead(client);
+    await assertBonusGameAccessibleToUser(client, input.userId, owned.bonus_game_id);
     if (Number(owned.game_core_version) !== GAME_CORE_VERSION) {
       throw unsupportedBonusGameCoreVersion();
     }

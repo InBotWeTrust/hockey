@@ -56,9 +56,9 @@ const shotBodySchema = z
 const SAFE_BONUS_ERRORS: Readonly<
   Record<string, { readonly statusCode: number; readonly message: string }>
 > = {
-  bonus_level_locked: {
+  amateur_level_required: {
     statusCode: 403,
-    message: 'bonus games require amateur access',
+    message: 'amateur league is locked',
   },
   bonus_previous_game_required: {
     statusCode: 409,
@@ -162,7 +162,12 @@ function throwSafeBonusError(error: unknown): never {
   if (error instanceof AppError) {
     const safe = SAFE_BONUS_ERRORS[error.code];
     if (safe !== undefined) {
-      throw new AppError(error.code, safe.message, safe.statusCode);
+      throw new AppError(
+        error.code,
+        safe.message,
+        safe.statusCode,
+        error.code === 'amateur_level_required' ? error.details : undefined,
+      );
     }
     if (error.code === 'bad_request') {
       throw new AppError('bad_request', 'invalid bonus game request', 400);

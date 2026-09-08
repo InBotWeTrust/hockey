@@ -628,6 +628,163 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     expect(abandon.json().attempt).toMatchObject({ status: 'abandoned', state: 'closed' });
   });
 
+  it('lets a beginner play an eligible preview attempt but blocks game three without writes', async () => {
+    ({ userId, headers } = await createUser(1));
+    const first = await createGame({ sortOrder: 10 });
+    await createGame({ sortOrder: 40 });
+    const third = await createGame({ sortOrder: 90 });
+
+    const attempt = await startAttempt(first.id);
+    const active = await startPeriod(attempt.id);
+    const serverResult = expectedShot(active);
+    const shot = await app.inject({
+      method: 'POST',
+      url: `/bonus-games/attempts/${attempt.id}/shot`,
+      headers,
+      payload: {
+        claimed_shot_index: 1,
+        input: { tapTime: 125, shooterTapTime: 125 },
+        claimed_result: serverResult,
+      },
+    });
+    expect(shot.statusCode).toBe(200);
+
+    const abandoned = await app.inject({
+      method: 'POST',
+      url: `/bonus-games/attempts/${attempt.id}/abandon`,
+      headers,
+    });
+    expect(abandoned.statusCode).toBe(200);
+
+    for (const request of [
+      {
+        method: 'POST' as const,
+        url: `/bonus-games/${third.id}/unlock`,
+        payload: { expected_price_stars: 0 },
+      },
+      { method: 'POST' as const, url: `/bonus-games/${third.id}/attempts` },
+    ]) {
+      const response = await app.inject({ ...request, headers });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({
+        error: {
+          code: 'amateur_level_required',
+          message: 'amateur league is locked',
+          details: { goalsRemaining: 300, unlockGoalsRequired: 300 },
+        },
+      });
+    }
+
+    const sideEffects = await pool.query<{
+      lifetime_goals_total: number;
+      attempts: number;
+      unlocks: number;
+      economy_events: number;
+    }>(
+      `select users.lifetime_goals_total::int,
+              (select count(*)::int from bonus_game_attempt
+                where user_id = users.id) as attempts,
+              (select count(*)::int from user_bonus_game_unlock
+                where user_id = users.id and bonus_game_id = $2) as unlocks,
+              (select count(*)::int from bonus_game_economy_event
+                where user_id = users.id and bonus_game_id = $2) as economy_events
+         from users
+        where users.id = $1`,
+      [userId, third.id],
+    );
+    expect(sideEffects.rows[0]).toEqual({
+      lifetime_goals_total: 0,
+      attempts: 1,
+      unlocks: 0,
+      economy_events: 0,
+    });
+  });
+
+  it.each([
+    {
+      name: 'preview acknowledgement',
+      path: (attemptId: string) => `/bonus-games/attempts/${attemptId}/preview/acknowledge`,
+      payload: { dismiss_future: true },
+    },
+    {
+      name: 'period start',
+      path: (attemptId: string) => `/bonus-games/attempts/${attemptId}/period/start`,
+      payload: {},
+    },
+    {
+      name: 'shot',
+      path: (attemptId: string) => `/bonus-games/attempts/${attemptId}/shot`,
+      payload: {
+        claimed_shot_index: 1,
+        input: { tapTime: 125, shooterTapTime: 125 },
+        claimed_result: 'save',
+      },
+    },
+    {
+      name: 'abandon',
+      path: (attemptId: string) => `/bonus-games/attempts/${attemptId}/abandon`,
+      payload: {},
+    },
+  ])(
+    'blocks $name when a beginner-owned attempt is no longer preview-eligible',
+    async (mutation) => {
+      const target = await createGame({ sortOrder: 10 });
+      await createGame({ sortOrder: 20 });
+      await createGame({ sortOrder: 30 });
+      const attempt = await startAttempt(target.id);
+      await pool.query('update bonus_game set sort_order = 90 where id = $1', [target.id]);
+      await pool.query('update users set level = 1 where id = $1', [userId]);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: mutation.path(attempt.id),
+        headers,
+        payload: mutation.payload,
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(response.json().error).toEqual({
+        code: 'amateur_level_required',
+        message: 'amateur league is locked',
+        details: { goalsRemaining: 300, unlockGoalsRequired: 300 },
+      });
+      const { rows } = await pool.query<{
+        status: string;
+        state: string;
+        preview_acknowledged_at: Date | null;
+        shots_taken: number;
+        shots: number;
+        period_logs: number;
+        economy_events: number;
+        currency_accounts: number;
+      }>(
+        `select attempt.status, attempt.state, attempt.preview_acknowledged_at,
+              attempt.shots_taken::int,
+              (select count(*)::int from shot_session
+                where bonus_game_attempt_id = attempt.id) as shots,
+              (select count(*)::int from bonus_game_period_log
+                where attempt_id = attempt.id) as period_logs,
+              (select count(*)::int from bonus_game_economy_event
+                where attempt_id = attempt.id) as economy_events,
+              (select count(*)::int from user_currency_account
+                where user_id = attempt.user_id) as currency_accounts
+         from bonus_game_attempt attempt
+        where attempt.id = $1`,
+        [attempt.id],
+      );
+      expect(rows[0]).toEqual({
+        status: 'active',
+        state: 'idle',
+        preview_acknowledged_at: null,
+        shots_taken: 0,
+        shots: 0,
+        period_logs: 0,
+        economy_events: 0,
+        currency_accounts: 0,
+      });
+    },
+  );
+
   it('reports current-period shots separately from prior-period totals', async () => {
     const secondPeriod: BonusPeriodRule = { ...PERIODS[0]!, periodNumber: 2 };
     const game = await createGame({
@@ -1239,7 +1396,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
   });
 
   it.each([
-    ['bonus_level_locked', 403],
+    ['amateur_level_required', 403],
     ['bonus_previous_game_required', 409],
     ['bonus_purchase_required', 409],
     ['bonus_insufficient_stars', 409],
@@ -1252,9 +1409,11 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     ['bonus_game_core_version_mismatch', 409],
   ] as const)('exposes stable %s errors with safe messages', async (code, statusCode) => {
     let response;
-    if (code === 'bonus_level_locked') {
+    if (code === 'amateur_level_required') {
       const beginner = await createUser(1);
-      const game = await createGame();
+      await createGame({ sortOrder: 10 });
+      await createGame({ sortOrder: 40 });
+      const game = await createGame({ sortOrder: 90 });
       response = await app.inject({
         method: 'POST',
         url: `/bonus-games/${game.id}/attempts`,

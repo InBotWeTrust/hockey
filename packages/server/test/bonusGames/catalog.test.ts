@@ -437,21 +437,70 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     expect(sideEffects.rows[0]).toEqual({ xp: 10, unlocks: 0, events: 0 });
   });
 
-  it('marks every active card level locked until the amateur access rule is met', async () => {
-    const beginnerId = await createUser({ level: 1, lifetimeGoals: 0 });
-    const goalsQualifiedId = await createUser({ level: 1, lifetimeGoals: 300, stars: 1 });
-    const game = await createGame({ sortOrder: 1, accessType: 'paid', price: 1 });
+  it('previews exactly the first two ordered games in each skill for beginners', async () => {
+    const beginnerId = await createUser({ level: 1, lifetimeGoals: 0, stars: 5 });
+    const accuracyFirst = await createGame({ sortOrder: 10, skillCode: 'accuracy' });
+    const accuracySecond = await createGame({
+      sortOrder: 40,
+      skillCode: 'accuracy',
+      accessType: 'paid',
+      price: 2,
+    });
+    const accuracyThird = await createGame({ sortOrder: 90, skillCode: 'accuracy' });
+    const speedFirst = await createGame({ sortOrder: 5, skillCode: 'speed' });
+    const speedSecond = await createGame({ sortOrder: 25, skillCode: 'speed' });
+    const speedThird = await createGame({ sortOrder: 70, skillCode: 'speed' });
 
-    expect((await listBonusGameCards(pool, beginnerId))[0]?.state).toBe('level_locked');
-    expect((await listBonusGameCards(pool, goalsQualifiedId))[0]?.state).toBe('purchase_required');
+    let states = Object.fromEntries(
+      (await listBonusGameCards(pool, beginnerId)).map((card) => [card.id, card.state]),
+    );
+    expect(states).toEqual({
+      [accuracyFirst.id]: 'available',
+      [accuracySecond.id]: 'sequence_locked',
+      [accuracyThird.id]: 'level_locked',
+      [speedFirst.id]: 'available',
+      [speedSecond.id]: 'sequence_locked',
+      [speedThird.id]: 'level_locked',
+    });
+
+    await completeGame(beginnerId, accuracyFirst);
+    states = Object.fromEntries(
+      (await listBonusGameCards(pool, beginnerId)).map((card) => [card.id, card.state]),
+    );
+    expect(states[accuracyFirst.id]).toBe('completed');
+    expect(states[accuracySecond.id]).toBe('purchase_required');
+    expect(states[accuracyThird.id]).toBe('level_locked');
+
     await expect(
       purchaseBonusGame(pool, {
         userId: beginnerId,
-        gameId: game.id,
-        expectedPriceStars: 1,
+        gameId: accuracySecond.id,
+        expectedPriceStars: 2,
         now: NOW,
       }),
-    ).rejects.toMatchObject({ code: 'bonus_level_locked' });
+    ).resolves.toEqual({ unlocked: true, starBalance: 3 });
+    expect(
+      (await listBonusGameCards(pool, beginnerId)).find((card) => card.id === accuracySecond.id),
+    ).toMatchObject({ state: 'available', is_unlocked: true });
+  });
+
+  it('keeps the existing catalogue states for amateur and professional users', async () => {
+    const amateurId = await createUser({ level: 2 });
+    const professionalId = await createUser({ level: 3 });
+    const first = await createGame({ sortOrder: 10 });
+    const second = await createGame({ sortOrder: 50, accessType: 'paid', price: 2 });
+    const third = await createGame({ sortOrder: 90 });
+    await completeGame(amateurId, first);
+    await completeGame(professionalId, first);
+
+    for (const userId of [amateurId, professionalId]) {
+      const cards = await listBonusGameCards(pool, userId);
+      expect(cards.map((card) => [card.id, card.state])).toEqual([
+        [first.id, 'completed'],
+        [second.id, 'purchase_required'],
+        [third.id, 'sequence_locked'],
+      ]);
+    }
   });
 
   it('keeps a completion completed after reorder and uses the new active predecessor', async () => {

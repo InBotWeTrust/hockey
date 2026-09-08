@@ -1,7 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
-import { getGameSettings } from '../duel/gameSettings.js';
 import { AppError } from '../plugins/errors.js';
-import { resolveCompetitionLevel } from '../profile/summary.js';
+import { assertBonusGameAccessibleToUser, lockBonusGameCatalogForRead } from './catalog.js';
 import type { BonusGameAccessType, BonusRewardSnapshot } from './types.js';
 
 export interface BalanceSnapshot {
@@ -19,8 +18,6 @@ export interface FirstClearRewardInput {
 }
 
 interface LockedUserRow {
-  level: number;
-  lifetime_goals_total: number;
   xp: number;
   experience: number;
   coins: number;
@@ -94,7 +91,7 @@ export async function lockBonusEconomyBalances(
 
 async function lockUser(client: PoolClient, userId: string, now: Date): Promise<LockedUserRow> {
   const { rows } = await client.query<Omit<LockedUserRow, 'coins'>>(
-    `select level, lifetime_goals_total, xp, experience
+    `select xp, experience
        from users
       where id = $1
       for update`,
@@ -125,7 +122,7 @@ async function fetchPurchasableGame(
            from bonus_game previous
           where previous.status = 'active'
             and previous.skill_code = game.skill_code
-            and previous.sort_order < game.sort_order
+            and (previous.sort_order, previous.id) < (game.sort_order, game.id)
           order by previous.sort_order desc, previous.id desc
           limit 1
        ) predecessor on true
@@ -159,22 +156,15 @@ export async function purchaseBonusGame(
   try {
     await client.query('begin');
     const user = await lockUser(client, input.userId, input.now);
-    const settings = await getGameSettings(client);
+    await lockBonusGameCatalogForRead(client);
     const game = await fetchPurchasableGame(client, input.userId, input.gameId);
+    await assertBonusGameAccessibleToUser(client, input.userId, input.gameId);
 
     if (game.unlock_id !== null) {
       await client.query('commit');
       return { unlocked: true, starBalance: Number(user.xp) };
     }
 
-    const competitionLevel = resolveCompetitionLevel(
-      Number(user.level),
-      Number(user.lifetime_goals_total),
-      settings.amateur.unlockGoalsRequired,
-    );
-    if (competitionLevel === 'beginner') {
-      throw new AppError('bonus_level_locked', 'bonus games require amateur access', 403);
-    }
     if (game.status !== 'active') {
       throw new AppError('bonus_game_inactive', 'bonus game is inactive', 409);
     }
