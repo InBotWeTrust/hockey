@@ -297,6 +297,7 @@ export function ChatInfoScreen(): JSX.Element {
                         userId: m.userId,
                         displayName: m.displayName,
                         avatarUrl: m.avatarUrl,
+                        ...(m.accountKind !== undefined ? { accountKind: m.accountKind } : {}),
                       })
                     }
                     style={{

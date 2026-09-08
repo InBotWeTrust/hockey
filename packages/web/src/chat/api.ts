@@ -125,6 +125,7 @@ export interface UserPickerItem {
   userId: string;
   displayName: string;
   avatarUrl: string | null;
+  accountKind?: 'player' | 'official';
 }
 
 export interface MessageSearchHit {
@@ -449,6 +450,7 @@ export interface ChatMemberSummaryDTO {
   displayName: string;
   avatarUrl: string | null;
   role?: 'admin' | 'member';
+  accountKind?: 'player' | 'official';
 }
 
 export interface ChatInfoDTO {

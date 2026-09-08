@@ -265,6 +265,40 @@ describe('UserProfileSheet', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders an official account card without loading a player profile', async () => {
+    await renderSheet({
+      sender: {
+        userId: 'official-1',
+        displayName: 'Ультимейт Хоккей',
+        avatarUrl: null,
+        accountKind: 'official',
+      },
+      onClose: vi.fn(),
+    });
+
+    expect(screen.getByRole('heading', { name: 'Ультимейт Хоккей' })).toBeInTheDocument();
+    expect(screen.getByText('Официальный аккаунт')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Открыть сообщество ВКонтакте' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Открыть канал в Telegram' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Написать в личку' })).toBeInTheDocument();
+    expect(api.fetchUserProfile).not.toHaveBeenCalled();
+  });
+
+  it('hides the message action when the official dialog is already open', async () => {
+    await renderSheet({
+      sender: {
+        userId: 'official-1',
+        displayName: 'Ультимейт Хоккей',
+        avatarUrl: null,
+        accountKind: 'official',
+      },
+      onClose: vi.fn(),
+      hideMessageAction: true,
+    });
+
+    expect(screen.queryByRole('button', { name: 'Написать в личку' })).not.toBeInTheDocument();
+  });
+
   it('opens achievement details without a completion badge and with a square full-width image', async () => {
     await renderSheet({
       sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },

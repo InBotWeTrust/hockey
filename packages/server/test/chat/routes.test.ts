@@ -122,6 +122,7 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     });
     expect(created.statusCode).toBe(201);
     const chatId = created.json().chatId as string;
+    await app.pg.query(`update users set account_kind = 'official' where id = $1`, [userC]);
 
     const info = await app.inject({
       method: 'GET',
@@ -138,7 +139,7 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
         members: expect.arrayContaining([
           expect.objectContaining({ userId: userA, role: 'admin' }),
           expect.objectContaining({ userId: userB, role: 'member' }),
-          expect.objectContaining({ userId: userC, role: 'member' }),
+          expect.objectContaining({ userId: userC, role: 'member', accountKind: 'official' }),
         ]),
       }),
     );

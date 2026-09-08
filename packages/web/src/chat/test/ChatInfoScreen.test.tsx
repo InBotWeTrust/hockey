@@ -95,6 +95,32 @@ describe('ChatInfoScreen', () => {
     expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
   });
 
+  it('opens the official account card for an official member', async () => {
+    const profileSpy = vi.spyOn(api, 'fetchUserProfile');
+    vi.spyOn(api, 'fetchChatInfo').mockResolvedValue({
+      id: 'chat-1',
+      type: 'system',
+      name: 'Общий чат',
+      description: null,
+      avatarUrl: null,
+      memberCount: 1,
+      members: [
+        {
+          userId: 'official-1',
+          displayName: 'Ультимейт Хоккей',
+          avatarUrl: null,
+          accountKind: 'official',
+        },
+      ],
+    });
+
+    renderScreen();
+    fireEvent.click(await screen.findByRole('button', { name: 'Ультимейт Хоккей' }));
+
+    expect(screen.getByText('Официальный аккаунт')).toBeInTheDocument();
+    expect(profileSpy).not.toHaveBeenCalled();
+  });
+
   it('renders the channel avatar from chat info instead of a generated initial', async () => {
     vi.spyOn(api, 'fetchChatInfo').mockResolvedValue({
       id: 'chat-1',

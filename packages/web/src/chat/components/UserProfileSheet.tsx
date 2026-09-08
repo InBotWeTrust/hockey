@@ -26,11 +26,14 @@ import { useAuthStore } from '../../auth/authStore.js';
 import { DuelChallengeModal, hasOpenDuelWithUser } from './DuelChallengeModal.js';
 import { Sheet } from '../../components/Sheet.js';
 import { TrophyHistoryModal, type TrophySectionKey } from '../../screens/ProfileScreen.js';
+import { CommunityLinks } from '../../components/CommunityLinks.js';
+import { OFFICIAL_ACCOUNT_AVATAR_URL } from '../chatAvatar.js';
 import { AppToast } from '../../components/AppToast.js';
 
 interface UserProfileSheetProps {
   sender: UserPickerItem | null;
   onClose: () => void;
+  hideMessageAction?: boolean;
 }
 
 function PublicExperienceBadge({ experience }: { experience: number }): JSX.Element {
@@ -204,9 +207,87 @@ function PublicSportingPassport({
   );
 }
 
-export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JSX.Element | null {
+export function UserProfileSheet({
+  sender,
+  onClose,
+  hideMessageAction = false,
+}: UserProfileSheetProps): JSX.Element | null {
   if (!sender) return null;
+  if (sender.accountKind === 'official') {
+    return (
+      <OfficialAccountSheet
+        sender={sender}
+        onClose={onClose}
+        hideMessageAction={hideMessageAction}
+      />
+    );
+  }
   return <UserProfileSheetContent key={sender.userId} sender={sender} onClose={onClose} />;
+}
+
+function OfficialAccountSheet({
+  sender,
+  onClose,
+  hideMessageAction,
+}: {
+  sender: UserPickerItem;
+  onClose: () => void;
+  hideMessageAction: boolean;
+}): JSX.Element {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => findOrCreateDM(sender.userId),
+    onSuccess: ({ chatId, created }) => {
+      if (created) void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+      navigate(`/chat/${chatId}`);
+      onClose();
+    },
+  });
+
+  return (
+    <Sheet
+      open
+      title="Официальный аккаунт"
+      onRequestClose={onClose}
+      maxHeight="94dvh"
+      grabberPlacement="top"
+      backdropTestId="profile-sheet-backdrop"
+      headerAction={
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+          <X size={14} />
+        </button>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="glass" style={{ padding: 16, borderRadius: 20, textAlign: 'center' }}>
+          <UserAvatar
+            avatarUrl={OFFICIAL_ACCOUNT_AVATAR_URL}
+            name={sender.displayName}
+            size={76}
+            alt={sender.displayName}
+          />
+          <h3 style={{ margin: '10px 0 3px', color: 'var(--ink)', fontSize: 20 }}>
+            {sender.displayName}
+          </h3>
+          <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 700 }}>
+            Новости игры, обновления и поддержка
+          </div>
+        </div>
+        <CommunityLinks />
+        {!hideMessageAction && (
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => mutate()}
+            disabled={isPending}
+          >
+            {isPending ? 'Открываем чат…' : 'Написать в личку'}
+          </button>
+        )}
+      </div>
+    </Sheet>
+  );
 }
 
 function UserProfileSheetContent({

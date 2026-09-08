@@ -318,6 +318,7 @@ export async function getChatInfo(
     displayName: string;
     avatarUrl: string | null;
     role?: 'admin' | 'member';
+    accountKind: 'player' | 'official';
   }[];
 }> {
   // Caller is expected to have already passed assertCanAccessChat. This
@@ -345,13 +346,14 @@ export async function getChatInfo(
     displayName: string;
     avatarUrl: string | null;
     role?: 'admin' | 'member';
+    accountKind: 'player' | 'official';
   }[];
 
   if (chat.type === 'system' || chat.type === 'channel') {
     const total = await pool.query<{ c: string }>(`select count(*)::bigint as c from users`);
     memberCount = Number(total.rows[0]!.c);
-    const r = await pool.query<{ id: string; display_name: string; avatar_url: string | null }>(
-      `select id, display_name, avatar_url from users
+    const r = await pool.query<{ id: string; display_name: string; avatar_url: string | null; account_kind: 'player' | 'official' }>(
+      `select id, display_name, avatar_url, account_kind from users
        order by display_name asc limit $1`,
       [CHAT_INFO_MEMBERS_LIMIT],
     );
@@ -359,6 +361,7 @@ export async function getChatInfo(
       userId: row.id,
       displayName: row.display_name,
       avatarUrl: row.avatar_url,
+      accountKind: row.account_kind,
     }));
   } else {
     const total = await pool.query<{ c: string }>(
@@ -371,8 +374,9 @@ export async function getChatInfo(
       display_name: string;
       avatar_url: string | null;
       role: 'admin' | 'member';
+      account_kind: 'player' | 'official';
     }>(
-      `select u.id, u.display_name, u.avatar_url, cm.role
+      `select u.id, u.display_name, u.avatar_url, u.account_kind, cm.role
          from chat_members cm
          join users u on u.id = cm.user_id
         where cm.chat_id = $1
@@ -385,6 +389,7 @@ export async function getChatInfo(
       displayName: row.display_name,
       avatarUrl: row.avatar_url,
       role: row.role,
+      accountKind: row.account_kind,
     }));
   }
 

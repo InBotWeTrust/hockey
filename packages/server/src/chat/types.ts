@@ -164,6 +164,7 @@ export interface ChatMemberSummaryDTO {
   displayName: string;
   avatarUrl: string | null;
   role?: ChatMemberRole;
+  accountKind: AccountKind;
 }
 
 // `GET /chat/:chatId/info` payload — used by the chat info screen.

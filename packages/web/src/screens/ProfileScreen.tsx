@@ -21,6 +21,7 @@ import {
   type InventoryState,
 } from '../api/inventory.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { CommunityLinks } from '../components/CommunityLinks.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { placeholderArtworkForKind } from './inventoryArtwork.js';
 import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
@@ -616,51 +617,7 @@ export function ProfileScreen(): JSX.Element {
             </button>
           </div>
         </section>
-        <section className="profile-community-section" aria-label="Сообщества">
-          <span className="section-label profile-section-label">Сообщества</span>
-          <div className="profile-community-list">
-            <a
-              className="profile-community-card glass"
-              href="https://vk.ru/ultimate_hockey"
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Открыть сообщество ВКонтакте"
-            >
-              <span
-                className="profile-community-card__icon profile-community-card__icon--vk"
-                data-testid="profile-community-icon-vk"
-                aria-hidden="true"
-              >
-                <img src="/icons/vk-community.png" alt="" />
-              </span>
-              <span className="profile-community-card__copy">
-                <strong>ВКонтакте</strong>
-                <small>Новости, обновления и обсуждения</small>
-              </span>
-              <ChevronRight aria-hidden="true" />
-            </a>
-            <a
-              className="profile-community-card glass"
-              href="https://t.me/ultimate_hockey"
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Открыть канал в Telegram"
-            >
-              <span
-                className="profile-community-card__icon profile-community-card__icon--telegram"
-                data-testid="profile-community-icon-telegram"
-                aria-hidden="true"
-              >
-                <img src="/icons/telegram-community-v2.png" alt="" />
-              </span>
-              <span className="profile-community-card__copy">
-                <strong>Telegram</strong>
-                <small>Официальный канал игры</small>
-              </span>
-              <ChevronRight aria-hidden="true" />
-            </a>
-          </div>
-        </section>
+        <CommunityLinks />
       </section>
       {pickerKind !== null && inventoryQuery.data !== undefined ? (
         <EquipmentPickerModal

@@ -1379,10 +1379,12 @@ export function ChatRoomScreen(): JSX.Element {
           {...(chatSubtitle !== undefined ? { subtitle: chatSubtitle } : {})}
           avatarUrl={headerAvatarUrl}
           onBack={() => navigate('/chat')}
-          {...(dmCounterpart && !isOfficialDialog
+          {...(dmCounterpart
             ? {
                 onTitleClick: () => setPreviewSender(dmCounterpart),
-                onTitleClickLabel: 'Открыть профиль игрока',
+                onTitleClickLabel: isOfficialDialog
+                  ? 'Открыть официальный аккаунт'
+                  : 'Открыть профиль игрока',
               }
             : chatMeta && chatMeta.type !== 'direct'
               ? { onTitleClick: () => navigate(`/chat/${chatId}/info`) }
@@ -1807,7 +1809,13 @@ export function ChatRoomScreen(): JSX.Element {
         onPick={onPickFromPicker}
         onClose={() => setPickerTarget(null)}
       />
-      <UserProfileSheet sender={previewSender} onClose={onCloseProfile} />
+      <UserProfileSheet
+        sender={previewSender}
+        onClose={onCloseProfile}
+        hideMessageAction={
+          isOfficialDialog && previewSender?.userId === dmCounterpart?.userId
+        }
+      />
       <ChannelPostEditorSheet
         post={editingPost}
         disabled={editChannelPostMut.isPending || deleteChannelPostMut.isPending}

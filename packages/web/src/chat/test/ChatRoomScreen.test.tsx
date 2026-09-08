@@ -517,7 +517,7 @@ describe('ChatRoomScreen', () => {
     expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
   });
 
-  it('labels the official account and does not open a player profile from its header', async () => {
+  it('opens the official card from its dialog header without a duplicate message action', async () => {
     vi.mocked(api.fetchChatList).mockResolvedValue([
       {
         id: 'c1',
@@ -549,7 +549,9 @@ describe('ChatRoomScreen', () => {
       'src',
       '/icons/official-account.webp?v=2',
     );
-    expect(screen.queryByRole('button', { name: 'Открыть профиль игрока' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть официальный аккаунт' }));
+    expect(await screen.findByRole('heading', { name: 'Ультимейт Хоккей' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Написать в личку' })).not.toBeInTheDocument();
   });
 
   it('shows delivered/read ticks only on own messages in direct chats', async () => {
