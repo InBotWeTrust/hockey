@@ -168,10 +168,10 @@ describe.skipIf(!hasIntegrationEnv)('tournament lifecycle plugin', () => {
     await resetDatabase(pool);
     await applyMigrations(pool, MIGRATIONS_DIR);
     await pool.query(
-      `insert into users (id, display_name, timezone, role)
-       values ($1, 'Администратор', 'Europe/Moscow', 'admin'),
-              ($2, 'Игрок', 'Europe/Moscow', 'player'),
-              ($3, 'Игрок 2', 'Europe/Moscow', 'player')`,
+      `insert into users (id, display_name, timezone, role, level)
+       values ($1, 'Администратор', 'Europe/Moscow', 'admin', 1),
+              ($2, 'Игрок', 'Europe/Moscow', 'player', 2),
+              ($3, 'Игрок 2', 'Europe/Moscow', 'player', 2)`,
       [ADMIN_ID, PLAYER_ID, PLAYER_TWO_ID],
     );
     await pool.query(
