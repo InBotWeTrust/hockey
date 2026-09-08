@@ -247,6 +247,7 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
       '108_remove_daily_aggregate_tournaments.sql',
       '109_drop_legacy_user_wallet.sql',
       '110_recovery_kits.sql',
+      '111_tournament_placement_history.sql',
     ]);
 
     const accuracy = await pool.query<{
