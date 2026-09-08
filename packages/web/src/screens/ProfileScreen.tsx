@@ -651,7 +651,7 @@ export function ProfileScreen(): JSX.Element {
                 data-testid="profile-community-icon-telegram"
                 aria-hidden="true"
               >
-                <img src="/icons/telegram-community.png" alt="" />
+                <img src="/icons/telegram-community-v2.png" alt="" />
               </span>
               <span className="profile-community-card__copy">
                 <strong>Telegram</strong>

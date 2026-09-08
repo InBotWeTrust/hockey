@@ -251,6 +251,10 @@ describe('ProfileScreen', () => {
     );
     expect(screen.getByTestId('profile-community-icon-vk')).toBeInTheDocument();
     expect(screen.getByTestId('profile-community-icon-telegram')).toBeInTheDocument();
+    expect(screen.getByTestId('profile-community-icon-telegram').querySelector('img')).toHaveAttribute(
+      'src',
+      '/icons/telegram-community-v2.png',
+    );
     for (const link of screen.getAllByRole('link')) {
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noreferrer');
