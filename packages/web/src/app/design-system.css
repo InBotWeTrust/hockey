@@ -3987,6 +3987,11 @@
 .profile-equipment-section,
 .profile-career-section,
 .profile-settings-section,
+.profile-community-section {
+  display: grid;
+  gap: 7px;
+}
+
 .official-account-hero {
   position: relative;
   display: flex;
@@ -4027,11 +4032,6 @@
   font-size: 12px;
   font-weight: 700;
   line-height: 1.35;
-}
-
-.profile-community-section {
-  display: grid;
-  gap: 7px;
 }
 
 .profile-sports-data .profile-section-label {

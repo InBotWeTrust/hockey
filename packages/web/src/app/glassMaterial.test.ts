@@ -120,4 +120,16 @@ describe('unified glass material', () => {
     );
     expect(sharedControlRule?.style.getPropertyValue('color')).toBe('#10243a');
   });
+
+  it('keeps profile sections separate from the official account hero styles', () => {
+    mountDesignSystem();
+    const profileSection = document.createElement('section');
+    profileSection.className = 'profile-equipment-section';
+    document.body.append(profileSection);
+
+    const styles = getComputedStyle(profileSection);
+    expect(styles.display).toBe('grid');
+    expect(styles.minHeight).not.toBe('200px');
+    expect(styles.backgroundColor).not.toBe('rgb(24, 38, 58)');
+  });
 });
