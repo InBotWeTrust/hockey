@@ -8,7 +8,6 @@ import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import type { ProfileData } from './profileTypes.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
-import { AccessibleModal } from '../components/AccessibleModal.js';
 import { acknowledgeRegularSeasonPodiumCongratulation } from '../api/tournament.js';
 import { RegularSeasonPodiumModal } from '../tournament/RegularSeasonPodiumModal.js';
 
@@ -37,7 +36,6 @@ export function SectionsScreen(): JSX.Element {
   const refreshDaily = useDailyStore((s) => s.refresh);
   const trainingData = useTrainingSessionStore((s) => s.data);
   const refreshTraining = useTrainingSessionStore((s) => s.refresh);
-  const [lockedInfo, setLockedInfo] = useState<{ title: string; text: string } | null>(null);
   const [podiumAckError, setPodiumAckError] = useState<string | null>(null);
   const weeklyChallenge = useQuery({
     queryKey: ['weekly-challenge', 'section'],
@@ -84,6 +82,7 @@ export function SectionsScreen(): JSX.Element {
     dailyData?.amateur_unlock_goals_required ?? DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED,
   );
   const amateurGoals = Math.min(amateurUnlockGoalsRequired, dailyData?.lifetime_total_goals ?? 0);
+  const amateurGoalsRemaining = Math.max(0, amateurUnlockGoalsRequired - amateurGoals);
   const isAmateurUnlocked =
     profileQuery.data?.competitionLevel === 'amateur' ||
     profileQuery.data?.competitionLevel === 'professional' ||
@@ -118,13 +117,6 @@ export function SectionsScreen(): JSX.Element {
   const achievementsMeta = `${numberText(achievementsCompletedCount)}/${numberText(achievements.length)} наград`;
 
   const openAmateurs = (): void => {
-    if (!isAmateurUnlocked) {
-      setLockedInfo({
-        title: 'Не хватает шайб',
-        text: `Для открытия любительского раздела нужно забить ${numberText(amateurUnlockGoalsRequired)} шайб в ежедневной игре.`,
-      });
-      return;
-    }
     navigate('/?view=amateur&from=sections');
   };
 
@@ -195,17 +187,10 @@ export function SectionsScreen(): JSX.Element {
               supportingText={
                 isAmateurUnlocked
                   ? 'Дуэли, бонусные игры и турниры'
-                  : `${numberText(amateurGoals)}/${numberText(amateurUnlockGoalsRequired)} до открытия`
+                  : `Осталось ${numberText(amateurGoalsRemaining)} шайб до статуса «Любитель»`
               }
-              tone={isAmateurUnlocked ? 'default' : 'muted'}
+              tone="default"
               artworkSrc={SECTION_ARTWORK.amateur}
-              progress={
-                isAmateurUnlocked
-                  ? undefined
-                  : amateurUnlockGoalsRequired > 0
-                    ? Math.round((amateurGoals / amateurUnlockGoalsRequired) * 100)
-                    : 100
-              }
               onClick={openAmateurs}
             />
             <SectionCard
@@ -218,24 +203,6 @@ export function SectionsScreen(): JSX.Element {
           </div>
         </section>
       </section>
-
-      {lockedInfo && (
-        <AccessibleModal
-          title={lockedInfo.title}
-          copy={lockedInfo.text}
-          onClose={() => setLockedInfo(null)}
-        >
-          <div className="modal-actions">
-            <button
-              type="button"
-              className="modal-primary btn btn--cta"
-              onClick={() => setLockedInfo(null)}
-            >
-              Понятно
-            </button>
-          </div>
-        </AccessibleModal>
-      )}
 
       {activeCongratulation !== null && (
         <RegularSeasonPodiumModal

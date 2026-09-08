@@ -9,6 +9,7 @@ import type { GameplayLockDTO } from './gameplayLock.js';
 export type { GameplayLockDTO } from './gameplayLock.js';
 import type { GameRequestOptions } from './requestTimeout.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
+import { showAmateurLevelRequiredError } from '../amateur/amateurAccess.js';
 
 export type AmateurDuelMatchStatus =
   | 'invited'
@@ -369,6 +370,13 @@ function stampMatch<T extends AmateurDuelMatch>(match: T): T {
   } as T;
 }
 
+function amateurMutation<T>(request: Promise<T>): Promise<T> {
+  return request.catch((error: unknown) => {
+    showAmateurLevelRequiredError(error);
+    throw error;
+  });
+}
+
 export function fetchAmateurTemplates(): Promise<{ templates: AmateurDuelTemplate[] }> {
   return apiFetch<{ templates: AmateurDuelTemplate[] }>('/duel/amateur/templates');
 }
@@ -422,67 +430,83 @@ export function challengeAmateurDuel(body: {
   template_id: string;
   opponent_user_id: string;
 }): Promise<{ match: AmateurDuelMatch }> {
-  return apiFetch<{ match: AmateurDuelMatch }>('/duel/amateur/challenge', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatch }>('/duel/amateur/challenge', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  );
 }
 
 export function acceptAmateurDuel(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/accept`, {
-    method: 'POST',
-  }).then((res) => ({ match: stampMatch(res.match) }));
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/accept`, {
+      method: 'POST',
+    }).then((res) => ({ match: stampMatch(res.match) })),
+  );
 }
 
 export function cancelAmateurDuel(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/cancel`, {
-    method: 'POST',
-  }).then((res) => ({ match: stampMatch(res.match) }));
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/cancel`, {
+      method: 'POST',
+    }).then((res) => ({ match: stampMatch(res.match) })),
+  );
 }
 
 export function declineAmateurDuel(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/decline`, {
-    method: 'POST',
-  }).then((res) => ({ match: stampMatch(res.match) }));
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/decline`, {
+      method: 'POST',
+    }).then((res) => ({ match: stampMatch(res.match) })),
+  );
 }
 
 export function readyAmateurDuel(
   matchId: string,
   loadout: AmateurDuelLoadoutSelection,
 ): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/ready`, {
-    method: 'POST',
-    body: JSON.stringify({ loadout }),
-  }).then((res) => ({ match: stampMatch(res.match) }));
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/ready`, {
+      method: 'POST',
+      body: JSON.stringify({ loadout }),
+    }).then((res) => ({ match: stampMatch(res.match) })),
+  );
 }
 
 export function confirmTournamentDuelLoadout(
   matchId: string,
   loadout: AmateurDuelLoadoutSelection,
 ): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(
-    `/duel/amateur/matches/${matchId}/tournament-loadout`,
-    { method: 'POST', body: JSON.stringify({ loadout }) },
-  ).then((res) => ({ match: stampMatch(res.match) }));
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(
+      `/duel/amateur/matches/${matchId}/tournament-loadout`,
+      { method: 'POST', body: JSON.stringify({ loadout }) },
+    ).then((res) => ({ match: stampMatch(res.match) })),
+  );
 }
 
 export function joinAmateurMatchmaking(
   duelKinds: AmateurDuelKind[],
 ): Promise<{ ticket?: AmateurDuelMatchmakingTicket; match?: AmateurDuelMatch }> {
-  return apiFetch<{ ticket?: AmateurDuelMatchmakingTicket; match?: AmateurDuelMatch }>(
-    '/duel/amateur/matchmaking/join',
-    {
-      method: 'POST',
-      body: JSON.stringify({ duel_kinds: duelKinds }),
-    },
-  ).then((res) => (res.match ? { ...res, match: stampMatch(res.match) } : res));
+  return amateurMutation(
+    apiFetch<{ ticket?: AmateurDuelMatchmakingTicket; match?: AmateurDuelMatch }>(
+      '/duel/amateur/matchmaking/join',
+      {
+        method: 'POST',
+        body: JSON.stringify({ duel_kinds: duelKinds }),
+      },
+    ).then((res) => (res.match ? { ...res, match: stampMatch(res.match) } : res)),
+  );
 }
 
 export function leaveAmateurMatchmaking(templateId?: string): Promise<{ ok: true }> {
-  return apiFetch<{ ok: true }>('/duel/amateur/matchmaking/leave', {
-    method: 'POST',
-    body: JSON.stringify(templateId ? { template_id: templateId } : {}),
-  });
+  return amateurMutation(
+    apiFetch<{ ok: true }>('/duel/amateur/matchmaking/leave', {
+      method: 'POST',
+      body: JSON.stringify(templateId ? { template_id: templateId } : {}),
+    }),
+  );
 }
 
 export function startAmateurDuelPeriod(
@@ -490,24 +514,25 @@ export function startAmateurDuelPeriod(
   loadout?: AmateurDuelLoadoutSelection,
   options?: GameRequestOptions,
 ): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(
-    `/duel/amateur/matches/${matchId}/period/start`,
-    {
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/period/start`, {
       method: 'POST',
       ...(loadout ? { body: JSON.stringify({ loadout }) } : {}),
       ...(options?.signal === undefined ? {} : { signal: options.signal }),
-    },
-  ).then((res) => ({ match: stampMatch(res.match) }));
+    }).then((res) => ({ match: stampMatch(res.match) })),
+  );
 }
 
 export function updateAmateurDuelLoadout(
   matchId: string,
   loadout: Pick<AmateurDuelLoadoutSelection, 'stick'>,
 ): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/loadout`, {
-    method: 'PATCH',
-    body: JSON.stringify({ loadout }),
-  }).then((res) => ({ match: stampMatch(res.match) }));
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/loadout`, {
+      method: 'PATCH',
+      body: JSON.stringify({ loadout }),
+    }).then((res) => ({ match: stampMatch(res.match) })),
+  );
 }
 
 export function submitAmateurDuelShot(
@@ -515,17 +540,21 @@ export function submitAmateurDuelShot(
   body: SubmitAmateurDuelShotRequest,
   options?: GameRequestOptions,
 ): Promise<SubmitAmateurDuelShotResponse> {
-  return apiFetch<SubmitAmateurDuelShotResponse>(`/duel/amateur/matches/${matchId}/shot`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-    ...(options?.signal === undefined ? {} : { signal: options.signal }),
-  }).then((res) => ({ ...res, match: stampMatch(res.match) }));
+  return amateurMutation(
+    apiFetch<SubmitAmateurDuelShotResponse>(`/duel/amateur/matches/${matchId}/shot`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      ...(options?.signal === undefined ? {} : { signal: options.signal }),
+    }).then((res) => ({ ...res, match: stampMatch(res.match) })),
+  );
 }
 
 export function settleAmateurDuel(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/settle`, {
-    method: 'POST',
-  }).then((res) => ({ match: stampMatch(res.match) }));
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/settle`, {
+      method: 'POST',
+    }).then((res) => ({ match: stampMatch(res.match) })),
+  );
 }
 
 export function fetchAmateurRating(seasonKey?: string): Promise<AmateurDuelRatingResponse> {

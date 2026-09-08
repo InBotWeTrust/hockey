@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -353,7 +353,7 @@ describe('SectionsScreen', () => {
     expect(screen.queryByRole('button', { name: 'Турниры' })).toBeNull();
   });
 
-  it('shows only server-configured goal progress while the amateur section is locked', async () => {
+  it('shows the live remaining-goals preview on a full-color Amateur card', async () => {
     mockSectionsApi({
       dailyLifetimeTotalGoals: 42,
       dailyAmateurUnlockGoalsRequired: 750,
@@ -362,7 +362,12 @@ describe('SectionsScreen', () => {
     renderSections();
 
     const amateur = await screen.findByRole('button', { name: 'Любители' });
-    expect(amateur).toHaveTextContent('42/750 до открытия');
+    expect(amateur).toHaveTextContent('Осталось 708 шайб до статуса «Любитель»');
+    expect(amateur).toHaveClass('section-card-surface--default');
+    expect(amateur).not.toHaveClass('section-card-surface--muted');
+    expect(within(amateur).getByRole('img', { hidden: true })).not.toHaveStyle({
+      filter: 'grayscale(1) saturate(0.12)',
+    });
     expect(amateur).not.toHaveTextContent('Дуэли, бонусные игры и турниры');
     expect(amateur).not.toHaveTextContent('Раздел открыт');
   });
@@ -388,14 +393,14 @@ describe('SectionsScreen', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/?view=amateur&from=sections');
   });
 
-  it('keeps the amateur parent locked until the amateur level is available', async () => {
+  it('opens the Amateur preview for a beginner without a locked-info modal', async () => {
     mockSectionsApi({ dailyLifetimeTotalGoals: 0, profileCompetitionLevel: 'beginner' });
     renderSections();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Любители' }));
 
-    expect(screen.getByTestId('location')).toHaveTextContent('/sections');
-    expect(screen.getByRole('dialog', { name: 'Не хватает шайб' })).toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent('/?view=amateur&from=sections');
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('opens the amateur parent for a server-authorized amateur below the daily goal threshold', async () => {
@@ -406,21 +411,6 @@ describe('SectionsScreen', () => {
 
     expect(screen.getByTestId('location')).toHaveTextContent('/?view=amateur&from=sections');
     expect(screen.queryByRole('dialog')).toBeNull();
-  });
-
-  it('focuses locked info and restores the exact section card after Escape', async () => {
-    mockSectionsApi({ dailyLifetimeTotalGoals: 0, profileCompetitionLevel: 'beginner' });
-    renderSections();
-    const trigger = await screen.findByRole('button', { name: 'Любители' });
-    trigger.focus();
-    fireEvent.click(trigger);
-
-    const dialog = screen.getByRole('dialog', { name: 'Не хватает шайб' });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Понятно' })).toHaveFocus());
-    fireEvent.keyDown(dialog, { key: 'Escape' });
-
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(trigger).toHaveFocus();
   });
 
   it.each([{ profileRequest: 'loading' as const }, { profileRequest: 'error' as const }])(

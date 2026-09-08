@@ -18,6 +18,12 @@ import {
   type TournamentSummary,
 } from '../api/tournament.js';
 import { useAuthStore } from '../auth/authStore.js';
+import {
+  amateurAccessDetailsFromError,
+  deriveAmateurAccess,
+  guardAmateurMutation,
+  showAmateurLevelRequiredError,
+} from '../amateur/amateurAccess.js';
 import { VenueBadge, type VenueRole } from '../components/VenueBadge.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
@@ -30,6 +36,7 @@ import { TournamentStandingsTable } from './TournamentStandingsTable.js';
 import { TournamentScheduleCalendar } from './TournamentScheduleCalendar.js';
 import { TournamentPlayoffBracket } from './TournamentPlayoffBracket.js';
 import { TournamentMatchdayResults } from './TournamentMatchdayResults.js';
+import { useDailyStore } from '../stores/dailyStore.js';
 
 type TournamentTab = 'standings' | 'schedule' | 'playoff' | 'rules';
 
@@ -625,6 +632,14 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
   const navigate = useNavigate();
   const location = useLocation();
   const currentUserId = useAuthStore((state) => state.user?.id ?? null);
+  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel);
+  const qualifyingGoals = useDailyStore((state) => state.data?.lifetime_total_goals);
+  const unlockGoalsRequired = useDailyStore((state) => state.data?.amateur_unlock_goals_required);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel: competitionLevel ?? null,
+    qualifyingGoals: qualifyingGoals ?? null,
+    unlockGoalsRequired: unlockGoalsRequired ?? null,
+  });
   const [tab, setTab] = useState<TournamentTab>(() =>
     tournamentInitialTab(location.search, tournament.startsAt),
   );
@@ -680,6 +695,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
       }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tournaments'] }),
+    onError: (error) => showAmateurLevelRequiredError(error),
   });
 
   useEffect(() => {
@@ -718,12 +734,24 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
       params.set('play', '1');
       navigate(`/?${params.toString()}`);
     },
+    onError: (error) => showAmateurLevelRequiredError(error),
     onSettled: (_data, _error, variables) => {
       if (variables.generation === openFixtureGeneration.current) {
         fixtureOpeningRef.current = false;
       }
     },
   });
+  const requestOpenFixture = (fixtureId: string) => {
+    guardAmateurMutation(amateurAccess, () => {
+      if (fixtureOpeningRef.current) return;
+      fixtureOpeningRef.current = true;
+      const generation = openFixtureGeneration.current + 1;
+      openFixtureGeneration.current = generation;
+      activeFixtureId.current = fixtureId;
+      openFixture.reset();
+      openFixture.mutate({ fixtureId, generation });
+    });
+  };
 
   return (
     <div className="tournament-details">
@@ -992,25 +1020,19 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                                 type="button"
                                 className="admin-compact-btn tournament-fixture-card__action tournament-fixture-card__action--primary"
                                 disabled={openFixture.isPending}
-                                onClick={() => {
-                                  if (fixtureOpeningRef.current) return;
-                                  fixtureOpeningRef.current = true;
-                                  const generation = openFixtureGeneration.current + 1;
-                                  openFixtureGeneration.current = generation;
-                                  activeFixtureId.current = fixture.id;
-                                  openFixture.reset();
-                                  openFixture.mutate({ fixtureId: fixture.id, generation });
-                                }}
+                                onClick={() => requestOpenFixture(fixture.id)}
                               >
                                 {openFixture.isPending && activeFixtureId.current === fixture.id
                                   ? 'Открываем…'
                                   : 'Открыть игру'}
                               </button>
-                              {openFixture.isError && activeFixtureId.current === fixture.id && (
-                                <span className="tournament-fixture-card__error" role="alert">
-                                  Не удалось открыть игру. Попробуйте ещё раз.
-                                </span>
-                              )}
+                              {openFixture.isError &&
+                                amateurAccessDetailsFromError(openFixture.error) === null &&
+                                activeFixtureId.current === fixture.id && (
+                                  <span className="tournament-fixture-card__error" role="alert">
+                                    Не удалось открыть игру. Попробуйте ещё раз.
+                                  </span>
+                                )}
                             </>
                           )}
                         </div>
@@ -1033,15 +1055,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               key={tournament.id}
               tournamentId={tournament.id}
               currentUserId={currentUserId}
-              onOpenFixture={(fixtureId) => {
-                if (fixtureOpeningRef.current) return;
-                fixtureOpeningRef.current = true;
-                const generation = openFixtureGeneration.current + 1;
-                openFixtureGeneration.current = generation;
-                activeFixtureId.current = fixtureId;
-                openFixture.reset();
-                openFixture.mutate({ fixtureId, generation });
-              }}
+              onOpenFixture={requestOpenFixture}
               series={bracket.data.series}
               timezone={String(tournament.rules.config.timezone ?? 'Europe/Moscow')}
               {...(tournament.playoffFormats === undefined
@@ -1065,7 +1079,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                 : ''
             }`}
             disabled={!registrationState.isOpen || registration.isPending}
-            onClick={() => registration.mutate()}
+            onClick={() => guardAmateurMutation(amateurAccess, () => registration.mutate())}
           >
             {!registrationState.isOpen
               ? registrationState.actionLabel
@@ -1076,7 +1090,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                   : 'Отменить заявку'}
           </button>
         )}
-      {registration.isError && (
+      {registration.isError && amateurAccessDetailsFromError(registration.error) === null && (
         <div role="alert" className="tournament-details__registration-error">
           Не удалось изменить участие. Проверьте соединение и попробуйте ещё раз.
         </div>

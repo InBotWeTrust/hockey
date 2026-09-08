@@ -97,6 +97,11 @@ import {
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 import { ordinaryDuelLockCopy, type GameplayLockDTO } from '../api/gameplayLock.js';
 import { useGameplayLockRefresh } from '../hooks/useGameplayLockRefresh.js';
+import {
+  deriveAmateurAccess,
+  guardAmateurMutation,
+  showAmateurLevelRequiredError,
+} from '../amateur/amateurAccess.js';
 import { dailyGameplayLockCopy, gameplayLockCopy } from '../api/gameplayLock.js';
 import {
   fetchMyInventory,
@@ -970,6 +975,12 @@ function GameHub({
     queryFn: () => apiFetch<ProfileData>('/me'),
   });
   const data = useDailyStore((s) => s.data)!;
+  const competitionLevel = useAuthStore((s) => s.user?.competitionLevel ?? null);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel,
+    qualifyingGoals: data.lifetime_total_goals,
+    unlockGoalsRequired: data.amateur_unlock_goals_required,
+  });
   const refresh = useDailyStore((s) => s.refresh);
   const trainingData = useTrainingSessionStore((s) => s.data);
   const trainingInFlight = useTrainingSessionStore((s) => s.inFlight);
@@ -1205,10 +1216,12 @@ function GameHub({
       onOpenAmateurMatch(matchId, { entrance: false, directPlay: true });
     },
     onError: (err) => {
-      setModeInfoModal({
-        title: 'Не удалось принять дуэль',
-        text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
-      });
+      if (!showAmateurLevelRequiredError(err)) {
+        setModeInfoModal({
+          title: 'Не удалось принять дуэль',
+          text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
+        });
+      }
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
   });
@@ -1219,10 +1232,12 @@ function GameHub({
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
     onError: (err) => {
-      setModeInfoModal({
-        title: 'Не удалось отклонить дуэль',
-        text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
-      });
+      if (!showAmateurLevelRequiredError(err)) {
+        setModeInfoModal({
+          title: 'Не удалось отклонить дуэль',
+          text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
+        });
+      }
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
   });
@@ -1247,10 +1262,12 @@ function GameHub({
       navigate(`/?${params.toString()}`, { replace: true });
     },
     onError: (err) => {
-      setModeInfoModal({
-        title: 'Не удалось открыть игру',
-        text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
-      });
+      if (!showAmateurLevelRequiredError(err)) {
+        setModeInfoModal({
+          title: 'Не удалось открыть игру',
+          text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
+        });
+      }
       void queryClient.invalidateQueries({ queryKey: ['tournaments', 'classic', 'active'] });
     },
   });
@@ -1342,7 +1359,9 @@ function GameHub({
             type="button"
             className="btn arena-duel-invite-action arena-duel-invite-action--decline"
             disabled={invitePending}
-            onClick={() => declineArenaDuelMut.mutate(event.id)}
+            onClick={() =>
+              guardAmateurMutation(amateurAccess, () => declineArenaDuelMut.mutate(event.id))
+            }
             style={{ minHeight: 34, fontSize: 'clamp(10px, 1.45vh, 12px)', padding: '0 10px' }}
           >
             Отклонить
@@ -1353,7 +1372,9 @@ function GameHub({
             disabled={
               invitePending || (event.source !== 'tournament' && event.duel_lock?.blocked === true)
             }
-            onClick={() => acceptArenaDuelMut.mutate(event.id)}
+            onClick={() =>
+              guardAmateurMutation(amateurAccess, () => acceptArenaDuelMut.mutate(event.id))
+            }
             style={{ minHeight: 34, fontSize: 'clamp(10px, 1.45vh, 12px)', padding: '0 10px' }}
           >
             Принять
@@ -1432,7 +1453,7 @@ function GameHub({
           disabled: canEnterGame && openArenaTournamentGame.isPending,
           onEnter: () => {
             if (canEnterGame) {
-              openArenaTournamentGame.mutate(game);
+              guardAmateurMutation(amateurAccess, () => openArenaTournamentGame.mutate(game));
               return;
             }
             navigate(
@@ -4099,6 +4120,8 @@ function AmateurDuelsPage({
 }): JSX.Element {
   const navigate = useNavigate();
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
+  const competitionLevel = useAuthStore((s) => s.user?.competitionLevel ?? null);
+  const dailyData = useDailyStore((s) => s.data);
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
     queryFn: () => apiFetch<ProfileData>('/me'),
@@ -4157,6 +4180,14 @@ function AmateurDuelsPage({
     enabled: historyResultMatchId !== null,
   });
   const closeHistoryResult = useCallback(() => setHistoryResultMatchId(null), []);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel,
+    qualifyingGoals: dailyData?.lifetime_total_goals,
+    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
+  });
+  const guardMutation = (action: () => void): void => {
+    guardAmateurMutation(amateurAccess, action);
+  };
 
   const matchmakingMut = useMutation({
     mutationFn: (duelKinds: AmateurDuelKind[]) => joinAmateurMatchmaking(duelKinds),
@@ -4300,8 +4331,8 @@ function AmateurDuelsPage({
           onOpen={() => onOpenMatch(match.id)}
           {...(canAnswerInvite
             ? {
-                onAcceptInvite: () => acceptInviteMut.mutate(match.id),
-                onDeclineInvite: () => declineInviteMut.mutate(match.id),
+                onAcceptInvite: () => guardMutation(() => acceptInviteMut.mutate(match.id)),
+                onDeclineInvite: () => guardMutation(() => declineInviteMut.mutate(match.id)),
                 inviteAnswerPending:
                   (acceptInviteMut.isPending && acceptInviteMut.variables === match.id) ||
                   (declineInviteMut.isPending && declineInviteMut.variables === match.id),
@@ -4309,7 +4340,7 @@ function AmateurDuelsPage({
             : {})}
           {...(canCancelInvite
             ? {
-                onCancelInvite: () => cancelChallengeMut.mutate(match.id),
+                onCancelInvite: () => guardMutation(() => cancelChallengeMut.mutate(match.id)),
                 cancelInvitePending:
                   cancelChallengeMut.isPending && cancelChallengeMut.variables === match.id,
               }
@@ -4397,8 +4428,10 @@ function AmateurDuelsPage({
                     className="btn btn--cta"
                     disabled={!canStartMatchmaking}
                     onClick={() => {
-                      setMatchmakingNow(Date.now());
-                      matchmakingMut.mutate(eligibleMatchmakingKinds);
+                      guardMutation(() => {
+                        setMatchmakingNow(Date.now());
+                        matchmakingMut.mutate(eligibleMatchmakingKinds);
+                      });
                     }}
                   >
                     {matchmakingMut.isPending
@@ -4444,7 +4477,7 @@ function AmateurDuelsPage({
                           className="btn btn--ghost"
                           disabled={leaveMatchmakingMut.isPending}
                           onClick={() => {
-                            leaveMatchmakingMut.mutate();
+                            guardMutation(() => leaveMatchmakingMut.mutate());
                           }}
                           style={{ minHeight: 38, padding: '0 14px', fontSize: 12 }}
                         >
@@ -4744,9 +4777,11 @@ function AmateurDuelsPage({
                     disabled={!canChallenge}
                     onClick={() => {
                       if (!selectedTemplate || !selectedOpponent) return;
-                      challengeMut.mutate({
-                        template_id: selectedTemplate.id,
-                        opponent_user_id: selectedOpponent.userId,
+                      guardMutation(() => {
+                        challengeMut.mutate({
+                          template_id: selectedTemplate.id,
+                          opponent_user_id: selectedOpponent.userId,
+                        });
                       });
                     }}
                   >
@@ -4938,7 +4973,12 @@ function DuelLockerTab({
                   {recoveryCount > 0 ? `В запасе: ${recoveryCount}` : 'Нет в запасе'}
                 </span>
               </span>
-              <ChevronRight className="card-chevron" size={19} strokeWidth={2.7} aria-hidden="true" />
+              <ChevronRight
+                className="card-chevron"
+                size={19}
+                strokeWidth={2.7}
+                aria-hidden="true"
+              />
             </button>
           </section>
         </div>
@@ -5467,6 +5507,16 @@ function AmateurDuelPlayView({
   onRouteTransitionConsumed?: (() => void) | undefined;
   onOpenTournamentMatch?: (fixtureId: string, matchId: string) => void;
 }): JSX.Element {
+  const competitionLevel = useAuthStore((s) => s.user?.competitionLevel ?? null);
+  const dailyData = useDailyStore((s) => s.data);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel,
+    qualifyingGoals: dailyData?.lifetime_total_goals,
+    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
+  });
+  const showAmateurRestriction = (): void => {
+    guardAmateurMutation(amateurAccess, () => undefined);
+  };
   const match = useAmateurDuelStore((s) => s.match);
   const loading = useAmateurDuelStore((s) => s.loading);
   const error = useAmateurDuelStore((s) => s.error);
@@ -5589,7 +5639,7 @@ function AmateurDuelPlayView({
   }, [match]);
 
   useEffect(() => {
-    if (!match || match.id !== matchId) return;
+    if (!match || match.id !== matchId || !amateurAccess.hasFullAccess) return;
     const { playerReady: meReady, goalieReady: opponentReady } =
       duelRinkReadyPresenceForMatch(match);
     const previous = previousReadyStateRef.current;
@@ -5624,7 +5674,7 @@ function AmateurDuelPlayView({
     ) {
       void settleAmateurDuel(match.id).then(({ match: next }) => applyState(next));
     }
-  }, [applyState, match, matchId, now, refresh]);
+  }, [amateurAccess.hasFullAccess, applyState, match, matchId, now, refresh]);
 
   useEffect(() => {
     if (!match || match.id !== matchId) return undefined;
@@ -5684,6 +5734,10 @@ function AmateurDuelPlayView({
   const loadoutEditable = isDuelLoadoutEditable(match.source, match.me.state);
   const handleDirectDuelAction = async (): Promise<void> => {
     if (inFlight || duelBlocked) return;
+    if (!amateurAccess.hasFullAccess) {
+      showAmateurRestriction();
+      return;
+    }
     const matchNow = duelMatchNowMs(match, now);
     if (match.status === 'ready_check' && match.me.state !== 'ready') {
       if (usesTournamentPeriodLoadout) preserveSelectedLoadoutAfterReadyRef.current = true;
@@ -5728,6 +5782,10 @@ function AmateurDuelPlayView({
       : null;
   const handleActiveLoadoutSelect = async (itemId: string | null): Promise<void> => {
     if (selectedLoadoutKind !== 'stick') return;
+    if (!amateurAccess.hasFullAccess) {
+      showAmateurRestriction();
+      return;
+    }
     const next = await updateLoadout({ stick: itemId });
     if (next) setSelectedLoadoutKind(null);
   };
@@ -5814,7 +5872,9 @@ function AmateurDuelPlayView({
               ? {}
               : { tournamentAttempt: tournamentAttempt.data })}
             now={now}
-            onOpenNextGame={(fixtureId) => openNextTournamentGame.mutate(fixtureId)}
+            onOpenNextGame={(fixtureId) =>
+              guardAmateurMutation(amateurAccess, () => openNextTournamentGame.mutate(fixtureId))
+            }
             onClose={onBack}
           />
         )}
@@ -5926,7 +5986,7 @@ function AmateurDuelPlayView({
           type="button"
           className="btn btn--cta"
           disabled={duelBlocked || inFlight || match.me.state === 'ready'}
-          onClick={() => void ready({})}
+          onClick={() => guardAmateurMutation(amateurAccess, () => void ready({}))}
         >
           {match.me.state === 'ready' ? 'Вы готовы' : inFlight ? 'Фиксируем...' : 'Готов'}
         </button>
@@ -5946,8 +6006,9 @@ function AmateurDuelPlayView({
           playRouteTransitionOnMount={playRouteTransitionOnMount}
           onRouteTransitionConsumed={onRouteTransitionConsumed}
           onBack={onBack}
-          active={match.status === 'active' && !duelBlocked}
+          active={match.status === 'active' && !duelBlocked && amateurAccess.hasFullAccess}
           primaryActionBlocked={duelBlocked}
+          {...(!amateurAccess.hasFullAccess ? { inactiveAction: showAmateurRestriction } : {})}
           seed={match.match_seed}
           goalieId={match.rules.goalieId}
           periodNumber={match.me.current_period}
@@ -6051,14 +6112,24 @@ function AmateurDuelPlayView({
           isFirstPeriod={match.me.current_period === 0}
           pending={inFlight}
           onHome={onBack}
-          onStart={() => void startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout))}
+          onStart={() =>
+            guardAmateurMutation(
+              amateurAccess,
+              () => void startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout)),
+            )
+          }
         />
       )}
       <button
         type="button"
         className="btn btn--cta"
         disabled={!canStart || inFlight}
-        onClick={() => void startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout))}
+        onClick={() =>
+          guardAmateurMutation(
+            amateurAccess,
+            () => void startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout)),
+          )
+        }
       >
         {startButtonLabel}
       </button>
@@ -6069,7 +6140,9 @@ function AmateurDuelPlayView({
             ? {}
             : { tournamentAttempt: tournamentAttempt.data })}
           now={now}
-          onOpenNextGame={(fixtureId) => openNextTournamentGame.mutate(fixtureId)}
+          onOpenNextGame={(fixtureId) =>
+            guardAmateurMutation(amateurAccess, () => openNextTournamentGame.mutate(fixtureId))
+          }
           onClose={onBack}
         />
       )}
@@ -8980,9 +9053,9 @@ function DailyPlayView({
                 ? 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ'
                 : isBreak || isDailyLockedByTraining || isActiveDailyLocked
                   ? 'ЛЁД ГОТОВИТСЯ'
-                : isClosed
-                  ? 'ИГРА ЗАВЕРШЕНА'
-                  : undefined
+                  : isClosed
+                    ? 'ИГРА ЗАВЕРШЕНА'
+                    : undefined
         }
         inactiveAction={
           canStartPeriod

@@ -49,6 +49,7 @@ import type { TrainingStateResponse } from '../api/training.js';
 import type { AmateurDuelMatchState } from '../api/amateurDuel.js';
 import type { BonusGameCard } from '../api/bonusGames.js';
 import type { ClassicTournamentState } from '../api/tournamentClassic.js';
+import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
 
 vi.mock('../game/PixiStage.js', () => ({
   PixiStage: () => <div data-testid="pixi-stage-stub" />,
@@ -72,6 +73,7 @@ const baseState: DailyStateResponse = {
   daily_total_goals: 0,
   lifetime_total_shots: 0,
   lifetime_total_goals: 0,
+  amateur_unlock_goals_required: 300,
   period_started_at: null,
   period_ends_at: null,
   break_ends_at: null,
@@ -353,7 +355,7 @@ beforeEach(() => {
   useAuthStore.getState().setSession({
     accessToken: 'token',
     refreshToken: 'r',
-    user: { id: 'u1', displayName: 'Tester' },
+    user: { id: 'u1', displayName: 'Tester', competitionLevel: 'amateur' },
   });
   useDailyStore.setState({
     data: null,
@@ -370,6 +372,7 @@ beforeEach(() => {
     inFlight: false,
     error: null,
   });
+  useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = input instanceof Request ? input.url : String(input);
     return new Response(
@@ -403,6 +406,155 @@ describe('arena level presentation', () => {
 });
 
 describe('DailyScreen', () => {
+  it('lets a beginner browse Amateur duel tabs but guards matchmaking locally', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.endsWith('/me')) {
+        return new Response(JSON.stringify({ competitionLevel: 'beginner' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/templates')) {
+        return new Response(JSON.stringify({ templates: challengeTemplates }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches')) {
+        return new Response(JSON.stringify({ matches: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/rating')) {
+        return new Response(
+          JSON.stringify({ season_key: '2026-09', rating_visible: true, rows: [] }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/duel/amateur/history')) {
+        return new Response(JSON.stringify({ matches: [], next_cursor: null }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/daily/state')) {
+        return new Response(
+          JSON.stringify({
+            ...baseState,
+            lifetime_total_goals: 116,
+            amateur_unlock_goals_required: 300,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify({}), {
+        status: init?.method === 'POST' ? 201 : 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&section=duels&from=sections']);
+
+    expect(await screen.findByRole('heading', { name: 'Дуэли' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Рейтинг' }));
+    expect(await screen.findByRole('tab', { name: 'Рейтинг' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'История' }));
+    expect(screen.getByRole('tab', { name: 'История' })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: 'Игра' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Начать поиск' }));
+
+    expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
+      goalsRemaining: 184,
+      unlockGoalsRequired: 300,
+    });
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        const url = input instanceof Request ? input.url : String(input);
+        return url.includes('/duel/amateur/matchmaking/join') && init?.method === 'POST';
+      }),
+    ).toBe(false);
+  });
+
+  it('maps a stale Amateur matchmaking rejection to the shared toast', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'amateur' });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/amateur/matchmaking/join')) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: 'amateur_level_required',
+              message: 'internal access policy',
+              details: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+            },
+          }),
+          { status: 403, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.endsWith('/me')) {
+        return new Response(JSON.stringify({ competitionLevel: 'amateur' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/templates')) {
+        return new Response(JSON.stringify({ templates: challengeTemplates }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/matches')) {
+        return new Response(JSON.stringify({ matches: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/rating')) {
+        return new Response(
+          JSON.stringify({ season_key: '2026-09', rating_visible: true, rows: [] }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          ...baseState,
+          lifetime_total_goals: 300,
+          amateur_unlock_goals_required: 300,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+
+    renderWith(['/?view=amateur&section=duels']);
+    fireEvent.click(await screen.findByRole('button', { name: 'Начать поиск' }));
+
+    await waitFor(() =>
+      expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
+        goalsRemaining: 184,
+        unlockGoalsRequired: 300,
+      }),
+    );
+  });
   it('pauses tournament-attempt polling while a duel period is actively rendering', () => {
     expect(tournamentAttemptRefetchInterval('period_active')).toBe(false);
     expect(tournamentAttemptRefetchInterval('accepted')).toBe(1_000);
@@ -1171,6 +1323,58 @@ describe('DailyScreen', () => {
         'view=amateur&section=tournaments&tournament=playoff-ready&tab=schedule&fixture=fixture-ready&match=match-ready&play=1',
       ),
     );
+  });
+
+  it('guards a playable arena tournament fixture for a beginner', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+    const readinessEndsAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/classic/active')
+        ? {
+            games: [
+              {
+                tournament_id: 'beginner-preview-playoff',
+                tournament_title: 'Кубок для просмотра',
+                tournament_day: 1,
+                kind: 'playoff',
+                fixture_id: 'fixture-preview',
+                duel_match_id: 'match-preview',
+                round_stage: 'playoff',
+                round_number: 2,
+                final_round_number: 3,
+                starts_at: new Date(Date.now() - 60_000).toISOString(),
+                readiness_ends_at: readinessEndsAt,
+                closes_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+                break_ends_at: null,
+                state: 'ready_check',
+                current_period: 0,
+                total_shots: 0,
+                total_goals: 0,
+              },
+            ],
+          }
+        : url.includes('/duel/training/state')
+          ? trainingIdleState
+          : {
+              ...baseState,
+              lifetime_total_goals: 116,
+              amateur_unlock_goals_required: 300,
+            };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=arena']);
+    fireEvent.click(await screen.findByRole('button', { name: 'На лёд' }));
+
+    expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
+      goalsRemaining: 184,
+      unlockGoalsRequired: 300,
+    });
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=arena');
   });
 
   it('shows a tournament duel only once when both arena feeds return the same match', async () => {
@@ -2129,6 +2333,60 @@ describe('DailyScreen', () => {
     expect(screen.getByRole('button', { name: 'Принять' })).toHaveClass(
       'arena-duel-invite-action--accept',
     );
+  });
+
+  it('guards an arena duel invitation for a beginner without calling the API', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+    const incomingInvite: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'invited',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      ready_expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      me: { ...settledDuelMatch.me, side: 'opponent', state: 'invited' },
+      opponent: { ...settledDuelMatch.opponent, side: 'challenger', state: 'loadout_pending' },
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/amateur/events')) {
+        return new Response(JSON.stringify({ events: [incomingInvite] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          ...baseState,
+          lifetime_total_goals: 1000,
+          amateur_unlock_goals_required: 300,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+
+    renderWith(['/?view=arena']);
+    fireEvent.click(await screen.findByRole('button', { name: 'Принять' }));
+
+    expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
+      goalsRemaining: 0,
+      unlockGoalsRequired: 300,
+    });
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        const url = input instanceof Request ? input.url : String(input);
+        return url.includes('/accept') && init?.method === 'POST';
+      }),
+    ).toBe(false);
   });
 
   it('restores the last selected arena card after returning home', async () => {
@@ -3401,9 +3659,7 @@ describe('DailyScreen', () => {
     expect(within(cooldownScoreboard).queryByText('Период')).not.toBeInTheDocument();
     fireEvent.click(dailyButton);
 
-    expect(
-      await screen.findByRole('button', { name: 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ' }),
-    ).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ' })).toBeEnabled();
     expect(screen.getByText('Восстановление после тренировки')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Нужно восстановиться' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
@@ -5940,6 +6196,74 @@ describe('DailyScreen', () => {
     });
     expect(screen.getByRole('button', { name: 'ГОТОВ' })).toBeEnabled();
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/ready'))).toBe(false);
+  });
+
+  it('keeps a direct duel visible to a beginner but guards the ready action', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+    const readyCheck: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'ready_check',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: new Date(Date.now() - 60_000).toISOString(),
+      ends_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      ready_expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+      server_now: new Date().toISOString(),
+      me: { ...settledDuelMatch.me, state: 'loadout_pending', current_period: 0 },
+      opponent: { ...settledDuelMatch.opponent, state: 'loadout_pending', current_period: 0 },
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        return new Response(JSON.stringify({ match: readyCheck }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/inventory/me')) {
+        return new Response(
+          JSON.stringify({
+            balances: { tokens: 0, stars: 0, experience: 0 },
+            equipped: { stickItemId: null, skatesItemId: null, nutritionItemId: null },
+            items: { stick: [], skates: [], nutrition: [] },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          ...baseState,
+          lifetime_total_goals: 116,
+          amateur_unlock_goals_required: 300,
+        }),
+        {
+          status: init?.method === 'POST' ? 200 : 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      );
+    });
+
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+    fireEvent.click(await screen.findByRole('button', { name: 'ГОТОВ' }));
+
+    expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
+      goalsRemaining: 184,
+      unlockGoalsRequired: 300,
+    });
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) => String(input).includes('/ready') && init?.method === 'POST',
+      ),
+    ).toBe(false);
+    act(() => cleanup());
   });
 
   it('keeps the tournament readiness explanation disabled after opting out', async () => {

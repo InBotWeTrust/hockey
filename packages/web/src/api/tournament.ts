@@ -1,4 +1,5 @@
 import { apiFetch } from './apiFetch.js';
+import { showAmateurLevelRequiredError } from '../amateur/amateurAccess.js';
 
 export type TournamentStatus =
   | 'registration'
@@ -353,21 +354,32 @@ export interface TournamentFixtureAttemptState {
   } | null;
 }
 
+function tournamentMutation<T>(request: Promise<T>): Promise<T> {
+  return request.catch((error: unknown) => {
+    showAmateurLevelRequiredError(error);
+    throw error;
+  });
+}
+
 export function fetchTournaments(): Promise<{ tournaments: TournamentSummary[] }> {
   return apiFetch('/tournaments');
 }
 
 export function applyToTournament(tournamentId: string) {
-  return apiFetch<{ tournamentId: string; participantId: string; state: string }>(
-    `/tournaments/${tournamentId}/applications`,
-    { method: 'POST' },
+  return tournamentMutation(
+    apiFetch<{ tournamentId: string; participantId: string; state: string }>(
+      `/tournaments/${tournamentId}/applications`,
+      { method: 'POST' },
+    ),
   );
 }
 
 export function withdrawFromTournament(tournamentId: string) {
-  return apiFetch<{ tournamentId: string; state: 'withdrawn' }>(
-    `/tournaments/${tournamentId}/applications/me`,
-    { method: 'DELETE' },
+  return tournamentMutation(
+    apiFetch<{ tournamentId: string; state: 'withdrawn' }>(
+      `/tournaments/${tournamentId}/applications/me`,
+      { method: 'DELETE' },
+    ),
   );
 }
 
@@ -439,13 +451,15 @@ export function fetchTournamentStandings(tournamentId: string) {
 }
 
 export function openTournamentFixtureSegment(tournamentId: string, fixtureId: string) {
-  return apiFetch<{
-    fixtureId: string;
-    segmentId: string;
-    duelMatchId: string;
-    kind: string;
-    sequenceNumber: number;
-  }>(`/tournaments/${tournamentId}/fixtures/${fixtureId}/segments/open`, { method: 'POST' });
+  return tournamentMutation(
+    apiFetch<{
+      fixtureId: string;
+      segmentId: string;
+      duelMatchId: string;
+      kind: string;
+      sequenceNumber: number;
+    }>(`/tournaments/${tournamentId}/fixtures/${fixtureId}/segments/open`, { method: 'POST' }),
+  );
 }
 
 export function fetchTournamentBracket(tournamentId: string) {
@@ -463,28 +477,32 @@ export function fetchFixtureLiveState(fixtureId: string) {
 }
 
 export function proposeFixtureLiveTime(fixtureId: string, proposedAt: string) {
-  return apiFetch<{
-    id: string;
-    fixtureId: string;
-    proposedAt: string;
-    state: 'pending';
-    overlapWarnings: TournamentFixtureLiveOverlapWarning[];
-  }>(`/tournaments/fixtures/${fixtureId}/live/proposals`, {
-    method: 'POST',
-    body: JSON.stringify({ proposedAt }),
-  });
+  return tournamentMutation(
+    apiFetch<{
+      id: string;
+      fixtureId: string;
+      proposedAt: string;
+      state: 'pending';
+      overlapWarnings: TournamentFixtureLiveOverlapWarning[];
+    }>(`/tournaments/fixtures/${fixtureId}/live/proposals`, {
+      method: 'POST',
+      body: JSON.stringify({ proposedAt }),
+    }),
+  );
 }
 
 export function respondFixtureLiveProposal(fixtureId: string, proposalId: string, accept: boolean) {
-  return apiFetch<{
-    fixtureId: string;
-    proposalId: string;
-    state: 'accepted' | 'declined';
-    overlapWarnings: TournamentFixtureLiveOverlapWarning[];
-  }>(`/tournaments/fixtures/${fixtureId}/live/proposals/${proposalId}/respond`, {
-    method: 'POST',
-    body: JSON.stringify({ accept }),
-  });
+  return tournamentMutation(
+    apiFetch<{
+      fixtureId: string;
+      proposalId: string;
+      state: 'accepted' | 'declined';
+      overlapWarnings: TournamentFixtureLiveOverlapWarning[];
+    }>(`/tournaments/fixtures/${fixtureId}/live/proposals/${proposalId}/respond`, {
+      method: 'POST',
+      body: JSON.stringify({ accept }),
+    }),
+  );
 }
 
 export function acknowledgeRegularSeasonPodiumCongratulation(congratulationId: string) {

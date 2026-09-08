@@ -5,6 +5,10 @@ import { resolve } from 'node:path';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '../auth/authStore.js';
+import { ApiError } from '../api/apiFetch.js';
+import type { DailyStateResponse } from '../api/duel.js';
+import { useDailyStore } from '../stores/dailyStore.js';
+import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
 import * as api from '../api/tournament.js';
 import {
   fixtureCanOpen,
@@ -27,7 +31,129 @@ const TEST_LIFECYCLE: api.TournamentLifecycleDTO = {
 describe('TournamentCatalog', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    useAuthStore.setState({ user: { id: 'u1', displayName: 'Первый' } });
+    useAuthStore.setState({
+      user: { id: 'u1', displayName: 'Первый', competitionLevel: 'amateur' },
+    });
+    useDailyStore.setState({
+      data: {
+        lifetime_total_goals: 300,
+        amateur_unlock_goals_required: 300,
+      } as DailyStateResponse,
+    });
+    useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
+  });
+
+  it('keeps tournament details browsable for a beginner but guards registration locally', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+    useDailyStore.setState({
+      data: {
+        lifetime_total_goals: 116,
+        amateur_unlock_goals_required: 300,
+      } as DailyStateResponse,
+    });
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 'preview-cup',
+          slug: 'preview-cup',
+          title: 'Кубок для просмотра',
+          description: 'Регулярка и плей-офф',
+          status: 'registration',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 2,
+          lifecycle: TEST_LIFECYCLE,
+          myParticipantState: null,
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 8, entryFeeCoins: 0, playoffSize: 4 } },
+        },
+      ],
+    });
+    vi.spyOn(api, 'fetchTournamentSchedule').mockResolvedValue({ days: [], myGames: [] });
+    vi.spyOn(api, 'fetchTournamentStandings').mockResolvedValue({ standings: [] });
+    vi.spyOn(api, 'fetchTournamentBracket').mockResolvedValue({ series: [] });
+    const apply = vi.spyOn(api, 'applyToTournament').mockResolvedValue({
+      tournamentId: 'preview-cup',
+      participantId: 'participant-1',
+      state: 'applied',
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок для просмотра' }));
+    for (const tab of ['Таблица', 'Расписание', 'Плей-офф', 'Правила']) {
+      fireEvent.click(screen.getByRole('tab', { name: tab }));
+      expect(screen.getByRole('tab', { name: tab })).toHaveAttribute('aria-selected', 'true');
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Подать заявку' }));
+
+    expect(apply).not.toHaveBeenCalled();
+    expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
+      goalsRemaining: 184,
+      unlockGoalsRequired: 300,
+    });
+  });
+
+  it('maps a stale tournament registration restriction to the shared toast', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 'stale-cup',
+          slug: 'stale-cup',
+          title: 'Кубок со старым кэшем',
+          description: '',
+          status: 'registration',
+          regularSource: 'head_to_head',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 0,
+          lifecycle: TEST_LIFECYCLE,
+          myParticipantState: null,
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: null,
+          rules: { config: { participantLimit: 8, entryFeeCoins: 0, playoffSize: 4 } },
+        },
+      ],
+    });
+    vi.spyOn(api, 'applyToTournament').mockRejectedValue(
+      new ApiError(403, 'amateur_level_required', 'internal policy', {
+        goalsRemaining: 184,
+        unlockGoalsRequired: 300,
+      }),
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок со старым кэшем' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Подать заявку' }));
+
+    await waitFor(() =>
+      expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
+        goalsRemaining: 184,
+        unlockGoalsRequired: 300,
+      }),
+    );
+    expect(screen.queryByText(/internal policy|amateur_level_required/)).toBeNull();
   });
 
   it('puts the combined rules tab first and opens it before the tournament starts', () => {
@@ -723,7 +849,9 @@ describe('TournamentCatalog', () => {
     expect(screen.getByRole('img', { name: 'Первый' })).toHaveAttribute('src', '/first.webp');
     fireEvent.error(screen.getByRole('img', { name: 'Первый' }));
     expect(screen.queryByRole('img', { name: 'Первый' })).not.toBeInTheDocument();
-    expect(dialog.querySelector('.tournament-participants-list__avatar [data-initial="П"]')).not.toBeNull();
+    expect(
+      dialog.querySelector('.tournament-participants-list__avatar [data-initial="П"]'),
+    ).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть список участников' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Участники' })).toBeNull());
   });
