@@ -4,10 +4,16 @@ import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
 import { fetchHomeArenas, type HomeArenasResponse } from '../api/arenas.js';
-import { fetchMyInventory, type InventoryItem, type InventoryState } from '../api/inventory.js';
+import {
+  fetchMyInventory,
+  type InventoryEquipmentKind,
+  type InventoryItem,
+  type InventoryState,
+} from '../api/inventory.js';
 import { HomeArenaModal } from '../components/HomeArenaModal.js';
 import { formatProfileNumber, ProfileStatsGrid } from './profileSections.js';
 import type { ProfileData } from './profileTypes.js';
+import { placeholderArtworkForKind } from './inventoryArtwork.js';
 
 function ProfilePageHeader({ title }: { title: string }): JSX.Element {
   const navigate = useNavigate();
@@ -77,14 +83,19 @@ function equipmentLabel(kind: keyof InventoryState['equipped']): string {
   return 'Питание';
 }
 
+function equipmentKind(kind: keyof InventoryState['equipped']): InventoryEquipmentKind {
+  if (kind === 'stickItemId') return 'stick';
+  if (kind === 'skatesItemId') return 'skates';
+  return 'nutrition';
+}
+
 function equippedItem(
   inventory: InventoryState,
   kind: keyof InventoryState['equipped'],
 ): InventoryItem | null {
   const itemId = inventory.equipped[kind];
   if (itemId === null) return null;
-  const inventoryKind =
-    kind === 'stickItemId' ? 'stick' : kind === 'skatesItemId' ? 'skates' : 'nutrition';
+  const inventoryKind = equipmentKind(kind);
   return (
     inventory.items[inventoryKind].find(
       (item) => item.id === itemId || item.instanceId === itemId,
@@ -128,9 +139,16 @@ export function ProfileEquipmentScreen(): JSX.Element {
             <div className="section-label">{equipmentLabel(kind)}</div>
             <article className="profile-equipment-slot glass">
               <div className="profile-equipment-slot__image" aria-hidden="true">
-                {item?.imageUrl !== null && item?.imageUrl !== undefined ? (
-                  <img src={item.imageUrl} alt="" />
-                ) : null}
+                <img
+                  src={item?.imageUrl ?? placeholderArtworkForKind(equipmentKind(kind))}
+                  alt=""
+                  onError={(event) => {
+                    const fallback = placeholderArtworkForKind(equipmentKind(kind));
+                    if (event.currentTarget.getAttribute('src') !== fallback) {
+                      event.currentTarget.setAttribute('src', fallback);
+                    }
+                  }}
+                />
               </div>
               <div>
                 <h2>{item?.title ?? 'Не выбрано'}</h2>
