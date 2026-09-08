@@ -24,6 +24,46 @@ describe('TournamentScheduleCalendar', () => {
     vi.useRealTimers();
   });
 
+  it('shows a configured future playoff block before its participants are known', () => {
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[]}
+        fixtureDays={[
+          { localDate: '2030-09-10', hasGames: true, hasMyGame: false, hasPlayoff: true },
+        ]}
+        selectedDate="2030-09-10"
+        matchdays={[]}
+        regularSource="classic"
+        tournamentStatus="regular"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-11T23:59:59.000Z"
+        playoffBlocks={[
+          {
+            id: 'round-2-day-1',
+            roundNumber: 2,
+            stage: 'playoff',
+            localDate: '2030-09-10',
+            startTime: '18:00',
+            stageLabel: 'Финал',
+            duelKind: 'classic',
+            waitingLabel: 'Соперники определятся после полуфиналов',
+          },
+        ]}
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Финал' })).toBeInTheDocument();
+    expect(screen.getByText('18:00')).toBeInTheDocument();
+    expect(screen.getByText('Формат: Классика')).toBeInTheDocument();
+    expect(screen.getByText('Соперники определятся после полуфиналов')).toBeInTheDocument();
+    expect(screen.queryByText('В этот день игр нет.')).not.toBeInTheDocument();
+  });
+
   it('opens the selected day in a modal and shows my game first', () => {
     const fixtures = [fixture(1), fixture(2), fixture(3), fixture(4), fixture(5), fixture(6, true)];
     render(
@@ -760,6 +800,18 @@ describe('TournamentScheduleCalendar', () => {
         fixtureDays={[
           { localDate: '2030-09-04', hasGames: true, hasMyGame: true, hasPlayoff: true },
         ]}
+        playoffBlocks={[
+          {
+            id: '2:2030-09-04:1',
+            roundNumber: 2,
+            stage: 'playoff',
+            localDate: '2030-09-04',
+            startTime: '13:00',
+            stageLabel: 'Финал',
+            duelKind: 'classic',
+            waitingLabel: 'Соперники определятся после полуфиналов',
+          },
+        ]}
         selectedDate="2030-09-04"
         matchdays={[]}
         regularSource="classic"
@@ -780,6 +832,9 @@ describe('TournamentScheduleCalendar', () => {
     );
 
     const series = screen.getByRole('button', { name: /открыть серию/i });
+    expect(screen.getByRole('heading', { name: 'Финал' })).toBeInTheDocument();
+    expect(screen.getByText('Формат: Классика')).toBeInTheDocument();
+    expect(screen.queryByText('Соперники определятся после полуфиналов')).not.toBeInTheDocument();
     expect(series).toHaveTextContent('4 сентября, начало в 13:00');
     expect(series).toHaveTextContent('1:1');
     expect(screen.queryByText('Время ещё не назначено')).not.toBeInTheDocument();

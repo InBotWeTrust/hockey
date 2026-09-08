@@ -32,7 +32,10 @@ import type { UserPickerItem } from '../chat/api.js';
 import { tournamentStatusLabel } from './labels.js';
 import { tournamentTimezoneLabel } from './timezoneLabel.js';
 import { TournamentStandingsTable } from './TournamentStandingsTable.js';
-import { TournamentScheduleCalendar } from './TournamentScheduleCalendar.js';
+import {
+  TournamentScheduleCalendar,
+  type TournamentPlayoffScheduleBlock,
+} from './TournamentScheduleCalendar.js';
 import { TournamentPlayoffBracket } from './TournamentPlayoffBracket.js';
 import { TournamentMatchdayResults } from './TournamentMatchdayResults.js';
 import { useDailyStore } from '../stores/dailyStore.js';
@@ -432,6 +435,100 @@ function tournamentPlayoffStartsAt(tournament: TournamentSummary): string[] {
     const startsAt = objectValue(value).firstGameStartsAt;
     return typeof startsAt === 'string' && startsAt.length > 0 ? [startsAt] : [];
   });
+}
+
+function playoffStageLabel(roundNumber: number, playoffSize: number): string {
+  const totalRounds = Math.max(1, Math.round(Math.log2(Math.max(2, playoffSize))));
+  const roundsUntilFinal = totalRounds - roundNumber;
+  if (roundsUntilFinal === 0) return 'Финал';
+  if (roundsUntilFinal === 1) return 'Полуфинал';
+  if (roundsUntilFinal === 2) return 'Четвертьфинал';
+  return `${roundNumber}-й раунд плей-офф`;
+}
+
+function playoffWaitingLabel(stageLabel: string): string {
+  if (stageLabel === 'Финал') return 'Соперники определятся после полуфиналов';
+  if (stageLabel === 'Полуфинал') return 'Соперники определятся после предыдущего этапа';
+  if (stageLabel === 'Четвертьфинал') return 'Соперники определятся после регулярного сезона';
+  return 'Соперники определятся после предыдущего этапа';
+}
+
+function zonedDateAndTime(value: string, timezone: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('ru-RU', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? '';
+  return {
+    localDate: `${part('year')}-${part('month')}-${part('day')}`,
+    startTime: `${part('hour')}:${part('minute')}`,
+  };
+}
+
+export function tournamentPlayoffScheduleBlocks(
+  tournament: TournamentSummary,
+): TournamentPlayoffScheduleBlock[] {
+  if (!Array.isArray(tournament.rules.playoffRounds)) return [];
+  const timezone = String(tournament.rules.config.timezone ?? 'Europe/Moscow');
+  const playoffSize = Number(tournament.rules.config.playoffSize ?? 2);
+  const formats = new Map(
+    (tournament.playoffFormats ?? []).map((format) => [format.roundNumber, format.duelKind]),
+  );
+  const blocks: TournamentPlayoffScheduleBlock[] = [];
+
+  tournament.rules.playoffRounds.forEach((value, index) => {
+    const round = objectValue(value);
+    const roundNumber = typeof round.roundNumber === 'number' ? round.roundNumber : index + 1;
+    const stageLabel = playoffStageLabel(roundNumber, playoffSize);
+    const configuredDays = Array.isArray(round.scheduleDays) ? round.scheduleDays : [];
+    const days = configuredDays.flatMap((dayValue) => {
+      const day = objectValue(dayValue);
+      if (typeof day.localDate !== 'string' || typeof day.firstWaveLocalTime !== 'string')
+        return [];
+      return [{ localDate: day.localDate, startTime: day.firstWaveLocalTime.slice(0, 5) }];
+    });
+    const fallback =
+      days.length === 0 && typeof round.firstGameStartsAt === 'string'
+        ? zonedDateAndTime(round.firstGameStartsAt, timezone)
+        : null;
+    const scheduledDays = days.length > 0 ? days : fallback === null ? [] : [fallback];
+    const stages: Array<{ stage: 'playoff' | 'third_place'; label: string }> = [
+      { stage: 'playoff', label: stageLabel },
+      ...(stageLabel === 'Финал' && playoffSize >= 4
+        ? [{ stage: 'third_place' as const, label: 'Матч за 3-е место' }]
+        : []),
+    ];
+
+    scheduledDays.forEach((day, dayIndex) => {
+      stages.forEach(({ stage, label }) => {
+        blocks.push({
+          id: `${stage}:${roundNumber}:${day.localDate}:${dayIndex + 1}`,
+          roundNumber,
+          stage,
+          localDate: day.localDate,
+          startTime: day.startTime,
+          stageLabel: label,
+          duelKind: formats.get(roundNumber) ?? null,
+          waitingLabel: playoffWaitingLabel(stageLabel),
+        });
+      });
+    });
+  });
+
+  return blocks.sort(
+    (left, right) =>
+      left.localDate.localeCompare(right.localDate) ||
+      left.startTime.localeCompare(right.startTime) ||
+      left.roundNumber - right.roundNumber,
+  );
 }
 
 function numberValue(value: unknown, fallback = 0): number {
@@ -948,6 +1045,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               rangeStartsAt={tournament.startsAt}
               rangeEndsAt={tournament.completedAt ?? tournament.projectedEndsAt ?? null}
               playoffStartsAt={tournamentPlayoffStartsAt(tournament)}
+              playoffBlocks={tournamentPlayoffScheduleBlocks(tournament)}
               onOpenClassicGame={() => {
                 const params = new URLSearchParams({
                   view: 'classic',

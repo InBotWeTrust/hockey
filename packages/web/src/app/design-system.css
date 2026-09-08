@@ -8217,6 +8217,50 @@ button.daily-calendar__day:active {
   padding: 0 8px 8px;
 }
 
+.tournament-playoff-schedule-blocks {
+  display: grid;
+  gap: 8px;
+}
+
+.tournament-playoff-schedule-block {
+  display: grid;
+  gap: 5px;
+  padding: 11px 12px;
+  border: 1px solid rgba(112, 74, 179, 0.2);
+  border-radius: 14px;
+  background: rgba(230, 224, 249, 0.5);
+  color: var(--ink);
+}
+
+.tournament-playoff-schedule-block__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tournament-playoff-schedule-block__header h5 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.tournament-playoff-schedule-block__header strong {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.tournament-playoff-schedule-block > span,
+.tournament-playoff-schedule-block > p {
+  margin: 0;
+  color: #58718a;
+  font-size: 10px;
+  font-weight: 720;
+  line-height: 1.35;
+}
+
 .tournament-matchday-result {
   display: grid;
   gap: 2px;
@@ -9496,9 +9540,12 @@ button.daily-calendar__day:active {
   font-family: var(--font-mono);
   font-size: clamp(28px, 8vw, 36px);
   font-variant-numeric: tabular-nums;
-  font-weight: inherit;
-  letter-spacing: 0.04em;
-  line-height: 1;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  line-height: 0.96;
+  text-shadow:
+    0 0 9px rgba(111, 204, 255, 0.42),
+    0 0 18px rgba(55, 147, 230, 0.18);
 }
 
 .tournament-playoff-attempt {

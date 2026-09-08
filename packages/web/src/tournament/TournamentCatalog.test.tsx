@@ -13,6 +13,7 @@ import {
   fixtureCanOpen,
   scheduleDateAfterDaysLoad,
   scheduleDateForTabChange,
+  tournamentPlayoffScheduleBlocks,
   tournamentInitialTab,
   tournamentTabs,
   TournamentCatalog,
@@ -160,6 +161,68 @@ describe('TournamentCatalog', () => {
     );
     expect(useAmateurAccessToastStore.getState().sequence).toBe(1);
     expect(screen.queryByText(/internal policy|amateur_level_required/)).toBeNull();
+  });
+
+  it('builds future playoff blocks from the published admin schedule', () => {
+    const tournament = {
+      playoffFormats: [
+        { roundNumber: 1, duelKind: 'express_plus' },
+        { roundNumber: 2, duelKind: 'classic' },
+      ],
+      rules: {
+        config: { playoffSize: 4, timezone: 'Europe/Moscow' },
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            scheduleDays: [
+              { localDate: '2030-09-08', firstWaveLocalTime: '18:00' },
+              { localDate: '2030-09-09', firstWaveLocalTime: '18:00' },
+            ],
+          },
+          {
+            roundNumber: 2,
+            scheduleDays: [
+              { localDate: '2030-09-10', firstWaveLocalTime: '18:00' },
+              { localDate: '2030-09-11', firstWaveLocalTime: '18:00' },
+            ],
+          },
+        ],
+      },
+    } as unknown as api.TournamentSummary;
+
+    expect(tournamentPlayoffScheduleBlocks(tournament)).toEqual([
+      expect.objectContaining({
+        localDate: '2030-09-08',
+        startTime: '18:00',
+        stageLabel: 'Полуфинал',
+        duelKind: 'express_plus',
+      }),
+      expect.objectContaining({
+        localDate: '2030-09-09',
+        stageLabel: 'Полуфинал',
+      }),
+      expect.objectContaining({
+        localDate: '2030-09-10',
+        startTime: '18:00',
+        stageLabel: 'Финал',
+        duelKind: 'classic',
+        waitingLabel: 'Соперники определятся после полуфиналов',
+      }),
+      expect.objectContaining({
+        localDate: '2030-09-10',
+        startTime: '18:00',
+        stageLabel: 'Матч за 3-е место',
+        duelKind: 'classic',
+      }),
+      expect.objectContaining({
+        localDate: '2030-09-11',
+        stageLabel: 'Финал',
+      }),
+      expect.objectContaining({
+        localDate: '2030-09-11',
+        stageLabel: 'Матч за 3-е место',
+      }),
+    ]);
   });
 
   it('puts the combined rules tab first and opens it before the tournament starts', () => {

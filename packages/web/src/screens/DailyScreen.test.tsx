@@ -7183,6 +7183,26 @@ describe('DailyScreen', () => {
   });
 
   it('shows a result modal for a settled amateur duel', async () => {
+    const expressMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      me: {
+        ...settledDuelMatch.me,
+        inventory_report: [
+          {
+            periodNumber: 1,
+            consumed: [
+              {
+                id: 'stick-1',
+                kind: 'stick',
+                title: 'Клюшка Профи',
+                charges: 3,
+                remainingReserved: 7,
+              },
+            ],
+          },
+        ],
+      },
+    };
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       if (url.includes('/duel/training/state')) {
@@ -7192,7 +7212,7 @@ describe('DailyScreen', () => {
         });
       }
       if (url.includes('/duel/amateur/matches/match-1')) {
-        return new Response(JSON.stringify({ match: settledDuelMatch }), {
+        return new Response(JSON.stringify({ match: expressMatch }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
@@ -7216,9 +7236,20 @@ describe('DailyScreen', () => {
     expect(within(dialog).queryByText('Соперник')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Начало')).not.toBeInTheDocument();
     expect(within(dialog).getByText('+3')).toBeInTheDocument();
-    expect(within(dialog).queryByText('1-й период')).not.toBeInTheDocument();
-    expect(within(dialog).queryByText('25%')).not.toBeInTheDocument();
-    expect(within(dialog).queryByText('10%')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Периоды')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Общий расход инвентаря')).not.toBeInTheDocument();
+    const gameDetails = within(dialog).getByRole('button', {
+      name: /Результаты игры.*3:1/,
+    });
+    expect(gameDetails).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(gameDetails);
+    expect(gameDetails).toHaveAttribute('aria-expanded', 'true');
+    expect(within(dialog).getByText('25%')).toBeInTheDocument();
+    expect(within(dialog).getByText('10%')).toBeInTheDocument();
+    expect(within(dialog).getByText('Расход за игру')).toBeInTheDocument();
+    const gameInventory = within(dialog).getByLabelText('Результаты игры: расход инвентаря');
+    expect(gameInventory).toHaveTextContent('Клюшка Профи');
+    expect(gameInventory).toHaveTextContent('3 броска');
     fireEvent.click(dialog);
     expect(screen.getByRole('dialog', { name: 'Результат дуэли' })).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Понятно' }));
@@ -7315,6 +7346,9 @@ describe('DailyScreen', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Результат дуэли' });
     expect(within(dialog).getByLabelText('Счёт в серии 2:0')).toBeInTheDocument();
     expect(within(dialog).getByText('Следующая игра через:')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('До следующей игры')).toHaveClass(
+      'tournament-duel-result__countdown-value',
+    );
   });
 
   it('shows a tournament series result without league points and counts down the break', async () => {

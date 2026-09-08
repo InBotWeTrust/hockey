@@ -29,11 +29,23 @@ interface TournamentScheduleCalendarProps {
   rangeStartsAt: string | null;
   rangeEndsAt: string | null;
   playoffStartsAt?: string[];
+  playoffBlocks?: TournamentPlayoffScheduleBlock[];
   fixtureDetailsMode?: 'modal' | 'inline';
   renderFixture: (fixture: TournamentFixture, mine: boolean, inSeries?: boolean) => ReactNode;
   formatDateTime: (value: string) => string;
   onOpenClassicGame?: () => void;
   renderMatchdayResults?: (matchday: TournamentMatchday) => ReactNode;
+}
+
+export interface TournamentPlayoffScheduleBlock {
+  id: string;
+  roundNumber: number;
+  stage: 'playoff' | 'third_place';
+  localDate: string;
+  startTime: string;
+  stageLabel: string;
+  duelKind: 'express' | 'express_plus' | 'classic' | null;
+  waitingLabel?: string;
 }
 
 const weekdayLabels = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -111,6 +123,13 @@ function gameWord(value: number): string {
   if (last === 1) return 'игра';
   if (last >= 2 && last <= 4) return 'игры';
   return 'игр';
+}
+
+function duelKindLabel(kind: TournamentPlayoffScheduleBlock['duelKind']): string {
+  if (kind === null) return 'уточняется';
+  if (kind === 'express') return 'Экспресс';
+  if (kind === 'express_plus') return 'Микс';
+  return 'Классика';
 }
 
 function scheduleDayTitle(fixture: TournamentFixture, timezone: string): string | null {
@@ -203,6 +222,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
               ]),
           ...playoffDateKeys,
           ...playoffFixtureDateKeys,
+          ...(props.playoffBlocks ?? []).map((block) => block.localDate),
         ]),
       ).sort(),
     [
@@ -211,6 +231,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
       playoffFixtureDateKeys,
       props.fixtureDays,
       props.matchdays,
+      props.playoffBlocks,
       props.regularSource,
     ],
   );
@@ -300,6 +321,35 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
       ? otherSelectedFixtures
       : otherSelectedFixtures.slice(0, 4);
   const selectedMatchday = matchdaysByDate.get(selectedDate);
+  const selectedPlayoffBlocks = (props.playoffBlocks ?? []).filter(
+    (block) => block.localDate === selectedDate,
+  );
+  const renderSelectedPlayoffBlocks = () =>
+    selectedPlayoffBlocks.length === 0 ? null : (
+      <section className="tournament-playoff-schedule-blocks" aria-label="Игровые блоки">
+        {selectedPlayoffBlocks.map((block) => {
+          const hasResolvedFixture =
+            hasLazyOtherGames ||
+            selectedFixtures.some(
+              (fixture) =>
+                fixture.roundNumber === block.roundNumber &&
+                fixture.stage === block.stage &&
+                fixture.home !== null &&
+                fixture.away !== null,
+            );
+          return (
+            <article className="tournament-playoff-schedule-block" key={block.id}>
+              <div className="tournament-playoff-schedule-block__header">
+                <h5>{block.stageLabel}</h5>
+                <strong>{block.startTime}</strong>
+              </div>
+              <span>Формат: {duelKindLabel(block.duelKind)}</span>
+              {!hasResolvedFixture && <p>{block.waitingLabel ?? 'Соперники определятся позже'}</p>}
+            </article>
+          );
+        })}
+      </section>
+    );
   const selectedMatchdayIsActive =
     selectedMatchday !== undefined &&
     new Date(selectedMatchday.startsAt).getTime() <= Date.now() &&
@@ -467,6 +517,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
               : (daySummary?.hasGames ?? fixtures.length > 0);
           const hasPlayoff =
             playoffDateKeys.includes(key) ||
+            (props.playoffBlocks ?? []).some((block) => block.localDate === key) ||
             daySummary?.hasPlayoff === true ||
             fixtures.some(
               (fixture) => fixture.stage === 'playoff' || fixture.stage === 'third_place',
@@ -591,10 +642,12 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
                 )}
             </>
           )}
+          {renderSelectedPlayoffBlocks()}
           {showsFixturesInline &&
             (selectedFixtures.length > 0 || hasLazyOtherGames) &&
             renderSelectedFixtureSections()}
           {selectedMatchday === undefined &&
+            selectedPlayoffBlocks.length === 0 &&
             selectedFixtures.length === 0 &&
             !hasLazyOtherGames && <p>В этот день игр нет.</p>}
         </div>
@@ -605,11 +658,10 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
           <h4>
             {spokenDate(...(selectedDate.split('-').map(Number) as [number, number, number]))}
           </h4>
-          {selectedFixtures.length > 0 || hasLazyOtherGames ? (
-            renderSelectedFixtureSections()
-          ) : (
-            <p>В этот день игр нет.</p>
-          )}
+          {renderSelectedPlayoffBlocks()}
+          {selectedFixtures.length > 0 || hasLazyOtherGames
+            ? renderSelectedFixtureSections()
+            : selectedPlayoffBlocks.length === 0 && <p>В этот день игр нет.</p>}
         </div>
       )}
 
@@ -624,11 +676,12 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
               setExpandedDate(null);
             }}
           >
-            {selectedFixtures.length > 0 || hasLazyOtherGames ? (
-              renderSelectedFixtureSections()
-            ) : (
-              <p className="modal-copy">В этот день игр нет.</p>
-            )}
+            {renderSelectedPlayoffBlocks()}
+            {selectedFixtures.length > 0 || hasLazyOtherGames
+              ? renderSelectedFixtureSections()
+              : selectedPlayoffBlocks.length === 0 && (
+                  <p className="modal-copy">В этот день игр нет.</p>
+                )}
           </AccessibleModal>
         )}
 

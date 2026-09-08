@@ -6208,6 +6208,7 @@ function DuelResultModal({
                     <span>{nextGameDisplay!.label}</span>
                     <strong
                       aria-label="До следующей игры"
+                      className="tournament-duel-result__countdown-value"
                       data-countdown={nextGameDisplay!.countdown ? 'true' : 'false'}
                     >
                       {nextGameDisplay!.value}
@@ -6536,14 +6537,16 @@ function DuelResultCard({
             )}
           </>
         )}
-        <DuelInventoryUsageSummary
-          match={match}
-          title={compact ? 'Расход инвентаря' : 'Общий расход инвентаря'}
-          label="Общий расход инвентаря"
-          compact={compact}
-          style={{ marginTop: compact ? 10 : 16 }}
-        />
-        {hasMultiplePeriods && (
+        {(compact || hasMultiplePeriods) && (
+          <DuelInventoryUsageSummary
+            match={match}
+            title={compact ? 'Расход инвентаря' : 'Общий расход инвентаря'}
+            label="Общий расход инвентаря"
+            compact={compact}
+            style={{ marginTop: compact ? 10 : 16 }}
+          />
+        )}
+        {(hasMultiplePeriods || !compact) && (
           <div
             className="duel-result-card__periods"
             style={{
@@ -6551,9 +6554,11 @@ function DuelResultCard({
               overflow: 'visible',
             }}
           >
-            <div className="section-label" style={{ margin: 0, padding: 0 }}>
-              Периоды
-            </div>
+            {hasMultiplePeriods && (
+              <div className="section-label" style={{ margin: 0, padding: 0 }}>
+                Периоды
+              </div>
+            )}
             {hasPeriodDetails ? (
               <div
                 style={{
@@ -6622,6 +6627,7 @@ export function TournamentResultPreviewScreen(): JSX.Element {
   const thirdPlace = variant.startsWith('third-place');
   const final = variant.startsWith('final');
   const ordinaryDuel = variant === 'duel-win';
+  const previewTotalPeriods = ordinaryDuel ? 1 : 3;
   const meWins = won ? 2 : 1;
   const opponentWins = won ? 0 : 2;
   const now = new Date().toISOString();
@@ -6654,7 +6660,7 @@ export function TournamentResultPreviewScreen(): JSX.Element {
     source: ordinaryDuel ? 'challenge' : 'tournament',
     ranked: false,
     season_key: 'preview',
-    duel_kind: 'classic',
+    duel_kind: ordinaryDuel ? 'express' : 'classic',
     home_user_id: 'preview-me',
     venue_role: 'home',
     venue_policy: 'neutral',
@@ -6678,15 +6684,15 @@ export function TournamentResultPreviewScreen(): JSX.Element {
     period_ends_at: null,
     break_ends_at: null,
     rules: {
-      title: 'Классика',
-      duelKind: 'classic',
-      duelVariant: 'classic',
-      totalPeriods: 3,
+      title: ordinaryDuel ? 'Экспресс' : 'Классика',
+      duelKind: ordinaryDuel ? 'express' : 'classic',
+      duelVariant: ordinaryDuel ? 'express' : 'classic',
+      totalPeriods: previewTotalPeriods,
       shotsPerPeriod: 30,
       winStarReward: 0,
     },
     me: {
-      ...participant('preview-me', 'Вы', 54, 84),
+      ...participant('preview-me', 'Вы', ordinaryDuel ? 19 : 54, ordinaryDuel ? 28 : 84),
       inventory_report: [
         {
           periodNumber: 1,
@@ -6709,7 +6715,12 @@ export function TournamentResultPreviewScreen(): JSX.Element {
         },
       ],
     },
-    opponent: participant('preview-opponent', 'Александра', 50, 82),
+    opponent: participant(
+      'preview-opponent',
+      'Александра',
+      ordinaryDuel ? 17 : 50,
+      ordinaryDuel ? 27 : 82,
+    ),
     match_seed: null,
     current_period_shots: 0,
     current_period_goals: 0,
@@ -6724,22 +6735,26 @@ export function TournamentResultPreviewScreen(): JSX.Element {
         closed_reason: 'quota',
         ended_at: now,
       },
-      {
-        period_number: 2,
-        shots_taken: 28,
-        goals: 18,
-        duration_ms: 89_000,
-        closed_reason: 'quota',
-        ended_at: now,
-      },
-      {
-        period_number: 3,
-        shots_taken: 28,
-        goals: 17,
-        duration_ms: 94_000,
-        closed_reason: 'quota',
-        ended_at: now,
-      },
+      ...(!ordinaryDuel
+        ? [
+            {
+              period_number: 2,
+              shots_taken: 28,
+              goals: 18,
+              duration_ms: 89_000,
+              closed_reason: 'quota',
+              ended_at: now,
+            },
+            {
+              period_number: 3,
+              shots_taken: 28,
+              goals: 17,
+              duration_ms: 94_000,
+              closed_reason: 'quota',
+              ended_at: now,
+            },
+          ]
+        : []),
     ],
     opponent_recent_periods: [
       {
@@ -6750,22 +6765,26 @@ export function TournamentResultPreviewScreen(): JSX.Element {
         closed_reason: 'quota',
         ended_at: now,
       },
-      {
-        period_number: 2,
-        shots_taken: 27,
-        goals: 17,
-        duration_ms: 92_000,
-        closed_reason: 'quota',
-        ended_at: now,
-      },
-      {
-        period_number: 3,
-        shots_taken: 28,
-        goals: 16,
-        duration_ms: 96_000,
-        closed_reason: 'quota',
-        ended_at: now,
-      },
+      ...(!ordinaryDuel
+        ? [
+            {
+              period_number: 2,
+              shots_taken: 27,
+              goals: 17,
+              duration_ms: 92_000,
+              closed_reason: 'quota',
+              ended_at: now,
+            },
+            {
+              period_number: 3,
+              shots_taken: 28,
+              goals: 16,
+              duration_ms: 96_000,
+              closed_reason: 'quota',
+              ended_at: now,
+            },
+          ]
+        : []),
     ],
   } as unknown as AmateurDuelMatchState;
   const tournamentAttempt = {
@@ -6938,6 +6957,7 @@ function DuelResultPeriodComparison({
         const opponentPeriod = opponentByPeriod.get(periodNumber);
         const isOpen = openPeriods.has(periodNumber);
         const summary = `${mePeriod?.goals ?? 0}:${opponentPeriod?.goals ?? 0}`;
+        const resultTitle = hasMultiplePeriods ? `${periodNumber}-й период` : 'Результаты игры';
 
         if (compact) {
           const heading = (
@@ -7023,75 +7043,62 @@ function DuelResultPeriodComparison({
               border: '1px solid rgba(255,255,255,0.62)',
             }}
           >
-            {hasMultiplePeriods ? (
-              <button
-                type="button"
-                aria-expanded={isOpen}
-                aria-controls={`duel-result-period-${periodNumber}`}
-                onClick={() => togglePeriod(periodNumber)}
+            <button
+              type="button"
+              aria-expanded={isOpen}
+              aria-controls={`duel-result-period-${periodNumber}`}
+              onClick={() => togglePeriod(periodNumber)}
+              style={{
+                width: '100%',
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr) auto auto',
+                gap: 8,
+                alignItems: 'center',
+                padding: 0,
+                border: 0,
+                background: 'transparent',
+                color: 'var(--ink)',
+                textAlign: 'left',
+                font: 'inherit',
+                cursor: 'pointer',
+              }}
+            >
+              <span
                 style={{
-                  width: '100%',
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(0, 1fr) auto auto',
-                  gap: 8,
-                  alignItems: 'center',
-                  padding: 0,
-                  border: 0,
-                  background: 'transparent',
-                  color: 'var(--ink)',
-                  textAlign: 'left',
-                  font: 'inherit',
-                  cursor: 'pointer',
-                }}
-              >
-                <span
-                  style={{
-                    minWidth: 0,
-                    fontSize: 12,
-                    fontWeight: 950,
-                    lineHeight: 1.1,
-                  }}
-                >
-                  {periodNumber}-й период
-                </span>
-                <span
-                  style={{
-                    borderRadius: 999,
-                    padding: '5px 9px',
-                    background: 'rgba(255,255,255,0.48)',
-                    border: '1px solid rgba(255,255,255,0.62)',
-                    color: 'var(--ink)',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 11,
-                    fontWeight: 850,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {summary}
-                </span>
-                <ChevronRight
-                  size={16}
-                  strokeWidth={2.4}
-                  aria-hidden="true"
-                  style={{
-                    color: 'rgba(15,23,42,0.58)',
-                    transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-                    transition: 'transform 140ms ease',
-                  }}
-                />
-              </button>
-            ) : (
-              <div
-                style={{
-                  color: 'var(--ink)',
+                  minWidth: 0,
                   fontSize: 12,
                   fontWeight: 950,
-                  marginBottom: 8,
+                  lineHeight: 1.1,
                 }}
               >
-                {periodNumber}-й период
-              </div>
-            )}
+                {resultTitle}
+              </span>
+              <span
+                style={{
+                  borderRadius: 999,
+                  padding: '5px 9px',
+                  background: 'rgba(255,255,255,0.48)',
+                  border: '1px solid rgba(255,255,255,0.62)',
+                  color: 'var(--ink)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  fontWeight: 850,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {summary}
+              </span>
+              <ChevronRight
+                size={16}
+                strokeWidth={2.4}
+                aria-hidden="true"
+                style={{
+                  color: 'rgba(15,23,42,0.58)',
+                  transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                  transition: 'transform 140ms ease',
+                }}
+              />
+            </button>
             {isOpen && (
               <div
                 id={`duel-result-period-${periodNumber}`}
@@ -7104,16 +7111,18 @@ function DuelResultPeriodComparison({
               >
                 <DuelResultParticipantPeriodStats title="Вы" period={mePeriod} />
                 <DuelResultParticipantPeriodStats title={opponentName} period={opponentPeriod} />
-                {hasMultiplePeriods && (
-                  <DuelInventoryUsageSummary
-                    match={match}
-                    periodNumber={periodNumber}
-                    title="Расход за период"
-                    label={`${periodNumber}-й период: расход инвентаря`}
-                    compact
-                    style={{ gridColumn: '1 / -1' }}
-                  />
-                )}
+                <DuelInventoryUsageSummary
+                  match={match}
+                  {...(hasMultiplePeriods ? { periodNumber } : {})}
+                  title={hasMultiplePeriods ? 'Расход за период' : 'Расход за игру'}
+                  label={
+                    hasMultiplePeriods
+                      ? `${periodNumber}-й период: расход инвентаря`
+                      : 'Результаты игры: расход инвентаря'
+                  }
+                  compact
+                  style={{ gridColumn: '1 / -1' }}
+                />
               </div>
             )}
           </div>
