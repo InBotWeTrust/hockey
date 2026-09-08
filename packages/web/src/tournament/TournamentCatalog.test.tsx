@@ -5,7 +5,6 @@ import { resolve } from 'node:path';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '../auth/authStore.js';
-import { ApiError } from '../api/apiFetch.js';
 import type { DailyStateResponse } from '../api/duel.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
@@ -127,11 +126,17 @@ describe('TournamentCatalog', () => {
         },
       ],
     });
-    vi.spyOn(api, 'applyToTournament').mockRejectedValue(
-      new ApiError(403, 'amateur_level_required', 'internal policy', {
-        goalsRemaining: 184,
-        unlockGoalsRequired: 300,
-      }),
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 'amateur_level_required',
+            message: 'internal policy',
+            details: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+          },
+        }),
+        { status: 403, headers: { 'content-type': 'application/json' } },
+      ),
     );
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -153,6 +158,7 @@ describe('TournamentCatalog', () => {
         unlockGoalsRequired: 300,
       }),
     );
+    expect(useAmateurAccessToastStore.getState().sequence).toBe(1);
     expect(screen.queryByText(/internal policy|amateur_level_required/)).toBeNull();
   });
 

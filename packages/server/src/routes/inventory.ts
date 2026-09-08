@@ -9,6 +9,7 @@ import {
   toGameplayLockDto,
   type GameplayAction,
 } from '../duel/gameplayLocks.js';
+import { assertFullAmateurAccess } from '../profile/amateurAccess.js';
 
 type EquipmentKind = 'stick' | 'skates' | 'nutrition';
 type InventoryKind = EquipmentKind | 'recovery';
@@ -909,6 +910,9 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     const client = await app.pg.connect();
     try {
       await client.query('begin');
+      if (body.data.action === 'start_classic') {
+        await assertFullAmateurAccess(client, req.user.id);
+      }
       const result = await useRecoveryKit(client, req.user.id, body.data);
       await client.query('commit');
       return result;

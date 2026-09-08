@@ -2044,6 +2044,69 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(applications.rows[0]?.count).toBe(1);
   });
 
+  it('rejects beginner Classic recovery before inventory or economy state changes', async () => {
+    const recoveryItemId = '10900000-0000-4000-8000-000000000030';
+    await pool.query(`update users set level = 1, lifetime_goals_total = 0 where id = $1`, [userA]);
+    const training = await pool.query<{ id: string }>(
+      `insert into training_session
+         (user_id, day_date, selected_period, state, game_core_version, training_seed)
+       values ($1, (now() at time zone 'Europe/Moscow')::date, 1, 'active', 1, 'classic-recovery-guard')
+       returning id`,
+      [userA],
+    );
+    await pool.query(
+      `insert into shot_session
+         (user_id, mode, training_session_id, period_number, shot_index, seed,
+          input_payload, server_result, game_core_version)
+       values ($1, 'training', $2, 1, 1, 'classic-recovery-guard-shot', '{}'::jsonb, 'save', 1)`,
+      [userA, training.rows[0]!.id],
+    );
+    const snapshot = async () => {
+      const { rows } = await pool.query<{
+        balance: number;
+        inventory_instances: number;
+        legacy_inventory_rows: number;
+        recovery_applications: number;
+        ledger_entries: number;
+      }>(
+        `select account.balance::int,
+                (select count(*)::int from user_inventory_instance where user_id = account.user_id)
+                  as inventory_instances,
+                (select count(*)::int from user_inventory_item where user_id = account.user_id)
+                  as legacy_inventory_rows,
+                (select count(*)::int from recovery_kit_application where user_id = account.user_id)
+                  as recovery_applications,
+                (select count(*)::int from currency_ledger where user_id = account.user_id)
+                  as ledger_entries
+           from user_currency_account account
+          where account.user_id = $1`,
+        [userA],
+      );
+      return rows[0]!;
+    };
+    const before = await snapshot();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/inventory/recovery/use',
+      headers: auth(tokenA),
+      payload: {
+        itemId: recoveryItemId,
+        action: 'start_classic',
+        buyIfNeeded: true,
+        idempotencyKey: '10900000-0000-4000-8000-000000000032',
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json().error).toEqual({
+      code: 'amateur_level_required',
+      message: 'amateur league is locked',
+      details: { goalsRemaining: 300, unlockGoalsRequired: 300 },
+    });
+    expect(await snapshot()).toEqual(before);
+  });
+
   it('paginates and filters inventory transaction history', async () => {
     await pool.query(
       `insert into currency_ledger

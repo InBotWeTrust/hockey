@@ -7,6 +7,7 @@ import type {
   SubmitShotRequest,
 } from './duel.js';
 import type { DuelInventoryTiming } from '@hockey/game-core';
+import { showAmateurLevelRequiredError } from '../amateur/amateurAccess.js';
 
 export interface ActiveClassicTournamentGame {
   kind: 'classic';
@@ -114,6 +115,13 @@ function stampState(state: ClassicTournamentState): ClassicTournamentState {
   return { ...state, received_at_performance_ms: performance.now() };
 }
 
+function classicTournamentMutation<T>(request: Promise<T>): Promise<T> {
+  return request.catch((error: unknown) => {
+    showAmateurLevelRequiredError(error);
+    throw error;
+  });
+}
+
 export function fetchActiveClassicTournamentGames(): Promise<{
   games: ActiveTournamentGame[];
 }> {
@@ -134,12 +142,14 @@ export function startClassicTournamentPeriod(
   tournamentId: string,
   loadout?: ClassicTournamentLoadoutSelection,
 ): Promise<ClassicTournamentState> {
-  return apiFetch<ClassicTournamentState>(
-    `/tournaments/${encodeURIComponent(tournamentId)}/classic/period/start`,
-    {
-      method: 'POST',
-      ...(loadout === undefined ? {} : { body: JSON.stringify({ loadout }) }),
-    },
+  return classicTournamentMutation(
+    apiFetch<ClassicTournamentState>(
+      `/tournaments/${encodeURIComponent(tournamentId)}/classic/period/start`,
+      {
+        method: 'POST',
+        ...(loadout === undefined ? {} : { body: JSON.stringify({ loadout }) }),
+      },
+    ),
   ).then(stampState);
 }
 
@@ -148,13 +158,15 @@ export function submitClassicTournamentShot(
   body: SubmitShotRequest,
   options?: GameRequestOptions,
 ): Promise<ClassicTournamentShotResponse> {
-  return apiFetch<ClassicTournamentShotResponse>(
-    `/tournaments/${encodeURIComponent(tournamentId)}/classic/shot`,
-    {
-      method: 'POST',
-      body: JSON.stringify(body),
-      ...(options?.signal === undefined ? {} : { signal: options.signal }),
-    },
+  return classicTournamentMutation(
+    apiFetch<ClassicTournamentShotResponse>(
+      `/tournaments/${encodeURIComponent(tournamentId)}/classic/shot`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+      },
+    ),
   ).then((response) => ({ ...response, state: stampState(response.state) }));
 }
 

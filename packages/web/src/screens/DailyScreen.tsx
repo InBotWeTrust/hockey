@@ -98,9 +98,9 @@ import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 import { ordinaryDuelLockCopy, type GameplayLockDTO } from '../api/gameplayLock.js';
 import { useGameplayLockRefresh } from '../hooks/useGameplayLockRefresh.js';
 import {
+  amateurAccessDetailsFromError,
   deriveAmateurAccess,
   guardAmateurMutation,
-  showAmateurLevelRequiredError,
 } from '../amateur/amateurAccess.js';
 import { dailyGameplayLockCopy, gameplayLockCopy } from '../api/gameplayLock.js';
 import {
@@ -1216,7 +1216,7 @@ function GameHub({
       onOpenAmateurMatch(matchId, { entrance: false, directPlay: true });
     },
     onError: (err) => {
-      if (!showAmateurLevelRequiredError(err)) {
+      if (amateurAccessDetailsFromError(err) === null) {
         setModeInfoModal({
           title: 'Не удалось принять дуэль',
           text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
@@ -1232,7 +1232,7 @@ function GameHub({
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
     onError: (err) => {
-      if (!showAmateurLevelRequiredError(err)) {
+      if (amateurAccessDetailsFromError(err) === null) {
         setModeInfoModal({
           title: 'Не удалось отклонить дуэль',
           text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
@@ -1262,7 +1262,7 @@ function GameHub({
       navigate(`/?${params.toString()}`, { replace: true });
     },
     onError: (err) => {
-      if (!showAmateurLevelRequiredError(err)) {
+      if (amateurAccessDetailsFromError(err) === null) {
         setModeInfoModal({
           title: 'Не удалось открыть игру',
           text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
@@ -1453,7 +1453,11 @@ function GameHub({
           disabled: canEnterGame && openArenaTournamentGame.isPending,
           onEnter: () => {
             if (canEnterGame) {
-              guardAmateurMutation(amateurAccess, () => openArenaTournamentGame.mutate(game));
+              if (game.duel_match_id !== null) {
+                openArenaTournamentGame.mutate(game);
+              } else {
+                guardAmateurMutation(amateurAccess, () => openArenaTournamentGame.mutate(game));
+              }
               return;
             }
             navigate(
@@ -5660,7 +5664,7 @@ function AmateurDuelPlayView({
   }, [participantState]);
 
   useEffect(() => {
-    if (!match || match.id !== matchId) return;
+    if (!match || match.id !== matchId || !amateurAccess.hasFullAccess) return;
     const endsAtMs = new Date(match.ends_at).getTime();
     const breakEndsAtMs = match.break_ends_at ? new Date(match.break_ends_at).getTime() : 0;
     if (match.me.state === 'break_active' && breakEndsAtMs > 0 && now >= breakEndsAtMs) {
@@ -5672,7 +5676,9 @@ function AmateurDuelPlayView({
       match.status !== 'expired' &&
       now >= endsAtMs
     ) {
-      void settleAmateurDuel(match.id).then(({ match: next }) => applyState(next));
+      void settleAmateurDuel(match.id)
+        .then(({ match: next }) => applyState(next))
+        .catch(() => undefined);
     }
   }, [amateurAccess.hasFullAccess, applyState, match, matchId, now, refresh]);
 
@@ -8719,6 +8725,13 @@ function RecoveryKitModal({
 }): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
+  const dailyData = useDailyStore((state) => state.data);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel,
+    qualifyingGoals: dailyData?.lifetime_total_goals,
+    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
+  });
   const inventory = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
@@ -8784,7 +8797,7 @@ function RecoveryKitModal({
           );
         })}
       </div>
-      {mutation.error && (
+      {mutation.error && amateurAccessDetailsFromError(mutation.error) === null && (
         <p className="modal-copy" role="alert">
           {mutation.error.message}
         </p>
@@ -8799,7 +8812,14 @@ function RecoveryKitModal({
           type="button"
           className="modal-primary btn--cta"
           disabled={selected === null || mutation.isPending}
-          onClick={() => selected && mutation.mutate(selected)}
+          onClick={() => {
+            if (selected === null) return;
+            if (action === 'start_classic') {
+              guardAmateurMutation(amateurAccess, () => mutation.mutate(selected));
+              return;
+            }
+            mutation.mutate(selected);
+          }}
         >
           {mutation.isPending
             ? 'Применяем...'
@@ -9456,6 +9476,13 @@ function ClassicTournamentPlayView({
   const optimisticAddShot = useClassicTournamentStore((state) => state.optimisticAddShot);
   const submitShot = useClassicTournamentStore((state) => state.submitShot);
   const applyState = useClassicTournamentStore((state) => state.applyState);
+  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
+  const dailyData = useDailyStore((state) => state.data);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel,
+    qualifyingGoals: dailyData?.lifetime_total_goals,
+    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
+  });
   const queryClient = useQueryClient();
   useGameplayLockRefresh(data?.gameplay_lock);
   const [now, setNow] = useState(Date.now());
@@ -9567,7 +9594,7 @@ function ClassicTournamentPlayView({
   }
 
   const locked = data.gameplay_lock?.blocked === true;
-  const active = data.state === 'period_active' && !locked;
+  const active = data.state === 'period_active' && !locked && amateurAccess.hasFullAccess;
   const breakEndsAt = data.break_ends_at ? timestampMs(data.break_ends_at) : 0;
   const periodEndsAt = data.period_ends_at ? timestampMs(data.period_ends_at) : 0;
   const closesAt = timestampMs(data.closes_at);
@@ -9580,6 +9607,9 @@ function ClassicTournamentPlayView({
   const shouldShowSummary = statsModalState !== null || unseenPeriod !== null;
   const stats = statsModalState ? dailyGameStatsFromState(statsModalState) : null;
   const duelCondition = createClassicTournamentCondition(data);
+  const showAmateurRestriction = (): void => {
+    guardAmateurMutation(amateurAccess, () => undefined);
+  };
 
   return (
     <>
@@ -9649,17 +9679,28 @@ function ClassicTournamentPlayView({
                   : undefined
         }
         inactiveAction={
-          canStart
-            ? () => startPeriod(selectedLoadout)
-            : data.gameplay_lock?.reason === 'recent_gameplay'
-              ? () => setRecoveryModalOpen(true)
-              : undefined
+          !amateurAccess.hasFullAccess &&
+          (data.state === 'period_active' ||
+            canStart ||
+            data.gameplay_lock?.reason === 'recent_gameplay')
+            ? showAmateurRestriction
+            : canStart
+              ? () => startPeriod(selectedLoadout)
+              : data.gameplay_lock?.reason === 'recent_gameplay'
+                ? () => setRecoveryModalOpen(true)
+                : undefined
         }
-        entranceBeforeInactiveAction
+        entranceBeforeInactiveAction={amateurAccess.hasFullAccess}
         periodEndsAt={active && periodEndsAt > 0 ? periodEndsAt : undefined}
         onTimerExpired={() => refresh(tournamentId)}
         optimisticAddShot={optimisticAddShot}
-        submitShot={submitShot}
+        submitShot={(args) => {
+          if (!amateurAccess.hasFullAccess) {
+            showAmateurRestriction();
+            return Promise.resolve(null);
+          }
+          return submitShot(args);
+        }}
         applyState={applyState}
         applyResolvedState={applyClassicResolvedState}
         duelCondition={duelCondition}

@@ -1,4 +1,5 @@
 import { apiFetch } from './apiFetch.js';
+import { showAmateurLevelRequiredError } from '../amateur/amateurAccess.js';
 import type { DuelInventoryResourceUnit, DuelInventoryTiming } from '@hockey/game-core';
 import type { GameplayLockDTO } from './gameplayLock.js';
 
@@ -138,5 +139,8 @@ export function useRecoveryKit(input: UseRecoveryKitInput): Promise<UseRecoveryK
   return apiFetch<UseRecoveryKitResponse>('/inventory/recovery/use', {
     method: 'POST',
     body: JSON.stringify(input),
+  }).catch((error: unknown) => {
+    showAmateurLevelRequiredError(error);
+    throw error;
   });
 }

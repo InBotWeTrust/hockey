@@ -8,6 +8,9 @@ import { chatKeys } from '../../lib/queryKeys.js';
 import * as api from '../api.js';
 import * as amateurDuelApi from '../../api/amateurDuel.js';
 import type { ChatMessageDTO } from '../api.js';
+import type { DailyStateResponse } from '../../api/duel.js';
+import { useAmateurAccessToastStore } from '../../amateur/amateurAccessStore.js';
+import { useDailyStore } from '../../stores/dailyStore.js';
 
 function LocationProbe(): JSX.Element {
   const location = useLocation();
@@ -92,8 +95,20 @@ async function runAllTimersInAct(): Promise<void> {
 
 describe('ChatRoomScreen', () => {
   beforeEach(() => {
-    const user: AuthUser = { id: SELF_ID, displayName: 'Me', grip: 'right' };
+    const user: AuthUser = {
+      id: SELF_ID,
+      displayName: 'Me',
+      grip: 'right',
+      competitionLevel: 'amateur',
+    };
     useAuthStore.setState({ accessToken: 'tok', refreshToken: 'rtok', user });
+    useDailyStore.setState({
+      data: {
+        lifetime_total_goals: 300,
+        amateur_unlock_goals_required: 300,
+      } as DailyStateResponse,
+    });
+    useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
     vi.spyOn(api, 'fetchMessages').mockResolvedValue([msgFromSelf, msgFromOther]); // server DESC
     vi.spyOn(api, 'markChatAsRead').mockResolvedValue(undefined);
     vi.spyOn(api, 'fetchChatList').mockResolvedValue([]);
@@ -170,6 +185,107 @@ describe('ChatRoomScreen', () => {
       expect(decline).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111'),
     );
     expect(await screen.findByText('Вы отклонили')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['Принять', 'acceptAmateurDuel'],
+    ['Отклонить', 'declineAmateurDuel'],
+  ] as const)(
+    'guards the chat invite %s action locally for a known beginner',
+    async (label, method) => {
+      useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+      useDailyStore.setState({
+        data: {
+          lifetime_total_goals: 116,
+          amateur_unlock_goals_required: 300,
+        } as DailyStateResponse,
+      });
+      const accept = vi.spyOn(amateurDuelApi, 'acceptAmateurDuel').mockResolvedValue({
+        match: {} as Awaited<ReturnType<typeof amateurDuelApi.acceptAmateurDuel>>['match'],
+      });
+      const decline = vi.spyOn(amateurDuelApi, 'declineAmateurDuel').mockResolvedValue({
+        match: {} as Awaited<ReturnType<typeof amateurDuelApi.declineAmateurDuel>>['match'],
+      });
+      vi.mocked(api.fetchMessages).mockResolvedValue([
+        {
+          ...msgFromOther,
+          id: 'beginner-duel-invite',
+          metadata: {
+            type: 'amateur_duel_invite',
+            matchId: '11111111-1111-1111-1111-111111111111',
+            templateTitle: 'Классическая дуэль',
+            challengerName: 'Иван',
+            startsAt: '2030-05-04T10:00:00.000Z',
+            endsAt: '2030-05-04T12:00:00.000Z',
+            totalPeriods: 3,
+            shotsPerPeriod: 30,
+            periodDurationMs: 1_200_000,
+            breakDurationMs: 900_000,
+            stakeAmount: 0,
+            entryFeeAmount: 0,
+            bankAmount: 0,
+          },
+        },
+      ]);
+
+      renderRoom('c1');
+      fireEvent.click(await screen.findByRole('button', { name: label }));
+
+      expect(method === 'acceptAmateurDuel' ? accept : decline).not.toHaveBeenCalled();
+      expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
+        goalsRemaining: 184,
+        unlockGoalsRequired: 300,
+      });
+    },
+  );
+
+  it('keeps chat invite actions visible when stale access is rejected by the server', async () => {
+    const matchId = '11111111-1111-1111-1111-111111111111';
+    vi.mocked(api.fetchMessages).mockResolvedValue([
+      {
+        ...msgFromOther,
+        id: 'stale-duel-invite',
+        metadata: {
+          type: 'amateur_duel_invite',
+          matchId,
+          templateTitle: 'Классическая дуэль',
+          challengerName: 'Иван',
+          startsAt: '2030-05-04T10:00:00.000Z',
+          endsAt: '2030-05-04T12:00:00.000Z',
+          totalPeriods: 3,
+          shotsPerPeriod: 30,
+          periodDurationMs: 1_200_000,
+          breakDurationMs: 900_000,
+          stakeAmount: 0,
+          entryFeeAmount: 0,
+          bankAmount: 0,
+        },
+      },
+    ]);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 'amateur_level_required',
+            message: 'internal policy',
+            details: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+          },
+        }),
+        { status: 403, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    renderRoom('c1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Принять' }));
+
+    await waitFor(() =>
+      expect(useAmateurAccessToastStore.getState()).toMatchObject({
+        sequence: 1,
+        toast: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+      }),
+    );
+    expect(screen.getByRole('button', { name: 'Принять' })).toBeInTheDocument();
+    expect(screen.queryByText('Вызов уже недоступен')).toBeNull();
   });
 
   it.each(['active_classic', 'scheduled_tournament'] as const)(

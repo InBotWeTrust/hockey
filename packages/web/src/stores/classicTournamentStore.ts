@@ -11,6 +11,7 @@ import {
   isDefinitiveGameRequestError,
   withGameRequestReconciliation,
 } from '../api/requestTimeout.js';
+import { amateurAccessDetailsFromError } from '../amateur/amateurAccess.js';
 
 interface ClassicTournamentStoreState {
   tournamentId: string | null;
@@ -19,7 +20,9 @@ interface ClassicTournamentStoreState {
   inFlight: boolean;
   error: string | null;
   refresh: (tournamentId: string) => Promise<void>;
-  startPeriod: (loadout?: ClassicTournamentLoadoutSelection) => Promise<ClassicTournamentState | null>;
+  startPeriod: (
+    loadout?: ClassicTournamentLoadoutSelection,
+  ) => Promise<ClassicTournamentState | null>;
   applyState: (state: ClassicTournamentState) => void;
   optimisticAddShot: (claimed: ShotResultType) => void;
   submitShot: (input: {
@@ -77,7 +80,12 @@ export const useClassicTournamentStore = create<ClassicTournamentStoreState>()((
       if (get().tournamentId === tournamentId) {
         set({
           inFlight: false,
-          error: error instanceof Error ? error.message : 'Не удалось начать период.',
+          error:
+            amateurAccessDetailsFromError(error) !== null
+              ? null
+              : error instanceof Error
+                ? error.message
+                : 'Не удалось начать период.',
         });
       }
       return null;
@@ -122,7 +130,12 @@ export const useClassicTournamentStore = create<ClassicTournamentStoreState>()((
       if (outcome.kind === 'unreconciled') {
         set({
           data: outcome.value,
-          error: outcome.error instanceof Error ? outcome.error.message : 'Бросок не сохранён.',
+          error:
+            amateurAccessDetailsFromError(outcome.error) !== null
+              ? null
+              : outcome.error instanceof Error
+                ? outcome.error.message
+                : 'Бросок не сохранён.',
         });
         return null;
       }
@@ -146,7 +159,12 @@ export const useClassicTournamentStore = create<ClassicTournamentStoreState>()((
             daily_total_shots: Math.max(0, submittedState.daily_total_shots - 1),
             daily_total_goals: Math.max(0, submittedState.daily_total_goals - goal),
           },
-          error: error instanceof Error ? error.message : 'Бросок не сохранён.',
+          error:
+            amateurAccessDetailsFromError(error) !== null
+              ? null
+              : error instanceof Error
+                ? error.message
+                : 'Бросок не сохранён.',
         });
       }
       return null;

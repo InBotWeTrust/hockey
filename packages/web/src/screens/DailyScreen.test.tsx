@@ -386,7 +386,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  cleanup();
+  act(() => cleanup());
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -554,6 +554,7 @@ describe('DailyScreen', () => {
         unlockGoalsRequired: 300,
       }),
     );
+    expect(useAmateurAccessToastStore.getState().sequence).toBe(1);
   });
   it('pauses tournament-attempt polling while a duel period is actively rendering', () => {
     expect(tournamentAttemptRefetchInterval('period_active')).toBe(false);
@@ -628,6 +629,157 @@ describe('DailyScreen', () => {
     expect(screen.getByRole('button', { name: 'НАЧАТЬ' })).toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes('/duel/daily/state')),
+    ).toBe(false);
+  });
+
+  it('guards Classic period start locally for a known beginner', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, _init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/tournaments/classic-1/classic/state')) {
+        return new Response(JSON.stringify(classicIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          ...baseState,
+          lifetime_total_goals: 116,
+          amateur_unlock_goals_required: 300,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+
+    renderWith(['/?view=classic&tournament=classic-1']);
+    const start = await screen.findByRole('button', { name: 'НАЧАТЬ' });
+    await act(async () => {
+      fireEvent.click(start);
+      await Promise.resolve();
+    });
+
+    expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
+      goalsRemaining: 184,
+      unlockGoalsRequired: 300,
+    });
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input).endsWith('/classic/period/start') && init?.method === 'POST',
+      ),
+    ).toBe(false);
+  });
+
+  it('guards Classic shots locally for a known beginner', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+    const activeState: ClassicTournamentState = {
+      ...classicIdleState,
+      state: 'period_active',
+      current_period: 1,
+      period_started_at: new Date(Date.now() - 60_000).toISOString(),
+      period_ends_at: new Date(Date.now() + 19 * 60_000).toISOString(),
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, _init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/tournaments/classic-1/classic/state')) {
+        return new Response(JSON.stringify(activeState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          ...baseState,
+          lifetime_total_goals: 116,
+          amateur_unlock_goals_required: 300,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+
+    renderWith(['/?view=classic&tournament=classic-1']);
+    const shot = await screen.findByRole('button', { name: 'БРОСОК' });
+    await act(async () => {
+      fireEvent.click(shot);
+      await Promise.resolve();
+    });
+
+    expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
+      goalsRemaining: 184,
+      unlockGoalsRequired: 300,
+    });
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) => String(input).endsWith('/classic/shot') && init?.method === 'POST',
+      ),
+    ).toBe(false);
+  });
+
+  it('guards Classic recovery-kit usage locally for a known beginner', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+    const lockedState: ClassicTournamentState = {
+      ...classicIdleState,
+      gameplay_lock: {
+        blocked: true,
+        reason: 'recent_gameplay',
+        ends_at: new Date(Date.now() + 45 * 60_000).toISOString(),
+        tournament_starts_at: null,
+      },
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, _init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/tournaments/classic-1/classic/state')) {
+        return new Response(JSON.stringify(lockedState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          ...baseState,
+          lifetime_total_goals: 116,
+          amateur_unlock_goals_required: 300,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+
+    renderWith(['/?view=classic&tournament=classic-1']);
+    const recover = await screen.findByRole('button', { name: 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ' });
+    await act(async () => {
+      fireEvent.click(recover);
+      await Promise.resolve();
+    });
+
+    expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
+      goalsRemaining: 184,
+      unlockGoalsRequired: 300,
+    });
+    expect(screen.queryByRole('dialog', { name: 'Сократить восстановление' })).toBeNull();
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input).includes('/inventory/recovery/use') && init?.method === 'POST',
+      ),
     ).toBe(false);
   });
 
@@ -1325,10 +1477,10 @@ describe('DailyScreen', () => {
     );
   });
 
-  it('guards a playable arena tournament fixture for a beginner', async () => {
+  it('lets a beginner browse an already-created playoff match from the arena', async () => {
     useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
     const readinessEndsAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       const body = url.includes('/tournaments/classic/active')
         ? {
@@ -1370,11 +1522,78 @@ describe('DailyScreen', () => {
     renderWith(['/?view=arena']);
     fireEvent.click(await screen.findByRole('button', { name: 'На лёд' }));
 
+    await waitFor(() =>
+      expect(screen.getByLabelText('location')).toHaveTextContent(
+        '/?view=amateur&section=tournaments&tournament=beginner-preview-playoff&tab=schedule&fixture=fixture-preview&match=match-preview&play=1',
+      ),
+    );
+    expect(useAmateurAccessToastStore.getState().toast).toBeNull();
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input).includes('/fixtures/fixture-preview/segments/open') &&
+          init?.method === 'POST',
+      ),
+    ).toBe(false);
+  });
+
+  it('guards playoff gameplay creation for a beginner when no match exists yet', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+    const readinessEndsAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/tournaments/classic/active')
+        ? {
+            games: [
+              {
+                tournament_id: 'beginner-preview-playoff',
+                tournament_title: 'Кубок для просмотра',
+                tournament_day: 1,
+                kind: 'playoff',
+                fixture_id: 'fixture-preview',
+                duel_match_id: null,
+                round_stage: 'playoff',
+                round_number: 2,
+                final_round_number: 3,
+                starts_at: new Date(Date.now() - 60_000).toISOString(),
+                readiness_ends_at: readinessEndsAt,
+                closes_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+                break_ends_at: null,
+                state: 'ready_check',
+                current_period: 0,
+                total_shots: 0,
+                total_goals: 0,
+              },
+            ],
+          }
+        : url.includes('/duel/training/state')
+          ? trainingIdleState
+          : {
+              ...baseState,
+              lifetime_total_goals: 116,
+              amateur_unlock_goals_required: 300,
+            };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=arena']);
+    fireEvent.click(await screen.findByRole('button', { name: 'На лёд' }));
+
     expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
       goalsRemaining: 184,
       unlockGoalsRequired: 300,
     });
     expect(screen.getByLabelText('location')).toHaveTextContent('/?view=arena');
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input).includes('/fixtures/fixture-preview/segments/open') &&
+          init?.method === 'POST',
+      ),
+    ).toBe(false);
   });
 
   it('shows a tournament duel only once when both arena feeds return the same match', async () => {
@@ -6196,6 +6415,83 @@ describe('DailyScreen', () => {
     });
     expect(screen.getByRole('button', { name: 'ГОТОВ' })).toBeEnabled();
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/ready'))).toBe(false);
+  });
+
+  it('does not auto-settle an expired duel preview or show an unsolicited toast for a beginner', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+    const expiredMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      id: 'match-expired',
+      status: 'active',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+      ends_at: new Date(Date.now() - 60_000).toISOString(),
+      server_now: new Date().toISOString(),
+      me: { ...settledDuelMatch.me, state: 'accepted', current_period: 0 },
+      opponent: { ...settledDuelMatch.opponent, state: 'accepted', current_period: 0 },
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/amateur/matches/match-expired')) {
+        if (init?.method === 'POST' && url.endsWith('/settle')) {
+          return new Response(
+            JSON.stringify({
+              error: {
+                code: 'amateur_level_required',
+                message: 'internal access policy',
+                details: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+              },
+            }),
+            { status: 403, headers: { 'content-type': 'application/json' } },
+          );
+        }
+        return new Response(JSON.stringify({ match: expiredMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/inventory/me')) {
+        return new Response(
+          JSON.stringify({
+            balances: { tokens: 0, stars: 0, experience: 0 },
+            equipped: { stickItemId: null, skatesItemId: null, nutritionItemId: null },
+            items: { stick: [], skates: [], nutrition: [], recovery: [] },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          ...baseState,
+          lifetime_total_goals: 116,
+          amateur_unlock_goals_required: 300,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+
+    renderWith(['/?view=amateur&match=match-expired&play=1']);
+
+    expect(await screen.findByText('Duel Opponent')).toBeInTheDocument();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input).endsWith('/matches/match-expired/settle') && init?.method === 'POST',
+      ),
+    ).toBe(false);
+    expect(useAmateurAccessToastStore.getState().toast).toBeNull();
   });
 
   it('keeps a direct duel visible to a beginner but guards the ready action', async () => {

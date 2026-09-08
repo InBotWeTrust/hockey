@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { acceptAmateurDuel, declineAmateurDuel } from '../api/amateurDuel.js';
+import { deriveAmateurAccess, guardAmateurMutation } from '../amateur/amateurAccess.js';
+import { useAuthStore } from '../auth/authStore.js';
 import type { AmateurDuelInviteMessageMetadata, ChatMessageDTO } from '../chat/api.js';
 import {
   DUEL_INVITE_RECEIVED_EVENT,
   type DuelInviteReceivedDetail,
 } from '../chat/useChatSocket.js';
+import { useDailyStore } from '../stores/dailyStore.js';
 
 interface DuelInviteToastState {
   chatId: string;
@@ -31,6 +34,13 @@ export function DuelInviteToast(): JSX.Element | null {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [toast, setToast] = useState<DuelInviteToastState | null>(null);
+  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
+  const dailyData = useDailyStore((state) => state.data);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel,
+    qualifyingGoals: dailyData?.lifetime_total_goals,
+    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
+  });
 
   useEffect(() => {
     const onInvite = (event: Event): void => {
@@ -120,7 +130,9 @@ export function DuelInviteToast(): JSX.Element | null {
             type="button"
             className="btn"
             disabled={pending}
-            onClick={() => declineMut.mutate(toast.invite.matchId)}
+            onClick={() =>
+              guardAmateurMutation(amateurAccess, () => declineMut.mutate(toast.invite.matchId))
+            }
             style={{
               minHeight: 38,
               fontSize: 12,
@@ -137,7 +149,9 @@ export function DuelInviteToast(): JSX.Element | null {
             type="button"
             className="btn"
             disabled={pending}
-            onClick={() => acceptMut.mutate(toast.invite.matchId)}
+            onClick={() =>
+              guardAmateurMutation(amateurAccess, () => acceptMut.mutate(toast.invite.matchId))
+            }
             style={{
               minHeight: 38,
               fontSize: 12,

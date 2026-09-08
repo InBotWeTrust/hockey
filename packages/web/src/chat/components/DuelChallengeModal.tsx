@@ -9,7 +9,14 @@ import {
   type AmateurDuelTemplate,
 } from '../../api/amateurDuel.js';
 import { ApiError } from '../../api/apiFetch.js';
+import {
+  amateurAccessDetailsFromError,
+  deriveAmateurAccess,
+  guardAmateurMutation,
+} from '../../amateur/amateurAccess.js';
+import { useAuthStore } from '../../auth/authStore.js';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
+import { useDailyStore } from '../../stores/dailyStore.js';
 
 interface DuelChallengeModalProps {
   opponentUserId: string;
@@ -100,6 +107,13 @@ export function DuelChallengeModal({
   const queryClient = useQueryClient();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
+  const dailyData = useDailyStore((state) => state.data);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel,
+    qualifyingGoals: dailyData?.lifetime_total_goals,
+    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
+  });
 
   const templatesQuery = useQuery({
     queryKey: ['amateur-duel', 'templates'],
@@ -130,7 +144,9 @@ export function DuelChallengeModal({
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
       onCreated();
     },
-    onError: (err) => setError(challengeErrorText(err)),
+    onError: (err) => {
+      setError(amateurAccessDetailsFromError(err) === null ? challengeErrorText(err) : null);
+    },
   });
 
   return (
@@ -229,7 +245,11 @@ export function DuelChallengeModal({
           className="modal-primary btn--cta"
           disabled={selectedTemplateId === null || challengeMutation.isPending}
           onClick={() => {
-            if (selectedTemplateId !== null) challengeMutation.mutate(selectedTemplateId);
+            if (selectedTemplateId !== null) {
+              guardAmateurMutation(amateurAccess, () =>
+                challengeMutation.mutate(selectedTemplateId),
+              );
+            }
           }}
         >
           {challengeMutation.isPending ? 'Отправляем...' : 'Вызвать'}

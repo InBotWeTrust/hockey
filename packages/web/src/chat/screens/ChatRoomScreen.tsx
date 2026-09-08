@@ -32,6 +32,11 @@ import {
 } from '../api.js';
 import { ordinaryDuelLockCopy, type GameplayLockDTO } from '../../api/gameplayLock.js';
 import { ApiError } from '../../api/apiFetch.js';
+import {
+  amateurAccessDetailsFromError,
+  deriveAmateurAccess,
+  guardAmateurMutation,
+} from '../../amateur/amateurAccess.js';
 import { useGameplayLockRefresh } from '../../hooks/useGameplayLockRefresh.js';
 import {
   acceptAmateurDuel,
@@ -42,6 +47,7 @@ import {
 import { chatKeys } from '../../lib/queryKeys.js';
 import { useChatStore } from '../chatStore.js';
 import { useAuthStore } from '../../auth/authStore.js';
+import { useDailyStore } from '../../stores/dailyStore.js';
 import { ChatBubble } from '../components/ChatBubble.js';
 import { ChatInput } from '../components/ChatInput.js';
 import { ChatRoomHeader } from '../components/ChatRoomHeader.js';
@@ -400,6 +406,12 @@ export function ChatRoomScreen(): JSX.Element {
   const goto = searchParams.get('goto');
   const me = useAuthStore((s) => s.user);
   const meId = me?.id ?? null;
+  const dailyData = useDailyStore((state) => state.data);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel: me?.competitionLevel ?? null,
+    qualifyingGoals: dailyData?.lifetime_total_goals,
+    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
+  });
   const isAdmin = me?.role === 'admin';
   const setActive = useChatStore((s) => s.setActive);
   const resetUnread = useChatStore((s) => s.resetUnread);
@@ -1092,7 +1104,10 @@ export function ChatRoomScreen(): JSX.Element {
     },
     onError: (err, matchId) => {
       setDuelInviteResolutionByMatch((prev) => {
-        if (err instanceof ApiError && err.status === 409) {
+        if (
+          amateurAccessDetailsFromError(err) !== null ||
+          (err instanceof ApiError && err.status === 409)
+        ) {
           const next = { ...prev };
           delete next[matchId];
           return next;
@@ -1111,8 +1126,15 @@ export function ChatRoomScreen(): JSX.Element {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
-    onError: (_err, matchId) => {
-      setDuelInviteResolutionByMatch((prev) => ({ ...prev, [matchId]: 'unavailable' }));
+    onError: (err, matchId) => {
+      setDuelInviteResolutionByMatch((prev) => {
+        if (amateurAccessDetailsFromError(err) !== null) {
+          const next = { ...prev };
+          delete next[matchId];
+          return next;
+        }
+        return { ...prev, [matchId]: 'unavailable' };
+      });
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
   });
@@ -1492,8 +1514,16 @@ export function ChatRoomScreen(): JSX.Element {
                   (declineDuelInviteMut.isPending &&
                     declineDuelInviteMut.variables === duelInvite.matchId)
                 }
-                onAccept={() => acceptDuelInviteMut.mutate(duelInvite.matchId)}
-                onDecline={() => declineDuelInviteMut.mutate(duelInvite.matchId)}
+                onAccept={() =>
+                  guardAmateurMutation(amateurAccess, () =>
+                    acceptDuelInviteMut.mutate(duelInvite.matchId),
+                  )
+                }
+                onDecline={() =>
+                  guardAmateurMutation(amateurAccess, () =>
+                    declineDuelInviteMut.mutate(duelInvite.matchId),
+                  )
+                }
               />
             ) : undefined;
           const isReadByCounterpart =

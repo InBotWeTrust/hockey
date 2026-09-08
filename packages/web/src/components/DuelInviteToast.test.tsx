@@ -6,6 +6,10 @@ import { DuelInviteToast } from './DuelInviteToast.js';
 import { DUEL_INVITE_RECEIVED_EVENT } from '../chat/useChatSocket.js';
 import type { ChatMessageDTO } from '../chat/api.js';
 import * as amateurDuelApi from '../api/amateurDuel.js';
+import type { DailyStateResponse } from '../api/duel.js';
+import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
+import { useAuthStore } from '../auth/authStore.js';
+import { useDailyStore } from '../stores/dailyStore.js';
 
 function LocationProbe(): JSX.Element {
   const location = useLocation();
@@ -63,6 +67,47 @@ function emitInvite(matchId = '11111111-1111-1111-1111-111111111111'): void {
 describe('DuelInviteToast', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    useAuthStore.setState({
+      accessToken: 'TOKEN',
+      refreshToken: null,
+      user: { id: 'me', displayName: 'Me', competitionLevel: 'amateur' },
+    });
+    useDailyStore.setState({
+      data: {
+        lifetime_total_goals: 300,
+        amateur_unlock_goals_required: 300,
+      } as DailyStateResponse,
+    });
+    useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
+  });
+
+  it.each([
+    ['Принять', 'acceptAmateurDuel'],
+    ['Отклонить', 'declineAmateurDuel'],
+  ] as const)('guards the global %s action locally for a known beginner', async (label, method) => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+    useDailyStore.setState({
+      data: {
+        lifetime_total_goals: 116,
+        amateur_unlock_goals_required: 300,
+      } as DailyStateResponse,
+    });
+    const accept = vi.spyOn(amateurDuelApi, 'acceptAmateurDuel').mockResolvedValue({
+      match: {} as Awaited<ReturnType<typeof amateurDuelApi.acceptAmateurDuel>>['match'],
+    });
+    const decline = vi.spyOn(amateurDuelApi, 'declineAmateurDuel').mockResolvedValue({
+      match: {} as Awaited<ReturnType<typeof amateurDuelApi.declineAmateurDuel>>['match'],
+    });
+
+    renderToast();
+    emitInvite();
+    fireEvent.click(await screen.findByRole('button', { name: label }));
+
+    expect(method === 'acceptAmateurDuel' ? accept : decline).not.toHaveBeenCalled();
+    expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
+      goalsRemaining: 184,
+      unlockGoalsRequired: 300,
+    });
   });
 
   it('accepts an incoming invite and opens the duel rink', async () => {

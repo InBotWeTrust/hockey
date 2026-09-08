@@ -6,6 +6,8 @@ import { UserProfileSheet } from '../components/UserProfileSheet.js';
 import * as api from '../api.js';
 import * as amateurDuelApi from '../../api/amateurDuel.js';
 import { useAuthStore } from '../../auth/authStore.js';
+import type { DailyStateResponse } from '../../api/duel.js';
+import { useDailyStore } from '../../stores/dailyStore.js';
 import { userKeys } from '../../lib/queryKeys.js';
 
 const publicProfile: api.UserPublicProfileDTO = {
@@ -88,6 +90,7 @@ async function renderSheet(
 describe('UserProfileSheet', () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: null, refreshToken: null, user: null });
+    useDailyStore.setState({ data: null, loading: false, inFlight: false, error: null });
     vi.spyOn(api, 'findOrCreateDM').mockResolvedValue({ chatId: 'dm1', created: false });
     vi.spyOn(api, 'fetchUserProfile').mockResolvedValue(publicProfile);
     vi.spyOn(amateurDuelApi, 'fetchAmateurMatches').mockResolvedValue({ matches: [] });
@@ -234,9 +237,9 @@ describe('UserProfileSheet', () => {
     expect(experienceBadge).toHaveTextContent('100 000');
     expect(experienceBadge.querySelector('.public-profile-experience__value')).toBeInTheDocument();
     expect(screen.getByLabelText('Витрина наград')).toHaveTextContent('Чемпионства');
-    expect(screen.getByLabelText('Витрина наград').querySelectorAll('.profile-fitted-number')).toHaveLength(
-      4,
-    );
+    expect(
+      screen.getByLabelText('Витрина наград').querySelectorAll('.profile-fitted-number'),
+    ).toHaveLength(4);
     expect(screen.getByText('Любитель')).toHaveClass('profile-identity__level');
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
     const identity = screen.getByText('Иван Петров').closest('.profile-identity__main');
@@ -362,7 +365,13 @@ describe('UserProfileSheet', () => {
     useAuthStore.setState({
       accessToken: 'tok',
       refreshToken: 'rtok',
-      user: { id: 'me', displayName: 'Me' },
+      user: { id: 'me', displayName: 'Me', competitionLevel: 'amateur' },
+    });
+    useDailyStore.setState({
+      data: {
+        lifetime_total_goals: 300,
+        amateur_unlock_goals_required: 300,
+      } as DailyStateResponse,
     });
     vi.mocked(api.fetchUserProfile).mockImplementation(async (userId) =>
       userId === 'me' ? { ...publicProfile, id: 'me' } : publicProfile,

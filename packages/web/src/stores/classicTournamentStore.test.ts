@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DAILY_PERIOD_SPEED_PRESETS } from '@hockey/game-core';
 import type { ClassicTournamentState } from '../api/tournamentClassic.js';
+import { ApiError } from '../api/apiFetch.js';
 
 const api = vi.hoisted(() => ({
   fetchClassicTournamentState: vi.fn(),
@@ -134,6 +135,25 @@ describe('classicTournamentStore', () => {
     expect(useClassicTournamentStore.getState().data).toBe(active);
   });
 
+  it('does not replace the shared Amateur toast with a generic Classic start error', async () => {
+    const idle = classicState('classic-1');
+    useClassicTournamentStore.setState({ tournamentId: 'classic-1', data: idle });
+    api.startClassicTournamentPeriod.mockRejectedValue(
+      new ApiError(403, 'amateur_level_required', 'Не удалось выполнить запрос.', {
+        goalsRemaining: 184,
+        unlockGoalsRequired: 300,
+      }),
+    );
+
+    await expect(useClassicTournamentStore.getState().startPeriod()).resolves.toBeNull();
+
+    expect(useClassicTournamentStore.getState()).toMatchObject({
+      data: idle,
+      inFlight: false,
+      error: null,
+    });
+  });
+
   it('keeps an optimistic goal when the server confirms the shot', async () => {
     const active = classicState('classic-1', {
       state: 'period_active',
@@ -183,5 +203,30 @@ describe('classicTournamentStore', () => {
 
     expect(useClassicTournamentStore.getState().data).toBe(active);
     expect(useClassicTournamentStore.getState().error).toBe('Бросок не сохранён.');
+  });
+
+  it('rolls back a rejected beginner shot without a duplicate generic error', async () => {
+    const active = classicState('classic-1', {
+      state: 'period_active',
+      current_period: 1,
+    });
+    useClassicTournamentStore.setState({ tournamentId: 'classic-1', data: active });
+    useClassicTournamentStore.getState().optimisticAddShot('goal');
+    api.submitClassicTournamentShot.mockRejectedValue(
+      new ApiError(403, 'amateur_level_required', 'Не удалось выполнить запрос.', {
+        goalsRemaining: 184,
+        unlockGoalsRequired: 300,
+      }),
+    );
+
+    await expect(
+      useClassicTournamentStore.getState().submitShot({
+        shotIndex: 1,
+        input: { tapTime: 100 },
+        claimedResult: 'goal',
+      }),
+    ).resolves.toBeNull();
+
+    expect(useClassicTournamentStore.getState()).toMatchObject({ data: active, error: null });
   });
 });

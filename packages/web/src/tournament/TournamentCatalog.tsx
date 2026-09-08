@@ -22,7 +22,6 @@ import {
   amateurAccessDetailsFromError,
   deriveAmateurAccess,
   guardAmateurMutation,
-  showAmateurLevelRequiredError,
 } from '../amateur/amateurAccess.js';
 import { VenueBadge, type VenueRole } from '../components/VenueBadge.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
@@ -695,7 +694,6 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
       }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tournaments'] }),
-    onError: (error) => showAmateurLevelRequiredError(error),
   });
 
   useEffect(() => {
@@ -734,7 +732,6 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
       params.set('play', '1');
       navigate(`/?${params.toString()}`);
     },
-    onError: (error) => showAmateurLevelRequiredError(error),
     onSettled: (_data, _error, variables) => {
       if (variables.generation === openFixtureGeneration.current) {
         fixtureOpeningRef.current = false;

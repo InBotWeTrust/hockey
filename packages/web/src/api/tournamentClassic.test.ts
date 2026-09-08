@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
 import { useAuthStore } from '../auth/authStore.js';
-import { acceptAmateurDuel, challengeAmateurDuel, declineAmateurDuel } from './amateurDuel.js';
+import { startClassicTournamentPeriod, submitClassicTournamentShot } from './tournamentClassic.js';
 
-describe('alternate Amateur duel mutation API', () => {
+describe('Classic tournament mutation API', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     useAuthStore.setState({ accessToken: 'TOKEN', refreshToken: null });
@@ -23,16 +23,16 @@ describe('alternate Amateur duel mutation API', () => {
   });
 
   it.each([
+    ['period start', () => startClassicTournamentPeriod('classic-1')],
     [
-      'challenge',
+      'shot',
       () =>
-        challengeAmateurDuel({
-          template_id: 'template-1',
-          opponent_user_id: 'opponent-1',
+        submitClassicTournamentShot('classic-1', {
+          shot_index: 1,
+          input: { tapTime: 100 },
+          claimed_result: 'goal',
         }),
     ],
-    ['accept invite', () => acceptAmateurDuel('match-1')],
-    ['decline invite', () => declineAmateurDuel('match-1')],
   ])('maps a stale Amateur access rejection for %s exactly once', async (_label, mutate) => {
     await expect(mutate()).rejects.toMatchObject({ code: 'amateur_level_required' });
     expect(useAmateurAccessToastStore.getState()).toMatchObject({

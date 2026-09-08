@@ -1,6 +1,6 @@
 # Task 5 implementation report
 
-Status: DONE
+Status: DONE AFTER REVIEW FIXES
 
 ## Changed files
 
@@ -62,3 +62,50 @@ Final isolated focused runs:
 - Bonus Games were not changed.
 - `dismissTournamentReadinessHint` and `acknowledgeRegularSeasonPodiumCongratulation` remain available.
 - Six pre-existing untracked arena reference WebP files were not touched or staged.
+
+## Reviewer fix round 1
+
+The follow-up review in `task-5-review.md` found five access gaps and one duplicate-toast issue. This round fixes only those findings.
+
+### Corrections
+
+- Existing playoff matches remain navigable for beginners; only fixture creation is guarded when `duel_match_id` is absent.
+- Expired Amateur previews do not auto-settle for beginners and no longer emit an unsolicited access toast or an unhandled rejection.
+- Classic tournament start, shots, and recovery actions use the same known-client guard and stale-server API fallback as other Amateur mutations.
+- Classic store and modal error UI suppress generic duplicates for expected `amateur_level_required` responses while preserving normal error handling and optimistic-shot rollback.
+- Profile challenge, global invite-toast, and chat invite accept/decline actions are guarded locally without closing or invalidating read-only content on an expected stale-server denial.
+- The server rejects `start_classic` recovery before inventory, balance, recovery-application, or ledger mutations.
+- API wrappers are the sole owner of structured server-error to toast mapping; components only classify expected access errors to suppress generic UI.
+
+### Added regression coverage
+
+- Existing-match navigation versus absent-match fixture creation for a beginner.
+- Expired beginner preview without automatic settlement.
+- Classic start, shot, and recovery local guards plus stale-server API mapping.
+- Classic store generic-error suppression and optimistic rollback.
+- Profile challenge, global invite toast, and in-chat invite actions, including stale-server action visibility.
+- Server-side Classic recovery rejection with unchanged inventory and economy state.
+
+### Final verification for this round
+
+- `pnpm --filter @hockey/game-core build` — PASS.
+- `pnpm --filter @hockey/server exec vitest run test/duel/amateur.test.ts --no-file-parallelism` — PASS, 88/88.
+- `pnpm --filter @hockey/web exec vitest run src/screens/DailyScreen.test.tsx` — PASS, 161/161.
+- `pnpm --filter @hockey/web exec vitest run src/tournament/TournamentCatalog.test.tsx` — PASS, 49/49.
+- `pnpm --filter @hockey/web exec vitest run src/chat/test/ChatRoomScreen.test.tsx` — PASS, 36/36.
+- `pnpm --filter @hockey/web exec vitest run src/chat/components/DuelChallengeModal.test.tsx` — PASS, 2/2.
+- `pnpm --filter @hockey/web exec vitest run src/components/DuelInviteToast.test.tsx` — PASS, 5/5.
+- `pnpm --filter @hockey/web exec vitest run src/chat/test/UserProfileSheet.test.tsx` — PASS, 11/11.
+- Classic/API focused batch — PASS, 13/13.
+- Web non-`DailyScreen` suite — PASS, 123 files / 1115 tests.
+- Web and server typechecks — PASS.
+- Web and server builds — PASS; Vite emitted only its existing non-fatal large-chunk advisory.
+- Focused ESLint and changed-web-file Prettier checks — PASS.
+- `git diff --check` — PASS.
+
+### Review status
+
+- `task-5-review.md` findings: resolved.
+- GLM review was not retried because the previously recorded security-policy block still applies to sending internal implementation details to Z.AI.
+- No push or deployment performed.
+- Six untracked arena WebP drafts remain untouched and unstaged.
