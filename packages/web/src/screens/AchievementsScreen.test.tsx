@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AchievementDto } from '../api/achievements.js';
+import { useAuthStore } from '../auth/authStore.js';
 import { AchievementsScreen } from './AchievementsScreen.js';
 
 function makeAchievement(overrides: Partial<AchievementDto>): AchievementDto {
@@ -78,6 +79,9 @@ function renderAchievements(): void {
 describe('AchievementsScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    useAuthStore.setState({
+      user: { id: 'u1', displayName: 'Игрок', competitionLevel: 'amateur' },
+    });
     vi.spyOn(globalThis, 'fetch');
     mockAchievementsApi([]);
   });
@@ -92,6 +96,17 @@ describe('AchievementsScreen', () => {
     expect(screen.queryByRole('tab', { name: 'Получить' })).toBeNull();
     expect(await screen.findByLabelText('Требуется действие')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Челлендж недели' })).toBeNull();
+  });
+
+  it('does not show challenge attention for a beginner', async () => {
+    useAuthStore.setState({
+      user: { id: 'u1', displayName: 'Новичок', competitionLevel: 'beginner' },
+    });
+    renderAchievements();
+
+    expect(await screen.findByRole('tab', { name: 'Челленджи' })).toBeInTheDocument();
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    expect(screen.queryByLabelText('Требуется действие')).toBeNull();
   });
 
   it('marks the achievements tab when an achievement reward is waiting', async () => {

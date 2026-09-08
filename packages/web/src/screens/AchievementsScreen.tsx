@@ -24,6 +24,7 @@ import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { useAuthStore } from '../auth/authStore.js';
 
 type AchievementFilter =
   | 'all'
@@ -181,6 +182,7 @@ export function AchievementsScreen({
 }): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
   const backRoute = profileContext ? '/profile' : '/sections';
   const weeklyChallengeRoute = profileContext
     ? '/profile/achievements/weekly-challenge'
@@ -211,9 +213,10 @@ export function AchievementsScreen({
     [hasClaimableAchievements],
   );
   const challengeAttention =
-    weeklyChallengeQuery.data?.challenge?.canJoin === true ||
-    weeklyChallengeQuery.data?.challenge?.canClaimReward === true ||
-    (weeklyChallengeQuery.data?.pendingRewards?.length ?? 0) > 0;
+    competitionLevel !== 'beginner' &&
+    (weeklyChallengeQuery.data?.challenge?.canJoin === true ||
+      weeklyChallengeQuery.data?.challenge?.canClaimReward === true ||
+      (weeklyChallengeQuery.data?.pendingRewards?.length ?? 0) > 0);
   const filtered = useMemo(
     () => achievements.filter((achievement) => categoryMatches(achievement, filter)),
     [achievements, filter],
