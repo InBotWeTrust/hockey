@@ -59,7 +59,7 @@ describe('evaluateTournamentLifecycle', () => {
     ['after registration closes with enough players', 'generate_schedule'],
     ['after registration closes without enough players', 'block_registration'],
     ['with a generated schedule', 'await_manual_regular_start'],
-    ['when regular results are complete before playoff time', 'await_playoff_time'],
+    ['when regular results are complete before playoff time', 'start_playoff'],
     ['when regular results are complete after playoff time', 'start_playoff'],
   ] as const)('%s returns %s', (label, expected) => {
     expect(evaluateTournamentLifecycle(fixtureFor(label), NOW).action).toBe(expected);

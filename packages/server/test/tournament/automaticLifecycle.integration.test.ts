@@ -1019,7 +1019,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
     });
   });
 
-  it('does not start playoffs before the first configured game time', async () => {
+  it('publishes the playoff bracket before the first configured game time', async () => {
     const tournament = await prepareCompletedHeadToHeadRegular(pool, {
       firstGameStartsAt: '2030-10-27T15:00:00.000Z',
     });
@@ -1029,14 +1029,23 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       tournamentId: tournament.id,
     });
 
-    expect(report.items[0]).toMatchObject({ action: 'await_playoff_time', changed: false });
+    expect(report.items[0]).toMatchObject({ action: 'start_playoff', changed: true });
     expect(
       (
         await pool.query<{ status: string }>(`select status from tournament where id = $1`, [
           tournament.id,
         ])
       ).rows[0]?.status,
-    ).toBe('regular');
+    ).toBe('playoff');
+    const bracket = await pool.query<{ series_count: number; fixture_count: number }>(
+      `select
+         (select count(*)::int from tournament_playoff_series where tournament_id = $1) as series_count,
+         (select count(*)::int from tournament_fixture
+            where tournament_id = $1 and series_id is not null) as fixture_count`,
+      [tournament.id],
+    );
+    expect(bracket.rows[0]?.series_count).toBeGreaterThan(0);
+    expect(bracket.rows[0]?.fixture_count).toBeGreaterThan(0);
   });
 
   it('starts playoffs once at the configured instant and creates only duel fixtures', async () => {
@@ -1295,7 +1304,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
         )
       ).rows[0]?.duel_lifecycle_version,
     ).toBe('2');
-    expect(recovered.items[0]).toMatchObject({ action: 'await_playoff_time', reason: null });
+    expect(recovered.items[0]).toMatchObject({ action: 'start_playoff', changed: true, reason: null });
 
     await expect(
       updateTournamentDraft(pool, {
@@ -1318,7 +1327,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       now: new Date('2030-10-29T15:00:00.000Z'),
       tournamentId: tournament.id,
     });
-    expect(bracketStarted.items[0]).toMatchObject({ action: 'start_playoff', changed: true });
+    expect(bracketStarted.items[0]).toMatchObject({ action: 'playoff_active', changed: false });
 
     const rescheduledBracket = await updateTournamentDraft(pool, {
       tournamentId: tournament.id,
@@ -1425,7 +1434,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic tournament lifecycle reconcile', 
       now: new Date('2030-10-27T15:00:00.000Z'),
       tournamentId: tournament.id,
     });
-    expect(lifecycle.items[0]).toMatchObject({ action: 'await_playoff_time', reason: null });
+    expect(lifecycle.items[0]).toMatchObject({ action: 'playoff_active', changed: false, reason: null });
 
     await reconcileTournamentLifecycle(pool, {
       now: new Date('2030-10-29T15:00:00.000Z'),
