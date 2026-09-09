@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, CircleDollarSign, Sparkles, Star, TrendingUp } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -133,6 +133,7 @@ export function WeeklyChallengeScreen({
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [filter, setFilter] = useState<ChallengeFilter>('active');
   const [filterInitialized, setFilterInitialized] = useState(false);
+  const previousCatalog = useRef<WeeklyChallengeCatalogResponse>();
   const [claimedReward, setClaimedReward] = useState<{
     title: string;
     reward: WeeklyChallenge['reward'];
@@ -141,7 +142,10 @@ export function WeeklyChallengeScreen({
   const query = useQuery({
     queryKey: ['weekly-challenge', 'catalog'],
     queryFn: fetchWeeklyChallengeCatalog,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
+  const { refetch } = query;
   const catalog = query.data ?? { future: [], active: [], completed: [] };
   const visibleChallenges = catalog[filter];
   const selectedFilter = FILTERS.find((item) => item.id === filter) ?? FILTERS[0]!;
@@ -171,10 +175,30 @@ export function WeeklyChallengeScreen({
   }, []);
 
   useEffect(() => {
-    if (query.data === undefined || filterInitialized) return;
-    setFilter(firstVisibleFilter(query.data));
-    setFilterInitialized(true);
-  }, [filterInitialized, query.data]);
+    const refresh = (): void => {
+      if (document.visibilityState !== 'hidden') void refetch({ cancelRefetch: false });
+    };
+    window.addEventListener('focus', refresh);
+    window.addEventListener('pageshow', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('pageshow', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [refetch]);
+
+  useEffect(() => {
+    if (query.data === undefined) return;
+    if (!filterInitialized) {
+      setFilter(firstVisibleFilter(query.data));
+      setFilterInitialized(true);
+    } else if (previousCatalog.current?.[filter].length && query.data[filter].length === 0) {
+      // Follow a week when the server moves it across a schedule boundary.
+      setFilter(firstVisibleFilter(query.data));
+    }
+    previousCatalog.current = query.data;
+  }, [filter, filterInitialized, query.data]);
 
   return (
     <main className="screen weekly-challenge-screen">
@@ -237,7 +261,7 @@ export function WeeklyChallengeScreen({
               <ChallengeCard
                 key={challenge.id}
                 challenge={challenge}
-                nowMs={nowMs}
+                nowMs={Date.parse(challenge.serverNow) + Math.max(0, nowMs - query.dataUpdatedAt)}
                 claimPending={claim.isPending}
                 claimError={claimError}
                 onClaim={() => claim.mutate(challenge)}

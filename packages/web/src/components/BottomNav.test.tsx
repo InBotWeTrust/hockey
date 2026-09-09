@@ -28,7 +28,7 @@ function AdminHomeProbe(): JSX.Element {
   return <output aria-label="admin-section">{section}</output>;
 }
 
-function renderBottomNav(path: string, extra?: JSX.Element): void {
+function renderBottomNav(path: string, extra?: JSX.Element): QueryClient {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -41,6 +41,7 @@ function renderBottomNav(path: string, extra?: JSX.Element): void {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return client;
 }
 
 describe('BottomNav remembered navigation', () => {
@@ -432,9 +433,12 @@ describe('BottomNav remembered navigation', () => {
       );
     });
 
-    renderBottomNav('/profile');
+    const client = renderBottomNav('/profile');
 
-    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(client.getQueryState(['weekly-challenge', 'nav'])?.status).toBe('success'),
+    );
+    await waitFor(() => expect(client.isFetching()).toBe(0));
     expect(screen.queryByLabelText(/События разделов:/)).toBeNull();
   });
 

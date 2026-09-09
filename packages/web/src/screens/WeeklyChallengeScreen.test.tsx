@@ -1,12 +1,16 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '../api/weeklyChallenge.js';
 import type { WeeklyChallenge } from '../api/weeklyChallenge.js';
 import { WeeklyChallengeScreen } from './WeeklyChallengeScreen.js';
 
-vi.mock('../api/weeklyChallenge.js');
+vi.mock('../api/weeklyChallenge.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof api>()),
+  fetchWeeklyChallengeCatalog: vi.fn(),
+  claimWeeklyChallengeReward: vi.fn(),
+}));
 
 function renderScreen(): void {
   const client = new QueryClient({
@@ -27,6 +31,10 @@ describe('WeeklyChallengeScreen', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     Object.defineProperty(window.navigator, 'vibrate', { configurable: true, value: vibrate });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   function challenge(overrides: Partial<WeeklyChallenge> = {}): WeeklyChallenge {
@@ -98,10 +106,7 @@ describe('WeeklyChallengeScreen', () => {
 
     expect(await screen.findByText('Неделя снайпера')).toBeInTheDocument();
     const filters = screen.getByRole('tablist', { name: 'Фильтры челленджей' });
-    expect(filters).toHaveClass(
-      'segmented-tabs',
-      'weekly-challenge-filters',
-    );
+    expect(filters).toHaveClass('segmented-tabs', 'weekly-challenge-filters');
     expect(within(filters).queryByText('1')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 2, name: 'Действующие (1)' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Участвовать' })).not.toBeInTheDocument();
@@ -207,11 +212,96 @@ describe('WeeklyChallengeScreen', () => {
     renderScreen();
 
     await screen.findByText('Готовая награда');
+    expect(screen.getByLabelText('Требуется действие')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Участвовать' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Отказаться' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Отклонить' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Получить награду' }));
     await waitFor(() => expect(api.claimWeeklyChallengeReward).toHaveBeenCalledWith(completed.id));
     expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
+  });
+
+  it('refreshes the open future catalog into the active week at Monday midnight Moscow', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
+    const future = challenge({
+      status: 'future',
+      startAt: '2026-09-13T21:00:00Z',
+      endAt: '2026-09-20T09:00:00Z',
+      serverNow: '2026-09-13T20:59:50Z',
+    });
+    vi.mocked(api.fetchWeeklyChallengeCatalog)
+      .mockResolvedValueOnce({ future: [future], active: [], completed: [] })
+      .mockResolvedValue({
+        future: [],
+        active: [{ ...future, status: 'running', serverNow: '2026-09-13T21:00:20Z' }],
+        completed: [],
+      });
+    renderScreen();
+    await screen.findByText('Скоро');
+    expect(screen.getByRole('tab', { name: 'Будущие', selected: true })).toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(30_000));
+    expect(await screen.findByText('Идёт сейчас')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Действующие (1)' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Участвовать|Отказаться/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('refreshes the open active catalog into completed history at Sunday noon Moscow', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
+    const active = challenge({
+      startAt: '2026-09-06T21:00:00Z',
+      endAt: '2026-09-13T09:00:00Z',
+      serverNow: '2026-09-13T08:59:50Z',
+      allTasksCompleted: true,
+      canClaimReward: true,
+    });
+    vi.mocked(api.fetchWeeklyChallengeCatalog)
+      .mockResolvedValueOnce({ future: [], active: [active], completed: [] })
+      .mockResolvedValue({
+        future: [],
+        active: [],
+        completed: [{ ...active, status: 'finished', serverNow: '2026-09-13T09:00:20Z' }],
+      });
+    renderScreen();
+    await screen.findByText('Идёт сейчас');
+    await act(() => vi.advanceTimersByTimeAsync(30_000));
+    expect(await screen.findByText('Пройден')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Пройденные (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Получить награду' })).toBeInTheDocument();
+  });
+
+  it.each(['focus', 'pageshow', 'visibilitychange'])(
+    'refreshes catalog on return to the app (%s)',
+    async (event) => {
+      vi.mocked(api.fetchWeeklyChallengeCatalog)
+        .mockResolvedValueOnce({ future: [], active: [], completed: [] })
+        .mockResolvedValue({
+          future: [],
+          active: [challenge({ title: 'Обновлённая неделя' })],
+          completed: [],
+        });
+      renderScreen();
+      await screen.findByText('Вы пока не участвуете в действующих челленджах');
+      fireEvent(event === 'visibilitychange' ? document : window, new Event(event));
+      expect(await screen.findByText('Обновлённая неделя')).toBeInTheDocument();
+    },
+  );
+
+  it('counts down from server time even when the device clock is years ahead', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
+      future: [],
+      active: [challenge({ endAt: '2026-09-13T09:00:00Z', serverNow: '2026-09-13T08:50:00Z' })],
+      completed: [],
+    });
+    renderScreen();
+    expect(await screen.findByText('До окончания · 10 мин')).toBeInTheDocument();
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockImplementation(() => new Promise(() => {}));
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
+    expect(screen.getByText('До окончания · 9 мин')).toBeInTheDocument();
   });
 });
