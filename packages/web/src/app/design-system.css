@@ -10571,8 +10571,127 @@ button.daily-calendar__day:active {
   text-shadow: 0 2px 9px rgba(3, 12, 24, 0.78);
 }
 
+.weekly-challenge-admin,
+.weekly-challenge-admin__card,
+.weekly-challenge-admin__fieldset {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.weekly-challenge-admin__card {
+  border-radius: 20px;
+  padding: 14px;
+}
+
+.weekly-challenge-admin__fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.weekly-challenge-admin h3,
+.weekly-challenge-admin h4,
+.weekly-challenge-admin p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.weekly-challenge-admin__copy,
+.weekly-challenge-admin__field > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.weekly-challenge-admin__toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+}
+
+.weekly-challenge-admin__toggle input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.weekly-challenge-admin__field {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.weekly-challenge-admin__field input,
+.weekly-challenge-admin__field textarea {
+  min-width: 0;
+  width: 100%;
+}
+
+.weekly-challenge-admin__rewards,
+.weekly-challenge-admin__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.weekly-challenge-admin__metrics {
+  font-size: 12px;
+}
+
+.weekly-challenge-admin__metrics strong {
+  display: block;
+  font-size: 18px;
+}
+
+.weekly-challenge-admin-task {
+  padding: 10px;
+  border-radius: 16px;
+  box-shadow: none;
+  min-width: 0;
+}
+
 .weekly-challenge-admin-task__fields {
-  grid-template-columns: minmax(180px, 0.9fr) minmax(220px, 1.4fr) minmax(110px, 0.5fr) auto;
+  display: grid;
+  gap: 8px;
+  align-items: end;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) minmax(0, 0.5fr) auto;
+}
+
+.weekly-challenge-admin__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.weekly-challenge-admin__tasks,
+.weekly-challenge-admin__players {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.weekly-challenge-admin__tasks > div {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.weekly-challenge-admin__stats {
+  width: min(720px, calc(100vw - 28px));
+  max-height: 86dvh;
+  overflow: auto;
+  display: grid;
+  gap: 14px;
+}
+
+.weekly-challenge-admin__players > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 640px) {
@@ -10580,10 +10699,14 @@ button.daily-calendar__day:active {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .weekly-challenge-admin-task__remove.chip {
+  .weekly-challenge-admin-task__remove.btn {
     width: 100%;
     justify-content: center;
     align-self: stretch !important;
+  }
+
+  .weekly-challenge-admin__rewards {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

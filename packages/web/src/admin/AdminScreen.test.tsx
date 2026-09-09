@@ -1865,31 +1865,29 @@ describe('AdminScreen', () => {
       if (url.includes('/admin/weekly-challenges')) {
         return new Response(
           JSON.stringify({
-            challenges: [
-              {
-                id: '11111111-1111-1111-1111-111111111111',
-                title: 'Неделя снайпера',
-                description: '',
-                joinOpenAt: '2026-06-01T09:00:00.000Z',
-                startAt: '2026-06-02T09:00:00.000Z',
-                endAt: '2026-06-09T09:00:00.000Z',
-                isActive: true,
-                joinEnabled: true,
-                rewardCoins: 100,
-                rewardStars: 5,
-                rewardExperience: 50,
-                tasks: [],
-                stats: {
-                  participantsCount: 0,
-                  completedCount: 0,
-                  rewardClaimedCount: 0,
-                  declinedCount: 0,
-                },
-                players: [],
-                createdAt: '2026-06-01T09:00:00.000Z',
-                updatedAt: '2026-06-01T09:00:00.000Z',
+            enabled: true,
+            next: null,
+            history: [],
+            current: {
+              id: '11111111-1111-1111-1111-111111111111',
+              title: 'Неделя снайпера',
+              description: '',
+              startAt: '2026-06-02T09:00:00.000Z',
+              endAt: '2026-06-09T09:00:00.000Z',
+              isActive: true,
+              rewardCoins: 100,
+              rewardStars: 5,
+              rewardExperience: 50,
+              tasks: [],
+              stats: {
+                participantsCount: 0,
+                completedCount: 0,
+                rewardClaimedCount: 0,
               },
-            ],
+              players: [],
+              createdAt: '2026-06-01T09:00:00.000Z',
+              updatedAt: '2026-06-01T09:00:00.000Z',
+            },
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
@@ -1930,7 +1928,7 @@ describe('AdminScreen', () => {
     expect(screen.getByText('12')).toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole('tab', { name: 'Челленджи' }));
-    expect(await screen.findByText('Еженедельные челленджи (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Еженедельные челленджи')).toBeInTheDocument();
     expect(await screen.findByText('Неделя снайпера')).toBeInTheDocument();
   });
 });

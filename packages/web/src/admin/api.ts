@@ -192,7 +192,6 @@ export interface AdminWeeklyChallengePlayer {
   userId: string;
   displayName: string;
   avatarUrl: string | null;
-  joinedAt: string;
   rewardClaimedAt: string | null;
   tasksCompleted: number;
   tasksTotal: number;
@@ -203,18 +202,15 @@ export interface AdminWeeklyChallengeStats {
   participantsCount: number;
   completedCount: number;
   rewardClaimedCount: number;
-  declinedCount: number;
 }
 
 export interface AdminWeeklyChallenge {
   id: string;
   title: string;
   description: string;
-  joinOpenAt: string;
   startAt: string;
   endAt: string;
   isActive: boolean;
-  joinEnabled: boolean;
   rewardCoins: number;
   rewardStars: number;
   rewardExperience: number;
@@ -228,18 +224,22 @@ export interface AdminWeeklyChallenge {
 export interface AdminWeeklyChallengeInput {
   title: string;
   description: string;
-  joinOpenAt: string;
-  startAt: string;
-  endAt: string;
   rewardCoins: number;
   rewardStars: number;
   rewardExperience: number;
   tasks: Array<{
     type: AdminWeeklyChallengeTaskType;
-    title?: string | null;
+    title?: string;
     target: number;
     sortOrder: number;
   }>;
+}
+
+export interface AdminWeeklyChallengeDashboard {
+  enabled: boolean;
+  current: AdminWeeklyChallenge | null;
+  next: AdminWeeklyChallenge | null;
+  history: AdminWeeklyChallenge[];
 }
 
 export interface AdminUser {
@@ -1411,57 +1411,26 @@ export function deleteAdminDuelTemplate(templateId: string): Promise<{ ok: true 
   });
 }
 
-export function fetchAdminWeeklyChallenges(): Promise<{ challenges: AdminWeeklyChallenge[] }> {
-  return apiFetch<{ challenges: AdminWeeklyChallenge[] }>('/admin/weekly-challenges');
+export function fetchAdminWeeklyChallenges(): Promise<AdminWeeklyChallengeDashboard> {
+  return apiFetch<AdminWeeklyChallengeDashboard>('/admin/weekly-challenges');
 }
 
-export function createAdminWeeklyChallenge(
+export function updateNextAdminWeeklyChallenge(
   input: AdminWeeklyChallengeInput,
-): Promise<{ challenge: AdminWeeklyChallenge }> {
-  return apiFetch<{ challenge: AdminWeeklyChallenge }>('/admin/weekly-challenges', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
-}
-
-export function patchAdminWeeklyChallenge(
-  id: string,
-  input: AdminWeeklyChallengeInput,
-): Promise<{ challenge: AdminWeeklyChallenge }> {
-  return apiFetch<{ challenge: AdminWeeklyChallenge }>(`/admin/weekly-challenges/${id}`, {
+): Promise<AdminWeeklyChallengeDashboard> {
+  return apiFetch<AdminWeeklyChallengeDashboard>('/admin/weekly-challenges/next', {
     method: 'PATCH',
     body: JSON.stringify(input),
   });
 }
 
-export function activateAdminWeeklyChallenge(
-  id: string,
-): Promise<{ challenge: AdminWeeklyChallenge }> {
-  return apiFetch<{ challenge: AdminWeeklyChallenge }>(`/admin/weekly-challenges/${id}/activate`, {
-    method: 'POST',
+export function updateAdminWeeklyChallengeSettings(
+  enabled: boolean,
+): Promise<AdminWeeklyChallengeDashboard> {
+  return apiFetch<AdminWeeklyChallengeDashboard>('/admin/weekly-challenges/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
   });
-}
-
-export function deactivateAdminWeeklyChallenge(
-  id: string,
-): Promise<{ challenge: AdminWeeklyChallenge }> {
-  return apiFetch<{ challenge: AdminWeeklyChallenge }>(
-    `/admin/weekly-challenges/${id}/deactivate`,
-    { method: 'POST' },
-  );
-}
-
-export function setAdminWeeklyChallengeJoinEnabled(
-  id: string,
-  joinEnabled: boolean,
-): Promise<{ challenge: AdminWeeklyChallenge }> {
-  return apiFetch<{ challenge: AdminWeeklyChallenge }>(
-    `/admin/weekly-challenges/${id}/join-enabled`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ joinEnabled }),
-    },
-  );
 }
 
 export function fetchAdminUser(userId: string): Promise<AdminUserDetail> {
