@@ -554,6 +554,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '111_tournament_placement_history.sql',
       '112_training_achievement_hundred_shots.sql',
       '113_weekly_challenge_failure_acknowledgements.sql',
+      '114_automatic_weekly_challenges.sql',
+      '115_weekly_challenge_launch_marker.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -1331,6 +1333,8 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '111_tournament_placement_history.sql',
       '112_training_achievement_hundred_shots.sql',
       '113_weekly_challenge_failure_acknowledgements.sql',
+      '114_automatic_weekly_challenges.sql',
+      '115_weekly_challenge_launch_marker.sql',
     ]);
 
     const activeInventory = await pool.query<{
