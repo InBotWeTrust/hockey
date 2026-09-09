@@ -45,7 +45,8 @@ async function fetchActiveChallenge(
   const { rows } = await db.query<WeeklyChallengeRow>(
     `select *
        from weekly_challenges
-      where start_at <= $1
+      where is_active
+        and start_at <= $1
         and $1 < end_at
       order by start_at desc
       limit 1`,
@@ -62,14 +63,18 @@ async function fetchCatalogChallenges(
     `select challenge.*
        from weekly_challenges challenge
       cross join weekly_challenge_settings settings
-      where challenge.start_at <= $1
+      where challenge.end_at <= $1
+         or (
+              challenge.is_active
+              and challenge.start_at <= $1
+              and $1 < challenge.end_at
+            )
          or (
               settings.enabled
               and challenge.visible_from <= $1
               and $1 < challenge.start_at
             )
-      order by challenge.start_at desc, challenge.id
-      limit 100`,
+      order by challenge.start_at desc, challenge.id`,
     [now],
   );
   return rows;
@@ -103,8 +108,7 @@ async function fetchPendingRewardChallenges(
       where rc.id is null
         and c.end_at <= $2
         and ($3::uuid is null or c.id <> $3::uuid)
-      order by c.end_at desc, c.start_at desc
-      limit 10`,
+      order by c.end_at desc, c.start_at desc`,
     [userId, now, currentChallengeId],
   );
   return rows;
@@ -282,6 +286,10 @@ export async function claimWeeklyChallengeReward(
 ): Promise<WeeklyChallengeCurrentResponse> {
   const challenge = await fetchChallengeForRewardUpdate(client, challengeId);
   if (!challenge) throw new AppError('not_found', 'weekly challenge not found', 404);
+  const status = resolveWeeklyChallengeStatus(challenge, now);
+  if (status === 'future' || (status === 'running' && !challenge.is_active)) {
+    throw new AppError('conflict', 'weekly challenge is not active', 409);
+  }
   const mapped = await mapChallenge(client, challenge, userId, now);
   if (mapped.rewardClaimedAt !== null) {
     throw new AppError('conflict', 'weekly challenge reward already claimed', 409);

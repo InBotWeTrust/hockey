@@ -80,7 +80,38 @@ export async function reconcileWeeklyChallengeLifecycle(
       where id = true
       for update`,
   );
+  await client.query(
+    `update weekly_challenges
+        set is_active = false,
+            updated_at = now()
+      where is_automatic
+        and is_active
+        and end_at <= $1`,
+    [now],
+  );
   if (settings[0]?.enabled !== true) return;
+
+  await client.query(
+    `update weekly_challenges
+        set is_active = true,
+            updated_at = now()
+      where id = (
+        select challenge.id
+          from weekly_challenges challenge
+         where challenge.is_automatic
+           and not challenge.is_active
+           and challenge.start_at <= $1
+           and $1 < challenge.end_at
+           and not exists (
+             select 1
+               from weekly_challenges active_challenge
+              where active_challenge.is_active
+           )
+         order by challenge.start_at desc, challenge.id
+         limit 1
+      )`,
+    [now],
+  );
 
   const initialWindow = getWeeklyChallengeWindow(now);
   const targetDraft = await findExistingChallengeAtStart(client, initialWindow.nextStart);

@@ -478,6 +478,50 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
     expect(await getAutomaticChallenges()).toEqual([]);
   });
 
+  it('leaves a due automatic week inactive when disabled before its start', async () => {
+    const challengeId = await createSourceChallenge({
+      startAt: new Date('2026-09-13T21:00:00Z'),
+      endAt: new Date('2026-09-20T09:00:00Z'),
+      isAutomatic: true,
+      isActive: false,
+    });
+    await pool.query(`update weekly_challenge_settings set enabled = false where id = true`);
+
+    await reconcileAt(new Date('2026-09-14T09:00:00Z'));
+
+    const challenge = await pool.query<{ is_active: boolean }>(
+      `select is_active from weekly_challenges where id = $1`,
+      [challengeId],
+    );
+    expect(challenge.rows).toEqual([{ is_active: false }]);
+  });
+
+  it('activates a due automatic week and keeps it active after disable until end', async () => {
+    const challengeId = await createSourceChallenge({
+      startAt: new Date('2026-09-13T21:00:00Z'),
+      endAt: new Date('2026-09-20T09:00:00Z'),
+      isAutomatic: true,
+      isActive: false,
+    });
+
+    await reconcileAt(new Date('2026-09-14T09:00:00Z'));
+    await pool.query(`update weekly_challenge_settings set enabled = false where id = true`);
+    await reconcileAt(new Date('2026-09-15T09:00:00Z'));
+
+    const active = await pool.query<{ is_active: boolean }>(
+      `select is_active from weekly_challenges where id = $1`,
+      [challengeId],
+    );
+    expect(active.rows).toEqual([{ is_active: true }]);
+
+    await reconcileAt(new Date('2026-09-21T09:00:00Z'));
+    const expired = await pool.query<{ is_active: boolean }>(
+      `select is_active from weekly_challenges where id = $1`,
+      [challengeId],
+    );
+    expect(expired.rows).toEqual([{ is_active: false }]);
+  });
+
   it('does not invalidate an already-started automatic week while disabled', async () => {
     const startedChallengeId = await createSourceChallenge({ isAutomatic: true, isActive: true });
     await pool.query(`update weekly_challenge_settings set enabled = false where id = true`);

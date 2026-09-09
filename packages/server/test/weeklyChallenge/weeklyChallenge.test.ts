@@ -72,6 +72,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
               weekly_challenge_reward_claims, weekly_challenge_declines
               restart identity cascade`,
     );
+    await pool.query(`update weekly_challenge_settings set enabled = true where id = true`);
     const user = await findOrCreateTelegramUser(pool, {
       providerUid: 'weekly-player-1',
       displayName: 'Weekly Player',
@@ -92,16 +93,18 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     joinOpenOffset = '1 day',
     startOffset = '1 hour',
     endOffset = '-7 days',
+    isAutomatic = false,
   }: {
     title?: string;
     isActive?: boolean;
     joinOpenOffset?: string;
     startOffset?: string;
     endOffset?: string;
+    isAutomatic?: boolean;
   } = {}): Promise<string> {
     const { rows } = await pool.query<{ id: string }>(
       `insert into weekly_challenges
-         (title, description, join_open_at, start_at, end_at, is_active, join_enabled,
+         (title, description, join_open_at, start_at, end_at, is_active, is_automatic, join_enabled,
           reward_coins, reward_stars, reward_experience)
        values (
          $1,
@@ -110,13 +113,14 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
          now() - ($3::text)::interval,
          now() - ($4::text)::interval,
          $5,
+         $6,
          true,
          10,
          2,
          3
        )
        returning id`,
-      [title, joinOpenOffset, startOffset, endOffset, isActive],
+      [title, joinOpenOffset, startOffset, endOffset, isActive, isAutomatic],
     );
     const challengeId = rows[0]!.id;
     await pool.query(
@@ -284,6 +288,62 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     });
   });
 
+  it('keeps a due automatic challenge invisible and unclaimable when disabled before start', async () => {
+    const challengeId = await createChallenge({ isActive: false, isAutomatic: true });
+    await pool.query(`update weekly_challenge_settings set enabled = false where id = true`);
+    await insertGoal();
+
+    const current = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/current',
+      headers: authHeader(),
+    });
+    const catalog = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/catalog',
+      headers: authHeader(),
+    });
+    const claim = await app.inject({
+      method: 'POST',
+      url: `/weekly-challenge/${challengeId}/claim-reward`,
+      headers: authHeader(),
+    });
+
+    expect(current.json().challenge).toBeNull();
+    expect(catalog.json().active).toEqual([]);
+    expect(claim.statusCode).toBe(409);
+    const row = await pool.query<{ is_active: boolean }>(
+      `select is_active from weekly_challenges where id = $1`,
+      [challengeId],
+    );
+    expect(row.rows).toEqual([{ is_active: false }]);
+  });
+
+  it('never starts an inactive legacy draft', async () => {
+    const challengeId = await createChallenge({ isActive: false });
+    await insertGoal();
+
+    const current = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/current',
+      headers: authHeader(),
+    });
+    const catalog = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/catalog',
+      headers: authHeader(),
+    });
+    const claim = await app.inject({
+      method: 'POST',
+      url: `/weekly-challenge/${challengeId}/claim-reward`,
+      headers: authHeader(),
+    });
+
+    expect(current.json().challenge).toBeNull();
+    expect(catalog.json().active).toEqual([]);
+    expect(claim.statusCode).toBe(409);
+  });
+
   it('waits for the users row before taking a currency-account write lock', async () => {
     const challengeId = await createActiveChallenge();
     await insertGoal();
@@ -356,7 +416,38 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     expect(claim.json().challenge).toMatchObject({ id: currentChallengeId });
   });
 
-  it('returns only visible future, running, and successfully completed challenges', async () => {
+  it('keeps an older completed reward available after ten newer incomplete challenges', async () => {
+    const olderChallengeId = await createChallenge({
+      title: 'Старая завершённая неделя',
+      isActive: false,
+      joinOpenOffset: '31 days',
+      startOffset: '30 days',
+      endOffset: '23 days',
+    });
+    await insertGoal(`now() - interval '29 days'`);
+    for (let offset = 20; offset >= 11; offset -= 1) {
+      await createChallenge({
+        title: `Новая незавершённая неделя ${offset}`,
+        isActive: false,
+        joinOpenOffset: `${offset + 1} days`,
+        startOffset: `${offset} days`,
+        endOffset: `${offset - 1} days`,
+      });
+    }
+
+    const current = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/current',
+      headers: authHeader(),
+    });
+
+    expect(current.statusCode).toBe(200);
+    expect(current.json().pendingRewards).toEqual([
+      expect.objectContaining({ id: olderChallengeId, canClaimReward: true }),
+    ]);
+  });
+
+  it('returns only visible future, actually active, and successfully completed challenges', async () => {
     const futureChallengeId = await createChallenge({
       title: 'Будущая неделя',
       isActive: false,
@@ -392,10 +483,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       future: [{ id: futureChallengeId, title: 'Будущая неделя' }],
-      active: [
-        { id: activeChallengeId, title: 'Неделя снайпера' },
-        { title: 'Чужой действующий челлендж' },
-      ],
+      active: [{ id: activeChallengeId, title: 'Неделя снайпера' }],
       completed: [
         {
           id: completedChallengeId,
