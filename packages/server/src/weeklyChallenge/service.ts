@@ -251,7 +251,7 @@ export async function getPendingWeeklyChallengeFailure(
   );
   for (const row of rows) {
     const challenge = await mapChallenge(db, row, userId, now);
-    if (!challenge.allTasksCompleted) return { challenge };
+    if (challenge.hasProgress && !challenge.allTasksCompleted) return { challenge };
   }
   return { challenge: null };
 }
@@ -265,7 +265,7 @@ export async function acknowledgeWeeklyChallengeFailure(
   const challenge = await fetchChallengeForRewardUpdate(client, challengeId);
   if (challenge === null) throw new AppError('not_found', 'weekly challenge not found', 404);
   const mapped = await mapChallenge(client, challenge, userId, now);
-  if (mapped.status !== 'finished' || mapped.allTasksCompleted) {
+  if (mapped.status !== 'finished' || !mapped.hasProgress || mapped.allTasksCompleted) {
     throw new AppError('conflict', 'weekly challenge failure is not available', 409);
   }
   await client.query(

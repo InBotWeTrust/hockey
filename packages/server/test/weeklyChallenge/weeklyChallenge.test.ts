@@ -87,6 +87,19 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     return { authorization: `Bearer ${accessToken}` };
   }
 
+  async function createWeeklyUser(providerUid: string, displayName: string) {
+    const user = await findOrCreateTelegramUser(pool, {
+      providerUid,
+      displayName,
+      timezone: 'Europe/Moscow',
+    });
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    return {
+      id: user.id,
+      accessToken: await jwt.issueAccessToken({ sub: user.id }),
+    };
+  }
+
   async function createChallenge({
     title = 'Неделя снайпера',
     isActive = true,
@@ -135,20 +148,20 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     return createChallenge({ endOffset: '-7 days' });
   }
 
-  async function insertGoal(createdAtSql = 'now()'): Promise<void> {
+  async function insertGoal(createdAtSql = 'now()', forUserId = userId): Promise<void> {
     const { rows } = await pool.query<{ id: string }>(
       `insert into day_pool
          (user_id, day_date, state, current_period, game_core_version, daily_seed)
        values ($1, current_date, 'closed', 1, 1, 'weekly-seed')
        returning id`,
-      [userId],
+      [forUserId],
     );
     await pool.query(
       `insert into shot_session
          (user_id, mode, day_pool_id, period_number, shot_index, seed,
           input_payload, server_result, game_core_version, created_at)
        values ($1, 'daily', $2, 1, 1, 'shot-seed', '{}'::jsonb, 'goal', 1, ${createdAtSql})`,
-      [userId, rows[0]!.id],
+      [forUserId, rows[0]!.id],
     );
   }
 
@@ -524,46 +537,68 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     expect(claim.statusCode).toBe(409);
   });
 
-  it('returns an unfinished participant challenge until it is acknowledged', async () => {
-    const challengeId = await createChallenge({
-      title: 'Незавершённый челлендж',
-      joinOpenOffset: '3 days',
+  it('returns failure only for users with partial progress and acknowledges it once', async () => {
+    const partialUser = await createWeeklyUser('weekly-player-partial', 'Partial Player');
+    const completedUser = await createWeeklyUser('weekly-player-completed', 'Completed Player');
+    const finished = { isActive: false, joinOpenOffset: '7 days' };
+    const noProgressChallengeId = await createChallenge({
+      ...finished,
+      title: 'Без прогресса',
+      startOffset: '6 days',
+      endOffset: '5 days',
+    });
+    const partialChallengeId = await createChallenge({
+      ...finished,
+      title: 'Частичный прогресс',
+      startOffset: '4 days',
+      endOffset: '3 days',
+    });
+    await createChallenge({
+      ...finished,
+      title: 'Полностью пройдено',
       startOffset: '2 days',
       endOffset: '1 hour',
     });
     await pool.query(
-      `insert into weekly_challenge_participants (challenge_id, user_id, joined_at)
-       values ($1, $2, now() - interval '2 days')`,
-      [challengeId, userId],
+      `insert into weekly_challenge_tasks (challenge_id, type, title, target, sort_order)
+       values ($1, 'goals_scored', 'Забросить ещё одну шайбу', 2, 1)`,
+      [partialChallengeId],
     );
+    await insertGoal("now() - interval '3 days 1 hour'", partialUser.id);
+    await insertGoal("now() - interval '2 hours'", completedUser.id);
 
-    const pending = await app.inject({
-      method: 'GET',
-      url: '/weekly-challenge/failures/pending',
+    async function pendingFailureFor(token: string) {
+      const pending = await app.inject({
+        method: 'GET',
+        url: '/weekly-challenge/failures/pending',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(pending.statusCode).toBe(200);
+      return pending.json() as {
+        challenge: { id: string; hasProgress: boolean; allTasksCompleted: boolean } | null;
+      };
+    }
+
+    expect(await pendingFailureFor(accessToken)).toEqual({ challenge: null });
+    expect(await pendingFailureFor(partialUser.accessToken)).toMatchObject({
+      challenge: { id: partialChallengeId, hasProgress: true, allTasksCompleted: false },
+    });
+    expect(await pendingFailureFor(completedUser.accessToken)).toEqual({ challenge: null });
+
+    const noProgressAcknowledged = await app.inject({
+      method: 'POST',
+      url: `/weekly-challenge/failures/${noProgressChallengeId}/acknowledge`,
       headers: authHeader(),
     });
-    expect(pending.statusCode).toBe(200);
-    expect(pending.json().challenge).toMatchObject({
-      id: challengeId,
-      title: 'Незавершённый челлендж',
-      status: 'finished',
-      allTasksCompleted: false,
-      tasks: [{ progress: 0, target: 1, completed: false }],
-    });
+    expect(noProgressAcknowledged.statusCode).toBe(409);
 
     const acknowledged = await app.inject({
       method: 'POST',
-      url: `/weekly-challenge/failures/${challengeId}/acknowledge`,
-      headers: authHeader(),
+      url: `/weekly-challenge/failures/${partialChallengeId}/acknowledge`,
+      headers: { authorization: `Bearer ${partialUser.accessToken}` },
     });
     expect(acknowledged.statusCode).toBe(200);
     expect(acknowledged.json()).toEqual({ challenge: null });
-
-    const after = await app.inject({
-      method: 'GET',
-      url: '/weekly-challenge/failures/pending',
-      headers: authHeader(),
-    });
-    expect(after.json()).toEqual({ challenge: null });
+    expect(await pendingFailureFor(partialUser.accessToken)).toEqual({ challenge: null });
   });
 });
