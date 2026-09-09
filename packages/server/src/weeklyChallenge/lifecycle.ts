@@ -84,8 +84,7 @@ export async function reconcileWeeklyChallengeLifecycle(
     `update weekly_challenges
         set is_active = false,
             updated_at = now()
-      where is_automatic
-        and is_active
+      where is_active
         and end_at <= $1`,
     [now],
   );

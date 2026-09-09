@@ -379,6 +379,37 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
     ]);
   });
 
+  it('clears an ended active legacy challenge before activating its delayed automatic replacement', async () => {
+    const legacyChallengeId = await createSourceChallenge({
+      title: 'Завершающаяся legacy-неделя',
+      startAt: new Date('2026-09-13T21:00:00Z'),
+      endAt: new Date('2026-09-23T09:00:00Z'),
+      isActive: true,
+    });
+    const delayedChallengeId = await createSourceChallenge({
+      title: 'Отложенная автоматическая неделя',
+      startAt: new Date('2026-09-20T21:00:00Z'),
+      endAt: new Date('2026-09-27T09:00:00Z'),
+    });
+
+    await reconcileAt(new Date('2026-09-15T09:00:00Z'));
+    await reconcileAt(new Date('2026-09-27T22:00:00Z'));
+
+    const rows = await pool.query<{ id: string; is_active: boolean }>(
+      `select id, is_active
+         from weekly_challenges
+        where id = any($1::uuid[])
+        order by id`,
+      [ [legacyChallengeId, delayedChallengeId] ],
+    );
+    expect(rows.rows).toEqual(
+      expect.arrayContaining([
+        { id: legacyChallengeId, is_active: false },
+        { id: delayedChallengeId, is_active: true },
+      ]),
+    );
+  });
+
   it('adopts an existing delayed row instead of duplicating it after an overlap', async () => {
     await createSourceChallenge({
       title: 'Действующая legacy-неделя',
