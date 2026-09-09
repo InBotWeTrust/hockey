@@ -11,6 +11,10 @@ interface WeeklyChallengeSourceRow {
   created_by: string | null;
 }
 
+interface OverlappingLegacyChallengeRow {
+  end_at: Date;
+}
+
 export async function reconcileWeeklyChallengeLifecycle(
   client: PoolClient,
   now = new Date(),
@@ -23,16 +27,42 @@ export async function reconcileWeeklyChallengeLifecycle(
   );
   if (settings[0]?.enabled !== true) return;
 
-  const window = getWeeklyChallengeWindow(now);
-  const existing = await client.query<{ id: string }>(
-    `select id
+  const initialWindow = getWeeklyChallengeWindow(now);
+  const { rows: overlaps } = await client.query<OverlappingLegacyChallengeRow>(
+    `select end_at
        from weekly_challenges
-      where is_automatic
-        and start_at = $1
+      where is_active
+        and not is_automatic
+        and end_at > $1
+      order by end_at desc
+      limit 1`,
+    [initialWindow.nextStart],
+  );
+  const window =
+    overlaps[0] === undefined
+      ? initialWindow
+      : getWeeklyChallengeWindow(overlaps[0].end_at);
+  const existing = await client.query<{ id: string; is_automatic: boolean }>(
+    `select id, is_automatic
+       from weekly_challenges
+      where start_at = $1
+      order by is_automatic desc, created_at asc
       limit 1`,
     [window.nextStart],
   );
-  if (existing.rowCount !== 0) return;
+  const existingChallenge = existing.rows[0];
+  if (existingChallenge !== undefined) {
+    if (!existingChallenge.is_automatic) {
+      await client.query(
+        `update weekly_challenges
+            set is_automatic = true,
+                updated_at = now()
+          where id = $1`,
+        [existingChallenge.id],
+      );
+    }
+    return;
+  }
 
   const { rows: sources } = await client.query<WeeklyChallengeSourceRow>(
     `select id, title, description, reward_coins, reward_stars, reward_experience, created_by

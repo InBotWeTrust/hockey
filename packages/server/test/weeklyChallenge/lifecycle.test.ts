@@ -8,6 +8,7 @@ import {
   hasIntegrationEnv,
   resetDatabase,
 } from '../helpers/testDb.js';
+import { waitForBlockedWriter } from '../helpers/postgresLocks.js';
 import { getWeeklyChallengeWindow } from '../../src/weeklyChallenge/schedule.js';
 import { reconcileWeeklyChallengeLifecycle } from '../../src/weeklyChallenge/lifecycle.js';
 
@@ -235,6 +236,43 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
     expect(tasks.rows).toEqual([{ count: 2 }]);
   });
 
+  it('adopts a manually configured row at the next start instead of adding a duplicate', async () => {
+    await createSourceChallenge();
+    const manualId = await createSourceChallenge({
+      title: 'Ручная следующая неделя',
+      description: 'Сохранить условия ручной настройки',
+      startAt: new Date('2026-09-20T21:00:00Z'),
+      endAt: new Date('2026-09-27T09:00:00Z'),
+    });
+
+    await reconcileAt(new Date('2026-09-15T09:00:00Z'));
+
+    const rows = await pool.query(
+      `select id, title, description, is_automatic
+         from weekly_challenges
+        where start_at = '2026-09-20T21:00:00Z'::timestamptz`,
+    );
+    expect(rows.rows).toEqual([
+      {
+        id: manualId,
+        title: 'Ручная следующая неделя',
+        description: 'Сохранить условия ручной настройки',
+        is_automatic: true,
+      },
+    ]);
+    const tasks = await pool.query(
+      `select type, title, target, sort_order
+         from weekly_challenge_tasks
+        where challenge_id = $1
+        order by sort_order`,
+      [manualId],
+    );
+    expect(tasks.rows).toEqual([
+      { type: 'goals_scored', title: 'Забросить 100 шайб', target: 100, sort_order: 3 },
+      { type: 'duels_won', title: 'Выиграть 4 дуэли', target: 4, sort_order: 8 },
+    ]);
+  });
+
   it('creates only the nearest automatic week after a multi-week gap', async () => {
     await createSourceChallenge({
       startAt: new Date('2026-08-03T21:00:00Z'),
@@ -247,6 +285,64 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
     expect(challenges.map((challenge) => challenge.start_at)).toEqual([
       new Date('2026-09-20T21:00:00Z'),
     ]);
+  });
+
+  it('delays the next automatic week until after an overlapping legacy active challenge ends', async () => {
+    await createSourceChallenge({
+      startAt: new Date('2026-09-13T21:00:00Z'),
+      endAt: new Date('2026-09-23T09:00:00Z'),
+      isActive: true,
+    });
+
+    await reconcileAt(new Date('2026-09-15T09:00:00Z'));
+
+    const challenges = await getAutomaticChallenges();
+    expect(challenges.map((challenge) => challenge.start_at)).toEqual([
+      new Date('2026-09-27T21:00:00Z'),
+    ]);
+  });
+
+  it('creates one automatic week when two open transactions reconcile concurrently', async () => {
+    await createSourceChallenge();
+    const first = await pool.connect();
+    const second = await pool.connect();
+    let firstInTransaction = false;
+    let secondInTransaction = false;
+
+    try {
+      await first.query('begin');
+      firstInTransaction = true;
+      await second.query('begin');
+      secondInTransaction = true;
+      const { rows: firstPidRows } = await first.query<{ pid: number }>(
+        `select pg_backend_pid() as pid`,
+      );
+
+      await reconcileWeeklyChallengeLifecycle(first, new Date('2026-09-15T09:00:00Z'));
+      const secondReconcile = reconcileWeeklyChallengeLifecycle(
+        second,
+        new Date('2026-09-15T09:00:00Z'),
+      );
+      await waitForBlockedWriter(pool, firstPidRows[0]!.pid, /weekly_challenge_settings/);
+      await first.query('commit');
+      firstInTransaction = false;
+      await secondReconcile;
+      await second.query('commit');
+      secondInTransaction = false;
+    } finally {
+      if (firstInTransaction) await first.query('rollback');
+      if (secondInTransaction) await second.query('rollback');
+      first.release();
+      second.release();
+    }
+
+    const challenges = await getAutomaticChallenges();
+    expect(challenges).toHaveLength(1);
+    const tasks = await pool.query(
+      `select count(*)::int as count from weekly_challenge_tasks where challenge_id = $1`,
+      [challenges[0]!.id],
+    );
+    expect(tasks.rows).toEqual([{ count: 2 }]);
   });
 
   it('does not create a next automatic week while disabled', async () => {
