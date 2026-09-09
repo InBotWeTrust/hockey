@@ -273,6 +273,44 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
     ]);
   });
 
+  it('adopts an active manual row at the next start and preserves its configuration', async () => {
+    await createSourceChallenge();
+    const manualId = await createSourceChallenge({
+      title: 'Активная ручная следующая неделя',
+      description: 'Не потерять активную ручную конфигурацию',
+      startAt: new Date('2026-09-20T21:00:00Z'),
+      endAt: new Date('2026-09-27T09:00:00Z'),
+      isActive: true,
+    });
+
+    await reconcileAt(new Date('2026-09-15T09:00:00Z'));
+
+    const rows = await pool.query(
+      `select id, title, description, is_automatic
+         from weekly_challenges
+        where start_at = '2026-09-20T21:00:00Z'::timestamptz`,
+    );
+    expect(rows.rows).toEqual([
+      {
+        id: manualId,
+        title: 'Активная ручная следующая неделя',
+        description: 'Не потерять активную ручную конфигурацию',
+        is_automatic: true,
+      },
+    ]);
+    const tasks = await pool.query(
+      `select type, title, target, sort_order
+         from weekly_challenge_tasks
+        where challenge_id = $1
+        order by sort_order`,
+      [manualId],
+    );
+    expect(tasks.rows).toEqual([
+      { type: 'goals_scored', title: 'Забросить 100 шайб', target: 100, sort_order: 3 },
+      { type: 'duels_won', title: 'Выиграть 4 дуэли', target: 4, sort_order: 8 },
+    ]);
+  });
+
   it('creates only the nearest automatic week after a multi-week gap', async () => {
     await createSourceChallenge({
       startAt: new Date('2026-08-03T21:00:00Z'),
@@ -299,6 +337,23 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
     const challenges = await getAutomaticChallenges();
     expect(challenges.map((challenge) => challenge.start_at)).toEqual([
       new Date('2026-09-27T21:00:00Z'),
+    ]);
+  });
+
+  it('does not defer the next week for a future active manual challenge outside its interval', async () => {
+    await createSourceChallenge();
+    await createSourceChallenge({
+      title: 'Будущая ручная неделя',
+      startAt: new Date('2026-09-27T21:00:00Z'),
+      endAt: new Date('2026-10-04T09:00:00Z'),
+      isActive: true,
+    });
+
+    await reconcileAt(new Date('2026-09-15T09:00:00Z'));
+
+    const challenges = await getAutomaticChallenges();
+    expect(challenges.map((challenge) => challenge.start_at)).toEqual([
+      new Date('2026-09-20T21:00:00Z'),
     ]);
   });
 
