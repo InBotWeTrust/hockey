@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dailyGameplayLockCopy, gameplayLockCopy } from './gameplayLock';
+import { dailyGameplayLockCopy, gameplayLockCopy, tournamentGameDateCopy } from './gameplayLock';
 
 describe('gameplayLockCopy', () => {
   it('names training as the recovery source for the daily game', () => {
@@ -33,5 +33,30 @@ describe('gameplayLockCopy', () => {
         tournament_starts_at: null,
       }),
     ).toBe('Завершите текущую игру в турнире');
+  });
+
+  it('uses clear copy for a scheduled tournament lock', () => {
+    expect(
+      gameplayLockCopy(
+        {
+          blocked: true,
+          reason: 'scheduled_tournament',
+          ends_at: null,
+          tournament_starts_at: '2030-09-09T15:00:00.000Z',
+        },
+        Date.parse('2030-09-09T14:00:00.000Z'),
+      ),
+    ).toBe('Недоступно до окончания игры в турнире');
+  });
+
+  it('formats the scheduled tournament date for the daily-game card', () => {
+    expect(
+      tournamentGameDateCopy({
+        blocked: true,
+        reason: 'scheduled_tournament',
+        ends_at: null,
+        tournament_starts_at: '2030-09-09T15:00:00.000Z',
+      }),
+    ).toMatch(/^9 сентября \d{2}:00$/);
   });
 });

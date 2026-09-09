@@ -138,7 +138,7 @@ describe('DailyOverviewScreen', () => {
     });
   });
 
-  it('shows recovery crossing midnight separately from the daily reset countdown', async () => {
+  it('does not show a separate recovery notice above the daily card', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-30T23:50:00.000Z'));
     fetchDailyStateMock.mockResolvedValue({
       ...dailyState,
@@ -151,10 +151,9 @@ describe('DailyOverviewScreen', () => {
       },
     });
     renderScreen();
-    const lock = await screen.findByRole('status', { name: 'Блокировка игры' });
-    expect(lock).toHaveTextContent('Восстановление после тренировки');
-    expect(lock).toHaveTextContent('01:00:00');
-    expect(screen.getByLabelText(/^До конца дня:/)).toHaveTextContent('10:00');
+    expect(await screen.findByLabelText(/^До конца дня:/)).toHaveTextContent('10:00');
+    expect(screen.queryByRole('status', { name: 'Блокировка игры' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Восстановление после тренировки/)).not.toBeInTheDocument();
   });
 
   it('shows daily history as a calendar with completed, incomplete and missed days', async () => {

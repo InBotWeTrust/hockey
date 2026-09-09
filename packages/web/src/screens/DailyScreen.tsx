@@ -102,7 +102,11 @@ import {
   deriveAmateurAccess,
   guardAmateurMutation,
 } from '../amateur/amateurAccess.js';
-import { dailyGameplayLockCopy, gameplayLockCopy } from '../api/gameplayLock.js';
+import {
+  dailyGameplayLockCopy,
+  gameplayLockCopy,
+  tournamentGameDateCopy,
+} from '../api/gameplayLock.js';
 import {
   fetchMyInventory,
   patchEquipment,
@@ -1140,8 +1144,18 @@ function GameHub({
             }
           : isDailyLockedByTraining
             ? {
-                timerLabel: trainingCooldownEndsAt > 0 ? 'До игры' : 'Статус',
-                timer: trainingCooldownEndsAt > 0 ? formatHms(trainingCooldownRemaining) : 'ИГРА',
+                timerLabel:
+                  data.gameplay_lock?.reason === 'scheduled_tournament'
+                    ? 'Дата игры'
+                    : trainingCooldownEndsAt > 0
+                      ? 'До игры'
+                      : 'Статус',
+                timer:
+                  data.gameplay_lock?.reason === 'scheduled_tournament'
+                    ? (tournamentGameDateCopy(data.gameplay_lock) ?? 'ИГРА')
+                    : trainingCooldownEndsAt > 0
+                      ? formatHms(trainingCooldownRemaining)
+                      : 'ИГРА',
                 activePeriod: null,
                 ariaLabel: `${dailyGameplayLockCopy(data.gameplay_lock!, now)}${trainingCooldownEndsAt > 0 ? `. До игры ${formatHms(trainingCooldownRemaining)}` : ''}`,
               }

@@ -91,5 +91,5 @@ export interface ChallengeTrophyDetail {
   title: string;
   startsAt: string;
   endsAt: string;
-  tasks: string[];
+  tasks: Array<{ title: string; target: number }>;
 }

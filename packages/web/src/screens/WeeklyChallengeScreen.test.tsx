@@ -140,6 +140,26 @@ describe('WeeklyChallengeScreen', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Будущие (1)' })).toBeInTheDocument();
   });
 
+  it('does not mark challenges as actionable after the player declined', async () => {
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
+      future: [],
+      active: [
+        challenge({
+          participant: null,
+          canJoin: true,
+          declinedAt: '2026-06-01T10:00:00.000Z',
+          tasks: [{ ...challenge().tasks[0]!, progress: null, completed: null }],
+        }),
+      ],
+      completed: [],
+    });
+
+    renderScreen();
+
+    await screen.findByText('Неделя снайпера');
+    expect(screen.queryByLabelText('Требуется действие')).not.toBeInTheDocument();
+  });
+
   it('renders tasks as compact rows instead of nested cards', async () => {
     vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
       future: [],

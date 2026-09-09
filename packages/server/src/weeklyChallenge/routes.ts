@@ -3,9 +3,11 @@ import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import {
+  acknowledgeWeeklyChallengeFailure,
   claimWeeklyChallengeReward,
   declineWeeklyChallenge,
   getCurrentWeeklyChallenge,
+  getPendingWeeklyChallengeFailure,
   getWeeklyChallengeCatalog,
   joinWeeklyChallenge,
 } from './service.js';
@@ -37,6 +39,22 @@ export const weeklyChallengeRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/weekly-challenge/catalog', { preHandler: [app.authenticate] }, async (req) =>
     getWeeklyChallengeCatalog(app.pg, req.user.id),
+  );
+
+  app.get('/weekly-challenge/failures/pending', { preHandler: [app.authenticate] }, async (req) =>
+    getPendingWeeklyChallengeFailure(app.pg, req.user.id),
+  );
+
+  app.post(
+    '/weekly-challenge/failures/:id/acknowledge',
+    { preHandler: [app.authenticate] },
+    async (req) => {
+      const params = paramsSchema.safeParse(req.params);
+      if (!params.success) throw new AppError('bad_request', 'invalid weekly challenge id', 400);
+      return withTransaction(app, (client) =>
+        acknowledgeWeeklyChallengeFailure(client, params.data.id, req.user.id),
+      );
+    },
   );
 
   app.post('/weekly-challenge/:id/join', { preHandler: [app.authenticate] }, async (req) => {

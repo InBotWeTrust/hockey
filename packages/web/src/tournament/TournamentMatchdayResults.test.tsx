@@ -52,6 +52,10 @@ describe('TournamentMatchdayResults', () => {
       </QueryClientProvider>,
     );
 
+    expect(fetchResults).not.toHaveBeenCalled();
+    expect(screen.queryByText('Игрок 1')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Показать прошедшие игры дня' }));
+
     expect(await screen.findByText('Игрок 1')).toBeInTheDocument();
     expect(screen.getByText('20 шайб из 30 · точность 67%')).toBeInTheDocument();
     expect(screen.queryByText('Игрок 5')).not.toBeInTheDocument();
@@ -75,9 +79,9 @@ describe('TournamentMatchdayResults', () => {
       ]),
     ).toBeDefined();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Свернуть' }));
-    expect(screen.queryByText('Игрок 5')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Показать ещё' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Скрыть прошедшие игры дня' }));
+    expect(screen.queryByText('Игрок 1')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Показать прошедшие игры дня' }));
     expect(screen.getByText('Игрок 5')).toBeInTheDocument();
     await waitFor(() => expect(fetchResults).toHaveBeenCalledTimes(2));
   });

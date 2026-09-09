@@ -229,7 +229,9 @@ function transactionCategory(reason: string): TransactionCategory {
   if (
     reason === 'weekly_challenge_reward' ||
     reason === 'duel_reward' ||
-    reason === 'achievement_reward'
+    reason === 'achievement_reward' ||
+    reason === 'bonus_game_reward' ||
+    reason === 'tournament_reward'
   )
     return 'reward';
   if (reason.startsWith('duel_')) return 'duel';
@@ -237,11 +239,17 @@ function transactionCategory(reason: string): TransactionCategory {
   return 'other';
 }
 
-function transactionTitle(reason: string, metadata: Record<string, unknown>): string {
+export function transactionTitle(reason: string, metadata: Record<string, unknown>): string {
   const title = stringMetadata(metadata, 'title');
   if (title) return title;
   if (reason === 'inventory_purchase') return 'Покупка инвентаря';
+  if (reason === 'purchase') return 'Пополнение баланса';
+  if (reason === 'recovery_kit_use') return 'Использование восстановления';
   if (reason === 'weekly_challenge_reward') return 'Недельная награда';
+  if (reason === 'bonus_game_reward') return 'Награда за бонусную игру';
+  if (reason === 'tournament_reward') return 'Награда за турнир';
+  if (reason === 'tournament_entry_fee') return 'Взнос за турнир';
+  if (reason === 'tournament_entry_refund') return 'Возврат взноса за турнир';
   if (reason === 'duel_reward') return 'Награда за дуэль';
   if (reason === 'achievement_reward') return 'Награда за достижение';
   if (reason === 'duel_stake_hold') return 'Ставка дуэли заморожена';
@@ -250,7 +258,7 @@ function transactionTitle(reason: string, metadata: Record<string, unknown>): st
   if (reason === 'duel_stake_payout') return 'Выигрыш ставки';
   if (reason === 'duel_stake_burn') return 'Ставка списана';
   if (reason === 'admin_adjustment') return 'Корректировка баланса';
-  return 'Операция';
+  return 'Другая операция';
 }
 
 function transactionSubtitle(
@@ -271,8 +279,17 @@ function transactionSubtitle(
     parts.push('восстановление');
     const recoveryMinutes = numberMetadata(metadata, 'recovery_minutes');
     if (recoveryMinutes > 0) parts.push(`−${recoveryMinutes} минут`);
-  } else if (reason === 'weekly_challenge_reward' || reason === 'achievement_reward') {
+  } else if (
+    reason === 'weekly_challenge_reward' ||
+    reason === 'achievement_reward' ||
+    reason === 'bonus_game_reward' ||
+    reason === 'tournament_reward'
+  ) {
     parts.push('награда');
+  } else if (reason === 'tournament_entry_fee') {
+    parts.push('турнирный взнос');
+  } else if (reason === 'tournament_entry_refund') {
+    parts.push('возврат турнирного взноса');
   } else if (reason.startsWith('duel_')) {
     parts.push('дуэль');
   } else if (reason === 'admin_adjustment') {

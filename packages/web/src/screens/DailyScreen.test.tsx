@@ -2265,8 +2265,8 @@ describe('DailyScreen', () => {
   it.each([
     ['recent_gameplay', null, /Восстановление после игры/],
     ['active_classic', null, /Завершите текущую игру в турнире/],
-    ['scheduled_tournament', '2099-04-25T14:00:00.000Z', /До турнирной игры/],
-    ['scheduled_tournament', '2020-04-25T14:00:00.000Z', /До завершения турнирного блока/],
+    ['scheduled_tournament', '2099-04-25T14:00:00.000Z', /Недоступно до окончания игры в турнире/],
+    ['scheduled_tournament', '2020-04-25T14:00:00.000Z', /Недоступно до окончания игры в турнире/],
   ] as const)('renders authoritative training lock %s (%s)', async (reason, startsAt, copy) => {
     const locked = {
       ...trainingIdleState,
@@ -2310,7 +2310,7 @@ describe('DailyScreen', () => {
 
   it.each([
     ['active_classic', 'Завершите текущую игру в турнире'],
-    ['scheduled_tournament', 'До завершения турнирного блока'],
+    ['scheduled_tournament', 'Недоступно до окончания игры в турнире'],
   ] as const)(
     'announces the actual %s daily lock without a recovery countdown',
     async (reason, copy) => {
@@ -2374,7 +2374,7 @@ describe('DailyScreen', () => {
     renderWith();
     await act(async () => Promise.resolve());
     fireEvent.click(screen.getByRole('button', { name: 'Выбрать Тренировка' }));
-    expect(screen.getByText('До завершения турнирного блока')).toBeInTheDocument();
+    expect(screen.getByText('Недоступно до окончания игры в турнире')).toBeInTheDocument();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
@@ -2932,7 +2932,7 @@ describe('DailyScreen', () => {
     ['active_classic', null, true, 'Завершите текущую игру в турнире'],
     ['active_classic', '2099-04-25T14:00:00.000Z', true, 'Завершите текущую игру в турнире'],
     ['scheduled_tournament', '2099-04-25T14:00:00.000Z', false, null],
-    ['scheduled_tournament', '2020-04-25T14:00:00.000Z', true, 'До завершения турнирного блока'],
+    ['scheduled_tournament', '2020-04-25T14:00:00.000Z', true, 'Недоступно до окончания игры в турнире'],
   ] as const)(
     'obeys the active daily period lock %s at %s (blocked=%s)',
     async (reason, startsAt, blocked, copy) => {
@@ -3783,7 +3783,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=training&play=1']);
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
-    expect(screen.getByText('До завершения турнирного блока')).toBeInTheDocument();
+    expect(screen.getByText('Недоступно до окончания игры в турнире')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
   });
 
@@ -4098,7 +4098,7 @@ describe('DailyScreen', () => {
   });
 
   it.each([
-    ['scheduled_tournament', 'До завершения турнирного блока'],
+    ['scheduled_tournament', 'Недоступно до окончания игры в турнире'],
     ['active_classic', 'Завершите текущую игру в турнире'],
   ] as const)(
     'refreshes a newly appeared %s lock after training start returns 409',

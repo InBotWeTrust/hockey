@@ -387,7 +387,14 @@ export function TrophyHistoryModal({
               <article className="profile-trophy-history__challenge" key={item.id}>
                 <strong>{item.title}</strong>
                 <span>{formatTrophyDateRange(item.startsAt, item.endsAt)}</span>
-                <p>{item.tasks.join(' · ')}</p>
+                <ul className="profile-trophy-history__challenge-tasks">
+                  {item.tasks.map((task, index) => (
+                    <li key={`${task.title}:${index}`}>
+                      <span>{task.title}</span>
+                      <strong>{formatProfileNumber(task.target)}</strong>
+                    </li>
+                  ))}
+                </ul>
               </article>
             ))
           : tournamentItems.map((item) => (

@@ -450,4 +450,47 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       declinedAt: expect.any(String),
     });
   });
+
+  it('returns an unfinished participant challenge until it is acknowledged', async () => {
+    const challengeId = await createChallenge({
+      title: 'Незавершённый челлендж',
+      joinOpenOffset: '3 days',
+      startOffset: '2 days',
+      endOffset: '1 hour',
+    });
+    await pool.query(
+      `insert into weekly_challenge_participants (challenge_id, user_id, joined_at)
+       values ($1, $2, now() - interval '2 days')`,
+      [challengeId, userId],
+    );
+
+    const pending = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/failures/pending',
+      headers: authHeader(),
+    });
+    expect(pending.statusCode).toBe(200);
+    expect(pending.json().challenge).toMatchObject({
+      id: challengeId,
+      title: 'Незавершённый челлендж',
+      status: 'finished',
+      allTasksCompleted: false,
+      tasks: [{ progress: 0, target: 1, completed: false }],
+    });
+
+    const acknowledged = await app.inject({
+      method: 'POST',
+      url: `/weekly-challenge/failures/${challengeId}/acknowledge`,
+      headers: authHeader(),
+    });
+    expect(acknowledged.statusCode).toBe(200);
+    expect(acknowledged.json()).toEqual({ challenge: null });
+
+    const after = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/failures/pending',
+      headers: authHeader(),
+    });
+    expect(after.json()).toEqual({ challenge: null });
+  });
 });

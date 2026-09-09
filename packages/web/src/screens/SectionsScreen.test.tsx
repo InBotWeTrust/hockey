@@ -6,6 +6,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AchievementDto } from '../api/achievements.js';
 import type { RegularSeasonPodiumCongratulation } from '../api/tournament.js';
+import type { WeeklyChallenge } from '../api/weeklyChallenge.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { SectionsScreen } from './SectionsScreen.js';
@@ -24,6 +25,7 @@ interface MockSectionsData {
   profileRequest?: 'error' | 'loading';
   pendingTournamentCongratulations?: RegularSeasonPodiumCongratulation[];
   acknowledgementRequest?: 'error';
+  pendingChallengeFailure?: WeeklyChallenge | null;
 }
 
 function renderSections(): void {
@@ -57,6 +59,7 @@ function mockSectionsApi({
   profileRequest,
   pendingTournamentCongratulations = [],
   acknowledgementRequest,
+  pendingChallengeFailure = null,
 }: MockSectionsData = {}): void {
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
     const url = String(input);
@@ -77,6 +80,22 @@ function mockSectionsApi({
             headers: { 'Content-Type': 'application/json' },
           },
         ),
+      );
+    }
+    if (url.endsWith('/api/weekly-challenge/failures/pending')) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ challenge: pendingChallengeFailure }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    }
+    if (url.includes('/api/weekly-challenge/failures/') && url.endsWith('/acknowledge')) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ challenge: null }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
       );
     }
     if (url.endsWith('/api/duel/daily/state')) {
@@ -188,6 +207,40 @@ describe('SectionsScreen', () => {
     renderSections();
 
     expect(await screen.findByText('50/90 бросков сегодня')).toBeInTheDocument();
+  });
+
+  it('shows an unfinished challenge result once and acknowledges it', async () => {
+    mockSectionsApi({
+      pendingChallengeFailure: {
+        id: '00000000-0000-4000-8000-000000000811',
+        title: 'Снайпер недели',
+        description: 'Описание',
+        status: 'finished',
+        joinOpenAt: '2026-09-01T00:00:00.000Z',
+        startAt: '2026-09-02T00:00:00.000Z',
+        endAt: '2026-09-09T00:00:00.000Z',
+        joinEnabled: false,
+        reward: { coins: 0, stars: 0, experience: 0 },
+        participant: { joinedAt: '2026-09-02T00:00:00.000Z', rewardClaimedAt: null },
+        declinedAt: null,
+        tasks: [
+          { id: 'task-1', type: 'goals_scored', title: 'Забросить шайбы', target: 100, progress: 72, completed: false },
+          { id: 'task-2', type: 'trainings_completed', title: 'Пройти тренировки', target: 2, progress: 2, completed: true },
+        ],
+        canJoin: false,
+        canClaimReward: false,
+        allTasksCompleted: false,
+        serverNow: '2026-09-09T01:00:00.000Z',
+      },
+    });
+    renderSections();
+
+    expect(await screen.findByRole('dialog', { name: 'Челлендж не пройден' })).toBeInTheDocument();
+    expect(screen.getByText('Снайпер недели')).toBeInTheDocument();
+    expect(screen.getByText('72 / 100')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
+    expect(await screen.findByText('Быстрый доступ')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Челлендж не пройден' })).not.toBeInTheDocument();
   });
 
   it('shows pending podium congratulations oldest first and advances after acknowledgement', async () => {

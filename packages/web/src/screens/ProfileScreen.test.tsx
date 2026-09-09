@@ -59,7 +59,7 @@ const profile = {
         title: 'Неделя точности',
         startsAt: '2026-08-10T10:00:00.000Z',
         endsAt: '2026-08-17T10:00:00.000Z',
-        tasks: ['Забросить 25 шайб'],
+        tasks: [{ title: 'Забросить шайбы', target: 25 }],
       },
     ],
   },
@@ -366,6 +366,19 @@ describe('ProfileScreen', () => {
     expect(dialog).toHaveTextContent('01.08.2026 — 08.08.2026');
     expect(dialog).toHaveTextContent('Победа в регулярном чемпионате');
     expect(screen.getByRole('img', { name: 'Кубок открытия' })).toHaveAttribute('src', '/cup.webp');
+  });
+
+  it('renders completed challenge tasks as aligned rows with their targets', async () => {
+    mockProfileRequest();
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: /пройденные челленджи/i }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Пройденные челленджи (1)' });
+    const task = within(dialog).getByRole('listitem');
+    expect(task).toHaveTextContent('Забросить шайбы');
+    expect(task).toHaveTextContent('25');
+    expect(dialog.querySelector('.profile-trophy-history__challenge-tasks')).toBeInTheDocument();
   });
 
   it('uses the default tournament artwork when a trophy has no image', async () => {

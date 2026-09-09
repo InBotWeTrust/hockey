@@ -48,6 +48,10 @@ export interface WeeklyChallengeCatalogResponse {
   completed: WeeklyChallenge[];
 }
 
+export interface WeeklyChallengeFailureResponse {
+  challenge: WeeklyChallenge | null;
+}
+
 export function weeklyChallengeNeedsAction(
   challenge: Pick<WeeklyChallenge, 'canJoin' | 'canClaimReward' | 'declinedAt'> | null | undefined,
 ): boolean {
@@ -63,6 +67,19 @@ export function fetchWeeklyChallenge(): Promise<WeeklyChallengeCurrentResponse> 
 
 export function fetchWeeklyChallengeCatalog(): Promise<WeeklyChallengeCatalogResponse> {
   return apiFetch<WeeklyChallengeCatalogResponse>('/weekly-challenge/catalog');
+}
+
+export function fetchPendingWeeklyChallengeFailure(): Promise<WeeklyChallengeFailureResponse> {
+  return apiFetch<WeeklyChallengeFailureResponse>('/weekly-challenge/failures/pending');
+}
+
+export function acknowledgeWeeklyChallengeFailure(
+  id: string,
+): Promise<WeeklyChallengeFailureResponse> {
+  return apiFetch<WeeklyChallengeFailureResponse>(
+    `/weekly-challenge/failures/${id}/acknowledge`,
+    { method: 'POST' },
+  );
 }
 
 export function joinWeeklyChallenge(id: string): Promise<WeeklyChallengeCurrentResponse> {

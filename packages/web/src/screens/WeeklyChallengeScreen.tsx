@@ -8,6 +8,7 @@ import {
   claimWeeklyChallengeReward,
   declineWeeklyChallenge,
   joinWeeklyChallenge,
+  weeklyChallengeNeedsAction,
   type WeeklyChallenge,
   type WeeklyChallengeCatalogResponse,
 } from '../api/weeklyChallenge.js';
@@ -150,7 +151,7 @@ export function WeeklyChallengeScreen({
   const visibleChallenges = catalog[filter];
   const selectedFilter = FILTERS.find((item) => item.id === filter) ?? FILTERS[0]!;
   const challengeAttention = [...catalog.future, ...catalog.active, ...catalog.completed].some(
-    (challenge) => challenge.canJoin || challenge.canClaimReward,
+    (challenge) => weeklyChallengeNeedsAction(challenge),
   );
 
   const join = useMutation({

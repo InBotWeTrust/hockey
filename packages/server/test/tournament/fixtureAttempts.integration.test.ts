@@ -3512,7 +3512,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       },
       tournament: {
         status: 'completed',
-        winnerUserId: context.fixture.home_user_id,
+        winnerUserId: null,
       },
     });
   });

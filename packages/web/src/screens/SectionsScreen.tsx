@@ -1,10 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight } from 'lucide-react';
+import { Check, ChevronRight } from 'lucide-react';
 import { fetchAchievements } from '../api/achievements.js';
 import { apiFetch } from '../api/apiFetch.js';
-import { fetchWeeklyChallenge, weeklyChallengeNeedsAction } from '../api/weeklyChallenge.js';
+import {
+  acknowledgeWeeklyChallengeFailure,
+  fetchPendingWeeklyChallengeFailure,
+  fetchWeeklyChallenge,
+  weeklyChallengeNeedsAction,
+  type WeeklyChallengeFailureResponse,
+} from '../api/weeklyChallenge.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 import type { ProfileData } from './profileTypes.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
@@ -37,6 +44,7 @@ export function SectionsScreen(): JSX.Element {
   const trainingData = useTrainingSessionStore((s) => s.data);
   const refreshTraining = useTrainingSessionStore((s) => s.refresh);
   const [podiumAckError, setPodiumAckError] = useState<string | null>(null);
+  const [failureAckError, setFailureAckError] = useState<string | null>(null);
   const weeklyChallenge = useQuery({
     queryKey: ['weekly-challenge', 'section'],
     queryFn: fetchWeeklyChallenge,
@@ -48,6 +56,10 @@ export function SectionsScreen(): JSX.Element {
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile', 'sections'],
     queryFn: () => apiFetch<ProfileData>('/me?includeTournamentCongratulations=true'),
+  });
+  const failureQuery = useQuery({
+    queryKey: ['weekly-challenge', 'failure', 'pending'],
+    queryFn: fetchPendingWeeklyChallengeFailure,
   });
 
   const pendingCongratulations = profileQuery.data?.pendingTournamentCongratulations ?? [];
@@ -70,6 +82,18 @@ export function SectionsScreen(): JSX.Element {
       );
     },
     onError: () => setPodiumAckError('Не удалось закрыть. Попробуйте ещё раз.'),
+  });
+  const acknowledgeFailure = useMutation({
+    mutationFn: acknowledgeWeeklyChallengeFailure,
+    onMutate: () => setFailureAckError(null),
+    onSuccess: (response) => {
+      setFailureAckError(null);
+      queryClient.setQueryData<WeeklyChallengeFailureResponse>(
+        ['weekly-challenge', 'failure', 'pending'],
+        response,
+      );
+    },
+    onError: () => setFailureAckError('Не удалось закрыть. Попробуйте ещё раз.'),
   });
 
   useEffect(() => {
@@ -209,6 +233,42 @@ export function SectionsScreen(): JSX.Element {
           error={podiumAckError}
           onConfirm={() => acknowledgePodium.mutate(activeCongratulation.id)}
         />
+      )}
+      {activeCongratulation === null && failureQuery.data?.challenge != null && (
+        <AccessibleModal
+          title="Челлендж не пройден"
+          copy={failureQuery.data.challenge.title}
+          closeBlocked
+          cardClassName="weekly-challenge-failure-modal"
+        >
+          <div className="weekly-challenge-failure-modal__tasks">
+            {failureQuery.data.challenge.tasks.map((task) => (
+              <div
+                className={`weekly-challenge-failure-modal__task${task.completed ? ' weekly-challenge-failure-modal__task--completed' : ''}`}
+                key={task.id}
+              >
+                <span className="weekly-challenge-failure-modal__status" aria-hidden="true">
+                  {task.completed && <Check size={15} strokeWidth={3} />}
+                </span>
+                <span>{task.title}</span>
+                <strong>
+                  {(task.progress ?? 0).toLocaleString('ru-RU')} / {task.target.toLocaleString('ru-RU')}
+                </strong>
+              </div>
+            ))}
+          </div>
+          {failureAckError !== null && <p className="modal-error" role="alert">{failureAckError}</p>}
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="modal-primary btn btn--cta"
+              disabled={acknowledgeFailure.isPending}
+              onClick={() => acknowledgeFailure.mutate(failureQuery.data!.challenge!.id)}
+            >
+              {acknowledgeFailure.isPending ? 'Закрываем…' : 'Понятно'}
+            </button>
+          </div>
+        </AccessibleModal>
       )}
     </main>
   );

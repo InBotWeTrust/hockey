@@ -11,14 +11,24 @@ export interface GameplayLockDTO {
   tournament_starts_at: string | null;
 }
 
-export function gameplayLockCopy(lock: GameplayLockDTO, now = Date.now()): string {
+export function gameplayLockCopy(lock: GameplayLockDTO, _now = Date.now()): string {
   if (lock.reason === 'recent_gameplay') return 'Восстановление после игры';
   if (lock.reason === 'active_daily') return 'Завершите ежедневную игру';
   if (lock.reason === 'active_classic') return 'Завершите текущую игру в турнире';
+  return 'Недоступно до окончания игры в турнире';
+}
+
+export function tournamentGameDateCopy(lock: GameplayLockDTO): string | null {
   const startsAt = lock.tournament_starts_at ? Date.parse(lock.tournament_starts_at) : NaN;
-  return startsAt > now
-    ? `До турнирной игры. Начало: ${new Date(startsAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}`
-    : 'До завершения турнирного блока';
+  if (!Number.isFinite(startsAt)) return null;
+  return new Date(startsAt).toLocaleString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+    .replace(',', '')
+    .replace(' в ', ' ');
 }
 
 export function dailyGameplayLockCopy(lock: GameplayLockDTO, now = Date.now()): string {

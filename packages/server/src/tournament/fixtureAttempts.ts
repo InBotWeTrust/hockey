@@ -1331,6 +1331,12 @@ async function fetchPlayerAttemptStateRow(
           where final_series.tournament_id = tournament.id
             and final_series.kind = 'championship'
             and final_series.status = 'completed'
+            and final_round.number = (
+              select max(candidate_round.number)
+                from tournament_round candidate_round
+               where candidate_round.tournament_id = tournament.id
+                 and candidate_round.stage = 'playoff'
+            )
           order by final_round.number desc
           limit 1
        ) tournament_winner on true

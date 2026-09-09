@@ -92,6 +92,10 @@ export interface WeeklyChallengeCatalogResponse {
   completed: WeeklyChallengeDTO[];
 }
 
+export interface WeeklyChallengeFailureResponse {
+  challenge: WeeklyChallengeDTO | null;
+}
+
 export function classifyWeeklyChallengeForCatalog(
   challenge: WeeklyChallengeDTO,
 ): WeeklyChallengeCatalogSection | null {

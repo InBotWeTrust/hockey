@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   fetchTournamentMatchdayResults,
   type TournamentMatchdayResultCursor,
@@ -27,6 +27,9 @@ export function TournamentMatchdayResults({
   viewerUserId: string;
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    setExpanded(false);
+  }, [matchdayNumber, tournamentId, viewerUserId]);
   const query = useInfiniteQuery({
     queryKey: [
       'tournaments',
@@ -40,21 +43,29 @@ export function TournamentMatchdayResults({
       fetchTournamentMatchdayResults(tournamentId, matchdayNumber, pageParam, PAGE_SIZE),
     initialPageParam: null as TournamentMatchdayResultCursor | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    enabled: expanded,
+    staleTime: Number.POSITIVE_INFINITY,
   });
   const loadedResults = query.data?.pages.flatMap((page) => page.results) ?? [];
-  const visibleResults = expanded ? loadedResults : loadedResults.slice(0, PAGE_SIZE);
-  const canExpandCached = !expanded && loadedResults.length > PAGE_SIZE;
-  const showMore = query.hasNextPage || canExpandCached;
+  const visibleResults = loadedResults;
+  const showMore = query.hasNextPage;
 
   return (
     <section className="tournament-matchday-past" aria-label="Прошедшие игры дня">
-      <h5>Прошедшие игры дня</h5>
-      {query.isLoading && <p>Загружаем результаты…</p>}
-      {query.isError && <p role="alert">Не удалось загрузить результаты.</p>}
-      {!query.isLoading && !query.isError && loadedResults.length === 0 && (
+      <button
+        type="button"
+        className="tournament-calendar__expand"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        {expanded ? 'Скрыть прошедшие игры дня' : 'Показать прошедшие игры дня'}
+      </button>
+      {expanded && query.isLoading && <p>Загружаем результаты…</p>}
+      {expanded && query.isError && <p role="alert">Не удалось загрузить результаты.</p>}
+      {expanded && !query.isLoading && !query.isError && loadedResults.length === 0 && (
         <p>Других завершённых игр пока нет.</p>
       )}
-      {visibleResults.map((result) => (
+      {expanded && visibleResults.map((result) => (
         <article key={result.id} className="tournament-matchday-past__row">
           <UserAvatar
             avatarUrl={result.avatarUrl}
@@ -71,31 +82,16 @@ export function TournamentMatchdayResults({
           </div>
         </article>
       ))}
-      {(showMore || (expanded && loadedResults.length > PAGE_SIZE)) && (
+      {expanded && showMore && (
         <div className="tournament-matchday-past__actions">
           {showMore && (
             <button
               type="button"
               className="tournament-calendar__expand"
               disabled={query.isFetchingNextPage}
-              onClick={() => {
-                if (canExpandCached) {
-                  setExpanded(true);
-                  return;
-                }
-                void query.fetchNextPage().then(() => setExpanded(true));
-              }}
+              onClick={() => void query.fetchNextPage()}
             >
               {query.isFetchingNextPage ? 'Загружаем…' : 'Показать ещё'}
-            </button>
-          )}
-          {expanded && loadedResults.length > PAGE_SIZE && (
-            <button
-              type="button"
-              className="tournament-calendar__expand"
-              onClick={() => setExpanded(false)}
-            >
-              Свернуть
             </button>
           )}
         </div>

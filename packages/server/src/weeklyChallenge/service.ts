@@ -8,6 +8,7 @@ import type {
   WeeklyChallengeCurrentResponse,
   WeeklyChallengeDTO,
   WeeklyChallengeDeclineRow,
+  WeeklyChallengeFailureResponse,
   WeeklyChallengeParticipantRow,
   WeeklyChallengeRow,
   WeeklyChallengeStatus,
@@ -290,6 +291,52 @@ export async function getWeeklyChallengeCatalog(
   response.active.sort((left, right) => left.endAt.localeCompare(right.endAt));
   response.completed.sort((left, right) => right.endAt.localeCompare(left.endAt));
   return response;
+}
+
+export async function getPendingWeeklyChallengeFailure(
+  db: Queryable,
+  userId: string,
+  now = new Date(),
+): Promise<WeeklyChallengeFailureResponse> {
+  const { rows } = await db.query<WeeklyChallengeRow>(
+    `select challenge.*
+       from weekly_challenges challenge
+       join weekly_challenge_participants participant
+         on participant.challenge_id = challenge.id and participant.user_id = $1
+       left join weekly_challenge_failure_acknowledgements acknowledgement
+         on acknowledgement.challenge_id = challenge.id and acknowledgement.user_id = $1
+      where challenge.end_at <= $2
+        and acknowledgement.challenge_id is null
+      order by challenge.end_at asc, challenge.id asc`,
+    [userId, now],
+  );
+  for (const row of rows) {
+    const challenge = await mapChallenge(db, row, userId, now);
+    if (!challenge.allTasksCompleted) return { challenge };
+  }
+  return { challenge: null };
+}
+
+export async function acknowledgeWeeklyChallengeFailure(
+  client: PoolClient,
+  challengeId: string,
+  userId: string,
+  now = new Date(),
+): Promise<WeeklyChallengeFailureResponse> {
+  const challenge = await fetchChallengeForRewardUpdate(client, challengeId);
+  if (challenge === null) throw new AppError('not_found', 'weekly challenge not found', 404);
+  const mapped = await mapChallenge(client, challenge, userId, now);
+  if (mapped.participant === null || mapped.status !== 'finished' || mapped.allTasksCompleted) {
+    throw new AppError('conflict', 'weekly challenge failure is not available', 409);
+  }
+  await client.query(
+    `insert into weekly_challenge_failure_acknowledgements
+       (challenge_id, user_id, acknowledged_at)
+     values ($1, $2, $3)
+     on conflict (challenge_id, user_id) do nothing`,
+    [challengeId, userId, now],
+  );
+  return getPendingWeeklyChallengeFailure(client, userId, now);
 }
 
 export async function joinWeeklyChallenge(

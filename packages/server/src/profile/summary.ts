@@ -46,7 +46,7 @@ export interface ChallengeTrophyDetailDTO {
   title: string;
   startsAt: string;
   endsAt: string;
-  tasks: string[];
+  tasks: Array<{ title: string; target: number }>;
 }
 
 export interface TrophyDetailsDTO {
@@ -276,16 +276,18 @@ export async function fetchTrophyDetails(db: Queryable, userId: string): Promise
     title: string;
     start_at: Date;
     end_at: Date;
-    tasks: string[];
+    tasks: Array<{ title: string; target: number }>;
   }>(
     `select challenge.id, challenge.title, challenge.start_at, challenge.end_at,
-            array_agg(coalesce(nullif(task.title, ''), case task.type
-              when 'goals_scored' then 'Забросить ' || task.target || ' шайб'
-              when 'duels_played' then 'Сыграть ' || task.target || ' дуэлей'
-              when 'duels_won' then 'Победить в ' || task.target || ' дуэлях'
-              when 'duel_invites_sent' then 'Пригласить ' || task.target || ' соперников'
-              else 'Завершить ' || task.target || ' тренировок' end)
-              order by task.sort_order asc, task.created_at asc) as tasks
+            jsonb_agg(jsonb_build_object(
+              'title', coalesce(nullif(task.title, ''), case task.type
+                when 'goals_scored' then 'Забросить шайбы'
+                when 'duels_played' then 'Сыграть дуэли'
+                when 'duels_won' then 'Победить в дуэлях'
+                when 'duel_invites_sent' then 'Пригласить соперников'
+                else 'Завершить тренировки' end),
+              'target', task.target
+            ) order by task.sort_order asc, task.created_at asc) as tasks
        from weekly_challenge_reward_claims claim
        join weekly_challenges challenge on challenge.id = claim.challenge_id
        join weekly_challenge_tasks task on task.challenge_id = challenge.id

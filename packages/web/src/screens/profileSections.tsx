@@ -278,7 +278,15 @@ export function ProfileAchievementsSection({
   style?: CSSProperties;
   labelStyle?: CSSProperties;
 }): JSX.Element {
-  const unlockedAchievements = achievements.filter((achievement) => achievement.isUnlocked).length;
+  const sortedAchievements = [...achievements].sort((left, right) => {
+    const leftTime = left.completedAt ? Date.parse(left.completedAt) : Number.NaN;
+    const rightTime = right.completedAt ? Date.parse(right.completedAt) : Number.NaN;
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) return rightTime - leftTime;
+    if (Number.isFinite(leftTime)) return -1;
+    if (Number.isFinite(rightTime)) return 1;
+    return 0;
+  });
+  const unlockedAchievements = sortedAchievements.filter((achievement) => achievement.isUnlocked).length;
 
   return (
     <>
@@ -322,7 +330,7 @@ export function ProfileAchievementsSection({
             scrollSnapType: 'x proximity',
           }}
         >
-          {achievements.map((achievement) => (
+          {sortedAchievements.map((achievement) => (
             <AchievementTile
               key={achievement.id}
               achievement={achievement}
