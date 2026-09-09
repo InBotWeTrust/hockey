@@ -49,5 +49,22 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
         [visibleFrom, startAt, endAt],
       ),
     ).rejects.toMatchObject({ code: '23505' });
+
+    await pool.query(
+      `insert into weekly_challenges
+         (title, join_open_at, start_at, end_at)
+       values ('C', $1, $2, $3), ('D', $1, $2, $3)`,
+      [visibleFrom, startAt, endAt],
+    );
+    const manual = await pool.query(
+      `select title, visible_from, is_automatic
+         from weekly_challenges
+        where title in ('C', 'D')
+        order by title`,
+    );
+    expect(manual.rows).toEqual([
+      { title: 'C', visible_from: startAt, is_automatic: false },
+      { title: 'D', visible_from: startAt, is_automatic: false },
+    ]);
   });
 });
