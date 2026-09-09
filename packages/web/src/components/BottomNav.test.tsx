@@ -371,7 +371,12 @@ describe('BottomNav remembered navigation', () => {
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              challenge: { id: 'challenge-1', title: 'Новый челлендж', canJoin: true },
+              challenge: {
+                id: 'challenge-1',
+                title: 'Новый челлендж',
+                status: 'finished',
+                canClaimReward: true,
+              },
               pendingRewards: [],
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -400,7 +405,7 @@ describe('BottomNav remembered navigation', () => {
     }
   });
 
-  it('shows a sections badge when a weekly challenge needs joining', async () => {
+  it('does not show a sections badge for future or running challenges without a claimable reward', async () => {
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith('/api/weekly-challenge/current')) {
@@ -410,9 +415,10 @@ describe('BottomNav remembered navigation', () => {
               challenge: {
                 id: 'challenge-1',
                 title: 'Неделя снайпера',
-                canJoin: true,
+                status: 'running',
+                canClaimReward: false,
               },
-              pendingRewards: [],
+              pendingRewards: [{ id: 'challenge-future', status: 'future', canClaimReward: false }],
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           ),
@@ -428,10 +434,11 @@ describe('BottomNav remembered navigation', () => {
 
     renderBottomNav('/profile');
 
-    expect(await screen.findByLabelText('События разделов: 1')).toHaveTextContent('1');
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    expect(screen.queryByLabelText(/События разделов:/)).toBeNull();
   });
 
-  it('does not show a challenge action after the user declined participation', async () => {
+  it('counts a claimable challenge only once when it occurs in current and pending rewards', async () => {
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith('/api/weekly-challenge/current')) {
@@ -439,14 +446,12 @@ describe('BottomNav remembered navigation', () => {
           new Response(
             JSON.stringify({
               challenge: {
-                id: 'challenge-declined',
+                id: 'challenge-1',
                 title: 'Неделя снайпера',
-                status: 'running',
-                canJoin: true,
-                canClaimReward: false,
-                declinedAt: '2026-09-01T10:00:00.000Z',
+                status: 'finished',
+                canClaimReward: true,
               },
-              pendingRewards: [],
+              pendingRewards: [{ id: 'challenge-1', status: 'finished', canClaimReward: true }],
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           ),
@@ -462,8 +467,7 @@ describe('BottomNav remembered navigation', () => {
 
     renderBottomNav('/profile');
 
-    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
-    expect(screen.queryByLabelText(/События разделов:/)).toBeNull();
+    expect(await screen.findByLabelText('События разделов: 1')).toHaveTextContent('1');
   });
 
   it('shows a sections badge when a weekly challenge reward can be claimed', async () => {
@@ -476,7 +480,7 @@ describe('BottomNav remembered navigation', () => {
               challenge: {
                 id: 'challenge-1',
                 title: 'Неделя снайпера',
-                canJoin: false,
+                status: 'finished',
                 canClaimReward: true,
               },
               pendingRewards: [],
@@ -508,7 +512,7 @@ describe('BottomNav remembered navigation', () => {
               challenge: {
                 id: 'challenge-1',
                 title: 'Новый челлендж',
-                canJoin: true,
+                status: 'running',
                 canClaimReward: false,
               },
               pendingRewards: [
@@ -533,7 +537,7 @@ describe('BottomNav remembered navigation', () => {
 
     renderBottomNav('/profile');
 
-    expect(await screen.findByLabelText('События разделов: 2')).toHaveTextContent('2');
+    expect(await screen.findByLabelText('События разделов: 1')).toHaveTextContent('1');
   });
 
   it('combines achievement rewards and weekly challenge actions in the sections badge', async () => {
@@ -546,7 +550,7 @@ describe('BottomNav remembered navigation', () => {
               challenge: {
                 id: 'challenge-1',
                 title: 'Новый челлендж',
-                canJoin: true,
+                status: 'running',
                 canClaimReward: false,
               },
               pendingRewards: [
@@ -579,7 +583,7 @@ describe('BottomNav remembered navigation', () => {
 
     renderBottomNav('/profile');
 
-    expect(await screen.findByLabelText('События разделов: 4')).toHaveTextContent('4');
+    expect(await screen.findByLabelText('События разделов: 3')).toHaveTextContent('3');
   });
 
   it('does not count weekly challenge actions for a beginner', async () => {
@@ -590,7 +594,7 @@ describe('BottomNav remembered navigation', () => {
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              challenge: { id: 'challenge-1', canJoin: true },
+              challenge: { id: 'challenge-1', status: 'running', canClaimReward: false },
               pendingRewards: [{ id: 'challenge-old', canClaimReward: true }],
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },

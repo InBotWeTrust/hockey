@@ -6,9 +6,9 @@ import { fetchAchievements } from '../api/achievements.js';
 import { apiFetch } from '../api/apiFetch.js';
 import {
   acknowledgeWeeklyChallengeFailure,
+  countClaimableWeeklyChallenges,
   fetchPendingWeeklyChallengeFailure,
   fetchWeeklyChallenge,
-  weeklyChallengeNeedsAction,
   type WeeklyChallengeFailureResponse,
 } from '../api/weeklyChallenge.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
@@ -123,19 +123,14 @@ export function SectionsScreen(): JSX.Element {
   const weeklyChallengesAvailable =
     profileQuery.data?.competitionLevel === 'amateur' ||
     profileQuery.data?.competitionLevel === 'professional';
-  const weeklyCanClaimReward =
-    weeklyChallengesAvailable &&
-    (weeklyChallenge.data?.challenge?.canClaimReward === true ||
-      (weeklyChallenge.data?.pendingRewards?.length ?? 0) > 0);
-  const weeklyNeedsDecision =
-    weeklyChallengesAvailable &&
-    (weeklyChallengeNeedsAction(weeklyChallenge.data?.challenge) || weeklyCanClaimReward);
+  const weeklyChallengeActionCount = weeklyChallengesAvailable
+    ? countClaimableWeeklyChallenges([
+        weeklyChallenge.data?.challenge,
+        ...(weeklyChallenge.data?.pendingRewards ?? []),
+      ])
+    : 0;
   const sectionTasksActionCount =
-    achievementsUnclaimedCount +
-    (weeklyChallengesAvailable && weeklyChallengeNeedsAction(weeklyChallenge.data?.challenge)
-      ? 1
-      : 0) +
-    (weeklyChallengesAvailable ? (weeklyChallenge.data?.pendingRewards?.length ?? 0) : 0);
+    achievementsUnclaimedCount + weeklyChallengeActionCount;
   const achievementsMeta = `${numberText(achievementsCompletedCount)}/${numberText(achievements.length)} наград`;
 
   const openAmateurs = (): void => {
@@ -185,7 +180,7 @@ export function SectionsScreen(): JSX.Element {
               meta={achievementsMeta}
               tone={sectionTasksActionCount > 0 ? 'active' : 'default'}
               artworkSrc={SECTION_ARTWORK.achievements}
-              attention={sectionTasksActionCount > 0 || weeklyNeedsDecision}
+              attention={sectionTasksActionCount > 0}
               onClick={() => navigate('/achievements')}
             />
             <QuickSectionCard

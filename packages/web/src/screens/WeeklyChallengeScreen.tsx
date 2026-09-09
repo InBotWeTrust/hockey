@@ -6,8 +6,6 @@ import { useNavigate } from 'react-router-dom';
 import { fetchWeeklyChallengeCatalog } from '../api/weeklyChallenge.js';
 import {
   claimWeeklyChallengeReward,
-  declineWeeklyChallenge,
-  joinWeeklyChallenge,
   weeklyChallengeNeedsAction,
   type WeeklyChallenge,
   type WeeklyChallengeCatalogResponse,
@@ -54,10 +52,7 @@ function dateText(value: string): string {
 }
 
 function timerTargetText(challenge: WeeklyChallenge): { label: string; target: string } | null {
-  if (challenge.status === 'not_open') {
-    return { label: 'Вход откроется через', target: challenge.joinOpenAt };
-  }
-  if (challenge.status === 'join_open') {
+  if (challenge.status === 'future') {
     return { label: 'Старт через', target: challenge.startAt };
   }
   if (challenge.status === 'running') {
@@ -154,18 +149,6 @@ export function WeeklyChallengeScreen({
     (challenge) => weeklyChallengeNeedsAction(challenge),
   );
 
-  const join = useMutation({
-    mutationFn: (id: string) => joinWeeklyChallenge(id),
-    onSuccess: () => {
-      triggerHaptic('success');
-      return queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
-    },
-    onError: () => triggerHaptic('error'),
-  });
-  const decline = useMutation({
-    mutationFn: (id: string) => declineWeeklyChallenge(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] }),
-  });
   const claim = useMutation({
     mutationFn: (challenge: WeeklyChallenge) => claimWeeklyChallengeReward(challenge.id),
     onMutate: () => setClaimError(null),
@@ -255,12 +238,8 @@ export function WeeklyChallengeScreen({
                 key={challenge.id}
                 challenge={challenge}
                 nowMs={nowMs}
-                joinPending={join.isPending}
-                declinePending={decline.isPending}
                 claimPending={claim.isPending}
                 claimError={claimError}
-                onJoin={() => join.mutate(challenge.id)}
-                onDecline={() => decline.mutate(challenge.id)}
                 onClaim={() => claim.mutate(challenge)}
               />
             ))}
@@ -276,22 +255,14 @@ export function WeeklyChallengeScreen({
 function ChallengeCard({
   challenge,
   nowMs,
-  joinPending,
-  declinePending,
   claimPending,
   claimError,
-  onJoin,
-  onDecline,
   onClaim,
 }: {
   challenge: WeeklyChallenge;
   nowMs: number;
-  joinPending: boolean;
-  declinePending: boolean;
   claimPending: boolean;
   claimError: string | null;
-  onJoin: () => void;
-  onDecline: () => void;
   onClaim: () => void;
 }): JSX.Element {
   const timer = timerTargetText(challenge);
@@ -380,32 +351,12 @@ function ChallengeCard({
         })}
       </ul>
 
-      {challenge.canJoin && (
-        <div className="weekly-challenge-card__actions">
-          <button
-            type="button"
-            className="btn weekly-challenge-card__decline"
-            onClick={onDecline}
-            disabled={declinePending || joinPending}
-          >
-            Отклонить
-          </button>
-          <button
-            type="button"
-            className="btn btn--cta"
-            onClick={onJoin}
-            disabled={joinPending || declinePending}
-          >
-            Участвовать
-          </button>
-        </div>
-      )}
       {challenge.canClaimReward && (
         <button type="button" className="btn btn--cta" onClick={onClaim} disabled={claimPending}>
           Получить награду
         </button>
       )}
-      {challenge.participant?.rewardClaimedAt && (
+      {challenge.rewardClaimedAt !== null && (
         <div className="weekly-challenge-card__claimed">Награда получена</div>
       )}
       {claimError && challenge.canClaimReward && (

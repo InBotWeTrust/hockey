@@ -19,7 +19,7 @@ import {
   fetchAchievements,
   type AchievementDto,
 } from '../api/achievements.js';
-import { fetchWeeklyChallenge, weeklyChallengeNeedsAction } from '../api/weeklyChallenge.js';
+import { countClaimableWeeklyChallenges, fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
@@ -248,8 +248,10 @@ export function AchievementsScreen({
   );
   const challengeAttention =
     competitionLevel !== 'beginner' &&
-    (weeklyChallengeNeedsAction(weeklyChallengeQuery.data?.challenge) ||
-      (weeklyChallengeQuery.data?.pendingRewards?.length ?? 0) > 0);
+    countClaimableWeeklyChallenges([
+      weeklyChallengeQuery.data?.challenge,
+      ...(weeklyChallengeQuery.data?.pendingRewards ?? []),
+    ]) > 0;
   const filtered = useMemo(
     () => achievements.filter((achievement) => categoryMatches(achievement, filter)),
     [achievements, filter],

@@ -6,7 +6,7 @@ import { apiFetch } from '../api/apiFetch.js';
 import { achievementKeys, fetchAchievements } from '../api/achievements.js';
 import { fetchAmateurEvents, type AmateurDuelMatch } from '../api/amateurDuel.js';
 import { fetchActiveClassicTournamentGames } from '../api/tournamentClassic.js';
-import { fetchWeeklyChallenge, weeklyChallengeNeedsAction } from '../api/weeklyChallenge.js';
+import { countClaimableWeeklyChallenges, fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { AuthUser } from '../auth/authStore.js';
 import { fetchUnreadCounts } from '../chat/api.js';
@@ -237,14 +237,14 @@ export function BottomNav(): JSX.Element | null {
   const competitionLevel = user?.competitionLevel ?? refreshedUser?.competitionLevel;
   const weeklyChallengesAvailable =
     competitionLevel === 'amateur' || competitionLevel === 'professional';
-  const currentSectionActionCount =
-    weeklyChallengesAvailable && weeklyChallengeNeedsAction(weeklyChallenge?.challenge)
-      ? 1
-      : 0;
+  const weeklyChallengeActionCount = weeklyChallengesAvailable
+    ? countClaimableWeeklyChallenges([
+        weeklyChallenge?.challenge,
+        ...(weeklyChallenge?.pendingRewards ?? []),
+      ])
+    : 0;
   const sectionActionCount =
-    currentSectionActionCount +
-    (weeklyChallengesAvailable ? (weeklyChallenge?.pendingRewards?.length ?? 0) : 0) +
-    (achievements?.unclaimedCount ?? 0);
+    weeklyChallengeActionCount + (achievements?.unclaimedCount ?? 0);
   const openLastGameRoute = (): void => {
     rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);
     navigate(DEFAULT_GAME_ROUTE);

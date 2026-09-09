@@ -216,18 +216,15 @@ describe('SectionsScreen', () => {
         title: 'Снайпер недели',
         description: 'Описание',
         status: 'finished',
-        joinOpenAt: '2026-09-01T00:00:00.000Z',
         startAt: '2026-09-02T00:00:00.000Z',
         endAt: '2026-09-09T00:00:00.000Z',
-        joinEnabled: false,
         reward: { coins: 0, stars: 0, experience: 0 },
-        participant: { joinedAt: '2026-09-02T00:00:00.000Z', rewardClaimedAt: null },
-        declinedAt: null,
+        rewardClaimedAt: null,
         tasks: [
           { id: 'task-1', type: 'goals_scored', title: 'Забросить шайбы', target: 100, progress: 72, completed: false },
           { id: 'task-2', type: 'trainings_completed', title: 'Пройти тренировки', target: 2, progress: 2, completed: true },
         ],
-        canJoin: false,
+        hasProgress: true,
         canClaimReward: false,
         allTasksCompleted: false,
         serverNow: '2026-09-09T01:00:00.000Z',
@@ -319,7 +316,7 @@ describe('SectionsScreen', () => {
   it('keeps the weekly challenge out of the sections list', async () => {
     mockSectionsApi({
       achievementsUnclaimedCount: 0,
-      weeklyChallenge: { id: 'challenge-1', title: 'Неделя снайпера', canJoin: true },
+      weeklyChallenge: { id: 'challenge-1', title: 'Неделя снайпера', status: 'running', canClaimReward: false },
     });
     renderSections();
 
@@ -482,22 +479,37 @@ describe('SectionsScreen', () => {
     },
   );
 
-  it('keeps achievement progress visible while rewards and weekly actions need attention', async () => {
+  it('does not mark tasks for future or running challenges without a claimable reward', async () => {
     mockSectionsApi({
-      achievements: [
-        sectionAchievement('claimed', 'claimed'),
-        sectionAchievement('waiting', 'completed_unclaimed'),
-        sectionAchievement('locked', 'locked'),
-      ],
-      achievementsUnclaimedCount: 2,
-      weeklyChallenge: { id: 'challenge-1', title: 'Неделя снайпера', canJoin: true },
-      weeklyPendingRewards: [{ id: 'challenge-old', title: 'Прошлая неделя' }],
+      achievements: [],
+      achievementsUnclaimedCount: 0,
+      weeklyChallenge: { id: 'challenge-1', title: 'Неделя снайпера', status: 'running', canClaimReward: false },
+      weeklyPendingRewards: [{ id: 'challenge-future', title: 'Следующая неделя', status: 'future', canClaimReward: false }],
     });
     renderSections();
 
-    expect(await screen.findByText('2/3 наград')).toBeInTheDocument();
+    expect(await screen.findByText('0/0 наград')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Требуется действие')).toBeNull();
+  });
+
+  it('marks tasks once when a weekly challenge reward can be claimed', async () => {
+    mockSectionsApi({
+      achievements: [],
+      achievementsUnclaimedCount: 0,
+      weeklyChallenge: {
+        id: 'challenge-1',
+        title: 'Неделя снайпера',
+        status: 'finished',
+        canClaimReward: true,
+      },
+      weeklyPendingRewards: [
+        { id: 'challenge-1', title: 'Неделя снайпера', status: 'finished', canClaimReward: true },
+      ],
+    });
+    renderSections();
+
+    expect(await screen.findByText('0/0 наград')).toBeInTheDocument();
     expect(screen.getByLabelText('Требуется действие')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Челлендж недели' })).toBeNull();
   });
 
   it('hides weekly challenge attention for beginners while keeping achievement attention', async () => {
@@ -505,7 +517,7 @@ describe('SectionsScreen', () => {
       profileCompetitionLevel: 'beginner',
       achievements: [],
       achievementsUnclaimedCount: 0,
-      weeklyChallenge: { id: 'challenge-1', title: 'Неделя снайпера', canJoin: true },
+      weeklyChallenge: { id: 'challenge-1', title: 'Неделя снайпера', status: 'running', canClaimReward: false },
       weeklyPendingRewards: [{ id: 'challenge-old', title: 'Прошлая неделя' }],
     });
     renderSections();

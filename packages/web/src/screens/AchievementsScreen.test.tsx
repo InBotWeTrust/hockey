@@ -45,7 +45,6 @@ function mockAchievementsApi(achievements: AchievementDto[], unclaimedCount = 0)
               id: 'challenge-1',
               title: 'Неделя снайпера',
               status: 'running',
-              canJoin: false,
               canClaimReward: true,
             },
             pendingRewards: [],
@@ -107,6 +106,36 @@ describe('AchievementsScreen', () => {
     expect(await screen.findByRole('tab', { name: 'Челленджи' })).toBeInTheDocument();
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
     expect(screen.queryByLabelText('Требуется действие')).toBeNull();
+  });
+
+  it('does not show challenge attention for future or running challenges without a claimable reward', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/weekly-challenge/current')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              challenge: { id: 'challenge-1', status: 'running', canClaimReward: false },
+              pendingRewards: [
+                { id: 'challenge-future', status: 'future', canClaimReward: false },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ achievements: [], unclaimedCount: 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+    renderAchievements();
+
+    await screen.findByRole('tab', { name: 'Челленджи' });
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByLabelText('Требуется действие')).toBeNull());
   });
 
   it('marks the achievements tab when an achievement reward is waiting', async () => {

@@ -7,7 +7,7 @@ export type WeeklyChallengeTaskType =
   | 'duel_invites_sent'
   | 'trainings_completed';
 
-export type WeeklyChallengeStatus = 'not_open' | 'join_open' | 'running' | 'finished';
+export type WeeklyChallengeStatus = 'future' | 'running' | 'finished';
 
 export interface WeeklyChallengeTask {
   id: string;
@@ -23,15 +23,12 @@ export interface WeeklyChallenge {
   title: string;
   description: string;
   status: WeeklyChallengeStatus;
-  joinOpenAt: string;
   startAt: string;
   endAt: string;
-  joinEnabled: boolean;
   reward: { coins: number; stars: number; experience: number };
-  participant: { joinedAt: string; rewardClaimedAt: string | null } | null;
-  declinedAt: string | null;
+  rewardClaimedAt: string | null;
   tasks: WeeklyChallengeTask[];
-  canJoin: boolean;
+  hasProgress: boolean;
   canClaimReward: boolean;
   allTasksCompleted: boolean;
   serverNow: string;
@@ -53,12 +50,21 @@ export interface WeeklyChallengeFailureResponse {
 }
 
 export function weeklyChallengeNeedsAction(
-  challenge: Pick<WeeklyChallenge, 'canJoin' | 'canClaimReward' | 'declinedAt'> | null | undefined,
+  challenge: Pick<WeeklyChallenge, 'canClaimReward'> | null | undefined,
 ): boolean {
-  return (
-    (challenge?.canJoin === true && challenge.declinedAt == null) ||
-    challenge?.canClaimReward === true
-  );
+  return challenge?.canClaimReward === true;
+}
+
+export function countClaimableWeeklyChallenges(
+  challenges: Array<Pick<WeeklyChallenge, 'id' | 'canClaimReward'> | null | undefined>,
+): number {
+  const ids = new Set<string>();
+  challenges.forEach((challenge) => {
+    if (challenge !== null && challenge !== undefined && weeklyChallengeNeedsAction(challenge)) {
+      ids.add(challenge.id);
+    }
+  });
+  return ids.size;
 }
 
 export function fetchWeeklyChallenge(): Promise<WeeklyChallengeCurrentResponse> {
@@ -80,18 +86,6 @@ export function acknowledgeWeeklyChallengeFailure(
     `/weekly-challenge/failures/${id}/acknowledge`,
     { method: 'POST' },
   );
-}
-
-export function joinWeeklyChallenge(id: string): Promise<WeeklyChallengeCurrentResponse> {
-  return apiFetch<WeeklyChallengeCurrentResponse>(`/weekly-challenge/${id}/join`, {
-    method: 'POST',
-  });
-}
-
-export function declineWeeklyChallenge(id: string): Promise<WeeklyChallengeCurrentResponse> {
-  return apiFetch<WeeklyChallengeCurrentResponse>(`/weekly-challenge/${id}/decline`, {
-    method: 'POST',
-  });
 }
 
 export function claimWeeklyChallengeReward(id: string): Promise<WeeklyChallengeCurrentResponse> {
