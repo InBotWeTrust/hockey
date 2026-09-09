@@ -340,6 +340,75 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
     ]);
   });
 
+  it('moves and adopts a separate target draft after an overlapping legacy challenge', async () => {
+    await createSourceChallenge({
+      title: 'Действующая legacy-неделя',
+      startAt: new Date('2026-09-13T21:00:00Z'),
+      endAt: new Date('2026-09-23T09:00:00Z'),
+      isActive: true,
+    });
+    const draftId = await createSourceChallenge({
+      title: 'Переносимый ручной draft',
+      description: 'Сохранить при переносе',
+      startAt: new Date('2026-09-20T21:00:00Z'),
+      endAt: new Date('2026-09-27T09:00:00Z'),
+    });
+
+    await reconcileAt(new Date('2026-09-15T09:00:00Z'));
+
+    const challenges = await getAutomaticChallenges();
+    expect(challenges).toEqual([
+      expect.objectContaining({
+        id: draftId,
+        title: 'Переносимый ручной draft',
+        description: 'Сохранить при переносе',
+        start_at: new Date('2026-09-27T21:00:00Z'),
+        end_at: new Date('2026-10-04T09:00:00Z'),
+      }),
+    ]);
+    const tasks = await pool.query(
+      `select type, title, target, sort_order
+         from weekly_challenge_tasks
+        where challenge_id = $1
+        order by sort_order`,
+      [draftId],
+    );
+    expect(tasks.rows).toEqual([
+      { type: 'goals_scored', title: 'Забросить 100 шайб', target: 100, sort_order: 3 },
+      { type: 'duels_won', title: 'Выиграть 4 дуэли', target: 4, sort_order: 8 },
+    ]);
+  });
+
+  it('adopts an existing delayed row instead of duplicating it after an overlap', async () => {
+    await createSourceChallenge({
+      title: 'Действующая legacy-неделя',
+      startAt: new Date('2026-09-13T21:00:00Z'),
+      endAt: new Date('2026-09-23T09:00:00Z'),
+      isActive: true,
+    });
+    await createSourceChallenge({
+      title: 'Ранний ручной draft',
+      startAt: new Date('2026-09-20T21:00:00Z'),
+      endAt: new Date('2026-09-27T09:00:00Z'),
+    });
+    const delayedDraftId = await createSourceChallenge({
+      title: 'Уже подготовленный delayed draft',
+      startAt: new Date('2026-09-27T21:00:00Z'),
+      endAt: new Date('2026-10-04T09:00:00Z'),
+    });
+
+    await reconcileAt(new Date('2026-09-15T09:00:00Z'));
+
+    const challenges = await getAutomaticChallenges();
+    expect(challenges).toEqual([
+      expect.objectContaining({
+        id: delayedDraftId,
+        title: 'Уже подготовленный delayed draft',
+        start_at: new Date('2026-09-27T21:00:00Z'),
+      }),
+    ]);
+  });
+
   it('does not defer the next week for a future active manual challenge outside its interval', async () => {
     await createSourceChallenge();
     await createSourceChallenge({

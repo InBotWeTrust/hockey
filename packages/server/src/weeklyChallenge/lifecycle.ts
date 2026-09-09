@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import { getWeeklyChallengeWindow } from './schedule.js';
+import { getWeeklyChallengeWindow, type WeeklyChallengeWindow } from './schedule.js';
 
 interface WeeklyChallengeSourceRow {
   id: string;
@@ -15,8 +15,16 @@ interface OverlappingLegacyChallengeRow {
   end_at: Date;
 }
 
-async function adoptExistingChallengeAtStart(client: PoolClient, startAt: Date): Promise<boolean> {
-  const existing = await client.query<{ id: string; is_automatic: boolean }>(
+interface ExistingChallengeRow {
+  id: string;
+  is_automatic: boolean;
+}
+
+async function findExistingChallengeAtStart(
+  client: PoolClient,
+  startAt: Date,
+): Promise<ExistingChallengeRow | undefined> {
+  const { rows } = await client.query<ExistingChallengeRow>(
     `select id, is_automatic
        from weekly_challenges
       where start_at = $1
@@ -24,8 +32,13 @@ async function adoptExistingChallengeAtStart(client: PoolClient, startAt: Date):
       limit 1`,
     [startAt],
   );
-  const challenge = existing.rows[0];
-  if (challenge === undefined) return false;
+  return rows[0];
+}
+
+async function adoptExistingChallenge(
+  client: PoolClient,
+  challenge: ExistingChallengeRow,
+): Promise<void> {
   if (!challenge.is_automatic) {
     await client.query(
       `update weekly_challenges
@@ -35,7 +48,26 @@ async function adoptExistingChallengeAtStart(client: PoolClient, startAt: Date):
       [challenge.id],
     );
   }
-  return true;
+}
+
+async function moveAndAdoptTargetDraft(
+  client: PoolClient,
+  targetDraft: ExistingChallengeRow,
+  window: WeeklyChallengeWindow,
+): Promise<void> {
+  await client.query(
+    `update weekly_challenges
+        set join_open_at = $2,
+            visible_from = $2,
+            start_at = $3,
+            end_at = $4,
+            is_automatic = true,
+            is_active = false,
+            join_enabled = false,
+            updated_at = now()
+      where id = $1`,
+    [targetDraft.id, window.nextVisibleFrom, window.nextStart, window.nextEnd],
+  );
 }
 
 export async function reconcileWeeklyChallengeLifecycle(
@@ -51,7 +83,7 @@ export async function reconcileWeeklyChallengeLifecycle(
   if (settings[0]?.enabled !== true) return;
 
   const initialWindow = getWeeklyChallengeWindow(now);
-  if (await adoptExistingChallengeAtStart(client, initialWindow.nextStart)) return;
+  const targetDraft = await findExistingChallengeAtStart(client, initialWindow.nextStart);
 
   const { rows: overlaps } = await client.query<OverlappingLegacyChallengeRow>(
     `select end_at
@@ -60,15 +92,26 @@ export async function reconcileWeeklyChallengeLifecycle(
         and not is_automatic
         and start_at < $2
         and end_at > $1
+        and ($3::uuid is null or id <> $3::uuid)
       order by end_at desc
       limit 1`,
-    [initialWindow.nextStart, initialWindow.nextEnd],
+    [initialWindow.nextStart, initialWindow.nextEnd, targetDraft?.id ?? null],
   );
   const window =
     overlaps[0] === undefined
       ? initialWindow
       : getWeeklyChallengeWindow(overlaps[0].end_at);
-  if (await adoptExistingChallengeAtStart(client, window.nextStart)) return;
+  const delayedExisting = await findExistingChallengeAtStart(client, window.nextStart);
+  if (overlaps[0] !== undefined && targetDraft !== undefined && delayedExisting === undefined) {
+    await moveAndAdoptTargetDraft(client, targetDraft, window);
+    return;
+  }
+
+  const existingChallenge = delayedExisting ?? targetDraft;
+  if (existingChallenge !== undefined) {
+    await adoptExistingChallenge(client, existingChallenge);
+    return;
+  }
 
   const { rows: sources } = await client.query<WeeklyChallengeSourceRow>(
     `select id, title, description, reward_coins, reward_stars, reward_experience, created_by
