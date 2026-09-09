@@ -159,47 +159,41 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     expect(res.json()).toEqual({ challenge: null, pendingRewards: [] });
   });
 
-  it('lets a participant join, counts progress since challenge start, and claim rewards once', async () => {
+  it('automatically counts progress and lets the player claim a completed reward once', async () => {
     const challengeId = await createActiveChallenge();
     await insertGoal();
 
-    const beforeJoin = await app.inject({
+    const current = await app.inject({
       method: 'GET',
       url: '/weekly-challenge/current',
       headers: authHeader(),
     });
-    expect(beforeJoin.statusCode).toBe(200);
-    expect(beforeJoin.json().challenge).toMatchObject({
+    expect(current.statusCode).toBe(200);
+    expect(current.json().challenge).toMatchObject({
       id: challengeId,
       status: 'running',
-      canJoin: true,
-      canClaimReward: false,
-      participant: null,
+      hasProgress: true,
+      allTasksCompleted: true,
+      canClaimReward: true,
+      rewardClaimedAt: null,
+      tasks: [expect.objectContaining({ progress: 1, completed: true })],
     });
+    expect(current.json().challenge).not.toHaveProperty('participant');
+    expect(current.json().challenge).not.toHaveProperty('declinedAt');
+    expect(current.json().challenge).not.toHaveProperty('canJoin');
 
     const join = await app.inject({
       method: 'POST',
       url: `/weekly-challenge/${challengeId}/join`,
       headers: authHeader(),
     });
-    expect(join.statusCode).toBe(200);
-    expect(join.json().challenge).toMatchObject({
-      canJoin: false,
-      canClaimReward: true,
-      participant: { joinedAt: expect.any(String), rewardClaimedAt: null },
-    });
-
-    const ready = await app.inject({
-      method: 'GET',
-      url: '/weekly-challenge/current',
+    const decline = await app.inject({
+      method: 'POST',
+      url: `/weekly-challenge/${challengeId}/decline`,
       headers: authHeader(),
     });
-    expect(ready.statusCode).toBe(200);
-    expect(ready.json().challenge).toMatchObject({
-      allTasksCompleted: true,
-      canClaimReward: true,
-      tasks: [expect.objectContaining({ progress: 1, completed: true })],
-    });
+    expect(join.statusCode).toBe(404);
+    expect(decline.statusCode).toBe(404);
 
     const claim = await app.inject({
       method: 'POST',
@@ -209,7 +203,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     expect(claim.statusCode).toBe(200);
     expect(claim.json().challenge).toMatchObject({
       canClaimReward: false,
-      participant: { rewardClaimedAt: expect.any(String) },
+      rewardClaimedAt: expect.any(String),
     });
 
     const balances = await pool.query<{
@@ -242,13 +236,56 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     expect(duplicate.statusCode).toBe(409);
   });
 
-  it('waits for the users row before taking a currency-account write lock', async () => {
+  it('counts progress in the half-open challenge window', async () => {
+    const challengeId = await createActiveChallenge();
+    const challengeWindow = await pool.query<{ start_at: Date; end_at: Date }>(
+      `select start_at, end_at from weekly_challenges where id = $1`,
+      [challengeId],
+    );
+    const { start_at: startAt, end_at: endAt } = challengeWindow.rows[0]!;
+
+    await insertGoal(`'${startAt.toISOString()}'`);
+    await insertGoal(`'${new Date(endAt.getTime() - 1).toISOString()}'`);
+    await insertGoal(`'${endAt.toISOString()}'`);
+
+    const current = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/current',
+      headers: authHeader(),
+    });
+
+    expect(current.statusCode).toBe(200);
+    expect(current.json().challenge).toMatchObject({
+      id: challengeId,
+      hasProgress: true,
+      tasks: [expect.objectContaining({ progress: 2, completed: true })],
+    });
+  });
+
+  it('does not treat activity outside a challenge task as challenge progress', async () => {
     const challengeId = await createActiveChallenge();
     await pool.query(
-      `insert into weekly_challenge_participants (challenge_id, user_id, joined_at)
-       values ($1, $2, now() - interval '1 hour')`,
-      [challengeId, userId],
+      `update weekly_challenge_tasks set type = 'duels_played' where challenge_id = $1`,
+      [challengeId],
     );
+    await insertGoal();
+
+    const current = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/current',
+      headers: authHeader(),
+    });
+
+    expect(current.statusCode).toBe(200);
+    expect(current.json().challenge).toMatchObject({
+      id: challengeId,
+      hasProgress: false,
+      tasks: [expect.objectContaining({ type: 'duels_played', progress: 0 })],
+    });
+  });
+
+  it('waits for the users row before taking a currency-account write lock', async () => {
+    const challengeId = await createActiveChallenge();
     await insertGoal();
 
     const blocker = await pool.connect();
@@ -287,11 +324,6 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       startOffset: '14 days',
       endOffset: '7 days',
     });
-    await pool.query(
-      `insert into weekly_challenge_participants (challenge_id, user_id, joined_at)
-       values ($1, $2, now() - interval '14 days')`,
-      [previousChallengeId, userId],
-    );
     await insertGoal(`now() - interval '10 days'`);
 
     const currentChallengeId = await createActiveChallenge();
@@ -324,7 +356,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     expect(claim.json().challenge).toMatchObject({ id: currentChallengeId });
   });
 
-  it('returns only future, participating active, and successfully completed challenges', async () => {
+  it('returns only visible future, running, and successfully completed challenges', async () => {
     const futureChallengeId = await createChallenge({
       title: 'Будущая неделя',
       isActive: false,
@@ -332,12 +364,11 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       startOffset: '-2 days',
       endOffset: '-9 days',
     });
-    const activeChallengeId = await createActiveChallenge();
     await pool.query(
-      `insert into weekly_challenge_participants (challenge_id, user_id, joined_at)
-       values ($1, $2, now() - interval '1 hour')`,
-      [activeChallengeId, userId],
+      `update weekly_challenges set visible_from = now() - interval '1 hour' where id = $1`,
+      [futureChallengeId],
     );
+    const activeChallengeId = await createActiveChallenge();
     const completedChallengeId = await createChallenge({
       title: 'Пройденная неделя',
       isActive: false,
@@ -345,11 +376,6 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       startOffset: '14 days',
       endOffset: '7 days',
     });
-    await pool.query(
-      `insert into weekly_challenge_participants (challenge_id, user_id, joined_at)
-       values ($1, $2, now() - interval '14 days')`,
-      [completedChallengeId, userId],
-    );
     await insertGoal(`now() - interval '10 days'`);
     await createChallenge({
       title: 'Чужой действующий челлендж',
@@ -365,8 +391,11 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
-      future: [{ id: futureChallengeId, title: 'Будущая неделя', participant: null }],
-      active: [{ id: activeChallengeId, title: 'Неделя снайпера' }],
+      future: [{ id: futureChallengeId, title: 'Будущая неделя' }],
+      active: [
+        { id: activeChallengeId, title: 'Неделя снайпера' },
+        { title: 'Чужой действующий челлендж' },
+      ],
       completed: [
         {
           id: completedChallengeId,
@@ -377,13 +406,8 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     });
   });
 
-  it('treats reward claim rows as claimed even if participant state is stale', async () => {
+  it('treats reward claim rows as claimed without a participant row', async () => {
     const challengeId = await createActiveChallenge();
-    await pool.query(
-      `insert into weekly_challenge_participants (challenge_id, user_id, joined_at)
-       values ($1, $2, now() - interval '1 hour')`,
-      [challengeId, userId],
-    );
     await pool.query(
       `insert into weekly_challenge_reward_claims (challenge_id, user_id, coins, stars, experience)
        values ($1, $2, 10, 2, 3)`,
@@ -401,7 +425,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       id: challengeId,
       allTasksCompleted: true,
       canClaimReward: false,
-      participant: { rewardClaimedAt: expect.any(String) },
+      rewardClaimedAt: expect.any(String),
     });
 
     const claim = await app.inject({
@@ -409,46 +433,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       url: `/weekly-challenge/${challengeId}/claim-reward`,
       headers: authHeader(),
     });
-    expect(claim.statusCode).toBe(200);
-    expect(claim.json().challenge).toMatchObject({
-      canClaimReward: false,
-      participant: { rewardClaimedAt: expect.any(String) },
-    });
-
-    const repaired = await pool.query<{ reward_claimed_at: Date | null }>(
-      `select reward_claimed_at
-         from weekly_challenge_participants
-        where challenge_id = $1 and user_id = $2`,
-      [challengeId, userId],
-    );
-    expect(repaired.rows[0]?.reward_claimed_at).toBeInstanceOf(Date);
-  });
-
-  it('lets a player decline an open challenge invitation', async () => {
-    const challengeId = await createActiveChallenge();
-
-    const decline = await app.inject({
-      method: 'POST',
-      url: `/weekly-challenge/${challengeId}/decline`,
-      headers: authHeader(),
-    });
-    expect(decline.statusCode).toBe(200);
-    expect(decline.json().challenge).toMatchObject({
-      canJoin: false,
-      declinedAt: expect.any(String),
-      participant: null,
-    });
-
-    const current = await app.inject({
-      method: 'GET',
-      url: '/weekly-challenge/current',
-      headers: authHeader(),
-    });
-    expect(current.statusCode).toBe(200);
-    expect(current.json().challenge).toMatchObject({
-      canJoin: false,
-      declinedAt: expect.any(String),
-    });
+    expect(claim.statusCode).toBe(409);
   });
 
   it('returns an unfinished participant challenge until it is acknowledged', async () => {

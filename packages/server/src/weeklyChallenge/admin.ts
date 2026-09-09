@@ -224,7 +224,7 @@ async function fetchAdminChallengeEnrichment(
                 where ss.user_id = p.user_id
                   and ss.server_result = 'goal'
                   and ss.created_at >= wc.start_at
-                  and ss.created_at <= wc.end_at
+                  and ss.created_at < wc.end_at
              ) as goals_scored,
              (
                select count(*)::int
@@ -234,7 +234,7 @@ async function fetchAdminChallengeEnrichment(
                   and adp.state = 'completed'
                   and adm.status = 'settled'
                   and coalesce(adm.settled_at, adm.updated_at) >= wc.start_at
-                  and coalesce(adm.settled_at, adm.updated_at) <= wc.end_at
+                  and coalesce(adm.settled_at, adm.updated_at) < wc.end_at
              ) as duels_played,
              (
                select count(*)::int
@@ -242,7 +242,7 @@ async function fetchAdminChallengeEnrichment(
                 where adm.winner_user_id = p.user_id
                   and adm.status = 'settled'
                   and coalesce(adm.settled_at, adm.updated_at) >= wc.start_at
-                  and coalesce(adm.settled_at, adm.updated_at) <= wc.end_at
+                  and coalesce(adm.settled_at, adm.updated_at) < wc.end_at
              ) as duels_won,
              (
                select count(*)::int
@@ -250,7 +250,7 @@ async function fetchAdminChallengeEnrichment(
                 where event.type = 'amateur_duel_challenge_accepted'
                   and event.payload->>'challenger_user_id' = p.user_id::text
                   and event.created_at >= wc.start_at
-                  and event.created_at <= wc.end_at
+                  and event.created_at < wc.end_at
              ) as duel_invites_sent,
              (
                select count(*)::int
@@ -258,7 +258,7 @@ async function fetchAdminChallengeEnrichment(
                 where ts.user_id = p.user_id
                   and ts.state = 'closed'
                   and coalesce(ts.closed_at, ts.started_at) >= wc.start_at
-                  and coalesce(ts.closed_at, ts.started_at) <= wc.end_at
+                  and coalesce(ts.closed_at, ts.started_at) < wc.end_at
              ) as trainings_completed
         from weekly_challenge_participants p
         join weekly_challenges wc on wc.id = p.challenge_id

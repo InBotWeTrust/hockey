@@ -5,12 +5,11 @@ import { AppError } from '../plugins/errors.js';
 import {
   acknowledgeWeeklyChallengeFailure,
   claimWeeklyChallengeReward,
-  declineWeeklyChallenge,
   getCurrentWeeklyChallenge,
   getPendingWeeklyChallengeFailure,
   getWeeklyChallengeCatalog,
-  joinWeeklyChallenge,
 } from './service.js';
+import { reconcileWeeklyChallengeLifecycle } from './lifecycle.js';
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 
@@ -34,11 +33,17 @@ async function withTransaction<T>(
 
 export const weeklyChallengeRoutes: FastifyPluginAsync = async (app) => {
   app.get('/weekly-challenge/current', { preHandler: [app.authenticate] }, async (req) =>
-    getCurrentWeeklyChallenge(app.pg, req.user.id),
+    withTransaction(app, async (client) => {
+      await reconcileWeeklyChallengeLifecycle(client);
+      return getCurrentWeeklyChallenge(client, req.user.id);
+    }),
   );
 
   app.get('/weekly-challenge/catalog', { preHandler: [app.authenticate] }, async (req) =>
-    getWeeklyChallengeCatalog(app.pg, req.user.id),
+    withTransaction(app, async (client) => {
+      await reconcileWeeklyChallengeLifecycle(client);
+      return getWeeklyChallengeCatalog(client, req.user.id);
+    }),
   );
 
   app.get('/weekly-challenge/failures/pending', { preHandler: [app.authenticate] }, async (req) =>
@@ -56,22 +61,6 @@ export const weeklyChallengeRoutes: FastifyPluginAsync = async (app) => {
       );
     },
   );
-
-  app.post('/weekly-challenge/:id/join', { preHandler: [app.authenticate] }, async (req) => {
-    const params = paramsSchema.safeParse(req.params);
-    if (!params.success) throw new AppError('bad_request', 'invalid weekly challenge id', 400);
-    return withTransaction(app, (client) =>
-      joinWeeklyChallenge(client, params.data.id, req.user.id),
-    );
-  });
-
-  app.post('/weekly-challenge/:id/decline', { preHandler: [app.authenticate] }, async (req) => {
-    const params = paramsSchema.safeParse(req.params);
-    if (!params.success) throw new AppError('bad_request', 'invalid weekly challenge id', 400);
-    return withTransaction(app, (client) =>
-      declineWeeklyChallenge(client, params.data.id, req.user.id),
-    );
-  });
 
   app.post(
     '/weekly-challenge/:id/claim-reward',

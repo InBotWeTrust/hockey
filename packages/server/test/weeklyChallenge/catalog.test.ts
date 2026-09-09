@@ -9,16 +9,13 @@ function challenge(overrides: Partial<WeeklyChallengeDTO> = {}): WeeklyChallenge
     id: '11111111-1111-1111-1111-111111111111',
     title: 'Тестовый челлендж',
     description: '',
-    status: 'join_open',
-    joinOpenAt: '2026-09-01T09:00:00.000Z',
+    status: 'future',
     startAt: '2026-09-08T09:00:00.000Z',
     endAt: '2026-09-15T09:00:00.000Z',
-    joinEnabled: true,
     reward: { coins: 10, stars: 20, experience: 20 },
-    participant: null,
-    declinedAt: null,
+    rewardClaimedAt: null,
     tasks: [],
-    canJoin: true,
+    hasProgress: false,
     canClaimReward: false,
     allTasksCompleted: false,
     serverNow: '2026-09-02T09:00:00.000Z',
@@ -27,44 +24,25 @@ function challenge(overrides: Partial<WeeklyChallengeDTO> = {}): WeeklyChallenge
 }
 
 describe('weekly challenge personal catalogue', () => {
-  it('puts available not-started challenges into future', () => {
+  it('puts future challenges into future', () => {
     expect(classifyWeeklyChallengeForCatalog(challenge())).toBe('future');
   });
 
-  it('shows running challenges only when the player participates', () => {
-    expect(classifyWeeklyChallengeForCatalog(challenge({ status: 'running' }))).toBeNull();
-    expect(
-      classifyWeeklyChallengeForCatalog(
-        challenge({
-          status: 'running',
-          participant: { joinedAt: '2026-09-01T10:00:00.000Z', rewardClaimedAt: null },
-        }),
-      ),
-    ).toBe('active');
+  it('shows every running challenge as active', () => {
+    expect(classifyWeeklyChallengeForCatalog(challenge({ status: 'running' }))).toBe('active');
   });
 
-  it('keeps only successfully completed participant challenges in history', () => {
-    const participant = {
-      joinedAt: '2026-08-20T10:00:00.000Z',
-      rewardClaimedAt: null,
-    };
+  it('keeps only successfully completed challenges in history', () => {
     expect(
       classifyWeeklyChallengeForCatalog(
-        challenge({ status: 'finished', participant, allTasksCompleted: false }),
+        challenge({ status: 'finished', allTasksCompleted: false }),
       ),
     ).toBeNull();
     expect(
       classifyWeeklyChallengeForCatalog(
-        challenge({ status: 'finished', participant, allTasksCompleted: true }),
+        challenge({ status: 'finished', allTasksCompleted: true }),
       ),
     ).toBe('completed');
   });
 
-  it('hides declined future challenges', () => {
-    expect(
-      classifyWeeklyChallengeForCatalog(
-        challenge({ declinedAt: '2026-09-02T10:00:00.000Z', canJoin: false }),
-      ),
-    ).toBeNull();
-  });
 });

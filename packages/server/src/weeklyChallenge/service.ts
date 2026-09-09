@@ -7,9 +7,7 @@ import type {
   WeeklyChallengeCatalogResponse,
   WeeklyChallengeCurrentResponse,
   WeeklyChallengeDTO,
-  WeeklyChallengeDeclineRow,
   WeeklyChallengeFailureResponse,
-  WeeklyChallengeParticipantRow,
   WeeklyChallengeRow,
   WeeklyChallengeStatus,
   WeeklyChallengeTaskRow,
@@ -23,13 +21,12 @@ function iso(value: Date): string {
 }
 
 export function resolveWeeklyChallengeStatus(
-  challenge: Pick<WeeklyChallengeRow, 'join_open_at' | 'start_at' | 'end_at'>,
+  challenge: Pick<WeeklyChallengeRow, 'start_at' | 'end_at'>,
   now: Date,
 ): WeeklyChallengeStatus {
-  if (now < challenge.join_open_at) return 'not_open';
   if (now >= challenge.end_at) return 'finished';
   if (now >= challenge.start_at) return 'running';
-  return 'join_open';
+  return 'future';
 }
 
 function defaultTaskTitle(task: WeeklyChallengeTaskRow): string {
@@ -41,51 +38,41 @@ function defaultTaskTitle(task: WeeklyChallengeTaskRow): string {
   return `Завершить ${task.target} тренировок`;
 }
 
-async function fetchActiveChallenge(db: Queryable): Promise<WeeklyChallengeRow | null> {
+async function fetchActiveChallenge(
+  db: Queryable,
+  now: Date,
+): Promise<WeeklyChallengeRow | null> {
   const { rows } = await db.query<WeeklyChallengeRow>(
     `select *
        from weekly_challenges
-      where is_active
+      where start_at <= $1
+        and $1 < end_at
       order by start_at desc
       limit 1`,
+    [now],
   );
   return rows[0] ?? null;
 }
 
 async function fetchCatalogChallenges(
   db: Queryable,
-  userId: string,
   now: Date,
 ): Promise<WeeklyChallengeRow[]> {
   const { rows } = await db.query<WeeklyChallengeRow>(
     `select challenge.*
        from weekly_challenges challenge
-      where challenge.start_at > $2
-         or exists (
-              select 1
-                from weekly_challenge_participants participant
-               where participant.challenge_id = challenge.id
-                 and participant.user_id = $1
+      cross join weekly_challenge_settings settings
+      where challenge.start_at <= $1
+         or (
+              settings.enabled
+              and challenge.visible_from <= $1
+              and $1 < challenge.start_at
             )
       order by challenge.start_at desc, challenge.id
       limit 100`,
-    [userId, now],
+    [now],
   );
   return rows;
-}
-
-async function fetchChallengeForUpdate(
-  client: PoolClient,
-  challengeId: string,
-): Promise<WeeklyChallengeRow | null> {
-  const { rows } = await client.query<WeeklyChallengeRow>(
-    `select *
-       from weekly_challenges
-      where id = $1 and is_active
-      for update`,
-    [challengeId],
-  );
-  return rows[0] ?? null;
 }
 
 async function fetchChallengeForRewardUpdate(
@@ -106,20 +93,19 @@ async function fetchPendingRewardChallenges(
   db: Queryable,
   userId: string,
   currentChallengeId: string | null,
+  now: Date,
 ): Promise<WeeklyChallengeRow[]> {
   const { rows } = await db.query<WeeklyChallengeRow>(
     `select c.*
        from weekly_challenges c
-       join weekly_challenge_participants p on p.challenge_id = c.id
        left join weekly_challenge_reward_claims rc
-         on rc.challenge_id = c.id and rc.user_id = p.user_id
-      where p.user_id = $1
-        and p.reward_claimed_at is null
-        and rc.id is null
-        and ($2::uuid is null or c.id <> $2::uuid)
+         on rc.challenge_id = c.id and rc.user_id = $1
+      where rc.id is null
+        and c.end_at <= $2
+        and ($3::uuid is null or c.id <> $3::uuid)
       order by c.end_at desc, c.start_at desc
       limit 10`,
-    [userId, currentChallengeId],
+    [userId, now, currentChallengeId],
   );
   return rows;
 }
@@ -133,34 +119,6 @@ async function fetchTasks(db: Queryable, challengeId: string): Promise<WeeklyCha
     [challengeId],
   );
   return rows;
-}
-
-async function fetchParticipant(
-  db: Queryable,
-  challengeId: string,
-  userId: string,
-): Promise<WeeklyChallengeParticipantRow | null> {
-  const { rows } = await db.query<WeeklyChallengeParticipantRow>(
-    `select *
-       from weekly_challenge_participants
-      where challenge_id = $1 and user_id = $2`,
-    [challengeId, userId],
-  );
-  return rows[0] ?? null;
-}
-
-async function fetchDecline(
-  db: Queryable,
-  challengeId: string,
-  userId: string,
-): Promise<WeeklyChallengeDeclineRow | null> {
-  const { rows } = await db.query<WeeklyChallengeDeclineRow>(
-    `select *
-       from weekly_challenge_declines
-      where challenge_id = $1 and user_id = $2`,
-    [challengeId, userId],
-  );
-  return rows[0] ?? null;
 }
 
 async function fetchRewardClaim(
@@ -184,67 +142,45 @@ async function mapChallenge(
   now: Date,
 ): Promise<WeeklyChallengeDTO> {
   const tasks = await fetchTasks(db, challenge.id);
-  const participant = await fetchParticipant(db, challenge.id, userId);
-  const decline = await fetchDecline(db, challenge.id, userId);
-  const rewardClaim =
-    participant === null ? null : await fetchRewardClaim(db, challenge.id, userId);
-  const rewardClaimedAt = participant?.reward_claimed_at ?? rewardClaim?.claimed_at ?? null;
+  const rewardClaim = await fetchRewardClaim(db, challenge.id, userId);
+  const rewardClaimedAt = rewardClaim?.claimed_at ?? null;
   const status = resolveWeeklyChallengeStatus(challenge, now);
-  const progressFrom = participant !== null ? challenge.start_at : null;
-  const progress =
-    progressFrom !== null
-      ? await fetchWeeklyChallengeProgress(db, {
-          userId,
-          from: progressFrom,
-          to: challenge.end_at,
-        })
-      : null;
+  const progress = await fetchWeeklyChallengeProgress(db, {
+    userId,
+    from: challenge.start_at,
+    to: challenge.end_at,
+  });
   const taskDtos = tasks.map((task) => {
-    const value = progress ? progress[task.type] : null;
+    const value = progress[task.type];
     return {
       id: task.id,
       type: task.type,
       title: defaultTaskTitle(task),
       target: task.target,
       progress: value,
-      completed: value === null ? null : value >= task.target,
+      completed: value >= task.target,
     };
   });
   const allTasksCompleted =
     taskDtos.length > 0 && taskDtos.every((task) => task.completed === true);
-  const canJoin =
-    participant === null &&
-    decline === null &&
-    challenge.is_active &&
-    challenge.join_enabled &&
-    status !== 'not_open' &&
-    status !== 'finished';
-  const canClaimReward = participant !== null && rewardClaimedAt === null && allTasksCompleted;
+  const hasProgress = taskDtos.some((task) => task.progress > 0);
+  const canClaimReward = rewardClaimedAt === null && allTasksCompleted;
 
   return {
     id: challenge.id,
     title: challenge.title,
     description: challenge.description,
     status,
-    joinOpenAt: iso(challenge.join_open_at),
     startAt: iso(challenge.start_at),
     endAt: iso(challenge.end_at),
-    joinEnabled: challenge.join_enabled,
     reward: {
       coins: Number(challenge.reward_coins),
       stars: Number(challenge.reward_stars),
       experience: Number(challenge.reward_experience),
     },
-    participant:
-      participant === null
-        ? null
-        : {
-            joinedAt: iso(participant.joined_at),
-            rewardClaimedAt: rewardClaimedAt?.toISOString() ?? null,
-          },
-    declinedAt: decline?.declined_at.toISOString() ?? null,
+    rewardClaimedAt: rewardClaimedAt?.toISOString() ?? null,
     tasks: taskDtos,
-    canJoin,
+    hasProgress,
     canClaimReward,
     allTasksCompleted,
     serverNow: iso(now),
@@ -256,11 +192,12 @@ export async function getCurrentWeeklyChallenge(
   userId: string,
   now = new Date(),
 ): Promise<WeeklyChallengeCurrentResponse> {
-  const challenge = await fetchActiveChallenge(db);
+  const challenge = await fetchActiveChallenge(db, now);
   const pendingRewardCandidates = await fetchPendingRewardChallenges(
     db,
     userId,
     challenge?.id ?? null,
+    now,
   );
   const pendingRewards = [];
   for (const candidate of pendingRewardCandidates) {
@@ -281,7 +218,7 @@ export async function getWeeklyChallengeCatalog(
     active: [],
     completed: [],
   };
-  const candidates = await fetchCatalogChallenges(db, userId, now);
+  const candidates = await fetchCatalogChallenges(db, now);
   for (const candidate of candidates) {
     const challenge = await mapChallenge(db, candidate, userId, now);
     const section = classifyWeeklyChallengeForCatalog(challenge);
@@ -301,8 +238,6 @@ export async function getPendingWeeklyChallengeFailure(
   const { rows } = await db.query<WeeklyChallengeRow>(
     `select challenge.*
        from weekly_challenges challenge
-       join weekly_challenge_participants participant
-         on participant.challenge_id = challenge.id and participant.user_id = $1
        left join weekly_challenge_failure_acknowledgements acknowledgement
          on acknowledgement.challenge_id = challenge.id and acknowledgement.user_id = $1
       where challenge.end_at <= $2
@@ -326,7 +261,7 @@ export async function acknowledgeWeeklyChallengeFailure(
   const challenge = await fetchChallengeForRewardUpdate(client, challengeId);
   if (challenge === null) throw new AppError('not_found', 'weekly challenge not found', 404);
   const mapped = await mapChallenge(client, challenge, userId, now);
-  if (mapped.participant === null || mapped.status !== 'finished' || mapped.allTasksCompleted) {
+  if (mapped.status !== 'finished' || mapped.allTasksCompleted) {
     throw new AppError('conflict', 'weekly challenge failure is not available', 409);
   }
   await client.query(
@@ -339,60 +274,6 @@ export async function acknowledgeWeeklyChallengeFailure(
   return getPendingWeeklyChallengeFailure(client, userId, now);
 }
 
-export async function joinWeeklyChallenge(
-  client: PoolClient,
-  challengeId: string,
-  userId: string,
-  now = new Date(),
-): Promise<WeeklyChallengeCurrentResponse> {
-  const challenge = await fetchChallengeForUpdate(client, challengeId);
-  if (!challenge) throw new AppError('not_found', 'weekly challenge not found', 404);
-  const status = resolveWeeklyChallengeStatus(challenge, now);
-  if (!challenge.join_enabled || status === 'not_open' || status === 'finished') {
-    throw new AppError('conflict', 'weekly challenge join is closed', 409);
-  }
-
-  await client.query(
-    `insert into weekly_challenge_participants (challenge_id, user_id, joined_at)
-     values ($1, $2, $3)
-     on conflict (challenge_id, user_id) do nothing`,
-    [challengeId, userId, now],
-  );
-  await client.query(
-    `delete from weekly_challenge_declines where challenge_id = $1 and user_id = $2`,
-    [challengeId, userId],
-  );
-  await appendEvent(client, userId, 'weekly_challenge_joined', { challenge_id: challengeId });
-  return getCurrentWeeklyChallenge(client, userId, now);
-}
-
-export async function declineWeeklyChallenge(
-  client: PoolClient,
-  challengeId: string,
-  userId: string,
-  now = new Date(),
-): Promise<WeeklyChallengeCurrentResponse> {
-  const challenge = await fetchChallengeForUpdate(client, challengeId);
-  if (!challenge) throw new AppError('not_found', 'weekly challenge not found', 404);
-  const status = resolveWeeklyChallengeStatus(challenge, now);
-  if (!challenge.join_enabled || status === 'not_open' || status === 'finished') {
-    throw new AppError('conflict', 'weekly challenge join is closed', 409);
-  }
-  const participant = await fetchParticipant(client, challengeId, userId);
-  if (participant !== null) {
-    throw new AppError('conflict', 'weekly challenge already joined', 409);
-  }
-
-  await client.query(
-    `insert into weekly_challenge_declines (challenge_id, user_id, declined_at)
-     values ($1, $2, $3)
-     on conflict (challenge_id, user_id)
-     do update set declined_at = excluded.declined_at`,
-    [challengeId, userId, now],
-  );
-  return getCurrentWeeklyChallenge(client, userId, now);
-}
-
 export async function claimWeeklyChallengeReward(
   client: PoolClient,
   challengeId: string,
@@ -401,23 +282,10 @@ export async function claimWeeklyChallengeReward(
 ): Promise<WeeklyChallengeCurrentResponse> {
   const challenge = await fetchChallengeForRewardUpdate(client, challengeId);
   if (!challenge) throw new AppError('not_found', 'weekly challenge not found', 404);
-  const participant = await fetchParticipant(client, challengeId, userId);
-  if (!participant) throw new AppError('conflict', 'weekly challenge participation required', 409);
-  const rewardClaim = await fetchRewardClaim(client, challengeId, userId);
-  if (participant.reward_claimed_at === null && rewardClaim !== null) {
-    await client.query(
-      `update weekly_challenge_participants
-          set reward_claimed_at = $3
-        where challenge_id = $1 and user_id = $2 and reward_claimed_at is null`,
-      [challengeId, userId, rewardClaim.claimed_at],
-    );
-    return getCurrentWeeklyChallenge(client, userId, now);
-  }
-  if (participant.reward_claimed_at !== null) {
+  const mapped = await mapChallenge(client, challenge, userId, now);
+  if (mapped.rewardClaimedAt !== null) {
     throw new AppError('conflict', 'weekly challenge reward already claimed', 409);
   }
-
-  const mapped = await mapChallenge(client, challenge, userId, now);
   if (!mapped.allTasksCompleted) {
     throw new AppError('conflict', 'weekly challenge tasks are incomplete', 409);
   }

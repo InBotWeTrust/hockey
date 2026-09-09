@@ -36,7 +36,7 @@ export async function fetchWeeklyChallengeProgress(
         where user_id = $1
           and server_result = 'goal'
           and created_at >= $2
-          and created_at <= $3
+          and created_at < $3
      ), duel_progress as (
        select
          count(*) filter (where p.state = 'completed')::text as played,
@@ -46,21 +46,21 @@ export async function fetchWeeklyChallengeProgress(
         where p.user_id = $1
           and m.status = 'settled'
           and coalesce(m.settled_at, m.updated_at) >= $2
-          and coalesce(m.settled_at, m.updated_at) <= $3
+          and coalesce(m.settled_at, m.updated_at) < $3
      ), invite_progress as (
        select count(*)::text as invites
          from event_log event
         where event.type = 'amateur_duel_challenge_accepted'
           and event.payload->>'challenger_user_id' = $1::text
           and event.created_at >= $2
-          and event.created_at <= $3
+          and event.created_at < $3
      ), training_progress as (
        select count(*)::text as completed
          from training_session
         where user_id = $1
           and state = 'closed'
           and coalesce(closed_at, started_at) >= $2
-          and coalesce(closed_at, started_at) <= $3
+          and coalesce(closed_at, started_at) < $3
      )
      select goals, played, won, invites, completed
        from goal_progress

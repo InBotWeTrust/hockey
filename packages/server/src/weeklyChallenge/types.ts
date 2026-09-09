@@ -7,7 +7,7 @@ export const WEEKLY_CHALLENGE_TASK_TYPES = [
 ] as const;
 
 export type WeeklyChallengeTaskType = (typeof WEEKLY_CHALLENGE_TASK_TYPES)[number];
-export type WeeklyChallengeStatus = 'not_open' | 'join_open' | 'running' | 'finished';
+export type WeeklyChallengeStatus = 'future' | 'running' | 'finished';
 
 export interface WeeklyChallengeRow {
   id: string;
@@ -36,21 +36,6 @@ export interface WeeklyChallengeTaskRow {
   created_at: Date;
 }
 
-export interface WeeklyChallengeParticipantRow {
-  id: string;
-  challenge_id: string;
-  user_id: string;
-  joined_at: Date;
-  reward_claimed_at: Date | null;
-  created_at: Date;
-}
-
-export interface WeeklyChallengeDeclineRow {
-  challenge_id: string;
-  user_id: string;
-  declined_at: Date;
-}
-
 export interface WeeklyChallengeTaskDTO {
   id: string;
   type: WeeklyChallengeTaskType;
@@ -65,15 +50,12 @@ export interface WeeklyChallengeDTO {
   title: string;
   description: string;
   status: WeeklyChallengeStatus;
-  joinOpenAt: string;
   startAt: string;
   endAt: string;
-  joinEnabled: boolean;
   reward: { coins: number; stars: number; experience: number };
-  participant: { joinedAt: string; rewardClaimedAt: string | null } | null;
-  declinedAt: string | null;
+  rewardClaimedAt: string | null;
   tasks: WeeklyChallengeTaskDTO[];
-  canJoin: boolean;
+  hasProgress: boolean;
   canClaimReward: boolean;
   allTasksCompleted: boolean;
   serverNow: string;
@@ -99,11 +81,7 @@ export interface WeeklyChallengeFailureResponse {
 export function classifyWeeklyChallengeForCatalog(
   challenge: WeeklyChallengeDTO,
 ): WeeklyChallengeCatalogSection | null {
-  if (challenge.status === 'not_open' || challenge.status === 'join_open') {
-    return challenge.declinedAt === null ? 'future' : null;
-  }
-  if (challenge.status === 'running') {
-    return challenge.participant === null ? null : 'active';
-  }
-  return challenge.participant !== null && challenge.allTasksCompleted ? 'completed' : null;
+  if (challenge.status === 'future') return 'future';
+  if (challenge.status === 'running') return 'active';
+  return challenge.allTasksCompleted ? 'completed' : null;
 }
