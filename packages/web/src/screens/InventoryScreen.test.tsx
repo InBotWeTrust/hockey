@@ -345,9 +345,9 @@ describe('InventoryScreen', () => {
     expect(screen.getByText('Стартовый набор')).toBeInTheDocument();
     expect(screen.getByText('Игровой запас')).toBeInTheDocument();
     expect(screen.getByText('Клубный банк')).toBeInTheDocument();
-    expect(screen.getByText('500 монет')).toBeInTheDocument();
-    expect(screen.getByText('1 200 монет')).toBeInTheDocument();
-    expect(screen.getByText('3 000 монет')).toBeInTheDocument();
+    expect(screen.getByText('7 450 монет')).toBeInTheDocument();
+    expect(screen.getByText('14 950 монет')).toBeInTheDocument();
+    expect(screen.getByText('34 950 монет')).toBeInTheDocument();
   });
 
   it('shows transaction history with currency icons and filters', async () => {
