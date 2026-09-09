@@ -39,10 +39,7 @@ describe('weekly challenge personal catalogue', () => {
       ),
     ).toBeNull();
     expect(
-      classifyWeeklyChallengeForCatalog(
-        challenge({ status: 'finished', allTasksCompleted: true }),
-      ),
+      classifyWeeklyChallengeForCatalog(challenge({ status: 'finished', allTasksCompleted: true })),
     ).toBe('completed');
   });
-
 });

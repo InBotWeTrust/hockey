@@ -465,14 +465,8 @@ export function AchievementsScreen({
       )}
 
       {claimedReward && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="achievement-reward-toast"
-        >
-          <span className="achievement-reward-toast__status">
-            Награда за достижение начислена
-          </span>
+        <div role="status" aria-live="polite" className="achievement-reward-toast">
+          <span className="achievement-reward-toast__status">Награда за достижение начислена</span>
           <strong className="achievement-reward-toast__title">{claimedReward.title}</strong>
           <div className="achievement-reward-toast__values">
             {rewardPartItems(claimedReward, { plus: true }).map((part) => (

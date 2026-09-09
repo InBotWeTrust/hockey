@@ -82,10 +82,9 @@ export function fetchPendingWeeklyChallengeFailure(): Promise<WeeklyChallengeFai
 export function acknowledgeWeeklyChallengeFailure(
   id: string,
 ): Promise<WeeklyChallengeFailureResponse> {
-  return apiFetch<WeeklyChallengeFailureResponse>(
-    `/weekly-challenge/failures/${id}/acknowledge`,
-    { method: 'POST' },
-  );
+  return apiFetch<WeeklyChallengeFailureResponse>(`/weekly-challenge/failures/${id}/acknowledge`, {
+    method: 'POST',
+  });
 }
 
 export function claimWeeklyChallengeReward(id: string): Promise<WeeklyChallengeCurrentResponse> {

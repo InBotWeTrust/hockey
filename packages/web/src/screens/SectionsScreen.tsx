@@ -129,8 +129,7 @@ export function SectionsScreen(): JSX.Element {
         ...(weeklyChallenge.data?.pendingRewards ?? []),
       ])
     : 0;
-  const sectionTasksActionCount =
-    achievementsUnclaimedCount + weeklyChallengeActionCount;
+  const sectionTasksActionCount = achievementsUnclaimedCount + weeklyChallengeActionCount;
   const achievementsMeta = `${numberText(achievementsCompletedCount)}/${numberText(achievements.length)} наград`;
 
   const openAmateurs = (): void => {
@@ -247,12 +246,17 @@ export function SectionsScreen(): JSX.Element {
                 </span>
                 <span>{task.title}</span>
                 <strong>
-                  {(task.progress ?? 0).toLocaleString('ru-RU')} / {task.target.toLocaleString('ru-RU')}
+                  {(task.progress ?? 0).toLocaleString('ru-RU')} /{' '}
+                  {task.target.toLocaleString('ru-RU')}
                 </strong>
               </div>
             ))}
           </div>
-          {failureAckError !== null && <p className="modal-error" role="alert">{failureAckError}</p>}
+          {failureAckError !== null && (
+            <p className="modal-error" role="alert">
+              {failureAckError}
+            </p>
+          )}
           <div className="modal-actions">
             <button
               type="button"

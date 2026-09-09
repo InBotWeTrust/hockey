@@ -243,8 +243,7 @@ export function BottomNav(): JSX.Element | null {
         ...(weeklyChallenge?.pendingRewards ?? []),
       ])
     : 0;
-  const sectionActionCount =
-    weeklyChallengeActionCount + (achievements?.unclaimedCount ?? 0);
+  const sectionActionCount = weeklyChallengeActionCount + (achievements?.unclaimedCount ?? 0);
   const openLastGameRoute = (): void => {
     rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);
     navigate(DEFAULT_GAME_ROUTE);
