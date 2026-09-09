@@ -311,10 +311,10 @@ export async function evaluateTrainingClosedAchievements(
   const completed = new Set<string>(['first-training']);
   const finishedQuota = results.length >= event.shotsLimit;
 
-  if (finishedQuota && event.shotsLimit === 50 && results.length === 50 && goals >= 45) {
+  if (finishedQuota && event.shotsLimit === 100 && results.length === 100 && goals >= 90) {
     completed.add('training-monster');
   }
-  if (finishedQuota && event.shotsLimit === 50 && results.length === 50 && goals === 49) {
+  if (finishedQuota && event.shotsLimit === 100 && results.length === 100 && goals === 99) {
     completed.add('almost-perfect-training');
   }
   if (hasGoalStreak(results, 30)) completed.add('rhythm-control');
@@ -323,7 +323,7 @@ export async function evaluateTrainingClosedAchievements(
     completed.add('finish-machine');
   }
 
-  if (finishedQuota && event.shotsLimit === 50 && results.length === 50 && goals >= 40) {
+  if (finishedQuota && event.shotsLimit === 100 && results.length === 100 && goals >= 80) {
     const streak = await incrementTraining40Of50Streak(db, event.userId, event.trainingSessionId);
     if (streak >= 5) completed.add('stable-student');
   } else {
@@ -878,8 +878,8 @@ async function hasIdealDay(
     `with daily as (
        select dp.id,
               count(distinct pl.period_number)::int as closed_periods,
-              count(ss.id)::int as shots,
-              count(ss.id) filter (where ss.server_result = 'goal')::int as goals
+              count(distinct ss.id)::int as shots,
+              count(distinct ss.id) filter (where ss.server_result = 'goal')::int as goals
          from day_pool dp
          left join period_log pl on pl.day_pool_id = dp.id
          left join shot_session ss
@@ -892,6 +892,7 @@ async function hasIdealDay(
      ),
      training as (
        select ts.id,
+              ts.shots_limit,
               count(ss.id)::int as shots,
               count(ss.id) filter (where ss.server_result = 'goal')::int as goals
          from training_session ts
@@ -913,8 +914,8 @@ async function hasIdealDay(
             exists (
               select 1
                 from training
-               where shots = 50
-                 and goals = 50
+               where shots = shots_limit
+                 and goals = shots_limit
             ) as training_perfect`,
     [userId, dayDate, totalPeriods, totalPeriods * shotsPerPeriod],
   );
