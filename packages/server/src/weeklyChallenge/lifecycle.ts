@@ -35,21 +35,6 @@ async function findExistingChallengeAtStart(
   return rows[0];
 }
 
-async function adoptExistingChallenge(
-  client: PoolClient,
-  challenge: ExistingChallengeRow,
-): Promise<void> {
-  if (!challenge.is_automatic) {
-    await client.query(
-      `update weekly_challenges
-          set is_automatic = true,
-              updated_at = now()
-        where id = $1`,
-      [challenge.id],
-    );
-  }
-}
-
 async function moveAndAdoptTargetDraft(
   client: PoolClient,
   targetDraft: ExistingChallengeRow,
@@ -65,7 +50,7 @@ async function moveAndAdoptTargetDraft(
             is_active = false,
             join_enabled = false,
             updated_at = now()
-      where id = $1`,
+      where id = $1 and launched_at is null`,
     [targetDraft.id, window.nextVisibleFrom, window.nextStart, window.nextEnd],
   );
 }
@@ -80,11 +65,24 @@ export async function reconcileWeeklyChallengeLifecycle(
       where id = true
       for update`,
   );
-  // An active row is launch evidence, including rows imported before this
-  // marker existed. Never erase that evidence when the week finishes.
+  // Old admins could publish a future week as active. It has not launched
+  // and must not occupy the single running slot or survive a pre-start disable.
+  await client.query(
+    `update weekly_challenges challenge
+        set is_active = false, launched_at = null, updated_at = now()
+      where start_at > $1
+        and (is_active or launched_at >= start_at)
+        and not exists (
+          select 1 from weekly_challenge_reward_claims claim
+           where claim.challenge_id = challenge.id
+        )`,
+    [now],
+  );
+  // Only a week whose start has arrived can provide active launch evidence.
   await client.query(
     `update weekly_challenges set launched_at = start_at
-      where is_active and launched_at is null`,
+      where is_active and launched_at is null and start_at <= $1`,
+    [now],
   );
   await client.query(
     `update weekly_challenges
@@ -111,10 +109,9 @@ export async function reconcileWeeklyChallengeLifecycle(
     }
     await moveAndAdoptTargetDraft(client, draft, window);
   }
-  if (!enabled) return;
-
-  await client.query(
-    `update weekly_challenges
+  if (enabled)
+    await client.query(
+      `update weekly_challenges
         set is_active = true,
             launched_at = coalesce(launched_at, $1),
             updated_at = now()
@@ -133,8 +130,8 @@ export async function reconcileWeeklyChallengeLifecycle(
          order by challenge.start_at desc, challenge.id
          limit 1
       )`,
-    [now],
-  );
+      [now],
+    );
 
   const initialWindow = getWeeklyChallengeWindow(now);
   const targetDraft = await findExistingChallengeAtStart(client, initialWindow.nextStart);
@@ -161,9 +158,10 @@ export async function reconcileWeeklyChallengeLifecycle(
 
   const existingChallenge = delayedExisting ?? targetDraft;
   if (existingChallenge !== undefined) {
-    await adoptExistingChallenge(client, existingChallenge);
+    await moveAndAdoptTargetDraft(client, existingChallenge, window);
     return;
   }
+  if (!enabled) return;
 
   const { rows: sources } = await client.query<WeeklyChallengeSourceRow>(
     `select id, title, description, reward_coins, reward_stars, reward_experience, created_by

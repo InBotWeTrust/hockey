@@ -218,6 +218,7 @@ describe.skipIf(!hasIntegrationEnv)('071 accuracy World Tour migration', () => {
       '113_weekly_challenge_failure_acknowledgements.sql',
       '114_automatic_weekly_challenges.sql',
       '115_weekly_challenge_launch_marker.sql',
+      '116_weekly_challenge_future_publication.sql',
     ]);
 
     const preserved = await pool.query<{

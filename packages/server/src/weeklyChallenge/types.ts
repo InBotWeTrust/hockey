@@ -85,5 +85,5 @@ export function classifyWeeklyChallengeForCatalog(
 ): WeeklyChallengeCatalogSection | null {
   if (challenge.status === 'future') return 'future';
   if (challenge.status === 'running') return 'active';
-  return challenge.allTasksCompleted ? 'completed' : null;
+  return challenge.allTasksCompleted || challenge.rewardClaimedAt !== null ? 'completed' : null;
 }

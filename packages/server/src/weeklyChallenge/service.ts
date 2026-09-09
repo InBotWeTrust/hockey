@@ -53,12 +53,22 @@ async function fetchActiveChallenge(db: Queryable, now: Date): Promise<WeeklyCha
   return rows[0] ?? null;
 }
 
-async function fetchCatalogChallenges(db: Queryable, now: Date): Promise<WeeklyChallengeRow[]> {
+async function fetchCatalogChallenges(
+  db: Queryable,
+  userId: string,
+  now: Date,
+): Promise<WeeklyChallengeRow[]> {
   const { rows } = await db.query<WeeklyChallengeRow>(
     `select challenge.*
        from weekly_challenges challenge
       cross join weekly_challenge_settings settings
-      where (challenge.end_at <= $1 and (not challenge.is_automatic or challenge.launched_at is not null))
+      where (challenge.end_at <= $1 and (
+              (challenge.is_automatic and challenge.launched_at is not null)
+              or (not challenge.is_automatic and (
+                exists (select 1 from weekly_challenge_participants p where p.challenge_id = challenge.id and p.user_id = $2)
+                or exists (select 1 from weekly_challenge_reward_claims rc where rc.challenge_id = challenge.id and rc.user_id = $2)
+              ))
+            ))
          or (
               challenge.is_active
               and (not challenge.is_automatic or challenge.launched_at is not null)
@@ -71,7 +81,7 @@ async function fetchCatalogChallenges(db: Queryable, now: Date): Promise<WeeklyC
               and $1 < challenge.start_at
             )
       order by challenge.start_at desc, challenge.id`,
-    [now],
+    [now, userId],
   );
   return rows;
 }
@@ -103,7 +113,10 @@ async function fetchPendingRewardChallenges(
          on rc.challenge_id = c.id and rc.user_id = $1
       where rc.id is null
         and c.end_at <= $2
-        and (not c.is_automatic or c.launched_at is not null)
+        and ((c.is_automatic and c.launched_at is not null)
+          or (not c.is_automatic and exists (
+            select 1 from weekly_challenge_participants p where p.challenge_id = c.id and p.user_id = $1
+          )))
         and ($3::uuid is null or c.id <> $3::uuid)
       order by c.end_at desc, c.start_at desc`,
     [userId, now, currentChallengeId],
@@ -134,6 +147,19 @@ async function fetchRewardClaim(
     [challengeId, userId],
   );
   return rows[0] ?? null;
+}
+
+async function hasChallengeEligibility(
+  db: Queryable,
+  challenge: WeeklyChallengeRow,
+  userId: string,
+): Promise<boolean> {
+  if (challenge.is_automatic) return challenge.launched_at !== null;
+  const { rows } = await db.query(
+    `select 1 from weekly_challenge_participants where challenge_id = $1 and user_id = $2`,
+    [challenge.id, userId],
+  );
+  return rows.length > 0;
 }
 
 async function mapChallenge(
@@ -168,7 +194,7 @@ async function mapChallenge(
   const canClaimReward =
     rewardClaimedAt === null &&
     allTasksCompleted &&
-    (!challenge.is_automatic || challenge.launched_at !== null);
+    (await hasChallengeEligibility(db, challenge, userId));
 
   return {
     id: challenge.id,
@@ -222,7 +248,7 @@ export async function getWeeklyChallengeCatalog(
     active: [],
     completed: [],
   };
-  const candidates = await fetchCatalogChallenges(db, now);
+  const candidates = await fetchCatalogChallenges(db, userId, now);
   for (const candidate of candidates) {
     const challenge = await mapChallenge(db, candidate, userId, now);
     const section = classifyWeeklyChallengeForCatalog(challenge);
@@ -245,14 +271,18 @@ export async function getPendingWeeklyChallengeFailure(
        left join weekly_challenge_failure_acknowledgements acknowledgement
          on acknowledgement.challenge_id = challenge.id and acknowledgement.user_id = $1
       where challenge.end_at <= $2
-        and (not challenge.is_automatic or challenge.launched_at is not null)
+        and ((challenge.is_automatic and challenge.launched_at is not null)
+          or (not challenge.is_automatic and exists (
+            select 1 from weekly_challenge_participants p where p.challenge_id = challenge.id and p.user_id = $1
+          )))
         and acknowledgement.challenge_id is null
       order by challenge.end_at asc, challenge.id asc`,
     [userId, now],
   );
   for (const row of rows) {
     const challenge = await mapChallenge(db, row, userId, now);
-    if (challenge.hasProgress && !challenge.allTasksCompleted) return { challenge };
+    if (challenge.rewardClaimedAt === null && challenge.hasProgress && !challenge.allTasksCompleted)
+      return { challenge };
   }
   return { challenge: null };
 }
@@ -265,11 +295,16 @@ export async function acknowledgeWeeklyChallengeFailure(
 ): Promise<WeeklyChallengeFailureResponse> {
   const challenge = await fetchChallengeForRewardUpdate(client, challengeId);
   if (challenge === null) throw new AppError('not_found', 'weekly challenge not found', 404);
-  if (challenge.is_automatic && challenge.launched_at === null) {
-    throw new AppError('conflict', 'weekly challenge was not launched', 409);
+  if (!(await hasChallengeEligibility(client, challenge, userId))) {
+    throw new AppError('conflict', 'weekly challenge is not available for this player', 409);
   }
   const mapped = await mapChallenge(client, challenge, userId, now);
-  if (mapped.status !== 'finished' || !mapped.hasProgress || mapped.allTasksCompleted) {
+  if (
+    mapped.status !== 'finished' ||
+    !mapped.hasProgress ||
+    mapped.allTasksCompleted ||
+    mapped.rewardClaimedAt !== null
+  ) {
     throw new AppError('conflict', 'weekly challenge failure is not available', 409);
   }
   await client.query(
@@ -290,8 +325,11 @@ export async function claimWeeklyChallengeReward(
 ): Promise<WeeklyChallengeCurrentResponse> {
   const challenge = await fetchChallengeForRewardUpdate(client, challengeId);
   if (!challenge) throw new AppError('not_found', 'weekly challenge not found', 404);
-  if (challenge.is_automatic && challenge.launched_at === null) {
-    throw new AppError('conflict', 'weekly challenge was not launched', 409);
+  if ((await fetchRewardClaim(client, challengeId, userId)) !== null) {
+    throw new AppError('conflict', 'weekly challenge reward already claimed', 409);
+  }
+  if (!(await hasChallengeEligibility(client, challenge, userId))) {
+    throw new AppError('conflict', 'weekly challenge is not available for this player', 409);
   }
   const status = resolveWeeklyChallengeStatus(challenge, now);
   if (status === 'future' || (status === 'running' && !challenge.is_active)) {

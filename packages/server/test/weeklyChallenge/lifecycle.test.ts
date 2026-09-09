@@ -8,6 +8,11 @@ import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/tes
 import { waitForBlockedWriter } from '../helpers/postgresLocks.js';
 import { getWeeklyChallengeWindow } from '../../src/weeklyChallenge/schedule.js';
 import { reconcileWeeklyChallengeLifecycle } from '../../src/weeklyChallenge/lifecycle.js';
+import {
+  claimWeeklyChallengeReward,
+  getCurrentWeeklyChallenge,
+  getWeeklyChallengeCatalog,
+} from '../../src/weeklyChallenge/service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -237,7 +242,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
       title: 'Ручная следующая неделя',
       description: 'Сохранить условия ручной настройки',
       startAt: new Date('2026-09-20T21:00:00Z'),
-      endAt: new Date('2026-09-27T09:00:00Z'),
+      endAt: new Date('2026-09-30T16:00:00Z'),
     });
 
     await reconcileAt(new Date('2026-09-15T09:00:00Z'));
@@ -266,7 +271,99 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
       { type: 'goals_scored', title: 'Забросить 100 шайб', target: 100, sort_order: 3 },
       { type: 'duels_won', title: 'Выиграть 4 дуэли', target: 4, sort_order: 8 },
     ]);
+    expect(await getAutomaticChallenges()).toEqual([
+      expect.objectContaining({
+        id: manualId,
+        visible_from: new Date('2026-09-20T09:00:00Z'),
+        join_open_at: new Date('2026-09-20T09:00:00Z'),
+        end_at: new Date('2026-09-27T09:00:00Z'),
+        is_active: false,
+        join_enabled: false,
+      }),
+    ]);
   });
+
+  it('shows an adopted draft at Sunday noon and excludes events at its normalized end', async () => {
+    const id = await createSourceChallenge({
+      startAt: new Date('2026-09-20T21:00:00Z'),
+      endAt: new Date('2026-09-30T16:00:00Z'),
+    });
+    const user = await pool.query<{ id: string }>(
+      `insert into users (id, display_name, timezone) values (gen_random_uuid(), 'Adoption player', 'Europe/Moscow') returning id`,
+    );
+    const userId = user.rows[0]!.id;
+    await pool.query(`delete from weekly_challenge_tasks where challenge_id = $1`, [id]);
+    await pool.query(
+      `insert into weekly_challenge_tasks (challenge_id, type, target) values ($1, 'duel_invites_sent', 2)`,
+      [id],
+    );
+    await reconcileAt(new Date('2026-09-15T09:00:00Z'));
+    const before = await getWeeklyChallengeCatalog(pool, userId, new Date('2026-09-20T08:59:59Z'));
+    expect(before.future).toEqual([]);
+    const visible = await getWeeklyChallengeCatalog(pool, userId, new Date('2026-09-20T09:00:00Z'));
+    expect(visible.future).toEqual([expect.objectContaining({ id })]);
+    await reconcileAt(new Date('2026-09-20T21:00:00Z'));
+    await pool.query(
+      `insert into event_log (user_id, type, payload, created_at)
+       values ($1::uuid, 'amateur_duel_challenge_accepted', jsonb_build_object('challenger_user_id', $1::uuid::text), '2026-09-27T08:59:59Z'),
+              ($1::uuid, 'amateur_duel_challenge_accepted', jsonb_build_object('challenger_user_id', $1::uuid::text), '2026-09-27T09:00:00Z')`,
+      [userId],
+    );
+    const current = await getCurrentWeeklyChallenge(pool, userId, new Date('2026-09-27T08:59:59Z'));
+    expect(current.challenge).toMatchObject({
+      endAt: '2026-09-27T09:00:00.000Z',
+      canClaimReward: false,
+      tasks: [expect.objectContaining({ progress: 1 })],
+    });
+    const ended = await getCurrentWeeklyChallenge(pool, userId, new Date('2026-09-27T09:00:00Z'));
+    expect(ended.challenge).toBeNull();
+  });
+
+  it.each([false, true])(
+    'does not launch a future legacy publication when disabled before Monday (initially disabled: %s)',
+    async (initiallyDisabled) => {
+      const id = await createSourceChallenge({
+        startAt: new Date('2026-09-20T21:00:00Z'),
+        endAt: new Date('2026-09-30T16:00:00Z'),
+        isActive: true,
+      });
+      if (initiallyDisabled)
+        await pool.query(`update weekly_challenge_settings set enabled = false where id = true`);
+      await reconcileAt(new Date('2026-09-15T09:00:00Z'));
+      await pool.query(`update weekly_challenge_settings set enabled = false where id = true`);
+      await reconcileAt(new Date('2026-09-20T21:00:00Z'));
+      const rows = await pool.query(
+        `select id, is_active, launched_at, start_at from weekly_challenges where id = $1`,
+        [id],
+      );
+      expect(rows.rows).toEqual([
+        {
+          id,
+          is_active: false,
+          launched_at: null,
+          start_at: new Date('2026-09-27T21:00:00Z'),
+        },
+      ]);
+      const userId = '11111111-1111-4111-8111-111111111111';
+      expect(
+        await getWeeklyChallengeCatalog(pool, userId, new Date('2026-09-20T21:00:00Z')),
+      ).toEqual({ future: [], active: [], completed: [] });
+      const client = await pool.connect();
+      try {
+        await expect(
+          claimWeeklyChallengeReward(client, id, userId, new Date('2026-09-20T21:00:00Z')),
+        ).rejects.toMatchObject({ statusCode: 409 });
+      } finally {
+        client.release();
+      }
+      await pool.query(`update weekly_challenges set title = 'Editable draft' where id = $1`, [id]);
+      await pool.query(`update weekly_challenge_settings set enabled = true where id = true`);
+      await reconcileAt(new Date('2026-09-21T09:00:00Z'));
+      expect(await getAutomaticChallenges()).toEqual([
+        expect.objectContaining({ id, title: 'Editable draft', is_active: false }),
+      ]);
+    },
+  );
 
   it('adopts an active manual row at the next start and preserves its configuration', async () => {
     await createSourceChallenge();
@@ -420,7 +517,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
     const delayedDraftId = await createSourceChallenge({
       title: 'Уже подготовленный delayed draft',
       startAt: new Date('2026-09-27T21:00:00Z'),
-      endAt: new Date('2026-10-04T09:00:00Z'),
+      endAt: new Date('2026-10-07T15:00:00Z'),
     });
 
     await reconcileAt(new Date('2026-09-15T09:00:00Z'));
@@ -431,6 +528,11 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
         id: delayedDraftId,
         title: 'Уже подготовленный delayed draft',
         start_at: new Date('2026-09-27T21:00:00Z'),
+        visible_from: new Date('2026-09-27T09:00:00Z'),
+        join_open_at: new Date('2026-09-27T09:00:00Z'),
+        end_at: new Date('2026-10-04T09:00:00Z'),
+        is_active: false,
+        join_enabled: false,
       }),
     ]);
   });
@@ -450,6 +552,12 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
     expect(challenges.map((challenge) => challenge.start_at)).toEqual([
       new Date('2026-09-20T21:00:00Z'),
     ]);
+    await reconcileAt(new Date('2026-09-20T21:00:00Z'));
+    expect(await getAutomaticChallenges()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ start_at: new Date('2026-09-20T21:00:00Z'), is_active: true }),
+      ]),
+    );
   });
 
   it('creates one automatic week when two open transactions reconcile concurrently', async () => {
@@ -536,6 +644,56 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
         { title: 'draft', launched: false, at_start: null },
         { title: 'legacy', launched: false, at_start: null },
       ]);
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+  });
+
+  it('repairs premature future launch markers while preserving participants and issued claims', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await client.query(`insert into weekly_challenges (title, join_open_at, start_at, end_at, is_active, is_automatic, launched_at)
+        values ('future', now() + interval '30 days', now() + interval '30 days', now() + interval '37 days', true, true, now() + interval '30 days'),
+               ('claimed', now() + interval '40 days', now() + interval '40 days', now() + interval '47 days', false, true, now() + interval '40 days'),
+               ('past', now() - interval '14 days', now() - interval '14 days', now() - interval '7 days', false, true, now() - interval '14 days')`);
+      const user = await client.query<{ id: string }>(
+        `insert into users (id, display_name, timezone) values (gen_random_uuid(), 'Repair user', 'Europe/Moscow') returning id`,
+      );
+      await client.query(
+        `insert into weekly_challenge_participants (challenge_id, user_id) select id, $1 from weekly_challenges where title = 'future'`,
+        [user.rows[0]!.id],
+      );
+      await client.query(
+        `insert into weekly_challenge_reward_claims (challenge_id, user_id, coins, stars, experience) select id, $1, 1, 0, 0 from weekly_challenges where title = 'claimed'`,
+        [user.rows[0]!.id],
+      );
+      await client.query(
+        await readFile(
+          path.join(MIGRATIONS_DIR, '116_weekly_challenge_future_publication.sql'),
+          'utf8',
+        ),
+      );
+      expect(
+        (
+          await client.query(
+            `select title, is_active, launched_at is not null as launched from weekly_challenges order by title`,
+          )
+        ).rows,
+      ).toEqual([
+        { title: 'claimed', is_active: false, launched: true },
+        { title: 'future', is_active: false, launched: false },
+        { title: 'past', is_active: false, launched: true },
+      ]);
+      expect(
+        (await client.query(`select count(*)::int as count from weekly_challenge_participants`))
+          .rows,
+      ).toEqual([{ count: 1 }]);
+      expect(
+        (await client.query(`select count(*)::int as count from weekly_challenge_reward_claims`))
+          .rows,
+      ).toEqual([{ count: 1 }]);
     } finally {
       await client.query('rollback');
       client.release();
