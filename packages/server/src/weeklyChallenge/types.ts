@@ -17,6 +17,8 @@ export interface WeeklyChallengeRow {
   start_at: Date;
   end_at: Date;
   is_active: boolean;
+  is_automatic: boolean;
+  launched_at: Date | null;
   join_enabled: boolean;
   reward_coins: number;
   reward_stars: number;

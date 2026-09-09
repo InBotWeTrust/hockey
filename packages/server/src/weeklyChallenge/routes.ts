@@ -47,7 +47,10 @@ export const weeklyChallengeRoutes: FastifyPluginAsync = async (app) => {
   );
 
   app.get('/weekly-challenge/failures/pending', { preHandler: [app.authenticate] }, async (req) =>
-    getPendingWeeklyChallengeFailure(app.pg, req.user.id),
+    withTransaction(app, async (client) => {
+      await reconcileWeeklyChallengeLifecycle(client);
+      return getPendingWeeklyChallengeFailure(client, req.user.id);
+    }),
   );
 
   app.post(
@@ -56,9 +59,10 @@ export const weeklyChallengeRoutes: FastifyPluginAsync = async (app) => {
     async (req) => {
       const params = paramsSchema.safeParse(req.params);
       if (!params.success) throw new AppError('bad_request', 'invalid weekly challenge id', 400);
-      return withTransaction(app, (client) =>
-        acknowledgeWeeklyChallengeFailure(client, params.data.id, req.user.id),
-      );
+      return withTransaction(app, async (client) => {
+        await reconcileWeeklyChallengeLifecycle(client);
+        return acknowledgeWeeklyChallengeFailure(client, params.data.id, req.user.id);
+      });
     },
   );
 
@@ -68,9 +72,10 @@ export const weeklyChallengeRoutes: FastifyPluginAsync = async (app) => {
     async (req) => {
       const params = paramsSchema.safeParse(req.params);
       if (!params.success) throw new AppError('bad_request', 'invalid weekly challenge id', 400);
-      return withTransaction(app, (client) =>
-        claimWeeklyChallengeReward(client, params.data.id, req.user.id),
-      );
+      return withTransaction(app, async (client) => {
+        await reconcileWeeklyChallengeLifecycle(client);
+        return claimWeeklyChallengeReward(client, params.data.id, req.user.id);
+      });
     },
   );
 };

@@ -120,19 +120,45 @@ describe('WeeklyChallengesAdmin', () => {
     );
   });
 
-  it('toggles the global setting and removes the next editor while disabled', async () => {
+  it('keeps the next editor available when the global setting is disabled', async () => {
     renderAdmin();
     const toggle = await screen.findByRole('checkbox', { name: 'Недельные челленджи включены' });
-    vi.mocked(apiFetch).mockResolvedValue({ ...dashboard, enabled: false, next: null });
+    vi.mocked(apiFetch).mockResolvedValue({ ...dashboard, enabled: false });
     fireEvent.click(toggle);
     await waitFor(() => expect(toggle).not.toBeChecked());
     expect(apiFetch).toHaveBeenCalledWith('/admin/weekly-challenges/settings', {
       method: 'PATCH',
       body: '{"enabled":false}',
     });
-    expect(screen.queryByRole('button', { name: 'Сохранить' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Сохранить' })).toBeEnabled();
     expect(screen.getByText('Неделя снайпера')).toBeInTheDocument();
   });
+
+  it.each([true, false])(
+    'renders and saves the first week editor when next is null and enabled=%s',
+    async (enabled) => {
+      vi.mocked(apiFetch).mockResolvedValue({ enabled, current: null, next: null, history: [] });
+      renderAdmin();
+      const title = await screen.findByRole('textbox', { name: 'Название' });
+      expect(title).toHaveValue('');
+      expect(screen.queryByLabelText('Дата начала')).not.toBeInTheDocument();
+      fireEvent.change(title, { target: { value: 'Первая неделя' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+      await waitFor(() =>
+        expect(apiFetch).toHaveBeenCalledWith('/admin/weekly-challenges/next', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            title: 'Первая неделя',
+            description: '',
+            rewardCoins: 0,
+            rewardStars: 0,
+            rewardExperience: 0,
+            tasks: [{ type: 'goals_scored', title: '', target: 500, sortOrder: 0 }],
+          }),
+        }),
+      );
+    },
+  );
 
   it('keeps all task fields in the responsive task card', async () => {
     renderAdmin();

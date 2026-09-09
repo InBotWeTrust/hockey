@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { assertAdminUser } from '../chat/channel.js';
 import { AppError } from '../plugins/errors.js';
 import { reconcileWeeklyChallengeLifecycle } from './lifecycle.js';
+import { getWeeklyChallengeWindow } from './schedule.js';
 import { WEEKLY_CHALLENGE_TASK_TYPES, type WeeklyChallengeTaskType } from './types.js';
 
 const taskSchema = z
@@ -43,6 +44,7 @@ interface ChallengeRow {
   end_at: Date;
   is_active: boolean;
   is_automatic: boolean;
+  launched_at: Date | null;
   reward_coins: number;
   reward_stars: number;
   reward_experience: number;
@@ -85,12 +87,14 @@ async function fetchDashboard(client: PoolClient, now: Date) {
       group by wc.id order by wc.start_at desc, wc.id`,
   );
   const currentRow = rows.find((row) => row.is_active && row.start_at <= now && now < row.end_at);
-  const nextRow = enabled
-    ? rows
-        .filter((row) => row.is_automatic && !row.is_active && row.start_at > now)
-        .sort((a, b) => a.start_at.getTime() - b.start_at.getTime())[0]
-    : undefined;
-  const historyRows = rows.filter((row) => row.end_at <= now);
+  const nextRow = rows
+    .filter(
+      (row) => row.is_automatic && row.launched_at === null && !row.is_active && row.start_at > now,
+    )
+    .sort((a, b) => a.start_at.getTime() - b.start_at.getTime())[0];
+  const historyRows = rows.filter(
+    (row) => row.end_at <= now && (!row.is_automatic || row.launched_at !== null),
+  );
   const displayed = [
     ...(currentRow ? [currentRow] : []),
     ...(nextRow ? [nextRow] : []),
@@ -251,15 +255,6 @@ export async function registerWeeklyChallengeAdminRoutes(app: FastifyInstance): 
     const body = settingsSchema.safeParse(req.body);
     if (!body.success) throw new AppError('bad_request', 'invalid weekly challenge settings', 400);
     return withTransaction(app, async (client, now) => {
-      if (body.data.enabled) {
-        // Disabled weeks that missed Monday must remain unstarted.
-        await client.query(
-          `update weekly_challenges set is_automatic = false, updated_at = now()
-            where is_automatic and not is_active and start_at <= $1
-              and exists (select 1 from weekly_challenge_settings where id = true and not enabled)`,
-          [now],
-        );
-      }
       await client.query(
         `update weekly_challenge_settings set enabled = $1, updated_at = now() where id = true`,
         [body.data.enabled],
@@ -275,14 +270,33 @@ export async function registerWeeklyChallengeAdminRoutes(app: FastifyInstance): 
     return withTransaction(app, async (client, now) => {
       const { rows } = await client.query<{ id: string }>(
         `select id from weekly_challenges
-          where is_automatic and not is_active and start_at > $1
-            and exists (select 1 from weekly_challenge_settings where id = true and enabled)
+          where is_automatic and not is_active and launched_at is null and start_at > $1
           order by start_at, id limit 1 for update`,
         [now],
       );
-      const id = rows[0]?.id;
-      if (!id) throw new AppError('conflict', 'no editable next weekly challenge', 409);
       const input = body.data;
+      let id = rows[0]?.id;
+      if (!id) {
+        const window = getWeeklyChallengeWindow(now);
+        const inserted = await client.query<{ id: string }>(
+          `insert into weekly_challenges
+            (title, description, join_open_at, visible_from, start_at, end_at,
+             is_automatic, is_active, join_enabled, reward_coins, reward_stars, reward_experience, created_by)
+           values ($1, $2, $3, $3, $4, $5, true, false, false, $6, $7, $8, $9) returning id`,
+          [
+            input.title,
+            input.description,
+            window.nextVisibleFrom,
+            window.nextStart,
+            window.nextEnd,
+            input.rewardCoins,
+            input.rewardStars,
+            input.rewardExperience,
+            req.user.id,
+          ],
+        );
+        id = inserted.rows[0]!.id;
+      }
       await client.query(
         `update weekly_challenges set title = $2, description = $3,
           reward_coins = $4, reward_stars = $5, reward_experience = $6, updated_at = now()

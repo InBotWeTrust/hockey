@@ -37,7 +37,16 @@ function taskTypeLabel(type: AdminWeeklyChallengeTaskType): string {
   return taskTypeOptions.find((option) => option.value === type)?.label ?? type;
 }
 
-function toInput(challenge: AdminWeeklyChallenge): AdminWeeklyChallengeInput {
+function toInput(challenge: AdminWeeklyChallenge | null): AdminWeeklyChallengeInput {
+  if (!challenge)
+    return {
+      title: '',
+      description: '',
+      rewardCoins: 0,
+      rewardStars: 0,
+      rewardExperience: 0,
+      tasks: [{ type: 'goals_scored', title: '', target: 500, sortOrder: 0 }],
+    };
   return {
     title: challenge.title,
     description: challenge.description,
@@ -96,20 +105,12 @@ export function WeeklyChallengesAdmin(): JSX.Element {
       )}
 
       <h3>Челлендж на следующую неделю</h3>
-      {data.next ? (
-        <NextChallengeEditor
-          key={data.next.id}
-          challenge={data.next}
-          onSaved={updateDashboard}
-          settingsPending={settings.isPending}
-        />
-      ) : (
-        <p className="weekly-challenge-admin__copy">
-          {data.enabled
-            ? 'Следующий челлендж пока не подготовлен.'
-            : 'Запуск следующих недель отключён.'}
-        </p>
-      )}
+      <NextChallengeEditor
+        key={data.next?.id ?? 'first-week'}
+        challenge={data.next}
+        onSaved={updateDashboard}
+        settingsPending={settings.isPending}
+      />
 
       <h3>История</h3>
       {data.history.length === 0 ? (
@@ -137,7 +138,7 @@ function NextChallengeEditor({
   onSaved,
   settingsPending,
 }: {
-  challenge: AdminWeeklyChallenge;
+  challenge: AdminWeeklyChallenge | null;
   onSaved: (data: AdminWeeklyChallengeDashboard) => void;
   settingsPending: boolean;
 }): JSX.Element {
@@ -185,8 +186,9 @@ function NextChallengeEditor({
       }}
     >
       <p className="weekly-challenge-admin__copy">
-        {dateText(challenge.startAt)} — {dateText(challenge.endAt)} (МСК). Даты назначаются
-        автоматически.
+        {challenge
+          ? `${dateText(challenge.startAt)} — ${dateText(challenge.endAt)} (МСК). Даты назначаются автоматически.`
+          : 'Первая неделя начнётся в ближайший будущий понедельник. Даты назначаются автоматически при сохранении.'}
       </p>
       <fieldset disabled={busy} className="weekly-challenge-admin__fieldset">
         <AdminField label="Название">

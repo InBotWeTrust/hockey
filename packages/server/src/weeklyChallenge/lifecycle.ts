@@ -80,6 +80,12 @@ export async function reconcileWeeklyChallengeLifecycle(
       where id = true
       for update`,
   );
+  // An active row is launch evidence, including rows imported before this
+  // marker existed. Never erase that evidence when the week finishes.
+  await client.query(
+    `update weekly_challenges set launched_at = start_at
+      where is_active and launched_at is null`,
+  );
   await client.query(
     `update weekly_challenges
         set is_active = false,
@@ -88,11 +94,29 @@ export async function reconcileWeeklyChallengeLifecycle(
         and end_at <= $1`,
     [now],
   );
-  if (settings[0]?.enabled !== true) return;
+  const enabled = settings[0]?.enabled === true;
+  const { rows: missedDrafts } = await client.query<ExistingChallengeRow>(
+    `select id, is_automatic from weekly_challenges
+      where is_automatic and not is_active and launched_at is null
+        and start_at <= $1 and (not $2::boolean or end_at <= $1)
+      order by start_at desc, id for update`,
+    [now, enabled],
+  );
+  for (const draft of missedDrafts) {
+    let window = getWeeklyChallengeWindow(now);
+    // Keep every draft's identity/content and avoid overwriting another
+    // prepared week when recovering from several missed intervals.
+    while (await findExistingChallengeAtStart(client, window.nextStart)) {
+      window = getWeeklyChallengeWindow(window.nextStart);
+    }
+    await moveAndAdoptTargetDraft(client, draft, window);
+  }
+  if (!enabled) return;
 
   await client.query(
     `update weekly_challenges
         set is_active = true,
+            launched_at = coalesce(launched_at, $1),
             updated_at = now()
       where id = (
         select challenge.id
@@ -128,9 +152,7 @@ export async function reconcileWeeklyChallengeLifecycle(
     [initialWindow.nextStart, initialWindow.nextEnd, targetDraft?.id ?? null],
   );
   const window =
-    overlaps[0] === undefined
-      ? initialWindow
-      : getWeeklyChallengeWindow(overlaps[0].end_at);
+    overlaps[0] === undefined ? initialWindow : getWeeklyChallengeWindow(overlaps[0].end_at);
   const delayedExisting = await findExistingChallengeAtStart(client, window.nextStart);
   if (overlaps[0] !== undefined && targetDraft !== undefined && delayedExisting === undefined) {
     await moveAndAdoptTargetDraft(client, targetDraft, window);

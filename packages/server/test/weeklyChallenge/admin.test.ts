@@ -8,6 +8,12 @@ import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import {
+  claimWeeklyChallengeReward,
+  getCurrentWeeklyChallenge,
+  getPendingWeeklyChallengeFailure,
+  getWeeklyChallengeCatalog,
+} from '../../src/weeklyChallenge/service.js';
+import {
   createTestPool,
   createTestRedis,
   getTestUrls,
@@ -134,9 +140,9 @@ describe.skipIf(!hasIntegrationEnv)('/admin/weekly-challenges/*', () => {
     active = true,
   ) {
     const { rows } = await pool.query<{ id: string }>(
-      `insert into weekly_challenges (title, join_open_at, start_at, end_at, is_active, is_automatic)
-       values ('Следующая неделя', $1, $1, $2, $3, true) returning id`,
-      [startAt, endAt, active],
+      `insert into weekly_challenges (title, join_open_at, start_at, end_at, is_active, is_automatic, launched_at)
+       values ('Следующая неделя', $1, $1, $2, $3, true, $4) returning id`,
+      [startAt, endAt, active, active || new Date(endAt) <= new Date() ? startAt : null],
     );
     const id = rows[0]!.id;
     await pool.query(
@@ -228,7 +234,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/weekly-challenges/*', () => {
     }
   });
 
-  it('disabling keeps the current challenge running and hides next until re-enabled', async () => {
+  it('disabling keeps current running and next editable for admins while hidden from players', async () => {
     const id = await seed();
     await dashboard();
     const disabled = await settings(false);
@@ -236,8 +242,22 @@ describe.skipIf(!hasIntegrationEnv)('/admin/weekly-challenges/*', () => {
     expect(disabled.json()).toMatchObject({
       enabled: false,
       current: { id, isActive: true },
-      next: null,
+      next: { startAt: '2026-09-13T21:00:00.000Z' },
     });
+    const edited = await app.inject({
+      method: 'PATCH',
+      url: '/admin/weekly-challenges/next',
+      headers: auth(adminToken),
+      payload: payload('Disabled edit'),
+    });
+    expect(edited.statusCode).toBe(200);
+    expect(edited.json().next.title).toBe('Disabled edit');
+    const catalog = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/catalog',
+      headers: auth(playerToken),
+    });
+    expect(catalog.json().future).toEqual([]);
     const enabled = await settings(true);
     expect(enabled.json()).toMatchObject({
       enabled: true,
@@ -246,43 +266,157 @@ describe.skipIf(!hasIntegrationEnv)('/admin/weekly-challenges/*', () => {
     });
   });
 
-  it('enabling midweek never starts a missed draft, including on subsequent reads', async () => {
-    await seed(undefined, undefined, false);
-    await pool.query(`update weekly_challenge_settings set enabled = false`);
+  async function advance(iso: string) {
+    vi.setSystemTime(new Date(iso));
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    adminToken = await jwt.issueAccessToken({ sub: adminId });
+    playerToken = await jwt.issueAccessToken({ sub: playerId });
+  }
+
+  it('moves the missed draft in place without leaking its original interval to history, failures or rewards', async () => {
+    const id = await seed('2026-09-13T21:00:00Z', '2026-09-20T09:00:00Z', false);
+    const taskBefore = await pool.query(
+      `select id from weekly_challenge_tasks where challenge_id = $1`,
+      [id],
+    );
+    await settings(false);
+    await advance('2026-09-16T09:00:00Z');
+    const training = await pool.query<{ id: string }>(
+      `insert into day_pool (user_id, day_date, state, current_period, game_core_version, daily_seed) values ($1, current_date, 'closed', 1, 1, 'seed') returning id`,
+      [playerId],
+    );
+    await pool.query(
+      `insert into shot_session (user_id, mode, day_pool_id, period_number, shot_index, seed, input_payload, server_result, game_core_version, created_at) values ($1, 'daily', $2, 1, 1, 'seed', '{}', 'goal', 1, '2026-09-15')`,
+      [playerId, training.rows[0]!.id],
+    );
     const enabled = await settings(true);
     expect(enabled.statusCode).toBe(200);
     expect(enabled.json()).toMatchObject({
       enabled: true,
       current: null,
-      next: { startAt: '2026-09-13T21:00:00.000Z' },
+      next: { id, startAt: '2026-09-20T21:00:00.000Z', endAt: '2026-09-27T09:00:00.000Z' },
     });
     expect((await dashboard()).json().current).toBeNull();
+    expect(
+      (await pool.query(`select id from weekly_challenge_tasks where challenge_id = $1`, [id]))
+        .rows,
+    ).toEqual(taskBefore.rows);
+    await advance('2026-09-20T10:00:00Z');
+    expect((await dashboard()).json().history).toEqual([]);
+    const playerRead = (route: string) =>
+      app.inject({ method: 'GET', url: `/weekly-challenge/${route}`, headers: auth(playerToken) });
+    expect((await playerRead('catalog')).json().completed).toEqual([]);
+    expect((await playerRead('current')).json().pendingRewards).toEqual([]);
+    expect((await playerRead('failures/pending')).json().challenge).toBeNull();
+    const claim = await app.inject({
+      method: 'POST',
+      url: `/weekly-challenge/${id}/claim-reward`,
+      headers: auth(playerToken),
+    });
+    expect(claim.statusCode).toBe(409);
+    await pool.query(`update weekly_challenge_tasks set target = 2 where challenge_id = $1`, [id]);
+    expect((await playerRead('failures/pending')).json().challenge).toBeNull();
   });
 
-  it('returns a conflict when there is no editable next week', async () => {
-    expect((await dashboard()).json()).toEqual({
-      enabled: true,
-      current: null,
-      next: null,
-      history: [],
-    });
-    const missing = await app.inject({
-      method: 'PATCH',
-      url: '/admin/weekly-challenges/next',
-      headers: auth(adminToken),
-      payload: payload('Missing'),
-    });
-    expect(missing.statusCode).toBe(409);
-    await seed();
+  it.each([true, false])(
+    'bootstraps the first server-dated next week with enabled=%s',
+    async (enabled) => {
+      if (!enabled) await settings(false);
+      expect((await dashboard()).json()).toEqual({
+        enabled,
+        current: null,
+        next: null,
+        history: [],
+      });
+      const missing = await app.inject({
+        method: 'PATCH',
+        url: '/admin/weekly-challenges/next',
+        headers: auth(adminToken),
+        payload: payload('First week'),
+      });
+      expect(missing.statusCode).toBe(200);
+      expect(missing.json()).toMatchObject({
+        enabled,
+        current: null,
+        history: [],
+        next: {
+          ...payload('First week'),
+          startAt: '2026-09-13T21:00:00.000Z',
+          endAt: '2026-09-20T09:00:00.000Z',
+          isActive: false,
+        },
+      });
+      const row = await pool.query(
+        `select visible_from, join_open_at, is_automatic from weekly_challenges where id = $1`,
+        [missing.json().next.id],
+      );
+      expect(row.rows[0]).toEqual({
+        visible_from: new Date('2026-09-13T09:00:00Z'),
+        join_open_at: new Date('2026-09-13T09:00:00Z'),
+        is_automatic: true,
+      });
+    },
+  );
+
+  it('normalizes a missed draft on player reads while disabled, without moving launched history', async () => {
+    const historicalId = await seed('2026-08-30T21:00:00Z', '2026-09-06T09:00:00Z', false);
+    const draftId = await seed('2026-09-13T21:00:00Z', '2026-09-20T09:00:00Z', false);
     await settings(false);
-    const disabled = await app.inject({
-      method: 'PATCH',
-      url: '/admin/weekly-challenges/next',
-      headers: auth(adminToken),
-      payload: payload('Disabled'),
+    await advance('2026-09-20T10:00:00Z');
+    const failure = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/failures/pending',
+      headers: auth(playerToken),
     });
-    expect(disabled.statusCode).toBe(409);
-    expect((await dashboard()).json().current.title).toBe('Следующая неделя');
+    expect(failure.json().challenge).toBeNull();
+    const rows = await pool.query(
+      `select id, start_at, is_automatic, launched_at from weekly_challenges where id = any($1::uuid[]) order by start_at`,
+      [[historicalId, draftId]],
+    );
+    expect(rows.rows).toEqual([
+      {
+        id: historicalId,
+        start_at: new Date('2026-08-30T21:00:00Z'),
+        is_automatic: true,
+        launched_at: new Date('2026-08-30T21:00:00Z'),
+      },
+      {
+        id: draftId,
+        start_at: new Date('2026-09-20T21:00:00Z'),
+        is_automatic: true,
+        launched_at: null,
+      },
+    ]);
+    const admin = (await dashboard()).json();
+    expect(admin.next.id).toBe(draftId);
+    expect(admin.history.map((row: { id: string }) => row.id)).toEqual([historicalId]);
+  });
+
+  it('never treats an unlaunched automatic row as completed or claimable even before reconciliation', async () => {
+    const id = await seed('2026-08-30T21:00:00Z', '2026-09-06T09:00:00Z', false);
+    await pool.query(`update weekly_challenges set launched_at = null where id = $1`, [id]);
+    await pool.query(
+      `update weekly_challenge_tasks set type = 'duel_invites_sent' where challenge_id = $1`,
+      [id],
+    );
+    await pool.query(
+      `insert into event_log (user_id, type, payload, created_at) values ($1, 'amateur_duel_challenge_accepted', $2, '2026-09-01')`,
+      [adminId, JSON.stringify({ challenger_user_id: playerId })],
+    );
+    expect((await getWeeklyChallengeCatalog(pool, playerId)).completed).toEqual([]);
+    expect((await getCurrentWeeklyChallenge(pool, playerId)).pendingRewards).toEqual([]);
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await expect(claimWeeklyChallengeReward(client, id, playerId)).rejects.toMatchObject({
+        statusCode: 409,
+      });
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+    await pool.query(`update weekly_challenge_tasks set target = 2 where challenge_id = $1`, [id]);
+    expect((await getPendingWeeklyChallengeFailure(pool, playerId)).challenge).toBeNull();
   });
 
   it('counts accepted invitations, settled duels and closed trainings with distinct players and partial progress', async () => {

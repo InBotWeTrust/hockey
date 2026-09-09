@@ -1,13 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
 import type { Pool } from 'pg';
 import { applyMigrations } from '../../src/db/migrations.js';
-import {
-  createTestPool,
-  hasIntegrationEnv,
-  resetDatabase,
-} from '../helpers/testDb.js';
+import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
 import { waitForBlockedWriter } from '../helpers/postgresLocks.js';
 import { getWeeklyChallengeWindow } from '../../src/weeklyChallenge/schedule.js';
 import { reconcileWeeklyChallengeLifecycle } from '../../src/weeklyChallenge/lifecycle.js';
@@ -59,9 +56,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
   });
 
   beforeEach(async () => {
-    await pool.query(
-      `truncate weekly_challenge_tasks, weekly_challenges restart identity cascade`,
-    );
+    await pool.query(`truncate weekly_challenge_tasks, weekly_challenges restart identity cascade`);
     await pool.query(`update weekly_challenge_settings set enabled = true where id = true`);
   });
 
@@ -400,7 +395,7 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
          from weekly_challenges
         where id = any($1::uuid[])
         order by id`,
-      [ [legacyChallengeId, delayedChallengeId] ],
+      [[legacyChallengeId, delayedChallengeId]],
     );
     expect(rows.rows).toEqual(
       expect.arrayContaining([
@@ -509,6 +504,44 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
     expect(await getAutomaticChallenges()).toEqual([]);
   });
 
+  it('backfills launch only from active or reward evidence and leaves legacy rows unchanged', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await client.query(`alter table weekly_challenges drop column launched_at`);
+      const { rows } = await client.query<{ id: string; title: string }>(
+        `insert into weekly_challenges (title, join_open_at, start_at, end_at, is_automatic, is_active)
+         values ('active', '2026-09-01', '2026-09-01', '2026-09-07', true, true),
+                ('claimed', '2026-08-01', '2026-08-01', '2026-08-07', true, false),
+                ('draft', '2026-07-01', '2026-07-01', '2026-07-07', true, false),
+                ('legacy', '2026-06-01', '2026-06-01', '2026-06-07', false, false)
+         returning id, title`,
+      );
+      const user = await client.query<{ id: string }>(
+        `insert into users (id, display_name, timezone) values (gen_random_uuid(), 'Migration user', 'Europe/Moscow') returning id`,
+      );
+      await client.query(
+        `insert into weekly_challenge_reward_claims (challenge_id, user_id, coins, stars, experience) values ($1, $2, 1, 0, 0)`,
+        [rows.find((row) => row.title === 'claimed')!.id, user.rows[0]!.id],
+      );
+      await client.query(
+        await readFile(path.join(MIGRATIONS_DIR, '115_weekly_challenge_launch_marker.sql'), 'utf8'),
+      );
+      const result = await client.query(
+        `select title, launched_at is not null as launched, launched_at = start_at as at_start from weekly_challenges order by title`,
+      );
+      expect(result.rows).toEqual([
+        { title: 'active', launched: true, at_start: true },
+        { title: 'claimed', launched: true, at_start: true },
+        { title: 'draft', launched: false, at_start: null },
+        { title: 'legacy', launched: false, at_start: null },
+      ]);
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+  });
+
   it('leaves a due automatic week inactive when disabled before its start', async () => {
     const challengeId = await createSourceChallenge({
       startAt: new Date('2026-09-13T21:00:00Z'),
@@ -539,18 +572,26 @@ describe.skipIf(!hasIntegrationEnv)('automatic weekly challenge lifecycle schema
     await pool.query(`update weekly_challenge_settings set enabled = false where id = true`);
     await reconcileAt(new Date('2026-09-15T09:00:00Z'));
 
-    const active = await pool.query<{ is_active: boolean }>(
-      `select is_active from weekly_challenges where id = $1`,
+    const active = await pool.query(
+      `select is_active, launched_at from weekly_challenges where id = $1`,
       [challengeId],
     );
-    expect(active.rows).toEqual([{ is_active: true }]);
+    expect(active.rows).toEqual([
+      { is_active: true, launched_at: new Date('2026-09-14T09:00:00Z') },
+    ]);
 
     await reconcileAt(new Date('2026-09-21T09:00:00Z'));
-    const expired = await pool.query<{ is_active: boolean }>(
-      `select is_active from weekly_challenges where id = $1`,
+    const expired = await pool.query(
+      `select is_active, launched_at, start_at from weekly_challenges where id = $1`,
       [challengeId],
     );
-    expect(expired.rows).toEqual([{ is_active: false }]);
+    expect(expired.rows).toEqual([
+      {
+        is_active: false,
+        launched_at: new Date('2026-09-14T09:00:00Z'),
+        start_at: new Date('2026-09-13T21:00:00Z'),
+      },
+    ]);
   });
 
   it('does not invalidate an already-started automatic week while disabled', async () => {
