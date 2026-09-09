@@ -79,6 +79,26 @@ describe('DuelChallengeModal Amateur preview access', () => {
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
   });
 
+  it('marks the selected duel type with a check indicator and pressed state', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'amateur' });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ templates: [template] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    renderModal();
+
+    const option = await screen.findByRole('button', { name: /Экспресс/ });
+    expect(option).toHaveAttribute('aria-pressed', 'true');
+    expect(option.querySelector('.duel-challenge-option__indicator')).toHaveAttribute(
+      'data-selected',
+      'true',
+    );
+    expect(option.querySelector('.duel-challenge-option__indicator svg')).toBeInTheDocument();
+  });
+
   it('guards profile challenge submission locally for a known beginner', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = input instanceof Request ? input.url : String(input);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import {
   challengeAmateurDuel,
   fetchAmateurTemplates,
@@ -212,6 +212,7 @@ export function DuelChallengeModal({
                 <button
                   key={template.id}
                   type="button"
+                  aria-pressed={selected}
                   className={selected ? 'glass-dark' : 'glass'}
                   onClick={() => {
                     setSelectedTemplateId(template.id);
@@ -225,8 +226,16 @@ export function DuelChallengeModal({
                     gap: 4,
                     cursor: 'pointer',
                     color: selected ? '#ffffff' : 'var(--ink)',
+                    position: 'relative',
                   }}
                 >
+                  <span
+                    className="duel-challenge-option__indicator"
+                    data-selected={selected}
+                    aria-hidden="true"
+                  >
+                    {selected ? <Check size={13} strokeWidth={3} /> : null}
+                  </span>
                   <span style={{ fontSize: 15, fontWeight: 900 }}>
                     {duelKindText(template.duel_kind)}
                   </span>

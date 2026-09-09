@@ -19,7 +19,7 @@ import {
   fetchAchievements,
   type AchievementDto,
 } from '../api/achievements.js';
-import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
+import { fetchWeeklyChallenge, weeklyChallengeNeedsAction } from '../api/weeklyChallenge.js';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
@@ -248,8 +248,7 @@ export function AchievementsScreen({
   );
   const challengeAttention =
     competitionLevel !== 'beginner' &&
-    (weeklyChallengeQuery.data?.challenge?.canJoin === true ||
-      weeklyChallengeQuery.data?.challenge?.canClaimReward === true ||
+    (weeklyChallengeNeedsAction(weeklyChallengeQuery.data?.challenge) ||
       (weeklyChallengeQuery.data?.pendingRewards?.length ?? 0) > 0);
   const filtered = useMemo(
     () => achievements.filter((achievement) => categoryMatches(achievement, filter)),
@@ -480,10 +479,10 @@ export function AchievementsScreen({
                 key={part.tone}
                 style={{ color: rewardColor(part.tone) }}
               >
-                <span className="achievement-reward-toast__icon" aria-hidden="true">
+                <span className="achievement-reward-toast__icon">
                   {rewardToastIcon(part.tone)}
+                  <span>{part.text}</span>
                 </span>
-                {part.text}
               </span>
             ))}
           </div>

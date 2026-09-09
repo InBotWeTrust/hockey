@@ -388,6 +388,9 @@ describe('AchievementsScreen', () => {
     expect(screen.getByTestId('achievement-reward-icon-coins').parentElement).toHaveClass(
       'achievement-reward-toast__icon',
     );
+    expect(screen.getByTestId('achievement-reward-icon-coins').parentElement).toHaveTextContent(
+      '+10 монет',
+    );
     expect(screen.queryByText('+0 зв.', { exact: false })).toBeNull();
     expect(screen.queryByText('+0 опыта', { exact: false })).toBeNull();
     expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);

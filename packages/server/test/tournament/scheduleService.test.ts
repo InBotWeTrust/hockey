@@ -178,6 +178,8 @@ describe('tournament public schedule service', () => {
     ]);
     expect(query.mock.calls[0]?.[0]).toContain('order by fixture.fixture_number, fixture.id');
     expect(query.mock.calls[0]?.[0]).not.toContain('(fixture.fixture_number, fixture.id) >');
+    expect(query.mock.calls[0]?.[0]).toContain('fixture.series_id in');
+    expect(query.mock.calls[0]?.[0]).toContain('series_fixture.local_date = $3::date');
   });
 
   it('maps playoff and third-place seeds for both players', async () => {

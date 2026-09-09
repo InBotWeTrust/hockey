@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { fetchAchievements } from '../api/achievements.js';
 import { apiFetch } from '../api/apiFetch.js';
-import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
+import { fetchWeeklyChallenge, weeklyChallengeNeedsAction } from '../api/weeklyChallenge.js';
 import type { ProfileData } from './profileTypes.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
@@ -105,12 +105,10 @@ export function SectionsScreen(): JSX.Element {
       (weeklyChallenge.data?.pendingRewards?.length ?? 0) > 0);
   const weeklyNeedsDecision =
     weeklyChallengesAvailable &&
-    (weeklyChallenge.data?.challenge?.canJoin === true || weeklyCanClaimReward);
+    (weeklyChallengeNeedsAction(weeklyChallenge.data?.challenge) || weeklyCanClaimReward);
   const sectionTasksActionCount =
     achievementsUnclaimedCount +
-    (weeklyChallengesAvailable &&
-    (weeklyChallenge.data?.challenge?.canJoin === true ||
-      weeklyChallenge.data?.challenge?.canClaimReward === true)
+    (weeklyChallengesAvailable && weeklyChallengeNeedsAction(weeklyChallenge.data?.challenge)
       ? 1
       : 0) +
     (weeklyChallengesAvailable ? (weeklyChallenge.data?.pendingRewards?.length ?? 0) : 0);

@@ -2224,13 +2224,12 @@
 .inventory-purchase-toast {
   position: fixed;
   z-index: 380;
-  right: 16px;
-  bottom: calc(88px + var(--app-safe-bottom));
-  left: 16px;
+  top: calc(var(--app-safe-top) + 14px);
+  left: 50%;
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr);
   width: min(390px, calc(100vw - 32px));
-  margin: 0 auto;
+  margin: 0;
   padding: 8px;
   align-items: center;
   gap: 10px;
@@ -11886,18 +11885,41 @@ button.daily-calendar__day:active {
 }
 
 .achievement-reward-toast__icon {
-  width: 23px;
+  min-width: 23px;
   height: 23px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 23px;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 0 8px 0 5px;
   border: 1px solid rgba(255, 255, 255, 0.76);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.9);
   box-shadow:
     0 0 0 2px rgba(255, 255, 255, 0.1),
     0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.duel-challenge-option__indicator {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 19px;
+  height: 19px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(100, 116, 139, 0.55);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: transparent;
+}
+
+.duel-challenge-option__indicator[data-selected='true'] {
+  border-color: rgba(255, 255, 255, 0.9);
+  background: #ffffff;
+  color: #1e293b;
 }
 
 .achievement-reward-toast__icon svg {

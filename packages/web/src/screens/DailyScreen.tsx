@@ -157,6 +157,8 @@ import {
   formatInventoryBadgeAmount,
   formatInventoryResourceAmount,
   formatInventoryStockLabel,
+  formatRecoveryMinutesTotal,
+  recoveryMinutesAvailable,
 } from './inventoryResourceLabels.js';
 const HUB_PERIOD_DURATION_MS = 20 * 60 * 1000;
 
@@ -4996,7 +4998,7 @@ function DuelLockerTab({
     },
   });
   const recoveryItems = inventoryQuery.data?.items.recovery ?? [];
-  const recoveryCount = recoveryItems.reduce((sum, item) => sum + item.chargesAvailable, 0);
+  const recoveryMinutes = recoveryMinutesAvailable(recoveryItems);
   const recoveryArtwork =
     recoveryItems.find((item) => item.chargesAvailable > 0)?.imageUrl ??
     '/inventory/recovery-30.webp';
@@ -5039,7 +5041,7 @@ function DuelLockerTab({
               type="button"
               className="glass duel-locker-slot"
               onClick={onOpenInventory}
-              aria-label={`Наборы для восстановления: ${recoveryCount}`}
+              aria-label={`Восстановление: ${formatRecoveryMinutesTotal(recoveryMinutes)}`}
             >
               <span className="duel-locker-slot__artwork" aria-hidden="true">
                 <img
@@ -5051,7 +5053,9 @@ function DuelLockerTab({
               <span className="duel-locker-slot__copy amateur-hub-card__copy">
                 <strong className="duel-locker-slot__title">Наборы для восстановления</strong>
                 <span className="duel-locker-slot__status">
-                  {recoveryCount > 0 ? `В запасе: ${recoveryCount}` : 'Нет в запасе'}
+                  {recoveryMinutes > 0
+                    ? `В запасе: ${formatRecoveryMinutesTotal(recoveryMinutes)}`
+                    : 'Нет в запасе'}
                 </span>
               </span>
               <ChevronRight

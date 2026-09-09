@@ -289,6 +289,15 @@ function BonusResult({
           icon: <CircleDollarSign size={15} strokeWidth={2.4} aria-hidden="true" />,
         }
       : null,
+    attempt.reward.stars > 0
+      ? {
+          label: 'Звёзды',
+          value: attempt.reward.stars,
+          text: formatRussianCount(attempt.reward.stars, 'звезда', 'звезды', 'звёзд'),
+          tone: 'star' as const,
+          icon: <Star size={15} fill="currentColor" strokeWidth={2.4} aria-hidden="true" />,
+        }
+      : null,
     attempt.reward.experience > 0
       ? {
           label: 'Опыт',
@@ -301,15 +310,6 @@ function BonusResult({
           ),
           tone: 'experience' as const,
           icon: <TrendingUp size={15} strokeWidth={2.4} aria-hidden="true" />,
-        }
-      : null,
-    attempt.reward.stars > 0
-      ? {
-          label: 'Звёзды',
-          value: attempt.reward.stars,
-          text: formatRussianCount(attempt.reward.stars, 'звезда', 'звезды', 'звёзд'),
-          tone: 'star' as const,
-          icon: <Star size={15} fill="currentColor" strokeWidth={2.4} aria-hidden="true" />,
         }
       : null,
   ].filter((part): part is NonNullable<typeof part> => part !== null);

@@ -49,11 +49,11 @@ export async function fetchWeeklyChallengeProgress(
           and coalesce(m.settled_at, m.updated_at) <= $3
      ), invite_progress as (
        select count(*)::text as invites
-         from amateur_duel_match
-        where challenger_user_id = $1
-          and source = 'challenge'
-          and created_at >= $2
-          and created_at <= $3
+         from event_log event
+        where event.type = 'amateur_duel_challenge_accepted'
+          and event.payload->>'challenger_user_id' = $1::text
+          and event.created_at >= $2
+          and event.created_at <= $3
      ), training_progress as (
        select count(*)::text as completed
          from training_session

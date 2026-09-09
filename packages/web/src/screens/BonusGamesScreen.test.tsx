@@ -348,6 +348,33 @@ describe('BonusGamesScreen', () => {
     ).toHaveLength(0);
   });
 
+  it('does not promote a completed game when the remaining beginner games are level locked', async () => {
+    mockCatalog([
+      card({ id: 'speed-1', title: 'Скорость 1', state: 'completed', is_completed: true }),
+      card({
+        id: 'speed-2',
+        title: 'Скорость 2',
+        sort_order: 20,
+        state: 'completed',
+        is_completed: true,
+      }),
+      card({
+        id: 'speed-3',
+        title: 'Скорость 3',
+        sort_order: 30,
+        state: 'level_locked',
+        is_unlocked: false,
+      }),
+    ]);
+
+    renderCatalog();
+
+    expect(await screen.findByRole('heading', { name: 'Пройденные · 2' })).toBeInTheDocument();
+    expect(screen.queryByText('Текущая игра')).not.toBeInTheDocument();
+    const lockedCard = screen.getByRole('heading', { name: 'Скорость 3' }).closest('article')!;
+    expect(lockedCard.querySelector('img')).toHaveClass('bonus-game-card__artwork--locked');
+  });
+
   it('shows the paid second-game price in a standard confirmation modal and cancels safely', async () => {
     localStorage.setItem('bonus-games:last-skill', 'accuracy');
     mockCatalog([

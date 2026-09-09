@@ -783,7 +783,7 @@ describe('DailyScreen', () => {
     });
 
     renderWith(['/?view=classic&tournament=classic-1']);
-    const recover = await screen.findByRole('button', { name: 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ' });
+    const recover = await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' });
     await act(async () => {
       fireEvent.click(recover);
       await Promise.resolve();
@@ -5386,7 +5386,29 @@ describe('DailyScreen', () => {
           JSON.stringify({
             balances: { tokens: 0, stars: 0, experience: 0 },
             equipped: { stickItemId: null, skatesItemId: null, nutritionItemId: null },
-            items: { stick: [], skates: [], nutrition: [] },
+            items: {
+              stick: [],
+              skates: [],
+              nutrition: [],
+              recovery: [
+                {
+                  id: 'recovery-15',
+                  kind: 'recovery',
+                  title: 'Малый набор',
+                  imageUrl: '/inventory/recovery-15.webp',
+                  chargesAvailable: 2,
+                  effectRecoveryMinutes: 15,
+                },
+                {
+                  id: 'recovery-60',
+                  kind: 'recovery',
+                  title: 'Большой набор',
+                  imageUrl: '/inventory/recovery-60.webp',
+                  chargesAvailable: 1,
+                  effectRecoveryMinutes: 60,
+                },
+              ],
+            },
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
@@ -5477,6 +5499,9 @@ describe('DailyScreen', () => {
     expect(lockerSlots[2]?.querySelector('img')).toHaveAttribute(
       'src',
       expect.stringContaining('/inventory/nutrition-none.webp'),
+    );
+    expect(await screen.findByRole('button', { name: 'Восстановление: 90 минут' })).toHaveTextContent(
+      'В запасе: 90 минут',
     );
 
     fireEvent.click(lockerSlots[1]!);

@@ -431,6 +431,41 @@ describe('BottomNav remembered navigation', () => {
     expect(await screen.findByLabelText('События разделов: 1')).toHaveTextContent('1');
   });
 
+  it('does not show a challenge action after the user declined participation', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/weekly-challenge/current')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              challenge: {
+                id: 'challenge-declined',
+                title: 'Неделя снайпера',
+                status: 'running',
+                canJoin: true,
+                canClaimReward: false,
+                declinedAt: '2026-09-01T10:00:00.000Z',
+              },
+              pendingRewards: [],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ achievements: [], unclaimedCount: 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    expect(screen.queryByLabelText(/События разделов:/)).toBeNull();
+  });
+
   it('shows a sections badge when a weekly challenge reward can be claimed', async () => {
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);

@@ -6,7 +6,7 @@ import { apiFetch } from '../api/apiFetch.js';
 import { achievementKeys, fetchAchievements } from '../api/achievements.js';
 import { fetchAmateurEvents, type AmateurDuelMatch } from '../api/amateurDuel.js';
 import { fetchActiveClassicTournamentGames } from '../api/tournamentClassic.js';
-import { fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
+import { fetchWeeklyChallenge, weeklyChallengeNeedsAction } from '../api/weeklyChallenge.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { AuthUser } from '../auth/authStore.js';
 import { fetchUnreadCounts } from '../chat/api.js';
@@ -238,9 +238,7 @@ export function BottomNav(): JSX.Element | null {
   const weeklyChallengesAvailable =
     competitionLevel === 'amateur' || competitionLevel === 'professional';
   const currentSectionActionCount =
-    weeklyChallengesAvailable &&
-    (weeklyChallenge?.challenge?.canJoin === true ||
-      weeklyChallenge?.challenge?.canClaimReward === true)
+    weeklyChallengesAvailable && weeklyChallengeNeedsAction(weeklyChallenge?.challenge)
       ? 1
       : 0;
   const sectionActionCount =

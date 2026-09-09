@@ -246,11 +246,11 @@ async function fetchAdminChallengeEnrichment(
              ) as duels_won,
              (
                select count(*)::int
-                 from amateur_duel_match adm
-                where adm.challenger_user_id = p.user_id
-                  and adm.source = 'challenge'
-                  and adm.created_at >= wc.start_at
-                  and adm.created_at <= wc.end_at
+                 from event_log event
+                where event.type = 'amateur_duel_challenge_accepted'
+                  and event.payload->>'challenger_user_id' = p.user_id::text
+                  and event.created_at >= wc.start_at
+                  and event.created_at <= wc.end_at
              ) as duel_invites_sent,
              (
                select count(*)::int

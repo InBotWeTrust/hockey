@@ -214,7 +214,7 @@ export function BonusGamesScreen(): JSX.Element {
     games.find((game) => game.active_attempt !== null) ??
     games.find((game) => game.state === 'in_progress') ??
     games.find((game) => game.state === 'available') ??
-    (games.every((game) => game.state === 'completed') ? null : (games[0] ?? null));
+    null;
   const completedGames = games.filter(
     (game) => game.state === 'completed' && game.id !== focusGame?.id,
   );

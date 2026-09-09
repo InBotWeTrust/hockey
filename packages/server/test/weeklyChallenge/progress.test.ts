@@ -38,6 +38,9 @@ describe('weekly challenge progress helpers', () => {
             sql.includes('amateur_duel_match') &&
             sql.includes('training_session')
           ) {
+            expect(sql).toContain("event.type = 'amateur_duel_challenge_accepted'");
+            expect(sql).toContain("event.payload->>'challenger_user_id' = $1::text");
+            expect(sql).not.toContain("adm.source = 'challenge'");
             return {
               rows: [{ goals: '18', played: '7', won: '4', invites: '3', completed: '2' }],
               command: 'SELECT',

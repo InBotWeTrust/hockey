@@ -24,7 +24,11 @@ import { AccessibleModal } from '../components/AccessibleModal.js';
 import { CommunityLinks } from '../components/CommunityLinks.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { placeholderArtworkForKind } from './inventoryArtwork.js';
-import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
+import {
+  formatInventoryResourceAmount,
+  formatRecoveryMinutesTotal,
+  recoveryMinutesAvailable,
+} from './inventoryResourceLabels.js';
 import {
   AchievementDetailsSheet,
   FittedOneLineText,
@@ -117,7 +121,7 @@ function EquipmentPanel({
     ['nutritionItemId', 'Питание', 'питание', 'Базовое питание', 'nutrition'],
   ] as const;
   const recoveryItems = inventory?.items.recovery ?? [];
-  const recoveryCount = recoveryItems.reduce((sum, item) => sum + item.chargesAvailable, 0);
+  const recoveryMinutes = recoveryMinutesAvailable(recoveryItems);
   const recoveryArtwork =
     recoveryItems.find((item) => item.chargesAvailable > 0)?.imageUrl ??
     '/inventory/recovery-30.webp';
@@ -163,21 +167,21 @@ function EquipmentPanel({
           })}
           <button
             type="button"
-            className={`profile-loadout-slot${recoveryCount === 0 ? ' profile-loadout-slot--empty' : ''}`}
-            aria-label={`Восстановление: ${recoveryCount} наборов`}
+            className={`profile-loadout-slot${recoveryMinutes === 0 ? ' profile-loadout-slot--empty' : ''}`}
+            aria-label={`Восстановление: ${formatRecoveryMinutesTotal(recoveryMinutes)}`}
             onClick={onOpenRecovery}
           >
             <span className="profile-loadout-slot__image">
               <img src={recoveryArtwork} alt="Наборы для восстановления" />
               <strong>
                 <FittedOneLineText maxFontSize={9} minFontSize={5}>
-                  {formatProfileNumber(recoveryCount)}
+                  {formatProfileNumber(recoveryMinutes)}
                 </FittedOneLineText>
               </strong>
             </span>
             <span className="profile-loadout-slot__kind">Восстановление</span>
             <span className="profile-loadout-slot__title">
-              {recoveryCount > 0 ? 'Наборы' : 'Нет в запасе'}
+              {recoveryMinutes > 0 ? 'Минут' : 'Нет в запасе'}
             </span>
           </button>
         </span>

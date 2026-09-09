@@ -86,3 +86,16 @@ export function formatInventoryStockLabel(item: InventoryItem): string {
   if (item.chargesAvailable <= 0) return 'Нет запаса';
   return `Осталось ${formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}`;
 }
+
+export function recoveryMinutesAvailable(items: InventoryItem[]): number {
+  return items.reduce(
+    (total, item) =>
+      total + Math.max(0, item.chargesAvailable) * Math.max(0, item.effectRecoveryMinutes ?? 0),
+    0,
+  );
+}
+
+export function formatRecoveryMinutesTotal(minutes: number): string {
+  const normalized = Math.max(0, Math.trunc(minutes));
+  return `${numberText(normalized)} ${pluralRu(normalized, 'минута', 'минуты', 'минут')}`;
+}

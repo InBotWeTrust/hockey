@@ -333,7 +333,7 @@ describe('ProfileScreen', () => {
       'Выбрать клюшку',
       'Выбрать коньки',
       'Выбрать питание',
-      'Восстановление: 0 наборов',
+      'Восстановление: 0 минут',
       'Открыть карьеру и награды',
       'Открыть достижение Снайпер недели',
       'Настройки',
@@ -494,7 +494,10 @@ describe('ProfileScreen', () => {
     ]);
     renderProfile();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Восстановление: 3 наборов' }));
+    const recovery = await screen.findByRole('button', { name: 'Восстановление: 90 минут' });
+    expect(recovery).toHaveTextContent('90');
+    expect(recovery).toHaveTextContent('Минут');
+    fireEvent.click(recovery);
 
     const dialog = screen.getByRole('dialog', { name: 'Наборы для восстановления' });
     expect(dialog).toHaveTextContent('Малый набор для восстановления');
@@ -510,7 +513,7 @@ describe('ProfileScreen', () => {
     mockProfileRequest();
     renderProfile();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Восстановление: 0 наборов' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Восстановление: 0 минут' }));
 
     const dialog = screen.getByRole('dialog', { name: 'Наборы для восстановления' });
     expect(dialog).toHaveTextContent('Наборов восстановления пока нет в запасе.');

@@ -48,6 +48,15 @@ export interface WeeklyChallengeCatalogResponse {
   completed: WeeklyChallenge[];
 }
 
+export function weeklyChallengeNeedsAction(
+  challenge: Pick<WeeklyChallenge, 'canJoin' | 'canClaimReward' | 'declinedAt'> | null | undefined,
+): boolean {
+  return (
+    (challenge?.canJoin === true && challenge.declinedAt == null) ||
+    challenge?.canClaimReward === true
+  );
+}
+
 export function fetchWeeklyChallenge(): Promise<WeeklyChallengeCurrentResponse> {
   return apiFetch<WeeklyChallengeCurrentResponse>('/weekly-challenge/current');
 }

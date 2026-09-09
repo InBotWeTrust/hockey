@@ -853,6 +853,10 @@ describe('BonusGamePlayScreen', () => {
     expect(within(dialog).getByLabelText('Монеты: 21')).toHaveTextContent('21 монета');
     expect(within(dialog).getByLabelText('Опыт: 25')).toHaveTextContent('25 очков опыта');
     expect(within(dialog).getByLabelText('Звёзды: 22')).toHaveTextContent('22 звезды');
+    const rewards = within(dialog).getByText('Награда').nextElementSibling;
+    expect(rewards?.children[0]).toHaveAccessibleName('Монеты: 21');
+    expect(rewards?.children[1]).toHaveAccessibleName('Звёзды: 22');
+    expect(rewards?.children[2]).toHaveAccessibleName('Опыт: 25');
     expect(within(dialog).queryByText('Площадка «Пляж» открыта')).not.toBeInTheDocument();
   });
 
