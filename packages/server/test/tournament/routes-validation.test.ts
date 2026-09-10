@@ -218,7 +218,17 @@ describe.skipIf(!hasIntegrationEnv)('beginner read-only tournament routes', () =
         }),
         app.inject({
           method: 'GET',
+          url: '/admin/tournaments/economy-preset?participantLimit=10001',
+          headers: adminAuthorization,
+        }),
+        app.inject({
+          method: 'GET',
           url: '/admin/tournaments/economy-preset?participantLimit=65',
+          headers: adminAuthorization,
+        }),
+        app.inject({
+          method: 'GET',
+          url: '/admin/tournaments/economy-preset?participantLimit=10000',
           headers: adminAuthorization,
         }),
         app.inject({
@@ -228,9 +238,17 @@ describe.skipIf(!hasIntegrationEnv)('beginner read-only tournament routes', () =
         }),
       ]);
       expect(economyPresetResponses.map((response) => response.statusCode)).toEqual([
-        401, 403, 400, 400, 400, 400, 200,
+        401, 403, 400, 400, 400, 400, 200, 200, 200,
       ]);
       expect(economyPresetResponses[6]!.json()).toMatchObject({
+        participantLimit: 65,
+        entryFeeCoins: 15_000,
+      });
+      expect(economyPresetResponses[7]!.json()).toMatchObject({
+        participantLimit: 10_000,
+        entryFeeCoins: 15_000,
+      });
+      expect(economyPresetResponses[8]!.json()).toMatchObject({
         participantLimit: 16,
         entryFeeCoins: 10_000,
         payoutValueCoins: 136_000,

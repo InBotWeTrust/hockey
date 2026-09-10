@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import { createTournamentDuelMatch } from '../duel/amateur/routes.js';
 import { assertFullAmateurAccess } from '../profile/amateurAccess.js';
-import { parseTournamentConfig } from './config.js';
+import { parseTournamentConfig, TOURNAMENT_PARTICIPANT_LIMIT_MAX } from './config.js';
 import { normalizePublishedTournamentLifecycleRules } from './lifecycleRules.js';
 import {
   applyToTournament,
@@ -107,7 +107,6 @@ export const tournamentScheduleOtherGamesQuerySchema = z
     message: 'cursorFixtureNumber and cursorId must be provided together',
   });
 const TOURNAMENT_ARTWORK_MAX_PIXELS = 2048 * 2048;
-const TOURNAMENT_PARTICIPANT_LIMIT_MAX = 64;
 const tournamentEconomyPresetQuerySchema = z.object({
   participantLimit: z.coerce.number().int().min(2).max(TOURNAMENT_PARTICIPANT_LIMIT_MAX),
 });
