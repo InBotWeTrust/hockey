@@ -27,10 +27,10 @@ export async function grantWeeklyChallengeReward(
   // Global economy lock order: users before user_currency_account.
   const userResult = await client.query<{ stars: number; experience: number }>(
     `update users
-        set stars = stars + $2,
+        set xp = xp + $2,
             experience = experience + $3
       where id = $1
-      returning stars, experience`,
+      returning xp as stars, experience`,
     [input.userId, input.stars, input.experience],
   );
   const user = userResult.rows[0];

@@ -17,9 +17,9 @@ const acknowledgement = {
 
 describe('MonthlyRatingRewardModal', () => {
   it.each([
-    [1, 'Вы выиграли рейтинг дуэлей!'],
-    [2, 'Вы заняли 2-е место в рейтинге дуэлей!'],
-    [17, 'Вы заняли 17-е место в рейтинге дуэлей!'],
+    [1, 'Вы победитель зачета дуэлей за август'],
+    [2, 'Вы заняли 2-е место в зачете дуэлей за август'],
+    [17, 'Вы заняли 17-е место в зачете дуэлей за август'],
   ])('shows the exact Russian title for place %i', (place, title) => {
     render(
       <MonthlyRatingRewardModal
@@ -43,7 +43,10 @@ describe('MonthlyRatingRewardModal', () => {
       />,
     );
 
-    expect(screen.getByText('Август 2026')).toBeInTheDocument();
+    expect(
+      screen.getByRole('dialog', { name: 'Вы победитель зачета дуэлей за август' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Август 2026')).toBeNull();
   });
 
   it('renders every positive currency and hides zero-value rewards', () => {

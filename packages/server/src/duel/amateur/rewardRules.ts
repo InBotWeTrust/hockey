@@ -15,7 +15,10 @@ export type DuelExperienceOpponent = 'stronger' | 'equal' | 'weaker';
 export type DuelRewardOutcome = 'win' | 'draw' | 'loss';
 export type DuelRewardCategory = Exclude<keyof DuelRewardRules, 'equalExperienceTolerancePercent'>;
 
-const safeNonNegativeInteger = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+// PostgreSQL integer accounts and ledger amounts share this limit. Exposed in
+// the admin API so the editor cannot drift from server validation.
+export const REWARD_AMOUNT_LIMIT = 2_147_483_647;
+const safeNonNegativeInteger = z.number().int().min(0).max(REWARD_AMOUNT_LIMIT);
 
 const duelRewardAmountSchema = z.object({
   coins: safeNonNegativeInteger,

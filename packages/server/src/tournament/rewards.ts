@@ -96,10 +96,11 @@ async function grantOne(
       where user_id = $1 returning balance, reserved_balance`,
     [input.userId, input.reward.coins],
   );
-  await client.query(
-    `update users set stars = stars + $2, experience = experience + $3 where id = $1`,
-    [input.userId, input.reward.stars, input.reward.experience],
-  );
+  await client.query(`update users set xp = xp + $2, experience = experience + $3 where id = $1`, [
+    input.userId,
+    input.reward.stars,
+    input.reward.experience,
+  ]);
   await client.query(
     `insert into currency_ledger
        (user_id, reason, available_delta, reserved_delta, balance_after, reserved_after, metadata)
@@ -220,6 +221,12 @@ export async function grantTournamentStageRewardsWithClient(
       user_id: userByParticipant.get(row.participantId)!,
     }));
   }
+  // Acquire the complete recipient set before any placement-ordered reward write.
+  await client.query('select id from users where id = any($1::uuid[]) order by id for update', [
+    placements
+      .filter((placement) => rewards.some((reward) => reward.place === Number(placement.place)))
+      .map((placement) => placement.user_id),
+  ]);
   let granted = 0;
   for (const reward of rewards) {
     const placement = placements.find((row) => Number(row.place) === reward.place);

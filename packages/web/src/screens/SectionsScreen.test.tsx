@@ -375,33 +375,38 @@ describe('SectionsScreen', () => {
     expect(screen.queryByText('Первый турнир')).toBeNull();
   });
 
-  it('fetches and shows a paid monthly rating congratulations only from the sections queue', async () => {
-    mockSectionsApi({
-      pendingMonthlyRatingCongratulations: [
-        {
-          id: '00000000-0000-4000-8000-000000000971',
-          season_key: '2026-08',
-          place: 2,
-          matches_played: 42,
-          eligible_count: 50,
-          rewarded_count: 10,
-          coins: 10000,
-          stars: 200,
-          tokens: 7,
-          created_at: '2026-09-01T00:00:00.000Z',
-        },
-      ],
-    });
-    renderSections();
+  it.each([
+    [1, 'Вы победитель зачета дуэлей за август'],
+    [2, 'Вы заняли 2-е место в зачете дуэлей за август'],
+    [17, 'Вы заняли 17-е место в зачете дуэлей за август'],
+  ])(
+    'fetches and shows the approved monthly title for place %i only from the sections queue',
+    async (place, title) => {
+      mockSectionsApi({
+        pendingMonthlyRatingCongratulations: [
+          {
+            id: '00000000-0000-4000-8000-000000000971',
+            season_key: '2026-08',
+            place,
+            matches_played: 42,
+            eligible_count: 50,
+            rewarded_count: 10,
+            coins: 10000,
+            stars: 200,
+            tokens: 7,
+            created_at: '2026-09-01T00:00:00.000Z',
+          },
+        ],
+      });
+      renderSections();
 
-    expect(
-      await screen.findByRole('dialog', { name: 'Вы заняли 2-е место в рейтинге дуэлей!' }),
-    ).toBeInTheDocument();
-    expect(fetch).toHaveBeenCalledWith(
-      '/api/duel/amateur/rating/congratulations/pending',
-      expect.anything(),
-    );
-  });
+      expect(await screen.findByRole('dialog', { name: title })).toBeInTheDocument();
+      expect(fetch).toHaveBeenCalledWith(
+        '/api/duel/amateur/rating/congratulations/pending',
+        expect.anything(),
+      );
+    },
+  );
 
   it('does not show monthly rewards before the higher-priority tournament queue is known', async () => {
     const profile = deferredResponse();
@@ -453,7 +458,7 @@ describe('SectionsScreen', () => {
     });
 
     expect(await screen.findByText('Приоритетный турнир')).toBeInTheDocument();
-    expect(screen.queryByText('Август 2026')).toBeNull();
+    expect(screen.queryByText(/зачет[ае] дуэлей за август/)).toBeNull();
   });
 
   it('blocks monthly and weekly rewards behind a retryable tournament-queue error', async () => {
@@ -477,7 +482,7 @@ describe('SectionsScreen', () => {
     renderSections();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось загрузить награды.');
-    expect(screen.queryByRole('dialog', { name: /рейтинге дуэлей/ })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /зачете дуэлей/ })).toBeNull();
     const profileCallsBeforeRetry = vi
       .mocked(fetch)
       .mock.calls.filter(([input]) =>
@@ -577,7 +582,7 @@ describe('SectionsScreen', () => {
     });
     const client = renderSections();
 
-    expect(await screen.findByText('Август 2026')).toBeInTheDocument();
+    expect(await screen.findByText(/зачет[ае] дуэлей за август/)).toBeInTheDocument();
     void client.refetchQueries({
       queryKey: ['amateur-duel', 'rating', 'congratulations', 'pending'],
       exact: true,
@@ -605,7 +610,7 @@ describe('SectionsScreen', () => {
       }),
     );
 
-    await waitFor(() => expect(screen.queryByText('Август 2026')).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/зачет[ае] дуэлей за август/)).toBeNull());
   });
 
   it('does not show a monthly rating modal when a pending placement has no reward', async () => {
@@ -628,7 +633,7 @@ describe('SectionsScreen', () => {
     renderSections();
 
     await screen.findByText('Быстрый доступ');
-    expect(screen.queryByRole('dialog', { name: /рейтинге дуэлей/ })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /зачете дуэлей/ })).toBeNull();
   });
 
   it('acknowledges monthly rating congratulations oldest first and advances the queue', async () => {
@@ -662,11 +667,11 @@ describe('SectionsScreen', () => {
     });
     renderSections();
 
-    expect(await screen.findByText('Июнь 2026')).toBeInTheDocument();
+    expect(await screen.findByText(/зачет[ае] дуэлей за июнь/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
 
-    expect(await screen.findByText('Июль 2026')).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText('Июнь 2026')).toBeNull());
+    expect(await screen.findByText(/зачет[ае] дуэлей за июль/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/зачет[ае] дуэлей за июнь/)).toBeNull());
   });
 
   it('keeps the monthly rating modal open after acknowledgement fails', async () => {
@@ -689,13 +694,13 @@ describe('SectionsScreen', () => {
     });
     renderSections();
 
-    expect(await screen.findByText('Август 2026')).toBeInTheDocument();
+    expect(await screen.findByText(/зачет[ае] дуэлей за август/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Не удалось закрыть. Попробуйте ещё раз.',
     );
-    expect(screen.getByText('Август 2026')).toBeInTheDocument();
+    expect(screen.getByText(/зачет[ае] дуэлей за август/)).toBeInTheDocument();
   });
 
   it('does not refetch or replace the monthly modal after acknowledgement fails', async () => {
@@ -719,7 +724,7 @@ describe('SectionsScreen', () => {
     });
     renderSections();
 
-    expect(await screen.findByText('Август 2026')).toBeInTheDocument();
+    expect(await screen.findByText(/зачет[ае] дуэлей за август/)).toBeInTheDocument();
     const pendingGetsBeforeAcknowledgement = vi
       .mocked(fetch)
       .mock.calls.filter(([input]) =>
@@ -730,7 +735,7 @@ describe('SectionsScreen', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Не удалось закрыть. Попробуйте ещё раз.',
     );
-    expect(screen.getByText('Август 2026')).toBeInTheDocument();
+    expect(screen.getByText(/зачет[ае] дуэлей за август/)).toBeInTheDocument();
     expect(
       vi
         .mocked(fetch)
@@ -785,11 +790,11 @@ describe('SectionsScreen', () => {
     renderSections();
 
     expect(await screen.findByText('Кубок впереди очереди')).toBeInTheDocument();
-    expect(screen.queryByText('Август 2026')).toBeNull();
+    expect(screen.queryByText(/зачет[ае] дуэлей за август/)).toBeNull();
     expect(screen.queryByText('Отложенный челлендж')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
-    expect(await screen.findByText('Август 2026')).toBeInTheDocument();
+    expect(await screen.findByText(/зачет[ае] дуэлей за август/)).toBeInTheDocument();
     expect(screen.queryByText('Отложенный челлендж')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));

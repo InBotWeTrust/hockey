@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classifyExperienceOpponent,
+  duelRewardRulesSchema,
   selectDuelReward,
   type DuelRewardRules,
 } from '../../../src/duel/amateur/rewardRules.js';
@@ -15,6 +16,22 @@ const rules: DuelRewardRules = {
 };
 
 describe('duel reward rules', () => {
+  it('rejects configured amounts larger than PostgreSQL account storage', () => {
+    for (const currency of ['coins', 'stars', 'tokens']) {
+      expect(
+        duelRewardRulesSchema.safeParse({
+          ...rules,
+          strongerWin: { ...rules.strongerWin, [currency]: 2147483647 },
+        }).success,
+      ).toBe(true);
+      expect(
+        duelRewardRulesSchema.safeParse({
+          ...rules,
+          strongerWin: { ...rules.strongerWin, [currency]: 2147483648 },
+        }).success,
+      ).toBe(false);
+    }
+  });
   it('classifies opponent experience at inclusive equal-range boundaries', () => {
     expect(classifyExperienceOpponent(1_000, 899, 10)).toBe('weaker');
     expect(classifyExperienceOpponent(1_000, 900, 10)).toBe('equal');

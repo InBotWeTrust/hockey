@@ -1111,6 +1111,7 @@ export function AdminScreen(): JSX.Element {
         <DuelTemplatesPanel
           loading={duelTemplates.isLoading}
           templates={duelTemplates.data?.templates ?? []}
+          rewardAmountLimit={duelTemplates.data?.rewardAmountLimit ?? 0}
           onChanged={() => {
             void queryClient.invalidateQueries({ queryKey: ['admin', 'duel-templates'] });
           }}
@@ -5909,7 +5910,7 @@ function InventoryEditor({
         ? 'Энергия задаётся в минутах, расход зависит от скорости игрока.'
         : isRecoveryItem
           ? 'Одноразовый набор сокращает только обычное восстановление после игры.'
-        : 'Базовые параметры расходуемого предмета.';
+          : 'Базовые параметры расходуемого предмета.';
 
   return createPortal(
     <div
@@ -6837,10 +6838,12 @@ function normalizeDuelPresets(
 function DuelTemplatesPanel({
   loading,
   templates,
+  rewardAmountLimit,
   onChanged,
 }: {
   loading: boolean;
   templates: AdminDuelTemplate[];
+  rewardAmountLimit: number;
   onChanged: () => void;
 }): JSX.Element {
   const [duelView, setDuelView] = useState<'templates' | 'history'>('templates');
@@ -6892,6 +6895,7 @@ function DuelTemplatesPanel({
       </div>
       {editingTemplate !== null && (
         <DuelTemplateEditor
+          rewardAmountLimit={rewardAmountLimit}
           template={editingTemplate === 'new' ? null : editingTemplate}
           onCancel={() => setEditingTemplate(null)}
           onSaved={() => {
@@ -7225,10 +7229,12 @@ function DuelHistoryParticipantRow({
 
 function DuelTemplateEditor({
   template,
+  rewardAmountLimit,
   onCancel,
   onSaved,
 }: {
   template: AdminDuelTemplate | null;
+  rewardAmountLimit: number;
   onCancel: () => void;
   onSaved: () => void;
 }): JSX.Element {
@@ -7324,7 +7330,19 @@ function DuelTemplateEditor({
     duelRewardRows.every((row) =>
       (['coins', 'stars', 'tokens'] as const).every((currency) => {
         const amount = rewardRules[row.key][currency];
-        return Number.isSafeInteger(amount) && amount >= 0;
+        const isWin =
+          row.key === 'strongerWin' || row.key === 'equalWin' || row.key === 'weakerWin';
+        const legacy =
+          currency === 'coins'
+            ? isWin
+              ? parseAdminNumberInput(winCurrencyReward)
+              : row.key === 'draw'
+                ? parseAdminNumberInput(drawCurrencyReward)
+                : 0
+            : currency === 'stars' && isWin
+              ? parseAdminNumberInput(winStarReward)
+              : 0;
+        return Number.isSafeInteger(amount) && amount >= 0 && amount + legacy <= rewardAmountLimit;
       }),
     );
   const canSave =
@@ -7699,6 +7717,7 @@ function DuelTemplateEditor({
                     aria-label={label}
                     type="number"
                     min="0"
+                    max={rewardAmountLimit}
                     step="1"
                     value={Number.isFinite(amount) ? amount : ''}
                     onChange={(event) => updateRewardAmount(row.key, currency, event.target.value)}

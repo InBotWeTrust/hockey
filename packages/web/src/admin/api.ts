@@ -1382,8 +1382,13 @@ export function uploadAdminBonusGameMedia(
   });
 }
 
-export function fetchAdminDuelTemplates(): Promise<{ templates: AdminDuelTemplate[] }> {
-  return apiFetch<{ templates: AdminDuelTemplate[] }>('/admin/duel-templates');
+export function fetchAdminDuelTemplates(): Promise<{
+  templates: AdminDuelTemplate[];
+  rewardAmountLimit: number;
+}> {
+  return apiFetch<{ templates: AdminDuelTemplate[]; rewardAmountLimit: number }>(
+    '/admin/duel-templates',
+  );
 }
 
 export function fetchAdminDuelHistory(params: {

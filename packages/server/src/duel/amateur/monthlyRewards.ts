@@ -1,6 +1,8 @@
 import type { Pool, PoolClient } from 'pg';
 import { evaluateMonthlyRatingSettledAchievements } from '../../achievements/engine.js';
 import { AppError } from '../../plugins/errors.js';
+import { lockRatingLifecycle } from './ratingLock.js';
+import { reconcileRatingSeasonMatches } from './routes.js';
 
 interface RatingRow {
   user_id: string;
@@ -37,36 +39,50 @@ function rewardForPlace(place: number, rewardedCount: number): Reward {
 
 /** Each completed month is a single atomic, immutable payout for every eligible player. */
 export async function reconcileCompletedMonthlyRating(pool: Pool, now: Date): Promise<void> {
-  const { rows: seasons } = await pool.query<{ season_key: string }>(
-    `select distinct m.season_key
+  for (;;) {
+    const { rows: seasons } = await pool.query<{ season_key: string }>(
+      `select distinct m.season_key
        from amateur_duel_match m
       where m.season_key < to_char($1::timestamptz at time zone 'Europe/Moscow', 'YYYY-MM')
         and m.ranked and m.source <> 'tournament'
         and not exists (
           select 1 from monthly_duel_rating_season s where s.season_key = m.season_key
         )
-      order by m.season_key`,
-    [now],
-  );
-  for (const { season_key: seasonKey } of seasons) {
-    const client = await pool.connect();
-    try {
-      await client.query('begin');
-      await client.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [
-        `monthly_duel_rating:${seasonKey}`,
-      ]);
-      // Recheck after acquiring the season lock: another request may have just paid it.
-      const closed = await client.query(
-        'select 1 from monthly_duel_rating_season where season_key = $1',
-        [seasonKey],
-      );
-      if (closed.rowCount === 0) await settleSeason(client, seasonKey, now);
-      await client.query('commit');
-    } catch (error) {
-      await client.query('rollback');
-      throw error;
-    } finally {
-      client.release();
+      order by m.season_key limit 1`,
+      [now],
+    );
+    if (seasons.length === 0) return;
+    for (const { season_key: seasonKey } of seasons) {
+      const client = await pool.connect();
+      try {
+        await client.query('begin');
+        await lockRatingLifecycle(client);
+        // Recheck after acquiring the season lock: another request may have just paid it.
+        const closed = await client.query(
+          'select 1 from monthly_duel_rating_season where season_key = $1',
+          [seasonKey],
+        );
+        if (closed.rowCount === 0) {
+          // Lock the complete set once, including due-match recipients who may only
+          // become eligible during reconciliation, before any user/account write.
+          await client.query(
+            `select id from users where id in (
+          select user_id from amateur_duel_rating_match where season_key=$1
+          union select challenger_user_id from amateur_duel_match where season_key=$1 and ranked and source<>'tournament'
+          union select opponent_user_id from amateur_duel_match where season_key=$1 and ranked and source<>'tournament'
+        ) order by id for update`,
+            [seasonKey],
+          );
+          await reconcileRatingSeasonMatches(client, seasonKey);
+          await settleSeason(client, seasonKey, now);
+        }
+        await client.query('commit');
+      } catch (error) {
+        await client.query('rollback');
+        throw error;
+      } finally {
+        client.release();
+      }
     }
   }
 }

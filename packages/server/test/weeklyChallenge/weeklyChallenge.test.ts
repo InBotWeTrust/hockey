@@ -234,7 +234,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       ledger_rows: string;
     }>(
       `select uca.balance,
-              u.stars,
+              u.xp as stars,
               u.experience,
               (select count(*) from currency_ledger where user_id = u.id)::text as ledger_rows
          from users u
@@ -248,6 +248,8 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       experience: 3,
       ledger_rows: '1',
     });
+    const profile = await app.inject({ method: 'GET', url: '/me', headers: authHeader() });
+    expect(profile.json().starBalance).toBe(2);
 
     const tokenBalance = await pool.query<{ balance: number }>(
       `select balance from user_reward_token_account where user_id = $1`,
@@ -279,7 +281,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       ledger_rows: string;
     }>(
       `select uca.balance,
-              u.stars,
+              u.xp as stars,
               u.experience,
               (select count(*) from currency_ledger where user_id = u.id)::text as ledger_rows
          from users u
@@ -572,11 +574,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
         url: `/weekly-challenge/${challengeId}/claim-reward`,
         headers: authHeader(),
       });
-      const blocked = await waitForBlockedWriter(
-        pool,
-        blockerBackend.rows[0]!.pid,
-        /set stars = stars/i,
-      );
+      const blocked = await waitForBlockedWriter(pool, blockerBackend.rows[0]!.pid, /set xp = xp/i);
 
       await blocker.query('commit');
       const claim = await claimPromise;

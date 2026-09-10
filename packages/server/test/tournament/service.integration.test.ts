@@ -63,6 +63,7 @@ import {
   resetDatabase,
 } from '../helpers/testDb.js';
 import { waitForBlockedWriter } from '../helpers/postgresLocks.js';
+import { rebuildHeadToHeadStandings } from '../../src/tournament/standingsPersistence.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -7313,6 +7314,48 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     });
   });
 
+  it('locks stage reward recipients by UUID before placement-ordered writes', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'ordered-reward-locks',
+      0,
+      playoffTournamentRules(4, {
+        stageRewards: {
+          regular: [
+            { place: 1, coins: 10, stars: 1, experience: 1 },
+            { place: 2, coins: 5, stars: 1, experience: 1 },
+          ],
+          playoff: [],
+        },
+      }),
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [30, 40, 20, 10]);
+    const standingsClient = await pool.connect();
+    try {
+      await rebuildHeadToHeadStandings(standingsClient, tournament.id);
+    } finally {
+      standingsClient.release();
+    }
+    const blocker = await pool.connect();
+    let pending: ReturnType<typeof grantTournamentStageRewards> | undefined;
+    try {
+      await blocker.query('begin');
+      const pid = (await blocker.query('select pg_backend_pid() as pid')).rows[0].pid;
+      await blocker.query('select id from users where id=$1 for update', [PLAYER_IDS[0]]);
+      pending = grantTournamentStageRewards(pool, tournament.id, 'regular');
+      const writer = await waitForBlockedWriter(pool, pid, /select id.*from users/i);
+      expect(writer.accountWriteLockHeld).toBe(false);
+      await blocker.query('select id from users where id=$1 for update nowait', [PLAYER_IDS[1]]);
+      await blocker.query('commit');
+      expect((await pending).granted).toBe(2);
+    } finally {
+      await blocker.query('rollback');
+      blocker.release();
+      await pending;
+    }
+  });
+
   it('creates regular podium congratulations only when the regular season is finalized', async () => {
     await seedUsers(pool, 0);
     const tournament = await createPublishedTournament(
@@ -7330,8 +7373,47 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       }),
     );
     await prepareTournamentForPlayoffs(pool, tournament.id, [40, 30, 20, 10]);
-
+    const standingsClient = await pool.connect();
+    try {
+      await rebuildHeadToHeadStandings(standingsClient, tournament.id);
+    } finally {
+      standingsClient.release();
+    }
     await grantTournamentStageRewards(pool, tournament.id, 'regular');
+    const { databaseUrl, redisUrl } = getTestUrls();
+    const rewardApp = await buildApp({
+      config: {
+        NODE_ENV: 'test',
+        HOST: '127.0.0.1',
+        PORT: 3000,
+        LOG_LEVEL: 'silent',
+        DATABASE_URL: databaseUrl,
+        REDIS_URL: redisUrl,
+        JWT_SECRET,
+        REFRESH_SECRET,
+        TELEGRAM_BOT_TOKEN: 'test-bot-token',
+        DAILY_SEED_SECRET,
+      },
+      pushSchedulerEnabled: false,
+      pushWorkerEnabled: false,
+    });
+    try {
+      const token = await createJwt({
+        accessSecret: JWT_SECRET,
+        refreshSecret: REFRESH_SECRET,
+      }).issueAccessToken({ sub: PLAYER_IDS[0] });
+      const rewardProfile = () =>
+        rewardApp.inject({
+          method: 'GET',
+          url: '/me',
+          headers: { authorization: `Bearer ${token}` },
+        });
+      expect((await rewardProfile()).json().starBalance).toBe(25);
+      await grantTournamentStageRewards(pool, tournament.id, 'regular');
+      expect((await rewardProfile()).json().starBalance).toBe(25);
+    } finally {
+      await rewardApp.close();
+    }
     expect(
       await pool.query(
         `select id from tournament_regular_podium_congratulation where tournament_id = $1`,

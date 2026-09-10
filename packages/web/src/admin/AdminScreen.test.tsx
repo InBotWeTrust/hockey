@@ -1330,16 +1330,20 @@ describe('AdminScreen', () => {
       }
       if (url.includes('/admin/duel-templates/duel-template-1')) {
         templatePatchBody = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+        Object.assign(duelTemplate, templatePatchBody);
         return new Response(JSON.stringify({ template: duelTemplate }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
       }
       if (url.includes('/admin/duel-templates')) {
-        return new Response(JSON.stringify({ templates: [duelTemplate] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
+        return new Response(
+          JSON.stringify({ templates: [duelTemplate], rewardAmountLimit: 2147483647 }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
       }
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
     });
@@ -1353,9 +1357,7 @@ describe('AdminScreen', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Редактирование дуэли' });
     expect(within(dialog).getByText('Награды за результат')).toBeInTheDocument();
-    expect(
-      within(dialog).getByLabelText('Допуск равного опыта, %'),
-    ).toHaveValue(10);
+    expect(within(dialog).getByLabelText('Допуск равного опыта, %')).toHaveValue(10);
     expect(screen.getByLabelText('Площадка при автоматическом подборе')).toHaveTextContent(
       'Нейтральная стандартная',
     );
@@ -1369,6 +1371,10 @@ describe('AdminScreen', () => {
     fireEvent.change(within(dialog).getByLabelText('Минут на ответ'), {
       target: { value: '15' },
     });
+    const rewardCoins = within(dialog).getByLabelText('Победа над более опытным: монеты');
+    fireEvent.change(rewardCoins, { target: { value: '2147483648' } });
+    expect(within(dialog).getByRole('button', { name: 'Сохранить' })).toBeDisabled();
+    fireEvent.change(rewardCoins, { target: { value: '777' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
 
     await waitFor(() => expect(templatePatchBody).not.toBeNull());
@@ -1378,12 +1384,21 @@ describe('AdminScreen', () => {
     expect(savedTemplatePatchBody.matchmakingVenuePolicy).toBe('random_unselected');
     expect(savedTemplatePatchBody.rewardRules).toEqual({
       equalExperienceTolerancePercent: 10,
-      strongerWin: { coins: 0, stars: 0, tokens: 0 },
+      strongerWin: { coins: 777, stars: 0, tokens: 0 },
       equalWin: { coins: 0, stars: 0, tokens: 0 },
       weakerWin: { coins: 0, stars: 0, tokens: 0 },
       draw: { coins: 0, stars: 0, tokens: 0 },
       loss: { coins: 0, stars: 0, tokens: 0 },
     });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Редактирование дуэли' }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(await screen.findByText('Ответ 15 мин')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать Классика' }));
+    const reopened = await screen.findByRole('dialog', { name: 'Редактирование дуэли' });
+    expect(within(reopened).getByLabelText('Победа над более опытным: монеты')).toHaveValue(777);
   });
 
   it('keeps the duel editor open and prevents duplicate submit while save is pending', async () => {
@@ -1478,10 +1493,13 @@ describe('AdminScreen', () => {
         return patchResponse;
       }
       if (url.includes('/admin/duel-templates')) {
-        return new Response(JSON.stringify({ templates: [duelTemplate] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
+        return new Response(
+          JSON.stringify({ templates: [duelTemplate], rewardAmountLimit: 2147483647 }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
       }
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
     });

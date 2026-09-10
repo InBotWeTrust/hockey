@@ -524,10 +524,9 @@ function rewardsDraft(value: unknown): string {
     : '';
 }
 
-function economyPresetDraft(preset: TournamentEconomyPreset): Pick<
-  TournamentDraft,
-  'entryFeeCoins' | 'regularRewards' | 'playoffRewards'
-> {
+function economyPresetDraft(
+  preset: TournamentEconomyPreset,
+): Pick<TournamentDraft, 'entryFeeCoins' | 'regularRewards' | 'playoffRewards'> {
   return {
     entryFeeCoins: preset.entryFeeCoins,
     regularRewards: rewardsDraft(preset.regularRewards),
@@ -1701,6 +1700,10 @@ export function TournamentAdmin(): JSX.Element {
   const appliedEconomyPresetParticipantLimit = useRef<number | null>(null);
   const currentParticipantLimit = useRef<NumericDraftValue>(draft.participantLimit);
   currentParticipantLimit.current = draft.participantLimit;
+  const economyReady =
+    economyPresetState === 'custom' ||
+    (economyPresetState === 'pristine' &&
+      appliedEconomyPresetParticipantLimit.current === draft.participantLimit);
   const markEconomyCustom = () => {
     economyPresetRequestGeneration.current += 1;
     setEconomyPresetState('custom');
@@ -1822,7 +1825,13 @@ export function TournamentAdmin(): JSX.Element {
   }, [create, draft, economyPresetState, pendingInitialCreate]);
 
   useEffect(() => {
-    if (!wizardOpen || editingTournament === null || create.isPending || playoffScheduleOnly)
+    if (
+      !wizardOpen ||
+      editingTournament === null ||
+      create.isPending ||
+      playoffScheduleOnly ||
+      !economyReady
+    )
       return;
     setValidationNotice(null);
     let snapshot: string;
@@ -1848,7 +1857,14 @@ export function TournamentAdmin(): JSX.Element {
       saveQueue.current?.enqueue(body, snapshot);
     }, 600);
     return () => window.clearTimeout(saveDebounce.current);
-  }, [draft, editingTournament?.id, wizardOpen, create.isPending, playoffScheduleOnly]);
+  }, [
+    draft,
+    editingTournament?.id,
+    wizardOpen,
+    create.isPending,
+    playoffScheduleOnly,
+    economyReady,
+  ]);
   const updatePlayoffRound = (index: number, patch: Partial<PlayoffRoundDraft>) => {
     setDraft((current) => ({
       ...current,
@@ -1973,7 +1989,13 @@ export function TournamentAdmin(): JSX.Element {
   };
 
   const finishWizard = async () => {
-    if (!draft.title.trim() || finishing || artworkUpload.isPending) return;
+    if (
+      !draft.title.trim() ||
+      finishing ||
+      artworkUpload.isPending ||
+      (!playoffScheduleOnly && !economyReady)
+    )
+      return;
     let body: ReturnType<typeof serializeDraft>;
     try {
       body = serializeDraft(draft);
@@ -3216,7 +3238,10 @@ export function TournamentAdmin(): JSX.Element {
                         <button
                           type="button"
                           className="admin-compact-btn"
-                          onClick={() => saveQueue.current?.retry()}
+                          disabled={!economyReady}
+                          onClick={() => {
+                            if (economyReady) saveQueue.current?.retry();
+                          }}
                         >
                           Повторить сохранение
                         </button>
@@ -3279,7 +3304,8 @@ export function TournamentAdmin(): JSX.Element {
                       !draft.title.trim() ||
                       create.isPending ||
                       artworkUpload.isPending ||
-                      finishing
+                      finishing ||
+                      (!playoffScheduleOnly && !economyReady)
                     }
                     onClick={() => void finishWizard()}
                   >

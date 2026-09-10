@@ -19,9 +19,10 @@ const MONTH_NAMES = [
   'Декабрь',
 ] as const;
 
-function placeTitle(place: number): string {
-  if (place === 1) return 'Вы выиграли рейтинг дуэлей!';
-  return `Вы заняли ${place}-е место в рейтинге дуэлей!`;
+function placeTitle(place: number, seasonKey: string): string {
+  const month = seasonLabel(seasonKey);
+  if (place === 1) return `Вы победитель зачета дуэлей за ${month}`;
+  return `Вы заняли ${place}-е место в зачете дуэлей за ${month}`;
 }
 
 function seasonLabel(seasonKey: string): string {
@@ -30,7 +31,9 @@ function seasonLabel(seasonKey: string): string {
   const year = match[1];
   const month = Number(match[2]);
   const monthName = MONTH_NAMES[month - 1];
-  return year === undefined || monthName === undefined ? seasonKey : `${monthName} ${year}`;
+  return year === undefined || monthName === undefined
+    ? seasonKey
+    : monthName.toLocaleLowerCase('ru-RU');
 }
 
 export function MonthlyRatingRewardModal({
@@ -67,8 +70,7 @@ export function MonthlyRatingRewardModal({
 
   return (
     <AccessibleModal
-      title={placeTitle(congratulation.place)}
-      copy={seasonLabel(congratulation.season_key)}
+      title={placeTitle(congratulation.place, congratulation.season_key)}
       closeBlocked
       cardClassName="duel-result-card regular-podium-modal"
     >
