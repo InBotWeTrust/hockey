@@ -8,7 +8,10 @@ import {
   type UserPublicProfileDTO,
   type FindOrCreateDMResult,
 } from '../api.js';
-import { fetchAmateurMatches } from '../../api/amateurDuel.js';
+import {
+  checkAmateurDuelChallengeAvailability,
+  fetchAmateurMatches,
+} from '../../api/amateurDuel.js';
 import { userKeys } from '../../lib/queryKeys.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { formatLastSeen } from '../lastSeen.js';
@@ -22,6 +25,7 @@ import {
   ProfileStatsGrid,
 } from '../../screens/profileSections.js';
 import { DuelChallengeModal, hasOpenDuelWithUser } from '../components/DuelChallengeModal.js';
+import { AppToast } from '../../components/AppToast.js';
 
 function formatJoined(iso: string): string {
   return new Date(iso).toLocaleDateString('ru-RU', {
@@ -38,6 +42,7 @@ export function UserProfileScreen(): JSX.Element {
   const meId = useAuthStore((s) => s.user?.id ?? null);
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
   const [duelPickerOpen, setDuelPickerOpen] = useState(false);
+  const [duelToast, setDuelToast] = useState<string | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery<UserPublicProfileDTO>({
     queryKey: userKeys.profile(userId),
@@ -56,6 +61,13 @@ export function UserProfileScreen(): JSX.Element {
     mutationFn: (otherUserId) => findOrCreateDM(otherUserId),
     onSuccess: (res) => {
       navigate(`/chat/${res.chatId}`);
+    },
+  });
+  const challengeAvailability = useMutation({
+    mutationFn: () => checkAmateurDuelChallengeAvailability(userId),
+    onSuccess: () => setDuelPickerOpen(true),
+    onError: (error) => {
+      setDuelToast(error instanceof Error ? error.message : 'Не удалось проверить доступность дуэли');
     },
   });
 
@@ -192,8 +204,8 @@ export function UserProfileScreen(): JSX.Element {
                 <button
                   type="button"
                   className="btn btn--cta"
-                  disabled={hasOpenDuel}
-                  onClick={() => setDuelPickerOpen(true)}
+                  disabled={hasOpenDuel || challengeAvailability.isPending}
+                  onClick={() => challengeAvailability.mutate()}
                   style={{
                     width: '100%',
                     display: 'inline-flex',
@@ -246,7 +258,11 @@ export function UserProfileScreen(): JSX.Element {
               onCreated={() => {
                 setDuelPickerOpen(false);
               }}
+              onBlocked={setDuelToast}
             />
+          )}
+          {duelToast !== null && (
+            <AppToast message={duelToast} onDismiss={() => setDuelToast(null)} />
           )}
         </>
       )}

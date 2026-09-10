@@ -9,16 +9,28 @@ import {
   resolvePerspectiveCourtShot,
   type DailyPeriodSpeedPreset,
 } from '@hockey/game-core';
-import { grantAchievements } from '../../achievements/service.js';
+import {
+  evaluatePendingDailyPeriodClosedAchievements,
+  evaluateTrainingClosedAchievements,
+} from '../../achievements/engine.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveShotSeed, deriveTrainingSeed } from '../seed.js';
-import { reconcileDayPool, type DayPoolRow } from '../daily/reconcile.js';
+import { scheduleDailyCompletionSideEffect } from '../daily/completionSideEffects.js';
 import {
   getConfiguredDailyPeriodSpeedPreset,
   getGameSettings,
   type GameSettings,
 } from '../gameSettings.js';
+import {
+  assertGameplayActionAllowed,
+  getTournamentGameplayLockState,
+  getGameplayLockState,
+  toGameplayLockDto,
+  type GameplayLockDTO,
+  lockUserGameplay,
+  type GameplayLockState,
+} from '../gameplayLocks.js';
 
 const startBodySchema = z.object({
   period_number: z.number().int().min(1).max(3),
@@ -29,12 +41,17 @@ const shotBodySchema = z.object({
   input: z.object({
     tapTime: z.number(),
     shooterTapTime: z.number().optional(),
-    puckSpeedPerMs: z.number().optional(),
-    shooterFrequency: z.number().optional(),
-    goalieFrequency: z.number().optional(),
-    goalFrequency: z.number().optional(),
+    puckSpeedPerMs: z.number().min(0.2).max(5).optional(),
+    shooterFrequency: z.number().min(0.1).max(3).optional(),
+    goalieFrequency: z.number().min(0.1).max(3).optional(),
+    goalFrequency: z.number().min(0.1).max(3).optional(),
   }),
   claimed_result: z.enum(['goal', 'save', 'miss']),
+});
+
+const historyQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
 });
 
 const TAP_TIME_FUTURE_TOLERANCE_MS = 2500;
@@ -49,6 +66,7 @@ interface TrainingSessionRow {
   state: 'active' | 'closed';
   game_core_version: number;
   training_seed: string;
+  shots_limit: number;
   started_at: Date;
   closed_at: Date | null;
 }
@@ -66,6 +84,9 @@ interface TrainingStateResponse {
   server_now: string;
   goalie_id: string;
   period_speed_presets: DailyPeriodSpeedPreset[];
+  tournament_day_locked: boolean;
+  gameplay_lock: GameplayLockDTO | null;
+  tournament_day_starts_at: string | null;
 }
 
 interface TrainingShotSubmitResponse {
@@ -73,10 +94,20 @@ interface TrainingShotSubmitResponse {
   state: TrainingStateResponse;
 }
 
-function isDailyGameStartedAndIncomplete(pool: DayPoolRow | null, totalPeriods: number): boolean {
-  if (pool === null || pool.state === 'closed') return false;
-  if (pool.state === 'period_active' || pool.state === 'break_active') return true;
-  return pool.state === 'idle' && pool.current_period > 0 && pool.current_period < totalPeriods;
+interface TrainingHistorySession {
+  day_date: string;
+  selected_period: number;
+  shots_limit: number;
+  total_shots: number;
+  total_goals: number;
+  completed: boolean;
+}
+
+interface TrainingHistorySummary {
+  played_trainings: number;
+  completed_trainings: number;
+  total_shots: number;
+  total_goals: number;
 }
 
 async function withTransaction<T>(
@@ -149,7 +180,7 @@ async function fetchTodayTrainingSession(
 ): Promise<TrainingSessionRow | null> {
   const { rows } = await client.query<TrainingSessionRow>(
     `select id, user_id, day_date::text as day_date, selected_period, state,
-            game_core_version, training_seed, started_at, closed_at
+            game_core_version, training_seed, shots_limit, started_at, closed_at
        from training_session
       where user_id = $1 and day_date = $2::date
       for update`,
@@ -177,13 +208,23 @@ async function reconcileTrainingSession(
 
 async function buildTrainingState(
   client: PoolClient,
+  userId: string,
   session: TrainingSessionRow | null,
   localToday: string,
   timezone: string,
   settings: GameSettings,
   now: Date,
+  knownTournamentLock?: GameplayLockState,
 ): Promise<TrainingStateResponse> {
   const nextDay = await nextDayStartsAt(client, localToday, timezone);
+  const tournamentLock = knownTournamentLock?.blocked
+    ? knownTournamentLock
+    : await getGameplayLockState(client, { userId, action: 'start_training', now });
+  const gameplayLock = toGameplayLockDto(tournamentLock);
+  const tournamentDayLocked =
+    tournamentLock.blocked &&
+    (tournamentLock.reason === 'scheduled_tournament' ||
+      tournamentLock.reason === 'active_classic');
   if (session === null) {
     return {
       state: 'idle',
@@ -198,6 +239,9 @@ async function buildTrainingState(
       server_now: now.toISOString(),
       goalie_id: settings.training.goalieId,
       period_speed_presets: settings.daily.periodSpeedPresets,
+      tournament_day_locked: tournamentDayLocked,
+      gameplay_lock: gameplayLock,
+      tournament_day_starts_at: tournamentLock.tournamentStartsAt?.toISOString() ?? null,
     };
   }
 
@@ -207,7 +251,7 @@ async function buildTrainingState(
     selected_period: session.selected_period,
     shots_taken: stats.shots,
     goals: stats.goals,
-    shots_limit: settings.training.shotsLimit,
+    shots_limit: session.shots_limit,
     day_date: session.day_date,
     next_day_starts_at: nextDay,
     training_seed: session.training_seed,
@@ -215,6 +259,92 @@ async function buildTrainingState(
     server_now: now.toISOString(),
     goalie_id: settings.training.goalieId,
     period_speed_presets: settings.daily.periodSpeedPresets,
+    tournament_day_locked: tournamentDayLocked,
+    gameplay_lock: gameplayLock,
+    tournament_day_starts_at: tournamentLock.tournamentStartsAt?.toISOString() ?? null,
+  };
+}
+
+async function fetchTrainingHistory(
+  client: PoolClient,
+  userId: string,
+  limit: number,
+  offset: number,
+): Promise<{
+  sessions: TrainingHistorySession[];
+  hasMore: boolean;
+  nextOffset: number | null;
+  summary: TrainingHistorySummary;
+}> {
+  const { rows } = await client.query<{
+    day_date: string;
+    selected_period: number;
+    shots_limit: number;
+    total_shots: number;
+    total_goals: number;
+  }>(
+    `select to_char(ts.day_date, 'YYYY-MM-DD') as day_date,
+            ts.selected_period,
+            ts.shots_limit,
+            count(ss.id)::int as total_shots,
+            count(ss.id) filter (where ss.server_result = 'goal')::int as total_goals
+       from training_session ts
+       left join shot_session ss
+         on ss.training_session_id = ts.id
+        and ss.user_id = ts.user_id
+        and ss.mode = 'training'
+      where ts.user_id = $1
+      group by ts.id
+      order by ts.day_date desc, ts.started_at desc
+      limit $2 offset $3`,
+    [userId, limit + 1, offset],
+  );
+  const sessions = rows.slice(0, limit).map((row) => ({
+    day_date: row.day_date,
+    selected_period: Number(row.selected_period),
+    shots_limit: Number(row.shots_limit),
+    total_shots: Number(row.total_shots),
+    total_goals: Number(row.total_goals),
+    completed: Number(row.total_shots) >= Number(row.shots_limit),
+  }));
+  const { rows: summaryRows } = await client.query<TrainingHistorySummary>(
+    `with session_totals as (
+       select ts.id,
+              ts.shots_limit,
+              count(ss.id)::int as total_shots,
+              count(ss.id) filter (where ss.server_result = 'goal')::int as total_goals
+         from training_session ts
+         left join shot_session ss
+           on ss.training_session_id = ts.id
+          and ss.user_id = ts.user_id
+          and ss.mode = 'training'
+        where ts.user_id = $1
+        group by ts.id
+     )
+     select count(*) filter (where total_shots > 0)::int as played_trainings,
+            count(*) filter (where total_shots >= shots_limit)::int as completed_trainings,
+            coalesce(sum(total_shots), 0)::int as total_shots,
+            coalesce(sum(total_goals), 0)::int as total_goals
+       from session_totals`,
+    [userId],
+  );
+  const summary = summaryRows[0] ?? {
+    played_trainings: 0,
+    completed_trainings: 0,
+    total_shots: 0,
+    total_goals: 0,
+  };
+  const hasMore = rows.length > limit;
+  return {
+    sessions,
+    hasMore,
+    nextOffset: hasMore ? offset + sessions.length : null,
+    summary: {
+      played_trainings: Number(summary.played_trainings),
+      completed_trainings: Number(summary.completed_trainings),
+      total_shots: Number(summary.total_shots),
+      total_goals: Number(summary.total_goals),
+    },
   };
 }
 
@@ -240,22 +370,19 @@ function assertTrainingTapTimeFresh(
   }
 }
 
-async function assertTrainingAvailableDuringDaily(
-  client: PoolClient,
-  userId: string,
-  now: Date,
-  settings: GameSettings,
-): Promise<void> {
-  const { pool } = await reconcileDayPool(client, userId, now, settings.daily);
-  if (isDailyGameStartedAndIncomplete(pool, settings.daily.totalPeriods)) {
-    throw new AppError('conflict', 'training is locked while the daily game is in progress', 409);
-  }
-}
-
 export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> = async (
   app,
   opts,
 ) => {
+  const schedulePendingAchievementRecovery = (userId: string): void => {
+    scheduleDailyCompletionSideEffect(
+      () => evaluatePendingDailyPeriodClosedAchievements(app.pg, userId),
+      (error) => {
+        app.log.warn({ err: error, userId }, 'failed to recover pending daily period achievements');
+      },
+    );
+  };
+
   app.get('/duel/training/state', { preHandler: [app.authenticate] }, async (req) =>
     withTransaction(app, async (client): Promise<TrainingStateResponse> => {
       const now = new Date();
@@ -265,9 +392,19 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         req.user.id,
         now,
       );
-      return buildTrainingState(client, session, localToday, timezone, settings, now);
+      return buildTrainingState(client, req.user.id, session, localToday, timezone, settings, now);
     }),
   );
+
+  app.get('/duel/training/history', { preHandler: [app.authenticate] }, async (req) => {
+    const parsed = historyQuerySchema.safeParse(req.query);
+    if (!parsed.success) throw new AppError('bad_request', 'invalid training history query', 400);
+    return withTransaction(app, async (client) => {
+      const now = new Date();
+      await reconcileTrainingSession(client, req.user.id, now);
+      return fetchTrainingHistory(client, req.user.id, parsed.data.limit, parsed.data.offset);
+    });
+  });
 
   app.post('/duel/training/start', { preHandler: [app.authenticate] }, async (req) => {
     const parsed = startBodySchema.safeParse(req.body);
@@ -276,10 +413,16 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
     }
     const { period_number: selectedPeriod } = parsed.data;
 
-    return withTransaction(app, async (client): Promise<TrainingStateResponse> => {
+    const state = await withTransaction(app, async (client): Promise<TrainingStateResponse> => {
+      await lockUserGameplay(client, req.user.id);
       const now = new Date();
       const settings = await getGameSettings(client);
-      await assertTrainingAvailableDuringDaily(client, req.user.id, now, settings);
+      await assertGameplayActionAllowed(client, {
+        userId: req.user.id,
+        action: 'start_training',
+        now,
+      });
+      const tournamentLock = await getTournamentGameplayLockState(client, req.user.id, now);
       const { session, localToday, timezone } = await reconcileTrainingSession(
         client,
         req.user.id,
@@ -292,12 +435,30 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
                 set selected_period = $1
               where id = $2
               returning id, user_id, day_date::text as day_date, selected_period, state,
-                        game_core_version, training_seed, started_at, closed_at`,
+                        game_core_version, training_seed, shots_limit, started_at, closed_at`,
             [selectedPeriod, session.id],
           );
-          return buildTrainingState(client, rows[0]!, localToday, timezone, settings, now);
+          return buildTrainingState(
+            client,
+            req.user.id,
+            rows[0]!,
+            localToday,
+            timezone,
+            settings,
+            now,
+            tournamentLock,
+          );
         }
-        return buildTrainingState(client, session, localToday, timezone, settings, now);
+        return buildTrainingState(
+          client,
+          req.user.id,
+          session,
+          localToday,
+          timezone,
+          settings,
+          now,
+          tournamentLock,
+        );
       }
 
       const trainingSeed = deriveTrainingSeed(
@@ -309,16 +470,24 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
       const { rows } = await client.query<TrainingSessionRow>(
         `insert into training_session
              (user_id, day_date, selected_period, state, game_core_version,
-              training_seed, started_at)
-           values ($1, $2::date, $3, 'active', $4, $5, $6)
+              training_seed, shots_limit, started_at)
+           values ($1, $2::date, $3, 'active', $4, $5, $6, $7)
            on conflict (user_id, day_date) do update
              set selected_period = case
                    when training_session.state = 'active' then excluded.selected_period
                    else training_session.selected_period
                  end
            returning id, user_id, day_date::text as day_date, selected_period, state,
-                     game_core_version, training_seed, started_at, closed_at`,
-        [req.user.id, localToday, selectedPeriod, GAME_CORE_VERSION, trainingSeed, now],
+                     game_core_version, training_seed, shots_limit, started_at, closed_at`,
+        [
+          req.user.id,
+          localToday,
+          selectedPeriod,
+          GAME_CORE_VERSION,
+          trainingSeed,
+          settings.training.shotsLimit,
+          now,
+        ],
       );
       const created = rows[0]!;
       await appendEvent(client, req.user.id, 'training_session_created', {
@@ -326,8 +495,19 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         day_date: localToday,
         selected_period: selectedPeriod,
       });
-      return buildTrainingState(client, created, localToday, timezone, settings, now);
+      return buildTrainingState(
+        client,
+        req.user.id,
+        created,
+        localToday,
+        timezone,
+        settings,
+        now,
+        tournamentLock,
+      );
     });
+    schedulePendingAchievementRecovery(req.user.id);
+    return state;
   });
 
   app.post('/duel/training/shot', { preHandler: [app.authenticate] }, async (req) => {
@@ -337,117 +517,138 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
     }
     const body = parsed.data;
 
-    return withTransaction(app, async (client): Promise<TrainingShotSubmitResponse> => {
-      const now = new Date();
-      const settings = await getGameSettings(client);
-      await assertTrainingAvailableDuringDaily(client, req.user.id, now, settings);
-      const { session, localToday, timezone } = await reconcileTrainingSession(
-        client,
-        req.user.id,
-        now,
-      );
-      if (session === null) {
-        throw new AppError('conflict', 'no active training session', 409);
-      }
-      if (session.state !== 'active') {
-        throw new AppError('conflict', 'training session is closed', 409);
-      }
-
-      const stats = await aggregateTraining(client, session.id);
-      if (stats.shots >= settings.training.shotsLimit) {
-        throw new AppError('conflict', 'training shot quota exhausted', 409);
-      }
-      const expectedShotIndex = stats.shots + 1;
-      if (body.shot_index !== expectedShotIndex) {
-        throw new AppError(
-          'conflict',
-          `shot_index mismatch: expected ${expectedShotIndex}, got ${body.shot_index}`,
-          409,
-        );
-      }
-      assertTrainingTapTimeFresh(session, stats.shots, body.input.tapTime, now);
-
-      const shotSeed = deriveShotSeed(
-        session.training_seed,
-        session.selected_period,
-        body.shot_index,
-      );
-      const periodSpeeds = getConfiguredDailyPeriodSpeedPreset(
-        settings.daily.periodSpeedPresets,
-        session.selected_period,
-      );
-      const shotInput = {
-        tapTime: body.input.tapTime,
-        ...(body.input.shooterTapTime !== undefined
-          ? { shooterTapTime: body.input.shooterTapTime }
-          : {}),
-        puckSpeedPerMs: periodSpeeds.puckSpeedPerMs,
-        shooterFrequency: periodSpeeds.shooterFrequency,
-        goalieFrequency: periodSpeeds.goalieFrequency,
-        goalFrequency: periodSpeeds.goalFrequency,
-      };
-      const result = resolvePerspectiveCourtShot(
-        shotInput,
-        getGoalie(settings.training.goalieId),
-        shotSeed,
-        body.shot_index,
-        STICK_NEUTRAL,
-        getSessionPhaseOffsets(session.training_seed),
-      );
-      const serverResult: 'goal' | 'save' | 'miss' = result.type;
-
-      await client.query(
-        `insert into shot_session
-           (user_id, mode, training_session_id, period_number, shot_index, seed,
-            input_payload, server_result, game_core_version)
-         values ($1, 'training', $2, $3, $4, $5, $6, $7, $8)`,
-        [
+    const response = await withTransaction(
+      app,
+      async (client): Promise<TrainingShotSubmitResponse> => {
+        await lockUserGameplay(client, req.user.id);
+        const now = new Date();
+        const settings = await getGameSettings(client);
+        await assertGameplayActionAllowed(client, {
+          userId: req.user.id,
+          now,
+          action: 'start_training',
+        });
+        const tournamentLock = await getTournamentGameplayLockState(client, req.user.id, now);
+        const { session, localToday, timezone } = await reconcileTrainingSession(
+          client,
           req.user.id,
-          session.id,
+          now,
+        );
+        if (session === null) {
+          throw new AppError('conflict', 'no active training session', 409);
+        }
+        if (session.state !== 'active') {
+          throw new AppError('conflict', 'training session is closed', 409);
+        }
+
+        const stats = await aggregateTraining(client, session.id);
+        if (stats.shots >= session.shots_limit) {
+          throw new AppError('conflict', 'training shot quota exhausted', 409);
+        }
+        const expectedShotIndex = stats.shots + 1;
+        if (body.shot_index !== expectedShotIndex) {
+          throw new AppError(
+            'conflict',
+            `shot_index mismatch: expected ${expectedShotIndex}, got ${body.shot_index}`,
+            409,
+          );
+        }
+        assertTrainingTapTimeFresh(session, stats.shots, body.input.tapTime, now);
+
+        const shotSeed = deriveShotSeed(
+          session.training_seed,
           session.selected_period,
           body.shot_index,
+        );
+        const periodSpeeds = getConfiguredDailyPeriodSpeedPreset(
+          settings.daily.periodSpeedPresets,
+          session.selected_period,
+        );
+        const shotInput = {
+          tapTime: body.input.tapTime,
+          ...(body.input.shooterTapTime !== undefined
+            ? { shooterTapTime: body.input.shooterTapTime }
+            : {}),
+          puckSpeedPerMs: periodSpeeds.puckSpeedPerMs,
+          shooterFrequency: periodSpeeds.shooterFrequency,
+          goalieFrequency: periodSpeeds.goalieFrequency,
+          goalFrequency: periodSpeeds.goalFrequency,
+        };
+        const result = resolvePerspectiveCourtShot(
+          shotInput,
+          getGoalie(settings.training.goalieId),
           shotSeed,
-          JSON.stringify(shotInput),
-          serverResult,
-          session.game_core_version,
-        ],
-      );
+          body.shot_index,
+          STICK_NEUTRAL,
+          getSessionPhaseOffsets(session.training_seed),
+        );
+        const serverResult: 'goal' | 'save' | 'miss' = result.type;
 
-      if (body.claimed_result !== serverResult) {
-        await appendEvent(client, req.user.id, 'shot_mismatch', {
-          mode: 'training',
-          training_session_id: session.id,
-          period_number: session.selected_period,
-          shot_index: body.shot_index,
-          claimed_result: body.claimed_result,
-          server_result: serverResult,
-        });
-      }
-
-      if (expectedShotIndex >= settings.training.shotsLimit) {
         await client.query(
-          `update training_session
+          `insert into shot_session
+           (user_id, mode, training_session_id, period_number, shot_index, seed,
+            input_payload, server_result, game_core_version, created_at)
+         values ($1, 'training', $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            req.user.id,
+            session.id,
+            session.selected_period,
+            body.shot_index,
+            shotSeed,
+            JSON.stringify(shotInput),
+            serverResult,
+            session.game_core_version,
+            now,
+          ],
+        );
+
+        if (body.claimed_result !== serverResult) {
+          await appendEvent(client, req.user.id, 'shot_mismatch', {
+            mode: 'training',
+            training_session_id: session.id,
+            period_number: session.selected_period,
+            shot_index: body.shot_index,
+            claimed_result: body.claimed_result,
+            server_result: serverResult,
+          });
+        }
+
+        if (expectedShotIndex >= session.shots_limit) {
+          await client.query(
+            `update training_session
               set state = 'closed', closed_at = $1
             where id = $2`,
-          [now, session.id],
-        );
-        await appendEvent(client, req.user.id, 'training_session_closed', {
-          training_session_id: session.id,
-          closed_reason: 'quota',
-        });
-        await grantAchievements(client, req.user.id, ['first-training']);
-      }
+            [now, session.id],
+          );
+          await appendEvent(client, req.user.id, 'training_session_closed', {
+            training_session_id: session.id,
+            closed_reason: 'quota',
+          });
+          await evaluateTrainingClosedAchievements(client, {
+            userId: req.user.id,
+            trainingSessionId: session.id,
+            dayDate: session.day_date,
+            shotsLimit: session.shots_limit,
+            dailyTotalPeriods: settings.daily.totalPeriods,
+            dailyShotsPerPeriod: settings.daily.shotsPerPeriod,
+          });
+        }
 
-      const nextSession = await fetchTodayTrainingSession(client, req.user.id, localToday);
-      const state = await buildTrainingState(
-        client,
-        nextSession,
-        localToday,
-        timezone,
-        settings,
-        now,
-      );
-      return { server_result: serverResult, state };
-    });
+        const nextSession = await fetchTodayTrainingSession(client, req.user.id, localToday);
+        const state = await buildTrainingState(
+          client,
+          req.user.id,
+          nextSession,
+          localToday,
+          timezone,
+          settings,
+          now,
+          tournamentLock,
+        );
+        return { server_result: serverResult, state };
+      },
+    );
+    schedulePendingAchievementRecovery(req.user.id);
+    return response;
   });
 };

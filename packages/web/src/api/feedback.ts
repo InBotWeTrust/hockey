@@ -23,3 +23,13 @@ export function createFeedback(payload: FeedbackCreatePayload): Promise<{ feedba
     body: JSON.stringify(payload),
   });
 }
+
+export function sendOfficialMessage(message: string): Promise<{
+  chatId: string;
+  messageId: string;
+}> {
+  return apiFetch('/feedback/direct', {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  });
+}

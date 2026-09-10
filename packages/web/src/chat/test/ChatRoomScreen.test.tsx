@@ -8,6 +8,9 @@ import { chatKeys } from '../../lib/queryKeys.js';
 import * as api from '../api.js';
 import * as amateurDuelApi from '../../api/amateurDuel.js';
 import type { ChatMessageDTO } from '../api.js';
+import type { DailyStateResponse } from '../../api/duel.js';
+import { useAmateurAccessToastStore } from '../../amateur/amateurAccessStore.js';
+import { useDailyStore } from '../../stores/dailyStore.js';
 
 function LocationProbe(): JSX.Element {
   const location = useLocation();
@@ -25,7 +28,10 @@ function renderRoom(
   configure?.(queryClient);
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[`/chat/${chatId}${search}`]}>
+      <MemoryRouter
+        initialEntries={[`/chat/${chatId}${search}`]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <Routes>
           <Route path="/chat/:chatId" element={<ChatRoomScreen />} />
           <Route path="/chat" element={<div>list</div>} />
@@ -81,13 +87,32 @@ function longPressBubble(messageId: string): void {
   fireEvent.pointerUp(wrapper, { pointerId: 1, clientX: 0, clientY: 0 });
 }
 
+async function runAllTimersInAct(): Promise<void> {
+  await act(async () => {
+    await vi.runAllTimersAsync();
+  });
+}
+
 describe('ChatRoomScreen', () => {
   beforeEach(() => {
-    const user: AuthUser = { id: SELF_ID, displayName: 'Me', grip: 'right' };
+    const user: AuthUser = {
+      id: SELF_ID,
+      displayName: 'Me',
+      grip: 'right',
+      competitionLevel: 'amateur',
+    };
     useAuthStore.setState({ accessToken: 'tok', refreshToken: 'rtok', user });
+    useDailyStore.setState({
+      data: {
+        lifetime_total_goals: 300,
+        amateur_unlock_goals_required: 300,
+      } as DailyStateResponse,
+    });
+    useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
     vi.spyOn(api, 'fetchMessages').mockResolvedValue([msgFromSelf, msgFromOther]); // server DESC
     vi.spyOn(api, 'markChatAsRead').mockResolvedValue(undefined);
     vi.spyOn(api, 'fetchChatList').mockResolvedValue([]);
+    vi.spyOn(amateurDuelApi, 'fetchAmateurMatches').mockResolvedValue({ matches: [] });
     vi.spyOn(api, 'fetchUserProfile').mockResolvedValue({
       id: OTHER_ID,
       displayName: 'Иван',
@@ -138,8 +163,8 @@ describe('ChatRoomScreen', () => {
           matchId: '11111111-1111-1111-1111-111111111111',
           templateTitle: 'Классическая дуэль',
           challengerName: 'Иван',
-          startsAt: '2026-05-04T10:00:00.000Z',
-          endsAt: '2026-05-04T12:00:00.000Z',
+          startsAt: '2030-05-04T10:00:00.000Z',
+          endsAt: '2030-05-04T12:00:00.000Z',
           totalPeriods: 3,
           shotsPerPeriod: 30,
           periodDurationMs: 1_200_000,
@@ -162,6 +187,239 @@ describe('ChatRoomScreen', () => {
     expect(await screen.findByText('Вы отклонили')).toBeInTheDocument();
   });
 
+  it.each([
+    ['Принять', 'acceptAmateurDuel'],
+    ['Отклонить', 'declineAmateurDuel'],
+  ] as const)(
+    'guards the chat invite %s action locally for a known beginner',
+    async (label, method) => {
+      useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+      useDailyStore.setState({
+        data: {
+          lifetime_total_goals: 116,
+          amateur_unlock_goals_required: 300,
+        } as DailyStateResponse,
+      });
+      const accept = vi.spyOn(amateurDuelApi, 'acceptAmateurDuel').mockResolvedValue({
+        match: {} as Awaited<ReturnType<typeof amateurDuelApi.acceptAmateurDuel>>['match'],
+      });
+      const decline = vi.spyOn(amateurDuelApi, 'declineAmateurDuel').mockResolvedValue({
+        match: {} as Awaited<ReturnType<typeof amateurDuelApi.declineAmateurDuel>>['match'],
+      });
+      vi.mocked(api.fetchMessages).mockResolvedValue([
+        {
+          ...msgFromOther,
+          id: 'beginner-duel-invite',
+          metadata: {
+            type: 'amateur_duel_invite',
+            matchId: '11111111-1111-1111-1111-111111111111',
+            templateTitle: 'Классическая дуэль',
+            challengerName: 'Иван',
+            startsAt: '2030-05-04T10:00:00.000Z',
+            endsAt: '2030-05-04T12:00:00.000Z',
+            totalPeriods: 3,
+            shotsPerPeriod: 30,
+            periodDurationMs: 1_200_000,
+            breakDurationMs: 900_000,
+            stakeAmount: 0,
+            entryFeeAmount: 0,
+            bankAmount: 0,
+          },
+        },
+      ]);
+
+      renderRoom('c1');
+      fireEvent.click(await screen.findByRole('button', { name: label }));
+
+      expect(method === 'acceptAmateurDuel' ? accept : decline).not.toHaveBeenCalled();
+      expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
+        goalsRemaining: 184,
+        unlockGoalsRequired: 300,
+      });
+    },
+  );
+
+  it('keeps chat invite actions visible when stale access is rejected by the server', async () => {
+    const matchId = '11111111-1111-1111-1111-111111111111';
+    vi.mocked(api.fetchMessages).mockResolvedValue([
+      {
+        ...msgFromOther,
+        id: 'stale-duel-invite',
+        metadata: {
+          type: 'amateur_duel_invite',
+          matchId,
+          templateTitle: 'Классическая дуэль',
+          challengerName: 'Иван',
+          startsAt: '2030-05-04T10:00:00.000Z',
+          endsAt: '2030-05-04T12:00:00.000Z',
+          totalPeriods: 3,
+          shotsPerPeriod: 30,
+          periodDurationMs: 1_200_000,
+          breakDurationMs: 900_000,
+          stakeAmount: 0,
+          entryFeeAmount: 0,
+          bankAmount: 0,
+        },
+      },
+    ]);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 'amateur_level_required',
+            message: 'internal policy',
+            details: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+          },
+        }),
+        { status: 403, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    renderRoom('c1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Принять' }));
+
+    await waitFor(() =>
+      expect(useAmateurAccessToastStore.getState()).toMatchObject({
+        sequence: 1,
+        toast: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+      }),
+    );
+    expect(screen.getByRole('button', { name: 'Принять' })).toBeInTheDocument();
+    expect(screen.queryByText('Вызов уже недоступен')).toBeNull();
+  });
+
+  it.each(['active_classic', 'scheduled_tournament'] as const)(
+    'keeps chat and decline usable but disables accepting a %s-locked invitation',
+    async (reason) => {
+      const accept = vi.spyOn(amateurDuelApi, 'acceptAmateurDuel');
+      const decline = vi
+        .spyOn(amateurDuelApi, 'declineAmateurDuel')
+        .mockResolvedValue({ match: {} as amateurDuelApi.AmateurDuelMatchState });
+      const lock = {
+        blocked: true,
+        reason,
+        ends_at: null,
+        tournament_starts_at: '2030-05-04T10:00:00.000Z',
+      };
+      vi.mocked(amateurDuelApi.fetchAmateurMatches).mockResolvedValue({
+        matches:
+          reason === 'active_classic'
+            ? []
+            : [
+                {
+                  id: '11111111-1111-1111-1111-111111111111',
+                  source: 'challenge',
+                  status: 'invited',
+                  me: { state: 'invited' },
+                  duel_lock: lock,
+                },
+              ],
+        duel_lock: reason === 'active_classic' ? lock : null,
+      } as Awaited<ReturnType<typeof amateurDuelApi.fetchAmateurMatches>>);
+      vi.mocked(api.fetchMessages).mockResolvedValue([
+        {
+          ...msgFromOther,
+          metadata: {
+            type: 'amateur_duel_invite',
+            matchId: '11111111-1111-1111-1111-111111111111',
+            templateTitle: 'Классическая дуэль',
+            challengerName: 'Иван',
+            startsAt: '2030-05-04T10:00:00.000Z',
+            endsAt: '2030-05-04T12:00:00.000Z',
+            totalPeriods: 3,
+            shotsPerPeriod: 30,
+            periodDurationMs: 1_200_000,
+            breakDurationMs: 900_000,
+            stakeAmount: 0,
+            entryFeeAmount: 0,
+            bankAmount: 0,
+          },
+        },
+      ]);
+      renderRoom('c1');
+      const button = await screen.findByRole('button', { name: 'Принять' });
+      await waitFor(() => expect(button).toBeDisabled());
+      fireEvent.click(button);
+      expect(accept).not.toHaveBeenCalled();
+      expect(screen.getByText('привет')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          reason === 'active_classic'
+            ? 'Завершите текущую турнирную игру, чтобы играть в обычные дуэли.'
+            : /Обычные дуэли недоступны перед турнирной игрой/,
+        ),
+      ).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Отклонить' }));
+      await waitFor(() => expect(decline).toHaveBeenCalled());
+    },
+  );
+
+  it('does not restore actions for an expired invite missing from recent matches', async () => {
+    vi.mocked(api.fetchMessages).mockResolvedValue([
+      {
+        ...msgFromOther,
+        id: 'expired-duel-invite',
+        content: 'Иван вызывает вас на дуэль «Экспресс».',
+        metadata: {
+          type: 'amateur_duel_invite',
+          matchId: '22222222-2222-2222-2222-222222222222',
+          templateTitle: 'Экспресс',
+          challengerName: 'Иван',
+          startsAt: '2026-05-04T10:00:00.000Z',
+          endsAt: '2026-05-04T10:15:00.000Z',
+          totalPeriods: 1,
+          shotsPerPeriod: 30,
+          periodDurationMs: 180_000,
+          breakDurationMs: 0,
+          stakeAmount: 0,
+          entryFeeAmount: 0,
+          bankAmount: 0,
+        },
+      },
+    ]);
+
+    renderRoom('c1');
+
+    expect(await screen.findByText('Вызов уже недоступен')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Принять' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Отклонить' })).not.toBeInTheDocument();
+  });
+
+  it('labels an already settled invite as completed without action buttons', async () => {
+    const matchId = '33333333-3333-3333-3333-333333333333';
+    vi.mocked(amateurDuelApi.fetchAmateurMatches).mockResolvedValue({
+      matches: [{ id: matchId, status: 'settled' } as amateurDuelApi.AmateurDuelMatch],
+    });
+    vi.mocked(api.fetchMessages).mockResolvedValue([
+      {
+        ...msgFromOther,
+        id: 'settled-duel-invite',
+        content: 'Иван вызывает вас на дуэль «Микс».',
+        metadata: {
+          type: 'amateur_duel_invite',
+          matchId,
+          templateTitle: 'Микс',
+          challengerName: 'Иван',
+          startsAt: '2030-05-04T10:00:00.000Z',
+          endsAt: '2030-05-04T10:15:00.000Z',
+          totalPeriods: 2,
+          shotsPerPeriod: 30,
+          periodDurationMs: 180_000,
+          breakDurationMs: 60_000,
+          stakeAmount: 0,
+          entryFeeAmount: 0,
+          bankAmount: 0,
+        },
+      },
+    ]);
+
+    renderRoom('c1');
+
+    expect(await screen.findByText('Дуэль завершена')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Принять' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Отклонить' })).not.toBeInTheDocument();
+  });
+
   it('accepts a duel invite and opens the duel room', async () => {
     const matchId = '11111111-1111-1111-1111-111111111111';
     const accept = vi.spyOn(amateurDuelApi, 'acceptAmateurDuel').mockResolvedValue({
@@ -180,8 +438,8 @@ describe('ChatRoomScreen', () => {
           matchId,
           templateTitle: 'Классическая дуэль',
           challengerName: 'Иван',
-          startsAt: '2026-05-04T10:00:00.000Z',
-          endsAt: '2026-05-04T12:00:00.000Z',
+          startsAt: '2030-05-04T10:00:00.000Z',
+          endsAt: '2030-05-04T12:00:00.000Z',
           totalPeriods: 3,
           shotsPerPeriod: 30,
           periodDurationMs: 1_200_000,
@@ -259,6 +517,43 @@ describe('ChatRoomScreen', () => {
     expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
   });
 
+  it('opens the official card from its dialog header without a duplicate message action', async () => {
+    vi.mocked(api.fetchChatList).mockResolvedValue([
+      {
+        id: 'c1',
+        type: 'direct',
+        name: null,
+        entityType: null,
+        entityId: null,
+        lastMessageAt: null,
+        unreadCount: 0,
+        lastMessage: null,
+        lastMessageSenderName: null,
+        dmCounterpart: {
+          userId: OTHER_ID,
+          displayName: 'Ультимейт Хоккей',
+          avatarUrl: '/api/media/old-official-avatar',
+          lastSeenAt: null,
+          lastReadAt: null,
+          accountKind: 'official',
+        },
+        memberCount: 2,
+        pinnedAt: null,
+      },
+    ]);
+
+    renderRoom('c1');
+
+    expect(await screen.findByText('Официальный аккаунт')).toBeInTheDocument();
+    expect(document.querySelector('.chat-room-header__avatar img')).toHaveAttribute(
+      'src',
+      '/icons/official-account.webp?v=2',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть официальный аккаунт' }));
+    expect(await screen.findByRole('heading', { name: 'Ультимейт Хоккей' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Написать в личку' })).not.toBeInTheDocument();
+  });
+
   it('shows delivered/read ticks only on own messages in direct chats', async () => {
     vi.mocked(api.fetchChatList).mockResolvedValue([
       {
@@ -331,7 +626,9 @@ describe('ChatRoomScreen', () => {
     renderRoom('c1');
 
     await waitFor(() => expect(api.fetchMessages).toHaveBeenCalledTimes(2));
-    expect(screen.getByText('Сообщений пока нет')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Сообщений пока нет' })).toHaveClass(
+      'chat-room__empty-state',
+    );
     expect(api.markChatAsRead).not.toHaveBeenCalled();
   });
 
@@ -523,6 +820,7 @@ describe('ChatRoomScreen', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'photo.webp' });
     expect(dialog).toBeInTheDocument();
+    expect(document.body.firstElementChild).toHaveAttribute('inert');
     expect(screen.getByAltText('photo.webp')).toHaveAttribute(
       'src',
       'https://cdn.example/photo.webp',
@@ -638,7 +936,7 @@ describe('ChatRoomScreen', () => {
     renderRoom('c1');
     // Run pending timers from React's effects (mark-as-read + initial render),
     // then move on to the synchronous test interactions.
-    await vi.runAllTimersAsync();
+    await runAllTimersInAct();
 
     longPressBubble('m1');
     expect(screen.getByRole('menuitem', { name: 'Ответить' })).toBeInTheDocument();
@@ -664,7 +962,7 @@ describe('ChatRoomScreen', () => {
     const delSpy = vi.spyOn(api, 'deleteMessage').mockResolvedValue(undefined);
 
     renderRoom('c1');
-    await vi.runAllTimersAsync();
+    await runAllTimersInAct();
 
     longPressBubble('m2');
     expect(screen.getByRole('menuitem', { name: 'Удалить' })).toBeInTheDocument();
@@ -687,7 +985,7 @@ describe('ChatRoomScreen', () => {
     const updateSpy = vi.spyOn(api, 'updateMessage').mockResolvedValue(edited);
 
     renderRoom('c1');
-    await vi.runAllTimersAsync();
+    await runAllTimersInAct();
 
     longPressBubble('m2');
     fireEvent.click(screen.getByRole('menuitem', { name: /редактировать/i }));
@@ -710,7 +1008,7 @@ describe('ChatRoomScreen', () => {
       .mockResolvedValue({ messageId: 'm1', emoji: '👍', removed: null });
 
     const { queryClient } = renderRoom('c1');
-    await vi.runAllTimersAsync();
+    await runAllTimersInAct();
 
     longPressBubble('m1');
     // The favorite shelf renders FAVORITE_EMOJI as <button aria-label="<emoji>">.
@@ -754,7 +1052,7 @@ describe('ChatRoomScreen', () => {
     const addSpy = vi.spyOn(api, 'addReaction').mockRejectedValue(new Error('boom'));
 
     const { queryClient } = renderRoom('c1');
-    await vi.runAllTimersAsync();
+    await runAllTimersInAct();
 
     longPressBubble('m1');
     const favorite = screen.getByRole('button', { name: '👍' });

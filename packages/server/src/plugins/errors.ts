@@ -7,13 +7,16 @@ export class AppError extends Error {
     public readonly code: string,
     message: string,
     public readonly statusCode = 400,
+    public readonly details: unknown = undefined,
   ) {
     super(message);
     this.name = 'AppError';
   }
 }
 
-function hasHttpStatus(err: unknown): err is { statusCode: number; code?: string; message: string } {
+function hasHttpStatus(
+  err: unknown,
+): err is { statusCode: number; code?: string; message: string } {
   if (err === null || typeof err !== 'object') return false;
   const maybe = err as { statusCode?: unknown; message?: unknown };
   return (
@@ -24,11 +27,24 @@ function hasHttpStatus(err: unknown): err is { statusCode: number; code?: string
   );
 }
 
+function isPostgresUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === '23505'
+  );
+}
+
 const plugin: FastifyPluginAsync = async (app) => {
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof AppError) {
       reply.status(err.statusCode).send({
-        error: { code: err.code, message: err.message },
+        error: {
+          code: err.code,
+          message: err.message,
+          ...(err.details === undefined ? {} : { details: err.details }),
+        },
       });
       return;
     }
@@ -47,6 +63,12 @@ const plugin: FastifyPluginAsync = async (app) => {
     if (hasHttpStatus(err)) {
       reply.status(err.statusCode).send({
         error: { code: err.code ?? 'bad_request', message: err.message },
+      });
+      return;
+    }
+    if (isPostgresUniqueViolation(err)) {
+      reply.status(409).send({
+        error: { code: 'conflict', message: 'request conflicts with current state' },
       });
       return;
     }

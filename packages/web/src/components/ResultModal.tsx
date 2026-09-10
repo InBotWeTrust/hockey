@@ -5,6 +5,7 @@ export interface ResultModalProps {
   durationMs: number;
   subText?: string | null;
   displayKind?: ResultModalKind | undefined;
+  title?: string | undefined;
 }
 
 export type ResultModalKind = ShotResult['type'] | 'post';
@@ -37,12 +38,17 @@ const THEMES: Record<ResultModalKind, Theme> = {
     title: 'ШТАНГА',
     glow: 'rgba(239, 68, 68, 0.62)',
     glowSoft: 'rgba(239, 68, 68, 0.22)',
-    titleSize: 'clamp(34px, 8.5vw, 60px)',
+    titleSize: 'clamp(34px, 5.2vmin, 52px)',
     letterSpacing: '0.04em',
   },
 };
 
-export function ResultModal({ result, durationMs, displayKind }: ResultModalProps): JSX.Element {
+export function ResultModal({
+  result,
+  durationMs,
+  displayKind,
+  title,
+}: ResultModalProps): JSX.Element {
   const theme = THEMES[displayKind ?? result.type];
 
   return (
@@ -67,7 +73,7 @@ export function ResultModal({ result, durationMs, displayKind }: ResultModalProp
           left: '50%',
           zIndex: 300,
           boxSizing: 'border-box',
-          padding: 'clamp(14px, 3.4vw, 20px) clamp(24px, 7vw, 42px)',
+          padding: 'clamp(14px, 2vmin, 18px) clamp(24px, 5vmin, 36px)',
           borderRadius: 24,
           background: 'rgba(172, 184, 198, 0.74)',
           border: '1.5px solid rgba(255, 255, 255, 0.86)',
@@ -75,7 +81,7 @@ export function ResultModal({ result, durationMs, displayKind }: ResultModalProp
           WebkitBackdropFilter: 'blur(18px) saturate(115%)',
           textAlign: 'center',
           pointerEvents: 'none',
-          maxWidth: 'calc(100vw - 40px)',
+          maxWidth: 'min(420px, calc(100vw - 40px))',
           boxShadow: [
             `0 0 0 2px ${theme.glowSoft}`,
             `0 0 34px ${theme.glow}`,
@@ -90,14 +96,14 @@ export function ResultModal({ result, durationMs, displayKind }: ResultModalProp
           style={{
             fontFamily: 'var(--font-sans)',
             fontWeight: 900,
-            fontSize: theme.titleSize ?? 'clamp(38px, 9.5vw, 72px)',
+            fontSize: theme.titleSize ?? 'clamp(38px, 6vmin, 58px)',
             lineHeight: 1,
             letterSpacing: theme.letterSpacing ?? '0.06em',
             color: '#111827',
             textShadow: '0 1px 0 rgba(255, 255, 255, 0.42)',
           }}
         >
-          {theme.title}
+          {title ?? theme.title}
         </div>
       </div>
     </>

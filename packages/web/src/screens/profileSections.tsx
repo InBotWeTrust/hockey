@@ -1,6 +1,6 @@
-import type { CSSProperties, ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 import type { CompetitionLevel, ProfileAchievement, ProfileStats } from './profileTypes.js';
 
 const LEVEL_LABELS: Record<CompetitionLevel, string> = {
@@ -19,6 +19,59 @@ export const EMPTY_PROFILE_STATS: ProfileStats = {
 
 export function formatProfileNumber(value: number): string {
   return new Intl.NumberFormat('ru-RU').format(value);
+}
+
+export function FittedOneLineText({
+  children,
+  className,
+  maxFontSize,
+  minFontSize = 6,
+}: {
+  children: ReactNode;
+  className?: string;
+  maxFontSize: number;
+  minFontSize?: number;
+}): JSX.Element {
+  const textRef = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    const text = textRef.current;
+    if (!text) return;
+
+    let frame = 0;
+    const fit = (): void => {
+      text.style.fontSize = `${maxFontSize}px`;
+      const availableWidth = text.clientWidth;
+      const textWidth = text.scrollWidth;
+      const nextFontSize =
+        availableWidth > 0 && textWidth > availableWidth
+          ? Math.max(minFontSize, Math.floor(((maxFontSize * availableWidth) / textWidth) * 10) / 10)
+          : maxFontSize;
+      text.style.fontSize = `${nextFontSize}px`;
+    };
+    const scheduleFit = (): void => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(fit);
+    };
+
+    scheduleFit();
+    void document.fonts?.ready.then(scheduleFit).catch(() => undefined);
+    window.addEventListener('resize', scheduleFit);
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleFit);
+    resizeObserver?.observe(text);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', scheduleFit);
+      resizeObserver?.disconnect();
+    };
+  }, [children, maxFontSize, minFontSize]);
+
+  return (
+    <span className={className ? `profile-fitted-number ${className}` : 'profile-fitted-number'} ref={textRef}>
+      {children}
+    </span>
+  );
 }
 
 export function getLevelLabel(level: CompetitionLevel | undefined): string {
@@ -177,6 +230,9 @@ export function AchievementTile({
         />
       </div>
       <span
+        className={`profile-achievement-title${
+          achievement.id === 'training-monster' ? ' profile-achievement-title--compact' : ''
+        }`}
         style={{
           height: 25,
           width: '100%',
@@ -184,7 +240,6 @@ export function AchievementTile({
           WebkitLineClamp: 2,
           WebkitBoxOrient: 'vertical',
           overflow: 'hidden',
-          fontSize: 10,
           lineHeight: 1.25,
           fontWeight: 700,
           color: 'var(--muted)',
@@ -225,7 +280,15 @@ export function ProfileAchievementsSection({
   style?: CSSProperties;
   labelStyle?: CSSProperties;
 }): JSX.Element {
-  const unlockedAchievements = achievements.filter((achievement) => achievement.isUnlocked).length;
+  const sortedAchievements = [...achievements].sort((left, right) => {
+    const leftTime = left.completedAt ? Date.parse(left.completedAt) : Number.NaN;
+    const rightTime = right.completedAt ? Date.parse(right.completedAt) : Number.NaN;
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) return rightTime - leftTime;
+    if (Number.isFinite(leftTime)) return -1;
+    if (Number.isFinite(rightTime)) return 1;
+    return 0;
+  });
+  const unlockedAchievements = sortedAchievements.filter((achievement) => achievement.isUnlocked).length;
 
   return (
     <>
@@ -240,9 +303,9 @@ export function ProfileAchievementsSection({
           ...labelStyle,
         }}
       >
-        <span style={{ minWidth: 0 }}>
-          Задания
-          {achievements.length > 0 ? ` (${unlockedAchievements}/${achievements.length})` : ''}
+        <span style={{ minWidth: 0, whiteSpace: 'nowrap' }}>
+          Выполненные задания
+          {unlockedAchievements > 0 ? ` (${unlockedAchievements})` : ''}
         </span>
         {labelAccessory}
       </div>
@@ -269,7 +332,7 @@ export function ProfileAchievementsSection({
             scrollSnapType: 'x proximity',
           }}
         >
-          {achievements.map((achievement) => (
+          {sortedAchievements.map((achievement) => (
             <AchievementTile
               key={achievement.id}
               achievement={achievement}
@@ -289,133 +352,42 @@ export function AchievementDetailsSheet({
   achievement: ProfileAchievement;
   onClose: () => void;
 }): JSX.Element {
-  const status = achievement.isUnlocked ? 'Выполнено' : 'Не выполнено';
-
-  return createPortal(
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={achievement.title}
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        background: 'rgba(15, 23, 42, 0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20,
-      }}
-    >
-      <div
-        className="glass"
-        onClick={(event) => event.stopPropagation()}
-        style={{
-          width: '100%',
-          maxWidth: 320,
-          maxHeight: 'calc(100dvh - 40px - var(--app-safe-top) - var(--app-safe-bottom))',
-          overflowY: 'auto',
-          borderRadius: 24,
-          padding: '22px 22px 18px',
-          color: 'var(--ink)',
-          position: 'relative',
-        }}
-      >
+  return (
+    <AccessibleModal
+      open
+      title={achievement.title}
+      onRequestClose={() => onClose()}
+      cardClassName="achievement-details-modal achievement-details-modal--crisp"
+      headerAction={
         <button
           type="button"
           className="icon-btn"
           data-no-drag-scroll="true"
           aria-label="Закрыть"
           onClick={onClose}
-          style={{
-            position: 'absolute',
-            top: 14,
-            right: 14,
-            width: 34,
-            height: 34,
-            background: 'rgba(255,255,255,0.62)',
-          }}
         >
           <X size={16} />
         </button>
-        <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 14 }}>
-          <div
-            style={{
-              width: 72,
-              height: 72,
-              borderRadius: 18,
-              overflow: 'hidden',
-              background: 'rgba(15, 23, 42, 0.08)',
-              border: '1px solid rgba(255,255,255,0.82)',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 8px 18px rgba(15,23,42,0.12)',
-              alignSelf: 'start',
-            }}
-          >
-            <img
-              src={achievement.photoUrl}
-              alt=""
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                display: 'block',
-                filter: achievement.isUnlocked ? 'none' : 'grayscale(1) saturate(0.1)',
-                opacity: achievement.isUnlocked ? 1 : 0.58,
-              }}
-            />
-          </div>
-          <div
-            style={{
-              minWidth: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 7,
-            }}
-          >
-            <span
-              className={achievement.isUnlocked ? 'pill pill--dark' : 'pill'}
-              style={{
-                alignSelf: 'flex-start',
-                padding: '5px 10px',
-                fontSize: 11,
-                letterSpacing: 0,
-              }}
-            >
-              {status}
-            </span>
-            <h3
-              style={{
-                margin: 0,
-                fontSize: 19,
-                lineHeight: 1.15,
-                fontWeight: 900,
-                overflowWrap: 'anywhere',
-              }}
-            >
-              {achievement.title}
-            </h3>
-          </div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
-          <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-            {achievement.description}
-          </p>
-          <div
-            style={{
-              color: 'var(--muted)',
-              fontSize: 13,
-              lineHeight: 1.5,
-            }}
-          >
-            <strong style={{ color: 'var(--ink)', fontWeight: 900 }}>Цель: </strong>
-            {achievement.requirement}
-          </div>
+      }
+      cardStyle={{
+        width: 'min(320px, calc(100vw - 40px))',
+        maxHeight: 'calc(100dvh - 40px - var(--app-safe-top) - var(--app-safe-bottom))',
+        overflowY: 'auto',
+        position: 'relative',
+      }}
+    >
+      <div className="achievement-details-modal__content">
+        <img
+          className="achievement-details-modal__image"
+          src={achievement.photoUrl}
+          alt={achievement.title}
+        />
+        <p>{achievement.description}</p>
+        <div className="achievement-details-modal__requirement">
+          <strong>Цель: </strong>
+          {achievement.requirement}
         </div>
       </div>
-    </div>,
-    document.body,
+    </AccessibleModal>
   );
 }

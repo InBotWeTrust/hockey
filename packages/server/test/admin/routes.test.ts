@@ -66,7 +66,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
 
   beforeEach(async () => {
     await pool.query(
-      `truncate users, auth_providers, user_wallet, user_equipment, user_sticks,
+      `truncate users, auth_providers, user_equipment, user_sticks,
               training_session, day_pool, period_log, shot_session, event_log,
               payments, admin_inventory_items, feedback_messages,
               push_delivery_log, push_subscriptions, user_push_preferences
@@ -248,8 +248,22 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
           clickUrl: '/chat/{{chatId}}',
           isEnabled: true,
         }),
+        expect.objectContaining({ key: 'tournament.registration_blocked' }),
+        expect.objectContaining({ key: 'tournament.playoff_blocked' }),
+        expect.objectContaining({ key: 'tournament.playoff_schedule_missing' }),
       ]),
     );
+
+    const playoffTemplatePatch = await app.inject({
+      method: 'PATCH',
+      url: '/admin/notifications/tournament.playoff_schedule_missing',
+      headers: auth(adminToken),
+      payload: { isEnabled: false },
+    });
+    expect(playoffTemplatePatch.statusCode).toBe(200);
+    expect(playoffTemplatePatch.json()).toMatchObject({
+      notification: { key: 'tournament.playoff_schedule_missing', isEnabled: false },
+    });
 
     const patch = await app.inject({
       method: 'PATCH',
@@ -675,7 +689,11 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
               active: true,
             }),
           ]),
-          wallet: { pucks: 0 },
+          xp: 0,
+          experience: 0,
+          beginnerOnboardingCompleted: false,
+          amateurOnboardingCompleted: false,
+          wallet: { coins: 0 },
           pushNotifications: {
             subscribed: true,
             subscriptionCount: 1,
@@ -706,7 +724,9 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       headers: auth(adminToken),
       payload: {
         role: 'admin',
-        wallet: { pucks: 250, goldPucks: 5 },
+        xp: 5,
+        experience: 17,
+        wallet: { coins: 250 },
       },
     });
     expect(patch.statusCode).toBe(200);
@@ -714,8 +734,101 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       user: {
         id: playerId,
         role: 'admin',
-        wallet: { pucks: 250, goldPucks: 5 },
+        xp: 5,
+        experience: 17,
+        wallet: { coins: 250 },
       },
+    });
+    const balance = await pool.query<{ balance: number; xp: number; experience: number }>(
+      `select coalesce(uca.balance, 0) as balance, u.xp, u.experience
+         from users u
+         left join user_currency_account uca on uca.user_id = u.id
+        where u.id = $1`,
+      [playerId],
+    );
+    expect(balance.rows[0]).toEqual({ balance: 250, xp: 5, experience: 17 });
+
+    const resetBeginner = await app.inject({
+      method: 'PATCH',
+      url: `/admin/users/${playerId}`,
+      headers: auth(adminToken),
+      payload: { beginnerOnboardingCompleted: true, amateurOnboardingCompleted: false },
+    });
+    expect(resetBeginner.statusCode).toBe(200);
+    expect(resetBeginner.json().user).toMatchObject({
+      beginnerOnboardingCompleted: true,
+      amateurOnboardingCompleted: false,
+    });
+    const resetAmateur = await app.inject({
+      method: 'PATCH',
+      url: `/admin/users/${playerId}`,
+      headers: auth(adminToken),
+      payload: { beginnerOnboardingCompleted: false, amateurOnboardingCompleted: true },
+    });
+    expect(resetAmateur.statusCode).toBe(200);
+    expect(resetAmateur.json().user).toMatchObject({
+      beginnerOnboardingCompleted: false,
+      amateurOnboardingCompleted: true,
+    });
+    const onboardingState = await pool.query<{
+      beginner_onboarding_reset_at: Date | null;
+      amateur_onboarding_reset_at: Date | null;
+    }>(
+      `select beginner_onboarding_reset_at, amateur_onboarding_reset_at
+         from users where id = $1`,
+      [playerId],
+    );
+    expect(onboardingState.rows[0]?.beginner_onboarding_reset_at).not.toBeNull();
+    expect(onboardingState.rows[0]?.amateur_onboarding_reset_at).toBeNull();
+    const audits = await pool.query<{ payload: Record<string, unknown> }>(
+      `select payload from event_log
+        where user_id = $1 and type = 'admin_user_updated'
+          and payload ? 'field'
+        order by created_at`,
+      [playerId],
+    );
+    expect(audits.rows.map((row) => row.payload)).toEqual([
+      {
+        field: 'beginnerOnboardingCompleted',
+        previous: false,
+        next: true,
+        administratorId: adminId,
+      },
+      {
+        field: 'beginnerOnboardingCompleted',
+        previous: true,
+        next: false,
+        administratorId: adminId,
+      },
+      {
+        field: 'amateurOnboardingCompleted',
+        previous: false,
+        next: true,
+        administratorId: adminId,
+      },
+    ]);
+    const unchangedOnboarding = await app.inject({
+      method: 'PATCH',
+      url: `/admin/users/${playerId}`,
+      headers: auth(adminToken),
+      payload: { beginnerOnboardingCompleted: false, amateurOnboardingCompleted: true },
+    });
+    expect(unchangedOnboarding.statusCode).toBe(200);
+    const auditCount = await pool.query<{ count: string }>(
+      `select count(*) from event_log
+        where user_id = $1 and type = 'admin_user_updated' and payload ? 'field'`,
+      [playerId],
+    );
+    expect(Number(auditCount.rows[0]?.count)).toBe(3);
+
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/admin/users/${playerId}`,
+      headers: auth(adminToken),
+    });
+    expect(detail.json().user).toMatchObject({
+      beginnerOnboardingCompleted: false,
+      amateurOnboardingCompleted: true,
     });
 
     const block = await app.inject({
@@ -830,6 +943,34 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       item: { id: itemId, title: 'Про-клюшка', priceRub: 249 },
     });
 
+    const gameplay = await app.inject({
+      method: 'PATCH',
+      url: `/admin/inventory/${itemId}/gameplay`,
+      headers: auth(adminToken),
+      payload: {
+        itemKind: 'stick',
+        currencyPrice: 1490,
+        chargesPerPurchase: 1300,
+        lowStockThreshold: 12,
+        duelPeriodCost: 0,
+        powerScore: 25,
+        resourceUnit: 'shot',
+        effectPuckSpeedPoints: 25,
+        effectPuckSpeedDelta: 0.25,
+      },
+    });
+    expect(gameplay.statusCode).toBe(200);
+
+    const inventoryAfterGameplay = await app.inject({
+      method: 'GET',
+      url: '/admin/inventory',
+      headers: auth(adminToken),
+    });
+    expect(inventoryAfterGameplay.statusCode).toBe(200);
+    expect(inventoryAfterGameplay.json().items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: itemId, lowStockThreshold: 12 })]),
+    );
+
     await pool.query(
       `insert into payments
          (user_id, inventory_item_id, title, amount_rub, status, provider, provider_payment_id, paid_at)
@@ -874,6 +1015,14 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
         {
           id: itemId,
           title: 'Про-клюшка',
+          itemKind: 'stick',
+          currencyPrice: 1490,
+          chargesPerPurchase: 1300,
+          duelPeriodCost: 0,
+          powerScore: 25,
+          resourceUnit: 'shot',
+          effectPuckSpeedPoints: 25,
+          effectPuckSpeedDelta: '0.2500',
           paymentsCount: 2,
           paidRevenueRub: 249,
         },
@@ -906,5 +1055,53 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       headers: auth(adminToken),
     });
     expect(afterDelete.json()).toMatchObject({ items: [] });
+  });
+
+  it('allows nutrition inventory measured in milliseconds', async () => {
+    const createdItem = await app.inject({
+      method: 'POST',
+      url: '/admin/inventory',
+      headers: auth(adminToken),
+      payload: {
+        title: 'Энерго-комплекс',
+        description: 'Питание на 300 минут активной игры',
+        priceRub: 0,
+      },
+    });
+    expect(createdItem.statusCode).toBe(200);
+
+    const itemId = createdItem.json().item.id;
+    const gameplay = await app.inject({
+      method: 'PATCH',
+      url: `/admin/inventory/${itemId}/gameplay`,
+      headers: auth(adminToken),
+      payload: {
+        itemKind: 'nutrition',
+        currencyPrice: 24_950,
+        chargesPerPurchase: 18_000_000,
+        resourceUnit: 'energy_ms',
+      },
+    });
+
+    expect(gameplay.statusCode).toBe(200);
+    expect(gameplay.json()).toEqual({ ok: true });
+
+    const inventory = await app.inject({
+      method: 'GET',
+      url: '/admin/inventory',
+      headers: auth(adminToken),
+    });
+    expect(inventory.statusCode).toBe(200);
+    expect(inventory.json().items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: itemId,
+          itemKind: 'nutrition',
+          currencyPrice: 24_950,
+          chargesPerPurchase: 18_000_000,
+          resourceUnit: 'energy_ms',
+        }),
+      ]),
+    );
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import {
   challengeAmateurDuel,
   fetchAmateurTemplates,
@@ -9,12 +9,21 @@ import {
   type AmateurDuelTemplate,
 } from '../../api/amateurDuel.js';
 import { ApiError } from '../../api/apiFetch.js';
+import {
+  amateurAccessDetailsFromError,
+  deriveAmateurAccess,
+  guardAmateurMutation,
+} from '../../amateur/amateurAccess.js';
+import { useAuthStore } from '../../auth/authStore.js';
+import { AccessibleModal } from '../../components/AccessibleModal.js';
+import { useDailyStore } from '../../stores/dailyStore.js';
 
 interface DuelChallengeModalProps {
   opponentUserId: string;
   opponentName: string;
   onClose: () => void;
   onCreated: () => void;
+  onBlocked?: (message: string) => void;
 }
 
 const OPEN_DUEL_STATUSES = new Set(['invited', 'ready_check', 'active']);
@@ -32,7 +41,7 @@ export function hasOpenDuelWithUser(matches: AmateurDuelMatch[], userId: string)
 
 export function duelKindText(kind: AmateurDuelKind): string {
   if (kind === 'express') return 'Экспресс';
-  if (kind === 'express_plus') return 'Экспресс+';
+  if (kind === 'express_plus') return 'Микс';
   return 'Классика';
 }
 
@@ -95,10 +104,18 @@ export function DuelChallengeModal({
   opponentName,
   onClose,
   onCreated,
+  onBlocked,
 }: DuelChallengeModalProps): JSX.Element {
   const queryClient = useQueryClient();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
+  const dailyData = useDailyStore((state) => state.data);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel,
+    qualifyingGoals: dailyData?.lifetime_total_goals,
+    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
+  });
 
   const templatesQuery = useQuery({
     queryKey: ['amateur-duel', 'templates'],
@@ -124,41 +141,53 @@ export function DuelChallengeModal({
   const challengeMutation = useMutation({
     mutationFn: (templateId: string) =>
       challengeAmateurDuel({ template_id: templateId, opponent_user_id: opponentUserId }),
-    onMutate: () => setError(null),
+    onMutate: () => {
+      setError(null);
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
       onCreated();
     },
-    onError: (err) => setError(challengeErrorText(err)),
+    onError: (err) => {
+      if (amateurAccessDetailsFromError(err) !== null) {
+        setError(null);
+        return;
+      }
+      if (err instanceof ApiError && err.code === 'playoff_opponent_blocked' && onBlocked) {
+        onClose();
+        onBlocked(err.message);
+        return;
+      }
+      setError(challengeErrorText(err));
+    },
   });
 
   return (
-    <div
-      className="modal-backdrop"
-      onClick={onClose}
-      style={{
+    <AccessibleModal
+      title="Тип дуэли"
+      ariaLabel="Выбор типа дуэли"
+      copy={<>Выберите формат вызова для {opponentName}.</>}
+      onRequestClose={onClose}
+      closeBlocked={challengeMutation.isPending}
+      backdropStyle={{
         zIndex: 340,
         alignItems: 'flex-start',
         paddingTop: 'calc(48px + var(--app-safe-top))',
       }}
+      cardStyle={{ width: 'min(420px, calc(100vw - 28px))' }}
+      headerAction={
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Закрыть"
+          disabled={challengeMutation.isPending}
+          onClick={onClose}
+        >
+          <X size={15} />
+        </button>
+      }
     >
-      <div
-        role="dialog"
-        aria-label="Выбор типа дуэли"
-        className="modal-card"
-        onClick={(event) => event.stopPropagation()}
-        style={{ width: 'min(420px, calc(100vw - 28px))', display: 'grid', gap: 16 }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ flex: 1 }}>
-            <div className="modal-title">Тип дуэли</div>
-            <div className="modal-copy">Выберите формат вызова для {opponentName}.</div>
-          </div>
-          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
-            <X size={15} />
-          </button>
-        </div>
-
+      <div style={{ display: 'grid', gap: 16 }}>
         <div style={{ display: 'grid', gap: 8 }}>
           {templatesQuery.isLoading && (
             <div className="glass" style={{ borderRadius: 18, padding: 14, color: 'var(--muted)' }}>
@@ -183,6 +212,7 @@ export function DuelChallengeModal({
                 <button
                   key={template.id}
                   type="button"
+                  aria-pressed={selected}
                   className={selected ? 'glass-dark' : 'glass'}
                   onClick={() => {
                     setSelectedTemplateId(template.id);
@@ -196,8 +226,16 @@ export function DuelChallengeModal({
                     gap: 4,
                     cursor: 'pointer',
                     color: selected ? '#ffffff' : 'var(--ink)',
+                    position: 'relative',
                   }}
                 >
+                  <span
+                    className="duel-challenge-option__indicator"
+                    data-selected={selected}
+                    aria-hidden="true"
+                  >
+                    {selected ? <Check size={13} strokeWidth={3} /> : null}
+                  </span>
                   <span style={{ fontSize: 15, fontWeight: 900 }}>
                     {duelKindText(template.duel_kind)}
                   </span>
@@ -229,12 +267,16 @@ export function DuelChallengeModal({
           className="modal-primary btn--cta"
           disabled={selectedTemplateId === null || challengeMutation.isPending}
           onClick={() => {
-            if (selectedTemplateId !== null) challengeMutation.mutate(selectedTemplateId);
+            if (selectedTemplateId !== null) {
+              guardAmateurMutation(amateurAccess, () =>
+                challengeMutation.mutate(selectedTemplateId),
+              );
+            }
           }}
         >
           {challengeMutation.isPending ? 'Отправляем...' : 'Вызвать'}
         </button>
       </div>
-    </div>
+    </AccessibleModal>
   );
 }

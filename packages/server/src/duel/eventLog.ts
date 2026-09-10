@@ -2,9 +2,12 @@ import type { PoolClient, Pool } from 'pg';
 
 export type EventType =
   | 'shot_mismatch'
+  | 'daily_shot_rejected'
   | 'day_pool_created'
   | 'day_pool_closed'
   | 'period_closed'
+  | 'daily_period_achievements_evaluated'
+  | 'tournament_classic_period_started'
   | 'training_session_created'
   | 'training_session_closed'
   | 'amateur_duel_challenge_created'
@@ -13,8 +16,12 @@ export type EventType =
   | 'amateur_duel_challenge_cancelled'
   | 'amateur_duel_inventory_reserved'
   | 'amateur_duel_settled'
+  | 'tournament_duel_achievements_reconciled'
   | 'amateur_duel_star_reward'
+  | 'weekly_challenge_joined'
+  | 'weekly_challenge_reward_claimed'
   | 'admin_user_updated'
+  | 'admin_achievement_updated'
   | 'admin_game_setting_updated'
   | 'admin_duel_template_created'
   | 'admin_duel_template_updated'
@@ -24,6 +31,15 @@ export type EventType =
   | 'admin_chat_profile_updated'
   | 'admin_chat_avatar_updated'
   | 'admin_chat_avatar_reset'
+  | 'admin_official_dialog_message_sent'
+  | 'admin_official_dialog_updated'
+  | 'admin_official_dialog_attachment_uploaded'
+  | 'admin_direct_broadcast_sent'
+  | 'admin_official_account_avatar_updated'
+  | 'admin_tournament_rewards_updated'
+  | 'admin_tournament_manual_schedule_recovered'
+  | 'admin_tournament_schedule_shifted'
+  | 'admin_tournament_lifecycle_enabled'
   | 'admin_push_notification_updated'
   | 'admin_inventory_item_created'
   | 'admin_inventory_item_updated'
@@ -36,10 +52,11 @@ export async function appendEvent(
   userId: string,
   type: EventType,
   payload: Record<string, unknown>,
+  createdAt?: Date,
 ): Promise<void> {
-  await conn.query('insert into event_log (user_id, type, payload) values ($1, $2, $3)', [
-    userId,
-    type,
-    JSON.stringify(payload),
-  ]);
+  await conn.query(
+    `insert into event_log (user_id, type, payload, created_at)
+     values ($1, $2, $3, coalesce($4::timestamptz, now()))`,
+    [userId, type, JSON.stringify(payload), createdAt ?? null],
+  );
 }

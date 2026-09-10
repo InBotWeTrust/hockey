@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from './authStore.js';
+import { queryClient } from '../app/queryClient.js';
 
 export function useLogout(): () => Promise<void> {
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ export function useLogout(): () => Promise<void> {
     } catch {
       // fire-and-forget
     }
+    queryClient.clear();
     clearSession();
     navigate('/login', { replace: true });
   }, [navigate]);

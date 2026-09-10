@@ -101,6 +101,7 @@ export interface ChatDTO {
     avatarUrl: string | null;
     lastSeenAt: string | null;
     lastReadAt: string | null;
+    accountKind?: 'player' | 'official';
   } | null;
   memberCount: number;
   pinnedAt: string | null;
@@ -124,6 +125,7 @@ export interface UserPickerItem {
   userId: string;
   displayName: string;
   avatarUrl: string | null;
+  accountKind?: 'player' | 'official';
 }
 
 export interface MessageSearchHit {
@@ -448,6 +450,7 @@ export interface ChatMemberSummaryDTO {
   displayName: string;
   avatarUrl: string | null;
   role?: 'admin' | 'member';
+  accountKind?: 'player' | 'official';
 }
 
 export interface ChatInfoDTO {
@@ -467,6 +470,48 @@ export interface UserPublicProfileDTO {
   competitionLevel: CompetitionLevel;
   stats: ProfileStats;
   achievements: ProfileAchievement[];
+  currencyBalance?: number;
+  starBalance?: number;
+  experienceBalance?: number;
+  trophySummary?: {
+    regularSeasonWins: number;
+    tournamentChampionships: number;
+    tournamentPodiums: number;
+    completedChallenges: number;
+  };
+  trophyDetails?: {
+    regularSeasonWins: Array<{
+      id: string;
+      title: string;
+      imageUrl: string | null;
+      startsAt: string | null;
+      endsAt: string | null;
+      result: string;
+    }>;
+    tournamentChampionships: Array<{
+      id: string;
+      title: string;
+      imageUrl: string | null;
+      startsAt: string | null;
+      endsAt: string | null;
+      result: string;
+    }>;
+    tournamentPodiums: Array<{
+      id: string;
+      title: string;
+      imageUrl: string | null;
+      startsAt: string | null;
+      endsAt: string | null;
+      result: string;
+    }>;
+    completedChallenges: Array<{
+      id: string;
+      title: string;
+      startsAt: string;
+      endsAt: string;
+      tasks: Array<{ title: string; target: number }>;
+    }>;
+  };
   createdAt: string; // ISO
   lastSeenAt: string | null; // ISO; null = never recorded
 }

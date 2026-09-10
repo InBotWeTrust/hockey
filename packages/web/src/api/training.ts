@@ -1,4 +1,6 @@
 import { apiFetch } from './apiFetch.js';
+import type { GameplayLockDTO } from './gameplayLock.js';
+import type { GameRequestOptions } from './requestTimeout.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 import type { DailyPeriodSpeedPreset } from '@hockey/game-core';
 
@@ -18,6 +20,9 @@ export interface TrainingStateResponse {
   received_at_performance_ms?: number;
   goalie_id: string;
   period_speed_presets: DailyPeriodSpeedPreset[];
+  tournament_day_locked: boolean;
+  gameplay_lock?: GameplayLockDTO | null;
+  tournament_day_starts_at: string | null;
 }
 
 export interface StartTrainingRequest {
@@ -35,6 +40,29 @@ export interface SubmitTrainingShotResponse {
   state: TrainingStateResponse;
 }
 
+export interface TrainingHistorySession {
+  day_date: string;
+  selected_period: number;
+  shots_limit: number;
+  total_shots: number;
+  total_goals: number;
+  completed: boolean;
+}
+
+export interface TrainingHistorySummary {
+  played_trainings: number;
+  completed_trainings: number;
+  total_shots: number;
+  total_goals: number;
+}
+
+export interface TrainingHistoryResponse {
+  sessions: TrainingHistorySession[];
+  hasMore: boolean;
+  nextOffset: number | null;
+  summary: TrainingHistorySummary;
+}
+
 function stampTrainingState(state: TrainingStateResponse): TrainingStateResponse {
   return {
     ...state,
@@ -42,8 +70,16 @@ function stampTrainingState(state: TrainingStateResponse): TrainingStateResponse
   };
 }
 
-export function fetchTrainingState(): Promise<TrainingStateResponse> {
-  return apiFetch<TrainingStateResponse>('/duel/training/state').then(stampTrainingState);
+export function fetchTrainingState(options?: GameRequestOptions): Promise<TrainingStateResponse> {
+  return apiFetch<TrainingStateResponse>('/duel/training/state', {
+    ...(options?.signal === undefined ? {} : { signal: options.signal }),
+  }).then(stampTrainingState);
+}
+
+export function fetchTrainingHistory(limit = 20, offset = 0): Promise<TrainingHistoryResponse> {
+  return apiFetch<TrainingHistoryResponse>(
+    `/duel/training/history?limit=${limit}&offset=${offset}`,
+  );
 }
 
 export function startTraining(body: StartTrainingRequest): Promise<TrainingStateResponse> {
@@ -55,9 +91,11 @@ export function startTraining(body: StartTrainingRequest): Promise<TrainingState
 
 export function submitTrainingShot(
   body: SubmitTrainingShotRequest,
+  options?: GameRequestOptions,
 ): Promise<SubmitTrainingShotResponse> {
   return apiFetch<SubmitTrainingShotResponse>('/duel/training/shot', {
     method: 'POST',
     body: JSON.stringify(body),
+    ...(options?.signal === undefined ? {} : { signal: options.signal }),
   }).then((res) => ({ ...res, state: stampTrainingState(res.state) }));
 }

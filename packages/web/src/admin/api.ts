@@ -1,4 +1,5 @@
 import { apiFetch } from '../api/apiFetch.js';
+import type { ChatAttachmentDTO } from '../chat/api.js';
 
 export type AdminRole = 'player' | 'admin';
 export type AdminIdentitySource = 'custom' | 'telegram' | 'vk';
@@ -16,8 +17,17 @@ export type AdminPushNotificationKey =
   | 'training.available'
   | 'duel.challenge_received'
   | 'duel.result_ready'
+  | 'tournament.registration_blocked'
+  | 'tournament.playoff_blocked'
+  | 'tournament.playoff_schedule_missing'
   | 'news.posted';
-export type AdminPushNotificationCategory = 'chat' | 'daily' | 'training' | 'duel' | 'news';
+export type AdminPushNotificationCategory =
+  | 'chat'
+  | 'daily'
+  | 'training'
+  | 'duel'
+  | 'tournament'
+  | 'news';
 export type AdminPushDeliveryStatus =
   | 'queued'
   | 'processing'
@@ -33,6 +43,25 @@ export type AdminSort =
   | 'accuracy_asc'
   | 'accuracy_desc';
 export type GameSettingValue = string | number | boolean;
+export type AdminWeeklyChallengeTaskType =
+  | 'goals_scored'
+  | 'duels_played'
+  | 'duels_won'
+  | 'duel_invites_sent'
+  | 'trainings_completed';
+export type AdminAchievementCategory =
+  | 'daily'
+  | 'training'
+  | 'duel'
+  | 'tournament'
+  | 'shop'
+  | 'rating'
+  | 'level';
+export type AdminAchievementAvailability = 'active' | 'future' | 'hidden';
+export type AdminAchievementFutureTag =
+  | 'future/pro'
+  | 'future/tournament'
+  | 'future/monthly_rating';
 
 export interface AdminSummary {
   users: { total: number; admins: number; notifications: AdminNotificationStats };
@@ -41,6 +70,10 @@ export interface AdminSummary {
   last24h: { shots: number; goals: number; mismatches: number };
   dashboard: AdminDashboard;
   gameCoreVersion: number;
+}
+
+export function fetchAdminTournamentPendingApplications(): Promise<{ count: number }> {
+  return apiFetch<{ count: number }>('/admin/tournaments/pending-applications');
 }
 
 export interface AdminDashboardSeriesPoint {
@@ -141,8 +174,74 @@ export interface AdminNotificationStats {
     dailyGame: { count: number; percent: number };
     trainingAvailable: { count: number; percent: number };
     duelEvents: { count: number; percent: number };
+    tournamentEvents: { count: number; percent: number };
     gameNews: { count: number; percent: number };
   };
+}
+
+export interface AdminWeeklyChallengeTask {
+  id?: string;
+  type: AdminWeeklyChallengeTaskType;
+  title?: string | null;
+  target: number;
+  sortOrder: number;
+  completedCount: number;
+}
+
+export interface AdminWeeklyChallengePlayer {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  rewardClaimedAt: string | null;
+  tasksCompleted: number;
+  tasksTotal: number;
+  progressPercent: number;
+}
+
+export interface AdminWeeklyChallengeStats {
+  participantsCount: number;
+  completedCount: number;
+  rewardClaimedCount: number;
+}
+
+export interface AdminWeeklyChallenge {
+  id: string;
+  title: string;
+  description: string;
+  startAt: string;
+  endAt: string;
+  isActive: boolean;
+  rewardCoins: number;
+  rewardStars: number;
+  rewardExperience: number;
+  rewardTokens: number;
+  tasks: AdminWeeklyChallengeTask[];
+  stats: AdminWeeklyChallengeStats;
+  players: AdminWeeklyChallengePlayer[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminWeeklyChallengeInput {
+  title: string;
+  description: string;
+  rewardCoins: number;
+  rewardStars: number;
+  rewardExperience: number;
+  rewardTokens: number;
+  tasks: Array<{
+    type: AdminWeeklyChallengeTaskType;
+    title?: string;
+    target: number;
+    sortOrder: number;
+  }>;
+}
+
+export interface AdminWeeklyChallengeDashboard {
+  enabled: boolean;
+  current: AdminWeeklyChallenge | null;
+  next: AdminWeeklyChallenge | null;
+  history: AdminWeeklyChallenge[];
 }
 
 export interface AdminUser {
@@ -154,6 +253,7 @@ export interface AdminUser {
   grip: 'left' | 'right';
   level: number;
   xp: number;
+  experience: number;
   timezone: string;
   createdAt: string;
   lastSeenAt: string | null;
@@ -165,6 +265,8 @@ export interface AdminUser {
   lifetimeGoalsTotal: number;
   accuracy: number;
   competitionLevel: 'beginner' | 'amateur' | 'professional';
+  beginnerOnboardingCompleted: boolean;
+  amateurOnboardingCompleted: boolean;
   identities: Array<{
     source: AdminIdentitySource;
     label: string;
@@ -180,13 +282,7 @@ export interface AdminUser {
     vk: { id: string; username: string | null } | null;
   };
   wallet: {
-    shotsCurrent: number;
-    shotsMax: number;
-    shotsBonus: number;
-    pucks: number;
-    goldPucks: number;
-    wheelSpins: number;
-    trainingEnergy: number;
+    coins: number;
   };
   pushNotifications: {
     subscribed: boolean;
@@ -196,6 +292,7 @@ export interface AdminUser {
       dailyGame: boolean;
       trainingAvailable: boolean;
       duelEvents: boolean;
+      tournamentEvents: boolean;
       gameNews: boolean;
     };
   };
@@ -277,19 +374,54 @@ export interface AdminInventoryItem {
   itemKind: AdminInventoryItemKind;
   currencyPrice: number;
   chargesPerPurchase: number;
+  lowStockThreshold: number;
   duelPeriodCost: number;
+  powerScore: number;
+  resourceUnit: AdminInventoryResourceUnit;
+  effectPuckSpeedPoints: number;
   effectPuckSpeedDelta: number;
   effectShooterFrequencyDelta: number;
   effectGoalieFrequencyDelta: number;
   effectGoalFrequencyDelta: number;
   effectShotZoneMultiplier: number;
+  effectStumbleIntervalMinRolls?: number;
+  effectStumbleIntervalMaxRolls?: number;
+  effectStumbleIntervalMinMs?: number;
+  effectStumbleIntervalMaxMs?: number;
+  effectStumbleDurationMinMs?: number;
+  effectStumbleDurationMaxMs?: number;
+  effectStumbleOffsetMinPx?: number;
+  effectStumbleOffsetMaxPx?: number;
+  effectStumbleRecoveryMinMs?: number;
+  effectStumbleRecoveryMaxMs?: number;
+  effectEnergyBaselineSpeed?: number;
+  effectNutritionSlowdownMs?: number;
+  effectNutritionStopMs?: number;
+  effectFatigueDelayMs?: number;
+  effectFatigueSpeedMultiplier?: number;
+  effectFatigueGraceMs?: number;
+  effectFatigueSlowdownStartMs?: number;
+  effectFatigueHeavySlowdownStartMs?: number;
+  effectFatigueStopStartMs?: number;
+  effectFatigueStopDurationMs?: number;
+  effectFatigueAfterRestMs?: number;
+  effectFatigueSlowMultiplier?: number;
+  effectFatigueHeavyMultiplier?: number;
+  effectRecoveryMinutes?: number;
   createdAt: string;
   updatedAt: string;
   paymentsCount: number;
   paidRevenueRub: number;
 }
 
-export type AdminInventoryItemKind = 'bundle' | 'stick' | 'skates' | 'nutrition' | 'consumable';
+export type AdminInventoryItemKind =
+  | 'bundle'
+  | 'stick'
+  | 'skates'
+  | 'nutrition'
+  | 'consumable'
+  | 'recovery';
+export type AdminInventoryResourceUnit = 'period' | 'shot' | 'distance' | 'energy_ms';
 
 export interface AdminDuelPeriodSpeedPreset {
   periodNumber: number;
@@ -299,6 +431,152 @@ export interface AdminDuelPeriodSpeedPreset {
   puckSpeedPerMs: number;
 }
 
+export type AdminBonusGameStatus = 'draft' | 'active' | 'archived';
+export type AdminBonusGameAccessType = 'free' | 'paid';
+export type AdminBonusSkillCode = 'speed' | 'accuracy';
+export type AdminBonusGoaliePattern = 'linear' | 'sine' | 'dash';
+export type AdminBonusQualificationRules =
+  | {
+      type: 'goals_from_shots';
+      targetGoals: number;
+      shotsLimit: number;
+      requiredGoalStreak?: number;
+    }
+  | {
+      type: 'goals_in_time';
+      targetGoals: number;
+      activeTimeMs: number;
+      requiredGoalStreak?: number;
+    };
+
+export interface AdminBonusPeriodRule {
+  periodNumber: number;
+  durationMs: number;
+  shotsLimit: number | null;
+  goalFrequency: number;
+  goalieFrequency: number;
+  shooterFrequency: number;
+  puckSpeedPerMs: number;
+  goaliePattern: AdminBonusGoaliePattern;
+  goalieAmplitude: number;
+  goalAmplitude: number;
+}
+
+export interface AdminBonusArena {
+  id: string;
+  slug: string;
+  title: string;
+  artworkUrl: string;
+  thumbnailUrl: string;
+  status: 'active' | 'archived';
+  isSelectable: boolean;
+}
+
+export interface AdminBonusGame {
+  id: string;
+  slug: string;
+  title: string;
+  skillCode: AdminBonusSkillCode;
+  description: string;
+  sortOrder: number;
+  status: AdminBonusGameStatus;
+  accessType: AdminBonusGameAccessType;
+  unlockPriceStars: number;
+  targetGoals: number;
+  qualificationRules: AdminBonusQualificationRules;
+  totalPeriods: number;
+  breakDurationMs: number;
+  useInventory: boolean;
+  previewTitle: string;
+  previewStory: string;
+  previewArtworkUrl: string;
+  previewRevision: number;
+  periods: AdminBonusPeriodRule[];
+  rewardCoins: number;
+  rewardStars: number;
+  rewardExperience: number;
+  goalkeeperReadyUrl: string;
+  goalkeeperSaveUrl: string;
+  revision: number;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+  arena: AdminBonusArena;
+}
+
+export interface AdminBonusArenaInput {
+  slug: string;
+  title: string;
+  artworkUrl: string;
+  thumbnailUrl: string;
+  status?: 'active' | 'archived';
+  isSelectable?: boolean;
+}
+
+export interface AdminBonusGameDefinitionInput {
+  skillCode: AdminBonusSkillCode;
+  slug: string;
+  title: string;
+  description: string;
+  sortOrder: number;
+  status: AdminBonusGameStatus;
+  accessType: AdminBonusGameAccessType;
+  unlockPriceStars: number;
+  targetGoals: number;
+  qualificationRules: AdminBonusQualificationRules;
+  totalPeriods: number;
+  breakDurationMs: number;
+  useInventory: boolean;
+  previewTitle: string;
+  previewStory: string;
+  previewArtworkUrl: string;
+  previewRevision: number;
+  periods: AdminBonusPeriodRule[];
+  rewardCoins: number;
+  rewardStars: number;
+  rewardExperience: number;
+  goalkeeperReadyUrl: string;
+  goalkeeperSaveUrl: string;
+}
+
+export type AdminBonusGameInput = AdminBonusGameDefinitionInput &
+  ({ arena: AdminBonusArenaInput; arenaThemeId?: never } | { arenaThemeId: string; arena?: never });
+
+export type AdminBonusGamePatch = Partial<Omit<AdminBonusGameDefinitionInput, 'skillCode'>> &
+  (
+    | { arena?: Partial<AdminBonusArenaInput>; arenaThemeId?: never }
+    | { arenaThemeId: string; arena?: never }
+  );
+
+export type AdminBonusMediaKind =
+  | 'arena'
+  | 'thumbnail'
+  | 'goalkeeper_ready'
+  | 'goalkeeper_save'
+  | 'preview';
+
+export interface AdminBonusMedia {
+  id: string;
+  url: string;
+  kind: AdminBonusMediaKind;
+  key: string;
+  contentType: string;
+  size: number;
+  originalName: string;
+  createdAt: string;
+}
+
+export interface AdminBonusGameReorderRequest {
+  skillCode: AdminBonusSkillCode;
+  gameIds: string[];
+}
+
+export type AdminMatchmakingVenuePolicy =
+  | 'neutral_default'
+  | 'random_participant_home'
+  | 'random_unselected';
+
 export type AdminDuelKind = 'express' | 'express_plus' | 'classic';
 
 export interface AdminDuelPeriodRule {
@@ -306,6 +584,21 @@ export interface AdminDuelPeriodRule {
   mode: 'quota' | 'time_attack';
   durationMs: number;
   shotsLimit: number | null;
+}
+
+export interface AdminDuelRewardAmount {
+  coins: number;
+  stars: number;
+  tokens: number;
+}
+
+export interface AdminDuelRewardRules {
+  equalExperienceTolerancePercent: number;
+  strongerWin: AdminDuelRewardAmount;
+  equalWin: AdminDuelRewardAmount;
+  weakerWin: AdminDuelRewardAmount;
+  draw: AdminDuelRewardAmount;
+  loss: AdminDuelRewardAmount;
 }
 
 export interface AdminDuelTemplate {
@@ -317,6 +610,7 @@ export interface AdminDuelTemplate {
   duelVariant: 'classic' | 'time_attack';
   rankedEnabled: boolean;
   matchmakingEnabled: boolean;
+  matchmakingVenuePolicy: AdminMatchmakingVenuePolicy;
   startsAt: string;
   endsAt: string;
   totalPeriods: number;
@@ -342,6 +636,7 @@ export interface AdminDuelTemplate {
   winCurrencyReward: number;
   drawCurrencyReward: number;
   winStarReward: number;
+  rewardRules: AdminDuelRewardRules;
   createdAt: string;
   updatedAt: string;
 }
@@ -598,6 +893,69 @@ export interface AdminChannelResponse {
   posts: AdminChannelPost[];
 }
 
+export type AdminOfficialDialogFilter = 'new' | 'open' | 'closed';
+
+export interface AdminOfficialDialog {
+  chatId: string;
+  status: 'open' | 'closed';
+  isNew: boolean;
+  player: {
+    userId: string;
+    displayName: string;
+    avatarUrl: string | null;
+    telegramId: string | null;
+    vkId: string | null;
+  };
+  lastMessage: {
+    id: string;
+    content: string;
+    createdAt: string;
+    fromOfficial: boolean;
+  };
+}
+
+export interface AdminOfficialDialogMessage {
+  id: string;
+  chatId: string;
+  senderId: string;
+  senderDisplayName: string | null;
+  senderAvatarUrl: string | null;
+  content: string;
+  replyToId: string | null;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  isEdited: boolean;
+  reactions: Array<{ emoji: string; count: number; reactedByMe: boolean }>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AdminOfficialDialogsResponse {
+  unreadCount: number;
+  dialogs: AdminOfficialDialog[];
+  nextOffset: number | null;
+}
+
+export interface AdminOfficialAccount {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+export interface AdminAttention {
+  feedbackUnreadCount: number;
+  officialDialogsUnreadCount: number;
+  totalCount: number;
+}
+
+export interface AdminDirectBroadcastResult {
+  id: string;
+  recipientCount: number;
+  sentCount: number;
+  failedCount: number;
+  status: 'processing' | 'sent' | 'partial' | 'failed';
+}
+
 export interface AdminInventoryItemPatch {
   photoUrl?: string;
   title?: string;
@@ -609,12 +967,40 @@ export interface AdminInventoryGameplayPatch {
   itemKind?: AdminInventoryItemKind;
   currencyPrice?: number;
   chargesPerPurchase?: number;
+  lowStockThreshold?: number;
   duelPeriodCost?: number;
+  powerScore?: number;
+  resourceUnit?: AdminInventoryResourceUnit;
+  effectPuckSpeedPoints?: number;
   effectPuckSpeedDelta?: number;
   effectShooterFrequencyDelta?: number;
   effectGoalieFrequencyDelta?: number;
   effectGoalFrequencyDelta?: number;
   effectShotZoneMultiplier?: number;
+  effectStumbleIntervalMinRolls?: number;
+  effectStumbleIntervalMaxRolls?: number;
+  effectStumbleIntervalMinMs?: number;
+  effectStumbleIntervalMaxMs?: number;
+  effectStumbleDurationMinMs?: number;
+  effectStumbleDurationMaxMs?: number;
+  effectStumbleOffsetMinPx?: number;
+  effectStumbleOffsetMaxPx?: number;
+  effectStumbleRecoveryMinMs?: number;
+  effectStumbleRecoveryMaxMs?: number;
+  effectEnergyBaselineSpeed?: number;
+  effectNutritionSlowdownMs?: number;
+  effectNutritionStopMs?: number;
+  effectFatigueDelayMs?: number;
+  effectFatigueSpeedMultiplier?: number;
+  effectFatigueGraceMs?: number;
+  effectFatigueSlowdownStartMs?: number;
+  effectFatigueHeavySlowdownStartMs?: number;
+  effectFatigueStopStartMs?: number;
+  effectFatigueStopDurationMs?: number;
+  effectFatigueAfterRestMs?: number;
+  effectFatigueSlowMultiplier?: number;
+  effectFatigueHeavyMultiplier?: number;
+  effectRecoveryMinutes?: number;
 }
 
 export type AdminDuelTemplateInput = Omit<
@@ -650,15 +1036,53 @@ export interface AdminGameSettingsResponse {
   };
 }
 
+export interface AdminAchievement {
+  id: string;
+  photoUrl: string;
+  title: string;
+  description: string;
+  requirement: string;
+  category: AdminAchievementCategory;
+  availability: AdminAchievementAvailability;
+  futureTag: AdminAchievementFutureTag | null;
+  rewardCurrency: number;
+  rewardStars: number;
+  rewardExperience: number;
+  rewardTokens?: number;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  completedCount: number;
+  claimedCount: number;
+}
+
+export interface AdminAchievementPatch {
+  photoUrl?: string;
+  title?: string;
+  description?: string;
+  requirement?: string;
+  category?: AdminAchievementCategory;
+  availability?: AdminAchievementAvailability;
+  futureTag?: AdminAchievementFutureTag | null;
+  rewardCurrency?: number;
+  rewardStars?: number;
+  rewardExperience?: number;
+  rewardTokens?: number;
+  sortOrder?: number;
+}
+
 export interface AdminUserPatch {
   role?: AdminRole;
   displayName?: string;
   grip?: 'left' | 'right';
   level?: number;
   xp?: number;
+  experience?: number;
   lifetimeShotsTotal?: number;
   lifetimeGoalsTotal?: number;
   isBlocked?: boolean;
+  beginnerOnboardingCompleted?: boolean;
+  amateurOnboardingCompleted?: boolean;
   wallet?: Partial<AdminUser['wallet']>;
 }
 
@@ -743,6 +1167,89 @@ export function patchAdminNotification(
 export function fetchAdminChannelNews(period: AdminChannelPeriod): Promise<AdminChannelResponse> {
   const params = new URLSearchParams({ period });
   return apiFetch<AdminChannelResponse>(`/admin/channel/news?${params.toString()}`);
+}
+
+export function fetchAdminOfficialDialogs(
+  status: AdminOfficialDialogFilter,
+  q = '',
+): Promise<AdminOfficialDialogsResponse> {
+  const params = new URLSearchParams({ status, q });
+  return apiFetch<AdminOfficialDialogsResponse>(
+    `/admin/communications/dialogs?${params.toString()}`,
+  );
+}
+
+export function fetchAdminAttention(): Promise<AdminAttention> {
+  return apiFetch<AdminAttention>('/admin/attention');
+}
+
+export function fetchAdminBroadcastAudience(): Promise<{ recipientCount: number }> {
+  return apiFetch<{ recipientCount: number }>('/admin/communications/broadcasts/audience');
+}
+
+export function sendAdminDirectBroadcast(
+  id: string,
+  content: string,
+): Promise<AdminDirectBroadcastResult> {
+  return apiFetch<AdminDirectBroadcastResult>('/admin/communications/broadcasts', {
+    method: 'POST',
+    body: JSON.stringify({ id, content }),
+  });
+}
+
+export function fetchAdminOfficialDialogMessages(
+  chatId: string,
+): Promise<AdminOfficialDialogMessage[]> {
+  return apiFetch<AdminOfficialDialogMessage[]>(
+    `/admin/communications/dialogs/${encodeURIComponent(chatId)}/messages`,
+  );
+}
+
+export function sendAdminOfficialDialogMessage(
+  chatId: string,
+  content: string,
+  attachmentIds: string[] = [],
+): Promise<AdminOfficialDialogMessage> {
+  return apiFetch<AdminOfficialDialogMessage>(
+    `/admin/communications/dialogs/${encodeURIComponent(chatId)}/messages`,
+    { method: 'POST', body: JSON.stringify({ content, attachmentIds }) },
+  );
+}
+
+export function uploadAdminOfficialDialogAttachment(
+  chatId: string,
+  file: File,
+): Promise<{ media: ChatAttachmentDTO }> {
+  return apiFetch(`/admin/communications/dialogs/${encodeURIComponent(chatId)}/uploads`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'X-File-Name': file.name,
+    },
+    body: file,
+  });
+}
+
+export function patchAdminOfficialDialog(
+  chatId: string,
+  body: { status?: 'open' | 'closed'; markRead?: boolean },
+): Promise<{ status: 'open' | 'closed'; lastAdminReadAt: string | null }> {
+  return apiFetch(`/admin/communications/dialogs/${encodeURIComponent(chatId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+export function fetchAdminOfficialAccount(): Promise<AdminOfficialAccount> {
+  return apiFetch<AdminOfficialAccount>('/admin/communications/official-account');
+}
+
+export function uploadAdminOfficialAccountAvatar(file: File): Promise<{ avatarUrl: string }> {
+  return apiFetch('/admin/communications/official-account/avatar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'image/webp', 'X-File-Name': file.name },
+    body: file,
+  });
 }
 
 export function patchAdminChatProfile(
@@ -849,8 +1356,71 @@ export function deleteAdminInventoryItem(itemId: string): Promise<{ ok: true }> 
   });
 }
 
-export function fetchAdminDuelTemplates(): Promise<{ templates: AdminDuelTemplate[] }> {
-  return apiFetch<{ templates: AdminDuelTemplate[] }>('/admin/duel-templates');
+export function fetchAdminBonusGames(): Promise<{ games: AdminBonusGame[] }> {
+  return apiFetch<{ games: AdminBonusGame[] }>('/admin/bonus-games');
+}
+
+export function createAdminBonusGame(body: AdminBonusGameInput): Promise<{ game: AdminBonusGame }> {
+  return apiFetch<{ game: AdminBonusGame }>('/admin/bonus-games', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function patchAdminBonusGame(
+  gameId: string,
+  body: AdminBonusGamePatch,
+): Promise<{ game: AdminBonusGame }> {
+  return apiFetch<{ game: AdminBonusGame }>(`/admin/bonus-games/${gameId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+export function archiveAdminBonusGame(gameId: string): Promise<{ game: AdminBonusGame }> {
+  return apiFetch<{ game: AdminBonusGame }>(`/admin/bonus-games/${gameId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function reorderAdminBonusGames(
+  body: AdminBonusGameReorderRequest,
+): Promise<{ games: AdminBonusGame[] }> {
+  return apiFetch<{ games: AdminBonusGame[] }>('/admin/bonus-games/reorder', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function uploadAdminBonusGameMedia(
+  kind: AdminBonusMediaKind,
+  file: File,
+): Promise<{ media: AdminBonusMedia }> {
+  if (file.type !== 'image/webp') {
+    return Promise.reject(
+      new Error('Этот формат изображения не поддерживается. Выберите другой файл.'),
+    );
+  }
+  if (file.size === 0) {
+    return Promise.reject(new Error('Выбранное изображение пустое. Выберите другой файл.'));
+  }
+  return apiFetch<{ media: AdminBonusMedia }>(`/admin/bonus-games/media/${kind}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'image/webp',
+      'X-File-Name': encodeURIComponent(file.name),
+    },
+    body: file,
+  });
+}
+
+export function fetchAdminDuelTemplates(): Promise<{
+  templates: AdminDuelTemplate[];
+  rewardAmountLimit: number;
+}> {
+  return apiFetch<{ templates: AdminDuelTemplate[]; rewardAmountLimit: number }>(
+    '/admin/duel-templates',
+  );
 }
 
 export function fetchAdminDuelHistory(params: {
@@ -896,6 +1466,28 @@ export function deleteAdminDuelTemplate(templateId: string): Promise<{ ok: true 
   });
 }
 
+export function fetchAdminWeeklyChallenges(): Promise<AdminWeeklyChallengeDashboard> {
+  return apiFetch<AdminWeeklyChallengeDashboard>('/admin/weekly-challenges');
+}
+
+export function updateNextAdminWeeklyChallenge(
+  input: AdminWeeklyChallengeInput,
+): Promise<AdminWeeklyChallengeDashboard> {
+  return apiFetch<AdminWeeklyChallengeDashboard>('/admin/weekly-challenges/next', {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateAdminWeeklyChallengeSettings(
+  enabled: boolean,
+): Promise<AdminWeeklyChallengeDashboard> {
+  return apiFetch<AdminWeeklyChallengeDashboard>('/admin/weekly-challenges/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 export function fetchAdminUser(userId: string): Promise<AdminUserDetail> {
   return apiFetch<AdminUserDetail>(`/admin/users/${userId}`);
 }
@@ -919,4 +1511,21 @@ export function patchAdminGameSetting(
     method: 'PATCH',
     body: JSON.stringify({ value }),
   });
+}
+
+export function fetchAdminAchievements(): Promise<{ achievements: AdminAchievement[] }> {
+  return apiFetch<{ achievements: AdminAchievement[] }>('/admin/achievements');
+}
+
+export function patchAdminAchievement(
+  achievementId: string,
+  body: AdminAchievementPatch,
+): Promise<{ achievement: AdminAchievement }> {
+  return apiFetch<{ achievement: AdminAchievement }>(
+    `/admin/achievements/${encodeURIComponent(achievementId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    },
+  );
 }

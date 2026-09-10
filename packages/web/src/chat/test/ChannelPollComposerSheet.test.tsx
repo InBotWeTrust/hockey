@@ -28,4 +28,25 @@ describe('ChannelPollComposerSheet', () => {
     expect(screen.getByRole('textbox', { name: 'Вариант 3' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Добавить вариант' })).not.toBeInTheDocument();
   });
+
+  it('protects a draft poll from an accidental sheet dismissal', () => {
+    const onClose = vi.fn();
+    render(<ChannelPollComposerSheet open onSubmit={() => undefined} onClose={onClose} />);
+
+    expect(screen.getByRole('dialog', { name: 'Создание опроса' })).toHaveClass('sheet-card');
+    expect(
+      screen
+        .getByRole('heading', { name: 'Создание опроса' })
+        .parentElement?.querySelector(':scope > button[aria-label="Закрыть"]'),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Вопрос опроса' }), {
+      target: { value: 'Кто победит?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+
+    expect(
+      screen.getByRole('alertdialog', { name: 'Несохранённые изменения' }),
+    ).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });

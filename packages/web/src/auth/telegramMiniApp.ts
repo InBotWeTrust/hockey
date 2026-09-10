@@ -1,5 +1,13 @@
+export interface TelegramHapticFeedback {
+  selectionChanged: () => void;
+  impactOccurred: (style: 'light' | 'medium' | 'heavy') => void;
+  notificationOccurred: (type: 'error' | 'success' | 'warning') => void;
+}
+
 export interface TelegramMiniAppWebApp {
   initData?: string;
+  platform?: string;
+  HapticFeedback?: TelegramHapticFeedback;
   ready?: () => void;
   expand?: () => void;
 }

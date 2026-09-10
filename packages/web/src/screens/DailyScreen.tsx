@@ -9,83 +9,54 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Container } from 'pixi.js';
-import type { Application, Ticker } from 'pixi.js';
 import {
   ArrowLeft,
   ChevronRight,
   Crosshair,
-  Home,
   Info,
   Search,
-  Swords,
-  VolumeX,
+  SlidersHorizontal,
   X,
 } from 'lucide-react';
 import {
-  GOALIE_SIZE,
-  GOALIE_Y,
-  GOAL_OPENING,
-  PUCK_START,
-  RINK,
+  DEFAULT_DUEL_INVENTORY_TIMING,
   SHOOTER_AMPLITUDE,
-  SHOOTER_CENTER_X,
-  STICK_NEUTRAL,
-  deriveShotSeed,
-  getDailyPeriodSpeedPreset,
-  getGoalie,
-  getSessionPhaseOffsets,
-  resolveShot,
-  simulateGoal,
-  simulateGoalie,
+  createDuelStumbleRandomness,
+  getDuelPlayerCondition,
   type DailyPeriodSpeedPreset,
-  type GoalieConfig,
-  type SessionPhaseOffsets,
-  type ShotInput,
-  type ShotResult,
-  type StickEffects,
+  type DuelInventoryLoadoutSnapshot,
+  type DuelPlayerCondition,
+  type DuelPlayerConditionInput,
 } from '@hockey/game-core';
-import { PixiStage } from '../game/PixiStage.js';
-import { Goal, type GoalOptions } from '../game/renderer/Goal.js';
-import { Goalie, type GoalieOptions } from '../game/renderer/Goalie.js';
-import { Hitboxes, type HitboxesOptions } from '../game/renderer/Hitboxes.js';
-import { IceCar, iceCarPosAt } from '../game/renderer/IceCar.js';
-import { Player, type PlayerOptions } from '../game/renderer/Player.js';
-import { Puck, type PuckOptions } from '../game/renderer/Puck.js';
-import { createGameLoop, type GameLoop, type SpeedOverrides } from '../game/loop.js';
-import type { Scale } from '../game/coords.js';
+import type { SpeedOverrides } from '../game/loop.js';
 import {
-  TRAINING_LONG_COURT_BACKGROUND,
-  TRAINING_NEW_COURT_BACKGROUND,
-  TRAINING_NEW_COURT_BG_CROP_BOTTOM,
-  TRAINING_NEW_COURT_GOALIE_VISUAL_X_SCALE,
-  TRAINING_NEW_COURT_GOALIE_VISUAL_Y_OFFSET,
-  TRAINING_NEW_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
-  TRAINING_NEW_COURT_GOAL_VISUAL_Y_OFFSET,
-  TRAINING_NEW_COURT_HITBOX_GOALIE_HEIGHT_SCALE,
-  TRAINING_NEW_COURT_HITBOX_GOALIE_INSET,
-  TRAINING_NEW_COURT_HITBOX_GOALIE_WIDTH_SCALE,
-  TRAINING_NEW_COURT_HITBOX_GOAL_HEIGHT_SCALE,
-  TRAINING_NEW_COURT_HITBOX_GOAL_INSET,
-  TRAINING_NEW_COURT_HITBOX_GOAL_WIDTH_SCALE,
-  TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_X,
-  TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_Y,
-  TRAINING_NEW_COURT_PUCK_FLIGHT_VISUAL_Y_OFFSET,
-  TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
-  TRAINING_NEW_COURT_VISUAL_Y_SCALE,
-  TRAINING_NEW_COURT_POST_EDGE_DISTANCE,
-  distanceToNewTrainingCourtGoalEdge,
-  resolveNewTrainingCourtShot,
-  type TrainingCourtDesign,
-} from '../game/trainingNewCourt.js';
+  PlayView,
+  TRAINING_AMATEUR_GOALIE_OPTIONS,
+  TRAINING_STREET_PLAYER_OPTIONS,
+  clampPuckSpeed,
+  computeInitialElapsedMs,
+  formatMs,
+  periodSpeedPresetFor,
+  speedOverridesForPeriod,
+  type ReadyPresence,
+} from '../game/PlayView.js';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
 import { startVkOAuth } from '../auth/vkAuth.js';
 import { detectTimezone } from '../auth/timezone.js';
 import { apiFetch, ApiError } from '../api/apiFetch.js';
 import { useDailyStore } from '../stores/dailyStore.js';
+import { useClassicTournamentStore } from '../stores/classicTournamentStore.js';
+import {
+  fetchActiveClassicTournamentGames,
+  type ActiveTournamentGame,
+  type ClassicTournamentLoadoutSelection,
+  type ClassicTournamentInventoryItem,
+  type ClassicTournamentState,
+} from '../api/tournamentClassic.js';
 import {
   DEMO_GOALIE_ID,
   DEMO_PERIOD_NUMBER,
@@ -97,11 +68,15 @@ import {
 } from '../stores/demoSession.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { useAmateurDuelStore } from '../stores/amateurDuelStore.js';
-import { ScoreBoard, type ScoreBoardOpponent } from '../components/ScoreBoard.js';
-import { ResultModal, type ResultModalKind } from '../components/ResultModal.js';
+import { useOnboardingGate } from '../onboarding/OnboardingGate.js';
+import { rewardColor } from '../app/rewardColors.js';
+import type { ScoreBoardOpponent } from '../components/ScoreBoard.js';
 import { GlassSelect } from '../components/GlassSelect.js';
+import { SegmentedTabs } from '../components/SegmentedTabs.js';
+import { TrainingHistorySection } from '../components/TrainingHistorySection.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 import type { UserPickerItem } from '../chat/api.js';
 import type {
   DailyGameStats,
@@ -111,9 +86,29 @@ import type {
   ShotResultType,
 } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
+import { fetchBonusGames } from '../api/bonusGames.js';
+import type { ProfileData } from './profileTypes.js';
+import {
+  arenaCourtImage,
+  arenaVideoCubeClass,
+  arenaVideoCubeImage,
+} from './lockerRoomBackground.js';
+import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
+import { ordinaryDuelLockCopy, type GameplayLockDTO } from '../api/gameplayLock.js';
+import { useGameplayLockRefresh } from '../hooks/useGameplayLockRefresh.js';
+import {
+  amateurAccessDetailsFromError,
+  deriveAmateurAccess,
+  guardAmateurMutation,
+} from '../amateur/amateurAccess.js';
+import {
+  dailyGameplayLockCopy,
+  gameplayLockCopy,
+  tournamentGameDateCopy,
+} from '../api/gameplayLock.js';
 import {
   fetchMyInventory,
-  patchEquipment,
+  useRecoveryKit,
   type InventoryEquipmentKind,
   type InventoryItem,
   type InventoryState,
@@ -134,73 +129,82 @@ import {
   settleAmateurDuel,
   type AmateurDuelKind,
   type AmateurDuelInventoryAvailabilityItem,
+  type AmateurDuelLoadoutItem,
   type AmateurDuelLoadoutSelection,
   type AmateurDuelMatch,
   type AmateurDuelMatchState,
+  type AmateurDuelParticipantState,
   type AmateurDuelPeriodLog,
   type AmateurDuelPeriodRule,
   type AmateurDuelTemplate,
   type AmateurOpponent,
 } from '../api/amateurDuel.js';
+import { AmateurDuelRatingTab } from '../components/duel/AmateurDuelRatingTab.js';
+import { AmateurDuelHistoryTab } from '../components/duel/AmateurDuelHistoryTab.js';
+import {
+  DuelEquipmentSelectionRadio,
+  DuelLockerTab,
+} from '../components/duel/DuelLockerTab.js';
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
+import { TournamentCatalog } from '../tournament/TournamentCatalog.js';
+import {
+  dismissTournamentReadinessHint,
+  fetchTournamentFixtureAttempt,
+  fetchTournamentGameContext,
+  fetchTournamentReadinessHint,
+  openTournamentFixtureSegment,
+  type TournamentFixtureAttemptState,
+  type TournamentGameContext,
+} from '../api/tournament.js';
+import { venueRoleLabel, type VenueRole } from '../components/VenueBadge.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
-
-const PAUSE_MS = 1000;
+import {
+  formatInventoryBadgeAmount,
+  formatInventoryResourceAmount,
+} from './inventoryResourceLabels.js';
 const HUB_PERIOD_DURATION_MS = 20 * 60 * 1000;
-const MODE_ARTWORK_SIZE = 104;
 
 type GameLevel = 'beginner' | 'amateur' | 'pro';
 type BeginnerMode = 'daily' | 'training';
 type DailyView = 'arena' | 'play';
-type AmateurView = 'home' | 'duels' | 'tournaments';
+type AmateurView = 'hub' | 'duels' | 'tournaments';
 type AmateurDuelTab = 'game' | 'locker' | 'rating' | 'history';
-type DuelHistoryScope = 'current' | 'all';
-type LevelArtwork = 'beginner' | 'amateur' | 'pro';
 type ModeInfoModalContent = { title: string; text: string };
-type ArenaEntryKind = 'daily' | 'training' | 'duel';
+type ArenaEntryKind = 'daily' | 'training' | 'duel' | 'classic';
 interface ArenaEntry {
   id: string;
   kind: ArenaEntryKind;
   eyebrow: string;
+  eyebrowStatus?: string;
   title: string;
   subtitle: string;
+  subtitleLines?: [string, string];
+  compactTitle?: boolean;
+  compactSubtitle?: boolean;
   meta: string;
   ctaLabel: string;
   disabled?: boolean;
-  scoreboard?: JSX.Element;
+  scoreboard?: JSX.Element | null;
   opponentName?: string;
   opponentAvatarUrl?: string | null;
   typeLabel?: string;
+  venueRole?: VenueRole;
   secondaryActions?: ReactNode;
   onEnter: () => void;
 }
-export type PlayShotResolver = (context: {
-  input: ShotInput;
-  goalieConfig: GoalieConfig;
-  seed: string;
-  shotIndex: number;
-  stickEffects: StickEffects;
-  phaseOffsets: SessionPhaseOffsets;
-  shooterX: number;
-}) => ShotResult;
-type RouteCameraPhase = 'settled' | 'zoomed' | 'exiting';
 
-const MODE_ARTWORK_IMAGES: Record<LevelArtwork, string | null> = {
-  beginner: '/modes/beginner.webp',
-  amateur: '/modes/amateur.webp',
-  pro: '/modes/pro.webp',
-};
 const DUEL_KIND_ARTWORK_IMAGES: Record<AmateurDuelKind, string> = {
   express: '/modes/amateur-duel-steal-clean.webp',
   express_plus: '/modes/amateur-duel-card.webp',
   classic: '/modes/amateur-duel.webp',
 };
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
+const TRAINING_SPEED_OVERRIDES_STORAGE_KEY = 'hockey.trainingSpeedOverrides';
 const OPPONENT_ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const OPPONENT_RECENT_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
-const PLAY_ROUTE_TRANSITION_MS = 580;
+const DUEL_INTERMISSION_CONTINUE_GRACE_MS = 5 * 60 * 1000;
 const ARENA_SELECTED_ENTRY_STORAGE_KEY = 'hockey.arenaSelectedEntryId';
 
 function readArenaSelectedEntryId(): string | null {
@@ -231,20 +235,56 @@ function readTrainingHitboxesVisible(): boolean {
   }
 }
 
-const LONG_COURT_RINK_ASPECT_RATIO = '1212 / 2000';
-const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
-  top: '24.55%',
-  height: '74.2%',
-  bottom: 'auto',
-};
-const TRAINING_LED_TABLEAU_IMAGE = '/sprites/wide-tableau-led-dark-v2.webp';
-const DAILY_LONG_COURT_BACKGROUND = '/sprites/daily-long-court-people.webp';
-const ARENA_ICE_COURT_BACKGROUND = '/sprites/arena-ice-court-v2.webp';
-const ARENA_ICE_TABLEAU_IMAGE = '/sprites/arena-ice-tableau-v2.webp';
+function clampFrequency(value: number): number {
+  return Math.min(3, Math.max(0.1, Number(value.toFixed(3))));
+}
 
-function shouldReduceMotion(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function readTrainingSpeedOverrides(): SpeedOverrides | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(TRAINING_SPEED_OVERRIDES_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<Record<keyof SpeedOverrides, unknown>>;
+    if (
+      typeof parsed.goalFreq !== 'number' ||
+      typeof parsed.goalieFreq !== 'number' ||
+      typeof parsed.shooterFreq !== 'number' ||
+      typeof parsed.puckSpeed !== 'number'
+    ) {
+      return null;
+    }
+    return {
+      goalFreq: clampFrequency(parsed.goalFreq),
+      goalieFreq: clampFrequency(parsed.goalieFreq),
+      shooterFreq: clampFrequency(parsed.shooterFreq),
+      puckSpeed: clampPuckSpeed(parsed.puckSpeed),
+    };
+  } catch {
+    return null;
+  }
+}
+
+const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
+const AMATEUR_TOURNAMENT_COURT_BACKGROUND = '/sprites/amateur-tournament-court.webp';
+
+export function dailyCharacterVisuals(usesAmateurCourt: boolean) {
+  return usesAmateurCourt
+    ? {}
+    : {
+        playerOptions: TRAINING_STREET_PLAYER_OPTIONS,
+        goalieOptions: TRAINING_AMATEUR_GOALIE_OPTIONS,
+      };
+}
+const LEGACY_STANDARD_ARENA_BACKGROUNDS = new Set([
+  '/sprites/arena-ice-court.webp',
+  '/sprites/arena-ice-court-v2.webp',
+]);
+
+function amateurDuelCourtBackground(match: AmateurDuelMatchState): string {
+  if (match.source !== 'tournament') return AMATEUR_DAILY_COURT_BACKGROUND;
+  return LEGACY_STANDARD_ARENA_BACKGROUNDS.has(match.arena.artwork_url)
+    ? AMATEUR_TOURNAMENT_COURT_BACKGROUND
+    : match.arena.artwork_url;
 }
 
 function saveTrainingHitboxesVisible(value: boolean): void {
@@ -256,94 +296,33 @@ function saveTrainingHitboxesVisible(value: boolean): void {
   }
 }
 
-function periodSpeedPresetFor(
-  periodNumber: number,
-  presets?: readonly DailyPeriodSpeedPreset[],
-): DailyPeriodSpeedPreset {
-  const exact = presets?.find((preset) => preset.periodNumber === periodNumber);
-  if (exact) return exact;
-  const normalized = Math.min(3, Math.max(1, Math.trunc(periodNumber))) as 1 | 2 | 3;
+function saveTrainingSpeedOverrides(value: SpeedOverrides | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (value === null) {
+      window.localStorage.removeItem(TRAINING_SPEED_OVERRIDES_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(TRAINING_SPEED_OVERRIDES_STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    // Speed controls are a local training aid; storage failure should not block gameplay.
+  }
+}
+
+function isDevTrainingDebugHost(hostname: string): boolean {
+  const normalizedHostname = hostname.trim().toLowerCase();
   return (
-    presets?.find((preset) => preset.periodNumber === normalized) ??
-    getDailyPeriodSpeedPreset(normalized)
+    normalizedHostname === 'dev.hockey.inbotwetrust.ru' ||
+    normalizedHostname === 'localhost' ||
+    normalizedHostname === '127.0.0.1' ||
+    normalizedHostname === '::1'
   );
 }
 
-function speedOverridesForPeriod(
-  periodNumber: number,
-  presets?: readonly DailyPeriodSpeedPreset[],
-): SpeedOverrides {
-  const preset = periodSpeedPresetFor(periodNumber, presets);
-  return {
-    goalFreq: preset.goalFrequency,
-    goalieFreq: preset.goalieFrequency,
-    shooterFreq: preset.shooterFrequency,
-    puckSpeed: preset.puckSpeedPerMs,
-  };
-}
-
-function computeShooterX(t: number, freq: number): number {
-  const period = 1000 / freq;
-  const phase = (((t % period) + period) % period) / period;
-  const tri = phase < 0.5 ? phase * 4 - 1 : 3 - phase * 4;
-  return SHOOTER_CENTER_X + SHOOTER_AMPLITUDE * tri;
-}
-
-function startIceCarLoop(
-  iceCarRef: { current: IceCar | null },
-  iceCarRafRef: { current: number | null },
-  mountedRef: { current: boolean },
-  scaleRef: { current: Scale },
-): void {
-  if (iceCarRafRef.current !== null) return;
-  const iceCar = iceCarRef.current;
-  if (!iceCar) return;
-
-  iceCar.container.visible = true;
-  let t0 = -1;
-  const carStep = (rafTime: number): void => {
-    if (!mountedRef.current) return;
-    if (t0 < 0) t0 = rafTime;
-    const pos = iceCarPosAt(rafTime - t0);
-    iceCar.update(scaleRef.current, pos.x, pos.y, pos.rot);
-    iceCarRafRef.current = requestAnimationFrame(carStep);
-  };
-  iceCarRafRef.current = requestAnimationFrame(carStep);
-}
-
-function stopIceCarLoop(
-  iceCarRef: { current: IceCar | null },
-  iceCarRafRef: { current: number | null },
-): void {
-  if (iceCarRafRef.current !== null) {
-    cancelAnimationFrame(iceCarRafRef.current);
-    iceCarRafRef.current = null;
-  }
-  if (iceCarRef.current) iceCarRef.current.container.visible = false;
-}
-
-function formatMs(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const m = String(Math.floor(total / 60)).padStart(2, '0');
-  const s = String(total % 60).padStart(2, '0');
-  return `${m}:${s}`;
-}
-
-function parseAspectRatio(value: string): number {
-  const [widthRaw, heightRaw] = value.split('/');
-  const width = Number(widthRaw?.trim());
-  const height = Number(heightRaw?.trim());
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    return RINK.width / RINK.height;
-  }
-  return width / height;
-}
-
-function outerBlockHeight(el: HTMLElement | null): number {
-  if (!el) return 0;
-  const rect = el.getBoundingClientRect();
-  const style = window.getComputedStyle(el);
-  return rect.height + parseFloat(style.marginTop) + parseFloat(style.marginBottom);
+function movementDistancePxForElapsed(elapsedMs: number, shooterFrequency: number): number {
+  const safeElapsed = Math.max(0, elapsedMs);
+  const safeFrequency = Math.max(0, shooterFrequency);
+  return (safeElapsed * SHOOTER_AMPLITUDE * 4 * safeFrequency) / 1000;
 }
 
 function formatHms(ms: number): string {
@@ -364,6 +343,52 @@ function formatEventRemaining(ms: number): string {
     return `${days}д ${hours}:${minutes}`;
   }
   return formatHms(ms);
+}
+
+const MOSCOW_TIMEZONE = 'Europe/Moscow';
+
+function zonedCalendarDay(timestampMs: number): number {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: MOSCOW_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(timestampMs));
+  const value = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  return Date.UTC(value('year'), value('month') - 1, value('day'));
+}
+
+export function tournamentNextGameDisplay(
+  nextGameAt: string,
+  now: number,
+): { label: string; value: string; countdown: boolean } {
+  const nextAtMs = timestampMs(nextGameAt);
+  const dayDifference = Math.round(
+    (zonedCalendarDay(nextAtMs) - zonedCalendarDay(now)) / 86_400_000,
+  );
+  if (dayDifference <= 0) {
+    return {
+      label: 'Следующая игра через:',
+      value: formatMs(Math.max(0, nextAtMs - now)),
+      countdown: true,
+    };
+  }
+  const time = new Intl.DateTimeFormat('ru-RU', {
+    timeZone: MOSCOW_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(nextAtMs));
+  const date =
+    dayDifference === 1
+      ? 'Завтра'
+      : new Intl.DateTimeFormat('ru-RU', {
+          timeZone: MOSCOW_TIMEZONE,
+          day: 'numeric',
+          month: 'long',
+        }).format(new Date(nextAtMs));
+  return { label: 'Следующая игра:', value: `${date} в ${time} (мск)`, countdown: false };
 }
 
 function formatSpeedValue(value: number): string {
@@ -422,33 +447,99 @@ type PlayOpenOptions = {
 
 type PendingPlayMarker = 'daily' | 'training' | `duel:${string}` | null;
 
+export function initialGameRouteState(search: string): {
+  selectedLevel: GameLevel;
+  activeAmateurMatchId: string | null;
+  amateurView: AmateurView;
+  beginnerMode: BeginnerMode;
+  dailyView: DailyView;
+} {
+  const params = new URLSearchParams(search);
+  const view = params.get('view');
+  const amateurSection = params.get('section');
+  const activeAmateurMatchId = view === 'amateur' ? params.get('match') : null;
+  return {
+    selectedLevel: view === 'amateur' ? 'amateur' : view === 'pro' ? 'pro' : 'beginner',
+    activeAmateurMatchId,
+    amateurView:
+      amateurSection === 'tournaments'
+        ? 'tournaments'
+        : amateurSection === 'duels'
+          ? 'duels'
+          : 'hub',
+    beginnerMode: view === 'training' ? 'training' : 'daily',
+    dailyView: view === 'daily' ? 'play' : 'arena',
+  };
+}
+
+export function duelBackLabel(
+  source: 'challenge' | 'matchmaking' | 'tournament',
+  directPlayOnly: boolean,
+): string {
+  if (source === 'tournament') return 'К турниру';
+  return directPlayOnly ? 'К арене' : 'К дуэлям';
+}
+
+export function tournamentDuelBackPath(
+  fromSections: boolean,
+  tournamentId: string | null = null,
+): string {
+  const params = new URLSearchParams({ view: 'amateur', section: 'tournaments' });
+  if (tournamentId) {
+    params.set('tournament', tournamentId);
+    params.set('tab', 'schedule');
+  }
+  if (fromSections) params.set('from', 'sections');
+  return `/?${params.toString()}`;
+}
+
 export function DailyScreen(): JSX.Element {
   const location = useLocation();
   const navigate = useNavigate();
+  const { refreshAfterGameExit } = useOnboardingGate();
   const data = useDailyStore((s) => s.data);
   const error = useDailyStore((s) => s.error);
   const loading = useDailyStore((s) => s.loading);
   const refresh = useDailyStore((s) => s.refresh);
   const routeParams = new URLSearchParams(location.search);
   const fromSections = routeParams.get('from') === 'sections';
-  const [selectedLevel, setSelectedLevel] = useState<GameLevel>('beginner');
-  const [activeAmateurMatchId, setActiveAmateurMatchId] = useState<string | null>(null);
-  const [amateurView, setAmateurView] = useState<AmateurView>('home');
-  const [beginnerMode, setBeginnerMode] = useState<BeginnerMode>(() => {
-    const view = new URLSearchParams(location.search).get('view');
-    return view === 'training' ? 'training' : 'daily';
+  const tournamentOrigin = routeParams.get('section') === 'tournaments';
+  const tournamentId = routeParams.get('tournament');
+  const tournamentFixtureId = routeParams.get('fixture');
+  const gameView = routeParams.get('view');
+  const tournamentGameRoute =
+    tournamentOrigin && tournamentId !== null && (gameView === 'daily' || gameView === 'classic');
+  const tournamentGameContext = useQuery({
+    queryKey: ['tournament-game-context', tournamentId],
+    queryFn: () => fetchTournamentGameContext(tournamentId!),
+    enabled: tournamentGameRoute,
+    retry: false,
   });
-  const [dailyView, setDailyView] = useState<DailyView>(() => {
-    const view = new URLSearchParams(location.search).get('view');
-    return view === 'daily' ? 'play' : 'arena';
-  });
+  const initialRouteState = initialGameRouteState(location.search);
+  const [selectedLevel, setSelectedLevel] = useState<GameLevel>(initialRouteState.selectedLevel);
+  const [activeAmateurMatchId, setActiveAmateurMatchId] = useState<string | null>(
+    initialRouteState.activeAmateurMatchId,
+  );
+  const [amateurView, setAmateurView] = useState<AmateurView>(initialRouteState.amateurView);
+  const [beginnerMode, setBeginnerMode] = useState<BeginnerMode>(initialRouteState.beginnerMode);
+  const [dailyView, setDailyView] = useState<DailyView>(initialRouteState.dailyView);
   const [pendingPlayEntrance, setPendingPlayEntrance] = useState<PendingPlayMarker>(null);
   const [pendingPlayRouteTransition, setPendingPlayRouteTransition] =
     useState<PendingPlayMarker>(null);
 
+  const leavePlaySurface = useCallback(
+    (destination: string): void => {
+      setDailyView('arena');
+      navigate(destination, { replace: true });
+      void refreshAfterGameExit();
+    },
+    [navigate, refreshAfterGameExit],
+  );
+
   useEffect(() => {
+    if (tournamentGameRoute) return;
     void refresh();
-  }, [refresh]);
+  }, [refresh, tournamentGameRoute]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -479,7 +570,9 @@ export function DailyScreen(): JSX.Element {
         setActiveAmateurMatchId(matchId);
       } else {
         setActiveAmateurMatchId(null);
-        setAmateurView(section === 'duels' || section === 'tournaments' ? section : 'home');
+        setAmateurView(
+          section === 'tournaments' ? 'tournaments' : section === 'duels' ? 'duels' : 'hub',
+        );
       }
     }
     if (view === 'pro') {
@@ -489,6 +582,53 @@ export function DailyScreen(): JSX.Element {
       setActiveAmateurMatchId(null);
     }
   }, [location.search]);
+
+  if (tournamentGameRoute) {
+    if (tournamentGameContext.isLoading) {
+      return <TournamentGameContextLoading />;
+    }
+    if (tournamentGameContext.isError || tournamentGameContext.data === undefined) {
+      return (
+        <TournamentGameContextCard
+          context={null}
+          onBack={() =>
+            navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true })
+          }
+        />
+      );
+    }
+    if (tournamentGameContext.data.action !== 'play_classic') {
+      return (
+        <TournamentGameContextCard
+          context={tournamentGameContext.data}
+          onBack={() =>
+            navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true })
+          }
+        />
+      );
+    }
+    if (tournamentGameContext.data.action === 'play_classic') {
+      return (
+        <ClassicTournamentPlayView
+          tournamentId={tournamentId}
+          onBack={() =>
+            navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true })
+          }
+        />
+      );
+    }
+  }
+
+  if (!tournamentGameRoute && routeParams.get('view') === 'classic' && tournamentId !== null) {
+    return (
+      <ClassicTournamentPlayView
+        tournamentId={tournamentId}
+        onBack={() =>
+          navigate(tournamentDuelBackPath(fromSections, tournamentId), { replace: true })
+        }
+      />
+    );
+  }
 
   if (!data) {
     return (
@@ -505,11 +645,9 @@ export function DailyScreen(): JSX.Element {
         }}
       >
         {error ? (
-          <>
-            <div style={{ color: 'var(--red-deep, #b91c1c)', fontWeight: 600 }}>
-              Не удалось загрузить
-            </div>
-            <div style={{ color: 'var(--muted)', fontSize: 13, maxWidth: 280 }}>{error}</div>
+          <div className="arena-error-state" role="alert">
+            <div className="arena-error-state__title">Не удалось загрузить</div>
+            <div className="arena-error-state__copy">{error}</div>
             <button
               type="button"
               className="btn btn--cta"
@@ -518,12 +656,14 @@ export function DailyScreen(): JSX.Element {
             >
               Повторить
             </button>
-            <div style={{ color: 'var(--muted)', fontSize: 11 }}>
+            <div className="arena-error-state__hint">
               Если ошибка повторяется — выйди и зайди заново через /login.
             </div>
-          </>
+          </div>
         ) : (
-          <div style={{ color: 'var(--muted)' }}>Загрузка…</div>
+          <div className="route-loading" role="status">
+            Загрузка…
+          </div>
         )}
       </main>
     );
@@ -538,6 +678,14 @@ export function DailyScreen(): JSX.Element {
     navigate('/?view=arena', { replace: true });
   };
 
+  const leavePlayForHub = (): void => {
+    setPendingPlayEntrance(null);
+    setPendingPlayRouteTransition(null);
+    setSelectedLevel('beginner');
+    setBeginnerMode('daily');
+    leavePlaySurface('/?view=arena');
+  };
+
   const openSections = (): void => {
     setPendingPlayEntrance(null);
     setPendingPlayRouteTransition(null);
@@ -545,7 +693,7 @@ export function DailyScreen(): JSX.Element {
     setSelectedLevel('beginner');
     setBeginnerMode('daily');
     setActiveAmateurMatchId(null);
-    setAmateurView('home');
+    setAmateurView('duels');
     navigate('/sections', { replace: true });
   };
 
@@ -578,10 +726,25 @@ export function DailyScreen(): JSX.Element {
     navigate('/?view=training&play=1', { replace: true });
   };
 
+  const openAmateurHub = (): void => {
+    setPendingPlayEntrance(null);
+    setPendingPlayRouteTransition(null);
+    setActiveAmateurMatchId(null);
+    setAmateurView('hub');
+    navigate('/?view=amateur&from=sections', { replace: true });
+  };
+
   if (selectedLevel === 'beginner' && beginnerMode === 'daily' && dailyView === 'play') {
     return (
       <DailyPlayView
-        onBack={openHub}
+        backLabel={tournamentOrigin ? 'К турниру' : 'К режимам'}
+        onBack={() => {
+          if (tournamentOrigin) {
+            leavePlaySurface(tournamentDuelBackPath(fromSections, tournamentId));
+            return;
+          }
+          leavePlayForHub();
+        }}
         playEntranceOnMount={pendingPlayEntrance === 'daily'}
         onEntranceConsumed={() => setPendingPlayEntrance(null)}
         playRouteTransitionOnMount={pendingPlayRouteTransition === 'daily'}
@@ -597,6 +760,8 @@ export function DailyScreen(): JSX.Element {
         return (
           <AmateurDuelPlayView
             matchId={activeAmateurMatchId}
+            tournamentId={tournamentId}
+            tournamentFixtureId={tournamentFixtureId}
             directPlayOnly={directDuelPlay}
             playEntranceOnMount={pendingPlayEntrance === `duel:${activeAmateurMatchId}`}
             onEntranceConsumed={() => setPendingPlayEntrance(null)}
@@ -604,19 +769,46 @@ export function DailyScreen(): JSX.Element {
               pendingPlayRouteTransition === `duel:${activeAmateurMatchId}`
             }
             onRouteTransitionConsumed={() => setPendingPlayRouteTransition(null)}
+            onOpenTournamentMatch={(fixtureId, matchId) => {
+              setActiveAmateurMatchId(matchId);
+              const params = new URLSearchParams(location.search);
+              params.set('fixture', fixtureId);
+              params.set('match', matchId);
+              params.set('play', '1');
+              navigate(`/?${params.toString()}`, { replace: true });
+            }}
             onBack={() => {
               setPendingPlayEntrance(null);
               setPendingPlayRouteTransition(null);
               setActiveAmateurMatchId(null);
               if (directDuelPlay) {
+                if (tournamentOrigin) {
+                  setAmateurView('tournaments');
+                  leavePlaySurface(tournamentDuelBackPath(fromSections, tournamentId));
+                  return;
+                }
                 setSelectedLevel('beginner');
                 setBeginnerMode('daily');
-                setDailyView('arena');
-                navigate('/?view=arena', { replace: true });
+                leavePlaySurface('/?view=arena');
                 return;
               }
               setAmateurView('duels');
-              navigate('/?view=amateur&section=duels', { replace: true });
+              leavePlaySurface('/?view=amateur&section=duels');
+            }}
+          />
+        );
+      }
+      if (amateurView === 'hub') {
+        return (
+          <AmateurHubPage
+            onBack={openSections}
+            onOpenSection={(section) => {
+              if (section === 'bonus-games') {
+                navigate('/bonus-games?from=sections');
+                return;
+              }
+              setAmateurView(section);
+              navigate(`/?view=amateur&section=${section}&from=sections`, { replace: true });
             }}
           />
         );
@@ -624,15 +816,10 @@ export function DailyScreen(): JSX.Element {
       if (amateurView === 'duels') {
         return (
           <AmateurDuelsPage
-            onBack={() => {
-              setAmateurView('home');
-              navigate(fromSections ? '/?view=amateur&from=sections' : '/?view=amateur', {
-                replace: true,
-              });
-            }}
+            onBack={openAmateurHub}
             onOpenMatch={(matchId) => {
               setActiveAmateurMatchId(matchId);
-              navigate(`/?view=amateur&match=${encodeURIComponent(matchId)}&play=1`, {
+              navigate(`/?view=amateur&match=${encodeURIComponent(matchId)}&play=1&from=sections`, {
                 replace: true,
               });
             }}
@@ -640,49 +827,8 @@ export function DailyScreen(): JSX.Element {
         );
       }
       if (amateurView === 'tournaments') {
-        return (
-          <AmateurTournamentsPage
-            onBack={() => {
-              setAmateurView('home');
-              navigate(fromSections ? '/?view=amateur&from=sections' : '/?view=amateur', {
-                replace: true,
-              });
-            }}
-          />
-        );
+        return <AmateurTournamentsPage onBack={openAmateurHub} />;
       }
-      return (
-        <AmateurHub
-          onBack={() => {
-            if (fromSections) {
-              openSections();
-              return;
-            }
-            setSelectedLevel('beginner');
-            setBeginnerMode('daily');
-            setAmateurView('home');
-            navigate('/?view=arena', { replace: true });
-          }}
-          onOpenDuels={() => {
-            setAmateurView('duels');
-            navigate(
-              fromSections
-                ? '/?view=amateur&section=duels&from=sections'
-                : '/?view=amateur&section=duels',
-              { replace: true },
-            );
-          }}
-          onOpenTournaments={() => {
-            setAmateurView('tournaments');
-            navigate(
-              fromSections
-                ? '/?view=amateur&section=tournaments&from=sections'
-                : '/?view=amateur&section=tournaments',
-              { replace: true },
-            );
-          }}
-        />
-      );
     }
     return (
       <LevelPlaceholder
@@ -704,7 +850,7 @@ export function DailyScreen(): JSX.Element {
       <TrainingPlaceholder
         autoPlay={routeParams.get('play') === '1'}
         onBack={fromSections ? openSections : openHub}
-        onPlayHome={openHub}
+        onPlayHome={leavePlayForHub}
         playEntranceOnStart={pendingPlayEntrance === 'training'}
         onEntranceConsumed={() => setPendingPlayEntrance(null)}
         playRouteTransitionOnStart={pendingPlayRouteTransition === 'training'}
@@ -740,69 +886,88 @@ export function DailyScreen(): JSX.Element {
   );
 }
 
-function SegmentedControl({
-  ariaLabel,
-  items,
-  value,
-  disabled = false,
-  onChange,
-}: {
-  ariaLabel: string;
-  items: readonly { id: string; label: string }[];
-  value: string;
-  disabled?: boolean;
-  onChange: (id: string) => void;
-}): JSX.Element {
+function tournamentGameResultLabel(result: NonNullable<TournamentGameContext['result']>): string {
+  const lastTwo = Math.abs(result.goals) % 100;
+  const last = lastTwo % 10;
+  const puckWord =
+    lastTwo >= 11 && lastTwo <= 14
+      ? 'шайб'
+      : last === 1
+        ? 'шайба'
+        : last >= 2 && last <= 4
+          ? 'шайбы'
+          : 'шайб';
+  const shotsLastTwo = Math.abs(result.shots) % 100;
+  const shotsLast = shotsLastTwo % 10;
+  const shotsWord =
+    shotsLastTwo >= 11 && shotsLastTwo <= 14
+      ? 'бросков'
+      : shotsLast === 1
+        ? 'бросок'
+        : shotsLast >= 2 && shotsLast <= 4
+          ? 'броска'
+          : 'бросков';
+  return `${result.goals} ${puckWord} · ${result.shots} ${shotsWord} · точность ${new Intl.NumberFormat(
+    'ru-RU',
+    {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    },
+  ).format(result.accuracy * 100)}%`;
+}
+
+function playoffArenaStageLabel(game: Extract<ActiveTournamentGame, { kind: 'playoff' }>): string {
+  if (game.round_stage === 'third_place') return 'Матч за 3-е место';
+  const distance = game.final_round_number - game.round_number;
+  if (distance === 0) return 'Финал';
+  if (distance === 1) return 'Полуфинал';
+  if (distance === 2) return 'Четвертьфинал';
+  if (distance === 3) return '1/8 финала';
+  if (distance === 4) return '1/16 финала';
+  return `${game.round_number}-й раунд`;
+}
+
+function TournamentGameContextLoading(): JSX.Element {
   return (
-    <div
-      role="tablist"
-      aria-label={ariaLabel}
-      style={{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`,
-        gap: 4,
-        padding: 4,
-        borderRadius: 999,
-        background: 'rgba(15, 23, 42, 0.08)',
-      }}
-    >
-      {items.map((item) => {
-        const active = item.id === value;
-        return (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            disabled={disabled}
-            onClick={() => onChange(item.id)}
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              minWidth: 0,
-              minHeight: 34,
-              borderRadius: 999,
-              border: active ? '1px solid rgba(15, 23, 42, 0.92)' : '1px solid transparent',
-              background: active ? 'rgba(15, 23, 42, 0.92)' : 'transparent',
-              color: active ? '#ffffff' : 'var(--ink)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 12,
-              fontWeight: 800,
-              lineHeight: 1,
-              fontFamily: 'inherit',
-              whiteSpace: 'nowrap',
-              cursor: disabled ? 'default' : 'pointer',
-              padding: '0 8px',
-              opacity: disabled && !active ? 0.52 : 1,
-            }}
-          >
-            {item.label}
+    <main className="screen route-loading" role="status">
+      Проверяем турнирную игру…
+    </main>
+  );
+}
+
+function TournamentGameContextCard({
+  context,
+  onBack,
+}: {
+  context: TournamentGameContext | null;
+  onBack: () => void;
+}): JSX.Element {
+  const message = context?.message ?? 'Не удалось проверить доступ к турнирной игре.';
+  return (
+    <main className="screen" style={{ display: 'grid', placeItems: 'center', padding: 20 }}>
+      <section
+        className="glass"
+        style={{ width: 'min(100%, 420px)', padding: 24, textAlign: 'center' }}
+      >
+        <h1 className="modal-title">Турнирная игра</h1>
+        <p className="modal-copy">{message}</p>
+        {context !== null && context.result !== null && (
+          <>
+            {context.result.completed === false && (
+              <p className="modal-copy">Незавершённая игра зачтена по правилам турнира.</p>
+            )}
+            <p className="modal-copy" aria-label="Результат турнирной игры">
+              {tournamentGameResultLabel(context.result)}
+            </p>
+          </>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-primary btn--cta" onClick={onBack}>
+            Вернуться к турниру
           </button>
-        );
-      })}
-    </div>
+        </div>
+      </section>
+    </main>
   );
 }
 
@@ -817,13 +982,29 @@ function GameHub({
   onOpenTrainingPlay: (options?: PlayOpenOptions) => void;
   onOpenAmateurMatch: (matchId: string, options?: PlayOpenOptions) => void;
 }): JSX.Element {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiFetch<ProfileData>('/me'),
+  });
   const data = useDailyStore((s) => s.data)!;
+  const competitionLevel = useAuthStore((s) => s.user?.competitionLevel ?? null);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel,
+    qualifyingGoals: data.lifetime_total_goals,
+    unlockGoalsRequired: data.amateur_unlock_goals_required,
+  });
   const refresh = useDailyStore((s) => s.refresh);
   const trainingData = useTrainingSessionStore((s) => s.data);
   const trainingInFlight = useTrainingSessionStore((s) => s.inFlight);
+  const refreshTraining = useTrainingSessionStore((s) => s.refresh);
   const [modeInfoModal, setModeInfoModal] = useState<ModeInfoModalContent | null>(null);
   const [duelStatsMatch, setDuelStatsMatch] = useState<AmateurDuelMatch | null>(null);
+  const [recoveryTarget, setRecoveryTarget] = useState<{
+    action: 'start_daily_period' | 'start_classic';
+    tournamentId?: string;
+  } | null>(null);
   const [arenaActionId, setArenaActionId] = useState<string | null>(null);
   const pending = useDailyStore((s) => s.inFlight);
   const nextPeriod = data.current_period === 0 ? 1 : data.current_period + 1;
@@ -831,24 +1012,22 @@ function GameHub({
   const breakEndsAt = data.break_ends_at ? new Date(data.break_ends_at).getTime() : 0;
   const periodEndsAt = data.period_ends_at ? new Date(data.period_ends_at).getTime() : 0;
   const nextDayAt = new Date(data.next_day_starts_at).getTime();
-  const trainingCooldownEndsAt = data.training_cooldown_ends_at
-    ? new Date(data.training_cooldown_ends_at).getTime()
+  const trainingCooldownEndsAt = data.gameplay_lock?.ends_at
+    ? new Date(data.gameplay_lock.ends_at).getTime()
     : 0;
   const [now, setNow] = useState(Date.now());
   const breakRemaining = Math.max(0, breakEndsAt - now);
   const periodRemaining = Math.max(0, periodEndsAt - now);
   const nextDayRemaining = Math.max(0, nextDayAt - now);
   const trainingCooldownRemaining = Math.max(0, trainingCooldownEndsAt - now);
-  const isDailyStartedAndIncomplete =
-    data.state === 'period_active' ||
-    data.state === 'break_active' ||
-    (data.state === 'idle' && data.current_period > 0 && data.current_period < data.total_periods);
-  const isTrainingLockedByDaily = isDailyStartedAndIncomplete;
-  const isDailyLockedByTraining =
-    data.state === 'idle' &&
-    data.current_period === 0 &&
-    trainingCooldownEndsAt > 0 &&
-    trainingCooldownRemaining > 0;
+  const isTrainingLockedByDaily =
+    trainingData?.gameplay_lock?.reason === 'recent_gameplay' ||
+    trainingData?.gameplay_lock?.reason === 'active_daily';
+  const isTrainingLockedByTournament =
+    trainingData?.gameplay_lock?.blocked === true && !isTrainingLockedByDaily;
+  const isDailyLockedByTraining = data.state === 'idle' && data.gameplay_lock?.blocked === true;
+  useGameplayLockRefresh(data.gameplay_lock);
+  useGameplayLockRefresh(trainingData?.gameplay_lock);
   const amateurUnlockGoalsRequired = Math.max(
     0,
     data.amateur_unlock_goals_required ?? DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED,
@@ -859,14 +1038,27 @@ function GameHub({
     enabled: data.lifetime_total_goals >= amateurUnlockGoalsRequired,
     refetchInterval: 30_000,
   });
+  const classicTournamentGames = useQuery({
+    queryKey: ['tournaments', 'classic', 'active'],
+    queryFn: fetchActiveClassicTournamentGames,
+    refetchInterval: 30_000,
+  });
   const amateurEventItems = amateurEvents.data?.events ?? [];
   const duelStatsCurrentMatch = duelStatsMatch
     ? (amateurEventItems.find((event) => event.id === duelStatsMatch.id) ?? duelStatsMatch)
     : null;
-  const activeDuelEvents = amateurEventItems.filter(isArenaDuelEvent);
+  const activeDuelEvents = amateurEventItems.filter(
+    (event) => event.source !== 'tournament' && isArenaDuelEvent(event),
+  );
   const [activeCubeEntryId, setActiveCubeEntryId] = useState<string | null>(
     readArenaSelectedEntryId,
   );
+  const prioritizedDuelEntryIdsRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    void refreshTraining();
+    void refresh();
+  }, [refreshTraining, refresh]);
 
   useEffect(() => {
     if (
@@ -874,13 +1066,19 @@ function GameHub({
       data.state !== 'break_active' &&
       data.state !== 'closed' &&
       !isDailyLockedByTraining &&
-      activeDuelEvents.length === 0
+      activeDuelEvents.length === 0 &&
+      (classicTournamentGames.data?.games?.length ?? 0) === 0
     ) {
       return undefined;
     }
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [activeDuelEvents.length, data.state, isDailyLockedByTraining]);
+  }, [
+    activeDuelEvents.length,
+    classicTournamentGames.data?.games?.length,
+    data.state,
+    isDailyLockedByTraining,
+  ]);
 
   useEffect(() => {
     if (data.state === 'period_active' && periodEndsAt > 0 && periodRemaining === 0) void refresh();
@@ -906,9 +1104,14 @@ function GameHub({
   const isDailyInProgress = data.state === 'period_active' || data.state === 'break_active';
   const isArenaLaunching = false;
   const dailyActionDisabled = pending || arenaActionId === 'daily' || isArenaLaunching;
-  const dailyActionLabel = 'На лёд';
+  const dailyActionLabel =
+    isDailyLockedByTraining && data.gameplay_lock?.reason === 'recent_gameplay'
+      ? 'Сократить восстановление'
+      : 'На лёд';
   const dailyEventTitle = isDailyLockedByTraining
-    ? 'Восстановление'
+    ? data.gameplay_lock?.reason === 'recent_gameplay'
+      ? 'Восстановление'
+      : 'Турнирная игра'
     : data.state === 'period_active'
       ? `${data.current_period}-й период`
       : data.state === 'break_active'
@@ -936,14 +1139,24 @@ function GameHub({
               timerLabel: 'До обновления',
               timer: formatHms(nextDayRemaining),
               activePeriod: null,
-              ariaLabel: `Завершена. До обновления ${formatHms(nextDayRemaining)}. Периоды не активны`,
+              ariaLabel: `Завершена. До обновления ${formatHms(nextDayRemaining)}`,
             }
           : isDailyLockedByTraining
             ? {
-                timerLabel: 'До игры',
-                timer: formatHms(trainingCooldownRemaining),
+                timerLabel:
+                  data.gameplay_lock?.reason === 'scheduled_tournament'
+                    ? 'Дата игры'
+                    : trainingCooldownEndsAt > 0
+                      ? 'До игры'
+                      : 'Статус',
+                timer:
+                  data.gameplay_lock?.reason === 'scheduled_tournament'
+                    ? (tournamentGameDateCopy(data.gameplay_lock) ?? 'ИГРА')
+                    : trainingCooldownEndsAt > 0
+                      ? formatHms(trainingCooldownRemaining)
+                      : 'ИГРА',
                 activePeriod: null,
-                ariaLabel: `Восстановление. До игры ${formatHms(trainingCooldownRemaining)}`,
+                ariaLabel: `${dailyGameplayLockCopy(data.gameplay_lock!, now)}${trainingCooldownEndsAt > 0 ? `. До игры ${formatHms(trainingCooldownRemaining)}` : ''}`,
               }
             : {
                 timerLabel: 'Время',
@@ -953,8 +1166,8 @@ function GameHub({
               };
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
-  const trainingAvailability = isTrainingLockedByDaily
-    ? 'Закрыта до завершения игры'
+  const trainingAvailability = trainingData?.gameplay_lock?.blocked
+    ? gameplayLockCopy(trainingData.gameplay_lock, now)
     : `${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`;
 
   const runArenaLaunch = useCallback(
@@ -972,6 +1185,10 @@ function GameHub({
 
   const handleDailyAction = async (): Promise<void> => {
     if (pending || arenaActionId === 'daily' || isArenaLaunching) return;
+    if (isDailyLockedByTraining && data.gameplay_lock?.reason === 'recent_gameplay') {
+      setRecoveryTarget({ action: 'start_daily_period' });
+      return;
+    }
     await runArenaLaunch(
       'daily',
       async () => null,
@@ -983,6 +1200,7 @@ function GameHub({
     if (trainingInFlight || arenaActionId === 'training' || isArenaLaunching) return;
     if (
       isTrainingLockedByDaily ||
+      isTrainingLockedByTournament ||
       trainingData?.state === 'active' ||
       trainingData?.state === 'closed' ||
       trainingData?.state === 'idle' ||
@@ -1033,10 +1251,12 @@ function GameHub({
       onOpenAmateurMatch(matchId, { entrance: false, directPlay: true });
     },
     onError: (err) => {
-      setModeInfoModal({
-        title: 'Не удалось принять дуэль',
-        text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
-      });
+      if (amateurAccessDetailsFromError(err) === null) {
+        setModeInfoModal({
+          title: 'Не удалось принять дуэль',
+          text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
+        });
+      }
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
   });
@@ -1047,11 +1267,43 @@ function GameHub({
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
     onError: (err) => {
-      setModeInfoModal({
-        title: 'Не удалось отклонить дуэль',
-        text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
-      });
+      if (amateurAccessDetailsFromError(err) === null) {
+        setModeInfoModal({
+          title: 'Не удалось отклонить дуэль',
+          text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
+        });
+      }
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
+  });
+
+  const openArenaTournamentGame = useMutation({
+    mutationFn: async (game: Extract<ActiveTournamentGame, { kind: 'playoff' }>) => ({
+      game,
+      duelMatchId:
+        game.duel_match_id ??
+        (await openTournamentFixtureSegment(game.tournament_id, game.fixture_id)).duelMatchId,
+    }),
+    onSuccess: ({ game, duelMatchId }) => {
+      const params = new URLSearchParams({
+        view: 'amateur',
+        section: 'tournaments',
+        tournament: game.tournament_id,
+        tab: 'schedule',
+        fixture: game.fixture_id,
+        match: duelMatchId,
+        play: '1',
+      });
+      navigate(`/?${params.toString()}`, { replace: true });
+    },
+    onError: (err) => {
+      if (amateurAccessDetailsFromError(err) === null) {
+        setModeInfoModal({
+          title: 'Не удалось открыть игру',
+          text: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
+        });
+      }
+      void queryClient.invalidateQueries({ queryKey: ['tournaments', 'classic', 'active'] });
     },
   });
 
@@ -1060,11 +1312,13 @@ function GameHub({
     kind: 'daily',
     eyebrow: 'Ежедневная игра',
     title: dailyEventTitle,
+    compactTitle: isDailyLockedByTraining,
+    compactSubtitle: isDailyLockedByTraining,
     subtitle:
       data.state === 'closed'
         ? 'День завершён, следующий старт после обновления.'
         : isDailyLockedByTraining
-          ? 'После тренировки нужно восстановиться.'
+          ? dailyGameplayLockCopy(data.gameplay_lock!, now)
           : 'Главная игра дня на три периода.',
     meta:
       data.state === 'closed'
@@ -1084,6 +1338,7 @@ function GameHub({
         periodsTotal={data.total_periods}
         timer={dailyHubScoreboard.timer}
         timerLabel={dailyHubScoreboard.timerLabel}
+        timerOnly={data.state === 'closed' || isDailyLockedByTraining}
       />
     ),
   };
@@ -1099,6 +1354,8 @@ function GameHub({
     onEnter: handleOpenTraining,
   };
   const duelArenaEntries = activeDuelEvents.map<ArenaEntry>((event) => {
+    const eventLock =
+      event.source !== 'tournament' && event.duel_lock?.blocked ? event.duel_lock : null;
     const timing = duelEventTiming(event, now);
     const isIncomingInvite = isDuelInviteForMe(event);
     const invitePending =
@@ -1108,11 +1365,13 @@ function GameHub({
       id: `duel-${event.id}`,
       kind: 'duel',
       eyebrow: 'Активная дуэль',
+      eyebrowStatus: duelOutcomeText(event),
       title: event.opponent.display_name,
-      subtitle: duelOutcomeText(event),
-      meta: `${timing.label}: ${timing.value}`,
+      subtitle: eventLock ? ordinaryDuelLockCopy(eventLock) : '',
+      meta: eventLock ? '' : `${timing.label}: ${timing.value}`,
       ctaLabel: arenaDuelCtaLabel(event, now),
       disabled:
+        (event.source !== 'tournament' && event.duel_lock?.blocked === true) ||
         isIncomingInvite ||
         arenaActionId === `duel-${event.id}` ||
         isArenaLaunching ||
@@ -1120,6 +1379,7 @@ function GameHub({
       opponentName: event.opponent.display_name,
       opponentAvatarUrl: event.opponent.avatar_url,
       typeLabel: duelKindText(event.rules.duelKind),
+      venueRole: event.venue_role,
       secondaryActions: isIncomingInvite ? (
         <div
           style={{
@@ -1132,18 +1392,24 @@ function GameHub({
         >
           <button
             type="button"
-            className="btn btn--ghost"
+            className="btn arena-duel-invite-action arena-duel-invite-action--decline"
             disabled={invitePending}
-            onClick={() => declineArenaDuelMut.mutate(event.id)}
+            onClick={() =>
+              guardAmateurMutation(amateurAccess, () => declineArenaDuelMut.mutate(event.id))
+            }
             style={{ minHeight: 34, fontSize: 'clamp(10px, 1.45vh, 12px)', padding: '0 10px' }}
           >
             Отклонить
           </button>
           <button
             type="button"
-            className="btn btn--cta"
-            disabled={invitePending}
-            onClick={() => acceptArenaDuelMut.mutate(event.id)}
+            className="btn arena-duel-invite-action arena-duel-invite-action--accept"
+            disabled={
+              invitePending || (event.source !== 'tournament' && event.duel_lock?.blocked === true)
+            }
+            onClick={() =>
+              guardAmateurMutation(amateurAccess, () => acceptArenaDuelMut.mutate(event.id))
+            }
             style={{ minHeight: 34, fontSize: 'clamp(10px, 1.45vh, 12px)', padding: '0 10px' }}
           >
             Принять
@@ -1151,7 +1417,7 @@ function GameHub({
         </div>
       ) : undefined,
       onEnter: () => void handleOpenDuel(event),
-      scoreboard: (
+      scoreboard: eventLock ? null : (
         <DailyHubScoreboard
           activePeriod={timing.activePeriod}
           ariaLabel={`${duelOutcomeText(event)}. ${timing.ariaLabel}`}
@@ -1162,10 +1428,235 @@ function GameHub({
       ),
     };
   });
-  const arenaEntries: ArenaEntry[] =
-    duelArenaEntries.length > 0
-      ? [...duelArenaEntries, dailyArenaEntry, trainingArenaEntry]
-      : [dailyArenaEntry, trainingArenaEntry];
+  const classicArenaEntries = [...(classicTournamentGames.data?.games ?? [])]
+    .sort((left, right) => {
+      const priority = (game: ActiveTournamentGame): number => {
+        if (game.kind === 'playoff') {
+          return game.state === 'active' || game.state === 'ready_check' ? 0 : 1;
+        }
+        if (
+          game.state === 'period_active' ||
+          game.state === 'break_active' ||
+          (game.state === 'idle' && game.current_period > 0)
+        ) {
+          return 0;
+        }
+        return game.state === 'closed' ? 2 : 1;
+      };
+      return priority(left) - priority(right);
+    })
+    .map<ArenaEntry>((game) => {
+      if (game.kind === 'playoff') {
+        const breakRemaining = Math.max(0, timestampMs(game.break_ends_at) - now);
+        const startsAtRemaining = Math.max(0, timestampMs(game.starts_at) - now);
+        const readinessRemaining = Math.max(0, timestampMs(game.readiness_ends_at) - now);
+        const closesAtRemaining = Math.max(0, timestampMs(game.closes_at) - now);
+        const isBreak = game.state === 'inter_game_break' && game.break_ends_at !== null;
+        const isPaused = game.state === 'paused';
+        const isReady = game.state === 'ready_check' && readinessRemaining > 0;
+        const isExpiredReadyCheck = game.state === 'ready_check' && readinessRemaining === 0;
+        const isActive = game.state === 'active';
+        const canEnterGame = isReady || isActive;
+        return {
+          id: `playoff-${game.tournament_id}-${game.tournament_day}`,
+          kind: 'duel',
+          eyebrow: `Турнир · ${playoffArenaStageLabel(game)}`,
+          title: game.tournament_title,
+          subtitle: isPaused
+            ? 'Игра ожидает решения администратора.'
+            : isBreak
+              ? 'Перерыв между играми серии'
+              : isReady
+                ? 'Игра серии ожидает подтверждения.'
+                : isActive
+                  ? 'Игра серии уже началась.'
+                  : isExpiredReadyCheck
+                    ? 'Время подтверждения истекло.'
+                    : 'Игра серии ожидает готовности.',
+          meta: isBreak
+            ? `Следующая игра через ${formatMs(breakRemaining)}`
+            : isPaused
+              ? 'Расписание ожидает решения'
+              : isReady
+                ? `Подтвердите участие за ${formatMs(readinessRemaining)}`
+                : isActive
+                  ? `До конца игры ${formatMs(closesAtRemaining)}`
+                  : isExpiredReadyCheck
+                    ? 'Ожидаем результат проверки готовности'
+                    : `Старт через ${formatEventRemaining(startsAtRemaining)}`,
+          ctaLabel: canEnterGame ? 'На лёд' : 'К расписанию',
+          disabled: canEnterGame && openArenaTournamentGame.isPending,
+          onEnter: () => {
+            if (canEnterGame) {
+              if (game.duel_match_id !== null) {
+                openArenaTournamentGame.mutate(game);
+              } else {
+                guardAmateurMutation(amateurAccess, () => openArenaTournamentGame.mutate(game));
+              }
+              return;
+            }
+            navigate(
+              `/?view=amateur&section=tournaments&tournament=${encodeURIComponent(game.tournament_id)}&tab=schedule`,
+              { replace: true },
+            );
+          },
+          scoreboard: (
+            <DailyHubScoreboard
+              activePeriod={0}
+              ariaLabel={
+                isPaused
+                  ? `${game.tournament_title}. Игра ожидает решения администратора.`
+                  : isBreak
+                    ? `${game.tournament_title}. Перерыв между играми серии. До конца ${formatMs(breakRemaining)}`
+                    : isReady
+                      ? `${game.tournament_title}. До подтверждения ${formatMs(readinessRemaining)}`
+                      : isActive
+                        ? `${game.tournament_title}. Игра идёт. До конца ${formatMs(closesAtRemaining)}`
+                        : isExpiredReadyCheck
+                          ? `${game.tournament_title}. Время подтверждения истекло.`
+                          : `${game.tournament_title}. Старт через ${formatEventRemaining(startsAtRemaining)}`
+              }
+              periodsTotal={game.total_periods}
+              timer={
+                isPaused
+                  ? '—'
+                  : isBreak
+                    ? formatMs(breakRemaining)
+                    : isReady
+                      ? formatMs(readinessRemaining)
+                      : isActive
+                        ? formatMs(closesAtRemaining)
+                        : isExpiredReadyCheck
+                          ? '—'
+                          : formatEventRemaining(startsAtRemaining)
+              }
+              timerLabel={
+                isPaused
+                  ? 'Пауза'
+                  : isBreak
+                    ? 'Перерыв'
+                    : isReady
+                      ? 'До подтверждения'
+                      : isActive
+                        ? 'До конца'
+                        : isExpiredReadyCheck
+                          ? 'Проверка'
+                          : 'До старта'
+              }
+            />
+          ),
+        };
+      }
+      const deadlineRemaining = Math.max(0, timestampMs(game.closes_at) - now);
+      const breakRemaining = Math.max(0, timestampMs(game.break_ends_at) - now);
+      const isBreak = game.state === 'break_active' && game.break_ends_at !== null;
+      const started =
+        game.state === 'period_active' ||
+        game.state === 'break_active' ||
+        (game.state === 'idle' && game.current_period > 0);
+      const completed = game.state === 'closed';
+      const gameplayLock = !started && !completed ? game.gameplay_lock : null;
+      const locked = gameplayLock?.blocked === true;
+      const lockedByRecovery = locked && gameplayLock.reason === 'recent_gameplay';
+      const recoveryRemaining = gameplayLock?.ends_at
+        ? Math.max(0, timestampMs(gameplayLock.ends_at) - now)
+        : 0;
+      return {
+        id: `classic-${game.tournament_id}`,
+        kind: 'classic',
+        eyebrow: `Турнир · ${game.tournament_day}-й тур`,
+        title: game.tournament_title,
+        subtitle: locked
+          ? gameplayLockCopy(gameplayLock, now)
+          : completed
+          ? 'Игра завершена, результат сохранён.'
+          : started
+            ? 'Турнирная игра уже начата.'
+            : 'Отдельная игра по правилам турнира',
+        ...(!completed && !started && !locked
+          ? { subtitleLines: ['Отдельная игра', 'по правилам турнира'] as [string, string] }
+          : {}),
+        meta: locked
+          ? 'Турнирная игра временно недоступна.'
+          : completed
+          ? ''
+          : `${game.current_period > 0 ? `${game.current_period}-й период` : 'Три периода'} · до ${formatEventRemaining(deadlineRemaining)}`,
+        ctaLabel: lockedByRecovery
+          ? 'Сократить восстановление'
+          : locked
+            ? 'Лёд готовится'
+            : started
+              ? 'Продолжить'
+              : 'Начать',
+        disabled: completed || (locked && !lockedByRecovery),
+        onEnter: () => {
+          if (lockedByRecovery) {
+            setRecoveryTarget({ action: 'start_classic', tournamentId: game.tournament_id });
+            return;
+          }
+          if (locked) return;
+          navigate(`/?view=classic&tournament=${encodeURIComponent(game.tournament_id)}`, {
+            replace: true,
+          });
+        },
+        ...(locked
+          ? {
+              scoreboard: (
+                <DailyHubScoreboard
+                  activePeriod={null}
+                  ariaLabel={`${gameplayLockCopy(gameplayLock, now)}. До игры ${formatHms(recoveryRemaining)}`}
+                  periodsTotal={3}
+                  timer={gameplayLock.ends_at ? formatHms(recoveryRemaining) : 'ИГРА'}
+                  timerLabel={gameplayLock.ends_at ? 'До игры' : 'Статус'}
+                  timerOnly
+                />
+              ),
+            }
+          : completed
+          ? {
+              scoreboard: (
+                <DailyHubScoreboard
+                  activePeriod={null}
+                  ariaLabel={`Завершена. До обновления ${formatHms(deadlineRemaining)}`}
+                  periodsTotal={3}
+                  timer={formatHms(deadlineRemaining)}
+                  timerLabel="До обновления"
+                  timerOnly
+                />
+              ),
+            }
+          : {
+              scoreboard: (
+                <DailyHubScoreboard
+                  activePeriod={
+                    game.state === 'period_active'
+                      ? game.current_period
+                      : Math.min(3, game.current_period + 1)
+                  }
+                  ariaLabel={
+                    isBreak
+                      ? `${game.tournament_title}. ${game.tournament_day}-й тур. Перерыв. До конца ${formatMs(breakRemaining)}. Период ${Math.min(3, game.current_period + 1)}`
+                      : `${game.tournament_title}. ${game.tournament_day}-й тур. До конца дня ${formatEventRemaining(deadlineRemaining)}`
+                  }
+                  periodsTotal={3}
+                  spacious
+                  timer={
+                    isBreak ? formatMs(breakRemaining) : formatEventRemaining(deadlineRemaining)
+                  }
+                  timerLabel={isBreak ? 'Перерыв' : 'До конца дня'}
+                />
+              ),
+            }),
+      };
+    });
+  const arenaEntries: ArenaEntry[] = [
+    ...duelArenaEntries,
+    ...classicArenaEntries,
+    dailyArenaEntry,
+    trainingArenaEntry,
+  ];
+  const duelArenaEntryIds = duelArenaEntries.map((entry) => entry.id).join('|');
+  const firstDuelArenaEntryId = duelArenaEntries[0]?.id ?? null;
 
   const arenaEntryIds = arenaEntries.map((entry) => entry.id).join('|');
   const activeCubeIndex = Math.max(
@@ -1180,6 +1671,18 @@ function GameHub({
     setActiveCubeEntryId(null);
     saveArenaSelectedEntryId(null);
   }, [activeCubeEntryId, activeCubeEntryExists, arenaEntryIds]);
+
+  useEffect(() => {
+    if (firstDuelArenaEntryId === null) {
+      prioritizedDuelEntryIdsRef.current = null;
+      return;
+    }
+    if (prioritizedDuelEntryIdsRef.current === duelArenaEntryIds) return;
+    prioritizedDuelEntryIdsRef.current = duelArenaEntryIds;
+    if (activeCubeEntryId === firstDuelArenaEntryId) return;
+    setActiveCubeEntryId(firstDuelArenaEntryId);
+    saveArenaSelectedEntryId(firstDuelArenaEntryId);
+  }, [activeCubeEntryId, duelArenaEntryIds, firstDuelArenaEntryId]);
 
   const handleArenaActiveIndexChange = useCallback(
     (index: number): void => {
@@ -1220,6 +1723,9 @@ function GameHub({
           entries={arenaEntries}
           activeIndex={activeCubeIndex}
           onActiveIndexChange={handleArenaActiveIndexChange}
+          cubeImage={arenaVideoCubeImage(profileQuery.data?.competitionLevel)}
+          cubeClass={arenaVideoCubeClass(profileQuery.data?.competitionLevel)}
+          backgroundImage={arenaCourtImage(profileQuery.data?.competitionLevel)}
         />
       </section>
 
@@ -1234,6 +1740,23 @@ function GameHub({
       {duelStatsCurrentMatch && (
         <DuelStatsModal match={duelStatsCurrentMatch} onClose={() => setDuelStatsMatch(null)} />
       )}
+      {recoveryTarget && (
+        <RecoveryKitModal
+          action={recoveryTarget.action}
+          onApplied={async () => {
+            await refresh();
+            await queryClient.invalidateQueries({
+              queryKey: ['tournaments', 'classic', 'active'],
+            });
+            if (recoveryTarget.tournamentId !== undefined) {
+              await queryClient.refetchQueries({
+                queryKey: ['tournaments', 'classic', 'active'],
+              });
+            }
+          }}
+          onClose={() => setRecoveryTarget(null)}
+        />
+      )}
     </main>
   );
 }
@@ -1242,13 +1765,18 @@ function ArenaVideoCube({
   entries,
   activeIndex,
   onActiveIndexChange,
+  cubeImage,
+  cubeClass,
+  backgroundImage,
 }: {
   entries: ArenaEntry[];
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
+  cubeImage: string;
+  cubeClass: string;
+  backgroundImage: string;
 }): JSX.Element {
-  const activeEntry =
-    entries[Math.min(entries.length - 1, Math.max(0, activeIndex))] ?? entries[0];
+  const activeEntry = entries[Math.min(entries.length - 1, Math.max(0, activeIndex))] ?? entries[0];
   const hasManyEntries = entries.length > 1;
   const swipeStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const goTo = useCallback(
@@ -1311,58 +1839,31 @@ function ArenaVideoCube({
     >
       <img
         className="arena-video-cube__background"
-        src={ARENA_ICE_COURT_BACKGROUND}
+        src={backgroundImage}
         alt=""
         aria-hidden="true"
       />
-      <div
-        aria-label="Разделы на табло"
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerEnd}
-        onPointerCancel={handlePointerCancel}
-        style={{
-          position: 'absolute',
-          left: '50%',
-          top: 'calc((100dvh - 92px - var(--bottom-nav-bottom-gap) - var(--app-safe-bottom) + var(--app-safe-top)) / 2)',
-          width: 'min(100%, 620px)',
-          aspectRatio: '1024 / 1536',
-          overflow: 'hidden',
-          transform: 'translate3d(-50%, -74%, 0)',
-          touchAction: 'pan-y',
-        }}
-      >
-        <img
-          src={ARENA_ICE_TABLEAU_IMAGE}
-          alt=""
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'fill',
-          }}
-        />
+      <div className={`arena-video-cube__plate ${cubeClass}`}>
+        <img className="arena-video-cube__cube" src={cubeImage} alt="" aria-hidden="true" />
         <div
+          className="arena-video-cube__screen"
+          aria-label="Разделы на табло"
+          onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerEnd}
+          onPointerCancel={handlePointerCancel}
           style={{
-            position: 'absolute',
-            left: '8.3%',
-            right: '8.3%',
-            top: '50.8%',
-            bottom: '5.4%',
-            zIndex: 2,
             display: 'grid',
             gridTemplateRows: 'auto minmax(0, 1fr) auto',
-            rowGap: 'clamp(18px, 2.6vh, 24px)',
-            padding: 'clamp(30px, 4.2vh, 36px) 0 clamp(15px, 2.3vh, 20px)',
+            rowGap: 'clamp(5px, 0.8vh, 8px)',
+            padding: 'clamp(10px, 1.6vh, 14px) 0 clamp(9px, 1.4vh, 13px)',
             boxSizing: 'border-box',
           }}
         >
           <div
             style={{
               position: 'absolute',
-              left: '1.2%',
-              right: '1.2%',
+              left: '4%',
+              right: '4%',
               top: '50%',
               transform: 'translateY(-50%)',
               zIndex: 4,
@@ -1426,7 +1927,9 @@ function ArenaVideoCube({
             })}
           </div>
           <ArenaCubeFace entry={activeEntry} />
-          {activeEntry.secondaryActions ?? (
+          {activeEntry.secondaryActions !== undefined ? (
+            activeEntry.secondaryActions
+          ) : activeEntry.disabled ? null : (
             <button
               type="button"
               className="btn btn--cta"
@@ -1442,8 +1945,11 @@ function ArenaVideoCube({
                 padding: '0 16px',
                 boxSizing: 'border-box',
                 justifyContent: 'center',
-                fontSize: 'clamp(12px, 1.65vh, 14px)',
-                fontWeight: 900,
+                fontSize:
+                  activeEntry.ctaLabel === 'Сократить восстановление'
+                    ? 'clamp(11px, 1.4vh, 12px)'
+                    : 'clamp(12px, 1.65vh, 14px)',
+                fontWeight: activeEntry.ctaLabel === 'Сократить восстановление' ? 700 : 900,
                 letterSpacing: '0.06em',
                 lineHeight: 1,
                 background:
@@ -1518,7 +2024,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
         minHeight: 0,
         display: 'grid',
         alignItems: 'stretch',
-        padding: '0 clamp(8px, 1.6vw, 12px)',
+        padding: '0 clamp(38px, 11vw, 46px)',
         boxSizing: 'border-box',
         color: '#e9fbff',
         fontFamily: 'var(--font-mono)',
@@ -1533,31 +2039,48 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
           gridTemplateRows: 'auto auto auto auto',
           alignContent: 'space-evenly',
           justifyItems: 'center',
-          gap: 'clamp(5px, 0.9vh, 8px)',
+          gap: 'clamp(4px, 0.7vh, 6px)',
           textAlign: 'center',
           padding: 0,
         }}
       >
-        <div
-          style={{
-            color: 'rgba(205, 246, 255, 0.88)',
-            fontSize: 'clamp(7px, 1.08vh, 9px)',
-            fontWeight: 950,
-            letterSpacing: '0.16em',
-            textTransform: 'uppercase',
-            lineHeight: 1.05,
-            textShadow: '0 0 8px rgba(99, 218, 255, 0.44)',
-          }}
-        >
-          {entry.eyebrow}
+        <div style={{ display: 'grid', justifyItems: 'center', gap: 2 }}>
+          <div
+            style={{
+              color: 'rgba(205, 246, 255, 0.88)',
+              fontSize: 'clamp(7px, 1.08vh, 9px)',
+              fontWeight: 950,
+              letterSpacing: showDuelIdentity ? '0.08em' : '0.16em',
+              textTransform: 'uppercase',
+              lineHeight: 1.05,
+              textShadow: '0 0 8px rgba(99, 218, 255, 0.44)',
+            }}
+          >
+            {entry.eyebrow}
+            {entry.eyebrowStatus ? ` (${entry.eyebrowStatus})` : ''}
+          </div>
+          {showDuelIdentity && entry.typeLabel && (
+            <div
+              className="arena-duel-format-heading"
+              style={{
+                color: 'rgba(247, 254, 255, 0.92)',
+                marginTop: 3,
+                textAlign: 'center',
+                textShadow: '0 0 9px rgba(144, 231, 255, 0.58)',
+              }}
+            >
+              {entry.typeLabel}
+            </div>
+          )}
         </div>
         {showDuelIdentity ? (
           <div
+            className="arena-duel-identity"
             style={{
               display: 'grid',
               gridTemplateColumns: 'clamp(38px, 6vh, 54px) minmax(0, 1fr)',
               alignItems: 'center',
-              gap: 'clamp(8px, 1.8vh, 14px)',
+              gap: 'clamp(5px, 1vh, 8px)',
               textAlign: 'left',
               minWidth: 0,
               maxWidth: 'min(100%, 340px)',
@@ -1576,9 +2099,9 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
             />
             <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
               <div
+                className="arena-duel-opponent-name"
                 style={{
                   color: '#f7feff',
-                  fontSize: 'clamp(14px, 2.46vh, 21px)',
                   lineHeight: 0.95,
                   fontWeight: 950,
                   overflow: 'hidden',
@@ -1588,46 +2111,66 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
               >
                 {entry.title}
               </div>
-              {entry.typeLabel && (
-                <div
-                  style={{
-                    color: 'rgba(196, 242, 255, 0.82)',
-                    fontSize: 'clamp(8px, 1.16vh, 10px)',
-                    fontWeight: 900,
-                    lineHeight: 1,
-                  }}
+              {entry.venueRole && (
+                <span
+                  className="arena-duel-venue-label"
+                  aria-label={`Площадка: ${venueRoleLabel(entry.venueRole)}`}
                 >
-                  {entry.typeLabel}
-                </div>
+                  {venueRoleLabel(entry.venueRole)}
+                </span>
               )}
             </div>
           </div>
         ) : (
           <div
+            className={`arena-cube-title${entry.title.length > 28 ? ' arena-cube-title--long' : ''}${entry.compactTitle ? ' arena-cube-title--compact' : ''}`}
             style={{
               color: '#f7feff',
-              fontSize: 'clamp(16px, 2.65vh, 22px)',
-              lineHeight: 0.95,
+              fontSize: entry.compactTitle
+                ? entry.title === 'Восстановление'
+                  ? '19px'
+                  : 'clamp(13px, 2vh, 17px)'
+                : entry.title.length > 28
+                  ? 'clamp(13px, 2.05vh, 17px)'
+                  : 'clamp(16px, 2.65vh, 22px)',
+              lineHeight: entry.compactTitle ? 1 : entry.title.length > 28 ? 1.02 : 0.95,
               fontWeight: 950,
+              display: entry.compactTitle ? 'block' : '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: entry.compactTitle ? 1 : 3,
+              overflow: 'hidden',
               overflowWrap: 'break-word',
+              whiteSpace: entry.compactTitle ? 'nowrap' : undefined,
               textTransform: 'uppercase',
+              maxWidth: '100%',
             }}
           >
             {entry.title}
           </div>
         )}
         <div
+          className={entry.compactSubtitle ? 'arena-cube-subtitle--compact' : undefined}
           style={{
-            maxWidth: 'min(72%, 280px)',
+            maxWidth: entry.compactSubtitle ? 'min(84%, 300px)' : 'min(72%, 280px)',
             margin: '0 auto',
             color: 'rgba(234, 246, 255, 0.9)',
-            fontSize: 'clamp(9px, 1.24vh, 10px)',
+            fontSize: entry.compactSubtitle
+              ? 'clamp(8px, 1.12vh, 9px)'
+              : 'clamp(9px, 1.24vh, 10px)',
             fontWeight: 850,
-            lineHeight: 1.12,
+            lineHeight: entry.compactSubtitle ? 1.08 : 1.12,
             textShadow: '0 0 7px rgba(0, 12, 24, 0.88)',
           }}
         >
-          {entry.subtitle}
+          {entry.subtitleLines ? (
+            <span aria-label={entry.subtitle}>
+              {entry.subtitleLines[0]}
+              <br />
+              {entry.subtitleLines[1]}
+            </span>
+          ) : (
+            entry.subtitle
+          )}
         </div>
         <div
           style={{
@@ -1674,6 +2217,8 @@ function DailyHubScoreboard({
   periodsTotal,
   timer,
   timerLabel,
+  timerOnly = false,
+  spacious = false,
 }: {
   activePeriod: number | null;
   align?: 'center' | 'left';
@@ -1681,36 +2226,54 @@ function DailyHubScoreboard({
   periodsTotal: number;
   timer: string;
   timerLabel: string;
+  timerOnly?: boolean;
+  spacious?: boolean;
 }): JSX.Element {
   return (
     <div
       aria-label={ariaLabel}
+      className={timerOnly ? 'daily-hub-scoreboard--timer-only' : undefined}
       style={{
         width: align === 'left' ? 'auto' : '100%',
-        maxWidth: align === 'left' ? 'none' : 306,
+        maxWidth: align === 'left' ? 'none' : spacious ? 360 : 340,
         padding: 0,
         display: 'grid',
-        gridTemplateColumns: align === 'left' ? 'max-content max-content' : 'minmax(0, 1fr) minmax(0, 1fr)',
+        gridTemplateColumns: timerOnly
+          ? 'minmax(0, 1fr)'
+          : align === 'left'
+            ? 'max-content max-content'
+            : spacious
+              ? 'max-content max-content'
+              : 'minmax(0, 1fr) auto',
         alignItems: 'center',
-        justifyItems: align === 'left' ? 'start' : 'center',
-        gap: align === 'left' ? 36 : 'clamp(6px, 1.1vh, 10px)',
+        justifyItems: timerOnly ? 'center' : align === 'left' ? 'start' : 'center',
+        gap:
+          align === 'left'
+            ? 36
+            : timerOnly
+              ? 0
+              : spacious
+                ? 'clamp(28px, 5vw, 40px)'
+                : 'clamp(18px, 3vw, 28px)',
         margin: '0 auto',
       }}
     >
       <DailyEventScoreboardColumn align={align} label={timerLabel} value={timer} />
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: align === 'left' ? 'flex-start' : 'center',
-          gap: 5,
-          minWidth: 0,
-          lineHeight: 1,
-        }}
-      >
-        <DailyEventScoreboardLabel>Период</DailyEventScoreboardLabel>
-        <DailyPeriodTabs activePeriod={activePeriod} align={align} periodsTotal={periodsTotal} />
-      </div>
+      {!timerOnly && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: align === 'left' ? 'flex-start' : 'center',
+            gap: 5,
+            minWidth: 0,
+            lineHeight: 1,
+          }}
+        >
+          <DailyEventScoreboardLabel>Период</DailyEventScoreboardLabel>
+          <DailyPeriodTabs activePeriod={activePeriod} align={align} periodsTotal={periodsTotal} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1756,6 +2319,50 @@ function canStartArenaDuelPeriod(
   );
 }
 
+export function isDuelLoadoutEditable(
+  _source: AmateurDuelMatch['source'],
+  participantState: AmateurDuelParticipantState,
+): boolean {
+  return participantState !== 'period_active';
+}
+
+export function isDuelReadyPresenceState(state: AmateurDuelParticipantState): boolean {
+  return (
+    state === 'ready' ||
+    state === 'accepted' ||
+    state === 'period_active' ||
+    state === 'break_active' ||
+    state === 'completed'
+  );
+}
+
+function isActiveDuelPlayerPresenceState(state: AmateurDuelParticipantState): boolean {
+  return state !== 'invited' && state !== 'loadout_pending' && state !== 'forfeit';
+}
+
+export function duelRinkReadyPresenceForMatch(
+  match: AmateurDuelMatch | AmateurDuelMatchState,
+): Pick<ReadyPresence, 'playerReady' | 'goalieReady'> {
+  if (match.status === 'ready_check') {
+    return {
+      playerReady: match.me.state === 'ready',
+      goalieReady: match.opponent.state === 'ready',
+    };
+  }
+
+  if (match.status === 'active') {
+    return {
+      playerReady: isActiveDuelPlayerPresenceState(match.me.state),
+      goalieReady: true,
+    };
+  }
+
+  return {
+    playerReady: isDuelReadyPresenceState(match.me.state),
+    goalieReady: isDuelReadyPresenceState(match.opponent.state),
+  };
+}
+
 function isDuelInviteForMe(match: AmateurDuelMatch): boolean {
   return match.status === 'invited' && match.me.side === 'opponent' && match.me.state === 'invited';
 }
@@ -1790,7 +2397,8 @@ function duelRinkPrimaryLabel(match: AmateurDuelMatch, fallbackNow: number): str
   if (match.status === 'invited' && isDuelInviteForMe(match)) return 'Примите вызов';
   if (match.status === 'invited') return 'Ждём ответ';
   if (match.status === 'active' && match.me.state === 'accepted') return 'Начать';
-  if (match.status === 'active' && match.opponent.state === 'period_active') return 'Ждём соперника';
+  if (match.status === 'active' && match.opponent.state === 'period_active')
+    return 'Ждём соперника';
   return arenaDuelCtaLabel(match, fallbackNow);
 }
 
@@ -1817,7 +2425,13 @@ function duelParticipantPeriodRule(
   );
 }
 
-function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): DuelEventTiming {
+function intermissionContinueDeadlineMs(participant: AmateurDuelMatch['me']): number {
+  if (participant.state !== 'accepted' || participant.current_period <= 0) return 0;
+  const readyAt = timestampMs(participant.ready_at);
+  return readyAt > 0 ? readyAt + DUEL_INTERMISSION_CONTINUE_GRACE_MS : 0;
+}
+
+export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): DuelEventTiming {
   const now = duelMatchNowMs(match, fallbackNow);
   const startsAt = timestampMs(match.starts_at);
   const endsAt = timestampMs(match.ends_at);
@@ -1927,17 +2541,42 @@ function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): DuelEven
     };
   }
 
+  if (match.status === 'active') {
+    const myContinueDeadline = intermissionContinueDeadlineMs(match.me);
+    if (myContinueDeadline > now) {
+      const value = formatMs(myContinueDeadline - now);
+      return {
+        activePeriod: duelNextPeriod(match),
+        ariaLabel: `До технического поражения ${value}. Счёт ${score}`,
+        label: 'До технического поражения',
+        value,
+      };
+    }
+    const opponentContinueDeadline = intermissionContinueDeadlineMs(match.opponent);
+    if (
+      opponentContinueDeadline > now &&
+      (match.me.state === 'completed' || match.me.state === 'forfeit')
+    ) {
+      const value = formatMs(opponentContinueDeadline - now);
+      return {
+        activePeriod: duelNextPeriod(match),
+        ariaLabel: `Ждём завершения игры соперника ${value}. Счёт ${score}`,
+        label: 'Ждём завершения игры соперника',
+        value,
+      };
+    }
+  }
+
   if (match.status === 'active' && endsAt > now) {
     const value = formatMs(endsAt - now);
-    const waitingForOpponent =
-      match.me.state === 'completed' ||
-      match.me.state === 'forfeit' ||
-      match.opponent.state === 'accepted';
+    const waitingForOpponent = match.me.state === 'completed' || match.me.state === 'forfeit';
     const label =
       match.me.state === 'accepted'
-        ? 'До поражения'
+        ? match.me.current_period === 0
+          ? 'До конца игры'
+          : 'До технического поражения'
         : waitingForOpponent
-          ? 'До поражения соперника'
+          ? 'Ждём завершения игры соперника'
           : 'До таймаута';
     return {
       activePeriod: match.rules.totalPeriods,
@@ -1949,9 +2588,9 @@ function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): DuelEven
 
   return {
     activePeriod: duelNextPeriod(match),
-    ariaLabel: `Счёт ${score}`,
-    label: 'Счёт',
-    value: score,
+    ariaLabel: `Время игрока ${formatDurationMs(match.me.active_duration_ms)}. Счёт ${score}`,
+    label: 'Время',
+    value: formatDurationMs(match.me.active_duration_ms),
   };
 }
 
@@ -2002,7 +2641,9 @@ function DailyPeriodTab({
         fontSize: 11,
         fontWeight: 900,
         background: active ? 'rgba(107, 224, 255, 0.24)' : 'rgba(7, 32, 52, 0.28)',
-        border: active ? '1px solid rgba(182, 238, 255, 0.72)' : '1px solid rgba(118, 215, 255, 0.24)',
+        border: active
+          ? '1px solid rgba(182, 238, 255, 0.72)'
+          : '1px solid rgba(118, 215, 255, 0.24)',
         color: active ? '#e9fbff' : 'rgba(174, 233, 255, 0.46)',
         boxShadow: active
           ? '0 0 9px rgba(122, 229, 255, 0.54), inset 0 0 8px rgba(82, 205, 255, 0.24)'
@@ -2035,7 +2676,7 @@ function DailyEventScoreboardColumn({
         width: '100%',
       }}
     >
-      <DailyEventScoreboardLabel>{label}</DailyEventScoreboardLabel>
+      <DailyEventScoreboardLabel align={align}>{label}</DailyEventScoreboardLabel>
       <span
         style={{
           color: '#e9fbff',
@@ -2046,8 +2687,7 @@ function DailyEventScoreboardColumn({
           letterSpacing: '0.06em',
           fontVariantNumeric: 'tabular-nums',
           whiteSpace: 'nowrap',
-          textShadow:
-            '0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38)',
+          textShadow: '0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38)',
         }}
       >
         {value}
@@ -2056,7 +2696,13 @@ function DailyEventScoreboardColumn({
   );
 }
 
-function DailyEventScoreboardLabel({ children }: { children: React.ReactNode }): JSX.Element {
+function DailyEventScoreboardLabel({
+  align = 'center',
+  children,
+}: {
+  align?: 'center' | 'left';
+  children: React.ReactNode;
+}): JSX.Element {
   return (
     <span
       style={{
@@ -2065,133 +2711,15 @@ function DailyEventScoreboardLabel({ children }: { children: React.ReactNode }):
         fontWeight: 900,
         letterSpacing: '0.16em',
         textTransform: 'uppercase',
-        whiteSpace: 'nowrap',
+        maxWidth: '100%',
+        overflowWrap: 'anywhere',
+        textAlign: align,
+        whiteSpace: 'normal',
         textShadow: '0 0 7px rgba(88, 207, 255, 0.36)',
       }}
     >
       {children}
     </span>
-  );
-}
-
-function LevelHubCard({
-  title,
-  description,
-  meta,
-  artwork,
-  tone = 'default',
-  progress,
-  onClick,
-}: {
-  title: string;
-  description: string;
-  meta: string;
-  artwork: LevelArtwork;
-  tone?: 'active' | 'default' | 'muted';
-  progress?: number;
-  onClick: () => void;
-}): JSX.Element {
-  const isLocked = tone === 'muted';
-  return (
-    <button
-      type="button"
-      aria-label={title}
-      onClick={onClick}
-      style={{
-        position: 'relative',
-        overflow: 'hidden',
-        borderRadius: 22,
-        padding: 12,
-        display: 'grid',
-        gridTemplateColumns: `${MODE_ARTWORK_SIZE}px minmax(0, 1fr) 18px`,
-        gap: 12,
-        alignItems: 'center',
-        background: tone === 'active' ? 'rgba(255, 255, 255, 0.64)' : 'rgba(255, 255, 255, 0.48)',
-        border: '1px solid rgba(255,255,255,0.66)',
-        boxShadow: '0 8px 22px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.78)',
-        width: '100%',
-        textAlign: 'left',
-        color: 'inherit',
-        appearance: 'none',
-        WebkitAppearance: 'none',
-        cursor: 'pointer',
-      }}
-    >
-      {progress !== undefined && (
-        <div
-          aria-label={`Прогресс до любителей ${progress}%`}
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: 3,
-            background: 'rgba(15,23,42,0.08)',
-          }}
-        >
-          <div
-            style={{
-              width: `${progress}%`,
-              height: '100%',
-              background: 'linear-gradient(90deg, rgba(34, 158, 217, 0.72), var(--blue-accent))',
-            }}
-          />
-        </div>
-      )}
-      <ModeArtwork label={title} tone={artwork} muted={isLocked} />
-      <div
-        style={{
-          minWidth: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          gap: 8,
-        }}
-      >
-        <h2
-          style={{
-            margin: 0,
-            minWidth: 0,
-            fontSize: 18,
-            lineHeight: 1.05,
-            fontWeight: 900,
-            color: 'var(--ink)',
-          }}
-        >
-          {title}
-        </h2>
-        <div
-          style={{
-            color: 'rgba(15, 23, 42, 0.64)',
-            fontSize: 12,
-            fontWeight: 700,
-            lineHeight: 1.25,
-          }}
-        >
-          {description}
-        </div>
-        <div
-          style={{
-            color: 'rgba(15, 23, 42, 0.54)',
-            fontSize: 12,
-            fontWeight: 800,
-            lineHeight: 1.2,
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {meta}
-        </div>
-      </div>
-      <ChevronRight
-        aria-hidden="true"
-        size={19}
-        strokeWidth={2.7}
-        style={{
-          justifySelf: 'end',
-          color: 'rgba(15, 23, 42, 0.56)',
-        }}
-      />
-    </button>
   );
 }
 
@@ -2262,6 +2790,7 @@ function DailyGameStatsModal({
   title = 'Статистика прошлой игры',
   ariaLabel = 'Статистика последней игры',
   closeLabel = 'Понятно',
+  supplemental,
   onClose,
 }: {
   stats: DailyGameStats | null;
@@ -2269,6 +2798,7 @@ function DailyGameStatsModal({
   title?: string;
   ariaLabel?: string;
   closeLabel?: string;
+  supplemental?: ReactNode;
   onClose: () => void;
 }): JSX.Element {
   const periodsByNumber = new Map<number, PeriodLogEntry>(
@@ -2392,6 +2922,7 @@ function DailyGameStatsModal({
                 );
               })}
             </div>
+            {supplemental}
           </>
         )}
 
@@ -2826,120 +3357,27 @@ function DailyStatsPeriodRow({
   );
 }
 
-function ModeArtwork({
-  label,
-  tone,
-  muted,
-}: {
-  label: string;
-  tone: LevelArtwork;
-  muted: boolean;
-}): JSX.Element {
-  const imageSrc = MODE_ARTWORK_IMAGES[tone];
-  const palette =
-    tone === 'beginner'
-      ? {
-          bg: 'linear-gradient(145deg, #dbeafe 0%, #f8fafc 48%, #bfdbfe 100%)',
-          line: 'rgba(220, 38, 38, 0.34)',
-        }
-      : tone === 'amateur'
-        ? {
-            bg: 'linear-gradient(145deg, #d1fae5 0%, #fefce8 52%, #bbf7d0 100%)',
-            line: 'rgba(217, 119, 6, 0.36)',
-          }
-        : {
-            bg: 'linear-gradient(145deg, #e2e8f0 0%, #f8fafc 52%, #cbd5e1 100%)',
-            line: 'rgba(71, 85, 105, 0.32)',
-          };
-
-  return (
-    <div
-      aria-label={`Изображение режима ${label}`}
-      style={{
-        position: 'relative',
-        width: MODE_ARTWORK_SIZE,
-        height: MODE_ARTWORK_SIZE,
-        aspectRatio: '1 / 1',
-        alignSelf: 'center',
-        justifySelf: 'center',
-        borderRadius: 22,
-        overflow: 'hidden',
-        background: palette.bg,
-        border: '1px solid rgba(255,255,255,0.82)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 8px 18px rgba(15,23,42,0.12)',
-        opacity: 1,
-      }}
-    >
-      {imageSrc && (
-        <img
-          src={imageSrc}
-          alt=""
-          style={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            filter: muted ? 'grayscale(1) saturate(0.1)' : 'none',
-            opacity: muted ? 0.58 : 1,
-          }}
-        />
-      )}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'linear-gradient(90deg, transparent 0 46%, rgba(255,255,255,0.55) 46% 54%, transparent 54% 100%)',
-          opacity: imageSrc ? 0 : 1,
-        }}
-      />
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          left: '50%',
-          top: '50%',
-          width: 68,
-          height: 68,
-          borderRadius: '50%',
-          border: `7px solid ${palette.line}`,
-          transform: 'translate(-50%, -50%)',
-          opacity: imageSrc ? 0 : 1,
-        }}
-      />
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: '50%',
-          height: 4,
-          transform: 'translateY(-50%)',
-          background: palette.line,
-          opacity: imageSrc ? 0 : 1,
-        }}
-      />
-    </div>
-  );
-}
-
 function ModeShell({
   title,
   onBack,
   children,
+  variant = 'default',
+  className,
 }: {
   title: string;
   onBack: () => void;
   children: React.ReactNode;
+  variant?: 'default' | 'section-hub';
+  className?: string;
 }): JSX.Element {
+  const isSectionHub = variant === 'section-hub';
   return (
     <main
-      className="screen"
+      className={`screen mode-shell${isSectionHub ? ' mode-shell--section-hub' : ''}${className ? ` ${className}` : ''}`}
       style={{
-        padding: 'calc(22px + var(--app-safe-top)) 24px 24px',
+        padding: isSectionHub
+          ? 'calc(18px + var(--app-safe-top)) 14px 24px'
+          : 'calc(22px + var(--app-safe-top)) 24px 24px',
         gap: 14,
       }}
     >
@@ -2953,29 +3391,51 @@ function ModeShell({
           gap: 14,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div
+          className={isSectionHub ? 'bonus-games-catalog__header' : 'mode-shell__header'}
+          style={isSectionHub ? undefined : { display: 'flex', alignItems: 'center', gap: 10 }}
+        >
           <button
             type="button"
-            className="icon-btn"
+            className={
+              isSectionHub
+                ? 'icon-btn icon-btn--page-back catalog-header-back'
+                : 'icon-btn icon-btn--page-back'
+            }
             onClick={onBack}
             aria-label="Назад"
             title="Назад"
-            style={{
-              width: 40,
-              height: 40,
-              minWidth: 40,
-              minHeight: 40,
-              borderRadius: 999,
-              padding: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
+            style={
+              isSectionHub
+                ? undefined
+                : {
+                    width: 40,
+                    height: 40,
+                    minWidth: 40,
+                    minHeight: 40,
+                    borderRadius: 999,
+                    padding: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }
+            }
           >
             <ArrowLeft size={16} />
           </button>
-          <h1 style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}>{title}</h1>
+          <h1
+            className={
+              isSectionHub
+                ? 'bonus-games-catalog__title screen-title-on-arena'
+                : 'mode-shell__title'
+            }
+            style={
+              isSectionHub ? undefined : { margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }
+            }
+          >
+            {title}
+          </h1>
         </div>
         {children}
       </section>
@@ -3088,66 +3548,83 @@ function TrainingPlaceholder({
   }
 
   return (
-    <ModeShell title="Тренировка" onBack={onBack}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-        <TotalCell label="ЛИМИТ" value={`${shotsTaken}/${shotsLimit}`} />
-        <TotalCell label="ЧАСТОТА" value="24ч" />
-        <TotalCell label="ДО ОБНОВЛЕНИЯ" value={data ? formatHms(nextDayRemaining) : '--:--:--'} />
-      </div>
-      {loading && !data ? (
-        <div style={{ color: 'var(--muted)', fontSize: 14 }}>Загрузка...</div>
-      ) : (
-        <>
-          {error && (
-            <div style={{ color: 'var(--red-deep, #b91c1c)', fontSize: 13, fontWeight: 700 }}>
-              {error}
-            </div>
-          )}
-          {canConfigureTraining && (
-            <>
-              <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-                Выбери модель периода. Скорости игрока, ворот, шайбы и вратаря будут такими же, как
-                в дневной игре выбранного периода.
-              </div>
-              <SegmentedControl
-                ariaLabel="Период тренировки"
-                items={[
-                  { id: '1', label: '1 период' },
-                  { id: '2', label: '2 период' },
-                  { id: '3', label: '3 период' },
-                ]}
-                value={String(selectedPeriod)}
-                disabled={loading || inFlight}
-                onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
-              />
-              <PeriodSpeedSummary
-                periodNumber={selectedPeriod}
-                presets={data?.period_speed_presets}
-              />
-              <button
-                type="button"
-                className="btn btn--cta"
-                disabled={loading || inFlight}
-                onClick={() => void handleTrainingAction()}
-              >
-                {trainingActionLabel}
-              </button>
-            </>
-          )}
-          {data?.state === 'closed' && (
-            <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                <TotalCell label="ГОЛЫ" value={String(goals)} />
-                <TotalCell label="БРОСКИ" value={`${shotsTaken}/${shotsLimit}`} />
-                <TotalCell label="ТОЧНОСТЬ" value={`${accuracy}%`} />
-              </div>
-              <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-                Тренировка на сегодня завершена. Новая откроется завтра.
-              </div>
-            </>
-          )}
-        </>
+    <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
+      <section className="mode-info-card training-info-card" aria-label="Информация о тренировке">
+        <div className="training-info-overview">
+          <div className="training-info-artwork">
+            <img src="/modes/beginner.webp" alt="Тренировка" draggable={false} />
+          </div>
+          <div className="training-info-overview__copy">
+            {loading && !data ? (
+              <div className="training-info-copy">Загрузка...</div>
+            ) : (
+              <>
+                {error && <div className="training-info-error">{error}</div>}
+                {canConfigureTraining && (
+                  <div className="training-info-copy">
+                    Выбери модель периода. Скорости игрока, ворот, шайбы и вратаря будут такими же,
+                    как в дневной игре выбранного периода.
+                  </div>
+                )}
+                {data?.state === 'closed' && (
+                  <div className="training-info-copy">
+                    Тренировка на сегодня завершена. Новая откроется завтра.
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+        <div className="training-summary-grid">
+          <TotalCell label="ЛИМИТ" value={`${shotsTaken}/${shotsLimit}`} />
+          <TotalCell label="ЧАСТОТА" value="24ч" />
+          <TotalCell
+            label="ДО ОБНОВЛЕНИЯ"
+            value={data ? formatHms(nextDayRemaining) : '--:--:--'}
+          />
+        </div>
+        {!loading && data?.state === 'closed' && (
+          <div className="training-summary-grid">
+            <TotalCell label="ГОЛЫ" value={String(goals)} />
+            <TotalCell label="БРОСКИ" value={`${shotsTaken}/${shotsLimit}`} />
+            <TotalCell label="ТОЧНОСТЬ" value={`${accuracy}%`} />
+          </div>
+        )}
+      </section>
+      {!loading && canConfigureTraining && (
+        <div className="training-settings">
+          <div className="section-label training-settings__title">Настройки</div>
+          <section
+            className="mode-setup-card training-config-card"
+            aria-label="Настройка тренировки"
+          >
+            <SegmentedTabs
+              ariaLabel="Период тренировки"
+              items={[
+                { id: '1', label: '1 период' },
+                { id: '2', label: '2 период' },
+                { id: '3', label: '3 период' },
+              ]}
+              activeTab={String(selectedPeriod)}
+              disabled={inFlight}
+              onChange={(id) => setSelectedPeriod(Number(id) as 1 | 2 | 3)}
+            />
+            <PeriodSpeedSummary
+              periodNumber={selectedPeriod}
+              presets={data?.period_speed_presets}
+            />
+            <button
+              type="button"
+              className="btn btn--cta"
+              disabled={inFlight}
+              onClick={() => void handleTrainingAction()}
+            >
+              {trainingActionLabel}
+            </button>
+          </section>
+        </div>
       )}
+      <TrainingHistorySection currentDayDate={data?.day_date ?? null} />
     </ModeShell>
   );
 }
@@ -3192,7 +3669,7 @@ function formatRuCount(value: number, one: string, few: string, many: string): s
 
 function duelKindText(kind: AmateurDuelKind): string {
   if (kind === 'express') return 'Экспресс';
-  if (kind === 'express_plus') return 'Экспресс+';
+  if (kind === 'express_plus') return 'Микс';
   return 'Классика';
 }
 
@@ -3256,6 +3733,23 @@ function duelTemplateSummaryParts(template: AmateurDuelTemplate): string[] {
       })
       .join(' + '),
   ];
+}
+
+function duelTemplateOptionLabel(template: AmateurDuelTemplate): string {
+  return `${template.title} (${duelTemplateSummaryParts(template).join(' · ')})`;
+}
+
+const DUEL_TEMPLATE_KIND_ORDER: Record<AmateurDuelKind, number> = {
+  express: 0,
+  express_plus: 1,
+  classic: 2,
+};
+
+function sortDuelTemplates(templates: AmateurDuelTemplate[]): AmateurDuelTemplate[] {
+  return [...templates].sort(
+    (left, right) =>
+      DUEL_TEMPLATE_KIND_ORDER[left.duel_kind] - DUEL_TEMPLATE_KIND_ORDER[right.duel_kind],
+  );
 }
 
 function duelPeriodStartText(rule: AmateurDuelPeriodRule): string {
@@ -3446,168 +3940,98 @@ function currentMoscowSeasonKey(): string {
   return `${year}-${month}`;
 }
 
-function duelHistoryStats(matches: AmateurDuelMatch[]): {
-  duels: number;
-  wins: number;
-  points: number;
-} {
-  return matches.reduce(
-    (acc, match) => ({
-      duels: acc.duels + 1,
-      wins: acc.wins + (match.winner_user_id === match.me.user_id ? 1 : 0),
-      points: acc.points + match.me.result_points,
-    }),
-    { duels: 0, wins: 0, points: 0 },
-  );
-}
-
 function DuelStatusBadge({ match }: { match: AmateurDuelMatch }): JSX.Element {
   const status = duelOutcomeText(match);
-  const dotColor =
-    match.status === 'settled' && match.outcome === 'draw'
-      ? '#f59e0b'
-      : match.status === 'settled' && match.winner_user_id === match.me.user_id
-        ? '#22c55e'
-        : match.status === 'settled' && match.winner_user_id === match.opponent.user_id
-          ? '#ef4444'
-          : match.status === 'active'
-            ? 'var(--red)'
-            : match.status === 'ready_check'
-              ? 'var(--blue-accent)'
-              : match.status === 'invited'
-                ? '#f59e0b'
-                : 'rgba(15,23,42,0.38)';
 
   return (
-    <span
-      aria-label={`Статус: ${status}`}
-      style={{
-        gridColumn: '2 / 3',
-        gridRow: '2',
-        justifySelf: 'start',
-        maxWidth: '100%',
-        minHeight: 30,
-        borderRadius: 999,
-        padding: '0 10px',
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 7,
-        background: 'rgba(255,255,255,0.48)',
-        border: '1px solid rgba(255,255,255,0.68)',
-        color: 'rgba(15,23,42,0.68)',
-        fontSize: 12,
-        fontWeight: 900,
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
-      }}
-    >
-      <span
-        aria-hidden="true"
-        style={{
-          width: 7,
-          height: 7,
-          borderRadius: 999,
-          background: dotColor,
-          boxShadow: match.status === 'active' ? '0 0 8px rgba(225, 29, 72, 0.45)' : 'none',
-          flex: '0 0 auto',
-        }}
-      />
-      <span
-        style={{
-          minWidth: 0,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {status}
-      </span>
+    <span className="duel-card-status" aria-label={`Статус: ${status}`}>
+      {status}
     </span>
   );
 }
 
-function AmateurHub({
-  onBack,
-  onOpenDuels,
-  onOpenTournaments,
-}: {
-  onBack: () => void;
-  onOpenDuels: () => void;
-  onOpenTournaments: () => void;
-}): JSX.Element {
-  const matches = useQuery({
-    queryKey: ['amateur-duel', 'matches'],
-    queryFn: fetchAmateurMatches,
-  });
-
-  const allMatches = matches.data?.matches ?? [];
-  const activeMatches = allMatches.filter(
-    (match) =>
-      match.status === 'invited' || match.status === 'ready_check' || match.status === 'active',
+function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element {
+  const location = useLocation();
+  const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(() =>
+    new URLSearchParams(location.search).get('tournament'),
   );
+  const handleBack = (): void => {
+    if (selectedTournamentId !== null) {
+      setSelectedTournamentId(null);
+      return;
+    }
+    onBack();
+  };
 
   return (
-    <ModeShell title="Любители" onBack={onBack}>
-      <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div className="section-label section-label--page">Разделы</div>
-        <LevelHubCard
-          title="Дуэли"
-          description="Игры 1 на 1 и отбор к турнирам"
-          meta={
-            activeMatches.length > 0
-              ? formatRuCount(
-                  activeMatches.length,
-                  'текущая дуэль',
-                  'текущие дуэли',
-                  'текущих дуэлей',
-                )
-              : 'Лёгкая, средняя и сложная дуэль'
-          }
-          artwork="amateur"
-          tone="active"
-          onClick={onOpenDuels}
-        />
-        <LevelHubCard
-          title="Турниры"
-          description="Соревнования лучших и ценные призы"
-          meta="Раздел в разработке"
-          artwork="pro"
-          tone="muted"
-          onClick={onOpenTournaments}
-        />
-      </section>
+    <ModeShell title="Турниры" onBack={handleBack} variant="section-hub">
+      <TournamentCatalog
+        selectedTournamentId={selectedTournamentId}
+        onSelectedTournamentIdChange={setSelectedTournamentId}
+      />
     </ModeShell>
   );
 }
 
-function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element {
+function AmateurHubPage({
+  onBack,
+  onOpenSection,
+}: {
+  onBack: () => void;
+  onOpenSection: (section: 'duels' | 'bonus-games' | 'tournaments') => void;
+}): JSX.Element {
+  const bonusCatalog = useQuery({
+    queryKey: ['bonus-games'],
+    queryFn: fetchBonusGames,
+  });
+  const bonusProgress = bonusCatalog.isError
+    ? 'Прогресс недоступен'
+    : bonusCatalog.data
+      ? `${bonusCatalog.data.games.filter((game) => game.is_completed).length}/${bonusCatalog.data.games.length} пройдено`
+      : '—/— пройдено';
+  const sections = [
+    {
+      id: 'duels' as const,
+      title: 'Дуэли',
+      description: 'Матчи один на один',
+      artwork: '/modes/amateur-duel-card.webp',
+    },
+    {
+      id: 'bonus-games' as const,
+      title: 'Бонусные игры',
+      description: bonusProgress,
+      artwork: '/bonus-games/section-card.webp',
+    },
+    {
+      id: 'tournaments' as const,
+      title: 'Турниры',
+      description: 'Соревнования и турнирная сетка',
+      artwork: '/modes/tournaments.webp',
+    },
+  ];
+
   return (
-    <ModeShell title="Турниры" onBack={onBack}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-        <TotalCell label="СТАТУС" value="скоро" />
-        <TotalCell label="МЕСТА" value="топ" />
+    <ModeShell title="Любители" onBack={onBack} variant="section-hub">
+      <div className="amateur-hub-grid" aria-label="Разделы любителей">
+        {sections.map((section) => (
+          <button
+            key={section.id}
+            type="button"
+            className="section-card-surface amateur-hub-card"
+            aria-label={section.title}
+            onClick={() => onOpenSection(section.id)}
+          >
+            <span className="amateur-hub-card__art" aria-hidden="true">
+              <img src={section.artwork} alt="" draggable={false} />
+            </span>
+            <span className="amateur-hub-card__copy">
+              <strong>{section.title}</strong>
+              <span>{section.description}</span>
+            </span>
+            <ChevronRight className="card-chevron" size={20} strokeWidth={2.7} aria-hidden="true" />
+          </button>
+        ))}
       </div>
-
-      <section
-        className="glass"
-        style={{ borderRadius: 22, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}
-      >
-        <div className="section-label" style={{ margin: 0 }}>
-          Турнирный путь
-        </div>
-        <div style={{ color: 'var(--ink)', fontSize: 18, fontWeight: 900 }}>
-          Лидеры дуэлей попадут в турнир бесплатно
-        </div>
-        <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45, fontWeight: 700 }}>
-          Здесь позже появятся сетки, регламент месяца и список квалифицированных игроков. Сейчас
-          рейтинг дуэлей уже готовится под этот сценарий.
-        </div>
-      </section>
-
-      <button type="button" className="btn btn--cta" disabled>
-        Турниры скоро
-      </button>
     </ModeShell>
   );
 }
@@ -3618,10 +4042,12 @@ function DuelKindPreferencePicker({
   selected,
   onChange,
   onInfo,
+  locks,
 }: {
   selected: AmateurDuelKind[];
   onChange: (next: AmateurDuelKind[]) => void;
   onInfo: () => void;
+  locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
 }): JSX.Element {
   const selectedSet = new Set(selected);
   const toggleKind = (kind: AmateurDuelKind) => {
@@ -3632,7 +4058,7 @@ function DuelKindPreferencePicker({
   };
 
   return (
-    <div className="glass" style={{ borderRadius: 16, padding: '10px 10px 12px' }}>
+    <div className="glass duel-kind-picker" style={{ borderRadius: 16, padding: '10px 10px 12px' }}>
       <div
         style={{
           display: 'flex',
@@ -3651,7 +4077,7 @@ function DuelKindPreferencePicker({
           onClick={onInfo}
           aria-label="Правила поиска соперника"
         >
-          <Info size={12} color="var(--muted)" />
+          <Info className="duel-kind-picker__info-icon" size={12} />
         </button>
       </div>
       <div
@@ -3667,6 +4093,8 @@ function DuelKindPreferencePicker({
             label={duelKindText(kind)}
             checked={selectedSet.has(kind)}
             active={selectedSet.has(kind)}
+            disabled={locks?.[kind]?.blocked === true}
+            title={locks?.[kind] ? ordinaryDuelLockCopy(locks[kind]!) : undefined}
             onClick={() => toggleKind(kind)}
           />
         ))}
@@ -3680,47 +4108,43 @@ function DuelKindPreferenceButton({
   checked,
   active,
   onClick,
+  disabled = false,
+  title,
 }: {
   label: string;
   checked: boolean;
   active: boolean;
   onClick: () => void;
+  disabled?: boolean;
+  title?: string | undefined;
 }): JSX.Element {
   return (
     <button
       type="button"
       aria-pressed={checked}
+      disabled={disabled}
+      title={title}
       onClick={onClick}
       style={{
-        minHeight: 32,
+        minWidth: 0,
+        minHeight: 30,
         borderRadius: 999,
-        border: active ? '1px solid rgba(15, 23, 42, 0.18)' : '1px solid rgba(255,255,255,0.72)',
-        background: active ? 'rgba(255,255,255,0.68)' : 'rgba(255,255,255,0.3)',
-        color: 'var(--ink)',
+        border: active ? '1px solid rgba(15,23,42,0.32)' : '1px solid rgba(255,255,255,0.7)',
+        background: active ? 'rgba(31,42,61,0.92)' : 'rgba(255,255,255,0.46)',
+        color: active ? '#fff' : 'var(--ink)',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'flex-start',
-        gap: 6,
+        justifyContent: 'center',
         padding: '0 9px',
         fontSize: 10,
         fontWeight: 900,
+        lineHeight: 1,
         letterSpacing: '0',
-        boxShadow: active ? '0 8px 18px rgba(15, 23, 42, 0.08)' : 'none',
+        boxShadow: 'none',
         whiteSpace: 'nowrap',
-        minWidth: 0,
+        cursor: 'pointer',
       }}
     >
-      <span
-        aria-hidden="true"
-        style={{
-          width: 7,
-          height: 7,
-          borderRadius: 999,
-          background: active ? 'rgba(15, 23, 42, 0.78)' : 'rgba(71,85,105,0.2)',
-          boxShadow: active ? '0 0 0 4px rgba(15, 23, 42, 0.06)' : 'none',
-          flexShrink: 0,
-        }}
-      />
       {label}
     </button>
   );
@@ -3730,7 +4154,7 @@ function MatchmakingRulesContent(): JSX.Element {
   const ruleItems: Array<{ title: string; text: string }> = [
     { title: 'Экспресс', text: '1 период, 3 минуты. Нужно забить как можно больше шайб.' },
     {
-      title: 'Экспресс+',
+      title: 'Микс',
       text: '2 периода: первый до 30 бросков, второй 3 минуты на скорость.',
     },
     {
@@ -3792,9 +4216,14 @@ function AmateurDuelsPage({
 }): JSX.Element {
   const navigate = useNavigate();
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
+  const competitionLevel = useAuthStore((s) => s.user?.competitionLevel ?? null);
+  const dailyData = useDailyStore((s) => s.data);
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiFetch<ProfileData>('/me'),
+  });
   const queryClient = useQueryClient();
   const [duelTab, setDuelTab] = useState<AmateurDuelTab>('game');
-  const [historyScope, setHistoryScope] = useState<DuelHistoryScope>('current');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [duelCreationMode, setDuelCreationMode] = useState<'matchmaking' | 'challenge'>(
     'matchmaking',
@@ -3808,7 +4237,7 @@ function AmateurDuelsPage({
   const [quickPickInfoOpen, setQuickPickInfoOpen] = useState(false);
   const [opponentSearchInfoOpen, setOpponentSearchInfoOpen] = useState(false);
   const [lockerInfoOpen, setLockerInfoOpen] = useState(false);
-  const [historyResultMatch, setHistoryResultMatch] = useState<AmateurDuelMatch | null>(null);
+  const [historyResultMatchId, setHistoryResultMatchId] = useState<string | null>(null);
   const [ratingProfile, setRatingProfile] = useState<UserPickerItem | null>(null);
   const [opponentQuery, setOpponentQuery] = useState('');
   const [selectedOpponent, setSelectedOpponent] = useState<AmateurOpponent | null>(null);
@@ -3821,29 +4250,46 @@ function AmateurDuelsPage({
   const matches = useQuery({
     queryKey: ['amateur-duel', 'matches'],
     queryFn: fetchAmateurMatches,
+    refetchInterval: 15_000,
   });
+  const duelLock = matches.data?.duel_lock;
+  const duelBlocked = duelLock?.blocked === true;
+  useGameplayLockRefresh(duelLock);
   const opponents = useQuery({
     queryKey: ['amateur-duel', 'opponents', 'search', opponentQuery],
     queryFn: () => searchAmateurOpponents(opponentQuery, 12),
-    enabled: duelCreationMode === 'challenge' && opponentQuery.trim().length > 0,
+    enabled: !duelBlocked && duelCreationMode === 'challenge' && opponentQuery.trim().length > 0,
   });
   const onlineOpponents = useQuery({
     queryKey: ['amateur-duel', 'opponents', 'online'],
     queryFn: () => searchAmateurOpponents('', 12),
-    enabled: duelCreationMode === 'challenge',
+    enabled: !duelBlocked && duelCreationMode === 'challenge',
   });
   const rating = useQuery({
-    queryKey: ['amateur-duel', 'rating'],
-    queryFn: fetchAmateurRating,
+    queryKey: ['amateur-duel', 'rating', 'current'],
+    queryFn: () => fetchAmateurRating(),
   });
+  const currentSeasonKey = rating.data?.season_key ?? currentMoscowSeasonKey();
   const historyResultDetails = useQuery({
-    queryKey: ['amateur-duel', 'matches', historyResultMatch?.id],
-    queryFn: () => fetchAmateurMatch(historyResultMatch?.id ?? ''),
-    enabled: historyResultMatch !== null,
+    queryKey: ['amateur-duel', 'matches', historyResultMatchId],
+    queryFn: () => fetchAmateurMatch(historyResultMatchId ?? ''),
+    enabled: historyResultMatchId !== null,
   });
+  const closeHistoryResult = useCallback(() => setHistoryResultMatchId(null), []);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel,
+    qualifyingGoals: dailyData?.lifetime_total_goals,
+    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
+  });
+  const guardMutation = (action: () => void): void => {
+    guardAmateurMutation(amateurAccess, action);
+  };
 
   const matchmakingMut = useMutation({
     mutationFn: (duelKinds: AmateurDuelKind[]) => joinAmateurMatchmaking(duelKinds),
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
     onSuccess: (res) => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
       if (res.match) onOpenMatch(res.match.id);
@@ -3859,6 +4305,10 @@ function AmateurDuelsPage({
   const challengeMut = useMutation({
     mutationFn: (body: { template_id: string; opponent_user_id: string }) =>
       challengeAmateurDuel(body),
+    onError: () => {
+      setSelectedOpponent(null);
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
     onSuccess: () => {
       setSelectedOpponent(null);
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
@@ -3872,6 +4322,9 @@ function AmateurDuelsPage({
   });
   const acceptInviteMut = useMutation({
     mutationFn: (matchId: string) => acceptAmateurDuel(matchId),
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    },
     onSuccess: (_res, matchId) => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
       onOpenMatch(matchId);
@@ -3884,29 +4337,36 @@ function AmateurDuelsPage({
     },
   });
 
-  const templateItems = templates.data?.templates ?? [];
+  const rawTemplateItems = templates.data?.templates;
+  const templateItems = useMemo(
+    () => sortDuelTemplates(rawTemplateItems ?? []),
+    [rawTemplateItems],
+  );
   const activeMatches = (matches.data?.matches ?? []).filter(
     (match) =>
       match.status === 'invited' || match.status === 'ready_check' || match.status === 'active',
   );
   const openDuelSlotsUsed = activeMatches.length;
   const hasOpenDuelSlot = openDuelSlotsUsed < 5;
-  const history = (matches.data?.matches ?? []).filter(
-    (match) =>
-      match.status === 'settled' || match.status === 'expired' || match.status === 'cancelled',
+  const currentMatches = activeMatches.filter((match) => match.status !== 'invited');
+  const incomingInvites = activeMatches.filter(
+    (match) => match.status === 'invited' && match.me.side === 'opponent',
   );
-  const currentSeasonKey = rating.data?.season_key ?? currentMoscowSeasonKey();
-  const filteredHistory =
-    historyScope === 'current'
-      ? history.filter((match) => match.season_key === currentSeasonKey)
-      : history;
-  const historyStats = duelHistoryStats(filteredHistory);
+  const outgoingInvites = activeMatches.filter(
+    (match) => match.status === 'invited' && match.me.side === 'challenger',
+  );
   const selectedTemplate = selectedTemplateId
     ? (templateItems.find((item) => item.id === selectedTemplateId) ?? null)
     : (templateItems[0] ?? null);
-  const selectedTemplateSummaryParts = selectedTemplate
-    ? duelTemplateSummaryParts(selectedTemplate)
-    : [];
+  const formatLocks = matches.data?.format_locks;
+  const selectedFormatLock = selectedTemplate ? formatLocks?.[selectedTemplate.duel_kind] : null;
+  const selectedOpponentLock = selectedTemplate
+    ? selectedOpponent?.format_locks?.[selectedTemplate.duel_kind]
+    : null;
+  const challengeLock = duelLock ?? selectedFormatLock ?? selectedOpponentLock;
+  const eligibleMatchmakingKinds = matchmakingKinds.filter((kind) => !formatLocks?.[kind]?.blocked);
+  const unavailableFormat = DUEL_KIND_OPTIONS.find((kind) => formatLocks?.[kind]?.blocked);
+  const matchmakingFormatLock = unavailableFormat ? formatLocks?.[unavailableFormat] : null;
   const opponentOptions = opponentQuery.trim().length > 0 ? (opponents.data?.users ?? []) : [];
   const onlineOpponentOptions = (onlineOpponents.data?.users ?? []).filter((opponent) => {
     return isOpponentRecentlySeen(opponent.lastSeenAt);
@@ -3921,10 +4381,16 @@ function AmateurDuelsPage({
   const isMatchmakingExpired =
     matchmakingTicket !== null && matchmakingRemaining <= 0 && !matchmakingMut.isPending;
   const canStartMatchmaking =
+    !duelBlocked &&
     hasOpenDuelSlot &&
-    matchmakingKinds.length > 0 &&
+    eligibleMatchmakingKinds.length > 0 &&
     !matchmakingMut.isPending &&
     !isMatchmakingActive;
+
+  const resetMatchmaking = matchmakingMut.reset;
+  useEffect(() => {
+    if (duelBlocked) resetMatchmaking();
+  }, [duelBlocked, resetMatchmaking]);
 
   useEffect(() => {
     if (!selectedTemplateId && templateItems[0]) setSelectedTemplateId(templateItems[0].id);
@@ -3937,391 +4403,368 @@ function AmateurDuelsPage({
   }, [matchmakingTicket]);
 
   const canChallenge =
+    !challengeLock?.blocked &&
     hasOpenDuelSlot &&
     selectedTemplate !== null &&
     selectedOpponent !== null &&
     !challengeMut.isPending;
 
+  useEffect(() => {
+    if (rating.data?.rating_visible === false && duelTab === 'rating') setDuelTab('game');
+  }, [duelTab, rating.data?.rating_visible]);
+
+  const renderDuelCards = (items: AmateurDuelMatch[]) =>
+    items.map((match) => {
+      const canCancelInvite =
+        match.status === 'invited' &&
+        match.source === 'challenge' &&
+        match.me.side === 'challenger';
+      const canAnswerInvite = isDuelInviteForMe(match);
+      return (
+        <DuelListCard
+          key={match.id}
+          match={match}
+          onOpen={() => onOpenMatch(match.id)}
+          {...(canAnswerInvite
+            ? {
+                onAcceptInvite: () => guardMutation(() => acceptInviteMut.mutate(match.id)),
+                onDeclineInvite: () => guardMutation(() => declineInviteMut.mutate(match.id)),
+                inviteAnswerPending:
+                  (acceptInviteMut.isPending && acceptInviteMut.variables === match.id) ||
+                  (declineInviteMut.isPending && declineInviteMut.variables === match.id),
+              }
+            : {})}
+          {...(canCancelInvite
+            ? {
+                onCancelInvite: () => guardMutation(() => cancelChallengeMut.mutate(match.id)),
+                cancelInvitePending:
+                  cancelChallengeMut.isPending && cancelChallengeMut.variables === match.id,
+              }
+            : {})}
+        />
+      );
+    });
+
   return (
-    <ModeShell title="Дуэли" onBack={onBack}>
-      <SegmentedControl
+    <ModeShell
+      title="Дуэли"
+      onBack={onBack}
+      variant="section-hub"
+      className={
+        duelTab === 'locker'
+          ? `mode-shell--locker ${lockerRoomBackgroundClass(profileQuery.data?.competitionLevel)}`
+          : ''
+      }
+    >
+      <SegmentedTabs
         ariaLabel="Разделы дуэлей"
-        value={duelTab}
+        activeTab={duelTab}
         items={[
           { id: 'game', label: 'Игра' },
           { id: 'locker', label: 'Раздевалка' },
-          { id: 'rating', label: 'Рейтинг' },
+          ...(rating.data?.rating_visible === false ? [] : [{ id: 'rating', label: 'Рейтинг' }]),
           { id: 'history', label: 'История' },
         ]}
         onChange={(id) => setDuelTab(id as AmateurDuelTab)}
       />
 
       {duelTab === 'game' && (
-        <>
-          <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div className="section-label section-label--page">Новая дуэль</div>
-            <SegmentedControl
-              ariaLabel="Сценарий новой дуэли"
-              value={duelCreationMode}
-              items={[
-                { id: 'matchmaking', label: 'Найти' },
-                { id: 'challenge', label: 'Вызвать' },
-              ]}
-              onChange={(id) => setDuelCreationMode(id as 'matchmaking' | 'challenge')}
-            />
-            {duelCreationMode === 'matchmaking' ? (
-              <>
-                <DuelKindPreferencePicker
-                  selected={matchmakingKinds}
-                  onChange={setMatchmakingKinds}
-                  onInfo={() => setMatchmakingRulesOpen(true)}
-                />
-                <button
-                  type="button"
-                  className="btn btn--cta"
-                  disabled={!canStartMatchmaking}
-                  onClick={() => {
-                    setMatchmakingNow(Date.now());
-                    matchmakingMut.mutate(matchmakingKinds);
-                  }}
-                >
-                  {matchmakingMut.isPending
-                    ? 'Запускаем поиск...'
-                    : isMatchmakingActive
-                      ? 'Поиск запущен'
-                      : isMatchmakingExpired
-                        ? 'Искать снова'
-                        : 'Начать поиск'}
-                </button>
-                {matchmakingTicket && (
-                  <div
-                    className="glass"
-                    style={{
-                      borderRadius: 18,
-                      padding: 12,
-                      display: 'grid',
-                      gridTemplateColumns: 'minmax(0, 1fr) auto',
-                      alignItems: 'center',
-                      gap: 10,
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 900 }}>
-                        {isMatchmakingExpired
-                          ? 'Соперник не найден'
-                          : `Ищем соперника... ${formatMs(matchmakingRemaining)}`}
-                      </div>
-                      <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 700 }}>
-                        {isMatchmakingExpired
-                          ? 'Можно запустить поиск ещё раз.'
-                          : 'Подберём игрока с пересекающимися форматами. Поиск длится 2 минуты.'}
-                      </div>
-                    </div>
-                    {isMatchmakingActive && (
-                      <button
-                        type="button"
-                        className="btn btn--ghost"
-                        disabled={leaveMatchmakingMut.isPending}
-                        onClick={() => {
-                          leaveMatchmakingMut.mutate();
-                        }}
-                        style={{ minHeight: 38, padding: '0 14px', fontSize: 12 }}
-                      >
-                        {leaveMatchmakingMut.isPending ? 'Отмена...' : 'Отменить'}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </>
+        <div className="duel-game-layout">
+          {duelBlocked && duelLock && (
+            <p role="status" className="modal-copy">
+              {ordinaryDuelLockCopy(duelLock)}
+            </p>
+          )}
+          <section className="duel-section" aria-label="Текущие дуэли">
+            <div className="section-label duel-section-title">
+              Текущие дуэли ({openDuelSlotsUsed}/5)
+            </div>
+            {currentMatches.length === 0 ? (
+              <div role="status" className="duel-empty-current">
+                Активных матчей пока нет
+              </div>
             ) : (
-              <>
-                {templateItems.length > 0 && selectedTemplate ? (
-                  <>
-                    <GlassSelect
-                      ariaLabel="Шаблон дуэли"
-                      value={selectedTemplate.id}
-                      options={templateItems.map((template) => ({
-                        value: template.id,
-                        label: template.title,
-                      }))}
-                      onChange={setSelectedTemplateId}
-                    />
-                    <div
-                      aria-label="Параметры дуэли"
-                      style={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        alignItems: 'center',
-                        gap: 7,
-                        padding: '0 4px',
-                        color: 'var(--muted)',
-                        fontSize: 13,
-                        fontWeight: 800,
-                        lineHeight: 1.25,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {selectedTemplateSummaryParts.map((part, index) => (
-                        <span key={`${part}-${index}`} style={{ display: 'inline-flex', gap: 7 }}>
-                          {index > 0 && (
-                            <span aria-hidden="true" style={{ opacity: 0.55 }}>
-                              ·
-                            </span>
-                          )}
-                          <span>{part}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ color: 'var(--muted)', fontSize: 14 }}>Нет активных шаблонов</div>
-                )}
-                <div
-                  className="section-label section-label--page"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 8,
-                    marginBottom: -4,
-                    paddingRight: 0,
-                  }}
-                >
-                  <span>Быстрый выбор</span>
-                  <button
-                    type="button"
-                    className="section-info-btn"
-                    onClick={() => setQuickPickInfoOpen(true)}
-                    aria-label="Что такое быстрый выбор"
-                  >
-                    <Info size={12} color="var(--muted)" />
-                  </button>
-                </div>
-                <div className="glass" style={{ borderRadius: 18, padding: 12 }}>
-                  <div
-                    aria-label="Быстрый выбор соперника"
-                    className="no-scrollbar"
-                    style={{
-                      display: 'flex',
-                      gap: 10,
-                      overflowX: 'auto',
-                      paddingTop: 2,
-                      paddingBottom: 2,
-                    }}
-                  >
-                    {suggestedOpponentOptions.length > 0 ? (
-                      suggestedOpponentOptions.map((opponent) => {
-                        const active = selectedOpponent?.userId === opponent.userId;
-                        return (
-                          <button
-                            key={opponent.userId}
-                            type="button"
-                            aria-label={`Выбрать соперника ${opponent.displayName}`}
-                            onClick={() => {
-                              setSelectedOpponent(opponent);
-                              setOpponentQuery('');
-                            }}
-                            style={{
-                              width: 58,
-                              flex: '0 0 auto',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                              gap: 6,
-                              color: active ? 'var(--ink)' : 'var(--muted)',
-                              fontSize: 10,
-                              fontWeight: 900,
-                              lineHeight: 1.05,
-                              background: 'transparent',
-                              border: 'none',
-                              padding: 0,
-                              textAlign: 'center',
-                            }}
-                          >
-                            <span style={{ position: 'relative', display: 'inline-flex' }}>
-                              <UserAvatar
-                                avatarUrl={opponent.avatarUrl}
-                                name={opponent.displayName}
-                                size={44}
-                                fontSize={16}
-                                style={{
-                                  boxShadow: active
-                                    ? '0 0 0 3px #f59e0b, 0 10px 18px rgba(15, 23, 42, 0.18)'
-                                    : '0 8px 16px rgba(15, 23, 42, 0.12)',
-                                }}
-                              />
-                              <span
-                                aria-hidden="true"
-                                style={{
-                                  position: 'absolute',
-                                  right: 1,
-                                  bottom: 1,
-                                  width: 11,
-                                  height: 11,
-                                  borderRadius: 999,
-                                  background: isOpponentOnlineNow(opponent.lastSeenAt)
-                                    ? '#22c55e'
-                                    : '#94a3b8',
-                                  border: '2px solid rgba(226, 240, 252, 0.98)',
-                                }}
-                              />
-                            </span>
-                            <span
-                              style={{
-                                width: '100%',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {opponent.displayName}
-                            </span>
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 700 }}>
-                        Игроков пока не видно. Можно найти по имени.
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div
-                  className="section-label section-label--page"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 8,
-                    marginBottom: -4,
-                    paddingRight: 0,
-                  }}
-                >
-                  <span>Поиск</span>
-                  <button
-                    type="button"
-                    className="section-info-btn"
-                    onClick={() => setOpponentSearchInfoOpen(true)}
-                    aria-label="Как работает поиск соперника"
-                  >
-                    <Info size={12} color="var(--muted)" />
-                  </button>
-                </div>
-                <div className="glass-dock-field" style={{ minHeight: 48 }}>
-                  <Search size={14} color="var(--muted)" aria-hidden />
-                  <input
-                    aria-label="Поиск соперника"
-                    value={opponentQuery}
-                    onChange={(event) => {
-                      setOpponentQuery(event.target.value);
-                      setSelectedOpponent(null);
-                    }}
-                    placeholder="Имя или фамилия"
-                    type="search"
-                    style={{
-                      flex: 1,
-                      border: 'none',
-                      outline: 'none',
-                      background: 'transparent',
-                      color: 'var(--ink)',
-                      fontSize: 14,
-                      fontWeight: 800,
-                      fontFamily: 'inherit',
-                    }}
+              renderDuelCards(currentMatches)
+            )}
+          </section>
+          {incomingInvites.length > 0 && (
+            <section className="duel-section" aria-label="Входящие приглашения">
+              <div className="section-label duel-section-title">Входящие приглашения</div>
+              {renderDuelCards(incomingInvites)}
+            </section>
+          )}
+          {outgoingInvites.length > 0 && (
+            <section className="duel-section" aria-label="Отправленные вызовы">
+              <div className="section-label duel-section-title">Отправленные вызовы</div>
+              {renderDuelCards(outgoingInvites)}
+            </section>
+          )}
+          <div className="duel-section">
+            <div className="section-label duel-section-title">Новая дуэль</div>
+            <section className="duel-creation-card" aria-label="Новая дуэль">
+              <SegmentedTabs
+                ariaLabel="Сценарий новой дуэли"
+                activeTab={duelCreationMode}
+                items={[
+                  { id: 'matchmaking', label: 'Найти' },
+                  { id: 'challenge', label: 'Вызвать' },
+                ]}
+                onChange={(id) => setDuelCreationMode(id as 'matchmaking' | 'challenge')}
+              />
+              {duelCreationMode === 'matchmaking' ? (
+                <>
+                  <DuelKindPreferencePicker
+                    selected={eligibleMatchmakingKinds}
+                    {...(formatLocks === undefined ? {} : { locks: formatLocks })}
+                    onChange={setMatchmakingKinds}
+                    onInfo={() => setMatchmakingRulesOpen(true)}
                   />
-                </div>
-                {selectedOpponent && (
-                  <div
-                    className="glass"
-                    style={{
-                      borderRadius: 16,
-                      padding: '10px 12px',
-                      display: 'grid',
-                      gridTemplateColumns: 'minmax(0, 1fr) 34px',
-                      gap: 10,
-                      alignItems: 'center',
+                  <button
+                    type="button"
+                    className="btn btn--cta"
+                    disabled={!canStartMatchmaking}
+                    onClick={() => {
+                      guardMutation(() => {
+                        setMatchmakingNow(Date.now());
+                        matchmakingMut.mutate(eligibleMatchmakingKinds);
+                      });
                     }}
                   >
-                    <div style={{ minWidth: 0 }}>
-                      <div className="section-label" style={{ margin: 0, padding: 0 }}>
-                        Соперник
-                      </div>
-                      <div
-                        style={{
-                          color: 'var(--ink)',
-                          fontSize: 16,
-                          fontWeight: 900,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {selectedOpponent.displayName}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      aria-label="Убрать соперника"
-                      title="Убрать соперника"
-                      onClick={() => setSelectedOpponent(null)}
-                    >
-                      <X size={15} />
-                    </button>
-                  </div>
-                )}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {opponentOptions.slice(0, 4).map((opponent) => (
-                    <button
-                      key={opponent.userId}
-                      type="button"
-                      onClick={() => {
-                        setSelectedOpponent(opponent);
-                        setOpponentQuery('');
-                      }}
+                    {matchmakingMut.isPending
+                      ? 'Запускаем поиск...'
+                      : isMatchmakingActive
+                        ? 'Поиск запущен'
+                        : isMatchmakingExpired
+                          ? 'Искать снова'
+                          : 'Начать поиск'}
+                  </button>
+                  {!duelBlocked && matchmakingFormatLock && (
+                    <p role="status" className="modal-copy">
+                      Некоторые форматы недоступны. {ordinaryDuelLockCopy(matchmakingFormatLock)}
+                    </p>
+                  )}
+                  {matchmakingTicket && (
+                    <div
                       className="glass"
                       style={{
-                        minHeight: 58,
-                        borderRadius: 20,
-                        padding: '8px 12px',
+                        borderRadius: 18,
+                        padding: 12,
                         display: 'grid',
-                        gridTemplateColumns: '42px minmax(0, 1fr)',
+                        gridTemplateColumns: 'minmax(0, 1fr) auto',
                         alignItems: 'center',
-                        gap: 12,
-                        textAlign: 'left',
-                        border:
-                          selectedOpponent?.userId === opponent.userId
-                            ? '2px solid #f59e0b'
-                            : '1px solid rgba(255,255,255,0.8)',
+                        gap: 10,
                       }}
                     >
-                      <span style={{ position: 'relative', display: 'inline-flex' }}>
-                        <UserAvatar
-                          avatarUrl={opponent.avatarUrl}
-                          name={opponent.displayName}
-                          size={42}
-                          fontSize={15}
-                        />
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            position: 'absolute',
-                            right: 0,
-                            bottom: 0,
-                            width: 11,
-                            height: 11,
-                            borderRadius: 999,
-                            background: isOpponentOnlineNow(opponent.lastSeenAt)
-                              ? '#22c55e'
-                              : '#94a3b8',
-                            border: '2px solid rgba(226, 240, 252, 0.98)',
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 900 }}>
+                          {isMatchmakingExpired
+                            ? 'Соперник не найден'
+                            : `Ищем соперника... ${formatMs(matchmakingRemaining)}`}
+                        </div>
+                        <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 700 }}>
+                          {isMatchmakingExpired
+                            ? 'Можно запустить поиск ещё раз.'
+                            : 'Подберём игрока с пересекающимися форматами. Поиск длится 2 минуты.'}
+                        </div>
+                      </div>
+                      {isMatchmakingActive && (
+                        <button
+                          type="button"
+                          className="btn btn--ghost"
+                          disabled={leaveMatchmakingMut.isPending}
+                          onClick={() => {
+                            guardMutation(() => leaveMatchmakingMut.mutate());
                           }}
-                        />
-                      </span>
-                      <span style={{ minWidth: 0 }}>
-                        <span
+                          style={{ minHeight: 38, padding: '0 14px', fontSize: 12 }}
+                        >
+                          {leaveMatchmakingMut.isPending ? 'Отмена...' : 'Отменить'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {!duelBlocked && challengeLock?.blocked && (
+                    <p role="status" className="modal-copy">
+                      {ordinaryDuelLockCopy(challengeLock)}
+                    </p>
+                  )}
+                  {templateItems.length > 0 && selectedTemplate ? (
+                    <>
+                      <GlassSelect
+                        ariaLabel="Шаблон дуэли"
+                        buttonClassName="duel-template-select"
+                        value={selectedTemplate.id}
+                        options={templateItems.map((template) => ({
+                          value: template.id,
+                          label: duelTemplateOptionLabel(template),
+                        }))}
+                        onChange={setSelectedTemplateId}
+                      />
+                    </>
+                  ) : (
+                    <div style={{ color: 'var(--muted)', fontSize: 14 }}>Нет активных шаблонов</div>
+                  )}
+                  <div className="section-label duel-form-section-title">
+                    <span>Быстрый выбор</span>
+                    <button
+                      type="button"
+                      className="section-info-btn duel-form-section-info-btn"
+                      onClick={() => setQuickPickInfoOpen(true)}
+                      aria-label="Что такое быстрый выбор"
+                    >
+                      <Info size={12} color="var(--muted)" />
+                    </button>
+                  </div>
+                  <div className="glass duel-quick-pick" style={{ borderRadius: 18, padding: 12 }}>
+                    <div
+                      aria-label="Быстрый выбор соперника"
+                      className="no-scrollbar"
+                      style={{
+                        display: 'flex',
+                        gap: 10,
+                        overflowX: 'auto',
+                        paddingTop: 2,
+                        paddingBottom: 2,
+                      }}
+                    >
+                      {suggestedOpponentOptions.length > 0 ? (
+                        suggestedOpponentOptions.map((opponent) => {
+                          const active = selectedOpponent?.userId === opponent.userId;
+                          return (
+                            <button
+                              key={opponent.userId}
+                              type="button"
+                              className={`duel-quick-pick__opponent${
+                                active ? ' duel-quick-pick__opponent--active' : ''
+                              }`}
+                              aria-label={`Выбрать соперника ${opponent.displayName}`}
+                              onClick={() => {
+                                setSelectedOpponent(opponent);
+                                setOpponentQuery('');
+                              }}
+                              style={{
+                                width: 58,
+                                flex: '0 0 auto',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                gap: 6,
+                                fontSize: 10,
+                                fontWeight: 900,
+                                lineHeight: 1.05,
+                                background: 'transparent',
+                                border: 'none',
+                                padding: 0,
+                                textAlign: 'center',
+                              }}
+                            >
+                              <span style={{ position: 'relative', display: 'inline-flex' }}>
+                                <UserAvatar
+                                  avatarUrl={opponent.avatarUrl}
+                                  name={opponent.displayName}
+                                  size={44}
+                                  fontSize={16}
+                                  style={{
+                                    boxShadow: active
+                                      ? '0 0 0 3px #f59e0b, 0 10px 18px rgba(15, 23, 42, 0.18)'
+                                      : '0 8px 16px rgba(15, 23, 42, 0.12)',
+                                  }}
+                                />
+                                <span
+                                  aria-hidden="true"
+                                  style={{
+                                    position: 'absolute',
+                                    right: 1,
+                                    bottom: 1,
+                                    width: 11,
+                                    height: 11,
+                                    borderRadius: 999,
+                                    background: isOpponentOnlineNow(opponent.lastSeenAt)
+                                      ? '#22c55e'
+                                      : '#94a3b8',
+                                    border: '2px solid rgba(226, 240, 252, 0.98)',
+                                  }}
+                                />
+                              </span>
+                              <span
+                                className="duel-quick-pick__name"
+                                style={{
+                                  width: '100%',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {opponent.displayName}
+                              </span>
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div
+                          className="duel-quick-pick__empty"
+                          style={{ fontSize: 13, fontWeight: 700 }}
+                        >
+                          Игроков пока не видно. Можно найти по имени.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="section-label duel-form-section-title">
+                    <span>Поиск</span>
+                    <button
+                      type="button"
+                      className="section-info-btn duel-form-section-info-btn"
+                      onClick={() => setOpponentSearchInfoOpen(true)}
+                      aria-label="Как работает поиск соперника"
+                    >
+                      <Info size={12} color="var(--muted)" />
+                    </button>
+                  </div>
+                  <div className="glass-dock-field duel-opponent-search" style={{ minHeight: 48 }}>
+                    <Search className="duel-opponent-search__icon" size={14} aria-hidden />
+                    <input
+                      className="duel-opponent-search__input"
+                      aria-label="Поиск соперника"
+                      disabled={duelBlocked}
+                      value={opponentQuery}
+                      onChange={(event) => {
+                        setOpponentQuery(event.target.value);
+                        setSelectedOpponent(null);
+                      }}
+                      placeholder="Имя или фамилия"
+                      type="search"
+                      style={{
+                        flex: 1,
+                        border: 'none',
+                        outline: 'none',
+                        background: 'transparent',
+                        fontSize: 14,
+                        fontWeight: 800,
+                        fontFamily: 'inherit',
+                      }}
+                    />
+                  </div>
+                  {selectedOpponent && (
+                    <div
+                      className="glass"
+                      style={{
+                        borderRadius: 16,
+                        padding: '10px 12px',
+                        display: 'grid',
+                        gridTemplateColumns: 'minmax(0, 1fr) 34px',
+                        gap: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div className="section-label" style={{ margin: 0, padding: 0 }}>
+                          Соперник
+                        </div>
+                        <div
                           style={{
-                            display: 'block',
                             color: 'var(--ink)',
                             fontSize: 16,
                             fontWeight: 900,
@@ -4330,135 +4773,130 @@ function AmateurDuelsPage({
                             whiteSpace: 'nowrap',
                           }}
                         >
-                          {opponent.displayName}
+                          {selectedOpponent.displayName}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label="Убрать соперника"
+                        title="Убрать соперника"
+                        onClick={() => setSelectedOpponent(null)}
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {opponentOptions.slice(0, 4).map((opponent) => (
+                      <button
+                        key={opponent.userId}
+                        type="button"
+                        onClick={() => {
+                          setSelectedOpponent(opponent);
+                          setOpponentQuery('');
+                        }}
+                        className="glass"
+                        style={{
+                          minHeight: 58,
+                          borderRadius: 20,
+                          padding: '8px 12px',
+                          display: 'grid',
+                          gridTemplateColumns: '42px minmax(0, 1fr)',
+                          alignItems: 'center',
+                          gap: 12,
+                          textAlign: 'left',
+                          border:
+                            selectedOpponent?.userId === opponent.userId
+                              ? '2px solid #f59e0b'
+                              : '1px solid rgba(255,255,255,0.8)',
+                        }}
+                      >
+                        <span style={{ position: 'relative', display: 'inline-flex' }}>
+                          <UserAvatar
+                            avatarUrl={opponent.avatarUrl}
+                            name={opponent.displayName}
+                            size={42}
+                            fontSize={15}
+                          />
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              position: 'absolute',
+                              right: 0,
+                              bottom: 0,
+                              width: 11,
+                              height: 11,
+                              borderRadius: 999,
+                              background: isOpponentOnlineNow(opponent.lastSeenAt)
+                                ? '#22c55e'
+                                : '#94a3b8',
+                              border: '2px solid rgba(226, 240, 252, 0.98)',
+                            }}
+                          />
                         </span>
-                        <span
-                          style={{
-                            display: 'block',
-                            color: 'var(--muted)',
-                            fontSize: 11,
-                            fontWeight: 800,
-                          }}
-                        >
-                          {isOpponentOnlineNow(opponent.lastSeenAt)
-                            ? 'сейчас в игре'
-                            : isOpponentRecentlySeen(opponent.lastSeenAt)
-                              ? 'недавно был'
-                              : 'доступен для вызова'}
+                        <span style={{ minWidth: 0 }}>
+                          <span
+                            style={{
+                              display: 'block',
+                              color: 'var(--ink)',
+                              fontSize: 16,
+                              fontWeight: 900,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {opponent.displayName}
+                          </span>
+                          <span
+                            style={{
+                              display: 'block',
+                              color: 'var(--muted)',
+                              fontSize: 11,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {isOpponentOnlineNow(opponent.lastSeenAt)
+                              ? 'сейчас в игре'
+                              : isOpponentRecentlySeen(opponent.lastSeenAt)
+                                ? 'недавно был'
+                                : 'доступен для вызова'}
+                          </span>
                         </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  className="btn btn--cta"
-                  disabled={!canChallenge}
-                  onClick={() => {
-                    if (!selectedTemplate || !selectedOpponent) return;
-                    challengeMut.mutate({
-                      template_id: selectedTemplate.id,
-                      opponent_user_id: selectedOpponent.userId,
-                    });
-                  }}
-                >
-                  {challengeMut.isPending
-                    ? 'Отправляем...'
-                    : selectedOpponent
-                      ? 'Вызвать игрока'
-                      : 'Выберите соперника'}
-                </button>
-                {challengeMut.error && (
-                  <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>
-                    {challengeMut.error.message}
+                      </button>
+                    ))}
                   </div>
-                )}
-              </>
-            )}
-          </section>
-
-          <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div
-              className="section-label section-label--page"
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
-              <span>Текущие дуэли ({openDuelSlotsUsed}/5)</span>
-            </div>
-            {activeMatches.length === 0 && (
-              <div
-                role="status"
-                style={{
-                  minHeight: 132,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  textAlign: 'center',
-                  color: 'var(--muted)',
-                }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 46,
-                    height: 46,
-                    borderRadius: 999,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: 'rgba(226, 240, 252, 0.52)',
-                    border: '1px solid rgba(255, 255, 255, 0.76)',
-                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9)',
-                  }}
-                >
-                  <Swords size={20} strokeWidth={2.2} />
-                </span>
-                <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.35 }}>
-                  Пока нет приглашений и текущих дуэлей
-                </div>
-                <div style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.35, opacity: 0.78 }}>
-                  Начните поиск или вызовите игрока выше.
-                </div>
-              </div>
-            )}
-            {activeMatches.map((match) => {
-              const canCancelInvite =
-                match.status === 'invited' &&
-                match.source === 'challenge' &&
-                match.me.side === 'challenger';
-              const canAnswerInvite = isDuelInviteForMe(match);
-              return (
-                <DuelListCard
-                  key={match.id}
-                  match={match}
-                  onOpen={() => onOpenMatch(match.id)}
-                  {...(canAnswerInvite
-                    ? {
-                        onAcceptInvite: () => acceptInviteMut.mutate(match.id),
-                        onDeclineInvite: () => declineInviteMut.mutate(match.id),
-                        inviteAnswerPending:
-                          (acceptInviteMut.isPending && acceptInviteMut.variables === match.id) ||
-                          (declineInviteMut.isPending && declineInviteMut.variables === match.id),
-                      }
-                    : {})}
-                  {...(canCancelInvite
-                    ? {
-                        onCancelInvite: () => cancelChallengeMut.mutate(match.id),
-                        cancelInvitePending:
-                          cancelChallengeMut.isPending && cancelChallengeMut.variables === match.id,
-                      }
-                    : {})}
-                />
-              );
-            })}
-          </section>
-        </>
+                  <button
+                    type="button"
+                    className="btn btn--cta duel-challenge-submit"
+                    disabled={!canChallenge}
+                    onClick={() => {
+                      if (!selectedTemplate || !selectedOpponent) return;
+                      guardMutation(() => {
+                        challengeMut.mutate({
+                          template_id: selectedTemplate.id,
+                          opponent_user_id: selectedOpponent.userId,
+                        });
+                      });
+                    }}
+                  >
+                    {challengeMut.isPending
+                      ? 'Отправляем...'
+                      : selectedOpponent
+                        ? 'Вызвать игрока'
+                        : 'Выберите соперника'}
+                  </button>
+                  {challengeMut.error && (
+                    <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>
+                      {challengeMut.error.message}
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+          </div>
+        </div>
       )}
 
       {duelTab === 'locker' && (
@@ -4469,164 +4907,52 @@ function AmateurDuelsPage({
       )}
 
       {duelTab === 'rating' && (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div className="section-label section-label--page">Рейтинг</div>
-          {(rating.data?.rating ?? []).length === 0 ? (
-            <div className="glass" style={{ borderRadius: 18, padding: 14, color: 'var(--muted)' }}>
-              Рейтинг появится после первых завершённых дуэлей.
-            </div>
-          ) : (
-            <>
-              <div
-                aria-hidden="true"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '24px minmax(0, 1fr) auto',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '0 14px 0',
-                  color: 'rgba(15, 23, 42, 0.55)',
-                  fontSize: 10,
-                  fontWeight: 900,
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                <span>#</span>
-                <span>Игрок</span>
-                <span>Очки</span>
-              </div>
-              {(rating.data?.rating ?? []).map((row, index) => {
-                const isMe = currentUserId === row.user_id;
-                return (
-                  <button
-                    type="button"
-                    key={row.user_id}
-                    className="glass"
-                    aria-label={`Открыть профиль ${row.display_name}`}
-                    onClick={() =>
-                      setRatingProfile({
-                        userId: row.user_id,
-                        displayName: row.display_name,
-                        avatarUrl: row.avatar_url,
-                      })
-                    }
-                    style={{
-                      width: '100%',
-                      borderRadius: 16,
-                      padding: '10px 14px',
-                      display: 'grid',
-                      gridTemplateColumns: '24px minmax(0, 1fr) auto',
-                      alignItems: 'center',
-                      gap: 8,
-                      minHeight: 48,
-                      color: isMe ? '#ffffff' : 'var(--ink)',
-                      fontSize: 14,
-                      fontWeight: 800,
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      border: isMe
-                        ? '1px solid rgba(255,255,255,0.22)'
-                        : '1px solid rgba(255,255,255,0.8)',
-                      background: isMe
-                        ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.94))'
-                        : undefined,
-                      boxShadow: isMe ? '0 12px 24px rgba(15, 23, 42, 0.2)' : undefined,
-                    }}
-                  >
-                    <span>{index + 1}</span>
-                    <span
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        minWidth: 0,
-                      }}
-                    >
-                      <UserAvatar
-                        avatarUrl={row.avatar_url}
-                        name={row.display_name}
-                        size={34}
-                        fontSize={14}
-                        alt={`Аватар ${row.display_name}`}
-                      />
-                      <span
-                        style={{
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {row.display_name}
-                      </span>
-                    </span>
-                    <span
-                      style={{
-                        justifySelf: 'end',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {row.points}
-                    </span>
-                  </button>
-                );
-              })}
-            </>
-          )}
-        </section>
+        <AmateurDuelRatingTab
+          currentUserId={currentUserId}
+          initialSeasonKey={currentSeasonKey}
+          onOpenProfile={setRatingProfile}
+        />
       )}
 
       {duelTab === 'history' && (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div className="section-label section-label--page">История</div>
-          <SegmentedControl
-            ariaLabel="Фильтр истории дуэлей"
-            value={historyScope}
-            items={[
-              { id: 'current', label: 'Текущий месяц' },
-              { id: 'all', label: 'Всё время' },
-            ]}
-            onChange={(id) => setHistoryScope(id as DuelHistoryScope)}
-          />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-            <TotalCell label="ДУЭЛИ" value={String(historyStats.duels)} />
-            <TotalCell label="ПОБЕДЫ" value={String(historyStats.wins)} />
-            <TotalCell label="ОЧКИ" value={String(historyStats.points)} />
-          </div>
-          {filteredHistory.length === 0 ? (
-            <div
-              style={{
-                color: 'rgba(15, 23, 42, 0.68)',
-                fontSize: 16,
-                fontWeight: 700,
-                lineHeight: 1.35,
-              }}
-            >
-              {historyScope === 'current'
-                ? 'За текущий месяц дуэлей пока нет.'
-                : 'Архив появится после первых завершённых дуэлей.'}
-            </div>
-          ) : (
-            filteredHistory
-              .slice(0, 12)
-              .map((match) => (
-                <DuelListCard
-                  key={match.id}
-                  match={match}
-                  onOpen={() => setHistoryResultMatch(match)}
-                />
-              ))
-          )}
-        </section>
-      )}
-      {historyResultMatch && (
-        <DuelResultModal
-          match={historyResultDetails.data?.match ?? historyResultMatch}
-          isLoadingDetails={historyResultDetails.isFetching && !historyResultDetails.data}
-          closeLabel="Понятно"
-          onClose={() => setHistoryResultMatch(null)}
+        <AmateurDuelHistoryTab
+          initialMonthKey={currentSeasonKey}
+          onOpenMatch={setHistoryResultMatchId}
+          onCloseMatch={closeHistoryResult}
+          expandedMatchId={historyResultMatchId}
+          expandedContent={
+            historyResultMatchId ? (
+              historyResultDetails.data?.match ? (
+                <section
+                  className="duel-inline-result"
+                  aria-label={`Подробности дуэли с ${historyResultDetails.data.match.opponent.display_name || 'соперником'}`}
+                >
+                  <DuelResultCard
+                    match={historyResultDetails.data.match}
+                    isLoadingDetails={historyResultDetails.isFetching && !historyResultDetails.data}
+                    compact
+                  />
+                </section>
+              ) : (
+                <div className="duel-inline-result__status" role="status">
+                  {historyResultDetails.isError ? (
+                    <>
+                      <span>Не удалось загрузить подробности дуэли.</span>
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() => void historyResultDetails.refetch()}
+                      >
+                        Повторить
+                      </button>
+                    </>
+                  ) : (
+                    'Загружаем подробности дуэли…'
+                  )}
+                </div>
+              )
+            ) : null
+          }
         />
       )}
       {matchmakingRulesOpen && (
@@ -4657,425 +4983,6 @@ function AmateurDuelsPage({
       )}
       <UserProfileSheet sender={ratingProfile} onClose={() => setRatingProfile(null)} />
     </ModeShell>
-  );
-}
-
-function DuelLockerTab({
-  onInfo,
-  onOpenInventory,
-}: {
-  onInfo: () => void;
-  onOpenInventory: () => void;
-}): JSX.Element {
-  const queryClient = useQueryClient();
-  const [selectedKind, setSelectedKind] = useState<InventoryEquipmentKind | null>(null);
-  const inventoryQuery = useQuery<InventoryState>({
-    queryKey: ['inventory', 'me'],
-    queryFn: fetchMyInventory,
-  });
-  const equipmentMut = useMutation<
-    InventoryState,
-    Error,
-    { kind: InventoryEquipmentKind; itemId: string | null }
-  >({
-    mutationFn: ({ kind, itemId }) =>
-      patchEquipment({ [DUEL_EQUIPMENT_META[kind].patchKey]: itemId }),
-    onSuccess: (inventory) => {
-      queryClient.setQueryData(['inventory', 'me'], inventory);
-    },
-  });
-
-  return (
-    <>
-      <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div
-          className="section-label section-label--page"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8,
-            paddingRight: 0,
-          }}
-        >
-          <span>Раздевалка</span>
-          <button
-            type="button"
-            className="section-info-btn"
-            onClick={onInfo}
-            aria-label="Что такое раздевалка"
-          >
-            <Info size={12} color="var(--muted)" />
-          </button>
-        </div>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-            gap: 8,
-          }}
-        >
-          {DUEL_INVENTORY_SLOTS.map((slot) => (
-            <DuelLockerSlotButton
-              key={slot.kind}
-              kind={slot.kind}
-              inventory={inventoryQuery.data}
-              onOpen={() => setSelectedKind(slot.kind)}
-            />
-          ))}
-        </div>
-      </section>
-      <button type="button" className="btn btn--cta" onClick={onOpenInventory}>
-        В магазин
-      </button>
-      {selectedKind !== null && (
-        <DuelEquipmentDetailsModal
-          kind={selectedKind}
-          inventory={inventoryQuery.data}
-          isSaving={equipmentMut.isPending}
-          error={equipmentMut.isError ? equipmentMut.error.message : null}
-          onOpenShop={() => {
-            equipmentMut.reset();
-            setSelectedKind(null);
-            onOpenInventory();
-          }}
-          onClose={() => {
-            equipmentMut.reset();
-            setSelectedKind(null);
-          }}
-          onSelect={(itemId) => {
-            const kind = selectedKind;
-            equipmentMut.mutate(
-              { kind, itemId },
-              {
-                onSuccess: () => setSelectedKind(null),
-              },
-            );
-          }}
-        />
-      )}
-    </>
-  );
-}
-
-function DuelLockerSlotButton({
-  kind,
-  inventory,
-  onOpen,
-}: {
-  kind: InventoryEquipmentKind;
-  inventory: InventoryState | undefined;
-  onOpen: () => void;
-}): JSX.Element {
-  const meta = DUEL_EQUIPMENT_META[kind];
-  const items = (inventory?.items[kind] ?? []).filter(isDuelLockerItemAvailable);
-  const activeItem = duelEquippedItem(inventory, kind);
-  const hasBaseEquipment = isDuelRequiredEquipment(kind);
-  const hasOwnedItems = items.length > 0;
-  const title = activeItem
-    ? duelEquipmentDisplayTitle(activeItem)
-    : hasBaseEquipment
-      ? duelBaseEquipmentTitle(kind)
-      : meta.empty;
-  const status = activeItem
-    ? duelInventoryPeriodLabel(activeItem.chargesAvailable)
-    : hasBaseEquipment
-      ? 'Базовая'
-      : hasOwnedItems
-        ? 'Выбрать'
-        : 'Нет купленных';
-  const artwork = activeItem
-    ? artworkForInventoryItem(activeItem)
-    : placeholderArtworkForKind(kind);
-  const hasVisibleEquipment = activeItem !== null || hasBaseEquipment;
-
-  return (
-    <button
-      type="button"
-      className="glass"
-      onClick={onOpen}
-      aria-label={`${meta.title}: ${title}. ${status}`}
-      style={{
-        minWidth: 0,
-        minHeight: 158,
-        borderRadius: 22,
-        padding: 10,
-        border: hasVisibleEquipment
-          ? '1px solid rgba(255,255,255,0.82)'
-          : '1px solid rgba(255,255,255,0.62)',
-        display: 'grid',
-        gridTemplateRows: '1fr auto',
-        gap: 8,
-        color: 'var(--ink)',
-        textAlign: 'left',
-        cursor: 'pointer',
-        overflow: 'hidden',
-      }}
-    >
-      <span
-        aria-hidden="true"
-        style={{
-          width: '100%',
-          aspectRatio: '1 / 1',
-          borderRadius: 18,
-          overflow: 'hidden',
-          border: '1px solid rgba(255,255,255,0.78)',
-          background: 'rgba(255,255,255,0.28)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.78), 0 10px 18px rgba(15,23,42,0.1)',
-        }}
-      >
-        <img
-          src={artwork}
-          alt=""
-          style={{
-            width: '100%',
-            height: '100%',
-            display: 'block',
-            objectFit: 'cover',
-            filter: hasVisibleEquipment ? 'none' : 'grayscale(1)',
-            opacity: hasVisibleEquipment ? 1 : 0.46,
-          }}
-        />
-      </span>
-      <span style={{ minWidth: 0, display: 'grid', gap: 4 }}>
-        <span
-          style={{
-            minWidth: 0,
-            color: 'var(--ink)',
-            fontSize: 12,
-            fontWeight: 950,
-            lineHeight: 1.08,
-            overflowWrap: 'break-word',
-          }}
-        >
-          {title}
-        </span>
-        <span
-          style={{
-            color: 'rgba(15, 23, 42, 0.6)',
-            fontSize: 10,
-            fontWeight: 850,
-            lineHeight: 1.1,
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}
-        >
-          {status}
-        </span>
-      </span>
-    </button>
-  );
-}
-
-function DuelEquipmentDetailsModal({
-  kind,
-  inventory,
-  isSaving,
-  error,
-  onSelect,
-  onOpenShop,
-  onClose,
-}: {
-  kind: InventoryEquipmentKind;
-  inventory: InventoryState | undefined;
-  isSaving: boolean;
-  error: string | null;
-  onSelect: (itemId: string | null) => void;
-  onOpenShop: () => void;
-  onClose: () => void;
-}): JSX.Element {
-  const meta = DUEL_EQUIPMENT_META[kind];
-  const items = (inventory?.items[kind] ?? []).filter(isDuelLockerItemAvailable);
-  const activeId = duelEquipmentIdFor(inventory, kind);
-
-  return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
-      <section
-        role="dialog"
-        aria-label={meta.title}
-        className="modal-card"
-        onClick={(event) => event.stopPropagation()}
-        style={{
-          width: 'min(430px, calc(100vw - 28px))',
-          display: 'grid',
-          gap: 14,
-          position: 'relative',
-        }}
-      >
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="Закрыть"
-          onClick={onClose}
-          style={{ position: 'absolute', top: 14, right: 14 }}
-        >
-          <X size={15} />
-        </button>
-        <div style={{ minWidth: 0, paddingRight: 42 }}>
-          <div className="modal-title">{meta.title}</div>
-          <div className="modal-copy">Выбор купленного инвентаря для дуэлей.</div>
-        </div>
-
-        <div style={{ display: 'grid', gap: 8 }}>
-          <button
-            type="button"
-            data-no-drag-scroll="true"
-            disabled={isSaving}
-            onClick={() => onSelect(null)}
-            className="glass"
-            aria-pressed={activeId === null}
-            style={{
-              borderRadius: 18,
-              padding: 12,
-              color: 'var(--ink)',
-              border:
-                activeId === null
-                  ? '1px solid rgba(15, 23, 42, 0.28)'
-                  : '1px solid rgba(255,255,255,0.76)',
-              background:
-                activeId === null
-                  ? 'linear-gradient(180deg, rgba(255,255,255,0.58), rgba(226, 239, 249, 0.24))'
-                  : 'rgba(255,255,255,0.22)',
-              display: 'block',
-              textAlign: 'left',
-              cursor: isSaving ? 'wait' : 'pointer',
-            }}
-          >
-            <span style={{ display: 'grid', gap: 4 }}>
-              <span style={{ fontSize: 15, fontWeight: 900 }}>{duelBaseEquipmentTitle(kind)}</span>
-              <span
-                style={{
-                  color: 'rgba(15, 23, 42, 0.62)',
-                  fontSize: 12,
-                  fontWeight: 760,
-                  lineHeight: 1.28,
-                }}
-              >
-                {duelBaseEquipmentDescription(kind)}
-              </span>
-            </span>
-          </button>
-
-          {items.map((item) => {
-            const selected = item.id === activeId;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                data-no-drag-scroll="true"
-                disabled={isSaving || item.chargesAvailable <= 0}
-                onClick={() => onSelect(item.id)}
-                aria-pressed={selected}
-                className="glass"
-                style={{
-                  borderRadius: 24,
-                  padding: 14,
-                  color: 'var(--ink)',
-                  border: selected
-                    ? '1px solid rgba(15, 23, 42, 0.28)'
-                    : '1px solid rgba(255,255,255,0.76)',
-                  background: selected
-                    ? 'linear-gradient(180deg, rgba(255,255,255,0.58), rgba(226, 239, 249, 0.24))'
-                    : 'rgba(255,255,255,0.22)',
-                  display: 'grid',
-                  gridTemplateColumns: '96px minmax(0, 1fr)',
-                  alignItems: 'start',
-                  gap: 12,
-                  textAlign: 'left',
-                  cursor: isSaving ? 'wait' : 'pointer',
-                  opacity: item.chargesAvailable > 0 ? 1 : 0.55,
-                }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: '100%',
-                    aspectRatio: '1 / 1',
-                    borderRadius: 22,
-                    overflow: 'hidden',
-                    border: '1px solid rgba(255,255,255,0.8)',
-                    background: 'rgba(255,255,255,0.28)',
-                    boxShadow:
-                      'inset 0 1px 0 rgba(255,255,255,0.8), 0 10px 18px rgba(15,23,42,0.12)',
-                  }}
-                >
-                  <img
-                    src={artworkForInventoryItem(item)}
-                    alt=""
-                    style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
-                  />
-                </span>
-                <span style={{ minWidth: 0 }}>
-                  <span
-                    style={{
-                      minWidth: 0,
-                      color: 'var(--ink)',
-                      fontSize: 18,
-                      fontWeight: 950,
-                      lineHeight: 1.08,
-                      overflowWrap: 'break-word',
-                    }}
-                  >
-                    {duelEquipmentDisplayTitle(item)}
-                  </span>
-                  <span
-                    style={{
-                      display: 'block',
-                      marginTop: 7,
-                      fontSize: 12,
-                      fontWeight: 760,
-                      lineHeight: 1.28,
-                      color: 'rgba(15, 23, 42, 0.62)',
-                    }}
-                  >
-                    {item.description}
-                  </span>
-                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
-                    <span
-                      className="pill"
-                      style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
-                    >
-                      {duelInventoryPeriodLabel(item.chargesAvailable)}
-                    </span>
-                    <span
-                      className="pill"
-                      style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
-                    >
-                      Расход {item.duelPeriodCost}/период
-                    </span>
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-
-          {items.length === 0 && (
-            <div
-              className="glass"
-              style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 10 }}
-            >
-              <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 800 }}>
-                Купленных предметов этого типа пока нет.
-              </div>
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={onOpenShop}
-                style={{ width: '100%', minHeight: 46, fontSize: 13, fontWeight: 850 }}
-              >
-                В магазин
-              </button>
-            </div>
-          )}
-        </div>
-
-        {error !== null && (
-          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}>
-            {error}
-          </div>
-        )}
-      </section>
-    </div>
   );
 }
 
@@ -5144,8 +5051,9 @@ function DuelListCard({
           boxShadow: '0 10px 18px rgba(15,23,42,0.16)',
         }}
       />
-      <div style={{ gridColumn: '2 / 3', gridRow: '1', minWidth: 0 }}>
+      <div className="duel-card-heading" style={{ gridColumn: '2 / 3', gridRow: '1', minWidth: 0 }}>
         <div
+          className="duel-card-opponent-name"
           style={{
             fontWeight: 900,
             color: 'var(--ink)',
@@ -5157,22 +5065,22 @@ function DuelListCard({
         >
           {match.opponent.display_name}
         </div>
-        <div
-          style={{
-            color: 'var(--muted)',
-            fontSize: 12,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
+        <DuelStatusBadge match={match} />
+      </div>
+      <div className="duel-card-meta" style={{ gridColumn: '2 / 3', gridRow: '2' }}>
+        <span>
           {duelKindText(match.rules.duelKind)}
           {opensOnCardClick
             ? ` · ${formatShortDateTime(historyDate)}`
             : ` · ${match.me.goals}:${match.opponent.goals}`}
-        </div>
+        </span>
+        <span
+          className="duel-card-venue"
+          aria-label={`Площадка: ${venueRoleLabel(match.venue_role)}`}
+        >
+          {venueRoleLabel(match.venue_role)}
+        </span>
       </div>
-      <DuelStatusBadge match={match} />
       {onAcceptInvite && onDeclineInvite && (
         <div
           onClick={(event) => event.stopPropagation()}
@@ -5186,7 +5094,7 @@ function DuelListCard({
         >
           <button
             type="button"
-            className="btn btn--ghost"
+            className="btn duel-invite-action duel-invite-action--decline"
             disabled={inviteAnswerPending}
             onClick={onDeclineInvite}
             style={{ minHeight: 36, fontSize: 12 }}
@@ -5195,14 +5103,22 @@ function DuelListCard({
           </button>
           <button
             type="button"
-            className="btn btn--cta"
-            disabled={inviteAnswerPending}
+            className="btn duel-invite-action duel-invite-action--accept"
+            disabled={
+              inviteAnswerPending ||
+              (match.source !== 'tournament' && match.duel_lock?.blocked === true)
+            }
             onClick={onAcceptInvite}
             style={{ minHeight: 36, fontSize: 12 }}
           >
             Принять
           </button>
         </div>
+      )}
+      {match.source !== 'tournament' && match.duel_lock?.blocked && (
+        <p className="modal-copy" style={{ gridColumn: '1 / -1', margin: 0 }}>
+          {ordinaryDuelLockCopy(match.duel_lock)}
+        </p>
       )}
       {onCancelInvite && (
         <button
@@ -5234,23 +5150,45 @@ function DuelListCard({
   );
 }
 
+export function tournamentAttemptRefetchInterval(
+  participantState: AmateurDuelMatchState['me']['state'] | undefined,
+): 1000 | false {
+  return participantState === 'period_active' ? false : 1_000;
+}
+
 function AmateurDuelPlayView({
   matchId,
+  tournamentId,
+  tournamentFixtureId,
   onBack,
   directPlayOnly = false,
   playEntranceOnMount = false,
   onEntranceConsumed,
   playRouteTransitionOnMount = false,
   onRouteTransitionConsumed,
+  onOpenTournamentMatch,
 }: {
   matchId: string;
+  tournamentId: string | null;
+  tournamentFixtureId: string | null;
   onBack: () => void;
   directPlayOnly?: boolean;
   playEntranceOnMount?: boolean;
   onEntranceConsumed?: () => void;
   playRouteTransitionOnMount?: boolean;
   onRouteTransitionConsumed?: (() => void) | undefined;
+  onOpenTournamentMatch?: (fixtureId: string, matchId: string) => void;
 }): JSX.Element {
+  const competitionLevel = useAuthStore((s) => s.user?.competitionLevel ?? null);
+  const dailyData = useDailyStore((s) => s.data);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel,
+    qualifyingGoals: dailyData?.lifetime_total_goals,
+    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
+  });
+  const showAmateurRestriction = (): void => {
+    guardAmateurMutation(amateurAccess, () => undefined);
+  };
   const match = useAmateurDuelStore((s) => s.match);
   const loading = useAmateurDuelStore((s) => s.loading);
   const error = useAmateurDuelStore((s) => s.error);
@@ -5258,7 +5196,19 @@ function AmateurDuelPlayView({
   const load = useAmateurDuelStore((s) => s.load);
   const refresh = useAmateurDuelStore((s) => s.refresh);
   const ready = useAmateurDuelStore((s) => s.ready);
+  const confirmTournamentLoadout = useAmateurDuelStore((s) => s.confirmTournamentLoadout);
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (match?.source !== 'tournament' || match.status !== 'settled') return;
+    void queryClient.invalidateQueries({ queryKey: ['tournaments'] });
+    void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    void queryClient.invalidateQueries({ queryKey: ['daily'] });
+    void queryClient.invalidateQueries({ queryKey: ['training'] });
+    void useDailyStore.getState().refresh();
+    void useTrainingSessionStore.getState().refresh();
+  }, [match?.source, match?.status, queryClient]);
   const startPeriod = useAmateurDuelStore((s) => s.startPeriod);
+  const updateLoadout = useAmateurDuelStore((s) => s.updateLoadout);
   const optimisticAddShot = useAmateurDuelStore((s) => s.optimisticAddShot);
   const submitShot = useAmateurDuelStore((s) => s.submitShot);
   const applyState = useAmateurDuelStore((s) => s.applyState);
@@ -5270,11 +5220,38 @@ function AmateurDuelPlayView({
   );
   const [playerReadyEntranceKey, setPlayerReadyEntranceKey] = useState<string | null>(null);
   const [goalieReadyEntranceKey, setGoalieReadyEntranceKey] = useState<string | null>(null);
+  const [showTournamentReadinessExplanation, setShowTournamentReadinessExplanation] =
+    useState(true);
+  const [disableTournamentReadinessExplanation, setDisableTournamentReadinessExplanation] =
+    useState(false);
   const previousReadyStateRef = useRef<{ me: boolean; opponent: boolean } | null>(null);
+  const appliedTournamentLoadoutVersionRef = useRef<string | null>(null);
+  const preserveSelectedLoadoutAfterReadyRef = useRef(false);
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
     enabled: Boolean(matchId),
+  });
+  const tournamentAttempt = useQuery({
+    queryKey: ['tournaments', tournamentId, 'fixtures', tournamentFixtureId, 'attempt'],
+    queryFn: () => fetchTournamentFixtureAttempt(tournamentId!, tournamentFixtureId!),
+    enabled:
+      match?.source === 'tournament' && tournamentId !== null && tournamentFixtureId !== null,
+    refetchInterval: tournamentAttemptRefetchInterval(match?.me?.state),
+  });
+  const tournamentReadinessHint = useQuery({
+    queryKey: ['tournaments', tournamentId, 'readiness-hint'],
+    queryFn: () => fetchTournamentReadinessHint(tournamentId!),
+    enabled: match?.source === 'tournament' && tournamentId !== null,
+  });
+  const dismissReadinessHint = useMutation({
+    mutationFn: () => dismissTournamentReadinessHint(tournamentId!),
+  });
+  const openNextTournamentGame = useMutation({
+    mutationFn: (fixtureId: string) => openTournamentFixtureSegment(tournamentId!, fixtureId),
+    onSuccess: (segment, fixtureId) => {
+      onOpenTournamentMatch?.(fixtureId, segment.duelMatchId);
+    },
   });
 
   useEffect(() => {
@@ -5284,7 +5261,11 @@ function AmateurDuelPlayView({
   useEffect(() => {
     setDismissedResultMatchId(null);
     setSelectedLoadout({});
+    setShowTournamentReadinessExplanation(true);
+    setDisableTournamentReadinessExplanation(false);
     previousReadyStateRef.current = null;
+    appliedTournamentLoadoutVersionRef.current = null;
+    preserveSelectedLoadoutAfterReadyRef.current = false;
     setPlayerReadyEntranceKey(null);
     setGoalieReadyEntranceKey(null);
   }, [matchId]);
@@ -5297,9 +5278,11 @@ function AmateurDuelPlayView({
   useEffect(() => {
     const inventory = inventoryQuery.data;
     if (!inventory) return;
+    if (match?.source === 'tournament' && match.me.state === 'accepted') {
+      return;
+    }
     setSelectedLoadout((current) => ({
-      stick:
-        current.stick === undefined ? duelEquipmentIdFor(inventory, 'stick') : current.stick,
+      stick: current.stick === undefined ? duelEquipmentIdFor(inventory, 'stick') : current.stick,
       skates:
         current.skates === undefined ? duelEquipmentIdFor(inventory, 'skates') : current.skates,
       nutrition:
@@ -5307,22 +5290,49 @@ function AmateurDuelPlayView({
           ? duelEquipmentIdFor(inventory, 'nutrition')
           : current.nutrition,
     }));
-  }, [inventoryQuery.data, matchId]);
+  }, [inventoryQuery.data, match, matchId]);
 
   useEffect(() => {
-    if (!match || match.id !== matchId) return;
-    const meReady = match.me.state === 'ready' || match.me.state === 'accepted';
-    const opponentReady = match.opponent.state === 'ready' || match.opponent.state === 'accepted';
+    if (!match || match.source !== 'tournament' || match.me.state !== 'accepted') {
+      return;
+    }
+    const selectionKey = match.me.loadout.items
+      .map((item) => `${item.kind}:${item.id}`)
+      .sort()
+      .join('|');
+    const versionKey = `${match.id}:${match.me.current_period + 1}:${match.me.tournament_loadout_period ?? 'preview'}:${match.me.tournament_loadout_version ?? 0}:${selectionKey}`;
+    if (appliedTournamentLoadoutVersionRef.current === versionKey) return;
+    appliedTournamentLoadoutVersionRef.current = versionKey;
+    if (preserveSelectedLoadoutAfterReadyRef.current) {
+      preserveSelectedLoadoutAfterReadyRef.current = false;
+      return;
+    }
+    setSelectedLoadout(duelLoadoutSelectionFromMatch(match));
+  }, [match]);
+
+  useEffect(() => {
+    if (!match || match.id !== matchId || !amateurAccess.hasFullAccess) return;
+    const { playerReady: meReady, goalieReady: opponentReady } =
+      duelRinkReadyPresenceForMatch(match);
     const previous = previousReadyStateRef.current;
-    if (previous && !previous.me && meReady) setPlayerReadyEntranceKey(match.me.ready_at ?? match.id);
+    if (previous && !previous.me && meReady) {
+      setPlayerReadyEntranceKey(match.me.ready_at ?? match.me.period_started_at ?? match.id);
+    }
     if (previous && !previous.opponent && opponentReady) {
-      setGoalieReadyEntranceKey(match.opponent.ready_at ?? match.id);
+      setGoalieReadyEntranceKey(
+        match.opponent.ready_at ?? match.opponent.period_started_at ?? match.id,
+      );
     }
     previousReadyStateRef.current = { me: meReady, opponent: opponentReady };
   }, [match, matchId]);
 
+  const participantState = match?.me?.state;
   useEffect(() => {
-    if (!match || match.id !== matchId) return;
+    if (participantState === 'period_active') setSelectedLoadoutKind(null);
+  }, [participantState]);
+
+  useEffect(() => {
+    if (!match || match.id !== matchId || !amateurAccess.hasFullAccess) return;
     const endsAtMs = new Date(match.ends_at).getTime();
     const breakEndsAtMs = match.break_ends_at ? new Date(match.break_ends_at).getTime() : 0;
     if (match.me.state === 'break_active' && breakEndsAtMs > 0 && now >= breakEndsAtMs) {
@@ -5334,9 +5344,11 @@ function AmateurDuelPlayView({
       match.status !== 'expired' &&
       now >= endsAtMs
     ) {
-      void settleAmateurDuel(match.id).then(({ match: next }) => applyState(next));
+      void settleAmateurDuel(match.id)
+        .then(({ match: next }) => applyState(next))
+        .catch(() => undefined);
     }
-  }, [applyState, match, matchId, now, refresh]);
+  }, [amateurAccess.hasFullAccess, applyState, match, matchId, now, refresh]);
 
   useEffect(() => {
     if (!match || match.id !== matchId) return undefined;
@@ -5349,6 +5361,13 @@ function AmateurDuelPlayView({
     return () => window.clearInterval(id);
   }, [match, matchId, refresh]);
 
+  const duelCondition = useMemo(
+    () => (match ? createDuelConditionForMatch(match) : () => null),
+    [match],
+  );
+  const duelBlocked = match?.source !== 'tournament' && match?.duel_lock?.blocked === true;
+  useGameplayLockRefresh(match?.duel_lock);
+
   if (!match || match.id !== matchId) {
     return (
       <ModeShell title="Дуэль" onBack={onBack}>
@@ -5359,26 +5378,64 @@ function AmateurDuelPlayView({
     );
   }
 
+  if (
+    duelBlocked &&
+    match.duel_lock &&
+    ['invited', 'ready_check', 'active'].includes(match.status)
+  ) {
+    return (
+      <ModeShell title="Дуэль" onBack={onBack}>
+        <p role="status" className="modal-copy">
+          {ordinaryDuelLockCopy(match.duel_lock)}
+        </p>
+      </ModeShell>
+    );
+  }
+
   const startsAt = new Date(match.starts_at).getTime();
   const endsAt = new Date(match.ends_at).getTime();
   const breakEndsAt = match.break_ends_at ? new Date(match.break_ends_at).getTime() : 0;
   const periodEndsAt = match.period_ends_at ? new Date(match.period_ends_at).getTime() : undefined;
   const canStart =
+    !duelBlocked &&
     match.status === 'active' &&
     match.me.state === 'accepted' &&
     now >= startsAt &&
     now < endsAt &&
     match.me.current_period < match.rules.totalPeriods;
+  const usesTournamentPeriodLoadout =
+    match.source === 'tournament' && match.rules.tournamentLoadoutLifecycleVersion === 1;
+  const loadoutEditable = isDuelLoadoutEditable(match.source, match.me.state);
   const handleDirectDuelAction = async (): Promise<void> => {
-    if (inFlight) return;
+    if (inFlight || duelBlocked) return;
+    if (!amateurAccess.hasFullAccess) {
+      showAmateurRestriction();
+      return;
+    }
     const matchNow = duelMatchNowMs(match, now);
     if (match.status === 'ready_check' && match.me.state !== 'ready') {
-      await ready(selectedLoadout);
+      if (usesTournamentPeriodLoadout) preserveSelectedLoadoutAfterReadyRef.current = true;
+      const readyMatch = await ready(usesTournamentPeriodLoadout ? {} : selectedLoadout);
+      if (readyMatch === null) preserveSelectedLoadoutAfterReadyRef.current = false;
       return;
     }
     if (canStartArenaDuelPeriod(match, matchNow)) {
-      await startPeriod();
+      if (usesTournamentPeriodLoadout) {
+        const confirmed = await confirmTournamentLoadout(selectedLoadout);
+        if (confirmed === null) return;
+        await startPeriod();
+        return;
+      }
+      await startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout));
     }
+  };
+  const dismissTournamentReadinessExplanation = async (): Promise<void> => {
+    if (disableTournamentReadinessExplanation && tournamentId !== null) {
+      const result = await dismissReadinessHint.mutateAsync();
+      tournamentReadinessHint.refetch();
+      if (!result.dismissed) return;
+    }
+    setShowTournamentReadinessExplanation(false);
   };
   const nextPeriod =
     match.me.state === 'period_active'
@@ -5386,16 +5443,50 @@ function AmateurDuelPlayView({
       : Math.min(match.rules.totalPeriods, match.me.current_period + 1);
   const nextPeriodRule = currentDuelPeriodRule(match);
   const opponentDisplayName = match.opponent.display_name || 'Игрок';
+  const liveDuelCondition =
+    match.me.state === 'period_active'
+      ? duelCondition(
+          computeInitialElapsedMs({
+            sessionStartedAt: match.period_started_at,
+            serverNow: match.server_now,
+            receivedAtPerformanceMs: match.received_at_performance_ms ?? null,
+          }),
+          speedOverridesForPeriod(match.me.current_period, match.period_speed_presets),
+        )
+      : null;
+  const handleActiveLoadoutSelect = async (itemId: string | null): Promise<void> => {
+    if (selectedLoadoutKind !== 'stick') return;
+    if (!amateurAccess.hasFullAccess) {
+      showAmateurRestriction();
+      return;
+    }
+    const next = await updateLoadout({ stick: itemId });
+    if (next) setSelectedLoadoutKind(null);
+  };
+  const tournamentResultReady =
+    match.source !== 'tournament' ||
+    (tournamentAttempt.isSuccess &&
+      tournamentAttempt.data?.attempt?.duelMatchId === match.id &&
+      !['pending', 'ready_check', 'active'].includes(tournamentAttempt.data.attempt.status));
 
   if (directPlayOnly && match.me.state !== 'period_active') {
     const timing = duelEventTiming(match, now);
     const inactivePeriodRule = duelParticipantPeriodRule(match, match.me);
-    const showDirectResultModal = match.status === 'settled' && dismissedResultMatchId !== match.id;
+    const showDirectResultModal =
+      match.status === 'settled' && dismissedResultMatchId !== match.id && tournamentResultReady;
     const canRunDirectDuelAction =
-      (match.status === 'ready_check' && match.me.state !== 'ready') ||
-      canStartArenaDuelPeriod(match, duelMatchNowMs(match, now));
-    const meReady = match.me.state === 'ready' || match.me.state === 'accepted';
-    const opponentReady = match.opponent.state === 'ready' || match.opponent.state === 'accepted';
+      !duelBlocked &&
+      ((match.status === 'ready_check' && match.me.state !== 'ready') ||
+        canStartArenaDuelPeriod(match, duelMatchNowMs(match, now)));
+    const { playerReady: meReady, goalieReady: opponentReady } =
+      duelRinkReadyPresenceForMatch(match);
+    const explainTournamentReadiness =
+      match.source === 'tournament' &&
+      match.status === 'ready_check' &&
+      match.me.state !== 'ready' &&
+      showTournamentReadinessExplanation &&
+      (tournamentId === null ||
+        (tournamentReadinessHint.isSuccess && tournamentReadinessHint.data.dismissed !== true));
     return (
       <>
         <PlayView<AmateurDuelMatchState>
@@ -5424,28 +5515,43 @@ function AmateurDuelPlayView({
             inFlight ? 'ФИКСИРУЕМ...' : duelRinkPrimaryLabel(match, now).toUpperCase()
           }
           inactiveAction={canRunDirectDuelAction ? handleDirectDuelAction : undefined}
+          primaryActionBlocked={duelBlocked}
           readyPresence={{
             playerReady: meReady,
             goalieReady: opponentReady,
             playerEntranceKey: playerReadyEntranceKey,
             goalieEntranceKey: goalieReadyEntranceKey,
           }}
-          backLabel="К арене"
+          backLabel={duelBackLabel(match.source, true)}
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}
-          longCourtBackground={DAILY_LONG_COURT_BACKGROUND}
+          duelCondition={duelCondition}
+          longCourtBackground={amateurDuelCourtBackground(match)}
           hudAddon={
             <DuelRinkLoadoutHud
               match={match}
               selectedLoadout={selectedLoadout}
-              locked={meReady || inFlight}
+              locked={(match.status === 'ready_check' && meReady) || inFlight}
               onSelectKind={setSelectedLoadoutKind}
             />
           }
+          scoreboardGoals={match.me.goals}
           scoreboardOpponent={duelScoreboardOpponent(match)}
         />
-        {showDirectResultModal && <DuelResultModal match={match} onClose={onBack} />}
+        {showDirectResultModal && (
+          <DuelResultModal
+            match={match}
+            {...(tournamentAttempt.data === undefined
+              ? {}
+              : { tournamentAttempt: tournamentAttempt.data })}
+            now={now}
+            onOpenNextGame={(fixtureId) =>
+              guardAmateurMutation(amateurAccess, () => openNextTournamentGame.mutate(fixtureId))
+            }
+            onClose={onBack}
+          />
+        )}
         {selectedLoadoutKind !== null && (
           <DuelRinkLoadoutModal
             kind={selectedLoadoutKind}
@@ -5459,6 +5565,50 @@ function AmateurDuelPlayView({
             }}
           />
         )}
+        <AccessibleModal title="Подтвердите участие" open={explainTournamentReadiness} closeBlocked>
+          <div style={{ display: 'grid', gap: 14 }}>
+            <p className="modal-copy" style={{ margin: 0 }}>
+              Нажмите «Готов» на льду, чтобы подтвердить участие в дуэли.
+            </p>
+            <p className="modal-copy" style={{ margin: 0, fontSize: 13 }}>
+              Подтвердите готовность до конца таймера. Если соперник подтвердит участие, а вы — нет,
+              вам будет засчитано техническое поражение. Если не подтвердит никто, игра закроется.
+            </p>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                color: 'var(--ink)',
+                fontSize: 14,
+                fontWeight: 750,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={disableTournamentReadinessExplanation}
+                onChange={(event) =>
+                  setDisableTournamentReadinessExplanation(event.currentTarget.checked)
+                }
+                style={{ width: 18, height: 18, margin: 0, accentColor: '#16263a' }}
+              />
+              Не показывать снова
+            </label>
+            {error && (
+              <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>{error}</div>
+            )}
+            <div className="modal-actions" style={{ marginTop: 2 }}>
+              <button
+                type="button"
+                className="modal-primary btn btn--cta"
+                disabled={dismissReadinessHint.isPending}
+                onClick={() => void dismissTournamentReadinessExplanation()}
+              >
+                Понятно
+              </button>
+            </div>
+          </div>
+        </AccessibleModal>
         <DuelDevStatePanel match={match} now={now} />
       </>
     );
@@ -5509,8 +5659,8 @@ function AmateurDuelPlayView({
         <button
           type="button"
           className="btn btn--cta"
-          disabled={inFlight || match.me.state === 'ready'}
-          onClick={() => void ready({})}
+          disabled={duelBlocked || inFlight || match.me.state === 'ready'}
+          onClick={() => guardAmateurMutation(amateurAccess, () => void ready({}))}
         >
           {match.me.state === 'ready' ? 'Вы готовы' : inFlight ? 'Фиксируем...' : 'Готов'}
         </button>
@@ -5521,39 +5671,62 @@ function AmateurDuelPlayView({
   if (match.me.state === 'period_active') {
     const activePeriodRule = currentDuelPeriodRule(match);
     return (
-      <PlayView<AmateurDuelMatchState>
-        suppressedByModal={false}
-        showIceCar={false}
-        playEntranceOnMount={playEntranceOnMount}
-        onEntranceConsumed={onEntranceConsumed}
-        playRouteTransitionOnMount={playRouteTransitionOnMount}
-        onRouteTransitionConsumed={onRouteTransitionConsumed}
-        onBack={onBack}
-        active={match.status === 'active'}
-        seed={match.match_seed}
-        goalieId={match.rules.goalieId}
-        periodNumber={match.me.current_period}
-        periodSpeedPresets={match.period_speed_presets}
-        stickEffects={match.stick_effects}
-        periodsTotal={match.rules.totalPeriods}
-        sessionStartedAt={match.period_started_at}
-        serverNow={match.server_now}
-        receivedAtPerformanceMs={match.received_at_performance_ms}
-        goals={match.current_period_goals}
-        shots={match.current_period_shots}
-        shotsTotal={
-          activePeriodRule.mode === 'quota' ? (activePeriodRule.shotsLimit ?? 30) : undefined
-        }
-        periodEndsAt={periodEndsAt}
-        onTimerExpired={refresh}
-        backLabel="К дуэлям"
-        optimisticAddShot={optimisticAddShot}
-        submitShot={submitShot}
-        applyState={applyState}
-        longCourtBackground={DAILY_LONG_COURT_BACKGROUND}
-        hudAddon={<DuelInventoryMiniHud match={match} />}
-        scoreboardOpponent={duelScoreboardOpponent(match)}
-      />
+      <>
+        <PlayView<AmateurDuelMatchState>
+          suppressedByModal={false}
+          showIceCar={false}
+          playEntranceOnMount={playEntranceOnMount}
+          onEntranceConsumed={onEntranceConsumed}
+          playRouteTransitionOnMount={playRouteTransitionOnMount}
+          onRouteTransitionConsumed={onRouteTransitionConsumed}
+          onBack={onBack}
+          active={match.status === 'active' && !duelBlocked && amateurAccess.hasFullAccess}
+          primaryActionBlocked={duelBlocked}
+          {...(!amateurAccess.hasFullAccess ? { inactiveAction: showAmateurRestriction } : {})}
+          seed={match.match_seed}
+          goalieId={match.rules.goalieId}
+          periodNumber={match.me.current_period}
+          periodSpeedPresets={match.period_speed_presets}
+          stickEffects={match.stick_effects}
+          periodsTotal={match.rules.totalPeriods}
+          sessionStartedAt={match.period_started_at}
+          serverNow={match.server_now}
+          receivedAtPerformanceMs={match.received_at_performance_ms}
+          goals={match.current_period_goals}
+          scoreboardGoals={match.me.goals}
+          shots={match.current_period_shots}
+          shotsTotal={
+            activePeriodRule.mode === 'quota' ? (activePeriodRule.shotsLimit ?? 30) : undefined
+          }
+          periodEndsAt={periodEndsAt}
+          onTimerExpired={refresh}
+          backLabel={duelBackLabel(match.source, false)}
+          optimisticAddShot={optimisticAddShot}
+          submitShot={submitShot}
+          applyState={applyState}
+          duelCondition={duelCondition}
+          longCourtBackground={amateurDuelCourtBackground(match)}
+          hudAddon={
+            <DuelInventoryMiniHud
+              match={match}
+              liveCondition={liveDuelCondition}
+              {...(loadoutEditable ? { onSelectKind: setSelectedLoadoutKind } : {})}
+            />
+          }
+          scoreboardOpponent={duelScoreboardOpponent(match)}
+        />
+        {loadoutEditable && selectedLoadoutKind === 'stick' && (
+          <DuelRinkLoadoutModal
+            kind="stick"
+            match={match}
+            selectedId={match.me.loadout.items.find((item) => item.kind === 'stick')?.id ?? null}
+            onClose={() => setSelectedLoadoutKind(null)}
+            onSelect={(itemId) => {
+              void handleActiveLoadoutSelect(itemId);
+            }}
+          />
+        )}
+      </>
     );
   }
 
@@ -5580,7 +5753,8 @@ function AmateurDuelPlayView({
       : match.me.state === 'completed'
         ? 'Ждём соперника'
         : 'Период недоступен';
-  const showResultModal = match.status === 'settled' && dismissedResultMatchId !== match.id;
+  const showResultModal =
+    match.status === 'settled' && dismissedResultMatchId !== match.id && tournamentResultReady;
 
   return (
     <ModeShell title="Дуэль" onBack={onBack}>
@@ -5612,18 +5786,40 @@ function AmateurDuelPlayView({
           isFirstPeriod={match.me.current_period === 0}
           pending={inFlight}
           onHome={onBack}
-          onStart={() => void startPeriod()}
+          onStart={() =>
+            guardAmateurMutation(
+              amateurAccess,
+              () => void startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout)),
+            )
+          }
         />
       )}
       <button
         type="button"
         className="btn btn--cta"
         disabled={!canStart || inFlight}
-        onClick={() => void startPeriod()}
+        onClick={() =>
+          guardAmateurMutation(
+            amateurAccess,
+            () => void startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout)),
+          )
+        }
       >
         {startButtonLabel}
       </button>
-      {showResultModal && <DuelResultModal match={match} onClose={onBack} />}
+      {showResultModal && (
+        <DuelResultModal
+          match={match}
+          {...(tournamentAttempt.data === undefined
+            ? {}
+            : { tournamentAttempt: tournamentAttempt.data })}
+          now={now}
+          onOpenNextGame={(fixtureId) =>
+            guardAmateurMutation(amateurAccess, () => openNextTournamentGame.mutate(fixtureId))
+          }
+          onClose={onBack}
+        />
+      )}
     </ModeShell>
   );
 }
@@ -5633,13 +5829,110 @@ function DuelResultModal({
   onClose,
   closeLabel = 'Понятно',
   isLoadingDetails = false,
+  tournamentAttempt,
+  now = Date.now(),
+  onOpenNextGame,
 }: {
   match: AmateurDuelMatch;
   onClose: () => void;
   closeLabel?: string;
   isLoadingDetails?: boolean;
+  tournamentAttempt?: TournamentFixtureAttemptState;
+  now?: number;
+  onOpenNextGame?: (fixtureId: string) => void;
 }): JSX.Element {
-  const title =
+  const nextGame = tournamentAttempt?.nextGame ?? null;
+  const nextGameDisplay =
+    nextGame === null ? null : tournamentNextGameDisplay(nextGame.breakEndsAt, now);
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Результат дуэли">
+      <DuelResultCard
+        match={match}
+        isLoadingDetails={isLoadingDetails}
+        {...(tournamentAttempt === undefined ? {} : { tournamentAttempt })}
+        footer={
+          <>
+            {nextGame !== null && (
+              <div className="tournament-duel-result__next-game">
+                {nextGame.available ? (
+                  <button
+                    type="button"
+                    className="btn btn--cta"
+                    onClick={() => onOpenNextGame?.(nextGame.fixtureId)}
+                  >
+                    К следующей игре
+                  </button>
+                ) : (
+                  <div className="tournament-duel-result__countdown">
+                    <span>{nextGameDisplay!.label}</span>
+                    <strong
+                      aria-label="До следующей игры"
+                      className="tournament-duel-result__countdown-value"
+                      data-countdown={nextGameDisplay!.countdown ? 'true' : 'false'}
+                    >
+                      {nextGameDisplay!.value}
+                    </strong>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="modal-actions">
+              <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
+                {closeLabel}
+              </button>
+            </div>
+          </>
+        }
+      />
+    </div>
+  );
+}
+
+interface TournamentSeriesResultArtwork {
+  src: string;
+  alt: string;
+}
+
+function tournamentSeriesResultArtwork(
+  match: AmateurDuelMatch,
+  tournamentAttempt?: TournamentFixtureAttemptState,
+): TournamentSeriesResultArtwork | null {
+  const series = tournamentAttempt?.series;
+  if (series?.status !== 'completed' || series.winnerUserId === null) return null;
+  const won = series.winnerUserId === match.me.user_id;
+  if (!won) {
+    return {
+      src: '/tournament-results/series-loss.webp',
+      alt:
+        series.kind === 'third_place' ? 'Поражение в матче за третье место' : 'Поражение в серии',
+    };
+  }
+  if (series.kind === 'third_place') {
+    return {
+      src: '/tournament-results/third-place-win.webp',
+      alt: 'Победа в матче за третье место',
+    };
+  }
+  if (tournamentAttempt?.tournament.winnerUserId === match.me.user_id) {
+    return { src: '/tournament-results/final-win.webp', alt: 'Победа в турнире' };
+  }
+  return { src: '/tournament-results/series-win.webp', alt: 'Победа в серии' };
+}
+
+function DuelResultCard({
+  match,
+  isLoadingDetails = false,
+  compact = false,
+  footer,
+  tournamentAttempt,
+}: {
+  match: AmateurDuelMatch;
+  isLoadingDetails?: boolean;
+  compact?: boolean;
+  footer?: ReactNode;
+  tournamentAttempt?: TournamentFixtureAttemptState;
+}): JSX.Element {
+  const ordinaryTitle =
     match.status !== 'settled'
       ? duelOutcomeText(match)
       : match.outcome === 'draw'
@@ -5649,12 +5942,46 @@ function DuelResultModal({
           : match.winner_user_id === match.me.user_id
             ? 'Победа'
             : 'Поражение';
+  const series = tournamentAttempt?.series ?? null;
+  const mySeed =
+    series === null
+      ? null
+      : series.higherSeedUserId === match.me.user_id
+        ? (series.higherSeed ?? null)
+        : series.lowerSeedUserId === match.me.user_id
+          ? (series.lowerSeed ?? null)
+          : null;
+  const opponentSeed =
+    series === null
+      ? null
+      : series.higherSeedUserId === match.opponent.user_id
+        ? (series.higherSeed ?? null)
+        : series.lowerSeedUserId === match.opponent.user_id
+          ? (series.lowerSeed ?? null)
+          : null;
+  const seriesResultArtwork = tournamentSeriesResultArtwork(match, tournamentAttempt);
+  const seriesWon = series?.winnerUserId === match.me.user_id;
+  const completedSeriesTitle =
+    series?.status !== 'completed'
+      ? null
+      : series.kind === 'third_place'
+        ? seriesWon
+          ? 'Вы заняли 3-е место'
+          : 'Вы проиграли матч за 3-е место'
+        : tournamentAttempt?.tournament.winnerUserId !== null
+          ? seriesWon
+            ? 'Вы выиграли финал'
+            : 'Вы проиграли финал'
+          : seriesWon
+            ? 'Вы выиграли серию'
+            : 'Вы проиграли серию';
+  const title = completedSeriesTitle ?? ordinaryTitle;
   const resultColor =
-    title === 'Победа'
+    ordinaryTitle === 'Победа'
       ? '#22c55e'
-      : title === 'Ничья'
+      : ordinaryTitle === 'Ничья'
         ? '#f59e0b'
-        : title === 'Поражение'
+        : ordinaryTitle === 'Поражение'
           ? '#ef4444'
           : 'rgba(15, 23, 42, 0.38)';
   const points = match.me.result_points;
@@ -5663,136 +5990,580 @@ function DuelResultModal({
   const opponentPeriods = hasDuelPeriodDetails(match) ? match.opponent_recent_periods : [];
   const hasPeriodDetails = mePeriods.length > 0 || opponentPeriods.length > 0;
   const hasMultiplePeriods = match.rules.totalPeriods > 1;
+  const tiebreaker = duelTiebreakerExplanation(match);
+  const hasSupplementalDetails =
+    tiebreaker !== null ||
+    match.rules.winStarReward > 0 ||
+    (match.source !== 'tournament' && points > 0);
 
   return (
     <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Результат дуэли"
-      onClick={onClose}
+      className={`modal-card duel-result-card${compact ? ' duel-result-card--compact' : ''}`}
+      style={{
+        maxHeight: 'calc(100dvh - 64px)',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
     >
       <div
-        className="modal-card"
-        onClick={(event) => event.stopPropagation()}
+        className="duel-result-card__scroll"
         style={{
-          maxHeight: 'calc(100dvh - 64px)',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
+          minHeight: 0,
+          flex: '1 1 auto',
+          overflowY: 'auto',
+          overscrollBehavior: 'contain',
+          paddingRight: 3,
         }}
       >
-        <div className="section-label" style={{ margin: 0, padding: 0 }}>
-          Результат
-        </div>
-        <div
-          style={{
-            marginTop: 8,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-          }}
-        >
-          <h2 className="modal-title" style={{ margin: 0, fontSize: 26, lineHeight: 1.08 }}>
-            {title}
-          </h2>
-          <span
-            aria-hidden="true"
-            style={{
-              width: 16,
-              height: 16,
-              borderRadius: 999,
-              background: resultColor,
-              boxShadow: `0 0 0 5px ${resultColor}24, 0 0 18px ${resultColor}66`,
-              flexShrink: 0,
-            }}
-          />
-        </div>
-        <div
-          aria-label={`Итог дуэли ${match.me.goals}:${match.opponent.goals}`}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-            gap: 10,
-            marginTop: 16,
-          }}
-        >
-          <DailyStatsMetric label="Счёт" value={`${match.me.goals}:${match.opponent.goals}`} />
-          <DailyStatsMetric label="Очки" value={pointsText} />
-        </div>
-        <div
-          style={{
-            marginTop: 14,
-            display: 'grid',
-            gap: 8,
-          }}
-        >
-          <DuelResultDetailRow label="Тип" value={duelKindText(match.rules.duelKind)} />
-          <DuelResultDetailRow label="Соперник" value={match.opponent.display_name || 'Игрок'} />
-          {match.rules.winStarReward > 0 && (
-            <DuelResultDetailRow label="Звёзды за победу" value={`+${match.rules.winStarReward}`} />
-          )}
-          <DuelResultDetailRow label="Начало" value={formatShortDateTime(match.starts_at)} />
-        </div>
-        <div
-          style={{
-            marginTop: 16,
-            minHeight: 0,
-            flex: hasMultiplePeriods ? '1 1 auto' : '0 0 auto',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-        >
-          <div className="section-label" style={{ margin: 0, padding: 0 }}>
-            Периоды
-          </div>
-          {hasPeriodDetails ? (
-            <div
-              style={{
-                minHeight: 0,
-                flex: hasMultiplePeriods ? '1 1 auto' : undefined,
-                maxHeight: hasMultiplePeriods ? 'min(38dvh, 330px)' : undefined,
-                overflowY: hasMultiplePeriods ? 'auto' : undefined,
-                paddingRight: hasMultiplePeriods ? 2 : 0,
-              }}
-            >
-              <DuelResultPeriodComparison
-                totalPeriods={match.rules.totalPeriods}
-                mePeriods={mePeriods}
-                opponentPeriods={opponentPeriods}
-                opponentName={match.opponent.display_name || 'Соперник'}
-              />
+        {compact ? (
+          <>
+            <div className="duel-result-card__compact-meta">
+              <DuelResultCompactFact label="Очки" value={pointsText} />
+              <DuelResultCompactFact label="Начало" value={formatShortDateTime(match.starts_at)} />
             </div>
-          ) : (
+            <section className="duel-result-card__compact-summary">
+              <div className="section-label" style={{ margin: 0, padding: 0 }}>
+                Итоговый результат
+              </div>
+              <DuelResultCompactStatsTable
+                label="Итоговый результат"
+                me={{
+                  goals: match.me.goals,
+                  shots: match.me.shots_taken,
+                  durationMs: match.me.active_duration_ms,
+                }}
+                opponentName={match.opponent.display_name || 'Соперник'}
+                opponent={{
+                  goals: match.opponent.goals,
+                  shots: match.opponent.shots_taken,
+                  durationMs: match.opponent.active_duration_ms,
+                }}
+              />
+            </section>
+            {(tiebreaker || match.rules.winStarReward > 0) && (
+              <div className="duel-result-card__compact-details">
+                {tiebreaker && (
+                  <>
+                    <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
+                    <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
+                  </>
+                )}
+                {match.rules.winStarReward > 0 && (
+                  <DuelResultDetailRow
+                    label="Звёзды за победу"
+                    value={`+${match.rules.winStarReward}`}
+                    tone="star"
+                  />
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="section-label" style={{ margin: 0, padding: 0 }}>
+              Результат
+            </div>
             <div
               style={{
                 marginTop: 8,
-                borderRadius: 16,
-                padding: '12px 14px',
-                background: 'rgba(255,255,255,0.42)',
-                border: '1px solid rgba(255,255,255,0.62)',
-                color: 'rgba(15, 23, 42, 0.58)',
-                fontSize: 12,
-                fontWeight: 750,
-                lineHeight: 1.35,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
               }}
             >
-              {isLoadingDetails
-                ? 'Загружаем статистику периодов...'
-                : 'Подробная статистика периодов пока недоступна.'}
+              <h2
+                className="modal-title"
+                style={{
+                  margin: 0,
+                  fontSize: title.length > 30 ? 16 : title.length > 22 ? 19 : 24,
+                  lineHeight: 1.08,
+                  letterSpacing: '-0.02em',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {title}
+              </h2>
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: 999,
+                  background: resultColor,
+                  boxShadow: `0 0 0 5px ${resultColor}24, 0 0 18px ${resultColor}66`,
+                  flexShrink: 0,
+                }}
+              />
             </div>
-          )}
-        </div>
-        <div className="modal-actions">
-          <button type="button" className="modal-primary btn btn--cta" onClick={onClose}>
-            {closeLabel}
-          </button>
-        </div>
+            {seriesResultArtwork !== null && (
+              <img
+                className="tournament-duel-result__artwork"
+                src={seriesResultArtwork.src}
+                alt={seriesResultArtwork.alt}
+              />
+            )}
+            <div
+              className="tournament-duel-result__matchup"
+              aria-label={`Итог игры: ${match.me.display_name} — ${match.opponent.display_name}, ${match.me.goals}:${match.opponent.goals}`}
+            >
+              <div className="tournament-duel-result__matchup-main">
+                <div className="tournament-duel-result__player">
+                  <UserAvatar
+                    avatarUrl={match.me.avatar_url}
+                    name={match.me.display_name}
+                    size={30}
+                    fontSize={12}
+                  />
+                  <span className="tournament-duel-result__player-name">
+                    {match.me.display_name || 'Игрок'}
+                  </span>
+                  {mySeed !== null && (
+                    <span
+                      className="tournament-duel-result__seed"
+                      aria-label={`Посев ${match.me.display_name}: ${mySeed}`}
+                    >
+                      ({mySeed})
+                    </span>
+                  )}
+                </div>
+                <span className="tournament-duel-result__separator" aria-hidden="true">
+                  —
+                </span>
+                <div className="tournament-duel-result__player">
+                  <UserAvatar
+                    avatarUrl={match.opponent.avatar_url}
+                    name={match.opponent.display_name}
+                    size={30}
+                    fontSize={12}
+                  />
+                  <span className="tournament-duel-result__player-name">
+                    {match.opponent.display_name || 'Игрок'}
+                  </span>
+                  {opponentSeed !== null && (
+                    <span
+                      className="tournament-duel-result__seed"
+                      aria-label={`Посев ${match.opponent.display_name}: ${opponentSeed}`}
+                    >
+                      ({opponentSeed})
+                    </span>
+                  )}
+                </div>
+                <strong className="tournament-duel-result__game-score">
+                  {match.me.goals}:{match.opponent.goals}
+                </strong>
+              </div>
+              <div className="tournament-duel-result__meta">
+                <span>
+                  <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
+                </span>
+                {series !== null && series.winsRequired > 1 && (
+                  <span>
+                    <strong>Счёт в серии:</strong>{' '}
+                    <b aria-label={`Счёт в серии ${series.myWins}:${series.opponentWins}`}>
+                      {series.myWins}:{series.opponentWins}
+                    </b>
+                  </span>
+                )}
+              </div>
+            </div>
+            {hasSupplementalDetails && (
+              <div
+                style={{
+                  marginTop: 10,
+                  display: 'grid',
+                  gap: 8,
+                }}
+              >
+                {tiebreaker && (
+                  <>
+                    <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
+                    <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
+                  </>
+                )}
+                {match.rules.winStarReward > 0 && (
+                  <DuelResultDetailRow
+                    label="Звёзды за победу"
+                    value={`+${match.rules.winStarReward}`}
+                    tone="star"
+                  />
+                )}
+                {match.source !== 'tournament' && points > 0 && (
+                  <DuelResultDetailRow label="Очки" value={pointsText} />
+                )}
+              </div>
+            )}
+          </>
+        )}
+        {(compact || hasMultiplePeriods) && (
+          <DuelInventoryUsageSummary
+            match={match}
+            title={compact ? 'Расход инвентаря' : 'Общий расход инвентаря'}
+            label="Общий расход инвентаря"
+            compact={compact}
+            style={{ marginTop: compact ? 10 : 16 }}
+          />
+        )}
+        {(hasMultiplePeriods || !compact) && (
+          <div
+            className="duel-result-card__periods"
+            style={{
+              marginTop: compact ? 12 : 16,
+              overflow: 'visible',
+            }}
+          >
+            {hasMultiplePeriods && (
+              <div className="section-label" style={{ margin: 0, padding: 0 }}>
+                Периоды
+              </div>
+            )}
+            {hasPeriodDetails ? (
+              <div
+                style={{
+                  paddingRight: 2,
+                }}
+              >
+                <DuelResultPeriodComparison
+                  key={match.id}
+                  match={match}
+                  totalPeriods={match.rules.totalPeriods}
+                  mePeriods={mePeriods}
+                  opponentPeriods={opponentPeriods}
+                  opponentName={match.opponent.display_name || 'Соперник'}
+                  compact={compact}
+                />
+              </div>
+            ) : (
+              <div
+                style={{
+                  marginTop: 8,
+                  borderRadius: 16,
+                  padding: '12px 14px',
+                  background: 'rgba(255,255,255,0.42)',
+                  border: '1px solid rgba(255,255,255,0.62)',
+                  color: 'rgba(15, 23, 42, 0.58)',
+                  fontSize: 12,
+                  fontWeight: 750,
+                  lineHeight: 1.35,
+                }}
+              >
+                {isLoadingDetails
+                  ? 'Загружаем статистику периодов...'
+                  : 'Подробная статистика периодов пока недоступна.'}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+      {footer !== undefined && <div className="duel-result-card__footer">{footer}</div>}
     </div>
   );
+}
+
+type TournamentResultPreviewVariant =
+  | 'duel-win'
+  | 'series-win'
+  | 'final-win'
+  | 'final-loss'
+  | 'third-place-win'
+  | 'third-place-loss';
+
+export function TournamentResultPreviewScreen(): JSX.Element {
+  const location = useLocation();
+  const requested = new URLSearchParams(location.search).get('variant');
+  const variant: TournamentResultPreviewVariant = [
+    'duel-win',
+    'series-win',
+    'final-win',
+    'final-loss',
+    'third-place-win',
+    'third-place-loss',
+  ].includes(requested ?? '')
+    ? (requested as TournamentResultPreviewVariant)
+    : 'final-win';
+  const won = variant.endsWith('win');
+  const thirdPlace = variant.startsWith('third-place');
+  const final = variant.startsWith('final');
+  const ordinaryDuel = variant === 'duel-win';
+  const previewTotalPeriods = ordinaryDuel ? 1 : 3;
+  const meWins = won ? 2 : 1;
+  const opponentWins = won ? 0 : 2;
+  const now = new Date().toISOString();
+  const participant = (userId: string, displayName: string, goals: number, shots: number) => ({
+    user_id: userId,
+    display_name: displayName,
+    avatar_url: null,
+    side: userId === 'preview-me' ? 'challenger' : 'opponent',
+    state: 'completed',
+    current_period: 3,
+    shots_taken: shots,
+    goals,
+    accuracy: Math.round((goals / shots) * 100),
+    active_duration_ms: 274_000,
+    active_duration_seconds: 274,
+    result_points: 0,
+    current_period_shots: 0,
+    current_period_goals: 0,
+    ready_at: now,
+    period_started_at: null,
+    period_ends_at: null,
+    break_ends_at: null,
+    loadout: { items: [], powerScore: 0, powerCap: 100 },
+    inventory_report: [],
+  });
+  const match = {
+    id: 'preview-match',
+    template_id: null,
+    status: 'settled',
+    source: ordinaryDuel ? 'challenge' : 'tournament',
+    ranked: false,
+    season_key: 'preview',
+    duel_kind: ordinaryDuel ? 'express' : 'classic',
+    home_user_id: 'preview-me',
+    venue_role: 'home',
+    venue_policy: 'neutral',
+    arena: { id: 'preview', title: 'Арена', imageUrl: null },
+    starts_at: '2026-09-04T10:00:00.000Z',
+    ends_at: '2026-09-04T11:00:00.000Z',
+    ready_expires_at: null,
+    cooldown_user_id: null,
+    cooldown_until: null,
+    stake_amount: 0,
+    entry_fee_amount: 0,
+    bank_amount: 0,
+    winner_user_id: won ? 'preview-me' : 'preview-opponent',
+    outcome: won ? 'challenger_win' : 'opponent_win',
+    settled_reason: 'completed',
+    accepted_at: now,
+    settled_at: now,
+    created_at: now,
+    server_now: now,
+    period_started_at: null,
+    period_ends_at: null,
+    break_ends_at: null,
+    rules: {
+      title: ordinaryDuel ? 'Экспресс' : 'Классика',
+      duelKind: ordinaryDuel ? 'express' : 'classic',
+      duelVariant: ordinaryDuel ? 'express' : 'classic',
+      totalPeriods: previewTotalPeriods,
+      shotsPerPeriod: 30,
+      winStarReward: 0,
+    },
+    me: {
+      ...participant('preview-me', 'Вы', ordinaryDuel ? 19 : 54, ordinaryDuel ? 28 : 84),
+      inventory_report: [
+        {
+          periodNumber: 1,
+          consumed: [
+            {
+              id: 'preview-stick',
+              kind: 'stick',
+              title: 'Клюшка Ультимейт Ван',
+              charges: 28,
+              remainingReserved: 72,
+            },
+            {
+              id: 'preview-skates',
+              kind: 'skates',
+              title: 'Коньки Профи',
+              charges: 4,
+              remainingReserved: 46,
+            },
+          ],
+        },
+      ],
+    },
+    opponent: participant(
+      'preview-opponent',
+      'Александра',
+      ordinaryDuel ? 17 : 50,
+      ordinaryDuel ? 27 : 82,
+    ),
+    match_seed: null,
+    current_period_shots: 0,
+    current_period_goals: 0,
+    period_speed_presets: [],
+    stick_effects: {},
+    recent_periods: [
+      {
+        period_number: 1,
+        shots_taken: 28,
+        goals: 19,
+        duration_ms: 91_000,
+        closed_reason: 'quota',
+        ended_at: now,
+      },
+      ...(!ordinaryDuel
+        ? [
+            {
+              period_number: 2,
+              shots_taken: 28,
+              goals: 18,
+              duration_ms: 89_000,
+              closed_reason: 'quota',
+              ended_at: now,
+            },
+            {
+              period_number: 3,
+              shots_taken: 28,
+              goals: 17,
+              duration_ms: 94_000,
+              closed_reason: 'quota',
+              ended_at: now,
+            },
+          ]
+        : []),
+    ],
+    opponent_recent_periods: [
+      {
+        period_number: 1,
+        shots_taken: 27,
+        goals: 17,
+        duration_ms: 95_000,
+        closed_reason: 'quota',
+        ended_at: now,
+      },
+      ...(!ordinaryDuel
+        ? [
+            {
+              period_number: 2,
+              shots_taken: 27,
+              goals: 17,
+              duration_ms: 92_000,
+              closed_reason: 'quota',
+              ended_at: now,
+            },
+            {
+              period_number: 3,
+              shots_taken: 28,
+              goals: 16,
+              duration_ms: 96_000,
+              closed_reason: 'quota',
+              ended_at: now,
+            },
+          ]
+        : []),
+    ],
+  } as unknown as AmateurDuelMatchState;
+  const tournamentAttempt = {
+    series: {
+      id: 'preview-series',
+      kind: thirdPlace ? 'third_place' : 'championship',
+      winsRequired: 2,
+      myWins: meWins,
+      opponentWins,
+      higherSeedWins: won ? meWins : opponentWins,
+      lowerSeedWins: won ? opponentWins : meWins,
+      higherSeedUserId: won ? 'preview-me' : 'preview-opponent',
+      lowerSeedUserId: won ? 'preview-opponent' : 'preview-me',
+      higherSeed: 2,
+      lowerSeed: 7,
+      status: 'completed',
+      winnerUserId: won ? 'preview-me' : 'preview-opponent',
+    },
+    tournament: {
+      status: final ? 'completed' : 'playoff',
+      winnerUserId: final ? (won ? 'preview-me' : 'preview-opponent') : null,
+    },
+  } as TournamentFixtureAttemptState;
+  const variants: Array<[TournamentResultPreviewVariant, string]> = [
+    ['duel-win', 'Дуэль: победа'],
+    ['series-win', 'Серия: победа'],
+    ['final-win', 'Финал: победа'],
+    ['final-loss', 'Финал: поражение'],
+    ['third-place-win', '3-е место: победа'],
+    ['third-place-loss', '3-е место: поражение'],
+  ];
+  return (
+    <div className="modal-backdrop" style={{ position: 'absolute' }}>
+      <nav className="tournament-result-preview-switcher" aria-label="Варианты результата">
+        {variants.map(([value, label]) => (
+          <a
+            key={value}
+            className={value === variant ? 'is-active' : ''}
+            href={`/dev/tournament-result-preview?variant=${value}`}
+          >
+            {label}
+          </a>
+        ))}
+      </nav>
+      <DuelResultCard
+        match={match}
+        {...(ordinaryDuel ? {} : { tournamentAttempt })}
+        footer={
+          <>
+            <div className="modal-actions">
+              <button type="button" className="modal-primary btn btn--cta">
+                Понятно
+              </button>
+            </div>
+          </>
+        }
+      />
+    </div>
+  );
+}
+
+function duelTiebreakerExplanation(
+  match: AmateurDuelMatch,
+): { label: string; value: string; result: string } | null {
+  if (match.status !== 'settled' || match.me.goals !== match.opponent.goals) return null;
+  if (usesAccuracyTiebreaker(match) && compareDuelAccuracy(match) !== 0) {
+    const meAccuracy = duelAccuracy(match.me);
+    const opponentAccuracy = duelAccuracy(match.opponent);
+    const iAmMoreAccurate = meAccuracy > opponentAccuracy;
+    return {
+      label: 'Решил процент',
+      value: `${meAccuracy}% / ${opponentAccuracy}%`,
+      result: iAmMoreAccurate
+        ? 'Победа за счёт лучшего процента'
+        : 'Поражение из-за процента соперника',
+    };
+  }
+  const meSeconds = Math.round(match.me.active_duration_ms / 1000);
+  const opponentSeconds = Math.round(match.opponent.active_duration_ms / 1000);
+  const value = `${formatDurationMs(meSeconds * 1000)} / ${formatDurationMs(
+    opponentSeconds * 1000,
+  )}`;
+  if (meSeconds === opponentSeconds) {
+    return { label: 'Решило время', value, result: 'Время одинаковое' };
+  }
+  const diffText = formatTiebreakerDiff(Math.abs(meSeconds - opponentSeconds));
+  return {
+    label: 'Решило время',
+    value,
+    result:
+      meSeconds < opponentSeconds ? `Вы быстрее на ${diffText}` : `Соперник быстрее на ${diffText}`,
+  };
+}
+
+function usesAccuracyTiebreaker(match: AmateurDuelMatch): boolean {
+  return (
+    match.rules.duelKind === 'express' ||
+    match.rules.periodRules.every((rule) => rule.mode === 'time_attack')
+  );
+}
+
+function duelAccuracy(participant: AmateurDuelMatch['me']): number {
+  return participant.shots_taken > 0
+    ? Math.round((participant.goals / participant.shots_taken) * 100)
+    : 0;
+}
+
+function compareDuelAccuracy(match: AmateurDuelMatch): number {
+  const meShots = Math.max(0, match.me.shots_taken);
+  const opponentShots = Math.max(0, match.opponent.shots_taken);
+  const left = match.me.goals * (opponentShots === 0 ? 1 : opponentShots);
+  const right = match.opponent.goals * (meShots === 0 ? 1 : meShots);
+  return Math.sign(left - right);
+}
+
+function formatTiebreakerDiff(seconds: number): string {
+  if (seconds < 60) return `${seconds} сек`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest === 0 ? `${minutes} мин` : `${minutes} мин ${rest} сек`;
 }
 
 function hasDuelPeriodDetails(match: AmateurDuelMatch): match is AmateurDuelMatchState {
@@ -5800,23 +6571,25 @@ function hasDuelPeriodDetails(match: AmateurDuelMatch): match is AmateurDuelMatc
 }
 
 function DuelResultPeriodComparison({
+  match,
   totalPeriods,
   mePeriods,
   opponentPeriods,
   opponentName,
+  compact = false,
 }: {
+  match: AmateurDuelMatch;
   totalPeriods: number;
   mePeriods: AmateurDuelPeriodLog[];
   opponentPeriods: AmateurDuelPeriodLog[];
   opponentName: string;
+  compact?: boolean;
 }): JSX.Element {
   const meByPeriod = new Map(mePeriods.map((period) => [period.period_number, period]));
   const opponentByPeriod = new Map(opponentPeriods.map((period) => [period.period_number, period]));
   const periodNumbers = Array.from({ length: totalPeriods }, (_, index) => index + 1);
   const hasMultiplePeriods = totalPeriods > 1;
-  const [openPeriods, setOpenPeriods] = useState<ReadonlySet<number>>(
-    () => new Set(hasMultiplePeriods ? [periodNumbers.at(-1) ?? 1] : periodNumbers),
-  );
+  const [openPeriods, setOpenPeriods] = useState<ReadonlySet<number>>(() => new Set());
   const togglePeriod = useCallback((periodNumber: number) => {
     setOpenPeriods((current) => {
       const next = new Set(current);
@@ -5830,12 +6603,93 @@ function DuelResultPeriodComparison({
   }, []);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: compact ? 6 : 8,
+        marginTop: compact ? 6 : 8,
+      }}
+    >
       {periodNumbers.map((periodNumber) => {
         const mePeriod = meByPeriod.get(periodNumber);
         const opponentPeriod = opponentByPeriod.get(periodNumber);
         const isOpen = openPeriods.has(periodNumber);
         const summary = `${mePeriod?.goals ?? 0}:${opponentPeriod?.goals ?? 0}`;
+        const resultTitle = hasMultiplePeriods ? `${periodNumber}-й период` : 'Результаты игры';
+
+        if (compact) {
+          const heading = (
+            <>
+              <strong>{periodNumber}-й период</strong>
+              <span>{summary}</span>
+            </>
+          );
+
+          return (
+            <section
+              key={periodNumber}
+              className="duel-result-compact-period"
+              aria-label={`${periodNumber}-й период: ваша статистика и статистика соперника`}
+            >
+              {hasMultiplePeriods ? (
+                <button
+                  type="button"
+                  className="duel-result-compact-period__toggle"
+                  aria-expanded={isOpen}
+                  aria-controls={`duel-result-period-${periodNumber}`}
+                  onClick={() => togglePeriod(periodNumber)}
+                >
+                  {heading}
+                  <ChevronRight
+                    size={15}
+                    strokeWidth={2.4}
+                    aria-hidden="true"
+                    style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
+                  />
+                </button>
+              ) : (
+                <div className="duel-result-compact-period__heading">{heading}</div>
+              )}
+              {isOpen && (
+                <div id={`duel-result-period-${periodNumber}`}>
+                  <DuelResultCompactStatsTable
+                    label={`${periodNumber}-й период`}
+                    me={
+                      mePeriod
+                        ? {
+                            goals: mePeriod.goals,
+                            shots: mePeriod.shots_taken,
+                            durationMs: mePeriod.duration_ms,
+                          }
+                        : null
+                    }
+                    opponentName={opponentName}
+                    opponent={
+                      opponentPeriod
+                        ? {
+                            goals: opponentPeriod.goals,
+                            shots: opponentPeriod.shots_taken,
+                            durationMs: opponentPeriod.duration_ms,
+                          }
+                        : null
+                    }
+                  />
+                  {hasMultiplePeriods && (
+                    <DuelInventoryUsageSummary
+                      match={match}
+                      periodNumber={periodNumber}
+                      title="Расход за период"
+                      label={`${periodNumber}-й период: расход инвентаря`}
+                      compact
+                      style={{ marginTop: 7 }}
+                    />
+                  )}
+                </div>
+              )}
+            </section>
+          );
+        }
 
         return (
           <div
@@ -5848,75 +6702,62 @@ function DuelResultPeriodComparison({
               border: '1px solid rgba(255,255,255,0.62)',
             }}
           >
-            {hasMultiplePeriods ? (
-              <button
-                type="button"
-                aria-expanded={isOpen}
-                aria-controls={`duel-result-period-${periodNumber}`}
-                onClick={() => togglePeriod(periodNumber)}
+            <button
+              type="button"
+              aria-expanded={isOpen}
+              aria-controls={`duel-result-period-${periodNumber}`}
+              onClick={() => togglePeriod(periodNumber)}
+              style={{
+                width: '100%',
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr) auto auto',
+                gap: 8,
+                alignItems: 'center',
+                padding: 0,
+                border: 0,
+                background: 'transparent',
+                color: 'var(--ink)',
+                textAlign: 'left',
+                font: 'inherit',
+                cursor: 'pointer',
+              }}
+            >
+              <span
                 style={{
-                  width: '100%',
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(0, 1fr) auto auto',
-                  gap: 8,
-                  alignItems: 'center',
-                  padding: 0,
-                  border: 0,
-                  background: 'transparent',
-                  color: 'var(--ink)',
-                  textAlign: 'left',
-                  font: 'inherit',
-                  cursor: 'pointer',
-                }}
-              >
-                <span
-                  style={{
-                    minWidth: 0,
-                    fontSize: 12,
-                    fontWeight: 950,
-                    lineHeight: 1.1,
-                  }}
-                >
-                  {periodNumber}-й период
-                </span>
-                <span
-                  style={{
-                    borderRadius: 999,
-                    padding: '5px 9px',
-                    background: 'rgba(255,255,255,0.48)',
-                    border: '1px solid rgba(255,255,255,0.62)',
-                    color: 'var(--ink)',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 11,
-                    fontWeight: 850,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {summary}
-                </span>
-                <ChevronRight
-                  size={16}
-                  strokeWidth={2.4}
-                  aria-hidden="true"
-                  style={{
-                    color: 'rgba(15,23,42,0.58)',
-                    transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-                    transition: 'transform 140ms ease',
-                  }}
-                />
-              </button>
-            ) : (
-              <div
-                style={{
-                  color: 'var(--ink)',
+                  minWidth: 0,
                   fontSize: 12,
                   fontWeight: 950,
-                  marginBottom: 8,
+                  lineHeight: 1.1,
                 }}
               >
-                {periodNumber}-й период
-              </div>
-            )}
+                {resultTitle}
+              </span>
+              <span
+                style={{
+                  borderRadius: 999,
+                  padding: '5px 9px',
+                  background: 'rgba(255,255,255,0.48)',
+                  border: '1px solid rgba(255,255,255,0.62)',
+                  color: 'var(--ink)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  fontWeight: 850,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {summary}
+              </span>
+              <ChevronRight
+                size={16}
+                strokeWidth={2.4}
+                aria-hidden="true"
+                style={{
+                  color: 'rgba(15,23,42,0.58)',
+                  transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                  transition: 'transform 140ms ease',
+                }}
+              />
+            </button>
             {isOpen && (
               <div
                 id={`duel-result-period-${periodNumber}`}
@@ -5929,12 +6770,80 @@ function DuelResultPeriodComparison({
               >
                 <DuelResultParticipantPeriodStats title="Вы" period={mePeriod} />
                 <DuelResultParticipantPeriodStats title={opponentName} period={opponentPeriod} />
+                <DuelInventoryUsageSummary
+                  match={match}
+                  {...(hasMultiplePeriods ? { periodNumber } : {})}
+                  title={hasMultiplePeriods ? 'Расход за период' : 'Расход за игру'}
+                  label={
+                    hasMultiplePeriods
+                      ? `${periodNumber}-й период: расход инвентаря`
+                      : 'Результаты игры: расход инвентаря'
+                  }
+                  compact
+                  style={{ gridColumn: '1 / -1' }}
+                />
               </div>
             )}
           </div>
         );
       })}
     </div>
+  );
+}
+
+interface DuelResultCompactStats {
+  goals: number;
+  shots: number;
+  durationMs: number;
+}
+
+function DuelResultCompactStatsTable({
+  label,
+  me,
+  opponentName,
+  opponent,
+}: {
+  label: string;
+  me: DuelResultCompactStats | null;
+  opponentName: string;
+  opponent: DuelResultCompactStats | null;
+}): JSX.Element {
+  return (
+    <table className="duel-result-compact-period__table" aria-label={label}>
+      <thead>
+        <tr>
+          <th scope="col">Игрок</th>
+          <th scope="col">Голы</th>
+          <th scope="col">Броски</th>
+          <th scope="col">%</th>
+          <th scope="col">Время</th>
+        </tr>
+      </thead>
+      <tbody>
+        <DuelResultCompactStatsRow title="Вы" stats={me} />
+        <DuelResultCompactStatsRow title={opponentName} stats={opponent} />
+      </tbody>
+    </table>
+  );
+}
+
+function DuelResultCompactStatsRow({
+  title,
+  stats,
+}: {
+  title: string;
+  stats: DuelResultCompactStats | null;
+}): JSX.Element {
+  return (
+    <tr>
+      <th scope="row" title={title}>
+        {title}
+      </th>
+      <td>{stats ? stats.goals : '—'}</td>
+      <td>{stats ? stats.shots : '—'}</td>
+      <td>{stats ? formatGoalRate(stats.goals, stats.shots) : '—'}</td>
+      <td>{stats ? formatDurationMs(stats.durationMs) : '—'}</td>
+    </tr>
   );
 }
 
@@ -6030,7 +6939,24 @@ function DuelResultTinyStat({ label, value }: { label: string; value: string }):
   );
 }
 
-function DuelResultDetailRow({ label, value }: { label: string; value: string }): JSX.Element {
+function DuelResultCompactFact({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div className="duel-result-card__compact-fact">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function DuelResultDetailRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: 'star';
+}): JSX.Element {
   return (
     <div
       style={{
@@ -6054,7 +6980,16 @@ function DuelResultDetailRow({ label, value }: { label: string; value: string })
       >
         {label}
       </span>
-      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</span>
+      <span
+        style={{
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          color: tone ? rewardColor(tone) : undefined,
+        }}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -6108,9 +7043,9 @@ function DuelRulesPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
           {duelKindText(match.rules.duelKind)}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {chips.map((chip) => (
+          {chips.map((chip, index) => (
             <span
-              key={chip}
+              key={`${index}-${chip}`}
               className="pill"
               style={{
                 fontSize: 11,
@@ -6284,25 +7219,79 @@ function DuelLoadoutSummary({ match }: { match: AmateurDuelMatch }): JSX.Element
         </div>
       </div>
       <DuelInventorySlots match={match} />
-      {match.me.inventory_report.length > 0 && (
-        <div style={{ color: 'var(--muted)', fontSize: 12, lineHeight: 1.45 }}>
-          Последний отчёт: период {match.me.inventory_report.at(-1)?.periodNumber}, списано{' '}
-          {match.me.inventory_report
-            .at(-1)
-            ?.consumed.reduce((sum, item) => sum + item.charges, 0) ?? 0}{' '}
-          зарядов.
-        </div>
-      )}
+      <DuelInventoryUsageSummary match={match} />
     </div>
   );
 }
 
-function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOpponent {
+function DuelInventoryUsageSummary({
+  match,
+  periodNumber,
+  title = 'Расход в этой дуэли',
+  label,
+  compact = false,
+  style,
+}: {
+  match: AmateurDuelMatch;
+  periodNumber?: number;
+  title?: string;
+  label?: string;
+  compact?: boolean;
+  style?: CSSProperties;
+}): JSX.Element | null {
+  const usage = duelInventoryUsageRows(match, periodNumber);
+  if (usage.length === 0) return null;
+  const useSectionHeading = compact || title === 'Общий расход инвентаря';
+  return (
+    <div aria-label={label ?? title} style={{ display: 'grid', gap: compact ? 5 : 6, ...style }}>
+      <div
+        className={useSectionHeading ? 'section-label' : undefined}
+        style={
+          useSectionHeading
+            ? { margin: 0, padding: 0 }
+            : { color: 'var(--muted)', fontSize: 11, fontWeight: 900 }
+        }
+      >
+        {title}
+      </div>
+      <div style={{ display: 'grid', gap: 5 }}>
+        {usage.map((item) => (
+          <div
+            key={`${item.kind}:${item.id}`}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 8,
+              fontSize: compact ? 11 : 12,
+              lineHeight: 1.25,
+            }}
+          >
+            <span style={{ color: 'var(--muted)', fontWeight: 750 }}>{item.title}</span>
+            <span style={{ color: 'var(--ink)', fontWeight: 900, textAlign: 'right' }}>
+              {item.label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOpponent {
   const opponent = match.opponent;
   const activeTime = opponent.active_duration_ms > 0 ? formatMs(opponent.active_duration_ms) : null;
+  const opponentRule = duelParticipantPeriodRule(match, opponent);
+  const shotsLabel =
+    opponent.state === 'period_active' &&
+    opponentRule.mode === 'quota' &&
+    opponentRule.shotsLimit !== null
+      ? `${String(opponent.current_period_shots).padStart(2, '0')}/${String(
+          opponentRule.shotsLimit,
+        ).padStart(2, '0')}`
+      : undefined;
   const time =
     opponent.state === 'period_active'
-      ? 'играет'
+      ? `играет ${opponent.current_period}/${match.rules.totalPeriods}`
       : opponent.state === 'break_active'
         ? (activeTime ?? 'перерыв')
         : opponent.state === 'completed'
@@ -6326,6 +7315,7 @@ function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOpponent {
     avatarUrl: opponent.avatar_url,
     goals: opponent.goals,
     shots: opponent.shots_taken,
+    shotsLabel,
     time,
     timeTone,
   };
@@ -6337,13 +7327,21 @@ const DUEL_INVENTORY_SLOTS = [
   { kind: 'nutrition', label: 'Энергия' },
 ] as const;
 
+export const DUEL_INVENTORY_ICON_GLASS_STYLE: CSSProperties = {
+  background:
+    'radial-gradient(circle at 28% 0%, rgba(255,255,255,0.94), rgba(255,255,255,0) 42%), linear-gradient(145deg, rgba(255,255,255,0.76), rgba(226,242,250,0.5) 58%, rgba(255,255,255,0.64))',
+  border: '1px solid rgba(255,255,255,0.82)',
+  boxShadow:
+    '0 0 0 1px rgba(15,23,42,0.07), 0 8px 18px rgba(15,23,42,0.14), inset 0 1.5px 0 rgba(255,255,255,0.88), inset 0 -8px 16px rgba(15,23,42,0.06)',
+};
+
 const DUEL_EQUIPMENT_META: Record<
   InventoryEquipmentKind,
-  { title: string; empty: string; patchKey: 'stickItemId' | 'skatesItemId' | 'nutritionItemId' }
+  { title: string; empty: string }
 > = {
-  stick: { title: 'Клюшка', empty: 'Без клюшки', patchKey: 'stickItemId' },
-  skates: { title: 'Коньки', empty: 'Без коньков', patchKey: 'skatesItemId' },
-  nutrition: { title: 'Питание', empty: 'Без питания', patchKey: 'nutritionItemId' },
+  stick: { title: 'Клюшка', empty: 'Без клюшки' },
+  skates: { title: 'Коньки', empty: 'Без коньков' },
+  nutrition: { title: 'Питание', empty: 'Без питания' },
 };
 
 function duelEquipmentIdFor(
@@ -6356,20 +7354,8 @@ function duelEquipmentIdFor(
   return inventory.equipped.nutritionItemId;
 }
 
-function duelEquippedItem(
-  inventory: InventoryState | undefined,
-  kind: InventoryEquipmentKind,
-): InventoryItem | null {
-  const id = duelEquipmentIdFor(inventory, kind);
-  return inventory?.items[kind].find((item) => item.id === id) ?? null;
-}
-
 function isDuelRequiredEquipment(kind: InventoryEquipmentKind): boolean {
   return kind === 'stick' || kind === 'skates';
-}
-
-function isDuelLockerItemAvailable(item: InventoryItem): boolean {
-  return item.chargesAvailable + item.chargesReserved > 0;
 }
 
 function duelBaseEquipmentTitle(kind: InventoryEquipmentKind): string {
@@ -6378,25 +7364,110 @@ function duelBaseEquipmentTitle(kind: InventoryEquipmentKind): string {
   return 'Без питания';
 }
 
-function duelBaseEquipmentDescription(kind: InventoryEquipmentKind): string {
-  if (kind === 'stick') return 'Базовая клюшка доступна всегда и не расходуется в дуэлях.';
-  if (kind === 'skates') return 'Базовые коньки доступны всегда и не расходуются в дуэлях.';
-  return 'Можно выйти на матч без спортивного питания.';
+function duelBaseEquipmentDrawback(kind: InventoryEquipmentKind): string {
+  if (kind === 'stick') return 'Шайба будет лететь медленно';
+  if (kind === 'skates') return 'Возможны спотыкания';
+  return 'Игрок будет уставать';
 }
 
-function duelInventoryPeriodLabel(count: number): string {
-  const normalized = Math.max(0, Math.trunc(count));
-  if (normalized === 0) return 'Нет запаса';
+function duelInventoryStockLabel(item: AmateurDuelInventoryAvailabilityItem): string {
+  if (item.chargesAvailable <= 0) return 'Нет запаса';
+  return `Осталось ${formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}`;
+}
 
+function duelEquipmentModalCopy(kind: InventoryEquipmentKind): string {
+  if (kind === 'stick') {
+    return 'Выберите клюшку, с которой будете начинать матчи. Перед стартом игры выбор можно изменить';
+  }
+  return 'Выберите предмет для этого слота.';
+}
+
+function duelEquipmentStockLineStyle(): CSSProperties {
+  return {
+    display: 'inline-block',
+    marginTop: 3,
+    color: '#334155',
+    fontSize: 12,
+    fontWeight: 920,
+    lineHeight: 1.15,
+  };
+}
+
+function duelEquipmentPointLabel(value: number): string {
+  const normalized = Math.max(0, Math.trunc(value));
   const mod10 = normalized % 10;
   const mod100 = normalized % 100;
   const noun =
     mod10 === 1 && mod100 !== 11
-      ? 'период'
+      ? 'пункт'
       : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
-        ? 'периода'
-        : 'периодов';
-  return `На ${normalized} ${noun}`;
+        ? 'пункта'
+        : 'пунктов';
+  return `${normalized} ${noun}`;
+}
+
+export function duelEquipmentEffectLabel(
+  kind: InventoryEquipmentKind,
+  powerScore: number | undefined,
+  resourceAmount?: number,
+  resourceUnit?:
+    | AmateurDuelLoadoutItem['resourceUnit']
+    | AmateurDuelInventoryAvailabilityItem['resourceUnit'],
+): string {
+  if (kind === 'skates') {
+    return resourceAmount !== undefined && resourceAmount > 0
+      ? 'Защищают от спотыканий'
+      : 'Возможны спотыкания';
+  }
+  if (kind === 'nutrition') {
+    return resourceAmount !== undefined && resourceAmount > 0
+      ? `Запас энергии: ${formatInventoryBadgeAmount(kind, resourceAmount, resourceUnit)}`
+      : 'Без дополнительной энергии';
+  }
+  const score = Math.max(0, Math.trunc(powerScore ?? 0));
+  if (score <= 0) {
+    if (kind === 'stick') return 'Базовая скорость полёта шайбы';
+  }
+  if (kind === 'stick') return `Ускоряет полёт шайбы на ${duelEquipmentPointLabel(score)}`;
+  return 'Базовая скорость полёта шайбы';
+}
+
+export function duelInventoryBadgeLabel(
+  kind: InventoryEquipmentKind,
+  remaining: number,
+  resourceUnit?:
+    | AmateurDuelLoadoutItem['resourceUnit']
+    | AmateurDuelInventoryAvailabilityItem['resourceUnit'],
+): string | null {
+  const normalized = Math.max(0, Math.floor(remaining));
+  if (normalized <= 0) return null;
+  return formatInventoryBadgeAmount(kind, normalized, resourceUnit);
+}
+
+export function isDuelInventoryLow(
+  kind: InventoryEquipmentKind,
+  remaining: number,
+  lowStockThreshold?: number,
+): boolean {
+  const threshold = Math.max(0, Math.floor(lowStockThreshold ?? (kind === 'stick' ? 10 : 0)));
+  return threshold > 0 && remaining > 0 && remaining <= threshold;
+}
+
+function duelStartPeriodLoadoutSelection(
+  match: AmateurDuelMatch,
+  selectedLoadout: AmateurDuelLoadoutSelection,
+): AmateurDuelLoadoutSelection | undefined {
+  if (selectedLoadout.stick === undefined) return undefined;
+  const selectedStick = selectedDuelAvailabilityItem(match, 'stick', selectedLoadout.stick);
+  return { stick: selectedStick ? selectedStick.id : null };
+}
+
+function duelLoadoutSelectionFromMatch(match: AmateurDuelMatch): AmateurDuelLoadoutSelection {
+  return {
+    stick: match.me.loadout.items.find((item) => item.kind === 'stick')?.id ?? null,
+    skates: match.me.loadout.items.find((item) => item.kind === 'skates')?.id ?? null,
+    nutrition: match.me.loadout.items.find((item) => item.kind === 'nutrition')?.id ?? null,
+  };
 }
 
 function duelEquipmentDisplayTitle(item: Pick<InventoryItem, 'kind' | 'rarity' | 'title'>): string {
@@ -6447,14 +7518,6 @@ function DuelInventorySlots({ match }: { match: AmateurDuelMatch }): JSX.Element
           : available
             ? artworkForInventoryItem(available)
             : placeholderArtworkForKind(slot.kind);
-        const rarityColor =
-          (item?.rarity ?? available?.rarity) === 'legendary'
-            ? '#f59e0b'
-            : (item?.rarity ?? available?.rarity) === 'epic'
-              ? '#a855f7'
-              : (item?.rarity ?? available?.rarity) === 'rare'
-                ? '#0ea5e9'
-                : '#64748b';
         const emptyText = hasAvailable ? 'не выбрано' : 'нет в наличии';
         return (
           <div
@@ -6485,9 +7548,8 @@ function DuelInventorySlots({ match }: { match: AmateurDuelMatch }): JSX.Element
                 alignItems: 'center',
                 justifyContent: 'center',
                 overflow: 'hidden',
-                background: item ? `${rarityColor}18` : 'rgba(15,23,42,0.05)',
-                border: item ? `1px solid ${rarityColor}66` : '1px solid rgba(15,23,42,0.08)',
-                boxShadow: item ? `0 0 12px ${rarityColor}33` : 'none',
+                ...DUEL_INVENTORY_ICON_GLASS_STYLE,
+                opacity: item || hasAvailable ? 1 : 0.56,
               }}
             >
               <img
@@ -6530,7 +7592,13 @@ function DuelInventorySlots({ match }: { match: AmateurDuelMatch }): JSX.Element
                   overflowWrap: 'anywhere',
                 }}
               >
-                {item ? `${item.chargesReserved} зар.` : emptyText}
+                {item
+                  ? formatInventoryResourceAmount(
+                      item.kind,
+                      duelInventoryItemRemaining(match, item),
+                      item.resourceUnit,
+                    )
+                  : emptyText}
               </div>
             </div>
           </div>
@@ -6574,7 +7642,7 @@ function DuelRinkLoadoutHud({
       aria-label="Выбор инвентаря"
       style={{
         display: 'flex',
-        gap: 6,
+        gap: 9,
         pointerEvents: locked ? 'none' : 'auto',
       }}
     >
@@ -6585,28 +7653,38 @@ function DuelRinkLoadoutHud({
         const hasBase = isDuelRequiredEquipment(slot.kind);
         const hasVisibleEquipment = item !== null || hasBase;
         const canOpen = !locked && availableItems.length > 0;
+        const inventoryBadge = item
+          ? duelInventoryBadgeLabel(item.kind, item.chargesAvailable, item.resourceUnit)
+          : null;
+        const inventoryLow =
+          item !== null &&
+          isDuelInventoryLow(slot.kind, item.chargesAvailable, item.lowStockThreshold);
         const title = item ? duelEquipmentDisplayTitle(item) : duelBaseEquipmentTitle(slot.kind);
+        const status = item
+          ? formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)
+          : hasBase
+            ? 'базовый предмет'
+            : 'не выбрано';
         return (
           <button
             key={slot.kind}
             type="button"
-            aria-label={`${slot.label}: ${title}`}
+            aria-label={`${slot.label}: ${title}. ${status}`}
+            className={inventoryLow ? 'inventory-icon-pulse' : undefined}
             disabled={!canOpen}
             onClick={() => onSelectKind(slot.kind)}
             style={{
-              width: 27,
-              height: 27,
+              position: 'relative',
+              width: 31,
+              height: 31,
               borderRadius: 999,
-              overflow: 'hidden',
+              overflow: 'visible',
               padding: 0,
               display: 'block',
-              background: 'rgba(255,255,255,0.72)',
-              border: hasVisibleEquipment
-                ? '1px solid rgba(255,255,255,0.78)'
-                : '1px solid rgba(15,23,42,0.08)',
+              ...DUEL_INVENTORY_ICON_GLASS_STYLE,
               boxShadow: hasVisibleEquipment
-                ? '0 0 0 1px rgba(15,23,42,0.08), 0 5px 12px rgba(15,23,42,0.12)'
-                : 'none',
+                ? DUEL_INVENTORY_ICON_GLASS_STYLE.boxShadow
+                : '0 0 0 1px rgba(15,23,42,0.04), inset 0 1px 0 rgba(255,255,255,0.5)',
               opacity: hasVisibleEquipment ? 1 : 0.48,
               cursor: canOpen ? 'pointer' : 'default',
               WebkitTapHighlightColor: 'transparent',
@@ -6619,11 +7697,37 @@ function DuelRinkLoadoutHud({
                 width: '100%',
                 height: '100%',
                 display: 'block',
+                borderRadius: 999,
                 objectFit: 'cover',
                 filter: hasVisibleEquipment ? 'none' : 'grayscale(1)',
                 opacity: item ? 1 : hasVisibleEquipment ? 0.72 : 0.38,
               }}
             />
+            {inventoryBadge && (
+              <span
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  left: '50%',
+                  bottom: -16,
+                  minWidth: 'max-content',
+                  transform: 'translateX(-50%)',
+                  display: 'block',
+                  color: '#16233b',
+                  fontFamily: 'var(--font-ui)',
+                  fontSize: 9.5,
+                  fontWeight: 950,
+                  lineHeight: 1,
+                  letterSpacing: 0,
+                  textAlign: 'center',
+                  whiteSpace: 'nowrap',
+                  textShadow: '0 1px 0 rgba(255,255,255,0.92), 0 0 6px rgba(255,255,255,0.78)',
+                  zIndex: 2,
+                }}
+              >
+                {inventoryBadge}
+              </span>
+            )}
           </button>
         );
       })}
@@ -6646,7 +7750,7 @@ function DuelRinkLoadoutModal({
 }): JSX.Element {
   const meta = DUEL_EQUIPMENT_META[kind];
   const items = availableDuelItemsForKind(match, kind);
-  const canUseBase = isDuelRequiredEquipment(kind) || kind === 'nutrition';
+  const canUseBase = true;
 
   return (
     <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
@@ -6655,50 +7759,93 @@ function DuelRinkLoadoutModal({
         aria-label={meta.title}
         className="modal-card"
         onClick={(event) => event.stopPropagation()}
-        style={{ width: 'min(420px, calc(100vw - 28px))', display: 'grid', gap: 12 }}
+        style={{
+          width: 'min(430px, calc(100vw - 28px))',
+          maxHeight: 'calc(100dvh - 112px - var(--app-safe-top) - var(--app-safe-bottom))',
+          display: 'grid',
+          gridTemplateRows: 'auto minmax(0, 1fr)',
+          gap: 10,
+          overflow: 'hidden',
+        }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="modal-title">{meta.title}</div>
-            <div className="modal-copy">Выберите предмет для этой дуэли.</div>
+            <div className="modal-copy">{duelEquipmentModalCopy(kind)}</div>
           </div>
           <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
             <X size={15} />
           </button>
         </div>
-        <div style={{ display: 'grid', gap: 8 }}>
+        <div
+          className="no-scrollbar"
+          style={{
+            minHeight: 0,
+            maxHeight: 'min(54dvh, 430px)',
+            overflowY: 'auto',
+            display: 'grid',
+            gap: 8,
+            paddingRight: 2,
+          }}
+        >
           {canUseBase && (
             <button
               type="button"
-              className="glass"
+              className={`glass duel-equipment-option${selectedId === null ? ' duel-equipment-option--selected' : ''}`}
               aria-pressed={selectedId === null}
               onClick={() => onSelect(null)}
               style={{
-                minHeight: 54,
+                minHeight: 78,
                 borderRadius: 16,
-                padding: 12,
-                color: 'var(--ink)',
+                padding: 10,
+                display: 'grid',
+                gridTemplateColumns: '56px minmax(0, 1fr) 22px',
+                alignItems: 'center',
+                gap: 10,
                 textAlign: 'left',
-                border:
-                  selectedId === null
-                    ? '1px solid rgba(15, 23, 42, 0.3)'
-                    : '1px solid rgba(255,255,255,0.76)',
               }}
             >
-              <span style={{ display: 'block', fontSize: 15, fontWeight: 900 }}>
-                {duelBaseEquipmentTitle(kind)}
-              </span>
               <span
+                aria-hidden="true"
                 style={{
-                  display: 'block',
-                  marginTop: 3,
-                  color: 'var(--muted)',
-                  fontSize: 12,
-                  fontWeight: 760,
+                  width: 56,
+                  height: 56,
+                  borderRadius: 14,
+                  overflow: 'hidden',
+                  border: '1px solid rgba(255,255,255,0.78)',
+                  background: 'rgba(255,255,255,0.28)',
                 }}
               >
-                {duelBaseEquipmentDescription(kind)}
+                <img
+                  src={placeholderArtworkForKind(kind)}
+                  alt=""
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    display: 'block',
+                    objectFit: 'cover',
+                    filter: 'grayscale(0.45)',
+                    opacity: 0.72,
+                  }}
+                />
               </span>
+              <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
+                <span style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}>
+                  {duelBaseEquipmentTitle(kind)}
+                </span>
+                <span
+                  style={{
+                    display: 'block',
+                    color: 'var(--muted)',
+                    fontSize: 12,
+                    fontWeight: 760,
+                    lineHeight: 1.25,
+                  }}
+                >
+                  {duelEquipmentEffectLabel(kind, 0)}
+                </span>
+              </span>
+              <DuelEquipmentSelectionRadio selected={selectedId === null} />
             </button>
           )}
           {items.map((item) => {
@@ -6707,51 +7854,68 @@ function DuelRinkLoadoutModal({
               <button
                 key={item.id}
                 type="button"
-                className="glass"
+                className={`glass duel-equipment-option${selected ? ' duel-equipment-option--selected' : ''}`}
                 aria-pressed={selected}
                 onClick={() => onSelect(item.id)}
                 style={{
-                  minHeight: 72,
-                  borderRadius: 18,
+                  minHeight: 78,
+                  borderRadius: 16,
                   padding: 10,
                   display: 'grid',
-                  gridTemplateColumns: '52px minmax(0, 1fr)',
+                  gridTemplateColumns: '56px minmax(0, 1fr) 22px',
                   alignItems: 'center',
                   gap: 10,
-                  color: 'var(--ink)',
                   textAlign: 'left',
-                  border: selected
-                    ? '1px solid rgba(15, 23, 42, 0.3)'
-                    : '1px solid rgba(255,255,255,0.76)',
                 }}
               >
                 <img
                   src={artworkForInventoryItem(item)}
                   alt=""
                   style={{
-                    width: 52,
-                    height: 52,
+                    width: 56,
+                    height: 56,
                     borderRadius: 14,
                     objectFit: 'cover',
                     border: '1px solid rgba(255,255,255,0.78)',
                   }}
                 />
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 15, fontWeight: 950 }}>
+                <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
+                  <span
+                    style={{
+                      minWidth: 0,
+                      display: 'block',
+                      fontSize: 15,
+                      fontWeight: 950,
+                      lineHeight: 1.12,
+                      overflowWrap: 'break-word',
+                    }}
+                  >
                     {duelEquipmentDisplayTitle(item)}
                   </span>
                   <span
                     style={{
-                      display: 'block',
-                      marginTop: 4,
+                      display: 'grid',
+                      gap: 2,
                       color: 'var(--muted)',
                       fontSize: 12,
-                      fontWeight: 800,
+                      fontWeight: 760,
+                      lineHeight: 1.25,
                     }}
                   >
-                    {duelInventoryPeriodLabel(item.chargesAvailable)}
+                    <span>
+                      {duelEquipmentEffectLabel(
+                        kind,
+                        item.powerScore,
+                        item.chargesAvailable,
+                        item.resourceUnit,
+                      )}
+                    </span>
+                    <span style={duelEquipmentStockLineStyle()}>
+                      {duelInventoryStockLabel(item)}
+                    </span>
                   </span>
                 </span>
+                <DuelEquipmentSelectionRadio selected={selected} />
               </button>
             );
           })}
@@ -6761,16 +7925,52 @@ function DuelRinkLoadoutModal({
   );
 }
 
-function duelInventoryRarityColor(
-  rarity: AmateurDuelMatch['me']['loadout']['items'][number]['rarity'] | undefined,
-): string {
-  return rarity === 'legendary'
-    ? '#f59e0b'
-    : rarity === 'epic'
-      ? '#a855f7'
-      : rarity === 'rare'
-        ? '#0ea5e9'
-        : '#64748b';
+function duelInventoryUsageRows(
+  match: AmateurDuelMatch,
+  periodNumber?: number,
+): Array<{
+  id: string;
+  kind: AmateurDuelMatch['me']['loadout']['items'][number]['kind'];
+  title: string;
+  label: string;
+}> {
+  const totals = new Map<
+    string,
+    {
+      id: string;
+      kind: AmateurDuelMatch['me']['loadout']['items'][number]['kind'];
+      title: string;
+      charges: number;
+    }
+  >();
+  for (const consumed of match.me.inventory_report
+    .filter((report) => periodNumber === undefined || report.periodNumber === periodNumber)
+    .flatMap((report) => report.consumed)) {
+    const key = `${consumed.kind}:${consumed.id}`;
+    const current = totals.get(key);
+    if (current) {
+      current.charges += consumed.charges;
+    } else {
+      totals.set(key, {
+        id: consumed.id,
+        kind: consumed.kind,
+        title: consumed.title,
+        charges: consumed.charges,
+      });
+    }
+  }
+  return [...totals.values()]
+    .filter((item) => item.charges > 0)
+    .map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      title: item.title,
+      label: formatInventoryResourceAmount(
+        item.kind,
+        item.kind === 'skates' ? Math.floor(item.charges) : item.charges,
+        item.kind === 'stick' ? 'shot' : item.kind === 'skates' ? 'distance' : 'energy_ms',
+      ),
+    }));
 }
 
 function duelInventoryRemaining(match: AmateurDuelMatch, itemId: string, fallback: number): number {
@@ -6782,7 +7982,149 @@ function duelInventoryRemaining(match: AmateurDuelMatch, itemId: string, fallbac
   return fallback;
 }
 
-function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Element | null {
+export function duelInventoryItemRemaining(
+  match: AmateurDuelMatch,
+  item: AmateurDuelMatch['me']['loadout']['items'][number],
+  liveCondition?: DuelPlayerCondition | null,
+): number {
+  if (item.resourceUnit === 'shot') {
+    return Math.max(0, (item.resourceAvailable ?? 0) - duelConsumedForItem(match, item.id));
+  }
+  if (item.resourceUnit === 'distance' || item.resourceUnit === 'energy_ms') {
+    const periodNumber = Math.max(1, match.me.current_period);
+    const currentPeriodConsumed = duelConsumedForPeriodItem(match, periodNumber, item.id);
+    const liveConsumed =
+      item.resourceUnit === 'distance'
+        ? (liveCondition?.skatesConsumed ?? 0)
+        : (liveCondition?.nutritionConsumed ?? 0);
+    return Math.max(
+      0,
+      (item.resourceAvailable ?? 0) -
+        duelConsumedBeforePeriodItem(match, periodNumber, item.id) -
+        Math.max(currentPeriodConsumed, liveConsumed),
+    );
+  }
+  return duelInventoryRemaining(match, item.id, item.chargesReserved);
+}
+
+function duelConsumedForPeriodItem(
+  match: AmateurDuelMatch,
+  periodNumber: number,
+  itemId: string,
+): number {
+  return match.me.inventory_report
+    .filter((report) => report.periodNumber === periodNumber)
+    .flatMap((report) => report.consumed)
+    .filter((item) => item.id === itemId)
+    .reduce((sum, item) => sum + item.charges, 0);
+}
+
+function duelConsumedBeforePeriodItem(
+  match: AmateurDuelMatch,
+  periodNumber: number,
+  itemId: string,
+): number {
+  return match.me.inventory_report
+    .filter((report) => report.periodNumber < periodNumber)
+    .flatMap((report) => report.consumed)
+    .filter((item) => item.id === itemId)
+    .reduce((sum, item) => sum + item.charges, 0);
+}
+
+function duelConsumedForItem(match: AmateurDuelMatch, itemId: string): number {
+  return match.me.inventory_report
+    .flatMap((report) => report.consumed)
+    .filter((item) => item.id === itemId)
+    .reduce((sum, item) => sum + item.charges, 0);
+}
+
+function duelConditionLoadout(match: AmateurDuelMatch): DuelInventoryLoadoutSnapshot {
+  const periodNumber = Math.max(1, match.me.current_period);
+  const stick = match.me.loadout.items.find((item) => item.kind === 'stick');
+  const skates = match.me.loadout.items.find((item) => item.kind === 'skates');
+  const nutrition = match.me.loadout.items.find((item) => item.kind === 'nutrition');
+  const toConditionItem = (
+    item: typeof stick,
+    resourceAvailable: number,
+  ): DuelInventoryLoadoutSnapshot['stick'] => {
+    if (!item || item.resourceUnit === undefined) return null;
+    const resourceUnit =
+      item.kind === 'stick' && item.resourceUnit === 'period' ? 'shot' : item.resourceUnit;
+    if (resourceUnit === 'period') return null;
+    return {
+      id: item.id,
+      title: item.title,
+      resourceUnit,
+      resourceAvailable: Math.max(0, resourceAvailable),
+      effectPuckSpeedPoints: item.effectPuckSpeedPoints ?? 0,
+      timing: item.timing ?? DEFAULT_DUEL_INVENTORY_TIMING,
+    };
+  };
+  const stickConsumed = stick ? duelConsumedForItem(match, stick.id) : 0;
+  const skatesConsumedBeforePeriod = skates
+    ? duelConsumedBeforePeriodItem(match, periodNumber, skates.id)
+    : 0;
+  const nutritionConsumedBeforePeriod = nutrition
+    ? duelConsumedBeforePeriodItem(match, periodNumber, nutrition.id)
+    : 0;
+  return {
+    stick: toConditionItem(stick, (stick?.resourceAvailable ?? 0) - stickConsumed),
+    skates: toConditionItem(skates, (skates?.resourceAvailable ?? 0) - skatesConsumedBeforePeriod),
+    nutrition: toConditionItem(
+      nutrition,
+      (nutrition?.resourceAvailable ?? 0) - nutritionConsumedBeforePeriod,
+    ),
+    fallbackSkatesTiming: match.rules.noInventoryTiming?.skates ?? DEFAULT_DUEL_INVENTORY_TIMING,
+    fallbackNutritionTiming:
+      match.rules.noInventoryTiming?.nutrition ?? DEFAULT_DUEL_INVENTORY_TIMING,
+  };
+}
+
+function createDuelConditionForMatch(
+  match: AmateurDuelMatchState,
+): (
+  elapsedMs: number,
+  speeds: SpeedOverrides,
+  reusable?: DuelPlayerCondition,
+) => DuelPlayerCondition | null {
+  if (!match.match_seed) return () => null;
+  const basePreset = periodSpeedPresetFor(match.me.current_period, match.rules.periodSpeedPresets);
+  const loadout = duelConditionLoadout(match);
+  const movementTiming =
+    loadout.skates?.timing ?? loadout.fallbackSkatesTiming ?? DEFAULT_DUEL_INVENTORY_TIMING;
+  const staticInput = {
+    seed: match.match_seed,
+    userId: match.me.user_id,
+    periodNumber: match.me.current_period,
+  };
+  const stumbleRandomness = createDuelStumbleRandomness(staticInput, movementTiming);
+  const conditionInput: DuelPlayerConditionInput = {
+    ...staticInput,
+    elapsedMs: 0,
+    movementDistancePx: 0,
+    baseLaneWidthPx: SHOOTER_AMPLITUDE * 2,
+    baselineShooterSpeed: basePreset.shooterFrequency,
+    currentShooterSpeed: basePreset.shooterFrequency,
+    loadout,
+    stumbleRandomness,
+  };
+  return (elapsedMs, speeds, reusable) => {
+    conditionInput.elapsedMs = Math.max(0, elapsedMs);
+    conditionInput.movementDistancePx = movementDistancePxForElapsed(elapsedMs, speeds.shooterFreq);
+    conditionInput.currentShooterSpeed = speeds.shooterFreq;
+    return getDuelPlayerCondition(conditionInput, reusable);
+  };
+}
+
+function DuelInventoryMiniHud({
+  match,
+  liveCondition,
+  onSelectKind,
+}: {
+  match: AmateurDuelMatch;
+  liveCondition?: DuelPlayerCondition | null;
+  onSelectKind?: (kind: InventoryEquipmentKind) => void;
+}): JSX.Element | null {
   const availableItems = match.me.inventory_available ?? [];
 
   return (
@@ -6791,12 +8133,19 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
       style={{
         display: 'flex',
         justifyContent: 'flex-start',
-        gap: 5,
-        pointerEvents: 'none',
+        gap: 9,
+        pointerEvents: onSelectKind ? 'auto' : 'none',
       }}
     >
       {DUEL_INVENTORY_SLOTS.map((slot) => {
-        const item = match.me.loadout.items.find((cur) => cur.kind === slot.kind);
+        const selectedItem = match.me.loadout.items.find((cur) => cur.kind === slot.kind);
+        const selectedRemaining = selectedItem
+          ? duelInventoryItemRemaining(match, selectedItem, liveCondition)
+          : 0;
+        const item =
+          selectedItem && !(slot.kind === 'stick' && selectedRemaining <= 0)
+            ? selectedItem
+            : undefined;
         const available = availableItems.find(
           (cur) => cur.kind === slot.kind && cur.chargesAvailable > 0,
         );
@@ -6805,44 +8154,46 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
           : available
             ? artworkForInventoryItem(available)
             : placeholderArtworkForKind(slot.kind);
-        const totalCharges = item?.chargesReserved ?? 0;
-        const remainingCharges = item
-          ? duelInventoryRemaining(match, item.id, item.chargesReserved)
-          : 0;
-        const remainingRatio =
-          item && totalCharges > 0
-            ? Math.max(0, Math.min(1, remainingCharges / totalCharges))
-            : item
-              ? 1
-              : 0;
-        const usedPercent = Math.round((1 - remainingRatio) * 100);
-        const rarityColor = duelInventoryRarityColor(item?.rarity ?? available?.rarity);
+        const remainingCharges = item ? duelInventoryItemRemaining(match, item, liveCondition) : 0;
         const isSelected = item !== undefined;
-        const lineVisible = isSelected && usedPercent > 0 && usedPercent < 100;
+        const inventoryBadge = item
+          ? duelInventoryBadgeLabel(item.kind, remainingCharges, item.resourceUnit)
+          : null;
+        const inventoryLow =
+          item !== undefined &&
+          isDuelInventoryLow(slot.kind, remainingCharges, item.lowStockThreshold);
         const statusText = isSelected
-          ? totalCharges > 0
-            ? `${remainingCharges}/${totalCharges}`
-            : 'вкл'
+          ? formatInventoryResourceAmount(item.kind, remainingCharges, item.resourceUnit)
           : available
             ? 'не выбрано'
-            : 'нет';
+            : slot.kind === 'nutrition'
+              ? 'нет'
+              : 'обычный';
+        const interactive = slot.kind === 'stick' && Boolean(onSelectKind);
 
         return (
-          <span
+          <button
             key={slot.kind}
+            type="button"
             aria-label={`${slot.label}: ${statusText}`}
+            disabled={!interactive}
+            onClick={() => onSelectKind?.(slot.kind)}
+            className={inventoryLow ? 'inventory-icon-pulse' : undefined}
             style={{
+              appearance: 'none',
+              padding: 0,
               position: 'relative',
-              width: 27,
-              height: 27,
+              width: 31,
+              height: 31,
               borderRadius: 999,
-              overflow: 'hidden',
+              overflow: 'visible',
               display: 'block',
-              background: 'rgba(255,255,255,0.72)',
-              border: isSelected ? `2px solid ${rarityColor}` : '1px solid rgba(255,255,255,0.78)',
+              cursor: interactive ? 'pointer' : 'default',
+              ...DUEL_INVENTORY_ICON_GLASS_STYLE,
+              border: '1px solid rgba(255,255,255,0.82)',
               boxShadow: isSelected
-                ? `0 0 0 1px rgba(255,255,255,0.72), 0 6px 14px ${rarityColor}42`
-                : '0 0 0 1px rgba(15,23,42,0.08), 0 5px 12px rgba(15,23,42,0.12)',
+                ? '0 0 0 1px rgba(255,255,255,0.72), 0 10px 22px rgba(15,23,42,0.18), inset 0 1.5px 0 rgba(255,255,255,0.92), inset 0 -8px 16px rgba(15,23,42,0.07)'
+                : DUEL_INVENTORY_ICON_GLASS_STYLE.boxShadow,
             }}
           >
             <img
@@ -6853,41 +8204,38 @@ function DuelInventoryMiniHud({ match }: { match: AmateurDuelMatch }): JSX.Eleme
                 inset: 0,
                 width: '100%',
                 height: '100%',
+                borderRadius: 999,
                 objectFit: 'cover',
                 filter: isSelected || available ? 'none' : 'grayscale(1)',
-                opacity: isSelected ? 0.84 : available ? 0.64 : 0.28,
+                opacity: isSelected ? 1 : available ? 0.72 : 0.34,
               }}
             />
-            {isSelected && (
-              <img
-                src={artwork}
-                alt=""
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  clipPath: `inset(${usedPercent}% 0 0 0)`,
-                  opacity: 0.98,
-                }}
-              />
-            )}
-            {lineVisible && (
+            {inventoryBadge && (
               <span
+                aria-hidden="true"
                 style={{
                   position: 'absolute',
-                  left: 4,
-                  right: 4,
-                  top: `${usedPercent}%`,
-                  height: 1,
-                  background: 'rgba(255,255,255,0.92)',
-                  boxShadow: '0 0 0 1px rgba(15,23,42,0.16)',
-                  transform: 'translateY(-0.5px)',
+                  left: '50%',
+                  bottom: -16,
+                  minWidth: 'max-content',
+                  transform: 'translateX(-50%)',
+                  display: 'block',
+                  color: '#16233b',
+                  fontFamily: 'var(--font-ui)',
+                  fontSize: 9.5,
+                  fontWeight: 950,
+                  lineHeight: 1,
+                  letterSpacing: 0,
+                  textAlign: 'center',
+                  whiteSpace: 'nowrap',
+                  textShadow: '0 1px 0 rgba(255,255,255,0.92), 0 0 6px rgba(255,255,255,0.78)',
+                  zIndex: 2,
                 }}
-              />
+              >
+                {inventoryBadge}
+              </span>
             )}
-          </span>
+          </button>
         );
       })}
     </div>
@@ -6901,26 +8249,9 @@ function LevelPlaceholder({
   level: Exclude<GameLevel, 'beginner'>;
   onBack: () => void;
 }): JSX.Element {
-  const isAmateur = level === 'amateur';
   return (
-    <ModeShell title={isAmateur ? 'Любители' : 'Профессионалы'} onBack={onBack}>
-      {isAmateur ? (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
-            <TotalCell label="ДОСТУП" value="1000" />
-          </div>
-          <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-            Раздел откроется после 1000 голов в дневной игре начального уровня.
-          </div>
-        </>
-      ) : (
-        <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-          Профессиональный раздел в разработке.
-        </div>
-      )}
-      <button type="button" className="btn btn--cta" disabled>
-        {isAmateur ? 'Закрыто' : 'В разработке'}
-      </button>
+    <ModeShell title={level === 'amateur' ? 'Любители' : 'Профессионалы'} onBack={onBack}>
+      <div className="level-placeholder-copy">Раздел в разработке</div>
     </ModeShell>
   );
 }
@@ -6942,6 +8273,7 @@ function PeriodSpeedSummary({
 
   return (
     <div
+      className="training-period-speeds"
       aria-label={`${periodNumber}-й период: скорости`}
       style={{
         padding: 12,
@@ -6954,24 +8286,19 @@ function PeriodSpeedSummary({
         gap: 10,
       }}
     >
-      <div
-        style={{
-          color: 'rgba(15, 23, 42, 0.58)',
-          fontSize: 10,
-          fontWeight: 900,
-          letterSpacing: '0.16em',
-          textTransform: 'uppercase',
-        }}
-      >
+      <div className="section-label training-period-speeds__title">
         Скорости {periodNumber}-го периода
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+      <div
+        className="training-period-speeds__grid"
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 4 }}
+      >
         {items.map((item) => (
           <div key={item.label} style={{ minWidth: 0 }}>
             <div
               style={{
                 color: 'rgba(15, 23, 42, 0.54)',
-                fontSize: 11,
+                fontSize: 'clamp(8px, 2.5vw, 10px)',
                 fontWeight: 800,
                 lineHeight: 1.1,
               }}
@@ -6982,7 +8309,7 @@ function PeriodSpeedSummary({
               style={{
                 marginTop: 3,
                 color: 'var(--ink)',
-                fontSize: 15,
+                fontSize: 'clamp(9px, 2.8vw, 12px)',
                 fontWeight: 900,
                 fontVariantNumeric: 'tabular-nums',
                 lineHeight: 1.1,
@@ -7002,6 +8329,7 @@ function TotalCell({ label, value }: { label: string; value: string }): JSX.Elem
   const isLongValue = value.length > 5;
   return (
     <div
+      aria-label={`${label}: ${value}`}
       style={{
         padding: '10px 4px',
         borderRadius: 14,
@@ -7039,174 +8367,142 @@ function TotalCell({ label, value }: { label: string; value: string }): JSX.Elem
   );
 }
 
-interface PlayViewProps<TState> {
-  suppressedByModal: boolean;
-  showIceCar: boolean;
-  playEntranceOnMount?: boolean | undefined;
-  onEntranceConsumed?: (() => void) | undefined;
-  playRouteTransitionOnMount?: boolean | undefined;
-  onRouteTransitionConsumed?: (() => void) | undefined;
-  onBack: () => void;
-  active: boolean;
-  seed: string | null;
-  goalieId: string;
-  periodNumber: number;
-  periodSpeedPresets?: readonly DailyPeriodSpeedPreset[] | undefined;
-  stickEffects?: StickEffects | undefined;
-  periodsTotal?: number;
-  goals: number;
-  shots: number;
-  shotsTotal?: number | undefined;
-  timer?: string | undefined;
-  timerLabel?: string | undefined;
-  scoreboardNotice?: string | undefined;
-  shotButtonLabel?: string | undefined;
-  inactiveAction?: (() => unknown | Promise<unknown>) | undefined;
-  entranceBeforeInactiveAction?: boolean | undefined;
-  backLabel?: string | undefined;
-  bottomInset?: string | undefined;
-  sessionStartedAt?: string | null | undefined;
-  serverNow?: string | null | undefined;
-  receivedAtPerformanceMs?: number | undefined;
-  periodEndsAt?: number | undefined;
-  onTimerExpired?: (() => void | Promise<void>) | undefined;
-  optimisticAddShot: (claimed: ShotResultType) => void;
-  submitShot: (args: {
-    shotIndex: number;
-    input: ShotInputPayload;
-    claimedResult: ShotResultType;
-  }) => Promise<{ serverResult: ShotResultType; state: TState } | null>;
-  applyState: (next: TState) => void;
-  applyResolvedState?: ((next: TState) => void) | undefined;
-  rinkLayer?: ReactNode;
-  longCourtBackground?: string | undefined;
-  rinkAspectRatio?: string | undefined;
-  rinkBorderRadius?: number | string | undefined;
-  rinkBorder?: string | undefined;
-  hideScoreboard?: boolean | undefined;
-  overlayControls?: ReactNode;
-  gameLayerStyle?: CSSProperties | undefined;
-  playerGrip?: 'left' | 'right' | undefined;
-  playerOptions?: PlayerOptions | undefined;
-  goalOptions?: GoalOptions | undefined;
-  goalieOptions?: GoalieOptions | undefined;
-  puckOptions?: PuckOptions | undefined;
-  hitboxesVisible?: boolean | undefined;
-  hitboxesOptions?: HitboxesOptions | undefined;
-  shotResolver?: PlayShotResolver | undefined;
-  hudAddon?: ReactNode;
-  scoreboardOpponent?: ScoreBoardOpponent | undefined;
-  readyPresence?: ReadyPresence | undefined;
-}
-
-interface ReadyPresence {
-  playerReady: boolean;
-  goalieReady: boolean;
-  playerEntranceKey?: string | null | undefined;
-  goalieEntranceKey?: string | null | undefined;
-}
-
-interface PlaySessionSnapshot {
-  active: boolean;
-  seed: string | null;
-  goalieId: string;
-  periodNumber: number;
-  shots: number;
-  shotsTotal: number | undefined;
-}
-
-const PERSPECTIVE_PLAYER_OPTIONS: PlayerOptions = {
-  spriteUrls: {
-    left: '/sprites/ultimate-player-left.webp',
-    right: '/sprites/ultimate-player-right.webp',
-  },
-  shotSpriteUrls: {
-    left: '/sprites/ultimate-player-left-shoot.webp',
-    right: '/sprites/ultimate-player-right-shoot.webp',
-  },
-  spriteWidth: 101,
-  spriteAspect: 942 / 1067,
-  baseRotation: 0,
-  shotMaxRotation: 0,
-  shotDurationMs: 500,
-  visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
-  visualYOffset: TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
-  shadow: true,
-};
-
-const PERSPECTIVE_GOAL_OPTIONS: GoalOptions = {
-  spriteUrl: '/sprites/test-goal-clean.webp',
-  gateWidth: 92,
-  gateAspect: 1097 / 734,
-  visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
-  visualYOffset: TRAINING_NEW_COURT_GOAL_VISUAL_Y_OFFSET,
-  visualOffsetXScale: TRAINING_NEW_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
-  spriteAnchorY: 1,
-};
-
-const PERSPECTIVE_GOALIE_OPTIONS: GoalieOptions = {
-  idleSpriteUrl: '/sprites/test-goalie-black.webp',
-  saveSpriteUrl: '/sprites/test-goalie-black-save.webp',
-  visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
-  visualYOffset: TRAINING_NEW_COURT_GOALIE_VISUAL_Y_OFFSET,
-  visualXScale: TRAINING_NEW_COURT_GOALIE_VISUAL_X_SCALE,
-  sizeScale: 1.134,
-  idleSizeScale: 1.22,
-  saveSizeScale: 0.96,
-  saveVisualYOffset: 10,
-  shadow: true,
-};
-
-const PERSPECTIVE_PUCK_OPTIONS: PuckOptions = {
-  radiusScaleX: 1.16,
-  radiusScaleY: 0.82,
-  rotation: 0,
-  visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
-  visualYOffset: TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
-  bladeOffsetX: TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_X,
-  bladeOffsetY: TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_Y,
-  flightVisualYOffset: TRAINING_NEW_COURT_PUCK_FLIGHT_VISUAL_Y_OFFSET,
-};
-
-const PERSPECTIVE_HITBOX_OPTIONS: HitboxesOptions = {
-  goalWidthScale: TRAINING_NEW_COURT_HITBOX_GOAL_WIDTH_SCALE,
-  goalHeightScale: TRAINING_NEW_COURT_HITBOX_GOAL_HEIGHT_SCALE,
-  goalInset: TRAINING_NEW_COURT_HITBOX_GOAL_INSET,
-  goalieWidthScale: TRAINING_NEW_COURT_HITBOX_GOALIE_WIDTH_SCALE,
-  goalieHeightScale: TRAINING_NEW_COURT_HITBOX_GOALIE_HEIGHT_SCALE,
-  goalieInset: TRAINING_NEW_COURT_HITBOX_GOALIE_INSET,
-};
-
-interface PlaySessionTiming {
-  sessionStartedAt: string | null;
-  serverNow: string | null;
-  receivedAtPerformanceMs: number | null;
-}
-
 interface DailyStatsModalState {
   stats: DailyGameStats;
   source: 'deferred' | 'state';
   state: DailyStateResponse['state'];
 }
 
-function computeInitialElapsedMs(timing: PlaySessionTiming): number {
-  if (!timing.sessionStartedAt || !timing.serverNow) return 0;
-  const started = Date.parse(timing.sessionStartedAt);
-  const serverNowMs = Date.parse(timing.serverNow);
-  if (!Number.isFinite(started) || !Number.isFinite(serverNowMs)) return 0;
-  const syncedElapsed = Math.max(0, serverNowMs - started);
-  const receivedAt = timing.receivedAtPerformanceMs ?? performance.now();
-  return syncedElapsed + Math.max(0, performance.now() - receivedAt);
+function RecoveryKitModal({
+  action,
+  onApplied,
+  onClose,
+}: {
+  action: 'start_daily_period' | 'start_classic';
+  onApplied: () => void | Promise<void>;
+  onClose: () => void;
+}): JSX.Element {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
+  const dailyData = useDailyStore((state) => state.data);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel,
+    qualifyingGoals: dailyData?.lifetime_total_goals,
+    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
+  });
+  const inventory = useQuery<InventoryState>({
+    queryKey: ['inventory', 'me'],
+    queryFn: fetchMyInventory,
+  });
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const variants = Array.from(
+    new Map(
+      (inventory.data?.items.recovery ?? []).map((item) => [item.itemId ?? item.id, item]),
+    ).values(),
+  );
+  const stockFor = (itemId: string): number =>
+    (inventory.data?.items.recovery ?? [])
+      .filter((item) => (item.itemId ?? item.id) === itemId)
+      .reduce((sum, item) => sum + item.chargesAvailable, 0);
+  const selected = variants.find((item) => (item.itemId ?? item.id) === selectedItemId) ?? null;
+  const selectedStock = selected === null ? 0 : stockFor(selected.itemId ?? selected.id);
+  const mutation = useMutation({
+    mutationFn: (item: InventoryItem) =>
+      useRecoveryKit({
+        itemId: item.itemId ?? item.id,
+        action,
+        buyIfNeeded: stockFor(item.itemId ?? item.id) === 0,
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    onSuccess: async (result) => {
+      queryClient.setQueryData(['inventory', 'me'], result.inventory);
+      await onApplied();
+      onClose();
+    },
+  });
+
+  return (
+    <AccessibleModal
+      title="Сократить восстановление"
+      copy="Выберите одноразовый набор. Перед применением проверьте время и стоимость."
+      onRequestClose={onClose}
+      closeBlocked={mutation.isPending}
+      headerAction={
+        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+          <X size={15} />
+        </button>
+      }
+    >
+      <div className="recovery-kit-options">
+        {variants.map((item) => {
+          const itemId = item.itemId ?? item.id;
+          const stock = stockFor(itemId);
+          const minutes = item.effectRecoveryMinutes ?? 0;
+          return (
+            <button
+              type="button"
+              key={itemId}
+              className={`recovery-kit-option${selectedItemId === itemId ? ' recovery-kit-option--selected' : ''}`}
+              onClick={() => setSelectedItemId(itemId)}
+            >
+              <img src={item.imageUrl ?? '/inventory/recovery-30.webp'} alt="" />
+              <span>
+                <strong>{minutes === 60 ? '1 час' : `${minutes} минут`}</strong>
+                <small>{stock > 0 ? `В запасе: ${stock}` : `${item.currencyPrice} монет`}</small>
+              </span>
+              <DuelEquipmentSelectionRadio selected={selectedItemId === itemId} />
+            </button>
+          );
+        })}
+      </div>
+      {mutation.error && amateurAccessDetailsFromError(mutation.error) === null && (
+        <p className="modal-copy" role="alert">
+          {mutation.error.message}
+        </p>
+      )}
+      <div className="modal-actions">
+        {mutation.isError && mutation.error.message.includes('currency') ? (
+          <button type="button" className="btn btn--ghost" onClick={() => navigate('/inventory')}>
+            В банк
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="modal-primary btn--cta"
+          disabled={selected === null || mutation.isPending}
+          onClick={() => {
+            if (selected === null) return;
+            if (action === 'start_classic') {
+              guardAmateurMutation(amateurAccess, () => mutation.mutate(selected));
+              return;
+            }
+            mutation.mutate(selected);
+          }}
+        >
+          {mutation.isPending
+            ? 'Применяем...'
+            : selected === null
+              ? 'Выберите набор'
+              : selectedStock > 0
+                ? 'Использовать набор'
+                : `Купить за ${selected.currencyPrice} и применить`}
+        </button>
+      </div>
+    </AccessibleModal>
+  );
 }
 
 function DailyPlayView({
   onBack,
+  backLabel = 'К режимам',
   playEntranceOnMount = false,
   onEntranceConsumed,
   playRouteTransitionOnMount = false,
   onRouteTransitionConsumed,
 }: {
   onBack: () => void;
+  backLabel?: string;
   playEntranceOnMount?: boolean;
   onEntranceConsumed?: () => void;
   playRouteTransitionOnMount?: boolean;
@@ -7216,6 +8512,7 @@ function DailyPlayView({
   const deferredState = useDailyStore((s) => s.deferredState);
   const startPeriod = useDailyStore((s) => s.startPeriod);
   const pending = useDailyStore((s) => s.inFlight);
+  const needsReconcile = useDailyStore((s) => s.needsReconcile);
   const optimisticAddShot = useDailyStore((s) => s.optimisticAddShot);
   const submitShot = useDailyStore((s) => s.submitShot);
   const refresh = useDailyStore((s) => s.refresh);
@@ -7223,6 +8520,10 @@ function DailyPlayView({
   const setDeferredState = useDailyStore((s) => s.setDeferredState);
   const applyDeferredState = useDailyStore((s) => s.applyDeferredState);
   const userId = useAuthStore((s) => s.user?.id ?? '');
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiFetch<ProfileData>('/me'),
+  });
   const isBreak = data.state === 'break_active';
   const isClosed = data.state === 'closed';
   const rawCanStartPeriod = data.state === 'idle' && data.current_period < data.total_periods;
@@ -7288,15 +8589,32 @@ function DailyPlayView({
   }, [applyDeferredState, onBack, statsModal, userId]);
 
   const hasStatsModal = statsModal !== null;
-  const trainingCooldownEndsAt = data.training_cooldown_ends_at
-    ? new Date(data.training_cooldown_ends_at).getTime()
+  const amateurUnlockGoalsRequired = Math.max(
+    0,
+    data.amateur_unlock_goals_required ?? DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED,
+  );
+  const usesAmateurCourt =
+    profileQuery.data?.competitionLevel === 'amateur' ||
+    profileQuery.data?.competitionLevel === 'professional' ||
+    data.lifetime_total_goals >= amateurUnlockGoalsRequired;
+  const dailyCourtBackground = usesAmateurCourt ? AMATEUR_DAILY_COURT_BACKGROUND : undefined;
+  const trainingCooldownEndsAt = data.gameplay_lock?.ends_at
+    ? new Date(data.gameplay_lock.ends_at).getTime()
     : 0;
   const trainingCooldownRemaining = Math.max(0, trainingCooldownEndsAt - now);
-  const isDailyLockedByTraining =
-    rawCanStartPeriod && trainingCooldownEndsAt > 0 && trainingCooldownRemaining > 0;
+  const isDailyLockedByTraining = rawCanStartPeriod && data.gameplay_lock?.blocked === true;
+  const isActiveDailyLocked =
+    data.state === 'period_active' &&
+    data.gameplay_lock?.blocked === true &&
+    (data.gameplay_lock.reason === 'active_classic' ||
+      (data.gameplay_lock.reason === 'scheduled_tournament' &&
+        (!data.gameplay_lock.tournament_starts_at ||
+          Date.parse(data.gameplay_lock.tournament_starts_at) <= Date.parse(data.server_now))));
+  useGameplayLockRefresh(data.gameplay_lock);
   const canStartPeriod = rawCanStartPeriod && !isDailyLockedByTraining;
-  const shouldSuppressRink = data.state !== 'period_active' || hasStatsModal;
-  const shouldShowIceCar = isBreak || isClosed || hasStatsModal || isDailyLockedByTraining;
+  const shouldSuppressRink = data.state !== 'period_active' || hasStatsModal || isActiveDailyLocked;
+  const shouldShowIceCar =
+    isBreak || isClosed || hasStatsModal || isDailyLockedByTraining || isActiveDailyLocked;
   const handleStartPeriod = useCallback(async (): Promise<DailyStateResponse | null> => {
     if (!canStartPeriod || pending) return null;
     return startPeriod();
@@ -7331,6 +8649,23 @@ function DailyPlayView({
     refresh,
   ]);
 
+  useEffect(() => {
+    if (!needsReconcile) return undefined;
+    let cancelled = false;
+    let retryId: number | undefined;
+    const reconcile = async (): Promise<void> => {
+      await refresh();
+      if (!cancelled && useDailyStore.getState().needsReconcile) {
+        retryId = window.setTimeout(() => void reconcile(), 1_500);
+      }
+    };
+    void reconcile();
+    return () => {
+      cancelled = true;
+      if (retryId !== undefined) window.clearTimeout(retryId);
+    };
+  }, [needsReconcile, refresh]);
+
   return (
     <>
       <PlayView<DailyStateResponse>
@@ -7341,7 +8676,8 @@ function DailyPlayView({
         playRouteTransitionOnMount={playRouteTransitionOnMount}
         onRouteTransitionConsumed={onRouteTransitionConsumed}
         onBack={onBack}
-        active={data.state === 'period_active'}
+        backLabel={backLabel}
+        active={data.state === 'period_active' && !isActiveDailyLocked}
         seed={data.daily_seed}
         goalieId={data.goalie_id}
         periodNumber={periodNumber}
@@ -7360,7 +8696,9 @@ function DailyPlayView({
             : isClosed
               ? formatHms(nextDayRemaining)
               : isDailyLockedByTraining
-                ? formatHms(trainingCooldownRemaining)
+                ? trainingCooldownEndsAt > 0
+                  ? formatHms(trainingCooldownRemaining)
+                  : 'ИГРА'
                 : data.state === 'idle'
                   ? '20:00'
                   : undefined
@@ -7374,19 +8712,30 @@ function DailyPlayView({
                 ? 'ДО ИГРЫ'
                 : undefined
         }
-        scoreboardNotice={isDailyLockedByTraining ? 'Нужно восстановиться' : undefined}
-        shotButtonLabel={
-          canStartPeriod
-            ? pending
-              ? 'НАЧИНАЕМ...'
-              : 'НАЧАТЬ'
-            : isBreak || isDailyLockedByTraining
-            ? 'ЛЁД ГОТОВИТСЯ'
-            : isClosed
-              ? 'ИГРА ЗАВЕРШЕНА'
+        scoreboardNotice={
+          needsReconcile
+            ? 'Проверяем результат'
+            : isDailyLockedByTraining || isActiveDailyLocked
+              ? dailyGameplayLockCopy(data.gameplay_lock!, now)
               : undefined
         }
-        inactiveAction={canStartPeriod ? handleStartPeriod : undefined}
+        shotButtonLabel={
+          needsReconcile
+            ? 'ПРОВЕРЯЕМ...'
+            : canStartPeriod
+              ? pending
+                ? 'НАЧИНАЕМ...'
+                : 'НАЧАТЬ'
+              : isBreak || isDailyLockedByTraining || isActiveDailyLocked
+                  ? 'ЛЁД ГОТОВИТСЯ'
+                  : isClosed
+                    ? 'ИГРА ЗАВЕРШЕНА'
+                    : undefined
+        }
+        inactiveAction={
+          canStartPeriod ? handleStartPeriod : undefined
+        }
+        primaryActionBlocked={needsReconcile || isActiveDailyLocked}
         entranceBeforeInactiveAction={true}
         periodEndsAt={data.state === 'period_active' ? periodEndsAt : undefined}
         onTimerExpired={refresh}
@@ -7394,7 +8743,8 @@ function DailyPlayView({
         submitShot={submitShot}
         applyState={applyState}
         applyResolvedState={applyDailyResolvedState}
-        longCourtBackground={DAILY_LONG_COURT_BACKGROUND}
+        longCourtBackground={dailyCourtBackground}
+        {...dailyCharacterVisuals(usesAmateurCourt)}
       />
       {statsModal && (
         <DailyGameStatsModal
@@ -7403,6 +8753,671 @@ function DailyPlayView({
           title={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
           ariaLabel={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
           closeLabel="Понятно"
+          onClose={handleStatsModalClose}
+        />
+      )}
+    </>
+  );
+}
+
+function classicLoadoutSelection(state: ClassicTournamentState): ClassicTournamentLoadoutSelection {
+  return {
+    stick: state.loadout.items.find((item) => item.kind === 'stick')?.id ?? null,
+    skates: state.loadout.items.find((item) => item.kind === 'skates')?.id ?? null,
+    nutrition: state.loadout.items.find((item) => item.kind === 'nutrition')?.id ?? null,
+  };
+}
+
+export function createClassicTournamentCondition(
+  state: ClassicTournamentState,
+): (
+  elapsedMs: number,
+  speeds: SpeedOverrides,
+  reusable?: DuelPlayerCondition,
+) => DuelPlayerCondition | null {
+  const consumed = new Map(
+    state.current_period_inventory_consumption.map((item) => [item.id, item.charges]),
+  );
+  const itemFor = (kind: InventoryEquipmentKind) =>
+    state.loadout.items.find((item) => item.kind === kind);
+  const stick = itemFor('stick');
+  const skates = itemFor('skates');
+  const nutrition = itemFor('nutrition');
+  const inventoryItem = (
+    item: ClassicTournamentInventoryItem | undefined,
+    subtractConsumption: boolean,
+  ) =>
+    item && item.resourceUnit !== 'period'
+      ? {
+          id: item.id,
+          title: item.title,
+          resourceUnit: item.resourceUnit,
+          resourceAvailable: Math.max(
+            0,
+            item.resourceAvailable - (subtractConsumption ? (consumed.get(item.id) ?? 0) : 0),
+          ),
+          effectPuckSpeedPoints: item.effectPuckSpeedPoints,
+          timing: item.timing ?? DEFAULT_DUEL_INVENTORY_TIMING,
+        }
+      : null;
+  const loadout: DuelInventoryLoadoutSnapshot = {
+    stick: inventoryItem(stick, true),
+    skates: inventoryItem(skates, false),
+    nutrition: inventoryItem(nutrition, false),
+    fallbackSkatesTiming: DEFAULT_DUEL_INVENTORY_TIMING,
+    fallbackNutritionTiming: DEFAULT_DUEL_INVENTORY_TIMING,
+  };
+  const base = periodSpeedPresetFor(
+    Math.max(1, state.current_period),
+    state.base_period_speed_presets,
+  );
+  const randomness = createDuelStumbleRandomness(
+    {
+      seed: state.daily_seed,
+      userId: state.player_id,
+      periodNumber: Math.max(1, state.current_period),
+    },
+    loadout.skates?.timing ?? DEFAULT_DUEL_INVENTORY_TIMING,
+  );
+  const conditionInput: DuelPlayerConditionInput = {
+    seed: state.daily_seed,
+    userId: state.player_id,
+    periodNumber: Math.max(1, state.current_period),
+    elapsedMs: 0,
+    movementDistancePx: 0,
+    baseLaneWidthPx: SHOOTER_AMPLITUDE * 2,
+    baselineShooterSpeed: base.shooterFrequency,
+    currentShooterSpeed: base.shooterFrequency,
+    loadout,
+    stumbleRandomness: randomness,
+  };
+  return (elapsedMs, speeds, reusable) => {
+    conditionInput.elapsedMs = elapsedMs;
+    conditionInput.movementDistancePx =
+      (Math.max(0, elapsedMs) * SHOOTER_AMPLITUDE * 4 * Math.max(0, speeds.shooterFreq)) / 1000;
+    conditionInput.currentShooterSpeed = speeds.shooterFreq;
+    return getDuelPlayerCondition(conditionInput, reusable);
+  };
+}
+
+function ClassicRinkLoadoutHud({
+  state,
+  selection,
+  locked,
+  onSelectKind,
+}: {
+  state: ClassicTournamentState;
+  selection: ClassicTournamentLoadoutSelection;
+  locked: boolean;
+  onSelectKind: (kind: InventoryEquipmentKind) => void;
+}): JSX.Element {
+  const consumed = new Map(
+    state.current_period_inventory_consumption.map((item) => [item.id, item.charges]),
+  );
+  return (
+    <div
+      aria-label="Выбор инвентаря"
+      style={{ display: 'flex', gap: 9, pointerEvents: locked ? 'none' : 'auto' }}
+    >
+      {DUEL_INVENTORY_SLOTS.map((slot) => {
+        const selectedId = selection[slot.kind] ?? null;
+        const item: ClassicTournamentInventoryItem | undefined =
+          state.loadout.items.find(
+            (candidate) => candidate.kind === slot.kind && candidate.id === selectedId,
+          ) ??
+          state.inventory_available.find(
+            (candidate) => candidate.kind === slot.kind && candidate.id === selectedId,
+          );
+        const remaining = item
+          ? Math.max(0, item.resourceAvailable - (consumed.get(item.id) ?? 0))
+          : 0;
+        const inventoryBadge = item
+          ? duelInventoryBadgeLabel(item.kind, remaining, item.resourceUnit)
+          : null;
+        const title = item?.title ?? duelBaseEquipmentTitle(slot.kind);
+        const status = item
+          ? formatInventoryResourceAmount(item.kind, remaining, item.resourceUnit)
+          : 'базовый вариант';
+        return (
+          <button
+            key={slot.kind}
+            type="button"
+            aria-label={`${slot.label}: ${title}. ${status}`}
+            disabled={locked}
+            onClick={() => onSelectKind(slot.kind)}
+            style={{
+              position: 'relative',
+              width: 31,
+              height: 31,
+              padding: 0,
+              borderRadius: 999,
+              overflow: 'visible',
+              display: 'block',
+              ...DUEL_INVENTORY_ICON_GLASS_STYLE,
+              opacity: locked ? 0.7 : 1,
+              cursor: locked ? 'default' : 'pointer',
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            <img
+              src={item?.imageUrl || placeholderArtworkForKind(slot.kind)}
+              alt=""
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                display: 'block',
+                borderRadius: 999,
+                objectFit: 'cover',
+              }}
+            />
+            {inventoryBadge && (
+              <span
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  left: '50%',
+                  bottom: -16,
+                  minWidth: 'max-content',
+                  transform: 'translateX(-50%)',
+                  display: 'block',
+                  color: '#16233b',
+                  fontFamily: 'var(--font-ui)',
+                  fontSize: 9.5,
+                  fontWeight: 950,
+                  lineHeight: 1,
+                  letterSpacing: '0.01em',
+                  textShadow: '0 1px 0 rgba(255,255,255,0.72)',
+                }}
+              >
+                {inventoryBadge}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ClassicRinkLoadoutModal({
+  kind,
+  state,
+  selectedId,
+  onClose,
+  onSelect,
+}: {
+  kind: InventoryEquipmentKind;
+  state: ClassicTournamentState;
+  selectedId: string | null;
+  onClose: () => void;
+  onSelect: (id: string | null) => void;
+}): JSX.Element {
+  const items = state.inventory_available.filter((item) => item.kind === kind);
+  return (
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
+      <section
+        role="dialog"
+        aria-label={DUEL_EQUIPMENT_META[kind].title}
+        className="modal-card"
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: 'min(430px, calc(100vw - 28px))', display: 'grid', gap: 10 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="modal-title" style={{ flex: 1 }}>
+            {DUEL_EQUIPMENT_META[kind].title}
+          </div>
+          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+            <X size={15} />
+          </button>
+        </div>
+        <div
+          className="no-scrollbar"
+          style={{ maxHeight: '54dvh', overflowY: 'auto', display: 'grid', gap: 8 }}
+        >
+          <button
+            type="button"
+            className={`glass duel-equipment-option${selectedId === null ? ' duel-equipment-option--selected' : ''}`}
+            onClick={() => onSelect(null)}
+            aria-pressed={selectedId === null}
+            style={{
+              minHeight: 78,
+              borderRadius: 16,
+              padding: 10,
+              display: 'grid',
+              gridTemplateColumns: '56px minmax(0, 1fr) 22px',
+              alignItems: 'center',
+              gap: 10,
+              textAlign: 'left',
+              boxShadow: 'none',
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 14,
+                overflow: 'hidden',
+                border: '1px solid rgba(255,255,255,0.78)',
+                background: 'rgba(255,255,255,0.28)',
+              }}
+            >
+              <img
+                src={placeholderArtworkForKind(kind)}
+                alt=""
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'block',
+                  objectFit: 'cover',
+                  filter: 'none',
+                  opacity: 1,
+                }}
+              />
+            </span>
+            <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
+              <strong style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}>
+                {duelBaseEquipmentTitle(kind)}
+              </strong>
+              <span
+                style={{
+                  color: 'rgba(15, 23, 42, 0.62)',
+                  fontSize: 12,
+                  fontWeight: 760,
+                  lineHeight: 1.25,
+                }}
+              >
+                {duelBaseEquipmentDrawback(kind)}
+              </span>
+            </span>
+            <DuelEquipmentSelectionRadio selected={selectedId === null} />
+          </button>
+          {items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`glass duel-equipment-option${selectedId === item.id ? ' duel-equipment-option--selected' : ''}`}
+              onClick={() => onSelect(item.id)}
+              aria-pressed={selectedId === item.id}
+              style={{
+                minHeight: 78,
+                borderRadius: 16,
+                padding: 10,
+                display: 'grid',
+                gridTemplateColumns: '56px minmax(0, 1fr) 22px',
+                alignItems: 'center',
+                gap: 10,
+                textAlign: 'left',
+                boxShadow: 'none',
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 14,
+                  overflow: 'hidden',
+                  border: '1px solid rgba(255,255,255,0.78)',
+                  background: 'rgba(255,255,255,0.28)',
+                }}
+              >
+                <img
+                  src={item.imageUrl || placeholderArtworkForKind(kind)}
+                  alt=""
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    display: 'block',
+                    objectFit: 'cover',
+                    filter: 'none',
+                    opacity: 1,
+                  }}
+                />
+              </span>
+              <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
+                <strong style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}>
+                  {item.title}
+                </strong>
+                <span
+                  style={{
+                    color: 'rgba(15, 23, 42, 0.62)',
+                    fontSize: 12,
+                    fontWeight: 760,
+                    lineHeight: 1.25,
+                  }}
+                >
+                  {formatInventoryResourceAmount(
+                    item.kind,
+                    item.resourceAvailable,
+                    item.resourceUnit,
+                  )}
+                </span>
+              </span>
+              <DuelEquipmentSelectionRadio selected={selectedId === item.id} />
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ClassicTournamentPlayView({
+  tournamentId,
+  onBack,
+}: {
+  tournamentId: string;
+  onBack: () => void;
+}): JSX.Element {
+  const data = useClassicTournamentStore((state) => state.data);
+  const loading = useClassicTournamentStore((state) => state.loading);
+  const error = useClassicTournamentStore((state) => state.error);
+  const inFlight = useClassicTournamentStore((state) => state.inFlight);
+  const refresh = useClassicTournamentStore((state) => state.refresh);
+  const startPeriod = useClassicTournamentStore((state) => state.startPeriod);
+  const optimisticAddShot = useClassicTournamentStore((state) => state.optimisticAddShot);
+  const submitShot = useClassicTournamentStore((state) => state.submitShot);
+  const applyState = useClassicTournamentStore((state) => state.applyState);
+  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
+  const dailyData = useDailyStore((state) => state.data);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel,
+    qualifyingGoals: dailyData?.lifetime_total_goals,
+    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
+  });
+  const queryClient = useQueryClient();
+  useGameplayLockRefresh(data?.gameplay_lock);
+  const [now, setNow] = useState(Date.now());
+  const [deferredState, setDeferredState] = useState<ClassicTournamentState | null>(null);
+  const [statsModalState, setStatsModalState] = useState<ClassicTournamentState | null>(null);
+  const [selectedLoadout, setSelectedLoadout] = useState<ClassicTournamentLoadoutSelection>({});
+  const [selectedLoadoutKind, setSelectedLoadoutKind] = useState<InventoryEquipmentKind | null>(
+    null,
+  );
+
+  const summaryCandidate = deferredState ?? data;
+  useEffect(() => {
+    if (summaryCandidate?.state !== 'closed') return;
+    void queryClient.invalidateQueries({ queryKey: ['tournaments'] });
+    void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
+    void queryClient.invalidateQueries({ queryKey: ['daily'] });
+    void queryClient.invalidateQueries({ queryKey: ['training'] });
+    void useDailyStore.getState().refresh();
+    void useTrainingSessionStore.getState().refresh();
+  }, [summaryCandidate?.state, queryClient]);
+  const summaryKey = summaryCandidate ? `classic:${summaryCandidate.session_id}` : '';
+  const unseenPeriod =
+    summaryCandidate &&
+    (summaryCandidate.state === 'break_active' || summaryCandidate.state === 'closed')
+      ? findUnseenPeriodSummary(summaryCandidate, summaryKey)
+      : null;
+
+  useEffect(() => {
+    void refresh(tournamentId);
+  }, [refresh, tournamentId]);
+
+  useEffect(() => {
+    if (!data) return;
+    setSelectedLoadout(classicLoadoutSelection(data));
+  }, [data?.current_period, data?.loadout, data?.loadout_editable, data?.session_id]);
+
+  useEffect(() => {
+    if (data?.state !== 'break_active' && data?.state !== 'closed' && !data?.gameplay_lock?.blocked)
+      return undefined;
+    const timer = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [data?.state, data?.gameplay_lock?.blocked]);
+
+  useEffect(() => {
+    if (statsModalState !== null || summaryCandidate === null || unseenPeriod === null) return;
+    setStatsModalState(summaryCandidate);
+  }, [statsModalState, summaryCandidate, unseenPeriod]);
+
+  useEffect(() => {
+    if (data?.state !== 'break_active' || loading) return;
+    const breakDeadline = data.break_ends_at ? timestampMs(data.break_ends_at) : 0;
+    if (breakDeadline <= 0 || breakDeadline > now) return;
+    void refresh(tournamentId);
+  }, [data?.break_ends_at, data?.state, loading, now, refresh, tournamentId]);
+
+  const applyClassicResolvedState = useCallback(
+    (next: ClassicTournamentState): void => {
+      if (
+        (next.state === 'break_active' || next.state === 'closed') &&
+        next.recent_periods.length > 0
+      ) {
+        setDeferredState(next);
+        return;
+      }
+      applyState(next);
+    },
+    [applyState],
+  );
+
+  const handleStatsModalClose = useCallback((): void => {
+    const latestPeriod = statsModalState?.recent_periods.at(-1);
+    if (statsModalState && latestPeriod) {
+      setLastSeenAt(`classic:${statsModalState.session_id}`, latestPeriod.ended_at);
+    }
+    setStatsModalState(null);
+    if (deferredState !== null) {
+      applyState(deferredState);
+      setDeferredState(null);
+    }
+  }, [applyState, deferredState, statsModalState]);
+
+  if (data === null) {
+    return (
+      <main className="screen arena-error-state">
+        {error ? (
+          <>
+            <div className="arena-error-state__title">Не удалось открыть игру</div>
+            <div className="arena-error-state__copy">{error}</div>
+            <button
+              type="button"
+              className="btn btn--cta"
+              disabled={loading}
+              onClick={() => void refresh(tournamentId)}
+            >
+              Повторить
+            </button>
+            <button type="button" className="btn btn--ghost" onClick={onBack}>
+              К турниру
+            </button>
+          </>
+        ) : (
+          <div className="route-loading" role="status">
+            Загружаем турнирную игру…
+          </div>
+        )}
+      </main>
+    );
+  }
+
+  const locked = data.gameplay_lock?.blocked === true;
+  const active = data.state === 'period_active' && !locked && amateurAccess.hasFullAccess;
+  const breakEndsAt = data.break_ends_at ? timestampMs(data.break_ends_at) : 0;
+  const periodEndsAt = data.period_ends_at ? timestampMs(data.period_ends_at) : 0;
+  const closesAt = timestampMs(data.closes_at);
+  const breakRemaining = Math.max(0, breakEndsAt - now);
+  const closesRemaining = Math.max(0, closesAt - now);
+  const canStart = data.state === 'idle' && data.current_period < data.total_periods && !locked;
+  const nextPeriod = Math.min(data.total_periods, data.current_period + 1);
+  const periodNumber = active ? data.current_period : canStart ? nextPeriod : data.current_period;
+  const completedResult = data.result;
+  const shouldShowSummary = statsModalState !== null || unseenPeriod !== null;
+  const stats = statsModalState ? dailyGameStatsFromState(statsModalState) : null;
+  const duelCondition = createClassicTournamentCondition(data);
+  const showAmateurRestriction = (): void => {
+    guardAmateurMutation(amateurAccess, () => undefined);
+  };
+
+  return (
+    <>
+      <PlayView<ClassicTournamentState>
+        suppressedByModal={!active || shouldShowSummary}
+        showIceCar={(data.state === 'break_active' || locked) && !shouldShowSummary}
+        onBack={onBack}
+        backLabel="К турниру"
+        active={active}
+        seed={data.daily_seed}
+        goalieId={data.goalie_id}
+        periodNumber={Math.max(1, periodNumber)}
+        periodSpeedPresets={data.period_speed_presets}
+        sessionStartedAt={data.period_started_at}
+        serverNow={data.server_now}
+        receivedAtPerformanceMs={data.received_at_performance_ms}
+        goals={active ? data.current_period_goals : data.daily_total_goals}
+        scoreboardGoals={data.daily_total_goals}
+        shots={active ? data.current_period_shots : data.daily_total_shots}
+        shotsTotal={active ? data.shots_per_period : data.shots_per_period * data.total_periods}
+        periodsTotal={data.total_periods}
+        scoreboardPeriodsTotal={data.total_periods}
+        timer={
+          locked
+            ? data.gameplay_lock?.ends_at
+              ? formatHms(Math.max(0, Date.parse(data.gameplay_lock.ends_at) - now))
+              : 'ИГРА'
+            : data.state === 'break_active'
+              ? formatMs(breakRemaining)
+              : data.state === 'closed'
+                ? formatEventRemaining(closesRemaining)
+                : canStart
+                  ? formatMs(data.period_duration_ms)
+                  : undefined
+        }
+        timerLabel={
+          data.state === 'break_active'
+            ? 'ПЕРЕРЫВ'
+            : data.state === 'closed'
+              ? 'ДО ЗАКРЫТИЯ'
+              : canStart
+                ? 'ВРЕМЯ'
+                : undefined
+        }
+        scoreboardNotice={
+          locked
+            ? gameplayLockCopy(data.gameplay_lock!, now)
+            : data.state === 'closed' && completedResult !== null
+              ? `${completedResult.goals} шайб · точность ${Math.round(completedResult.accuracy * 100)}%`
+              : `${data.tournament_title} · ${data.tournament_day}-й тур`
+        }
+        shotButtonLabel={
+          locked
+            ? 'ЛЁД ГОТОВИТСЯ'
+            : canStart
+              ? inFlight
+                ? 'НАЧИНАЕМ...'
+                : data.current_period === 0
+                  ? 'НАЧАТЬ'
+                  : 'ПРОДОЛЖИТЬ'
+              : data.state === 'break_active'
+                ? 'ЛЁД ГОТОВИТСЯ'
+                : data.state === 'closed'
+                  ? 'ИГРА ЗАВЕРШЕНА'
+                  : undefined
+        }
+        inactiveAction={
+          !amateurAccess.hasFullAccess &&
+          (data.state === 'period_active' ||
+            canStart ||
+            data.gameplay_lock?.reason === 'recent_gameplay')
+            ? showAmateurRestriction
+            : canStart
+              ? () => startPeriod(selectedLoadout)
+              : undefined
+        }
+        entranceBeforeInactiveAction={amateurAccess.hasFullAccess}
+        periodEndsAt={active && periodEndsAt > 0 ? periodEndsAt : undefined}
+        onTimerExpired={() => refresh(tournamentId)}
+        optimisticAddShot={optimisticAddShot}
+        submitShot={(args) => {
+          if (!amateurAccess.hasFullAccess) {
+            showAmateurRestriction();
+            return Promise.resolve(null);
+          }
+          return submitShot(args);
+        }}
+        applyState={applyState}
+        applyResolvedState={applyClassicResolvedState}
+        duelCondition={duelCondition}
+        longCourtBackground={AMATEUR_DAILY_COURT_BACKGROUND}
+        hudAddon={
+          <ClassicRinkLoadoutHud
+            state={data}
+            selection={selectedLoadout}
+            locked={!data.loadout_editable || inFlight}
+            onSelectKind={setSelectedLoadoutKind}
+          />
+        }
+      />
+      {selectedLoadoutKind !== null && data.loadout_editable && (
+        <ClassicRinkLoadoutModal
+          kind={selectedLoadoutKind}
+          state={data}
+          selectedId={selectedLoadout[selectedLoadoutKind] ?? null}
+          onClose={() => setSelectedLoadoutKind(null)}
+          onSelect={(id) => {
+            setSelectedLoadout((current) => ({ ...current, [selectedLoadoutKind]: id }));
+            setSelectedLoadoutKind(null);
+          }}
+        />
+      )}
+      {statsModalState && stats && (
+        <DailyGameStatsModal
+          stats={stats}
+          totalPeriods={
+            statsModalState.state === 'closed'
+              ? statsModalState.total_periods
+              : statsModalState.current_period
+          }
+          title={
+            statsModalState.state === 'closed'
+              ? 'Игра завершена'
+              : `${statsModalState.current_period}-й период завершён`
+          }
+          ariaLabel={
+            statsModalState.state === 'closed'
+              ? 'Игра завершена'
+              : `${statsModalState.current_period}-й период завершён`
+          }
+          closeLabel="Понятно"
+          supplemental={
+            statsModalState.inventory_consumption.length > 0 ? (
+              <div
+                aria-label="Общий расход инвентаря"
+                style={{ marginTop: 14, display: 'grid', gap: 6 }}
+              >
+                <div className="section-label" style={{ margin: 0, padding: 0 }}>
+                  Общий расход инвентаря
+                </div>
+                {statsModalState.inventory_consumption.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      fontSize: 12,
+                    }}
+                  >
+                    <span style={{ color: 'var(--muted)', fontWeight: 750 }}>{item.title}</span>
+                    <strong>
+                      {formatInventoryResourceAmount(
+                        item.kind,
+                        item.charges,
+                        statsModalState.loadout.items.find((candidate) => candidate.id === item.id)
+                          ?.resourceUnit,
+                      )}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+            ) : null
+          }
           onClose={handleStatsModalClose}
         />
       )}
@@ -7464,260 +9479,162 @@ function TrainingHitboxesToggle({
   );
 }
 
-function TrainingPerspectiveRink({
-  design = 'standard',
-  cubeHud,
-  longBackground = TRAINING_LONG_COURT_BACKGROUND,
-}: {
-  design?: TrainingCourtDesign | undefined;
-  cubeHud?: ReactNode;
-  longBackground?: string | undefined;
-}): JSX.Element {
-  const isLong = design === 'long';
-  return (
-    <div
-      role="img"
-      aria-label="Игровая площадка в перспективе"
-      style={{
-        position: 'absolute',
-        inset: 0,
-        width: '100%',
-        height: '100%',
-        pointerEvents: 'none',
-        overflow: 'hidden',
-        background: '#dceaf5',
-      }}
-    >
-      <img
-        src={isLong ? longBackground : TRAINING_NEW_COURT_BACKGROUND}
-        alt=""
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: isLong ? '100%' : `calc(100% + ${TRAINING_NEW_COURT_BG_CROP_BOTTOM})`,
-          objectFit: 'cover',
-        }}
-      />
-      {isLong && (
-        <div
-          aria-hidden={cubeHud ? undefined : true}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: '50%',
-            width: '76%',
-            maxWidth: 456,
-            transform: 'translateX(-50%)',
-            filter: 'drop-shadow(0 18px 24px rgba(3, 10, 18, 0.34))',
-          }}
-        >
-          <img
-            src={TRAINING_LED_TABLEAU_IMAGE}
-            alt=""
-            aria-hidden="true"
-            style={{ display: 'block', width: '100%', height: 'auto' }}
-          />
-          {cubeHud}
-        </div>
-      )}
-    </div>
-  );
+type TrainingSpeedKey = keyof SpeedOverrides;
+
+const TRAINING_SPEED_FIELDS: Array<{
+  key: TrainingSpeedKey;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  suffix: string;
+}> = [
+  { key: 'shooterFreq', label: 'Игрок', min: 0.1, max: 3, step: 0.05, suffix: '/с' },
+  { key: 'goalieFreq', label: 'Вратарь', min: 0.1, max: 3, step: 0.05, suffix: '/с' },
+  { key: 'goalFreq', label: 'Ворота', min: 0.1, max: 3, step: 0.05, suffix: '/с' },
+  { key: 'puckSpeed', label: 'Шайба', min: 0.2, max: 5, step: 0.05, suffix: '' },
+];
+
+function speedValueText(value: number, suffix: string): string {
+  const formatted = value.toLocaleString('ru-RU', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return suffix ? `${formatted}${suffix}` : formatted;
 }
 
-function TrainingCubeScoreboard({
-  period,
-  periodsTotal,
-  timer,
-  timerLabel,
-  goals,
-  shots,
-  shotsTotal,
-  notice,
+function TrainingSpeedControls({
+  value,
+  defaults,
+  open,
+  onOpen,
+  onClose,
+  onChange,
+  onReset,
 }: {
-  period: number;
-  periodsTotal: number;
-  timer: string;
-  timerLabel: string;
-  goals: number;
-  shots: number;
-  shotsTotal?: number | undefined;
-  notice?: string | undefined;
+  value: SpeedOverrides;
+  defaults: SpeedOverrides;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onChange: (next: SpeedOverrides) => void;
+  onReset: () => void;
 }): JSX.Element {
-  const shotsText =
-    typeof shotsTotal === 'number'
-      ? `${String(shots).padStart(2, '0')}/${String(shotsTotal).padStart(2, '0')}`
-      : String(shots).padStart(2, '0');
-  const isSinglePeriod = periodsTotal === 1;
-  const metrics = [
-    { label: 'Период', value: `${period}/${periodsTotal}` },
-    { label: 'Голы', value: String(goals).padStart(2, '0') },
-    { label: 'Броски', value: shotsText },
-    { label: timerLabel, value: timer },
-  ];
-
-  if (isSinglePeriod) {
-    return (
-      <>
-        <div
-          aria-label="Статистика на видеокубе"
-          style={{
-            position: 'absolute',
-            left: '8%',
-            right: '8%',
-            top: '27%',
-            bottom: notice ? '29%' : '24%',
-            display: 'grid',
-            gridTemplateRows: 'auto auto minmax(0, 1fr)',
-            rowGap: 'clamp(7px, 2.1vw, 16px)',
-            alignItems: 'center',
-            justifyItems: 'center',
-            pointerEvents: 'none',
-          }}
-        >
-          <TrainingCubeMetric label={timerLabel} value={timer} emphasis="large" />
-          <TrainingCubeMetric label="Период" value={`${period}/${periodsTotal}`} emphasis="small" />
-          <div
-            style={{
-              width: '100%',
-              alignSelf: 'end',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-              columnGap: 'clamp(26px, 11vw, 92px)',
-              alignItems: 'end',
-            }}
-          >
-            <TrainingCubeMetric label="Голы" value={String(goals).padStart(2, '0')} />
-            <TrainingCubeMetric label="Броски" value={shotsText} />
-          </div>
-        </div>
-        {notice && <TrainingCubeNotice text={notice} />}
-      </>
-    );
-  }
+  const hasCustomSpeeds = TRAINING_SPEED_FIELDS.some(
+    (field) => Math.abs(value[field.key] - defaults[field.key]) > 0.001,
+  );
 
   return (
     <>
-      <div
-        aria-label="Статистика на видеокубе"
+      <button
+        type="button"
+        className="icon-btn"
+        aria-label="Скорости"
+        title="Скорости"
+        onClick={onOpen}
         style={{
-          position: 'absolute',
-          left: '8%',
-          right: '8%',
-          top: '27%',
-          bottom: notice ? '29%' : '24%',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-          columnGap: 'clamp(16px, 6vw, 58px)',
-          rowGap: 'clamp(8px, 2.2vw, 15px)',
-          alignContent: 'center',
-          pointerEvents: 'none',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 34,
+          height: 34,
+          padding: 0,
+          borderRadius: 999,
+          background: hasCustomSpeeds ? 'rgba(8, 24, 43, 0.86)' : 'rgba(255, 255, 255, 0.82)',
+          border: hasCustomSpeeds
+            ? '1px solid rgba(255, 255, 255, 0.34)'
+            : '1px solid rgba(15, 23, 42, 0.12)',
+          boxShadow: hasCustomSpeeds
+            ? '0 10px 22px rgba(7, 19, 33, 0.22)'
+            : '0 8px 18px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255,255,255,0.86)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          color: hasCustomSpeeds ? '#ffffff' : 'rgba(15, 23, 42, 0.68)',
+          cursor: 'pointer',
         }}
       >
-        {metrics.map((metric) => (
-          <TrainingCubeMetric key={metric.label} label={metric.label} value={metric.value} />
-        ))}
-      </div>
-      {notice && <TrainingCubeNotice text={notice} />}
+        <SlidersHorizontal aria-hidden="true" size={17} strokeWidth={2.4} />
+      </button>
+      {open &&
+        createPortal(
+          <div className="modal-backdrop" style={{ zIndex: 520 }} onClick={onClose}>
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-label="Скорости тренировки"
+              className="modal-card"
+              onClick={(event) => event.stopPropagation()}
+              style={{ width: 'min(100%, 360px)', padding: '22px 20px 20px' }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                }}
+              >
+                <h2 className="modal-title">Скорости тренировки</h2>
+                <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div style={{ display: 'grid', gap: 16, marginTop: 18 }}>
+                {TRAINING_SPEED_FIELDS.map((field) => (
+                  <label key={field.key} style={{ display: 'grid', gap: 8 }}>
+                    <span
+                      style={{
+                        display: 'flex',
+                        alignItems: 'baseline',
+                        justifyContent: 'space-between',
+                        gap: 10,
+                        color: 'var(--ink)',
+                        fontSize: 13,
+                        fontWeight: 900,
+                      }}
+                    >
+                      <span>{field.label}</span>
+                      <span
+                        style={{
+                          color: 'var(--muted)',
+                          fontVariantNumeric: 'tabular-nums',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {speedValueText(value[field.key], field.suffix)}
+                      </span>
+                    </span>
+                    <input
+                      type="range"
+                      aria-label={field.label}
+                      min={field.min}
+                      max={field.max}
+                      step={field.step}
+                      value={value[field.key]}
+                      onChange={(event) => {
+                        const raw = Number(event.currentTarget.value);
+                        const nextValue =
+                          field.key === 'puckSpeed' ? clampPuckSpeed(raw) : clampFrequency(raw);
+                        onChange({ ...value, [field.key]: nextValue });
+                      }}
+                      style={{ width: '100%', accentColor: '#162136' }}
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="modal-actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                <button type="button" className="btn btn--ghost" onClick={onReset}>
+                  Сбросить
+                </button>
+                <button type="button" className="btn btn--cta" onClick={onClose}>
+                  Готово
+                </button>
+              </div>
+            </section>
+          </div>,
+          document.body,
+        )}
     </>
-  );
-}
-
-function TrainingCubeNotice({ text }: { text: string }): JSX.Element {
-  return (
-    <div
-      aria-label="Сообщение на видеокубе"
-      style={{
-        position: 'absolute',
-        left: '10%',
-        right: '10%',
-        bottom: '22%',
-        color: 'rgba(232, 251, 255, 0.94)',
-        fontFamily: 'var(--font-mono)',
-        fontSize: 'clamp(8px, 2vw, 12px)',
-        fontWeight: 950,
-        lineHeight: 1.08,
-        letterSpacing: '0.08em',
-        textAlign: 'center',
-        textTransform: 'uppercase',
-        textShadow: '0 0 8px rgba(143, 232, 255, 0.66), 0 0 14px rgba(0, 8, 20, 0.72)',
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        pointerEvents: 'none',
-      }}
-    >
-      {text}
-    </div>
-  );
-}
-
-function TrainingCubeMetric({
-  label,
-  value,
-  emphasis = 'default',
-}: {
-  label: string;
-  value: string;
-  emphasis?: 'default' | 'large' | 'small';
-}): JSX.Element {
-  const labelIsLong = label.length > 8;
-  const valueIsLong = value.length > 5;
-  const valueFont =
-    emphasis === 'large'
-      ? valueIsLong
-        ? 'clamp(21px, 6.7vw, 40px)'
-        : 'clamp(23px, 7.2vw, 44px)'
-      : emphasis === 'small'
-        ? 'clamp(14px, 3.8vw, 22px)'
-        : valueIsLong
-          ? 'clamp(15px, 4.15vw, 25px)'
-          : 'clamp(17px, 5vw, 30px)';
-
-  return (
-    <div
-      style={{
-        minWidth: 0,
-        textAlign: 'center',
-        color: '#e9fbff',
-        textShadow: '0 0 8px rgba(122, 229, 255, 0.36)',
-      }}
-    >
-      <div
-        style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: labelIsLong ? 'clamp(6px, 1.42vw, 9px)' : 'clamp(7px, 1.7vw, 11px)',
-          fontWeight: 950,
-          lineHeight: 1,
-          textTransform: 'uppercase',
-          letterSpacing: labelIsLong ? '0.1em' : '0.16em',
-          color: 'rgba(205, 246, 255, 0.86)',
-          textShadow: '0 0 8px rgba(99, 218, 255, 0.4)',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          marginTop: 2,
-          fontFamily: 'var(--font-mono)',
-          fontSize: valueFont,
-          fontWeight: 950,
-          lineHeight: 0.96,
-          letterSpacing: valueIsLong ? '0.04em' : '0.08em',
-          fontVariantNumeric: 'tabular-nums',
-          color: '#f7feff',
-          textShadow: '0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38)',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {value}
-      </div>
-    </div>
   );
 }
 
@@ -7737,7 +9654,6 @@ function TrainingPlayView({
   onRouteTransitionConsumed?: (() => void) | undefined;
 }): JSX.Element | null {
   const data = useTrainingSessionStore((s) => s.data);
-  const dailyData = useDailyStore((s) => s.data);
   const start = useTrainingSessionStore((s) => s.start);
   const optimisticAddShot = useTrainingSessionStore((s) => s.optimisticAddShot);
   const submitShot = useTrainingSessionStore((s) => s.submitShot);
@@ -7746,18 +9662,35 @@ function TrainingPlayView({
   const userRole = useAuthStore((s) => s.user?.role);
   const experimentalTrainingCourt = useAuthStore((s) => s.user?.experimentalTrainingCourt);
   const [hitboxesVisible, setHitboxesVisible] = useState(() => readTrainingHitboxesVisible());
+  const [speedControlsOpen, setSpeedControlsOpen] = useState(false);
+  const [trainingSpeedOverrides, setTrainingSpeedOverrides] = useState<SpeedOverrides | null>(() =>
+    readTrainingSpeedOverrides(),
+  );
   const [now, setNow] = useState(Date.now());
-  const canShowHitboxesToggle = userRole === 'admin' || experimentalTrainingCourt === true;
-  const isTrainingLockedByDaily =
-    dailyData?.state === 'period_active' ||
-    dailyData?.state === 'break_active' ||
-    (dailyData?.state === 'idle' &&
-      dailyData.current_period > 0 &&
-      dailyData.current_period < dailyData.total_periods);
-  const canStartTraining = data?.state === 'idle' && !isTrainingLockedByDaily;
+  const canShowTrainingDebugControls =
+    isDevTrainingDebugHost(window.location.hostname) ||
+    userRole === 'admin' ||
+    experimentalTrainingCourt === true;
+  const trainingPeriodNumber = data?.selected_period ?? selectedPeriod;
+  const trainingDefaultSpeeds = useMemo(
+    () => speedOverridesForPeriod(trainingPeriodNumber, data?.period_speed_presets),
+    [data?.period_speed_presets, trainingPeriodNumber],
+  );
+  const effectiveTrainingSpeeds = trainingSpeedOverrides ?? trainingDefaultSpeeds;
+  const isTrainingLocked = data?.gameplay_lock?.blocked === true;
+  useGameplayLockRefresh(data?.gameplay_lock);
+  const canStartTraining = data?.state === 'idle' && !isTrainingLocked;
   const handleHitboxesChange = useCallback((next: boolean): void => {
     setHitboxesVisible(next);
     saveTrainingHitboxesVisible(next);
+  }, []);
+  const handleSpeedOverridesChange = useCallback((next: SpeedOverrides): void => {
+    setTrainingSpeedOverrides(next);
+    saveTrainingSpeedOverrides(next);
+  }, []);
+  const handleSpeedOverridesReset = useCallback((): void => {
+    setTrainingSpeedOverrides(null);
+    saveTrainingSpeedOverrides(null);
   }, []);
   const handleStartTraining = useCallback(async (): Promise<TrainingStateResponse | null> => {
     if (!canStartTraining) return null;
@@ -7773,39 +9706,28 @@ function TrainingPlayView({
   );
 
   useEffect(() => {
-    if (data?.state !== 'closed' && !isTrainingLockedByDaily) return undefined;
+    if (data?.state !== 'closed' && !isTrainingLocked) return undefined;
     const id = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(id);
-  }, [data?.state, isTrainingLockedByDaily]);
+  }, [data?.state, isTrainingLocked]);
 
   if (!data) return null;
 
   const isTrainingActive = data.state === 'active';
   const isTrainingClosed = data.state === 'closed';
-  const isTrainingPlayable = isTrainingActive && !isTrainingLockedByDaily;
+  const isTrainingPlayable = isTrainingActive && !isTrainingLocked;
   const nextDayAt = new Date(data.next_day_starts_at).getTime();
   const nextDayRemaining = Math.max(0, nextDayAt - now);
-  const dailyPeriodEndsAt = dailyData?.period_ends_at
-    ? new Date(dailyData.period_ends_at).getTime()
-    : 0;
-  const dailyBreakEndsAt = dailyData?.break_ends_at
-    ? new Date(dailyData.break_ends_at).getTime()
-    : 0;
-  const dailyLockRemaining =
-    dailyData?.state === 'period_active' && dailyPeriodEndsAt > 0
-      ? Math.max(0, dailyPeriodEndsAt - now)
-      : dailyData?.state === 'break_active' && dailyBreakEndsAt > 0
-        ? Math.max(0, dailyBreakEndsAt - now)
-        : 0;
-  const trainingTimer = isTrainingLockedByDaily
-    ? dailyLockRemaining > 0
-      ? formatMs(dailyLockRemaining)
+  const lockEnd = data.gameplay_lock?.ends_at ? Date.parse(data.gameplay_lock.ends_at) : 0;
+  const trainingTimer = isTrainingLocked
+    ? lockEnd > 0
+      ? formatHms(Math.max(0, lockEnd - now))
       : 'ИГРА'
     : isTrainingClosed
       ? formatHms(nextDayRemaining)
       : String(data.shots_limit);
-  const trainingTimerLabel = isTrainingLockedByDaily
-    ? dailyLockRemaining > 0
+  const trainingTimerLabel = isTrainingLocked
+    ? lockEnd > 0
       ? 'ДО ИГРЫ'
       : 'СТАТУС'
     : isTrainingClosed
@@ -7815,7 +9737,7 @@ function TrainingPlayView({
     <>
       <PlayView<TrainingStateResponse>
         suppressedByModal={!isTrainingPlayable}
-        showIceCar={isTrainingClosed || isTrainingLockedByDaily}
+        showIceCar={isTrainingClosed || isTrainingLocked}
         playEntranceOnMount={isTrainingPlayable ? playEntranceOnMount : false}
         onEntranceConsumed={onEntranceConsumed}
         playRouteTransitionOnMount={playRouteTransitionOnMount}
@@ -7825,7 +9747,10 @@ function TrainingPlayView({
         seed={data.training_seed}
         goalieId={data.goalie_id}
         periodNumber={data.selected_period ?? selectedPeriod}
+        scoreboardPeriodNumber={1}
+        scoreboardPeriodsTotal={1}
         periodSpeedPresets={data.period_speed_presets}
+        speedOverrides={trainingSpeedOverrides ?? undefined}
         sessionStartedAt={data.started_at}
         serverNow={data.server_now}
         receivedAtPerformanceMs={data.received_at_performance_ms}
@@ -7834,13 +9759,13 @@ function TrainingPlayView({
         shotsTotal={data.shots_limit}
         timer={trainingTimer}
         timerLabel={trainingTimerLabel}
-        scoreboardNotice={isTrainingLockedByDaily ? 'Игра уже начата' : undefined}
+        scoreboardNotice={isTrainingLocked ? gameplayLockCopy(data.gameplay_lock!, now) : undefined}
         shotButtonLabel={
           isTrainingPlayable
             ? undefined
             : canStartTraining
               ? 'НАЧАТЬ'
-              : isTrainingLockedByDaily
+              : isTrainingLocked
                 ? 'ЛЁД ГОТОВИТСЯ'
                 : 'ТРЕНИРОВКА ЗАВЕРШЕНА'
         }
@@ -7851,9 +9776,22 @@ function TrainingPlayView({
         submitShot={submitTrainingShotAndRefreshDaily}
         applyState={applyState}
         hitboxesVisible={hitboxesVisible}
+        playerOptions={TRAINING_STREET_PLAYER_OPTIONS}
+        goalieOptions={TRAINING_AMATEUR_GOALIE_OPTIONS}
         overlayControls={
-          canShowHitboxesToggle ? (
-            <TrainingHitboxesToggle checked={hitboxesVisible} onChange={handleHitboxesChange} />
+          canShowTrainingDebugControls ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <TrainingHitboxesToggle checked={hitboxesVisible} onChange={handleHitboxesChange} />
+              <TrainingSpeedControls
+                value={effectiveTrainingSpeeds}
+                defaults={trainingDefaultSpeeds}
+                open={speedControlsOpen}
+                onOpen={() => setSpeedControlsOpen(true)}
+                onClose={() => setSpeedControlsOpen(false)}
+                onChange={handleSpeedOverridesChange}
+                onReset={handleSpeedOverridesReset}
+              />
+            </div>
           ) : undefined
         }
       />
@@ -8099,1279 +10037,5 @@ function DemoCompletionModal({
         </div>
       </div>
     </div>
-  );
-}
-
-export function PlayView<TState>({
-  suppressedByModal,
-  showIceCar,
-  playEntranceOnMount = false,
-  onEntranceConsumed,
-  playRouteTransitionOnMount = false,
-  onRouteTransitionConsumed,
-  onBack,
-  active,
-  seed,
-  goalieId,
-  periodNumber,
-  periodSpeedPresets,
-  stickEffects = STICK_NEUTRAL,
-  periodsTotal = 3,
-  goals,
-  shots,
-  shotsTotal,
-  timer,
-  timerLabel,
-  scoreboardNotice,
-  shotButtonLabel = 'БРОСОК',
-  inactiveAction,
-  entranceBeforeInactiveAction = false,
-  backLabel = 'К режимам',
-  bottomInset = 'calc(8px + max(20px, var(--app-safe-bottom)))',
-  sessionStartedAt,
-  serverNow,
-  receivedAtPerformanceMs,
-  periodEndsAt,
-  onTimerExpired,
-  optimisticAddShot,
-  submitShot,
-  applyState,
-  applyResolvedState,
-  rinkLayer,
-  longCourtBackground,
-  rinkAspectRatio = LONG_COURT_RINK_ASPECT_RATIO,
-  rinkBorderRadius = 36,
-  rinkBorder = '3px solid #1e3a5f',
-  hideScoreboard = true,
-  overlayControls,
-  gameLayerStyle = LONG_COURT_GAME_LAYER_STYLE,
-  playerGrip,
-  playerOptions = PERSPECTIVE_PLAYER_OPTIONS,
-  goalOptions = PERSPECTIVE_GOAL_OPTIONS,
-  goalieOptions = PERSPECTIVE_GOALIE_OPTIONS,
-  puckOptions = PERSPECTIVE_PUCK_OPTIONS,
-  hitboxesVisible = false,
-  hitboxesOptions = PERSPECTIVE_HITBOX_OPTIONS,
-  shotResolver = resolveNewTrainingCourtShot,
-  hudAddon,
-  scoreboardOpponent,
-  readyPresence,
-}: PlayViewProps<TState>): JSX.Element {
-  const session: PlaySessionSnapshot = useMemo(
-    () => ({
-      active,
-      seed,
-      goalieId,
-      periodNumber,
-      shots,
-      shotsTotal,
-    }),
-    [active, seed, goalieId, periodNumber, shots, shotsTotal],
-  );
-  const sessionRef = useRef(session);
-  sessionRef.current = session;
-  const sessionTimingRef = useRef<PlaySessionTiming>({
-    sessionStartedAt: sessionStartedAt ?? null,
-    serverNow: serverNow ?? null,
-    receivedAtPerformanceMs: receivedAtPerformanceMs ?? null,
-  });
-  sessionTimingRef.current = {
-    sessionStartedAt: sessionStartedAt ?? null,
-    serverNow: serverNow ?? null,
-    receivedAtPerformanceMs: receivedAtPerformanceMs ?? null,
-  };
-
-  const scaleRef = useRef<Scale>({ factor: 1, offsetX: 0, offsetY: 0 });
-  const playRootRef = useRef<HTMLElement | null>(null);
-  const scoreboardShellRef = useRef<HTMLDivElement | null>(null);
-  const rinkAreaRef = useRef<HTMLDivElement | null>(null);
-  const rinkShellRef = useRef<HTMLDivElement | null>(null);
-  const controlsRef = useRef<HTMLDivElement | null>(null);
-  const loopRef = useRef<GameLoop | null>(null);
-  const puckRef = useRef<Puck | null>(null);
-  const playerRef = useRef<Player | null>(null);
-  const goalRef = useRef<Goal | null>(null);
-  const goalieRef = useRef<Goalie | null>(null);
-  const hitboxesRef = useRef<Hitboxes | null>(null);
-  const refreshRef = useRef<((s: Scale) => void) | null>(null);
-  const tickerRef = useRef<Ticker | null>(null);
-  const entranceRafRef = useRef<number | null>(null);
-  const routeCameraRafRef = useRef<number | null>(null);
-  const routeBackTimeoutRef = useRef<number | null>(null);
-  const skipNextUnsuppressedEntranceRef = useRef(false);
-  const iceCarRef = useRef<IceCar | null>(null);
-  const iceCarRafRef = useRef<number | null>(null);
-  const shotTimeoutsRef = useRef<number[]>([]);
-  const mountedRef = useRef(true);
-  const initializedRef = useRef(false);
-  const [isShowingResult, setIsShowingResult] = useState(false);
-  const [isShotInProgress, setIsShotInProgress] = useState(false);
-  const [isShotSubmitPending, setIsShotSubmitPending] = useState(false);
-  const [isInactiveActionPending, setIsInactiveActionPending] = useState(false);
-  const [soundToastVisible, setSoundToastVisible] = useState(false);
-  const soundToastTimerRef = useRef<number | null>(null);
-  const [resultSubText, setResultSubText] = useState<string | null>(null);
-  const [resultDisplayKind, setResultDisplayKind] = useState<ResultModalKind | null>(null);
-  const [lastResult, setLastResult] = useState<ShotResult | null>(null);
-  const [playLayout, setPlayLayout] = useState<{
-    rinkWidth: number;
-    rinkHeight: number;
-    rinkSlotHeight: number;
-    bottomSpace: number;
-  } | null>(null);
-  // Server state is held until shot animation ends, so ScoreBoard counters
-  // don't jump while the puck is still flying.
-  const pendingMidShotApplyRef = useRef<(() => void) | null>(null);
-  const shotAnimationInProgressRef = useRef(false);
-  const shotSubmitPendingRef = useRef(false);
-  const [pixiReady, setPixiReady] = useState(false);
-  const [isEntrancePlaying, setIsEntrancePlaying] = useState(false);
-  const routeCameraRequestedRef = useRef(playRouteTransitionOnMount && !shouldReduceMotion());
-  const [routeCameraPhase, setRouteCameraPhase] = useState<RouteCameraPhase>(() =>
-    routeCameraRequestedRef.current ? 'zoomed' : 'settled',
-  );
-  // Ref-mirror of suppressedByModal so handleReady (initialized once via
-  // useCallback) can read the latest value when Pixi finishes loading.
-  const suppressedRef = useRef(suppressedByModal);
-  suppressedRef.current = suppressedByModal;
-  const showIceCarRef = useRef(showIceCar);
-  showIceCarRef.current = showIceCar;
-  const playEntranceOnMountRef = useRef(playEntranceOnMount);
-  playEntranceOnMountRef.current = playEntranceOnMount;
-  const onEntranceConsumedRef = useRef(onEntranceConsumed);
-  onEntranceConsumedRef.current = onEntranceConsumed;
-  const onRouteTransitionConsumedRef = useRef(onRouteTransitionConsumed);
-  onRouteTransitionConsumedRef.current = onRouteTransitionConsumed;
-  const playerGripRef = useRef(playerGrip);
-  playerGripRef.current = playerGrip;
-  const playerOptionsRef = useRef(playerOptions);
-  playerOptionsRef.current = playerOptions;
-  const goalOptionsRef = useRef(goalOptions);
-  goalOptionsRef.current = goalOptions;
-  const goalieOptionsRef = useRef(goalieOptions);
-  goalieOptionsRef.current = goalieOptions;
-  const puckOptionsRef = useRef(puckOptions);
-  puckOptionsRef.current = puckOptions;
-  const hitboxesVisibleRef = useRef(hitboxesVisible);
-  hitboxesVisibleRef.current = hitboxesVisible;
-  const hitboxesOptionsRef = useRef(hitboxesOptions);
-  hitboxesOptionsRef.current = hitboxesOptions;
-  const shotResolverRef = useRef(shotResolver);
-  shotResolverRef.current = shotResolver;
-  const readyPresenceRef = useRef(readyPresence);
-  readyPresenceRef.current = readyPresence;
-  const wasReadyPresenceModeRef = useRef(false);
-  const lastReadyPlayerEntranceKeyRef = useRef(readyPresence?.playerEntranceKey ?? null);
-  const lastReadyGoalieEntranceKeyRef = useRef(readyPresence?.goalieEntranceKey ?? null);
-
-  const speeds = useMemo(
-    () => speedOverridesForPeriod(periodNumber, periodSpeedPresets),
-    [periodNumber, periodSpeedPresets],
-  );
-  const rinkRatio = useMemo(() => parseAspectRatio(rinkAspectRatio), [rinkAspectRatio]);
-  const speedsRef = useRef<SpeedOverrides>(speeds);
-  speedsRef.current = speeds;
-  const stickEffectsRef = useRef<StickEffects>(stickEffects);
-  stickEffectsRef.current = stickEffects;
-
-  const flightDurationMs = useMemo(
-    () => (PUCK_START.y - GOAL_OPENING.y) / speeds.puckSpeed,
-    [speeds.puckSpeed],
-  );
-
-  const [now, setNow] = useState(Date.now());
-
-  useEffect(
-    () => () => {
-      if (soundToastTimerRef.current !== null) {
-        window.clearTimeout(soundToastTimerRef.current);
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    if (!playRouteTransitionOnMount || routeCameraRequestedRef.current) return;
-    onRouteTransitionConsumedRef.current?.();
-  }, [playRouteTransitionOnMount]);
-
-  useEffect(() => {
-    if (routeCameraPhase !== 'zoomed') return undefined;
-    onRouteTransitionConsumedRef.current?.();
-
-    const settle = (): void => {
-      setRouteCameraPhase('settled');
-      routeCameraRafRef.current = null;
-    };
-    let fallbackId: number | null = window.setTimeout(settle, 160);
-    if (playLayout) {
-      routeCameraRafRef.current = window.requestAnimationFrame(() => {
-        routeCameraRafRef.current = window.requestAnimationFrame(settle);
-      });
-    }
-
-    return () => {
-      if (fallbackId !== null) {
-        window.clearTimeout(fallbackId);
-        fallbackId = null;
-      }
-      if (routeCameraRafRef.current !== null) {
-        window.cancelAnimationFrame(routeCameraRafRef.current);
-        routeCameraRafRef.current = null;
-      }
-    };
-  }, [playLayout, routeCameraPhase]);
-
-  const showSoundToast = useCallback((): void => {
-    setSoundToastVisible(true);
-    if (soundToastTimerRef.current !== null) {
-      window.clearTimeout(soundToastTimerRef.current);
-    }
-    soundToastTimerRef.current = window.setTimeout(() => {
-      setSoundToastVisible(false);
-      soundToastTimerRef.current = null;
-    }, 1800);
-  }, []);
-
-  useEffect(() => {
-    if (!periodEndsAt) return undefined;
-    const id = window.setInterval(() => setNow(Date.now()), 500);
-    return () => window.clearInterval(id);
-  }, [periodEndsAt]);
-  const remaining = periodEndsAt ? Math.max(0, periodEndsAt - now) : 0;
-
-  useLayoutEffect(() => {
-    const root = playRootRef.current;
-    const node = rinkAreaRef.current;
-    const scoreboard = scoreboardShellRef.current;
-    const controls = controlsRef.current;
-    if (!root || !node || !scoreboard || !controls) return undefined;
-
-    const updatePlayLayout = (): void => {
-      const rootRect = root.getBoundingClientRect();
-      const rinkAreaRect = node.getBoundingClientRect();
-      const style = window.getComputedStyle(node);
-      const paddingX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-      const maxWidth = Math.max(0, rinkAreaRect.width - paddingX);
-      if (maxWidth <= 0 || rootRect.height <= 0) return;
-
-      const nav = document.querySelector<HTMLElement>('.bottom-nav-shell nav');
-      const navReserve = nav ? Math.max(54, rootRect.bottom - nav.getBoundingClientRect().top) : 0;
-      const minBottomSpace = navReserve + 6;
-      const preferredBottomSpace = navReserve + (navReserve > 0 ? 24 : 14);
-      const fixedHeight = outerBlockHeight(scoreboard) + outerBlockHeight(controls);
-      const availableForRinkAndBottom = Math.max(0, rootRect.height - fixedHeight);
-      const fullWidthRinkHeight = maxWidth / rinkRatio;
-      const spareAfterFullRink = availableForRinkAndBottom - fullWidthRinkHeight;
-      const bottomSpace = Math.min(
-        preferredBottomSpace,
-        Math.max(minBottomSpace, spareAfterFullRink),
-      );
-      const rinkSlotHeight = Math.max(0, availableForRinkAndBottom - bottomSpace);
-      const rinkWidth = Math.min(maxWidth, rinkSlotHeight * rinkRatio);
-      const rinkHeight = rinkWidth / rinkRatio;
-
-      setPlayLayout((prev) => {
-        if (
-          prev &&
-          Math.abs(prev.rinkWidth - rinkWidth) < 0.5 &&
-          Math.abs(prev.rinkHeight - rinkHeight) < 0.5 &&
-          Math.abs(prev.rinkSlotHeight - rinkSlotHeight) < 0.5 &&
-          Math.abs(prev.bottomSpace - bottomSpace) < 0.5
-        ) {
-          return prev;
-        }
-        return { rinkWidth, rinkHeight, rinkSlotHeight, bottomSpace };
-      });
-    };
-
-    updatePlayLayout();
-
-    let observer: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined') {
-      observer = new ResizeObserver(updatePlayLayout);
-      observer.observe(root);
-      observer.observe(node);
-      observer.observe(scoreboard);
-      observer.observe(controls);
-    }
-    window.addEventListener('resize', updatePlayLayout);
-    window.visualViewport?.addEventListener('resize', updatePlayLayout);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', updatePlayLayout);
-      window.visualViewport?.removeEventListener('resize', updatePlayLayout);
-    };
-  }, [rinkRatio]);
-
-  useEffect(() => {
-    hitboxesRef.current?.setVisible(hitboxesVisible);
-  }, [hitboxesVisible]);
-
-  useEffect(() => {
-    if (remaining === 0 && periodEndsAt) void onTimerExpired?.();
-  }, [remaining, periodEndsAt, onTimerExpired]);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      loopRef.current?.detach();
-      if (entranceRafRef.current !== null) {
-        cancelAnimationFrame(entranceRafRef.current);
-        entranceRafRef.current = null;
-      }
-      if (routeCameraRafRef.current !== null) {
-        cancelAnimationFrame(routeCameraRafRef.current);
-        routeCameraRafRef.current = null;
-      }
-      if (routeBackTimeoutRef.current !== null) {
-        window.clearTimeout(routeBackTimeoutRef.current);
-        routeBackTimeoutRef.current = null;
-      }
-      if (iceCarRafRef.current !== null) {
-        cancelAnimationFrame(iceCarRafRef.current);
-        iceCarRafRef.current = null;
-      }
-      for (const id of shotTimeoutsRef.current) window.clearTimeout(id);
-      shotTimeoutsRef.current = [];
-      goalRef.current?.destroy();
-      goalieRef.current?.destroy();
-      playerRef.current?.destroy();
-      puckRef.current?.destroy();
-      hitboxesRef.current?.destroy();
-      iceCarRef.current?.destroy();
-      loopRef.current = null;
-      tickerRef.current = null;
-      refreshRef.current = null;
-      goalRef.current = null;
-      goalieRef.current = null;
-      playerRef.current = null;
-      puckRef.current = null;
-      hitboxesRef.current = null;
-      iceCarRef.current = null;
-    };
-  }, []);
-
-  const startEntranceAnimation = useCallback(
-    (
-      loop: GameLoop,
-      ticker: Ticker,
-      options: { attachOnComplete?: boolean } = {},
-    ): Promise<void> =>
-      new Promise((resolve) => {
-        if (entranceRafRef.current !== null) {
-          cancelAnimationFrame(entranceRafRef.current);
-          entranceRafRef.current = null;
-        }
-        const goal = goalRef.current;
-        const player = playerRef.current;
-        const goalie = goalieRef.current;
-        const puck = puckRef.current;
-        if (!goal || !player || !goalie || !puck) {
-          resolve();
-          return;
-        }
-
-        loop.detach();
-        setIsEntrancePlaying(true);
-
-        const attachOnComplete = options.attachOnComplete ?? true;
-        const ENTRY_DURATION_MS = 1400;
-        const CENTER_RED_Y = 350;
-        const ENTRY_X = RINK.width + 50;
-        const goalieStartX = ENTRY_X;
-        const goalieStartY = CENTER_RED_Y - 30;
-        const playerStartX = ENTRY_X;
-        const playerStartY = CENTER_RED_Y + 30;
-        const goalStartOffsetY = -140;
-        const t0 = performance.now();
-
-        goal.container.visible = true;
-        player.container.visible = true;
-        goalie.container.visible = true;
-        puck.container.visible = false;
-
-        const drawAt = (
-          gx: number,
-          gy: number,
-          px: number,
-          py: number,
-          goalOffsetY: number,
-        ): void => {
-          goal.update(scaleRef.current, 0, goalOffsetY);
-          player.update(scaleRef.current, px, py);
-          goalie.update(
-            {
-              position: { x: gx, y: gy },
-              width: GOALIE_SIZE.width,
-              height: GOALIE_SIZE.height,
-            },
-            scaleRef.current,
-          );
-        };
-
-        drawAt(goalieStartX, goalieStartY, playerStartX, playerStartY, goalStartOffsetY);
-
-        const step = (): void => {
-          if (!mountedRef.current) {
-            resolve();
-            return;
-          }
-          const t = Math.min(1, (performance.now() - t0) / ENTRY_DURATION_MS);
-          const eased = 1 - Math.pow(1 - t, 3);
-          drawAt(
-            goalieStartX + (SHOOTER_CENTER_X - goalieStartX) * eased,
-            goalieStartY + (GOALIE_Y - goalieStartY) * eased,
-            playerStartX + (SHOOTER_CENTER_X - playerStartX) * eased,
-            playerStartY + (PUCK_START.y - playerStartY) * eased,
-            goalStartOffsetY * (1 - eased),
-          );
-          if (t < 1) {
-            entranceRafRef.current = requestAnimationFrame(step);
-            return;
-          }
-          entranceRafRef.current = null;
-          goal.update(scaleRef.current, 0, 0);
-          puck.container.visible = true;
-          loop.resetTime();
-          if (attachOnComplete) loop.attach(ticker);
-          setIsEntrancePlaying(false);
-          resolve();
-        };
-
-        entranceRafRef.current = requestAnimationFrame(step);
-      }),
-    [],
-  );
-
-  const drawReadyPresence = useCallback((presence: ReadyPresence): void => {
-    const goal = goalRef.current;
-    const player = playerRef.current;
-    const goalie = goalieRef.current;
-    const puck = puckRef.current;
-    if (!goal || !player || !goalie || !puck) return;
-
-    goal.container.visible = presence.goalieReady;
-    goalie.container.visible = presence.goalieReady;
-    player.container.visible = presence.playerReady;
-    puck.container.visible = presence.playerReady;
-    goal.update(scaleRef.current, 0, 0);
-    if (presence.goalieReady) {
-      goalie.update(
-        {
-          position: { x: SHOOTER_CENTER_X, y: GOALIE_Y },
-          width: GOALIE_SIZE.width,
-          height: GOALIE_SIZE.height,
-        },
-        scaleRef.current,
-      );
-    }
-    if (presence.playerReady) {
-      player.update(scaleRef.current, SHOOTER_CENTER_X, PUCK_START.y);
-      puck.resetAtStart(scaleRef.current);
-    }
-  }, []);
-
-  const startReadyPresenceEntrance = useCallback(
-    (part: 'player' | 'goalie'): void => {
-      if (entranceRafRef.current !== null) {
-        cancelAnimationFrame(entranceRafRef.current);
-        entranceRafRef.current = null;
-      }
-      const goal = goalRef.current;
-      const player = playerRef.current;
-      const goalie = goalieRef.current;
-      const puck = puckRef.current;
-      const loop = loopRef.current;
-      if (!goal || !player || !goalie || !puck) return;
-
-      loop?.detach();
-      wasReadyPresenceModeRef.current = true;
-      setIsEntrancePlaying(true);
-
-      const ENTRY_DURATION_MS = 900;
-      const CENTER_RED_Y = 350;
-      const ENTRY_X = RINK.width + 50;
-      const t0 = performance.now();
-      const existingPresence = readyPresenceRef.current ?? {
-        playerReady: false,
-        goalieReady: false,
-      };
-
-      if (part === 'player') {
-        player.container.visible = true;
-        puck.container.visible = false;
-      } else {
-        goal.container.visible = true;
-        goalie.container.visible = true;
-      }
-
-      const step = (): void => {
-        if (!mountedRef.current) return;
-        const t = Math.min(1, (performance.now() - t0) / ENTRY_DURATION_MS);
-        const eased = 1 - Math.pow(1 - t, 3);
-
-        if (part === 'player') {
-          const x = ENTRY_X + (SHOOTER_CENTER_X - ENTRY_X) * eased;
-          const y = CENTER_RED_Y + 30 + (PUCK_START.y - (CENTER_RED_Y + 30)) * eased;
-          player.update(scaleRef.current, x, y);
-          if (existingPresence.goalieReady) {
-            goal.update(scaleRef.current, 0, 0);
-            goalie.update(
-              {
-                position: { x: SHOOTER_CENTER_X, y: GOALIE_Y },
-                width: GOALIE_SIZE.width,
-                height: GOALIE_SIZE.height,
-              },
-              scaleRef.current,
-            );
-          }
-        } else {
-          const x = ENTRY_X + (SHOOTER_CENTER_X - ENTRY_X) * eased;
-          const y = CENTER_RED_Y - 30 + (GOALIE_Y - (CENTER_RED_Y - 30)) * eased;
-          const goalOffsetY = -140 * (1 - eased);
-          goal.update(scaleRef.current, 0, goalOffsetY);
-          goalie.update(
-            {
-              position: { x, y },
-              width: GOALIE_SIZE.width,
-              height: GOALIE_SIZE.height,
-            },
-            scaleRef.current,
-          );
-          if (existingPresence.playerReady) {
-            player.update(scaleRef.current, SHOOTER_CENTER_X, PUCK_START.y);
-          }
-        }
-
-        if (t < 1) {
-          entranceRafRef.current = requestAnimationFrame(step);
-          return;
-        }
-        entranceRafRef.current = null;
-        drawReadyPresence(readyPresenceRef.current ?? existingPresence);
-        setIsEntrancePlaying(false);
-      };
-
-      entranceRafRef.current = requestAnimationFrame(step);
-    },
-    [drawReadyPresence],
-  );
-
-  const handleReady = useCallback(
-    (app: Application, initialScale: Scale): void => {
-      scaleRef.current = initialScale;
-
-      const goal = new Goal(goalOptionsRef.current);
-      const goalie = new Goalie(goalieOptionsRef.current);
-      const goalOptions = goalOptionsRef.current;
-      const goalieOptions = goalieOptionsRef.current;
-      const hitboxes = new Hitboxes({
-        goalVisualYScale: goalOptions?.visualYScale,
-        goalVisualYOffset: goalOptions?.visualYOffset,
-        goalVisualOffsetXScale: goalOptions?.visualOffsetXScale,
-        goalWidthScale: hitboxesOptionsRef.current?.goalWidthScale,
-        goalHeightScale: hitboxesOptionsRef.current?.goalHeightScale,
-        goalInset: hitboxesOptionsRef.current?.goalInset,
-        goalieVisualYScale: goalieOptions?.visualYScale,
-        goalieVisualYOffset: goalieOptions?.visualYOffset,
-        goalieVisualXScale: goalieOptions?.visualXScale,
-        goalieVisualXCenter: goalieOptions?.visualXCenter,
-        goalieVisualMinX: goalieOptions?.visualMinX,
-        goalieVisualMaxX: goalieOptions?.visualMaxX,
-        goalieWidthScale: hitboxesOptionsRef.current?.goalieWidthScale,
-        goalieHeightScale: hitboxesOptionsRef.current?.goalieHeightScale,
-        goalieInset: hitboxesOptionsRef.current?.goalieInset,
-      });
-      hitboxes.setVisible(hitboxesVisibleRef.current);
-      const grip = playerGripRef.current ?? useAuthStore.getState().user?.grip ?? 'right';
-      const puck = new Puck(grip, puckOptionsRef.current);
-      const player = new Player(grip, playerOptionsRef.current);
-      puckRef.current = puck;
-      playerRef.current = player;
-      goalRef.current = goal;
-      goalieRef.current = goalie;
-      hitboxesRef.current = hitboxes;
-
-      const iceCar = new IceCar();
-      iceCarRef.current = iceCar;
-
-      const layer = new Container();
-      layer.addChild(iceCar.container);
-      layer.addChild(goal.container);
-      layer.addChild(goalie.container);
-      layer.addChild(player.container);
-      layer.addChild(puck.container);
-      layer.addChild(hitboxes.container);
-
-      app.stage.addChild(layer);
-
-      const refreshScale = (s: Scale): void => {
-        scaleRef.current = s;
-        goal.update(s);
-        player.update(s);
-        puck.resetAtStart(s);
-      };
-      refreshRef.current = refreshScale;
-      refreshScale(initialScale);
-
-      const loop = createGameLoop({
-        goalRenderer: goal,
-        goalieRenderer: goalie,
-        playerRenderer: player,
-        puckRenderer: puck,
-        hitboxRenderer: hitboxes,
-        getScale: () => scaleRef.current,
-        getSeed: () => sessionRef.current.seed ?? 'fallback',
-        getShotIndex: () => sessionRef.current.shots + 1,
-        getGoalieId: () => sessionRef.current.goalieId,
-        getSpeedOverrides: () => speedsRef.current,
-        getInitialElapsedMs: () => computeInitialElapsedMs(sessionTimingRef.current),
-      });
-      tickerRef.current = app.ticker;
-      loopRef.current = loop;
-
-      // Decide initial visibility/loop state synchronously, BEFORE the first
-      // ticker frame, so a modal-on-top mount never flashes moving sprites.
-      if (suppressedRef.current) {
-        goal.container.visible = !showIceCarRef.current;
-        player.container.visible = false;
-        goalie.container.visible = false;
-        puck.container.visible = false;
-        goal.update(initialScale, 0);
-        if (showIceCarRef.current) {
-          startIceCarLoop(iceCarRef, iceCarRafRef, mountedRef, scaleRef);
-        } else {
-          iceCar.container.visible = false;
-        }
-      } else {
-        iceCar.container.visible = false;
-        if (readyPresenceRef.current && !sessionRef.current.active) {
-          loop.detach();
-          wasReadyPresenceModeRef.current = true;
-          drawReadyPresence(readyPresenceRef.current);
-          setPixiReady(true);
-          return;
-        }
-        if (playEntranceOnMountRef.current && sessionRef.current.active) {
-          onEntranceConsumedRef.current?.();
-          void startEntranceAnimation(loop, app.ticker);
-        } else {
-          loop.attach(app.ticker);
-        }
-      }
-      setPixiReady(true);
-    },
-    [drawReadyPresence, startEntranceAnimation],
-  );
-
-  // React to suppressedByModal flips after Pixi is up. handleReady applies
-  // the initial state inline; this hook handles transitions only.
-  useLayoutEffect(() => {
-    if (!pixiReady) return;
-    if (!initializedRef.current) {
-      initializedRef.current = true;
-      return;
-    }
-    const loop = loopRef.current;
-    const goal = goalRef.current;
-    const player = playerRef.current;
-    const goalie = goalieRef.current;
-    const puck = puckRef.current;
-    const ticker = tickerRef.current;
-    if (!loop || !goal || !player || !goalie || !puck || !ticker) return;
-    if (suppressedByModal) {
-      if (entranceRafRef.current !== null) {
-        cancelAnimationFrame(entranceRafRef.current);
-        entranceRafRef.current = null;
-      }
-      loop.detach();
-      setIsEntrancePlaying(false);
-      goal.container.visible = !showIceCar;
-      goal.update(scaleRef.current, 0);
-      player.container.visible = false;
-      goalie.container.visible = false;
-      puck.container.visible = false;
-      if (showIceCar) {
-        startIceCarLoop(iceCarRef, iceCarRafRef, mountedRef, scaleRef);
-      } else {
-        stopIceCarLoop(iceCarRef, iceCarRafRef);
-      }
-      return;
-    }
-
-    stopIceCarLoop(iceCarRef, iceCarRafRef);
-    if (readyPresence && !active) {
-      loop.detach();
-      wasReadyPresenceModeRef.current = true;
-      drawReadyPresence(readyPresence);
-      return;
-    }
-    if (active && wasReadyPresenceModeRef.current) {
-      wasReadyPresenceModeRef.current = false;
-      goal.container.visible = true;
-      player.container.visible = true;
-      goalie.container.visible = true;
-      puck.container.visible = true;
-      loop.resetTime();
-      loop.attach(ticker);
-      return;
-    }
-    if (skipNextUnsuppressedEntranceRef.current) {
-      skipNextUnsuppressedEntranceRef.current = false;
-      goal.container.visible = true;
-      player.container.visible = true;
-      goalie.container.visible = true;
-      puck.container.visible = true;
-      loop.resetTime();
-      loop.attach(ticker);
-      return;
-    }
-    void startEntranceAnimation(loop, ticker);
-    return () => {
-      if (entranceRafRef.current !== null) {
-        cancelAnimationFrame(entranceRafRef.current);
-        entranceRafRef.current = null;
-        setIsEntrancePlaying(false);
-      }
-      if (iceCarRafRef.current !== null) {
-        cancelAnimationFrame(iceCarRafRef.current);
-        iceCarRafRef.current = null;
-      }
-    };
-  }, [
-    active,
-    drawReadyPresence,
-    pixiReady,
-    readyPresence,
-    showIceCar,
-    startEntranceAnimation,
-    suppressedByModal,
-  ]);
-
-  useEffect(() => {
-    if (!pixiReady || !readyPresence || active || suppressedByModal) return;
-
-    const playerKey = readyPresence.playerEntranceKey ?? null;
-    const goalieKey = readyPresence.goalieEntranceKey ?? null;
-    const shouldAnimatePlayer =
-      readyPresence.playerReady &&
-      playerKey !== null &&
-      playerKey !== lastReadyPlayerEntranceKeyRef.current;
-    const shouldAnimateGoalie =
-      readyPresence.goalieReady &&
-      goalieKey !== null &&
-      goalieKey !== lastReadyGoalieEntranceKeyRef.current;
-
-    lastReadyPlayerEntranceKeyRef.current = playerKey;
-    lastReadyGoalieEntranceKeyRef.current = goalieKey;
-
-    if (shouldAnimatePlayer) {
-      startReadyPresenceEntrance('player');
-      return;
-    }
-    if (shouldAnimateGoalie) {
-      startReadyPresenceEntrance('goalie');
-      return;
-    }
-    drawReadyPresence(readyPresence);
-  }, [
-    active,
-    drawReadyPresence,
-    pixiReady,
-    readyPresence,
-    startReadyPresenceEntrance,
-    suppressedByModal,
-  ]);
-
-  const handleResize = useCallback((s: Scale): void => {
-    refreshRef.current?.(s);
-  }, []);
-
-  const handleBackTap = useCallback((): void => {
-    if (routeBackTimeoutRef.current !== null) return;
-    onBack();
-  }, [onBack]);
-
-  const handleShotTap = useCallback((): void => {
-    const loop = loopRef.current;
-    const puck = puckRef.current;
-    const goalie = goalieRef.current;
-    const cur = sessionRef.current;
-    if (!loop || !puck || !goalie) return;
-    if (puck.isFlying() || puck.isHeld()) return;
-    if (shotSubmitPendingRef.current) return;
-    if (!cur.active) return;
-    if (!cur.seed) return;
-    if (typeof cur.shotsTotal === 'number' && cur.shots >= cur.shotsTotal) return;
-
-    const shotIndex = cur.shots + 1;
-    const goalieCfg = getGoalie(cur.goalieId);
-    const overrides = speedsRef.current;
-    // Apply the same frequency overrides that resolveShot uses internally, so
-    // subText simulateGoal/simulateGoalie calls see the same goal/goalie
-    // positions as the resolver did.
-    const activeCfg = {
-      ...goalieCfg,
-      frequency: overrides.goalieFreq,
-      goalFrequency: overrides.goalFreq,
-    };
-    const seed = deriveShotSeed(cur.seed, cur.periodNumber, shotIndex);
-    const offsets = getSessionPhaseOffsets(cur.seed);
-
-    const tapTime = loop.getSceneT();
-    const shooterTapTime = loop.getShooterT();
-    const sx = computeShooterX(shooterTapTime + offsets.shooter, overrides.shooterFreq);
-
-    const input = {
-      tapTime,
-      shooterTapTime,
-      puckSpeedPerMs: overrides.puckSpeed,
-      shooterFrequency: overrides.shooterFreq,
-      goalieFrequency: overrides.goalieFreq,
-      goalFrequency: overrides.goalFreq,
-    };
-    const result: ShotResult =
-      shotResolverRef.current?.({
-        input,
-        goalieConfig: activeCfg,
-        seed,
-        shotIndex,
-        stickEffects: stickEffectsRef.current,
-        phaseOffsets: offsets,
-        shooterX: sx,
-      }) ?? resolveShot(input, activeCfg, seed, shotIndex, stickEffectsRef.current, offsets);
-
-    let subText: string | null = null;
-    let displayKind: ResultModalKind = result.type;
-    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
-    const tGoalCross = tapTime + flightMs;
-    const tGoalieCross = tapTime + (PUCK_START.y - GOALIE_Y) / overrides.puckSpeed;
-    if (result.type === 'save') {
-      const gs = simulateGoalie(activeCfg, seed, shotIndex, tGoalieCross, offsets.goalie);
-      const rel = sx - gs.position.x;
-      const sixth = gs.width / 6;
-      subText =
-        rel < -sixth
-          ? 'Уверенная игра блином'
-          : rel > sixth
-            ? 'Точно в ловушку!'
-            : 'Вратарь на месте!';
-    } else if (result.type === 'goal') {
-      const goalOffsetAtCross = simulateGoal(activeCfg, tGoalCross, offsets.goal).offsetX;
-      const oMin = GOAL_OPENING.xMin + goalOffsetAtCross;
-      const oMax = GOAL_OPENING.xMax + goalOffsetAtCross;
-      const rel = (sx - oMin) / (oMax - oMin);
-      if (rel < 1 / 6 || rel > 5 / 6) subText = 'Точно в девятку!';
-      else if (rel < 2 / 6 || rel > 4 / 6)
-        subText = Math.random() < 0.5 ? 'Мощный щелчок!' : 'Отличный кистевой!';
-      else subText = 'Отличный бросок!';
-    } else if (result.type === 'miss') {
-      const goalOffsetAtCross = simulateGoal(activeCfg, tGoalCross, offsets.goal).offsetX;
-      const dist = distanceToNewTrainingCourtGoalEdge(sx, goalOffsetAtCross);
-      if (dist <= TRAINING_NEW_COURT_POST_EDGE_DISTANCE) displayKind = 'post';
-      subText =
-        displayKind === 'post'
-          ? 'Штанга спасает!'
-          : dist < 18
-            ? 'Рядом со штангой!'
-            : dist < 48
-              ? 'Но было опасно!'
-              : 'Очень далеко...';
-    }
-
-    optimisticAddShot(result.type);
-    shotSubmitPendingRef.current = true;
-    shotAnimationInProgressRef.current = true;
-    setIsShotInProgress(true);
-    setIsShotSubmitPending(true);
-    pendingMidShotApplyRef.current = null;
-
-    loop.beginShooterPause();
-    playerRef.current?.playShot();
-    puck.playShot(
-      puck.bladePoint(sx),
-      { x: sx, y: GOAL_OPENING.y },
-      loop.getRenderNow(),
-      flightDurationMs,
-    );
-
-    const scheduleShotTimeout = (fn: () => void, delay: number): void => {
-      const id = window.setTimeout(() => {
-        shotTimeoutsRef.current = shotTimeoutsRef.current.filter((timeoutId) => timeoutId !== id);
-        if (!mountedRef.current) return;
-        fn();
-      }, delay);
-      shotTimeoutsRef.current.push(id);
-    };
-
-    scheduleShotTimeout(() => {
-      loop.beginScenePause();
-      puck.holdAt({ x: sx, y: result.type === 'save' ? GOAL_OPENING.y + 20 : GOAL_OPENING.y });
-      if (result.type === 'save') goalie.setSavePose(true);
-      setLastResult(result);
-      setResultSubText(subText);
-      setResultDisplayKind(displayKind);
-      setIsShowingResult(true);
-    }, flightDurationMs);
-
-    scheduleShotTimeout(() => {
-      loop.endScenePause();
-      loop.endShooterPause();
-      puck.release();
-      if (result.type === 'save') goalie.setSavePose(false);
-      setIsShowingResult(false);
-      setResultDisplayKind(null);
-      shotAnimationInProgressRef.current = false;
-      setIsShotInProgress(false);
-      const applyPending = pendingMidShotApplyRef.current;
-      if (applyPending) {
-        applyPending();
-        pendingMidShotApplyRef.current = null;
-      }
-    }, flightDurationMs + PAUSE_MS);
-
-    void submitShot({
-      shotIndex,
-      input,
-      claimedResult: result.type,
-    }).then((res) => {
-      if (!mountedRef.current) return;
-      shotSubmitPendingRef.current = false;
-      setIsShotSubmitPending(false);
-      if (res === null) return;
-      const applyNextState = () => (applyResolvedState ?? applyState)(res.state);
-      if (shotAnimationInProgressRef.current) {
-        pendingMidShotApplyRef.current = applyNextState;
-        return;
-      }
-      applyNextState();
-    });
-  }, [flightDurationMs, optimisticAddShot, submitShot, applyState, applyResolvedState]);
-
-  const handleInactiveAction = useCallback(async (): Promise<void> => {
-    if (!inactiveAction || isInactiveActionPending) return;
-    setIsInactiveActionPending(true);
-    try {
-      const loop = loopRef.current;
-      const ticker = tickerRef.current;
-      if (entranceBeforeInactiveAction && loop && ticker) {
-        skipNextUnsuppressedEntranceRef.current = true;
-        await startEntranceAnimation(loop, ticker, { attachOnComplete: false });
-      }
-      const result = await inactiveAction();
-      if (entranceBeforeInactiveAction && result == null) {
-        skipNextUnsuppressedEntranceRef.current = false;
-        loop?.detach();
-        goalRef.current?.update(scaleRef.current, 0);
-        if (playerRef.current) playerRef.current.container.visible = false;
-        if (goalieRef.current) goalieRef.current.container.visible = false;
-        if (puckRef.current) puckRef.current.container.visible = false;
-      }
-    } finally {
-      setIsInactiveActionPending(false);
-    }
-  }, [
-    entranceBeforeInactiveAction,
-    inactiveAction,
-    isInactiveActionPending,
-    startEntranceAnimation,
-  ]);
-
-  const handlePrimaryTap = useCallback((): void => {
-    const cur = sessionRef.current;
-    if (!cur.active && inactiveAction) {
-      void handleInactiveAction();
-      return;
-    }
-    handleShotTap();
-  }, [handleInactiveAction, handleShotTap, inactiveAction]);
-
-  const timerValue = timer ?? formatMs(remaining);
-  const primaryButtonDisabled =
-    (suppressedByModal && !inactiveAction) ||
-    isInactiveActionPending ||
-    isShotInProgress ||
-    isShotSubmitPending ||
-    isShowingResult ||
-    (!active && !inactiveAction) ||
-    (active &&
-      ((routeCameraPhase === 'zoomed' || routeCameraPhase === 'exiting') || isEntrancePlaying)) ||
-    (active && typeof shotsTotal === 'number' && shots >= shotsTotal);
-  const effectiveRinkLayer = rinkLayer ?? (
-    <TrainingPerspectiveRink
-      design="long"
-      longBackground={longCourtBackground}
-      cubeHud={
-        <TrainingCubeScoreboard
-          period={periodNumber}
-          periodsTotal={periodsTotal}
-          timer={timerValue}
-          timerLabel={timerLabel ?? 'ВРЕМЯ'}
-          goals={goals}
-          shots={shots}
-          shotsTotal={shotsTotal}
-          notice={scoreboardNotice}
-        />
-      }
-    />
-  );
-  const routeCameraEase = 'cubic-bezier(.16,.84,.24,1)';
-  const routeCameraTransition = `transform ${PLAY_ROUTE_TRANSITION_MS}ms ${routeCameraEase}, filter ${PLAY_ROUTE_TRANSITION_MS}ms ${routeCameraEase}, border-color ${PLAY_ROUTE_TRANSITION_MS}ms ease`;
-  const routeChromeTransition =
-    routeCameraPhase === 'zoomed'
-      ? `opacity 280ms ease 220ms, transform 420ms cubic-bezier(.16,.84,.24,1) 160ms`
-      : 'opacity 280ms ease, transform 420ms cubic-bezier(.16,.84,.24,1)';
-  const routeGameTransition =
-    routeCameraPhase === 'zoomed' ? 'opacity 300ms ease 260ms' : 'opacity 300ms ease';
-  const isRouteCameraZoomed = routeCameraPhase === 'zoomed' || routeCameraPhase === 'exiting';
-  const routeChromeStyle: CSSProperties = {
-    opacity: isRouteCameraZoomed ? 0 : 1,
-    transform: isRouteCameraZoomed ? 'translate3d(0, 12px, 0)' : 'translate3d(0, 0, 0)',
-    transition: routeChromeTransition,
-    willChange: isRouteCameraZoomed ? 'opacity, transform' : 'auto',
-  };
-  const routeRinkStyle: CSSProperties = {
-    transform: isRouteCameraZoomed
-      ? 'translate3d(0, -2.5%, 0) scale(1.62)'
-      : 'translate3d(0, 0, 0) scale(1)',
-    transformOrigin: '50% 58%',
-    transition: routeCameraTransition,
-    filter: isRouteCameraZoomed ? 'blur(0.5px) saturate(1.03)' : 'none',
-    willChange: isRouteCameraZoomed ? 'transform, filter' : 'auto',
-  };
-  const routeGameStyle: CSSProperties = {
-    opacity: isRouteCameraZoomed ? 0 : 1,
-    transition: routeGameTransition,
-    willChange: isRouteCameraZoomed ? 'opacity' : 'auto',
-  };
-
-  return (
-    <main
-      ref={playRootRef}
-      className="screen"
-      style={{
-        position: 'fixed',
-        top: 'calc(var(--app-safe-top) + 6px)',
-        left: 0,
-        right: 0,
-        bottom: bottomInset,
-        minHeight: 0,
-        overflow: 'hidden',
-      }}
-    >
-      <div
-        ref={scoreboardShellRef}
-        style={{
-          display: hideScoreboard ? 'none' : 'grid',
-          gap: 8,
-          margin: hideScoreboard ? 0 : '12px 14px 10px',
-          ...routeChromeStyle,
-        }}
-      >
-        {!hideScoreboard && (
-          <ScoreBoard
-            period={periodNumber}
-            periodsTotal={periodsTotal}
-            timer={timerValue}
-            timerLabel={timerLabel}
-            goals={goals}
-            shots={shots}
-            shotsTotal={shotsTotal}
-            opponent={scoreboardOpponent}
-          />
-        )}
-      </div>
-
-      <div
-        ref={rinkAreaRef}
-        style={{
-          flex: playLayout ? `0 0 ${playLayout.rinkSlotHeight}px` : '1 1 auto',
-          height: playLayout ? `${playLayout.rinkSlotHeight}px` : undefined,
-          minHeight: 0,
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: '0 14px 8px',
-        }}
-      >
-        <div
-          ref={rinkShellRef}
-          style={{
-            position: 'relative',
-            aspectRatio: rinkAspectRatio,
-            width: playLayout ? `${playLayout.rinkWidth}px` : '100%',
-            height: playLayout ? `${playLayout.rinkHeight}px` : undefined,
-            maxWidth: '100%',
-            flex: '0 0 auto',
-            borderRadius: rinkBorderRadius,
-            overflow: 'hidden',
-            border: isRouteCameraZoomed ? '3px solid rgba(30, 58, 95, 0)' : rinkBorder,
-            background: '#EAF1F8',
-            ...routeRinkStyle,
-          }}
-        >
-          {effectiveRinkLayer}
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              ...gameLayerStyle,
-              ...routeGameStyle,
-            }}
-          >
-            <PixiStage onReady={handleReady} onResize={handleResize} />
-          </div>
-          {overlayControls && (
-            <div
-              style={{
-                position: 'absolute',
-                top: 'clamp(10px, 3.2%, 18px)',
-                left: 'clamp(10px, 3.4%, 18px)',
-                zIndex: 7,
-                pointerEvents: 'auto',
-                ...routeGameStyle,
-              }}
-            >
-              {overlayControls}
-            </div>
-          )}
-          {hudAddon && (
-            <div
-              style={{
-                position: 'absolute',
-                left: 'clamp(10px, 4.2%, 22px)',
-                bottom: 'clamp(16px, 3.4%, 30px)',
-                zIndex: 6,
-                maxWidth: '34%',
-                pointerEvents: 'none',
-                ...routeGameStyle,
-              }}
-            >
-              {hudAddon}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div
-        ref={controlsRef}
-        style={{
-          padding: '0 14px 10px',
-          display: 'grid',
-          gridTemplateColumns: '56px minmax(0, 1fr) 56px',
-          gap: 10,
-          alignItems: 'center',
-          width: '100%',
-          maxWidth: 344,
-          margin: '0 auto',
-          ...routeChromeStyle,
-        }}
-      >
-        <button
-          type="button"
-          aria-label={backLabel}
-          title={backLabel}
-          onClick={handleBackTap}
-          className="icon-btn icon-btn--dark"
-          disabled={isRouteCameraZoomed}
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: 20,
-          }}
-        >
-          <Home size={22} />
-        </button>
-        <button
-          type="button"
-          className="btn btn--cta"
-          onClick={handlePrimaryTap}
-          disabled={primaryButtonDisabled}
-          style={{
-            width: '100%',
-            minHeight: 58,
-            padding: '0 22px',
-            letterSpacing: '0.12em',
-            fontSize: 16,
-          }}
-        >
-          {shotButtonLabel}
-        </button>
-        <button
-          type="button"
-          aria-label="Звук в разработке"
-          title="Звук в разработке"
-          onClick={showSoundToast}
-          className="icon-btn"
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: 20,
-            background: 'rgba(15, 23, 42, 0.1)',
-            color: 'var(--muted)',
-            border: '1px solid rgba(15, 23, 42, 0.08)',
-            opacity: 0.72,
-          }}
-        >
-          <VolumeX size={22} />
-        </button>
-      </div>
-
-      <div
-        aria-hidden="true"
-        style={{
-          flex: playLayout ? `0 0 ${playLayout.bottomSpace}px` : '0 1 88px',
-          minHeight: 0,
-        }}
-      />
-
-      {soundToastVisible && (
-        <>
-          <style>{`
-            @keyframes game-toast-in {
-              from { opacity: 0; transform: translate(-50%, 8px); }
-              to   { opacity: 1; transform: translate(-50%, 0); }
-            }
-          `}</style>
-          <div
-            role="status"
-            aria-live="polite"
-            style={{
-              position: 'fixed',
-              left: '50%',
-              bottom: 'calc(148px + var(--app-safe-bottom))',
-              transform: 'translateX(-50%)',
-              padding: '10px 16px',
-              borderRadius: 999,
-              background: 'rgba(15, 23, 42, 0.92)',
-              color: '#ffffff',
-              fontSize: 13,
-              fontWeight: 700,
-              boxShadow: '0 14px 34px rgba(15, 23, 42, 0.34)',
-              zIndex: 520,
-              pointerEvents: 'none',
-              animation: 'game-toast-in 180ms ease-out',
-              whiteSpace: 'nowrap',
-              maxWidth: 'calc(100vw - 32px)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            Звук в разработке
-          </div>
-        </>
-      )}
-
-      {isShowingResult && lastResult && (
-        <ResultModal
-          result={lastResult}
-          durationMs={PAUSE_MS}
-          subText={resultSubText}
-          displayKind={resultDisplayKind ?? undefined}
-        />
-      )}
-    </main>
   );
 }

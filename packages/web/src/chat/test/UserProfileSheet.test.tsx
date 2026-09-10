@@ -1,17 +1,45 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { UserProfileSheet } from '../components/UserProfileSheet.js';
 import * as api from '../api.js';
 import * as amateurDuelApi from '../../api/amateurDuel.js';
+import { ApiError } from '../../api/apiFetch.js';
 import { useAuthStore } from '../../auth/authStore.js';
+import type { DailyStateResponse } from '../../api/duel.js';
+import { useDailyStore } from '../../stores/dailyStore.js';
+import { userKeys } from '../../lib/queryKeys.js';
 
 const publicProfile: api.UserPublicProfileDTO = {
   id: 'u1',
   displayName: 'Иван Петров',
   avatarUrl: null,
   competitionLevel: 'amateur',
+  currencyBalance: 220,
+  starBalance: 20,
+  experienceBalance: 100000,
+  trophySummary: {
+    regularSeasonWins: 1,
+    tournamentChampionships: 2,
+    tournamentPodiums: 3,
+    completedChallenges: 4,
+  },
+  trophyDetails: {
+    regularSeasonWins: [
+      {
+        id: 'r1',
+        title: 'Кубок открытия',
+        imageUrl: '/cup.webp',
+        startsAt: '2026-08-01T10:00:00.000Z',
+        endsAt: '2026-08-08T10:00:00.000Z',
+        result: 'Победа в регулярном чемпионате',
+      },
+    ],
+    tournamentChampionships: [],
+    tournamentPodiums: [],
+    completedChallenges: [],
+  },
   stats: {
     shots: 128,
     goals: 64,
@@ -34,28 +62,42 @@ const publicProfile: api.UserPublicProfileDTO = {
   lastSeenAt: null,
 };
 
-function renderSheet(props: Parameters<typeof UserProfileSheet>[0]): { qc: QueryClient } {
+async function renderSheet(
+  props: Parameters<typeof UserProfileSheet>[0],
+  configure?: (queryClient: QueryClient) => void,
+): Promise<{ qc: QueryClient }> {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  render(
-    <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/chat/c1']}>
-        <Routes>
-          <Route path="/chat/:chatId" element={<UserProfileSheet {...props} />} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
+  configure?.(qc);
+  await act(async () => {
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter
+          initialEntries={['/chat/c1']}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
+          <Routes>
+            <Route path="/chat/:chatId" element={<UserProfileSheet {...props} />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await Promise.resolve();
+  });
   return { qc };
 }
 
 describe('UserProfileSheet', () => {
   beforeEach(() => {
     useAuthStore.setState({ accessToken: null, refreshToken: null, user: null });
+    useDailyStore.setState({ data: null, loading: false, inFlight: false, error: null });
     vi.spyOn(api, 'findOrCreateDM').mockResolvedValue({ chatId: 'dm1', created: false });
     vi.spyOn(api, 'fetchUserProfile').mockResolvedValue(publicProfile);
     vi.spyOn(amateurDuelApi, 'fetchAmateurMatches').mockResolvedValue({ matches: [] });
+    vi.spyOn(amateurDuelApi, 'checkAmateurDuelChallengeAvailability').mockResolvedValue({
+      available: true,
+    });
     vi.spyOn(amateurDuelApi, 'fetchAmateurTemplates').mockResolvedValue({
       templates: [
         {
@@ -136,48 +178,198 @@ describe('UserProfileSheet', () => {
       match: {} as amateurDuelApi.AmateurDuelMatch,
     });
   });
+
+  it('opens the same tournament history modal from a public profile', async () => {
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+      onClose: vi.fn(),
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /победы в регулярке/i }));
+
+    expect(await screen.findByRole('dialog', { name: 'Победы в регулярке (1)' })).toHaveTextContent(
+      'Кубок открытия',
+    );
+  });
   afterEach(() => {
     vi.restoreAllMocks();
-    useAuthStore.setState({ accessToken: null, refreshToken: null, user: null });
+    act(() => {
+      useAuthStore.setState({ accessToken: null, refreshToken: null, user: null });
+    });
   });
 
-  it('returns null when sender is null', () => {
+  it('returns null without loading profiles when sender is null', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    useAuthStore.setState({
+      accessToken: 'token',
+      refreshToken: 'refresh',
+      user: { id: 'me', displayName: 'Me', grip: 'right' },
+    });
     const { container } = render(
       <QueryClientProvider client={new QueryClient()}>
-        <MemoryRouter>
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <UserProfileSheet sender={null} onClose={() => {}} />
         </MemoryRouter>
       </QueryClientProvider>,
     );
     expect(container.firstChild).toBeNull();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(api.fetchUserProfile).not.toHaveBeenCalled();
+    expect(
+      consoleError.mock.calls.some(([message]) => String(message).includes('not wrapped in act')),
+    ).toBe(false);
   });
 
   it('renders displayName, public stats and achievements when sender is provided', async () => {
-    renderSheet({
+    await renderSheet({
       sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
       onClose: () => {},
     });
-    expect(screen.getByText('Иван Петров')).toBeInTheDocument();
+    expect(await screen.findByText('Иван Петров')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
     expect(await screen.findByText('Любитель')).toBeInTheDocument();
-    expect(screen.getByText('Броски')).toBeInTheDocument();
-    expect(screen.getByText('128')).toBeInTheDocument();
-    expect(screen.getByText('Голы')).toBeInTheDocument();
+    expect(screen.getByText('Шайбы')).toBeInTheDocument();
     expect(screen.getByText('64')).toBeInTheDocument();
     expect(screen.getByText('(12)')).toBeInTheDocument();
-    expect(screen.getByText('Задания (1/1)')).toBeInTheDocument();
+    expect(screen.getByText('Выполненные задания (1)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Публичный спортивный паспорт')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Монеты: 220')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Звёзды: 20')).not.toBeInTheDocument();
+    const experienceBadge = screen.getByLabelText('Опыт: 100000');
+    expect(experienceBadge).toHaveTextContent('100 000');
+    expect(experienceBadge.querySelector('.public-profile-experience__value')).toBeInTheDocument();
+    expect(screen.getByLabelText('Витрина наград')).toHaveTextContent('Чемпионства');
+    expect(
+      screen.getByLabelText('Витрина наград').querySelectorAll('.profile-fitted-number'),
+    ).toHaveLength(4);
+    expect(screen.getByText('Любитель')).toHaveClass('profile-identity__level');
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
+    const identity = screen.getByText('Иван Петров').closest('.profile-identity__main');
+    expect(identity).toHaveClass('public-profile-identity');
+    expect(identity?.querySelector('[aria-hidden="true"]')).toHaveStyle({
+      width: '80px',
+      height: '80px',
+    });
+    expect(identity?.querySelector('.public-profile-experience')).toBeInTheDocument();
+    expect(screen.getByText('Иван Петров')).toHaveClass('public-profile-identity__name');
+    expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toHaveClass('sheet-card');
+    expect(screen.getByRole('dialog', { name: 'Профиль игрока' }).firstElementChild).toHaveClass(
+      'sheet-grabber',
+    );
+    expect(
+      screen
+        .getByRole('heading', { name: 'Профиль игрока' })
+        .parentElement?.querySelector(':scope > button[aria-label="Закрыть"]'),
+    ).toBeInTheDocument();
+  });
+
+  it('uses the compact achievement title treatment for training monster', async () => {
+    vi.spyOn(api, 'fetchUserProfile').mockResolvedValue({
+      ...publicProfile,
+      achievements: [
+        {
+          ...publicProfile.achievements[0]!,
+          id: 'training-monster',
+          title: 'Тренировочный монстр',
+        },
+      ],
+    });
+
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+      onClose: () => {},
+    });
+
+    const achievement = await screen.findByRole('button', {
+      name: /Тренировочный монстр.*получено/i,
+    });
+    expect(achievement.querySelector('.profile-achievement-title')).toHaveClass(
+      'profile-achievement-title--compact',
+    );
+  });
+
+  it('renders an official account card without loading a player profile', async () => {
+    await renderSheet({
+      sender: {
+        userId: 'official-1',
+        displayName: 'Ультимейт Хоккей',
+        avatarUrl: null,
+        accountKind: 'official',
+      },
+      onClose: vi.fn(),
+    });
+
+    expect(screen.getByRole('heading', { name: 'Ультимейт Хоккей' })).toBeInTheDocument();
+    expect(screen.getByText('Официальный аккаунт')).toBeInTheDocument();
+    expect(screen.getByTestId('official-account-hero')).toHaveStyle({
+      backgroundImage: 'url("/icons/official-account-cover.webp")',
+    });
+    expect(screen.queryByRole('img', { name: 'Ультимейт Хоккей' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Открыть сообщество ВКонтакте' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Открыть канал в Telegram' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Написать в личку' })).toBeInTheDocument();
+    expect(api.fetchUserProfile).not.toHaveBeenCalled();
+  });
+
+  it('hides the message action when the official dialog is already open', async () => {
+    await renderSheet({
+      sender: {
+        userId: 'official-1',
+        displayName: 'Ультимейт Хоккей',
+        avatarUrl: null,
+        accountKind: 'official',
+      },
+      onClose: vi.fn(),
+      hideMessageAction: true,
+    });
+
+    expect(screen.queryByRole('button', { name: 'Написать в личку' })).not.toBeInTheDocument();
+  });
+
+  it('opens achievement details without a completion badge and with a square full-width image', async () => {
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+      onClose: () => {},
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Первая шайба.*получено/i }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Первая шайба' });
+    expect(dialog).toHaveClass('achievement-details-modal');
+    expect(dialog).toHaveClass('achievement-details-modal--crisp');
+    expect(screen.getByRole('img', { name: 'Первая шайба' })).toHaveClass(
+      'achievement-details-modal__image',
+    );
+    expect(screen.queryByText('Выполнено')).not.toBeInTheDocument();
+  });
+
+  it('hides the achievements section when the player has no completed achievements', async () => {
+    vi.mocked(api.fetchUserProfile).mockResolvedValue({
+      ...publicProfile,
+      achievements: [],
+    });
+
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+      onClose: () => {},
+    });
+
+    expect(await screen.findByText('Иван Петров')).toBeInTheDocument();
+    expect(screen.queryByText(/Выполненные задания/)).not.toBeInTheDocument();
   });
 
   it('clicking "Написать в личку" calls findOrCreateDM and closes the sheet', async () => {
     const onClose = vi.fn();
-    renderSheet({
+    const { qc } = await renderSheet({
       sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
       onClose,
     });
     fireEvent.click(screen.getByRole('button', { name: /написать в личку/i }));
     await waitFor(() => expect(api.findOrCreateDM).toHaveBeenCalledWith('u1'));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+    await waitFor(() => expect(qc.isMutating()).toBe(0));
   });
 
   it('does not show duel action when current user is a beginner', async () => {
@@ -192,12 +384,24 @@ describe('UserProfileSheet', () => {
         : publicProfile,
     );
 
-    renderSheet({
-      sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
-      onClose: () => {},
-    });
+    const { qc } = await renderSheet(
+      {
+        sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
+        onClose: () => {},
+      },
+      (queryClient) => {
+        queryClient.setQueryData(userKeys.profile('me'), {
+          ...publicProfile,
+          id: 'me',
+          competitionLevel: 'beginner',
+        });
+        queryClient.setQueryData(userKeys.profile('u1'), publicProfile);
+      },
+    );
 
     expect(await screen.findByText('Любитель')).toBeInTheDocument();
+    await waitFor(() => expect(qc.isFetching()).toBe(0));
+    await waitFor(() => expect(qc.isMutating()).toBe(0));
     expect(screen.queryByRole('button', { name: /вызвать на дуэль/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
   });
@@ -209,12 +413,18 @@ describe('UserProfileSheet', () => {
       user: { id: 'u1', displayName: 'Иван Петров' },
     });
 
-    renderSheet({
-      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
-      onClose: () => {},
-    });
+    const { qc } = await renderSheet(
+      {
+        sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+        onClose: () => {},
+      },
+      (queryClient) => {
+        queryClient.setQueryData(userKeys.profile('u1'), publicProfile);
+      },
+    );
 
     expect(await screen.findByText('Это ваш профиль')).toBeInTheDocument();
+    await waitFor(() => expect(qc.isFetching()).toBe(0));
     expect(screen.queryByRole('button', { name: /написать в личку/i })).not.toBeInTheDocument();
   });
 
@@ -222,17 +432,30 @@ describe('UserProfileSheet', () => {
     useAuthStore.setState({
       accessToken: 'tok',
       refreshToken: 'rtok',
-      user: { id: 'me', displayName: 'Me' },
+      user: { id: 'me', displayName: 'Me', competitionLevel: 'amateur' },
+    });
+    useDailyStore.setState({
+      data: {
+        lifetime_total_goals: 300,
+        amateur_unlock_goals_required: 300,
+      } as DailyStateResponse,
     });
     vi.mocked(api.fetchUserProfile).mockImplementation(async (userId) =>
       userId === 'me' ? { ...publicProfile, id: 'me' } : publicProfile,
     );
     const onClose = vi.fn();
 
-    renderSheet({
-      sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
-      onClose,
-    });
+    const { qc } = await renderSheet(
+      {
+        sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
+        onClose,
+      },
+      (queryClient) => {
+        queryClient.setQueryData(userKeys.profile('me'), { ...publicProfile, id: 'me' });
+        queryClient.setQueryData(userKeys.profile('u1'), publicProfile);
+        queryClient.setQueryData(['amateur-duel', 'matches'], { matches: [] });
+      },
+    );
 
     fireEvent.click(await screen.findByRole('button', { name: /вызвать на дуэль/i }));
     expect(await screen.findByRole('dialog', { name: 'Выбор типа дуэли' })).toBeInTheDocument();
@@ -248,14 +471,77 @@ describe('UserProfileSheet', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument(),
     );
+    await waitFor(() => expect(qc.isFetching()).toBe(0));
+    await waitFor(() => expect(qc.isMutating()).toBe(0));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('shows a toast without opening duel setup for a future playoff opponent', async () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'rtok',
+      user: { id: 'me', displayName: 'Me' },
+    });
+    vi.mocked(api.fetchUserProfile).mockImplementation(async (userId) =>
+      userId === 'me' ? { ...publicProfile, id: 'me' } : publicProfile,
+    );
+    vi.mocked(amateurDuelApi.checkAmateurDuelChallengeAvailability).mockRejectedValueOnce(
+      new ApiError(
+        409,
+        'playoff_opponent_blocked',
+        'Это ваш соперник в плей-офф. Сначала сыграйте серию — после этого обычная дуэль станет доступна.',
+      ),
+    );
+
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
+      onClose: vi.fn(),
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /вызвать на дуэль/i }));
+
+    const toast = await screen.findByRole('status');
+    expect(toast).toHaveClass('duel-challenge-toast');
+    expect(toast).toHaveTextContent(
+      'Это ваш соперник в плей-офф. Сначала сыграйте серию — после этого обычная дуэль станет доступна.',
+    );
+    expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument();
+    expect(amateurDuelApi.challengeAmateurDuel).not.toHaveBeenCalled();
+  });
+
+  it('closes the duel type modal with Escape without closing the profile sheet', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'rtok',
+      user: { id: 'me', displayName: 'Me' },
+    });
+    vi.mocked(api.fetchUserProfile).mockImplementation(async (userId) =>
+      userId === 'me' ? { ...publicProfile, id: 'me' } : publicProfile,
+    );
+    const onClose = vi.fn();
+
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
+      onClose,
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /вызвать на дуэль/i }));
+    expect(await screen.findByRole('dialog', { name: 'Выбор типа дуэли' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(
+      consoleError.mock.calls.some(([message]) => String(message).includes('not wrapped in act')),
+    ).toBe(false);
   });
 
   it('clicking the backdrop calls onClose', () => {
     const onClose = vi.fn();
     render(
       <QueryClientProvider client={new QueryClient()}>
-        <MemoryRouter>
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <UserProfileSheet
             sender={{ userId: 'u1', displayName: 'Иван', avatarUrl: null }}
             onClose={onClose}
@@ -263,11 +549,9 @@ describe('UserProfileSheet', () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    const backdrop = document.body.querySelector<HTMLElement>(
-      '[data-testid="profile-sheet-backdrop"]',
-    );
+    const backdrop = document.body.querySelector<HTMLElement>('.modal-backdrop--sheet');
     expect(backdrop).not.toBeNull();
-    fireEvent.click(backdrop!);
+    fireEvent.mouseDown(backdrop!);
     expect(onClose).toHaveBeenCalled();
   });
 });

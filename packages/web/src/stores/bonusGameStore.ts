@@ -1,0 +1,375 @@
+import { create } from 'zustand';
+import {
+  abandonBonusAttempt,
+  acknowledgeBonusPreview,
+  fetchBonusAttempt,
+  fetchCurrentBonusAttempt,
+  startBonusPeriod,
+  submitBonusShot,
+  type BonusGameAttempt,
+  type BonusPeriodLoadoutSelection,
+  type BonusShotRequest,
+} from '../api/bonusGames.js';
+import { ApiError } from '../api/apiFetch.js';
+import {
+  isDefinitiveGameRequestError,
+  withGameRequestReconciliation,
+} from '../api/requestTimeout.js';
+import type { ShotResultType } from '../api/duel.js';
+import { wasAmateurLevelRequiredErrorHandled } from '../amateur/amateurAccess.js';
+
+interface PendingBonusShot {
+  attempt: BonusGameAttempt;
+  receivedAtPerformanceMs: number;
+}
+
+interface BonusGameStoreState {
+  attempt: BonusGameAttempt | null;
+  pendingShot: PendingBonusShot | null;
+  optimisticShotBase: BonusGameAttempt | null;
+  loading: boolean;
+  error: string | null;
+  errorCode: string | null;
+  errorHandledByAmateurToast: boolean;
+  inFlight: boolean;
+  needsReconcile: boolean;
+  requestEpoch: number;
+  receivedAtPerformanceMs: number | null;
+  loadCurrent: () => Promise<BonusGameAttempt | null>;
+  loadAttempt: (attemptId: string) => Promise<BonusGameAttempt | null>;
+  applyState: (next: BonusGameAttempt | null) => void;
+  applyPendingShot: (fallback?: BonusGameAttempt) => BonusGameAttempt | null;
+  optimisticAddShot: (claimed: ShotResultType) => void;
+  startPeriod: (loadout?: BonusPeriodLoadoutSelection) => Promise<BonusGameAttempt | null>;
+  acknowledgePreview: (dismissFuture: boolean) => Promise<BonusGameAttempt | null>;
+  submitShot: (
+    body: BonusShotRequest,
+    options?: { deferApply?: boolean },
+  ) => Promise<{
+    serverResult: ShotResultType;
+    attempt: BonusGameAttempt;
+    rewardGranted: boolean;
+    isCurrent?: (() => boolean) | undefined;
+  } | null>;
+  abandon: () => Promise<BonusGameAttempt | null>;
+  refresh: () => Promise<BonusGameAttempt | null>;
+  canSubmitShot: () => boolean;
+}
+
+let shotInFlight = false;
+
+function errorDetails(
+  error: unknown,
+  fallback: string,
+): { message: string; code: string | null; handledByAmateurToast: boolean } {
+  if (error instanceof ApiError) {
+    return {
+      message: error.message,
+      code: error.code,
+      handledByAmateurToast: wasAmateurLevelRequiredErrorHandled(error),
+    };
+  }
+  return { message: fallback, code: null, handledByAmateurToast: false };
+}
+
+function applyServerAttempt(
+  set: (partial: Partial<BonusGameStoreState>) => void,
+  get: () => BonusGameStoreState,
+  attempt: BonusGameAttempt | null,
+  receivedAtPerformanceMs?: number,
+): void {
+  set({
+    attempt,
+    pendingShot: null,
+    optimisticShotBase: null,
+    loading: false,
+    error: null,
+    errorCode: null,
+    errorHandledByAmateurToast: false,
+    needsReconcile: false,
+    requestEpoch: get().requestEpoch + 1,
+    receivedAtPerformanceMs:
+      attempt === null ? null : (receivedAtPerformanceMs ?? performance.now()),
+  });
+}
+
+function beginMutation(
+  set: (partial: Partial<BonusGameStoreState>) => void,
+  get: () => BonusGameStoreState,
+): void {
+  // A read that started before this mutation cannot be used to clear a later
+  // reconciliation lock or replace its server-confirmed result.
+  set({
+    inFlight: true,
+    loading: false,
+    error: null,
+    errorCode: null,
+    errorHandledByAmateurToast: false,
+    pendingShot: null,
+    requestEpoch: get().requestEpoch + 1,
+  });
+}
+
+function recordMutationFailure(
+  set: (partial: Partial<BonusGameStoreState>) => void,
+  get: () => BonusGameStoreState,
+  details: { message: string; code: string | null; handledByAmateurToast: boolean },
+): void {
+  // Reads may have been issued after beginMutation. Invalidate them atomically
+  // with the ambiguity lock so none can clear this failure before a fresh read.
+  set({
+    attempt: get().optimisticShotBase ?? get().attempt,
+    inFlight: false,
+    loading: false,
+    error: details.message,
+    errorCode: details.code,
+    errorHandledByAmateurToast: details.handledByAmateurToast,
+    needsReconcile: true,
+    pendingShot: null,
+    optimisticShotBase: null,
+    requestEpoch: get().requestEpoch + 1,
+  });
+}
+
+export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
+  attempt: null,
+  pendingShot: null,
+  optimisticShotBase: null,
+  loading: false,
+  error: null,
+  errorCode: null,
+  errorHandledByAmateurToast: false,
+  inFlight: false,
+  needsReconcile: false,
+  requestEpoch: 0,
+  receivedAtPerformanceMs: null,
+
+  loadCurrent: async () => {
+    if (get().pendingShot !== null) return get().attempt;
+    const requestEpoch = get().requestEpoch + 1;
+    set({ loading: true, requestEpoch });
+    try {
+      const { attempt } = await fetchCurrentBonusAttempt();
+      if (get().requestEpoch !== requestEpoch) return get().attempt;
+      applyServerAttempt(set, get, attempt);
+      return attempt;
+    } catch (error) {
+      if (get().requestEpoch !== requestEpoch) return get().attempt;
+      const current = get();
+      if (current.needsReconcile && current.error !== null) {
+        set({ loading: false });
+        return null;
+      }
+      const details = errorDetails(error, 'Не удалось загрузить бонус-попытку.');
+      set({
+        loading: false,
+        error: details.message,
+        errorCode: details.code,
+        errorHandledByAmateurToast: details.handledByAmateurToast,
+      });
+      return null;
+    }
+  },
+
+  loadAttempt: async (attemptId) => {
+    if (get().pendingShot !== null) return get().attempt;
+    const requestEpoch = get().requestEpoch + 1;
+    set({ loading: true, requestEpoch });
+    try {
+      const { attempt } = await fetchBonusAttempt(attemptId);
+      if (get().requestEpoch !== requestEpoch) return get().attempt;
+      applyServerAttempt(set, get, attempt);
+      return attempt;
+    } catch (error) {
+      if (get().requestEpoch !== requestEpoch) return get().attempt;
+      const current = get();
+      if (current.needsReconcile && current.error !== null) {
+        set({ loading: false });
+        return null;
+      }
+      const details = errorDetails(error, 'Не удалось загрузить бонус-попытку.');
+      set({
+        loading: false,
+        error: details.message,
+        errorCode: details.code,
+        errorHandledByAmateurToast: details.handledByAmateurToast,
+      });
+      return null;
+    }
+  },
+
+  applyState: (next) => applyServerAttempt(set, get, next),
+
+  applyPendingShot: (fallback) => {
+    const pendingShot = get().pendingShot;
+    const resolvedAttempt = pendingShot?.attempt ?? fallback ?? null;
+    if (resolvedAttempt === null) return null;
+    set({
+      attempt: resolvedAttempt,
+      pendingShot: null,
+      optimisticShotBase: null,
+      loading: false,
+      error: null,
+      errorCode: null,
+      errorHandledByAmateurToast: false,
+      inFlight: false,
+      needsReconcile: false,
+      requestEpoch: get().requestEpoch + 1,
+      receivedAtPerformanceMs: pendingShot?.receivedAtPerformanceMs ?? performance.now(),
+    });
+    return resolvedAttempt;
+  },
+
+  optimisticAddShot: (claimed) => {
+    const attempt = get().attempt;
+    if (!attempt || attempt.status !== 'active' || attempt.state !== 'period_active') return;
+    set({
+      optimisticShotBase: attempt,
+      attempt: {
+        ...attempt,
+        shots_taken: attempt.shots_taken + 1,
+        current_period_shots_taken: attempt.current_period_shots_taken + 1,
+        goals: attempt.goals + (claimed === 'goal' ? 1 : 0),
+        current_goal_streak: claimed === 'goal' ? attempt.current_goal_streak + 1 : 0,
+        best_goal_streak:
+          claimed === 'goal'
+            ? Math.max(attempt.best_goal_streak, attempt.current_goal_streak + 1)
+            : attempt.best_goal_streak,
+      },
+    });
+  },
+
+  acknowledgePreview: async (dismissFuture) => {
+    const attempt = get().attempt;
+    if (!attempt || get().inFlight || get().needsReconcile) return null;
+    beginMutation(set, get);
+    try {
+      const response = await acknowledgeBonusPreview(attempt.id, dismissFuture);
+      applyServerAttempt(set, get, response.attempt);
+      set({ inFlight: false });
+      return response.attempt;
+    } catch (error) {
+      const details = errorDetails(error, 'Не удалось сохранить просмотр превью.');
+      recordMutationFailure(set, get, details);
+      return null;
+    }
+  },
+
+  startPeriod: async (loadout) => {
+    const attempt = get().attempt;
+    if (!attempt || get().inFlight || get().needsReconcile) return null;
+    beginMutation(set, get);
+    try {
+      const response = await startBonusPeriod(attempt.id, loadout);
+      applyServerAttempt(set, get, response.attempt);
+      set({ inFlight: false });
+      return response.attempt;
+    } catch (error) {
+      const details = errorDetails(error, 'Не удалось начать период.');
+      recordMutationFailure(set, get, details);
+      return null;
+    }
+  },
+
+  submitShot: async (body, options) => {
+    const attempt = get().attempt;
+    if (!attempt || !get().canSubmitShot() || shotInFlight) return null;
+    shotInFlight = true;
+    beginMutation(set, get);
+    // Starting a read only bumps requestEpoch; it must not invalidate the shot.
+    // An applied read/new attempt replaces the object reference and does.
+    const requestIsCurrent = (): boolean => get().attempt === attempt;
+    try {
+      const outcome = await withGameRequestReconciliation({
+        request: (signal) => submitBonusShot(attempt.id, body, { signal }),
+        reconcile: async (signal) => (await fetchBonusAttempt(attempt.id, { signal })).attempt,
+        isReconciled: (candidate) =>
+          candidate.id === attempt.id &&
+          (candidate.status !== 'active' ||
+            candidate.state !== 'period_active' ||
+            candidate.current_period_shots_taken >= body.claimed_shot_index),
+        isRequestErrorDefinitive: isDefinitiveGameRequestError,
+      });
+      if (!requestIsCurrent()) return null;
+      if (outcome.kind === 'unreconciled') {
+        applyServerAttempt(set, get, outcome.value);
+        set({ inFlight: false });
+        return null;
+      }
+      const response =
+        outcome.kind === 'request'
+          ? outcome.value
+          : {
+              server_result: body.claimed_result,
+              attempt: outcome.value,
+              reward_granted: outcome.value.reward_granted,
+              balances: { coins: 0, stars: 0, experience: 0 },
+            };
+      const receivedAtPerformanceMs = performance.now();
+      if (options?.deferApply) {
+        set({
+          pendingShot: {
+            attempt: response.attempt,
+            receivedAtPerformanceMs,
+          },
+          loading: false,
+          error: null,
+          errorCode: null,
+          errorHandledByAmateurToast: false,
+          needsReconcile: false,
+          requestEpoch: get().requestEpoch + 1,
+        });
+      } else {
+        applyServerAttempt(set, get, response.attempt, receivedAtPerformanceMs);
+        set({ inFlight: false });
+      }
+      const pendingAttempt = response.attempt;
+      return {
+        serverResult: response.server_result,
+        attempt: response.attempt,
+        rewardGranted: response.reward_granted,
+        isCurrent: () =>
+          options?.deferApply === true
+            ? get().pendingShot?.attempt === pendingAttempt
+            : get().attempt === pendingAttempt,
+      };
+    } catch (error) {
+      if (!requestIsCurrent()) return null;
+      const details = errorDetails(error, 'Не удалось отправить бросок.');
+      recordMutationFailure(set, get, details);
+      return null;
+    } finally {
+      shotInFlight = false;
+    }
+  },
+
+  abandon: async () => {
+    const attempt = get().attempt;
+    if (!attempt || get().inFlight || get().needsReconcile) return null;
+    beginMutation(set, get);
+    try {
+      const response = await abandonBonusAttempt(attempt.id);
+      applyServerAttempt(set, get, response.attempt);
+      set({ inFlight: false });
+      return response.attempt;
+    } catch (error) {
+      const details = errorDetails(error, 'Не удалось завершить попытку.');
+      recordMutationFailure(set, get, details);
+      return null;
+    }
+  },
+
+  refresh: async () => get().loadCurrent(),
+
+  canSubmitShot: () => {
+    const attempt = get().attempt;
+    return (
+      !shotInFlight &&
+      !get().inFlight &&
+      !get().needsReconcile &&
+      get().pendingShot === null &&
+      attempt?.status === 'active' &&
+      attempt.state === 'period_active'
+    );
+  },
+}));

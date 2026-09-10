@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { apiFetch, ApiError, __resetRefreshStateForTests, refreshAccessToken } from './apiFetch.js';
+import {
+  apiFetch,
+  ApiError,
+  __resetRefreshStateForTests,
+  isAmateurLevelRequired,
+  refreshAccessToken,
+} from './apiFetch.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { AuthUser } from '../auth/authStore.js';
 
@@ -53,6 +59,110 @@ describe('apiFetch', () => {
     await expect(apiFetch('/x')).rejects.toBeInstanceOf(ApiError);
   });
 
+  it('localizes a blocked challenge against a playoff opponent', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJson(
+        {
+          error: {
+            code: 'playoff_opponent_blocked',
+            message: 'playoff opponent is unavailable for ordinary duels',
+          },
+        },
+        { status: 409 },
+      ),
+    );
+
+    await expect(apiFetch('/duel/amateur/challenge')).rejects.toMatchObject({
+      code: 'playoff_opponent_blocked',
+      message:
+        'Это ваш соперник в плей-офф. Сначала сыграйте серию — после этого обычная дуэль станет доступна.',
+    });
+  });
+
+  it('preserves public error details for client-side recovery copy', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJson(
+        {
+          error: {
+            code: 'capacity_reached',
+            message: 'capacity reached',
+            details: {
+              approvedCount: 14,
+              participantLimit: 16,
+              availableSlots: 2,
+              pendingCount: 3,
+            },
+          },
+        },
+        { status: 409 },
+      ),
+    );
+
+    await expect(apiFetch('/x')).rejects.toMatchObject({
+      code: 'capacity_reached',
+      details: {
+        approvedCount: 14,
+        participantLimit: 16,
+        availableSlots: 2,
+        pendingCount: 3,
+      },
+    });
+  });
+
+  it('recognizes only the stable Amateur access ApiError code', () => {
+    expect(
+      isAmateurLevelRequired(
+        new ApiError(403, 'amateur_level_required', 'internal copy', {
+          goalsRemaining: 184,
+          unlockGoalsRequired: 300,
+        }),
+      ),
+    ).toBe(true);
+    expect(isAmateurLevelRequired(new ApiError(403, 'forbidden', 'internal copy'))).toBe(false);
+    expect(isAmateurLevelRequired({ code: 'amateur_level_required', message: 'lookalike' })).toBe(
+      false,
+    );
+  });
+
+  it('preserves Amateur restriction details but never exposes its raw server message', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJson(
+        {
+          error: {
+            code: 'amateur_level_required',
+            message: 'database policy denied',
+            details: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+          },
+        },
+        { status: 403 },
+      ),
+    );
+
+    await expect(apiFetch('/duel/amateur/matches')).rejects.toMatchObject({
+      code: 'amateur_level_required',
+      message: 'Не удалось выполнить запрос. Попробуйте ещё раз.',
+      details: { goalsRemaining: 184, unlockGoalsRequired: 300 },
+    });
+  });
+
+  it.each(['bad_request', 'unexpected_internal_code'])(
+    'keeps unknown server code %s but never exposes its internal message',
+    async (code) => {
+      // This catches using server-provided diagnostics as player-facing UI copy.
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        mockJson(
+          { error: { code, message: 'constraint users_private_secret violated' } },
+          { status: 400 },
+        ),
+      );
+
+      await expect(apiFetch('/x')).rejects.toMatchObject({
+        code,
+        message: 'Не удалось выполнить запрос. Попробуйте ещё раз.',
+      });
+    },
+  );
+
   it.each(['telegram_already_linked', 'vk_already_linked'])(
     'localizes auth conflict message %s',
     async (serverMessage) => {
@@ -79,8 +189,56 @@ describe('apiFetch', () => {
     await expect(apiFetch('/chat/c/uploads')).rejects.toMatchObject({
       status: 415,
       code: 'FST_ERR_CTP_INVALID_MEDIA_TYPE',
-      message: 'Формат файла не поддерживается. Загрузите JPG, PNG, WebP или GIF.',
+      message: 'Это изображение не подходит. Выберите другое из галереи.',
     });
+  });
+
+  it('does not expose a technical status when an error has no readable body', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 503 }));
+
+    await expect(apiFetch('/x')).rejects.toMatchObject({
+      status: 503,
+      message: 'Не удалось выполнить запрос. Попробуйте ещё раз.',
+    });
+  });
+
+  it.each([
+    ['bonus_level_locked', 'Бонус-игры доступны после открытия любительского уровня.'],
+    ['bonus_previous_game_required', 'Сначала завершите предыдущую бонус-игру.'],
+    ['bonus_purchase_required', 'Сначала откройте эту бонус-игру.'],
+    ['bonus_insufficient_stars', 'Недостаточно звёзд для открытия бонус-игры.'],
+    [
+      'bonus_price_changed',
+      'Цена игры изменилась. Проверьте каталог и подтвердите открытие снова.',
+    ],
+    ['bonus_game_inactive', 'Эта бонус-игра сейчас недоступна.'],
+    ['bonus_attempt_already_active', 'У вас уже есть незавершённая бонус-попытка.'],
+    ['bonus_attempt_not_active', 'Эта бонус-попытка больше не активна.'],
+    ['bonus_period_not_ready', 'Сейчас нельзя начать или продолжить этот период.'],
+    ['bonus_shot_index_mismatch', 'Бросок уже обработан. Обновляем состояние попытки.'],
+    ['bonus_shot_result_mismatch', 'Результат броска уточнён сервером.'],
+    ['bonus_game_core_version_mismatch', 'Версия игры изменилась. Обновите попытку.'],
+    ['bonus_shot_time_invalid', 'Время броска указано неверно.'],
+    ['bonus_shot_time_stale', 'Время броска устарело. Обновляем состояние попытки.'],
+    ['arena_not_owned', 'Эта домашняя площадка ещё не открыта.'],
+    ['arena_not_selectable', 'Эту домашнюю площадку сейчас нельзя выбрать.'],
+    ['arena_unavailable', 'Домашняя площадка временно недоступна.'],
+    [
+      'playoff_round_started',
+      'Раунд уже начался. Перенесите оставшиеся игры отдельно в календаре.',
+    ],
+    [
+      'playoff_round_schedule_order',
+      'Следующий раунд начинается раньше окончания предыдущего. Перенесите его даты вперёд.',
+    ],
+    ['tournament_schedule_date_not_future', 'Выберите будущую дату первого тура.'],
+  ])('localizes the stable player error %s without replacing its code', async (code, message) => {
+    // This catches leaking server copy into player UI while preserving a stable branchable code.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJson({ error: { code, message: 'internal server copy' } }, { status: 409 }),
+    );
+
+    await expect(apiFetch('/bonus-games')).rejects.toMatchObject({ code, message });
   });
 
   it('retries original request once after successful refresh', async () => {

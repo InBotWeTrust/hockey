@@ -1,52 +1,313 @@
-import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { Award, Medal, Target, TrendingUp, Trophy, X } from 'lucide-react';
 import {
   fetchUserProfile,
   findOrCreateDM,
   type UserPickerItem,
   type UserPublicProfileDTO,
 } from '../api.js';
-import { fetchAmateurMatches } from '../../api/amateurDuel.js';
+import {
+  checkAmateurDuelChallengeAvailability,
+  fetchAmateurMatches,
+} from '../../api/amateurDuel.js';
 import { chatKeys, userKeys } from '../../lib/queryKeys.js';
 import { UserAvatar } from './UserAvatar.js';
 import type { ProfileAchievement } from '../../screens/profileTypes.js';
 import {
   AchievementDetailsSheet,
-  EMPTY_PROFILE_STATS,
+  FittedOneLineText,
+  formatProfileNumber,
   getLevelLabel,
   ProfileAchievementsSection,
-  ProfileStatsGrid,
 } from '../../screens/profileSections.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { DuelChallengeModal, hasOpenDuelWithUser } from './DuelChallengeModal.js';
+import { Sheet } from '../../components/Sheet.js';
+import { TrophyHistoryModal, type TrophySectionKey } from '../../screens/ProfileScreen.js';
+import { CommunityLinks } from '../../components/CommunityLinks.js';
+import { AppToast } from '../../components/AppToast.js';
 
 interface UserProfileSheetProps {
   sender: UserPickerItem | null;
   onClose: () => void;
+  hideMessageAction?: boolean;
 }
 
-export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JSX.Element | null {
+function PublicExperienceBadge({ experience }: { experience: number }): JSX.Element {
+  const badgeRef = useRef<HTMLSpanElement>(null);
+  const valueRef = useRef<HTMLSpanElement>(null);
+  const iconRef = useRef<SVGSVGElement>(null);
+  const formattedExperience = formatProfileNumber(experience);
+
+  useLayoutEffect(() => {
+    const badge = badgeRef.current;
+    const value = valueRef.current;
+    const icon = iconRef.current;
+    if (!badge || !value || !icon) return;
+
+    const fit = (): void => {
+      value.style.fontSize = '12px';
+      icon.style.width = '13px';
+      icon.style.height = '13px';
+
+      const avatarWidth = badge.parentElement?.clientWidth ?? 0;
+      const maxWidth = avatarWidth * 1.15;
+      const naturalWidth = badge.scrollWidth;
+      if (maxWidth === 0 || naturalWidth <= maxWidth) return;
+
+      const scale = Math.max(0.45, maxWidth / naturalWidth);
+      value.style.fontSize = `${12 * scale}px`;
+      icon.style.width = `${13 * scale}px`;
+      icon.style.height = `${13 * scale}px`;
+    };
+
+    fit();
+    const observer =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(fit);
+    observer?.observe(badge.parentElement ?? badge);
+    return () => observer?.disconnect();
+  }, [formattedExperience]);
+
+  return (
+    <span className="public-profile-experience" ref={badgeRef} aria-label={`Опыт: ${experience}`}>
+      <TrendingUp aria-hidden="true" ref={iconRef} />
+      <span className="public-profile-experience__value" ref={valueRef}>
+        {formattedExperience}
+      </span>
+    </span>
+  );
+}
+
+function PublicSportingPassport({
+  profile,
+  displayName,
+  avatarUrl,
+  onOpenTrophy,
+}: {
+  profile: UserPublicProfileDTO;
+  displayName: string;
+  avatarUrl: string | null;
+  onOpenTrophy: (section: TrophySectionKey) => void;
+}): JSX.Element {
+  const registeredDate = new Date(profile.createdAt);
+  const registeredLabel = Number.isNaN(registeredDate.getTime())
+    ? '—'
+    : registeredDate.toLocaleDateString('ru-RU', {
+        timeZone: 'UTC',
+        day: '2-digit',
+        month: '2-digit',
+        year: '2-digit',
+      });
+  const trophySummary = profile.trophySummary ?? {
+    regularSeasonWins: 0,
+    tournamentChampionships: 0,
+    tournamentPodiums: 0,
+    completedChallenges: 0,
+  };
+  const trophies = [
+    ['regularSeasonWins', 'Победы в регулярке', trophySummary.regularSeasonWins, Trophy],
+    ['tournamentChampionships', 'Чемпионства', trophySummary.tournamentChampionships, Award],
+    ['tournamentPodiums', 'Призовые места', trophySummary.tournamentPodiums, Medal],
+    ['completedChallenges', 'Пройденные челленджи', trophySummary.completedChallenges, Target],
+  ] as const;
+
+  return (
+    <section
+      className="profile-passport public-profile-passport"
+      aria-label="Публичный спортивный паспорт"
+    >
+      <div className="profile-passport__top">
+        <div className="profile-identity__main public-profile-identity">
+          <div className="public-profile-avatar">
+            <UserAvatar avatarUrl={avatarUrl} name={displayName} size={80} fontSize={30} />
+            <PublicExperienceBadge experience={profile.experienceBalance ?? 0} />
+          </div>
+          <div className="profile-identity__copy">
+            <span className="profile-identity__name public-profile-identity__name">
+              {displayName}
+            </span>
+            <span className="profile-identity__level">
+              {getLevelLabel(profile.competitionLevel)}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="profile-sporting-metrics" aria-label="Главные показатели">
+        <div className="profile-sporting-metrics__item">
+          <strong>{formatProfileNumber(profile.stats.goals)}</strong>
+          <span>Шайбы</span>
+        </div>
+        <div className="profile-sporting-metrics__item">
+          <strong>{formatProfileNumber(profile.stats.accuracy)}%</strong>
+          <span>Точность</span>
+        </div>
+        <div className="profile-sporting-metrics__item">
+          <strong>
+            {formatProfileNumber(profile.stats.playStreakDays)}{' '}
+            <span className="profile-streak-record">
+              (
+              {formatProfileNumber(
+                profile.stats.bestPlayStreakDays ?? profile.stats.playStreakDays,
+              )}
+              )
+            </span>
+          </strong>
+          <span>Дней подряд</span>
+        </div>
+        <div className="profile-sporting-metrics__item">
+          <strong>
+            {registeredLabel === '—' ? (
+              registeredLabel
+            ) : (
+              <span className="profile-registration-date">
+                <span className="profile-registration-date__prefix">с</span>
+                {registeredLabel}
+              </span>
+            )}
+          </strong>
+          <span>В игре</span>
+        </div>
+      </div>
+      <section className="profile-trophy-showcase" aria-label="Витрина наград">
+        {trophies.map(([section, label, value, Icon]) => {
+          const content = (
+            <>
+              <Icon aria-hidden="true" />
+              <strong>
+                <FittedOneLineText className="profile-trophy-showcase__number" maxFontSize={18}>
+                  {formatProfileNumber(value)}
+                </FittedOneLineText>
+              </strong>
+              <span>{label}</span>
+            </>
+          );
+          return value > 0 ? (
+            <button
+              type="button"
+              className="profile-trophy-showcase__item"
+              key={section}
+              onClick={() => onOpenTrophy(section)}
+            >
+              {content}
+            </button>
+          ) : (
+            <div
+              className="profile-trophy-showcase__item profile-trophy-showcase__item--empty"
+              key={section}
+            >
+              {content}
+            </div>
+          );
+        })}
+      </section>
+    </section>
+  );
+}
+
+export function UserProfileSheet({
+  sender,
+  onClose,
+  hideMessageAction = false,
+}: UserProfileSheetProps): JSX.Element | null {
+  if (!sender) return null;
+  if (sender.accountKind === 'official') {
+    return (
+      <OfficialAccountSheet
+        sender={sender}
+        onClose={onClose}
+        hideMessageAction={hideMessageAction}
+      />
+    );
+  }
+  return <UserProfileSheetContent key={sender.userId} sender={sender} onClose={onClose} />;
+}
+
+function OfficialAccountSheet({
+  sender,
+  onClose,
+  hideMessageAction,
+}: {
+  sender: UserPickerItem;
+  onClose: () => void;
+  hideMessageAction: boolean;
+}): JSX.Element {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => findOrCreateDM(sender.userId),
+    onSuccess: ({ chatId, created }) => {
+      if (created) void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+      navigate(`/chat/${chatId}`);
+      onClose();
+    },
+  });
+
+  return (
+    <Sheet
+      open
+      title="Официальный аккаунт"
+      onRequestClose={onClose}
+      maxHeight="94dvh"
+      grabberPlacement="top"
+      backdropTestId="profile-sheet-backdrop"
+      headerAction={
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+          <X size={14} />
+        </button>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div
+          className="official-account-hero"
+          data-testid="official-account-hero"
+          style={{ backgroundImage: 'url("/icons/official-account-cover.webp")' }}
+        >
+          <div className="official-account-hero__caption">
+            <h3>{sender.displayName}</h3>
+            <div>Новости игры, обновления и поддержка</div>
+          </div>
+        </div>
+        <CommunityLinks />
+        {!hideMessageAction && (
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => mutate()}
+            disabled={isPending}
+          >
+            {isPending ? 'Открываем чат…' : 'Написать в личку'}
+          </button>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+function UserProfileSheetContent({
+  sender,
+  onClose,
+}: {
+  sender: UserPickerItem;
+  onClose: () => void;
+}): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const meId = useAuthStore((s) => s.user?.id ?? null);
-  const senderId = sender?.userId ?? '';
+  const senderId = sender.userId;
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
+  const [selectedTrophy, setSelectedTrophy] = useState<TrophySectionKey | null>(null);
   const [duelPickerOpen, setDuelPickerOpen] = useState(false);
+  const [duelToast, setDuelToast] = useState<string | null>(null);
 
-  // Slide-up: render off-screen on first frame, then animate in.
-  const [entered, setEntered] = useState(false);
-  useEffect(() => {
-    setSelectedAchievement(null);
-    if (sender) {
-      const id = requestAnimationFrame(() => setEntered(true));
-      return () => cancelAnimationFrame(id);
-    }
-    setEntered(false);
-    return undefined;
-  }, [sender]);
+  const challengeAvailability = useMutation({
+    mutationFn: () => checkAmateurDuelChallengeAvailability(senderId),
+    onSuccess: () => setDuelPickerOpen(true),
+    onError: (error) => {
+      setDuelToast(error instanceof Error ? error.message : 'Не удалось проверить доступность дуэли');
+    },
+  });
 
   const { mutate, isPending } = useMutation({
     mutationFn: (otherUserId: string) => findOrCreateDM(otherUserId),
@@ -87,98 +348,41 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
   });
   const hasOpenDuel = hasOpenDuelWithUser(openMatchesQuery.data?.matches ?? [], senderId);
 
-  if (!sender) return null;
-
   const displayName = profile?.displayName ?? sender.displayName;
   const avatarUrl = profile?.avatarUrl ?? sender.avatarUrl;
+  const completedAchievements = (profile?.achievements ?? []).filter(
+    (achievement) => achievement.isUnlocked,
+  );
 
-  return createPortal(
-    <div
-      data-testid="profile-sheet-backdrop"
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(15,23,42,0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        zIndex: 300,
-        display: 'flex',
-        alignItems: 'flex-end',
-        justifyContent: 'center',
-      }}
+  return (
+    <Sheet
+      open
+      title="Профиль игрока"
+      onRequestClose={() => onClose()}
+      maxHeight="94dvh"
+      grabberPlacement="top"
+      backdropTestId="profile-sheet-backdrop"
+      headerAction={
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+          <X size={14} />
+        </button>
+      }
     >
       <div
-        className="glass"
-        onClick={(e) => e.stopPropagation()}
         style={{
           position: 'relative',
-          width: '100%',
-          maxWidth: 480,
-          maxHeight: '80dvh',
-          overflowY: 'auto',
-          padding: '16px 16px calc(16px + var(--app-safe-bottom))',
-          borderRadius: '24px 24px 0 0',
           display: 'flex',
           flexDirection: 'column',
           gap: 0,
-          transform: entered ? 'translateY(0)' : 'translateY(100%)',
-          transition: 'transform 0.2s ease',
         }}
       >
-        <div
-          aria-hidden
-          style={{
-            width: 36,
-            height: 4,
-            borderRadius: 2,
-            background: 'rgba(15,23,42,0.2)',
-            margin: '0 auto 14px',
-          }}
-        />
-        <button
-          type="button"
-          className="icon-btn"
-          onClick={onClose}
-          aria-label="Закрыть"
-          style={{ position: 'absolute', top: 12, right: 12 }}
-        >
-          <X size={14} />
-        </button>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <UserAvatar
-            avatarUrl={avatarUrl}
-            name={displayName}
-            size={88}
-            fontSize={32}
-            style={{ boxShadow: '0 10px 26px rgba(15, 23, 42, 0.25)' }}
-          />
-          <div
-            style={{
-              minWidth: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'flex-start',
-              gap: 8,
-            }}
-          >
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', minWidth: 0 }}>
-              {displayName}
-            </div>
-            {profile && (
-              <span className="pill pill--dark">
-                <small>Уровень</small> {getLevelLabel(profile.competitionLevel)}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="section-label" style={{ margin: '18px 0 6px', padding: '2px 6px' }}>
-          Статистика
-        </div>
         {profile ? (
-          <ProfileStatsGrid stats={profile.stats ?? EMPTY_PROFILE_STATS} columns={2} />
+          <PublicSportingPassport
+            profile={profile}
+            displayName={displayName}
+            avatarUrl={avatarUrl}
+            onOpenTrophy={setSelectedTrophy}
+          />
         ) : (
           <div
             className="glass"
@@ -196,9 +400,9 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
           </div>
         )}
 
-        {profile && (
+        {completedAchievements.length > 0 && (
           <ProfileAchievementsSection
-            achievements={profile.achievements ?? []}
+            achievements={completedAchievements}
             onOpenAchievement={setSelectedAchievement}
             labelStyle={{ margin: '18px 0 6px', padding: '2px 6px' }}
             style={{ margin: 0 }}
@@ -224,8 +428,8 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
               <button
                 type="button"
                 className="btn btn--cta"
-                onClick={() => setDuelPickerOpen(true)}
-                disabled={hasOpenDuel}
+                onClick={() => challengeAvailability.mutate()}
+                disabled={hasOpenDuel || challengeAvailability.isPending}
                 style={{ marginTop: 14, padding: '14px 0', fontSize: 15, fontWeight: 600 }}
               >
                 {hasOpenDuel ? 'Дуэль уже открыта' : 'Вызвать на дуэль'}
@@ -253,6 +457,13 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
             onClose={() => setSelectedAchievement(null)}
           />
         )}
+        {selectedTrophy !== null && profile?.trophyDetails !== undefined && (
+          <TrophyHistoryModal
+            section={selectedTrophy}
+            details={profile.trophyDetails}
+            onClose={() => setSelectedTrophy(null)}
+          />
+        )}
         {duelPickerOpen && (
           <DuelChallengeModal
             opponentUserId={senderId}
@@ -261,10 +472,13 @@ export function UserProfileSheet({ sender, onClose }: UserProfileSheetProps): JS
             onCreated={() => {
               setDuelPickerOpen(false);
             }}
+            onBlocked={setDuelToast}
           />
         )}
+        {duelToast !== null && (
+          <AppToast message={duelToast} onDismiss={() => setDuelToast(null)} />
+        )}
       </div>
-    </div>,
-    document.body,
+    </Sheet>
   );
 }

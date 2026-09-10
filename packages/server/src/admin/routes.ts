@@ -1,15 +1,27 @@
-import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import type { FastifyPluginAsync } from 'fastify';
 import { Buffer } from 'node:buffer';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
 import { DAILY_PERIOD_SPEED_PRESETS, GAME_CORE_VERSION, GOALIES, STICKS } from '@hockey/game-core';
 import { AppError } from '../plugins/errors.js';
+import {
+  ACHIEVEMENT_AVAILABILITIES,
+  ACHIEVEMENT_CATEGORIES,
+  ACHIEVEMENT_FUTURE_TAGS,
+} from '../achievements/catalog.js';
 import { appendEvent } from '../duel/eventLog.js';
 import { listGameSettings, saveGameSetting, type GameSettingDTO } from '../duel/gameSettings.js';
 import { buildProfileProgress } from '../profile/summary.js';
 import { deleteChannelPost, updateChannelPostContent } from '../chat/channel.js';
 import { publishMessageDeleted, publishMessageUpdated } from '../chat/events.js';
 import { DEFAULT_NEWS_CHANNEL_SLUG } from '../chat/service.js';
+import { findOrCreateDM, getMessages, sendMessage } from '../chat/service.js';
+import { loadChatAttachments, signMessageAttachmentUrls } from '../chat/routes.js';
+import { publishMessageNew } from '../chat/events.js';
+import { invalidateUnreadCache } from '../chat/cache.js';
+import { enqueueDialogMessagePush } from '../push/chat.js';
+import { registerWeeklyChallengeAdminRoutes } from '../weeklyChallenge/admin.js';
+import { registerBonusGameAdminRoutes } from '../bonusGames/admin.js';
 import { createMediaObjectKey, type ObjectStorageClient } from '../storage/objectStorage.js';
 import { createMediaProxyUrl } from '../storage/mediaAccess.js';
 import {
@@ -20,6 +32,7 @@ import {
 } from '../push/templates.js';
 import type { PushEventType } from '../push/preferences.js';
 import { PUSH_QUEUE_PROCESSING_STALE_MS } from '../push/queue.js';
+import { createAdminPreHandlers } from './guards.js';
 
 type UserRole = 'player' | 'admin';
 type DisplaySource = 'custom' | 'telegram' | 'vk';
@@ -30,6 +43,7 @@ type PushDeliveryStatus = 'queued' | 'processing' | 'sent' | 'partial' | 'failed
 interface AdminRoutesOptions {
   objectStorage?: ObjectStorageClient;
   mediaAccessSecret: string;
+  systemUserId?: string;
 }
 
 const uuid = z.string().uuid();
@@ -53,6 +67,7 @@ interface AdminPushNotificationStatsRow {
   daily_game_users: string;
   training_available_users: string;
   duel_events_users: string;
+  tournament_events_users: string;
   game_news_users: string;
 }
 
@@ -212,6 +227,7 @@ interface AdminUserRow {
   grip: 'left' | 'right';
   level: number;
   xp: number;
+  experience: number;
   timezone: string;
   created_at: Date;
   last_seen_at: Date | null;
@@ -232,19 +248,16 @@ interface AdminUserRow {
   vk_last_name: string | null;
   vk_avatar_url: string | null;
   vk_username: string | null;
-  shots_current: number;
-  shots_max: number;
-  shots_bonus: number;
-  pucks: string;
-  gold_pucks: string;
-  wheel_spins: number;
-  training_energy: number;
+  currency_balance: string;
   push_subscription_count: string;
   push_chat_new_dialog_message: boolean;
   push_daily_game: boolean;
   push_training_available: boolean;
   push_duel_events: boolean;
+  push_tournament_events: boolean;
   push_game_news: boolean;
+  beginner_onboarding_completed: boolean;
+  amateur_onboarding_completed: boolean;
   total_count?: string;
 }
 
@@ -319,19 +332,67 @@ interface AdminInventoryItemRow {
   title: string;
   description: string;
   price_rub: number;
-  item_kind: 'bundle' | 'stick' | 'skates' | 'nutrition' | 'consumable';
+  item_kind: 'bundle' | 'stick' | 'skates' | 'nutrition' | 'consumable' | 'recovery';
   currency_price: number;
   charges_per_purchase: number;
+  low_stock_threshold: number;
   duel_period_cost: number;
+  power_score: number;
+  resource_unit: 'period' | 'shot' | 'distance' | 'energy_ms';
+  effect_puck_speed_points: number;
   effect_puck_speed_delta: number;
   effect_shooter_frequency_delta: number;
   effect_goalie_frequency_delta: number;
   effect_goal_frequency_delta: number;
   effect_shot_zone_multiplier: number;
+  effect_stumble_interval_min_rolls: string | number;
+  effect_stumble_interval_max_rolls: string | number;
+  effect_stumble_interval_min_ms: number;
+  effect_stumble_interval_max_ms: number;
+  effect_stumble_duration_min_ms: number;
+  effect_stumble_duration_max_ms: number;
+  effect_stumble_offset_min_px: number;
+  effect_stumble_offset_max_px: number;
+  effect_stumble_recovery_min_ms: number;
+  effect_stumble_recovery_max_ms: number;
+  effect_energy_baseline_speed: string | number;
+  effect_nutrition_slowdown_ms: number;
+  effect_nutrition_stop_ms: number;
+  effect_fatigue_delay_ms: number;
+  effect_fatigue_speed_multiplier: string | number;
+  effect_fatigue_grace_ms: number;
+  effect_fatigue_slowdown_start_ms: number;
+  effect_fatigue_heavy_slowdown_start_ms: number;
+  effect_fatigue_stop_start_ms: number;
+  effect_fatigue_stop_duration_ms: number;
+  effect_fatigue_after_rest_ms: number;
+  effect_fatigue_slow_multiplier: string | number;
+  effect_fatigue_heavy_multiplier: string | number;
+  effect_recovery_minutes: number;
   created_at: Date;
   updated_at: Date;
   payments_count?: string;
   paid_revenue?: string;
+}
+
+interface AdminAchievementRow {
+  id: string;
+  photo_url: string;
+  title: string;
+  description: string;
+  requirement: string;
+  category: string;
+  availability: string;
+  future_tag: string | null;
+  reward_currency: number | string;
+  reward_stars: number | string;
+  reward_experience: number | string;
+  reward_tokens: number | string;
+  sort_order: number;
+  created_at: Date;
+  updated_at: Date;
+  completed_count?: string;
+  claimed_count?: string;
 }
 
 interface AdminFeedbackRow {
@@ -425,18 +486,15 @@ const userPatchSchema = z
     grip: z.enum(['left', 'right']).optional(),
     level: z.number().int().min(1).max(999).optional(),
     xp: z.number().int().min(0).max(2_147_483_647).optional(),
+    experience: z.number().int().min(0).max(2_147_483_647).optional(),
     lifetimeShotsTotal: z.number().int().min(0).max(2_147_483_647).optional(),
     lifetimeGoalsTotal: z.number().int().min(0).max(2_147_483_647).optional(),
     isBlocked: z.boolean().optional(),
+    beginnerOnboardingCompleted: z.boolean().optional(),
+    amateurOnboardingCompleted: z.boolean().optional(),
     wallet: z
       .object({
-        shotsCurrent: z.number().int().min(0).max(100_000).optional(),
-        shotsMax: z.number().int().min(1).max(100_000).optional(),
-        shotsBonus: z.number().int().min(0).max(100_000).optional(),
-        pucks: z.number().int().min(0).max(9_000_000_000).optional(),
-        goldPucks: z.number().int().min(0).max(9_000_000_000).optional(),
-        wheelSpins: z.number().int().min(0).max(100_000).optional(),
-        trainingEnergy: z.number().int().min(0).max(100_000).optional(),
+        coins: z.number().int().min(0).max(9_000_000_000).optional(),
       })
       .optional(),
   })
@@ -448,9 +506,12 @@ const userPatchSchema = z
       value.grip !== undefined ||
       value.level !== undefined ||
       value.xp !== undefined ||
+      value.experience !== undefined ||
       value.lifetimeShotsTotal !== undefined ||
       value.lifetimeGoalsTotal !== undefined ||
       value.isBlocked !== undefined ||
+      value.beginnerOnboardingCompleted !== undefined ||
+      value.amateurOnboardingCompleted !== undefined ||
       (value.wallet !== undefined && Object.keys(value.wallet).length > 0),
     'no changes',
   );
@@ -458,6 +519,47 @@ const userPatchSchema = z
 const settingPatchSchema = z.object({
   value: z.union([z.string(), z.number(), z.boolean()]),
 });
+
+const achievementPatchSchema = z
+  .object({
+    photoUrl: z
+      .string()
+      .trim()
+      .refine(
+        (value) =>
+          value === '' || value.startsWith('/') || z.string().url().safeParse(value).success,
+        'invalid photo url',
+      )
+      .optional(),
+    title: z.string().trim().min(1).max(120).optional(),
+    description: z.string().trim().max(1000).optional(),
+    requirement: z.string().trim().min(1).max(1000).optional(),
+    category: z.enum(ACHIEVEMENT_CATEGORIES).optional(),
+    availability: z.enum(ACHIEVEMENT_AVAILABILITIES).optional(),
+    futureTag: z.enum(ACHIEVEMENT_FUTURE_TAGS).nullable().optional(),
+    rewardCurrency: z.number().int().min(0).max(9_000_000_000).optional(),
+    rewardStars: z.number().int().min(0).max(9_000_000_000).optional(),
+    rewardExperience: z.number().int().min(0).max(9_000_000_000).optional(),
+    rewardTokens: z.number().int().min(0).max(9_000_000_000).optional(),
+    sortOrder: z.number().int().min(0).max(1_000_000).optional(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.photoUrl !== undefined ||
+      value.title !== undefined ||
+      value.description !== undefined ||
+      value.requirement !== undefined ||
+      value.category !== undefined ||
+      value.availability !== undefined ||
+      value.futureTag !== undefined ||
+      value.rewardCurrency !== undefined ||
+      value.rewardStars !== undefined ||
+      value.rewardExperience !== undefined ||
+      value.rewardTokens !== undefined ||
+      value.sortOrder !== undefined,
+    'no changes',
+  );
 
 const listPaymentsQuerySchema = z.object({
   q: z.string().trim().min(1).max(80).optional(),
@@ -500,6 +602,9 @@ const pushEventTypeSchema = z.enum([
   'training.available',
   'duel.challenge_received',
   'duel.result_ready',
+  'tournament.registration_blocked',
+  'tournament.playoff_blocked',
+  'tournament.playoff_schedule_missing',
   'news.posted',
 ]);
 
@@ -628,6 +733,7 @@ function mapPushNotificationStats(row: AdminPushNotificationStatsRow) {
   const dailyGame = Number(row.daily_game_users);
   const trainingAvailable = Number(row.training_available_users);
   const duelEvents = Number(row.duel_events_users);
+  const tournamentEvents = Number(row.tournament_events_users);
   const gameNews = Number(row.game_news_users);
   return {
     totalUsers,
@@ -651,6 +757,10 @@ function mapPushNotificationStats(row: AdminPushNotificationStatsRow) {
       duelEvents: {
         count: duelEvents,
         percent: percent(duelEvents, totalUsers),
+      },
+      tournamentEvents: {
+        count: tournamentEvents,
+        percent: percent(tournamentEvents, totalUsers),
       },
       gameNews: {
         count: gameNews,
@@ -1062,10 +1172,13 @@ function mapUser(row: AdminUserRow) {
     grip: row.grip,
     level: row.level,
     xp: row.xp,
+    experience: row.experience,
     timezone: row.timezone,
     createdAt: row.created_at.toISOString(),
     lastSeenAt: row.last_seen_at?.toISOString() ?? null,
     isBlocked: row.blocked_at !== null,
+    beginnerOnboardingCompleted: row.beginner_onboarding_completed,
+    amateurOnboardingCompleted: row.amateur_onboarding_completed,
     blockedAt: row.blocked_at?.toISOString() ?? null,
     blockedBy: row.blocked_by,
     blockedByDisplayName: row.blocked_by_display_name,
@@ -1116,13 +1229,7 @@ function mapUser(row: AdminUserRow) {
       vk: row.vk_id !== null ? { id: row.vk_id, username: row.vk_username } : null,
     },
     wallet: {
-      shotsCurrent: row.shots_current,
-      shotsMax: row.shots_max,
-      shotsBonus: row.shots_bonus,
-      pucks: Number(row.pucks),
-      goldPucks: Number(row.gold_pucks),
-      wheelSpins: row.wheel_spins,
-      trainingEnergy: row.training_energy,
+      coins: Number(row.currency_balance),
     },
     pushNotifications: {
       subscribed: pushSubscriptionCount > 0,
@@ -1132,6 +1239,7 @@ function mapUser(row: AdminUserRow) {
         dailyGame: row.push_daily_game,
         trainingAvailable: row.push_training_available,
         duelEvents: row.push_duel_events,
+        tournamentEvents: row.push_tournament_events,
         gameNews: row.push_game_news,
       },
     },
@@ -1155,6 +1263,28 @@ function mapPayment(row: AdminPaymentRow) {
   };
 }
 
+function mapAdminAchievement(row: AdminAchievementRow) {
+  return {
+    id: row.id,
+    photoUrl: row.photo_url,
+    title: row.title,
+    description: row.description,
+    requirement: row.requirement,
+    category: row.category,
+    availability: row.availability,
+    futureTag: row.future_tag,
+    rewardCurrency: Number(row.reward_currency),
+    rewardStars: Number(row.reward_stars),
+    rewardExperience: Number(row.reward_experience),
+    rewardTokens: Number(row.reward_tokens),
+    sortOrder: row.sort_order,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+    completedCount: Number(row.completed_count ?? 0),
+    claimedCount: Number(row.claimed_count ?? 0),
+  };
+}
+
 function mapInventoryItem(row: AdminInventoryItemRow) {
   return {
     id: row.id,
@@ -1165,12 +1295,40 @@ function mapInventoryItem(row: AdminInventoryItemRow) {
     itemKind: row.item_kind,
     currencyPrice: row.currency_price,
     chargesPerPurchase: row.charges_per_purchase,
+    lowStockThreshold: row.low_stock_threshold,
     duelPeriodCost: row.duel_period_cost,
+    powerScore: row.power_score,
+    resourceUnit: row.resource_unit,
+    effectPuckSpeedPoints: row.effect_puck_speed_points,
     effectPuckSpeedDelta: row.effect_puck_speed_delta,
     effectShooterFrequencyDelta: row.effect_shooter_frequency_delta,
     effectGoalieFrequencyDelta: row.effect_goalie_frequency_delta,
     effectGoalFrequencyDelta: row.effect_goal_frequency_delta,
     effectShotZoneMultiplier: row.effect_shot_zone_multiplier,
+    effectStumbleIntervalMinRolls: Number(row.effect_stumble_interval_min_rolls),
+    effectStumbleIntervalMaxRolls: Number(row.effect_stumble_interval_max_rolls),
+    effectStumbleIntervalMinMs: row.effect_stumble_interval_min_ms,
+    effectStumbleIntervalMaxMs: row.effect_stumble_interval_max_ms,
+    effectStumbleDurationMinMs: row.effect_stumble_duration_min_ms,
+    effectStumbleDurationMaxMs: row.effect_stumble_duration_max_ms,
+    effectStumbleOffsetMinPx: row.effect_stumble_offset_min_px,
+    effectStumbleOffsetMaxPx: row.effect_stumble_offset_max_px,
+    effectStumbleRecoveryMinMs: row.effect_stumble_recovery_min_ms,
+    effectStumbleRecoveryMaxMs: row.effect_stumble_recovery_max_ms,
+    effectEnergyBaselineSpeed: Number(row.effect_energy_baseline_speed),
+    effectNutritionSlowdownMs: row.effect_nutrition_slowdown_ms,
+    effectNutritionStopMs: row.effect_nutrition_stop_ms,
+    effectFatigueDelayMs: row.effect_fatigue_delay_ms,
+    effectFatigueSpeedMultiplier: Number(row.effect_fatigue_speed_multiplier),
+    effectFatigueGraceMs: row.effect_fatigue_grace_ms,
+    effectFatigueSlowdownStartMs: row.effect_fatigue_slowdown_start_ms,
+    effectFatigueHeavySlowdownStartMs: row.effect_fatigue_heavy_slowdown_start_ms,
+    effectFatigueStopStartMs: row.effect_fatigue_stop_start_ms,
+    effectFatigueStopDurationMs: row.effect_fatigue_stop_duration_ms,
+    effectFatigueAfterRestMs: row.effect_fatigue_after_rest_ms,
+    effectFatigueSlowMultiplier: Number(row.effect_fatigue_slow_multiplier),
+    effectFatigueHeavyMultiplier: Number(row.effect_fatigue_heavy_multiplier),
+    effectRecoveryMinutes: Number(row.effect_recovery_minutes),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     paymentsCount: Number(row.payments_count ?? 0),
@@ -1263,15 +1421,6 @@ function mapChannelPost(row: AdminChannelPostRow) {
   };
 }
 
-async function requireAdmin(app: Parameters<FastifyPluginAsync>[0], req: FastifyRequest) {
-  const { rows } = await app.pg.query<{ role: UserRole }>('select role from users where id = $1', [
-    req.user.id,
-  ]);
-  if (rows[0]?.role !== 'admin') {
-    throw new AppError('forbidden', 'admin role required', 403);
-  }
-}
-
 async function fetchPushNotificationStats(
   client: Pool | PoolClient,
 ): Promise<AdminPushNotificationStatsRow> {
@@ -1293,6 +1442,8 @@ async function fetchPushNotificationStats(
               coalesce(s.subscription_count, 0) > 0
                 and coalesce(pref.duel_events, true) as duel_events,
               coalesce(s.subscription_count, 0) > 0
+                and coalesce(pref.tournament_events, true) as tournament_events,
+              coalesce(s.subscription_count, 0) > 0
                 and coalesce(pref.game_news, true) as game_news
          from users u
          left join subscribed s on s.user_id = u.id
@@ -1304,6 +1455,7 @@ async function fetchPushNotificationStats(
             count(*) filter (where daily_game)::int as daily_game_users,
             count(*) filter (where training_available)::int as training_available_users,
             count(*) filter (where duel_events)::int as duel_events_users,
+            count(*) filter (where tournament_events)::int as tournament_events_users,
             count(*) filter (where game_news)::int as game_news_users
        from prepared`,
   );
@@ -1315,6 +1467,7 @@ async function fetchPushNotificationStats(
       daily_game_users: '0',
       training_available_users: '0',
       duel_events_users: '0',
+      tournament_events_users: '0',
       game_news_users: '0',
     }
   );
@@ -1645,7 +1798,7 @@ async function fetchAdminMismatchLogs(
 async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promise<AdminUserRow> {
   const { rows } = await client.query<AdminUserRow>(
     `select u.id, u.display_name, u.avatar_url, u.display_source,
-            u.role, u.grip, u.level, u.xp,
+            u.role, u.grip, u.level, u.xp, u.experience,
             case
               when u.display_source = 'vk' then
                 coalesce(nullif(concat_ws(' ', u.vk_first_name, u.vk_last_name), ''), u.vk_username, 'Player')
@@ -1659,6 +1812,7 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
               else u.avatar_url
             end as active_avatar_url,
             u.timezone, u.created_at, u.last_seen_at,
+            u.beginner_onboarding_completed, u.amateur_onboarding_completed,
             u.blocked_at, u.blocked_by, blocker.display_name as blocked_by_display_name,
             u.lifetime_shots_total, u.lifetime_goals_total,
             case
@@ -1673,7 +1827,7 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
                   (select (value #>> '{}')::int
                      from game_settings
                     where key = 'amateur.unlock_goals_required'),
-                  1000
+                  300
                 ) then 'amateur'
               else 'beginner'
             end as competition_level,
@@ -1687,13 +1841,7 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
             u.vk_last_name,
             u.vk_avatar_url,
             u.vk_username,
-            coalesce(w.shots_current, 0) as shots_current,
-            coalesce(w.shots_max, 25) as shots_max,
-            coalesce(w.shots_bonus, 0) as shots_bonus,
-            coalesce(w.pucks, 0) as pucks,
-            coalesce(w.gold_pucks, 0) as gold_pucks,
-            coalesce(w.wheel_spins, 0) as wheel_spins,
-            coalesce(w.training_energy, 0) as training_energy,
+            coalesce(uca.balance, 0) as currency_balance,
             coalesce(push.subscription_count, 0) as push_subscription_count,
             coalesce(push.subscription_count, 0) > 0
               and coalesce(pref.chat_new_dialog_message, true) as push_chat_new_dialog_message,
@@ -1704,9 +1852,11 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
             coalesce(push.subscription_count, 0) > 0
               and coalesce(pref.duel_events, true) as push_duel_events,
             coalesce(push.subscription_count, 0) > 0
+              and coalesce(pref.tournament_events, true) as push_tournament_events,
+            coalesce(push.subscription_count, 0) > 0
               and coalesce(pref.game_news, true) as push_game_news
        from users u
-       left join user_wallet w on w.user_id = u.id
+       left join user_currency_account uca on uca.user_id = u.id
        left join users blocker on blocker.id = u.blocked_by
        left join auth_providers tg
          on tg.user_id = u.id and tg.provider = 'telegram'
@@ -1776,18 +1926,512 @@ async function fetchAdminFeedbackById(
 
 export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, opts) => {
   app.addContentTypeParser(
-    /^image\/webp$/i,
+    /^image\/(?:webp|png|jpeg)$/i,
     {
       parseAs: 'buffer',
-      bodyLimit: adminChatAvatarMaxBytes,
+      bodyLimit: opts.objectStorage?.maxUploadBytes ?? adminChatAvatarMaxBytes,
     },
     (_req, body, done) => done(null, body),
   );
 
-  const adminPreHandlers = [
-    app.authenticate,
-    async (req: FastifyRequest) => requireAdmin(app, req),
-  ];
+  const adminPreHandlers = createAdminPreHandlers(app);
+
+  await registerWeeklyChallengeAdminRoutes(app);
+  await registerBonusGameAdminRoutes(
+    app,
+    opts.objectStorage !== undefined
+      ? {
+          preHandlers: adminPreHandlers,
+          objectStorage: opts.objectStorage,
+          mediaAccessSecret: opts.mediaAccessSecret,
+        }
+      : { preHandlers: adminPreHandlers, mediaAccessSecret: opts.mediaAccessSecret },
+  );
+
+  const requireOfficialAccountId = (): string => {
+    if (opts.systemUserId === undefined) {
+      throw new AppError('configuration_error', 'SYSTEM_USER_ID is required', 409);
+    }
+    return opts.systemUserId;
+  };
+
+  const requireOfficialDialog = async (chatId: string) => {
+    const officialUserId = requireOfficialAccountId();
+    const result = await app.pg.query<{ player_user_id: string }>(
+      `select player.id as player_user_id
+         from chats c
+         join chat_members official_member
+           on official_member.chat_id = c.id and official_member.user_id = $2
+         join users official on official.id = official_member.user_id
+         join chat_members player_member
+           on player_member.chat_id = c.id and player_member.user_id <> $2
+         join users player on player.id = player_member.user_id
+        where c.id = $1
+          and c.type = 'direct'
+          and c.is_active = true
+          and official.account_kind = 'official'
+          and player.account_kind = 'player'
+        limit 1`,
+      [chatId, officialUserId],
+    );
+    const playerUserId = result.rows[0]?.player_user_id;
+    if (playerUserId === undefined) {
+      throw new AppError('not_found', 'official dialog not found', 404);
+    }
+    return { officialUserId, playerUserId };
+  };
+
+  const fetchBroadcastResult = async (broadcastId: string) => {
+    const result = await app.pg.query<{
+      id: string;
+      recipient_count: number;
+      sent_count: number;
+      failed_count: number;
+      status: 'processing' | 'sent' | 'partial' | 'failed';
+    }>(
+      `select id, recipient_count, sent_count, failed_count, status
+         from admin_direct_broadcasts
+        where id = $1`,
+      [broadcastId],
+    );
+    const row = result.rows[0];
+    if (row === undefined) throw new AppError('not_found', 'broadcast not found', 404);
+    return {
+      id: row.id,
+      recipientCount: row.recipient_count,
+      sentCount: row.sent_count,
+      failedCount: row.failed_count,
+      status: row.status,
+    };
+  };
+
+  app.get('/admin/attention', { preHandler: adminPreHandlers }, async () => {
+    const officialUserId = requireOfficialAccountId();
+    const [feedback, dialogs] = await Promise.all([
+      app.pg.query<{ count: string }>(
+        `select count(*)::text as count from feedback_messages where is_read = false`,
+      ),
+      app.pg.query<{ count: string }>(
+        `select count(*)::text as count
+           from official_dialog_state state
+           join messages last_message on last_message.id = (
+             select id from messages
+              where chat_id = state.chat_id and is_deleted = false
+              order by created_at desc limit 1
+           )
+          where last_message.sender_id <> $1
+            and last_message.created_at > coalesce(state.last_admin_read_at, '-infinity')`,
+        [officialUserId],
+      ),
+    ]);
+    const feedbackUnreadCount = Number(feedback.rows[0]?.count ?? 0);
+    const officialDialogsUnreadCount = Number(dialogs.rows[0]?.count ?? 0);
+    return {
+      feedbackUnreadCount,
+      officialDialogsUnreadCount,
+      totalCount: feedbackUnreadCount + officialDialogsUnreadCount,
+    };
+  });
+
+  app.get(
+    '/admin/communications/broadcasts/audience',
+    { preHandler: adminPreHandlers },
+    async () => {
+      const officialUserId = requireOfficialAccountId();
+      const result = await app.pg.query<{ count: string }>(
+        `select count(*)::text as count
+           from users
+          where role = 'player'
+            and account_kind = 'player'
+            and blocked_at is null
+            and id <> $1`,
+        [officialUserId],
+      );
+      return { recipientCount: Number(result.rows[0]?.count ?? 0) };
+    },
+  );
+
+  app.post(
+    '/admin/communications/broadcasts',
+    { preHandler: adminPreHandlers },
+    async (req, reply) => {
+      const officialUserId = requireOfficialAccountId();
+      const body = z
+        .object({ id: z.string().uuid(), content: z.string().trim().min(1).max(4000) })
+        .parse(req.body);
+      const inserted = await app.pg.query(
+        `insert into admin_direct_broadcasts (id, created_by, content)
+         values ($1, $2, $3)
+         on conflict (id) do nothing
+         returning id`,
+        [body.id, req.user.id, body.content],
+      );
+      if (inserted.rowCount === 0) {
+        return await fetchBroadcastResult(body.id);
+      }
+
+      await app.pg.query(
+        `insert into admin_direct_broadcast_recipients (broadcast_id, user_id)
+         select $1, id
+           from users
+          where role = 'player'
+            and account_kind = 'player'
+            and blocked_at is null
+            and id <> $2`,
+        [body.id, officialUserId],
+      );
+      const recipients = await app.pg.query<{ user_id: string }>(
+        `select user_id
+           from admin_direct_broadcast_recipients
+          where broadcast_id = $1 and status = 'pending'
+          order by user_id`,
+        [body.id],
+      );
+      await app.pg.query(
+        `update admin_direct_broadcasts set recipient_count = $2 where id = $1`,
+        [body.id, recipients.rows.length],
+      );
+
+      for (const recipient of recipients.rows) {
+        try {
+          const { chatId } = await findOrCreateDM(app.pg, officialUserId, recipient.user_id);
+          const message = await sendMessage(app.pg, {
+            chatId,
+            senderId: officialUserId,
+            content: body.content,
+            metadata: { adminBroadcastId: body.id },
+          });
+          await app.pg.query(
+            `update admin_direct_broadcast_recipients
+                set status = 'sent', chat_id = $3, message_id = $4, error = null, updated_at = now()
+              where broadcast_id = $1 and user_id = $2`,
+            [body.id, recipient.user_id, chatId, message.id],
+          );
+          await invalidateUnreadCache(app.redis, recipient.user_id);
+          await publishMessageNew(app.pg, app.realtime, chatId, 'direct', message);
+          void enqueueDialogMessagePush(app.pg, {
+            chatId,
+            senderId: officialUserId,
+            messageId: message.id,
+            content: message.content,
+          }).catch((err) =>
+            app.log.warn({ err, chatId, broadcastId: body.id }, 'broadcast push failed'),
+          );
+        } catch (err) {
+          await app.pg.query(
+            `update admin_direct_broadcast_recipients
+                set status = 'failed', error = $3, updated_at = now()
+              where broadcast_id = $1 and user_id = $2`,
+            [body.id, recipient.user_id, err instanceof Error ? err.message.slice(0, 500) : 'unknown'],
+          );
+        }
+      }
+
+      const counts = await app.pg.query<{ sent_count: number; failed_count: number }>(
+        `select count(*) filter (where status = 'sent')::int as sent_count,
+                count(*) filter (where status = 'failed')::int as failed_count
+           from admin_direct_broadcast_recipients
+          where broadcast_id = $1`,
+        [body.id],
+      );
+      const sentCount = counts.rows[0]?.sent_count ?? 0;
+      const failedCount = counts.rows[0]?.failed_count ?? 0;
+      const status = failedCount === 0 ? 'sent' : sentCount === 0 ? 'failed' : 'partial';
+      await app.pg.query(
+        `update admin_direct_broadcasts
+            set sent_count = $2, failed_count = $3, status = $4, completed_at = now()
+          where id = $1`,
+        [body.id, sentCount, failedCount, status],
+      );
+      await appendEvent(app.pg, req.user.id, 'admin_direct_broadcast_sent', {
+        broadcast_id: body.id,
+        recipient_count: recipients.rows.length,
+        sent_count: sentCount,
+        failed_count: failedCount,
+      });
+      reply.code(201);
+      return await fetchBroadcastResult(body.id);
+    },
+  );
+
+  app.get('/admin/communications/dialogs', { preHandler: adminPreHandlers }, async (req) => {
+    const officialUserId = requireOfficialAccountId();
+    const query = z
+      .object({
+        status: z.enum(['new', 'open', 'closed']).default('new'),
+        q: z.string().max(100).default(''),
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+        offset: z.coerce.number().int().min(0).default(0),
+      })
+      .parse(req.query);
+    const search = query.q.trim();
+    const result = await app.pg.query<{
+      chat_id: string;
+      status: 'open' | 'closed';
+      player_user_id: string;
+      display_name: string;
+      avatar_url: string | null;
+      telegram_id: string | null;
+      vk_id: string | null;
+      last_message_id: string;
+      last_message_content: string;
+      last_message_at: Date;
+      last_message_sender_id: string;
+      is_new: boolean;
+    }>(
+      `select c.id as chat_id,
+              state.status,
+              player.id as player_user_id,
+              player.display_name,
+              player.avatar_url,
+              identities.telegram_id,
+              identities.vk_id,
+              last_message.id as last_message_id,
+              last_message.content as last_message_content,
+              last_message.created_at as last_message_at,
+              last_message.sender_id as last_message_sender_id,
+              (last_message.sender_id <> $1
+                and last_message.created_at > coalesce(state.last_admin_read_at, '-infinity')) as is_new
+         from official_dialog_state state
+         join chats c on c.id = state.chat_id and c.type = 'direct' and c.is_active = true
+         join chat_members official_member
+           on official_member.chat_id = c.id and official_member.user_id = $1
+         join chat_members player_member
+           on player_member.chat_id = c.id and player_member.user_id <> $1
+         join users player on player.id = player_member.user_id and player.account_kind = 'player'
+         join lateral (
+           select id, sender_id, content, created_at
+             from messages
+            where chat_id = c.id and is_deleted = false
+            order by created_at desc
+            limit 1
+         ) last_message on true
+         left join lateral (
+           select max(provider_uid) filter (where provider = 'telegram') as telegram_id,
+                  max(provider_uid) filter (where provider = 'vk') as vk_id
+             from auth_providers
+            where user_id = player.id
+         ) identities on true
+        where ($2 = '' or player.display_name ilike '%' || $2 || '%'
+               or identities.telegram_id = $2 or identities.vk_id = $2)
+          and (
+            ($3 = 'new' and last_message.sender_id <> $1
+              and last_message.created_at > coalesce(state.last_admin_read_at, '-infinity'))
+            or ($3 = 'open' and state.status = 'open')
+            or ($3 = 'closed' and state.status = 'closed')
+          )
+        order by is_new desc, last_message.created_at desc
+        limit $4 offset $5`,
+      [officialUserId, search, query.status, query.limit, query.offset],
+    );
+    const unread = await app.pg.query<{ count: string }>(
+      `select count(*)::bigint as count
+         from official_dialog_state state
+         join messages last_message on last_message.id = (
+           select id from messages
+            where chat_id = state.chat_id and is_deleted = false
+            order by created_at desc limit 1
+         )
+        where last_message.sender_id <> $1
+          and last_message.created_at > coalesce(state.last_admin_read_at, '-infinity')`,
+      [officialUserId],
+    );
+    return {
+      unreadCount: Number(unread.rows[0]?.count ?? 0),
+      dialogs: result.rows.map((row) => ({
+        chatId: row.chat_id,
+        status: row.status,
+        isNew: row.is_new,
+        player: {
+          userId: row.player_user_id,
+          displayName: row.display_name,
+          avatarUrl: row.avatar_url,
+          telegramId: row.telegram_id,
+          vkId: row.vk_id,
+        },
+        lastMessage: {
+          id: row.last_message_id,
+          content: row.last_message_content,
+          createdAt: row.last_message_at.toISOString(),
+          fromOfficial: row.last_message_sender_id === officialUserId,
+        },
+      })),
+      nextOffset: result.rows.length === query.limit ? query.offset + query.limit : null,
+    };
+  });
+
+  app.get(
+    '/admin/communications/dialogs/:chatId/messages',
+    { preHandler: adminPreHandlers },
+    async (req) => {
+      const { chatId } = z.object({ chatId: uuid }).parse(req.params);
+      const query = z
+        .object({
+          before: z.string().datetime({ offset: true }).optional(),
+          limit: z.coerce.number().int().min(1).max(100).default(50),
+        })
+        .parse(req.query);
+      const { officialUserId } = await requireOfficialDialog(chatId);
+      const messages = await getMessages(app.pg, chatId, officialUserId, {
+        limit: query.limit,
+        ...(query.before !== undefined ? { before: query.before } : {}),
+      });
+      await app.pg.query(
+        `update official_dialog_state
+            set last_admin_read_at = now(), updated_at = now()
+          where chat_id = $1`,
+        [chatId],
+      );
+      return messages.map((message) => signMessageAttachmentUrls(message, opts.mediaAccessSecret));
+    },
+  );
+
+  app.post(
+    '/admin/communications/dialogs/:chatId/messages',
+    { preHandler: adminPreHandlers },
+    async (req, reply) => {
+      const { chatId } = z.object({ chatId: uuid }).parse(req.params);
+      const body = z
+        .object({
+          content: z.string().max(4000).default(''),
+          attachmentIds: z.array(uuid).max(10).default([]),
+        })
+        .refine((value) => value.content.trim().length > 0 || value.attachmentIds.length > 0, {
+          message: 'message is empty',
+        })
+        .parse(req.body);
+      const { officialUserId, playerUserId } = await requireOfficialDialog(chatId);
+      const attachments = await loadChatAttachments(
+        app,
+        req.user.id,
+        body.attachmentIds,
+        opts.mediaAccessSecret,
+      );
+      const message = await sendMessage(app.pg, {
+        chatId,
+        senderId: officialUserId,
+        content: body.content.trim(),
+        ...(attachments.length > 0 ? { metadata: { attachments } } : {}),
+      });
+      await app.pg.query(
+        `update official_dialog_state
+            set last_admin_read_at = now(), updated_at = now()
+          where chat_id = $1`,
+        [chatId],
+      );
+      await invalidateUnreadCache(app.redis, playerUserId);
+      await publishMessageNew(app.pg, app.realtime, chatId, 'direct', message);
+      void enqueueDialogMessagePush(app.pg, {
+        chatId,
+        senderId: officialUserId,
+        messageId: message.id,
+        content: message.content,
+      }).catch((err) => app.log.warn({ err, chatId }, 'official dialog push failed'));
+      await appendEvent(app.pg, req.user.id, 'admin_official_dialog_message_sent', {
+        chat_id: chatId,
+        message_id: message.id,
+        player_user_id: playerUserId,
+      });
+      reply.code(201);
+      return signMessageAttachmentUrls(message, opts.mediaAccessSecret);
+    },
+  );
+
+  app.patch(
+    '/admin/communications/dialogs/:chatId',
+    { preHandler: adminPreHandlers },
+    async (req) => {
+      const { chatId } = z.object({ chatId: uuid }).parse(req.params);
+      const body = z
+        .object({ status: z.enum(['open', 'closed']).optional(), markRead: z.boolean().optional() })
+        .refine((value) => value.status !== undefined || value.markRead === true, {
+          message: 'empty dialog patch',
+        })
+        .parse(req.body);
+      await requireOfficialDialog(chatId);
+      const result = await app.pg.query<{
+        status: 'open' | 'closed';
+        last_admin_read_at: Date | null;
+      }>(
+        `update official_dialog_state
+            set status = coalesce($2, status),
+                last_admin_read_at = case when $3 then now() else last_admin_read_at end,
+                closed_at = case when $2 = 'closed' then now()
+                                 when $2 = 'open' then null else closed_at end,
+                closed_by = case when $2 = 'closed' then $4
+                                 when $2 = 'open' then null else closed_by end,
+                updated_at = now()
+          where chat_id = $1
+          returning status, last_admin_read_at`,
+        [chatId, body.status ?? null, body.markRead === true, req.user.id],
+      );
+      await appendEvent(app.pg, req.user.id, 'admin_official_dialog_updated', {
+        chat_id: chatId,
+        ...(body.status !== undefined ? { status: body.status } : {}),
+        mark_read: body.markRead === true,
+      });
+      const row = result.rows[0]!;
+      return {
+        status: row.status,
+        lastAdminReadAt: row.last_admin_read_at?.toISOString() ?? null,
+      };
+    },
+  );
+
+  app.get('/admin/communications/official-account', { preHandler: adminPreHandlers }, async () => {
+    const officialUserId = requireOfficialAccountId();
+    const result = await app.pg.query<{
+      id: string;
+      display_name: string;
+      avatar_url: string | null;
+    }>(
+      `select id, display_name, avatar_url
+         from users where id = $1 and account_kind = 'official' limit 1`,
+      [officialUserId],
+    );
+    const account = result.rows[0];
+    if (account === undefined) throw new AppError('not_found', 'official account not found', 404);
+    return {
+      id: account.id,
+      displayName: account.display_name,
+      avatarUrl: account.avatar_url,
+    };
+  });
+
+  app.post(
+    '/admin/communications/official-account/avatar',
+    { preHandler: adminPreHandlers },
+    async (req) => {
+      if (opts.objectStorage === undefined) {
+        throw new AppError('storage_not_configured', 'object storage is not configured', 503);
+      }
+      const officialUserId = requireOfficialAccountId();
+      const contentType = normalizeUploadContentType(req.headers['content-type']);
+      const body = assertAdminChatAvatarBody(req.body, contentType);
+      const uploaded = await opts.objectStorage.uploadObject({
+        key: createMediaObjectKey({ prefix: `official-account/${officialUserId}`, contentType }),
+        body,
+        contentType,
+      });
+      const media = await app.pg.query<{ id: string }>(
+        `insert into media_objects
+           (owner_user_id, purpose, object_key, url, content_type, size_bytes, original_name)
+         values ($1, 'chat_avatar', $2, $3, $4, $5, 'official-account.webp')
+         returning id`,
+        [req.user.id, uploaded.key, uploaded.url, uploaded.contentType, uploaded.size],
+      );
+      const avatarUrl = createMediaProxyUrl(opts.mediaAccessSecret, media.rows[0]!.id);
+      await app.pg.query(`update users set avatar_url = $1 where id = $2`, [
+        avatarUrl,
+        officialUserId,
+      ]);
+      await appendEvent(app.pg, req.user.id, 'admin_official_account_avatar_updated', {
+        official_user_id: officialUserId,
+        media_id: media.rows[0]!.id,
+      });
+      return { avatarUrl };
+    },
+  );
 
   app.get('/admin/summary', { preHandler: adminPreHandlers }, async (req) => {
     const parsed = dashboardPeriodQuerySchema.safeParse(req.query);
@@ -1969,6 +2613,103 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
       value: setting.value,
     });
     return setting;
+  });
+
+  app.get('/admin/achievements', { preHandler: adminPreHandlers }, async () => {
+    const { rows } = await app.pg.query<AdminAchievementRow>(
+      `select a.id,
+              a.photo_url,
+              a.title,
+              a.description,
+              a.requirement,
+              a.category,
+              a.availability,
+              a.future_tag,
+              a.reward_currency,
+              a.reward_stars,
+              a.reward_experience,
+              a.reward_tokens,
+              a.sort_order,
+              a.created_at,
+              a.updated_at,
+              count(ua.user_id)::text as completed_count,
+              count(ua.user_id) filter (where ua.claimed_at is not null)::text as claimed_count
+         from achievements a
+         left join user_achievements ua on ua.achievement_id = a.id
+        group by a.id
+        order by a.sort_order asc, a.created_at asc`,
+    );
+    return { achievements: rows.map(mapAdminAchievement) };
+  });
+
+  app.patch('/admin/achievements/:achievementId', { preHandler: adminPreHandlers }, async (req) => {
+    const params = z.object({ achievementId: z.string().min(1).max(120) }).parse(req.params);
+    const body = achievementPatchSchema.safeParse(req.body);
+    if (!body.success) {
+      throw new AppError('bad_request', 'invalid achievement patch', 400);
+    }
+
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+    if (body.data.photoUrl !== undefined) {
+      addAssignment(assignments, values, 'photo_url', body.data.photoUrl);
+    }
+    if (body.data.title !== undefined) addAssignment(assignments, values, 'title', body.data.title);
+    if (body.data.description !== undefined) {
+      addAssignment(assignments, values, 'description', body.data.description);
+    }
+    if (body.data.requirement !== undefined) {
+      addAssignment(assignments, values, 'requirement', body.data.requirement);
+    }
+    if (body.data.category !== undefined) {
+      addAssignment(assignments, values, 'category', body.data.category);
+    }
+    if (body.data.availability !== undefined) {
+      addAssignment(assignments, values, 'availability', body.data.availability);
+    }
+    if (body.data.futureTag !== undefined) {
+      addAssignment(assignments, values, 'future_tag', body.data.futureTag);
+    }
+    if (body.data.rewardCurrency !== undefined) {
+      addAssignment(assignments, values, 'reward_currency', body.data.rewardCurrency);
+    }
+    if (body.data.rewardStars !== undefined) {
+      addAssignment(assignments, values, 'reward_stars', body.data.rewardStars);
+    }
+    if (body.data.rewardExperience !== undefined) {
+      addAssignment(assignments, values, 'reward_experience', body.data.rewardExperience);
+    }
+    if (body.data.rewardTokens !== undefined) {
+      addAssignment(assignments, values, 'reward_tokens', body.data.rewardTokens);
+    }
+    if (body.data.sortOrder !== undefined) {
+      addAssignment(assignments, values, 'sort_order', body.data.sortOrder);
+    }
+
+    values.push(params.achievementId);
+    const { rows } = await app.pg.query<AdminAchievementRow>(
+      `update achievements
+          set ${assignments.join(', ')},
+              updated_at = now()
+        where id = $${values.length}
+      returning id, photo_url, title, description, requirement, category, availability, future_tag,
+                reward_currency, reward_stars, reward_experience, reward_tokens, sort_order, created_at,
+                updated_at,
+                (select count(*)::text from user_achievements where achievement_id = achievements.id)
+                  as completed_count,
+                (select count(*)::text
+                   from user_achievements
+                  where achievement_id = achievements.id and claimed_at is not null) as claimed_count`,
+      values,
+    );
+    if (rows.length === 0) {
+      throw new AppError('not_found', 'achievement not found', 404);
+    }
+    await appendEvent(app.pg, req.user.id, 'admin_achievement_updated', {
+      achievement_id: params.achievementId,
+      fields: Object.keys(body.data),
+    });
+    return { achievement: mapAdminAchievement(rows[0]!) };
   });
 
   app.get('/admin/channel/news', { preHandler: adminPreHandlers }, async (req) => {
@@ -2672,12 +3413,40 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
               i.item_kind,
               i.currency_price,
               i.charges_per_purchase,
+              i.low_stock_threshold,
               i.duel_period_cost,
+              i.power_score,
+              i.resource_unit,
+              i.effect_puck_speed_points,
               i.effect_puck_speed_delta,
               i.effect_shooter_frequency_delta,
               i.effect_goalie_frequency_delta,
               i.effect_goal_frequency_delta,
               i.effect_shot_zone_multiplier,
+              i.effect_stumble_interval_min_rolls,
+              i.effect_stumble_interval_max_rolls,
+              i.effect_stumble_interval_min_ms,
+              i.effect_stumble_interval_max_ms,
+              i.effect_stumble_duration_min_ms,
+              i.effect_stumble_duration_max_ms,
+              i.effect_stumble_offset_min_px,
+              i.effect_stumble_offset_max_px,
+              i.effect_stumble_recovery_min_ms,
+              i.effect_stumble_recovery_max_ms,
+              i.effect_energy_baseline_speed,
+              i.effect_nutrition_slowdown_ms,
+              i.effect_nutrition_stop_ms,
+              i.effect_fatigue_delay_ms,
+              i.effect_fatigue_speed_multiplier,
+              i.effect_fatigue_grace_ms,
+              i.effect_fatigue_slowdown_start_ms,
+              i.effect_fatigue_heavy_slowdown_start_ms,
+              i.effect_fatigue_stop_start_ms,
+              i.effect_fatigue_stop_duration_ms,
+              i.effect_fatigue_after_rest_ms,
+              i.effect_fatigue_slow_multiplier,
+              i.effect_fatigue_heavy_multiplier,
+              i.effect_recovery_minutes,
               i.created_at,
               i.updated_at,
               count(p.id)::int as payments_count,
@@ -2700,9 +3469,24 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
       `insert into admin_inventory_items (photo_url, title, description, price_rub)
        values ($1, $2, $3, $4)
        returning id, photo_url, title, description, price_rub, item_kind, currency_price,
-                 charges_per_purchase, duel_period_cost, effect_puck_speed_delta,
+                 charges_per_purchase, duel_period_cost, power_score, resource_unit,
+                 low_stock_threshold,
+                 effect_puck_speed_points, effect_puck_speed_delta,
                  effect_shooter_frequency_delta, effect_goalie_frequency_delta,
                  effect_goal_frequency_delta, effect_shot_zone_multiplier,
+                 effect_stumble_interval_min_rolls, effect_stumble_interval_max_rolls,
+                 effect_stumble_interval_min_ms, effect_stumble_interval_max_ms,
+                 effect_stumble_duration_min_ms, effect_stumble_duration_max_ms,
+                 effect_stumble_offset_min_px, effect_stumble_offset_max_px,
+                 effect_stumble_recovery_min_ms, effect_stumble_recovery_max_ms,
+                 effect_energy_baseline_speed, effect_nutrition_slowdown_ms,
+                 effect_nutrition_stop_ms, effect_fatigue_delay_ms,
+                 effect_fatigue_speed_multiplier, effect_fatigue_grace_ms,
+                 effect_fatigue_slowdown_start_ms, effect_fatigue_heavy_slowdown_start_ms,
+                 effect_fatigue_stop_start_ms, effect_fatigue_stop_duration_ms,
+                 effect_fatigue_after_rest_ms, effect_fatigue_slow_multiplier,
+                 effect_fatigue_heavy_multiplier,
+                 effect_recovery_minutes,
                  created_at, updated_at`,
       [body.data.photoUrl, body.data.title, body.data.description, body.data.priceRub],
     );
@@ -2739,9 +3523,24 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
               updated_at = now()
         where id = $${values.length} and deleted_at is null
       returning id, photo_url, title, description, price_rub, item_kind, currency_price,
-                charges_per_purchase, duel_period_cost, effect_puck_speed_delta,
+                charges_per_purchase, duel_period_cost, power_score, resource_unit,
+                low_stock_threshold,
+                effect_puck_speed_points, effect_puck_speed_delta,
                 effect_shooter_frequency_delta, effect_goalie_frequency_delta,
                 effect_goal_frequency_delta, effect_shot_zone_multiplier,
+                effect_stumble_interval_min_rolls, effect_stumble_interval_max_rolls,
+                effect_stumble_interval_min_ms, effect_stumble_interval_max_ms,
+                effect_stumble_duration_min_ms, effect_stumble_duration_max_ms,
+                effect_stumble_offset_min_px, effect_stumble_offset_max_px,
+                effect_stumble_recovery_min_ms, effect_stumble_recovery_max_ms,
+                effect_energy_baseline_speed, effect_nutrition_slowdown_ms,
+                effect_nutrition_stop_ms, effect_fatigue_delay_ms,
+                effect_fatigue_speed_multiplier, effect_fatigue_grace_ms,
+                effect_fatigue_slowdown_start_ms, effect_fatigue_heavy_slowdown_start_ms,
+                effect_fatigue_stop_start_ms, effect_fatigue_stop_duration_ms,
+                effect_fatigue_after_rest_ms, effect_fatigue_slow_multiplier,
+                effect_fatigue_heavy_multiplier,
+                effect_recovery_minutes,
                 created_at, updated_at`,
       values,
     );
@@ -2793,7 +3592,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
            select *
              from (
                select u.id, u.display_name, u.avatar_url, u.display_source,
-                      u.role, u.grip, u.level, u.xp,
+                      u.role, u.grip, u.level, u.xp, u.experience,
                       case
                         when u.display_source = 'vk' then
                           coalesce(nullif(concat_ws(' ', u.vk_first_name, u.vk_last_name), ''), u.vk_username, 'Player')
@@ -2807,6 +3606,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                         else u.avatar_url
                       end as active_avatar_url,
                       u.timezone, u.created_at, u.last_seen_at,
+                      u.beginner_onboarding_completed, u.amateur_onboarding_completed,
                       u.blocked_at, u.blocked_by, blocker.display_name as blocked_by_display_name,
                       u.lifetime_shots_total, u.lifetime_goals_total,
                       case
@@ -2821,7 +3621,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                             (select (value #>> '{}')::int
                                from game_settings
                               where key = 'amateur.unlock_goals_required'),
-                            1000
+                            300
                           ) then 'amateur'
                         else 'beginner'
                       end as competition_level,
@@ -2835,13 +3635,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                       u.vk_last_name,
                       u.vk_avatar_url,
                       u.vk_username,
-                      coalesce(w.shots_current, 0) as shots_current,
-                      coalesce(w.shots_max, 25) as shots_max,
-                      coalesce(w.shots_bonus, 0) as shots_bonus,
-                      coalesce(w.pucks, 0) as pucks,
-                      coalesce(w.gold_pucks, 0) as gold_pucks,
-                      coalesce(w.wheel_spins, 0) as wheel_spins,
-                      coalesce(w.training_energy, 0) as training_energy,
+                      coalesce(uca.balance, 0) as currency_balance,
                       coalesce(push.subscription_count, 0) as push_subscription_count,
                       coalesce(push.subscription_count, 0) > 0
                         and coalesce(pref.chat_new_dialog_message, true) as push_chat_new_dialog_message,
@@ -2852,9 +3646,11 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                       coalesce(push.subscription_count, 0) > 0
                         and coalesce(pref.duel_events, true) as push_duel_events,
                       coalesce(push.subscription_count, 0) > 0
+                        and coalesce(pref.tournament_events, true) as push_tournament_events,
+                      coalesce(push.subscription_count, 0) > 0
                         and coalesce(pref.game_news, true) as push_game_news
                  from users u
-                 left join user_wallet w on w.user_id = u.id
+                 left join user_currency_account uca on uca.user_id = u.id
                  left join users blocker on blocker.id = u.blocked_by
                  left join auth_providers tg
                    on tg.user_id = u.id and tg.provider = 'telegram'
@@ -2987,7 +3783,8 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
     }
 
     return withTransaction(app, async (client) => {
-      await fetchAdminUser(client, params.userId);
+      await client.query('select id from users where id = $1 for update', [params.userId]);
+      const previousUser = await fetchAdminUser(client, params.userId);
       if (params.userId === req.user.id && body.data.role === 'player') {
         throw new AppError('conflict', 'cannot demote yourself', 409);
       }
@@ -3018,6 +3815,10 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
         addAssignment(userAssignments, userValues, 'xp', body.data.xp);
         changed.push('xp');
       }
+      if (body.data.experience !== undefined) {
+        addAssignment(userAssignments, userValues, 'experience', body.data.experience);
+        changed.push('experience');
+      }
       if (body.data.lifetimeShotsTotal !== undefined) {
         addAssignment(
           userAssignments,
@@ -3047,6 +3848,55 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
         }
         changed.push('isBlocked');
       }
+      const onboardingChanges: Array<{
+        field: 'beginnerOnboardingCompleted' | 'amateurOnboardingCompleted';
+        previous: boolean;
+        next: boolean;
+      }> = [];
+      if (
+        body.data.beginnerOnboardingCompleted !== undefined &&
+        body.data.beginnerOnboardingCompleted !== previousUser.beginner_onboarding_completed
+      ) {
+        addAssignment(
+          userAssignments,
+          userValues,
+          'beginner_onboarding_completed',
+          body.data.beginnerOnboardingCompleted,
+        );
+        userAssignments.push(
+          body.data.beginnerOnboardingCompleted
+            ? 'beginner_onboarding_reset_at = null'
+            : 'beginner_onboarding_reset_at = now()',
+        );
+        changed.push('beginnerOnboardingCompleted');
+        onboardingChanges.push({
+          field: 'beginnerOnboardingCompleted',
+          previous: previousUser.beginner_onboarding_completed,
+          next: body.data.beginnerOnboardingCompleted,
+        });
+      }
+      if (
+        body.data.amateurOnboardingCompleted !== undefined &&
+        body.data.amateurOnboardingCompleted !== previousUser.amateur_onboarding_completed
+      ) {
+        addAssignment(
+          userAssignments,
+          userValues,
+          'amateur_onboarding_completed',
+          body.data.amateurOnboardingCompleted,
+        );
+        userAssignments.push(
+          body.data.amateurOnboardingCompleted
+            ? 'amateur_onboarding_reset_at = null'
+            : 'amateur_onboarding_reset_at = now()',
+        );
+        changed.push('amateurOnboardingCompleted');
+        onboardingChanges.push({
+          field: 'amateurOnboardingCompleted',
+          previous: previousUser.amateur_onboarding_completed,
+          next: body.data.amateurOnboardingCompleted,
+        });
+      }
       if (userAssignments.length > 0) {
         userValues.push(params.userId);
         await client.query(
@@ -3055,54 +3905,36 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
         );
       }
 
-      const wallet = body.data.wallet;
-      if (wallet !== undefined && Object.keys(wallet).length > 0) {
-        await client.query('insert into user_wallet (user_id) values ($1) on conflict do nothing', [
-          params.userId,
-        ]);
-        const walletAssignments: string[] = [];
-        const walletValues: unknown[] = [];
-        if (wallet.shotsCurrent !== undefined) {
-          addAssignment(walletAssignments, walletValues, 'shots_current', wallet.shotsCurrent);
-          changed.push('wallet.shotsCurrent');
-        }
-        if (wallet.shotsMax !== undefined) {
-          addAssignment(walletAssignments, walletValues, 'shots_max', wallet.shotsMax);
-          changed.push('wallet.shotsMax');
-        }
-        if (wallet.shotsBonus !== undefined) {
-          addAssignment(walletAssignments, walletValues, 'shots_bonus', wallet.shotsBonus);
-          changed.push('wallet.shotsBonus');
-        }
-        if (wallet.pucks !== undefined) {
-          addAssignment(walletAssignments, walletValues, 'pucks', wallet.pucks);
-          changed.push('wallet.pucks');
-        }
-        if (wallet.goldPucks !== undefined) {
-          addAssignment(walletAssignments, walletValues, 'gold_pucks', wallet.goldPucks);
-          changed.push('wallet.goldPucks');
-        }
-        if (wallet.wheelSpins !== undefined) {
-          addAssignment(walletAssignments, walletValues, 'wheel_spins', wallet.wheelSpins);
-          changed.push('wallet.wheelSpins');
-        }
-        if (wallet.trainingEnergy !== undefined) {
-          addAssignment(walletAssignments, walletValues, 'training_energy', wallet.trainingEnergy);
-          changed.push('wallet.trainingEnergy');
-        }
-        walletValues.push(params.userId);
-        await client.query(
-          `update user_wallet
-              set ${walletAssignments.join(', ')}
-            where user_id = $${walletValues.length}`,
-          walletValues,
-        );
+      for (const onboardingChange of onboardingChanges) {
+        await appendEvent(client, params.userId, 'admin_user_updated', {
+          ...onboardingChange,
+          administratorId: req.user.id,
+        });
       }
 
-      await appendEvent(client, params.userId, 'admin_user_updated', {
-        admin_user_id: req.user.id,
-        fields: changed,
-      });
+      const wallet = body.data.wallet;
+      if (wallet !== undefined && Object.keys(wallet).length > 0) {
+        if (wallet.coins !== undefined) {
+          await client.query(
+            `insert into user_currency_account (user_id, balance)
+             values ($1, $2)
+             on conflict (user_id) do update set balance = excluded.balance`,
+            [params.userId, wallet.coins],
+          );
+          changed.push('wallet.coins');
+        }
+      }
+
+      const generalChanged = changed.filter(
+        (field) =>
+          field !== 'beginnerOnboardingCompleted' && field !== 'amateurOnboardingCompleted',
+      );
+      if (generalChanged.length > 0) {
+        await appendEvent(client, params.userId, 'admin_user_updated', {
+          admin_user_id: req.user.id,
+          fields: generalChanged,
+        });
+      }
       const updated = await fetchAdminUser(client, params.userId);
       return { user: mapUser(updated) };
     });

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './global.css';
 import './design-system.css';
@@ -8,9 +8,15 @@ import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { BottomNav, isBottomNavVisible } from '../components/BottomNav.js';
 import { DuelInviteToast } from '../components/DuelInviteToast.js';
+import { AmateurAccessToast } from '../amateur/AmateurAccessToast.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
 import { OfflineBanner } from '../chat/components/OfflineBanner.js';
 import { useChatSocket } from '../chat/useChatSocket.js';
+import { OnboardingGate } from '../onboarding/OnboardingGate.js';
+import { apiFetch } from '../api/apiFetch.js';
+import type { ProfileData } from '../screens/profileTypes.js';
+import { arenaBackgroundClass } from '../screens/lockerRoomBackground.js';
+import { queryClient } from './queryClient.js';
 
 const DailyScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DailyScreen })),
@@ -18,12 +24,22 @@ const DailyScreen = lazy(() =>
 const DemoScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DemoScreen })),
 );
+const TournamentResultPreviewScreen = lazy(() =>
+  import('../screens/DailyScreen.js').then((module) => ({
+    default: module.TournamentResultPreviewScreen,
+  })),
+);
 const InventoryScreen = lazy(() =>
   import('../screens/InventoryScreen.js').then((module) => ({ default: module.InventoryScreen })),
 );
 const DailyOverviewScreen = lazy(() =>
   import('../screens/DailyOverviewScreen.js').then((module) => ({
     default: module.DailyOverviewScreen,
+  })),
+);
+const WeeklyChallengeScreen = lazy(() =>
+  import('../screens/WeeklyChallengeScreen.js').then((module) => ({
+    default: module.WeeklyChallengeScreen,
   })),
 );
 const ProfileScreen = lazy(() =>
@@ -34,8 +50,36 @@ const ProfileSettingsScreen = lazy(() =>
     default: module.ProfileSettingsScreen,
   })),
 );
+const ProfileStatsScreen = lazy(() =>
+  import('../screens/ProfileDestinationScreens.js').then((module) => ({
+    default: module.ProfileStatsScreen,
+  })),
+);
+const ProfileEquipmentScreen = lazy(() =>
+  import('../screens/ProfileDestinationScreens.js').then((module) => ({
+    default: module.ProfileEquipmentScreen,
+  })),
+);
+const ProfileArenaScreen = lazy(() =>
+  import('../screens/ProfileDestinationScreens.js').then((module) => ({
+    default: module.ProfileArenaScreen,
+  })),
+);
 const SectionsScreen = lazy(() =>
   import('../screens/SectionsScreen.js').then((module) => ({ default: module.SectionsScreen })),
+);
+const BonusGamesScreen = lazy(() =>
+  import('../screens/BonusGamesScreen.js').then((module) => ({ default: module.BonusGamesScreen })),
+);
+const BonusGamePlayScreen = lazy(() =>
+  import('../screens/BonusGamePlayScreen.js').then((module) => ({
+    default: module.BonusGamePlayScreen,
+  })),
+);
+const AchievementsScreen = lazy(() =>
+  import('../screens/AchievementsScreen.js').then((module) => ({
+    default: module.AchievementsScreen,
+  })),
 );
 const TestCourtScreen = lazy(() =>
   import('../screens/TestCourtScreen.js').then((module) => ({ default: module.TestCourtScreen })),
@@ -74,55 +118,126 @@ const UserProfileScreen = lazy(() =>
   })),
 );
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { retry: false, refetchOnWindowFocus: false },
-    mutations: { retry: false },
-  },
-});
-
 function ChatRealtime(): JSX.Element {
   const status = useChatSocket();
   return <OfflineBanner status={status} />;
 }
 
-function RouteLoading(): JSX.Element {
+export function RouteLoading(): JSX.Element {
   return (
     <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ color: 'var(--muted)', fontSize: 14 }}>Загрузка…</div>
+      <div
+        className="route-loading"
+        role="status"
+        style={{ color: '#0f172a', background: 'rgba(255, 255, 255, 0.9)' }}
+      >
+        Загрузка…
+      </div>
     </main>
   );
 }
 
-function AppFrame(): JSX.Element {
+export function appBackdropClassName(pathname: string, search = ''): string {
+  if (pathname === '/login') {
+    return 'app-shell--login';
+  }
+
+  if (pathname === '/admin') {
+    return 'app-shell--arena app-shell--arena-admin';
+  }
+
+  if (
+    (pathname === '/' && new URLSearchParams(search).get('view') === 'daily') ||
+    (pathname === '/' && new URLSearchParams(search).get('view') === 'classic') ||
+    (pathname === '/' &&
+      new URLSearchParams(search).get('view') === 'training' &&
+      new URLSearchParams(search).get('play') === '1') ||
+    (pathname === '/' &&
+      new URLSearchParams(search).get('view') === 'amateur' &&
+      new URLSearchParams(search).has('match') &&
+      new URLSearchParams(search).get('play') === '1') ||
+    pathname === '/test-court' ||
+    pathname === '/demo' ||
+    pathname.startsWith('/duel/') ||
+    /^\/bonus-games\/[^/]+\/play$/.test(pathname)
+  ) {
+    return '';
+  }
+
+  if (pathname.startsWith('/chat/')) {
+    return 'app-shell--arena app-shell--arena-chat';
+  }
+
+  return 'app-shell--arena';
+}
+
+export function appSurfaceClassName(pathname: string): string {
+  if (pathname === '/login' || pathname.startsWith('/auth/')) {
+    return 'app-shell--auth-surfaces';
+  }
+  return 'app-shell--unified-glass';
+}
+
+function AppExperience(): JSX.Element {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
-  const bottomNavVisible = isBottomNavVisible(location, user);
+  const bottomNavVisible =
+    location.pathname !== '/dev/tournament-result-preview' && isBottomNavVisible(location, user);
+  const backdropClassName = appBackdropClassName(location.pathname, location.search);
+  const surfaceClassName = appSurfaceClassName(location.pathname);
+  const hasArenaBackdrop = backdropClassName.split(' ').includes('app-shell--arena');
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiFetch<ProfileData>('/me'),
+    enabled: user !== null && hasArenaBackdrop,
+  });
+  const levelBackdropClassName = hasArenaBackdrop
+    ? arenaBackgroundClass(profileQuery.data?.competitionLevel)
+    : '';
 
   return (
     <>
       <ChatRealtime />
       <DuelInviteToast />
+      <AmateurAccessToast />
       <div
-        className={`app-shell${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}`}
+        className={`app-shell ${surfaceClassName}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
         style={{
           maxWidth: 430,
           margin: '0 auto',
           width: '100%',
-          height: '100dvh',
-          minHeight: '100dvh',
+          height: 'var(--app-viewport-height, 100dvh)',
+          minHeight: 'var(--app-viewport-height, 100dvh)',
           position: 'relative',
           transform: 'translateZ(0)',
           overflow: 'hidden',
-          background: 'linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%)',
           boxShadow: '0 0 0 1px rgba(15,23,42,0.08), 0 8px 48px rgba(15,23,42,0.14)',
         }}
       >
+        {hasArenaBackdrop && (
+          <div
+            className="arena-ambient-lights"
+            data-testid="arena-ambient-lights"
+            aria-hidden="true"
+          >
+            {Array.from({ length: 10 }, (_, index) => (
+              <span key={index} />
+            ))}
+          </div>
+        )}
         <div className="app-content">
           <Suspense fallback={<RouteLoading />}>
             <Routes>
               <Route path="/login" element={<LoginScreen />} />
               <Route path="/demo" element={<DemoScreen />} />
+              <Route
+                path="/dev/tournament-result-preview"
+                element={
+                  <PrivateRoute>
+                    <TournamentResultPreviewScreen />
+                  </PrivateRoute>
+                }
+              />
               <Route path="/auth/vk/callback" element={<VkAuthCallbackScreen />} />
               <Route
                 path="/"
@@ -149,6 +264,30 @@ function AppFrame(): JSX.Element {
                 }
               />
               <Route
+                path="/bonus-games"
+                element={
+                  <PrivateRoute>
+                    <BonusGamesScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/bonus-games/:gameId/play"
+                element={
+                  <PrivateRoute>
+                    <BonusGamePlayScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/achievements"
+                element={
+                  <PrivateRoute>
+                    <AchievementsScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
                 path="/inventory"
                 element={
                   <PrivateRoute>
@@ -165,6 +304,18 @@ function AppFrame(): JSX.Element {
                 }
               />
               <Route
+                path="/achievements/weekly-challenge"
+                element={
+                  <PrivateRoute>
+                    <WeeklyChallengeScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/weekly-challenge"
+                element={<Navigate to="/achievements/weekly-challenge" replace />}
+              />
+              <Route
                 path="/profile"
                 element={
                   <PrivateRoute>
@@ -177,6 +328,46 @@ function AppFrame(): JSX.Element {
                 element={
                   <PrivateRoute>
                     <ProfileSettingsScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile/stats"
+                element={
+                  <PrivateRoute>
+                    <ProfileStatsScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile/equipment"
+                element={
+                  <PrivateRoute>
+                    <ProfileEquipmentScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile/arena"
+                element={
+                  <PrivateRoute>
+                    <ProfileArenaScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile/achievements"
+                element={
+                  <PrivateRoute>
+                    <AchievementsScreen profileContext />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile/achievements/weekly-challenge"
+                element={
+                  <PrivateRoute>
+                    <WeeklyChallengeScreen profileContext />
                   </PrivateRoute>
                 }
               />
@@ -240,10 +431,27 @@ function AppFrame(): JSX.Element {
   );
 }
 
+function AppFrame(): JSX.Element {
+  const location = useLocation();
+  const isAuthenticated = useAuthStore((state) => Boolean(state.accessToken));
+  const isPublicEntry =
+    location.pathname === '/login' ||
+    location.pathname === '/demo' ||
+    location.pathname === '/auth/vk/callback';
+
+  if (!isAuthenticated || isPublicEntry) return <AppExperience />;
+
+  return (
+    <OnboardingGate>
+      <AppExperience />
+    </OnboardingGate>
+  );
+}
+
 export function App(): JSX.Element {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AppFrame />
       </BrowserRouter>
     </QueryClientProvider>

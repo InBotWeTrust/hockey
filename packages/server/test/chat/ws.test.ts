@@ -68,7 +68,19 @@ async function openAndReady(ws: WebSocket): Promise<void> {
   await waitReady(ws);
 }
 
+async function closeSocket(ws: WebSocket): Promise<void> {
+  if (ws.readyState === ws.CLOSED) return;
+  await new Promise<void>((resolve) => {
+    ws.once('close', () => resolve());
+    ws.close();
+  });
+}
+
 describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
+  const processWarnings: Error[] = [];
+  const collectProcessWarning = (warning: Error): void => {
+    processWarnings.push(warning);
+  };
   let app: Awaited<ReturnType<typeof buildApp>>;
   let baseUrl: string;
   let userA: string;
@@ -82,6 +94,7 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
   let config: AppConfig;
 
   beforeAll(async () => {
+    process.on('warning', collectProcessWarning);
     const { databaseUrl, redisUrl } = getTestUrls();
     const setupPool = createTestPool();
     await resetDatabase(setupPool);
@@ -139,7 +152,15 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    try {
+      await app.close();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(
+        processWarnings.some((warning) => warning.name === 'MaxListenersExceededWarning'),
+      ).toBe(false);
+    } finally {
+      process.off('warning', collectProcessWarning);
+    }
   });
 
   it('rejects connection without token (close 4401)', async () => {
@@ -188,7 +209,7 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
       expect(frame.event.message.senderId).toBe(userB);
     }
 
-    wsA.close();
+    await closeSocket(wsA);
   });
 
   it('any connected client receives message:new posted to a system chat', async () => {
@@ -214,7 +235,7 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
       expect(frame.event.message.content).toBe('broadcast');
     }
 
-    wsC.close();
+    await closeSocket(wsC);
   });
 
   it('marks news channel message:new as silent for users with news notifications disabled', async () => {
@@ -266,8 +287,7 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
       expect(frameC.event.silent).toBe(true);
     }
 
-    wsB.close();
-    wsC.close();
+    await Promise.all([closeSocket(wsB), closeSocket(wsC)]);
   });
 
   it('A receives message:deleted when A deletes own message', async () => {
@@ -310,7 +330,7 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
       expect(frame.event.messageId).toBe(sentMsgId);
     }
 
-    wsA.close();
+    await closeSocket(wsA);
   });
 
   it('A receives chat:read on /chat/:id/read for the same user (other-tab sync)', async () => {
@@ -332,7 +352,7 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
     const frame = await incoming;
     expect(frame.event.type).toBe('chat:read');
 
-    wsA.close();
+    await closeSocket(wsA);
   });
 
   it('does NOT leak DM A↔B messages to user C', async () => {
@@ -382,6 +402,6 @@ describe.skipIf(!hasIntegrationEnv)('chat WebSocket', () => {
     expect(leaked).toBe(false);
 
     wsC.off('message', onMessage);
-    wsC.close();
+    await closeSocket(wsC);
   });
 });

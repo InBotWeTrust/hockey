@@ -13,6 +13,9 @@ const LEDGER_DDL = `
   )
 `;
 
+const NON_TRANSACTIONAL_DIRECTIVE = /^\s*--\s*hockey:migration-mode\s+non-transactional\s*$/m;
+const NON_TRANSACTIONAL_STATEMENT_SEPARATOR = /^\s*--\s*hockey:migration-statement\s*$/m;
+
 export async function applyMigrations(pool: Pool, dir: string): Promise<MigrationResult> {
   await pool.query(LEDGER_DDL);
 
@@ -27,15 +30,19 @@ export async function applyMigrations(pool: Pool, dir: string): Promise<Migratio
   for (const file of files) {
     if (alreadyApplied.has(file)) continue;
     const sql = await fs.readFile(path.join(dir, file), 'utf8');
+    const runsInTransaction = !NON_TRANSACTIONAL_DIRECTIVE.test(sql);
+    const statements = runsInTransaction
+      ? [sql]
+      : sql.split(NON_TRANSACTIONAL_STATEMENT_SEPARATOR).filter((statement) => statement.trim());
     const client = await pool.connect();
     try {
-      await client.query('begin');
-      await client.query(sql);
+      if (runsInTransaction) await client.query('begin');
+      for (const statement of statements) await client.query(statement);
       await client.query('insert into _migrations (name) values ($1)', [file]);
-      await client.query('commit');
+      if (runsInTransaction) await client.query('commit');
       applied.push(file);
     } catch (err) {
-      await client.query('rollback');
+      if (runsInTransaction) await client.query('rollback');
       throw err;
     } finally {
       client.release();

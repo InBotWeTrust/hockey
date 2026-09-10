@@ -188,4 +188,38 @@ describe.skipIf(!hasIntegrationEnv)('chat migrations 004 + 005', () => {
     const r = await pool.query(`select reply_to_id from messages where id = $1`, [reply.rows[0].id]);
     expect(r.rows[0].reply_to_id).toBeNull();
   });
+
+  it('tracks official dialogs and reopens a closed dialog on a new player message', async () => {
+    await pool.query(`update users set account_kind = 'official' where id = $1`, [userB]);
+    const chat = await pool.query(
+      `insert into chats (type, created_by) values ('direct', $1) returning id`,
+      [userB],
+    );
+    const chatId = chat.rows[0].id;
+    await pool.query(
+      `insert into chat_members (chat_id, user_id) values ($1, $2), ($1, $3)`,
+      [chatId, userA, userB],
+    );
+
+    await pool.query(
+      `insert into messages (chat_id, sender_id, content) values ($1, $2, 'Добро пожаловать')`,
+      [chatId, userB],
+    );
+    await pool.query(
+      `update official_dialog_state
+          set status = 'closed', closed_at = now(), closed_by = $2
+        where chat_id = $1`,
+      [chatId, userA],
+    );
+    await pool.query(
+      `insert into messages (chat_id, sender_id, content) values ($1, $2, 'Мне нужна помощь')`,
+      [chatId, userA],
+    );
+
+    const state = await pool.query(
+      `select status, closed_at, closed_by from official_dialog_state where chat_id = $1`,
+      [chatId],
+    );
+    expect(state.rows[0]).toMatchObject({ status: 'open', closed_at: null, closed_by: null });
+  });
 });

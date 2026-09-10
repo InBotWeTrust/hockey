@@ -1,0 +1,409 @@
+import type { PoolClient } from 'pg';
+import { AppError } from '../plugins/errors.js';
+
+export const GAMEPLAY_RECOVERY_MINUTES = 60;
+export const GAMEPLAY_RECOVERY_MS = 3_600_000;
+
+export function recoveryEndsAt(activityAt: Date, recoveredMinutes: number): Date {
+  const recoveredMs = Math.max(0, Math.min(GAMEPLAY_RECOVERY_MINUTES, recoveredMinutes)) * 60_000;
+  return new Date(activityAt.getTime() + GAMEPLAY_RECOVERY_MS - recoveredMs);
+}
+
+export type GameplayAction =
+  | 'start_training'
+  | 'start_daily_period'
+  | 'start_ordinary_duel'
+  | 'ordinary_duel_shot'
+  | 'start_classic'
+  | 'continue_classic';
+
+export type GameplayLockReason =
+  | 'recent_gameplay'
+  | 'scheduled_tournament'
+  | 'active_classic'
+  | 'active_daily';
+
+export interface GameplayLockState {
+  blocked: boolean;
+  reason: GameplayLockReason | null;
+  endsAt: Date | null;
+  tournamentStartsAt?: Date | null;
+}
+
+export interface GameplayLockDTO {
+  blocked: boolean;
+  reason: GameplayLockReason;
+  ends_at: string | null;
+  tournament_starts_at: string | null;
+}
+
+export function toGameplayLockDto(state: GameplayLockState): GameplayLockDTO | null {
+  if (!state.blocked || state.reason === null) return null;
+  return {
+    blocked: true,
+    reason: state.reason,
+    ends_at: state.endsAt?.toISOString() ?? null,
+    tournament_starts_at: state.tournamentStartsAt?.toISOString() ?? null,
+  };
+}
+
+export interface GameplayLockInput {
+  userId: string;
+  action: GameplayAction;
+  now: Date;
+  recoveryMs?: number;
+}
+
+type RecoveryMode = 'training' | 'daily' | 'amateur_duel';
+
+export interface RecentGameplayRecovery {
+  shotSessionId: string;
+  activityAt: Date;
+  recoveredMinutes: number;
+  endsAt: Date;
+}
+
+const NO_GAMEPLAY_LOCK: GameplayLockState = {
+  blocked: false,
+  reason: null,
+  endsAt: null,
+};
+
+function scheduledTournamentLock(startsAt: Date, now: Date): GameplayLockState {
+  const lockStartsAt = startsAt.getTime() - GAMEPLAY_RECOVERY_MS;
+  return {
+    blocked: now.getTime() >= lockStartsAt,
+    reason: now.getTime() >= lockStartsAt ? 'scheduled_tournament' : null,
+    endsAt: null,
+    tournamentStartsAt: startsAt,
+  };
+}
+
+function throwGameplayLock(state: GameplayLockState): never {
+  const until = state.endsAt === null ? '' : ` until ${state.endsAt.toISOString()}`;
+  throw new AppError('conflict', `gameplay is locked${until}`, 409, {
+    gameplayLock: state,
+  });
+}
+
+function recoveryModesForAction(action: GameplayAction): readonly RecoveryMode[] {
+  switch (action) {
+    case 'start_training':
+      return [];
+    case 'start_daily_period':
+      return ['training'];
+    case 'start_classic':
+      return ['training', 'daily', 'amateur_duel'];
+    case 'start_ordinary_duel':
+    case 'ordinary_duel_shot':
+    case 'continue_classic':
+      return [];
+  }
+}
+
+const ACTIVE_DAILY_LOCK: GameplayLockState = {
+  blocked: true,
+  reason: 'active_daily',
+  endsAt: null,
+};
+
+async function getActiveDailyLock(
+  client: PoolClient,
+  userId: string,
+  now: Date,
+): Promise<GameplayLockState> {
+  const { rows } = await client.query<{ active: boolean }>(
+    `select exists(
+       select 1
+         from day_pool pool
+         join users player on player.id = pool.user_id
+        where pool.user_id = $1
+          and pool.day_date = ($2::timestamptz at time zone player.timezone)::date
+          and pool.state <> 'closed'
+          and exists(
+            select 1
+              from shot_session shot
+             where shot.user_id = pool.user_id
+               and shot.mode = 'daily'
+               and shot.day_pool_id = pool.id
+          )
+     ) as active`,
+    [userId, now],
+  );
+  return rows[0]?.active === true ? ACTIVE_DAILY_LOCK : NO_GAMEPLAY_LOCK;
+}
+
+export async function lockUserGameplay(client: PoolClient, userId: string): Promise<void> {
+  await client.query("select pg_advisory_xact_lock(hashtext('gameplay:' || $1))", [userId]);
+}
+
+async function getNearestScheduledTournamentBlocks(
+  client: PoolClient,
+  userIds: string[],
+  now: Date,
+): Promise<Map<string, GameplayLockState>> {
+  const { rows } = await client.query<{ user_id: string; starts_at: Date }>(
+    `select candidate.user_id, min(candidate.starts_at) as starts_at
+       from (
+         select participant.user_id, fixture.scheduled_starts_at as starts_at
+           from tournament_fixture fixture
+           join tournament tournament on tournament.id = fixture.tournament_id
+           left join tournament_round round on round.id = fixture.round_id
+           join tournament_participant participant
+             on participant.id in (fixture.home_participant_id, fixture.away_participant_id)
+            and participant.user_id = any($1::uuid[])
+            and participant.state = 'approved'
+          where (tournament.status = 'regular'
+                 or (tournament.status = 'paused' and coalesce(round.stage, 'regular') = 'regular'))
+            and tournament.regular_source = 'head_to_head'
+            and fixture.scheduled_starts_at is not null
+            and fixture.status in ('scheduled', 'open', 'active', 'paused')
+         union all
+         select participant.user_id,
+                least(coalesce(game_day.rescheduled_starts_at, game_day.first_game_starts_at),
+                      attempt.scheduled_starts_at) as starts_at
+           from tournament_fixture_attempt attempt
+           join tournament_round_game_day game_day on game_day.id = attempt.round_game_day_id
+           join tournament_fixture fixture on fixture.id = attempt.fixture_id
+           join tournament tournament on tournament.id = fixture.tournament_id
+           join tournament_participant participant
+             on participant.id in (fixture.home_participant_id, fixture.away_participant_id)
+            and participant.user_id = any($1::uuid[])
+            and participant.state = 'approved'
+           left join tournament_playoff_series series on series.id = fixture.series_id
+          where tournament.status in ('playoff', 'paused')
+            and game_day.status in ('scheduled', 'open')
+            and fixture.status in ('conditional', 'scheduled', 'open', 'active', 'paused')
+            and attempt.status in (
+              'pending', 'ready_check', 'active', 'needs_reschedule', 'needs_admin_decision'
+            )
+            and (series.id is null or series.status in ('pending', 'scheduled', 'active', 'paused'))
+       ) candidate
+      group by candidate.user_id`,
+    [userIds],
+  );
+  return new Map(rows.map((row) => [row.user_id, scheduledTournamentLock(row.starts_at, now)]));
+}
+
+export async function getNearestScheduledTournamentBlock(
+  client: PoolClient,
+  userId: string,
+  now: Date,
+): Promise<GameplayLockState> {
+  return (
+    (await getNearestScheduledTournamentBlocks(client, [userId], now)).get(userId) ??
+    NO_GAMEPLAY_LOCK
+  );
+}
+
+async function getActiveClassicTournamentUsers(
+  client: PoolClient,
+  userIds: string[],
+): Promise<Set<string>> {
+  const { rows } = await client.query<{ user_id: string }>(
+    `select distinct participant.user_id
+         from tournament_classic_session session
+         join tournament_participant participant on participant.id = session.participant_id
+         join tournament tournament on tournament.id = session.tournament_id
+         join tournament_matchday matchday on matchday.id = session.matchday_id
+        where participant.user_id = any($1::uuid[])
+          and participant.state = 'approved'
+          and tournament.regular_source = 'classic'
+          and tournament.status in ('regular', 'paused')
+          and matchday.status <> 'cancelled'
+          and session.state not in ('closed', 'expired')
+          and exists(
+            select 1
+              from shot_session shot
+             where shot.mode = 'tournament_classic'
+               and shot.tournament_classic_session_id = session.id
+          )`,
+    [userIds],
+  );
+  return new Set(rows.map((row) => row.user_id));
+}
+
+const ACTIVE_CLASSIC_LOCK: GameplayLockState = {
+  blocked: true,
+  reason: 'active_classic',
+  endsAt: null,
+};
+
+export async function getActiveClassicTournamentLock(
+  client: PoolClient,
+  userId: string,
+): Promise<GameplayLockState> {
+  return (await getActiveClassicTournamentUsers(client, [userId])).has(userId)
+    ? ACTIVE_CLASSIC_LOCK
+    : NO_GAMEPLAY_LOCK;
+}
+
+export async function assertDailyShotGameplayAllowed(
+  client: PoolClient,
+  userId: string,
+  now: Date,
+): Promise<void> {
+  const state = await getTournamentGameplayLockState(client, userId, now);
+  // An accepted period may continue through prelock, but never through active tournament play.
+  if (
+    state.blocked &&
+    (state.reason === 'active_classic' ||
+      (state.reason === 'scheduled_tournament' &&
+        (state.tournamentStartsAt?.getTime() ?? 0) <= now.getTime()))
+  ) {
+    throwGameplayLock(state);
+  }
+}
+
+export async function getTournamentGameplayLockStates(
+  client: PoolClient,
+  userIds: string[],
+  now: Date,
+): Promise<Map<string, GameplayLockState>> {
+  if (userIds.length === 0) return new Map();
+  const scheduled = await getNearestScheduledTournamentBlocks(client, userIds, now);
+  const activeClassic = await getActiveClassicTournamentUsers(client, userIds);
+  return new Map(
+    userIds.map((userId) => {
+      const state = scheduled.get(userId) ?? NO_GAMEPLAY_LOCK;
+      return [userId, activeClassic.has(userId) ? ACTIVE_CLASSIC_LOCK : state];
+    }),
+  );
+}
+
+export async function getTournamentGameplayLockState(
+  client: PoolClient,
+  userId: string,
+  now: Date,
+): Promise<GameplayLockState> {
+  const activeClassic = await getActiveClassicTournamentLock(client, userId);
+  if (activeClassic.blocked) return activeClassic;
+  return getNearestScheduledTournamentBlock(client, userId, now);
+}
+
+export async function assertTournamentGameplayAllowed(
+  client: PoolClient,
+  userId: string,
+  now: Date,
+): Promise<void> {
+  const state = await getTournamentGameplayLockState(client, userId, now);
+  if (state.blocked) throwGameplayLock(state);
+}
+
+export async function getSafeSegmentStartLockState(
+  client: PoolClient,
+  input: { userId: string; now: Date; maxSegmentDurationMs: number },
+): Promise<GameplayLockState> {
+  const state = await getNearestScheduledTournamentBlock(client, input.userId, input.now);
+  return getSafeSegmentStartLockFromState(state, input.now, input.maxSegmentDurationMs);
+}
+
+export function getSafeSegmentStartLockFromState(
+  state: GameplayLockState,
+  now: Date,
+  maxSegmentDurationMs: number,
+): GameplayLockState {
+  if (state.blocked) return state;
+  if (state.tournamentStartsAt === undefined || state.tournamentStartsAt === null)
+    return NO_GAMEPLAY_LOCK;
+  const lockStartsAt = state.tournamentStartsAt.getTime() - GAMEPLAY_RECOVERY_MS;
+  if (now.getTime() + Math.max(0, maxSegmentDurationMs) < lockStartsAt) return NO_GAMEPLAY_LOCK;
+  return {
+    blocked: true,
+    reason: 'scheduled_tournament',
+    endsAt: null,
+    tournamentStartsAt: state.tournamentStartsAt,
+  };
+}
+
+export async function assertSafeSegmentStart(
+  client: PoolClient,
+  input: { userId: string; now: Date; maxSegmentDurationMs: number },
+): Promise<void> {
+  const state = await getSafeSegmentStartLockState(client, input);
+  if (state.blocked) throwGameplayLock(state);
+}
+
+export async function getGameplayLockState(
+  client: PoolClient,
+  input: GameplayLockInput,
+): Promise<GameplayLockState> {
+  const tournamentLock = await getTournamentGameplayLockState(client, input.userId, input.now);
+  if (tournamentLock.blocked) return tournamentLock;
+
+  if (input.action === 'start_training') {
+    const dailyLock = await getActiveDailyLock(client, input.userId, input.now);
+    if (dailyLock.blocked) return dailyLock;
+  }
+
+  const recoveryMs = input.recoveryMs ?? GAMEPLAY_RECOVERY_MS;
+  const recoveryModes = recoveryModesForAction(input.action);
+  if (recoveryMs <= 0 || recoveryModes.length === 0) return tournamentLock;
+
+  const recovery = await getRecentGameplayRecovery(client, input);
+  if (recovery === null || recovery.endsAt.getTime() <= input.now.getTime()) return tournamentLock;
+
+  return {
+    blocked: true,
+    reason: 'recent_gameplay',
+    endsAt: recovery.endsAt,
+  };
+}
+
+export async function getRecentGameplayRecovery(
+  client: PoolClient,
+  input: GameplayLockInput,
+): Promise<RecentGameplayRecovery | null> {
+  const recoveryMs = input.recoveryMs ?? GAMEPLAY_RECOVERY_MS;
+  const recoveryModes = recoveryModesForAction(input.action);
+  if (recoveryMs <= 0 || recoveryModes.length === 0) return null;
+  const { rows } = await client.query<{
+    shot_session_id?: string;
+    last_activity_at: Date | null;
+    recovered_minutes?: number | string;
+  }>(
+    `with latest as (
+       select ss.id, ss.created_at
+         from shot_session ss
+         left join amateur_duel_match m on m.id = ss.amateur_duel_match_id
+        where ss.user_id = $1
+          and (
+            ss.mode in ('training', 'daily')
+            or (ss.mode = 'amateur_duel' and m.source <> 'tournament')
+          )
+          and ss.mode = any($2::text[])
+        order by ss.created_at desc, ss.id desc
+        limit 1
+     )
+     select latest.id as shot_session_id, latest.created_at as last_activity_at,
+            coalesce(sum(application.recovery_minutes), 0)::int as recovered_minutes
+       from latest
+       left join recovery_kit_application application on application.shot_session_id = latest.id
+      group by latest.id, latest.created_at`,
+    [input.userId, recoveryModes],
+  );
+  const lastActivityAt = rows[0]?.last_activity_at ?? null;
+  const shotSessionId = rows[0]?.shot_session_id;
+  if (lastActivityAt === null || shotSessionId === undefined) return null;
+
+  const recoveredMinutes = Number(rows[0]?.recovered_minutes ?? 0);
+  const endsAt =
+    recoveryMs === GAMEPLAY_RECOVERY_MS
+      ? recoveryEndsAt(lastActivityAt, recoveredMinutes)
+      : new Date(lastActivityAt.getTime() + recoveryMs - recoveredMinutes * 60_000);
+  return {
+    shotSessionId,
+    activityAt: lastActivityAt,
+    recoveredMinutes,
+    endsAt,
+  };
+}
+
+export async function assertGameplayActionAllowed(
+  client: PoolClient,
+  input: GameplayLockInput,
+): Promise<void> {
+  const state = await getGameplayLockState(client, input);
+  if (!state.blocked) return;
+  throwGameplayLock(state);
+}

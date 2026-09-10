@@ -1,5 +1,7 @@
 import type { PoolClient } from 'pg';
-import { grantAchievements } from '../../achievements/service.js';
+import {
+  evaluateDailyClosedAchievements,
+} from '../../achievements/engine.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 
@@ -222,7 +224,13 @@ export async function reconcileDayPool(
           day_pool_id: pool.id,
           reason: 'completed',
         });
-        await grantAchievements(client, pool.user_id, ['first-daily-game', 'first-game']);
+        await evaluateDailyClosedAchievements(client, {
+          userId: pool.user_id,
+          dayPoolId: pool.id,
+          dayDate: pool.day_date,
+          totalPeriods: rules.totalPeriods,
+          shotsPerPeriod: rules.shotsPerPeriod,
+        });
         return { pool, timezone, localToday: today };
       }
     }
@@ -253,7 +261,13 @@ export async function reconcileDayPool(
           day_pool_id: pool.id,
           reason: 'completed',
         });
-        await grantAchievements(client, pool.user_id, ['first-daily-game', 'first-game']);
+        await evaluateDailyClosedAchievements(client, {
+          userId: pool.user_id,
+          dayPoolId: pool.id,
+          dayDate: pool.day_date,
+          totalPeriods: rules.totalPeriods,
+          shotsPerPeriod: rules.shotsPerPeriod,
+        });
         return { pool, timezone, localToday: today };
       }
     }
@@ -285,7 +299,13 @@ export async function reconcileDayPool(
       day_pool_id: pool.id,
       reason: 'completed',
     });
-    await grantAchievements(client, pool.user_id, ['first-daily-game', 'first-game']);
+    await evaluateDailyClosedAchievements(client, {
+      userId: pool.user_id,
+      dayPoolId: pool.id,
+      dayDate: pool.day_date,
+      totalPeriods: rules.totalPeriods,
+      shotsPerPeriod: rules.shotsPerPeriod,
+    });
     return { pool, timezone, localToday: today };
   }
 

@@ -1,331 +1,679 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProfileScreen } from './ProfileScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
-import type { InventoryState } from '../api/inventory.js';
 
-type TelegramWebAppWindow = typeof window & {
-  Telegram?: {
-    WebApp?: {
-      initData?: string;
-    };
-  };
-};
-
-const emptyInventoryState: InventoryState = {
-  balances: { tokens: 1000, stars: 3, experience: 77 },
-  items: { stick: [], skates: [], nutrition: [] },
-  equipped: { stickItemId: null, skatesItemId: null, nutritionItemId: null },
-};
-
-const consumableInventoryState: InventoryState = {
-  balances: { tokens: 1000, stars: 3, experience: 77 },
-  items: {
-    stick: [
+const profile = {
+  id: 'u1',
+  displayName: 'Alice T',
+  registeredAt: '2026-08-14T12:00:00.000Z',
+  avatarUrl: 'avatar.png',
+  role: 'player',
+  grip: 'right' as const,
+  competitionLevel: 'beginner' as const,
+  stats: { shots: 128, goals: 64, accuracy: 50, playStreakDays: 7, bestPlayStreakDays: 12 },
+  achievements: [
+    {
+      id: 'a1',
+      photoUrl: '/achievement-1.webp',
+      title: 'Снайпер недели',
+      description: 'Лучший результат',
+      requirement: 'Забить 50 голов',
+      isUnlocked: true,
+      status: 'claimed' as const,
+      completedAt: '2026-08-14T12:00:00.000Z',
+    },
+  ],
+  trophySummary: {
+    regularSeasonWins: 4,
+    tournamentChampionships: 2,
+    tournamentPodiums: 5,
+    completedChallenges: 11,
+  },
+  trophyDetails: {
+    regularSeasonWins: [
       {
-        id: 'stick-sharp',
-        kind: 'stick',
-        title: 'Острая клюшка',
-        description: 'Быстрее выпускает шайбу из неудобной позиции.',
-        imageUrl: '/inventory/sticks.webp',
-        currencyPrice: 120,
-        chargesPerPurchase: 5,
-        rarity: 'rare',
-        powerScore: 24,
-        duelPeriodCost: 1,
-        chargesAvailable: 3,
-        chargesReserved: 1,
+        id: 'regular-1',
+        title: 'Кубок открытия',
+        imageUrl: '/cup.webp',
+        startsAt: '2026-08-01T10:00:00.000Z',
+        endsAt: '2026-08-08T10:00:00.000Z',
+        result: 'Победа в регулярном чемпионате',
       },
     ],
-    skates: [
+    tournamentChampionships: [],
+    tournamentPodiums: [
       {
-        id: 'skates-light',
-        kind: 'skates',
-        title: 'Лёгкие коньки',
-        description: 'Добавляют рывок перед броском.',
-        imageUrl: '/inventory/nutrition.webp',
-        currencyPrice: 90,
-        chargesPerPurchase: 5,
-        rarity: 'common',
-        powerScore: 12,
-        duelPeriodCost: 1,
-        chargesAvailable: 0,
-        chargesReserved: 0,
+        id: 'podium-1',
+        title: 'Кубок лета',
+        imageUrl: '/summer.webp',
+        startsAt: '2026-07-01T10:00:00.000Z',
+        endsAt: '2026-07-08T10:00:00.000Z',
+        result: '2-е место',
       },
     ],
-    nutrition: [
+    completedChallenges: [
       {
-        id: 'nutrition-gel',
-        kind: 'nutrition',
-        title: 'Энергогель',
-        description: 'Держит концентрацию в конце периода.',
-        imageUrl: null,
-        currencyPrice: 60,
-        chargesPerPurchase: 5,
-        rarity: 'common',
-        powerScore: 8,
-        duelPeriodCost: 1,
-        chargesAvailable: 5,
-        chargesReserved: 0,
+        id: 'challenge-1',
+        title: 'Неделя точности',
+        startsAt: '2026-08-10T10:00:00.000Z',
+        endsAt: '2026-08-17T10:00:00.000Z',
+        tasks: [{ title: 'Забросить шайбы', target: 25 }],
       },
     ],
   },
+  currencyBalance: 1000,
+  starBalance: 3,
+  experienceBalance: 77,
+};
+
+function mockProfileRequest(
+  status = 200,
+  response: Omit<typeof profile, 'currencyBalance' | 'starBalance' | 'experienceBalance'> &
+    Partial<
+      Pick<typeof profile, 'currencyBalance' | 'starBalance' | 'experienceBalance'>
+    > = profile,
   equipped: {
-    stickItemId: 'stick-sharp',
-    skatesItemId: null,
-    nutritionItemId: 'nutrition-gel',
+    stickItemId: string | null;
+    skatesItemId: string | null;
+    nutritionItemId: string | null;
+  } = {
+    stickItemId: 'stick-1',
+    skatesItemId: 'skates-1',
+    nutritionItemId: 'food-1',
   },
-};
+  recovery: Array<{
+    id: string;
+    kind: 'recovery';
+    title: string;
+    imageUrl: string;
+    resourceUnit: 'charge';
+    chargesAvailable: number;
+    effectRecoveryMinutes: number;
+  }> = [],
+): void {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.endsWith('/api/me')) {
+      return new Response(status === 200 ? JSON.stringify(response) : 'server error', {
+        status,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (url.endsWith('/api/inventory/me')) {
+      return new Response(
+        JSON.stringify({
+          balances: { tokens: 1000, stars: 3, experience: 77 },
+          items: {
+            stick: [
+              {
+                id: 'stick-1',
+                kind: 'stick',
+                title: 'Ледяной клинок',
+                imageUrl: '/stick.webp',
+                resourceUnit: 'shot',
+                chargesAvailable: 18,
+              },
+              {
+                id: 'stick-2',
+                kind: 'stick',
+                title: 'Закончившаяся клюшка',
+                imageUrl: '/empty-stick.webp',
+                chargesAvailable: 0,
+              },
+            ],
+            skates: [
+              {
+                id: 'skates-1',
+                kind: 'skates',
+                title: 'Северный ход',
+                imageUrl: '/skates.webp',
+                resourceUnit: 'distance',
+                chargesAvailable: 7,
+              },
+            ],
+            nutrition: [
+              {
+                id: 'food-1',
+                kind: 'nutrition',
+                title: 'Энерго-гель',
+                imageUrl: '/food.webp',
+                resourceUnit: 'energy_ms',
+                chargesAvailable: 180_000,
+              },
+            ],
+            recovery,
+          },
+          equipped,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
+    if (url.endsWith('/api/me/home-arenas')) {
+      return new Response(
+        JSON.stringify({
+          arenas: [],
+          selected_arena: {
+            id: 'default',
+            selection_id: null,
+            slug: 'polar',
+            title: 'Полярная ночь',
+            artwork_url: '/arena.webp',
+            thumbnail_url: '/arena-thumb.webp',
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
+    return new Response('not found', { status: 404 });
+  });
+}
 
 function renderProfile(): void {
-  const qc = new QueryClient({
+  const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
-    <QueryClientProvider client={qc}>
+    <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/profile']}>
         <Routes>
           <Route path="/profile" element={<ProfileScreen />} />
+          <Route path="/profile/stats" element={<div>stats screen</div>} />
+          <Route path="/profile/equipment" element={<div>equipment screen</div>} />
+          <Route path="/profile/achievements" element={<div>achievements screen</div>} />
           <Route path="/profile/settings" element={<div>settings screen</div>} />
-          <Route path="/inventory" element={<div>inventory screen</div>} />
+          <Route path="/inventory" element={<div>inventory shop</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-const telegramProfile = {
-  id: 'u1',
-  displayName: 'Alice T',
-  role: 'player',
-  avatarUrl: 'tg.png',
-  grip: 'right',
-  competitionLevel: 'beginner',
-  stats: {
-    shots: 128,
-    goals: 64,
-    accuracy: 50,
-    playStreakDays: 7,
-    bestPlayStreakDays: 12,
-  },
-  achievements: [
-    {
-      id: 'first-goal',
-      photoUrl: '/achievements/first-goal.webp',
-      title: 'Первая шайба',
-      description: 'Первый гол всегда самый шумный.',
-      requirement: 'Забить 1 гол.',
-      isUnlocked: true,
-      unlockedAt: '2026-05-02T08:00:00.000Z',
-    },
-    {
-      id: 'amateur-ticket',
-      photoUrl: '/achievements/amateur-ticket.webp',
-      title: 'Билет в любители',
-      description: 'Ты готов к любительским дуэлям и турнирам.',
-      requirement: 'Открыть уровень «Любитель».',
-      isUnlocked: false,
-    },
-  ],
-  displaySource: 'telegram',
-  linkedProviders: ['telegram', 'vk'],
-  tgFirstName: 'Alice',
-  tgLastName: 'T',
-  tgAvatarUrl: 'tg.png',
-  tgUsername: 'alice',
-  vkFirstName: 'Vera',
-  vkLastName: 'V',
-  vkAvatarUrl: 'vk.png',
-  vkUsername: 'vera',
-};
-
-function getFetchUrl(input: Parameters<typeof fetch>[0]): string {
-  if (typeof input === 'string') return input;
-  if (input instanceof URL) return input.href;
-  return input.url;
-}
-
-function mockProfileFetch(
-  profile: typeof telegramProfile,
-  inventory: InventoryState = emptyInventoryState,
-) {
-  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, _init) => {
-    const url = getFetchUrl(input);
-    if (url.endsWith('/api/me')) {
-      return new Response(JSON.stringify(profile), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-    if (url.endsWith('/api/inventory/me')) {
-      return new Response(JSON.stringify(inventory), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-    return new Response(JSON.stringify({ error: { code: 'not_found', message: 'not found' } }), {
-      status: 404,
-      headers: { 'content-type': 'application/json' },
-    });
-  });
-}
-
 describe('ProfileScreen', () => {
   beforeEach(() => {
-    localStorage.clear();
-    delete (window as TelegramWebAppWindow).Telegram;
+    vi.restoreAllMocks();
     useAuthStore.getState().setSession({
-      accessToken: 'a',
-      refreshToken: 'r',
+      accessToken: 'access',
+      refreshToken: 'refresh',
       user: { id: 'u1', displayName: 'Alice T' },
     });
-    vi.restoreAllMocks();
   });
 
-  it('shows profile stats, achievements and a header settings button', async () => {
-    mockProfileFetch(telegramProfile);
+  it('renders a direct profile hub instead of the locker hotspots', async () => {
+    mockProfileRequest();
 
     renderProfile();
 
-    const statsLabel = await screen.findByText('Статистика');
-    const equipmentLabel = screen.getByText('Экипировка');
-    const achievementsLabel = screen.getByText('Задания (1/2)');
-    expect(screen.getByText('Уровень: Новичок')).toBeInTheDocument();
-    expect(screen.queryByText('id u1')).not.toBeInTheDocument();
-    expect(screen.queryByText('Валюта')).not.toBeInTheDocument();
-    expect(await screen.findByLabelText('Монеты: 1000')).toBeInTheDocument();
-    expect(await screen.findByLabelText('Звёзды: 3')).toBeInTheDocument();
-    expect(await screen.findByLabelText('Опыт: 77')).toBeInTheDocument();
-    expect(
-      await screen.findByText((text) => text.replace(/\s/g, '') === '1000'),
-    ).toBeInTheDocument();
-    expect(await screen.findByText('77')).toBeInTheDocument();
-    expect(screen.queryByText('Ранг')).not.toBeInTheDocument();
-    expect(screen.getByText('Броски')).toBeInTheDocument();
-    expect(screen.getByText('128')).toBeInTheDocument();
-    expect(screen.getByText('Голы')).toBeInTheDocument();
-    expect(screen.getByText('64')).toBeInTheDocument();
-    expect(screen.getByText('Точность')).toBeInTheDocument();
-    expect(screen.getByText('50%')).toBeInTheDocument();
-    expect(screen.getByText('Дней подряд')).toBeInTheDocument();
-    expect(screen.getByText('7')).toBeInTheDocument();
-    expect(screen.getByText('(12)')).toBeInTheDocument();
-    expect(screen.queryByText('Вратарей пройдено')).not.toBeInTheDocument();
-    expect(screen.queryByText('Аккаунт и хват игрока')).not.toBeInTheDocument();
-    expect(screen.queryByText('Уведомления')).not.toBeInTheDocument();
-    expect(screen.queryByText('Пуш-уведомления')).not.toBeInTheDocument();
-    expect(screen.queryByText('Обратная связь')).not.toBeInTheDocument();
-    expect(screen.queryByText('Форма обратной связи')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Тестовый пуш/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /Билет в любители.*не получено/i }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText('Первый гол всегда самый шумный.')).not.toBeInTheDocument();
-    expect(statsLabel.compareDocumentPosition(achievementsLabel)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
+    expect(await screen.findByLabelText('Спортивный паспорт')).toBeInTheDocument();
+    expect(document.querySelector('main.profile-screen')).toHaveClass('profile-screen--locker-bg');
+    expect(document.querySelector('main.profile-screen')).toHaveClass('locker-room-bg--beginner');
+    expect(screen.queryByText('Всё по делу')).not.toBeInTheDocument();
+    expect(screen.getByText('Alice T')).toBeInTheDocument();
+    expect(screen.getByText('Новичок')).toBeInTheDocument();
+    expect(screen.getByLabelText('Монеты: 1000')).toBeInTheDocument();
+    expect(screen.getByLabelText('Звёзды: 3')).toBeInTheDocument();
+    expect(screen.getByLabelText('Опыт: 77')).toBeInTheDocument();
+    expect(screen.getByTestId('profile-balance-icon-coins')).toBeInTheDocument();
+    expect(screen.getByTestId('profile-balance-icon-stars')).toBeInTheDocument();
+    expect(screen.getByTestId('profile-balance-icon-stars')).toHaveAttribute(
+      'fill',
+      'currentColor',
     );
-    expect(statsLabel.compareDocumentPosition(equipmentLabel)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
+    expect(screen.getByTestId('profile-balance-icon-experience')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Статистика' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открыть инвентарь' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открыть инвентарь' })).toHaveClass(
+      'profile-section-label',
     );
-    expect(equipmentLabel.compareDocumentPosition(achievementsLabel)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /Первая шайба.*получено/i }));
-    expect(screen.getByRole('dialog', { name: 'Первая шайба' })).toBeInTheDocument();
-    expect(screen.getByText('Первый гол всегда самый шумный.')).toBeInTheDocument();
-    expect(screen.getByText(/Забить 1 гол/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Понятно' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
-    expect(screen.queryByRole('dialog', { name: 'Первая шайба' })).not.toBeInTheDocument();
-
-    const settingsButton = screen.getByRole('button', { name: 'Настройки' });
-    fireEvent.click(settingsButton);
-
-    expect(screen.getByText('settings screen')).toBeInTheDocument();
+    expect(screen.getByText('Настройки')).toHaveClass('profile-section-label');
+    expect(screen.getByText('Профиль и уведомления')).toHaveClass('profile-settings-card__title');
+    expect(screen.queryByText('Профиль и аккаунт')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Домашняя арена' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открыть карьеру и награды' })).toBeInTheDocument();
+    expect(screen.getByText('Награды и достижения (1)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Настройки' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Раздевалка игрока')).not.toBeInTheDocument();
   });
 
-  it('hides notification settings inside Telegram Mini App', async () => {
-    (window as TelegramWebAppWindow).Telegram = {
-      WebApp: {
-        initData: 'query_id=q&user=%7B%22id%22%3A42%7D&auth_date=1&hash=h',
-      },
-    };
-    const fetchMock = mockProfileFetch(telegramProfile);
+  it('routes each direct profile card to its destination', async () => {
+    mockProfileRequest();
 
     renderProfile();
 
-    expect(await screen.findByText('Статистика')).toBeInTheDocument();
-    expect(screen.queryByText('Уведомления')).not.toBeInTheDocument();
-    expect(screen.queryByText('Пуш-уведомления')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /уведомления/i })).not.toBeInTheDocument();
-    const urls = fetchMock.mock.calls.map((call) => getFetchUrl(call[0]));
-    expect(urls.some((url) => url.includes('/api/push/'))).toBe(false);
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть инвентарь' }));
+    expect(screen.getByText('equipment screen')).toBeInTheDocument();
   });
 
-  it('renders consumable equipment slots and picker details', async () => {
-    mockProfileFetch(telegramProfile, consumableInventoryState);
+  it('links to the official VK and Telegram communities from the profile', async () => {
+    mockProfileRequest();
 
     renderProfile();
 
-    expect(
-      await screen.findByRole('button', { name: /Клюшка.*Острая клюшка/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /Коньки.*Обычные коньки.*Базовая/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Питание.*Энергогель/i })).toBeInTheDocument();
-    expect(screen.getByText('На 3 периода')).toBeInTheDocument();
-    expect(screen.queryByText('Бросок +24')).not.toBeInTheDocument();
-    expect(screen.queryByText('выбрано')).not.toBeInTheDocument();
-    expect(document.querySelector('img[src="/inventory/stick-silver.webp"]')).toBeInTheDocument();
-    expect(
-      document.querySelector('img[src="/inventory/nutrition-bronze.webp"]'),
-    ).toBeInTheDocument();
-    expect(document.querySelector('img[src="/inventory/sticks.webp"]')).not.toBeInTheDocument();
+    expect(await screen.findByText('Сообщества')).toHaveClass('profile-section-label');
+    expect(screen.getByRole('link', { name: 'Открыть сообщество ВКонтакте' })).toHaveAttribute(
+      'href',
+      'https://vk.ru/ultimate_hockey',
+    );
+    expect(screen.getByRole('link', { name: 'Открыть канал в Telegram' })).toHaveAttribute(
+      'href',
+      'https://t.me/ultimate_hockey',
+    );
+    expect(screen.getByTestId('profile-community-icon-vk')).toBeInTheDocument();
+    expect(screen.getByTestId('profile-community-icon-telegram')).toBeInTheDocument();
+    expect(screen.getByTestId('profile-community-icon-telegram').querySelector('img')).toHaveAttribute(
+      'src',
+      '/icons/telegram-community-v2.png',
+    );
+    for (const link of screen.getAllByRole('link')) {
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noreferrer');
+    }
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: /Клюшка.*Острая клюшка/i }));
+  it('opens the matching equipment picker from an equipped item', async () => {
+    mockProfileRequest();
+    renderProfile();
 
-    const dialog = screen.getByRole('dialog', { name: 'Клюшка' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать клюшку' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Выбрать клюшку' });
     expect(dialog).toBeInTheDocument();
-    expect(within(dialog).getByText('Острая клюшка')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Выбрать Обычная клюшка' })).toBeEnabled();
+    expect(within(dialog).getByText('Ледяной клинок')).toBeInTheDocument();
+    expect(within(dialog).getByText('Осталось: 18 бросков')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Закончившаяся клюшка')).not.toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Выбрать коньки' }));
     expect(
-      within(dialog).getByText('Быстрее выпускает шайбу из неудобной позиции.'),
+      within(screen.getByRole('dialog', { name: 'Выбрать коньки' })).getByText(
+        'Осталось: 7 прокатов',
+      ),
     ).toBeInTheDocument();
-    expect(within(dialog).getByText(/Бросок \+24/)).toBeInTheDocument();
-    expect(within(dialog).getByText('Цена: 120')).toBeInTheDocument();
-    expect(within(dialog).getByText('1 забронирован')).toBeInTheDocument();
-    expect(within(dialog).queryByText('Экипировать')).not.toBeInTheDocument();
-    expect(within(dialog).queryByText('Не брать')).not.toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: /Острая клюшка/i })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Выбрать питание' }));
+    expect(
+      within(screen.getByRole('dialog', { name: 'Выбрать питание' })).getByText(
+        'Осталось: 3 минуты энергии',
+      ),
+    ).toBeInTheDocument();
   });
 
-  it('shows base required equipment and offers the shop inside missing nutrition details', async () => {
-    mockProfileFetch(telegramProfile, emptyInventoryState);
-
+  it('opens achievement details from a career award', async () => {
+    mockProfileRequest();
     renderProfile();
 
     fireEvent.click(
-      await screen.findByRole('button', { name: /Клюшка.*Обычная клюшка.*Базовая/i }),
+      await screen.findByRole('button', { name: 'Открыть достижение Снайпер недели' }),
     );
-    const dialog = screen.getByRole('dialog', { name: 'Клюшка' });
-    expect(within(dialog).getByText('Обычная клюшка')).toBeInTheDocument();
-    expect(within(dialog).queryByText('Без клюшки')).not.toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
 
-    fireEvent.click(screen.getByRole('button', { name: /Питание.*Нет купленных/i }));
+    expect(screen.getByRole('dialog', { name: 'Снайпер недели' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Снайпер недели' })).toHaveClass(
+      'achievement-details-modal',
+    );
+    expect(screen.getByRole('img', { name: 'Снайпер недели' })).toHaveClass(
+      'achievement-details-modal__image',
+    );
+    expect(screen.queryByText('Выполнено')).not.toBeInTheDocument();
+    expect(screen.getByText('Лучший результат')).toBeInTheDocument();
+    expect(screen.getByText('Забить 50 голов')).toBeInTheDocument();
+  });
 
-    const nutritionDialog = screen.getByRole('dialog', { name: 'Питание' });
+  it('uses equipment, career and compact utility actions instead of a card catalog', async () => {
+    mockProfileRequest();
+
+    renderProfile();
+
+    const cards = await screen.findByLabelText('Спортивные данные игрока');
+    const cardButtons = Array.from(cards.querySelectorAll<HTMLButtonElement>('button'));
+    expect(cardButtons.map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Открыть инвентарь',
+      'Выбрать клюшку',
+      'Выбрать коньки',
+      'Выбрать питание',
+      'Восстановление: 0 минут',
+      'Открыть карьеру и награды',
+      'Открыть достижение Снайпер недели',
+      'Настройки',
+    ]);
+  });
+
+  it('shows the player trophy showcase under the identity card', async () => {
+    mockProfileRequest();
+    renderProfile();
+
+    const showcase = await screen.findByLabelText('Витрина наград');
+    const passport = screen.getByLabelText('Спортивный паспорт');
+    expect(passport).toContainElement(showcase);
+    expect(showcase).toHaveTextContent('4Победы в регулярке');
+    expect(showcase).toHaveTextContent('2Чемпионства');
+    expect(showcase).toHaveTextContent('5Призовые места');
+    expect(showcase).toHaveTextContent('11Пройденные челленджи');
+    expect(showcase.querySelectorAll('.profile-trophy-showcase__number')).toHaveLength(4);
+  });
+
+  it('opens a tournament history modal only for a non-zero trophy section', async () => {
+    mockProfileRequest();
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: /победы в регулярке/i }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Победы в регулярке (1)' });
+    expect(dialog).toHaveAccessibleName('Победы в регулярке (1)');
+    expect(dialog).toHaveTextContent('Кубок открытия');
+    expect(dialog).toHaveTextContent('01.08.2026 — 08.08.2026');
+    expect(dialog).toHaveTextContent('Победа в регулярном чемпионате');
+    expect(screen.getByRole('img', { name: 'Кубок открытия' })).toHaveAttribute('src', '/cup.webp');
+  });
+
+  it('renders completed challenge tasks as aligned rows with their targets', async () => {
+    mockProfileRequest();
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: /пройденные челленджи/i }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Пройденные челленджи (1)' });
+    const task = within(dialog).getByRole('listitem');
+    expect(task).toHaveTextContent('Забросить шайбы');
+    expect(task).toHaveTextContent('25');
+    expect(dialog.querySelector('.profile-trophy-history__challenge-tasks')).toBeInTheDocument();
+  });
+
+  it('uses the default tournament artwork when a trophy has no image', async () => {
+    mockProfileRequest(200, {
+      ...profile,
+      trophyDetails: {
+        ...profile.trophyDetails,
+        regularSeasonWins: [
+          {
+            ...profile.trophyDetails.regularSeasonWins[0]!,
+            title: 'Чемпионат с очень длинным названием',
+            imageUrl: null as unknown as string,
+          },
+        ],
+      },
+    });
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: /победы в регулярке/i }));
+
     expect(
-      within(nutritionDialog).getByText('Купленных предметов этого типа пока нет.'),
-    ).toBeInTheDocument();
-    fireEvent.click(within(nutritionDialog).getByRole('button', { name: 'В магазин' }));
-    expect(screen.getByText('inventory screen')).toBeInTheDocument();
+      screen.getByRole('img', { name: 'Чемпионат с очень длинным названием' }),
+    ).toHaveAttribute('src', '/modes/tournaments.webp');
+  });
+
+  it('keeps a zero trophy section non-interactive', async () => {
+    mockProfileRequest(200, {
+      ...profile,
+      trophySummary: { ...profile.trophySummary, tournamentChampionships: 0 },
+    });
+    renderProfile();
+
+    const zeroSection = await screen.findByText('Чемпионства');
+    expect(zeroSection.closest('button')).toBeNull();
+  });
+
+  it('shows the key sporting metrics inside one passport card', async () => {
+    mockProfileRequest();
+    renderProfile();
+
+    const passport = await screen.findByLabelText('Спортивный паспорт');
+    expect(passport).toHaveTextContent('64Шайбы');
+    expect(passport).toHaveTextContent('50%Точность');
+    expect(passport).toHaveTextContent('7 (12)Дней подряд');
+    expect(passport).toHaveTextContent('с14.08.26В игре');
+    expect(passport.querySelector('.profile-streak-record')).toHaveTextContent('(12)');
+    expect(passport.querySelector('.profile-registration-date')).toHaveTextContent('с14.08.26');
+    expect(passport.querySelector('.profile-registration-date__prefix')).toHaveTextContent('с');
+    expect(screen.queryByLabelText('Профиль игрока')).not.toBeInTheDocument();
+  });
+
+  it('shrinks long profile numbers to keep them inside their cells', async () => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.classList.contains('profile-fitted-number') ? 80 : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.classList.contains('profile-fitted-number') ? 180 : 0;
+    });
+    mockProfileRequest(200, {
+      ...profile,
+      currencyBalance: 99_999_999_999,
+      stats: { ...profile.stats, goals: 99_999_999_999 },
+    });
+    renderProfile();
+
+    await screen.findByLabelText('Спортивный паспорт');
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText('Монеты: 99999999999').querySelector('.profile-fitted-number'),
+      ).toHaveStyle({ fontSize: '8px' });
+      expect(
+        screen.getByLabelText('Главные показатели').querySelector('.profile-fitted-number'),
+      ).toHaveStyle({ fontSize: '7.5px' });
+    });
+  });
+
+  it('shows equipment plus the recovery stock in the inventory strip', async () => {
+    mockProfileRequest();
+    renderProfile();
+
+    const equipmentCard = await screen.findByLabelText('Инвентарь');
+    expect(equipmentCard).toHaveTextContent('18КлюшкаЛедяной клинок');
+    expect(equipmentCard).toHaveTextContent('7КонькиСеверный ход');
+    expect(equipmentCard).toHaveTextContent('3 минПитаниеЭнерго-гель');
+    expect(equipmentCard).toHaveTextContent('0ВосстановлениеНет в запасе');
+    expect(equipmentCard.querySelector('.profile-loadout')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Ледяной клинок' })).toHaveAttribute(
+      'src',
+      '/stick.webp',
+    );
+    expect(screen.getByRole('img', { name: 'Северный ход' })).toHaveAttribute(
+      'src',
+      '/skates.webp',
+    );
+    expect(screen.getByRole('img', { name: 'Энерго-гель' })).toHaveAttribute('src', '/food.webp');
+    expect(screen.getByRole('img', { name: 'Наборы для восстановления' })).toHaveAttribute(
+      'src',
+      '/inventory/recovery-30.webp',
+    );
+  });
+
+  it('opens recovery stock details instead of the generic equipment page', async () => {
+    mockProfileRequest(200, profile, undefined, [
+      {
+        id: 'recovery-15',
+        kind: 'recovery',
+        title: 'Малый набор для восстановления',
+        imageUrl: '/inventory/recovery-15.webp',
+        resourceUnit: 'charge',
+        chargesAvailable: 2,
+        effectRecoveryMinutes: 15,
+      },
+      {
+        id: 'recovery-60',
+        kind: 'recovery',
+        title: 'Большой набор для восстановления',
+        imageUrl: '/inventory/recovery-60.webp',
+        resourceUnit: 'charge',
+        chargesAvailable: 1,
+        effectRecoveryMinutes: 60,
+      },
+    ]);
+    renderProfile();
+
+    const recovery = await screen.findByRole('button', { name: 'Восстановление: 90 минут' });
+    expect(recovery).toHaveTextContent('90');
+    expect(recovery).toHaveTextContent('Минут');
+    fireEvent.click(recovery);
+
+    const dialog = screen.getByRole('dialog', { name: 'Наборы для восстановления' });
+    expect(dialog).toHaveTextContent('Малый набор для восстановления');
+    expect(dialog).toHaveTextContent('Снимает 15 минут');
+    expect(dialog).toHaveTextContent('В запасе: 2');
+    expect(dialog).toHaveTextContent('Большой набор для восстановления');
+    expect(dialog).toHaveTextContent('Снимает 1 час');
+    expect(dialog).toHaveTextContent('В запасе: 1');
+    expect(screen.queryByText('equipment screen')).not.toBeInTheDocument();
+  });
+
+  it('offers the shop when there are no recovery kits in stock', async () => {
+    mockProfileRequest();
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Восстановление: 0 минут' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Наборы для восстановления' });
+    expect(dialog).toHaveTextContent('Наборов восстановления пока нет в запасе.');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Перейти в магазин' }));
+    expect(screen.getByText('inventory shop')).toBeInTheDocument();
+  });
+
+  it('shows base equipment artwork without a quantity badge for empty slots', async () => {
+    mockProfileRequest(200, profile, {
+      stickItemId: null,
+      skatesItemId: null,
+      nutritionItemId: null,
+    });
+    renderProfile();
+
+    const equipmentCard = await screen.findByLabelText('Инвентарь');
+    expect(equipmentCard).toHaveTextContent('КлюшкаНе выбрано');
+    expect(equipmentCard).toHaveTextContent('КонькиНе выбрано');
+    expect(equipmentCard).toHaveTextContent('ПитаниеНе выбрано');
+    expect(equipmentCard).not.toHaveTextContent('—');
+    expect(screen.getByRole('img', { name: 'Базовая клюшка' })).toHaveAttribute(
+      'src',
+      expect.stringContaining('/inventory/stick-base.webp'),
+    );
+    expect(screen.getByRole('img', { name: 'Базовые коньки' })).toHaveAttribute(
+      'src',
+      expect.stringContaining('/inventory/skates-base.webp'),
+    );
+    expect(screen.getByRole('img', { name: 'Базовое питание' })).toHaveAttribute(
+      'src',
+      expect.stringContaining('/inventory/nutrition-none.webp'),
+    );
+  });
+
+  it('shows the latest earned achievement in the career band', async () => {
+    mockProfileRequest();
+    renderProfile();
+
+    const career = await screen.findByLabelText('Награды и достижения');
+    expect(career).toHaveTextContent('Снайпер недели');
+    expect(career.querySelector('img')).toHaveAttribute('src', '/achievement-1.webp');
+    expect(career.querySelector('.profile-career-list')).toHaveClass('profile-career-list--scroll');
+  });
+
+  it('uses the compact achievement title treatment for training monster', async () => {
+    mockProfileRequest(200, {
+      ...profile,
+      achievements: [
+        {
+          ...profile.achievements[0]!,
+          id: 'training-monster',
+          title: 'Тренировочный монстр',
+        },
+      ],
+    });
+    renderProfile();
+
+    const achievement = await screen.findByRole('button', {
+      name: 'Открыть достижение Тренировочный монстр',
+    });
+    expect(achievement.querySelector('.profile-achievement-title')).toHaveClass(
+      'profile-achievement-title--compact',
+    );
+  });
+
+  it('orders earned achievements from newest to oldest in the career band', async () => {
+    mockProfileRequest(200, {
+      ...profile,
+      achievements: [
+        {
+          ...profile.achievements[0]!,
+          id: 'older',
+          title: 'Первая шайба',
+          completedAt: '2026-08-01T10:00:00.000Z',
+        },
+        {
+          ...profile.achievements[0]!,
+          id: 'newer',
+          title: 'Новая награда',
+          completedAt: '2026-09-01T10:00:00.000Z',
+        },
+        {
+          ...profile.achievements[0]!,
+          id: 'invalid-date',
+          title: 'Награда с неверной датой',
+          completedAt: 'неверная дата',
+        },
+      ],
+    });
+    renderProfile();
+
+    const career = await screen.findByLabelText('Награды и достижения');
+    const achievementButtons = within(career).getAllByRole('button', {
+      name: /Открыть достижение/,
+    });
+
+    expect(achievementButtons.map((button) => button.textContent)).toEqual([
+      'Новая награда',
+      'Первая шайба',
+      'Награда с неверной датой',
+    ]);
+  });
+
+  it('shows the empty achievement message directly in the shared career panel', async () => {
+    mockProfileRequest(200, { ...profile, achievements: [] });
+    renderProfile();
+
+    const career = await screen.findByLabelText('Награды и достижения');
+    const panel = career.querySelector('.profile-career-panel');
+    const emptyCopy = screen.getByText('Первая награда ещё впереди');
+
+    expect(emptyCopy.parentElement).toBe(panel);
+    expect(emptyCopy).toHaveClass('profile-career-empty-copy');
+    expect(emptyCopy).not.toHaveClass('glass');
+  });
+
+  it('uses the shared glass surface treatment for the new profile sections', async () => {
+    mockProfileRequest();
+
+    renderProfile();
+
+    const profileCard = await screen.findByLabelText('Инвентарь');
+    expect(profileCard.querySelector('.profile-equipment-panel')).toHaveClass('glass');
+    expect(profileCard).not.toHaveClass('section-card-surface');
+  });
+
+  it('shows a retryable profile error instead of fabricated balances', async () => {
+    mockProfileRequest(500);
+
+    renderProfile();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось загрузить профиль');
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Монеты:/)).not.toBeInTheDocument();
+  });
+
+  it('does not substitute zero balances when the profile response is incomplete', async () => {
+    const { currencyBalance, starBalance, experienceBalance, ...incompleteProfile } = profile;
+    void currencyBalance;
+    void starBalance;
+    void experienceBalance;
+    mockProfileRequest(200, incompleteProfile);
+
+    renderProfile();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось загрузить профиль');
+    expect(screen.queryByLabelText(/Монеты:/)).not.toBeInTheDocument();
   });
 });

@@ -26,6 +26,8 @@ export interface EnqueueFirstDialogMessagePushResult {
   skippedReason: 'no_recipient' | 'no_subscription' | 'muted' | 'template_disabled' | null;
 }
 
+export type EnqueueDialogMessagePushResult = EnqueueFirstDialogMessagePushResult;
+
 const MESSAGE_PREVIEW_LIMIT = 120;
 
 function compactMessagePreview(content: string): string {
@@ -41,9 +43,10 @@ function withTag(payload: WebPushPayload, tag: string): WebPushPayload {
   return { ...payload, tag };
 }
 
-export async function enqueueFirstDialogMessagePush(
+async function enqueueMessagePush(
   pool: Pool,
   input: EnqueueFirstDialogMessagePushInput,
+  identity: { eventKey: string; tag: string },
 ): Promise<EnqueueFirstDialogMessagePushResult> {
   const { rows } = await pool.query<DirectMessagePushRecipientRow>(
     `select cm.user_id::text,
@@ -57,6 +60,7 @@ export async function enqueueFirstDialogMessagePush(
             pref.daily_game,
             pref.training_available,
             pref.duel_events,
+            pref.tournament_events,
             pref.game_news
        from chat_members cm
        join users sender on sender.id = $2
@@ -101,8 +105,28 @@ export async function enqueueFirstDialogMessagePush(
   const queued = await enqueuePushDelivery(pool, {
     userId: recipient.user_id,
     eventType: 'chat.new_dialog_message',
-    eventKey: `chat:new-dialog:${input.chatId}`,
-    payload: withTag(payload, `ultimate-hockey-dm-${input.chatId}`),
+    eventKey: identity.eventKey,
+    payload: withTag(payload, identity.tag),
   });
   return { queued, skippedReason: null };
+}
+
+export async function enqueueFirstDialogMessagePush(
+  pool: Pool,
+  input: EnqueueFirstDialogMessagePushInput,
+): Promise<EnqueueFirstDialogMessagePushResult> {
+  return await enqueueMessagePush(pool, input, {
+    eventKey: `chat:new-dialog:${input.chatId}`,
+    tag: `ultimate-hockey-dm-${input.chatId}`,
+  });
+}
+
+export async function enqueueDialogMessagePush(
+  pool: Pool,
+  input: EnqueueFirstDialogMessagePushInput,
+): Promise<EnqueueDialogMessagePushResult> {
+  return await enqueueMessagePush(pool, input, {
+    eventKey: `chat:message:${input.messageId}`,
+    tag: `ultimate-hockey-dm-${input.messageId}`,
+  });
 }

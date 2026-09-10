@@ -4,7 +4,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
 import { verifyAccessToken } from '../auth/jwt.js';
 import type { ChatEvent, ChatEventFrame } from './types.js';
-import type { Unsubscribe } from '../plugins/realtime.js';
+import type { RealtimeEvent, Unsubscribe } from '../plugins/realtime.js';
 import { DEFAULT_NEWS_CHANNEL_SLUG, ensureDefaultNewsChannel } from './service.js';
 import { getPushPreferences } from '../push/preferences.js';
 
@@ -60,8 +60,31 @@ function readToken(req: { query: unknown }): string | null {
   return typeof t === 'string' ? t : null;
 }
 
+const websocketServerClosePromises = new WeakMap<object, Promise<void>>();
+
+function closeWebsocketServer(this: FastifyInstance): Promise<void> {
+  const server = this.websocketServer;
+  const existing = websocketServerClosePromises.get(server);
+  if (existing) return existing;
+
+  for (const client of server.clients) {
+    client.terminate();
+  }
+  const closing = new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error && error.message !== 'The server is not running') {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+  websocketServerClosePromises.set(server, closing);
+  return closing;
+}
+
 const plugin: FastifyPluginAsync<ChatWsOptions> = async (app, opts) => {
-  await app.register(fastifyWebsocket);
+  await app.register(fastifyWebsocket, { preClose: closeWebsocketServer });
 
   const pingIntervalMs = opts.pingIntervalMs ?? 30_000;
   const pongTimeoutMs = opts.pongTimeoutMs ?? 10_000;
@@ -92,12 +115,14 @@ const plugin: FastifyPluginAsync<ChatWsOptions> = async (app, opts) => {
     let cleanedUp = false;
     const isNewsChannelByChatId = new Map<string, boolean>();
 
-    const deliver = (event: ChatEvent): void => {
-      void withUserDeliveryFlags(app, userId, event, isNewsChannelByChatId)
+    const deliver = (event: RealtimeEvent): void => {
+      if (event.type.startsWith('tournament:')) return;
+      const chatEvent = event as ChatEvent;
+      void withUserDeliveryFlags(app, userId, chatEvent, isNewsChannelByChatId)
         .then((outgoing) => send(socket, outgoing))
         .catch((err) => {
           app.log.warn({ err, userId }, 'ws: delivery flags failed');
-          send(socket, event);
+          send(socket, chatEvent);
         });
     };
 

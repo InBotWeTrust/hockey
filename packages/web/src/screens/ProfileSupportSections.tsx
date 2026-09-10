@@ -1,7 +1,7 @@
-import { useEffect, useState, type MouseEvent } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, ChevronDown, MessageSquare, X } from 'lucide-react';
-import { createFeedback, type FeedbackKind } from '../api/feedback.js';
+import { createFeedback, sendOfficialMessage, type FeedbackKind } from '../api/feedback.js';
 import {
   deletePushSubscription,
   fetchPushConfig,
@@ -13,6 +13,8 @@ import {
   type PushSubscriptionPayload,
 } from '../api/push.js';
 import { getTelegramMiniApp } from '../auth/telegramMiniApp.js';
+import { OFFICIAL_ACCOUNT_AVATAR_URL } from '../chat/chatAvatar.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
 
 type PushStatus =
   | 'idle'
@@ -49,6 +51,11 @@ const PUSH_PREFERENCE_ITEMS: Array<{
     key: 'duelEvents',
     label: 'Дуэли',
     hint: 'Вызовы и результаты любительских матчей',
+  },
+  {
+    key: 'tournamentEvents',
+    label: 'Турниры',
+    hint: 'Регистрация, расписание, матчи и итоги турниров',
   },
   {
     key: 'gameNews',
@@ -235,39 +242,32 @@ function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
     setKind(nextKind);
   }
 
-  function handleClose(event?: MouseEvent): void {
-    event?.stopPropagation();
+  function handleClose(): void {
     onClose();
   }
 
   return (
-    <div className="modal-backdrop" onClick={() => handleClose()} style={{ zIndex: 1000 }}>
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-label="Обратная связь"
-        className="modal-card"
-        onClick={(event) => event.stopPropagation()}
-        style={{ width: 'min(420px, calc(100vw - 28px))', display: 'grid', gap: 14 }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="modal-title">Обратная связь</div>
-            <div className="modal-copy">
-              {feedback.isSuccess ? 'Спасибо, сообщение сохранено' : 'Выберите тип сообщения'}
-            </div>
-          </div>
-          <button
-            type="button"
-            className="icon-btn"
-            data-no-drag-scroll="true"
-            onClick={handleClose}
-            aria-label="Закрыть"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
+    <AccessibleModal
+      title="Обратная связь"
+      copy={feedback.isSuccess ? 'Спасибо, сообщение сохранено' : 'Выберите тип сообщения'}
+      onRequestClose={handleClose}
+      closeBlocked={feedback.isPending}
+      backdropStyle={{ zIndex: 1000 }}
+      cardStyle={{ width: 'min(420px, calc(100vw - 28px))' }}
+      headerAction={
+        <button
+          type="button"
+          className="icon-btn"
+          data-no-drag-scroll="true"
+          disabled={feedback.isPending}
+          onClick={handleClose}
+          aria-label="Закрыть"
+        >
+          <X size={16} />
+        </button>
+      }
+    >
+      <div style={{ display: 'grid', gap: 14 }}>
         {feedback.isSuccess ? (
           <button
             type="button"
@@ -430,8 +430,117 @@ function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
             </button>
           </>
         )}
-      </section>
-    </div>
+      </div>
+    </AccessibleModal>
+  );
+}
+
+function OfficialMessageModal({ onClose }: { onClose: () => void }): JSX.Element {
+  const [message, setMessage] = useState('');
+  const directMessage = useMutation({
+    mutationFn: () => sendOfficialMessage(message.trim()),
+  });
+  const messageLength = message.trim().length;
+  const canSubmit = messageLength > 0 && messageLength <= 2000 && !directMessage.isPending;
+
+  return (
+    <AccessibleModal
+      title="Написать в личку"
+      copy={directMessage.isSuccess ? 'Сообщение отправлено' : undefined}
+      onRequestClose={onClose}
+      closeBlocked={directMessage.isPending}
+      backdropStyle={{ zIndex: 1000 }}
+      cardStyle={{ width: 'min(420px, calc(100vw - 28px))' }}
+      headerAction={
+        <button
+          type="button"
+          className="icon-btn"
+          data-no-drag-scroll="true"
+          disabled={directMessage.isPending}
+          onClick={onClose}
+          aria-label="Закрыть"
+        >
+          <X size={16} />
+        </button>
+      }
+    >
+      {directMessage.isSuccess ? (
+        <button
+          type="button"
+          className="btn btn--cta"
+          data-no-drag-scroll="true"
+          onClick={onClose}
+          style={{ width: '100%', minHeight: 52, letterSpacing: 0 }}
+        >
+          Понятно
+        </button>
+      ) : (
+        <div style={{ display: 'grid', gap: 12 }}>
+          <label style={{ display: 'block' }}>
+            <span
+              className="section-label"
+              style={{
+                display: 'block',
+                padding: 0,
+                marginBottom: 8,
+              }}
+            >
+              Сообщение
+            </span>
+            <textarea
+              value={message}
+              onChange={(event) => setMessage(event.target.value.slice(0, 2000))}
+              placeholder="Напишите сообщение..."
+              rows={6}
+              style={{
+                width: '100%',
+                resize: 'vertical',
+                minHeight: 132,
+                border: '1px solid rgba(255,255,255,0.74)',
+                borderRadius: 18,
+                background: 'rgba(255, 255, 255, 0.46)',
+                color: 'var(--ink)',
+                padding: 12,
+                outline: 'none',
+                fontSize: 14,
+                fontWeight: 700,
+                lineHeight: 1.4,
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
+              }}
+            />
+          </label>
+          <div
+            role={directMessage.isError ? 'alert' : undefined}
+            style={{
+              minHeight: 18,
+              color: directMessage.isError ? 'var(--red-deep)' : 'var(--muted)',
+              fontSize: 11,
+              fontWeight: 800,
+            }}
+          >
+            {directMessage.isError
+              ? 'Не удалось отправить сообщение'
+              : `${messageLength}/2000 символов`}
+          </div>
+          <button
+            type="button"
+            className="btn btn--cta"
+            data-no-drag-scroll="true"
+            disabled={!canSubmit}
+            onClick={() => directMessage.mutate()}
+            style={{
+              width: '100%',
+              minHeight: 54,
+              letterSpacing: 0,
+              opacity: canSubmit ? 1 : 0.56,
+              cursor: canSubmit ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {directMessage.isPending ? 'Отправляем...' : 'Отправить'}
+          </button>
+        </div>
+      )}
+    </AccessibleModal>
   );
 }
 
@@ -443,6 +552,7 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
   const [pendingPreference, setPendingPreference] = useState<PushPreferenceKey | null>(null);
   const [pushPreferencesOpen, setPushPreferencesOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [officialMessageOpen, setOfficialMessageOpen] = useState(false);
 
   const { data: pushConfig, isLoading: isPushConfigLoading } = useQuery<PushConfig>({
     queryKey: ['push', 'config'],
@@ -747,44 +857,93 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
         className="glass"
         style={{
           margin: '0 14px 14px',
-          padding: 16,
+          padding: 0,
           borderRadius: 22,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
+          overflow: 'hidden',
+          flexShrink: 0,
         }}
       >
-        <SettingsSectionIcon>
-          <MessageSquare size={20} />
-        </SettingsSectionIcon>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
-            Форма обратной связи
-          </div>
-          <div style={{ marginTop: 3, fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>
-            Отзыв, пожелание или вопрос
-          </div>
-        </div>
-        <button
-          type="button"
-          className="btn btn--cta"
-          data-no-drag-scroll="true"
-          aria-label="Написать в обратную связь"
-          onClick={() => setFeedbackOpen(true)}
-          style={{
-            minHeight: 42,
-            padding: '0 14px',
-            borderRadius: 14,
-            fontSize: 12,
-            letterSpacing: 0,
-            flexShrink: 0,
-          }}
-        >
-          Написать
-        </button>
+        {[
+          {
+            title: 'Форма обратной связи',
+            subtitle: 'Отзыв, пожелание или вопрос',
+            ariaLabel: 'Написать в обратную связь',
+            onClick: () => setFeedbackOpen(true),
+          },
+          {
+            title: 'Написать в личку',
+            subtitle: 'Официальный аккаунт',
+            ariaLabel: 'Написать в личку',
+            onClick: () => setOfficialMessageOpen(true),
+          },
+        ].map((item, index) => (
+          <Fragment key={item.title}>
+            {index > 0 && (
+              <div
+                aria-hidden="true"
+                style={{ height: 1, margin: '0 16px', background: 'rgba(100, 116, 139, 0.24)' }}
+              />
+            )}
+            <div
+              style={{
+                padding: 16,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+              }}
+            >
+              {index === 0 ? (
+                <SettingsSectionIcon>
+                  <MessageSquare size={20} />
+                </SettingsSectionIcon>
+              ) : (
+                <img
+                  src={OFFICIAL_ACCOUNT_AVATAR_URL}
+                  alt="Ультимейт Хоккей"
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 14,
+                    objectFit: 'cover',
+                    flexShrink: 0,
+                    border: '1px solid rgba(15, 23, 42, 0.08)',
+                  }}
+                />
+              )}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
+                  {item.title}
+                </div>
+                <div style={{ marginTop: 3, fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>
+                  {item.subtitle}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn--cta"
+                data-no-drag-scroll="true"
+                aria-label={item.ariaLabel}
+                onClick={item.onClick}
+                style={{
+                  minHeight: 42,
+                  padding: '0 14px',
+                  borderRadius: 14,
+                  fontSize: 12,
+                  letterSpacing: 0,
+                  flexShrink: 0,
+                }}
+              >
+                Написать
+              </button>
+            </div>
+          </Fragment>
+        ))}
       </div>
 
       {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
+      {officialMessageOpen && (
+        <OfficialMessageModal onClose={() => setOfficialMessageOpen(false)} />
+      )}
     </>
   );
 }

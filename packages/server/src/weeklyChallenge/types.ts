@@ -1,0 +1,90 @@
+export const WEEKLY_CHALLENGE_TASK_TYPES = [
+  'goals_scored',
+  'duels_played',
+  'duels_won',
+  'duel_invites_sent',
+  'trainings_completed',
+] as const;
+
+export type WeeklyChallengeTaskType = (typeof WEEKLY_CHALLENGE_TASK_TYPES)[number];
+export type WeeklyChallengeStatus = 'future' | 'running' | 'finished';
+
+export interface WeeklyChallengeRow {
+  id: string;
+  title: string;
+  description: string;
+  join_open_at: Date;
+  start_at: Date;
+  end_at: Date;
+  is_active: boolean;
+  is_automatic: boolean;
+  launched_at: Date | null;
+  join_enabled: boolean;
+  reward_coins: number;
+  reward_stars: number;
+  reward_experience: number;
+  reward_tokens: number;
+  created_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface WeeklyChallengeTaskRow {
+  id: string;
+  challenge_id: string;
+  type: WeeklyChallengeTaskType;
+  title: string | null;
+  target: number;
+  sort_order: number;
+  created_at: Date;
+}
+
+export interface WeeklyChallengeTaskDTO {
+  id: string;
+  type: WeeklyChallengeTaskType;
+  title: string;
+  target: number;
+  progress: number | null;
+  completed: boolean | null;
+}
+
+export interface WeeklyChallengeDTO {
+  id: string;
+  title: string;
+  description: string;
+  status: WeeklyChallengeStatus;
+  startAt: string;
+  endAt: string;
+  reward: { coins: number; stars: number; experience: number; tokens: number };
+  rewardClaimedAt: string | null;
+  tasks: WeeklyChallengeTaskDTO[];
+  hasProgress: boolean;
+  canClaimReward: boolean;
+  allTasksCompleted: boolean;
+  serverNow: string;
+}
+
+export interface WeeklyChallengeCurrentResponse {
+  challenge: WeeklyChallengeDTO | null;
+  pendingRewards: WeeklyChallengeDTO[];
+}
+
+export type WeeklyChallengeCatalogSection = 'future' | 'active' | 'completed';
+
+export interface WeeklyChallengeCatalogResponse {
+  future: WeeklyChallengeDTO[];
+  active: WeeklyChallengeDTO[];
+  completed: WeeklyChallengeDTO[];
+}
+
+export interface WeeklyChallengeFailureResponse {
+  challenge: WeeklyChallengeDTO | null;
+}
+
+export function classifyWeeklyChallengeForCatalog(
+  challenge: WeeklyChallengeDTO,
+): WeeklyChallengeCatalogSection | null {
+  if (challenge.status === 'future') return 'future';
+  if (challenge.status === 'running') return 'active';
+  return challenge.allTasksCompleted || challenge.rewardClaimedAt !== null ? 'completed' : null;
+}

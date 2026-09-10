@@ -38,6 +38,7 @@ describe('ChatListScreen — global search dropdown', () => {
       dailyGame: true,
       trainingAvailable: true,
       duelEvents: true,
+      tournamentEvents: true,
       gameNews: true,
     });
     vi.spyOn(pushApi, 'updatePushPreferences').mockResolvedValue({
@@ -45,6 +46,7 @@ describe('ChatListScreen — global search dropdown', () => {
       dailyGame: true,
       trainingAvailable: true,
       duelEvents: true,
+      tournamentEvents: true,
       gameNews: false,
     });
   });
@@ -60,6 +62,17 @@ describe('ChatListScreen — global search dropdown', () => {
     fireEvent.change(input, { target: { value: 'a' } });
     expect(screen.queryByText('Сообщения')).toBeNull();
     expect(api.searchMessagesApi).not.toHaveBeenCalled();
+  });
+
+  it('keeps the retry action inside a readable error state when chat loading fails', async () => {
+    vi.mocked(api.fetchChatList).mockRejectedValue(new TypeError('Network unavailable'));
+
+    renderScreen();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveClass('chat-list-error');
+    expect(alert).toHaveTextContent('Не удалось загрузить чаты');
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument();
   });
 
   it('renders the dropdown when filter reaches 2 chars and debounces /chat/search', async () => {
@@ -114,5 +127,26 @@ describe('ChatListScreen — global search dropdown', () => {
         memberUserIds: ['u1', 'u2'],
       }),
     );
+  });
+
+  it('closes the group chat modal with Escape', async () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'rtok',
+      user: {
+        id: '00000000-0000-0000-0000-00000000aaaa',
+        displayName: 'Admin',
+        role: 'admin',
+        grip: 'right',
+      },
+    });
+
+    renderScreen();
+    fireEvent.click(await screen.findByRole('button', { name: 'Новый групповой чат' }));
+    expect(screen.getByRole('dialog', { name: 'Групповой чат' })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Групповой чат' })).not.toBeInTheDocument();
   });
 });

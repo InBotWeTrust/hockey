@@ -25,6 +25,7 @@ export interface PushPreferences {
   dailyGame: boolean;
   trainingAvailable: boolean;
   duelEvents: boolean;
+  tournamentEvents: boolean;
   gameNews: boolean;
 }
 

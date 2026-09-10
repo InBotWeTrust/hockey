@@ -1,23 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+  type RenderResult,
+} from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProfileSettingsScreen } from './ProfileSettingsScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
 
-type AuthCallback = (payload: Record<string, unknown>) => void;
-type WindowWithCallbacks = typeof window & Record<string, AuthCallback | undefined>;
-
-function renderProfileSettings(): void {
+function renderProfileSettings(): RenderResult & { queryClient: QueryClient } {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  render(
-    <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/profile/settings']}>
-        <ProfileSettingsScreen />
-      </MemoryRouter>
-    </QueryClientProvider>,
+  return Object.assign(
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/profile/settings']}>
+          <ProfileSettingsScreen />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+    { queryClient: qc },
   );
 }
 
@@ -27,6 +34,9 @@ const telegramProfile = {
   avatarUrl: 'tg.png',
   grip: 'right',
   displaySource: 'telegram',
+  registrationProvider: 'telegram',
+  registrationProviderId: '42',
+  competitionLevel: 'amateur',
   linkedProviders: ['telegram', 'vk'],
   customFirstName: null,
   customLastName: null,
@@ -42,28 +52,12 @@ const telegramProfile = {
   vkUsername: 'vera',
 };
 
-const vkOnlyProfile = {
-  id: 'u1',
-  displayName: 'Vera V',
-  avatarUrl: 'vk.png',
-  grip: 'right',
-  displaySource: 'vk',
-  linkedProviders: ['vk'],
-  customFirstName: null,
-  customLastName: null,
-  customDisplayName: null,
-  customAvatarUrl: null,
-  vkFirstName: 'Vera',
-  vkLastName: 'V',
-  vkAvatarUrl: 'vk.png',
-  vkUsername: 'vera',
-};
-
 const pushPreferences = {
   chatNewDialogMessage: true,
   dailyGame: true,
   trainingAvailable: true,
   duelEvents: true,
+  tournamentEvents: true,
   gameNews: true,
 };
 
@@ -85,9 +79,7 @@ function parseJsonBody(init: RequestInit | undefined): Record<string, unknown> {
   return JSON.parse(init.body) as Record<string, unknown>;
 }
 
-function mockSettingsFetch(
-  profile: typeof telegramProfile | typeof vkOnlyProfile = telegramProfile,
-) {
+function mockSettingsFetch(profile: Record<string, unknown> = telegramProfile) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = getFetchUrl(input);
 
@@ -101,7 +93,18 @@ function mockSettingsFetch(
           displaySource: 'vk',
         });
       }
-      if (body.displaySource === 'custom') {
+      if (body.displaySource === 'telegram') {
+        return jsonResponse({
+          ...telegramProfile,
+          displayName: 'Alice T',
+          avatarUrl: 'tg.png',
+          displaySource: 'telegram',
+        });
+      }
+      if (
+        body.displaySource === 'custom' ||
+        (typeof body.customFirstName === 'string' && typeof body.customLastName === 'string')
+      ) {
         return jsonResponse({
           ...telegramProfile,
           displayName: `${body.customFirstName} ${body.customLastName}`,
@@ -114,6 +117,15 @@ function mockSettingsFetch(
       if (body.grip === 'left' || body.grip === 'right') {
         return jsonResponse({ grip: body.grip });
       }
+    }
+
+    if (url.endsWith('/api/me/avatar') && init?.method === 'POST') {
+      return jsonResponse({
+        avatarUrl: 'custom.webp',
+        customAvatarUrl: 'custom.webp',
+        displaySource: 'custom',
+        media: { id: 'media-1' },
+      });
     }
 
     if (url.endsWith('/api/me')) {
@@ -150,6 +162,10 @@ function mockSettingsFetch(
       });
     }
 
+    if (url.endsWith('/api/feedback/direct') && init?.method === 'POST') {
+      return jsonResponse({ chatId: 'official-chat-1', messageId: 'message-1' });
+    }
+
     return jsonResponse({ error: { code: 'not_found', message: 'not found' } }, 404);
   });
 }
@@ -174,107 +190,158 @@ describe('ProfileSettingsScreen', () => {
       user: { id: 'u1', displayName: 'Alice T' },
     });
     vi.restoreAllMocks();
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: vi.fn(() => 'blob:avatar-preview'),
+      revokeObjectURL: vi.fn(),
+    });
   });
 
-  it('switches display source through PATCH /me', async () => {
+  it.each(['beginner', 'amateur', 'professional'] as const)(
+    'uses the %s locker-room background in settings',
+    async (competitionLevel) => {
+      mockSettingsFetch({ ...telegramProfile, competitionLevel });
+
+      renderProfileSettings();
+
+      await screen.findByText('Аккаунт');
+      expect(document.querySelector('main.profile-settings-screen')).toHaveClass(
+        'profile-screen--locker-bg',
+        `locker-room-bg--${competitionLevel}`,
+      );
+    },
+  );
+
+  it('shows the registration provider as a read-only account card', async () => {
+    mockSettingsFetch();
+
+    renderProfileSettings();
+
+    expect(await screen.findByText('Аккаунт')).toBeInTheDocument();
+    const account = screen.getByLabelText('Аккаунт Telegram');
+    expect(account).toHaveTextContent('Alice T');
+    expect(account).toHaveTextContent('TG ID 42');
+    expect(account).not.toHaveTextContent('Telegram');
+    expect(account.querySelector('img')).toHaveAttribute('src', 'tg.png');
+    expect(screen.queryByText(/Привязать/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Кастом')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Из ВКонтакте/i })).not.toBeInTheDocument();
+    const logoutButton = screen.getByRole('button', { name: 'Выйти' });
+    expect(logoutButton).toHaveClass('profile-logout-btn--danger');
+    expect(logoutButton).not.toHaveClass('glass');
+    expect(screen.getByRole('button', { name: 'О хвате' })).toHaveClass(
+      'profile-settings-grip-info',
+    );
+    expect(screen.getByRole('heading', { name: 'Настройки' })).toHaveClass('screen-title-on-arena');
+  });
+
+  it('marks both grip choices and checks only the selected one', async () => {
+    mockSettingsFetch();
+
+    renderProfileSettings();
+
+    const left = await screen.findByRole('button', { name: /Левый Шайба слева/ });
+    const right = screen.getByRole('button', { name: /Правый Шайба справа/ });
+    expect(left).toHaveAttribute('aria-pressed', 'false');
+    expect(right).toHaveAttribute('aria-pressed', 'true');
+    expect(left.querySelector('.profile-settings-grip-option__indicator')).toHaveAttribute(
+      'data-selected',
+      'false',
+    );
+    expect(right.querySelector('.profile-settings-grip-option__indicator')).toHaveAttribute(
+      'data-selected',
+      'true',
+    );
+  });
+
+  it('shows editable player identity separately from the login account', async () => {
+    mockSettingsFetch();
+
+    renderProfileSettings();
+
+    expect(await screen.findByText('Профиль игрока')).toBeInTheDocument();
+    expect(await screen.findByDisplayValue('Alice')).toHaveAccessibleName('Имя');
+    expect(screen.getByLabelText('Фамилия')).toHaveValue('T');
+    expect(screen.getByRole('button', { name: 'Изменить аватар' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Сохранить профиль' })).toBeDisabled();
+  });
+
+  it('saves a custom first and last name and updates the active profile', async () => {
     const fetchMock = mockSettingsFetch();
+    const { queryClient } = renderProfileSettings();
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
-    renderProfileSettings();
-    expect(await screen.findByText('ID игрока')).toBeInTheDocument();
-    expect(screen.getByText('u1')).toBeInTheDocument();
-    const vkButton = await screen.findByRole('button', { name: /из вконтакте/i });
-    fireEvent.click(vkButton);
+    fireEvent.change(await screen.findByLabelText('Имя'), { target: { value: 'Егор' } });
+    fireEvent.change(screen.getByLabelText('Фамилия'), { target: { value: 'Гуменюк' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить профиль' }));
 
-    await waitFor(() =>
-      expect(
-        findFetchCall(
-          fetchMock,
-          (url, init) => url.endsWith('/api/me') && init?.method === 'PATCH',
-        ),
-      ).toBeTruthy(),
-    );
-    const patchCall = findFetchCall(
-      fetchMock,
-      (url, init) => url.endsWith('/api/me') && init?.method === 'PATCH',
-    )!;
-    expect(patchCall[0]).toBe('/api/me');
-    expect((patchCall[1] as RequestInit).method).toBe('PATCH');
-    expect((patchCall[1] as RequestInit).body).toBe(JSON.stringify({ displaySource: 'vk' }));
-    await waitFor(() => expect(screen.getAllByText('Vera V').length).toBeGreaterThan(0));
+    await waitFor(() => {
+      const call = findFetchCall(
+        fetchMock,
+        (url, init) => url.endsWith('/api/me') && init?.method === 'PATCH',
+      );
+      expect(parseJsonBody(call?.[1] as RequestInit | undefined)).toEqual({
+        customFirstName: 'Егор',
+        customLastName: 'Гуменюк',
+      });
+    });
+    await waitFor(() => expect(useAuthStore.getState().user?.displayName).toBe('Егор Гуменюк'));
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['chat'] });
   });
 
-  it('links Telegram from a VK-only profile through Telegram widget payload', async () => {
-    const fetchMock = mockSettingsFetch(vkOnlyProfile);
-
-    renderProfileSettings();
-    expect(await screen.findByText('Привязать Telegram')).toBeInTheDocument();
-    const script = screen.getByTestId('telegram-login-container').querySelector('script')!;
-    const cbName = script.getAttribute('data-onauth')!.replace('(user)', '');
-    const cb = (window as WindowWithCallbacks)[cbName]!;
-    cb({ id: 42, first_name: 'Alice', photo_url: 'tg.png', auth_date: 1, hash: 'h' });
-
-    await waitFor(() =>
-      expect(
-        findFetchCall(
-          fetchMock,
-          (url, init) => url.endsWith('/api/auth/telegram') && init?.method === 'POST',
-        ),
-      ).toBeTruthy(),
-    );
-    const postCall = findFetchCall(
-      fetchMock,
-      (url, init) => url.endsWith('/api/auth/telegram') && init?.method === 'POST',
-    )!;
-    expect(postCall[0]).toBe('/api/auth/telegram');
-    const init = postCall[1] as RequestInit;
-    expect(init.method).toBe('POST');
-    expect(new Headers(init.headers).get('Authorization')).toBe('Bearer a');
-    expect(JSON.parse(init.body as string)).toMatchObject({
-      id: 42,
-      first_name: 'Alice',
-      photo_url: 'tg.png',
-    });
-    expect(useAuthStore.getState().accessToken).toBe('next-a');
-  });
-
-  it('saves custom profile name through PATCH /me', async () => {
-    const fetchMock = mockSettingsFetch();
-
-    renderProfileSettings();
-    fireEvent.change(await screen.findByLabelText('Кастомное имя'), {
-      target: { value: 'Егор' },
-    });
-    fireEvent.change(screen.getByLabelText('Кастомная фамилия'), {
-      target: { value: 'Гуменюк' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /сохранить кастомный профиль/i }));
-
-    await waitFor(() =>
-      expect(
-        findFetchCall(
-          fetchMock,
-          (url, init) =>
-            url.endsWith('/api/me') &&
-            init?.method === 'PATCH' &&
-            parseJsonBody(init).displaySource === 'custom',
-        ),
-      ).toBeTruthy(),
-    );
-    const patchCall = findFetchCall(
-      fetchMock,
-      (url, init) =>
-        url.endsWith('/api/me') &&
-        init?.method === 'PATCH' &&
-        parseJsonBody(init).displaySource === 'custom',
-    )!;
-    expect(patchCall[0]).toBe('/api/me');
-    expect((patchCall[1] as RequestInit).method).toBe('PATCH');
-    expect(JSON.parse((patchCall[1] as RequestInit).body as string)).toMatchObject({
+  it('previews and saves a WebP avatar and can restore the registration profile', async () => {
+    const fetchMock = mockSettingsFetch({
+      ...telegramProfile,
+      displayName: 'Егор Гуменюк',
+      avatarUrl: 'old-custom.webp',
       displaySource: 'custom',
       customFirstName: 'Егор',
       customLastName: 'Гуменюк',
+      customDisplayName: 'Егор Гуменюк',
+      customAvatarUrl: 'old-custom.webp',
     });
-    await waitFor(() => expect(screen.getAllByText('Егор Гуменюк').length).toBeGreaterThan(0));
+    renderProfileSettings();
+
+    const avatarInput = await screen.findByLabelText('Загрузить аватар');
+    fireEvent.change(avatarInput, {
+      target: { files: [new File(['avatar'], 'avatar.webp', { type: 'image/webp' })] },
+    });
+
+    expect(screen.getByAltText('Текущий аватар')).toHaveAttribute('src', 'blob:avatar-preview');
+    expect(
+      findFetchCall(
+        fetchMock,
+        (url, init) => url.endsWith('/api/me/avatar') && init?.method === 'POST',
+      ),
+    ).toBeUndefined();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить профиль' }));
+    await waitFor(() =>
+      expect(
+        findFetchCall(
+          fetchMock,
+          (url, init) => url.endsWith('/api/me/avatar') && init?.method === 'POST',
+        ),
+      ).toBeTruthy(),
+    );
+    expect(screen.getByAltText('Текущий аватар')).toHaveAttribute('src', 'custom.webp');
+
+    const accountCard = screen.getByLabelText('Аккаунт Telegram');
+    const restoreButton = within(accountCard).getByRole('button', {
+      name: 'Вернуть профиль из Telegram',
+    });
+    expect(restoreButton).toHaveClass('icon-btn');
+    expect(document.querySelector('.profile-customization-card__restore')).not.toBeInTheDocument();
+    fireEvent.click(restoreButton);
+    await waitFor(() => {
+      const restoreCall = fetchMock.mock.calls.find(
+        (call) =>
+          getFetchUrl(call[0]).endsWith('/api/me') &&
+          (call[1] as RequestInit | undefined)?.method === 'PATCH' &&
+          parseJsonBody(call[1] as RequestInit).displaySource === 'telegram',
+      );
+      expect(restoreCall).toBeTruthy();
+    });
   });
 
   it('shows notification and feedback controls in settings', async () => {
@@ -285,6 +352,10 @@ describe('ProfileSettingsScreen', () => {
     expect(await screen.findByText('Пуш-уведомления')).toBeInTheDocument();
     expect(screen.getByText('Обратная связь')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Написать в обратную связь' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Написать в обратную связь' }));
+    expect(screen.getByRole('dialog', { name: 'Обратная связь' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Обратная связь' })).not.toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Настройки уведомлений' }));
 
@@ -343,6 +414,48 @@ describe('ProfileSettingsScreen', () => {
       kind: 'review',
       rating: 5,
       message: 'Все работает бодро.',
+    });
+  });
+
+  it('sends a non-empty message to the official account from the feedback card', async () => {
+    const fetchMock = mockSettingsFetch();
+
+    renderProfileSettings();
+
+    const openButton = await screen.findByRole('button', { name: 'Написать в личку' });
+    expect(screen.getByText('Официальный аккаунт')).toBeInTheDocument();
+    expect(screen.getByAltText('Ультимейт Хоккей')).toHaveAttribute(
+      'src',
+      '/icons/official-account.webp?v=2',
+    );
+    fireEvent.click(openButton);
+
+    const dialog = screen.getByRole('dialog', { name: 'Написать в личку' });
+    expect(within(dialog).queryByText('Официальный аккаунт')).not.toBeInTheDocument();
+    expect(within(dialog).getByText('Сообщение')).toHaveClass('section-label');
+    const submitButton = within(dialog).getByRole('button', { name: 'Отправить' });
+    expect(submitButton).toBeDisabled();
+
+    fireEvent.change(within(dialog).getByLabelText('Сообщение'), {
+      target: { value: 'Подскажите по турниру' },
+    });
+    expect(submitButton).toBeEnabled();
+    fireEvent.click(submitButton);
+
+    await waitFor(() =>
+      expect(
+        findFetchCall(
+          fetchMock,
+          (url, init) => url.endsWith('/api/feedback/direct') && init?.method === 'POST',
+        ),
+      ).toBeTruthy(),
+    );
+    const postCall = findFetchCall(
+      fetchMock,
+      (url, init) => url.endsWith('/api/feedback/direct') && init?.method === 'POST',
+    )!;
+    expect(JSON.parse((postCall[1] as RequestInit).body as string)).toEqual({
+      message: 'Подскажите по турниру',
     });
   });
 });

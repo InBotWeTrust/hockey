@@ -3,7 +3,7 @@ export { createRng, type Rng } from './rng.js';
 export { RINK, GOAL, GOAL_OPENING, PUCK_START, type Vec2 } from './rink.js';
 export type { GoalieConfig, GoalieState, GoaliePatternId } from './goalie/types.js';
 export { GOALIE_SIZE, GOALIE_Y } from './goalie/types.js';
-export { simulateGoalie } from './goalie/simulate.js';
+export { createGoalieSimulator, simulateGoalie, type GoalieSimulator } from './goalie/simulate.js';
 export type { GoalState } from './goal/types.js';
 export { simulateGoal } from './goal/simulate.js';
 export type { ShooterState } from './shooter/types.js';
@@ -16,7 +16,12 @@ export {
 export { simulateShooter } from './shooter/simulate.js';
 export type { ShotInput, ShotResult, StickEffects } from './shot/types.js';
 export { STICK_NEUTRAL, PUCK_SPEED_PER_MS } from './shot/types.js';
-export { resolveShot, GOAL_HITBOX_MARGIN, GOALIE_HITBOX_EXPAND } from './shot/resolve.js';
+export {
+  resolveShot,
+  resolveEmptyGoalShot,
+  GOAL_HITBOX_MARGIN,
+  GOALIE_HITBOX_EXPAND,
+} from './shot/resolve.js';
 export {
   PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
   PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET,
@@ -51,3 +56,20 @@ export {
 } from './balance/periods.js';
 export type { SessionPhaseOffsets } from './session.js';
 export { getSessionPhaseOffsets, deriveShotSeed } from './session.js';
+export {
+  DEFAULT_DUEL_INVENTORY_TIMING,
+  duelInventorySpeedPointsToPuckSpeedDelta,
+  duelSpeedPressureMultiplier,
+  createDuelStumbleRandomness,
+  getDuelPlayerCondition,
+  normalizeDuelInventoryResource,
+  type DuelInventoryItemSnapshot,
+  type DuelInventoryLoadoutSnapshot,
+  type DuelInventoryResourceUnit,
+  type DuelInventoryTiming,
+  type DuelStumbleRandomness,
+  type DuelPlayerCondition,
+  type DuelPlayerConditionInput,
+  type DuelPlayerFatigueLevel,
+  type DuelPlayerConditionStatus,
+} from './duelInventory.js';

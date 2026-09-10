@@ -5,6 +5,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { BottomNav, ADMIN_NAV_HOME_EVENT } from './BottomNav.js';
 import { useAuthStore } from '../auth/authStore.js';
+import { useChatStore } from '../chat/chatStore.js';
 
 function LocationProbe(): JSX.Element {
   const location = useLocation();
@@ -27,7 +28,7 @@ function AdminHomeProbe(): JSX.Element {
   return <output aria-label="admin-section">{section}</output>;
 }
 
-function renderBottomNav(path: string, extra?: JSX.Element): void {
+function renderBottomNav(path: string, extra?: JSX.Element): QueryClient {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -40,13 +41,17 @@ function renderBottomNav(path: string, extra?: JSX.Element): void {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return client;
 }
 
 describe('BottomNav remembered navigation', () => {
+  const vibrate = vi.fn();
+
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
     vi.restoreAllMocks();
+    Object.defineProperty(window.navigator, 'vibrate', { configurable: true, value: vibrate });
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({}), {
         status: 200,
@@ -54,6 +59,7 @@ describe('BottomNav remembered navigation', () => {
       }),
     );
     useAuthStore.getState().clearSession();
+    useChatStore.getState().setUnread({});
     useAuthStore.getState().setSession({
       accessToken: 'a',
       refreshToken: 'r',
@@ -62,8 +68,30 @@ describe('BottomNav remembered navigation', () => {
         displayName: 'Egor',
         role: 'admin',
         experimentalTrainingCourt: false,
+        competitionLevel: 'amateur',
       },
     });
+  });
+
+  it('uses the same rounded-card radius as profile settings', () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      user: { id: 'u1', displayName: 'Player' },
+    });
+    renderBottomNav('/profile');
+
+    expect(screen.getByLabelText('Навигация')).toHaveStyle({ borderRadius: '19px' });
+  });
+
+  it('does not fetch monthly rating congratulations from the shared navigation', async () => {
+    renderBottomNav('/sections');
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(
+      '/api/duel/amateur/rating/congratulations/pending',
+      expect.anything(),
+    );
   });
 
   it('resets the active game section to the arena', () => {
@@ -72,6 +100,7 @@ describe('BottomNav remembered navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Игра' }));
 
     expect(screen.getByLabelText('location')).toHaveTextContent('/?view=arena');
+    expect(vibrate).not.toHaveBeenCalled();
   });
 
   it('opens the arena from another section', () => {
@@ -91,29 +120,84 @@ describe('BottomNav remembered navigation', () => {
     expect(screen.getByLabelText('location')).toHaveTextContent('/sections');
   });
 
+  it('opens the last remembered sections route from another tab', () => {
+    sessionStorage.setItem('hockey.nav.lastSectionsRoute', '/?view=amateur&section=duels');
+    renderBottomNav('/profile');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Разделы' }));
+
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=amateur&section=duels');
+  });
+
+  it('resets the active sections tab to the sections root', () => {
+    renderBottomNav('/?view=amateur&section=duels');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Разделы' }));
+
+    expect(screen.getByLabelText('location')).toHaveTextContent('/sections');
+  });
+
   it('keeps section setup screens on the sections tab until play starts', () => {
     renderBottomNav('/?view=training&from=sections');
 
-    const gameSurface = screen.getByRole('button', { name: 'Игра' }).querySelector('div');
-    const sectionsSurface = screen.getByRole('button', { name: 'Разделы' }).querySelector('div');
+    const gameTab = screen.getByRole('button', { name: 'Игра' });
+    const sectionsTab = screen.getByRole('button', { name: 'Разделы' });
 
-    expect(gameSurface?.getAttribute('style')).toContain('rgba(255, 255, 255, 0.55)');
-    expect(sectionsSurface?.getAttribute('style')).toContain('rgba(15, 23, 42, 0.92)');
+    expect(gameTab).not.toHaveAttribute('aria-current');
+    expect(sectionsTab).toHaveAttribute('aria-current', 'page');
+    expect(sectionsTab).toHaveClass('bottom-nav__tab--active');
+    expect(sectionsTab.querySelector('.bottom-nav__icon-wrap--active')).toBeInTheDocument();
+    const navigation = screen.getByRole('navigation', { name: 'Навигация' });
+    const activeGlow = navigation.querySelector('.bottom-nav__active-glow');
+    expect(activeGlow).toBeInTheDocument();
+    expect(activeGlow?.parentElement).toBe(navigation);
+    expect(activeGlow).toHaveStyle({ transform: 'translateX(100%)' });
+    expect(sectionsTab.querySelector('.bottom-nav__active-glow')).toBeNull();
+    expect(gameTab.querySelector('.bottom-nav__icon-wrap--active')).toBeNull();
   });
 
   it('keeps amateur duel setup screens on the sections tab', () => {
     renderBottomNav('/?view=amateur&section=duels');
 
-    const gameSurface = screen.getByRole('button', { name: 'Игра' }).querySelector('div');
-    const sectionsSurface = screen.getByRole('button', { name: 'Разделы' }).querySelector('div');
+    const gameTab = screen.getByRole('button', { name: 'Игра' });
+    const sectionsTab = screen.getByRole('button', { name: 'Разделы' });
 
-    expect(gameSurface?.getAttribute('style')).toContain('rgba(255, 255, 255, 0.55)');
-    expect(sectionsSurface?.getAttribute('style')).toContain('rgba(15, 23, 42, 0.92)');
+    expect(gameTab).not.toHaveAttribute('aria-current');
+    expect(sectionsTab).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('keeps the bonus games catalog on the sections tab', () => {
+    renderBottomNav('/bonus-games');
+
+    const gameTab = screen.getByRole('button', { name: 'Игра' });
+    const sectionsTab = screen.getByRole('button', { name: 'Разделы' });
+
+    expect(gameTab).not.toHaveAttribute('aria-current');
+    expect(sectionsTab).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('hides the dock inside an active bonus game rink', () => {
+    renderBottomNav('/bonus-games/00000000-0000-4000-8000-000000000601/play?attempt=attempt-id');
+
+    expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
   });
 
   it('hides the dock on the open rink screen', () => {
     renderBottomNav('/?view=training&play=1');
 
+    expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
+  });
+
+  it('hides the dock inside a classic tournament game', () => {
+    renderBottomNav('/?view=classic&tournament=t1');
+
+    expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
+  });
+
+  it('hides the dock on the demo rink', () => {
+    renderBottomNav('/demo');
+
+    expect(screen.queryByRole('navigation', { name: 'Демо-навигация' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
   });
 
@@ -162,6 +246,398 @@ describe('BottomNav remembered navigation', () => {
     expect(await screen.findByLabelText('События игры: 1')).toHaveTextContent('1');
   });
 
+  it('adds unfinished classic tournament games to the game badge', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/duel/amateur/events')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ events: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      if (url.endsWith('/api/tournaments/classic/active')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              games: [
+                { tournament_id: 'available', state: 'available' },
+                { tournament_id: 'started', state: 'period_active' },
+                { tournament_id: 'completed', state: 'closed' },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    expect(await screen.findByLabelText('События игры: 2')).toHaveTextContent('2');
+  });
+
+  it('counts an inter-game playoff break but not a completed playoff day in the game badge', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/duel/amateur/events')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ events: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      if (url.endsWith('/api/tournaments/classic/active')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              games: [
+                { tournament_id: 'break', kind: 'playoff', state: 'inter_game_break' },
+                { tournament_id: 'done', kind: 'playoff', state: 'completed' },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    expect(await screen.findByLabelText('События игры: 1')).toHaveTextContent('1');
+  });
+
+  it('counts a scheduled playoff game in the game badge', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/duel/amateur/events')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ events: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      if (url.endsWith('/api/tournaments/classic/active')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              games: [{ tournament_id: 'scheduled', kind: 'playoff', state: 'scheduled' }],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    expect(await screen.findByLabelText('События игры: 1')).toHaveTextContent('1');
+  });
+
+  it('renders every notification badge above its navigation icon', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/duel/amateur/events')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              events: [
+                {
+                  id: 'incoming',
+                  status: 'invited',
+                  starts_at: '2026-05-29T10:00:00.000Z',
+                  ends_at: '2026-05-29T11:00:00.000Z',
+                  server_now: '2026-05-29T10:00:00.000Z',
+                  me: { side: 'opponent', state: 'invited' },
+                  opponent: { state: 'invited' },
+                },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      if (url.endsWith('/api/weekly-challenge/current')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              challenge: {
+                id: 'challenge-1',
+                title: 'Новый челлендж',
+                status: 'finished',
+                canClaimReward: true,
+              },
+              pendingRewards: [],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+    useChatStore.getState().setUnread({ 'chat-1': 3 });
+
+    renderBottomNav('/profile');
+
+    const badges = await Promise.all([
+      screen.findByLabelText('События игры: 1'),
+      screen.findByLabelText('События разделов: 1'),
+      screen.findByLabelText('Непрочитанные: 1'),
+    ]);
+    for (const badge of badges) {
+      expect(badge.parentElement?.querySelector('svg')).not.toBeNull();
+      expect(Number.parseInt(badge.style.zIndex, 10)).toBeGreaterThan(1);
+    }
+  });
+
+  it('does not show a sections badge for future or running challenges without a claimable reward', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/weekly-challenge/current')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              challenge: {
+                id: 'challenge-1',
+                title: 'Неделя снайпера',
+                status: 'running',
+                canClaimReward: false,
+              },
+              pendingRewards: [{ id: 'challenge-future', status: 'future', canClaimReward: false }],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    const client = renderBottomNav('/profile');
+
+    await waitFor(() =>
+      expect(client.getQueryState(['weekly-challenge', 'current'])?.status).toBe('success'),
+    );
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    expect(screen.queryByLabelText(/События разделов:/)).toBeNull();
+  });
+
+  it('counts a claimable challenge only once when it occurs in current and pending rewards', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/weekly-challenge/current')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              challenge: {
+                id: 'challenge-1',
+                title: 'Неделя снайпера',
+                status: 'finished',
+                canClaimReward: true,
+              },
+              pendingRewards: [{ id: 'challenge-1', status: 'finished', canClaimReward: true }],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ achievements: [], unclaimedCount: 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    expect(await screen.findByLabelText('События разделов: 1')).toHaveTextContent('1');
+  });
+
+  it('shows a sections badge when a weekly challenge reward can be claimed', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/weekly-challenge/current')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              challenge: {
+                id: 'challenge-1',
+                title: 'Неделя снайпера',
+                status: 'finished',
+                canClaimReward: true,
+              },
+              pendingRewards: [],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    expect(await screen.findByLabelText('События разделов: 1')).toHaveTextContent('1');
+  });
+
+  it('adds pending weekly challenge rewards to the sections badge', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/weekly-challenge/current')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              challenge: {
+                id: 'challenge-1',
+                title: 'Новый челлендж',
+                status: 'running',
+                canClaimReward: false,
+              },
+              pendingRewards: [
+                {
+                  id: 'challenge-old',
+                  title: 'Прошлая неделя',
+                  canClaimReward: true,
+                },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    expect(await screen.findByLabelText('События разделов: 1')).toHaveTextContent('1');
+  });
+
+  it('combines achievement rewards and weekly challenge actions in the sections badge', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/weekly-challenge/current')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              challenge: {
+                id: 'challenge-1',
+                title: 'Новый челлендж',
+                status: 'running',
+                canClaimReward: false,
+              },
+              pendingRewards: [
+                {
+                  id: 'challenge-old',
+                  title: 'Прошлая неделя',
+                  canClaimReward: true,
+                },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      if (url.endsWith('/api/achievements')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ achievements: [], unclaimedCount: 2 }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    expect(await screen.findByLabelText('События разделов: 3')).toHaveTextContent('3');
+  });
+
+  it('does not count weekly challenge actions for a beginner', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/weekly-challenge/current')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              challenge: { id: 'challenge-1', status: 'running', canClaimReward: false },
+              pendingRewards: [{ id: 'challenge-old', canClaimReward: true }],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      if (url.endsWith('/api/achievements')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ achievements: [], unclaimedCount: 0 }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/События разделов:/)).toBeNull();
+    });
+  });
+
   it('refreshes missing grip for persisted auth sessions', async () => {
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
@@ -192,6 +668,23 @@ describe('BottomNav remembered navigation', () => {
     await waitFor(() => expect(useAuthStore.getState().user?.grip).toBe('right'));
   });
 
+  it('opens the last remembered profile route from another tab', () => {
+    sessionStorage.setItem('hockey.nav.lastProfileRoute', '/profile/settings');
+    renderBottomNav('/sections');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Раздевалка' }));
+
+    expect(screen.getByLabelText('location')).toHaveTextContent('/profile/settings');
+  });
+
+  it('resets the active profile tab to the profile root', () => {
+    renderBottomNav('/profile/settings');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Раздевалка' }));
+
+    expect(screen.getByLabelText('location')).toHaveTextContent('/profile');
+  });
+
   it('resets the active chat section to the chat list', () => {
     renderBottomNav('/chat?new=1');
 
@@ -206,5 +699,33 @@ describe('BottomNav remembered navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Админ' }));
 
     expect(screen.getByLabelText('admin-section')).toHaveTextContent('dashboard');
+  });
+
+  it('shows admin attention count for unread feedback and official dialogs', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/admin/attention')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              feedbackUnreadCount: 2,
+              officialDialogsUnreadCount: 3,
+              totalCount: 5,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    expect(await screen.findByLabelText('События администратора: 5')).toHaveTextContent('5');
   });
 });

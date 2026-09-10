@@ -1,10 +1,54 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { queryClient } from './queryClient.js';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
+import { useBonusGameStore } from '../stores/bonusGameStore.js';
+import {
+  showAmateurAccessToast,
+  useAmateurAccessToastStore,
+} from '../amateur/amateurAccessStore.js';
+import { App, RouteLoading, appBackdropClassName, appSurfaceClassName } from './App.js';
+import { fetchRequiredOnboarding, recordStepView, startOnboarding } from '../api/onboarding.js';
+import type * as OnboardingApi from '../api/onboarding.js';
+import {
+  arenaBackgroundClass,
+  arenaCourtImage,
+  arenaVideoCubeClass,
+  arenaVideoCubeImage,
+  lockerRoomBackgroundClass,
+} from '../screens/lockerRoomBackground.js';
+
+vi.mock('../game/PlayView.js', () => ({
+  PlayView: () => <div data-testid="play-view" />,
+}));
+
+vi.mock('../components/DuelInviteToast.js', () => ({
+  DuelInviteToast: () => <div data-testid="duel-invite-toast" />,
+}));
+
+vi.mock('../components/UpdatePrompt.js', () => ({
+  UpdatePrompt: () => <div data-testid="update-prompt" />,
+}));
+
+vi.mock('../chat/components/OfflineBanner.js', () => ({
+  OfflineBanner: () => <div data-testid="chat-realtime" />,
+}));
+
+vi.mock('../chat/useChatSocket.js', () => ({
+  useChatSocket: () => 'online',
+}));
+
+vi.mock('../api/onboarding.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof OnboardingApi>()),
+  fetchRequiredOnboarding: vi.fn(),
+  startOnboarding: vi.fn(),
+  recordStepView: vi.fn().mockResolvedValue({ viewed: true }),
+  completeOnboarding: vi.fn(),
+}));
 
 function renderAt(path: string): void {
   const client = new QueryClient({
@@ -39,8 +83,98 @@ function renderAt(path: string): void {
 
 describe('App routing + auth', () => {
   beforeEach(() => {
+    queryClient.clear();
     localStorage.clear();
+    window.history.replaceState({}, '', '/');
+    vi.restoreAllMocks();
     useAuthStore.getState().clearSession();
+    vi.mocked(fetchRequiredOnboarding).mockReset().mockResolvedValue({ required: null });
+    vi.mocked(startOnboarding).mockReset();
+    vi.mocked(recordStepView).mockReset().mockResolvedValue({ viewed: true });
+    useBonusGameStore.setState({
+      attempt: null,
+      loading: false,
+      error: null,
+      errorCode: null,
+      errorHandledByAmateurToast: false,
+      inFlight: false,
+      needsReconcile: false,
+      requestEpoch: 0,
+      receivedAtPerformanceMs: null,
+    });
+    useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
+  });
+
+  it('gates a direct authenticated URL and hides routed content and app chrome', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    const required = {
+      chain: 'amateur' as const,
+      versionId: 'version-1',
+      steps: [
+        {
+          id: 'step-1',
+          position: 1,
+          kind: 'informational' as const,
+          title: 'Ты в любительской лиге',
+          description: 'Новый этап',
+          ctaLabel: 'Далее',
+          imageUrl: '/amateur.webp',
+        },
+      ],
+    };
+    vi.mocked(fetchRequiredOnboarding).mockResolvedValue({ required });
+    vi.mocked(startOnboarding).mockResolvedValue({ runId: 'run-1', required });
+    window.history.replaceState({}, '', '/profile');
+
+    render(<App />);
+
+    expect(await screen.findByText('Ты в любительской лиге')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('chat-realtime')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('duel-invite-toast')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('update-prompt')).not.toBeInTheDocument();
+    expect(screen.queryByText('Профиль')).not.toBeInTheDocument();
+  });
+
+  it('keeps mandatory onboarding visible when browser Back changes the URL', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    const required = {
+      chain: 'amateur' as const,
+      versionId: 'version-1',
+      steps: [
+        {
+          id: 'step-1',
+          position: 1,
+          kind: 'informational' as const,
+          title: 'Обязательный шаг',
+          description: 'Нельзя пропустить',
+          ctaLabel: 'Далее',
+          imageUrl: '/step.webp',
+        },
+      ],
+    };
+    vi.mocked(fetchRequiredOnboarding).mockResolvedValue({ required });
+    vi.mocked(startOnboarding).mockResolvedValue({ runId: 'run-1', required });
+    window.history.replaceState({}, '', '/profile');
+    window.history.pushState({}, '', '/inventory');
+    render(<App />);
+    await screen.findByText('Обязательный шаг');
+
+    await act(async () => {
+      window.history.replaceState({}, '', '/profile');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    expect(screen.getByText('Обязательный шаг')).toBeInTheDocument();
+    expect(screen.queryByText('Инвентарь')).not.toBeInTheDocument();
   });
 
   it('redirects unauthenticated users from / to /login', () => {
@@ -58,9 +192,253 @@ describe('App routing + auth', () => {
     expect(screen.getByText('home content')).toBeInTheDocument();
   });
 
+  it('mounts one shared Amateur access toast for the whole app', () => {
+    act(() => showAmateurAccessToast({ goalsRemaining: 184, unlockGoalsRequired: 300 }));
+
+    render(<App />);
+
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.getByText('Нужен статус «Любитель»')).toBeInTheDocument();
+  });
+
   it('guards /duel/:goalieId as well', () => {
     renderAt('/duel/rookie');
     expect(screen.queryByText('duel content')).toBeNull();
     expect(screen.getByRole('heading', { name: /ультимейт хоккей/i })).toBeInTheDocument();
+  });
+
+  it('loads the authenticated bonus games route', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    window.history.replaceState({}, '', '/bonus-games');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ games: [], active_attempt: null }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Бонусные игры' })).toBeInTheDocument();
+    const ambientLights = screen.getByTestId('arena-ambient-lights');
+    expect(ambientLights).toHaveAttribute('aria-hidden', 'true');
+    expect(ambientLights.children).toHaveLength(10);
+  });
+
+  it('keeps achievements opened from the profile in the profile navigation context', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    window.history.replaceState({}, '', '/profile/achievements');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Задания' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/profile/achievements');
+    expect(screen.getByRole('button', { name: 'Раздевалка' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
+    expect(window.location.pathname).toBe('/profile');
+  });
+
+  it('keeps challenges opened from the profile in the profile navigation context', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    window.history.replaceState({}, '', '/profile/achievements');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: 'Задания' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Челленджи' }));
+
+    expect(window.location.pathname).toBe('/profile/achievements/weekly-challenge');
+    expect(screen.getByRole('button', { name: 'Раздевалка' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+
+  it('loads a bonus attempt detail on the authenticated play route', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    window.history.replaceState({}, '', '/bonus-games/game-1/play?attempt=attempt-1');
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
+      if (String(input).endsWith('/api/bonus-games/attempts/attempt-1')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              attempt: {
+                id: 'attempt-1',
+                game_id: 'game-1',
+                game_slug: 'beach',
+                game_title: 'Пляж',
+                status: 'active',
+                state: 'idle',
+                current_period: 0,
+                period_started_at: null,
+                period_ends_at: null,
+                break_started_at: null,
+                break_ends_at: null,
+                closed_at: null,
+                shots_taken: 0,
+                current_period_shots_taken: 0,
+                goals: 0,
+                reward_granted: false,
+                attempt_seed: 'seed',
+                game_core_version: 1,
+                definition_revision: 1,
+                server_now: '2026-08-24T10:00:00.000Z',
+                rules: {
+                  game_id: 'game-1',
+                  slug: 'beach',
+                  title: 'Пляж',
+                  revision: 1,
+                  target_goals: 18,
+                  total_periods: 1,
+                  break_duration_ms: 30_000,
+                  periods: [
+                    {
+                      period_number: 1,
+                      duration_ms: 240_000,
+                      shots_limit: 30,
+                      goal_frequency: 0.45,
+                      goalie_frequency: 0.5,
+                      shooter_frequency: 0.65,
+                      puck_speed_per_ms: 1.2,
+                      goalie_pattern: 'linear',
+                      goalie_amplitude: 1,
+                      goal_amplitude: 220,
+                    },
+                  ],
+                },
+                reward: { coins: 100, stars: 1, experience: 50 },
+                arena: {
+                  id: 'arena-1',
+                  slug: 'beach',
+                  title: 'Пляж',
+                  artwork_url: '/bonus-games/arenas/beach.webp',
+                  thumbnail_url: '/bonus-games/arenas/beach.webp',
+                },
+                goalkeeper_ready_url: '/bonus-games/goalkeepers/beach-ready.webp',
+                goalkeeper_save_url: '/bonus-games/goalkeepers/beach-save.webp',
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    render(<App />);
+
+    expect(await screen.findByTestId('play-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('arena-ambient-lights')).toBeNull();
+  });
+});
+
+describe('app backdrop variants', () => {
+  it('maps every competition level to matching arena and locker-room backgrounds', () => {
+    for (const level of ['beginner', 'amateur', 'professional'] as const) {
+      expect(arenaBackgroundClass(level)).toBe(`arena-bg--${level}`);
+      expect(lockerRoomBackgroundClass(level)).toBe(`locker-room-bg--${level}`);
+    }
+    expect(arenaVideoCubeImage('beginner')).toBe('/sprites/app-arena-cube-beginner.webp');
+    expect(arenaVideoCubeImage('amateur')).toBe('/sprites/app-arena-cube-amateur.webp');
+    expect(arenaVideoCubeImage('professional')).toBe('/sprites/app-arena-cube.webp');
+    expect(arenaVideoCubeClass('amateur')).toBe('arena-video-cube__plate--amateur');
+    expect(arenaCourtImage('beginner')).toBe('/backgrounds/arena-beginner-reference-v8.webp');
+    expect(arenaCourtImage('amateur')).toBe('/backgrounds/arena-amateur-reference-v6.webp');
+    expect(arenaCourtImage('professional')).toBe('/sprites/app-arena-ice.webp');
+  });
+
+  it('renders lazy route loading text with a high-contrast arena treatment', () => {
+    render(<RouteLoading />);
+
+    const loading = screen.getByRole('status');
+    expect(loading).toHaveClass('route-loading');
+    expect(loading).toHaveStyle({
+      color: '#0f172a',
+      background: 'rgba(255, 255, 255, 0.9)',
+    });
+  });
+
+  it('uses the dedicated login rink background on the sign-in screen', () => {
+    expect(appBackdropClassName('/login')).toBe('app-shell--login');
+  });
+
+  it('keeps the chat list on the standard arena and lightens only nested chat routes', () => {
+    expect(appBackdropClassName('/chat')).toBe('app-shell--arena');
+    expect(appBackdropClassName('/chat/conversation-1')).toBe(
+      'app-shell--arena app-shell--arena-chat',
+    );
+  });
+
+  it('uses the arena backdrop in admin while keeping it off full-rink utility routes', () => {
+    expect(appBackdropClassName('/admin')).toBe('app-shell--arena app-shell--arena-admin');
+    expect(appBackdropClassName('/test-court')).toBe('');
+  });
+
+  it('uses the standard arena backdrop for user-facing screens', () => {
+    expect(appBackdropClassName('/sections')).toBe('app-shell--arena');
+    expect(appBackdropClassName('/profile')).toBe('app-shell--arena');
+    expect(appBackdropClassName('/inventory')).toBe('app-shell--arena');
+  });
+
+  it('keeps the arena hub background but removes it from ordinary gameplay', () => {
+    expect(appBackdropClassName('/', '')).toBe('app-shell--arena');
+    expect(appBackdropClassName('/', '?view=daily')).toBe('');
+    expect(appBackdropClassName('/', '?view=training')).toBe('app-shell--arena');
+    expect(appBackdropClassName('/', '?view=training&play=1')).toBe('');
+    expect(appBackdropClassName('/', '?view=amateur&match=m1&play=1')).toBe('');
+    expect(appBackdropClassName('/', '?view=classic&tournament=t1')).toBe('');
+  });
+});
+
+describe('app surface variants', () => {
+  it('uses unified glass across standard arena screens, including the profile', () => {
+    expect(appSurfaceClassName('/sections')).toBe('app-shell--unified-glass');
+    expect(appSurfaceClassName('/users/user-1')).toBe('app-shell--unified-glass');
+    expect(appSurfaceClassName('/bonus-games')).toBe('app-shell--unified-glass');
+    expect(appSurfaceClassName('/profile')).toBe('app-shell--unified-glass');
+    expect(appSurfaceClassName('/profile/settings')).toBe('app-shell--unified-glass');
+    expect(appSurfaceClassName('/profile/support')).toBe('app-shell--unified-glass');
+  });
+
+  it('preserves the dedicated dark authentication treatment', () => {
+    expect(appSurfaceClassName('/login')).toBe('app-shell--auth-surfaces');
+    expect(appSurfaceClassName('/auth/vk/callback')).toBe('app-shell--auth-surfaces');
   });
 });

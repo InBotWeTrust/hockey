@@ -13,6 +13,8 @@ import {
 export const DAILY_AVAILABLE_LOCAL_HOUR = 9;
 export const TRAINING_AVAILABLE_LOCAL_HOUR = 9;
 export const DAILY_PERIOD_ENDING_LEAD_MS = 5 * 60 * 1000;
+export const TOURNAMENT_FIXTURE_DEADLINE_LEAD_MS = 30 * 60 * 1000;
+export const TOURNAMENT_NOTIFICATION_MAX_LEAD_MS = 24 * 60 * 60 * 1000;
 export const SCHEDULED_PUSH_LATE_WINDOW_MS = 30 * 60 * 1000;
 export const PUSH_SCHEDULER_LOCK_NAMESPACE = 5_042_026;
 export const PUSH_SCHEDULER_LOCK_KEY = 1;
@@ -31,6 +33,11 @@ interface ScheduledPushSubscriptionRow {
   period_number: number | null;
   event_due_at: Date | null;
   training_shot_id: string | null;
+  tournament_title?: string | null;
+  fixture_id?: string | null;
+  reminder_offset_ms?: number | null;
+  window_ends_at?: Date | null;
+  notification_override?: unknown;
 }
 
 interface ScheduledPushTarget {
@@ -41,6 +48,17 @@ interface ScheduledPushTarget {
   variables: PushTemplateVariables;
   fallback: PushTemplateFallback;
   tag: string;
+  templateOverride?: PushTemplateFallback;
+}
+
+function scheduledTemplateOverride(value: unknown): PushTemplateFallback | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const override = value as Record<string, unknown>;
+  return typeof override.title === 'string' &&
+    typeof override.body === 'string' &&
+    typeof override.url === 'string'
+    ? { title: override.title, body: override.body, url: override.url }
+    : null;
 }
 
 export interface ScheduledPushEventResult {
@@ -108,6 +126,7 @@ async function enqueueTarget(
     target.eventType,
     target.variables,
     target.fallback,
+    target.templateOverride,
   );
   if (rendered === null) return { queued: false, skipped: true };
 
@@ -448,6 +467,255 @@ async function fetchTrainingAvailableRows(
   return rows;
 }
 
+async function fetchTournamentLiveSoonRows(
+  pool: Queryable,
+  now: Date,
+  lateWindowMs: number,
+): Promise<ScheduledPushSubscriptionRow[]> {
+  const { rows } = await pool.query<ScheduledPushSubscriptionRow>(
+    `with reminder_rules as (
+       select t.id as tournament_id, t.title as tournament_title,
+              r.rules_snapshot->'notificationOverrides'->'tournament.live_soon'
+                as notification_override,
+              case
+                when jsonb_typeof(r.rules_snapshot->'notificationReminderOffsetsMs') = 'array'
+                  then r.rules_snapshot->'notificationReminderOffsetsMs'
+                else '[3600000]'::jsonb
+              end as reminder_offsets
+         from tournament t
+         join tournament_revision r on r.id = t.published_revision_id
+        where t.status in ('regular', 'playoff')
+     ), reminder_offsets as (
+       select rr.tournament_id, rr.tournament_title, rr.notification_override,
+              case
+                when jsonb_typeof(reminder_rule.value) = 'number'
+                  and reminder_rule.value #>> '{}' ~ '^(0|[1-9][0-9]{0,7})$'
+                  then (reminder_rule.value #>> '{}')::bigint
+              end as reminder_offset_ms
+         from reminder_rules rr
+         cross join lateral jsonb_array_elements(rr.reminder_offsets) as reminder_rule(value)
+     ), valid_reminder_offsets as (
+       select tournament_id, tournament_title, notification_override, reminder_offset_ms
+         from reminder_offsets
+        where reminder_offset_ms between 0 and $3::bigint
+     ),
+     candidates as (
+       select f.id as fixture_id, f.scheduled_starts_at, ro.tournament_title,
+              ro.notification_override,
+              ro.reminder_offset_ms,
+              participant.user_id
+         from tournament_fixture f
+         join valid_reminder_offsets ro on ro.tournament_id = f.tournament_id
+         cross join lateral (
+           values (f.home_participant_id), (f.away_participant_id)
+         ) as side(participant_id)
+         join tournament_participant participant on participant.id = side.participant_id
+         left join user_push_preferences pref on pref.user_id = participant.user_id
+        where f.status in ('scheduled', 'open', 'active')
+          and participant.state = 'approved'
+          and coalesce(pref.tournament_events, true)
+          and f.scheduled_starts_at - (ro.reminder_offset_ms * interval '1 millisecond')
+                <= $1::timestamptz
+          and f.scheduled_starts_at - (ro.reminder_offset_ms * interval '1 millisecond')
+                > $1::timestamptz - ($2::bigint * interval '1 millisecond')
+     )
+     select ps.id as subscription_id, ps.user_id, ps.endpoint, ps.p256dh, ps.auth,
+            c.fixture_id::text || ':live-soon:' ||
+              ((extract(epoch from c.scheduled_starts_at) * 1000)::bigint)::text || ':' ||
+              c.reminder_offset_ms::text as event_key,
+            ''::text as local_date, null::uuid as day_pool_id, null::int as period_number,
+            null::timestamptz as event_due_at, null::uuid as training_shot_id,
+            c.tournament_title, c.fixture_id, c.reminder_offset_ms,
+            c.notification_override
+       from candidates c
+       join push_subscriptions ps on ps.user_id = c.user_id
+      where not exists (
+         select 1 from push_delivery_log pdl
+         where pdl.user_id = c.user_id
+           and pdl.event_type = 'tournament.live_soon'
+           and pdl.event_key = c.fixture_id::text || ':live-soon:' ||
+             ((extract(epoch from c.scheduled_starts_at) * 1000)::bigint)::text || ':' ||
+             c.reminder_offset_ms::text
+      )
+      order by ps.user_id, ps.updated_at desc`,
+    [now.toISOString(), lateWindowMs, TOURNAMENT_NOTIFICATION_MAX_LEAD_MS],
+  );
+  return rows;
+}
+
+async function fetchTournamentFixtureOpenedRows(
+  pool: Queryable,
+  now: Date,
+  lateWindowMs: number,
+): Promise<ScheduledPushSubscriptionRow[]> {
+  const { rows } = await pool.query<ScheduledPushSubscriptionRow>(
+    `with candidates as (
+       select f.id as fixture_id, f.scheduled_starts_at, t.title as tournament_title,
+              revision.rules_snapshot->'notificationOverrides'->'tournament.fixture_opened'
+                as notification_override,
+              participant.user_id
+         from tournament_fixture f
+         join tournament t on t.id = f.tournament_id
+         join tournament_revision revision on revision.id = t.published_revision_id
+         cross join lateral (
+           values (f.home_participant_id), (f.away_participant_id)
+         ) as side(participant_id)
+         join tournament_participant participant on participant.id = side.participant_id
+         left join user_push_preferences pref on pref.user_id = participant.user_id
+        where t.status in ('regular', 'playoff')
+          and f.status in ('scheduled', 'open', 'active')
+          and participant.state = 'approved'
+          and coalesce(pref.tournament_events, true)
+          and f.scheduled_starts_at <= $1::timestamptz
+          and f.scheduled_starts_at > $1::timestamptz - ($2::bigint * interval '1 millisecond')
+          and f.window_ends_at > $1::timestamptz
+     )
+     select ps.id as subscription_id, ps.user_id, ps.endpoint, ps.p256dh, ps.auth,
+            c.fixture_id::text || ':opened:' ||
+              ((extract(epoch from c.scheduled_starts_at) * 1000)::bigint)::text as event_key,
+            ''::text as local_date, null::uuid as day_pool_id, null::int as period_number,
+            null::timestamptz as event_due_at, null::uuid as training_shot_id,
+            c.tournament_title, c.fixture_id, c.notification_override
+       from candidates c
+       join push_subscriptions ps on ps.user_id = c.user_id
+      where not exists (
+        select 1 from push_delivery_log pdl
+         where pdl.user_id = c.user_id
+           and pdl.event_type = 'tournament.fixture_opened'
+           and pdl.event_key = c.fixture_id::text || ':opened:' ||
+             ((extract(epoch from c.scheduled_starts_at) * 1000)::bigint)::text
+      )
+      order by ps.user_id, ps.updated_at desc`,
+    [now.toISOString(), lateWindowMs],
+  );
+  return rows;
+}
+
+async function fetchTournamentFixtureDeadlineRows(
+  pool: Queryable,
+  now: Date,
+  lateWindowMs: number,
+): Promise<ScheduledPushSubscriptionRow[]> {
+  const { rows } = await pool.query<ScheduledPushSubscriptionRow>(
+    `with deadline_rule_candidates as (
+       select f.id as fixture_id, t.title as tournament_title, f.window_ends_at,
+              r.rules_snapshot->'notificationOverrides'->'tournament.fixture_deadline'
+                as notification_override,
+              participant.user_id,
+              case
+                when jsonb_typeof(r.rules_snapshot->'notificationDeadlineLeadMs') = 'number'
+                  and r.rules_snapshot->>'notificationDeadlineLeadMs'
+                        ~ '^(0|[1-9][0-9]{0,7})$'
+                  then (r.rules_snapshot->>'notificationDeadlineLeadMs')::bigint
+                else $3::bigint
+              end as deadline_lead_ms
+         from tournament_fixture f
+         join tournament t on t.id = f.tournament_id
+         join tournament_revision r on r.id = t.published_revision_id
+         cross join lateral (
+           values (f.home_participant_id), (f.away_participant_id)
+         ) as side(participant_id)
+         join tournament_participant participant on participant.id = side.participant_id
+         left join user_push_preferences pref on pref.user_id = participant.user_id
+        where t.status in ('regular', 'playoff')
+          and f.status in ('scheduled', 'open', 'active')
+          and participant.state = 'approved'
+          and coalesce(pref.tournament_events, true)
+          and f.window_ends_at > $1::timestamptz
+     ), candidates as (
+       select fixture_id, tournament_title, window_ends_at, user_id,
+              notification_override,
+              coalesce(
+                case
+                  when deadline_lead_ms between 0 and $4::bigint then deadline_lead_ms
+                end,
+                $3::bigint
+              ) as deadline_lead_ms
+         from deadline_rule_candidates
+     ), due as (
+       select *, window_ends_at - (deadline_lead_ms * interval '1 millisecond') as event_due_at
+         from candidates
+     )
+     select ps.id as subscription_id, ps.user_id, ps.endpoint, ps.p256dh, ps.auth,
+            d.fixture_id::text || ':deadline:' ||
+              ((extract(epoch from d.window_ends_at) * 1000)::bigint)::text || ':' ||
+              d.deadline_lead_ms::text as event_key,
+            ''::text as local_date, null::uuid as day_pool_id, null::int as period_number,
+            d.event_due_at, null::uuid as training_shot_id,
+            d.tournament_title, d.fixture_id, d.window_ends_at, d.notification_override
+       from due d
+       join push_subscriptions ps on ps.user_id = d.user_id
+      where d.event_due_at <= $1::timestamptz
+        and d.event_due_at > $1::timestamptz - ($2::bigint * interval '1 millisecond')
+        and not exists (
+          select 1 from push_delivery_log pdl
+           where pdl.user_id = d.user_id
+             and pdl.event_type = 'tournament.fixture_deadline'
+             and pdl.event_key = d.fixture_id::text || ':deadline:' ||
+               ((extract(epoch from d.window_ends_at) * 1000)::bigint)::text || ':' ||
+               d.deadline_lead_ms::text
+        )
+      order by ps.user_id, ps.updated_at desc`,
+    [
+      now.toISOString(),
+      lateWindowMs,
+      TOURNAMENT_FIXTURE_DEADLINE_LEAD_MS,
+      TOURNAMENT_NOTIFICATION_MAX_LEAD_MS,
+    ],
+  );
+  return rows;
+}
+
+async function fetchTournamentReadinessEndingRows(
+  pool: Queryable,
+  now: Date,
+  lateWindowMs: number,
+): Promise<ScheduledPushSubscriptionRow[]> {
+  const { rows } = await pool.query<ScheduledPushSubscriptionRow>(
+    `with candidates as (
+       select attempt.id as attempt_id, fixture.id as fixture_id,
+              tournament.title as tournament_title, participant.user_id,
+              attempt.readiness_expires_at - interval '1 minute' as event_due_at
+         from tournament_fixture_attempt attempt
+         join tournament_fixture fixture on fixture.id = attempt.fixture_id
+         join tournament on tournament.id = fixture.tournament_id
+         cross join lateral (
+           values
+             (fixture.home_participant_id, attempt.home_ready_at),
+             (fixture.away_participant_id, attempt.away_ready_at)
+         ) as side(participant_id, ready_at)
+         join tournament_participant participant on participant.id = side.participant_id
+         left join user_push_preferences pref on pref.user_id = participant.user_id
+        where tournament.status = 'playoff'
+          and attempt.status = 'ready_check'
+          and side.ready_at is null
+          and participant.state = 'approved'
+          and coalesce(pref.tournament_events, true)
+          and attempt.readiness_expires_at > $1::timestamptz
+     )
+     select ps.id as subscription_id, ps.user_id, ps.endpoint, ps.p256dh, ps.auth,
+            c.attempt_id::text || ':readiness-ending:' ||
+              ((extract(epoch from c.event_due_at) * 1000)::bigint)::text as event_key,
+            ''::text as local_date, null::uuid as day_pool_id, null::int as period_number,
+            c.event_due_at, null::uuid as training_shot_id,
+            c.tournament_title, c.fixture_id
+       from candidates c
+       join push_subscriptions ps on ps.user_id = c.user_id
+      where c.event_due_at <= $1::timestamptz
+        and c.event_due_at > $1::timestamptz - ($2::bigint * interval '1 millisecond')
+        and not exists (
+          select 1 from push_delivery_log pdl
+           where pdl.user_id = c.user_id
+             and pdl.event_type = 'tournament.readiness_ending'
+             and pdl.event_key = c.attempt_id::text || ':readiness-ending:' ||
+               ((extract(epoch from c.event_due_at) * 1000)::bigint)::text
+        )
+      order by ps.user_id, ps.updated_at desc`,
+    [now.toISOString(), lateWindowMs],
+  );
+  return rows;
+}
+
 async function tryAcquireSchedulerLock(client: PoolClient): Promise<boolean> {
   const { rows } = await client.query<{ locked: boolean }>(
     `select pg_try_advisory_xact_lock($1::int, $2::int) as locked`,
@@ -460,6 +728,7 @@ async function schedulePushDeliveries(
   client: PoolClient,
   options: RunScheduledPushesOptions,
   now: Date,
+  tournamentsEnabled: boolean,
 ): Promise<ScheduledPushEventResult[]> {
   const settings = await getGameSettings(client);
   const dailyAvailableHour = options.dailyAvailableLocalHour ?? DAILY_AVAILABLE_LOCAL_HOUR;
@@ -500,6 +769,18 @@ async function schedulePushDeliveries(
     trainingAvailableHour,
     settings.daily.totalPeriods,
   );
+  const tournamentLiveSoonRows = tournamentsEnabled
+    ? await fetchTournamentLiveSoonRows(client, now, lateWindowMs)
+    : [];
+  const tournamentFixtureOpenedRows = tournamentsEnabled
+    ? await fetchTournamentFixtureOpenedRows(client, now, lateWindowMs)
+    : [];
+  const tournamentFixtureDeadlineRows = tournamentsEnabled
+    ? await fetchTournamentFixtureDeadlineRows(client, now, lateWindowMs)
+    : [];
+  const tournamentReadinessEndingRows = tournamentsEnabled
+    ? await fetchTournamentReadinessEndingRows(client, now, lateWindowMs)
+    : [];
 
   const dailyAvailableTargets = collectTargets('daily.available', dailyAvailableRows, (row) => ({
     variables: { localDate: row.local_date },
@@ -570,6 +851,82 @@ async function schedulePushDeliveries(
     }),
   );
 
+  const tournamentLiveSoonTargets = collectTargets(
+    'tournament.live_soon',
+    tournamentLiveSoonRows,
+    (row) => {
+      const templateOverride = scheduledTemplateOverride(row.notification_override);
+      return {
+        variables: {
+          tournamentTitle: row.tournament_title,
+          fixtureId: row.fixture_id,
+          minutes: Math.round(Number(row.reminder_offset_ms ?? 0) / 60_000),
+        },
+        fallback: {
+          title: 'Скоро турнирный матч',
+          body: `${row.tournament_title ?? 'Турнир'}: согласованное время игры приближается.`,
+          url: '/?view=amateur&section=tournaments',
+        },
+        tag: `ultimate-hockey-tournament-live-${row.fixture_id}-${row.reminder_offset_ms}`,
+        ...(templateOverride === null ? {} : { templateOverride }),
+      };
+    },
+  );
+
+  const tournamentFixtureOpenedTargets = collectTargets(
+    'tournament.fixture_opened',
+    tournamentFixtureOpenedRows,
+    (row) => {
+      const templateOverride = scheduledTemplateOverride(row.notification_override);
+      return {
+        variables: { tournamentTitle: row.tournament_title, fixtureId: row.fixture_id },
+        fallback: {
+          title: 'Матч открыт',
+          body: `Можно начинать игру в турнире ${row.tournament_title ?? ''}.`.trim(),
+          url: '/?view=amateur&section=tournaments',
+        },
+        tag: `ultimate-hockey-tournament-opened-${row.fixture_id}`,
+        ...(templateOverride === null ? {} : { templateOverride }),
+      };
+    },
+  );
+
+  const tournamentFixtureDeadlineTargets = collectTargets(
+    'tournament.fixture_deadline',
+    tournamentFixtureDeadlineRows,
+    (row) => {
+      const templateOverride = scheduledTemplateOverride(row.notification_override);
+      return {
+        variables: {
+          tournamentTitle: row.tournament_title,
+          fixtureId: row.fixture_id,
+          deadline: row.window_ends_at?.toISOString() ?? '',
+        },
+        fallback: {
+          title: 'Матч скоро закроется',
+          body: `Завершите игру до ${row.window_ends_at?.toISOString() ?? 'конца окна'}.`,
+          url: '/?view=amateur&section=tournaments',
+        },
+        tag: `ultimate-hockey-tournament-deadline-${row.fixture_id}`,
+        ...(templateOverride === null ? {} : { templateOverride }),
+      };
+    },
+  );
+
+  const tournamentReadinessEndingTargets = collectTargets(
+    'tournament.readiness_ending',
+    tournamentReadinessEndingRows,
+    (row) => ({
+      variables: { tournamentTitle: row.tournament_title, fixtureId: row.fixture_id },
+      fallback: {
+        title: 'Осталась минута',
+        body: 'Подтвердите готовность, иначе будет засчитано техническое поражение.',
+        url: '/?view=amateur&section=tournaments',
+      },
+      tag: `ultimate-hockey-tournament-readiness-ending-${row.fixture_id}`,
+    }),
+  );
+
   return [
     await enqueueTargets(client, 'daily.available', dailyAvailableTargets),
     await enqueueTargets(
@@ -580,6 +937,22 @@ async function schedulePushDeliveries(
     await enqueueTargets(client, 'daily.period_ending', periodEndingTargets),
     await enqueueTargets(client, 'daily.break_finished', breakFinishedTargets),
     await enqueueTargets(client, 'training.available', trainingAvailableTargets),
+    ...(tournamentsEnabled
+      ? [
+          await enqueueTargets(client, 'tournament.fixture_opened', tournamentFixtureOpenedTargets),
+          await enqueueTargets(client, 'tournament.live_soon', tournamentLiveSoonTargets),
+          await enqueueTargets(
+            client,
+            'tournament.fixture_deadline',
+            tournamentFixtureDeadlineTargets,
+          ),
+          await enqueueTargets(
+            client,
+            'tournament.readiness_ending',
+            tournamentReadinessEndingTargets,
+          ),
+        ]
+      : []),
   ];
 }
 
@@ -620,7 +993,16 @@ export async function runScheduledPushes(
     await client.query('begin');
     const locked = await tryAcquireSchedulerLock(client);
     if (locked) {
-      events.push(...(await schedulePushDeliveries(client, options, now)));
+      const { rows } = await client.query<{ enabled: boolean }>(
+        `select case
+                  when jsonb_typeof(value) = 'boolean' then value = 'true'::jsonb
+                  else false
+                end as enabled
+           from game_settings
+          where key = 'tournaments.enabled'`,
+      );
+      const tournamentsEnabled = rows[0]?.enabled === true;
+      events.push(...(await schedulePushDeliveries(client, options, now, tournamentsEnabled)));
     }
     await client.query('commit');
   } catch (err) {

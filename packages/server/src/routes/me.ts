@@ -3,10 +3,18 @@ import { z } from 'zod';
 import { recomputeEffectiveProfile, type DisplaySource } from '../auth/profile.js';
 import { canUseExperimentalTrainingCourt } from '../auth/featureAccess.js';
 import { AppError } from '../plugins/errors.js';
-import { buildProfileProgress } from '../profile/summary.js';
+import {
+  buildProfileProgress,
+  fetchTrophyDetails,
+  fetchTrophySummary,
+} from '../profile/summary.js';
+import { listPendingRegularSeasonPodiumCongratulations } from '../tournament/podiumCongratulations.js';
 
 interface MeRow {
   id: string;
+  created_at: Date;
+  registration_provider: 'telegram' | 'vk' | null;
+  registration_provider_id: string | null;
   display_name: string;
   avatar_url: string | null;
   role: 'player' | 'admin';
@@ -32,18 +40,30 @@ interface MeRow {
   linked_providers: string[] | null;
   currency_balance: number;
   star_balance: number;
+  experience: number;
 }
 
 async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
   const { rows } = await app.pg.query<MeRow>(
-    `select u.id, u.display_name, u.avatar_url, u.role, u.grip, u.level, u.timezone,
+    `select u.id, u.created_at, u.display_name, u.avatar_url, u.role, u.grip, u.level, u.timezone,
             u.lifetime_shots_total, u.lifetime_goals_total, u.display_source,
             u.custom_display_name, u.custom_first_name, u.custom_last_name, u.custom_avatar_url,
             tg.provider_uid as tg_id,
             u.tg_first_name, u.tg_last_name, u.tg_avatar_url, u.tg_username,
             u.vk_first_name, u.vk_last_name, u.vk_avatar_url, u.vk_username,
             u.xp::int as star_balance,
+            u.experience::int as experience,
             coalesce(uca.balance, 0)::int as currency_balance,
+            (select ap.provider
+               from auth_providers ap
+              where ap.user_id = u.id
+              order by ap.created_at asc, ap.id asc
+              limit 1) as registration_provider,
+            (select ap.provider_uid
+               from auth_providers ap
+              where ap.user_id = u.id
+              order by ap.created_at asc, ap.id asc
+              limit 1) as registration_provider_id,
             coalesce(
               (select array_agg(ap.provider order by ap.provider)
                  from auth_providers ap
@@ -62,6 +82,10 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
   }
   const row = rows[0]!;
   const profileProgress = await buildProfileProgress(app.pg, row);
+  const [trophySummary, trophyDetails] = await Promise.all([
+    fetchTrophySummary(app.pg, row.id),
+    fetchTrophyDetails(app.pg, row.id),
+  ]);
   const experimentalTrainingCourt = await canUseExperimentalTrainingCourt(app.pg, {
     id: row.id,
     role: row.role,
@@ -69,6 +93,7 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
 
   return {
     id: row.id,
+    registeredAt: row.created_at.toISOString(),
     displayName: row.display_name,
     ...(row.avatar_url !== null ? { avatarUrl: row.avatar_url } : {}),
     role: row.role,
@@ -77,8 +102,15 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
     competitionLevel: profileProgress.competitionLevel,
     stats: profileProgress.stats,
     achievements: profileProgress.achievements,
+    trophySummary,
+    trophyDetails,
+    unclaimedAchievementsCount: profileProgress.unclaimedAchievementsCount,
     currencyBalance: Number(row.currency_balance),
     starBalance: Number(row.star_balance),
+    experienceBalance: Number(row.experience),
+    registrationProvider:
+      row.registration_provider ?? (row.display_source === 'vk' ? 'vk' : 'telegram'),
+    registrationProviderId: row.registration_provider_id ?? row.id,
     displaySource: row.display_source,
     customDisplayName: row.custom_display_name,
     customFirstName: row.custom_first_name,
@@ -100,7 +132,21 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
 
 export const meRoutes: FastifyPluginAsync = async (app) => {
   app.get('/me', { preHandler: [app.authenticate] }, async (req) => {
-    return getMe(app, req.user.id);
+    const query = z
+      .object({ includeTournamentCongratulations: z.enum(['true', 'false']).optional() })
+      .safeParse(req.query);
+    if (!query.success) {
+      throw new AppError('bad_request', 'invalid query', 400);
+    }
+    const profile = await getMe(app, req.user.id);
+    if (query.data.includeTournamentCongratulations !== 'true') return profile;
+    return {
+      ...profile,
+      pendingTournamentCongratulations: await listPendingRegularSeasonPodiumCongratulations(
+        app.pg,
+        req.user.id,
+      ),
+    };
   });
 
   app.patch('/me', { preHandler: [app.authenticate] }, async (req) => {

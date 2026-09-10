@@ -16,7 +16,11 @@ import {
   MessageNotFoundError,
   PinLimitExceededError,
 } from './errors.js';
-import { buildProfileProgress } from '../profile/summary.js';
+import {
+  buildProfileProgress,
+  fetchTrophyDetails,
+  fetchTrophySummary,
+} from '../profile/summary.js';
 
 export const PIN_LIMIT = 3;
 
@@ -27,6 +31,8 @@ interface DmCounterpartRow {
   avatar_url: string | null;
   last_seen_at: Date | null;
   last_read_at: Date | null;
+  account_kind: 'player' | 'official';
+  has_official_message: boolean;
 }
 
 interface MyChatsRow {
@@ -179,9 +185,18 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
 
   const dmChatIds = r.rows.filter((row) => row.type === 'direct').map((row) => row.id);
   const counterparts = new Map<string, ChatDTO['dmCounterpart']>();
+  const officialStartedChatIds = new Set<string>();
   if (dmChatIds.length > 0) {
     const cpSql = `
       select cm.chat_id, u.id as user_id, u.display_name, u.avatar_url, u.last_seen_at,
+             u.account_kind,
+             exists (
+               select 1 from messages message
+               join users sender on sender.id = message.sender_id
+                where message.chat_id = cm.chat_id
+                  and message.is_deleted = false
+                  and sender.account_kind = 'official'
+             ) as has_official_message,
              cm.last_read_at
       from chat_members cm
       join users u on u.id = cm.user_id
@@ -195,50 +210,59 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
         avatarUrl: row.avatar_url,
         lastSeenAt: row.last_seen_at !== null ? row.last_seen_at.toISOString() : null,
         lastReadAt: row.last_read_at !== null ? row.last_read_at.toISOString() : null,
+        accountKind: row.account_kind,
       });
+      if (row.account_kind === 'official' && row.has_official_message) {
+        officialStartedChatIds.add(row.chat_id);
+      }
     }
   }
 
-  return r.rows.map((row) => {
-    const chat: ChatRow = {
-      id: row.id,
-      type: row.type,
-      name: row.name,
-      description: row.description,
-      created_by: row.created_by,
-      entity_type: row.entity_type,
-      entity_id: row.entity_id,
-      channel_slug: row.channel_slug,
-      avatar_url: row.avatar_url,
-      last_message_at: row.last_message_at,
-      is_active: row.is_active,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    };
-    const lastMessage: MessageRow | null = row.last_message_id
-      ? {
-          id: row.last_message_id,
-          chat_id: row.id,
-          sender_id: row.last_message_sender_id!,
-          content: row.last_message_content!,
-          metadata: row.last_message_metadata ?? {},
-          reply_to_id: row.last_message_reply_to_id,
-          is_deleted: row.last_message_is_deleted!,
-          created_at: row.last_message_created_at!,
-          updated_at: row.last_message_updated_at!,
-        }
-      : null;
-    const agg: ChatListAggregate = {
-      chat,
-      lastMessage,
-      lastMessageSenderName: row.last_message_sender_name,
-      unreadCount: Number(row.unread_count),
-      dmCounterpart: row.type === 'direct' ? (counterparts.get(row.id) ?? null) : null,
-      memberCount: Number(row.member_count),
-      pinnedAt: row.pinned_at,
-    };
-    return toChatDTO(agg);
-  });
+  return r.rows
+    .map((row) => {
+      const chat: ChatRow = {
+        id: row.id,
+        type: row.type,
+        name: row.name,
+        description: row.description,
+        created_by: row.created_by,
+        entity_type: row.entity_type,
+        entity_id: row.entity_id,
+        channel_slug: row.channel_slug,
+        avatar_url: row.avatar_url,
+        last_message_at: row.last_message_at,
+        is_active: row.is_active,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      };
+      const lastMessage: MessageRow | null = row.last_message_id
+        ? {
+            id: row.last_message_id,
+            chat_id: row.id,
+            sender_id: row.last_message_sender_id!,
+            content: row.last_message_content!,
+            metadata: row.last_message_metadata ?? {},
+            reply_to_id: row.last_message_reply_to_id,
+            is_deleted: row.last_message_is_deleted!,
+            created_at: row.last_message_created_at!,
+            updated_at: row.last_message_updated_at!,
+          }
+        : null;
+      const agg: ChatListAggregate = {
+        chat,
+        lastMessage,
+        lastMessageSenderName: row.last_message_sender_name,
+        unreadCount: Number(row.unread_count),
+        dmCounterpart: row.type === 'direct' ? (counterparts.get(row.id) ?? null) : null,
+        memberCount: Number(row.member_count),
+        pinnedAt: row.pinned_at,
+      };
+      return toChatDTO(agg);
+    })
+    .filter(
+      (chat) =>
+        chat.dmCounterpart?.accountKind !== 'official' || officialStartedChatIds.has(chat.id),
+    );
 }
 
 export async function pinChat(pool: Pool, userId: string, chatId: string): Promise<void> {
@@ -294,6 +318,7 @@ export async function getChatInfo(
     displayName: string;
     avatarUrl: string | null;
     role?: 'admin' | 'member';
+    accountKind: 'player' | 'official';
   }[];
 }> {
   // Caller is expected to have already passed assertCanAccessChat. This
@@ -321,13 +346,14 @@ export async function getChatInfo(
     displayName: string;
     avatarUrl: string | null;
     role?: 'admin' | 'member';
+    accountKind: 'player' | 'official';
   }[];
 
   if (chat.type === 'system' || chat.type === 'channel') {
     const total = await pool.query<{ c: string }>(`select count(*)::bigint as c from users`);
     memberCount = Number(total.rows[0]!.c);
-    const r = await pool.query<{ id: string; display_name: string; avatar_url: string | null }>(
-      `select id, display_name, avatar_url from users
+    const r = await pool.query<{ id: string; display_name: string; avatar_url: string | null; account_kind: 'player' | 'official' }>(
+      `select id, display_name, avatar_url, account_kind from users
        order by display_name asc limit $1`,
       [CHAT_INFO_MEMBERS_LIMIT],
     );
@@ -335,6 +361,7 @@ export async function getChatInfo(
       userId: row.id,
       displayName: row.display_name,
       avatarUrl: row.avatar_url,
+      accountKind: row.account_kind,
     }));
   } else {
     const total = await pool.query<{ c: string }>(
@@ -347,8 +374,9 @@ export async function getChatInfo(
       display_name: string;
       avatar_url: string | null;
       role: 'admin' | 'member';
+      account_kind: 'player' | 'official';
     }>(
-      `select u.id, u.display_name, u.avatar_url, cm.role
+      `select u.id, u.display_name, u.avatar_url, u.account_kind, cm.role
          from chat_members cm
          join users u on u.id = cm.user_id
         where cm.chat_id = $1
@@ -361,6 +389,7 @@ export async function getChatInfo(
       displayName: row.display_name,
       avatarUrl: row.avatar_url,
       role: row.role,
+      accountKind: row.account_kind,
     }));
   }
 
@@ -389,17 +418,29 @@ export async function getUserPublicProfile(
     lifetime_goals_total: number;
     created_at: Date;
     last_seen_at: Date | null;
+    currency_balance: number;
+    star_balance: number;
+    experience_balance: number;
   }>(
-    `select id, display_name, avatar_url, level, timezone,
+    `select u.id, u.display_name, u.avatar_url, u.level, u.timezone,
             lifetime_shots_total, lifetime_goals_total,
-            created_at, last_seen_at
-       from users
-      where id = $1`,
+            u.created_at, u.last_seen_at,
+            coalesce(uca.balance, 0)::int as currency_balance,
+            u.xp::int as star_balance,
+            u.experience::int as experience_balance
+       from users u
+       left join user_currency_account uca on uca.user_id = u.id
+      where u.id = $1
+        and u.account_kind = 'player'`,
     [userId],
   );
   if (r.rowCount === 0) return null;
   const row = r.rows[0]!;
   const profileProgress = await buildProfileProgress(pool, row);
+  const [trophySummary, trophyDetails] = await Promise.all([
+    fetchTrophySummary(pool, row.id),
+    fetchTrophyDetails(pool, row.id),
+  ]);
 
   return {
     id: row.id,
@@ -408,6 +449,11 @@ export async function getUserPublicProfile(
     competitionLevel: profileProgress.competitionLevel,
     stats: profileProgress.stats,
     achievements: profileProgress.achievements,
+    currencyBalance: Number(row.currency_balance),
+    starBalance: Number(row.star_balance),
+    experienceBalance: Number(row.experience_balance),
+    trophySummary,
+    trophyDetails,
     createdAt: row.created_at.toISOString(),
     lastSeenAt: row.last_seen_at !== null ? row.last_seen_at.toISOString() : null,
   };
@@ -549,6 +595,7 @@ export interface SendMessageOpts {
   replyToId?: string;
   pollOptions?: string[];
   metadata?: Record<string, unknown>;
+  markReadForUserIds?: string[];
 }
 
 export async function sendMessage(pool: Pool, opts: SendMessageOpts): Promise<ChatMessageDTO> {
@@ -590,14 +637,33 @@ export async function sendMessage(pool: Pool, opts: SendMessageOpts): Promise<Ch
     const row = r.rows[0]!;
     await client.query(
       `insert into chat_members (chat_id, user_id, last_read_at)
-       values ($1, $2, $3)
+       select $1, $2, created_at
+         from messages
+        where id = $3
        on conflict (chat_id, user_id) do update
           set last_read_at = greatest(
             coalesce(chat_members.last_read_at, '-infinity'::timestamptz),
             excluded.last_read_at
           )`,
-      [opts.chatId, opts.senderId, row.created_at],
+      [opts.chatId, opts.senderId, row.id],
     );
+    const markReadForUserIds = Array.from(
+      new Set((opts.markReadForUserIds ?? []).filter((userId) => userId !== opts.senderId)),
+    );
+    if (markReadForUserIds.length > 0) {
+      await client.query(
+        `insert into chat_members (chat_id, user_id, last_read_at)
+         select $1, ids.user_id, m.created_at
+           from unnest($2::uuid[]) as ids(user_id)
+           join messages m on m.id = $3
+         on conflict (chat_id, user_id) do update
+            set last_read_at = greatest(
+              coalesce(chat_members.last_read_at, '-infinity'::timestamptz),
+              excluded.last_read_at
+            )`,
+        [opts.chatId, markReadForUserIds, row.id],
+      );
+    }
     if (pollOptions.length > 0) {
       await client.query(`insert into channel_post_polls (post_message_id) values ($1)`, [row.id]);
       for (const [index, text] of pollOptions.entries()) {
@@ -847,7 +913,9 @@ export async function searchUsers(
   const limit = Math.min(Math.max(opts.limit, 1), 50);
   const r = await pool.query<{ id: string; display_name: string; avatar_url: string | null }>(
     `select id, display_name, avatar_url from users
-     where id != $1 and display_name ilike '%' || $2 || '%'
+     where id != $1
+       and account_kind = 'player'
+       and display_name ilike '%' || $2 || '%'
      order by similarity(display_name, $2) desc
      limit $3`,
     [currentUserId, q, limit],

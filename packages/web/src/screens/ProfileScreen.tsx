@@ -1,1158 +1,742 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type PointerEvent,
-  type ReactNode,
-} from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleDollarSign, Info, Settings, Star, TrendingUp, X } from 'lucide-react';
+import {
+  Award,
+  ChevronRight,
+  CircleDollarSign,
+  Medal,
+  Settings,
+  Star,
+  Target,
+  TrendingUp,
+  Trophy,
+  X,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
 import {
   fetchMyInventory,
   patchEquipment,
-  type InventoryEquipmentKind,
   type InventoryItem,
   type InventoryState,
 } from '../api/inventory.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
+import { CommunityLinks } from '../components/CommunityLinks.js';
 import { useAuthStore } from '../auth/authStore.js';
-import type { ProfileAchievement, ProfileData } from './profileTypes.js';
+import { placeholderArtworkForKind } from './inventoryArtwork.js';
+import {
+  formatInventoryBadgeAmount,
+  formatInventoryResourceAmount,
+  formatRecoveryMinutesTotal,
+  recoveryMinutesAvailable,
+} from './inventoryResourceLabels.js';
 import {
   AchievementDetailsSheet,
-  EMPTY_PROFILE_STATS,
+  FittedOneLineText,
   formatProfileNumber,
   getLevelLabel,
-  ProfileAchievementsSection,
-  ProfileStatsGrid,
 } from './profileSections.js';
-import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
+import type { ProfileData } from './profileTypes.js';
+import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 
-function canStartMouseDragScroll(target: EventTarget | null): boolean {
-  return (
-    !(target instanceof Element) ||
-    target.closest('[data-no-drag-scroll], button, a, input, textarea, select') === null
-  );
+export type TrophySectionKey = keyof NonNullable<ProfileData['trophyDetails']>;
+
+const TROPHY_SECTION_TITLES: Record<TrophySectionKey, string> = {
+  regularSeasonWins: 'Победы в регулярке',
+  tournamentChampionships: 'Чемпионства',
+  tournamentPodiums: 'Призовые места',
+  completedChallenges: 'Пройденные челленджи',
+};
+
+function formatTrophyDateRange(startsAt: string | null, endsAt: string | null): string {
+  const format = (value: string | null): string | null => {
+    if (value === null) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? null
+      : date.toLocaleDateString('ru-RU', {
+          timeZone: 'UTC',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        });
+  };
+  const start = format(startsAt);
+  const end = format(endsAt);
+  if (start !== null && end !== null) return `${start} — ${end}`;
+  return start ?? end ?? 'Дата проведения не указана';
 }
 
-function formatProfileCompactNumber(value: number): string {
-  const sign = value < 0 ? '-' : '';
-  const absolute = Math.abs(value);
-
-  if (absolute >= 1_000_000_000_000) {
-    return `${sign}${formatCompactUnit(absolute / 1_000_000_000_000)}трлн`;
-  }
-  if (absolute >= 1_000_000_000) {
-    return `${sign}${formatCompactUnit(absolute / 1_000_000_000)}млрд`;
-  }
-  if (absolute >= 1_000_000) {
-    return `${sign}${formatCompactUnit(absolute / 1_000_000)}млн`;
-  }
-  if (absolute >= 10_000) {
-    return `${sign}${Math.round(absolute / 1_000)}тыс`;
-  }
-
-  return formatProfileNumber(value);
-}
-
-function formatCompactUnit(value: number): string {
-  const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
-  return String(rounded).replace('.', ',').replace(/,0$/, '');
-}
-
-function ProfileResourceChip({
+function ProfileBalance({
   label,
   value,
-  icon,
   tone,
+  icon,
 }: {
   label: string;
   value: number;
-  icon: ReactNode;
-  tone: 'coin' | 'star' | 'experience';
+  tone: string;
+  icon: JSX.Element;
 }): JSX.Element {
-  const compactValue = formatProfileCompactNumber(value);
-  const visualLength = compactValue.replace(/\s/g, '').length;
-  const isLargeValue = Math.abs(value) >= 1_000_000;
-  const fontSize = visualLength >= 7 ? 8 : visualLength >= 5 || isLargeValue ? 10 : 11;
-  const iconSize = visualLength >= 7 ? 9 : visualLength >= 5 || isLargeValue ? 12 : 14;
-  const gap = visualLength >= 5 || isLargeValue ? 2 : 4;
-  const colors =
-    tone === 'coin'
-      ? {
-          color: '#9A6700',
-        }
-      : tone === 'star'
-        ? {
-            color: '#B77900',
-          }
-        : {
-            color: '#158A86',
-          };
-
   return (
-    <span
-      aria-label={`${label}: ${value}`}
-      title={`${label}: ${formatProfileNumber(value)}`}
-      style={{
-        minWidth: 0,
-        height: 18,
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap,
-        color: colors.color,
-        fontSize,
-        fontWeight: 900,
-        lineHeight: 1,
-        fontVariantNumeric: 'tabular-nums',
-        whiteSpace: 'nowrap',
-        flex: '0 1 auto',
-      }}
-    >
-      <span
-        aria-hidden="true"
-        style={{
-          width: iconSize,
-          height: iconSize,
-          display: 'inline-flex',
-          flex: `0 0 ${iconSize}px`,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <span style={{ display: 'inline-flex', transform: `scale(${iconSize / 14})` }}>
-          {icon}
-        </span>
+    <div className="profile-balance">
+      <span className="profile-balance__label">{label}</span>
+      <span className={`profile-balance__amount profile-balance__amount--${tone}`}>
+        {icon}
+        <strong className="profile-balance__value" aria-label={`${label}: ${value}`}>
+          <FittedOneLineText maxFontSize={18}>{formatProfileNumber(value)}</FittedOneLineText>
+        </strong>
       </span>
-      <span>{compactValue}</span>
-    </span>
-  );
-}
-
-function ProfileAvatar({
-  avatarUrl,
-  initial,
-}: {
-  avatarUrl?: string | undefined;
-  initial: string;
-}): JSX.Element {
-  return (
-    <div
-      style={{
-        width: 76,
-        height: 76,
-        gridArea: 'avatar',
-        position: 'relative',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <div
-        style={{
-          width: 72,
-          height: 72,
-          borderRadius: 999,
-          padding: 3,
-          background: 'rgba(226, 238, 249, 0.78)',
-          boxShadow: '0 9px 22px rgba(15, 23, 42, 0.18)',
-        }}
-      >
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt="avatar"
-            style={{
-              width: '100%',
-              height: '100%',
-              borderRadius: 999,
-              objectFit: 'cover',
-              border: '2px solid rgba(239, 247, 255, 0.92)',
-              boxSizing: 'border-box',
-              display: 'block',
-            }}
-          />
-        ) : (
-          <div
-            style={{
-              width: '100%',
-              height: '100%',
-              borderRadius: 999,
-              background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
-              color: '#ffffff',
-              fontSize: 25,
-              fontWeight: 800,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: '2px solid rgba(239, 247, 255, 0.92)',
-              boxSizing: 'border-box',
-            }}
-          >
-            {initial}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
 
-const EQUIPMENT_META: Record<
-  InventoryEquipmentKind,
-  { title: string; empty: string; patchKey: 'stickItemId' | 'skatesItemId' | 'nutritionItemId' }
-> = {
-  stick: { title: 'Клюшка', empty: 'Без клюшки', patchKey: 'stickItemId' },
-  skates: { title: 'Коньки', empty: 'Без коньков', patchKey: 'skatesItemId' },
-  nutrition: { title: 'Питание', empty: 'Без питания', patchKey: 'nutritionItemId' },
-};
-
-const EQUIPMENT_KINDS: InventoryEquipmentKind[] = ['stick', 'skates', 'nutrition'];
-
-type ProfileInfoSection = 'currency' | 'stats' | 'equipment' | 'achievements';
-
-const PROFILE_SECTION_INFO: Record<ProfileInfoSection, { title: string; copy: string }> = {
-  currency: {
-    title: 'Валюта',
-    copy: 'Монеты нужны для покупок в магазине, звёзды показывают особый прогресс, а опыт отражает общий рост профиля.',
-  },
-  stats: {
-    title: 'Статистика',
-    copy: 'Здесь собраны броски, голы, точность и серия игровых дней. Эти числа обновляются по сыгранным режимам.',
-  },
-  equipment: {
-    title: 'Экипировка',
-    copy: 'В раздевалке выбирается уже купленный инвентарь: одна клюшка, одна пара коньков и одно питание. В дуэлях расход считается по периодам.',
-  },
-  achievements: {
-    title: 'Задания',
-    copy: 'Задания показывают важные игровые цели. Выполненные задания подсвечены, невыполненные остаются приглушёнными до выполнения условия.',
-  },
-};
-
-function equipmentIdFor(
-  inventory: InventoryState | undefined,
-  kind: InventoryEquipmentKind,
-): string | null {
-  if (!inventory) return null;
-  if (kind === 'stick') return inventory.equipped.stickItemId;
-  if (kind === 'skates') return inventory.equipped.skatesItemId;
-  return inventory.equipped.nutritionItemId;
-}
-
-function equippedItem(
-  inventory: InventoryState | undefined,
-  kind: InventoryEquipmentKind,
+function findEquippedItem(
+  inventory: InventoryState,
+  kind: keyof InventoryState['equipped'],
 ): InventoryItem | null {
-  const id = equipmentIdFor(inventory, kind);
-  return inventory?.items[kind].find((item) => item.id === id) ?? null;
-}
-
-function isRequiredEquipment(kind: InventoryEquipmentKind): boolean {
-  return kind === 'stick' || kind === 'skates';
-}
-
-function baseEquipmentTitle(kind: InventoryEquipmentKind): string {
-  if (kind === 'stick') return 'Обычная клюшка';
-  if (kind === 'skates') return 'Обычные коньки';
-  return 'Без питания';
-}
-
-function baseEquipmentDescription(kind: InventoryEquipmentKind): string {
-  if (kind === 'stick') return 'Базовая клюшка доступна всегда и не расходуется в дуэлях.';
-  if (kind === 'skates') return 'Базовые коньки доступны всегда и не расходуются в дуэлях.';
-  return 'Можно выйти на матч без спортивного питания.';
-}
-
-function ProfileSectionInfoButton({
-  infoSection,
-  onOpenInfo,
-}: {
-  infoSection: ProfileInfoSection;
-  onOpenInfo: (section: ProfileInfoSection) => void;
-}): JSX.Element {
+  const selectedId = inventory.equipped[kind];
+  if (selectedId === null) return null;
+  const group = kind === 'stickItemId' ? 'stick' : kind === 'skatesItemId' ? 'skates' : 'nutrition';
   return (
-    <button
-      type="button"
-      className="section-info-btn"
-      data-no-drag-scroll="true"
-      aria-label={`О разделе: ${PROFILE_SECTION_INFO[infoSection].title}`}
-      onClick={() => onOpenInfo(infoSection)}
-    >
-      <Info size={12} color="var(--muted)" />
-    </button>
+    inventory.items[group].find(
+      (item) => item.id === selectedId || item.instanceId === selectedId,
+    ) ?? null
   );
 }
 
-function ProfileSectionLabel({
-  children,
-  infoSection,
-  style,
-  onOpenInfo,
-}: {
-  children: ReactNode;
-  infoSection: ProfileInfoSection;
-  style?: CSSProperties;
-  onOpenInfo: (section: ProfileInfoSection) => void;
-}): JSX.Element {
-  return (
-    <div
-      className="section-label"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 10,
-        ...style,
-      }}
-    >
-      <span style={{ minWidth: 0 }}>{children}</span>
-      <ProfileSectionInfoButton infoSection={infoSection} onOpenInfo={onOpenInfo} />
-    </div>
-  );
-}
-
-function isAvailableLockerItem(item: InventoryItem): boolean {
-  return item.chargesAvailable + item.chargesReserved > 0;
-}
-
-function formatProfileUsageCountLabel(count: number): string {
-  const normalized = Math.max(0, Math.trunc(count));
-  if (normalized === 0) return 'Нет запаса';
-
-  const mod10 = normalized % 10;
-  const mod100 = normalized % 100;
-  const noun =
-    mod10 === 1 && mod100 !== 11
-      ? 'период'
-      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
-        ? 'периода'
-        : 'периодов';
-  return `На ${normalized} ${noun}`;
-}
-
-function formatReservedLabel(count: number): string | null {
-  const normalized = Math.max(0, Math.trunc(count));
-  if (normalized === 0) return null;
-
-  const mod10 = normalized % 10;
-  const mod100 = normalized % 100;
-  const noun =
-    mod10 === 1 && mod100 !== 11
-      ? 'забронирован'
-      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
-        ? 'забронировано'
-        : 'забронировано';
-  return `${normalized} ${noun}`;
-}
-
-function equipmentEffectLabel(kind: InventoryEquipmentKind, powerScore: number): string {
-  if (kind === 'stick') return `Бросок +${powerScore}`;
-  if (kind === 'skates') return `Скорость +${powerScore}`;
-  return `Энергия +${powerScore}`;
-}
-
-function equipmentDisplayTitle(item: InventoryItem): string {
-  const normalized = item.title.trim().toLowerCase();
-  const isGenericTitle = new Set(['клюшка', 'клюшки', 'коньки', 'питание', 'энергия']).has(
-    normalized,
-  );
-  if (!isGenericTitle) return item.title;
-
-  const tier = item.rarity === 'legendary' || item.rarity === 'epic' ? 'gold' : item.rarity;
-  if (item.kind === 'stick') {
-    if (tier === 'gold') return 'Золотая клюшка';
-    if (tier === 'rare') return 'Серебряная клюшка';
-    return 'Бронзовая клюшка';
-  }
-  if (item.kind === 'skates') {
-    if (tier === 'gold') return 'Золотые коньки';
-    if (tier === 'rare') return 'Серебряные коньки';
-    return 'Бронзовые коньки';
-  }
-  if (tier === 'gold') return 'Золотое питание';
-  if (tier === 'rare') return 'Серебряное питание';
-  return 'Бронзовое питание';
-}
-
-function EquipmentSlotButton({
-  kind,
+function EquipmentPanel({
   inventory,
   onOpen,
+  onChoose,
+  onOpenRecovery,
 }: {
-  kind: InventoryEquipmentKind;
   inventory: InventoryState | undefined;
   onOpen: () => void;
+  onChoose: (kind: keyof InventoryState['equipped']) => void;
+  onOpenRecovery: () => void;
 }): JSX.Element {
-  const meta = EQUIPMENT_META[kind];
-  const items = (inventory?.items[kind] ?? []).filter(isAvailableLockerItem);
-  const activeItem = equippedItem(inventory, kind);
-  const hasOwnedItems = items.length > 0;
-  const hasBaseEquipment = isRequiredEquipment(kind);
-  const status = activeItem
-    ? formatProfileUsageCountLabel(activeItem.chargesAvailable)
-    : hasBaseEquipment
-      ? 'Базовая'
-      : hasOwnedItems
-        ? 'Выбрать'
-        : 'Нет купленных';
-  const title = activeItem
-    ? equipmentDisplayTitle(activeItem)
-    : hasBaseEquipment
-      ? baseEquipmentTitle(kind)
-      : meta.empty;
-  const artworkSrc = activeItem
-    ? artworkForInventoryItem(activeItem)
-    : placeholderArtworkForKind(kind);
-  const hasVisibleEquipment = activeItem !== null || hasBaseEquipment;
-
+  const slots = [
+    ['stickItemId', 'Клюшка', 'клюшку', 'Базовая клюшка', 'stick'],
+    ['skatesItemId', 'Коньки', 'коньки', 'Базовые коньки', 'skates'],
+    ['nutritionItemId', 'Питание', 'питание', 'Базовое питание', 'nutrition'],
+  ] as const;
+  const recoveryItems = inventory?.items.recovery ?? [];
+  const recoveryMinutes = recoveryMinutesAvailable(recoveryItems);
+  const recoveryArtwork =
+    recoveryItems.find((item) => item.chargesAvailable > 0)?.imageUrl ??
+    '/inventory/recovery-30.webp';
   return (
-    <button
-      type="button"
-      data-no-drag-scroll="true"
-      onClick={onOpen}
-      aria-label={`${meta.title}: ${title}. ${status}`}
-      style={{
-        minWidth: 0,
-        minHeight: 154,
-        padding: '13px 11px 11px',
-        border: hasVisibleEquipment
-          ? '1px solid rgba(15, 23, 42, 0.28)'
-          : '1px solid rgba(255,255,255,0.76)',
-        borderRadius: 22,
-        background: hasVisibleEquipment
-          ? 'linear-gradient(180deg, rgba(255,255,255,0.42), rgba(255,255,255,0.18))'
-          : 'rgba(255,255,255,0.18)',
-        boxShadow: hasVisibleEquipment
-          ? '0 10px 22px rgba(15,23,42,0.16), inset 0 1px 0 rgba(255,255,255,0.86)'
-          : '0 8px 18px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.74)',
-        color: 'var(--ink)',
-        display: 'grid',
-        gridTemplateRows: 'auto auto minmax(0, 1fr)',
-        gap: 8,
-        textAlign: 'left',
-        cursor: 'pointer',
-        WebkitTapHighlightColor: 'transparent',
-      }}
-    >
-      <span
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 6,
-          minWidth: 0,
-        }}
+    <section className="profile-equipment-section" aria-label="Инвентарь">
+      <button
+        type="button"
+        className="section-label profile-section-label"
+        aria-label="Открыть инвентарь"
+        onClick={onOpen}
       >
-        <span
-          style={{
-            minWidth: 0,
-            color: 'var(--muted)',
-            fontSize: 10,
-            fontWeight: 900,
-            lineHeight: 1.05,
-            textTransform: 'uppercase',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-        >
-          {meta.title}
-        </span>
-      </span>
-
-      <span
-        aria-hidden="true"
-        style={{
-          width: '100%',
-          aspectRatio: '1 / 1',
-          justifySelf: 'stretch',
-          borderRadius: 18,
-          overflow: 'hidden',
-          border: '1px solid rgba(255,255,255,0.74)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72), 0 8px 16px rgba(15,23,42,0.1)',
-          background: 'rgba(255,255,255,0.26)',
-          opacity: hasVisibleEquipment ? 1 : 0.5,
-        }}
-      >
-        <img
-          src={artworkSrc}
-          alt=""
-          style={{
-            width: '100%',
-            height: '100%',
-            display: 'block',
-            objectFit: 'cover',
-          }}
-        />
-      </span>
-
-      <span style={{ display: 'grid', alignContent: 'center', gap: 6, minWidth: 0 }}>
-        <span
-          style={{
-            minWidth: 0,
-            color: 'var(--ink)',
-            fontSize: 13,
-            fontWeight: 950,
-            lineHeight: 1.08,
-            overflowWrap: 'anywhere',
-          }}
-        >
-          {title}
-        </span>
-        <span
-          style={{
-            color: hasVisibleEquipment ? 'rgba(15, 23, 42, 0.7)' : 'var(--muted)',
-            fontSize: 11,
-            fontWeight: 800,
-            lineHeight: 1.2,
-          }}
-        >
-          {status}
-        </span>
-      </span>
-    </button>
-  );
-}
-
-function EquipmentDetailsModal({
-  kind,
-  inventory,
-  isSaving,
-  error,
-  onSelect,
-  onOpenShop,
-  onClose,
-}: {
-  kind: InventoryEquipmentKind;
-  inventory: InventoryState | undefined;
-  isSaving: boolean;
-  error: string | null;
-  onSelect: (itemId: string | null) => void;
-  onOpenShop: () => void;
-  onClose: () => void;
-}): JSX.Element {
-  const meta = EQUIPMENT_META[kind];
-  const items = (inventory?.items[kind] ?? []).filter(isAvailableLockerItem);
-  const activeId = equipmentIdFor(inventory, kind);
-
-  return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
-      <section
-        role="dialog"
-        aria-label={meta.title}
-        className="modal-card"
-        onClick={(event) => event.stopPropagation()}
-        style={{
-          width: 'min(430px, calc(100vw - 28px))',
-          display: 'grid',
-          gap: 14,
-          position: 'relative',
-        }}
-      >
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="Закрыть"
-          onClick={onClose}
-          style={{ position: 'absolute', top: 14, right: 14 }}
-        >
-          <X size={15} />
-        </button>
-        <div style={{ minWidth: 0, paddingRight: 42 }}>
-          <div className="modal-title">{meta.title}</div>
-          <div className="modal-copy">Купленные расходники для активного слота.</div>
-        </div>
-
-        <div style={{ display: 'grid', gap: 8 }}>
-          <button
-            type="button"
-            data-no-drag-scroll="true"
-            disabled={isSaving}
-            onClick={() => onSelect(null)}
-            className="glass"
-            aria-pressed={activeId === null}
-            style={{
-              borderRadius: 18,
-              padding: 12,
-              color: 'var(--ink)',
-              border:
-                activeId === null
-                  ? '1px solid rgba(15, 23, 42, 0.28)'
-                  : '1px solid rgba(255,255,255,0.76)',
-              background:
-                activeId === null
-                  ? 'linear-gradient(180deg, rgba(255,255,255,0.58), rgba(226, 239, 249, 0.24))'
-                  : 'rgba(255,255,255,0.22)',
-              display: 'block',
-              alignItems: 'center',
-              textAlign: 'left',
-              cursor: isSaving ? 'wait' : 'pointer',
-              boxShadow:
-                activeId === null
-                  ? '0 10px 22px rgba(15,23,42,0.14), inset 0 1px 0 rgba(255,255,255,0.86)'
-                  : '0 8px 18px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.74)',
-            }}
-          >
-            <span style={{ display: 'grid', gap: 4 }}>
-              <span style={{ fontSize: 15, fontWeight: 900 }}>{baseEquipmentTitle(kind)}</span>
-              <span
-                style={{
-                  color: 'rgba(15, 23, 42, 0.62)',
-                  fontSize: 12,
-                  fontWeight: 760,
-                  lineHeight: 1.28,
-                }}
-              >
-                {baseEquipmentDescription(kind)}
-              </span>
-            </span>
-          </button>
-
-          {items.map((item) => {
-            const selected = item.id === activeId;
-            const reservedLabel = formatReservedLabel(item.chargesReserved);
-            const displayTitle = equipmentDisplayTitle(item);
+        Инвентарь
+      </button>
+      <div className="profile-equipment-panel glass">
+        <span className="profile-loadout" aria-label="Выбранная экипировка">
+          {slots.map(([kind, label, actionLabel, baseImageAlt, equipmentKind]) => {
+            const item = inventory === undefined ? null : findEquippedItem(inventory, kind);
             return (
               <button
-                key={item.id}
                 type="button"
-                data-no-drag-scroll="true"
-                disabled={isSaving || item.chargesAvailable <= 0}
-                onClick={() => onSelect(item.id)}
-                aria-pressed={selected}
-                className="glass"
-                style={{
-                  borderRadius: 24,
-                  padding: 14,
-                  color: 'var(--ink)',
-                  border: selected
-                    ? '1px solid rgba(15, 23, 42, 0.28)'
-                    : '1px solid rgba(255,255,255,0.76)',
-                  background: selected
-                    ? 'linear-gradient(180deg, rgba(255,255,255,0.58), rgba(226, 239, 249, 0.24))'
-                    : 'rgba(255,255,255,0.22)',
-                  display: 'grid',
-                  gridTemplateColumns: '96px minmax(0, 1fr)',
-                  alignItems: 'start',
-                  gap: 12,
-                  textAlign: 'left',
-                  cursor: isSaving ? 'wait' : 'pointer',
-                  opacity: item.chargesAvailable > 0 ? 1 : 0.55,
-                  boxShadow: selected
-                    ? '0 12px 24px rgba(15,23,42,0.14), inset 0 1px 0 rgba(255,255,255,0.86)'
-                    : '0 8px 18px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.74)',
-                }}
+                className="profile-loadout-slot"
+                aria-label={`Выбрать ${actionLabel}`}
+                key={kind}
+                onClick={() => onChoose(kind)}
               >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: '100%',
-                    aspectRatio: '1 / 1',
-                    borderRadius: 22,
-                    overflow: 'hidden',
-                    border: '1px solid rgba(255,255,255,0.8)',
-                    background: 'rgba(255,255,255,0.28)',
-                    boxShadow:
-                      'inset 0 1px 0 rgba(255,255,255,0.8), 0 10px 18px rgba(15,23,42,0.12)',
-                  }}
-                >
+                <span className="profile-loadout-slot__image">
                   <img
-                    src={artworkForInventoryItem(item)}
-                    alt=""
-                    style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+                    src={item?.imageUrl ?? placeholderArtworkForKind(equipmentKind)}
+                    alt={item?.title ?? baseImageAlt}
                   />
+                  {item !== null ? (
+                    <strong>
+                      <FittedOneLineText maxFontSize={9} minFontSize={5}>
+                        {formatInventoryBadgeAmount(
+                          item.kind,
+                          item.chargesAvailable,
+                          item.resourceUnit,
+                        )}
+                      </FittedOneLineText>
+                    </strong>
+                  ) : null}
                 </span>
-                <span style={{ minWidth: 0 }}>
-                  <span
-                    style={{
-                      display: 'block',
-                      minWidth: 0,
-                    }}
-                  >
-                    <span
-                      style={{
-                        minWidth: 0,
-                        color: 'var(--ink)',
-                        fontSize: 18,
-                        fontWeight: 950,
-                        lineHeight: 1.08,
-                        overflowWrap: 'break-word',
-                      }}
-                    >
-                      {displayTitle}
-                    </span>
-                  </span>
-                  <span
-                    style={{
-                      display: 'block',
-                      marginTop: 7,
-                      fontSize: 12,
-                      fontWeight: 760,
-                      lineHeight: 1.28,
-                      color: 'rgba(15, 23, 42, 0.62)',
-                    }}
-                  >
-                    {item.description}
-                  </span>
-                  <span
-                    style={{
-                      display: 'flex',
-                      gap: 6,
-                      flexWrap: 'wrap',
-                      marginTop: 12,
-                    }}
-                  >
-                    <span
-                      className="pill"
-                      style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
-                    >
-                      {formatProfileUsageCountLabel(item.chargesAvailable)}
-                    </span>
-                    <span
-                      className="pill"
-                      style={{ height: 26, justifyContent: 'center', fontSize: 11 }}
-                    >
-                      {equipmentEffectLabel(kind, item.powerScore)}
-                    </span>
-                  </span>
-                  <span
-                    style={{
-                      display: 'flex',
-                      gap: 8,
-                      flexWrap: 'wrap',
-                      marginTop: 10,
-                      fontSize: 11,
-                      fontWeight: 850,
-                      color: 'rgba(15, 23, 42, 0.66)',
-                    }}
-                  >
-                    <span>Расход: {item.duelPeriodCost}/период</span>
-                    <span>Цена: {item.currencyPrice}</span>
-                    {reservedLabel !== null && <span>{reservedLabel}</span>}
-                  </span>
-                </span>
+                <span className="profile-loadout-slot__kind">{label}</span>
+                <span className="profile-loadout-slot__title">{item?.title ?? 'Не выбрано'}</span>
               </button>
             );
           })}
+          <button
+            type="button"
+            className={`profile-loadout-slot${recoveryMinutes === 0 ? ' profile-loadout-slot--empty' : ''}`}
+            aria-label={`Восстановление: ${formatRecoveryMinutesTotal(recoveryMinutes)}`}
+            onClick={onOpenRecovery}
+          >
+            <span className="profile-loadout-slot__image">
+              <img src={recoveryArtwork} alt="Наборы для восстановления" />
+              <strong>
+                <FittedOneLineText maxFontSize={9} minFontSize={5}>
+                  {formatProfileNumber(recoveryMinutes)}
+                </FittedOneLineText>
+              </strong>
+            </span>
+            <span className="profile-loadout-slot__kind">Восстановление</span>
+            <span className="profile-loadout-slot__title">
+              {recoveryMinutes > 0 ? 'Минут' : 'Нет в запасе'}
+            </span>
+          </button>
+        </span>
+      </div>
+    </section>
+  );
+}
 
-          {items.length === 0 && (
-            <div
-              className="glass"
-              style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 10 }}
-            >
-              <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 800 }}>
-                Купленных предметов этого типа пока нет.
-              </div>
+function formatRecoveryDuration(minutes: number): string {
+  if (minutes === 60) return '1 час';
+  return `${minutes} минут`;
+}
+
+function RecoveryStockModal({
+  inventory,
+  onClose,
+  onOpenShop,
+}: {
+  inventory: InventoryState | undefined;
+  onClose: () => void;
+  onOpenShop: () => void;
+}): JSX.Element {
+  const items = (inventory?.items.recovery ?? []).filter((item) => item.chargesAvailable > 0);
+  return (
+    <AccessibleModal
+      title="Наборы для восстановления"
+      ariaLabel="Наборы для восстановления"
+      onRequestClose={onClose}
+      headerAction={
+        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+          <X size={15} />
+        </button>
+      }
+    >
+      {items.length > 0 ? (
+        <div className="profile-picker-list">
+          {items.map((item) => (
+            <article className="profile-picker-item profile-recovery-stock-item" key={item.id}>
+              <img src={item.imageUrl ?? '/inventory/recovery-30.webp'} alt="" />
+              <span>
+                <strong>{item.title}</strong>
+                <small>Снимает {formatRecoveryDuration(item.effectRecoveryMinutes ?? 0)}</small>
+                <small>В запасе: {formatProfileNumber(item.chargesAvailable)}</small>
+              </span>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="modal-copy">Наборов восстановления пока нет в запасе.</p>
+      )}
+      <div className="modal-actions">
+        <button type="button" className="modal-primary btn btn--cta" onClick={onOpenShop}>
+          Перейти в магазин
+        </button>
+      </div>
+    </AccessibleModal>
+  );
+}
+
+function CareerPanel({
+  profile,
+  onOpen,
+  onChoose,
+}: {
+  profile: ProfileData;
+  onOpen: () => void;
+  onChoose: (achievement: ProfileData['achievements'][number]) => void;
+}): JSX.Element {
+  const earned = profile.achievements
+    .filter((achievement) => achievement.isUnlocked)
+    .sort((left, right) => {
+      const leftTime = left.completedAt ? Date.parse(left.completedAt) : Number.NaN;
+      const rightTime = right.completedAt ? Date.parse(right.completedAt) : Number.NaN;
+      if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) return rightTime - leftTime;
+      if (Number.isFinite(leftTime)) return -1;
+      if (Number.isFinite(rightTime)) return 1;
+      return 0;
+    });
+  return (
+    <section className="profile-career-section" aria-label="Награды и достижения">
+      <button
+        type="button"
+        className="section-label profile-section-label"
+        aria-label="Открыть карьеру и награды"
+        onClick={onOpen}
+      >
+        Награды и достижения ({earned.length})
+      </button>
+      <div className="profile-career-panel glass">
+        {earned.length > 0 ? (
+          <span className="profile-career-list profile-career-list--scroll">
+            {earned.map((achievement) => (
               <button
                 type="button"
-                className="btn btn--ghost"
-                onClick={onOpenShop}
-                style={{
-                  width: '100%',
-                  minHeight: 46,
-                  marginTop: 6,
-                  padding: '11px 0',
-                  fontSize: 13,
-                  fontWeight: 850,
-                  letterSpacing: '0.04em',
-                  background: 'rgba(255,255,255,0.54)',
-                  border: '1px solid rgba(15, 23, 42, 0.13)',
-                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7), 0 8px 18px rgba(15,23,42,0.08)',
-                }}
+                className="profile-career-award"
+                aria-label={`Открыть достижение ${achievement.title}`}
+                key={achievement.id}
+                onClick={() => onChoose(achievement)}
               >
-                В магазин
+                <img src={achievement.photoUrl} alt="" />
+                <span
+                  className={`profile-achievement-title${
+                    achievement.id === 'training-monster'
+                      ? ' profile-achievement-title--compact'
+                      : ''
+                  }`}
+                >
+                  {achievement.title}
+                </span>
               </button>
-            </div>
-          )}
-        </div>
-
-        {error !== null && (
-          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}>
-            {error}
-          </div>
+            ))}
+          </span>
+        ) : (
+          <span className="profile-career-empty-copy">Первая награда ещё впереди</span>
         )}
-      </section>
+      </div>
+    </section>
+  );
+}
+
+function EquipmentPickerModal({
+  kind,
+  inventory,
+  onClose,
+  onSelect,
+}: {
+  kind: keyof InventoryState['equipped'];
+  inventory: InventoryState;
+  onClose: () => void;
+  onSelect: (item: InventoryItem | null) => void;
+}): JSX.Element {
+  const label = kind === 'stickItemId' ? 'клюшку' : kind === 'skatesItemId' ? 'коньки' : 'питание';
+  const group = kind === 'stickItemId' ? 'stick' : kind === 'skatesItemId' ? 'skates' : 'nutrition';
+  const defaultTitle =
+    group === 'stick' ? 'Обычная клюшка' : group === 'skates' ? 'Обычные коньки' : 'Без питания';
+  const selected = inventory.equipped[kind];
+  const availableItems = inventory.items[group].filter((item) => item.chargesAvailable > 0);
+  return (
+    <AccessibleModal
+      title={`Выбрать ${label}`}
+      ariaLabel={`Выбрать ${label}`}
+      onRequestClose={onClose}
+      headerAction={
+        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+          <X size={15} />
+        </button>
+      }
+    >
+      <div className="profile-picker-list">
+        <button
+          type="button"
+          aria-label={`Выбрать ${defaultTitle}`}
+          className={`profile-picker-item${selected === null ? ' profile-picker-item--selected' : ''}`}
+          onClick={() => onSelect(null)}
+        >
+          <img src={placeholderArtworkForKind(group)} alt="" />
+          <span>
+            <strong>{defaultTitle}</strong>
+            <small>Базовый вариант</small>
+          </span>
+        </button>
+        {availableItems.map((item) => (
+          <button
+            type="button"
+            className={`profile-picker-item${selected === item.id || selected === item.instanceId ? ' profile-picker-item--selected' : ''}`}
+            key={item.id}
+            onClick={() => onSelect(item)}
+          >
+            {item.imageUrl ? <img src={item.imageUrl} alt="" /> : null}
+            <span>
+              <strong>{item.title}</strong>
+              <small>
+                Осталось:{' '}
+                {formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}
+              </small>
+            </span>
+          </button>
+        ))}
+      </div>
+    </AccessibleModal>
+  );
+}
+
+export function TrophyHistoryModal({
+  section,
+  details,
+  onClose,
+}: {
+  section: TrophySectionKey;
+  details: NonNullable<ProfileData['trophyDetails']>;
+  onClose: () => void;
+}): JSX.Element {
+  const title = TROPHY_SECTION_TITLES[section];
+  const isChallenge = section === 'completedChallenges';
+  const challengeItems = details.completedChallenges;
+  const tournamentItems = section === 'completedChallenges' ? [] : details[section];
+  const itemCount = isChallenge ? challengeItems.length : tournamentItems.length;
+  return (
+    <AccessibleModal
+      title={`${title} (${itemCount})`}
+      ariaLabel={`${title} (${itemCount})`}
+      onRequestClose={onClose}
+      cardClassName="profile-trophy-history-modal"
+      cardStyle={{
+        width: 'min(560px, calc(100vw - 32px))',
+        maxHeight: 'calc(100dvh - 32px - var(--app-safe-top) - var(--app-safe-bottom))',
+        overflowY: 'auto',
+      }}
+      headerAction={
+        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+          <X size={16} />
+        </button>
+      }
+    >
+      <div
+        className={`profile-trophy-history${isChallenge ? ' profile-trophy-history--challenges' : ''}`}
+      >
+        {isChallenge
+          ? challengeItems.map((item) => (
+              <article className="profile-trophy-history__challenge" key={item.id}>
+                <strong>{item.title}</strong>
+                <span>{formatTrophyDateRange(item.startsAt, item.endsAt)}</span>
+                <ul className="profile-trophy-history__challenge-tasks">
+                  {item.tasks.map((task, index) => (
+                    <li key={`${task.title}:${index}`}>
+                      <span>{task.title}</span>
+                      <strong>{formatProfileNumber(task.target)}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))
+          : tournamentItems.map((item) => (
+              <article className="profile-trophy-history__tournament" key={item.id}>
+                <img src={item.imageUrl ?? '/modes/tournaments.webp'} alt={item.title} />
+                <span className="profile-trophy-history__tournament-copy">
+                  <strong>{item.title}</strong>
+                  <small>{formatTrophyDateRange(item.startsAt, item.endsAt)}</small>
+                  <em>{item.result}</em>
+                </span>
+              </article>
+            ))}
+      </div>
+    </AccessibleModal>
+  );
+}
+
+function TrophyShowcase({
+  profile,
+  onOpen,
+}: {
+  profile: ProfileData;
+  onOpen: (section: TrophySectionKey) => void;
+}): JSX.Element {
+  const summary = profile.trophySummary ?? {
+    regularSeasonWins: 0,
+    tournamentChampionships: 0,
+    tournamentPodiums: 0,
+    completedChallenges: 0,
+  };
+  const items = [
+    ['regularSeasonWins', 'Победы в регулярке', summary.regularSeasonWins, Trophy],
+    ['tournamentChampionships', 'Чемпионства', summary.tournamentChampionships, Award],
+    ['tournamentPodiums', 'Призовые места', summary.tournamentPodiums, Medal],
+    ['completedChallenges', 'Пройденные челленджи', summary.completedChallenges, Target],
+  ] as const;
+  return (
+    <section className="profile-trophy-showcase" aria-label="Витрина наград">
+      {items.map(([key, label, value, Icon]) => {
+        const content = (
+          <>
+            <Icon aria-hidden="true" />
+            <strong>
+              <FittedOneLineText className="profile-trophy-showcase__number" maxFontSize={18}>
+                {formatProfileNumber(value)}
+              </FittedOneLineText>
+            </strong>
+            <span>{label}</span>
+          </>
+        );
+        return value > 0 ? (
+          <button
+            type="button"
+            className="profile-trophy-showcase__item"
+            key={key}
+            onClick={() => onOpen(key)}
+          >
+            {content}
+          </button>
+        ) : (
+          <div
+            className="profile-trophy-showcase__item profile-trophy-showcase__item--empty"
+            key={key}
+          >
+            {content}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+function SportingMetrics({ profile }: { profile: ProfileData }): JSX.Element {
+  const registeredDate = new Date(profile.registeredAt);
+  const registeredLabel = Number.isNaN(registeredDate.getTime())
+    ? '—'
+    : registeredDate.toLocaleDateString('ru-RU', {
+        timeZone: 'UTC',
+        day: '2-digit',
+        month: '2-digit',
+        year: '2-digit',
+      });
+  const items: Array<{ value: ReactNode; label: string }> = [
+    { value: formatProfileNumber(profile.stats.goals), label: 'Шайбы' },
+    { value: `${formatProfileNumber(profile.stats.accuracy)}%`, label: 'Точность' },
+    {
+      value: (
+        <>
+          {formatProfileNumber(profile.stats.playStreakDays)}{' '}
+          <span className="profile-streak-record">
+            ({formatProfileNumber(profile.stats.bestPlayStreakDays ?? profile.stats.playStreakDays)}
+            )
+          </span>
+        </>
+      ),
+      label: 'Дней подряд',
+    },
+    {
+      value:
+        registeredLabel === '—' ? (
+          registeredLabel
+        ) : (
+          <span className="profile-registration-date">
+            <span className="profile-registration-date__prefix">с</span>
+            {registeredLabel}
+          </span>
+        ),
+      label: 'В игре',
+    },
+  ];
+  return (
+    <div className="profile-sporting-metrics" aria-label="Главные показатели">
+      {items.map(({ value, label }) => (
+        <div className="profile-sporting-metrics__item" key={label}>
+          <strong>
+            <FittedOneLineText maxFontSize={17}>{value}</FittedOneLineText>
+          </strong>
+          <span>{label}</span>
+        </div>
+      ))}
     </div>
   );
 }
 
-function ProfileSectionInfoModal({
-  section,
-  onClose,
-}: {
-  section: ProfileInfoSection;
-  onClose: () => void;
-}): JSX.Element {
-  const info = PROFILE_SECTION_INFO[section];
-
+function ProfileLoadError({ onRetry }: { onRetry: () => void }): JSX.Element {
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={info.title}
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(15, 23, 42, 0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        zIndex: 430,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20,
-      }}
-    >
-      <div
-        className="glass"
-        onClick={(event) => event.stopPropagation()}
-        style={{ borderRadius: 24, padding: '22px 22px 18px', maxWidth: 320, width: '100%' }}
-      >
-        <div
-          style={{
-            fontSize: 15,
-            fontWeight: 700,
-            color: 'var(--ink)',
-            marginBottom: 10,
-          }}
-        >
-          {info.title}
-        </div>
-        <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>{info.copy}</div>
-        <button
-          type="button"
-          className="btn btn--cta"
-          onClick={onClose}
-          style={{ marginTop: 18, width: '100%', padding: '12px 0', fontSize: 14 }}
-        >
-          Понятно
+    <main className="screen profile-screen profile-screen--status">
+      <section className="profile-error-state" role="alert">
+        <h1>Не удалось загрузить профиль</h1>
+        <p>Баланс и прогресс не показаны, чтобы не выдать ошибку за реальные данные.</p>
+        <button type="button" className="btn btn--cta" onClick={onRetry}>
+          Повторить
         </button>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
 
 export function ProfileScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const updateUser = useAuthStore((s) => s.updateUser);
-  const dragScrollRef = useRef<{ startY: number; scrollTop: number } | null>(null);
-  const suppressClickRef = useRef(false);
-  const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
-  const [selectedInfoSection, setSelectedInfoSection] = useState<ProfileInfoSection | null>(null);
-  const [selectedEquipmentKind, setSelectedEquipmentKind] = useState<InventoryEquipmentKind | null>(
-    null,
-  );
-
-  const { data, isLoading } = useQuery<ProfileData>({
+  const [pickerKind, setPickerKind] = useState<keyof InventoryState['equipped'] | null>(null);
+  const [recoveryStockOpen, setRecoveryStockOpen] = useState(false);
+  const [selectedAchievement, setSelectedAchievement] = useState<
+    ProfileData['achievements'][number] | null
+  >(null);
+  const [selectedTrophySection, setSelectedTrophySection] = useState<TrophySectionKey | null>(null);
+  const updateUser = useAuthStore((state) => state.updateUser);
+  const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
     queryFn: () => apiFetch<ProfileData>('/me'),
   });
-  const inventoryQuery = useQuery<InventoryState>({
+  const inventoryQuery = useQuery({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
-    enabled: data !== undefined,
   });
-  const equipmentMut = useMutation<
-    InventoryState,
-    Error,
-    { kind: InventoryEquipmentKind; itemId: string | null }
-  >({
-    mutationFn: ({ kind, itemId }) => patchEquipment({ [EQUIPMENT_META[kind].patchKey]: itemId }),
+  const equipmentMutation = useMutation({
+    mutationFn: (patch: Partial<InventoryState['equipped']>) => patchEquipment(patch),
     onSuccess: (inventory) => {
       queryClient.setQueryData(['inventory', 'me'], inventory);
+      setPickerKind(null);
     },
   });
-
   useEffect(() => {
-    if (data) {
-      updateUser({
-        grip: data.grip,
-        displayName: data.displayName,
-        ...(data.role !== undefined ? { role: data.role } : {}),
-        ...(data.avatarUrl !== undefined ? { avatarUrl: data.avatarUrl } : {}),
-        ...(data.displaySource !== undefined ? { displaySource: data.displaySource } : {}),
-        ...(data.linkedProviders !== undefined ? { linkedProviders: data.linkedProviders } : {}),
-      });
-    }
-  }, [data, updateUser]);
+    const profile = profileQuery.data;
+    if (profile === undefined) return;
+    updateUser({
+      displayName: profile.displayName,
+      grip: profile.grip,
+      ...(profile.avatarUrl !== undefined ? { avatarUrl: profile.avatarUrl } : {}),
+      ...(profile.role !== undefined ? { role: profile.role } : {}),
+      ...(profile.displaySource !== undefined ? { displaySource: profile.displaySource } : {}),
+      ...(profile.linkedProviders !== undefined
+        ? { linkedProviders: profile.linkedProviders }
+        : {}),
+    });
+  }, [profileQuery.data, updateUser]);
 
-  if (isLoading) {
+  if (profileQuery.isLoading) {
     return (
-      <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ color: 'var(--muted)', fontSize: 14 }}>Загрузка...</div>
+      <main className="screen profile-screen profile-screen--status" aria-busy="true">
+        <p>Загружаем профиль…</p>
       </main>
     );
   }
 
-  const initial = (data?.displayName ?? '?').charAt(0).toUpperCase();
-  const stats = data?.stats ?? EMPTY_PROFILE_STATS;
-  const achievements = data?.achievements ?? [];
-  const tokenBalance = inventoryQuery.data?.balances.tokens ?? data?.currencyBalance ?? 0;
-  const starBalance = inventoryQuery.data?.balances.stars ?? data?.starBalance ?? 0;
-  const experienceBalance =
-    inventoryQuery.data?.balances.experience ?? data?.experienceBalance ?? 0;
-
-  function handlePointerDown(event: PointerEvent<HTMLElement>): void {
-    if (
-      event.pointerType !== 'mouse' ||
-      event.button !== 0 ||
-      !canStartMouseDragScroll(event.target)
-    ) {
-      return;
-    }
-
-    dragScrollRef.current = {
-      startY: event.clientY,
-      scrollTop: event.currentTarget.scrollTop,
-    };
-    suppressClickRef.current = false;
-    event.currentTarget.setPointerCapture(event.pointerId);
+  if (profileQuery.isError || profileQuery.data === undefined) {
+    return <ProfileLoadError onRetry={() => void profileQuery.refetch()} />;
   }
 
-  function handlePointerMove(event: PointerEvent<HTMLElement>): void {
-    const drag = dragScrollRef.current;
-    if (drag === null || event.pointerType !== 'mouse') return;
-
-    const deltaY = event.clientY - drag.startY;
-    if (Math.abs(deltaY) > 4) {
-      suppressClickRef.current = true;
-      event.preventDefault();
-    }
-    event.currentTarget.scrollTop = drag.scrollTop - deltaY;
+  const profile = profileQuery.data;
+  const { currencyBalance, starBalance, experienceBalance } = profile;
+  if (
+    typeof currencyBalance !== 'number' ||
+    typeof starBalance !== 'number' ||
+    typeof experienceBalance !== 'number' ||
+    !Number.isFinite(currencyBalance) ||
+    !Number.isFinite(starBalance) ||
+    !Number.isFinite(experienceBalance)
+  ) {
+    return <ProfileLoadError onRetry={() => void profileQuery.refetch()} />;
   }
-
-  function handlePointerEnd(event: PointerEvent<HTMLElement>): void {
-    dragScrollRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    window.setTimeout(() => {
-      suppressClickRef.current = false;
-    }, 0);
-  }
-
+  const initial = profile.displayName.trim().charAt(0).toUpperCase() || '?';
   return (
     <main
-      className="screen"
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerEnd}
-      onPointerCancel={handlePointerEnd}
-      style={{
-        height: '100%',
-        minHeight: 0,
-        paddingBottom: 16,
-        overflowY: 'auto',
-        overscrollBehaviorY: 'contain',
-        touchAction: 'pan-y',
-        WebkitOverflowScrolling: 'touch',
-      }}
+      className={`screen profile-screen profile-screen--locker-bg ${lockerRoomBackgroundClass(profile.competitionLevel)}`}
     >
-      <div
-        className="glass"
-        style={{
-          margin: 'calc(16px + var(--app-safe-top)) 14px 14px',
-          padding: '14px 14px 13px',
-          borderRadius: 24,
-          display: 'grid',
-          gridTemplateColumns: '76px minmax(0, 1fr) 40px',
-          gridTemplateAreas: '"avatar info settings"',
-          alignItems: 'center',
-          gap: 10,
-          position: 'relative',
-        }}
-      >
-        <button
-          type="button"
-          className="icon-btn"
-          data-no-drag-scroll="true"
-          aria-label="Настройки"
-          onClick={() => navigate('/profile/settings')}
-          style={{
-            width: 40,
-            height: 40,
-            gridArea: 'settings',
-            justifySelf: 'end',
-            alignSelf: 'start',
-            marginTop: 2,
-          }}
-        >
-          <Settings size={18} />
-        </button>
-        <ProfileAvatar
-          avatarUrl={data?.avatarUrl ?? undefined}
-          initial={initial}
-        />
-        <div
-          style={{
-            minWidth: 0,
-            minHeight: 68,
-            gridArea: 'info',
-            display: 'grid',
-            gridTemplateRows: 'auto minmax(0, 1fr) auto',
-            alignItems: 'center',
-            gap: 2,
-          }}
-        >
-          <div
-            style={{
-              minWidth: 0,
-              maxWidth: '100%',
-              display: 'flex',
-              flexWrap: 'nowrap',
-              alignItems: 'center',
-              justifyContent: 'flex-start',
-              gap: 'clamp(6px, 2.8vw, 14px)',
-              justifySelf: 'stretch',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            <ProfileResourceChip
+      <section className="profile-passport glass" aria-label="Спортивный паспорт">
+        <div className="profile-passport__top">
+          <div className="profile-identity__main">
+            <div className="profile-identity__avatar">
+              {profile.avatarUrl !== undefined && profile.avatarUrl !== null ? (
+                <img src={profile.avatarUrl} alt="" />
+              ) : (
+                <span>{initial}</span>
+              )}
+            </div>
+            <div className="profile-identity__copy">
+              <span className="profile-identity__name">{profile.displayName}</span>
+              <span className="profile-identity__level">
+                {getLevelLabel(profile.competitionLevel)}
+              </span>
+            </div>
+          </div>
+          <div className="profile-balances" aria-label="Баланс игрока">
+            <ProfileBalance
               label="Монеты"
-              value={tokenBalance}
-              icon={<CircleDollarSign size={14} strokeWidth={2.55} />}
-              tone="coin"
+              value={currencyBalance}
+              tone="coins"
+              icon={
+                <CircleDollarSign data-testid="profile-balance-icon-coins" aria-hidden="true" />
+              }
             />
-            <ProfileResourceChip
+            <ProfileBalance
               label="Звёзды"
               value={starBalance}
-              icon={<Star size={14} strokeWidth={2.55} fill="currentColor" />}
-              tone="star"
+              tone="stars"
+              icon={
+                <Star
+                  data-testid="profile-balance-icon-stars"
+                  aria-hidden="true"
+                  fill="currentColor"
+                />
+              }
             />
-            <ProfileResourceChip
+            <ProfileBalance
               label="Опыт"
               value={experienceBalance}
-              icon={<TrendingUp size={14} strokeWidth={2.55} />}
               tone="experience"
+              icon={<TrendingUp data-testid="profile-balance-icon-experience" aria-hidden="true" />}
             />
           </div>
-          <span
-            style={{
-              minWidth: 0,
-              maxWidth: '100%',
-              alignSelf: 'center',
-              color: 'var(--ink)',
-              fontSize: 20,
-              fontWeight: 850,
-              lineHeight: 1.08,
-              overflow: 'hidden',
-              textAlign: 'left',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {data?.displayName ?? '-'}
-          </span>
-          <div
-            style={{
-              justifySelf: 'start',
-              maxWidth: '100%',
-              minWidth: 0,
-              height: 16,
-              display: 'inline-flex',
-              alignItems: 'center',
-              color: 'rgba(71, 85, 105, 0.88)',
-              fontSize: 11,
-              fontWeight: 800,
-              lineHeight: 1,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Уровень: {getLevelLabel(data?.competitionLevel)}
-          </div>
         </div>
-      </div>
+        <SportingMetrics profile={profile} />
+        <TrophyShowcase profile={profile} onOpen={setSelectedTrophySection} />
+      </section>
 
-      <ProfileSectionLabel
-        infoSection="stats"
-        onOpenInfo={setSelectedInfoSection}
-        style={{ marginBottom: 6 }}
-      >
-        Статистика
-      </ProfileSectionLabel>
-      <ProfileStatsGrid stats={stats} style={{ margin: '0 14px 14px' }} />
-
-      <ProfileSectionLabel
-        infoSection="equipment"
-        onOpenInfo={setSelectedInfoSection}
-        style={{ marginBottom: 8 }}
-      >
-        Экипировка
-      </ProfileSectionLabel>
-      <div
-        style={{
-          margin: '0 14px 14px',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          gap: 8,
-        }}
-      >
-        {EQUIPMENT_KINDS.map((kind) => (
-          <EquipmentSlotButton
-            key={kind}
-            kind={kind}
-            inventory={inventoryQuery.data}
-            onOpen={() => setSelectedEquipmentKind(kind)}
-          />
-        ))}
-      </div>
-
-      <ProfileAchievementsSection
-        achievements={achievements}
-        labelAccessory={
-          <ProfileSectionInfoButton
-            infoSection="achievements"
-            onOpenInfo={setSelectedInfoSection}
-          />
-        }
-        onOpenAchievement={(achievement) => {
-          if (!suppressClickRef.current) setSelectedAchievement(achievement);
-        }}
-      />
-
-      {selectedAchievement !== null && (
+      <section className="profile-sports-data" aria-label="Спортивные данные игрока">
+        <EquipmentPanel
+          inventory={inventoryQuery.data}
+          onOpen={() => navigate('/profile/equipment')}
+          onChoose={setPickerKind}
+          onOpenRecovery={() => setRecoveryStockOpen(true)}
+        />
+        <CareerPanel
+          profile={profile}
+          onOpen={() => navigate('/profile/achievements')}
+          onChoose={setSelectedAchievement}
+        />
+        <section className="profile-settings-section" aria-label="Настройки">
+          <span className="section-label profile-section-label">Настройки</span>
+          <div className="profile-utility-grid">
+            <button
+              type="button"
+              className="profile-utility-card glass"
+              aria-label="Настройки"
+              onClick={() => navigate('/profile/settings')}
+            >
+              <span className="profile-utility-card__visual profile-utility-card__visual--icon">
+                <Settings aria-hidden="true" />
+              </span>
+              <span className="profile-utility-card__copy">
+                <strong className="profile-settings-card__title">Профиль и уведомления</strong>
+              </span>
+              <ChevronRight aria-hidden="true" />
+            </button>
+          </div>
+        </section>
+        <CommunityLinks />
+      </section>
+      {pickerKind !== null && inventoryQuery.data !== undefined ? (
+        <EquipmentPickerModal
+          kind={pickerKind}
+          inventory={inventoryQuery.data}
+          onClose={() => setPickerKind(null)}
+          onSelect={(item) =>
+            equipmentMutation.mutate({ [pickerKind]: item?.instanceId ?? item?.id ?? null })
+          }
+        />
+      ) : null}
+      {recoveryStockOpen ? (
+        <RecoveryStockModal
+          inventory={inventoryQuery.data}
+          onClose={() => setRecoveryStockOpen(false)}
+          onOpenShop={() => navigate('/inventory')}
+        />
+      ) : null}
+      {selectedAchievement !== null ? (
         <AchievementDetailsSheet
           achievement={selectedAchievement}
           onClose={() => setSelectedAchievement(null)}
         />
-      )}
-      {selectedInfoSection !== null && (
-        <ProfileSectionInfoModal
-          section={selectedInfoSection}
-          onClose={() => setSelectedInfoSection(null)}
+      ) : null}
+      {selectedTrophySection !== null && profile.trophyDetails !== undefined ? (
+        <TrophyHistoryModal
+          section={selectedTrophySection}
+          details={profile.trophyDetails}
+          onClose={() => setSelectedTrophySection(null)}
         />
-      )}
-      {selectedEquipmentKind !== null && (
-        <EquipmentDetailsModal
-          kind={selectedEquipmentKind}
-          inventory={inventoryQuery.data}
-          isSaving={equipmentMut.isPending}
-          error={equipmentMut.isError ? equipmentMut.error.message : null}
-          onOpenShop={() => {
-            equipmentMut.reset();
-            setSelectedEquipmentKind(null);
-            navigate('/inventory');
-          }}
-          onClose={() => {
-            equipmentMut.reset();
-            setSelectedEquipmentKind(null);
-          }}
-          onSelect={(itemId) => {
-            const kind = selectedEquipmentKind;
-            equipmentMut.mutate(
-              { kind, itemId },
-              {
-                onSuccess: () => setSelectedEquipmentKind(null),
-              },
-            );
-          }}
-        />
-      )}
+      ) : null}
     </main>
   );
 }

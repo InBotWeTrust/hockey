@@ -14,6 +14,35 @@ describe('errorsPlugin', () => {
     expect(res.json()).toEqual({ error: { code: 'not_found', message: 'user not found' } });
   });
 
+  it('returns explicitly public error details for actionable conflicts', async () => {
+    const app = Fastify();
+    await app.register(errorsPlugin);
+    app.get('/capacity', async () => {
+      throw new AppError('capacity_reached', 'capacity reached', 409, {
+        approvedCount: 14,
+        participantLimit: 16,
+        availableSlots: 2,
+        pendingCount: 3,
+      });
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/capacity' });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({
+      error: {
+        code: 'capacity_reached',
+        message: 'capacity reached',
+        details: {
+          approvedCount: 14,
+          participantLimit: 16,
+          availableSlots: 2,
+          pendingCount: 3,
+        },
+      },
+    });
+  });
+
   it('masks unknown 5xx and logs original', async () => {
     const app = Fastify({ logger: false });
     await app.register(errorsPlugin);
@@ -67,5 +96,25 @@ describe('errorsPlugin', () => {
     expect(res.statusCode).toBe(415);
     const body = res.json() as { error: { code: string; message: string } };
     expect(body.error.code).not.toBe('internal_error');
+  });
+
+  it('maps Postgres unique constraint races to conflict instead of internal error', async () => {
+    const app = Fastify();
+    await app.register(errorsPlugin);
+    app.post('/race', async () => {
+      const err = new Error('duplicate key value violates unique constraint');
+      Object.assign(err, {
+        code: '23505',
+        constraint: 'day_pool_one_open_per_user',
+      });
+      throw err;
+    });
+
+    const res = await app.inject({ method: 'POST', url: '/race' });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({
+      error: { code: 'conflict', message: 'request conflicts with current state' },
+    });
   });
 });

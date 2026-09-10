@@ -19,10 +19,12 @@ import {
   ChevronRight,
   CreditCard,
   Dumbbell,
+  FileText,
   Gamepad2,
   Heart,
   Megaphone,
   Medal,
+  Menu,
   MessageSquare,
   Package,
   Pencil,
@@ -42,14 +44,24 @@ import {
   X,
 } from 'lucide-react';
 import { ApiError } from '../api/apiFetch.js';
+import { rewardColor } from '../app/rewardColors.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { ChannelPostEditorSheet } from '../chat/components/ChannelPostEditorSheet.js';
+import { ChatInput } from '../chat/components/ChatInput.js';
+import { UserAvatar as ChatUserAvatar } from '../chat/components/UserAvatar.js';
+import type { ChatAttachmentDTO } from '../chat/api.js';
 import { RichText } from '../chat/richText.js';
 import { GlassSelect, type GlassSelectOption } from '../components/GlassSelect.js';
 import { ADMIN_NAV_HOME_EVENT } from '../components/BottomNav.js';
+import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { convertChatAvatarToWebp } from '../lib/chatAvatarImage.js';
 import { useDebouncedValue } from '../lib/useDebouncedValue.js';
 import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSections.js';
+import { WeeklyChallengesAdmin } from './WeeklyChallengesAdmin.js';
+import { BonusGamesAdmin } from './BonusGamesAdmin.js';
+import { OnboardingAdmin } from './OnboardingAdmin.js';
+import { TournamentAdmin } from '../tournament/TournamentAdmin.js';
+import { tournamentTimezoneLabel } from '../tournament/timezoneLabel.js';
 import {
   createAdminInventoryItem,
   createAdminDuelTemplate,
@@ -57,40 +69,61 @@ import {
   deleteAdminChannelPost,
   deleteAdminInventoryItem,
   fetchAdminChannelNews,
+  fetchAdminAttention,
+  fetchAdminBroadcastAudience,
+  fetchAdminOfficialAccount,
+  fetchAdminOfficialDialogMessages,
+  fetchAdminOfficialDialogs,
   fetchAdminDuelHistory,
   fetchAdminDuelTemplates,
   fetchAdminFeedback,
   fetchAdminGameSettings,
+  fetchAdminAchievements,
   fetchAdminInventory,
   fetchAdminMismatches,
   fetchAdminNotifications,
   fetchAdminPayments,
   fetchAdminPushMonitoring,
   fetchAdminSummary,
+  fetchAdminTournamentPendingApplications,
   fetchAdminUser,
   fetchAdminUsers,
   patchAdminChannelPost,
+  patchAdminOfficialDialog,
   patchAdminChatProfile,
   resetAdminChatAvatar,
   patchAdminFeedback,
   patchAdminDuelTemplate,
   patchAdminInventoryGameplay,
   patchAdminInventoryItem,
+  patchAdminAchievement,
   patchAdminGameSetting,
   patchAdminNotification,
   patchAdminUser,
   uploadAdminChatAvatar,
+  uploadAdminOfficialAccountAvatar,
+  uploadAdminOfficialDialogAttachment,
+  sendAdminOfficialDialogMessage,
+  sendAdminDirectBroadcast,
   type AdminDashboard,
   type AdminDashboardPeriod,
   type AdminDashboardSeriesPoint,
+  type AdminAchievement,
+  type AdminAchievementAvailability,
+  type AdminAchievementCategory,
+  type AdminAchievementFutureTag,
+  type AdminAchievementPatch,
   type AdminDuelHistoryItem,
   type AdminDuelHistoryResponse,
   type AdminDuelPeriodSpeedPreset,
+  type AdminDuelRewardRules,
   type AdminDuelTemplate,
   type AdminDuelTemplateInput,
   type AdminChannelPeriod,
   type AdminChannelPost,
   type AdminChannelResponse,
+  type AdminOfficialDialog,
+  type AdminOfficialDialogFilter,
   type AdminFeedback,
   type AdminFeedbackKind,
   type AdminFeedbackQuery,
@@ -99,8 +132,10 @@ import {
   type AdminInventoryGameplayPatch,
   type AdminInventoryItemKind,
   type AdminInventoryItemPatch,
+  type AdminInventoryResourceUnit,
   type AdminMismatchLog,
   type AdminMismatchPeriod,
+  type AdminMatchmakingVenuePolicy,
   type AdminMismatchesResponse,
   type AdminNotificationStats,
   type AdminPushNotification,
@@ -128,26 +163,35 @@ type AdminTab =
   | 'anticheat'
   | 'payments'
   | 'inventory'
+  | 'achievements'
+  | 'bonus-games'
   | 'duels'
+  | 'tournaments'
   | 'feedback'
+  | 'onboarding'
   | 'settings';
+type AdminAchievementsTab = 'achievements' | 'challenges';
 type SortField = 'name' | 'goals' | 'accuracy';
 type SortDirection = 'asc' | 'desc';
 type AdminIdentity = AdminUser['identities'][number];
-type AdminAchievement = AdminUserDetail['achievements'][number];
+type AdminUserAchievement = AdminUserDetail['achievements'][number];
 type SettingsSectionId = 'daily' | 'training' | 'amateur' | 'pro';
 type AdminFeedbackStatus = AdminFeedbackQuery['status'];
 
 const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
-  { id: 'dashboard', label: 'Дашборд', icon: <BarChart3 size={15} /> },
+  { id: 'dashboard', label: 'Обзор', icon: <BarChart3 size={15} /> },
   { id: 'users', label: 'Игроки', icon: <Users size={15} /> },
   { id: 'notifications', label: 'Уведомления', icon: <Bell size={15} /> },
-  { id: 'channel', label: 'Канал', icon: <Megaphone size={15} /> },
+  { id: 'channel', label: 'Коммуникации', icon: <Megaphone size={15} /> },
   { id: 'anticheat', label: 'Античит', icon: <ShieldAlert size={15} /> },
   { id: 'payments', label: 'Платежи', icon: <CreditCard size={15} /> },
   { id: 'inventory', label: 'Инвентарь', icon: <Package size={15} /> },
+  { id: 'achievements', label: 'Задания', icon: <Medal size={15} /> },
+  { id: 'bonus-games', label: 'Бонусные игры', icon: <Gamepad2 size={15} /> },
   { id: 'duels', label: 'Дуэли', icon: <Trophy size={15} /> },
+  { id: 'tournaments', label: 'Турниры', icon: <Trophy size={15} /> },
   { id: 'feedback', label: 'Отзывы', icon: <MessageSquare size={15} /> },
+  { id: 'onboarding', label: 'Онбординг', icon: <UserCheck size={15} /> },
   { id: 'settings', label: 'Параметры', icon: <SlidersHorizontal size={15} /> },
 ];
 
@@ -157,11 +201,48 @@ const channelPeriodOptions: Array<GlassSelectOption<AdminChannelPeriod>> = [
   { value: '90d', label: '90 дней' },
 ];
 
+const officialDialogFilterOptions: Array<GlassSelectOption<AdminOfficialDialogFilter>> = [
+  { value: 'new', label: 'Новые' },
+  { value: 'open', label: 'Открытые' },
+  { value: 'closed', label: 'Закрытые' },
+];
+
 const dashboardPeriodOptions: Array<GlassSelectOption<AdminDashboardPeriod>> = [
   { value: '7d', label: '7 дней' },
   { value: '30d', label: '30 дней' },
   { value: '90d', label: '90 дней' },
   { value: '365d', label: '1 год' },
+];
+
+const venueOptions = [
+  { value: 'neutral_default', label: 'Нейтральная стандартная' },
+  { value: 'random_participant_home', label: 'Случайный хозяин' },
+  { value: 'random_unselected', label: 'Случайная нейтральная' },
+] as const satisfies ReadonlyArray<GlassSelectOption<AdminMatchmakingVenuePolicy>>;
+const venueSelectOptions: Array<GlassSelectOption<AdminMatchmakingVenuePolicy>> = venueOptions.map(
+  (option) => ({ ...option }),
+);
+
+const defaultDuelRewardRules: AdminDuelRewardRules = {
+  equalExperienceTolerancePercent: 10,
+  strongerWin: { coins: 0, stars: 0, tokens: 0 },
+  equalWin: { coins: 0, stars: 0, tokens: 0 },
+  weakerWin: { coins: 0, stars: 0, tokens: 0 },
+  draw: { coins: 0, stars: 0, tokens: 0 },
+  loss: { coins: 0, stars: 0, tokens: 0 },
+};
+
+const duelRewardRows = [
+  { key: 'strongerWin', label: 'Победа над более опытным' },
+  { key: 'equalWin', label: 'Победа над равным' },
+  { key: 'weakerWin', label: 'Победа над менее опытным' },
+  { key: 'draw', label: 'Ничья' },
+  { key: 'loss', label: 'Поражение' },
+] as const;
+
+const adminAchievementsTabs: Array<{ id: AdminAchievementsTab; label: string }> = [
+  { id: 'achievements', label: 'Задания' },
+  { id: 'challenges', label: 'Челленджи' },
 ];
 
 const pushNotificationStatusOptions: Array<GlassSelectOption<'enabled' | 'disabled'>> = [
@@ -174,6 +255,7 @@ const pushNotificationCategoryLabels: Record<AdminPushNotificationCategory, stri
   daily: 'Ежедневная игра',
   training: 'Тренировка',
   duel: 'Дуэли',
+  tournament: 'Турниры',
   news: 'Новости',
 };
 
@@ -237,6 +319,30 @@ const inventoryItemKindOptions: Array<GlassSelectOption<AdminInventoryItemKind>>
   { value: 'skates', label: 'Коньки' },
   { value: 'nutrition', label: 'Энергия' },
   { value: 'consumable', label: 'Расходник' },
+  { value: 'recovery', label: 'Восстановление' },
+];
+
+const achievementCategoryOptions: Array<GlassSelectOption<AdminAchievementCategory>> = [
+  { value: 'daily', label: 'Ежедневная' },
+  { value: 'training', label: 'Тренировка' },
+  { value: 'duel', label: 'Дуэли' },
+  { value: 'tournament', label: 'Турниры' },
+  { value: 'shop', label: 'Магазин' },
+  { value: 'rating', label: 'Рейтинг' },
+  { value: 'level', label: 'Уровни' },
+];
+
+const achievementAvailabilityOptions: Array<GlassSelectOption<AdminAchievementAvailability>> = [
+  { value: 'active', label: 'Активно' },
+  { value: 'future', label: 'Будущее' },
+  { value: 'hidden', label: 'Скрыто' },
+];
+
+const achievementFutureTagOptions: Array<GlassSelectOption<AdminAchievementFutureTag | 'none'>> = [
+  { value: 'none', label: 'Без метки' },
+  { value: 'future/pro', label: 'future/pro' },
+  { value: 'future/tournament', label: 'future/tournament' },
+  { value: 'future/monthly_rating', label: 'future/monthly_rating' },
 ];
 
 const roleOptions: Array<GlassSelectOption<AdminRole>> = [
@@ -284,6 +390,7 @@ const pushNotificationTypeItems: Array<{
   { key: 'dailyGame', label: 'Ежедневная игра', shortLabel: 'Дневная' },
   { key: 'trainingAvailable', label: 'Тренировка доступна', shortLabel: 'Тренировка' },
   { key: 'duelEvents', label: 'Дуэли', shortLabel: 'Дуэли' },
+  { key: 'tournamentEvents', label: 'Турниры', shortLabel: 'Турниры' },
   { key: 'gameNews', label: 'Новости игры', shortLabel: 'Новости' },
 ];
 
@@ -372,6 +479,11 @@ function parseAdminNumberInput(value: string | number): number {
   return Number(value.trim().replace(',', '.'));
 }
 
+function parseAdminIntegerInput(value: string | number): number {
+  const numeric = parseAdminNumberInput(value);
+  return Number.isInteger(numeric) ? numeric : Number.NaN;
+}
+
 function gameModeLabel(mode: string | null | undefined): string {
   if (mode === 'daily') return 'Ежедневная игра';
   if (mode === 'training') return 'Тренировка';
@@ -456,6 +568,60 @@ function fieldNumber(value: number | undefined): string {
   return value === undefined ? '' : String(value);
 }
 
+function inventoryChargeFieldValue(item: AdminInventoryItem | null): string {
+  if (!item) return '1';
+  if (item.itemKind === 'nutrition') return String(Math.ceil(item.chargesPerPurchase / 60_000));
+  return fieldNumber(item.chargesPerPurchase);
+}
+
+function inventoryChargeValueForSave(kind: AdminInventoryItemKind, value: number): number {
+  return kind === 'nutrition' ? Math.max(0, Math.round(value * 60_000)) : Math.round(value);
+}
+
+function inventoryLowStockDefault(kind: AdminInventoryItemKind): number {
+  if (kind === 'stick') return 10;
+  if (kind === 'skates') return 50;
+  if (kind === 'nutrition') return 60_000;
+  return 0;
+}
+
+function puckSpeedDeltaToPoints(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return '';
+  return String(Math.round(value * 100));
+}
+
+function puckSpeedPointsFieldValue(item: AdminInventoryItem | null): string {
+  if (!item) return '0';
+  if (Number.isFinite(item.effectPuckSpeedPoints) && item.effectPuckSpeedPoints !== 0) {
+    return fieldNumber(item.effectPuckSpeedPoints);
+  }
+  return puckSpeedDeltaToPoints(item.effectPuckSpeedDelta ?? 0);
+}
+
+function puckSpeedPointsToDelta(value: string): number {
+  return parseAdminNumberInput(value) / 100;
+}
+
+function inventoryResourceUnitForKind(kind: AdminInventoryItemKind): AdminInventoryResourceUnit {
+  if (kind === 'stick') return 'shot';
+  if (kind === 'skates') return 'distance';
+  if (kind === 'nutrition') return 'energy_ms';
+  return 'period';
+}
+
+const adminInventoryHintStyle: CSSProperties = {
+  color: 'rgba(71, 85, 105, 0.78)',
+  fontSize: 9.5,
+  fontWeight: 500,
+  lineHeight: 1.18,
+};
+
+const adminInventoryFieldBodyStyle: CSSProperties = {
+  display: 'grid',
+  alignContent: 'start',
+  gap: 6,
+};
+
 function isHiddenGameSetting(setting: AdminGameSetting): boolean {
   return setting.key.endsWith('.goalie_id');
 }
@@ -485,6 +651,17 @@ function AdminPlainState({
       }}
     >
       {children}
+    </div>
+  );
+}
+
+function AdminMetric({ label, value }: { label: string; value: number }): JSX.Element {
+  return (
+    <div className="glass" style={{ borderRadius: 16, padding: 10, boxShadow: 'none' }}>
+      <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>{label}</div>
+      <div style={{ marginTop: 3, color: 'var(--ink)', fontSize: 17, fontWeight: 950 }}>
+        {numberText(value)}
+      </div>
     </div>
   );
 }
@@ -520,6 +697,9 @@ export function AdminScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const [tab, setTab] = useState<AdminTab>('dashboard');
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
+  const adminMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const adminDrawerRef = useRef<HTMLElement>(null);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 250);
   const [roleFilter, setRoleFilter] = useState<'all' | AdminRole>('all');
@@ -539,14 +719,32 @@ export function AdminScreen(): JSX.Element {
   const [dashboardPeriod, setDashboardPeriod] = useState<AdminDashboardPeriod>('30d');
   const [mismatchPeriod, setMismatchPeriod] = useState<AdminMismatchPeriod>('30d');
   const [channelPeriod, setChannelPeriod] = useState<AdminChannelPeriod>('30d');
+  const [communicationsTab, setCommunicationsTab] = useState<
+    'news' | 'dialogs' | 'broadcast' | 'official-account'
+  >('news');
 
   useEffect(() => {
     const resetToDashboard = (): void => {
       setTab('dashboard');
+      setAdminMenuOpen(false);
     };
     window.addEventListener(ADMIN_NAV_HOME_EVENT, resetToDashboard);
     return () => window.removeEventListener(ADMIN_NAV_HOME_EVENT, resetToDashboard);
   }, []);
+
+  useEffect(() => {
+    if (!adminMenuOpen) return;
+    const firstControl = adminDrawerRef.current?.querySelector<HTMLButtonElement>('button');
+    firstControl?.focus();
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setAdminMenuOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      adminMenuButtonRef.current?.focus();
+    };
+  }, [adminMenuOpen]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const filtersChanged =
     search !== '' ||
@@ -605,6 +803,11 @@ export function AdminScreen(): JSX.Element {
     queryFn: fetchAdminGameSettings,
     enabled: canTryAdmin && tab === 'settings',
   });
+  const achievements = useQuery({
+    queryKey: ['admin', 'achievements'],
+    queryFn: fetchAdminAchievements,
+    enabled: canTryAdmin && tab === 'achievements',
+  });
   const paymentsQuery = {
     q: debouncedPaymentSearch,
     status: paymentStatus,
@@ -624,6 +827,18 @@ export function AdminScreen(): JSX.Element {
   const feedback = useQuery({
     queryKey: ['admin', 'feedback', feedbackQuery],
     queryFn: () => fetchAdminFeedback(feedbackQuery),
+    enabled: canTryAdmin && tab === 'feedback',
+  });
+  const attention = useQuery({
+    queryKey: ['admin', 'attention'],
+    queryFn: fetchAdminAttention,
+    enabled: canTryAdmin,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
+  });
+  const pendingTournamentApplications = useQuery({
+    queryKey: ['admin', 'tournaments', 'pending-applications'],
+    queryFn: fetchAdminTournamentPendingApplications,
     enabled: canTryAdmin,
   });
   const mismatches = useQuery({
@@ -664,6 +879,7 @@ export function AdminScreen(): JSX.Element {
       users.error,
       summary.error,
       settings.error,
+      achievements.error,
       payments.error,
       inventory.error,
       duelTemplates.error,
@@ -674,7 +890,9 @@ export function AdminScreen(): JSX.Element {
     ].some((error) => error instanceof ApiError && error.status === 403);
 
   const selectedUser = users.data?.users.find((item) => item.id === selectedUserId) ?? null;
-  const feedbackUnreadCount = feedback.data?.unreadCount ?? 0;
+  const feedbackUnreadCount = attention.data?.feedbackUnreadCount ?? 0;
+  const officialDialogsUnreadCount = attention.data?.officialDialogsUnreadCount ?? 0;
+  const pendingTournamentApplicationCount = pendingTournamentApplications.data?.count ?? 0;
 
   if (denied) {
     return (
@@ -700,56 +918,99 @@ export function AdminScreen(): JSX.Element {
         gap: 12,
       }}
     >
-      <nav
-        className="glass no-scrollbar"
-        style={{
-          borderRadius: 20,
-          padding: 5,
-          display: 'flex',
-          alignItems: 'center',
-          minHeight: 54,
-          flex: '0 0 auto',
-          overflowX: 'auto',
-          overscrollBehaviorX: 'contain',
-          gap: 5,
-        }}
-      >
-        {tabs.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setTab(item.id)}
-            className={tab === item.id ? 'chip chip--active' : 'chip'}
-            style={{
-              flex: '0 0 auto',
-              minWidth: 146,
-              height: 42,
-              borderRadius: 16,
-              padding: '9px 14px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
+      <header className="admin-screen__toolbar">
+        <div className="section-label admin-screen__current-section">
+          Админ · {tabs.find((item) => item.id === tab)?.label ?? 'Обзор'}
+        </div>
+        <button
+          ref={adminMenuButtonRef}
+          type="button"
+          className="icon-btn icon-btn--dark admin-screen__menu-button"
+          aria-label="Открыть меню администратора"
+          aria-expanded={adminMenuOpen}
+          aria-controls="admin-navigation-drawer"
+          onClick={() => setAdminMenuOpen(true)}
+        >
+          <Menu size={19} />
+          {(attention.data?.totalCount ?? 0) > 0 && (
+            <span
+              aria-label={`Новые события администратора: ${attention.data!.totalCount}`}
+              className="admin-attention-dot admin-attention-dot--toolbar"
+            />
+          )}
+        </button>
+      </header>
+
+      {adminMenuOpen &&
+        createPortal(
+          <div
+            className="admin-drawer-backdrop"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setAdminMenuOpen(false);
             }}
           >
-            <span
-              aria-hidden="true"
-              style={{
-                width: 18,
-                height: 18,
-                flex: '0 0 18px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transform: 'translateX(1px)',
-              }}
+            <aside
+              ref={adminDrawerRef}
+              id="admin-navigation-drawer"
+              className="admin-drawer"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Меню администратора"
             >
-              {item.icon}
-            </span>
-            {item.id === 'feedback' ? `${item.label} (${feedbackUnreadCount})` : item.label}
-          </button>
-        ))}
-      </nav>
+              <div className="admin-drawer__header">
+                <h2>Разделы</h2>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Закрыть меню администратора"
+                  onClick={() => setAdminMenuOpen(false)}
+                >
+                  <X size={17} />
+                </button>
+              </div>
+              <nav className="admin-drawer__navigation" aria-label="Разделы администратора">
+                {tabs.map((item) => {
+                  const label =
+                    item.id === 'tournaments' && pendingTournamentApplicationCount > 0
+                        ? `${item.label} (${pendingTournamentApplicationCount})`
+                        : item.label;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      aria-label={label}
+                      className={
+                        tab === item.id
+                          ? 'admin-drawer__item admin-drawer__item--active'
+                          : 'admin-drawer__item'
+                      }
+                      aria-current={tab === item.id ? 'page' : undefined}
+                      onClick={() => {
+                        setTab(item.id);
+                        setAdminMenuOpen(false);
+                      }}
+                    >
+                      <span>{label}</span>
+                      {item.id === 'feedback' && feedbackUnreadCount > 0 && (
+                        <span
+                          aria-label={`Новые отзывы: ${feedbackUnreadCount}`}
+                          className="admin-attention-dot"
+                        />
+                      )}
+                      {item.id === 'channel' && officialDialogsUnreadCount > 0 && (
+                        <span
+                          aria-label={`Новые сообщения: ${officialDialogsUnreadCount}`}
+                          className="admin-attention-dot"
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
+            </aside>
+          </div>,
+          document.body,
+        )}
 
       {tab === 'dashboard' && (
         <DashboardPanel
@@ -799,15 +1060,38 @@ export function AdminScreen(): JSX.Element {
         />
       )}
       {tab === 'channel' && (
-        <ChannelPanel
-          loading={channel.isLoading}
-          data={channel.data}
-          period={channelPeriod}
-          onPeriod={setChannelPeriod}
-          onChanged={() => {
-            void queryClient.invalidateQueries({ queryKey: ['admin', 'channel'] });
-          }}
-        />
+        <>
+          <SegmentedTabs
+            items={[
+              { id: 'news', label: 'Новости' },
+              {
+                id: 'dialogs',
+                label: 'Диалоги',
+                attention: officialDialogsUnreadCount > 0,
+              },
+              { id: 'broadcast', label: 'Рассылка' },
+              { id: 'official-account', label: 'Официальный аккаунт' },
+            ]}
+            activeTab={communicationsTab}
+            ariaLabel="Раздел коммуникаций"
+            onChange={setCommunicationsTab}
+            scrollable
+          />
+          {communicationsTab === 'news' && (
+            <ChannelPanel
+              loading={channel.isLoading}
+              data={channel.data}
+              period={channelPeriod}
+              onPeriod={setChannelPeriod}
+              onChanged={() => {
+                void queryClient.invalidateQueries({ queryKey: ['admin', 'channel'] });
+              }}
+            />
+          )}
+          {communicationsTab === 'dialogs' && <OfficialDialogsPanel />}
+          {communicationsTab === 'broadcast' && <OfficialBroadcastPanel />}
+          {communicationsTab === 'official-account' && <OfficialAccountPanel />}
+        </>
       )}
       {tab === 'anticheat' && (
         <AnticheatPanel
@@ -846,15 +1130,28 @@ export function AdminScreen(): JSX.Element {
           }}
         />
       )}
+      {tab === 'achievements' && (
+        <AchievementsAdminPanel
+          loading={achievements.isLoading}
+          achievements={achievements.data?.achievements ?? []}
+          onChanged={() => {
+            void queryClient.invalidateQueries({ queryKey: ['admin', 'achievements'] });
+            void queryClient.invalidateQueries({ queryKey: ['achievements'] });
+          }}
+        />
+      )}
+      {tab === 'bonus-games' && <BonusGamesAdmin />}
       {tab === 'duels' && (
         <DuelTemplatesPanel
           loading={duelTemplates.isLoading}
           templates={duelTemplates.data?.templates ?? []}
+          rewardAmountLimit={duelTemplates.data?.rewardAmountLimit ?? 0}
           onChanged={() => {
             void queryClient.invalidateQueries({ queryKey: ['admin', 'duel-templates'] });
           }}
         />
       )}
+      {tab === 'tournaments' && <TournamentAdmin />}
       {tab === 'feedback' && (
         <FeedbackPanel
           loading={feedback.isLoading}
@@ -868,9 +1165,11 @@ export function AdminScreen(): JSX.Element {
           onKind={setFeedbackKind}
           onChanged={() => {
             void queryClient.invalidateQueries({ queryKey: ['admin', 'feedback'] });
+            void queryClient.invalidateQueries({ queryKey: ['admin', 'attention'] });
           }}
         />
       )}
+      {tab === 'onboarding' && <OnboardingAdmin />}
       {tab === 'settings' && (
         <SettingsPanel
           loading={settings.isLoading}
@@ -907,13 +1206,13 @@ function DashboardPanel({
       }}
     >
       <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
-        Дашборд
+        Обзор
       </div>
       <GlassSelect
         value={period}
         options={dashboardPeriodOptions}
         onChange={onPeriod}
-        ariaLabel="Период дашборда"
+        ariaLabel="Период обзора"
       />
     </div>
   );
@@ -938,21 +1237,21 @@ function DashboardPanel({
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="activeUsers"
-        color="#1d4ed8"
+        color="#2f7dd3"
       />
       <DashboardChartCard
         title="Новые пользователи"
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="newUsers"
-        color="#0f766e"
+        color="#149aa4"
       />
       <DashboardChartCard
         title="Выручка"
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="revenueRub"
-        color="#7c2d12"
+        color="#d78332"
         formatValue={moneyText}
         formatAxisValue={compactMoneyText}
       />
@@ -961,14 +1260,14 @@ function DashboardPanel({
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="shots"
-        color="#4338ca"
+        color="#4057c9"
       />
       <DashboardChartCard
         title="Сообщения"
         subtitle={periodLabel}
         series={dashboard.series}
         valueKey="messages"
-        color="#047857"
+        color="#197c70"
       />
     </>
   );
@@ -1111,17 +1410,17 @@ function DashboardMetricGrid({
     {
       label: 'Активные',
       value: numberText(dashboard.users.activeInPeriod),
-      note: `7д ${numberText(dashboard.users.active7d)} · год ${numberText(dashboard.users.active365d)}`,
+      note: `За 7 дней: ${numberText(dashboard.users.active7d)} · за год: ${numberText(dashboard.users.active365d)}`,
     },
     {
-      label: 'DAU / WAU',
+      label: 'Активность за день и неделю',
       value: percentText(dashboard.engagement.dauWauPercent),
-      note: `WAU / MAU ${percentText(dashboard.engagement.wauMauPercent)}`,
+      note: `За неделю и месяц ${percentText(dashboard.engagement.wauMauPercent)}`,
     },
     {
       label: 'Время в приложении',
       value: minutesText(dashboard.engagement.avgDailyActivitySpanMinutes),
-      note: 'среднее окно активности',
+      note: 'От первого до последнего входа за день',
     },
     {
       label: 'Платящие',
@@ -1129,9 +1428,9 @@ function DashboardMetricGrid({
       note: `${percentText(dashboard.payments.payerConversionPercent)} от игроков`,
     },
     {
-      label: 'ARPU',
+      label: 'Выручка на игрока',
       value: moneyText(dashboard.payments.arpuPeriodRub),
-      note: `${periodLabel} · ARPPU ${moneyText(dashboard.payments.arppuPeriodRub)}`,
+      note: `${periodLabel} · на платящего игрока ${moneyText(dashboard.payments.arppuPeriodRub)}`,
     },
     {
       label: 'Броски',
@@ -1146,10 +1445,10 @@ function DashboardMetricGrid({
     {
       label: 'Чат',
       value: numberText(dashboard.chat.messagesPeriod),
-      note: `${numberText(dashboard.chat.activeUsersPeriod)} авторов за ${periodLabel}`,
+      note: `${pluralText(dashboard.chat.activeUsersPeriod, 'автор', 'автора', 'авторов')} за ${periodLabel}`,
     },
     {
-      label: 'Фидбек',
+      label: 'Отзывы',
       value: numberText(dashboard.feedback.unread),
       note: `${numberText(dashboard.feedback.total)} всего`,
     },
@@ -1554,7 +1853,7 @@ function UsersPanel({
           type="search"
           value={search}
           onChange={(event) => onSearch(event.target.value)}
-          placeholder="Имя, username или tg id"
+          placeholder="Имя, ник или номер профиля"
           aria-label="Поиск игроков"
           style={{
             flex: 1,
@@ -1911,51 +2210,60 @@ function UserDetailsModal({
   onClose: () => void;
 }): JSX.Element {
   const queryClient = useQueryClient();
+  const [authoritativeUser, setAuthoritativeUser] = useState<AdminUser | null>(null);
   const detail = useQuery({
     queryKey: ['admin', 'user', userId],
     queryFn: () => fetchAdminUser(userId),
   });
-  const user = detail.data?.user ?? fallback;
+  const user = authoritativeUser ?? detail.data?.user ?? fallback;
   const [editMode, setEditMode] = useState(false);
   const [showPurchases, setShowPurchases] = useState(false);
-  const [selectedAchievement, setSelectedAchievement] = useState<AdminAchievement | null>(null);
+  const [selectedAchievement, setSelectedAchievement] = useState<AdminUserAchievement | null>(null);
   const [confirmAction, setConfirmAction] = useState<'save' | 'block' | null>(null);
   const [role, setRole] = useState<AdminRole>(user.role);
   const [displayName, setDisplayName] = useState(user.displayName);
   const [grip, setGrip] = useState(user.grip);
   const [level, setLevel] = useState(fieldNumber(user.level));
-  const [xp, setXp] = useState(fieldNumber(user.xp));
+  const [stars, setStars] = useState(fieldNumber(user.xp));
+  const [experience, setExperience] = useState(fieldNumber(user.experience));
   const [lifetimeShots, setLifetimeShots] = useState(fieldNumber(user.lifetimeShotsTotal));
   const [lifetimeGoals, setLifetimeGoals] = useState(fieldNumber(user.lifetimeGoalsTotal));
-  const [pucks, setPucks] = useState(fieldNumber(user.wallet.pucks));
-  const [goldPucks, setGoldPucks] = useState(fieldNumber(user.wallet.goldPucks));
-  const [shotsCurrent, setShotsCurrent] = useState(fieldNumber(user.wallet.shotsCurrent));
-  const [shotsMax, setShotsMax] = useState(fieldNumber(user.wallet.shotsMax));
+  const [coins, setCoins] = useState(fieldNumber(user.wallet.coins));
+  const [beginnerOnboardingCompleted, setBeginnerOnboardingCompleted] = useState(
+    user.beginnerOnboardingCompleted,
+  );
+  const [amateurOnboardingCompleted, setAmateurOnboardingCompleted] = useState(
+    user.amateurOnboardingCompleted,
+  );
 
   useEffect(() => {
     setRole(user.role);
     setDisplayName(user.displayName);
     setGrip(user.grip);
     setLevel(fieldNumber(user.level));
-    setXp(fieldNumber(user.xp));
+    setStars(fieldNumber(user.xp));
+    setExperience(fieldNumber(user.experience));
     setLifetimeShots(fieldNumber(user.lifetimeShotsTotal));
     setLifetimeGoals(fieldNumber(user.lifetimeGoalsTotal));
-    setPucks(fieldNumber(user.wallet.pucks));
-    setGoldPucks(fieldNumber(user.wallet.goldPucks));
-    setShotsCurrent(fieldNumber(user.wallet.shotsCurrent));
-    setShotsMax(fieldNumber(user.wallet.shotsMax));
+    setCoins(fieldNumber(user.wallet.coins));
+    setBeginnerOnboardingCompleted(user.beginnerOnboardingCompleted);
+    setAmateurOnboardingCompleted(user.amateurOnboardingCompleted);
   }, [user]);
 
   useEffect(() => {
+    setAuthoritativeUser(null);
     setShowPurchases(false);
     setSelectedAchievement(null);
   }, [user.id]);
 
   const saveMutation = useMutation({
     mutationFn: () => patchAdminUser(user.id, buildUserPatch()),
-    onSuccess: () => {
+    onSuccess: (response) => {
+      setAuthoritativeUser(response.user);
+      queryClient.setQueryData<AdminUserDetail>(['admin', 'user', user.id], (current) =>
+        current === undefined ? current : { ...current, user: response.user },
+      );
       void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
-      void queryClient.invalidateQueries({ queryKey: ['admin', 'user', user.id] });
       setEditMode(false);
       setConfirmAction(null);
     },
@@ -1963,7 +2271,11 @@ function UserDetailsModal({
 
   const blockMutation = useMutation({
     mutationFn: () => patchAdminUser(user.id, { isBlocked: !user.isBlocked }),
-    onSuccess: () => {
+    onSuccess: (response) => {
+      setAuthoritativeUser(response.user);
+      queryClient.setQueryData<AdminUserDetail>(['admin', 'user', user.id], (current) =>
+        current === undefined ? current : { ...current, user: response.user },
+      );
       void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'user', user.id] });
       setConfirmAction(null);
@@ -1976,14 +2288,14 @@ function UserDetailsModal({
       displayName,
       grip,
       level: Number(level),
-      xp: Number(xp),
+      xp: Number(stars),
+      experience: Number(experience),
       lifetimeShotsTotal: Number(lifetimeShots),
       lifetimeGoalsTotal: Number(lifetimeGoals),
+      beginnerOnboardingCompleted,
+      amateurOnboardingCompleted,
       wallet: {
-        pucks: Number(pucks),
-        goldPucks: Number(goldPucks),
-        shotsCurrent: Number(shotsCurrent),
-        shotsMax: Number(shotsMax),
+        coins: Number(coins),
       },
     };
   }
@@ -2076,11 +2388,29 @@ function UserDetailsModal({
         <IdentityCards identities={user.identities} />
 
         <MetaPair
-          left={{ label: 'Часовой пояс', value: user.timezone }}
+          left={{ label: 'Часовой пояс', value: tournamentTimezoneLabel(user.timezone) }}
           right={{ label: 'Последний визит', value: dateText(user.lastSeenAt) }}
         />
 
         <PushNotificationCard pushNotifications={user.pushNotifications} />
+
+        <section className="glass" style={{ marginTop: 10, borderRadius: 18, padding: 12 }}>
+          <strong style={{ display: 'block', marginBottom: 8 }}>Онбординг</strong>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div>
+              Новичок:{' '}
+              <span data-testid="beginner-onboarding-status">
+                {user.beginnerOnboardingCompleted ? 'Пройден' : 'Не пройден'}
+              </span>
+            </div>
+            <div>
+              Любитель:{' '}
+              <span data-testid="amateur-onboarding-status">
+                {user.amateurOnboardingCompleted ? 'Пройден' : 'Не пройден'}
+              </span>
+            </div>
+          </div>
+        </section>
 
         <section style={{ marginTop: 8, display: 'grid', gap: 8 }}>
           {user.isBlocked && (
@@ -2121,12 +2451,31 @@ function UserDetailsModal({
                 />
               </AdminField>
             </div>
+            <fieldset style={{ border: 0, margin: 0, padding: 0, display: 'grid', gap: 8 }}>
+              <legend style={{ fontWeight: 850, marginBottom: 6 }}>Прохождение онбординга</legend>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={beginnerOnboardingCompleted}
+                  onChange={(event) => setBeginnerOnboardingCompleted(event.target.checked)}
+                />{' '}
+                Онбординг новичка пройден
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={amateurOnboardingCompleted}
+                  onChange={(event) => setAmateurOnboardingCompleted(event.target.checked)}
+                />{' '}
+                Онбординг любителя пройден
+              </label>
+            </fieldset>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-              <AdminField label="Level">
+              <AdminField label="Уровень">
                 <input value={level} onChange={(event) => setLevel(event.target.value)} />
               </AdminField>
-              <AdminField label="XP">
-                <input value={xp} onChange={(event) => setXp(event.target.value)} />
+              <AdminField label="Звёзды">
+                <input value={stars} onChange={(event) => setStars(event.target.value)} />
               </AdminField>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
@@ -2144,22 +2493,11 @@ function UserDetailsModal({
               </AdminField>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-              <AdminField label="Шайбы">
-                <input value={pucks} onChange={(event) => setPucks(event.target.value)} />
+              <AdminField label="Монеты">
+                <input value={coins} onChange={(event) => setCoins(event.target.value)} />
               </AdminField>
-              <AdminField label="Золото">
-                <input value={goldPucks} onChange={(event) => setGoldPucks(event.target.value)} />
-              </AdminField>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-              <AdminField label="Броски">
-                <input
-                  value={shotsCurrent}
-                  onChange={(event) => setShotsCurrent(event.target.value)}
-                />
-              </AdminField>
-              <AdminField label="Макс. бросков">
-                <input value={shotsMax} onChange={(event) => setShotsMax(event.target.value)} />
+              <AdminField label="Опыт">
+                <input value={experience} onChange={(event) => setExperience(event.target.value)} />
               </AdminField>
             </div>
           </section>
@@ -2248,7 +2586,7 @@ function UserStatsRow({ user }: { user: AdminUser }): JSX.Element {
     { label: 'Броски', value: numberText(user.lifetimeShotsTotal) },
     { label: 'Голы', value: numberText(user.lifetimeGoalsTotal) },
     { label: 'Точность', value: `${user.accuracy}%` },
-    { label: 'Шайбы', value: numberText(user.wallet.pucks) },
+    { label: 'Монеты', value: numberText(user.wallet.coins) },
   ];
   return (
     <section
@@ -2301,8 +2639,8 @@ function AdminAchievementsRow({
   achievements,
   onOpenAchievement,
 }: {
-  achievements: AdminAchievement[];
-  onOpenAchievement: (achievement: AdminAchievement) => void;
+  achievements: AdminUserAchievement[];
+  onOpenAchievement: (achievement: AdminUserAchievement) => void;
 }): JSX.Element {
   const unlocked = achievements.filter((achievement) => achievement.isUnlocked).length;
 
@@ -2872,7 +3210,7 @@ function PushMonitoringPanel({
               <DashboardMiniStat
                 label="Клики"
                 value={numberText(overview?.clickCount ?? 0)}
-                note={`CTR ${percentText(overview?.deliveryClickRate ?? 0)}`}
+                note={`Переходы ${percentText(overview?.deliveryClickRate ?? 0)}`}
               />
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -3404,6 +3742,548 @@ function AdminChatAvatarControl({
         </button>
       </div>
     </div>
+  );
+}
+
+const OFFICIAL_VOICE_MAX_DURATION_MS = 120_000;
+
+function preferredOfficialVoiceMimeType(): string {
+  if (
+    typeof MediaRecorder !== 'undefined' &&
+    MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+  ) {
+    return 'audio/webm;codecs=opus';
+  }
+  if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/webm')) {
+    return 'audio/webm';
+  }
+  return '';
+}
+
+function officialMessageAttachments(
+  metadata: Record<string, unknown> | undefined,
+): ChatAttachmentDTO[] {
+  if (!metadata || !Array.isArray(metadata.attachments)) return [];
+  return metadata.attachments.filter((item): item is ChatAttachmentDTO => {
+    if (typeof item !== 'object' || item === null) return false;
+    const attachment = item as Partial<ChatAttachmentDTO>;
+    return typeof attachment.id === 'string' && typeof attachment.url === 'string';
+  });
+}
+
+export function OfficialDialogModal({
+  dialog,
+  onClose,
+  onChanged,
+}: {
+  dialog: AdminOfficialDialog;
+  onClose: () => void;
+  onChanged: () => void;
+}): JSX.Element {
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceTimeoutRef = useRef<number | null>(null);
+  const readInvalidatedRef = useRef(false);
+  const [pendingAttachment, setPendingAttachment] = useState<ChatAttachmentDTO | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [voiceState, setVoiceState] = useState<'idle' | 'recording' | 'uploading'>('idle');
+  const messages = useQuery({
+    queryKey: ['admin', 'communications', 'dialogs', dialog.chatId, 'messages'],
+    queryFn: () => fetchAdminOfficialDialogMessages(dialog.chatId),
+    refetchInterval: 5_000,
+  });
+  useEffect(() => {
+    if (!messages.isSuccess || readInvalidatedRef.current) return;
+    readInvalidatedRef.current = true;
+    onChanged();
+  }, [messages.isSuccess, onChanged]);
+  const sendMutation = useMutation({
+    mutationFn: ({ content, attachmentIds }: { content: string; attachmentIds: string[] }) =>
+      sendAdminOfficialDialogMessage(dialog.chatId, content, attachmentIds),
+    onSuccess: () => {
+      setPendingAttachment(null);
+      setAttachmentError(null);
+      void messages.refetch();
+      onChanged();
+    },
+  });
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => uploadAdminOfficialDialogAttachment(dialog.chatId, file),
+    onMutate: () => setAttachmentError(null),
+    onSuccess: ({ media }) => setPendingAttachment(media),
+    onError: (error) =>
+      setAttachmentError(error instanceof Error ? error.message : 'Не удалось загрузить файл'),
+  });
+  const stateMutation = useMutation({
+    mutationFn: (status: 'open' | 'closed') =>
+      patchAdminOfficialDialog(dialog.chatId, { status, markRead: true }),
+    onSuccess: () => {
+      onChanged();
+      onClose();
+    },
+  });
+
+  const stopVoiceTracks = (): void => {
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+    voiceStreamRef.current = null;
+    if (voiceTimeoutRef.current !== null) {
+      window.clearTimeout(voiceTimeoutRef.current);
+      voiceTimeoutRef.current = null;
+    }
+  };
+  const stopVoiceRecording = (): void => {
+    const recorder = voiceRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+  };
+  const handleVoice = (): void => {
+    if (voiceState === 'recording') {
+      stopVoiceRecording();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setAttachmentError('Запись голоса недоступна в этом браузере');
+      return;
+    }
+    setAttachmentError(null);
+    void navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        const mimeType = preferredOfficialVoiceMimeType();
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        voiceStreamRef.current = stream;
+        voiceChunksRef.current = [];
+        voiceRecorderRef.current = recorder;
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) voiceChunksRef.current.push(event.data);
+        };
+        recorder.onerror = () => {
+          setAttachmentError('Не удалось записать голосовое');
+          setVoiceState('idle');
+          stopVoiceTracks();
+        };
+        recorder.onstop = () => {
+          const chunks = voiceChunksRef.current;
+          voiceRecorderRef.current = null;
+          stopVoiceTracks();
+          if (chunks.length === 0) {
+            setVoiceState('idle');
+            setAttachmentError('Голосовое получилось пустым');
+            return;
+          }
+          const blobType = recorder.mimeType || 'audio/webm';
+          const file = new File([new Blob(chunks, { type: blobType })], 'voice-message.webm', {
+            type: blobType,
+          });
+          setVoiceState('uploading');
+          uploadAdminOfficialDialogAttachment(dialog.chatId, file)
+            .then(({ media }) => sendAdminOfficialDialogMessage(dialog.chatId, '', [media.id]))
+            .then(() => {
+              void messages.refetch();
+              onChanged();
+            })
+            .catch((error: unknown) =>
+              setAttachmentError(
+                error instanceof Error ? error.message : 'Не удалось отправить голосовое',
+              ),
+            )
+            .finally(() => setVoiceState('idle'));
+        };
+        recorder.start();
+        setVoiceState('recording');
+        voiceTimeoutRef.current = window.setTimeout(
+          stopVoiceRecording,
+          OFFICIAL_VOICE_MAX_DURATION_MS,
+        );
+      })
+      .catch(() => {
+        stopVoiceTracks();
+        setAttachmentError('Не удалось получить доступ к микрофону');
+      });
+  };
+
+  useEffect(() => {
+    return () => {
+      if (voiceRecorderRef.current?.state === 'recording') voiceRecorderRef.current.stop();
+      stopVoiceTracks();
+    };
+  }, []);
+
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="modal-card admin-official-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Диалог с ${dialog.player.displayName}`}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <input
+          ref={imageInputRef}
+          hidden
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = '';
+            if (file) uploadMutation.mutate(file);
+          }}
+        />
+        <input
+          ref={fileInputRef}
+          hidden
+          type="file"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = '';
+            if (file) uploadMutation.mutate(file);
+          }}
+        />
+        <header className="admin-official-dialog__header">
+          <div className="admin-official-dialog__person">
+            <ChatUserAvatar
+              avatarUrl={dialog.player.avatarUrl}
+              name={dialog.player.displayName}
+              size={40}
+            />
+            <div>
+              <h2 className="modal-title">{dialog.player.displayName}</h2>
+              <div className="admin-official-dialog__identity">
+                {dialog.player.telegramId ? `Telegram: ${dialog.player.telegramId}` : ''}
+                {dialog.player.telegramId && dialog.player.vkId ? ' · ' : ''}
+                {dialog.player.vkId ? `VK: ${dialog.player.vkId}` : ''}
+              </div>
+            </div>
+          </div>
+          <button type="button" className="icon-btn" aria-label="Закрыть окно" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </header>
+        <div className="admin-official-dialog__messages" aria-live="polite">
+          {messages.isLoading && <AdminPlainState>Загрузка сообщений...</AdminPlainState>}
+          {!messages.isLoading && (messages.data?.length ?? 0) === 0 && (
+            <AdminPlainState>Сообщений пока нет</AdminPlainState>
+          )}
+          {messages.data?.map((item) => (
+            <div
+              key={item.id}
+              className={`admin-official-dialog__message${item.senderId === dialog.player.userId ? '' : ' admin-official-dialog__message--official'}`}
+            >
+              {item.content && <div>{item.content}</div>}
+              {officialMessageAttachments(item.metadata).map((attachment) =>
+                attachment.kind === 'voice' ? (
+                  <audio key={attachment.id} controls preload="metadata" src={attachment.url} />
+                ) : (
+                  <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer">
+                    {attachment.originalName || 'Открыть вложение'}
+                  </a>
+                ),
+              )}
+              <time>{dateTimeText(item.createdAt)}</time>
+            </div>
+          ))}
+        </div>
+        <div className="admin-official-dialog__composer">
+          <ChatInput
+            replyTo={null}
+            placeholder="Сообщение от Ультимейт Хоккей"
+            attachmentPreview={
+              pendingAttachment ? (
+                <div className="admin-official-dialog__attachment">
+                  <FileText size={15} />
+                  <span>{pendingAttachment.originalName || 'Вложение'}</span>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label="Убрать вложение"
+                    onClick={() => setPendingAttachment(null)}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : null
+            }
+            canSendEmpty={pendingAttachment !== null}
+            onAttachImage={() => imageInputRef.current?.click()}
+            onAttachFile={() => fileInputRef.current?.click()}
+            onVoice={handleVoice}
+            voiceState={voiceState}
+            onClearReply={() => undefined}
+            disabled={
+              sendMutation.isPending || uploadMutation.isPending || voiceState === 'uploading'
+            }
+            onSend={async (content) => {
+              await sendMutation.mutateAsync({
+                content,
+                attachmentIds: pendingAttachment ? [pendingAttachment.id] : [],
+              });
+            }}
+          />
+        </div>
+        {(sendMutation.error || stateMutation.error || attachmentError) && (
+          <div role="alert" className="admin-official-dialog__error">
+            {attachmentError ?? 'Не удалось выполнить действие. Попробуйте ещё раз.'}
+          </div>
+        )}
+        <button
+          type="button"
+          className={dialog.status === 'closed' ? 'btn btn--ghost' : 'admin-danger-text-btn'}
+          disabled={stateMutation.isPending}
+          onClick={() => stateMutation.mutate(dialog.status === 'closed' ? 'open' : 'closed')}
+        >
+          {dialog.status === 'closed' ? 'Открыть диалог' : 'Закрыть диалог'}
+        </button>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
+function OfficialDialogsPanel(): JSX.Element {
+  const queryClient = useQueryClient();
+  const [filter, setFilter] = useState<AdminOfficialDialogFilter>('new');
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
+  const [selected, setSelected] = useState<AdminOfficialDialog | null>(null);
+  const dialogs = useQuery({
+    queryKey: ['admin', 'communications', 'dialogs', filter, debouncedSearch],
+    queryFn: () => fetchAdminOfficialDialogs(filter, debouncedSearch),
+    refetchInterval: 8_000,
+  });
+  const invalidate = (): void => {
+    void queryClient.invalidateQueries({ queryKey: ['admin', 'communications', 'dialogs'] });
+    void queryClient.invalidateQueries({ queryKey: ['admin', 'attention'] });
+  };
+
+  return (
+    <>
+      <section className="admin-communications-toolbar">
+        <div className="admin-search-row">
+          <Search size={15} />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Имя, Telegram ID или VK ID"
+            aria-label="Поиск официальных диалогов"
+          />
+        </div>
+        <GlassSelect
+          value={filter}
+          options={officialDialogFilterOptions}
+          onChange={setFilter}
+          ariaLabel="Статус официальных диалогов"
+        />
+      </section>
+      <div className="section-label admin-section-label">
+        Диалоги{dialogs.data ? ` · новых ${dialogs.data.unreadCount}` : ''}
+      </div>
+      <section className="admin-official-dialog-list">
+        {dialogs.isLoading && <AdminPlainState>Загрузка диалогов...</AdminPlainState>}
+        {!dialogs.isLoading && (dialogs.data?.dialogs.length ?? 0) === 0 && (
+          <AdminPlainState>Здесь пока нет диалогов</AdminPlainState>
+        )}
+        {dialogs.data?.dialogs.map((dialog) => (
+          <button
+            key={dialog.chatId}
+            type="button"
+            className="glass admin-official-dialog-row"
+            onClick={() => setSelected(dialog)}
+          >
+            <ChatUserAvatar
+              avatarUrl={dialog.player.avatarUrl}
+              name={dialog.player.displayName}
+              size={42}
+            />
+            <span className="admin-official-dialog-row__body">
+              <span className="admin-official-dialog-row__title">
+                {dialog.player.displayName}
+                {dialog.isNew && <span className="admin-official-dialog-row__new">Новое</span>}
+              </span>
+              <span className="admin-official-dialog-row__preview">
+                {dialog.lastMessage.fromOfficial ? 'Вы: ' : ''}
+                {dialog.lastMessage.content || 'Вложение'}
+              </span>
+            </span>
+            <time>{dateTimeText(dialog.lastMessage.createdAt)}</time>
+          </button>
+        ))}
+      </section>
+      {selected && (
+        <OfficialDialogModal
+          dialog={selected}
+          onClose={() => setSelected(null)}
+          onChanged={invalidate}
+        />
+      )}
+    </>
+  );
+}
+
+function OfficialBroadcastPanel(): JSX.Element {
+  const [content, setContent] = useState('');
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [resultText, setResultText] = useState<string | null>(null);
+  const audience = useQuery({
+    queryKey: ['admin', 'communications', 'broadcast-audience'],
+    queryFn: fetchAdminBroadcastAudience,
+  });
+  const sendMutation = useMutation({
+    mutationFn: (message: string) => sendAdminDirectBroadcast(crypto.randomUUID(), message),
+    onSuccess: (result) => {
+      setConfirmOpen(false);
+      setContent('');
+      setResultText(
+        result.failedCount === 0
+          ? `Сообщение отправлено ${result.sentCount} игрокам`
+          : `Отправлено ${result.sentCount} из ${result.recipientCount}. Ошибок: ${result.failedCount}`,
+      );
+    },
+  });
+  const recipientCount = audience.data?.recipientCount ?? 0;
+  const trimmedContent = content.trim();
+
+  return (
+    <>
+      <section className="glass admin-broadcast-card">
+        <div>
+          <div className="admin-broadcast-card__title">Личное сообщение от профиля игры</div>
+          <div className="admin-broadcast-card__audience">
+            {audience.isLoading ? 'Считаем получателей...' : `${recipientCount} получателей`}
+          </div>
+        </div>
+        <p>
+          Сообщение появится отдельным личным диалогом у каждого незаблокированного игрока.
+          Администраторы и официальный аккаунт исключены.
+        </p>
+        <label className="admin-broadcast-card__field">
+          <span>Сообщение</span>
+          <textarea
+            aria-label="Текст личной рассылки"
+            value={content}
+            maxLength={4000}
+            rows={7}
+            onChange={(event) => {
+              setContent(event.target.value);
+              setResultText(null);
+            }}
+            placeholder="Напишите сообщение игрокам"
+          />
+          <small>{content.length}/4000</small>
+        </label>
+        <button
+          type="button"
+          className="btn btn--cta"
+          disabled={trimmedContent.length === 0 || recipientCount === 0 || sendMutation.isPending}
+          onClick={() => setConfirmOpen(true)}
+        >
+          Проверить и отправить
+        </button>
+        {resultText && <div className="admin-broadcast-card__success">{resultText}</div>}
+        {sendMutation.error && (
+          <div role="alert" className="admin-official-dialog__error">
+            Не удалось отправить рассылку. Попробуйте ещё раз.
+          </div>
+        )}
+      </section>
+
+      {confirmOpen &&
+        createPortal(
+          <div className="modal-backdrop">
+            <section
+              className="modal-card"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Подтвердить личную рассылку"
+            >
+              <div className="modal-header">
+                <h2 className="modal-title">Отправить всем игрокам?</h2>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Закрыть подтверждение рассылки"
+                  onClick={() => setConfirmOpen(false)}
+                >
+                  <X size={17} />
+                </button>
+              </div>
+              <p className="modal-copy">Сообщение получат {recipientCount} игроков.</p>
+              <div className="admin-broadcast-preview">{trimmedContent}</div>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="modal-primary btn btn--cta"
+                  disabled={sendMutation.isPending}
+                  onClick={() => sendMutation.mutate(trimmedContent)}
+                >
+                  {sendMutation.isPending ? 'Отправляем...' : `Отправить ${recipientCount} игрокам`}
+                </button>
+              </div>
+            </section>
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
+
+function OfficialAccountPanel(): JSX.Element {
+  const queryClient = useQueryClient();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const account = useQuery({
+    queryKey: ['admin', 'communications', 'official-account'],
+    queryFn: fetchAdminOfficialAccount,
+  });
+  const upload = useMutation({
+    mutationFn: async (file: File) =>
+      uploadAdminOfficialAccountAvatar(await convertChatAvatarToWebp(file)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['admin', 'communications', 'official-account'],
+      });
+    },
+  });
+  return (
+    <>
+      <input
+        ref={inputRef}
+        hidden
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = '';
+          if (file) upload.mutate(file);
+        }}
+      />
+      <div className="section-label admin-section-label">Официальный аккаунт</div>
+      <section className="glass admin-official-account-card">
+        <ChatUserAvatar
+          avatarUrl={account.data?.avatarUrl ?? '/icons/official-account.webp'}
+          name={account.data?.displayName ?? 'Ультимейт Хоккей'}
+          size={72}
+        />
+        <div>
+          <div className="admin-official-account-card__title">
+            {account.data?.displayName ?? 'Ультимейт Хоккей'}
+          </div>
+          <div className="admin-official-account-card__copy">
+            Все администраторы отвечают игрокам от имени игры. Имя конкретного администратора
+            сохраняется только в журнале действий.
+          </div>
+        </div>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={upload.isPending}
+          onClick={() => inputRef.current?.click()}
+        >
+          Сменить аватар
+        </button>
+      </section>
+      {upload.error && <AdminPlainState>Не удалось загрузить аватар</AdminPlainState>}
+    </>
   );
 }
 
@@ -4938,12 +5818,15 @@ function InventoryEditor({
   const [priceRub, setPriceRub] = useState(item ? String(item.priceRub) : '');
   const [itemKind, setItemKind] = useState<AdminInventoryItemKind>(item?.itemKind ?? 'consumable');
   const [currencyPrice, setCurrencyPrice] = useState(fieldNumber(item?.currencyPrice ?? 0));
-  const [chargesPerPurchase, setChargesPerPurchase] = useState(
-    fieldNumber(item?.chargesPerPurchase ?? 1),
+  const [chargesPerPurchase, setChargesPerPurchase] = useState(inventoryChargeFieldValue(item));
+  const [lowStockThreshold, setLowStockThreshold] = useState(
+    fieldNumber(
+      item?.lowStockThreshold ?? inventoryLowStockDefault(item?.itemKind ?? 'consumable'),
+    ),
   );
   const [duelPeriodCost, setDuelPeriodCost] = useState(fieldNumber(item?.duelPeriodCost ?? 0));
-  const [effectPuckSpeedDelta, setEffectPuckSpeedDelta] = useState(
-    fieldNumber(item?.effectPuckSpeedDelta ?? 0),
+  const [effectPuckSpeedPoints, setEffectPuckSpeedPoints] = useState(
+    puckSpeedPointsFieldValue(item),
   );
   const [effectShooterFrequencyDelta, setEffectShooterFrequencyDelta] = useState(
     fieldNumber(item?.effectShooterFrequencyDelta ?? 0),
@@ -4957,24 +5840,139 @@ function InventoryEditor({
   const [effectShotZoneMultiplier, setEffectShotZoneMultiplier] = useState(
     fieldNumber(item?.effectShotZoneMultiplier ?? 1),
   );
+  const [effectStumbleIntervalMinRolls, setEffectStumbleIntervalMinRolls] = useState(
+    fieldNumber(item?.effectStumbleIntervalMinRolls ?? 90),
+  );
+  const [effectStumbleIntervalMaxRolls, setEffectStumbleIntervalMaxRolls] = useState(
+    fieldNumber(item?.effectStumbleIntervalMaxRolls ?? 130),
+  );
+  const [effectStumbleDurationMinMs, setEffectStumbleDurationMinMs] = useState(
+    fieldNumber(item?.effectStumbleDurationMinMs ?? 500),
+  );
+  const [effectStumbleDurationMaxMs, setEffectStumbleDurationMaxMs] = useState(
+    fieldNumber(item?.effectStumbleDurationMaxMs ?? 700),
+  );
+  const [effectStumbleOffsetMinPx, setEffectStumbleOffsetMinPx] = useState(
+    fieldNumber(item?.effectStumbleOffsetMinPx ?? 20),
+  );
+  const [effectStumbleOffsetMaxPx, setEffectStumbleOffsetMaxPx] = useState(
+    fieldNumber(item?.effectStumbleOffsetMaxPx ?? 45),
+  );
+  const [effectStumbleRecoveryMinMs, setEffectStumbleRecoveryMinMs] = useState(
+    fieldNumber(item?.effectStumbleRecoveryMinMs ?? 200),
+  );
+  const [effectStumbleRecoveryMaxMs, setEffectStumbleRecoveryMaxMs] = useState(
+    fieldNumber(item?.effectStumbleRecoveryMaxMs ?? 300),
+  );
+  const [effectEnergyBaselineSpeed, setEffectEnergyBaselineSpeed] = useState(
+    fieldNumber(item?.effectEnergyBaselineSpeed ?? 0.75),
+  );
+  const [effectFatigueGraceMs, setEffectFatigueGraceMs] = useState(
+    fieldNumber(item?.effectFatigueGraceMs ?? 30_000),
+  );
+  const [effectFatigueSlowdownStartMs, setEffectFatigueSlowdownStartMs] = useState(
+    fieldNumber(item?.effectFatigueSlowdownStartMs ?? 30_000),
+  );
+  const [effectFatigueHeavySlowdownStartMs, setEffectFatigueHeavySlowdownStartMs] = useState(
+    fieldNumber(item?.effectFatigueHeavySlowdownStartMs ?? 75_000),
+  );
+  const [effectFatigueStopStartMs, setEffectFatigueStopStartMs] = useState(
+    fieldNumber(item?.effectFatigueStopStartMs ?? 90_000),
+  );
+  const [effectFatigueStopDurationMs, setEffectFatigueStopDurationMs] = useState(
+    fieldNumber(item?.effectFatigueStopDurationMs ?? 5_000),
+  );
+  const [effectFatigueAfterRestMs, setEffectFatigueAfterRestMs] = useState(
+    fieldNumber(item?.effectFatigueAfterRestMs ?? 45_000),
+  );
+  const [effectFatigueSlowMultiplier, setEffectFatigueSlowMultiplier] = useState(
+    fieldNumber(item?.effectFatigueSlowMultiplier ?? 0.9),
+  );
+  const [effectFatigueHeavyMultiplier, setEffectFatigueHeavyMultiplier] = useState(
+    fieldNumber(item?.effectFatigueHeavyMultiplier ?? 0.75),
+  );
+  const [effectRecoveryMinutes, setEffectRecoveryMinutes] = useState(
+    fieldNumber(item?.effectRecoveryMinutes ?? 0),
+  );
+  const parsedPriceRub = parseAdminIntegerInput(priceRub);
+  const parsedCurrencyPrice = parseAdminIntegerInput(currencyPrice);
+  const parsedChargesPerPurchase = parseAdminNumberInput(chargesPerPurchase);
+  const parsedLowStockThreshold = parseAdminIntegerInput(lowStockThreshold);
+  const parsedDuelPeriodCost = parseAdminIntegerInput(duelPeriodCost);
+  const parsedEffectPuckSpeedPoints = parseAdminNumberInput(effectPuckSpeedPoints);
+  const parsedEffectShooterFrequencyDelta = parseAdminNumberInput(effectShooterFrequencyDelta);
+  const parsedEffectGoalieFrequencyDelta = parseAdminNumberInput(effectGoalieFrequencyDelta);
+  const parsedEffectGoalFrequencyDelta = parseAdminNumberInput(effectGoalFrequencyDelta);
+  const parsedEffectShotZoneMultiplier = parseAdminNumberInput(effectShotZoneMultiplier);
+  const parsedEffectStumbleIntervalMinRolls = parseAdminNumberInput(effectStumbleIntervalMinRolls);
+  const parsedEffectStumbleIntervalMaxRolls = parseAdminNumberInput(effectStumbleIntervalMaxRolls);
+  const parsedEffectStumbleDurationMinMs = parseAdminIntegerInput(effectStumbleDurationMinMs);
+  const parsedEffectStumbleDurationMaxMs = parseAdminIntegerInput(effectStumbleDurationMaxMs);
+  const parsedEffectStumbleOffsetMinPx = parseAdminIntegerInput(effectStumbleOffsetMinPx);
+  const parsedEffectStumbleOffsetMaxPx = parseAdminIntegerInput(effectStumbleOffsetMaxPx);
+  const parsedEffectStumbleRecoveryMinMs = parseAdminIntegerInput(effectStumbleRecoveryMinMs);
+  const parsedEffectStumbleRecoveryMaxMs = parseAdminIntegerInput(effectStumbleRecoveryMaxMs);
+  const parsedEffectEnergyBaselineSpeed = parseAdminNumberInput(effectEnergyBaselineSpeed);
+  const parsedEffectFatigueGraceMs = parseAdminIntegerInput(effectFatigueGraceMs);
+  const parsedEffectFatigueSlowdownStartMs = parseAdminIntegerInput(effectFatigueSlowdownStartMs);
+  const parsedEffectFatigueHeavySlowdownStartMs = parseAdminIntegerInput(
+    effectFatigueHeavySlowdownStartMs,
+  );
+  const parsedEffectFatigueStopStartMs = parseAdminIntegerInput(effectFatigueStopStartMs);
+  const parsedEffectFatigueStopDurationMs = parseAdminIntegerInput(effectFatigueStopDurationMs);
+  const parsedEffectFatigueAfterRestMs = parseAdminIntegerInput(effectFatigueAfterRestMs);
+  const parsedEffectFatigueSlowMultiplier = parseAdminNumberInput(effectFatigueSlowMultiplier);
+  const parsedEffectFatigueHeavyMultiplier = parseAdminNumberInput(effectFatigueHeavyMultiplier);
+  const parsedEffectRecoveryMinutes = parseAdminIntegerInput(effectRecoveryMinutes);
   const mutation = useMutation({
     mutationFn: async () => {
       const body: Required<AdminInventoryItemPatch> = {
         photoUrl,
         title,
         description,
-        priceRub: Number(priceRub),
+        priceRub: parsedPriceRub,
       };
       const gameplay: Required<AdminInventoryGameplayPatch> = {
         itemKind,
-        currencyPrice: Number(currencyPrice),
-        chargesPerPurchase: Number(chargesPerPurchase),
-        duelPeriodCost: Number(duelPeriodCost),
-        effectPuckSpeedDelta: Number(effectPuckSpeedDelta),
-        effectShooterFrequencyDelta: Number(effectShooterFrequencyDelta),
-        effectGoalieFrequencyDelta: Number(effectGoalieFrequencyDelta),
-        effectGoalFrequencyDelta: Number(effectGoalFrequencyDelta),
-        effectShotZoneMultiplier: Number(effectShotZoneMultiplier),
+        currencyPrice: parsedCurrencyPrice,
+        chargesPerPurchase: inventoryChargeValueForSave(itemKind, parsedChargesPerPurchase),
+        lowStockThreshold: parsedLowStockThreshold,
+        duelPeriodCost: parsedDuelPeriodCost,
+        powerScore:
+          itemKind === 'stick'
+            ? Math.max(0, Math.round(parsedEffectPuckSpeedPoints))
+            : (item?.powerScore ?? 0),
+        resourceUnit: inventoryResourceUnitForKind(itemKind),
+        effectPuckSpeedPoints: Math.round(parsedEffectPuckSpeedPoints),
+        effectPuckSpeedDelta: puckSpeedPointsToDelta(effectPuckSpeedPoints),
+        effectShooterFrequencyDelta: parsedEffectShooterFrequencyDelta,
+        effectGoalieFrequencyDelta: parsedEffectGoalieFrequencyDelta,
+        effectGoalFrequencyDelta: parsedEffectGoalFrequencyDelta,
+        effectShotZoneMultiplier: parsedEffectShotZoneMultiplier,
+        effectStumbleIntervalMinRolls: parsedEffectStumbleIntervalMinRolls,
+        effectStumbleIntervalMaxRolls: parsedEffectStumbleIntervalMaxRolls,
+        effectStumbleIntervalMinMs: item?.effectStumbleIntervalMinMs ?? 25_000,
+        effectStumbleIntervalMaxMs: item?.effectStumbleIntervalMaxMs ?? 45_000,
+        effectStumbleDurationMinMs: parsedEffectStumbleDurationMinMs,
+        effectStumbleDurationMaxMs: parsedEffectStumbleDurationMaxMs,
+        effectStumbleOffsetMinPx: parsedEffectStumbleOffsetMinPx,
+        effectStumbleOffsetMaxPx: parsedEffectStumbleOffsetMaxPx,
+        effectStumbleRecoveryMinMs: parsedEffectStumbleRecoveryMinMs,
+        effectStumbleRecoveryMaxMs: parsedEffectStumbleRecoveryMaxMs,
+        effectEnergyBaselineSpeed: parsedEffectEnergyBaselineSpeed,
+        effectNutritionSlowdownMs: item?.effectNutritionSlowdownMs ?? 0,
+        effectNutritionStopMs: item?.effectNutritionStopMs ?? 0,
+        effectFatigueDelayMs: item?.effectFatigueDelayMs ?? 90_000,
+        effectFatigueSpeedMultiplier: item?.effectFatigueSpeedMultiplier ?? 1,
+        effectFatigueGraceMs: parsedEffectFatigueGraceMs,
+        effectFatigueSlowdownStartMs: parsedEffectFatigueSlowdownStartMs,
+        effectFatigueHeavySlowdownStartMs: parsedEffectFatigueHeavySlowdownStartMs,
+        effectFatigueStopStartMs: parsedEffectFatigueStopStartMs,
+        effectFatigueStopDurationMs: parsedEffectFatigueStopDurationMs,
+        effectFatigueAfterRestMs: parsedEffectFatigueAfterRestMs,
+        effectFatigueSlowMultiplier: parsedEffectFatigueSlowMultiplier,
+        effectFatigueHeavyMultiplier: parsedEffectFatigueHeavyMultiplier,
+        effectRecoveryMinutes: parsedEffectRecoveryMinutes,
       };
       const saved =
         item === null
@@ -4985,148 +5983,955 @@ function InventoryEditor({
     },
     onSuccess: onSaved,
   });
+  const handleItemKindChange = (nextKind: AdminInventoryItemKind) => {
+    setLowStockThreshold((current) =>
+      current === fieldNumber(inventoryLowStockDefault(itemKind))
+        ? fieldNumber(inventoryLowStockDefault(nextKind))
+        : current,
+    );
+    setItemKind(nextKind);
+  };
   const numericValues = [
-    priceRub,
-    currencyPrice,
-    chargesPerPurchase,
-    duelPeriodCost,
-    effectPuckSpeedDelta,
-    effectShooterFrequencyDelta,
-    effectGoalieFrequencyDelta,
-    effectGoalFrequencyDelta,
-    effectShotZoneMultiplier,
-  ].map(Number);
-  const canSave =
+    parsedPriceRub,
+    parsedCurrencyPrice,
+    parsedChargesPerPurchase,
+    parsedLowStockThreshold,
+    parsedDuelPeriodCost,
+    parsedEffectPuckSpeedPoints,
+    parsedEffectShooterFrequencyDelta,
+    parsedEffectGoalieFrequencyDelta,
+    parsedEffectGoalFrequencyDelta,
+    parsedEffectShotZoneMultiplier,
+    parsedEffectStumbleIntervalMinRolls,
+    parsedEffectStumbleIntervalMaxRolls,
+    parsedEffectStumbleDurationMinMs,
+    parsedEffectStumbleDurationMaxMs,
+    parsedEffectStumbleOffsetMinPx,
+    parsedEffectStumbleOffsetMaxPx,
+    parsedEffectStumbleRecoveryMinMs,
+    parsedEffectStumbleRecoveryMaxMs,
+    parsedEffectEnergyBaselineSpeed,
+    parsedEffectFatigueGraceMs,
+    parsedEffectFatigueSlowdownStartMs,
+    parsedEffectFatigueHeavySlowdownStartMs,
+    parsedEffectFatigueStopStartMs,
+    parsedEffectFatigueStopDurationMs,
+    parsedEffectFatigueAfterRestMs,
+    parsedEffectFatigueSlowMultiplier,
+    parsedEffectFatigueHeavyMultiplier,
+    parsedEffectRecoveryMinutes,
+  ];
+  const canSaveBase =
     title.trim() !== '' &&
     numericValues.every(Number.isFinite) &&
-    Number(priceRub) >= 0 &&
-    Number(currencyPrice) >= 0 &&
-    Number(chargesPerPurchase) >= 0 &&
-    Number(duelPeriodCost) >= 0 &&
-    Number(effectShotZoneMultiplier) >= 1;
+    parsedPriceRub >= 0 &&
+    parsedCurrencyPrice >= 0 &&
+    parsedChargesPerPurchase >= 0 &&
+    parsedLowStockThreshold >= 0 &&
+    parsedDuelPeriodCost >= 0 &&
+    parsedEffectShotZoneMultiplier >= 1 &&
+    parsedEffectPuckSpeedPoints >= -500 &&
+    parsedEffectPuckSpeedPoints <= 500 &&
+    parsedEffectStumbleIntervalMaxRolls >= parsedEffectStumbleIntervalMinRolls &&
+    parsedEffectStumbleDurationMaxMs >= parsedEffectStumbleDurationMinMs &&
+    parsedEffectStumbleOffsetMaxPx >= parsedEffectStumbleOffsetMinPx &&
+    parsedEffectStumbleRecoveryMaxMs >= parsedEffectStumbleRecoveryMinMs &&
+    parsedEffectEnergyBaselineSpeed > 0 &&
+    parsedEffectFatigueStopStartMs >= parsedEffectFatigueSlowdownStartMs &&
+    parsedEffectFatigueAfterRestMs >= 0 &&
+    parsedEffectFatigueSlowMultiplier >= 0 &&
+    parsedEffectFatigueSlowMultiplier <= 1 &&
+    parsedEffectFatigueHeavyMultiplier >= 0 &&
+    parsedEffectFatigueHeavyMultiplier <= 1;
+  const recoveryEffectValid =
+    itemKind !== 'recovery' ||
+    (parsedEffectRecoveryMinutes >= 1 && parsedEffectRecoveryMinutes <= 60);
+  const canSave = canSaveBase && recoveryEffectValid;
+  const isStickItem = itemKind === 'stick';
+  const isSkatesItem = itemKind === 'skates';
+  const isNutritionItem = itemKind === 'nutrition';
+  const isRecoveryItem = itemKind === 'recovery';
+  const editorIntro = isStickItem
+    ? 'Скорость шайбы: 10 пунктов = +0.10.'
+    : isSkatesItem
+      ? 'Коньки расходуются в прокатах и управляют спотыканием без рабочего инвентаря.'
+      : isNutritionItem
+        ? 'Энергия задаётся в минутах, расход зависит от скорости игрока.'
+        : isRecoveryItem
+          ? 'Одноразовый набор сокращает только обычное восстановление после игры.'
+          : 'Базовые параметры расходуемого предмета.';
+
+  return createPortal(
+    <div
+      className="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label={item === null ? 'Новый предмет' : 'Редактирование предмета'}
+      style={{
+        zIndex: 1000,
+        padding: 'calc(12px + var(--app-safe-top)) 12px calc(12px + var(--app-safe-bottom))',
+      }}
+    >
+      <section
+        className="modal-card"
+        style={{
+          width: 'min(520px, calc(100vw - 24px))',
+          maxHeight: '100%',
+          overflowY: 'auto',
+          display: 'grid',
+          gap: 10,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="modal-title">
+              {item === null ? 'Новый предмет' : 'Редактирование предмета'}
+            </div>
+            <div
+              className="modal-copy"
+              style={{ marginTop: 4, fontSize: 11, fontWeight: 520, lineHeight: 1.22 }}
+            >
+              {editorIntro}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Закрыть"
+            onClick={onCancel}
+            style={{ flex: '0 0 34px' }}
+          >
+            <X size={15} />
+          </button>
+        </div>
+        <AdminField label="Фото URL">
+          <input value={photoUrl} onChange={(event) => setPhotoUrl(event.target.value)} />
+        </AdminField>
+        <AdminField label="Название">
+          <input value={title} onChange={(event) => setTitle(event.target.value)} />
+        </AdminField>
+        <AdminField label="Описание">
+          <input value={description} onChange={(event) => setDescription(event.target.value)} />
+        </AdminField>
+        <AdminField label="Цена">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={priceRub}
+            onChange={(event) => setPriceRub(event.target.value)}
+          />
+        </AdminField>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+          <AdminField label="Тип">
+            <GlassSelect
+              value={itemKind}
+              options={inventoryItemKindOptions}
+              onChange={handleItemKindChange}
+              ariaLabel="Тип предмета"
+            />
+          </AdminField>
+          <AdminField label="Цена в валюте">
+            <input
+              type="text"
+              inputMode="numeric"
+              value={currencyPrice}
+              onChange={(event) => setCurrencyPrice(event.target.value)}
+            />
+          </AdminField>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+          <AdminField
+            label={
+              isStickItem
+                ? 'Бросков при покупке'
+                : isNutritionItem
+                  ? 'Минут энергии при покупке'
+                  : isSkatesItem
+                    ? 'Прокатов при покупке'
+                    : 'Зарядов при покупке'
+            }
+          >
+            <div style={adminInventoryFieldBodyStyle}>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={chargesPerPurchase}
+                onChange={(event) => setChargesPerPurchase(event.target.value)}
+              />
+              <span style={adminInventoryHintStyle}>
+                {isNutritionItem
+                  ? 'Редактируется в минутах, в базе хранится в миллисекундах.'
+                  : isSkatesItem
+                    ? 'Один прокат — движение игрока от одного борта до другого.'
+                    : 'Сколько ресурса игрок получает после покупки предмета.'}
+              </span>
+            </div>
+          </AdminField>
+          <AdminField label="Расход за период">
+            <div style={adminInventoryFieldBodyStyle}>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={duelPeriodCost}
+                onChange={(event) => setDuelPeriodCost(event.target.value)}
+              />
+              <span style={adminInventoryHintStyle}>
+                {isStickItem ? 'Клюшка: 0, списание 1/бросок.' : ' '}
+              </span>
+            </div>
+          </AdminField>
+          <AdminField label="Порог пульсации">
+            <div style={adminInventoryFieldBodyStyle}>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={lowStockThreshold}
+                onChange={(event) => setLowStockThreshold(event.target.value)}
+              />
+              <span style={adminInventoryHintStyle}>
+                Когда остаток станет не больше этого числа, иконка начнёт пульсировать.
+              </span>
+            </div>
+          </AdminField>
+        </div>
+        {isRecoveryItem && (
+          <AdminField label="Снимает восстановление, минут">
+            <div style={adminInventoryFieldBodyStyle}>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={effectRecoveryMinutes}
+                onChange={(event) => setEffectRecoveryMinutes(event.target.value)}
+              />
+              <span style={adminInventoryHintStyle}>От 1 до 60 минут за одно использование.</span>
+            </div>
+          </AdminField>
+        )}
+        {isStickItem && (
+          <>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                gap: 12,
+              }}
+            >
+              <AdminField label="Шайба +пункты">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectPuckSpeedPoints}
+                    onChange={(event) => setEffectPuckSpeedPoints(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Для клюшки это скорость шайбы: 25 = +0.25 к скорости.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Игрок Δ">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectShooterFrequencyDelta}
+                    onChange={(event) => setEffectShooterFrequencyDelta(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle} aria-hidden="true">
+                    {' '}
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Вратарь Δ">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectGoalieFrequencyDelta}
+                    onChange={(event) => setEffectGoalieFrequencyDelta(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle} aria-hidden="true">
+                    {' '}
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Ворота Δ">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectGoalFrequencyDelta}
+                    onChange={(event) => setEffectGoalFrequencyDelta(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle} aria-hidden="true">
+                    {' '}
+                  </span>
+                </div>
+              </AdminField>
+            </div>
+            <AdminField label="Множитель зоны броска">
+              <input
+                type="text"
+                inputMode="decimal"
+                value={effectShotZoneMultiplier}
+                onChange={(event) => setEffectShotZoneMultiplier(event.target.value)}
+              />
+            </AdminField>
+          </>
+        )}
+        {isSkatesItem && (
+          <section style={{ display: 'grid', gap: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--ink)' }}>
+              Коньки и спотыкание
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                columnGap: 12,
+                rowGap: 14,
+              }}
+            >
+              <AdminField label="Мин. интервал спотыкания">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectStumbleIntervalMinRolls}
+                    onChange={(event) => setEffectStumbleIntervalMinRolls(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Минимум прокатов до следующего спотыкания без рабочих коньков.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Макс. интервал спотыкания">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectStumbleIntervalMaxRolls}
+                    onChange={(event) => setEffectStumbleIntervalMaxRolls(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Максимум прокатов до спотыкания. Больше — спотыкается реже.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Мин. длительность, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectStumbleDurationMinMs}
+                    onChange={(event) => setEffectStumbleDurationMinMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Минимальное время потери равновесия. В это время бросок заблокирован.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Макс. длительность, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectStumbleDurationMaxMs}
+                    onChange={(event) => setEffectStumbleDurationMaxMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>Максимальное время потери равновесия.</span>
+                </div>
+              </AdminField>
+              <AdminField label="Мин. снос позиции, px">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectStumbleOffsetMinPx}
+                    onChange={(event) => setEffectStumbleOffsetMinPx(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Сейчас боковой рывок отключён: спотыкание сбивает тайминг короткой заминкой.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Макс. снос позиции, px">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectStumbleOffsetMaxPx}
+                    onChange={(event) => setEffectStumbleOffsetMaxPx(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Поле сохранено для совместимости; текущая механика не двигает игрока рывком.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Мин. восстановление, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectStumbleRecoveryMinMs}
+                    onChange={(event) => setEffectStumbleRecoveryMinMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Минимальное дополнительное время заминки после основной потери равновесия.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Макс. восстановление, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectStumbleRecoveryMaxMs}
+                    onChange={(event) => setEffectStumbleRecoveryMaxMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Максимальное дополнительное время, пока бросок ещё заблокирован.
+                  </span>
+                </div>
+              </AdminField>
+            </div>
+          </section>
+        )}
+        {isNutritionItem && (
+          <section style={{ display: 'grid', gap: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--ink)' }}>
+              Энергия и усталость
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                columnGap: 12,
+                rowGap: 14,
+              }}
+            >
+              <AdminField label="Базовая скорость энергии">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectEnergyBaselineSpeed}
+                    onChange={(event) => setEffectEnergyBaselineSpeed(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Скорость, при которой энергия тратится 1 к 1. Выше — расход быстрее.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Отсрочка усталости, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectFatigueGraceMs}
+                    onChange={(event) => setEffectFatigueGraceMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Сколько можно играть без энергии до первых штрафов.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Начало усталости, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectFatigueSlowdownStartMs}
+                    onChange={(event) => setEffectFatigueSlowdownStartMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    После этого времени без энергии игрок замедляется один раз.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Сильная усталость, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectFatigueHeavySlowdownStartMs}
+                    onChange={(event) => setEffectFatigueHeavySlowdownStartMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Поле совместимости. Сейчас в дуэлях не влияет на скорость.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Остановка на отдых, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectFatigueStopStartMs}
+                    onChange={(event) => setEffectFatigueStopStartMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Когда игрок полностью останавливается и не может бросать.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Длительность отдыха, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectFatigueStopDurationMs}
+                    onChange={(event) => setEffectFatigueStopDurationMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Сколько длится принудительный отдых без броска.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Нормальное окно после отдыха, мс">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={effectFatigueAfterRestMs}
+                    onChange={(event) => setEffectFatigueAfterRestMs(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Сколько после отдыха игрок едет нормально, если энергия всё ещё закончилась.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Скорость при усталости">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectFatigueSlowMultiplier}
+                    onChange={(event) => setEffectFatigueSlowMultiplier(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Множитель скорости. 0.9 значит 90% обычной скорости.
+                  </span>
+                </div>
+              </AdminField>
+              <AdminField label="Скорость при сильной усталости">
+                <div style={adminInventoryFieldBodyStyle}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={effectFatigueHeavyMultiplier}
+                    onChange={(event) => setEffectFatigueHeavyMultiplier(event.target.value)}
+                  />
+                  <span style={adminInventoryHintStyle}>
+                    Поле совместимости. Сейчас в дуэлях не применяется.
+                  </span>
+                </div>
+              </AdminField>
+            </div>
+          </section>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onCancel}
+            style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            className="btn btn--cta"
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending || !canSave}
+            style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
+          >
+            Сохранить
+          </button>
+        </div>
+        {mutation.isError && (
+          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
+            {mutation.error instanceof Error ? mutation.error.message : 'Ошибка сохранения'}
+          </div>
+        )}
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
+function AchievementsAdminPanel({
+  loading,
+  achievements,
+  onChanged,
+}: {
+  loading: boolean;
+  achievements: AdminAchievement[];
+  onChanged: () => void;
+}): JSX.Element {
+  const [sectionTab, setSectionTab] = useState<AdminAchievementsTab>('achievements');
+  const [category, setCategory] = useState<AdminAchievementCategory | 'all'>('all');
+  const [availability, setAvailability] = useState<AdminAchievementAvailability | 'all'>('all');
+  const [query, setQuery] = useState('');
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = achievements.filter((achievement) => {
+    if (category !== 'all' && achievement.category !== category) return false;
+    if (availability !== 'all' && achievement.availability !== availability) return false;
+    if (normalizedQuery.length === 0) return true;
+    return (
+      achievement.title.toLowerCase().includes(normalizedQuery) ||
+      achievement.id.toLowerCase().includes(normalizedQuery) ||
+      achievement.requirement.toLowerCase().includes(normalizedQuery)
+    );
+  });
+  const futureCount = achievements.filter(
+    (achievement) => achievement.availability === 'future',
+  ).length;
+  const activeCount = achievements.filter(
+    (achievement) => achievement.availability === 'active',
+  ).length;
 
   return (
-    <section className="glass" style={{ borderRadius: 20, padding: 14, display: 'grid', gap: 10 }}>
-      <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
-        {item === null ? 'Новый предмет' : 'Редактирование предмета'}
-      </div>
-      <AdminField label="Фото URL">
-        <input value={photoUrl} onChange={(event) => setPhotoUrl(event.target.value)} />
-      </AdminField>
-      <AdminField label="Название">
-        <input value={title} onChange={(event) => setTitle(event.target.value)} />
-      </AdminField>
-      <AdminField label="Описание">
-        <input value={description} onChange={(event) => setDescription(event.target.value)} />
-      </AdminField>
-      <AdminField label="Цена">
-        <input
-          type="number"
-          value={priceRub}
-          onChange={(event) => setPriceRub(event.target.value)}
+    <>
+      <div style={{ marginBottom: 10 }}>
+        <SegmentedTabs
+          items={adminAchievementsTabs}
+          activeTab={sectionTab}
+          ariaLabel="Раздел заданий"
+          onChange={setSectionTab}
         />
-      </AdminField>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-        <AdminField label="Тип">
-          <GlassSelect
-            value={itemKind}
-            options={inventoryItemKindOptions}
-            onChange={setItemKind}
-            ariaLabel="Тип предмета"
-          />
-        </AdminField>
-        <AdminField label="Цена в валюте">
-          <input
-            type="number"
-            value={currencyPrice}
-            onChange={(event) => setCurrencyPrice(event.target.value)}
-          />
-        </AdminField>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-        <AdminField label="Зарядов при покупке">
-          <input
-            type="number"
-            value={chargesPerPurchase}
-            onChange={(event) => setChargesPerPurchase(event.target.value)}
-          />
-        </AdminField>
-        <AdminField label="Расход за период">
-          <input
-            type="number"
-            value={duelPeriodCost}
-            onChange={(event) => setDuelPeriodCost(event.target.value)}
-          />
-        </AdminField>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-        <AdminField label="Шайба Δ">
-          <input
-            type="number"
-            step="0.01"
-            value={effectPuckSpeedDelta}
-            onChange={(event) => setEffectPuckSpeedDelta(event.target.value)}
-          />
-        </AdminField>
-        <AdminField label="Игрок Δ">
-          <input
-            type="number"
-            step="0.01"
-            value={effectShooterFrequencyDelta}
-            onChange={(event) => setEffectShooterFrequencyDelta(event.target.value)}
-          />
-        </AdminField>
-        <AdminField label="Вратарь Δ">
-          <input
-            type="number"
-            step="0.01"
-            value={effectGoalieFrequencyDelta}
-            onChange={(event) => setEffectGoalieFrequencyDelta(event.target.value)}
-          />
-        </AdminField>
-        <AdminField label="Ворота Δ">
-          <input
-            type="number"
-            step="0.01"
-            value={effectGoalFrequencyDelta}
-            onChange={(event) => setEffectGoalFrequencyDelta(event.target.value)}
-          />
-        </AdminField>
-      </div>
-      <AdminField label="Множитель зоны броска">
-        <input
-          type="number"
-          step="0.01"
-          min="1"
-          value={effectShotZoneMultiplier}
-          onChange={(event) => setEffectShotZoneMultiplier(event.target.value)}
+      {sectionTab === 'challenges' && <WeeklyChallengesAdmin />}
+      {sectionTab === 'achievements' && (
+        <>
+          <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+            Задания
+          </div>
+          <section className="glass" style={{ borderRadius: 20, padding: 14 }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                gap: 8,
+              }}
+            >
+              <AdminMetric label="Всего" value={achievements.length} />
+              <AdminMetric label="Активных" value={activeCount} />
+              <AdminMetric label="Future" value={futureCount} />
+            </div>
+            <div
+              style={{
+                marginTop: 12,
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 0.8fr)',
+                gap: 8,
+              }}
+            >
+              <input
+                type="search"
+                placeholder="Поиск по заданию"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <GlassSelect
+                value={category}
+                options={[{ value: 'all', label: 'Все категории' }, ...achievementCategoryOptions]}
+                onChange={(value) => setCategory(value as AdminAchievementCategory | 'all')}
+                ariaLabel="Категория заданий"
+              />
+              <GlassSelect
+                value={availability}
+                options={[
+                  { value: 'all', label: 'Все статусы' },
+                  ...achievementAvailabilityOptions,
+                ]}
+                onChange={(value) => setAvailability(value as AdminAchievementAvailability | 'all')}
+                ariaLabel="Статус заданий"
+              />
+            </div>
+          </section>
+          {loading && <AdminPlainState>Загрузка...</AdminPlainState>}
+          {!loading && filtered.length === 0 && (
+            <AdminPlainState>Под такие фильтры заданий не нашлось.</AdminPlainState>
+          )}
+          <section style={{ display: 'grid', gap: 10 }}>
+            {filtered.map((achievement) => (
+              <AchievementAdminCard
+                key={achievement.id}
+                achievement={achievement}
+                onChanged={onChanged}
+              />
+            ))}
+          </section>
+        </>
+      )}
+    </>
+  );
+}
+
+function AchievementAdminCard({
+  achievement,
+  onChanged,
+}: {
+  achievement: AdminAchievement;
+  onChanged: () => void;
+}): JSX.Element {
+  const [draft, setDraft] = useState({
+    title: achievement.title,
+    description: achievement.description,
+    requirement: achievement.requirement,
+    photoUrl: achievement.photoUrl,
+    category: achievement.category,
+    availability: achievement.availability,
+    futureTag: achievement.futureTag ?? 'none',
+    rewardCurrency: String(achievement.rewardCurrency),
+    rewardStars: String(achievement.rewardStars),
+    rewardExperience: String(achievement.rewardExperience),
+    rewardTokens: String(achievement.rewardTokens ?? 0),
+    sortOrder: String(achievement.sortOrder),
+  });
+
+  useEffect(() => {
+    setDraft({
+      title: achievement.title,
+      description: achievement.description,
+      requirement: achievement.requirement,
+      photoUrl: achievement.photoUrl,
+      category: achievement.category,
+      availability: achievement.availability,
+      futureTag: achievement.futureTag ?? 'none',
+      rewardCurrency: String(achievement.rewardCurrency),
+      rewardStars: String(achievement.rewardStars),
+      rewardExperience: String(achievement.rewardExperience),
+      rewardTokens: String(achievement.rewardTokens ?? 0),
+      sortOrder: String(achievement.sortOrder),
+    });
+  }, [achievement]);
+
+  const rewardCurrency = Number(draft.rewardCurrency);
+  const rewardStars = Number(draft.rewardStars);
+  const rewardExperience = Number(draft.rewardExperience);
+  const rewardTokens = Number(draft.rewardTokens);
+  const sortOrder = Number(draft.sortOrder);
+  const validNumbers = [
+    rewardCurrency,
+    rewardStars,
+    rewardExperience,
+    rewardTokens,
+    sortOrder,
+  ].every((value) => Number.isFinite(value) && value >= 0);
+  const patch = useMemo<AdminAchievementPatch>(() => {
+    const body: AdminAchievementPatch = {};
+    if (draft.title !== achievement.title) body.title = draft.title;
+    if (draft.description !== achievement.description) body.description = draft.description;
+    if (draft.requirement !== achievement.requirement) body.requirement = draft.requirement;
+    if (draft.photoUrl !== achievement.photoUrl) body.photoUrl = draft.photoUrl;
+    if (draft.category !== achievement.category) body.category = draft.category;
+    if (draft.availability !== achievement.availability) body.availability = draft.availability;
+    const futureTag = draft.futureTag === 'none' ? null : draft.futureTag;
+    if (futureTag !== achievement.futureTag) {
+      body.futureTag = futureTag as AdminAchievementFutureTag | null;
+    }
+    if (rewardCurrency !== achievement.rewardCurrency)
+      body.rewardCurrency = Math.trunc(rewardCurrency);
+    if (rewardStars !== achievement.rewardStars) body.rewardStars = Math.trunc(rewardStars);
+    if (rewardExperience !== achievement.rewardExperience) {
+      body.rewardExperience = Math.trunc(rewardExperience);
+    }
+    if (rewardTokens !== (achievement.rewardTokens ?? 0))
+      body.rewardTokens = Math.trunc(rewardTokens);
+    if (sortOrder !== achievement.sortOrder) body.sortOrder = Math.trunc(sortOrder);
+    return body;
+  }, [achievement, draft, rewardCurrency, rewardExperience, rewardStars, rewardTokens, sortOrder]);
+  const dirty = Object.keys(patch).length > 0;
+  const unclaimedCount = Math.max(0, achievement.completedCount - achievement.claimedCount);
+  const mutation = useMutation({
+    mutationFn: () => patchAdminAchievement(achievement.id, patch),
+    onSuccess: onChanged,
+  });
+
+  return (
+    <article className="glass" style={{ borderRadius: 20, padding: 14 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '58px minmax(0, 1fr) auto',
+          gap: 12,
+          alignItems: 'center',
+        }}
+      >
+        <img
+          src={achievement.photoUrl}
+          alt=""
+          width={58}
+          height={58}
+          style={{ borderRadius: 8, objectFit: 'cover', background: 'rgba(255,255,255,0.5)' }}
         />
-      </AdminField>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
+            {achievement.title}
+          </div>
+          <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>
+            {achievement.id} · выполнено {numberText(achievement.completedCount)} · получено{' '}
+            {numberText(achievement.claimedCount)}
+          </div>
+        </div>
         <button
           type="button"
-          className="btn btn--ghost"
-          onClick={onCancel}
-          style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
-        >
-          Отмена
-        </button>
-        <button
-          type="button"
-          className="btn btn--cta"
+          className="icon-btn icon-btn--dark"
           onClick={() => mutation.mutate()}
-          disabled={mutation.isPending || !canSave}
-          style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
+          disabled={!dirty || !validNumbers || mutation.isPending}
+          title="Сохранить"
+          aria-label={`Сохранить ${achievement.title}`}
+          style={{
+            width: 42,
+            height: 42,
+            opacity: dirty && validNumbers ? 1 : 0.52,
+            cursor: dirty && validNumbers ? 'pointer' : 'not-allowed',
+          }}
         >
-          Сохранить
+          <Save size={17} />
         </button>
+      </div>
+      <div
+        style={{
+          marginTop: 12,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 8,
+        }}
+      >
+        <AdminMetric label="Выполнили игроков" value={achievement.completedCount} />
+        <AdminMetric label="Получили награду" value={achievement.claimedCount} />
+        <AdminMetric label="Ждут награду" value={unclaimedCount} />
+      </div>
+      <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <AdminField label="Название">
+          <input
+            value={draft.title}
+            onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
+          />
+        </AdminField>
+        <AdminField label="Картинка">
+          <input
+            value={draft.photoUrl}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, photoUrl: event.target.value }))
+            }
+          />
+        </AdminField>
+        <AdminField label="Описание">
+          <input
+            value={draft.description}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, description: event.target.value }))
+            }
+          />
+        </AdminField>
+        <AdminField label="Условие">
+          <input
+            value={draft.requirement}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, requirement: event.target.value }))
+            }
+          />
+        </AdminField>
+        <AdminField label="Категория">
+          <GlassSelect
+            value={draft.category}
+            options={achievementCategoryOptions}
+            onChange={(value) =>
+              setDraft((current) => ({
+                ...current,
+                category: value as AdminAchievementCategory,
+              }))
+            }
+            ariaLabel={`Категория ${achievement.title}`}
+          />
+        </AdminField>
+        <AdminField label="Доступность">
+          <GlassSelect
+            value={draft.availability}
+            options={achievementAvailabilityOptions}
+            onChange={(value) =>
+              setDraft((current) => ({
+                ...current,
+                availability: value as AdminAchievementAvailability,
+              }))
+            }
+            ariaLabel={`Доступность ${achievement.title}`}
+          />
+        </AdminField>
+        <AdminField label="Future tag">
+          <GlassSelect
+            value={draft.futureTag}
+            options={achievementFutureTagOptions}
+            onChange={(value) =>
+              setDraft((current) => ({
+                ...current,
+                futureTag: value as AdminAchievementFutureTag | 'none',
+              }))
+            }
+            ariaLabel={`Future tag ${achievement.title}`}
+          />
+        </AdminField>
+        <AdminField label="Порядок">
+          <input
+            type="number"
+            min={0}
+            value={draft.sortOrder}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, sortOrder: event.target.value }))
+            }
+          />
+        </AdminField>
+        <AdminField label="Монеты">
+          <input
+            type="number"
+            min={0}
+            value={draft.rewardCurrency}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, rewardCurrency: event.target.value }))
+            }
+          />
+        </AdminField>
+        <AdminField label="Звезды">
+          <input
+            type="number"
+            min={0}
+            value={draft.rewardStars}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, rewardStars: event.target.value }))
+            }
+          />
+        </AdminField>
+        <AdminField label="Опыт">
+          <input
+            type="number"
+            min={0}
+            value={draft.rewardExperience}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, rewardExperience: event.target.value }))
+            }
+          />
+        </AdminField>
+        <AdminField label="Токены">
+          <input
+            type="number"
+            min={0}
+            value={draft.rewardTokens}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, rewardTokens: event.target.value }))
+            }
+          />
+        </AdminField>
       </div>
       {mutation.isError && (
-        <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
+        <div role="alert" style={{ marginTop: 8, color: 'var(--red-deep)', fontSize: 12 }}>
           {mutation.error instanceof Error ? mutation.error.message : 'Ошибка сохранения'}
         </div>
       )}
-    </section>
+    </article>
   );
 }
 
@@ -5182,10 +6987,12 @@ function normalizeDuelPresets(
 function DuelTemplatesPanel({
   loading,
   templates,
+  rewardAmountLimit,
   onChanged,
 }: {
   loading: boolean;
   templates: AdminDuelTemplate[];
+  rewardAmountLimit: number;
   onChanged: () => void;
 }): JSX.Element {
   const [duelView, setDuelView] = useState<'templates' | 'history'>('templates');
@@ -5201,22 +7008,15 @@ function DuelTemplatesPanel({
 
   return (
     <>
-      <div className="segmented" style={{ gridTemplateColumns: '1fr 1fr' }}>
-        <button
-          type="button"
-          className={duelView === 'templates' ? 'active' : ''}
-          onClick={() => setDuelView('templates')}
-        >
-          Шаблоны
-        </button>
-        <button
-          type="button"
-          className={duelView === 'history' ? 'active' : ''}
-          onClick={() => setDuelView('history')}
-        >
-          История
-        </button>
-      </div>
+      <SegmentedTabs
+        items={[
+          { id: 'templates', label: 'Шаблоны' },
+          { id: 'history', label: 'История' },
+        ]}
+        activeTab={duelView}
+        ariaLabel="Раздел дуэлей"
+        onChange={setDuelView}
+      />
       <div
         style={{
           display: 'flex',
@@ -5244,6 +7044,7 @@ function DuelTemplatesPanel({
       </div>
       {editingTemplate !== null && (
         <DuelTemplateEditor
+          rewardAmountLimit={rewardAmountLimit}
           template={editingTemplate === 'new' ? null : editingTemplate}
           onCancel={() => setEditingTemplate(null)}
           onSaved={() => {
@@ -5328,20 +7129,27 @@ function DuelTemplateCard({
           Перерыв {minutesText(msToMinutes(template.breakDurationMs))}
         </span>
         <span className="pill" style={{ fontSize: 10 }}>
+          Ответ {minutesText(msToMinutes(template.challengeTtlMs))}
+        </span>
+        <span className="pill" style={{ fontSize: 10 }}>
           Ожидание {minutesText(msToMinutes(template.readyDurationMs))}
         </span>
         <span className="pill" style={{ fontSize: 10 }}>
-          Победа {numberText(template.winPoints)} очк. · {numberText(template.winCurrencyReward)}{' '}
-          шайб
+          Победа {numberText(template.winPoints)} очк. ·{' '}
+          <span style={{ color: rewardColor('coin') }}>
+            {numberText(template.winCurrencyReward)} шайб
+          </span>
         </span>
         {template.winStarReward > 0 && (
-          <span className="pill" style={{ fontSize: 10 }}>
+          <span className="pill" style={{ fontSize: 10, color: rewardColor('star') }}>
             Победа {numberText(template.winStarReward)} звёзд
           </span>
         )}
         <span className="pill" style={{ fontSize: 10 }}>
-          Ничья {numberText(template.drawPoints)} очк. · {numberText(template.drawCurrencyReward)}{' '}
-          шайб
+          Ничья {numberText(template.drawPoints)} очк. ·{' '}
+          <span style={{ color: rewardColor('coin') }}>
+            {numberText(template.drawCurrencyReward)} шайб
+          </span>
         </span>
       </div>
       <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>
@@ -5570,18 +7378,29 @@ function DuelHistoryParticipantRow({
 
 function DuelTemplateEditor({
   template,
+  rewardAmountLimit,
   onCancel,
   onSaved,
 }: {
   template: AdminDuelTemplate | null;
+  rewardAmountLimit: number;
   onCancel: () => void;
   onSaved: () => void;
 }): JSX.Element {
+  const editorRef = useRef<HTMLElement | null>(null);
+  const mutationPendingRef = useRef(false);
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = () => {
+    if (!mutationPendingRef.current) onCancel();
+  };
   const defaultStartsAt = new Date().toISOString();
   const defaultEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   const [title, setTitle] = useState(template?.title ?? 'Классическая дуэль');
   const [description, setDescription] = useState(template?.description ?? '');
   const [isActive, setIsActive] = useState(template?.isActive ?? true);
+  const [matchmakingVenuePolicy, setMatchmakingVenuePolicy] = useState<AdminMatchmakingVenuePolicy>(
+    template?.matchmakingVenuePolicy ?? 'neutral_default',
+  );
   const [duelKind] = useState(template?.duelKind ?? 'classic');
   const [duelVariant] = useState(template?.duelVariant ?? 'classic');
   const [startsAt, setStartsAt] = useState(
@@ -5596,6 +7415,9 @@ function DuelTemplateEditor({
   const [breakMinutes, setBreakMinutes] = useState(
     fieldNumber(template ? msToMinutes(template.breakDurationMs) : 15),
   );
+  const [challengeMinutes, setChallengeMinutes] = useState(
+    fieldNumber(template ? msToMinutes(template.challengeTtlMs) : 15),
+  );
   const [readyMinutes, setReadyMinutes] = useState(
     fieldNumber(template ? msToMinutes(template.readyDurationMs) : 15),
   );
@@ -5608,6 +7430,9 @@ function DuelTemplateEditor({
     fieldNumber(template?.drawCurrencyReward ?? 0),
   );
   const [winStarReward, setWinStarReward] = useState(fieldNumber(template?.winStarReward ?? 0));
+  const [rewardRules, setRewardRules] = useState<AdminDuelRewardRules>(
+    () => template?.rewardRules ?? defaultDuelRewardRules,
+  );
   const [periodSpeedPresets, setPeriodSpeedPresets] = useState(() =>
     normalizeDuelPresets(
       template?.periodSpeedPresets,
@@ -5619,6 +7444,7 @@ function DuelTemplateEditor({
     shotsPerPeriod,
     periodMinutes,
     breakMinutes,
+    challengeMinutes,
     readyMinutes,
     winPoints,
     drawPoints,
@@ -5646,6 +7472,28 @@ function DuelTemplateEditor({
         return Number.isFinite(value) && value >= field.min && value <= field.max;
       }),
     );
+  const rewardRulesValid =
+    Number.isSafeInteger(rewardRules.equalExperienceTolerancePercent) &&
+    rewardRules.equalExperienceTolerancePercent >= 0 &&
+    rewardRules.equalExperienceTolerancePercent <= 100 &&
+    duelRewardRows.every((row) =>
+      (['coins', 'stars', 'tokens'] as const).every((currency) => {
+        const amount = rewardRules[row.key][currency];
+        const isWin =
+          row.key === 'strongerWin' || row.key === 'equalWin' || row.key === 'weakerWin';
+        const legacy =
+          currency === 'coins'
+            ? isWin
+              ? parseAdminNumberInput(winCurrencyReward)
+              : row.key === 'draw'
+                ? parseAdminNumberInput(drawCurrencyReward)
+                : 0
+            : currency === 'stars' && isWin
+              ? parseAdminNumberInput(winStarReward)
+              : 0;
+        return Number.isSafeInteger(amount) && amount >= 0 && amount + legacy <= rewardAmountLimit;
+      }),
+    );
   const canSave =
     title.trim() !== '' &&
     numericValues.every(Number.isFinite) &&
@@ -5653,6 +7501,7 @@ function DuelTemplateEditor({
     parseAdminNumberInput(shotsPerPeriod) >= 1 &&
     parseAdminNumberInput(periodMinutes) > 0 &&
     parseAdminNumberInput(breakMinutes) >= 0 &&
+    parseAdminNumberInput(challengeMinutes) > 0 &&
     parseAdminNumberInput(readyMinutes) > 0 &&
     parseAdminNumberInput(winPoints) >= 0 &&
     parseAdminNumberInput(drawPoints) >= 0 &&
@@ -5660,11 +7509,39 @@ function DuelTemplateEditor({
     parseAdminNumberInput(drawCurrencyReward) >= 0 &&
     parseAdminNumberInput(winStarReward) >= 0 &&
     new Date(startsIso).getTime() < new Date(endsIso).getTime() &&
-    speedPresetsValid;
+    speedPresetsValid &&
+    rewardRulesValid;
   useEffect(() => {
     if (totalPeriodsCount <= 0) return;
     setPeriodSpeedPresets((current) => normalizeDuelPresets(current, totalPeriodsCount));
   }, [totalPeriodsCount]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    editor?.querySelector<HTMLElement>('input, select, textarea, button')?.focus();
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onCancelRef.current();
+      if (event.key !== 'Tab' || !editor) return;
+      const focusable = Array.from(
+        editor.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)',
+        ),
+      );
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      }
+      if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   function updateSpeedPreset(
     periodNumber: number,
@@ -5679,6 +7556,21 @@ function DuelTemplateEditor({
     );
   }
 
+  function updateRewardAmount(
+    outcome: keyof Pick<
+      AdminDuelRewardRules,
+      'strongerWin' | 'equalWin' | 'weakerWin' | 'draw' | 'loss'
+    >,
+    currency: 'coins' | 'stars' | 'tokens',
+    value: string,
+  ): void {
+    const amount = parseAdminIntegerInput(value);
+    setRewardRules((current) => ({
+      ...current,
+      [outcome]: { ...current[outcome], [currency]: amount },
+    }));
+  }
+
   const mutation = useMutation({
     mutationFn: () => {
       const body: AdminDuelTemplateInput = {
@@ -5689,13 +7581,14 @@ function DuelTemplateEditor({
         duelVariant,
         rankedEnabled: template?.rankedEnabled ?? true,
         matchmakingEnabled: template?.matchmakingEnabled ?? true,
+        matchmakingVenuePolicy,
         startsAt: startsIso,
         endsAt: endsIso,
         totalPeriods: parseAdminNumberInput(totalPeriods),
         shotsPerPeriod: parseAdminNumberInput(shotsPerPeriod),
         periodDurationMs: minutesToMs(periodMinutes),
         breakDurationMs: minutesToMs(breakMinutes),
-        challengeTtlMs: template?.challengeTtlMs ?? 1_800_000,
+        challengeTtlMs: minutesToMs(challengeMinutes),
         readyDurationMs: minutesToMs(readyMinutes),
         readyNoShowCooldownMs: template?.readyNoShowCooldownMs ?? 900_000,
         matchmakingTimeoutMs: template?.matchmakingTimeoutMs ?? 180_000,
@@ -5714,36 +7607,46 @@ function DuelTemplateEditor({
         winCurrencyReward: parseAdminNumberInput(winCurrencyReward),
         drawCurrencyReward: parseAdminNumberInput(drawCurrencyReward),
         winStarReward: parseAdminNumberInput(winStarReward),
+        rewardRules,
       };
       return template === null
         ? createAdminDuelTemplate(body)
         : patchAdminDuelTemplate(template.id, body);
     },
     onSuccess: onSaved,
+    onSettled: () => {
+      mutationPendingRef.current = false;
+    },
   });
+
+  function requestCancel(): void {
+    if (mutationPendingRef.current) return;
+    onCancel();
+  }
+
+  function requestSave(): void {
+    if (mutationPendingRef.current || !canSave) return;
+    mutationPendingRef.current = true;
+    mutation.mutate();
+  }
 
   return createPortal(
     <div
+      className="modal-backdrop"
       role="dialog"
       aria-modal="true"
       aria-label={template === null ? 'Новый шаблон дуэли' : 'Редактирование дуэли'}
-      onClick={onCancel}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) requestCancel();
+      }}
       style={{
-        position: 'fixed',
-        inset: 0,
         zIndex: 1000,
-        background: 'rgba(15, 23, 42, 0.35)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
         padding: 'calc(16px + var(--app-safe-top)) 14px calc(16px + var(--app-safe-bottom))',
       }}
     >
       <section
-        className="glass"
-        onClick={(event) => event.stopPropagation()}
+        ref={editorRef}
+        className="modal-card"
         style={{
           width: '100%',
           maxWidth: 430,
@@ -5755,9 +7658,12 @@ function DuelTemplateEditor({
           gap: 10,
         }}
       >
-        <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
+        <h2 className="modal-title">
           {template === null ? 'Новый шаблон дуэли' : 'Редактирование дуэли'}
-        </div>
+        </h2>
+        <p className="modal-copy" style={{ marginTop: 0 }}>
+          Площадка и правила сохраняются для новых матчей после подтверждения.
+        </p>
         <AdminField label="Название">
           <input value={title} onChange={(event) => setTitle(event.target.value)} />
         </AdminField>
@@ -5788,6 +7694,14 @@ function DuelTemplateEditor({
             style={{ width: 18, height: 18 }}
           />
         </label>
+        <AdminField label="Площадка при автоматическом подборе">
+          <GlassSelect
+            ariaLabel="Площадка при автоматическом подборе"
+            value={matchmakingVenuePolicy}
+            options={venueSelectOptions}
+            onChange={setMatchmakingVenuePolicy}
+          />
+        </AdminField>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
           <AdminField label="Старт">
             <input
@@ -5837,6 +7751,14 @@ function DuelTemplateEditor({
               min="0"
               value={breakMinutes}
               onChange={(event) => setBreakMinutes(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Минут на ответ">
+            <input
+              type="number"
+              min="1"
+              value={challengeMinutes}
+              onChange={(event) => setChallengeMinutes(event.target.value)}
             />
           </AdminField>
           <AdminField label="Минут ожидание">
@@ -5901,6 +7823,75 @@ function DuelTemplateEditor({
           }}
         >
           <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 950 }}>
+            Награды за результат
+          </div>
+          <AdminField label="Допуск равного опыта, %">
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={
+                Number.isFinite(rewardRules.equalExperienceTolerancePercent)
+                  ? rewardRules.equalExperienceTolerancePercent
+                  : ''
+              }
+              onChange={(event) =>
+                setRewardRules((current) => ({
+                  ...current,
+                  equalExperienceTolerancePercent: parseAdminIntegerInput(event.target.value),
+                }))
+              }
+            />
+          </AdminField>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr repeat(3, 1fr)', gap: 6 }}>
+            <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>Результат</span>
+            <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>Монеты</span>
+            <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>Звёзды</span>
+            <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>Жетоны</span>
+            {duelRewardRows.flatMap((row) => [
+              <span
+                key={`${row.key}-label`}
+                style={{ color: 'var(--ink)', fontSize: 11, fontWeight: 800, alignSelf: 'center' }}
+              >
+                {row.label}
+              </span>,
+              ...(['coins', 'stars', 'tokens'] as const).map((currency) => {
+                const amount = rewardRules[row.key][currency];
+                const label = `${row.label}: ${
+                  currency === 'coins' ? 'монеты' : currency === 'stars' ? 'звёзды' : 'жетоны'
+                }`;
+                return (
+                  <input
+                    key={`${row.key}-${currency}`}
+                    aria-label={label}
+                    type="number"
+                    min="0"
+                    max={rewardAmountLimit}
+                    step="1"
+                    value={Number.isFinite(amount) ? amount : ''}
+                    onChange={(event) => updateRewardAmount(row.key, currency, event.target.value)}
+                  />
+                );
+              }),
+            ])}
+          </div>
+          {!rewardRulesValid && (
+            <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
+              Награды должны быть неотрицательными целыми числами, допуск — от 0 до 100
+            </div>
+          )}
+        </section>
+        <section
+          className="glass"
+          style={{
+            borderRadius: 18,
+            padding: 12,
+            display: 'grid',
+            gap: 10,
+            background: 'rgba(255,255,255,0.34)',
+          }}
+        >
+          <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 950 }}>
             Скорости по периодам
           </div>
           {periodSpeedPresets.slice(0, totalPeriodsCount).map((preset) => (
@@ -5948,19 +7939,20 @@ function DuelTemplateEditor({
             Скорости заполнены некорректно
           </div>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <div className="modal-actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
           <button
             type="button"
             className="btn btn--ghost"
-            onClick={onCancel}
+            onClick={requestCancel}
+            disabled={mutation.isPending}
             style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
           >
             Отмена
           </button>
           <button
             type="button"
-            className="btn btn--cta"
-            onClick={() => mutation.mutate()}
+            className="modal-primary btn--cta"
+            onClick={requestSave}
             disabled={mutation.isPending || !canSave}
             style={{ padding: '10px', fontSize: 12, letterSpacing: 0 }}
           >
@@ -6276,6 +8268,8 @@ function SettingEditor({
     return value;
   }, [setting.type, numberValue, value]);
   const dirty = value !== String(setting.value);
+  const readOnly =
+    setting.type === 'number' && setting.min !== undefined && setting.min === setting.max;
   const valid = setting.type !== 'number' || Number.isFinite(numberValue);
 
   const mutation = useMutation({
@@ -6308,6 +8302,7 @@ function SettingEditor({
           <input
             type="number"
             value={value}
+            readOnly={readOnly}
             inputMode={setting.step !== undefined && setting.step < 1 ? 'decimal' : 'numeric'}
             onChange={(event) => setValue(event.target.value)}
             min={setting.min}
@@ -6319,7 +8314,7 @@ function SettingEditor({
           type="button"
           className="icon-btn icon-btn--dark"
           onClick={() => mutation.mutate()}
-          disabled={mutation.isPending || !dirty || !valid}
+          disabled={readOnly || mutation.isPending || !dirty || !valid}
           title="Сохранить"
           aria-label={`Сохранить ${setting.label}`}
           style={{
@@ -6343,9 +8338,9 @@ function SettingEditor({
 
 function AdminField({ label, children }: { label: string; children: JSX.Element }): JSX.Element {
   return (
-    <div style={{ display: 'grid', gap: 5, minWidth: 0 }}>
+    <label style={{ display: 'grid', gap: 5, minWidth: 0 }}>
       <span style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>{label}</span>
       {children}
-    </div>
+    </label>
   );
 }

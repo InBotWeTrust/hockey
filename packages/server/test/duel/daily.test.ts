@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
@@ -8,6 +8,8 @@ import { buildApp } from '../../src/app.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { createJwt } from '../../src/auth/jwt.js';
+import { waitForDailyCompletionSideEffects } from '../../src/duel/daily/completionSideEffects.js';
+import { lockUserGameplay } from '../../src/duel/gameplayLocks.js';
 import {
   createTestPool,
   createTestRedis,
@@ -66,12 +68,14 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
   });
 
   afterAll(async () => {
+    await waitForDailyCompletionSideEffects();
     await app.close();
   });
 
   beforeEach(async () => {
+    await waitForDailyCompletionSideEffects();
     await pool.query(
-      `truncate users, auth_providers, user_wallet, user_equipment, user_sticks,
+      `truncate users, auth_providers, user_equipment, user_sticks,
               training_session, day_pool, period_log, shot_session, event_log
               restart identity cascade`,
     );
@@ -143,6 +147,70 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     });
   }
 
+  async function createPlayoffDayBlock(firstGameStartsAt: Date): Promise<void> {
+    const opponent = await findOrCreateTelegramUser(pool, {
+      providerUid: `daily-lock-opponent-${Date.now()}-${Math.random()}`,
+      displayName: 'Opponent',
+      timezone: 'Europe/Moscow',
+    });
+    const tournament = await pool.query<{ id: string }>(
+      `insert into tournament (slug, title, status, regular_source, created_by)
+       values ($1, 'Daily lock cup', 'playoff', 'head_to_head', $2)
+       returning id`,
+      [`daily-lock-${Date.now()}-${Math.random()}`, userId],
+    );
+    const home = await pool.query<{ id: string }>(
+      `insert into tournament_participant (tournament_id, user_id, state)
+       values ($1, $2, 'approved') returning id`,
+      [tournament.rows[0]!.id, userId],
+    );
+    const away = await pool.query<{ id: string }>(
+      `insert into tournament_participant (tournament_id, user_id, state)
+       values ($1, $2, 'approved') returning id`,
+      [tournament.rows[0]!.id, opponent.id],
+    );
+    const round = await pool.query<{ id: string }>(
+      `insert into tournament_round (tournament_id, stage, number, status)
+       values ($1, 'playoff', 1, 'open') returning id`,
+      [tournament.rows[0]!.id],
+    );
+    const gameDay = await pool.query<{ id: string }>(
+      `insert into tournament_round_game_day
+         (round_id, day_number, local_date, first_game_local_time, first_game_starts_at,
+          max_result_bearing_games, readiness_duration, planned_start_interval, status)
+       values ($1, 1, ($2::timestamptz at time zone 'Europe/Moscow')::date, '18:00', $2,
+               7, interval '10 minutes', interval '15 minutes', 'open') returning id`,
+      [round.rows[0]!.id, firstGameStartsAt],
+    );
+    const fixture = await pool.query<{ id: string }>(
+      `insert into tournament_fixture
+         (tournament_id, round_id, fixture_number, home_participant_id,
+          away_participant_id, scheduled_starts_at, window_ends_at, status)
+       values ($1, $2, 1, $3, $4, $5, $6, 'active') returning id`,
+      [
+        tournament.rows[0]!.id,
+        round.rows[0]!.id,
+        home.rows[0]!.id,
+        away.rows[0]!.id,
+        firstGameStartsAt,
+        new Date(firstGameStartsAt.getTime() + 60 * 60_000),
+      ],
+    );
+    await pool.query(
+      `insert into tournament_fixture_attempt
+         (fixture_id, round_game_day_id, attempt_number, kind, status,
+          scheduled_starts_at, readiness_expires_at, hard_deadline_at, is_result_bearing)
+       values ($1, $2, 1, 'initial', 'active', $3, $4, $5, true)`,
+      [
+        fixture.rows[0]!.id,
+        gameDay.rows[0]!.id,
+        firstGameStartsAt,
+        new Date(firstGameStartsAt.getTime() + 10 * 60_000),
+        new Date(firstGameStartsAt.getTime() + 60 * 60_000),
+      ],
+    );
+  }
+
   it('initial state is idle with no day_pool', async () => {
     const s = await getState();
     expect(s.state).toBe('idle');
@@ -153,17 +221,18 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(s.server_now).toEqual(expect.any(String));
     expect(s.previous_game).toBeNull();
     expect(s.training_cooldown_ends_at).toBeNull();
+    expect(s.gameplay_lock).toBeNull();
 
     const { rows } = await pool.query('select count(*)::int as n from day_pool');
     expect(rows[0].n).toBe(0);
   });
 
-  it('locks daily start for the configured cooldown after a training shot', async () => {
+  it('locks daily start for one hour after a training shot', async () => {
     await pool.query(
       `insert into game_settings (key, value, label, description)
        values (
          'training.daily_cooldown_minutes',
-         to_jsonb(30),
+         to_jsonb(60),
          'Блокировка дневной игры',
          'test'
        )
@@ -177,18 +246,25 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
 
     const lockedState = await getState();
     expect(lockedState.training_cooldown_ends_at).not.toBeNull();
+    expect(lockedState.gameplay_lock).toEqual({
+      blocked: true,
+      reason: 'recent_gameplay',
+      ends_at: lockedState.training_cooldown_ends_at,
+      tournament_starts_at: null,
+    });
 
     const lockedStart = await startPeriod();
     expect(lockedStart.statusCode).toBe(409);
 
     await pool.query(
       `update shot_session
-          set created_at = now() - interval '31 minutes'
+          set created_at = now() - interval '61 minutes'
         where user_id = $1 and mode = 'training'`,
       [userId],
     );
     const unlockedState = await getState();
     expect(unlockedState.training_cooldown_ends_at).toBeNull();
+    expect(unlockedState.gameplay_lock).toBeNull();
 
     const start = await startPeriod();
     expect(start.statusCode).toBe(200);
@@ -212,6 +288,122 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(rows[0].current_period).toBe(1);
     expect(rows[0].daily_seed).toMatch(/^[0-9a-f]{64}$/);
     expect(rows[0].game_core_version).toBeGreaterThan(0);
+  });
+
+  it('allows a daily period whose full duration ends before the T-60 boundary', async () => {
+    await createPlayoffDayBlock(new Date(Date.now() + 81 * 60_000));
+
+    const response = await startPeriod();
+
+    expect(response.statusCode).toBe(200);
+  });
+
+  it('rejects a daily period whose full duration can reach the T-60 boundary', async () => {
+    await createPlayoffDayBlock(new Date(Date.now() + 80 * 60_000));
+
+    const response = await startPeriod();
+
+    expect(response.statusCode).toBe(409);
+  });
+
+  it('allows an accepted daily period to continue after the scheduled lock begins', async () => {
+    const started = await startPeriod();
+    expect(started.statusCode).toBe(200);
+    await createPlayoffDayBlock(new Date(Date.now() + 20 * 60_000));
+
+    const response = await submitShot(1);
+
+    expect(response.statusCode).toBe(200);
+  });
+
+  it('rejects an accepted daily period shot once the scheduled tournament block starts', async () => {
+    expect((await startPeriod()).statusCode).toBe(200);
+    await createPlayoffDayBlock(new Date(Date.now() - 1_000));
+
+    expect((await submitShot(1)).statusCode).toBe(409);
+    expect((await getState()).gameplay_lock).toMatchObject({ reason: 'scheduled_tournament' });
+    expect(
+      (await pool.query('select id from shot_session where user_id = $1', [userId])).rowCount,
+    ).toBe(0);
+  });
+
+  it('persists post-lock daily acceptance time and exposes an active daily lock', async () => {
+    const arrivedAt = new Date();
+    const acceptedAt = new Date(arrivedAt.getTime() + 2_000);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(arrivedAt);
+    const gate = await pool.connect();
+    try {
+      expect((await startPeriod()).statusCode).toBe(200);
+      await gate.query('begin');
+      await lockUserGameplay(gate, userId);
+      const pending = submitShot(1);
+      await vi.waitFor(async () => {
+        const { rows } = await pool.query<{ waiting: number }>(
+          `select count(*)::int as waiting from pg_locks
+           where locktype = 'advisory' and not granted
+             and database = (select oid from pg_database where datname = current_database())`,
+        );
+        expect(rows[0]!.waiting).toBe(1);
+      });
+      vi.setSystemTime(acceptedAt);
+      await gate.query('commit');
+      const response = await pending;
+      expect(response.statusCode).toBe(200);
+      expect(response.json().state.server_now).toBe(acceptedAt.toISOString());
+      const shot = await pool.query<{ created_at: Date }>(
+        "select created_at from shot_session where user_id = $1 and mode = 'daily'",
+        [userId],
+      );
+      expect(shot.rows[0]!.created_at.toISOString()).toBe(acceptedAt.toISOString());
+      const training = await app.inject({
+        method: 'GET',
+        url: '/duel/training/state',
+        headers: authHeader(),
+      });
+      expect(training.json().gameplay_lock).toEqual({
+        blocked: true,
+        reason: 'active_daily',
+        ends_at: null,
+        tournament_starts_at: null,
+      });
+    } finally {
+      await gate.query('rollback');
+      gate.release();
+      vi.useRealTimers();
+    }
+  });
+
+  it('returns authoritative state without waiting for pending achievement recovery', async () => {
+    const started = await startPeriod();
+    expect(started.statusCode).toBe(200);
+
+    const locker = await pool.connect();
+    await locker.query('begin');
+    await locker.query('lock table event_log in access exclusive mode');
+    const responsePromise = app.inject({
+      method: 'GET',
+      url: '/duel/daily/state',
+      headers: authHeader(),
+    });
+
+    try {
+      const outcome = await Promise.race([
+        responsePromise.then((response) => ({ kind: 'response' as const, response })),
+        new Promise<{ kind: 'timeout' }>((resolve) => {
+          setTimeout(() => resolve({ kind: 'timeout' }), 300);
+        }),
+      ]);
+      expect(outcome.kind).toBe('response');
+      if (outcome.kind === 'response') {
+        expect(outcome.response.statusCode).toBe(200);
+        expect(outcome.response.json().state).toBe('period_active');
+      }
+    } finally {
+      await locker.query('rollback');
+      locker.release();
+      await responsePromise;
+    }
   });
 
   it('daily history includes all-time summary from registration day', async () => {
@@ -274,28 +466,145 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     });
   });
 
-  it('rejects stale shot tapTime after an active period has moved on', async () => {
+  it('rejects a shot whose tapTime moves backwards from the last accepted shot', async () => {
     const start = await startPeriod();
     expect(start.statusCode).toBe(200);
-    await pool.query(
-      `update day_pool
-          set period_started_at = now() - interval '1 minute'
-        where user_id = $1`,
-      [userId],
-    );
+
+    const first = await submitShot(1);
+    expect(first.statusCode).toBe(200);
 
     const shot = await app.inject({
       method: 'POST',
       url: '/duel/daily/shot',
       headers: authHeader(),
       payload: {
-        shot_index: 1,
+        shot_index: 2,
         input: { tapTime: 1000 },
         claimed_result: 'goal',
       },
     });
 
     expect(shot.statusCode).toBe(409);
+  });
+
+  it('completes the second period on the 30th monotonic shot after a long client-side pause', async () => {
+    const firstPeriod = await startPeriod();
+    expect(firstPeriod.statusCode).toBe(200);
+    for (let shotIndex = 1; shotIndex <= 30; shotIndex += 1) {
+      const accepted = await submitShot(shotIndex);
+      expect(accepted.statusCode).toBe(200);
+    }
+    await pool.query(
+      `update day_pool
+          set break_started_at = now() - interval '16 minutes'
+        where user_id = $1`,
+      [userId],
+    );
+    expect((await getState()).state).toBe('idle');
+
+    const secondPeriod = await startPeriod();
+    expect(secondPeriod.statusCode).toBe(200);
+    expect(secondPeriod.json().current_period).toBe(2);
+
+    for (let shotIndex = 1; shotIndex < 30; shotIndex += 1) {
+      const accepted = await submitShot(shotIndex);
+      expect(accepted.statusCode).toBe(200);
+    }
+
+    await pool.query(
+      `update day_pool
+          set period_started_at = now() - interval '5 minutes'
+        where user_id = $1`,
+      [userId],
+    );
+
+    const resumed = await submitShot(30);
+
+    expect(resumed.statusCode).toBe(200);
+    expect(resumed.json().state.state).toBe('break_active');
+    expect(resumed.json().state.current_period).toBe(2);
+  });
+
+  it('uses the latest accepted shot instead of the historical maximum tapTime', async () => {
+    const start = await startPeriod();
+    expect(start.statusCode).toBe(200);
+
+    expect((await submitShot(1)).statusCode).toBe(200);
+    expect((await submitShot(2)).statusCode).toBe(200);
+    await pool.query(
+      `update shot_session
+          set input_payload = jsonb_set(
+            input_payload,
+            '{tapTime}',
+            to_jsonb(case shot_index when 1 then 2000 else 1000 end)
+          )
+        where user_id = $1
+          and mode = 'daily'
+          and period_number = 1
+          and shot_index in (1, 2)`,
+      [userId],
+    );
+
+    const resumed = await app.inject({
+      method: 'POST',
+      url: '/duel/daily/shot',
+      headers: authHeader(),
+      payload: {
+        shot_index: 3,
+        input: { tapTime: 1500 },
+        claimed_result: 'goal',
+      },
+    });
+    expect(resumed.statusCode).toBe(200);
+
+    const backwards = await app.inject({
+      method: 'POST',
+      url: '/duel/daily/shot',
+      headers: authHeader(),
+      payload: {
+        shot_index: 4,
+        input: { tapTime: 1400 },
+        claimed_result: 'goal',
+      },
+    });
+    expect(backwards.statusCode).toBe(409);
+  });
+
+  it('writes a diagnostic event when a daily shot is rejected as stale', async () => {
+    const start = await startPeriod();
+    expect(start.statusCode).toBe(200);
+
+    const first = await submitShot(1);
+    expect(first.statusCode).toBe(200);
+
+    const shot = await app.inject({
+      method: 'POST',
+      url: '/duel/daily/shot',
+      headers: authHeader(),
+      payload: {
+        shot_index: 2,
+        input: { tapTime: 1000 },
+        claimed_result: 'goal',
+      },
+    });
+
+    expect(shot.statusCode).toBe(409);
+
+    const { rows } = await pool.query(
+      `select payload
+         from event_log
+        where user_id = $1 and type = 'daily_shot_rejected'
+        order by created_at desc
+        limit 1`,
+      [userId],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].payload).toMatchObject({
+      mode: 'daily',
+      reason: 'tap_time_stale',
+      requested_shot_index: 2,
+      current_shots: 1,
+    });
   });
 
   it('rejects starting period when state is period_active', async () => {
@@ -338,6 +647,37 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(rows.length).toBe(1);
     expect(rows[0].shots_taken).toBe(30);
     expect(rows[0].closed_reason).toBe('quota');
+
+    await vi.waitFor(async () => {
+      const evaluated = await pool.query<{ count: string }>(
+        `select count(*)::text as count
+           from event_log
+          where user_id = $1
+            and type = 'daily_period_achievements_evaluated'`,
+        [userId],
+      );
+      expect(Number(evaluated.rows[0]?.count)).toBe(1);
+    });
+
+    // A missing completion marker represents a process interruption after
+    // the period commit. The next state request must safely replay evaluation.
+    await pool.query(
+      `delete from event_log
+        where user_id = $1
+          and type = 'daily_period_achievements_evaluated'`,
+      [userId],
+    );
+    await getState();
+    await vi.waitFor(async () => {
+      const retried = await pool.query<{ count: string }>(
+        `select count(*)::text as count
+           from event_log
+          where user_id = $1
+            and type = 'daily_period_achievements_evaluated'`,
+        [userId],
+      );
+      expect(Number(retried.rows[0]?.count)).toBe(1);
+    });
   });
 
   it('rejects 31st shot (state is break_active after quota)', async () => {

@@ -30,6 +30,14 @@ import {
   type AmateurDuelInviteMessageMetadata,
   type UserPickerItem,
 } from '../api.js';
+import { ordinaryDuelLockCopy, type GameplayLockDTO } from '../../api/gameplayLock.js';
+import { ApiError } from '../../api/apiFetch.js';
+import {
+  amateurAccessDetailsFromError,
+  deriveAmateurAccess,
+  guardAmateurMutation,
+} from '../../amateur/amateurAccess.js';
+import { useGameplayLockRefresh } from '../../hooks/useGameplayLockRefresh.js';
 import {
   acceptAmateurDuel,
   declineAmateurDuel,
@@ -39,6 +47,7 @@ import {
 import { chatKeys } from '../../lib/queryKeys.js';
 import { useChatStore } from '../chatStore.js';
 import { useAuthStore } from '../../auth/authStore.js';
+import { useDailyStore } from '../../stores/dailyStore.js';
 import { ChatBubble } from '../components/ChatBubble.js';
 import { ChatInput } from '../components/ChatInput.js';
 import { ChatRoomHeader } from '../components/ChatRoomHeader.js';
@@ -51,7 +60,8 @@ import { ChannelPostEditorSheet } from '../components/ChannelPostEditorSheet.js'
 import { ChannelPollComposerSheet } from '../components/ChannelPollComposerSheet.js';
 import { formatLastSeen } from '../lastSeen.js';
 import { switchMyReactionTo, removeMyReaction } from '../reactionsState.js';
-import { chatAvatarUrl } from '../chatAvatar.js';
+import { chatAvatarUrl, OFFICIAL_ACCOUNT_AVATAR_URL } from '../chatAvatar.js';
+import { AccessibleModal } from '../../components/AccessibleModal.js';
 
 const PAGE_SIZE = 50;
 const VOICE_MAX_DURATION_MS = 120_000;
@@ -108,7 +118,7 @@ interface PendingAttachment {
   isUploading: boolean;
 }
 
-type DuelInviteResolution = 'accepted' | 'declined' | 'unavailable';
+type DuelInviteResolution = 'accepted' | 'completed' | 'declined' | 'unavailable';
 type VoiceRecordingState = 'idle' | 'recording' | 'uploading';
 
 function createAttachmentPreviewUrl(file: File): string | null {
@@ -174,12 +184,24 @@ function duelInviteExternalResolution(
   match: AmateurDuelMatch | undefined,
 ): DuelInviteResolution | undefined {
   if (!match) return undefined;
-  if (match.status === 'ready_check' || match.status === 'active' || match.status === 'settled') {
+  if (match.status === 'settled') return 'completed';
+  if (match.status === 'ready_check' || match.status === 'active') {
     return 'accepted';
   }
   if (match.status === 'cancelled' || match.status === 'expired') return 'unavailable';
   if (match.me.state !== 'invited') return 'accepted';
   return undefined;
+}
+
+function resolveDuelInvite(
+  invite: AmateurDuelInviteMessageMetadata,
+  match: AmateurDuelMatch | undefined,
+  now = Date.now(),
+): DuelInviteResolution | undefined {
+  const externalResolution = duelInviteExternalResolution(match);
+  if (externalResolution !== undefined) return externalResolution;
+  const replyDeadline = Date.parse(invite.endsAt);
+  return Number.isFinite(replyDeadline) && replyDeadline <= now ? 'unavailable' : undefined;
 }
 
 function isSameLocalDay(a: Date, b: Date): boolean {
@@ -272,23 +294,27 @@ function DuelInviteActions({
   invite,
   resolution,
   pending,
+  lock,
   onAccept,
   onDecline,
 }: {
   invite: AmateurDuelInviteMessageMetadata;
   resolution: DuelInviteResolution | undefined;
   pending: boolean;
+  lock: GameplayLockDTO | null | undefined;
   onAccept: () => void;
   onDecline: () => void;
 }): JSX.Element {
   const status =
     resolution === 'accepted'
       ? 'Дуэль принята'
-      : resolution === 'declined'
-        ? 'Вы отклонили'
-        : resolution === 'unavailable'
-          ? 'Вызов уже недоступен'
-          : null;
+      : resolution === 'completed'
+        ? 'Дуэль завершена'
+        : resolution === 'declined'
+          ? 'Вы отклонили'
+          : resolution === 'unavailable'
+            ? 'Вызов уже недоступен'
+            : null;
 
   return (
     <div
@@ -308,6 +334,11 @@ function DuelInviteActions({
         />
         <DuelInviteMetric label="Ответить" value={formatInviteReplyWindow(invite)} />
       </div>
+      {lock?.blocked && !status && (
+        <p className="modal-copy" style={{ margin: 0 }}>
+          {ordinaryDuelLockCopy(lock)}
+        </p>
+      )}
       {status ? (
         <div
           style={{
@@ -327,7 +358,7 @@ function DuelInviteActions({
           <button
             type="button"
             className="btn"
-            disabled={pending}
+            disabled={pending || lock?.blocked === true}
             onClick={onAccept}
             style={{
               minHeight: 36,
@@ -375,6 +406,12 @@ export function ChatRoomScreen(): JSX.Element {
   const goto = searchParams.get('goto');
   const me = useAuthStore((s) => s.user);
   const meId = me?.id ?? null;
+  const dailyData = useDailyStore((state) => state.data);
+  const amateurAccess = deriveAmateurAccess({
+    competitionLevel: me?.competitionLevel ?? null,
+    qualifyingGoals: dailyData?.lifetime_total_goals,
+    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
+  });
   const isAdmin = me?.role === 'admin';
   const setActive = useChatStore((s) => s.setActive);
   const resetUnread = useChatStore((s) => s.resetUnread);
@@ -460,9 +497,11 @@ export function ChatRoomScreen(): JSX.Element {
     }
     return map;
   }, [duelMatchesQuery.data?.matches]);
+  useGameplayLockRefresh(duelMatchesQuery.data?.duel_lock);
   const chatMeta = chatListQuery.data?.find((c) => c.id === chatId);
   const isChannel = chatMeta?.type === 'channel';
   const dmCounterpart = chatMeta?.type === 'direct' ? chatMeta.dmCounterpart : null;
+  const isOfficialDialog = dmCounterpart?.accountKind === 'official';
   const chatTitle =
     chatMeta?.type === 'direct'
       ? (dmCounterpart?.displayName ?? 'Диалог')
@@ -472,10 +511,14 @@ export function ChatRoomScreen(): JSX.Element {
           : chatMeta?.type === 'system'
             ? 'Системный канал'
             : 'Чат'));
-  const headerAvatarUrl = dmCounterpart?.avatarUrl ?? (chatMeta ? chatAvatarUrl(chatMeta) : null);
+  const headerAvatarUrl = isOfficialDialog
+    ? OFFICIAL_ACCOUNT_AVATAR_URL
+    : (dmCounterpart?.avatarUrl ?? (chatMeta ? chatAvatarUrl(chatMeta) : null));
   const chatSubtitle =
     chatMeta?.type === 'direct'
-      ? formatLastSeen(dmCounterpart?.lastSeenAt ?? null)
+      ? isOfficialDialog
+        ? 'Официальный аккаунт'
+        : formatLastSeen(dmCounterpart?.lastSeenAt ?? null)
       : chatMeta
         ? chatMeta.type === 'channel'
           ? `Канал · ${formatSubscriberCount(chatMeta.memberCount)}`
@@ -862,15 +905,6 @@ export function ChatRoomScreen(): JSX.Element {
     };
   }, [stopVoiceTracks]);
 
-  useEffect(() => {
-    if (imageViewer === null) return undefined;
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setImageViewer(null);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [imageViewer]);
-
   const replacePostInCaches = useCallback(
     (post: ChatMessageDTO): void => {
       queryClient.setQueryData<InfinitePages | undefined>(chatKeys.messages(chatId), (old) => {
@@ -1068,8 +1102,18 @@ export function ChatRoomScreen(): JSX.Element {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
       navigate(`/?view=amateur&match=${encodeURIComponent(matchId)}&play=1`);
     },
-    onError: (_err, matchId) => {
-      setDuelInviteResolutionByMatch((prev) => ({ ...prev, [matchId]: 'unavailable' }));
+    onError: (err, matchId) => {
+      setDuelInviteResolutionByMatch((prev) => {
+        if (
+          amateurAccessDetailsFromError(err) !== null ||
+          (err instanceof ApiError && err.status === 409)
+        ) {
+          const next = { ...prev };
+          delete next[matchId];
+          return next;
+        }
+        return { ...prev, [matchId]: 'unavailable' };
+      });
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
   });
@@ -1082,8 +1126,15 @@ export function ChatRoomScreen(): JSX.Element {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
-    onError: (_err, matchId) => {
-      setDuelInviteResolutionByMatch((prev) => ({ ...prev, [matchId]: 'unavailable' }));
+    onError: (err, matchId) => {
+      setDuelInviteResolutionByMatch((prev) => {
+        if (amateurAccessDetailsFromError(err) !== null) {
+          const next = { ...prev };
+          delete next[matchId];
+          return next;
+        }
+        return { ...prev, [matchId]: 'unavailable' };
+      });
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
   });
@@ -1331,7 +1382,9 @@ export function ChatRoomScreen(): JSX.Element {
           {...(dmCounterpart
             ? {
                 onTitleClick: () => setPreviewSender(dmCounterpart),
-                onTitleClickLabel: 'Открыть профиль игрока',
+                onTitleClickLabel: isOfficialDialog
+                  ? 'Открыть официальный аккаунт'
+                  : 'Открыть профиль игрока',
               }
             : chatMeta && chatMeta.type !== 'direct'
               ? { onTitleClick: () => navigate(`/chat/${chatId}/info`) }
@@ -1406,7 +1459,11 @@ export function ChatRoomScreen(): JSX.Element {
           </div>
         )}
         {showInitialMessagesEmpty && (
-          <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: 24 }}>
+          <div
+            role="status"
+            aria-label={isChannel ? 'Постов пока нет' : 'Сообщений пока нет'}
+            className="chat-room__empty-state"
+          >
             {isChannel ? 'Постов пока нет' : 'Сообщений пока нет'}
           </div>
         )}
@@ -1446,12 +1503,16 @@ export function ChatRoomScreen(): JSX.Element {
           const duelInvite = parseDuelInviteMetadata(m.metadata);
           const duelInviteResolution = duelInvite
             ? (duelInviteResolutionByMatch[duelInvite.matchId] ??
-              duelInviteExternalResolution(duelInviteMatchById.get(duelInvite.matchId)))
+              resolveDuelInvite(duelInvite, duelInviteMatchById.get(duelInvite.matchId)))
             : undefined;
           const inviteActionSlot =
             duelInvite && !isOwn && !m.isDeleted ? (
               <DuelInviteActions
                 invite={duelInvite}
+                lock={
+                  duelInviteMatchById.get(duelInvite.matchId)?.duel_lock ??
+                  duelMatchesQuery.data?.duel_lock
+                }
                 resolution={duelInviteResolution}
                 pending={
                   (acceptDuelInviteMut.isPending &&
@@ -1459,8 +1520,16 @@ export function ChatRoomScreen(): JSX.Element {
                   (declineDuelInviteMut.isPending &&
                     declineDuelInviteMut.variables === duelInvite.matchId)
                 }
-                onAccept={() => acceptDuelInviteMut.mutate(duelInvite.matchId)}
-                onDecline={() => declineDuelInviteMut.mutate(duelInvite.matchId)}
+                onAccept={() =>
+                  guardAmateurMutation(amateurAccess, () =>
+                    acceptDuelInviteMut.mutate(duelInvite.matchId),
+                  )
+                }
+                onDecline={() =>
+                  guardAmateurMutation(amateurAccess, () =>
+                    declineDuelInviteMut.mutate(duelInvite.matchId),
+                  )
+                }
               />
             ) : undefined;
           const isReadByCounterpart =
@@ -1681,84 +1750,50 @@ export function ChatRoomScreen(): JSX.Element {
       )}
 
       {imageViewer && (
-        <div
-          className="modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label={imageViewer.originalName || 'Изображение'}
-          onClick={(event) => {
-            if (event.currentTarget === event.target) setImageViewer(null);
-          }}
-          style={{
+        <AccessibleModal
+          title="Изображение"
+          ariaLabel={imageViewer.originalName || 'Изображение'}
+          onRequestClose={() => setImageViewer(null)}
+          backdropStyle={{
             zIndex: 320,
             padding:
               'calc(14px + var(--app-safe-top)) 14px calc(14px + var(--app-dock-safe-bottom))',
           }}
-        >
-          <div
-            className="modal-card"
-            style={{
-              position: 'relative',
-              width: 'min(100%, 860px)',
-              maxHeight: 'calc(100dvh - var(--app-safe-top) - var(--app-dock-safe-bottom) - 28px)',
-              padding: 10,
-              display: 'grid',
-              gap: 8,
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 8,
-                minWidth: 0,
-              }}
+          cardStyle={{
+            position: 'relative',
+            width: 'min(100%, 860px)',
+            maxHeight: 'calc(100dvh - var(--app-safe-top) - var(--app-dock-safe-bottom) - 28px)',
+            padding: 10,
+            overflow: 'hidden',
+          }}
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть просмотр изображения"
+              title="Закрыть"
+              onClick={() => setImageViewer(null)}
             >
-              <div
-                className="modal-title"
-                style={{
-                  flex: '1 1 auto',
-                  minWidth: 0,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  fontSize: 12,
-                  color: 'var(--muted)',
-                }}
-                title={imageViewer.originalName || 'Изображение'}
-              >
-                Изображение
-              </div>
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label="Закрыть просмотр изображения"
-                title="Закрыть"
-                onClick={() => setImageViewer(null)}
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <img
-              src={imageViewer.url}
-              alt={imageViewer.originalName || 'Изображение'}
-              style={{
-                display: 'block',
-                width: 'auto',
-                height: 'auto',
-                maxWidth: '100%',
-                maxHeight:
-                  'calc(100dvh - var(--app-safe-top) - var(--app-dock-safe-bottom) - 104px)',
-                margin: '0 auto',
-                objectFit: 'contain',
-                borderRadius: 18,
-                background: 'rgba(15, 23, 42, 0.08)',
-              }}
-            />
-          </div>
-        </div>
+              <X size={16} />
+            </button>
+          }
+        >
+          <img
+            src={imageViewer.url}
+            alt={imageViewer.originalName || 'Изображение'}
+            style={{
+              display: 'block',
+              width: 'auto',
+              height: 'auto',
+              maxWidth: '100%',
+              maxHeight: 'calc(100dvh - var(--app-safe-top) - var(--app-dock-safe-bottom) - 104px)',
+              margin: '0 auto',
+              objectFit: 'contain',
+              borderRadius: 18,
+              background: 'rgba(15, 23, 42, 0.08)',
+            }}
+          />
+        </AccessibleModal>
       )}
 
       <MessageActionsMenu
@@ -1778,7 +1813,13 @@ export function ChatRoomScreen(): JSX.Element {
         onPick={onPickFromPicker}
         onClose={() => setPickerTarget(null)}
       />
-      <UserProfileSheet sender={previewSender} onClose={onCloseProfile} />
+      <UserProfileSheet
+        sender={previewSender}
+        onClose={onCloseProfile}
+        hideMessageAction={
+          isOfficialDialog && previewSender?.userId === dmCounterpart?.userId
+        }
+      />
       <ChannelPostEditorSheet
         post={editingPost}
         disabled={editChannelPostMut.isPending || deleteChannelPostMut.isPending}

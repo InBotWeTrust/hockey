@@ -1,13 +1,41 @@
 import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight } from 'lucide-react';
+import { Check, ChevronRight } from 'lucide-react';
+import { achievementKeys, fetchAchievements } from '../api/achievements.js';
+import { apiFetch } from '../api/apiFetch.js';
+import {
+  acknowledgeWeeklyChallengeFailure,
+  countClaimableWeeklyChallenges,
+  fetchPendingWeeklyChallengeFailure,
+  fetchWeeklyChallenge,
+  weeklyChallengeKeys,
+  type WeeklyChallengeFailureResponse,
+} from '../api/weeklyChallenge.js';
+import { AccessibleModal } from '../components/AccessibleModal.js';
+import type { ProfileData } from './profileTypes.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
+import { acknowledgeRegularSeasonPodiumCongratulation } from '../api/tournament.js';
+import { RegularSeasonPodiumModal } from '../tournament/RegularSeasonPodiumModal.js';
+import {
+  acknowledgeMonthlyRatingCongratulation,
+  fetchPendingMonthlyRatingCongratulations,
+  type PendingMonthlyRatingCongratulationsResponse,
+} from '../api/amateurDuel.js';
+import { MonthlyRatingRewardModal } from '../components/duel/MonthlyRatingRewardModal.js';
 
-const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
+const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
 const SECTION_ARTWORK_SIZE = 86;
+const MONTHLY_RATING_CONGRATULATIONS_KEY = [
+  'amateur-duel',
+  'rating',
+  'congratulations',
+  'pending',
+] as const;
 
 const SECTION_ARTWORK = {
+  achievements: '/achievements/first-goal.webp',
   daily: '/daily-game/start.webp',
   training: '/modes/beginner.webp',
   amateur: '/modes/amateur.webp',
@@ -23,11 +51,120 @@ function numberText(value: number): string {
 
 export function SectionsScreen(): JSX.Element {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const dailyData = useDailyStore((s) => s.data);
   const refreshDaily = useDailyStore((s) => s.refresh);
   const trainingData = useTrainingSessionStore((s) => s.data);
   const refreshTraining = useTrainingSessionStore((s) => s.refresh);
-  const [lockedInfo, setLockedInfo] = useState<{ title: string; text: string } | null>(null);
+  const [podiumAckError, setPodiumAckError] = useState<string | null>(null);
+  const [monthlyRatingAckError, setMonthlyRatingAckError] = useState<string | null>(null);
+  const [failureAckError, setFailureAckError] = useState<string | null>(null);
+  const weeklyChallenge = useQuery({
+    queryKey: weeklyChallengeKeys.current,
+    queryFn: fetchWeeklyChallenge,
+  });
+  const achievementsQuery = useQuery({
+    queryKey: achievementKeys.all,
+    queryFn: fetchAchievements,
+  });
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ['profile', 'sections'],
+    queryFn: () => apiFetch<ProfileData>('/me?includeTournamentCongratulations=true'),
+  });
+  const failureQuery = useQuery({
+    queryKey: ['weekly-challenge', 'failure', 'pending'],
+    queryFn: fetchPendingWeeklyChallengeFailure,
+  });
+  const monthlyRatingQuery = useQuery({
+    queryKey: MONTHLY_RATING_CONGRATULATIONS_KEY,
+    queryFn: ({ signal }) => fetchPendingMonthlyRatingCongratulations({ signal }),
+  });
+
+  const pendingCongratulations = profileQuery.data?.pendingTournamentCongratulations ?? [];
+  const profileQueueReady = profileQuery.isSuccess;
+  const activeCongratulation = profileQueueReady ? (pendingCongratulations[0] ?? null) : null;
+  const pendingMonthlyRatingCongratulations = (monthlyRatingQuery.data?.congratulations ?? [])
+    .filter((congratulation) =>
+      [congratulation.coins, congratulation.stars, congratulation.tokens].some(
+        (value) => value > 0,
+      ),
+    )
+    .sort((left, right) =>
+      left.season_key === right.season_key
+        ? left.id.localeCompare(right.id)
+        : left.season_key.localeCompare(right.season_key),
+    );
+  const monthlyRatingQueueReady =
+    profileQueueReady && activeCongratulation === null && monthlyRatingQuery.isSuccess;
+  const activeMonthlyRatingCongratulation = monthlyRatingQueueReady
+    ? (pendingMonthlyRatingCongratulations[0] ?? null)
+    : null;
+  const rewardQueueError = profileQuery.isError
+    ? { onRetry: () => void profileQuery.refetch() }
+    : profileQueueReady && activeCongratulation === null && monthlyRatingQuery.isError
+      ? { onRetry: () => void monthlyRatingQuery.refetch() }
+      : null;
+  const acknowledgePodium = useMutation({
+    mutationFn: acknowledgeRegularSeasonPodiumCongratulation,
+    onMutate: () => setPodiumAckError(null),
+    onSuccess: (_response, congratulationId) => {
+      setPodiumAckError(null);
+      queryClient.setQueryData<ProfileData>(['profile', 'sections'], (current) =>
+        current === undefined
+          ? current
+          : {
+              ...current,
+              pendingTournamentCongratulations:
+                current.pendingTournamentCongratulations?.filter(
+                  (item) => item.id !== congratulationId,
+                ) ?? [],
+            },
+      );
+    },
+    onError: () => setPodiumAckError('Не удалось закрыть. Попробуйте ещё раз.'),
+  });
+  const acknowledgeFailure = useMutation({
+    mutationFn: acknowledgeWeeklyChallengeFailure,
+    onMutate: () => setFailureAckError(null),
+    onSuccess: (response) => {
+      setFailureAckError(null);
+      queryClient.setQueryData<WeeklyChallengeFailureResponse>(
+        ['weekly-challenge', 'failure', 'pending'],
+        response,
+      );
+    },
+    onError: () => setFailureAckError('Не удалось закрыть. Попробуйте ещё раз.'),
+  });
+  const acknowledgeMonthlyRating = useMutation({
+    mutationFn: acknowledgeMonthlyRatingCongratulation,
+    onMutate: async () => {
+      setMonthlyRatingAckError(null);
+      await queryClient.cancelQueries({
+        queryKey: MONTHLY_RATING_CONGRATULATIONS_KEY,
+        exact: true,
+      });
+    },
+    onSuccess: (_response, congratulationId) => {
+      setMonthlyRatingAckError(null);
+      queryClient.setQueryData<PendingMonthlyRatingCongratulationsResponse>(
+        MONTHLY_RATING_CONGRATULATIONS_KEY,
+        (current) =>
+          current === undefined
+            ? current
+            : {
+                ...current,
+                congratulations: current.congratulations.filter(
+                  (congratulation) => congratulation.id !== congratulationId,
+                ),
+              },
+      );
+      void queryClient.invalidateQueries({
+        queryKey: MONTHLY_RATING_CONGRATULATIONS_KEY,
+        exact: true,
+      });
+    },
+    onError: () => setMonthlyRatingAckError('Не удалось закрыть. Попробуйте ещё раз.'),
+  });
 
   useEffect(() => {
     void refreshDaily();
@@ -39,19 +176,33 @@ export function SectionsScreen(): JSX.Element {
     dailyData?.amateur_unlock_goals_required ?? DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED,
   );
   const amateurGoals = Math.min(amateurUnlockGoalsRequired, dailyData?.lifetime_total_goals ?? 0);
-  const isAmateurUnlocked = (dailyData?.lifetime_total_goals ?? 0) >= amateurUnlockGoalsRequired;
+  const amateurGoalsRemaining = Math.max(0, amateurUnlockGoalsRequired - amateurGoals);
+  const isAmateurUnlocked =
+    profileQuery.data?.competitionLevel === 'amateur' ||
+    profileQuery.data?.competitionLevel === 'professional' ||
+    (dailyData?.lifetime_total_goals ?? 0) >= amateurUnlockGoalsRequired;
   const trainingShotsLimit = trainingData?.shots_limit ?? 500;
   const trainingShotsTaken = trainingData?.shots_taken ?? 0;
   const dailyShotsLimit = (dailyData?.shots_per_period ?? 30) * (dailyData?.total_periods ?? 3);
+  const achievements = achievementsQuery.data?.achievements ?? [];
+  const achievementsCompletedCount = achievements.filter(
+    (achievement) =>
+      achievement.status === 'claimed' || achievement.status === 'completed_unclaimed',
+  ).length;
+  const achievementsUnclaimedCount = achievementsQuery.data?.unclaimedCount ?? 0;
+  const weeklyChallengesAvailable =
+    profileQuery.data?.competitionLevel === 'amateur' ||
+    profileQuery.data?.competitionLevel === 'professional';
+  const weeklyChallengeActionCount = weeklyChallengesAvailable
+    ? countClaimableWeeklyChallenges([
+        weeklyChallenge.data?.challenge,
+        ...(weeklyChallenge.data?.pendingRewards ?? []),
+      ])
+    : 0;
+  const sectionTasksActionCount = achievementsUnclaimedCount + weeklyChallengeActionCount;
+  const achievementsMeta = `${numberText(achievementsCompletedCount)}/${numberText(achievements.length)} наград`;
 
   const openAmateurs = (): void => {
-    if (!isAmateurUnlocked) {
-      setLockedInfo({
-        title: 'Не хватает шайб',
-        text: `Для открытия любительского раздела нужно забить ${numberText(amateurUnlockGoalsRequired)} шайб в ежедневной игре.`,
-      });
-      return;
-    }
     navigate('/?view=amateur&from=sections');
   };
 
@@ -73,125 +224,207 @@ export function SectionsScreen(): JSX.Element {
           gap: 16,
         }}
       >
-        <div className="section-label section-label--page">Разделы</div>
+        <section className="sections-group" aria-labelledby="sections-quick-access-title">
+          <h2 id="sections-quick-access-title" className="section-label sections-group__title">
+            Быстрый доступ
+          </h2>
+          <div className="sections-quick-grid">
+            <QuickSectionCard
+              title="Ежедневная игра"
+              meta={`${numberText(dailyData?.daily_total_shots ?? 0)}/${numberText(dailyShotsLimit)} бросков сегодня`}
+              tone="active"
+              size="wide"
+              artworkSrc={SECTION_ARTWORK.daily}
+              onClick={() => navigate('/daily')}
+            />
+            <QuickSectionCard
+              title="Тренировка"
+              meta={`${trainingShotsTaken}/${trainingShotsLimit} бросков`}
+              tone="active"
+              artworkSrc={SECTION_ARTWORK.training}
+              onClick={() => navigate('/?view=training&from=sections')}
+            />
+            <QuickSectionCard
+              title="Задания"
+              meta={achievementsMeta}
+              tone={sectionTasksActionCount > 0 ? 'active' : 'default'}
+              artworkSrc={SECTION_ARTWORK.achievements}
+              attention={sectionTasksActionCount > 0}
+              onClick={() => navigate('/achievements')}
+            />
+            <QuickSectionCard
+              title="Магазин"
+              meta="Инвентарь и предметы"
+              tone="default"
+              size="wide"
+              artworkSrc={SECTION_ARTWORK.shop}
+              onClick={() => navigate('/inventory')}
+            />
+          </div>
+        </section>
 
-        <SectionCard
-          title="Ежедневная игра"
-          description="Сегодняшняя игра и статистика прошедших дней"
-          meta={`${numberText(dailyData?.daily_total_shots ?? 0)}/${numberText(dailyShotsLimit)} бросков сегодня`}
-          tone="active"
-          artworkSrc={SECTION_ARTWORK.daily}
-          onClick={() => navigate('/daily')}
-        />
-        <SectionCard
-          title="Тренировка"
-          description="Периоды на выбор, броски без риска для дневной игры"
-          meta={`${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`}
-          tone="active"
-          artworkSrc={SECTION_ARTWORK.training}
-          onClick={() => navigate('/?view=training&from=sections')}
-        />
-        <SectionCard
-          title="Любители"
-          description="Дуэли, турниры и соревновательные форматы"
-          meta={
-            isAmateurUnlocked
-              ? 'Раздел открыт'
-              : `${numberText(amateurGoals)}/${numberText(amateurUnlockGoalsRequired)} шайб для открытия`
-          }
-          tone={isAmateurUnlocked ? 'default' : 'muted'}
-          artworkSrc={SECTION_ARTWORK.amateur}
-          progress={
-            amateurUnlockGoalsRequired > 0
-              ? Math.round((amateurGoals / amateurUnlockGoalsRequired) * 100)
-              : 100
-          }
-          onClick={openAmateurs}
-        />
-        <SectionCard
-          title="Профессионалы"
-          description="Игры самого высокого уровня"
-          meta="Раздел в разработке"
-          tone="muted"
-          artworkSrc={SECTION_ARTWORK.pro}
-          onClick={() => navigate('/?view=pro&from=sections')}
-        />
-        <SectionCard
-          title="Магазин"
-          description="Валюта, инвентарь и предметы"
-          meta="Монеты, звёзды и экипировка"
-          tone="default"
-          artworkSrc={SECTION_ARTWORK.shop}
-          onClick={() => navigate('/inventory')}
-        />
+        <section className="sections-group" aria-labelledby="sections-modes-title">
+          <h2 id="sections-modes-title" className="section-label sections-group__title">
+            Игровые режимы
+          </h2>
+          <div className="sections-mode-list">
+            <SectionCard
+              title="Любители"
+              supportingText={
+                isAmateurUnlocked
+                  ? 'Дуэли, бонусные игры и турниры'
+                  : `Осталось ${numberText(amateurGoalsRemaining)} шайб до статуса «Любитель»`
+              }
+              tone="default"
+              artworkSrc={SECTION_ARTWORK.amateur}
+              onClick={openAmateurs}
+            />
+            <SectionCard
+              title="Профессионалы"
+              supportingText="Игры самого высокого уровня"
+              tone="muted"
+              artworkSrc={SECTION_ARTWORK.pro}
+              onClick={() => navigate('/?view=pro&from=sections')}
+            />
+          </div>
+        </section>
       </section>
 
-      {lockedInfo && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={lockedInfo.title}
-          onClick={() => setLockedInfo(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 250,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-            background: 'rgba(15, 23, 42, 0.35)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-          }}
-        >
-          <div
-            className="glass"
-            onClick={(event) => event.stopPropagation()}
-            style={{ borderRadius: 24, padding: '22px 22px 18px', maxWidth: 320, width: '100%' }}
+      {activeCongratulation !== null && (
+        <RegularSeasonPodiumModal
+          congratulation={activeCongratulation}
+          pending={acknowledgePodium.isPending}
+          error={podiumAckError}
+          onConfirm={() => acknowledgePodium.mutate(activeCongratulation.id)}
+        />
+      )}
+      {activeCongratulation === null && activeMonthlyRatingCongratulation !== null && (
+        <MonthlyRatingRewardModal
+          congratulation={activeMonthlyRatingCongratulation}
+          pending={acknowledgeMonthlyRating.isPending}
+          error={monthlyRatingAckError}
+          onConfirm={() => acknowledgeMonthlyRating.mutate(activeMonthlyRatingCongratulation.id)}
+        />
+      )}
+      {activeCongratulation === null &&
+        monthlyRatingQueueReady &&
+        activeMonthlyRatingCongratulation === null &&
+        failureQuery.data?.challenge != null && (
+          <AccessibleModal
+            title="Челлендж не пройден"
+            copy={failureQuery.data.challenge.title}
+            closeBlocked
+            cardClassName="weekly-challenge-failure-modal"
           >
-            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ink)', marginBottom: 10 }}>
-              {lockedInfo.title}
+            <div className="weekly-challenge-failure-modal__tasks">
+              {failureQuery.data.challenge.tasks.map((task) => (
+                <div
+                  className={`weekly-challenge-failure-modal__task${task.completed ? ' weekly-challenge-failure-modal__task--completed' : ''}`}
+                  key={task.id}
+                >
+                  <span className="weekly-challenge-failure-modal__status" aria-hidden="true">
+                    {task.completed && <Check size={15} strokeWidth={3} />}
+                  </span>
+                  <span>{task.title}</span>
+                  <strong>
+                    {(task.progress ?? 0).toLocaleString('ru-RU')} /{' '}
+                    {task.target.toLocaleString('ru-RU')}
+                  </strong>
+                </div>
+              ))}
             </div>
-            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
-              {lockedInfo.text}
+            {failureAckError !== null && (
+              <p className="modal-error" role="alert">
+                {failureAckError}
+              </p>
+            )}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="modal-primary btn btn--cta"
+                disabled={acknowledgeFailure.isPending}
+                onClick={() => acknowledgeFailure.mutate(failureQuery.data!.challenge!.id)}
+              >
+                {acknowledgeFailure.isPending ? 'Закрываем…' : 'Понятно'}
+              </button>
             </div>
-            <button
-              type="button"
-              className="btn btn--cta"
-              onClick={() => setLockedInfo(null)}
-              style={{ marginTop: 18, width: '100%', padding: '12px 0', fontSize: 14 }}
-            >
-              Понятно
-            </button>
-          </div>
-        </div>
+          </AccessibleModal>
+        )}
+      {rewardQueueError !== null && (
+        <section className="duel-state-card duel-state-card--error" role="alert">
+          <p>Не удалось загрузить награды.</p>
+          <button type="button" className="btn btn--cta" onClick={rewardQueueError.onRetry}>
+            Повторить загрузку наград
+          </button>
+        </section>
       )}
     </main>
   );
 }
 
+function QuickSectionCard({
+  title,
+  meta,
+  tone,
+  size = 'compact',
+  artworkSrc,
+  attention,
+  onClick,
+}: {
+  title: string;
+  meta: string;
+  tone: Exclude<SectionTone, 'muted'>;
+  size?: 'compact' | 'wide' | undefined;
+  artworkSrc: string;
+  attention?: boolean | undefined;
+  onClick: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      className={`section-card-surface sections-quick-card sections-quick-card--${tone}${size === 'wide' ? ' sections-quick-card--wide' : ''}`}
+      aria-label={title}
+      onClick={onClick}
+    >
+      <span className="sections-quick-card__art" aria-hidden="true">
+        <img src={artworkSrc} alt="" draggable={false} />
+      </span>
+      <span className="sections-quick-card__content">
+        <span className="sections-quick-card__title">{title}</span>
+        <span className="sections-quick-card__meta">
+          {attention && (
+            <span className="sections-quick-card__attention" aria-label="Требуется действие" />
+          )}
+          {meta}
+        </span>
+      </span>
+      {size === 'wide' && (
+        <ChevronRight className="card-chevron" aria-hidden="true" size={19} strokeWidth={2.7} />
+      )}
+    </button>
+  );
+}
+
 function SectionCard({
   title,
-  description,
-  meta,
+  supportingText,
   tone,
   artworkSrc,
   progress,
   onClick,
 }: {
   title: string;
-  description: string;
-  meta: string;
+  supportingText: string;
   tone: SectionTone;
   artworkSrc: string;
-  progress?: number;
+  progress?: number | undefined;
   onClick: () => void;
 }): JSX.Element {
   const muted = tone === 'muted';
   return (
     <button
       type="button"
+      className={`section-card-surface section-card-surface--${tone}`}
       onClick={onClick}
       aria-label={title}
       style={{
@@ -210,12 +443,6 @@ function SectionCard({
         cursor: 'pointer',
         appearance: 'none',
         WebkitAppearance: 'none',
-        background:
-          tone === 'active'
-            ? 'rgba(255, 255, 255, 0.66)'
-            : muted
-              ? 'rgba(255, 255, 255, 0.34)'
-              : 'rgba(255, 255, 255, 0.5)',
         border: '1px solid rgba(255,255,255,0.68)',
         boxShadow: '0 8px 22px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.78)',
       }}
@@ -280,25 +507,23 @@ function SectionCard({
         >
           {title}
         </span>
-        <span style={{ color: 'rgba(15,23,42,0.62)', fontSize: 12, fontWeight: 750 }}>
-          {description}
-        </span>
         <span
           style={{
-            color: 'rgba(15,23,42,0.54)',
+            color: 'rgba(15,23,42,0.62)',
             fontSize: 12,
             fontWeight: 850,
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          {meta}
+          {supportingText}
         </span>
       </span>
       <ChevronRight
+        className="card-chevron"
         aria-hidden="true"
         size={19}
         strokeWidth={2.7}
-        style={{ justifySelf: 'end', color: 'rgba(15,23,42,0.54)' }}
+        style={{ justifySelf: 'end' }}
       />
     </button>
   );

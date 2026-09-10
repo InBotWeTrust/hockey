@@ -4,6 +4,7 @@ import { ReactionBar } from './ReactionBar.js';
 import { RichText } from '../richText.js';
 import { ChannelPoll } from './ChannelPoll.js';
 import { messageAttachments } from '../messagePreview.js';
+import { TournamentAnnouncementAction } from './TournamentAnnouncementAction.js';
 
 interface ChannelPostCardProps {
   post: ChatMessageDTO;
@@ -165,6 +166,8 @@ export function ChannelPostCard({
           onClearVote={onPollClearVote}
         />
       )}
+
+      {!post.isDeleted && <TournamentAnnouncementAction metadata={post.metadata} />}
 
       <ReactionBar reactions={post.reactions} onToggle={(emoji) => onReact(post.id, emoji)} />
 

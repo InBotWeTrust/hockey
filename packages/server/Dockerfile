@@ -14,6 +14,7 @@ RUN pnpm install --frozen-lockfile --filter @hockey/server... --filter @hockey/g
 
 COPY packages/game-core ./packages/game-core
 COPY packages/server ./packages/server
+COPY packages/web/public/onboarding/reference ./packages/server/seed-assets/onboarding
 
 RUN pnpm --filter @hockey/game-core exec tsc --build --force
 RUN pnpm --filter @hockey/server exec tsc --build --force
@@ -31,6 +32,7 @@ COPY --from=builder /repo/packages/game-core/dist ./packages/game-core/dist
 COPY --from=builder /repo/packages/server/package.json ./packages/server/
 COPY --from=builder /repo/packages/server/dist ./packages/server/dist
 COPY --from=builder /repo/packages/server/db ./packages/server/db
+COPY --from=builder /repo/packages/server/seed-assets ./packages/server/seed-assets
 
 RUN pnpm install --prod --frozen-lockfile --filter @hockey/server... --filter @hockey/game-core
 

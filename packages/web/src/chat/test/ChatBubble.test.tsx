@@ -52,6 +52,12 @@ describe('ChatBubble — author tap', () => {
     expect(screen.queryByLabelText('Доставлено')).toBeNull();
   });
 
+  it('marks an own message with the dedicated dark bubble surface', () => {
+    render(<ChatBubble {...defaults()} isOwn />);
+
+    expect(screen.getByText('привет').closest('.glass-dark')).toHaveClass('chat-bubble--own');
+  });
+
   it('renders own-message reply previews with a dark-bubble contrast tone', () => {
     render(
       <ChatBubble
@@ -131,6 +137,31 @@ describe('ChatBubble — author tap', () => {
     expect(screen.getByRole('link', { name: /report\.pdf/ })).toHaveAttribute(
       'href',
       '/uploads/report.pdf',
+    );
+  });
+
+  it('renders the tournament action stored with an announcement', () => {
+    render(
+      <ChatBubble
+        {...defaults()}
+        message={{
+          ...baseMessage,
+          content: 'Регистрация открыта.',
+          metadata: {
+            type: 'tournament_announcement',
+            action: {
+              type: 'tournament',
+              label: 'Перейти в турнир',
+              url: '/?view=amateur&section=tournaments&tournament=cup-1&tab=overview&from=sections',
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: 'Перейти в турнир' })).toHaveAttribute(
+      'href',
+      '/?view=amateur&section=tournaments&tournament=cup-1&tab=overview&from=sections',
     );
   });
 

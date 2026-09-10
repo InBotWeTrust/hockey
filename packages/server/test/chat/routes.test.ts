@@ -122,6 +122,7 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     });
     expect(created.statusCode).toBe(201);
     const chatId = created.json().chatId as string;
+    await app.pg.query(`update users set account_kind = 'official' where id = $1`, [userC]);
 
     const info = await app.inject({
       method: 'GET',
@@ -138,7 +139,7 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
         members: expect.arrayContaining([
           expect.objectContaining({ userId: userA, role: 'admin' }),
           expect.objectContaining({ userId: userB, role: 'member' }),
-          expect.objectContaining({ userId: userC, role: 'member' }),
+          expect.objectContaining({ userId: userC, role: 'member', accountKind: 'official' }),
         ]),
       }),
     );
@@ -731,6 +732,15 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
       id: userB,
       displayName: 'Bob',
       competitionLevel: 'amateur',
+      currencyBalance: expect.any(Number),
+      starBalance: expect.any(Number),
+      experienceBalance: expect.any(Number),
+      trophySummary: {
+        regularSeasonWins: 0,
+        tournamentChampionships: 0,
+        tournamentPodiums: 0,
+        completedChallenges: 0,
+      },
       stats: {
         shots: 30,
         goals: 10,
@@ -740,16 +750,9 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
       },
     });
     const body = res.json() as {
-      achievements: Array<{ id: string; isUnlocked: boolean; unlockedAt?: string }>;
+      achievements: Array<{ id: string; status: string; completedAt?: string }>;
     };
-    expect(
-      body.achievements
-        .filter((achievement) => achievement.isUnlocked)
-        .map((achievement) => achievement.id),
-    ).toEqual(['first-goal']);
-    expect(
-      body.achievements.find((achievement) => achievement.id === 'first-goal')?.unlockedAt,
-    ).toEqual(expect.any(String));
+    expect(body.achievements).toEqual([]);
   });
 
   it('GET /chat/unread returns map and uses cache on second call', async () => {

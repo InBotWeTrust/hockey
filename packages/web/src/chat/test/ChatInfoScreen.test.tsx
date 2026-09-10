@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ChatInfoScreen } from '../screens/ChatInfoScreen.js';
@@ -28,7 +28,9 @@ function renderScreen(): HTMLElement {
 describe('ChatInfoScreen', () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    useAuthStore.getState().clearSession();
+    act(() => {
+      useAuthStore.getState().clearSession();
+    });
   });
 
   it('keeps long member lists scrollable above the bottom navigation', async () => {
@@ -91,6 +93,32 @@ describe('ChatInfoScreen', () => {
 
     expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
+  });
+
+  it('opens the official account card for an official member', async () => {
+    const profileSpy = vi.spyOn(api, 'fetchUserProfile');
+    vi.spyOn(api, 'fetchChatInfo').mockResolvedValue({
+      id: 'chat-1',
+      type: 'system',
+      name: 'Общий чат',
+      description: null,
+      avatarUrl: null,
+      memberCount: 1,
+      members: [
+        {
+          userId: 'official-1',
+          displayName: 'Ультимейт Хоккей',
+          avatarUrl: null,
+          accountKind: 'official',
+        },
+      ],
+    });
+
+    renderScreen();
+    fireEvent.click(await screen.findByRole('button', { name: 'Ультимейт Хоккей' }));
+
+    expect(screen.getByText('Официальный аккаунт')).toBeInTheDocument();
+    expect(profileSpy).not.toHaveBeenCalled();
   });
 
   it('renders the channel avatar from chat info instead of a generated initial', async () => {
@@ -190,5 +218,34 @@ describe('ChatInfoScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Удалить Player 12 из чата' }));
     await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('chat-1', 'user-12'));
+  });
+
+  it('closes group management modals with Escape', async () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'rtok',
+      user: { id: 'admin-1', displayName: 'Admin', role: 'admin', grip: 'right' },
+    });
+    vi.spyOn(api, 'fetchChatInfo').mockResolvedValue({
+      id: 'chat-1',
+      type: 'group',
+      name: 'Командный чат',
+      description: null,
+      avatarUrl: null,
+      memberCount: 1,
+      members: [{ userId: 'admin-1', displayName: 'Admin', avatarUrl: null, role: 'admin' }],
+    });
+
+    renderScreen();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Редактировать чат' }));
+    expect(screen.getByRole('dialog', { name: 'Настройки чата' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Настройки чата' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить участников' }));
+    expect(screen.getByRole('dialog', { name: 'Участники' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Участники' })).not.toBeInTheDocument();
   });
 });

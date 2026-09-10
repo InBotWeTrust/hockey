@@ -1,6 +1,15 @@
-import type { DailyPeriodSpeedPreset, StickEffects } from '@hockey/game-core';
+import type {
+  DailyPeriodSpeedPreset,
+  DuelInventoryResourceUnit,
+  DuelInventoryTiming,
+  StickEffects,
+} from '@hockey/game-core';
 import { apiFetch } from './apiFetch.js';
+import type { GameplayLockDTO } from './gameplayLock.js';
+export type { GameplayLockDTO } from './gameplayLock.js';
+import type { GameRequestOptions } from './requestTimeout.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
+import { showAmateurLevelRequiredError } from '../amateur/amateurAccess.js';
 
 export type AmateurDuelMatchStatus =
   | 'invited'
@@ -21,6 +30,20 @@ export type AmateurDuelParticipantState =
 export type AmateurDuelOutcome = 'challenger_win' | 'opponent_win' | 'draw' | 'double_loss';
 export type AmateurDuelKind = 'express' | 'express_plus' | 'classic';
 export type AmateurDuelPeriodMode = 'quota' | 'time_attack';
+export type AmateurDuelVenuePolicy =
+  | 'direct_challenge'
+  | 'neutral_default'
+  | 'home_selected'
+  | 'random_participant_home'
+  | 'random_unselected';
+
+export interface AmateurDuelArena {
+  id: string;
+  slug: string;
+  title: string;
+  artwork_url: string;
+  thumbnail_url: string;
+}
 
 export interface AmateurDuelMatchmakingTicket {
   id: string;
@@ -95,6 +118,10 @@ export interface AmateurDuelRules {
   powerCap: number;
   goalieId: string;
   periodSpeedPresets: DailyPeriodSpeedPreset[];
+  noInventoryTiming: {
+    skates: DuelInventoryTiming;
+    nutrition: DuelInventoryTiming;
+  };
   stakeAmount: number;
   entryFeeAmount: number;
   requiredInventoryItemId: string | null;
@@ -104,6 +131,7 @@ export interface AmateurDuelRules {
   winCurrencyReward: number;
   drawCurrencyReward: number;
   winStarReward: number;
+  tournamentLoadoutLifecycleVersion?: 1;
 }
 
 export interface AmateurDuelParticipant {
@@ -128,16 +156,25 @@ export interface AmateurDuelParticipant {
   loadout: AmateurDuelLoadout;
   inventory_available?: AmateurDuelInventoryAvailabilityItem[];
   inventory_report: AmateurDuelInventoryPeriodReport[];
+  tournament_loadout_period?: number | null;
+  tournament_loadout_version?: number;
 }
 
 export interface AmateurDuelLoadoutItem {
   id: string;
+  itemId?: string;
+  instanceId?: string | null;
   kind: 'stick' | 'skates' | 'nutrition';
   title: string;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
   powerScore: number;
   duelPeriodCost: number;
   chargesReserved: number;
+  resourceUnit?: DuelInventoryResourceUnit;
+  resourceAvailable?: number;
+  lowStockThreshold?: number;
+  effectPuckSpeedPoints?: number;
+  timing?: DuelInventoryTiming;
 }
 
 export interface AmateurDuelLoadout {
@@ -148,9 +185,17 @@ export interface AmateurDuelLoadout {
 
 export interface AmateurDuelInventoryAvailabilityItem {
   id: string;
+  itemId?: string;
+  instanceId?: string | null;
   kind: 'stick' | 'skates' | 'nutrition';
   title: string;
+  description: string;
+  imageUrl: string | null;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  powerScore: number;
+  duelPeriodCost: number;
+  resourceUnit?: DuelInventoryResourceUnit;
+  lowStockThreshold?: number;
   chargesAvailable: number;
   chargesReserved: number;
 }
@@ -159,6 +204,8 @@ export interface AmateurDuelInventoryPeriodReport {
   periodNumber: number;
   consumed: Array<{
     id: string;
+    itemId?: string;
+    instanceId?: string | null;
     kind: 'stick' | 'skates' | 'nutrition';
     title: string;
     charges: number;
@@ -176,13 +223,19 @@ export interface AmateurDuelPeriodLog {
 }
 
 export interface AmateurDuelMatch {
+  duel_lock?: GameplayLockDTO | null;
+  gameplay_lock?: GameplayLockDTO | null;
   id: string;
   template_id: string | null;
   status: AmateurDuelMatchStatus;
-  source: 'challenge' | 'matchmaking';
+  source: 'challenge' | 'matchmaking' | 'tournament';
   ranked: boolean;
   season_key: string;
   duel_kind: AmateurDuelKind;
+  home_user_id: string | null;
+  venue_role: 'home' | 'away' | 'neutral';
+  venue_policy: AmateurDuelVenuePolicy;
+  arena: AmateurDuelArena;
   starts_at: string;
   ends_at: string;
   ready_expires_at: string | null;
@@ -218,6 +271,7 @@ export interface AmateurDuelMatchState extends AmateurDuelMatch {
 }
 
 export interface AmateurOpponent {
+  format_locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
   userId: string;
   displayName: string;
   avatarUrl: string | null;
@@ -236,6 +290,75 @@ export interface AmateurRatingRow {
   goals_against: number;
   matches_played: number;
   active_duration_seconds: number;
+}
+
+export interface AmateurDuelHistoryStats {
+  duels: number;
+  wins: number;
+  points: number;
+}
+
+export interface AmateurDuelHistoryResponse {
+  season_key: string | null;
+  seasons: string[];
+  rating_place: number | null;
+  stats: AmateurDuelHistoryStats;
+  matches: AmateurDuelMatch[];
+}
+
+export interface AmateurDuelRatingResponse {
+  season_key: string;
+  rating_visible: boolean;
+  available_seasons: string[];
+  rating: AmateurRatingRow[];
+  me_rank: number | null;
+}
+
+export interface MonthlyRatingCongratulation {
+  id: string;
+  season_key: string;
+  place: number;
+  matches_played: number;
+  eligible_count: number;
+  rewarded_count: number;
+  coins: number;
+  stars: number;
+  tokens: number;
+  created_at: string;
+}
+
+export interface PendingMonthlyRatingCongratulationsResponse {
+  congratulations: MonthlyRatingCongratulation[];
+}
+
+export interface AmateurDuelHistoryCalendarMatch {
+  id: string;
+  settled_at: string;
+  opponent: {
+    user_id: string;
+    display_name: string;
+    avatar_url: string | null;
+  };
+  duel_kind: AmateurDuelKind;
+  my_goals: number;
+  opponent_goals: number;
+  venue_role: 'home' | 'away' | 'neutral';
+  result: 'win' | 'draw' | 'loss';
+}
+
+export interface AmateurDuelHistoryCalendarResponse {
+  month_key: string;
+  timezone: string;
+  available_months: string[];
+  range: { from: string; to: string };
+  stats: {
+    played: number;
+    wins: number;
+    draws: number;
+    losses: number;
+    win_percentage: number;
+  };
+  days: Array<{ day: number; matches: AmateurDuelHistoryCalendarMatch[] }>;
 }
 
 export interface SubmitAmateurDuelShotRequest {
@@ -258,8 +381,17 @@ export interface AmateurDuelLoadoutSelection {
 function stampMatch<T extends AmateurDuelMatch>(match: T): T {
   return {
     ...match,
+    // Retain the old consumer field for one release, derived from the authoritative DTO.
+    ...(match.gameplay_lock === undefined ? {} : { duel_lock: match.gameplay_lock }),
     received_at_performance_ms: performance.now(),
   } as T;
+}
+
+function amateurMutation<T>(request: Promise<T>): Promise<T> {
+  return request.catch((error: unknown) => {
+    showAmateurLevelRequiredError(error);
+    throw error;
+  });
 }
 
 export function fetchAmateurTemplates(): Promise<{ templates: AmateurDuelTemplate[] }> {
@@ -271,10 +403,29 @@ export function searchAmateurOpponents(q = '', limit = 20): Promise<{ users: Ama
   return apiFetch<{ users: AmateurOpponent[] }>(`/duel/amateur/opponents?${params.toString()}`);
 }
 
-export function fetchAmateurMatches(): Promise<{ matches: AmateurDuelMatch[] }> {
-  return apiFetch<{ matches: AmateurDuelMatch[] }>('/duel/amateur/matches').then((res) => ({
+export interface AmateurDuelOverview {
+  format_locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
+  matches: AmateurDuelMatch[];
+  duel_lock?: GameplayLockDTO | null;
+  gameplay_lock?: GameplayLockDTO | null;
+  matchmaking_enabled?: boolean;
+}
+
+export function fetchAmateurMatches(): Promise<AmateurDuelOverview> {
+  return apiFetch<AmateurDuelOverview>('/duel/amateur/matches').then((res) => ({
+    ...res,
+    ...(res.gameplay_lock === undefined ? {} : { duel_lock: res.gameplay_lock }),
     matches: res.matches.map(stampMatch),
   }));
+}
+
+export function fetchAmateurHistory(seasonKey?: string): Promise<AmateurDuelHistoryResponse> {
+  const params = new URLSearchParams();
+  if (seasonKey) params.set('season_key', seasonKey);
+  const query = params.toString();
+  return apiFetch<AmateurDuelHistoryResponse>(
+    `/duel/amateur/history${query ? `?${query}` : ''}`,
+  ).then((res) => ({ ...res, matches: res.matches.map(stampMatch) }));
 }
 
 export function fetchAmateurEvents(): Promise<{ events: AmateurDuelMatch[] }> {
@@ -283,92 +434,182 @@ export function fetchAmateurEvents(): Promise<{ events: AmateurDuelMatch[] }> {
   }));
 }
 
-export function fetchAmateurMatch(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}`).then(
-    (res) => ({ match: stampMatch(res.match) }),
-  );
+export function fetchAmateurMatch(
+  matchId: string,
+  options?: GameRequestOptions,
+): Promise<{ match: AmateurDuelMatchState }> {
+  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}`, {
+    ...(options?.signal === undefined ? {} : { signal: options.signal }),
+  }).then((res) => ({ match: stampMatch(res.match) }));
 }
 
 export function challengeAmateurDuel(body: {
   template_id: string;
   opponent_user_id: string;
 }): Promise<{ match: AmateurDuelMatch }> {
-  return apiFetch<{ match: AmateurDuelMatch }>('/duel/amateur/challenge', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatch }>('/duel/amateur/challenge', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export function checkAmateurDuelChallengeAvailability(
+  opponentUserId: string,
+): Promise<{ available: true }> {
+  const query = new URLSearchParams({ opponent_user_id: opponentUserId });
+  return apiFetch<{ available: true }>(`/duel/amateur/challenge/availability?${query.toString()}`);
 }
 
 export function acceptAmateurDuel(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/accept`, {
-    method: 'POST',
-  }).then((res) => ({ match: stampMatch(res.match) }));
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/accept`, {
+      method: 'POST',
+    }).then((res) => ({ match: stampMatch(res.match) })),
+  );
 }
 
 export function cancelAmateurDuel(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/cancel`, {
-    method: 'POST',
-  }).then((res) => ({ match: stampMatch(res.match) }));
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/cancel`, {
+      method: 'POST',
+    }).then((res) => ({ match: stampMatch(res.match) })),
+  );
 }
 
 export function declineAmateurDuel(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/decline`, {
-    method: 'POST',
-  }).then((res) => ({ match: stampMatch(res.match) }));
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/decline`, {
+      method: 'POST',
+    }).then((res) => ({ match: stampMatch(res.match) })),
+  );
 }
 
 export function readyAmateurDuel(
   matchId: string,
   loadout: AmateurDuelLoadoutSelection,
 ): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/ready`, {
-    method: 'POST',
-    body: JSON.stringify({ loadout }),
-  }).then((res) => ({ match: stampMatch(res.match) }));
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/ready`, {
+      method: 'POST',
+      body: JSON.stringify({ loadout }),
+    }).then((res) => ({ match: stampMatch(res.match) })),
+  );
+}
+
+export function confirmTournamentDuelLoadout(
+  matchId: string,
+  loadout: AmateurDuelLoadoutSelection,
+): Promise<{ match: AmateurDuelMatchState }> {
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(
+      `/duel/amateur/matches/${matchId}/tournament-loadout`,
+      { method: 'POST', body: JSON.stringify({ loadout }) },
+    ).then((res) => ({ match: stampMatch(res.match) })),
+  );
 }
 
 export function joinAmateurMatchmaking(
   duelKinds: AmateurDuelKind[],
 ): Promise<{ ticket?: AmateurDuelMatchmakingTicket; match?: AmateurDuelMatch }> {
-  return apiFetch<{ ticket?: AmateurDuelMatchmakingTicket; match?: AmateurDuelMatch }>(
-    '/duel/amateur/matchmaking/join',
-    {
-      method: 'POST',
-      body: JSON.stringify({ duel_kinds: duelKinds }),
-    },
-  ).then((res) => (res.match ? { ...res, match: stampMatch(res.match) } : res));
+  return amateurMutation(
+    apiFetch<{ ticket?: AmateurDuelMatchmakingTicket; match?: AmateurDuelMatch }>(
+      '/duel/amateur/matchmaking/join',
+      {
+        method: 'POST',
+        body: JSON.stringify({ duel_kinds: duelKinds }),
+      },
+    ).then((res) => (res.match ? { ...res, match: stampMatch(res.match) } : res)),
+  );
 }
 
 export function leaveAmateurMatchmaking(templateId?: string): Promise<{ ok: true }> {
-  return apiFetch<{ ok: true }>('/duel/amateur/matchmaking/leave', {
-    method: 'POST',
-    body: JSON.stringify(templateId ? { template_id: templateId } : {}),
-  });
+  return amateurMutation(
+    apiFetch<{ ok: true }>('/duel/amateur/matchmaking/leave', {
+      method: 'POST',
+      body: JSON.stringify(templateId ? { template_id: templateId } : {}),
+    }),
+  );
 }
 
-export function startAmateurDuelPeriod(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(
-    `/duel/amateur/matches/${matchId}/period/start`,
-    { method: 'POST' },
-  ).then((res) => ({ match: stampMatch(res.match) }));
+export function startAmateurDuelPeriod(
+  matchId: string,
+  loadout?: AmateurDuelLoadoutSelection,
+  options?: GameRequestOptions,
+): Promise<{ match: AmateurDuelMatchState }> {
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/period/start`, {
+      method: 'POST',
+      ...(loadout ? { body: JSON.stringify({ loadout }) } : {}),
+      ...(options?.signal === undefined ? {} : { signal: options.signal }),
+    }).then((res) => ({ match: stampMatch(res.match) })),
+  );
+}
+
+export function updateAmateurDuelLoadout(
+  matchId: string,
+  loadout: Pick<AmateurDuelLoadoutSelection, 'stick'>,
+): Promise<{ match: AmateurDuelMatchState }> {
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/loadout`, {
+      method: 'PATCH',
+      body: JSON.stringify({ loadout }),
+    }).then((res) => ({ match: stampMatch(res.match) })),
+  );
 }
 
 export function submitAmateurDuelShot(
   matchId: string,
   body: SubmitAmateurDuelShotRequest,
+  options?: GameRequestOptions,
 ): Promise<SubmitAmateurDuelShotResponse> {
-  return apiFetch<SubmitAmateurDuelShotResponse>(`/duel/amateur/matches/${matchId}/shot`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  }).then((res) => ({ ...res, match: stampMatch(res.match) }));
+  return amateurMutation(
+    apiFetch<SubmitAmateurDuelShotResponse>(`/duel/amateur/matches/${matchId}/shot`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      ...(options?.signal === undefined ? {} : { signal: options.signal }),
+    }).then((res) => ({ ...res, match: stampMatch(res.match) })),
+  );
 }
 
 export function settleAmateurDuel(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
-  return apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/settle`, {
-    method: 'POST',
-  }).then((res) => ({ match: stampMatch(res.match) }));
+  return amateurMutation(
+    apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/settle`, {
+      method: 'POST',
+    }).then((res) => ({ match: stampMatch(res.match) })),
+  );
 }
 
-export function fetchAmateurRating(): Promise<{ season_key: string; rating: AmateurRatingRow[] }> {
-  return apiFetch<{ season_key: string; rating: AmateurRatingRow[] }>('/duel/amateur/rating');
+export function fetchAmateurRating(seasonKey?: string): Promise<AmateurDuelRatingResponse> {
+  const params = new URLSearchParams();
+  if (seasonKey) params.set('season_key', seasonKey);
+  const query = params.toString();
+  return apiFetch<AmateurDuelRatingResponse>(`/duel/amateur/rating${query ? `?${query}` : ''}`);
+}
+
+export function fetchPendingMonthlyRatingCongratulations(options?: {
+  signal?: AbortSignal;
+}): Promise<PendingMonthlyRatingCongratulationsResponse> {
+  return apiFetch<PendingMonthlyRatingCongratulationsResponse>(
+    '/duel/amateur/rating/congratulations/pending',
+    options?.signal === undefined ? undefined : { signal: options.signal },
+  );
+}
+
+export function acknowledgeMonthlyRatingCongratulation(id: string): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/duel/amateur/rating/congratulations/${id}/read`, {
+    method: 'POST',
+  });
+}
+
+export function fetchAmateurHistoryCalendar(
+  monthKey?: string,
+): Promise<AmateurDuelHistoryCalendarResponse> {
+  const params = new URLSearchParams();
+  if (monthKey) params.set('month_key', monthKey);
+  const query = params.toString();
+  return apiFetch<AmateurDuelHistoryCalendarResponse>(
+    `/duel/amateur/history/calendar${query ? `?${query}` : ''}`,
+  );
 }

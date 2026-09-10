@@ -22,43 +22,43 @@ export function UserAvatar({
   const initial = (name?.trim() || '?').charAt(0).toUpperCase();
   const fs = fontSize ?? Math.round(size * 0.4);
 
-  if (!avatarUrl || imgError) {
-    return (
-      <div
-        aria-hidden
-        style={{
-          width: size,
-          height: size,
-          borderRadius: '50%',
-          background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
-          color: '#ffffff',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: fs,
-          fontWeight: 800,
-          flexShrink: 0,
-          ...style,
-        }}
-      >
-        {initial}
-      </div>
-    );
-  }
-
   return (
-    <img
-      src={avatarUrl}
-      alt={alt}
-      onError={() => setImgError(true)}
+    <div
+      aria-hidden={!avatarUrl || imgError || !alt ? true : undefined}
+      className="user-avatar"
       style={{
         width: size,
         height: size,
         borderRadius: '50%',
-        objectFit: 'cover',
+        background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
+        color: '#ffffff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: fs,
+        fontWeight: 800,
         flexShrink: 0,
+        overflow: 'hidden',
+        position: 'relative',
         ...style,
       }}
-    />
+    >
+      <span className="user-avatar__initial" data-initial={initial} aria-hidden />
+      {avatarUrl && !imgError && (
+        <img
+          src={avatarUrl}
+          alt={alt}
+          onError={() => setImgError(true)}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            borderRadius: '50%',
+            objectFit: 'cover',
+          }}
+        />
+      )}
+    </div>
   );
 }

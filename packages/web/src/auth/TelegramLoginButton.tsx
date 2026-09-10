@@ -22,7 +22,6 @@ type AuthCallback = (payload: TelegramAuthPayload) => void;
 type WindowWithCallbacks = typeof window & Record<string, AuthCallback | undefined>;
 
 const TELEGRAM_WIDGET_TIMEOUT_MS = 4000;
-const TELEGRAM_VPN_MESSAGE = 'Вход через Telegram доступен с VPN. Включите и обновите страницу.';
 
 export function TelegramLoginButton({
   botUsername,
@@ -121,7 +120,11 @@ export function TelegramLoginButton({
   }, [botUsername, onAuth, callbackName, cornerRadius, size]);
 
   if (!botUsername) {
-    return <div role="alert">Вход через Telegram не настроен.</div>;
+    return (
+      <div role="alert" className="telegram-login-unavailable">
+        Вход через Telegram не настроен.
+      </div>
+    );
   }
 
   return (
@@ -158,6 +161,7 @@ export function TelegramLoginButton({
           }}
         >
           <div
+            className="telegram-login-fallback__copy"
             style={{
               color: 'var(--muted)',
               fontSize: size === 'large' ? 13 : 12,
@@ -166,7 +170,10 @@ export function TelegramLoginButton({
               textAlign: 'center',
             }}
           >
-            {TELEGRAM_VPN_MESSAGE}
+            <span className="telegram-login-fallback__line">
+              Вход через Telegram доступен с VPN.
+            </span>{' '}
+            <span className="telegram-login-fallback__line">Включите и обновите страницу.</span>
           </div>
           <button
             type="button"
