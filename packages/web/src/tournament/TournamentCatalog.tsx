@@ -1046,6 +1046,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               rangeEndsAt={tournament.completedAt ?? tournament.projectedEndsAt ?? null}
               playoffStartsAt={tournamentPlayoffStartsAt(tournament)}
               playoffBlocks={tournamentPlayoffScheduleBlocks(tournament)}
+              completedPlayoffStages={schedule.data.completedPlayoffStages ?? []}
               onOpenClassicGame={() => {
                 const params = new URLSearchParams({
                   view: 'classic',

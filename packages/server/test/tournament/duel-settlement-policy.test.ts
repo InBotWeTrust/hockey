@@ -11,12 +11,12 @@ describe('duel settlement policy', () => {
     });
   });
 
-  it('delegates tournament economy and standings to the fixture domain', () => {
+  it('delegates tournament economy and standings while retaining duel achievements', () => {
     expect(getDuelSettlementPolicy('tournament')).toEqual({
       settleStake: false,
       grantTemplateRewards: false,
       updateRating: false,
-      evaluateAchievements: false,
+      evaluateAchievements: true,
     });
   });
 });

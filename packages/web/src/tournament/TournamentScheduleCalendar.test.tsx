@@ -907,6 +907,56 @@ describe('TournamentScheduleCalendar', () => {
     expect(series).toHaveTextContent('Aleksandra');
   });
 
+  it('hides a later playoff block after every series in that stage is completed', () => {
+    render(
+      <TournamentScheduleCalendar
+        fixtures={[]}
+        fixtureDays={[]}
+        playoffBlocks={[
+          {
+            id: 'third-place:2:2030-09-05:2',
+            roundNumber: 2,
+            stage: 'third_place',
+            localDate: '2030-09-05',
+            startTime: '13:00',
+            stageLabel: 'Матч за 3-е место',
+            duelKind: 'classic',
+          },
+          {
+            id: 'playoff:2:2030-09-05:2',
+            roundNumber: 2,
+            stage: 'playoff',
+            localDate: '2030-09-05',
+            startTime: '13:00',
+            stageLabel: 'Финал',
+            duelKind: 'classic',
+          },
+        ]}
+        completedPlayoffStages={[
+          {
+            roundNumber: 2,
+            stage: 'third_place',
+            completedOnLocalDate: '2030-09-04',
+          },
+        ]}
+        selectedDate="2030-09-05"
+        matchdays={[]}
+        regularSource="classic"
+        tournamentStatus="playoff"
+        currentUserId="me"
+        isParticipant
+        timezone="Europe/Moscow"
+        rangeStartsAt="2030-09-01T00:00:00.000Z"
+        rangeEndsAt="2030-09-10T23:59:59.000Z"
+        renderFixture={() => null}
+        formatDateTime={(value) => value}
+      />,
+    );
+
+    expect(screen.queryByRole('heading', { name: 'Матч за 3-е место' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Финал' })).toBeInTheDocument();
+  });
+
   it('carries the accumulated series score into the next game day', () => {
     const games: TournamentFixture[] = [1, 2, 3, 4, 5].map((gameNumber) => ({
       ...fixture(gameNumber, true),

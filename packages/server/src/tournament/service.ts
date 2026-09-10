@@ -3012,6 +3012,26 @@ export async function getTournamentScheduleDay(
      ) as has_other_games`,
     [tournamentId, userId, localDate],
   );
+  const completedPlayoffStagesResult = await pool.query<{
+    round_number: number;
+    stage: 'playoff' | 'third_place';
+    completed_on_local_date: string;
+  }>(
+    `select round.number as round_number,
+            case when series.kind = 'third_place' then 'third_place' else 'playoff' end as stage,
+            max(series.updated_at at time zone
+              coalesce(revision.rules_snapshot->'config'->>'timezone', 'Europe/Moscow'))::date::text
+              as completed_on_local_date
+       from tournament_playoff_series series
+       join tournament_round round on round.id = series.round_id
+       join tournament tournament on tournament.id = series.tournament_id
+       join tournament_revision revision on revision.id = tournament.published_revision_id
+      where series.tournament_id = $1
+      group by round.number,
+               case when series.kind = 'third_place' then 'third_place' else 'playoff' end
+     having bool_and(series.status = 'completed')`,
+    [tournamentId],
+  );
   return {
     days: daysResult.rows.map((row) => ({
       localDate: row.local_date,
@@ -3021,6 +3041,11 @@ export async function getTournamentScheduleDay(
     })),
     myGames: myGamesResult.rows.map(tournamentScheduleFixtureDto),
     hasOtherGames: otherGamesResult.rows[0]?.has_other_games === true,
+    completedPlayoffStages: completedPlayoffStagesResult.rows.map((row) => ({
+      roundNumber: Number(row.round_number),
+      stage: row.stage,
+      completedOnLocalDate: row.completed_on_local_date,
+    })),
   };
 }
 

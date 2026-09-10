@@ -626,7 +626,9 @@ describe('ChatRoomScreen', () => {
     renderRoom('c1');
 
     await waitFor(() => expect(api.fetchMessages).toHaveBeenCalledTimes(2));
-    expect(screen.getByText('Сообщений пока нет')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Сообщений пока нет' })).toHaveClass(
+      'chat-room__empty-state',
+    );
     expect(api.markChatAsRead).not.toHaveBeenCalled();
   });
 

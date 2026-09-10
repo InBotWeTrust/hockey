@@ -69,6 +69,8 @@ import {
   deleteAdminChannelPost,
   deleteAdminInventoryItem,
   fetchAdminChannelNews,
+  fetchAdminAttention,
+  fetchAdminBroadcastAudience,
   fetchAdminOfficialAccount,
   fetchAdminOfficialDialogMessages,
   fetchAdminOfficialDialogs,
@@ -102,6 +104,7 @@ import {
   uploadAdminOfficialAccountAvatar,
   uploadAdminOfficialDialogAttachment,
   sendAdminOfficialDialogMessage,
+  sendAdminDirectBroadcast,
   type AdminDashboard,
   type AdminDashboardPeriod,
   type AdminDashboardSeriesPoint,
@@ -717,7 +720,7 @@ export function AdminScreen(): JSX.Element {
   const [mismatchPeriod, setMismatchPeriod] = useState<AdminMismatchPeriod>('30d');
   const [channelPeriod, setChannelPeriod] = useState<AdminChannelPeriod>('30d');
   const [communicationsTab, setCommunicationsTab] = useState<
-    'news' | 'dialogs' | 'official-account'
+    'news' | 'dialogs' | 'broadcast' | 'official-account'
   >('news');
 
   useEffect(() => {
@@ -824,7 +827,14 @@ export function AdminScreen(): JSX.Element {
   const feedback = useQuery({
     queryKey: ['admin', 'feedback', feedbackQuery],
     queryFn: () => fetchAdminFeedback(feedbackQuery),
+    enabled: canTryAdmin && tab === 'feedback',
+  });
+  const attention = useQuery({
+    queryKey: ['admin', 'attention'],
+    queryFn: fetchAdminAttention,
     enabled: canTryAdmin,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
   const pendingTournamentApplications = useQuery({
     queryKey: ['admin', 'tournaments', 'pending-applications'],
@@ -880,7 +890,8 @@ export function AdminScreen(): JSX.Element {
     ].some((error) => error instanceof ApiError && error.status === 403);
 
   const selectedUser = users.data?.users.find((item) => item.id === selectedUserId) ?? null;
-  const feedbackUnreadCount = feedback.data?.unreadCount ?? 0;
+  const feedbackUnreadCount = attention.data?.feedbackUnreadCount ?? 0;
+  const officialDialogsUnreadCount = attention.data?.officialDialogsUnreadCount ?? 0;
   const pendingTournamentApplicationCount = pendingTournamentApplications.data?.count ?? 0;
 
   if (denied) {
@@ -921,6 +932,12 @@ export function AdminScreen(): JSX.Element {
           onClick={() => setAdminMenuOpen(true)}
         >
           <Menu size={19} />
+          {(attention.data?.totalCount ?? 0) > 0 && (
+            <span
+              aria-label={`Новые события администратора: ${attention.data!.totalCount}`}
+              className="admin-attention-dot admin-attention-dot--toolbar"
+            />
+          )}
         </button>
       </header>
 
@@ -954,15 +971,14 @@ export function AdminScreen(): JSX.Element {
               <nav className="admin-drawer__navigation" aria-label="Разделы администратора">
                 {tabs.map((item) => {
                   const label =
-                    item.id === 'feedback'
-                      ? `${item.label} (${feedbackUnreadCount})`
-                      : item.id === 'tournaments' && pendingTournamentApplicationCount > 0
+                    item.id === 'tournaments' && pendingTournamentApplicationCount > 0
                         ? `${item.label} (${pendingTournamentApplicationCount})`
                         : item.label;
                   return (
                     <button
                       key={item.id}
                       type="button"
+                      aria-label={label}
                       className={
                         tab === item.id
                           ? 'admin-drawer__item admin-drawer__item--active'
@@ -974,7 +990,19 @@ export function AdminScreen(): JSX.Element {
                         setAdminMenuOpen(false);
                       }}
                     >
-                      {label}
+                      <span>{label}</span>
+                      {item.id === 'feedback' && feedbackUnreadCount > 0 && (
+                        <span
+                          aria-label={`Новые отзывы: ${feedbackUnreadCount}`}
+                          className="admin-attention-dot"
+                        />
+                      )}
+                      {item.id === 'channel' && officialDialogsUnreadCount > 0 && (
+                        <span
+                          aria-label={`Новые сообщения: ${officialDialogsUnreadCount}`}
+                          className="admin-attention-dot"
+                        />
+                      )}
                     </button>
                   );
                 })}
@@ -1036,7 +1064,12 @@ export function AdminScreen(): JSX.Element {
           <SegmentedTabs
             items={[
               { id: 'news', label: 'Новости' },
-              { id: 'dialogs', label: 'Диалоги' },
+              {
+                id: 'dialogs',
+                label: 'Диалоги',
+                attention: officialDialogsUnreadCount > 0,
+              },
+              { id: 'broadcast', label: 'Рассылка' },
               { id: 'official-account', label: 'Официальный аккаунт' },
             ]}
             activeTab={communicationsTab}
@@ -1056,6 +1089,7 @@ export function AdminScreen(): JSX.Element {
             />
           )}
           {communicationsTab === 'dialogs' && <OfficialDialogsPanel />}
+          {communicationsTab === 'broadcast' && <OfficialBroadcastPanel />}
           {communicationsTab === 'official-account' && <OfficialAccountPanel />}
         </>
       )}
@@ -1131,6 +1165,7 @@ export function AdminScreen(): JSX.Element {
           onKind={setFeedbackKind}
           onChanged={() => {
             void queryClient.invalidateQueries({ queryKey: ['admin', 'feedback'] });
+            void queryClient.invalidateQueries({ queryKey: ['admin', 'attention'] });
           }}
         />
       )}
@@ -3751,6 +3786,7 @@ export function OfficialDialogModal({
   const voiceStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
   const voiceTimeoutRef = useRef<number | null>(null);
+  const readInvalidatedRef = useRef(false);
   const [pendingAttachment, setPendingAttachment] = useState<ChatAttachmentDTO | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [voiceState, setVoiceState] = useState<'idle' | 'recording' | 'uploading'>('idle');
@@ -3759,6 +3795,11 @@ export function OfficialDialogModal({
     queryFn: () => fetchAdminOfficialDialogMessages(dialog.chatId),
     refetchInterval: 5_000,
   });
+  useEffect(() => {
+    if (!messages.isSuccess || readInvalidatedRef.current) return;
+    readInvalidatedRef.current = true;
+    onChanged();
+  }, [messages.isSuccess, onChanged]);
   const sendMutation = useMutation({
     mutationFn: ({ content, attachmentIds }: { content: string; attachmentIds: string[] }) =>
       sendAdminOfficialDialogMessage(dialog.chatId, content, attachmentIds),
@@ -4013,6 +4054,7 @@ function OfficialDialogsPanel(): JSX.Element {
   });
   const invalidate = (): void => {
     void queryClient.invalidateQueries({ queryKey: ['admin', 'communications', 'dialogs'] });
+    void queryClient.invalidateQueries({ queryKey: ['admin', 'attention'] });
   };
 
   return (
@@ -4075,6 +4117,113 @@ function OfficialDialogsPanel(): JSX.Element {
           onChanged={invalidate}
         />
       )}
+    </>
+  );
+}
+
+function OfficialBroadcastPanel(): JSX.Element {
+  const [content, setContent] = useState('');
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [resultText, setResultText] = useState<string | null>(null);
+  const audience = useQuery({
+    queryKey: ['admin', 'communications', 'broadcast-audience'],
+    queryFn: fetchAdminBroadcastAudience,
+  });
+  const sendMutation = useMutation({
+    mutationFn: (message: string) => sendAdminDirectBroadcast(crypto.randomUUID(), message),
+    onSuccess: (result) => {
+      setConfirmOpen(false);
+      setContent('');
+      setResultText(
+        result.failedCount === 0
+          ? `Сообщение отправлено ${result.sentCount} игрокам`
+          : `Отправлено ${result.sentCount} из ${result.recipientCount}. Ошибок: ${result.failedCount}`,
+      );
+    },
+  });
+  const recipientCount = audience.data?.recipientCount ?? 0;
+  const trimmedContent = content.trim();
+
+  return (
+    <>
+      <section className="glass admin-broadcast-card">
+        <div>
+          <div className="admin-broadcast-card__title">Личное сообщение от профиля игры</div>
+          <div className="admin-broadcast-card__audience">
+            {audience.isLoading ? 'Считаем получателей...' : `${recipientCount} получателей`}
+          </div>
+        </div>
+        <p>
+          Сообщение появится отдельным личным диалогом у каждого незаблокированного игрока.
+          Администраторы и официальный аккаунт исключены.
+        </p>
+        <label className="admin-broadcast-card__field">
+          <span>Сообщение</span>
+          <textarea
+            aria-label="Текст личной рассылки"
+            value={content}
+            maxLength={4000}
+            rows={7}
+            onChange={(event) => {
+              setContent(event.target.value);
+              setResultText(null);
+            }}
+            placeholder="Напишите сообщение игрокам"
+          />
+          <small>{content.length}/4000</small>
+        </label>
+        <button
+          type="button"
+          className="btn btn--cta"
+          disabled={trimmedContent.length === 0 || recipientCount === 0 || sendMutation.isPending}
+          onClick={() => setConfirmOpen(true)}
+        >
+          Проверить и отправить
+        </button>
+        {resultText && <div className="admin-broadcast-card__success">{resultText}</div>}
+        {sendMutation.error && (
+          <div role="alert" className="admin-official-dialog__error">
+            Не удалось отправить рассылку. Попробуйте ещё раз.
+          </div>
+        )}
+      </section>
+
+      {confirmOpen &&
+        createPortal(
+          <div className="modal-backdrop">
+            <section
+              className="modal-card"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Подтвердить личную рассылку"
+            >
+              <div className="modal-header">
+                <h2 className="modal-title">Отправить всем игрокам?</h2>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Закрыть подтверждение рассылки"
+                  onClick={() => setConfirmOpen(false)}
+                >
+                  <X size={17} />
+                </button>
+              </div>
+              <p className="modal-copy">Сообщение получат {recipientCount} игроков.</p>
+              <div className="admin-broadcast-preview">{trimmedContent}</div>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="modal-primary btn btn--cta"
+                  disabled={sendMutation.isPending}
+                  onClick={() => sendMutation.mutate(trimmedContent)}
+                >
+                  {sendMutation.isPending ? 'Отправляем...' : `Отправить ${recipientCount} игрокам`}
+                </button>
+              </div>
+            </section>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

@@ -407,6 +407,88 @@ describe('AdminScreen', () => {
     expect(within(openAdminMenu()).getByRole('button', { name: 'Онбординг' })).toBeInTheDocument();
   });
 
+  it('shows unread attention on the admin menu and communications dialogs tab', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/admin/attention')) {
+        return new Response(
+          JSON.stringify({
+            feedbackUnreadCount: 2,
+            officialDialogsUnreadCount: 1,
+            totalCount: 3,
+          }),
+        );
+      }
+      return new Promise<Response>(() => undefined);
+    });
+
+    renderAdmin();
+
+    const menu = openAdminMenu();
+    expect(await within(menu).findByLabelText('Новые отзывы: 2')).toBeInTheDocument();
+    expect(within(menu).getByLabelText('Новые сообщения: 1')).toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole('button', { name: 'Коммуникации' }));
+    expect(await screen.findByRole('tab', { name: 'Диалоги Требуется действие' })).toBeInTheDocument();
+  });
+
+  it('previews and confirms a personal broadcast from the official account', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes('/admin/communications/broadcasts/audience')) {
+        return new Response(JSON.stringify({ recipientCount: 12 }));
+      }
+      if (url.includes('/admin/communications/broadcasts') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({ recipientCount: 12, sentCount: 12, failedCount: 0, status: 'sent' }),
+          { status: 201 },
+        );
+      }
+      if (url.includes('/admin/attention')) {
+        return new Response(
+          JSON.stringify({
+            feedbackUnreadCount: 0,
+            officialDialogsUnreadCount: 0,
+            totalCount: 0,
+          }),
+        );
+      }
+      return new Promise<Response>(() => undefined);
+    });
+
+    renderAdmin();
+    selectAdminSection('Коммуникации');
+    fireEvent.click(screen.getByRole('tab', { name: 'Рассылка' }));
+    expect(await screen.findByText('12 получателей')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Текст личной рассылки'), {
+      target: { value: 'Сегодня открыта новая тренировка' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить и отправить' }));
+    const dialog = screen.getByRole('dialog', { name: 'Подтвердить личную рассылку' });
+    expect(within(dialog).getByText('Сегодня открыта новая тренировка')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Отправить 12 игрокам' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/admin/communications/broadcasts',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('Сегодня открыта новая тренировка'),
+        }),
+      ),
+    );
+    expect(await screen.findByText('Сообщение отправлено 12 игрокам')).toBeInTheDocument();
+  });
+
   it('starts with dashboard and renders game settings for admins', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'a',
@@ -516,6 +598,16 @@ describe('AdminScreen', () => {
               ],
             },
             gameCoreVersion: 3,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/admin/attention')) {
+        return new Response(
+          JSON.stringify({
+            feedbackUnreadCount: 2,
+            officialDialogsUnreadCount: 1,
+            totalCount: 3,
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
@@ -1068,9 +1160,8 @@ describe('AdminScreen', () => {
     expect(await screen.findByText('Regular Player')).toBeInTheDocument();
 
     const menuWithUnreadCount = openAdminMenu();
-    expect(
-      within(menuWithUnreadCount).getByRole('button', { name: 'Отзывы (2)' }),
-    ).toBeInTheDocument();
+    expect(within(menuWithUnreadCount).getByRole('button', { name: 'Отзывы' })).toBeInTheDocument();
+    expect(within(menuWithUnreadCount).getByLabelText('Новые отзывы: 2')).toBeInTheDocument();
     expect(
       within(menuWithUnreadCount).getByRole('button', { name: 'Турниры (2)' }),
     ).toBeInTheDocument();
@@ -1091,7 +1182,7 @@ describe('AdminScreen', () => {
 
     selectAdminSection('Коммуникации');
     expect(screen.getByRole('tab', { name: 'Новости' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: 'Диалоги' }));
+    fireEvent.click(screen.getByRole('tab', { name: /^Диалоги/ }));
     expect(await screen.findByText('Диалоги · новых 1')).toBeInTheDocument();
     expect(await screen.findByText('Нужна помощь')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Официальный аккаунт' }));
@@ -1188,7 +1279,7 @@ describe('AdminScreen', () => {
       ),
     );
 
-    selectAdminSection('Отзывы (2)');
+    selectAdminSection('Отзывы');
     expect(await screen.findByText('Обратная связь (1)')).toBeInTheDocument();
     expect(screen.getAllByText('Непрочитанные').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Оценки')).toBeInTheDocument();

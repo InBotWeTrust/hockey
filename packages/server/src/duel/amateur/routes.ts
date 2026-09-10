@@ -3225,6 +3225,21 @@ async function reconcileMatch(
     changed = (await reconcileParticipantTimers(client, match, now)) || changed;
   }
   const refreshed = await fetchMatchForUpdate(client, match.id);
+  if (changed && refreshed.source === 'tournament') {
+    const tournamentSettlement = await reconcileTournamentAttemptForDuel(client, {
+      duelMatchId: refreshed.id,
+      now,
+    });
+    if (tournamentSettlement.changed) {
+      return {
+        match: await fetchMatchForUpdate(client, refreshed.id),
+        changed: true,
+        ...(tournamentSettlement.newlySettledRegularFixture === undefined
+          ? {}
+          : { newlySettledRegularFixture: tournamentSettlement.newlySettledRegularFixture }),
+      };
+    }
+  }
   const settled = await settleMatchIfReady(client, refreshed, now);
   return {
     match: settled.match,

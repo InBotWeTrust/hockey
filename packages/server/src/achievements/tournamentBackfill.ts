@@ -4,6 +4,7 @@ import {
   collectTournamentAchievementCandidates,
   TOURNAMENT_ACHIEVEMENT_IDS,
 } from './tournamentEvaluator.js';
+import { reconcileTournamentDuelAchievements } from './engine.js';
 
 export interface TournamentAchievementBackfillReport {
   tournamentsScanned: number;
@@ -15,6 +16,8 @@ export interface TournamentAchievementBackfillReport {
   inserted: number;
   timestampFallbacks: number;
   ambiguousExperienceSeries: number;
+  duelMatchesScanned: number;
+  duelMatchesEvaluated: number;
 }
 
 function keyOf(candidate: Pick<AchievementCompletionCandidate, 'userId' | 'achievementId'>) {
@@ -99,6 +102,10 @@ async function runBackfill(
     }
   }
 
+  const duelAchievements = await reconcileTournamentDuelAchievements(db, {
+    apply: options.apply,
+  });
+
   return {
     tournamentsScanned: tournaments.rowCount ?? 0,
     distinctUsers: new Set(candidates.map((candidate) => candidate.userId)).size,
@@ -109,6 +116,8 @@ async function runBackfill(
     inserted,
     timestampFallbacks,
     ambiguousExperienceSeries,
+    duelMatchesScanned: duelAchievements.scanned,
+    duelMatchesEvaluated: duelAchievements.evaluated,
   };
 }
 

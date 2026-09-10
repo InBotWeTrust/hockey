@@ -942,6 +942,20 @@ export interface AdminOfficialAccount {
   avatarUrl: string | null;
 }
 
+export interface AdminAttention {
+  feedbackUnreadCount: number;
+  officialDialogsUnreadCount: number;
+  totalCount: number;
+}
+
+export interface AdminDirectBroadcastResult {
+  id: string;
+  recipientCount: number;
+  sentCount: number;
+  failedCount: number;
+  status: 'processing' | 'sent' | 'partial' | 'failed';
+}
+
 export interface AdminInventoryItemPatch {
   photoUrl?: string;
   title?: string;
@@ -1163,6 +1177,24 @@ export function fetchAdminOfficialDialogs(
   return apiFetch<AdminOfficialDialogsResponse>(
     `/admin/communications/dialogs?${params.toString()}`,
   );
+}
+
+export function fetchAdminAttention(): Promise<AdminAttention> {
+  return apiFetch<AdminAttention>('/admin/attention');
+}
+
+export function fetchAdminBroadcastAudience(): Promise<{ recipientCount: number }> {
+  return apiFetch<{ recipientCount: number }>('/admin/communications/broadcasts/audience');
+}
+
+export function sendAdminDirectBroadcast(
+  id: string,
+  content: string,
+): Promise<AdminDirectBroadcastResult> {
+  return apiFetch<AdminDirectBroadcastResult>('/admin/communications/broadcasts', {
+    method: 'POST',
+    body: JSON.stringify({ id, content }),
+  });
 }
 
 export function fetchAdminOfficialDialogMessages(

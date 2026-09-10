@@ -15,7 +15,7 @@ import { buildProfileProgress } from '../profile/summary.js';
 import { deleteChannelPost, updateChannelPostContent } from '../chat/channel.js';
 import { publishMessageDeleted, publishMessageUpdated } from '../chat/events.js';
 import { DEFAULT_NEWS_CHANNEL_SLUG } from '../chat/service.js';
-import { getMessages, sendMessage } from '../chat/service.js';
+import { findOrCreateDM, getMessages, sendMessage } from '../chat/service.js';
 import { loadChatAttachments, signMessageAttachmentUrls } from '../chat/routes.js';
 import { publishMessageNew } from '../chat/events.js';
 import { invalidateUnreadCache } from '../chat/cache.js';
@@ -1980,6 +1980,179 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
     }
     return { officialUserId, playerUserId };
   };
+
+  const fetchBroadcastResult = async (broadcastId: string) => {
+    const result = await app.pg.query<{
+      id: string;
+      recipient_count: number;
+      sent_count: number;
+      failed_count: number;
+      status: 'processing' | 'sent' | 'partial' | 'failed';
+    }>(
+      `select id, recipient_count, sent_count, failed_count, status
+         from admin_direct_broadcasts
+        where id = $1`,
+      [broadcastId],
+    );
+    const row = result.rows[0];
+    if (row === undefined) throw new AppError('not_found', 'broadcast not found', 404);
+    return {
+      id: row.id,
+      recipientCount: row.recipient_count,
+      sentCount: row.sent_count,
+      failedCount: row.failed_count,
+      status: row.status,
+    };
+  };
+
+  app.get('/admin/attention', { preHandler: adminPreHandlers }, async () => {
+    const officialUserId = requireOfficialAccountId();
+    const [feedback, dialogs] = await Promise.all([
+      app.pg.query<{ count: string }>(
+        `select count(*)::text as count from feedback_messages where is_read = false`,
+      ),
+      app.pg.query<{ count: string }>(
+        `select count(*)::text as count
+           from official_dialog_state state
+           join messages last_message on last_message.id = (
+             select id from messages
+              where chat_id = state.chat_id and is_deleted = false
+              order by created_at desc limit 1
+           )
+          where last_message.sender_id <> $1
+            and last_message.created_at > coalesce(state.last_admin_read_at, '-infinity')`,
+        [officialUserId],
+      ),
+    ]);
+    const feedbackUnreadCount = Number(feedback.rows[0]?.count ?? 0);
+    const officialDialogsUnreadCount = Number(dialogs.rows[0]?.count ?? 0);
+    return {
+      feedbackUnreadCount,
+      officialDialogsUnreadCount,
+      totalCount: feedbackUnreadCount + officialDialogsUnreadCount,
+    };
+  });
+
+  app.get(
+    '/admin/communications/broadcasts/audience',
+    { preHandler: adminPreHandlers },
+    async () => {
+      const officialUserId = requireOfficialAccountId();
+      const result = await app.pg.query<{ count: string }>(
+        `select count(*)::text as count
+           from users
+          where role = 'player'
+            and account_kind = 'player'
+            and blocked_at is null
+            and id <> $1`,
+        [officialUserId],
+      );
+      return { recipientCount: Number(result.rows[0]?.count ?? 0) };
+    },
+  );
+
+  app.post(
+    '/admin/communications/broadcasts',
+    { preHandler: adminPreHandlers },
+    async (req, reply) => {
+      const officialUserId = requireOfficialAccountId();
+      const body = z
+        .object({ id: z.string().uuid(), content: z.string().trim().min(1).max(4000) })
+        .parse(req.body);
+      const inserted = await app.pg.query(
+        `insert into admin_direct_broadcasts (id, created_by, content)
+         values ($1, $2, $3)
+         on conflict (id) do nothing
+         returning id`,
+        [body.id, req.user.id, body.content],
+      );
+      if (inserted.rowCount === 0) {
+        return await fetchBroadcastResult(body.id);
+      }
+
+      await app.pg.query(
+        `insert into admin_direct_broadcast_recipients (broadcast_id, user_id)
+         select $1, id
+           from users
+          where role = 'player'
+            and account_kind = 'player'
+            and blocked_at is null
+            and id <> $2`,
+        [body.id, officialUserId],
+      );
+      const recipients = await app.pg.query<{ user_id: string }>(
+        `select user_id
+           from admin_direct_broadcast_recipients
+          where broadcast_id = $1 and status = 'pending'
+          order by user_id`,
+        [body.id],
+      );
+      await app.pg.query(
+        `update admin_direct_broadcasts set recipient_count = $2 where id = $1`,
+        [body.id, recipients.rows.length],
+      );
+
+      for (const recipient of recipients.rows) {
+        try {
+          const { chatId } = await findOrCreateDM(app.pg, officialUserId, recipient.user_id);
+          const message = await sendMessage(app.pg, {
+            chatId,
+            senderId: officialUserId,
+            content: body.content,
+            metadata: { adminBroadcastId: body.id },
+          });
+          await app.pg.query(
+            `update admin_direct_broadcast_recipients
+                set status = 'sent', chat_id = $3, message_id = $4, error = null, updated_at = now()
+              where broadcast_id = $1 and user_id = $2`,
+            [body.id, recipient.user_id, chatId, message.id],
+          );
+          await invalidateUnreadCache(app.redis, recipient.user_id);
+          await publishMessageNew(app.pg, app.realtime, chatId, 'direct', message);
+          void enqueueDialogMessagePush(app.pg, {
+            chatId,
+            senderId: officialUserId,
+            messageId: message.id,
+            content: message.content,
+          }).catch((err) =>
+            app.log.warn({ err, chatId, broadcastId: body.id }, 'broadcast push failed'),
+          );
+        } catch (err) {
+          await app.pg.query(
+            `update admin_direct_broadcast_recipients
+                set status = 'failed', error = $3, updated_at = now()
+              where broadcast_id = $1 and user_id = $2`,
+            [body.id, recipient.user_id, err instanceof Error ? err.message.slice(0, 500) : 'unknown'],
+          );
+        }
+      }
+
+      const counts = await app.pg.query<{ sent_count: number; failed_count: number }>(
+        `select count(*) filter (where status = 'sent')::int as sent_count,
+                count(*) filter (where status = 'failed')::int as failed_count
+           from admin_direct_broadcast_recipients
+          where broadcast_id = $1`,
+        [body.id],
+      );
+      const sentCount = counts.rows[0]?.sent_count ?? 0;
+      const failedCount = counts.rows[0]?.failed_count ?? 0;
+      const status = failedCount === 0 ? 'sent' : sentCount === 0 ? 'failed' : 'partial';
+      await app.pg.query(
+        `update admin_direct_broadcasts
+            set sent_count = $2, failed_count = $3, status = $4, completed_at = now()
+          where id = $1`,
+        [body.id, sentCount, failedCount, status],
+      );
+      await appendEvent(app.pg, req.user.id, 'admin_direct_broadcast_sent', {
+        broadcast_id: body.id,
+        recipient_count: recipients.rows.length,
+        sent_count: sentCount,
+        failed_count: failedCount,
+      });
+      reply.code(201);
+      return await fetchBroadcastResult(body.id);
+    },
+  );
 
   app.get('/admin/communications/dialogs', { preHandler: adminPreHandlers }, async (req) => {
     const officialUserId = requireOfficialAccountId();

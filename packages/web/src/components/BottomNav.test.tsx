@@ -700,4 +700,32 @@ describe('BottomNav remembered navigation', () => {
 
     expect(screen.getByLabelText('admin-section')).toHaveTextContent('dashboard');
   });
+
+  it('shows admin attention count for unread feedback and official dialogs', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/admin/attention')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              feedbackUnreadCount: 2,
+              officialDialogsUnreadCount: 3,
+              totalCount: 5,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    renderBottomNav('/profile');
+
+    expect(await screen.findByLabelText('События администратора: 5')).toHaveTextContent('5');
+  });
 });

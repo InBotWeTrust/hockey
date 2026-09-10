@@ -83,7 +83,16 @@ describe('tournament public schedule service', () => {
           },
         ],
       })
-      .mockResolvedValueOnce({ rows: [{ has_other_games: true }] });
+      .mockResolvedValueOnce({ rows: [{ has_other_games: true }] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            round_number: 2,
+            stage: 'third_place',
+            completed_on_local_date: '2030-09-02',
+          },
+        ],
+      });
 
     const result = await getTournamentScheduleDay(
       { query } as unknown as Pool,
@@ -114,8 +123,15 @@ describe('tournament public schedule service', () => {
         }),
       ],
       hasOtherGames: true,
+      completedPlayoffStages: [
+        {
+          roundNumber: 2,
+          stage: 'third_place',
+          completedOnLocalDate: '2030-09-02',
+        },
+      ],
     });
-    expect(query).toHaveBeenCalledTimes(3);
+    expect(query).toHaveBeenCalledTimes(4);
     expect(query.mock.calls[1]?.[0]).toContain('$3::date');
     expect(query.mock.calls[1]?.[0]).toContain('fixture.series_id in');
     expect(query.mock.calls[1]?.[0]).toContain('series_fixture.local_date = $3::date');
@@ -126,6 +142,7 @@ describe('tournament public schedule service', () => {
     expect(query.mock.calls[1]?.[0]).toContain('planned_game_day.local_date');
     expect(query.mock.calls[1]?.[0]).toContain('sum(day.max_result_bearing_games)');
     expect(query.mock.calls[2]?.[0]).toContain('not in (home_user_id, away_user_id)');
+    expect(query.mock.calls[3]?.[0]).toContain("bool_and(series.status = 'completed')");
   });
 
   it('returns complete selected-date series after the user asks for other games', async () => {

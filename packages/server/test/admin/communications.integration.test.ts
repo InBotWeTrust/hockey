@@ -112,6 +112,87 @@ describe.skipIf(!hasIntegrationEnv)('official communications admin inbox', () =>
     });
   });
 
+  it('summarizes unread feedback and official dialogs for admins only', async () => {
+    await pool.query(`update feedback_messages set is_read = true`);
+    await pool.query(
+      `insert into feedback_messages (user_id, kind, rating, message)
+       values ($1, 'review', 5, 'Отличная игра')`,
+      [PLAYER_ID],
+    );
+    await pool.query(`update official_dialog_state set last_admin_read_at = now()`);
+    await sendMessage(pool, { chatId, senderId: PLAYER_ID, content: 'Есть новый вопрос' });
+
+    const denied = await app.inject({
+      method: 'GET',
+      url: '/admin/attention',
+      headers: auth(playerToken),
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/admin/attention',
+      headers: auth(adminToken),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      feedbackUnreadCount: 1,
+      officialDialogsUnreadCount: 1,
+      totalCount: 2,
+    });
+  });
+
+  it('sends an idempotent personal broadcast only to eligible players', async () => {
+    const secondPlayerId = '55555555-5555-4555-8555-555555555555';
+    const blockedPlayerId = '66666666-6666-4666-8666-666666666666';
+    await pool.query(
+      `insert into users (id, display_name, timezone, role, account_kind, blocked_at)
+       values ($1, 'Мария', 'Europe/Moscow', 'player', 'player', null),
+              ($2, 'Заблокирован', 'Europe/Moscow', 'player', 'player', now())
+       on conflict (id) do nothing`,
+      [secondPlayerId, blockedPlayerId],
+    );
+
+    const audience = await app.inject({
+      method: 'GET',
+      url: '/admin/communications/broadcasts/audience',
+      headers: auth(adminToken),
+    });
+    expect(audience.statusCode).toBe(200);
+    expect(audience.json()).toEqual({ recipientCount: 2 });
+
+    const broadcastId = '77777777-7777-4777-8777-777777777777';
+    const first = await app.inject({
+      method: 'POST',
+      url: '/admin/communications/broadcasts',
+      headers: auth(adminToken),
+      payload: { id: broadcastId, content: 'Общая личная рассылка' },
+    });
+    expect(first.statusCode).toBe(201);
+    expect(first.json()).toMatchObject({
+      id: broadcastId,
+      recipientCount: 2,
+      sentCount: 2,
+      failedCount: 0,
+      status: 'sent',
+    });
+
+    const repeated = await app.inject({
+      method: 'POST',
+      url: '/admin/communications/broadcasts',
+      headers: auth(adminToken),
+      payload: { id: broadcastId, content: 'Общая личная рассылка' },
+    });
+    expect(repeated.statusCode).toBe(200);
+    const delivered = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from messages
+        where sender_id = $1 and content = 'Общая личная рассылка'`,
+      [OFFICIAL_ID],
+    );
+    expect(delivered.rows[0]?.count).toBe('2');
+  });
+
   it('delivers player feedback directly to the official dialog and shared admin inbox', async () => {
     const sent = await app.inject({
       method: 'POST',
@@ -130,11 +211,9 @@ describe.skipIf(!hasIntegrationEnv)('official communications admin inbox', () =>
     });
     expect(dialogMessages.statusCode).toBe(200);
     expect(dialogMessages.json()).toEqual(
-      expect.objectContaining({
-        messages: expect.arrayContaining([
-          expect.objectContaining({ senderId: PLAYER_ID, content: 'Подскажите по турниру' }),
-        ]),
-      }),
+      expect.arrayContaining([
+        expect.objectContaining({ senderId: PLAYER_ID, content: 'Подскажите по турниру' }),
+      ]),
     );
   });
 

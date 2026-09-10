@@ -150,6 +150,11 @@ export interface TournamentScheduleResponse {
   myGames?: TournamentFixture[];
   hasOtherGames?: boolean;
   matchdays?: TournamentMatchday[];
+  completedPlayoffStages?: Array<{
+    roundNumber: number;
+    stage: 'playoff' | 'third_place';
+    completedOnLocalDate: string;
+  }>;
   /** Test/legacy response compatibility; the authenticated server never returns this field. */
   fixtures?: TournamentFixture[];
 }

@@ -1459,7 +1459,11 @@ export function ChatRoomScreen(): JSX.Element {
           </div>
         )}
         {showInitialMessagesEmpty && (
-          <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: 24 }}>
+          <div
+            role="status"
+            aria-label={isChannel ? 'Постов пока нет' : 'Сообщений пока нет'}
+            className="chat-room__empty-state"
+          >
             {isChannel ? 'Постов пока нет' : 'Сообщений пока нет'}
           </div>
         )}

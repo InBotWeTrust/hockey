@@ -25,7 +25,7 @@ const TOURNAMENT_SETTLEMENT_POLICY: DuelSettlementPolicy = {
   settleStake: false,
   grantTemplateRewards: false,
   updateRating: false,
-  evaluateAchievements: false,
+  evaluateAchievements: true,
 };
 
 interface DuelInventoryReservationParticipant {

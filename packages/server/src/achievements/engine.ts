@@ -497,6 +497,45 @@ export async function evaluateDuelSettledAchievements(
   await updateDuelPostSettleProgress(db, event.matchId, ctx);
 }
 
+export async function reconcileTournamentDuelAchievements(
+  db: Queryable,
+  options: { apply: boolean } = { apply: true },
+): Promise<{ scanned: number; evaluated: number }> {
+  const settled = await db.query<{
+    id: string;
+    winner_user_id: string;
+    already_reconciled: boolean;
+  }>(
+    `select match.id,
+            match.winner_user_id,
+            exists (
+              select 1
+                from event_log event
+               where event.user_id = match.winner_user_id
+                 and event.type = 'tournament_duel_achievements_reconciled'
+                 and event.payload->>'match_id' = match.id::text
+            ) as already_reconciled
+       from amateur_duel_match match
+      where match.source = 'tournament'
+        and match.status = 'settled'
+        and match.winner_user_id is not null
+      order by match.settled_at asc nulls last, match.id asc`,
+  );
+  let evaluated = 0;
+  for (const match of settled.rows) {
+    if (match.already_reconciled || !options.apply) continue;
+    await evaluateDuelSettledAchievements(db, {
+      matchId: match.id,
+      winnerUserId: match.winner_user_id,
+    });
+    await appendEvent(db, match.winner_user_id, 'tournament_duel_achievements_reconciled', {
+      match_id: match.id,
+    });
+    evaluated += 1;
+  }
+  return { scanned: settled.rows.length, evaluated };
+}
+
 async function fetchDailyResults(db: Queryable, dayPoolId: string): Promise<ShotResult[]> {
   const { rows } = await db.query<{ server_result: ShotResult }>(
     `select server_result
