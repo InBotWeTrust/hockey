@@ -126,6 +126,7 @@ describe.skipIf(!hasIntegrationEnv)('historical duel reward API compatibility', 
       const before = await readState();
       expect((await applyMigrations(app.pg, migrations)).applied).toEqual([
         '121_duel_reward_storage_limits.sql',
+        '122_production_data_operations.sql',
       ]);
       const catalog = await app.inject({ method: 'GET', url: '/admin/duel-templates', headers });
       expect(catalog.statusCode).toBe(200);

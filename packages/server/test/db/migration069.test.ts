@@ -259,6 +259,7 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
       '119_duel_reward_matrix.sql',
       '120_monthly_duel_rating_rewards.sql',
       '121_duel_reward_storage_limits.sql',
+      '122_production_data_operations.sql',
     ]);
 
     const accuracy = await pool.query<{

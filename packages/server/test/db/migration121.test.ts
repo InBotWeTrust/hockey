@@ -87,7 +87,9 @@ describe.skipIf(!hasIntegrationEnv)('121 duel reward storage limits', () => {
       matches: (await pool.query('select * from amateur_duel_match order by id')).rows,
     });
     const before = await snapshot();
-    expect(await applyMigrations(pool, MIGRATIONS_DIR)).toEqual({ applied: [MIGRATION] });
+    expect(await applyMigrations(pool, MIGRATIONS_DIR)).toEqual({
+      applied: [MIGRATION, '122_production_data_operations.sql'],
+    });
     expect(await snapshot()).toEqual(before);
     expect(
       (
