@@ -46,7 +46,7 @@ import { rebuildHeadToHeadStandings } from './standingsPersistence.js';
 import { rebuildClassicStandings } from './classicStandings.js';
 import { advanceTournamentPlayoffSeries } from './playoffSeriesLifecycle.js';
 import { enqueueTournamentFixtureResultPush } from './fixtureNotifications.js';
-import { lockTournament, lockTournamentFixture } from './locks.js';
+import { lockTournament, lockTournamentFixture, lockTournamentParticipants } from './locks.js';
 import { canTransitionTournament } from './lifecycle.js';
 import { tournamentSlugBase } from './slug.js';
 import type { TournamentConfig, TournamentPlayoffSize, TournamentStatus } from './types.js';
@@ -2760,10 +2760,7 @@ export async function publishRegularSchedule(pool: Pool, tournamentId: string) {
       [tournamentId],
     );
     const publishedConfig = current.rules_snapshot.config;
-    if (
-      current.regular_source === 'classic' &&
-      publishedConfig.regularSource === 'classic'
-    ) {
+    if (current.regular_source === 'classic' && publishedConfig.regularSource === 'classic') {
       await rebuildClassicStandings(client, tournamentId, {
         ...current.rules_snapshot,
         config: publishedConfig,
@@ -3407,12 +3404,7 @@ export async function getTournamentGameContext(
         'Этот тур уже завершён. Ожидаем следующий игровой день.',
       );
     }
-    return tournamentGameContext(
-      'play_classic',
-      Number(activeMatchday.number),
-      result,
-      null,
-    );
+    return tournamentGameContext('play_classic', Number(activeMatchday.number), result, null);
   }
 
   const previous = await pool.query<TournamentGameContextMatchday>(
@@ -4143,6 +4135,7 @@ async function materializeTieBreakRound(
 export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, now = new Date()) {
   return inTransaction(pool, async (client) => {
     await lockTournament(client, tournamentId);
+    await lockTournamentParticipants(client, tournamentId);
     const tournamentResult = await client.query<{
       status: TournamentStatus;
       title: string;

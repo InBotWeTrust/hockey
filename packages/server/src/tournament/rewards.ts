@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { reconcileTournamentAchievements } from '../achievements/tournamentEvaluator.js';
 import { AppError } from '../plugins/errors.js';
 import { enqueueTournamentAudiencePush } from '../push/tournament.js';
+import { lockTournament, lockTournamentParticipants } from './locks.js';
 
 interface CompletedSeries {
   higherId: string;
@@ -132,6 +133,8 @@ export async function grantTournamentStageRewardsWithClient(
   tournamentId: string,
   stage: 'regular' | 'playoff',
 ) {
+  await lockTournament(client, tournamentId);
+  await lockTournamentParticipants(client, tournamentId);
   const tournament = await client.query<{
     title: string;
     rules_snapshot: Record<string, unknown>;
@@ -221,12 +224,6 @@ export async function grantTournamentStageRewardsWithClient(
       user_id: userByParticipant.get(row.participantId)!,
     }));
   }
-  // Acquire the complete recipient set before any placement-ordered reward write.
-  await client.query('select id from users where id = any($1::uuid[]) order by id for update', [
-    placements
-      .filter((placement) => rewards.some((reward) => reward.place === Number(placement.place)))
-      .map((placement) => placement.user_id),
-  ]);
   let granted = 0;
   for (const reward of rewards) {
     const placement = placements.find((row) => Number(row.place) === reward.place);

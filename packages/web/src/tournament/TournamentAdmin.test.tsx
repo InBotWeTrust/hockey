@@ -380,6 +380,96 @@ describe('TournamentAdmin', () => {
     },
   );
 
+  it.each(['loading', 'error'] as const)(
+    'revokes an already queued autosave while the preset is %s',
+    async (state) => {
+      let resolveSave!: (value: { tournament: api.AdminTournament }) => void;
+      const update = vi
+        .spyOn(api, 'updateAdminTournament')
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveSave = resolve;
+          }),
+        )
+        .mockResolvedValue({ tournament: { ...newDraftTournament(), revision: 3 } });
+      await openNewTournamentWizard();
+      vi.useFakeTimers();
+      try {
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Минимальный уровень' }), {
+          target: { value: '1' },
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(601);
+        });
+        expect(update).toHaveBeenCalledTimes(1);
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Минимальный уровень' }), {
+          target: { value: '2' },
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(601);
+        });
+        let resolvePreset!: (value: api.TournamentEconomyPreset) => void;
+        let rejectPreset!: (error: Error) => void;
+        vi.mocked(api.fetchTournamentEconomyPreset).mockImplementation(
+          () =>
+            new Promise((resolve, reject) => {
+              resolvePreset = resolve;
+              rejectPreset = reject;
+            }),
+        );
+        for (let index = 0; index < 4; index += 1)
+          fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Применить рекомендуемые значения' }));
+        if (state === 'error')
+          await act(async () => {
+            rejectPreset(new Error('preset failed'));
+          });
+        await act(async () => {
+          resolveSave({ tournament: { ...newDraftTournament(), revision: 2 } });
+        });
+        expect(update).toHaveBeenCalledTimes(1);
+        if (state === 'error') {
+          fireEvent.change(screen.getByRole('spinbutton', { name: 'Монеты награды регулярки 1' }), {
+            target: { value: '777' },
+          });
+        } else {
+          await act(async () => {
+            resolvePreset({ ...economyPresetFor(16), entryFeeCoins: 12345 });
+          });
+        }
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(601);
+        });
+        expect(update).toHaveBeenCalledTimes(2);
+        expect(update.mock.calls[1]).toEqual([
+          newDraftTournament().id,
+          2,
+          expect.objectContaining({
+            rules: expect.objectContaining({
+              eligibility: expect.objectContaining({ minLevel: 2 }),
+            }),
+          }),
+        ]);
+        const body = update.mock.calls[1]![2];
+        expect(body.rules).toMatchObject(
+          state === 'error'
+            ? {
+                stageRewards: {
+                  regular: [
+                    expect.objectContaining({ coins: 777 }),
+                    expect.anything(),
+                    expect.anything(),
+                  ],
+                },
+              }
+            : { config: { entryFeeCoins: 12345 } },
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it('autosaves the visible preset values after a pristine participant-limit change', async () => {
     const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
       tournament: { ...newDraftTournament(), revision: 2 },
@@ -878,6 +968,9 @@ describe('TournamentAdmin', () => {
 
     expect(screen.getByRole('button', { name: 'Публикуем…' })).toBeDisabled();
     expect(screen.getByRole('status')).toHaveTextContent('Публикуем…');
+    expect(screen.getByRole('button', { name: '3. Регулярка' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '6. Награды' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Назад' })).toBeDisabled();
 
     expect(update).toHaveBeenCalledWith(
       tournament.id,

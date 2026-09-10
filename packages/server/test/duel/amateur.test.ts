@@ -4141,8 +4141,11 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     },
   );
 
-  async function oldSeasonMatch(endsAt: string) {
-    const created = await challenge(await createTemplate());
+  async function oldSeasonMatch(
+    endsAt: string,
+    options: Parameters<typeof createTemplate>[0] = {},
+  ) {
+    const created = await challenge(await createTemplate(options));
     const matchId = created.json().match.id as string;
     expect(
       (
@@ -4189,6 +4192,251 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         )
       ).rows,
     ).toEqual([{ matches_played: 30 }]);
+  });
+
+  it.each(['close', 'settle'])(
+    'materializes the complete nonfinal timer chain before %s assigns a month',
+    async (first) => {
+      const matchId = await oldSeasonMatch('2026-09-01T01:00:00Z', {
+        totalPeriods: 2,
+        breakDurationMs: 900000,
+      });
+      await pool.query(
+        "update amateur_duel_participant set state='period_active',completed_at=null,period_started_at='2026-08-31T20:15:00Z' where match_id=$1",
+        [matchId],
+      );
+      const settle = () =>
+        app.inject({
+          method: 'POST',
+          url: `/duel/amateur/matches/${matchId}/settle`,
+          headers: auth(tokenA),
+        });
+      if (first === 'settle') expect((await settle()).statusCode).toBe(200);
+      await reconcileCompletedMonthlyRating(pool, new Date('2026-08-31T21:00:00Z'));
+      expect(
+        (
+          await pool.query(
+            "select matches_played from monthly_duel_rating_placement where user_id=$1 and season_key='2026-08'",
+            [userA],
+          )
+        ).rows,
+      ).toEqual([{ matches_played: 30 }]);
+      expect((await settle()).statusCode).toBe(200);
+      expect(
+        (
+          await pool.query(
+            'select state,completed_at from amateur_duel_participant where match_id=$1',
+            [matchId],
+          )
+        ).rows,
+      ).toEqual([
+        { state: 'forfeit', completed_at: new Date('2026-08-31T20:55:00Z') },
+        { state: 'forfeit', completed_at: new Date('2026-08-31T20:55:00Z') },
+      ]);
+      expect(
+        (
+          await pool.query(
+            'select distinct season_key from amateur_duel_rating_match where match_id=$1',
+            [matchId],
+          )
+        ).rows,
+      ).toEqual([{ season_key: '2026-08' }]);
+    },
+  );
+
+  it.each(['challenge', 'matchmaking'] as const)(
+    'settles old unranked %s after monthly close without rating writes',
+    async (source) => {
+      const matchId = await oldSeasonMatch('2026-08-31T20:59:59Z');
+      await pool.query(
+        `update amateur_duel_match set ranked=false,source=$2,
+      reward_rules=jsonb_set(reward_rules,'{draw}','{"coins":5,"stars":3,"tokens":1}'),
+      rules_snapshot=jsonb_set(rules_snapshot,'{rewardRules,draw}','{"coins":5,"stars":3,"tokens":1}') where id=$1`,
+        [matchId, source],
+      );
+      const itemId = await createInventoryItem('stick', 'Unranked reserve');
+      await pool.query(
+        'insert into user_inventory_item(user_id,inventory_item_id,charges_available,charges_reserved) values($1,$2,1,2)',
+        [userA, itemId],
+      );
+      await pool.query(
+        `update amateur_duel_participant set reserved_inventory_charges=2,consumed_inventory_charges=0,loadout_snapshot=$3 where match_id=$1 and user_id=$2`,
+        [
+          matchId,
+          userA,
+          {
+            items: [
+              {
+                id: itemId,
+                itemId,
+                instanceId: null,
+                kind: 'stick',
+                title: 'Unranked reserve',
+                chargesReserved: 2,
+                duelPeriodCost: 1,
+              },
+            ],
+          },
+        ],
+      );
+      await reconcileCompletedMonthlyRating(pool, new Date('2026-08-31T21:00:00Z'));
+      const ratingState = async () => ({
+        seasons: (await pool.query('select * from monthly_duel_rating_season order by season_key'))
+          .rows,
+        placements: (
+          await pool.query('select * from monthly_duel_rating_placement order by user_id')
+        ).rows,
+        rating: (await pool.query('select * from amateur_duel_rating_live order by user_id')).rows,
+      });
+      const frozen = await ratingState();
+      for (let retry = 0; retry < 2; retry += 1) {
+        const response = await app.inject({
+          method: 'POST',
+          url: `/duel/amateur/matches/${matchId}/settle`,
+          headers: auth(tokenA),
+        });
+        expect(response.statusCode).toBe(200);
+        expect(response.json().match).toMatchObject({
+          status: 'settled',
+          ranked: false,
+          season_key: '2026-08',
+        });
+      }
+      expect(
+        (
+          await pool.query(
+            'select count(*)::int as count from amateur_duel_rating_match where match_id=$1',
+            [matchId],
+          )
+        ).rows,
+      ).toEqual([{ count: 0 }]);
+      expect(
+        (
+          await pool.query(
+            "select available_delta,metadata from currency_ledger where duel_match_id=$1 and reason='duel_reward'",
+            [matchId],
+          )
+        ).rows,
+      ).toEqual([
+        expect.objectContaining({
+          available_delta: 5,
+          metadata: expect.objectContaining({ coins: 5, stars: 3, tokens: 1 }),
+        }),
+        expect.objectContaining({
+          available_delta: 5,
+          metadata: expect.objectContaining({ coins: 5, stars: 3, tokens: 1 }),
+        }),
+      ]);
+      expect(
+        (
+          await pool.query(
+            'select xp,balance from users join user_currency_account on user_id=id where id=$1',
+            [userA],
+          )
+        ).rows,
+      ).toEqual([{ xp: 3, balance: 105 }]);
+      expect(
+        (
+          await pool.query(
+            'select charges_available,charges_reserved from user_inventory_item where user_id=$1 and inventory_item_id=$2',
+            [userA, itemId],
+          )
+        ).rows,
+      ).toEqual([{ charges_available: 3, charges_reserved: 0 }]);
+      expect(await ratingState()).toEqual(frozen);
+    },
+  );
+
+  it('keeps the closed-season guard for a surviving ranked historical result', async () => {
+    const matchId = await oldSeasonMatch('2026-08-31T20:59:59Z');
+    // Emulate an old open result absent from a snapshot made by an earlier release.
+    await pool.query('update amateur_duel_match set ranked=false where id=$1', [matchId]);
+    await reconcileCompletedMonthlyRating(pool, new Date('2026-08-31T21:00:00Z'));
+    await pool.query('update amateur_duel_match set ranked=true where id=$1', [matchId]);
+    const before = (await pool.query('select * from monthly_duel_rating_season')).rows;
+    const response = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/settle`,
+      headers: auth(tokenA),
+    });
+    expect(response.statusCode).toBe(409);
+    expect(
+      (await pool.query('select status from amateur_duel_match where id=$1', [matchId])).rows,
+    ).toEqual([{ status: 'active' }]);
+    expect(
+      (await pool.query('select * from amateur_duel_rating_match where match_id=$1', [matchId]))
+        .rows,
+    ).toEqual([]);
+    expect((await pool.query('select * from monthly_duel_rating_season')).rows).toEqual(before);
+  });
+
+  it.each([
+    { first: 'close', activeCount: 2, timeout: '2026-08-31T20:59:00Z', month: '2026-08' },
+    { first: 'settle', activeCount: 2, timeout: '2026-08-31T20:59:00Z', month: '2026-08' },
+    { first: 'close', activeCount: 1, timeout: '2026-08-31T20:59:00Z', month: '2026-08' },
+    { first: 'settle', activeCount: 1, timeout: '2026-08-31T20:59:00Z', month: '2026-08' },
+    { first: 'close', activeCount: 2, timeout: '2026-08-31T21:00:00Z', month: '2026-09' },
+    { first: 'settle', activeCount: 2, timeout: '2026-08-31T21:00:00Z', month: '2026-09' },
+  ])('materializes final timers before $first ($activeCount active, $month)', async (fixture) => {
+    const matchId = await oldSeasonMatch('2026-09-01T01:00:00Z');
+    await pool.query(
+      `update amateur_duel_participant set state='period_active', completed_at=null,
+         period_started_at=$2::timestamptz - interval '20 minutes'
+       where match_id=$1 and ($3=2 or user_id=$4)`,
+      [matchId, fixture.timeout, fixture.activeCount, userA],
+    );
+    const settle = () =>
+      app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${matchId}/settle`,
+        headers: auth(tokenA),
+      });
+    if (fixture.first === 'settle') expect((await settle()).statusCode).toBe(200);
+    await reconcileCompletedMonthlyRating(pool, new Date('2026-08-31T21:00:00Z'));
+    const snapshot = (
+      await pool.query('select * from monthly_duel_rating_placement order by user_id')
+    ).rows;
+    expect(snapshot.filter((row) => row.user_id === userA)).toEqual(
+      fixture.month === '2026-08' ? [expect.objectContaining({ matches_played: 30 })] : [],
+    );
+    expect((await settle()).statusCode).toBe(200);
+    expect((await settle()).statusCode).toBe(200);
+    expect(
+      (
+        await pool.query(
+          'select distinct season_key from amateur_duel_rating_match where match_id=$1',
+          [matchId],
+        )
+      ).rows,
+    ).toEqual([{ season_key: fixture.month }]);
+    expect(
+      (
+        await pool.query(
+          'select ended_at,closed_reason from amateur_duel_period_log where match_id=$1',
+          [matchId],
+        )
+      ).rows,
+    ).toEqual(
+      Array.from({ length: fixture.activeCount }, () => ({
+        ended_at: new Date(fixture.timeout),
+        closed_reason: 'timeout',
+      })),
+    );
+    expect(
+      (
+        await pool.query(
+          'select state,completed_at from amateur_duel_participant where match_id=$1',
+          [matchId],
+        )
+      ).rows,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ state: 'completed', completed_at: new Date(fixture.timeout) }),
+      ]),
+    );
+    expect(
+      (await pool.query('select * from monthly_duel_rating_placement order by user_id')).rows,
+    ).toEqual(snapshot);
   });
 
   it('serializes ordinary settlement with monthly close before taking match rows', async () => {

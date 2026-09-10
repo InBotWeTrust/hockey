@@ -15,6 +15,66 @@ type Snapshot = { title: string };
 type Saved = { revision: number; title: string };
 
 describe('TournamentDraftSaveQueue', () => {
+  it.each([false, true])(
+    'does not authorize finishing after the draft generation changes during flush (ready again: %s)',
+    async (readyAgain) => {
+      const first = deferred<Saved>();
+      let ready = true;
+      let generation = 1;
+      const queue = new TournamentDraftSaveQueue({
+        initialRevision: 1,
+        initialSnapshotKey: 'initial',
+        save: () => first.promise,
+        revisionOf: (result: Saved) => result.revision,
+      });
+      const finish = queue.flushSnapshot(
+        { title: 'Old preset' },
+        'old',
+        () => ready && generation === 1,
+      );
+      const rejected = expect(finish).rejects.toThrow('draft changed');
+      ready = false;
+      generation = 2;
+      ready = readyAgain;
+      first.resolve({ revision: 2, title: 'Old preset' });
+      await rejected;
+    },
+  );
+  it('revokes pending snapshots on pause and resumes only the current valid draft', async () => {
+    const first = deferred<Saved>();
+    const latest = deferred<Saved>();
+    const save = vi
+      .fn<[Snapshot, number], Promise<Saved>>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(latest.promise);
+    const queue = new TournamentDraftSaveQueue({
+      initialRevision: 1,
+      initialSnapshotKey: 'initial',
+      save,
+      revisionOf: (result) => result.revision,
+    });
+    queue.enqueue({ title: 'A' }, 'A');
+    queue.enqueue({ title: 'B' }, 'B');
+    const flush = queue.flush();
+    const rejected = expect(flush).rejects.toThrow('paused');
+    queue.pause();
+    await rejected;
+    first.resolve({ revision: 2, title: 'A' });
+    await first.promise;
+    expect(save).toHaveBeenCalledTimes(1);
+    await expect(queue.flush()).rejects.toThrow('paused');
+    queue.resume({ title: 'Current preset' }, 'current');
+    expect(save).toHaveBeenNthCalledWith(2, { title: 'Current preset' }, 2);
+    let resolved = false;
+    const resumedFlush = queue.flush().then((result) => {
+      resolved = true;
+      return result;
+    });
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+    latest.resolve({ revision: 3, title: 'Current preset' });
+    await expect(resumedFlush).resolves.toEqual({ revision: 3, title: 'Current preset' });
+  });
   it('serializes writes and saves only the latest pending snapshot with the next revision', async () => {
     const first = deferred<Saved>();
     const second = deferred<Saved>();

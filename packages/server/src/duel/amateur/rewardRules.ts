@@ -18,22 +18,64 @@ export type DuelRewardCategory = Exclude<keyof DuelRewardRules, 'equalExperience
 // PostgreSQL integer accounts and ledger amounts share this limit. Exposed in
 // the admin API so the editor cannot drift from server validation.
 export const REWARD_AMOUNT_LIMIT = 2_147_483_647;
-const safeNonNegativeInteger = z.number().int().min(0).max(REWARD_AMOUNT_LIMIT);
+function rewardRulesSchema(limit: number) {
+  const amount = z.number().int().min(0).max(limit);
+  const reward = z.object({ coins: amount, stars: amount, tokens: amount });
+  return z.object({
+    equalExperienceTolerancePercent: z.number().int().min(0).max(100),
+    strongerWin: reward,
+    equalWin: reward,
+    weakerWin: reward,
+    draw: reward,
+    loss: reward,
+  });
+}
 
-const duelRewardAmountSchema = z.object({
-  coins: safeNonNegativeInteger,
-  stars: safeNonNegativeInteger,
-  tokens: safeNonNegativeInteger,
-});
+/** New configuration and immutable snapshot writes use the account storage cap. */
+export const duelRewardRulesSchema = rewardRulesSchema(REWARD_AMOUNT_LIMIT);
+/** Historical reads retain the formerly supported exact safe-integer range. */
+export const storedDuelRewardRulesSchema = rewardRulesSchema(Number.MAX_SAFE_INTEGER);
 
-export const duelRewardRulesSchema = z.object({
-  equalExperienceTolerancePercent: z.number().int().min(0).max(100),
-  strongerWin: duelRewardAmountSchema,
-  equalWin: duelRewardAmountSchema,
-  weakerWin: duelRewardAmountSchema,
-  draw: duelRewardAmountSchema,
-  loss: duelRewardAmountSchema,
-});
+export function duelRewardStorageCompatible(input: {
+  rewardRules: DuelRewardRules;
+  winCurrencyReward: number;
+  drawCurrencyReward: number;
+  winStarReward: number;
+  stakeAmount: number;
+  entryFeeAmount: number;
+}): boolean {
+  if (!duelRewardRulesSchema.safeParse(input.rewardRules).success) return false;
+  if (
+    ![
+      input.winCurrencyReward,
+      input.drawCurrencyReward,
+      input.winStarReward,
+      input.stakeAmount,
+      input.entryFeeAmount,
+    ].every((amount) => Number.isInteger(amount) && amount >= 0 && amount <= REWARD_AMOUNT_LIMIT)
+  )
+    return false;
+  if (
+    input.stakeAmount * 2 > REWARD_AMOUNT_LIMIT ||
+    input.stakeAmount + input.entryFeeAmount > REWARD_AMOUNT_LIMIT
+  )
+    return false;
+  return (['strongerWin', 'equalWin', 'weakerWin', 'draw', 'loss'] as const).every((category) => {
+    const win = category.endsWith('Win');
+    const reward = input.rewardRules[category];
+    const coins =
+      reward.coins +
+      (win
+        ? input.winCurrencyReward + input.stakeAmount * 2
+        : category === 'draw'
+          ? input.drawCurrencyReward + input.stakeAmount
+          : 0);
+    return (
+      coins <= REWARD_AMOUNT_LIMIT &&
+      reward.stars + (win ? input.winStarReward : 0) <= REWARD_AMOUNT_LIMIT
+    );
+  });
+}
 
 export const DEFAULT_DUEL_REWARD_RULES: DuelRewardRules = {
   equalExperienceTolerancePercent: 10,
@@ -45,7 +87,7 @@ export const DEFAULT_DUEL_REWARD_RULES: DuelRewardRules = {
 };
 
 export function parseDuelRewardRules(value: unknown): DuelRewardRules {
-  return duelRewardRulesSchema.parse(value);
+  return storedDuelRewardRulesSchema.parse(value);
 }
 
 export function classifyExperienceOpponent(

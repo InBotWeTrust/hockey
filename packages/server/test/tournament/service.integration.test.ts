@@ -7356,6 +7356,101 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     }
   });
 
+  it.each(['regular-finalization', 'direct-playoff'] as const)(
+    'prelocks unpaid low UUID podium and achievement candidates before $0 rewards',
+    async (mode) => {
+      await seedUsers(pool, 0);
+      const tournament = await createPublishedTournament(
+        pool,
+        `unpaid-locks-${mode}`,
+        0,
+        playoffTournamentRules(4, {
+          stageRewards: {
+            regular: [{ place: 1, coins: 10, stars: 1, experience: 1 }],
+            playoff: [{ place: 1, coins: 20, stars: 2, experience: 2 }],
+          },
+        }),
+      );
+      const participants = await prepareTournamentForPlayoffs(
+        pool,
+        tournament.id,
+        [30, 40, 20, 10],
+      );
+      if (mode === 'direct-playoff') {
+        await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00Z'));
+        const round = await pool.query<{ id: string }>(
+          `select id from tournament_round where tournament_id=$1 and stage='playoff' and number=2`,
+          [tournament.id],
+        );
+        await pool.query(
+          `update tournament_playoff_series set higher_seed_participant_id=$3,
+             lower_seed_participant_id=$4,winner_participant_id=$3,status='completed',higher_seed_wins=wins_required
+           where tournament_id=$1 and round_id=$2 and kind='championship'`,
+          [tournament.id, round.rows[0]!.id, participants[1], participants[2]],
+        );
+        await pool.query(
+          `update tournament_playoff_series set higher_seed_participant_id=$2,
+             lower_seed_participant_id=$3,winner_participant_id=$2,status='completed',higher_seed_wins=wins_required
+           where tournament_id=$1 and kind='third_place'`,
+          [tournament.id, participants[0], participants[3]],
+        );
+        await pool.query('delete from user_achievements where user_id=$1', [PLAYER_IDS[0]]);
+      }
+      const blocker = await pool.connect();
+      let pending: Promise<unknown> | undefined;
+      try {
+        await blocker.query('begin');
+        const pid = (await blocker.query('select pg_backend_pid() as pid')).rows[0].pid;
+        await blocker.query('select id from users where id=$1 for update', [PLAYER_IDS[0]]);
+        pending =
+          mode === 'regular-finalization'
+            ? startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00Z'))
+            : grantTournamentStageRewards(pool, tournament.id, 'playoff');
+        const writer = await waitForBlockedWriter(pool, pid, /select id.*from users/i);
+        expect(writer.accountWriteLockHeld).toBe(false);
+        await blocker.query('select id from users where id=$1 for update nowait', [PLAYER_IDS[1]]);
+        await blocker.query('commit');
+        await pending;
+      } finally {
+        await blocker.query('rollback');
+        blocker.release();
+        await pending;
+      }
+      if (mode === 'regular-finalization') {
+        expect(
+          (
+            await pool.query(
+              'select user_id,place,reward_coins from tournament_regular_podium_congratulation where tournament_id=$1 order by place',
+              [tournament.id],
+            )
+          ).rows,
+        ).toEqual([
+          { user_id: PLAYER_IDS[1], place: 1, reward_coins: 10 },
+          { user_id: PLAYER_IDS[0], place: 2, reward_coins: 0 },
+          { user_id: PLAYER_IDS[2], place: 3, reward_coins: 0 },
+        ]);
+        await startTournamentPlayoffs(pool, tournament.id);
+      } else {
+        await grantTournamentStageRewards(pool, tournament.id, 'playoff');
+      }
+      expect(
+        (
+          await pool.query(
+            "select count(*)::int as count from tournament_economy_event where tournament_id=$1 and metadata->>'stage'=$2",
+            [tournament.id, mode === 'regular-finalization' ? 'regular' : 'playoff'],
+          )
+        ).rows,
+      ).toEqual([{ count: 1 }]);
+      expect(
+        (
+          await pool.query('select achievement_id from user_achievements where user_id=$1', [
+            PLAYER_IDS[0],
+          ])
+        ).rows,
+      ).toContainEqual({ achievement_id: 'playoff-semifinal' });
+    },
+  );
+
   it('creates regular podium congratulations only when the regular season is finalized', async () => {
     await seedUsers(pool, 0);
     const tournament = await createPublishedTournament(

@@ -8,6 +8,21 @@ export async function lockTournament(client: PoolClient, tournamentId: string): 
   await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [`tournament:${tournamentId}`]);
 }
 
+/** Under the tournament gate, before user/FK/account writes in a payout transaction.
+ * Congratulations, achievements and pushes can reference unpaid participants too.
+ */
+export async function lockTournamentParticipants(
+  client: PoolClient,
+  tournamentId: string,
+): Promise<void> {
+  await client.query(
+    `select id from users where id in (
+       select user_id from tournament_participant where tournament_id=$1
+     ) order by id for update`,
+    [tournamentId],
+  );
+}
+
 export async function lockTournamentFixture(
   client: PoolClient,
   input: { tournamentId: string; fixtureId: string },

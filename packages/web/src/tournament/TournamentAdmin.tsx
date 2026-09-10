@@ -1704,6 +1704,8 @@ export function TournamentAdmin(): JSX.Element {
     economyPresetState === 'custom' ||
     (economyPresetState === 'pristine' &&
       appliedEconomyPresetParticipantLimit.current === draft.participantLimit);
+  const liveDraft = useRef({ draft, ready: economyReady, wizardOpen });
+  liveDraft.current = { draft, ready: playoffScheduleOnly || economyReady, wizardOpen };
   const markEconomyCustom = () => {
     economyPresetRequestGeneration.current += 1;
     setEconomyPresetState('custom');
@@ -1723,6 +1725,7 @@ export function TournamentAdmin(): JSX.Element {
     saveQueue.current = new TournamentDraftSaveQueue({
       initialRevision: tournament.revision,
       initialSnapshotKey: snapshot,
+      canDispatch: () => liveDraft.current.ready && liveDraft.current.wizardOpen,
       save: (body, expectedRevision) =>
         updateAdminTournament(tournament.id, expectedRevision, body),
       revisionOf: (result) => result.tournament.revision,
@@ -1761,11 +1764,13 @@ export function TournamentAdmin(): JSX.Element {
   });
 
   const requestEconomyPreset = useCallback((participantLimit: NumericDraftValue, force = false) => {
+    if (!force && appliedEconomyPresetParticipantLimit.current === participantLimit) return;
+    liveDraft.current.ready = false;
+    saveQueue.current?.pause();
     if (!isEconomyPresetParticipantLimit(participantLimit)) {
       setEconomyPresetState('error');
       return;
     }
-    if (!force && appliedEconomyPresetParticipantLimit.current === participantLimit) return;
     const generation = economyPresetRequestGeneration.current + 1;
     economyPresetRequestGeneration.current = generation;
     setValidationNotice(null);
@@ -1825,6 +1830,7 @@ export function TournamentAdmin(): JSX.Element {
   }, [create, draft, economyPresetState, pendingInitialCreate]);
 
   useEffect(() => {
+    if (!economyReady && !playoffScheduleOnly) saveQueue.current?.pause();
     if (
       !wizardOpen ||
       editingTournament === null ||
@@ -1846,15 +1852,16 @@ export function TournamentAdmin(): JSX.Element {
     if (snapshot === lastSavedSnapshot.current) {
       const queueStatus = saveQueue.current?.status;
       if (queueStatus === 'saving' || queueStatus === 'error') {
-        saveQueue.current?.enqueue(body, snapshot);
+        saveQueue.current?.resume(body, snapshot);
       } else {
+        saveQueue.current?.resume(body, snapshot);
         setSaveState('saved');
       }
       return;
     }
     setSaveState('saving');
     saveDebounce.current = window.setTimeout(() => {
-      saveQueue.current?.enqueue(body, snapshot);
+      saveQueue.current?.resume(body, snapshot);
     }, 600);
     return () => window.clearTimeout(saveDebounce.current);
   }, [
@@ -2005,6 +2012,21 @@ export function TournamentAdmin(): JSX.Element {
     }
     setValidationNotice(null);
     setFinishing(true);
+    const snapshot = JSON.stringify(body);
+    const presetGeneration = economyPresetRequestGeneration.current;
+    const queueGeneration = saveQueueGeneration.current;
+    const stillCurrent = () => {
+      try {
+        return (
+          liveDraft.current.wizardOpen &&
+          liveDraft.current.ready &&
+          economyPresetRequestGeneration.current === presetGeneration &&
+          JSON.stringify(serializeDraft(liveDraft.current.draft)) === snapshot
+        );
+      } catch {
+        return false;
+      }
+    };
     if (saveDebounce.current !== undefined) window.clearTimeout(saveDebounce.current);
     let publishingDraft = false;
     try {
@@ -2012,6 +2034,10 @@ export function TournamentAdmin(): JSX.Element {
         if (createInFlight.current) return;
         createInFlight.current = true;
         const result = await create.mutateAsync({ body, snapshot: JSON.stringify(body) });
+        if (!stillCurrent()) {
+          setFinishing(false);
+          return;
+        }
         publishingDraft = true;
         const published = await publishAdminTournament(
           result.tournament.id,
@@ -2032,9 +2058,15 @@ export function TournamentAdmin(): JSX.Element {
         );
         return;
       }
-      saveQueue.current?.enqueue(body, JSON.stringify(body));
-      if (saveQueue.current?.status === 'error') saveQueue.current.retry();
-      const result = await saveQueue.current?.flush();
+      const result = await saveQueue.current?.flushSnapshot(body, snapshot, stillCurrent);
+      if (
+        !stillCurrent() ||
+        saveQueueGeneration.current !== queueGeneration ||
+        saveQueue.current?.snapshotKey !== snapshot
+      ) {
+        setFinishing(false);
+        return;
+      }
       const savedTournament = result?.tournament ?? editingTournament;
       if (savedTournament.status === 'draft') {
         publishingDraft = true;
@@ -2214,6 +2246,7 @@ export function TournamentAdmin(): JSX.Element {
                   type="button"
                   className="icon-btn"
                   aria-label="Закрыть"
+                  disabled={finishing}
                   onClick={requestClose}
                 >
                   <X size={16} />
@@ -2226,7 +2259,7 @@ export function TournamentAdmin(): JSX.Element {
                       key={label}
                       type="button"
                       className={stage === index ? 'chip chip--active' : 'chip'}
-                      disabled={index > maxStage}
+                      disabled={finishing || index > maxStage}
                       onClick={() => setStage(index)}
                     >
                       {index + 1}. {label}
@@ -2234,7 +2267,11 @@ export function TournamentAdmin(): JSX.Element {
                   ))}
                 </div>
               )}
-              <div className="modal-copy tournament-wizard__body">
+              <fieldset
+                className="modal-copy tournament-wizard__body"
+                disabled={finishing}
+                style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
+              >
                 {stage === 0 && (
                   <div className="tournament-admin-grid tournament-admin-grid--single">
                     <TournamentAdminField
@@ -2460,7 +2497,11 @@ export function TournamentAdmin(): JSX.Element {
                             participantLimit: editableNumber(event.target.value),
                           });
                           appliedEconomyPresetParticipantLimit.current = null;
-                          if (economyPresetState !== 'custom') setEconomyPresetState('pristine');
+                          if (economyPresetState !== 'custom') {
+                            liveDraft.current.ready = false;
+                            saveQueue.current?.pause();
+                            setEconomyPresetState('pristine');
+                          }
                         }}
                       />
                     </TournamentAdminField>
@@ -3115,7 +3156,7 @@ export function TournamentAdmin(): JSX.Element {
                       <button
                         type="button"
                         className="admin-compact-btn"
-                        disabled={economyPresetState === 'loading'}
+                        disabled={finishing || economyPresetState === 'loading'}
                         onClick={() => requestEconomyPreset(draft.participantLimit, true)}
                       >
                         Применить рекомендуемые значения
@@ -3202,7 +3243,7 @@ export function TournamentAdmin(): JSX.Element {
                     </span>
                   </div>
                 )}
-              </div>
+              </fieldset>
               <div className="modal-actions">
                 <div
                   className="tournament-wizard__save-state"
@@ -3262,6 +3303,7 @@ export function TournamentAdmin(): JSX.Element {
                   <button
                     type="button"
                     className="btn btn--ghost"
+                    disabled={finishing}
                     onClick={() => setStage(stage - 1)}
                   >
                     Назад
@@ -3272,6 +3314,7 @@ export function TournamentAdmin(): JSX.Element {
                     type="button"
                     className="modal-primary btn btn--cta"
                     disabled={
+                      finishing ||
                       artworkUpload.isPending ||
                       (stage === 0 && (draft.title.trim() === '' || create.isPending))
                     }

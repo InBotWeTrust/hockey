@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   classifyExperienceOpponent,
   duelRewardRulesSchema,
+  parseDuelRewardRules,
   selectDuelReward,
   type DuelRewardRules,
 } from '../../../src/duel/amateur/rewardRules.js';
@@ -16,6 +17,20 @@ const rules: DuelRewardRules = {
 };
 
 describe('duel reward rules', () => {
+  it('reads exact historical safe integers without weakening configuration limits', () => {
+    const historical = {
+      ...rules,
+      equalWin: { coins: Number.MAX_SAFE_INTEGER, stars: 2147483648, tokens: 2147483648 },
+    };
+    expect(parseDuelRewardRules(historical)).toEqual(historical);
+    expect(duelRewardRulesSchema.safeParse(historical).success).toBe(false);
+    expect(() =>
+      parseDuelRewardRules({
+        ...historical,
+        equalWin: { ...historical.equalWin, coins: Number.MAX_SAFE_INTEGER + 1 },
+      }),
+    ).toThrow();
+  });
   it('rejects configured amounts larger than PostgreSQL account storage', () => {
     for (const currency of ['coins', 'stars', 'tokens']) {
       expect(

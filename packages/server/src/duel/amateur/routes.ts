@@ -78,6 +78,8 @@ import {
   DEFAULT_DUEL_REWARD_RULES,
   duelRewardRulesSchema,
   parseDuelRewardRules,
+  storedDuelRewardRulesSchema,
+  duelRewardStorageCompatible,
   selectDuelRewardCategory,
   type DuelRewardRules,
 } from './rewardRules.js';
@@ -1184,7 +1186,7 @@ function makeRulesSnapshot(
     shotsPerPeriod: Number(template.shots_per_period),
     periodDurationMs: Number(template.period_duration_ms),
   });
-  return {
+  const snapshot: DuelRulesSnapshot = {
     templateId: template.id,
     title: template.title,
     description: template.description,
@@ -1220,6 +1222,16 @@ function makeRulesSnapshot(
     winStarReward: Number(template.win_star_reward),
     rewardRules: parseDuelRewardRules(rewardRulesOverride ?? template.reward_rules),
   };
+  if (
+    !duelRewardStorageCompatible({
+      ...snapshot,
+      stakeAmount: Number(template.stake_amount),
+      entryFeeAmount: Number(template.entry_fee_amount),
+    })
+  ) {
+    throw unsupportedRewardConfiguration();
+  }
+  return snapshot;
 }
 
 function defaultPeriodRules({
@@ -1307,7 +1319,7 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       winCurrencyReward: z.number().int().min(0).default(0),
       drawCurrencyReward: z.number().int().min(0).default(0),
       winStarReward: z.number().int().min(0).default(0),
-      rewardRules: duelRewardRulesSchema.default(DEFAULT_DUEL_REWARD_RULES),
+      rewardRules: storedDuelRewardRulesSchema.default(DEFAULT_DUEL_REWARD_RULES),
       tournamentLoadoutLifecycleVersion: z.literal(1).optional(),
     })
     .safeParse(value);
@@ -1379,6 +1391,23 @@ async function materializeLegacyVenueSnapshot(
   const arena = rows[0];
   if (arena === undefined) {
     throw new AppError('arena_unavailable', 'home arena is unavailable', 503);
+  }
+  if (!matchRewardStorageCompatible(match)) {
+    // NOT VALID constraints still reject any UPDATE of an unsafe old row.
+    // Supply the established legacy neutral venue for display without rewriting it.
+    return {
+      ...match,
+      home_user_id: null,
+      arena_theme_id: arena.id,
+      venue_policy: 'neutral_default',
+      arena_snapshot: {
+        id: arena.id,
+        slug: arena.slug,
+        title: arena.title,
+        artworkUrl: arena.artwork_url,
+        thumbnailUrl: arena.thumbnail_url,
+      },
+    };
   }
   await client.query(
     `update amateur_duel_match
@@ -2556,7 +2585,7 @@ async function closeParticipantPeriod(
         set state = $3,
             period_started_at = null,
             break_started_at = case when $3 = 'break_active' then $4::timestamptz else null end,
-            completed_at = case when $3 = 'completed' then $4::timestamptz else completed_at end,
+            completed_at = case when $3 in ('completed','forfeit') then $4::timestamptz else completed_at end,
             ready_at = null,
             shots_taken = shots_taken + $5,
             goals = goals + $6,
@@ -2976,7 +3005,7 @@ async function settleMatchIfReady(
     [match.id, a.user_id, aPoints, b.user_id, bPoints],
   );
 
-  if (settlementPolicy.updateRating) {
+  if (settlementPolicy.updateRating && match.ranked) {
     const closed = await client.query(
       'select 1 from monthly_duel_rating_season where season_key=$1',
       [match.season_key],
@@ -3118,13 +3147,45 @@ async function ratingMatchCompletedAt(client: PoolClient, matchId: string): Prom
   return completion.rows[0]?.completed_at ?? null;
 }
 
+function unsupportedRewardConfiguration(): AppError {
+  return new AppError(
+    'reward_configuration_capacity',
+    'Историческая награда превышает допустимый размер баланса. Обратитесь в поддержку; результат и награда сохранены без изменений.',
+    409,
+  );
+}
+
+function matchRewardStorageCompatible(match: DuelMatchRow): boolean {
+  const rules = parseRulesSnapshot(match.rules_snapshot);
+  const input = {
+    ...rules,
+    stakeAmount: Number(match.stake_amount),
+    entryFeeAmount: Number(match.entry_fee_amount),
+  };
+  return (
+    duelRewardStorageCompatible(input) &&
+    duelRewardStorageCompatible({ ...input, rewardRules: parseDuelRewardRules(match.reward_rules) })
+  );
+}
+
 async function reconcileMatch(
   client: PoolClient,
   match: DuelMatchRow,
   now: Date,
+  inspectHistorical = false,
 ): Promise<ReconciledMatch> {
   if (isTerminalMatchStatus(match.status)) return { match, changed: false };
-  if (match.source !== 'tournament') {
+  if (!matchRewardStorageCompatible(match)) {
+    if (inspectHistorical) return { match, changed: false };
+    throw unsupportedRewardConfiguration();
+  }
+  // Lazy participant transitions supply the effective completion timestamp used
+  // for season attribution. Materialize them before choosing a rating month.
+  let changed =
+    match.source !== 'tournament' && match.status === 'active'
+      ? await reconcileParticipantTimers(client, match, now)
+      : false;
+  if (match.source !== 'tournament' && match.ranked) {
     const boundary = nextRatingMonthBoundary(match.season_key);
     if (now >= boundary && match.ends_at >= boundary) {
       const completedAt = await ratingMatchCompletedAt(client, match.id);
@@ -3160,21 +3221,50 @@ async function reconcileMatch(
     return settleMatchIfReady(client, match, now);
   }
 
+  if (match.source === 'tournament') {
+    changed = (await reconcileParticipantTimers(client, match, now)) || changed;
+  }
+  const refreshed = await fetchMatchForUpdate(client, match.id);
+  const settled = await settleMatchIfReady(client, refreshed, now);
+  return {
+    match: settled.match,
+    changed: changed || settled.changed,
+    ...(settled.newlySettledRegularFixture === undefined
+      ? {}
+      : { newlySettledRegularFixture: settled.newlySettledRegularFixture }),
+  };
+}
+
+/** Materialize elapsed transitions without writing a result or rating ledger. */
+async function reconcileParticipantTimers(
+  client: PoolClient,
+  match: DuelMatchRow,
+  now: Date,
+): Promise<boolean> {
   const rules = parseRulesSnapshot(match.rules_snapshot);
   const participants = await fetchParticipants(client, match.id);
   let changed = false;
-  for (const participant of participants) {
+  for (let participant of participants) {
     if (participant.state === 'period_active' && participant.period_started_at !== null) {
       const periodRule = getDuelPeriodRule(rules, participant.current_period);
       const timeoutAt = new Date(participant.period_started_at.getTime() + periodRule.durationMs);
-      if (now >= match.ends_at) {
-        changed =
-          (await closeParticipantPeriod(client, participant, rules, match.ends_at, 'window_end')) ||
-          changed;
-      } else if (now >= timeoutAt) {
-        changed =
-          (await closeParticipantPeriod(client, participant, rules, timeoutAt, 'timeout')) ||
-          changed;
+      let closed = false;
+      if (now >= timeoutAt && timeoutAt <= match.ends_at) {
+        closed = await closeParticipantPeriod(client, participant, rules, timeoutAt, 'timeout');
+      } else if (now >= match.ends_at) {
+        closed = await closeParticipantPeriod(
+          client,
+          participant,
+          rules,
+          match.ends_at,
+          'window_end',
+        );
+      }
+      if (closed) {
+        changed = true;
+        participant = (await fetchParticipants(client, match.id)).find(
+          (row) => row.user_id === participant.user_id,
+        )!;
       }
     }
     if (participant.state === 'break_active' && participant.break_started_at !== null) {
@@ -3190,6 +3280,8 @@ async function reconcileMatch(
           [match.id, participant.user_id, breakEndsAt],
         );
         changed = (updated.rowCount ?? 0) > 0 || changed;
+        participant.state = 'accepted';
+        participant.ready_at = breakEndsAt;
       }
     }
     if (
@@ -3215,24 +3307,17 @@ async function reconcileMatch(
                 set state = 'forfeit',
                     period_started_at = null,
                     break_started_at = null,
+                    completed_at = $3,
                     updated_at = now()
               where match_id = $1 and user_id = $2 and state = 'accepted'`,
-            [match.id, participant.user_id],
+            [match.id, participant.user_id, continueDeadline],
           );
           changed = (updated.rowCount ?? 0) > 0 || changed;
         }
       }
     }
   }
-  const refreshed = await fetchMatchForUpdate(client, match.id);
-  const settled = await settleMatchIfReady(client, refreshed, now);
-  return {
-    match: settled.match,
-    changed: changed || settled.changed,
-    ...(settled.newlySettledRegularFixture === undefined
-      ? {}
-      : { newlySettledRegularFixture: settled.newlySettledRegularFixture }),
-  };
+  return changed;
 }
 
 /** Called under the rating lifecycle gate before freezing a month. */
@@ -3249,6 +3334,8 @@ export async function reconcileRatingSeasonMatches(
   );
   for (const row of matches.rows) {
     const match = await fetchMatchForUpdate(client, row.id);
+    if (!matchRewardStorageCompatible(match)) throw unsupportedRewardConfiguration();
+    if (match.status === 'active') await reconcileParticipantTimers(client, match, beforeBoundary);
     const completedAt = await ratingMatchCompletedAt(client, row.id);
     if (match.ends_at >= boundary && (completedAt === null || completedAt >= boundary)) {
       await client.query('update amateur_duel_match set season_key=$2 where id=$1', [
@@ -3454,7 +3541,9 @@ async function buildMatchDto(
           ).rows[0] ?? null)
         : null;
     const admissionRules =
-      template === null ? rules : makeRulesSnapshot(template, await getGameSettings(client));
+      template === null || !matchRewardStorageCompatible(match)
+        ? rules
+        : makeRulesSnapshot(template, await getGameSettings(client));
     const duration = duelAdmissionDurationMs(admissionRules);
     duelLock ??= await duelLockDto(client, currentUserId, now, duration);
     duelLock ??= await duelLockDto(client, opponent.user_id, now, duration);
@@ -4414,7 +4503,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           reconciled = { match: visibleMatch, changed: false };
         } else {
           await assertTournamentDuelPlayable(client, visibleMatch);
-          reconciled = await reconcileMatch(client, visibleMatch, now);
+          reconciled = await reconcileMatch(client, visibleMatch, now, true);
         }
         if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
         if (reconciled.newlySettledRegularFixture !== undefined)
@@ -4705,6 +4794,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           client,
           await fetchPlayableMatchForUpdate(client, row.id),
           now,
+          true,
         );
         if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
         if (reconciled.newlySettledRegularFixture !== undefined)
@@ -5474,6 +5564,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         client,
         await fetchVisibleMatchForUpdate(client, params.matchId),
         now,
+        true,
       );
       const match = reconciled.match;
       if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
