@@ -51,9 +51,12 @@ export function classifyExperienceOpponent(
 ): DuelExperienceOpponent {
   if (winnerExperience === 0) return opponentExperience === 0 ? 'equal' : 'stronger';
 
-  const tolerance = equalExperienceTolerancePercent / 100;
-  if (opponentExperience > winnerExperience * (1 + tolerance)) return 'stronger';
-  if (opponentExperience < winnerExperience * (1 - tolerance)) return 'weaker';
+  const winner = BigInt(winnerExperience);
+  const opponent = BigInt(opponentExperience);
+  const tolerance = BigInt(equalExperienceTolerancePercent);
+
+  if (opponent * 100n > winner * (100n + tolerance)) return 'stronger';
+  if (opponent * 100n < winner * (100n - tolerance)) return 'weaker';
   return 'equal';
 }
 

@@ -2182,6 +2182,79 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(accepted.json().match.rules.rewardRules).toEqual(rewardRules);
   });
 
+  it('accepts safe-integer reward amounts through the API and database constraint', async () => {
+    await pool.query(`update users set role = 'admin' where id = $1`, [userA]);
+    const templateId = await createTemplate();
+    const baseRewardRules = {
+      equalExperienceTolerancePercent: 10,
+      strongerWin: { coins: 0, stars: 0, tokens: 0 },
+      equalWin: { coins: 0, stars: 0, tokens: 0 },
+      weakerWin: { coins: 0, stars: 0, tokens: 0 },
+      draw: { coins: 0, stars: 0, tokens: 0 },
+      loss: { coins: 0, stars: 0, tokens: 0 },
+    };
+
+    for (const coins of [9_000_000_000_000_000, Number.MAX_SAFE_INTEGER]) {
+      const rewardRules = {
+        ...baseRewardRules,
+        strongerWin: { coins, stars: 0, tokens: 0 },
+      };
+      const patch = await app.inject({
+        method: 'PATCH',
+        url: `/admin/duel-templates/${templateId}`,
+        headers: auth(tokenA),
+        payload: { rewardRules },
+      });
+      expect(patch.statusCode).toBe(200);
+      expect(patch.json().template.rewardRules).toEqual(rewardRules);
+
+      const valid = await pool.query<{ valid: boolean }>(
+        'select duel_reward_rules_valid($1::jsonb) as valid',
+        [JSON.stringify(rewardRules)],
+      );
+      expect(valid.rows[0]?.valid).toBe(true);
+    }
+
+    const unsafe = await app.inject({
+      method: 'PATCH',
+      url: `/admin/duel-templates/${templateId}`,
+      headers: auth(tokenA),
+      payload: {
+        rewardRules: {
+          ...baseRewardRules,
+          strongerWin: { coins: Number.MAX_SAFE_INTEGER + 1, stars: 0, tokens: 0 },
+        },
+      },
+    });
+    expect(unsafe.statusCode).toBe(400);
+
+    const decimal = await pool.query<{ valid: boolean }>(
+      'select duel_reward_rules_valid($1::jsonb) as valid',
+      [
+        JSON.stringify({
+          ...baseRewardRules,
+          strongerWin: { coins: 1, stars: 0, tokens: 0 },
+        }).replace('"coins":1,', '"coins":1.0,'),
+      ],
+    );
+    expect(decimal.rows[0]?.valid).toBe(true);
+
+    const invalid = await pool.query<{ valid: boolean }>(
+      'select duel_reward_rules_valid($1::jsonb) as valid',
+      [
+        JSON.stringify({
+          ...baseRewardRules,
+          strongerWin: {
+            coins: Number.MAX_SAFE_INTEGER + 1,
+            stars: 0,
+            tokens: 0,
+          },
+        }),
+      ],
+    );
+    expect(invalid.rows[0]?.valid).toBe(false);
+  });
+
   it('accepts into a ready room without reserving stake or fee yet', async () => {
     const templateId = await createTemplate({
       startsAt: '2099-01-01T00:00:00.000Z',

@@ -22,6 +22,11 @@ describe('duel reward rules', () => {
     expect(classifyExperienceOpponent(1_000, 1_101, 10)).toBe('stronger');
   });
 
+  it('keeps non-decimal percentage boundaries inclusive', () => {
+    expect(classifyExperienceOpponent(100, 43, 57)).toBe('equal');
+    expect(classifyExperienceOpponent(100, 157, 57)).toBe('equal');
+  });
+
   it('treats two zero-experience players as equal and a positive opponent as stronger', () => {
     expect(classifyExperienceOpponent(0, 0, 10)).toBe('equal');
     expect(classifyExperienceOpponent(0, 1, 10)).toBe('stronger');

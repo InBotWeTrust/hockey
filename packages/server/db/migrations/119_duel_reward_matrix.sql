@@ -21,6 +21,30 @@ alter table amateur_duel_match
     "loss": { "coins": 0, "stars": 0, "tokens": 0 }
   }'::jsonb;
 
+create function duel_reward_amount_valid(amount jsonb)
+returns boolean
+language sql
+immutable
+as $$
+  select coalesce(
+    jsonb_typeof(amount) = 'object'
+    and amount ?& array['coins', 'stars', 'tokens']
+    and amount - array['coins', 'stars', 'tokens']::text[] = '{}'::jsonb
+    and case when jsonb_typeof(amount -> 'coins') = 'number'
+      then (amount ->> 'coins')::numeric between 0 and 9007199254740991
+        and (amount ->> 'coins')::numeric = trunc((amount ->> 'coins')::numeric)
+      else false end
+    and case when jsonb_typeof(amount -> 'stars') = 'number'
+      then (amount ->> 'stars')::numeric between 0 and 9007199254740991
+        and (amount ->> 'stars')::numeric = trunc((amount ->> 'stars')::numeric)
+      else false end
+    and case when jsonb_typeof(amount -> 'tokens') = 'number'
+      then (amount ->> 'tokens')::numeric between 0 and 9007199254740991
+        and (amount ->> 'tokens')::numeric = trunc((amount ->> 'tokens')::numeric)
+      else false end
+  , false);
+$$;
+
 create function duel_reward_rules_valid(reward_rules jsonb)
 returns boolean
 language sql
@@ -30,53 +54,15 @@ as $$
     jsonb_typeof(reward_rules) = 'object'
     and reward_rules ?& array['equalExperienceTolerancePercent', 'strongerWin', 'equalWin', 'weakerWin', 'draw', 'loss']
     and reward_rules - array['equalExperienceTolerancePercent', 'strongerWin', 'equalWin', 'weakerWin', 'draw', 'loss']::text[] = '{}'::jsonb
-    and jsonb_typeof(reward_rules -> 'equalExperienceTolerancePercent') = 'number'
-    and reward_rules ->> 'equalExperienceTolerancePercent' ~ '^(0|[1-9][0-9]?|100)$'
-    and jsonb_typeof(reward_rules -> 'strongerWin') = 'object'
-    and jsonb_typeof(reward_rules -> 'equalWin') = 'object'
-    and jsonb_typeof(reward_rules -> 'weakerWin') = 'object'
-    and jsonb_typeof(reward_rules -> 'draw') = 'object'
-    and jsonb_typeof(reward_rules -> 'loss') = 'object'
-    and reward_rules -> 'strongerWin' ?& array['coins', 'stars', 'tokens']
-    and reward_rules -> 'equalWin' ?& array['coins', 'stars', 'tokens']
-    and reward_rules -> 'weakerWin' ?& array['coins', 'stars', 'tokens']
-    and reward_rules -> 'draw' ?& array['coins', 'stars', 'tokens']
-    and reward_rules -> 'loss' ?& array['coins', 'stars', 'tokens']
-    and (reward_rules -> 'strongerWin') - array['coins', 'stars', 'tokens']::text[] = '{}'::jsonb
-    and (reward_rules -> 'equalWin') - array['coins', 'stars', 'tokens']::text[] = '{}'::jsonb
-    and (reward_rules -> 'weakerWin') - array['coins', 'stars', 'tokens']::text[] = '{}'::jsonb
-    and (reward_rules -> 'draw') - array['coins', 'stars', 'tokens']::text[] = '{}'::jsonb
-    and (reward_rules -> 'loss') - array['coins', 'stars', 'tokens']::text[] = '{}'::jsonb
-    and jsonb_typeof(reward_rules -> 'strongerWin' -> 'coins') = 'number'
-    and jsonb_typeof(reward_rules -> 'strongerWin' -> 'stars') = 'number'
-    and jsonb_typeof(reward_rules -> 'strongerWin' -> 'tokens') = 'number'
-    and jsonb_typeof(reward_rules -> 'equalWin' -> 'coins') = 'number'
-    and jsonb_typeof(reward_rules -> 'equalWin' -> 'stars') = 'number'
-    and jsonb_typeof(reward_rules -> 'equalWin' -> 'tokens') = 'number'
-    and jsonb_typeof(reward_rules -> 'weakerWin' -> 'coins') = 'number'
-    and jsonb_typeof(reward_rules -> 'weakerWin' -> 'stars') = 'number'
-    and jsonb_typeof(reward_rules -> 'weakerWin' -> 'tokens') = 'number'
-    and jsonb_typeof(reward_rules -> 'draw' -> 'coins') = 'number'
-    and jsonb_typeof(reward_rules -> 'draw' -> 'stars') = 'number'
-    and jsonb_typeof(reward_rules -> 'draw' -> 'tokens') = 'number'
-    and jsonb_typeof(reward_rules -> 'loss' -> 'coins') = 'number'
-    and jsonb_typeof(reward_rules -> 'loss' -> 'stars') = 'number'
-    and jsonb_typeof(reward_rules -> 'loss' -> 'tokens') = 'number'
-    and reward_rules -> 'strongerWin' ->> 'coins' ~ '^([0-9]|[1-9][0-9]{1,14}|[1-8][0-9]{15}|9007199254740991)$'
-    and reward_rules -> 'strongerWin' ->> 'stars' ~ '^([0-9]|[1-9][0-9]{1,14}|[1-8][0-9]{15}|9007199254740991)$'
-    and reward_rules -> 'strongerWin' ->> 'tokens' ~ '^([0-9]|[1-9][0-9]{1,14}|[1-8][0-9]{15}|9007199254740991)$'
-    and reward_rules -> 'equalWin' ->> 'coins' ~ '^([0-9]|[1-9][0-9]{1,14}|[1-8][0-9]{15}|9007199254740991)$'
-    and reward_rules -> 'equalWin' ->> 'stars' ~ '^([0-9]|[1-9][0-9]{1,14}|[1-8][0-9]{15}|9007199254740991)$'
-    and reward_rules -> 'equalWin' ->> 'tokens' ~ '^([0-9]|[1-9][0-9]{1,14}|[1-8][0-9]{15}|9007199254740991)$'
-    and reward_rules -> 'weakerWin' ->> 'coins' ~ '^([0-9]|[1-9][0-9]{1,14}|[1-8][0-9]{15}|9007199254740991)$'
-    and reward_rules -> 'weakerWin' ->> 'stars' ~ '^([0-9]|[1-9][0-9]{1,14}|[1-8][0-9]{15}|9007199254740991)$'
-    and reward_rules -> 'weakerWin' ->> 'tokens' ~ '^([0-9]|[1-9][0-9]{1,14}|[1-8][0-9]{15}|9007199254740991)$'
-    and reward_rules -> 'draw' ->> 'coins' ~ '^([0-9]|[1-9][0-9]{1,14}|[1-8][0-9]{15}|9007199254740991)$'
-    and reward_rules -> 'draw' ->> 'stars' ~ '^([0-9]|[1-9][0-9]{1,14}|[1-8][0-9]{15}|9007199254740991)$'
-    and reward_rules -> 'draw' ->> 'tokens' ~ '^([0-9]|[1-9][0-9]{1,14}|[1-8][0-9]{15}|9007199254740991)$'
-    and reward_rules -> 'loss' ->> 'coins' ~ '^([0-9]|[1-9][0-9]{1,14}|[1-8][0-9]{15}|9007199254740991)$'
-    and reward_rules -> 'loss' ->> 'stars' ~ '^([0-9]|[1-9][0-9]{1,14}|[1-8][0-9]{15}|9007199254740991)$'
-    and reward_rules -> 'loss' ->> 'tokens' ~ '^([0-9]|[1-9][0-9]{1,14}|[1-8][0-9]{15}|9007199254740991)$'
+    and case when jsonb_typeof(reward_rules -> 'equalExperienceTolerancePercent') = 'number'
+      then (reward_rules ->> 'equalExperienceTolerancePercent')::numeric between 0 and 100
+        and (reward_rules ->> 'equalExperienceTolerancePercent')::numeric = trunc((reward_rules ->> 'equalExperienceTolerancePercent')::numeric)
+      else false end
+    and duel_reward_amount_valid(reward_rules -> 'strongerWin')
+    and duel_reward_amount_valid(reward_rules -> 'equalWin')
+    and duel_reward_amount_valid(reward_rules -> 'weakerWin')
+    and duel_reward_amount_valid(reward_rules -> 'draw')
+    and duel_reward_amount_valid(reward_rules -> 'loss')
   , false);
 $$;
 
