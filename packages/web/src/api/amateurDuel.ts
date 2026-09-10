@@ -588,9 +588,12 @@ export function fetchAmateurRating(seasonKey?: string): Promise<AmateurDuelRatin
   return apiFetch<AmateurDuelRatingResponse>(`/duel/amateur/rating${query ? `?${query}` : ''}`);
 }
 
-export function fetchPendingMonthlyRatingCongratulations(): Promise<PendingMonthlyRatingCongratulationsResponse> {
+export function fetchPendingMonthlyRatingCongratulations(options?: {
+  signal?: AbortSignal;
+}): Promise<PendingMonthlyRatingCongratulationsResponse> {
   return apiFetch<PendingMonthlyRatingCongratulationsResponse>(
     '/duel/amateur/rating/congratulations/pending',
+    options?.signal === undefined ? undefined : { signal: options.signal },
   );
 }
 

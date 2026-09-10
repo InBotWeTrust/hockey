@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -23,6 +23,9 @@ interface MockSectionsData {
   dailyTotalShots?: number;
   profileCompetitionLevel?: 'beginner' | 'amateur' | 'professional';
   profileRequest?: 'error' | 'loading';
+  profileResponse?: Promise<Response>;
+  monthlyRequest?: 'error';
+  monthlyResponse?: Promise<Response>;
   pendingTournamentCongratulations?: RegularSeasonPodiumCongratulation[];
   acknowledgementRequest?: 'error';
   monthlyAcknowledgementRequest?: 'error';
@@ -41,7 +44,7 @@ interface MockSectionsData {
   pendingChallengeFailure?: WeeklyChallenge | null;
 }
 
-function renderSections(): void {
+function renderSections(): QueryClient {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -53,6 +56,7 @@ function renderSections(): void {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return client;
 }
 
 function LocationProbe(): JSX.Element {
@@ -70,12 +74,16 @@ function mockSectionsApi({
   dailyTotalShots = 0,
   profileCompetitionLevel = 'amateur',
   profileRequest,
+  profileResponse,
   pendingTournamentCongratulations = [],
   acknowledgementRequest,
+  monthlyRequest,
+  monthlyResponse,
   monthlyAcknowledgementRequest,
   pendingMonthlyRatingCongratulations = [],
   pendingChallengeFailure = null,
 }: MockSectionsData = {}): void {
+  const acknowledgedMonthlyRatingCongratulations = new Set<string>();
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
     const url = String(input);
     if (url.endsWith('/api/achievements')) {
@@ -106,14 +114,34 @@ function mockSectionsApi({
       );
     }
     if (url.endsWith('/api/duel/amateur/rating/congratulations/pending')) {
+      if (monthlyResponse !== undefined) return monthlyResponse;
+      if (monthlyRequest === 'error') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ error: 'monthly rewards unavailable' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
       return Promise.resolve(
-        new Response(JSON.stringify({ congratulations: pendingMonthlyRatingCongratulations }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
+        new Response(
+          JSON.stringify({
+            congratulations: pendingMonthlyRatingCongratulations.filter(
+              (congratulation) => !acknowledgedMonthlyRatingCongratulations.has(congratulation.id),
+            ),
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
       );
     }
     if (url.includes('/api/duel/amateur/rating/congratulations/') && url.endsWith('/read')) {
+      const congratulationId = url.split('/').at(-2);
+      if (monthlyAcknowledgementRequest !== 'error' && congratulationId !== undefined) {
+        acknowledgedMonthlyRatingCongratulations.add(congratulationId);
+      }
       return Promise.resolve(
         new Response(
           JSON.stringify(
@@ -152,6 +180,7 @@ function mockSectionsApi({
       );
     }
     if (url.includes('/api/me')) {
+      if (profileResponse !== undefined) return profileResponse;
       if (profileRequest === 'loading') return new Promise<Response>(() => undefined);
       if (profileRequest === 'error') {
         return Promise.resolve(
@@ -203,6 +232,21 @@ function mockSectionsApi({
         headers: { 'Content-Type': 'application/json' },
       }),
     );
+  });
+}
+
+function deferredResponse(): { promise: Promise<Response>; resolve: (response: Response) => void } {
+  let resolve!: (response: Response) => void;
+  const promise = new Promise<Response>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
   });
 }
 
@@ -354,6 +398,211 @@ describe('SectionsScreen', () => {
     );
   });
 
+  it('does not show monthly rewards before the higher-priority tournament queue is known', async () => {
+    const profile = deferredResponse();
+    const monthly = deferredResponse();
+    mockSectionsApi({
+      profileResponse: profile.promise,
+      monthlyResponse: monthly.promise,
+    });
+    renderSections();
+
+    await act(async () => {
+      monthly.resolve(
+        jsonResponse({
+          congratulations: [
+            {
+              id: '00000000-0000-4000-8000-000000000979',
+              season_key: '2026-08',
+              place: 1,
+              matches_played: 50,
+              eligible_count: 50,
+              rewarded_count: 10,
+              coins: 15000,
+              stars: 300,
+              tokens: 10,
+              created_at: '2026-09-01T00:00:00.000Z',
+            },
+          ],
+        }),
+      );
+    });
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await act(async () => {
+      profile.resolve(
+        jsonResponse({
+          competitionLevel: 'amateur',
+          pendingTournamentCongratulations: [
+            {
+              id: '00000000-0000-4000-8000-000000000980',
+              tournamentId: '00000000-0000-4000-8000-000000000990',
+              tournamentTitle: 'Приоритетный турнир',
+              place: 1,
+              reward: { coins: 5000, stars: 25, experience: 1500 },
+              createdAt: '2026-09-02T21:00:00.000Z',
+            },
+          ],
+        }),
+      );
+    });
+
+    expect(await screen.findByText('Приоритетный турнир')).toBeInTheDocument();
+    expect(screen.queryByText('Август 2026')).toBeNull();
+  });
+
+  it('blocks monthly and weekly rewards behind a retryable tournament-queue error', async () => {
+    mockSectionsApi({
+      profileRequest: 'error',
+      pendingMonthlyRatingCongratulations: [
+        {
+          id: '00000000-0000-4000-8000-000000000981',
+          season_key: '2026-08',
+          place: 1,
+          matches_played: 50,
+          eligible_count: 50,
+          rewarded_count: 10,
+          coins: 15000,
+          stars: 300,
+          tokens: 10,
+          created_at: '2026-09-01T00:00:00.000Z',
+        },
+      ],
+    });
+    renderSections();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось загрузить награды.');
+    expect(screen.queryByRole('dialog', { name: /рейтинге дуэлей/ })).toBeNull();
+    const profileCallsBeforeRetry = vi
+      .mocked(fetch)
+      .mock.calls.filter(([input]) =>
+        String(input).includes('/api/me?includeTournamentCongratulations=true'),
+      ).length;
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить загрузку наград' }));
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(fetch)
+          .mock.calls.filter(([input]) =>
+            String(input).includes('/api/me?includeTournamentCongratulations=true'),
+          ).length,
+      ).toBe(profileCallsBeforeRetry + 1),
+    );
+  });
+
+  it('blocks weekly failure behind a retryable monthly-rating queue error', async () => {
+    mockSectionsApi({
+      monthlyRequest: 'error',
+      pendingChallengeFailure: {
+        id: '00000000-0000-4000-8000-000000000982',
+        title: 'Не должен открыться',
+        description: 'Описание',
+        status: 'finished',
+        startAt: '2026-09-02T00:00:00.000Z',
+        endAt: '2026-09-09T00:00:00.000Z',
+        reward: { coins: 0, stars: 0, experience: 0, tokens: 0 },
+        rewardClaimedAt: null,
+        tasks: [],
+        hasProgress: true,
+        canClaimReward: false,
+        allTasksCompleted: false,
+        serverNow: '2026-09-09T01:00:00.000Z',
+      },
+    });
+    renderSections();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось загрузить награды.');
+    expect(screen.queryByText('Не должен открыться')).toBeNull();
+    const monthlyCallsBeforeRetry = vi
+      .mocked(fetch)
+      .mock.calls.filter(([input]) =>
+        String(input).includes('/api/duel/amateur/rating/congratulations/pending'),
+      ).length;
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить загрузку наград' }));
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(fetch)
+          .mock.calls.filter(([input]) =>
+            String(input).includes('/api/duel/amateur/rating/congratulations/pending'),
+          ).length,
+      ).toBe(monthlyCallsBeforeRetry + 1),
+    );
+  });
+
+  it('does not resurrect an acknowledged monthly reward from a stale in-flight query', async () => {
+    const staleMonthly = deferredResponse();
+    let monthlyRequestCount = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/duel/amateur/rating/congratulations/pending')) {
+        monthlyRequestCount += 1;
+        if (monthlyRequestCount === 2) return staleMonthly.promise;
+        return Promise.resolve(
+          jsonResponse({
+            congratulations:
+              monthlyRequestCount === 1
+                ? [
+                    {
+                      id: '00000000-0000-4000-8000-000000000983',
+                      season_key: '2026-08',
+                      place: 1,
+                      matches_played: 50,
+                      eligible_count: 50,
+                      rewarded_count: 10,
+                      coins: 15000,
+                      stars: 300,
+                      tokens: 10,
+                      created_at: '2026-09-01T00:00:00.000Z',
+                    },
+                  ]
+                : [],
+          }),
+        );
+      }
+      if (url.includes('/api/duel/amateur/rating/congratulations/') && url.endsWith('/read')) {
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      if (url.includes('/api/me')) {
+        return Promise.resolve(
+          jsonResponse({ competitionLevel: 'amateur', pendingTournamentCongratulations: [] }),
+        );
+      }
+      return Promise.resolve(jsonResponse({ challenge: null }));
+    });
+    const client = renderSections();
+
+    expect(await screen.findByText('Август 2026')).toBeInTheDocument();
+    void client.refetchQueries({
+      queryKey: ['amateur-duel', 'rating', 'congratulations', 'pending'],
+      exact: true,
+    });
+    await waitFor(() => expect(monthlyRequestCount).toBe(2));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    await waitFor(() => expect(monthlyRequestCount).toBe(3));
+    staleMonthly.resolve(
+      jsonResponse({
+        congratulations: [
+          {
+            id: '00000000-0000-4000-8000-000000000983',
+            season_key: '2026-08',
+            place: 1,
+            matches_played: 50,
+            eligible_count: 50,
+            rewarded_count: 10,
+            coins: 15000,
+            stars: 300,
+            tokens: 10,
+            created_at: '2026-09-01T00:00:00.000Z',
+          },
+        ],
+      }),
+    );
+
+    await waitFor(() => expect(screen.queryByText('Август 2026')).toBeNull());
+  });
+
   it('does not show a monthly rating modal when a pending placement has no reward', async () => {
     mockSectionsApi({
       pendingMonthlyRatingCongratulations: [
@@ -412,7 +661,7 @@ describe('SectionsScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
 
     expect(await screen.findByText('Июль 2026')).toBeInTheDocument();
-    expect(screen.queryByText('Июнь 2026')).toBeNull();
+    await waitFor(() => expect(screen.queryByText('Июнь 2026')).toBeNull());
   });
 
   it('keeps the monthly rating modal open after acknowledgement fails', async () => {

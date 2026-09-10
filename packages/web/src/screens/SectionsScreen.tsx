@@ -26,6 +26,12 @@ import { MonthlyRatingRewardModal } from '../components/duel/MonthlyRatingReward
 
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
 const SECTION_ARTWORK_SIZE = 86;
+const MONTHLY_RATING_CONGRATULATIONS_KEY = [
+  'amateur-duel',
+  'rating',
+  'congratulations',
+  'pending',
+] as const;
 
 const SECTION_ARTWORK = {
   achievements: '/achievements/first-goal.webp',
@@ -69,12 +75,13 @@ export function SectionsScreen(): JSX.Element {
     queryFn: fetchPendingWeeklyChallengeFailure,
   });
   const monthlyRatingQuery = useQuery({
-    queryKey: ['amateur-duel', 'rating', 'congratulations', 'pending'],
-    queryFn: fetchPendingMonthlyRatingCongratulations,
+    queryKey: MONTHLY_RATING_CONGRATULATIONS_KEY,
+    queryFn: ({ signal }) => fetchPendingMonthlyRatingCongratulations({ signal }),
   });
 
   const pendingCongratulations = profileQuery.data?.pendingTournamentCongratulations ?? [];
-  const activeCongratulation = pendingCongratulations[0] ?? null;
+  const profileQueueReady = profileQuery.isSuccess;
+  const activeCongratulation = profileQueueReady ? (pendingCongratulations[0] ?? null) : null;
   const pendingMonthlyRatingCongratulations = (monthlyRatingQuery.data?.congratulations ?? [])
     .filter((congratulation) =>
       [congratulation.coins, congratulation.stars, congratulation.tokens].some(
@@ -86,7 +93,16 @@ export function SectionsScreen(): JSX.Element {
         ? left.id.localeCompare(right.id)
         : left.season_key.localeCompare(right.season_key),
     );
-  const activeMonthlyRatingCongratulation = pendingMonthlyRatingCongratulations[0] ?? null;
+  const monthlyRatingQueueReady =
+    profileQueueReady && activeCongratulation === null && monthlyRatingQuery.isSuccess;
+  const activeMonthlyRatingCongratulation = monthlyRatingQueueReady
+    ? (pendingMonthlyRatingCongratulations[0] ?? null)
+    : null;
+  const rewardQueueError = profileQuery.isError
+    ? { onRetry: () => void profileQuery.refetch() }
+    : profileQueueReady && activeCongratulation === null && monthlyRatingQuery.isError
+      ? { onRetry: () => void monthlyRatingQuery.refetch() }
+      : null;
   const acknowledgePodium = useMutation({
     mutationFn: acknowledgeRegularSeasonPodiumCongratulation,
     onMutate: () => setPodiumAckError(null),
@@ -120,11 +136,17 @@ export function SectionsScreen(): JSX.Element {
   });
   const acknowledgeMonthlyRating = useMutation({
     mutationFn: acknowledgeMonthlyRatingCongratulation,
-    onMutate: () => setMonthlyRatingAckError(null),
+    onMutate: async () => {
+      setMonthlyRatingAckError(null);
+      await queryClient.cancelQueries({
+        queryKey: MONTHLY_RATING_CONGRATULATIONS_KEY,
+        exact: true,
+      });
+    },
     onSuccess: (_response, congratulationId) => {
       setMonthlyRatingAckError(null);
       queryClient.setQueryData<PendingMonthlyRatingCongratulationsResponse>(
-        ['amateur-duel', 'rating', 'congratulations', 'pending'],
+        MONTHLY_RATING_CONGRATULATIONS_KEY,
         (current) =>
           current === undefined
             ? current
@@ -137,6 +159,12 @@ export function SectionsScreen(): JSX.Element {
       );
     },
     onError: () => setMonthlyRatingAckError('Не удалось закрыть. Попробуйте ещё раз.'),
+    onSettled: () => {
+      void queryClient.invalidateQueries({
+        queryKey: MONTHLY_RATING_CONGRATULATIONS_KEY,
+        exact: true,
+      });
+    },
   });
 
   useEffect(() => {
@@ -280,6 +308,7 @@ export function SectionsScreen(): JSX.Element {
         />
       )}
       {activeCongratulation === null &&
+        monthlyRatingQueueReady &&
         activeMonthlyRatingCongratulation === null &&
         failureQuery.data?.challenge != null && (
           <AccessibleModal
@@ -322,6 +351,14 @@ export function SectionsScreen(): JSX.Element {
             </div>
           </AccessibleModal>
         )}
+      {rewardQueueError !== null && (
+        <section className="duel-state-card duel-state-card--error" role="alert">
+          <p>Не удалось загрузить награды.</p>
+          <button type="button" className="btn btn--cta" onClick={rewardQueueError.onRetry}>
+            Повторить загрузку наград
+          </button>
+        </section>
+      )}
     </main>
   );
 }

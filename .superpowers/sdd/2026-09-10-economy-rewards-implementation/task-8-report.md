@@ -41,3 +41,34 @@ Implemented and verified locally. No server or game-core files were changed.
 ## Concerns
 
 No product-code concerns. The package test wrapper does not honor file selectors, so focused verification uses direct `vitest run`.
+
+## Fix round 1
+
+### Status
+
+Fixed the review findings for priority-query gating and the monthly acknowledgement/refetch race. No server or game-core files were changed.
+
+### Changes
+
+- Tournament pending data is now an explicit gate before monthly rewards, and confirmed monthly data is an explicit gate before weekly failure.
+- A failed higher-priority query shows `Не удалось загрузить награды.` with the bounded `Повторить загрузку наград` action; lower-priority dialogs remain hidden until retry succeeds.
+- The monthly query forwards React Query's `AbortSignal` to `apiFetch`.
+- Monthly acknowledgement now cancels its active query before mutation, preserves the local next-item transition, and invalidates the exact query after settlement so the cache rechecks authoritative state.
+
+### TDD and verification
+
+1. Added deferred higher-priority, rejected profile/monthly query, and stale in-flight GET regressions.
+2. Ran `pnpm exec vitest run src/screens/SectionsScreen.test.tsx`; RED: 4 expected failures (premature monthly display, missing error/retry gates, missing post-ack refetch).
+3. Implemented explicit priority readiness, retryable error gate, AbortSignal forwarding, cancellation, and invalidation.
+4. Ran:
+   - `pnpm exec vitest run src/components/duel/MonthlyRatingRewardModal.test.tsx src/components/BottomNav.test.tsx src/screens/SectionsScreen.test.tsx` — PASS, 3 files / 68 tests.
+   - `pnpm typecheck` — PASS.
+   - `pnpm exec eslint src/api/amateurDuel.ts src/components/duel/MonthlyRatingRewardModal.tsx src/components/duel/MonthlyRatingRewardModal.test.tsx src/components/BottomNav.test.tsx src/screens/SectionsScreen.tsx src/screens/SectionsScreen.test.tsx` — PASS.
+   - `pnpm exec prettier --check src/api/amateurDuel.ts src/components/duel/MonthlyRatingRewardModal.tsx src/components/duel/MonthlyRatingRewardModal.test.tsx src/components/BottomNav.test.tsx src/screens/SectionsScreen.tsx src/screens/SectionsScreen.test.tsx` — PASS.
+   - `git diff --check` — PASS.
+
+### Self-review
+
+- Priority: no lower dialog is rendered while a higher queue is loading, has failed, or is awaiting retry; verified tournament → monthly → weekly order remains intact.
+- Race: the stale GET regression begins an in-flight refetch before acknowledgement, then resolves it after POST; the acknowledged item remains absent while the fresh refetch receives current state.
+- Error/retry: the retry control re-runs only the blocked priority query and does not create a dismissible reward modal.
