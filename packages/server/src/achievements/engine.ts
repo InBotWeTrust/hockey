@@ -37,6 +37,8 @@ export async function evaluateMonthlyRatingSettledAchievements(
   db: Queryable,
   event: MonthlyRatingSettledContext,
 ): Promise<void> {
+  if (!Number.isInteger(event.place) || event.place < 1) return;
+
   const achievementIds: string[] = [];
   if (event.place === 1) achievementIds.push('monthly-top-1');
   if (event.place <= 3) achievementIds.push('monthly-top-3');

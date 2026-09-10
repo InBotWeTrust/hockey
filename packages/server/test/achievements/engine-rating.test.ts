@@ -10,6 +10,25 @@ import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/tes
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 
+describe('monthly rating achievement evaluator boundaries', () => {
+  it.each([0, -1, 1.5])('does not evaluate an invalid ranking place of %s', async (place) => {
+    const db = {
+      query: async (): Promise<never> => {
+        throw new Error('invalid ranking place must not write an achievement');
+      },
+    } as unknown as Pool;
+
+    await expect(
+      evaluateMonthlyRatingSettledAchievements(db, {
+        type: 'monthly_duel_rating_settled',
+        seasonKey: '2026-08',
+        userId: randomUUID(),
+        place,
+      }),
+    ).resolves.toBeUndefined();
+  });
+});
+
 describe.skipIf(!hasIntegrationEnv)('monthly rating achievement evaluator', () => {
   let pool: Pool;
 
@@ -41,14 +60,14 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating achievement evaluator', () =
     await expect(completedIds(pool, userId)).resolves.toEqual(['monthly-top-1', 'monthly-top-3']);
   });
 
-  it('completes only the top-three achievement for places two and three', async () => {
+  it.each([2, 3])('completes only the top-three achievement for place %s', async (place) => {
     const userId = await createUser(pool);
 
     await evaluateMonthlyRatingSettledAchievements(pool, {
       type: 'monthly_duel_rating_settled',
       seasonKey: '2026-08',
       userId,
-      place: 2,
+      place,
     });
 
     await expect(completedIds(pool, userId)).resolves.toEqual(['monthly-top-3']);
