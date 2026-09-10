@@ -6,6 +6,7 @@ import { dirname, resolve } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, '..');
 const dailyScreenTest = 'src/screens/DailyScreen.test.tsx';
+const tournamentAdminTest = 'src/tournament/TournamentAdmin.test.tsx';
 
 function runVitest(label, args) {
   console.log(`\n[web test] ${label}`);
@@ -23,7 +24,13 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-runVitest('all files except DailyScreen', ['run', '--exclude', dailyScreenTest]);
+runVitest('all files except isolated suites', [
+  'run',
+  '--exclude',
+  `{${dailyScreenTest},${tournamentAdminTest}}`,
+]);
+
+runVitest('TournamentAdmin', ['run', tournamentAdminTest]);
 
 const dailySource = readFileSync(resolve(packageRoot, dailyScreenTest), 'utf8');
 const dailyTestNames = Array.from(dailySource.matchAll(/\bit\('([^']+)'/g), (match) => match[1]);
