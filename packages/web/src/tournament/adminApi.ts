@@ -71,6 +71,15 @@ export interface AdminTournamentDuelTemplate {
   shotsPerPeriod: number;
 }
 
+export interface TournamentEconomyPreset {
+  participantLimit: number;
+  entryFeeCoins: number;
+  regularRewards: Array<{ place: number; coins: number; stars: number; experience: number }>;
+  playoffRewards: Array<{ place: number; coins: number; stars: number; experience: number }>;
+  payoutValueCoins: number;
+  sinkValueCoins: number;
+}
+
 export type AdminTournamentBracketSeries = TournamentBracketSeries;
 
 export interface AdminTournamentSeriesDecision {
@@ -100,6 +109,12 @@ export interface AdminTournamentUserOption {
 
 export function fetchAdminTournaments(): Promise<{ tournaments: AdminTournament[] }> {
   return apiFetch('/admin/tournaments');
+}
+
+export function fetchTournamentEconomyPreset(
+  participantLimit: number,
+): Promise<TournamentEconomyPreset> {
+  return apiFetch(`/admin/tournaments/economy-preset?participantLimit=${participantLimit}`);
 }
 
 export function fetchAdminTournamentDuelTemplates(): Promise<{

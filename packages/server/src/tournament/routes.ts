@@ -84,6 +84,7 @@ import {
 } from './seriesAdminDecisions.js';
 import { acknowledgeRegularSeasonPodiumCongratulation } from './podiumCongratulations.js';
 import { getGameplayLockState, toGameplayLockDto } from '../duel/gameplayLocks.js';
+import { buildTournamentEconomyPreset } from './economyPreset.js';
 
 const uuid = z.string().uuid();
 const nullableDate = z.string().datetime({ offset: true }).nullable().default(null);
@@ -106,6 +107,10 @@ export const tournamentScheduleOtherGamesQuerySchema = z
     message: 'cursorFixtureNumber and cursorId must be provided together',
   });
 const TOURNAMENT_ARTWORK_MAX_PIXELS = 2048 * 2048;
+const TOURNAMENT_PARTICIPANT_LIMIT_MAX = 64;
+const tournamentEconomyPresetQuerySchema = z.object({
+  participantLimit: z.coerce.number().int().min(2).max(TOURNAMENT_PARTICIPANT_LIMIT_MAX),
+});
 const classicShotSchema = z.object({
   shot_index: z.number().int().min(1),
   input: z.object({
@@ -251,6 +256,11 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   const admin = {
     preHandler: [app.authenticate, async (req: FastifyRequest) => requireAdmin(app, req)],
   };
+
+  app.get('/admin/tournaments/economy-preset', admin, async (req) => {
+    const query = tournamentEconomyPresetQuerySchema.parse(req.query);
+    return buildTournamentEconomyPreset(query.participantLimit);
+  });
 
   app.get('/tournaments', authenticated, async (req) => {
     await requireTournamentFeature(app);

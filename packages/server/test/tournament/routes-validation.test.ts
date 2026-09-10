@@ -191,6 +191,52 @@ describe.skipIf(!hasIntegrationEnv)('beginner read-only tournament routes', () =
       authorization: `Bearer ${await jwt.issueAccessToken({ sub: ADMIN_ID })}`,
     };
     try {
+      const economyPresetResponses = await Promise.all([
+        app.inject({
+          method: 'GET',
+          url: '/admin/tournaments/economy-preset?participantLimit=16',
+        }),
+        app.inject({
+          method: 'GET',
+          url: '/admin/tournaments/economy-preset?participantLimit=16',
+          headers: beginnerAuthorization,
+        }),
+        app.inject({
+          method: 'GET',
+          url: '/admin/tournaments/economy-preset',
+          headers: adminAuthorization,
+        }),
+        app.inject({
+          method: 'GET',
+          url: '/admin/tournaments/economy-preset?participantLimit=16.5',
+          headers: adminAuthorization,
+        }),
+        app.inject({
+          method: 'GET',
+          url: '/admin/tournaments/economy-preset?participantLimit=1',
+          headers: adminAuthorization,
+        }),
+        app.inject({
+          method: 'GET',
+          url: '/admin/tournaments/economy-preset?participantLimit=65',
+          headers: adminAuthorization,
+        }),
+        app.inject({
+          method: 'GET',
+          url: '/admin/tournaments/economy-preset?participantLimit=16',
+          headers: adminAuthorization,
+        }),
+      ]);
+      expect(economyPresetResponses.map((response) => response.statusCode)).toEqual([
+        401, 403, 400, 400, 400, 400, 200,
+      ]);
+      expect(economyPresetResponses[6]!.json()).toMatchObject({
+        participantLimit: 16,
+        entryFeeCoins: 10_000,
+        payoutValueCoins: 136_000,
+        sinkValueCoins: 24_000,
+      });
+
       const reads = await Promise.all([
         app.inject({ method: 'GET', url: '/tournaments', headers: beginnerAuthorization }),
         app.inject({
