@@ -557,6 +557,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '114_automatic_weekly_challenges.sql',
       '115_weekly_challenge_launch_marker.sql',
       '116_weekly_challenge_future_publication.sql',
+      '117_admin_direct_broadcasts.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -1337,6 +1338,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '114_automatic_weekly_challenges.sql',
       '115_weekly_challenge_launch_marker.sql',
       '116_weekly_challenge_future_publication.sql',
+      '117_admin_direct_broadcasts.sql',
     ]);
 
     const activeInventory = await pool.query<{

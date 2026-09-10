@@ -33,6 +33,7 @@ export type EventType =
   | 'admin_official_dialog_message_sent'
   | 'admin_official_dialog_updated'
   | 'admin_official_dialog_attachment_uploaded'
+  | 'admin_direct_broadcast_sent'
   | 'admin_official_account_avatar_updated'
   | 'admin_tournament_rewards_updated'
   | 'admin_tournament_manual_schedule_recovered'

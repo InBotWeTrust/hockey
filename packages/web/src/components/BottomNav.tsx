@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Gamepad2, MessageCircle, Package, ShieldCheck, User } from 'lucide-react';
 import { apiFetch } from '../api/apiFetch.js';
 import { achievementKeys, fetchAchievements } from '../api/achievements.js';
+import { fetchAdminAttention } from '../admin/api.js';
 import { fetchAmateurEvents, type AmateurDuelMatch } from '../api/amateurDuel.js';
 import { fetchActiveClassicTournamentGames } from '../api/tournamentClassic.js';
 import { countClaimableWeeklyChallenges, fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
@@ -165,6 +166,13 @@ export function BottomNav(): JSX.Element | null {
     queryFn: fetchAchievements,
     enabled: Boolean(user) && !isDemo,
     refetchInterval: 30_000,
+  });
+  const { data: adminAttention } = useQuery({
+    queryKey: ['admin', 'attention'],
+    queryFn: fetchAdminAttention,
+    enabled: !isDemo && user?.role === 'admin',
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
   const { data: refreshedUser } = useQuery<AuthUser>({
     queryKey: ['auth', 'me-role'],
@@ -448,7 +456,19 @@ export function BottomNav(): JSX.Element | null {
           <NavTab
             label="Админ"
             active={isAdmin}
-            icon={<ShieldCheck size={ICON_SIZE} strokeWidth={2} />}
+            icon={
+              <span style={{ position: 'relative', display: 'inline-flex' }}>
+                <ShieldCheck size={ICON_SIZE} strokeWidth={2} />
+                {(adminAttention?.totalCount ?? 0) > 0 && (
+                  <span
+                    aria-label={`События администратора: ${adminAttention!.totalCount}`}
+                    className="bottom-nav__badge"
+                  >
+                    {adminAttention!.totalCount > 99 ? '99+' : adminAttention!.totalCount}
+                  </span>
+                )}
+              </span>
+            }
             onClick={openAdminRoute}
           />
         )}
