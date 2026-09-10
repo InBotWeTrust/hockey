@@ -23,6 +23,7 @@ const nextChallengeInputSchema = z
     rewardCoins: z.number().int().min(0).max(10_000_000),
     rewardStars: z.number().int().min(0).max(10_000_000),
     rewardExperience: z.number().int().min(0).max(10_000_000),
+    rewardTokens: z.number().int().min(0).max(10_000_000),
     tasks: z.array(taskSchema).min(1).max(12),
   })
   .strict();
@@ -48,6 +49,7 @@ interface ChallengeRow {
   reward_coins: number;
   reward_stars: number;
   reward_experience: number;
+  reward_tokens: number;
   tasks: TaskRow[];
   created_at: Date;
   updated_at: Date;
@@ -189,6 +191,7 @@ async function fetchDashboard(client: PoolClient, now: Date) {
       rewardCoins: row.reward_coins,
       rewardStars: row.reward_stars,
       rewardExperience: row.reward_experience,
+      rewardTokens: row.reward_tokens,
       tasks: row.tasks.map((task) => ({
         id: task.id,
         type: task.type,
@@ -281,8 +284,9 @@ export async function registerWeeklyChallengeAdminRoutes(app: FastifyInstance): 
         const inserted = await client.query<{ id: string }>(
           `insert into weekly_challenges
             (title, description, join_open_at, visible_from, start_at, end_at,
-             is_automatic, is_active, join_enabled, reward_coins, reward_stars, reward_experience, created_by)
-           values ($1, $2, $3, $3, $4, $5, true, false, false, $6, $7, $8, $9) returning id`,
+             is_automatic, is_active, join_enabled,
+             reward_coins, reward_stars, reward_experience, reward_tokens, created_by)
+           values ($1, $2, $3, $3, $4, $5, true, false, false, $6, $7, $8, $9, $10) returning id`,
           [
             input.title,
             input.description,
@@ -292,6 +296,7 @@ export async function registerWeeklyChallengeAdminRoutes(app: FastifyInstance): 
             input.rewardCoins,
             input.rewardStars,
             input.rewardExperience,
+            input.rewardTokens,
             req.user.id,
           ],
         );
@@ -299,7 +304,7 @@ export async function registerWeeklyChallengeAdminRoutes(app: FastifyInstance): 
       }
       await client.query(
         `update weekly_challenges set title = $2, description = $3,
-          reward_coins = $4, reward_stars = $5, reward_experience = $6, updated_at = now()
+          reward_coins = $4, reward_stars = $5, reward_experience = $6, reward_tokens = $7, updated_at = now()
           where id = $1`,
         [
           id,
@@ -308,6 +313,7 @@ export async function registerWeeklyChallengeAdminRoutes(app: FastifyInstance): 
           input.rewardCoins,
           input.rewardStars,
           input.rewardExperience,
+          input.rewardTokens,
         ],
       );
       await client.query(`delete from weekly_challenge_tasks where challenge_id = $1`, [id]);

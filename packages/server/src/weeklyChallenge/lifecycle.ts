@@ -8,6 +8,7 @@ interface WeeklyChallengeSourceRow {
   reward_coins: number;
   reward_stars: number;
   reward_experience: number;
+  reward_tokens: number;
   created_by: string | null;
 }
 
@@ -164,7 +165,7 @@ export async function reconcileWeeklyChallengeLifecycle(
   if (!enabled) return;
 
   const { rows: sources } = await client.query<WeeklyChallengeSourceRow>(
-    `select id, title, description, reward_coins, reward_stars, reward_experience, created_by
+    `select id, title, description, reward_coins, reward_stars, reward_experience, reward_tokens, created_by
        from weekly_challenges
       where start_at < $1
       order by start_at desc, created_at desc
@@ -178,8 +179,8 @@ export async function reconcileWeeklyChallengeLifecycle(
     `insert into weekly_challenges
        (title, description, join_open_at, visible_from, start_at, end_at,
         is_automatic, is_active, join_enabled,
-        reward_coins, reward_stars, reward_experience, created_by)
-     values ($1, $2, $3, $3, $4, $5, true, false, false, $6, $7, $8, $9)
+        reward_coins, reward_stars, reward_experience, reward_tokens, created_by)
+     values ($1, $2, $3, $3, $4, $5, true, false, false, $6, $7, $8, $9, $10)
      on conflict (start_at) where is_automatic do nothing
      returning id`,
     [
@@ -191,6 +192,7 @@ export async function reconcileWeeklyChallengeLifecycle(
       source.reward_coins,
       source.reward_stars,
       source.reward_experience,
+      source.reward_tokens,
       source.created_by,
     ],
   );

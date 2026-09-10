@@ -18,6 +18,7 @@ function challenge(id: string, title: string): AdminWeeklyChallenge {
     rewardCoins: 100,
     rewardStars: 5,
     rewardExperience: 50,
+    rewardTokens: 5,
     tasks: [
       {
         id: 'task-1',
@@ -114,6 +115,7 @@ describe('WeeklyChallengesAdmin', () => {
           rewardCoins: 250,
           rewardStars: 5,
           rewardExperience: 50,
+          rewardTokens: 5,
           tasks: [{ type: 'goals_scored', title: '', target: 750, sortOrder: 0 }],
         }),
       }),
@@ -142,6 +144,10 @@ describe('WeeklyChallengesAdmin', () => {
       const title = await screen.findByRole('textbox', { name: 'Название' });
       expect(title).toHaveValue('');
       expect(screen.queryByLabelText('Дата начала')).not.toBeInTheDocument();
+      expect(screen.getByRole('spinbutton', { name: 'Монеты' })).toHaveValue(0);
+      expect(screen.getByRole('spinbutton', { name: 'Звёзды' })).toHaveValue(30);
+      expect(screen.getByRole('spinbutton', { name: 'Опыт' })).toHaveValue(30);
+      expect(screen.getByRole('spinbutton', { name: 'Токены' })).toHaveValue(5);
       fireEvent.change(title, { target: { value: 'Первая неделя' } });
       fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
       await waitFor(() =>
@@ -151,8 +157,9 @@ describe('WeeklyChallengesAdmin', () => {
             title: 'Первая неделя',
             description: '',
             rewardCoins: 0,
-            rewardStars: 0,
-            rewardExperience: 0,
+            rewardStars: 30,
+            rewardExperience: 30,
+            rewardTokens: 5,
             tasks: [{ type: 'goals_scored', title: '', target: 500, sortOrder: 0 }],
           }),
         }),

@@ -23,6 +23,7 @@ export interface WeeklyChallengeRow {
   reward_coins: number;
   reward_stars: number;
   reward_experience: number;
+  reward_tokens: number;
   created_by: string | null;
   created_at: Date;
   updated_at: Date;
@@ -54,7 +55,7 @@ export interface WeeklyChallengeDTO {
   status: WeeklyChallengeStatus;
   startAt: string;
   endAt: string;
-  reward: { coins: number; stars: number; experience: number };
+  reward: { coins: number; stars: number; experience: number; tokens: number };
   rewardClaimedAt: string | null;
   tasks: WeeklyChallengeTaskDTO[];
   hasProgress: boolean;

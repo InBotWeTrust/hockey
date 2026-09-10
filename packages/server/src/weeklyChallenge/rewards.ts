@@ -7,6 +7,7 @@ export interface WeeklyChallengeRewardInput {
   coins: number;
   stars: number;
   experience: number;
+  tokens: number;
 }
 
 export async function grantWeeklyChallengeReward(
@@ -53,6 +54,21 @@ export async function grantWeeklyChallengeReward(
     throw new AppError('server_error', 'weekly challenge currency account missing', 500);
 
   await client.query(
+    `insert into user_reward_token_account (user_id) values ($1)
+     on conflict (user_id) do nothing`,
+    [input.userId],
+  );
+  const tokenAccountResult = await client.query<{ balance: number }>(
+    `update user_reward_token_account
+        set balance = balance + $2, updated_at = now()
+      where user_id = $1
+      returning balance`,
+    [input.userId, input.tokens],
+  );
+  if (!tokenAccountResult.rows[0])
+    throw new AppError('server_error', 'weekly challenge token account missing', 500);
+
+  await client.query(
     `insert into currency_ledger
        (user_id, reason, available_delta, reserved_delta, balance_after, reserved_after, metadata)
      values ($1, 'weekly_challenge_reward', $2, 0, $3, $4, $5)`,
@@ -71,10 +87,10 @@ export async function grantWeeklyChallengeReward(
 
   const claimResult = await client.query<{ claimed_at: Date }>(
     `insert into weekly_challenge_reward_claims
-       (challenge_id, user_id, coins, stars, experience)
-     values ($1, $2, $3, $4, $5)
+       (challenge_id, user_id, coins, stars, experience, tokens)
+     values ($1, $2, $3, $4, $5, $6)
      returning claimed_at`,
-    [input.challengeId, input.userId, input.coins, input.stars, input.experience],
+    [input.challengeId, input.userId, input.coins, input.stars, input.experience, input.tokens],
   );
   const claimedAt = claimResult.rows[0]!.claimed_at;
 

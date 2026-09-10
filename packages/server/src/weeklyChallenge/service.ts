@@ -207,6 +207,7 @@ async function mapChallenge(
       coins: Number(challenge.reward_coins),
       stars: Number(challenge.reward_stars),
       experience: Number(challenge.reward_experience),
+      tokens: Number(challenge.reward_tokens),
     },
     rewardClaimedAt: rewardClaimedAt?.toISOString() ?? null,
     tasks: taskDtos,
@@ -349,12 +350,14 @@ export async function claimWeeklyChallengeReward(
     coins: Number(challenge.reward_coins),
     stars: Number(challenge.reward_stars),
     experience: Number(challenge.reward_experience),
+    tokens: Number(challenge.reward_tokens),
   });
   await appendEvent(client, userId, 'weekly_challenge_reward_claimed', {
     challenge_id: challengeId,
     coins: Number(challenge.reward_coins),
     stars: Number(challenge.reward_stars),
     experience: Number(challenge.reward_experience),
+    tokens: Number(challenge.reward_tokens),
   });
   return getCurrentWeeklyChallenge(client, userId, now);
 }

@@ -43,8 +43,9 @@ function toInput(challenge: AdminWeeklyChallenge | null): AdminWeeklyChallengeIn
       title: '',
       description: '',
       rewardCoins: 0,
-      rewardStars: 0,
-      rewardExperience: 0,
+      rewardStars: 30,
+      rewardExperience: 30,
+      rewardTokens: 5,
       tasks: [{ type: 'goals_scored', title: '', target: 500, sortOrder: 0 }],
     };
   return {
@@ -53,6 +54,7 @@ function toInput(challenge: AdminWeeklyChallenge | null): AdminWeeklyChallengeIn
     rewardCoins: challenge.rewardCoins,
     rewardStars: challenge.rewardStars,
     rewardExperience: challenge.rewardExperience,
+    rewardTokens: challenge.rewardTokens,
     tasks: challenge.tasks.map((task, index) => ({
       type: task.type,
       title: task.title ?? '',
@@ -213,6 +215,7 @@ function NextChallengeEditor({
               { key: 'rewardCoins', label: 'Монеты' },
               { key: 'rewardStars', label: 'Звёзды' },
               { key: 'rewardExperience', label: 'Опыт' },
+              { key: 'rewardTokens', label: 'Токены' },
             ] as const
           ).map(({ key, label }) => (
             <AdminField key={key} label={label}>
@@ -328,7 +331,7 @@ function ChallengeCard({
       {challenge.description && <p>{challenge.description}</p>}
       <p>
         Монеты: {challenge.rewardCoins} · Звёзды: {challenge.rewardStars} · Опыт:{' '}
-        {challenge.rewardExperience}
+        {challenge.rewardExperience} · Токены: {challenge.rewardTokens}
       </p>
       <ChallengeMetrics challenge={challenge} />
       <TaskStats challenge={challenge} />

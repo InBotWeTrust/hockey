@@ -111,6 +111,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/weekly-challenges/*', () => {
       rewardCoins: 100,
       rewardStars: 5,
       rewardExperience: 50,
+      rewardTokens: 5,
       tasks: [{ type: 'goals_scored', title: '500 шайб', target: 500, sortOrder: 0 }],
     };
   }

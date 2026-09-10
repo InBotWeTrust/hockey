@@ -214,6 +214,7 @@ export interface AdminWeeklyChallenge {
   rewardCoins: number;
   rewardStars: number;
   rewardExperience: number;
+  rewardTokens: number;
   tasks: AdminWeeklyChallengeTask[];
   stats: AdminWeeklyChallengeStats;
   players: AdminWeeklyChallengePlayer[];
@@ -227,6 +228,7 @@ export interface AdminWeeklyChallengeInput {
   rewardCoins: number;
   rewardStars: number;
   rewardExperience: number;
+  rewardTokens: number;
   tasks: Array<{
     type: AdminWeeklyChallengeTaskType;
     title?: string;

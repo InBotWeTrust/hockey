@@ -196,6 +196,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       allTasksCompleted: true,
       canClaimReward: true,
       rewardClaimedAt: null,
+      reward: { coins: 10, stars: 2, experience: 3, tokens: 5 },
       tasks: [expect.objectContaining({ progress: 1, completed: true })],
     });
     expect(current.json().challenge).not.toHaveProperty('participant');
@@ -248,12 +249,28 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       ledger_rows: '1',
     });
 
+    const tokenBalance = await pool.query<{ balance: number }>(
+      `select balance from user_reward_token_account where user_id = $1`,
+      [userId],
+    );
+    expect(tokenBalance.rows[0]).toMatchObject({ balance: 5 });
+    const tokenSnapshot = await pool.query<{ tokens: number }>(
+      `select tokens from weekly_challenge_reward_claims where challenge_id = $1 and user_id = $2`,
+      [challengeId, userId],
+    );
+    expect(tokenSnapshot.rows[0]).toMatchObject({ tokens: 5 });
+
     const duplicate = await app.inject({
       method: 'POST',
       url: `/weekly-challenge/${challengeId}/claim-reward`,
       headers: authHeader(),
     });
     expect(duplicate.statusCode).toBe(409);
+    const tokenBalanceAfterDuplicate = await pool.query<{ balance: number }>(
+      `select balance from user_reward_token_account where user_id = $1`,
+      [userId],
+    );
+    expect(tokenBalanceAfterDuplicate.rows[0]).toMatchObject({ balance: 5 });
   });
 
   it('counts progress in the half-open challenge window', async () => {
