@@ -250,7 +250,16 @@ function CareerPanel({
   onOpen: () => void;
   onChoose: (achievement: ProfileData['achievements'][number]) => void;
 }): JSX.Element {
-  const earned = profile.achievements.filter((achievement) => achievement.isUnlocked);
+  const earned = profile.achievements
+    .filter((achievement) => achievement.isUnlocked)
+    .sort((left, right) => {
+      const leftTime = left.completedAt ? Date.parse(left.completedAt) : Number.NaN;
+      const rightTime = right.completedAt ? Date.parse(right.completedAt) : Number.NaN;
+      if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) return rightTime - leftTime;
+      if (Number.isFinite(leftTime)) return -1;
+      if (Number.isFinite(rightTime)) return 1;
+      return 0;
+    });
   return (
     <section className="profile-career-section" aria-label="Награды и достижения">
       <button

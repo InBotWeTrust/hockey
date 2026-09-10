@@ -23,6 +23,7 @@ const profile = {
       requirement: 'Забить 50 голов',
       isUnlocked: true,
       status: 'claimed' as const,
+      completedAt: '2026-08-14T12:00:00.000Z',
     },
   ],
   trophySummary: {
@@ -569,6 +570,44 @@ describe('ProfileScreen', () => {
     expect(career).toHaveTextContent('Снайпер недели');
     expect(career.querySelector('img')).toHaveAttribute('src', '/achievement-1.webp');
     expect(career.querySelector('.profile-career-list')).toHaveClass('profile-career-list--scroll');
+  });
+
+  it('orders earned achievements from newest to oldest in the career band', async () => {
+    mockProfileRequest(200, {
+      ...profile,
+      achievements: [
+        {
+          ...profile.achievements[0]!,
+          id: 'older',
+          title: 'Первая шайба',
+          completedAt: '2026-08-01T10:00:00.000Z',
+        },
+        {
+          ...profile.achievements[0]!,
+          id: 'newer',
+          title: 'Новая награда',
+          completedAt: '2026-09-01T10:00:00.000Z',
+        },
+        {
+          ...profile.achievements[0]!,
+          id: 'invalid-date',
+          title: 'Награда с неверной датой',
+          completedAt: 'неверная дата',
+        },
+      ],
+    });
+    renderProfile();
+
+    const career = await screen.findByLabelText('Награды и достижения');
+    const achievementButtons = within(career).getAllByRole('button', {
+      name: /Открыть достижение/,
+    });
+
+    expect(achievementButtons.map((button) => button.textContent)).toEqual([
+      'Новая награда',
+      'Первая шайба',
+      'Награда с неверной датой',
+    ]);
   });
 
   it('shows the empty achievement message directly in the shared career panel', async () => {
