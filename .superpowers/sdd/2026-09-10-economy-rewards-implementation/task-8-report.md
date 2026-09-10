@@ -72,3 +72,31 @@ Fixed the review findings for priority-query gating and the monthly acknowledgem
 - Priority: no lower dialog is rendered while a higher queue is loading, has failed, or is awaiting retry; verified tournament → monthly → weekly order remains intact.
 - Race: the stale GET regression begins an in-flight refetch before acknowledgement, then resolves it after POST; the acknowledged item remains absent while the fresh refetch receives current state.
 - Error/retry: the retry control re-runs only the blocked priority query and does not create a dismissible reward modal.
+
+## Fix round 2
+
+### Status
+
+Fixed the failed-acknowledgement refetch regression. No server or game-core files were changed.
+
+### Changes
+
+- Moved the monthly congratulations invalidation from unconditional `onSettled` to `onSuccess`.
+- A failed acknowledgement now leaves the current modal and its inline error untouched, without a new pending GET or queue-level error card.
+
+### TDD and verification
+
+1. Added a regression where POST acknowledgement fails and any subsequent pending GET would fail.
+2. Ran `pnpm exec vitest run src/screens/SectionsScreen.test.tsx`; RED: the modal disappeared after the unconditional `onSettled` refetch.
+3. Moved invalidation into the successful acknowledgement path.
+4. Ran:
+   - `pnpm exec vitest run src/components/duel/MonthlyRatingRewardModal.test.tsx src/components/BottomNav.test.tsx src/screens/SectionsScreen.test.tsx` — PASS, 3 files / 69 tests.
+   - `pnpm typecheck` — PASS.
+   - `pnpm exec eslint src/api/amateurDuel.ts src/components/duel/MonthlyRatingRewardModal.tsx src/components/duel/MonthlyRatingRewardModal.test.tsx src/components/BottomNav.test.tsx src/screens/SectionsScreen.tsx src/screens/SectionsScreen.test.tsx` — PASS.
+   - `pnpm exec prettier --check src/api/amateurDuel.ts src/components/duel/MonthlyRatingRewardModal.tsx src/components/duel/MonthlyRatingRewardModal.test.tsx src/components/BottomNav.test.tsx src/screens/SectionsScreen.tsx src/screens/SectionsScreen.test.tsx` — PASS.
+   - `git diff --check` — PASS.
+
+### Self-review
+
+- Successful acknowledgement still updates the local queue immediately and starts authoritative refetch only after the server confirms the read.
+- Failed acknowledgement starts no pending GET, so the known modal stays present with `Не удалось закрыть. Попробуйте ещё раз.` and cannot be replaced by a query error state.

@@ -157,14 +157,12 @@ export function SectionsScreen(): JSX.Element {
                 ),
               },
       );
-    },
-    onError: () => setMonthlyRatingAckError('Не удалось закрыть. Попробуйте ещё раз.'),
-    onSettled: () => {
       void queryClient.invalidateQueries({
         queryKey: MONTHLY_RATING_CONGRATULATIONS_KEY,
         exact: true,
       });
     },
+    onError: () => setMonthlyRatingAckError('Не удалось закрыть. Попробуйте ещё раз.'),
   });
 
   useEffect(() => {

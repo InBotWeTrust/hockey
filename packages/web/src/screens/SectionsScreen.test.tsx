@@ -24,7 +24,7 @@ interface MockSectionsData {
   profileCompetitionLevel?: 'beginner' | 'amateur' | 'professional';
   profileRequest?: 'error' | 'loading';
   profileResponse?: Promise<Response>;
-  monthlyRequest?: 'error';
+  monthlyRequest?: 'error' | 'errorAfterAcknowledgement';
   monthlyResponse?: Promise<Response>;
   pendingTournamentCongratulations?: RegularSeasonPodiumCongratulation[];
   acknowledgementRequest?: 'error';
@@ -84,6 +84,7 @@ function mockSectionsApi({
   pendingChallengeFailure = null,
 }: MockSectionsData = {}): void {
   const acknowledgedMonthlyRatingCongratulations = new Set<string>();
+  let monthlyAcknowledgementAttempted = false;
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
     const url = String(input);
     if (url.endsWith('/api/achievements')) {
@@ -115,7 +116,10 @@ function mockSectionsApi({
     }
     if (url.endsWith('/api/duel/amateur/rating/congratulations/pending')) {
       if (monthlyResponse !== undefined) return monthlyResponse;
-      if (monthlyRequest === 'error') {
+      if (
+        monthlyRequest === 'error' ||
+        (monthlyRequest === 'errorAfterAcknowledgement' && monthlyAcknowledgementAttempted)
+      ) {
         return Promise.resolve(
           new Response(JSON.stringify({ error: 'monthly rewards unavailable' }), {
             status: 500,
@@ -138,6 +142,7 @@ function mockSectionsApi({
       );
     }
     if (url.includes('/api/duel/amateur/rating/congratulations/') && url.endsWith('/read')) {
+      monthlyAcknowledgementAttempted = true;
       const congratulationId = url.split('/').at(-2);
       if (monthlyAcknowledgementRequest !== 'error' && congratulationId !== undefined) {
         acknowledgedMonthlyRatingCongratulations.add(congratulationId);
@@ -691,6 +696,48 @@ describe('SectionsScreen', () => {
       'Не удалось закрыть. Попробуйте ещё раз.',
     );
     expect(screen.getByText('Август 2026')).toBeInTheDocument();
+  });
+
+  it('does not refetch or replace the monthly modal after acknowledgement fails', async () => {
+    mockSectionsApi({
+      monthlyAcknowledgementRequest: 'error',
+      monthlyRequest: 'errorAfterAcknowledgement',
+      pendingMonthlyRatingCongratulations: [
+        {
+          id: '00000000-0000-4000-8000-000000000984',
+          season_key: '2026-08',
+          place: 1,
+          matches_played: 50,
+          eligible_count: 50,
+          rewarded_count: 10,
+          coins: 15000,
+          stars: 300,
+          tokens: 10,
+          created_at: '2026-09-01T00:00:00.000Z',
+        },
+      ],
+    });
+    renderSections();
+
+    expect(await screen.findByText('Август 2026')).toBeInTheDocument();
+    const pendingGetsBeforeAcknowledgement = vi
+      .mocked(fetch)
+      .mock.calls.filter(([input]) =>
+        String(input).includes('/api/duel/amateur/rating/congratulations/pending'),
+      ).length;
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не удалось закрыть. Попробуйте ещё раз.',
+    );
+    expect(screen.getByText('Август 2026')).toBeInTheDocument();
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.filter(([input]) =>
+          String(input).includes('/api/duel/amateur/rating/congratulations/pending'),
+        ).length,
+    ).toBe(pendingGetsBeforeAcknowledgement);
   });
 
   it('keeps tournament podium ahead of monthly rating and weekly failure in the modal queue', async () => {
