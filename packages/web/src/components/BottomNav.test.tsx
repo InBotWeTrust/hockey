@@ -446,7 +446,7 @@ describe('BottomNav remembered navigation', () => {
     const client = renderBottomNav('/profile');
 
     await waitFor(() =>
-      expect(client.getQueryState(['weekly-challenge', 'nav'])?.status).toBe('success'),
+      expect(client.getQueryState(['weekly-challenge', 'current'])?.status).toBe('success'),
     );
     await waitFor(() => expect(client.isFetching()).toBe(0));
     expect(screen.queryByLabelText(/События разделов:/)).toBeNull();

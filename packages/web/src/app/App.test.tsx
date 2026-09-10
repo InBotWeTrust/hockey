@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { queryClient } from './queryClient.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -82,6 +83,7 @@ function renderAt(path: string): void {
 
 describe('App routing + auth', () => {
   beforeEach(() => {
+    queryClient.clear();
     localStorage.clear();
     window.history.replaceState({}, '', '/');
     vi.restoreAllMocks();
@@ -385,7 +387,12 @@ describe('app backdrop variants', () => {
   it('renders lazy route loading text with a high-contrast arena treatment', () => {
     render(<RouteLoading />);
 
-    expect(screen.getByRole('status')).toHaveClass('route-loading');
+    const loading = screen.getByRole('status');
+    expect(loading).toHaveClass('route-loading');
+    expect(loading).toHaveStyle({
+      color: '#0f172a',
+      background: 'rgba(255, 255, 255, 0.9)',
+    });
   });
 
   it('uses the dedicated login rink background on the sign-in screen', () => {

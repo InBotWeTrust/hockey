@@ -64,6 +64,14 @@ export function OnboardingGate({ children }: { children: ReactNode }): JSX.Eleme
   }, [query.data?.required, query.isFetchedAfterMount, run, startRequired]);
 
   const refreshAfterGameExit = useCallback(async (): Promise<void> => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['profile'] }),
+      queryClient.invalidateQueries({ queryKey: ['inventory'] }),
+      queryClient.invalidateQueries({ queryKey: ['achievements'] }),
+      queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] }),
+      queryClient.invalidateQueries({ queryKey: ['daily', 'history'] }),
+      queryClient.invalidateQueries({ queryKey: ['training', 'history'] }),
+    ]);
     const response = await fetchRequiredOnboarding();
     queryClient.setQueryData(onboardingQueryKeys.required(), response);
     if (!response.required) return;

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, CircleDollarSign, Sparkles, Star, Ticket, TrendingUp } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchWeeklyChallengeCatalog } from '../api/weeklyChallenge.js';
+import { fetchWeeklyChallengeCatalog, weeklyChallengeKeys } from '../api/weeklyChallenge.js';
 import {
   claimWeeklyChallengeReward,
   weeklyChallengeNeedsAction,
@@ -143,12 +143,9 @@ export function WeeklyChallengeScreen({
   } | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
   const query = useQuery({
-    queryKey: ['weekly-challenge', 'catalog'],
+    queryKey: weeklyChallengeKeys.catalog,
     queryFn: fetchWeeklyChallengeCatalog,
-    refetchInterval: 30_000,
-    refetchOnWindowFocus: true,
   });
-  const { refetch } = query;
   const catalog = query.data ?? { future: [], active: [], completed: [] };
   const visibleChallenges = catalog[filter];
   const selectedFilter = FILTERS.find((item) => item.id === filter) ?? FILTERS[0]!;
@@ -165,6 +162,8 @@ export function WeeklyChallengeScreen({
       setClaimedReward({ title: challenge.title, reward: challenge.reward });
       window.setTimeout(() => setClaimedReward(null), 2800);
       void queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
+      void queryClient.invalidateQueries({ queryKey: ['profile'] });
+      void queryClient.invalidateQueries({ queryKey: ['inventory'] });
     },
     onError: (error) => {
       triggerHaptic('error');
@@ -178,8 +177,28 @@ export function WeeklyChallengeScreen({
   }, []);
 
   useEffect(() => {
+    if (query.data === undefined) return;
+    const boundaryDelays = [
+      ...query.data.future.map(
+        (challenge) => Date.parse(challenge.startAt) - Date.parse(challenge.serverNow),
+      ),
+      ...query.data.active.map(
+        (challenge) => Date.parse(challenge.endAt) - Date.parse(challenge.serverNow),
+      ),
+    ].filter((delay) => Number.isFinite(delay) && delay >= 0);
+    if (boundaryDelays.length === 0) return;
+    const id = window.setInterval(() => {
+      window.clearInterval(id);
+      void queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
+    }, Math.min(...boundaryDelays) + 250);
+    return () => window.clearInterval(id);
+  }, [query.data, queryClient]);
+
+  useEffect(() => {
     const refresh = (): void => {
-      if (document.visibilityState !== 'hidden') void refetch({ cancelRefetch: false });
+      if (document.visibilityState !== 'hidden') {
+        void queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
+      }
     };
     window.addEventListener('focus', refresh);
     window.addEventListener('pageshow', refresh);
@@ -189,7 +208,7 @@ export function WeeklyChallengeScreen({
       window.removeEventListener('pageshow', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [refetch]);
+  }, [queryClient]);
 
   useEffect(() => {
     if (query.data === undefined) return;

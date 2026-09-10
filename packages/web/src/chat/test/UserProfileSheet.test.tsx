@@ -265,6 +265,31 @@ describe('UserProfileSheet', () => {
     ).toBeInTheDocument();
   });
 
+  it('uses the compact achievement title treatment for training monster', async () => {
+    vi.spyOn(api, 'fetchUserProfile').mockResolvedValue({
+      ...publicProfile,
+      achievements: [
+        {
+          ...publicProfile.achievements[0]!,
+          id: 'training-monster',
+          title: 'Тренировочный монстр',
+        },
+      ],
+    });
+
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+      onClose: () => {},
+    });
+
+    const achievement = await screen.findByRole('button', {
+      name: /Тренировочный монстр.*получено/i,
+    });
+    expect(achievement.querySelector('.profile-achievement-title')).toHaveClass(
+      'profile-achievement-title--compact',
+    );
+  });
+
   it('renders an official account card without loading a player profile', async () => {
     await renderSheet({
       sender: {

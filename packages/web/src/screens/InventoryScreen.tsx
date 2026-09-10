@@ -32,6 +32,7 @@ import {
 } from '../api/inventory.js';
 import { artworkForInventoryItem } from './inventoryArtwork.js';
 import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
+import { updateCachedProfileBalances } from '../app/queryClient.js';
 
 type ShopTab = 'goods' | 'bank' | 'history';
 type HistoryFilter = InventoryTransactionFilter;
@@ -164,6 +165,14 @@ export function InventoryScreen(): JSX.Element {
     onSuccess: (inventory, item) => {
       triggerHaptic('success');
       queryClient.setQueryData(['inventory', 'me'], inventory);
+      void queryClient.invalidateQueries({ queryKey: ['inventory', 'transactions'] });
+      updateCachedProfileBalances(queryClient, {
+        currencyBalance: inventory.balances.tokens,
+        starBalance: inventory.balances.stars,
+        ...(inventory.balances.experience === undefined
+          ? {}
+          : { experienceBalance: inventory.balances.experience }),
+      });
       setPurchaseItem(null);
       setPurchaseNotice({
         title: addedInventoryTitle(item),

@@ -467,7 +467,7 @@ describe('ProfileScreen', () => {
     const equipmentCard = await screen.findByLabelText('Инвентарь');
     expect(equipmentCard).toHaveTextContent('18КлюшкаЛедяной клинок');
     expect(equipmentCard).toHaveTextContent('7КонькиСеверный ход');
-    expect(equipmentCard).toHaveTextContent('180 000ПитаниеЭнерго-гель');
+    expect(equipmentCard).toHaveTextContent('3 минПитаниеЭнерго-гель');
     expect(equipmentCard).toHaveTextContent('0ВосстановлениеНет в запасе');
     expect(equipmentCard.querySelector('.profile-loadout')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Ледяной клинок' })).toHaveAttribute(
@@ -570,6 +570,27 @@ describe('ProfileScreen', () => {
     expect(career).toHaveTextContent('Снайпер недели');
     expect(career.querySelector('img')).toHaveAttribute('src', '/achievement-1.webp');
     expect(career.querySelector('.profile-career-list')).toHaveClass('profile-career-list--scroll');
+  });
+
+  it('uses the compact achievement title treatment for training monster', async () => {
+    mockProfileRequest(200, {
+      ...profile,
+      achievements: [
+        {
+          ...profile.achievements[0]!,
+          id: 'training-monster',
+          title: 'Тренировочный монстр',
+        },
+      ],
+    });
+    renderProfile();
+
+    const achievement = await screen.findByRole('button', {
+      name: 'Открыть достижение Тренировочный монстр',
+    });
+    expect(achievement.querySelector('.profile-achievement-title')).toHaveClass(
+      'profile-achievement-title--compact',
+    );
   });
 
   it('orders earned achievements from newest to oldest in the career band', async () => {

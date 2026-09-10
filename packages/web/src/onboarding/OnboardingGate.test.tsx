@@ -37,7 +37,7 @@ function renderGate(child = <div>Профиль</div>, strict = false) {
       <OnboardingGate>{child}</OnboardingGate>
     </QueryClientProvider>
   );
-  return render(strict ? <StrictMode>{tree}</StrictMode> : tree);
+  return { client, ...render(strict ? <StrictMode>{tree}</StrictMode> : tree) };
 }
 
 describe('OnboardingGate', () => {
@@ -91,10 +91,16 @@ describe('OnboardingGate', () => {
       .mockResolvedValueOnce({ required: null })
       .mockResolvedValueOnce({ required });
     vi.mocked(startOnboarding).mockResolvedValue({ runId: 'run-2', required });
-    renderGate(<Harness />);
+    const { client } = renderGate(<Harness />);
+    client.setQueryData(['inventory', 'me'], { remaining: 10 });
+    client.setQueryData(['achievements'], { unclaimedCount: 0 });
+    client.setQueryData(['weekly-challenge', 'current'], { challenge: null });
     await screen.findByText('Игра завершена');
     expect(fetchRequiredOnboarding).toHaveBeenCalledTimes(1);
     await act(() => refresh());
+    expect(client.getQueryState(['inventory', 'me'])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['achievements'])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['weekly-challenge', 'current'])?.isInvalidated).toBe(true);
     expect(await screen.findByText('Всё начинается здесь')).toBeInTheDocument();
     expect(startOnboarding).toHaveBeenCalledTimes(1);
   });

@@ -119,6 +119,7 @@ export function BonusGamesScreen(): JSX.Element {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['bonus-games'] }),
         queryClient.invalidateQueries({ queryKey: ['profile'] }),
+        queryClient.invalidateQueries({ queryKey: ['inventory'] }),
         refreshDaily(),
       ]);
       setPurchaseGame(null);

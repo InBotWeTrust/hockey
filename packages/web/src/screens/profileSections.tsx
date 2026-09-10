@@ -230,6 +230,9 @@ export function AchievementTile({
         />
       </div>
       <span
+        className={`profile-achievement-title${
+          achievement.id === 'training-monster' ? ' profile-achievement-title--compact' : ''
+        }`}
         style={{
           height: 25,
           width: '100%',
@@ -237,7 +240,6 @@ export function AchievementTile({
           WebkitLineClamp: 2,
           WebkitBoxOrient: 'vertical',
           overflow: 'hidden',
-          fontSize: 10,
           lineHeight: 1.25,
           fontWeight: 700,
           color: 'var(--muted)',

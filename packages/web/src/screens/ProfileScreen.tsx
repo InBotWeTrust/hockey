@@ -25,6 +25,7 @@ import { CommunityLinks } from '../components/CommunityLinks.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
+  formatInventoryBadgeAmount,
   formatInventoryResourceAmount,
   formatRecoveryMinutesTotal,
   recoveryMinutesAvailable,
@@ -155,7 +156,11 @@ function EquipmentPanel({
                   {item !== null ? (
                     <strong>
                       <FittedOneLineText maxFontSize={9} minFontSize={5}>
-                        {formatProfileNumber(item.chargesAvailable)}
+                        {formatInventoryBadgeAmount(
+                          item.kind,
+                          item.chargesAvailable,
+                          item.resourceUnit,
+                        )}
                       </FittedOneLineText>
                     </strong>
                   ) : null}
@@ -282,7 +287,15 @@ function CareerPanel({
                 onClick={() => onChoose(achievement)}
               >
                 <img src={achievement.photoUrl} alt="" />
-                <span>{achievement.title}</span>
+                <span
+                  className={`profile-achievement-title${
+                    achievement.id === 'training-monster'
+                      ? ' profile-achievement-title--compact'
+                      : ''
+                  }`}
+                >
+                  {achievement.title}
+                </span>
               </button>
             ))}
           </span>

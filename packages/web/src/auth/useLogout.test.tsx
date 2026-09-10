@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { useLogout } from './useLogout.js';
 import { useAuthStore } from './authStore.js';
+import { queryClient } from '../app/queryClient.js';
 
 function wrapper({ children }: { children: ReactNode }): JSX.Element {
   return <MemoryRouter>{children}</MemoryRouter>;
@@ -14,6 +15,7 @@ describe('useLogout', () => {
     localStorage.clear();
     useAuthStore.getState().clearSession();
     vi.restoreAllMocks();
+    queryClient.clear();
   });
 
   it('calls POST /auth/logout with refresh token and clears session', async () => {
@@ -53,5 +55,22 @@ describe('useLogout', () => {
     });
 
     expect(useAuthStore.getState().accessToken).toBeNull();
+  });
+
+  it('clears cached user data before another account can sign in', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    queryClient.setQueryData(['profile'], { displayName: 'A' });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+
+    const { result } = renderHook(() => useLogout(), { wrapper });
+    await act(async () => {
+      await result.current();
+    });
+
+    expect(queryClient.getQueryData(['profile'])).toBeUndefined();
   });
 });

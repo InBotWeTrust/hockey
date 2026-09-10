@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronRight } from 'lucide-react';
-import { fetchAchievements } from '../api/achievements.js';
+import { achievementKeys, fetchAchievements } from '../api/achievements.js';
 import { apiFetch } from '../api/apiFetch.js';
 import {
   acknowledgeWeeklyChallengeFailure,
   countClaimableWeeklyChallenges,
   fetchPendingWeeklyChallengeFailure,
   fetchWeeklyChallenge,
+  weeklyChallengeKeys,
   type WeeklyChallengeFailureResponse,
 } from '../api/weeklyChallenge.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
@@ -59,11 +60,11 @@ export function SectionsScreen(): JSX.Element {
   const [monthlyRatingAckError, setMonthlyRatingAckError] = useState<string | null>(null);
   const [failureAckError, setFailureAckError] = useState<string | null>(null);
   const weeklyChallenge = useQuery({
-    queryKey: ['weekly-challenge', 'section'],
+    queryKey: weeklyChallengeKeys.current,
     queryFn: fetchWeeklyChallenge,
   });
   const achievementsQuery = useQuery({
-    queryKey: ['achievements', 'section'],
+    queryKey: achievementKeys.all,
     queryFn: fetchAchievements,
   });
   const profileQuery = useQuery<ProfileData>({

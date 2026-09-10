@@ -19,11 +19,19 @@ import {
   fetchAchievements,
   type AchievementDto,
 } from '../api/achievements.js';
-import { countClaimableWeeklyChallenges, fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
+import {
+  countClaimableWeeklyChallenges,
+  fetchWeeklyChallenge,
+  weeklyChallengeKeys,
+} from '../api/weeklyChallenge.js';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { useAuthStore } from '../auth/authStore.js';
+import {
+  updateCachedInventoryBalances,
+  updateCachedProfileBalances,
+} from '../app/queryClient.js';
 
 type AchievementFilter =
   | 'all'
@@ -236,7 +244,7 @@ export function AchievementsScreen({
     queryFn: fetchAchievements,
   });
   const weeklyChallengeQuery = useQuery({
-    queryKey: ['weekly-challenge', 'achievements'],
+    queryKey: weeklyChallengeKeys.current,
     queryFn: fetchWeeklyChallenge,
   });
   const achievements = achievementsQuery.data?.achievements ?? [];
@@ -284,7 +292,8 @@ export function AchievementsScreen({
         unclaimedCount: response.unclaimedCount,
       });
       void queryClient.invalidateQueries({ queryKey: ['achievements'] });
-      void queryClient.invalidateQueries({ queryKey: ['profile'] });
+      updateCachedProfileBalances(queryClient, response.balances);
+      updateCachedInventoryBalances(queryClient, response.balances);
       setSelected(null);
       setClaimedReward({
         title: response.achievement.title,

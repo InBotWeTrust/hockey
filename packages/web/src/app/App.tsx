@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './global.css';
 import './design-system.css';
@@ -16,6 +16,7 @@ import { OnboardingGate } from '../onboarding/OnboardingGate.js';
 import { apiFetch } from '../api/apiFetch.js';
 import type { ProfileData } from '../screens/profileTypes.js';
 import { arenaBackgroundClass } from '../screens/lockerRoomBackground.js';
+import { queryClient } from './queryClient.js';
 
 const DailyScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DailyScreen })),
@@ -117,13 +118,6 @@ const UserProfileScreen = lazy(() =>
   })),
 );
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { retry: false, refetchOnWindowFocus: false },
-    mutations: { retry: false },
-  },
-});
-
 function ChatRealtime(): JSX.Element {
   const status = useChatSocket();
   return <OfflineBanner status={status} />;
@@ -132,7 +126,11 @@ function ChatRealtime(): JSX.Element {
 export function RouteLoading(): JSX.Element {
   return (
     <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <div className="route-loading" role="status">
+      <div
+        className="route-loading"
+        role="status"
+        style={{ color: '#0f172a', background: 'rgba(255, 255, 255, 0.9)' }}
+      >
         Загрузка…
       </div>
     </main>

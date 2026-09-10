@@ -7,7 +7,11 @@ import { achievementKeys, fetchAchievements } from '../api/achievements.js';
 import { fetchAdminAttention } from '../admin/api.js';
 import { fetchAmateurEvents, type AmateurDuelMatch } from '../api/amateurDuel.js';
 import { fetchActiveClassicTournamentGames } from '../api/tournamentClassic.js';
-import { countClaimableWeeklyChallenges, fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
+import {
+  countClaimableWeeklyChallenges,
+  fetchWeeklyChallenge,
+  weeklyChallengeKeys,
+} from '../api/weeklyChallenge.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { AuthUser } from '../auth/authStore.js';
 import { fetchUnreadCounts } from '../chat/api.js';
@@ -156,16 +160,14 @@ export function BottomNav(): JSX.Element | null {
     refetchInterval: 30_000,
   });
   const { data: weeklyChallenge } = useQuery({
-    queryKey: ['weekly-challenge', 'nav'],
+    queryKey: weeklyChallengeKeys.current,
     queryFn: fetchWeeklyChallenge,
     enabled: Boolean(user) && !isDemo,
-    refetchInterval: 60_000,
   });
   const { data: achievements } = useQuery({
     queryKey: achievementKeys.all,
     queryFn: fetchAchievements,
     enabled: Boolean(user) && !isDemo,
-    refetchInterval: 30_000,
   });
   const { data: adminAttention } = useQuery({
     queryKey: ['admin', 'attention'],

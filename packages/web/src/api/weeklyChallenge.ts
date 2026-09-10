@@ -49,6 +49,11 @@ export interface WeeklyChallengeFailureResponse {
   challenge: WeeklyChallenge | null;
 }
 
+export const weeklyChallengeKeys = {
+  current: ['weekly-challenge', 'current'] as const,
+  catalog: ['weekly-challenge', 'catalog'] as const,
+};
+
 export function weeklyChallengeNeedsAction(
   challenge: Pick<WeeklyChallenge, 'canClaimReward'> | null | undefined,
 ): boolean {
