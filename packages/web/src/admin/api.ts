@@ -586,6 +586,21 @@ export interface AdminDuelPeriodRule {
   shotsLimit: number | null;
 }
 
+export interface AdminDuelRewardAmount {
+  coins: number;
+  stars: number;
+  tokens: number;
+}
+
+export interface AdminDuelRewardRules {
+  equalExperienceTolerancePercent: number;
+  strongerWin: AdminDuelRewardAmount;
+  equalWin: AdminDuelRewardAmount;
+  weakerWin: AdminDuelRewardAmount;
+  draw: AdminDuelRewardAmount;
+  loss: AdminDuelRewardAmount;
+}
+
 export interface AdminDuelTemplate {
   id: string;
   title: string;
@@ -621,6 +636,7 @@ export interface AdminDuelTemplate {
   winCurrencyReward: number;
   drawCurrencyReward: number;
   winStarReward: number;
+  rewardRules: AdminDuelRewardRules;
   createdAt: string;
   updatedAt: string;
 }

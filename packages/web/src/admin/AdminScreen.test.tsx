@@ -1352,6 +1352,10 @@ describe('AdminScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать Классика' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Редактирование дуэли' });
+    expect(within(dialog).getByText('Награды за результат')).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText('Допуск равного опыта, %'),
+    ).toHaveValue(10);
     expect(screen.getByLabelText('Площадка при автоматическом подборе')).toHaveTextContent(
       'Нейтральная стандартная',
     );
@@ -1372,6 +1376,14 @@ describe('AdminScreen', () => {
     expect(savedTemplatePatchBody.challengeTtlMs).toBe(900_000);
     expect(savedTemplatePatchBody.readyDurationMs).toBe(900_000);
     expect(savedTemplatePatchBody.matchmakingVenuePolicy).toBe('random_unselected');
+    expect(savedTemplatePatchBody.rewardRules).toEqual({
+      equalExperienceTolerancePercent: 10,
+      strongerWin: { coins: 0, stars: 0, tokens: 0 },
+      equalWin: { coins: 0, stars: 0, tokens: 0 },
+      weakerWin: { coins: 0, stars: 0, tokens: 0 },
+      draw: { coins: 0, stars: 0, tokens: 0 },
+      loss: { coins: 0, stars: 0, tokens: 0 },
+    });
   });
 
   it('keeps the duel editor open and prevents duplicate submit while save is pending', async () => {

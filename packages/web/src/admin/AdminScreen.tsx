@@ -113,6 +113,7 @@ import {
   type AdminDuelHistoryItem,
   type AdminDuelHistoryResponse,
   type AdminDuelPeriodSpeedPreset,
+  type AdminDuelRewardRules,
   type AdminDuelTemplate,
   type AdminDuelTemplateInput,
   type AdminChannelPeriod,
@@ -218,6 +219,23 @@ const venueOptions = [
 const venueSelectOptions: Array<GlassSelectOption<AdminMatchmakingVenuePolicy>> = venueOptions.map(
   (option) => ({ ...option }),
 );
+
+const defaultDuelRewardRules: AdminDuelRewardRules = {
+  equalExperienceTolerancePercent: 10,
+  strongerWin: { coins: 0, stars: 0, tokens: 0 },
+  equalWin: { coins: 0, stars: 0, tokens: 0 },
+  weakerWin: { coins: 0, stars: 0, tokens: 0 },
+  draw: { coins: 0, stars: 0, tokens: 0 },
+  loss: { coins: 0, stars: 0, tokens: 0 },
+};
+
+const duelRewardRows = [
+  { key: 'strongerWin', label: 'Победа над более опытным' },
+  { key: 'equalWin', label: 'Победа над равным' },
+  { key: 'weakerWin', label: 'Победа над менее опытным' },
+  { key: 'draw', label: 'Ничья' },
+  { key: 'loss', label: 'Поражение' },
+] as const;
 
 const adminAchievementsTabs: Array<{ id: AdminAchievementsTab; label: string }> = [
   { id: 'achievements', label: 'Задания' },
@@ -7257,6 +7275,9 @@ function DuelTemplateEditor({
     fieldNumber(template?.drawCurrencyReward ?? 0),
   );
   const [winStarReward, setWinStarReward] = useState(fieldNumber(template?.winStarReward ?? 0));
+  const [rewardRules, setRewardRules] = useState<AdminDuelRewardRules>(
+    () => template?.rewardRules ?? defaultDuelRewardRules,
+  );
   const [periodSpeedPresets, setPeriodSpeedPresets] = useState(() =>
     normalizeDuelPresets(
       template?.periodSpeedPresets,
@@ -7296,6 +7317,16 @@ function DuelTemplateEditor({
         return Number.isFinite(value) && value >= field.min && value <= field.max;
       }),
     );
+  const rewardRulesValid =
+    Number.isSafeInteger(rewardRules.equalExperienceTolerancePercent) &&
+    rewardRules.equalExperienceTolerancePercent >= 0 &&
+    rewardRules.equalExperienceTolerancePercent <= 100 &&
+    duelRewardRows.every((row) =>
+      (['coins', 'stars', 'tokens'] as const).every((currency) => {
+        const amount = rewardRules[row.key][currency];
+        return Number.isSafeInteger(amount) && amount >= 0;
+      }),
+    );
   const canSave =
     title.trim() !== '' &&
     numericValues.every(Number.isFinite) &&
@@ -7311,7 +7342,8 @@ function DuelTemplateEditor({
     parseAdminNumberInput(drawCurrencyReward) >= 0 &&
     parseAdminNumberInput(winStarReward) >= 0 &&
     new Date(startsIso).getTime() < new Date(endsIso).getTime() &&
-    speedPresetsValid;
+    speedPresetsValid &&
+    rewardRulesValid;
   useEffect(() => {
     if (totalPeriodsCount <= 0) return;
     setPeriodSpeedPresets((current) => normalizeDuelPresets(current, totalPeriodsCount));
@@ -7357,6 +7389,21 @@ function DuelTemplateEditor({
     );
   }
 
+  function updateRewardAmount(
+    outcome: keyof Pick<
+      AdminDuelRewardRules,
+      'strongerWin' | 'equalWin' | 'weakerWin' | 'draw' | 'loss'
+    >,
+    currency: 'coins' | 'stars' | 'tokens',
+    value: string,
+  ): void {
+    const amount = parseAdminIntegerInput(value);
+    setRewardRules((current) => ({
+      ...current,
+      [outcome]: { ...current[outcome], [currency]: amount },
+    }));
+  }
+
   const mutation = useMutation({
     mutationFn: () => {
       const body: AdminDuelTemplateInput = {
@@ -7393,6 +7440,7 @@ function DuelTemplateEditor({
         winCurrencyReward: parseAdminNumberInput(winCurrencyReward),
         drawCurrencyReward: parseAdminNumberInput(drawCurrencyReward),
         winStarReward: parseAdminNumberInput(winStarReward),
+        rewardRules,
       };
       return template === null
         ? createAdminDuelTemplate(body)
@@ -7597,6 +7645,74 @@ function DuelTemplateEditor({
             />
           </AdminField>
         </div>
+        <section
+          className="glass"
+          style={{
+            borderRadius: 18,
+            padding: 12,
+            display: 'grid',
+            gap: 10,
+            background: 'rgba(255,255,255,0.34)',
+          }}
+        >
+          <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 950 }}>
+            Награды за результат
+          </div>
+          <AdminField label="Допуск равного опыта, %">
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={
+                Number.isFinite(rewardRules.equalExperienceTolerancePercent)
+                  ? rewardRules.equalExperienceTolerancePercent
+                  : ''
+              }
+              onChange={(event) =>
+                setRewardRules((current) => ({
+                  ...current,
+                  equalExperienceTolerancePercent: parseAdminIntegerInput(event.target.value),
+                }))
+              }
+            />
+          </AdminField>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr repeat(3, 1fr)', gap: 6 }}>
+            <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>Результат</span>
+            <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>Монеты</span>
+            <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>Звёзды</span>
+            <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>Жетоны</span>
+            {duelRewardRows.flatMap((row) => [
+              <span
+                key={`${row.key}-label`}
+                style={{ color: 'var(--ink)', fontSize: 11, fontWeight: 800, alignSelf: 'center' }}
+              >
+                {row.label}
+              </span>,
+              ...(['coins', 'stars', 'tokens'] as const).map((currency) => {
+                const amount = rewardRules[row.key][currency];
+                const label = `${row.label}: ${
+                  currency === 'coins' ? 'монеты' : currency === 'stars' ? 'звёзды' : 'жетоны'
+                }`;
+                return (
+                  <input
+                    key={`${row.key}-${currency}`}
+                    aria-label={label}
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={Number.isFinite(amount) ? amount : ''}
+                    onChange={(event) => updateRewardAmount(row.key, currency, event.target.value)}
+                  />
+                );
+              }),
+            ])}
+          </div>
+          {!rewardRulesValid && (
+            <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
+              Награды должны быть неотрицательными целыми числами, допуск — от 0 до 100
+            </div>
+          )}
+        </section>
         <section
           className="glass"
           style={{

@@ -2119,6 +2119,69 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(stored.rows[0]?.period_rules).toBeNull();
   });
 
+  it('snapshots editable reward rules into a created duel despite later template edits', async () => {
+    await pool.query(`update users set role = 'admin' where id = $1`, [userA]);
+    const templateId = await createTemplate();
+    const rewardRules = {
+      equalExperienceTolerancePercent: 15,
+      strongerWin: { coins: 30, stars: 3, tokens: 2 },
+      equalWin: { coins: 20, stars: 2, tokens: 1 },
+      weakerWin: { coins: 10, stars: 1, tokens: 0 },
+      draw: { coins: 5, stars: 0, tokens: 0 },
+      loss: { coins: 0, stars: 0, tokens: 0 },
+    };
+
+    const defaults = await app.inject({
+      method: 'GET',
+      url: '/admin/duel-templates',
+      headers: auth(tokenA),
+    });
+    expect(defaults.statusCode).toBe(200);
+    expect(defaults.json().templates[0].rewardRules).toEqual({
+      equalExperienceTolerancePercent: 10,
+      strongerWin: { coins: 0, stars: 0, tokens: 0 },
+      equalWin: { coins: 0, stars: 0, tokens: 0 },
+      weakerWin: { coins: 0, stars: 0, tokens: 0 },
+      draw: { coins: 0, stars: 0, tokens: 0 },
+      loss: { coins: 0, stars: 0, tokens: 0 },
+    });
+
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: `/admin/duel-templates/${templateId}`,
+      headers: auth(tokenA),
+      payload: { rewardRules },
+    });
+    expect(patch.statusCode).toBe(200);
+    expect(patch.json().template.rewardRules).toEqual(rewardRules);
+
+    const created = await challenge(templateId);
+    expect(created.statusCode).toBe(200);
+    expect(created.json().match.rules.rewardRules).toEqual(rewardRules);
+
+    const reset = await app.inject({
+      method: 'PATCH',
+      url: `/admin/duel-templates/${templateId}`,
+      headers: auth(tokenA),
+      payload: {
+        rewardRules: {
+          ...rewardRules,
+          equalExperienceTolerancePercent: 0,
+          strongerWin: { coins: 0, stars: 0, tokens: 0 },
+        },
+      },
+    });
+    expect(reset.statusCode).toBe(200);
+
+    const accepted = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${created.json().match.id}/accept`,
+      headers: auth(tokenB),
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json().match.rules.rewardRules).toEqual(rewardRules);
+  });
+
   it('accepts into a ready room without reserving stake or fee yet', async () => {
     const templateId = await createTemplate({
       startsAt: '2099-01-01T00:00:00.000Z',
