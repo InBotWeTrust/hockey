@@ -14,7 +14,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
-  Check,
   ChevronRight,
   Crosshair,
   Info,
@@ -109,7 +108,6 @@ import {
 } from '../api/gameplayLock.js';
 import {
   fetchMyInventory,
-  patchEquipment,
   useRecoveryKit,
   type InventoryEquipmentKind,
   type InventoryItem,
@@ -143,6 +141,10 @@ import {
 } from '../api/amateurDuel.js';
 import { AmateurDuelRatingTab } from '../components/duel/AmateurDuelRatingTab.js';
 import { AmateurDuelHistoryTab } from '../components/duel/AmateurDuelHistoryTab.js';
+import {
+  DuelEquipmentSelectionRadio,
+  DuelLockerTab,
+} from '../components/duel/DuelLockerTab.js';
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 import { TournamentCatalog } from '../tournament/TournamentCatalog.js';
@@ -160,9 +162,6 @@ import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryA
 import {
   formatInventoryBadgeAmount,
   formatInventoryResourceAmount,
-  formatInventoryStockLabel,
-  formatRecoveryMinutesTotal,
-  recoveryMinutesAvailable,
 } from './inventoryResourceLabels.js';
 const HUB_PERIOD_DURATION_MS = 20 * 60 * 1000;
 
@@ -4987,432 +4986,6 @@ function AmateurDuelsPage({
   );
 }
 
-function DuelLockerTab({
-  onInfo,
-  onOpenInventory,
-}: {
-  onInfo: () => void;
-  onOpenInventory: () => void;
-}): JSX.Element {
-  const queryClient = useQueryClient();
-  const [selectedKind, setSelectedKind] = useState<InventoryEquipmentKind | null>(null);
-  const inventoryQuery = useQuery<InventoryState>({
-    queryKey: ['inventory', 'me'],
-    queryFn: fetchMyInventory,
-  });
-  const equipmentMut = useMutation<
-    InventoryState,
-    Error,
-    { kind: InventoryEquipmentKind; itemId: string | null }
-  >({
-    mutationFn: ({ kind, itemId }) =>
-      patchEquipment({ [DUEL_EQUIPMENT_META[kind].patchKey]: itemId }),
-    onSuccess: (inventory) => {
-      queryClient.setQueryData(['inventory', 'me'], inventory);
-    },
-  });
-  const recoveryItems = inventoryQuery.data?.items.recovery ?? [];
-  const recoveryMinutes = recoveryMinutesAvailable(recoveryItems);
-  const recoveryArtwork =
-    recoveryItems.find((item) => item.chargesAvailable > 0)?.imageUrl ??
-    '/inventory/recovery-30.webp';
-
-  return (
-    <>
-      <section className="duel-section">
-        <div className="duel-locker-kind-list">
-          {DUEL_INVENTORY_SLOTS.map((slot) => (
-            <section className="duel-locker-kind-section" key={slot.kind}>
-              <div
-                className={`section-label duel-section-title duel-locker-kind-section__title${
-                  slot.kind === 'skates' ? ' duel-section-title--with-action' : ''
-                }`}
-              >
-                {DUEL_EQUIPMENT_META[slot.kind].title}
-                {slot.kind === 'skates' && (
-                  <button
-                    type="button"
-                    className="section-info-btn duel-section-info-btn"
-                    onClick={onInfo}
-                    aria-label="Что такое раздевалка"
-                  >
-                    <Info size={12} color="rgba(240, 248, 255, 0.92)" />
-                  </button>
-                )}
-              </div>
-              <DuelLockerSlotButton
-                kind={slot.kind}
-                inventory={inventoryQuery.data}
-                onOpen={() => setSelectedKind(slot.kind)}
-              />
-            </section>
-          ))}
-          <section className="duel-locker-kind-section" aria-label="Восстановление">
-            <div className="section-label duel-section-title duel-locker-kind-section__title">
-              Восстановление
-            </div>
-            <button
-              type="button"
-              className="glass duel-locker-slot"
-              onClick={onOpenInventory}
-              aria-label={`Восстановление: ${formatRecoveryMinutesTotal(recoveryMinutes)}`}
-            >
-              <span className="duel-locker-slot__artwork" aria-hidden="true">
-                <img
-                  src={recoveryArtwork}
-                  alt=""
-                  style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
-                />
-              </span>
-              <span className="duel-locker-slot__copy amateur-hub-card__copy">
-                <strong className="duel-locker-slot__title">Наборы для восстановления</strong>
-                <span className="duel-locker-slot__status">
-                  {recoveryMinutes > 0
-                    ? `В запасе: ${formatRecoveryMinutesTotal(recoveryMinutes)}`
-                    : 'Нет в запасе'}
-                </span>
-              </span>
-              <ChevronRight
-                className="card-chevron"
-                size={19}
-                strokeWidth={2.7}
-                aria-hidden="true"
-              />
-            </button>
-          </section>
-        </div>
-      </section>
-      <button type="button" className="btn btn--cta" onClick={onOpenInventory}>
-        В магазин
-      </button>
-      {selectedKind !== null && (
-        <DuelEquipmentDetailsModal
-          kind={selectedKind}
-          inventory={inventoryQuery.data}
-          isSaving={equipmentMut.isPending}
-          error={equipmentMut.isError ? equipmentMut.error.message : null}
-          onOpenShop={() => {
-            equipmentMut.reset();
-            setSelectedKind(null);
-            onOpenInventory();
-          }}
-          onClose={() => {
-            equipmentMut.reset();
-            setSelectedKind(null);
-          }}
-          onSelect={(itemId) => {
-            const kind = selectedKind;
-            equipmentMut.mutate(
-              { kind, itemId },
-              {
-                onSuccess: () => setSelectedKind(null),
-              },
-            );
-          }}
-        />
-      )}
-    </>
-  );
-}
-
-function DuelLockerSlotButton({
-  kind,
-  inventory,
-  onOpen,
-}: {
-  kind: InventoryEquipmentKind;
-  inventory: InventoryState | undefined;
-  onOpen: () => void;
-}): JSX.Element {
-  const meta = DUEL_EQUIPMENT_META[kind];
-  const activeItem = duelEquippedItem(inventory, kind);
-  const title = activeItem ? duelEquipmentDisplayTitle(activeItem) : duelBaseEquipmentTitle(kind);
-  const status = activeItem ? formatInventoryStockLabel(activeItem) : 'Базовый вариант';
-  const artwork = activeItem
-    ? artworkForInventoryItem(activeItem)
-    : placeholderArtworkForKind(kind);
-
-  return (
-    <button
-      type="button"
-      className="glass duel-locker-slot"
-      onClick={onOpen}
-      aria-label={`${meta.title}: ${title}. ${status}`}
-    >
-      <span className="duel-locker-slot__artwork" aria-hidden="true">
-        <img
-          src={artwork}
-          alt=""
-          style={{
-            width: '100%',
-            height: '100%',
-            display: 'block',
-            objectFit: 'cover',
-            filter: 'none',
-            opacity: 1,
-          }}
-        />
-      </span>
-      <span className="duel-locker-slot__copy amateur-hub-card__copy">
-        <strong className="duel-locker-slot__title">{title}</strong>
-        <span className="duel-locker-slot__status">{status}</span>
-      </span>
-      <ChevronRight className="card-chevron" size={19} strokeWidth={2.7} aria-hidden="true" />
-    </button>
-  );
-}
-
-function DuelEquipmentSelectionRadio({ selected }: { selected: boolean }): JSX.Element {
-  return (
-    <span
-      aria-hidden="true"
-      className={`duel-equipment-option__check${selected ? ' duel-equipment-option__check--selected' : ''}`}
-    >
-      {selected ? <Check size={11} strokeWidth={3} /> : null}
-    </span>
-  );
-}
-
-function DuelEquipmentDetailsModal({
-  kind,
-  inventory,
-  isSaving,
-  error,
-  onSelect,
-  onOpenShop,
-  onClose,
-}: {
-  kind: InventoryEquipmentKind;
-  inventory: InventoryState | undefined;
-  isSaving: boolean;
-  error: string | null;
-  onSelect: (itemId: string | null) => void;
-  onOpenShop: () => void;
-  onClose: () => void;
-}): JSX.Element {
-  const meta = DUEL_EQUIPMENT_META[kind];
-  const items = (inventory?.items[kind] ?? []).filter(isDuelLockerItemAvailable);
-  const activeId = duelEquipmentIdFor(inventory, kind);
-  const showBaseEquipment = true;
-
-  return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
-      <section
-        role="dialog"
-        aria-label={meta.title}
-        className="modal-card"
-        onClick={(event) => event.stopPropagation()}
-        style={{
-          width: 'min(430px, calc(100vw - 28px))',
-          maxHeight: 'calc(100dvh - 112px - var(--app-safe-top) - var(--app-safe-bottom))',
-          display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr) auto',
-          gap: 10,
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="Закрыть"
-          onClick={onClose}
-          style={{ position: 'absolute', top: 14, right: 14 }}
-        >
-          <X size={15} />
-        </button>
-        <div style={{ minWidth: 0, paddingRight: 42 }}>
-          <div className="modal-title">{meta.title}</div>
-          <div className="modal-copy">{duelEquipmentModalCopy(kind)}</div>
-        </div>
-
-        <div
-          className="no-scrollbar"
-          style={{
-            minHeight: 0,
-            maxHeight: 'min(54dvh, 430px)',
-            overflowY: 'auto',
-            display: 'grid',
-            gap: 8,
-            paddingRight: 2,
-          }}
-        >
-          {showBaseEquipment && (
-            <button
-              type="button"
-              data-no-drag-scroll="true"
-              disabled={isSaving}
-              onClick={() => onSelect(null)}
-              className={`glass duel-equipment-option${activeId === null ? ' duel-equipment-option--selected' : ''}`}
-              aria-pressed={activeId === null}
-              style={{
-                minHeight: 78,
-                borderRadius: 16,
-                padding: 10,
-                display: 'grid',
-                gridTemplateColumns: '56px minmax(0, 1fr) 22px',
-                alignItems: 'center',
-                gap: 10,
-                textAlign: 'left',
-                cursor: isSaving ? 'wait' : 'pointer',
-              }}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 14,
-                  overflow: 'hidden',
-                  border: '1px solid rgba(255,255,255,0.78)',
-                  background: 'rgba(255,255,255,0.28)',
-                }}
-              >
-                <img
-                  src={placeholderArtworkForKind(kind)}
-                  alt=""
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    display: 'block',
-                    objectFit: 'cover',
-                    filter: 'grayscale(0.45)',
-                    opacity: 0.72,
-                  }}
-                />
-              </span>
-              <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
-                <span style={{ minWidth: 0, fontSize: 15, fontWeight: 950, lineHeight: 1.12 }}>
-                  {duelBaseEquipmentTitle(kind)}
-                </span>
-                <span
-                  style={{
-                    color: 'rgba(15, 23, 42, 0.62)',
-                    fontSize: 12,
-                    fontWeight: 760,
-                    lineHeight: 1.28,
-                  }}
-                >
-                  {duelEquipmentEffectLabel(kind, 0)}
-                </span>
-              </span>
-              <DuelEquipmentSelectionRadio selected={activeId === null} />
-            </button>
-          )}
-
-          {items.map((item) => {
-            const selected = item.id === activeId;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                data-no-drag-scroll="true"
-                disabled={isSaving || item.chargesAvailable <= 0}
-                onClick={() => onSelect(item.id)}
-                aria-pressed={selected}
-                className={`glass duel-equipment-option${selected ? ' duel-equipment-option--selected' : ''}`}
-                style={{
-                  minHeight: 78,
-                  borderRadius: 16,
-                  padding: 10,
-                  display: 'grid',
-                  gridTemplateColumns: '56px minmax(0, 1fr) 22px',
-                  alignItems: 'center',
-                  gap: 10,
-                  textAlign: 'left',
-                  cursor: isSaving ? 'wait' : 'pointer',
-                  opacity: item.chargesAvailable > 0 ? 1 : 0.55,
-                }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: 14,
-                    overflow: 'hidden',
-                    border: '1px solid rgba(255,255,255,0.8)',
-                    background: 'rgba(255,255,255,0.28)',
-                    boxShadow:
-                      'inset 0 1px 0 rgba(255,255,255,0.8), 0 10px 18px rgba(15,23,42,0.12)',
-                  }}
-                >
-                  <img
-                    src={artworkForInventoryItem(item)}
-                    alt=""
-                    style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
-                  />
-                </span>
-                <span style={{ minWidth: 0, display: 'grid', gap: 5 }}>
-                  <span
-                    style={{
-                      minWidth: 0,
-                      color: 'var(--ink)',
-                      fontSize: 15,
-                      fontWeight: 950,
-                      lineHeight: 1.12,
-                      overflowWrap: 'break-word',
-                    }}
-                  >
-                    {duelEquipmentDisplayTitle(item)}
-                  </span>
-                  <span
-                    style={{
-                      display: 'grid',
-                      gap: 2,
-                      color: 'rgba(15, 23, 42, 0.62)',
-                      fontSize: 12,
-                      fontWeight: 760,
-                      lineHeight: 1.25,
-                    }}
-                  >
-                    <span>
-                      {duelEquipmentEffectLabel(
-                        kind,
-                        item.powerScore,
-                        item.chargesAvailable,
-                        item.resourceUnit,
-                      )}
-                    </span>
-                    <span style={duelEquipmentStockLineStyle()}>
-                      {formatInventoryStockLabel(item)}
-                    </span>
-                  </span>
-                </span>
-                <DuelEquipmentSelectionRadio selected={selected} />
-              </button>
-            );
-          })}
-
-          {items.length === 0 && (
-            <div className="duel-equipment-empty">
-              <div className="duel-equipment-empty__message">
-                {duelEquipmentEmptyPurchaseLabel(kind)}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {items.length === 0 && (
-          <button
-            type="button"
-            className="btn btn--cta duel-equipment-empty__action"
-            onClick={onOpenShop}
-          >
-            В магазин
-          </button>
-        )}
-
-        {error !== null && (
-          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}>
-            {error}
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
-
 function DuelListCard({
   match,
   onOpen,
@@ -7764,11 +7337,11 @@ export const DUEL_INVENTORY_ICON_GLASS_STYLE: CSSProperties = {
 
 const DUEL_EQUIPMENT_META: Record<
   InventoryEquipmentKind,
-  { title: string; empty: string; patchKey: 'stickItemId' | 'skatesItemId' | 'nutritionItemId' }
+  { title: string; empty: string }
 > = {
-  stick: { title: 'Клюшка', empty: 'Без клюшки', patchKey: 'stickItemId' },
-  skates: { title: 'Коньки', empty: 'Без коньков', patchKey: 'skatesItemId' },
-  nutrition: { title: 'Питание', empty: 'Без питания', patchKey: 'nutritionItemId' },
+  stick: { title: 'Клюшка', empty: 'Без клюшки' },
+  skates: { title: 'Коньки', empty: 'Без коньков' },
+  nutrition: { title: 'Питание', empty: 'Без питания' },
 };
 
 function duelEquipmentIdFor(
@@ -7781,20 +7354,8 @@ function duelEquipmentIdFor(
   return inventory.equipped.nutritionItemId;
 }
 
-function duelEquippedItem(
-  inventory: InventoryState | undefined,
-  kind: InventoryEquipmentKind,
-): InventoryItem | null {
-  const id = duelEquipmentIdFor(inventory, kind);
-  return inventory?.items[kind].find((item) => item.id === id) ?? null;
-}
-
 function isDuelRequiredEquipment(kind: InventoryEquipmentKind): boolean {
   return kind === 'stick' || kind === 'skates';
-}
-
-function isDuelLockerItemAvailable(item: InventoryItem): boolean {
-  return item.chargesAvailable + item.chargesReserved > 0;
 }
 
 function duelBaseEquipmentTitle(kind: InventoryEquipmentKind): string {
@@ -7807,12 +7368,6 @@ function duelBaseEquipmentDrawback(kind: InventoryEquipmentKind): string {
   if (kind === 'stick') return 'Шайба будет лететь медленно';
   if (kind === 'skates') return 'Возможны спотыкания';
   return 'Игрок будет уставать';
-}
-
-function duelEquipmentEmptyPurchaseLabel(kind: InventoryEquipmentKind): string {
-  if (kind === 'stick') return 'Купленных клюшек пока нет';
-  if (kind === 'skates') return 'Купленных коньков пока нет';
-  return 'Купленного питания пока нет';
 }
 
 function duelInventoryStockLabel(item: AmateurDuelInventoryAvailabilityItem): string {

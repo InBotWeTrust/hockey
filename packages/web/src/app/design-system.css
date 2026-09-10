@@ -9258,7 +9258,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-bracket-series--compact .tournament-bracket-player {
-  grid-template-columns: 10px auto minmax(0, 1fr) 12px;
+  grid-template-columns: 10px auto minmax(0, 1fr) 10px;
   gap: 3px;
   padding: 4px 3px;
   border-radius: 8px;
@@ -9309,7 +9309,7 @@ button.daily-calendar__day:active {
 .tournament-bracket-overview[data-visible-columns='3']
   .tournament-bracket-series--compact
   .tournament-bracket-player {
-  grid-template-columns: 8px auto minmax(0, 1fr) 10px;
+  grid-template-columns: 8px auto minmax(0, 1fr) 8px;
   gap: 2px;
   padding: 3px 2px;
 }
@@ -9363,7 +9363,7 @@ button.daily-calendar__day:active {
 .tournament-bracket-overview[data-visible-columns='4']
   .tournament-bracket-series--compact
   .tournament-bracket-player {
-  grid-template-columns: 7px auto minmax(0, 1fr) 9px;
+  grid-template-columns: 7px auto minmax(0, 1fr) 7px;
   gap: 2px;
   padding: 3px 2px;
 }
@@ -9584,7 +9584,7 @@ button.daily-calendar__day:active {
 
 .tournament-bracket-player {
   display: grid;
-  grid-template-columns: 18px auto minmax(0, 1fr) 24px;
+  grid-template-columns: 18px auto minmax(0, 1fr) 18px;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -9649,7 +9649,7 @@ button.daily-calendar__day:active {
   color: #173c5e;
   font-size: 14px;
   font-weight: 900;
-  text-align: right;
+  text-align: center;
 }
 
 .tournament-bracket-series__score {
@@ -11788,7 +11788,7 @@ button.daily-calendar__day:active {
   }
 
   .tournament-bracket-series--compact .tournament-bracket-player {
-    grid-template-columns: 8px auto minmax(0, 1fr) 10px;
+    grid-template-columns: 8px auto minmax(0, 1fr) 8px;
     gap: 2px;
     padding: 3px 2px;
     border-radius: 7px;
