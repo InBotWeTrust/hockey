@@ -6,10 +6,10 @@ import { dirname, resolve } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, '..');
 const dailyScreenTest = 'src/screens/DailyScreen.test.tsx';
-const tournamentAdminTest = 'src/tournament/TournamentAdmin.test.tsx';
 const isolatedSuiteTests = [
   'src/chat/test/ChatRoomScreen.test.tsx',
   'src/screens/ProfileSettingsScreen.test.tsx',
+  'src/tournament/TournamentAdmin.test.tsx',
 ];
 
 function runVitest(label, args) {
@@ -31,18 +31,21 @@ function escapeRegExp(value) {
 runVitest('all files except isolated suites', [
   'run',
   '--exclude',
-  `{${dailyScreenTest},${tournamentAdminTest},${isolatedSuiteTests.join(',')}}`,
+  `{${dailyScreenTest},${isolatedSuiteTests.join(',')}}`,
 ]);
 
 for (const testFile of isolatedSuiteTests) {
   runVitest(testFile, ['run', testFile]);
 }
 
-for (const testFile of [tournamentAdminTest, dailyScreenTest]) {
-  const source = readFileSync(resolve(packageRoot, testFile), 'utf8');
-  const testNames = Array.from(source.matchAll(/\bit\('([^']+)'/g), (match) => match[1]);
-  if (testNames.length === 0) throw new Error(`No tests found in ${testFile}`);
-  for (const testName of testNames) {
-    runVitest(`${testFile}: ${testName}`, ['run', testFile, '-t', escapeRegExp(testName)]);
-  }
+const dailySource = readFileSync(resolve(packageRoot, dailyScreenTest), 'utf8');
+const dailyTestNames = Array.from(dailySource.matchAll(/\bit\('([^']+)'/g), (match) => match[1]);
+if (dailyTestNames.length === 0) throw new Error(`No tests found in ${dailyScreenTest}`);
+for (const testName of dailyTestNames) {
+  runVitest(`${dailyScreenTest}: ${testName}`, [
+    'run',
+    dailyScreenTest,
+    '-t',
+    escapeRegExp(testName),
+  ]);
 }
