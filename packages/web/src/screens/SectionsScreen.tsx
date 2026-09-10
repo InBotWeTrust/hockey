@@ -17,6 +17,12 @@ import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { acknowledgeRegularSeasonPodiumCongratulation } from '../api/tournament.js';
 import { RegularSeasonPodiumModal } from '../tournament/RegularSeasonPodiumModal.js';
+import {
+  acknowledgeMonthlyRatingCongratulation,
+  fetchPendingMonthlyRatingCongratulations,
+  type PendingMonthlyRatingCongratulationsResponse,
+} from '../api/amateurDuel.js';
+import { MonthlyRatingRewardModal } from '../components/duel/MonthlyRatingRewardModal.js';
 
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
 const SECTION_ARTWORK_SIZE = 86;
@@ -44,6 +50,7 @@ export function SectionsScreen(): JSX.Element {
   const trainingData = useTrainingSessionStore((s) => s.data);
   const refreshTraining = useTrainingSessionStore((s) => s.refresh);
   const [podiumAckError, setPodiumAckError] = useState<string | null>(null);
+  const [monthlyRatingAckError, setMonthlyRatingAckError] = useState<string | null>(null);
   const [failureAckError, setFailureAckError] = useState<string | null>(null);
   const weeklyChallenge = useQuery({
     queryKey: ['weekly-challenge', 'section'],
@@ -61,9 +68,25 @@ export function SectionsScreen(): JSX.Element {
     queryKey: ['weekly-challenge', 'failure', 'pending'],
     queryFn: fetchPendingWeeklyChallengeFailure,
   });
+  const monthlyRatingQuery = useQuery({
+    queryKey: ['amateur-duel', 'rating', 'congratulations', 'pending'],
+    queryFn: fetchPendingMonthlyRatingCongratulations,
+  });
 
   const pendingCongratulations = profileQuery.data?.pendingTournamentCongratulations ?? [];
   const activeCongratulation = pendingCongratulations[0] ?? null;
+  const pendingMonthlyRatingCongratulations = (monthlyRatingQuery.data?.congratulations ?? [])
+    .filter((congratulation) =>
+      [congratulation.coins, congratulation.stars, congratulation.tokens].some(
+        (value) => value > 0,
+      ),
+    )
+    .sort((left, right) =>
+      left.season_key === right.season_key
+        ? left.id.localeCompare(right.id)
+        : left.season_key.localeCompare(right.season_key),
+    );
+  const activeMonthlyRatingCongratulation = pendingMonthlyRatingCongratulations[0] ?? null;
   const acknowledgePodium = useMutation({
     mutationFn: acknowledgeRegularSeasonPodiumCongratulation,
     onMutate: () => setPodiumAckError(null),
@@ -94,6 +117,26 @@ export function SectionsScreen(): JSX.Element {
       );
     },
     onError: () => setFailureAckError('Не удалось закрыть. Попробуйте ещё раз.'),
+  });
+  const acknowledgeMonthlyRating = useMutation({
+    mutationFn: acknowledgeMonthlyRatingCongratulation,
+    onMutate: () => setMonthlyRatingAckError(null),
+    onSuccess: (_response, congratulationId) => {
+      setMonthlyRatingAckError(null);
+      queryClient.setQueryData<PendingMonthlyRatingCongratulationsResponse>(
+        ['amateur-duel', 'rating', 'congratulations', 'pending'],
+        (current) =>
+          current === undefined
+            ? current
+            : {
+                ...current,
+                congratulations: current.congratulations.filter(
+                  (congratulation) => congratulation.id !== congratulationId,
+                ),
+              },
+      );
+    },
+    onError: () => setMonthlyRatingAckError('Не удалось закрыть. Попробуйте ещё раз.'),
   });
 
   useEffect(() => {
@@ -228,47 +271,57 @@ export function SectionsScreen(): JSX.Element {
           onConfirm={() => acknowledgePodium.mutate(activeCongratulation.id)}
         />
       )}
-      {activeCongratulation === null && failureQuery.data?.challenge != null && (
-        <AccessibleModal
-          title="Челлендж не пройден"
-          copy={failureQuery.data.challenge.title}
-          closeBlocked
-          cardClassName="weekly-challenge-failure-modal"
-        >
-          <div className="weekly-challenge-failure-modal__tasks">
-            {failureQuery.data.challenge.tasks.map((task) => (
-              <div
-                className={`weekly-challenge-failure-modal__task${task.completed ? ' weekly-challenge-failure-modal__task--completed' : ''}`}
-                key={task.id}
-              >
-                <span className="weekly-challenge-failure-modal__status" aria-hidden="true">
-                  {task.completed && <Check size={15} strokeWidth={3} />}
-                </span>
-                <span>{task.title}</span>
-                <strong>
-                  {(task.progress ?? 0).toLocaleString('ru-RU')} /{' '}
-                  {task.target.toLocaleString('ru-RU')}
-                </strong>
-              </div>
-            ))}
-          </div>
-          {failureAckError !== null && (
-            <p className="modal-error" role="alert">
-              {failureAckError}
-            </p>
-          )}
-          <div className="modal-actions">
-            <button
-              type="button"
-              className="modal-primary btn btn--cta"
-              disabled={acknowledgeFailure.isPending}
-              onClick={() => acknowledgeFailure.mutate(failureQuery.data!.challenge!.id)}
-            >
-              {acknowledgeFailure.isPending ? 'Закрываем…' : 'Понятно'}
-            </button>
-          </div>
-        </AccessibleModal>
+      {activeCongratulation === null && activeMonthlyRatingCongratulation !== null && (
+        <MonthlyRatingRewardModal
+          congratulation={activeMonthlyRatingCongratulation}
+          pending={acknowledgeMonthlyRating.isPending}
+          error={monthlyRatingAckError}
+          onConfirm={() => acknowledgeMonthlyRating.mutate(activeMonthlyRatingCongratulation.id)}
+        />
       )}
+      {activeCongratulation === null &&
+        activeMonthlyRatingCongratulation === null &&
+        failureQuery.data?.challenge != null && (
+          <AccessibleModal
+            title="Челлендж не пройден"
+            copy={failureQuery.data.challenge.title}
+            closeBlocked
+            cardClassName="weekly-challenge-failure-modal"
+          >
+            <div className="weekly-challenge-failure-modal__tasks">
+              {failureQuery.data.challenge.tasks.map((task) => (
+                <div
+                  className={`weekly-challenge-failure-modal__task${task.completed ? ' weekly-challenge-failure-modal__task--completed' : ''}`}
+                  key={task.id}
+                >
+                  <span className="weekly-challenge-failure-modal__status" aria-hidden="true">
+                    {task.completed && <Check size={15} strokeWidth={3} />}
+                  </span>
+                  <span>{task.title}</span>
+                  <strong>
+                    {(task.progress ?? 0).toLocaleString('ru-RU')} /{' '}
+                    {task.target.toLocaleString('ru-RU')}
+                  </strong>
+                </div>
+              ))}
+            </div>
+            {failureAckError !== null && (
+              <p className="modal-error" role="alert">
+                {failureAckError}
+              </p>
+            )}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="modal-primary btn btn--cta"
+                disabled={acknowledgeFailure.isPending}
+                onClick={() => acknowledgeFailure.mutate(failureQuery.data!.challenge!.id)}
+              >
+                {acknowledgeFailure.isPending ? 'Закрываем…' : 'Понятно'}
+              </button>
+            </div>
+          </AccessibleModal>
+        )}
     </main>
   );
 }

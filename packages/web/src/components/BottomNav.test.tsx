@@ -84,6 +84,16 @@ describe('BottomNav remembered navigation', () => {
     expect(screen.getByLabelText('Навигация')).toHaveStyle({ borderRadius: '19px' });
   });
 
+  it('does not fetch monthly rating congratulations from the shared navigation', async () => {
+    renderBottomNav('/sections');
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(
+      '/api/duel/amateur/rating/congratulations/pending',
+      expect.anything(),
+    );
+  });
+
   it('resets the active game section to the arena', () => {
     renderBottomNav('/?view=amateur&match=m1');
 

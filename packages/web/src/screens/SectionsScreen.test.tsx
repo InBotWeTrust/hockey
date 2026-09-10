@@ -25,6 +25,19 @@ interface MockSectionsData {
   profileRequest?: 'error' | 'loading';
   pendingTournamentCongratulations?: RegularSeasonPodiumCongratulation[];
   acknowledgementRequest?: 'error';
+  monthlyAcknowledgementRequest?: 'error';
+  pendingMonthlyRatingCongratulations?: Array<{
+    id: string;
+    season_key: string;
+    place: number;
+    matches_played: number;
+    eligible_count: number;
+    rewarded_count: number;
+    coins: number;
+    stars: number;
+    tokens: number;
+    created_at: string;
+  }>;
   pendingChallengeFailure?: WeeklyChallenge | null;
 }
 
@@ -59,6 +72,8 @@ function mockSectionsApi({
   profileRequest,
   pendingTournamentCongratulations = [],
   acknowledgementRequest,
+  monthlyAcknowledgementRequest,
+  pendingMonthlyRatingCongratulations = [],
   pendingChallengeFailure = null,
 }: MockSectionsData = {}): void {
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
@@ -88,6 +103,29 @@ function mockSectionsApi({
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),
+      );
+    }
+    if (url.endsWith('/api/duel/amateur/rating/congratulations/pending')) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ congratulations: pendingMonthlyRatingCongratulations }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    }
+    if (url.includes('/api/duel/amateur/rating/congratulations/') && url.endsWith('/read')) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify(
+            monthlyAcknowledgementRequest === 'error'
+              ? { error: { code: 'internal', message: 'failed' } }
+              : { ok: true },
+          ),
+          {
+            status: monthlyAcknowledgementRequest === 'error' ? 500 : 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
       );
     }
     if (url.includes('/api/weekly-challenge/failures/') && url.endsWith('/acknowledge')) {
@@ -221,8 +259,22 @@ describe('SectionsScreen', () => {
         reward: { coins: 0, stars: 0, experience: 0, tokens: 0 },
         rewardClaimedAt: null,
         tasks: [
-          { id: 'task-1', type: 'goals_scored', title: 'Забросить шайбы', target: 100, progress: 72, completed: false },
-          { id: 'task-2', type: 'trainings_completed', title: 'Пройти тренировки', target: 2, progress: 2, completed: true },
+          {
+            id: 'task-1',
+            type: 'goals_scored',
+            title: 'Забросить шайбы',
+            target: 100,
+            progress: 72,
+            completed: false,
+          },
+          {
+            id: 'task-2',
+            type: 'trainings_completed',
+            title: 'Пройти тренировки',
+            target: 2,
+            progress: 2,
+            completed: true,
+          },
         ],
         hasProgress: true,
         canClaimReward: false,
@@ -274,6 +326,180 @@ describe('SectionsScreen', () => {
     expect(screen.queryByText('Первый турнир')).toBeNull();
   });
 
+  it('fetches and shows a paid monthly rating congratulations only from the sections queue', async () => {
+    mockSectionsApi({
+      pendingMonthlyRatingCongratulations: [
+        {
+          id: '00000000-0000-4000-8000-000000000971',
+          season_key: '2026-08',
+          place: 2,
+          matches_played: 42,
+          eligible_count: 50,
+          rewarded_count: 10,
+          coins: 10000,
+          stars: 200,
+          tokens: 7,
+          created_at: '2026-09-01T00:00:00.000Z',
+        },
+      ],
+    });
+    renderSections();
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Вы заняли 2-е место в рейтинге дуэлей!' }),
+    ).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/duel/amateur/rating/congratulations/pending',
+      expect.anything(),
+    );
+  });
+
+  it('does not show a monthly rating modal when a pending placement has no reward', async () => {
+    mockSectionsApi({
+      pendingMonthlyRatingCongratulations: [
+        {
+          id: '00000000-0000-4000-8000-000000000978',
+          season_key: '2026-08',
+          place: 17,
+          matches_played: 31,
+          eligible_count: 72,
+          rewarded_count: 14,
+          coins: 0,
+          stars: 0,
+          tokens: 0,
+          created_at: '2026-09-01T00:00:00.000Z',
+        },
+      ],
+    });
+    renderSections();
+
+    await screen.findByText('Быстрый доступ');
+    expect(screen.queryByRole('dialog', { name: /рейтинге дуэлей/ })).toBeNull();
+  });
+
+  it('acknowledges monthly rating congratulations oldest first and advances the queue', async () => {
+    mockSectionsApi({
+      pendingMonthlyRatingCongratulations: [
+        {
+          id: '00000000-0000-4000-8000-000000000972',
+          season_key: '2026-06',
+          place: 1,
+          matches_played: 50,
+          eligible_count: 50,
+          rewarded_count: 10,
+          coins: 15000,
+          stars: 300,
+          tokens: 10,
+          created_at: '2026-07-01T00:00:00.000Z',
+        },
+        {
+          id: '00000000-0000-4000-8000-000000000973',
+          season_key: '2026-07',
+          place: 2,
+          matches_played: 42,
+          eligible_count: 50,
+          rewarded_count: 10,
+          coins: 10000,
+          stars: 200,
+          tokens: 7,
+          created_at: '2026-08-01T00:00:00.000Z',
+        },
+      ],
+    });
+    renderSections();
+
+    expect(await screen.findByText('Июнь 2026')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+
+    expect(await screen.findByText('Июль 2026')).toBeInTheDocument();
+    expect(screen.queryByText('Июнь 2026')).toBeNull();
+  });
+
+  it('keeps the monthly rating modal open after acknowledgement fails', async () => {
+    mockSectionsApi({
+      monthlyAcknowledgementRequest: 'error',
+      pendingMonthlyRatingCongratulations: [
+        {
+          id: '00000000-0000-4000-8000-000000000974',
+          season_key: '2026-08',
+          place: 1,
+          matches_played: 50,
+          eligible_count: 50,
+          rewarded_count: 10,
+          coins: 15000,
+          stars: 300,
+          tokens: 10,
+          created_at: '2026-09-01T00:00:00.000Z',
+        },
+      ],
+    });
+    renderSections();
+
+    expect(await screen.findByText('Август 2026')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не удалось закрыть. Попробуйте ещё раз.',
+    );
+    expect(screen.getByText('Август 2026')).toBeInTheDocument();
+  });
+
+  it('keeps tournament podium ahead of monthly rating and weekly failure in the modal queue', async () => {
+    mockSectionsApi({
+      pendingTournamentCongratulations: [
+        {
+          id: '00000000-0000-4000-8000-000000000975',
+          tournamentId: '00000000-0000-4000-8000-000000000985',
+          tournamentTitle: 'Кубок впереди очереди',
+          place: 1,
+          reward: { coins: 5000, stars: 25, experience: 1500 },
+          createdAt: '2026-09-02T21:00:00.000Z',
+        },
+      ],
+      pendingMonthlyRatingCongratulations: [
+        {
+          id: '00000000-0000-4000-8000-000000000976',
+          season_key: '2026-08',
+          place: 1,
+          matches_played: 50,
+          eligible_count: 50,
+          rewarded_count: 10,
+          coins: 15000,
+          stars: 300,
+          tokens: 10,
+          created_at: '2026-09-01T00:00:00.000Z',
+        },
+      ],
+      pendingChallengeFailure: {
+        id: '00000000-0000-4000-8000-000000000977',
+        title: 'Отложенный челлендж',
+        description: 'Описание',
+        status: 'finished',
+        startAt: '2026-09-02T00:00:00.000Z',
+        endAt: '2026-09-09T00:00:00.000Z',
+        reward: { coins: 0, stars: 0, experience: 0, tokens: 0 },
+        rewardClaimedAt: null,
+        tasks: [],
+        hasProgress: true,
+        canClaimReward: false,
+        allTasksCompleted: false,
+        serverNow: '2026-09-09T01:00:00.000Z',
+      },
+    });
+    renderSections();
+
+    expect(await screen.findByText('Кубок впереди очереди')).toBeInTheDocument();
+    expect(screen.queryByText('Август 2026')).toBeNull();
+    expect(screen.queryByText('Отложенный челлендж')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    expect(await screen.findByText('Август 2026')).toBeInTheDocument();
+    expect(screen.queryByText('Отложенный челлендж')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    expect(await screen.findByText('Отложенный челлендж')).toBeInTheDocument();
+  });
+
   it('keeps the same congratulation open when acknowledgement fails', async () => {
     mockSectionsApi({
       acknowledgementRequest: 'error',
@@ -316,7 +542,12 @@ describe('SectionsScreen', () => {
   it('keeps the weekly challenge out of the sections list', async () => {
     mockSectionsApi({
       achievementsUnclaimedCount: 0,
-      weeklyChallenge: { id: 'challenge-1', title: 'Неделя снайпера', status: 'running', canClaimReward: false },
+      weeklyChallenge: {
+        id: 'challenge-1',
+        title: 'Неделя снайпера',
+        status: 'running',
+        canClaimReward: false,
+      },
     });
     renderSections();
 
@@ -483,8 +714,20 @@ describe('SectionsScreen', () => {
     mockSectionsApi({
       achievements: [],
       achievementsUnclaimedCount: 0,
-      weeklyChallenge: { id: 'challenge-1', title: 'Неделя снайпера', status: 'running', canClaimReward: false },
-      weeklyPendingRewards: [{ id: 'challenge-future', title: 'Следующая неделя', status: 'future', canClaimReward: false }],
+      weeklyChallenge: {
+        id: 'challenge-1',
+        title: 'Неделя снайпера',
+        status: 'running',
+        canClaimReward: false,
+      },
+      weeklyPendingRewards: [
+        {
+          id: 'challenge-future',
+          title: 'Следующая неделя',
+          status: 'future',
+          canClaimReward: false,
+        },
+      ],
     });
     renderSections();
 
@@ -517,7 +760,12 @@ describe('SectionsScreen', () => {
       profileCompetitionLevel: 'beginner',
       achievements: [],
       achievementsUnclaimedCount: 0,
-      weeklyChallenge: { id: 'challenge-1', title: 'Неделя снайпера', status: 'running', canClaimReward: false },
+      weeklyChallenge: {
+        id: 'challenge-1',
+        title: 'Неделя снайпера',
+        status: 'running',
+        canClaimReward: false,
+      },
       weeklyPendingRewards: [{ id: 'challenge-old', title: 'Прошлая неделя' }],
     });
     renderSections();

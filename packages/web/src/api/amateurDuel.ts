@@ -314,6 +314,23 @@ export interface AmateurDuelRatingResponse {
   me_rank: number | null;
 }
 
+export interface MonthlyRatingCongratulation {
+  id: string;
+  season_key: string;
+  place: number;
+  matches_played: number;
+  eligible_count: number;
+  rewarded_count: number;
+  coins: number;
+  stars: number;
+  tokens: number;
+  created_at: string;
+}
+
+export interface PendingMonthlyRatingCongratulationsResponse {
+  congratulations: MonthlyRatingCongratulation[];
+}
+
 export interface AmateurDuelHistoryCalendarMatch {
   id: string;
   settled_at: string;
@@ -569,6 +586,18 @@ export function fetchAmateurRating(seasonKey?: string): Promise<AmateurDuelRatin
   if (seasonKey) params.set('season_key', seasonKey);
   const query = params.toString();
   return apiFetch<AmateurDuelRatingResponse>(`/duel/amateur/rating${query ? `?${query}` : ''}`);
+}
+
+export function fetchPendingMonthlyRatingCongratulations(): Promise<PendingMonthlyRatingCongratulationsResponse> {
+  return apiFetch<PendingMonthlyRatingCongratulationsResponse>(
+    '/duel/amateur/rating/congratulations/pending',
+  );
+}
+
+export function acknowledgeMonthlyRatingCongratulation(id: string): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/duel/amateur/rating/congratulations/${id}/read`, {
+    method: 'POST',
+  });
 }
 
 export function fetchAmateurHistoryCalendar(
