@@ -1701,6 +1701,10 @@ export function TournamentAdmin(): JSX.Element {
   const appliedEconomyPresetParticipantLimit = useRef<number | null>(null);
   const currentParticipantLimit = useRef<NumericDraftValue>(draft.participantLimit);
   currentParticipantLimit.current = draft.participantLimit;
+  const markEconomyCustom = () => {
+    economyPresetRequestGeneration.current += 1;
+    setEconomyPresetState('custom');
+  };
   const artworkUpload = useMutation({
     mutationFn: ({ file }: { file: File; generation: number }) =>
       uploadAdminTournamentArtwork(file),
@@ -1761,6 +1765,7 @@ export function TournamentAdmin(): JSX.Element {
     if (!force && appliedEconomyPresetParticipantLimit.current === participantLimit) return;
     const generation = economyPresetRequestGeneration.current + 1;
     economyPresetRequestGeneration.current = generation;
+    setValidationNotice(null);
     setEconomyPresetState('loading');
     void fetchTournamentEconomyPreset(participantLimit)
       .then((preset) => {
@@ -1781,6 +1786,9 @@ export function TournamentAdmin(): JSX.Element {
           currentParticipantLimit.current === participantLimit
         ) {
           setEconomyPresetState('error');
+          setValidationNotice(
+            'Не удалось подобрать рекомендуемые значения. Проверьте лимит участников и попробуйте ещё раз.',
+          );
         }
       });
   }, []);
@@ -1794,6 +1802,7 @@ export function TournamentAdmin(): JSX.Element {
     if (
       !pendingInitialCreate ||
       economyPresetState === 'loading' ||
+      economyPresetState === 'error' ||
       (economyPresetState === 'pristine' &&
         appliedEconomyPresetParticipantLimit.current !== draft.participantLimit)
     ) {
@@ -2323,7 +2332,7 @@ export function TournamentAdmin(): JSX.Element {
                         value={draft.entryFeeCoins}
                         onChange={(event) => {
                           setDraft({ ...draft, entryFeeCoins: editableNumber(event.target.value) });
-                          setEconomyPresetState('custom');
+                          markEconomyCustom();
                         }}
                       />
                     </TournamentAdminField>
@@ -3095,7 +3104,7 @@ export function TournamentAdmin(): JSX.Element {
                       value={draft.regularRewards}
                       onChange={(regularRewards) => {
                         setDraft({ ...draft, regularRewards });
-                        setEconomyPresetState('custom');
+                        markEconomyCustom();
                       }}
                     />
                     <RewardsEditor
@@ -3103,7 +3112,7 @@ export function TournamentAdmin(): JSX.Element {
                       value={draft.playoffRewards}
                       onChange={(playoffRewards) => {
                         setDraft({ ...draft, playoffRewards });
-                        setEconomyPresetState('custom');
+                        markEconomyCustom();
                       }}
                     />
                   </>
@@ -3213,6 +3222,15 @@ export function TournamentAdmin(): JSX.Element {
                         </button>
                       )}
                     </>
+                  )}
+                  {economyPresetState === 'error' && (
+                    <button
+                      type="button"
+                      className="admin-compact-btn"
+                      onClick={() => requestEconomyPreset(draft.participantLimit, true)}
+                    >
+                      Повторить подбор экономики
+                    </button>
                   )}
                 </div>
                 {!playoffScheduleOnly && stage > 0 && (
