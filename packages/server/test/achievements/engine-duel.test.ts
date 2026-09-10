@@ -3,7 +3,10 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
-import { evaluateDuelSettledAchievements } from '../../src/achievements/engine.js';
+import {
+  evaluateDuelSettledAchievements,
+  reconcileTournamentDuelAchievements,
+} from '../../src/achievements/engine.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
 
@@ -76,6 +79,43 @@ describe.skipIf(!hasIntegrationEnv)('duel achievement evaluator', () => {
       count: 5,
     });
   });
+
+  it('reconciles achievements omitted from already-settled tournament duels idempotently', async () => {
+    const winnerUserId = await createUser(pool, 100);
+    const loserUserId = await createUser(pool, 100);
+    const matchId = await seedSettledDuel(pool, {
+      winnerUserId,
+      loserUserId,
+      winnerSide: 'challenger',
+      goalsByPeriod: [[10, 9]],
+      completedAt: ['2026-05-31T12:01:00Z', '2026-05-31T12:00:00Z'],
+      loadoutKinds: [],
+      source: 'tournament',
+    });
+
+    await expect(reconcileTournamentDuelAchievements(pool)).resolves.toEqual({
+      scanned: 1,
+      evaluated: 1,
+    });
+    const completedAfterFirstRun = await completedIds(pool, winnerUserId);
+    expect(completedAfterFirstRun).toContain('nervous-finish');
+
+    await expect(reconcileTournamentDuelAchievements(pool)).resolves.toEqual({
+      scanned: 1,
+      evaluated: 0,
+    });
+    await expect(completedIds(pool, winnerUserId)).resolves.toEqual(completedAfterFirstRun);
+
+    const event = await pool.query(
+      `select 1
+         from event_log
+        where user_id = $1
+          and type = 'tournament_duel_achievements_reconciled'
+          and payload->>'match_id' = $2`,
+      [winnerUserId, matchId],
+    );
+    expect(event.rowCount).toBe(1);
+  });
 });
 
 async function createUser(pool: Pool, experience: number): Promise<string> {
@@ -97,6 +137,7 @@ async function seedSettledDuel(
     goalsByPeriod: Array<[number, number]>;
     completedAt: [string, string];
     loadoutKinds: Array<'stick' | 'skates' | 'nutrition'>;
+    source?: 'challenge' | 'tournament';
   },
 ): Promise<string> {
   const challengerUserId =
@@ -150,10 +191,10 @@ async function seedSettledDuel(
     `insert into amateur_duel_match
        (challenger_user_id, opponent_user_id, status, ranked, season_key, rules_snapshot,
         match_seed, starts_at, ends_at, winner_user_id, outcome, settled_reason,
-        game_core_version, accepted_at, settled_at)
+        game_core_version, accepted_at, settled_at, source)
      values ($1, $2, 'settled', true, '2026-05', $3, 'seed',
              now() - interval '1 hour', now() + interval '1 hour',
-             $4, $5, 'completed', 1, now() - interval '30 minutes', now())
+             $4, $5, 'completed', 1, now() - interval '30 minutes', now(), $6)
      returning id`,
     [
       challengerUserId,
@@ -161,6 +202,7 @@ async function seedSettledDuel(
       JSON.stringify(rulesSnapshot),
       input.winnerUserId,
       input.winnerSide === 'challenger' ? 'challenger_win' : 'opponent_win',
+      input.source ?? 'challenge',
     ],
   );
   const matchId = rows[0]!.id;

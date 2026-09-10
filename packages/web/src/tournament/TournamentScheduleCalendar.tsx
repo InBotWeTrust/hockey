@@ -30,6 +30,11 @@ interface TournamentScheduleCalendarProps {
   rangeEndsAt: string | null;
   playoffStartsAt?: string[];
   playoffBlocks?: TournamentPlayoffScheduleBlock[];
+  completedPlayoffStages?: Array<{
+    roundNumber: number;
+    stage: 'playoff' | 'third_place';
+    completedOnLocalDate: string;
+  }>;
   fixtureDetailsMode?: 'modal' | 'inline';
   renderFixture: (fixture: TournamentFixture, mine: boolean, inSeries?: boolean) => ReactNode;
   formatDateTime: (value: string) => string;
@@ -185,6 +190,16 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
     () => new Map(props.matchdays.map((matchday) => [matchday.localDate, matchday])),
     [props.matchdays],
   );
+  const visiblePlayoffBlocks = useMemo(
+    () =>
+      (props.playoffBlocks ?? []).filter((block) => {
+        const completed = props.completedPlayoffStages?.find(
+          (stage) => stage.roundNumber === block.roundNumber && stage.stage === block.stage,
+        );
+        return completed === undefined || block.localDate <= completed.completedOnLocalDate;
+      }),
+    [props.completedPlayoffStages, props.playoffBlocks],
+  );
   const playoffDateKeys = useMemo(
     () =>
       Array.from(
@@ -222,7 +237,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
               ]),
           ...playoffDateKeys,
           ...playoffFixtureDateKeys,
-          ...(props.playoffBlocks ?? []).map((block) => block.localDate),
+          ...visiblePlayoffBlocks.map((block) => block.localDate),
         ]),
       ).sort(),
     [
@@ -231,7 +246,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
       playoffFixtureDateKeys,
       props.fixtureDays,
       props.matchdays,
-      props.playoffBlocks,
+      visiblePlayoffBlocks,
       props.regularSource,
     ],
   );
@@ -321,7 +336,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
       ? otherSelectedFixtures
       : otherSelectedFixtures.slice(0, 4);
   const selectedMatchday = matchdaysByDate.get(selectedDate);
-  const selectedPlayoffBlocks = (props.playoffBlocks ?? []).filter(
+  const selectedPlayoffBlocks = visiblePlayoffBlocks.filter(
     (block) => block.localDate === selectedDate,
   );
   const renderSelectedPlayoffBlocks = () =>
@@ -517,7 +532,7 @@ export function TournamentScheduleCalendar(props: TournamentScheduleCalendarProp
               : (daySummary?.hasGames ?? fixtures.length > 0);
           const hasPlayoff =
             playoffDateKeys.includes(key) ||
-            (props.playoffBlocks ?? []).some((block) => block.localDate === key) ||
+            visiblePlayoffBlocks.some((block) => block.localDate === key) ||
             daySummary?.hasPlayoff === true ||
             fixtures.some(
               (fixture) => fixture.stage === 'playoff' || fixture.stage === 'third_place',

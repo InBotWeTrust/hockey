@@ -1062,10 +1062,17 @@ export async function reconcileTournamentAttemptForDuel(
     }
     return { matched: true, changed: false };
   }
-  if (context.attempt_status === 'active' && input.now >= context.hard_deadline_at) {
+  if (context.attempt_status === 'active') {
     const homeCompleted = context.home_duel_state === 'completed';
     const awayCompleted = context.away_duel_state === 'completed';
-    if (homeCompleted !== awayCompleted) {
+    const homeForfeited = context.home_duel_state === 'forfeit';
+    const awayForfeited = context.away_duel_state === 'forfeit';
+    const terminalWinnerKnown =
+      (homeCompleted && awayForfeited) || (awayCompleted && homeForfeited);
+    if (
+      terminalWinnerKnown ||
+      (input.now >= context.hard_deadline_at && homeCompleted !== awayCompleted)
+    ) {
       const winner = homeCompleted ? 'home' : 'away';
       const result = await settleTechnicalTournamentAttempt(client, context, {
         duelMatchId: input.duelMatchId,
@@ -1078,7 +1085,7 @@ export async function reconcileTournamentAttemptForDuel(
       });
       return result;
     }
-    if (!homeCompleted && !awayCompleted) {
+    if (input.now >= context.hard_deadline_at && !homeCompleted && !awayCompleted) {
       const changed = await pauseTournamentAttempt(client, context, {
         duelMatchId: input.duelMatchId,
         status: 'needs_admin_decision',

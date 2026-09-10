@@ -2881,9 +2881,16 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     expect(Number(row.home_active_time_ms)).toBe(90_000);
     expect(Number(row.away_active_time_ms)).toBe(110_000);
     expect(row.snapshot).toMatchObject({ homeShots: 5, awayShots: 4 });
+    const achievement = await pool.query(
+      `select 1
+         from user_achievements
+        where user_id = $1 and achievement_id = 'nervous-finish'`,
+      [fixture.home_user_id],
+    );
+    expect(achievement.rowCount).toBe(1);
   });
 
-  it('does not settle an earned attempt from partial metrics after an early forfeit', async () => {
+  it('settles immediately when one tournament player completed and the other forfeited', async () => {
     const { fixture, opened } = await openFirstPlayoffAttempt(
       pool,
       'attempt-early-forfeit-partial-score',
@@ -2939,12 +2946,12 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       [fixture.fixture_id],
     );
     expect(persisted.rows[0]).toEqual({
-      duel_status: 'active',
-      attempt_status: 'active',
-      attempt_winner: null,
-      fixture_status: 'active',
-      fixture_winner: null,
-      series_wins: 0,
+      duel_status: 'cancelled',
+      attempt_status: 'technical_result',
+      attempt_winner: fixture.home_participant_id,
+      fixture_status: 'settled',
+      fixture_winner: fixture.home_participant_id,
+      series_wins: 1,
     });
   });
 
