@@ -51,6 +51,7 @@ const EXPECTED_REWARDS: Record<string, ExpectedReward> = {
   'no-shake': [0, 20, 20, 0],
   'tournament-streak': [7_500, 250, 250, 5],
   'monthly-top-1': [7_500, 100, 100, 3],
+  'monthly-top-3': [3_750, 50, 50, 2],
 };
 
 describe('achievement economy catalog', () => {
@@ -74,17 +75,25 @@ describe('achievement economy catalog', () => {
     }
   });
 
-  it('hides removed achievements and leaves the deferred monthly top-three reward untouched', () => {
+  it('hides removed achievements and activates the approved monthly rating rewards', () => {
     const byId = new Map(ACHIEVEMENT_SEEDS.map((achievement) => [achievement.id, achievement]));
 
     for (const id of ['almost-perfect-training', 'handled-pressure', 'master-arsenal']) {
       expect(byId.get(id)?.availability, id).toBe('hidden');
     }
+    expect(byId.get('monthly-top-1')).toMatchObject({
+      availability: 'active',
+      rewardCurrency: 7_500,
+      rewardStars: 100,
+      rewardExperience: 100,
+      rewardTokens: 3,
+    });
     expect(byId.get('monthly-top-3')).toMatchObject({
-      availability: 'future',
-      rewardCurrency: 0,
-      rewardStars: 0,
-      rewardExperience: 0,
+      availability: 'active',
+      rewardCurrency: 3_750,
+      rewardStars: 50,
+      rewardExperience: 50,
+      rewardTokens: 2,
     });
   });
 });

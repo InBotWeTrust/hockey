@@ -26,6 +26,23 @@ export interface AchievementShotEvent {
   result: ShotResult;
 }
 
+export type MonthlyRatingSettledContext = {
+  type: 'monthly_duel_rating_settled';
+  seasonKey: string;
+  userId: string;
+  place: number;
+};
+
+export async function evaluateMonthlyRatingSettledAchievements(
+  db: Queryable,
+  event: MonthlyRatingSettledContext,
+): Promise<void> {
+  const achievementIds: string[] = [];
+  if (event.place === 1) achievementIds.push('monthly-top-1');
+  if (event.place <= 3) achievementIds.push('monthly-top-3');
+  await completeAchievements(db, event.userId, achievementIds, event);
+}
+
 export async function evaluateShotAchievements(
   db: Queryable,
   event: AchievementShotEvent,
