@@ -3716,6 +3716,366 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(settled.json().match.opponent.state).toBe('forfeit');
   });
 
+  it.each([
+    {
+      experienceA: 1000,
+      experienceB: 1200,
+      result: 'a',
+      categoryA: 'strongerWin',
+      categoryB: 'loss',
+      coinsA: 31,
+      starsA: 7,
+      tokensA: 3,
+      coinsB: 5,
+      starsB: 2,
+      tokensB: 1,
+    },
+    {
+      experienceA: 1000,
+      experienceB: 1100,
+      result: 'a',
+      categoryA: 'equalWin',
+      categoryB: 'loss',
+      coinsA: 21,
+      starsA: 6,
+      tokensA: 2,
+      coinsB: 5,
+      starsB: 2,
+      tokensB: 1,
+    },
+    {
+      experienceA: 1000,
+      experienceB: 900,
+      result: 'a',
+      categoryA: 'equalWin',
+      categoryB: 'loss',
+      coinsA: 21,
+      starsA: 6,
+      tokensA: 2,
+      coinsB: 5,
+      starsB: 2,
+      tokensB: 1,
+    },
+    {
+      experienceA: 1000,
+      experienceB: 899,
+      result: 'a',
+      categoryA: 'weakerWin',
+      categoryB: 'loss',
+      coinsA: 11,
+      starsA: 4,
+      tokensA: 1,
+      coinsB: 5,
+      starsB: 2,
+      tokensB: 1,
+    },
+    {
+      experienceA: 1000,
+      experienceB: 1101,
+      result: 'a',
+      categoryA: 'strongerWin',
+      categoryB: 'loss',
+      coinsA: 31,
+      starsA: 7,
+      tokensA: 3,
+      coinsB: 5,
+      starsB: 2,
+      tokensB: 1,
+    },
+    {
+      experienceA: 1200,
+      experienceB: 1000,
+      result: 'b',
+      categoryA: 'loss',
+      categoryB: 'strongerWin',
+      coinsA: 5,
+      starsA: 2,
+      tokensA: 1,
+      coinsB: 31,
+      starsB: 7,
+      tokensB: 3,
+    },
+    {
+      experienceA: 0,
+      experienceB: 0,
+      result: 'a',
+      categoryA: 'equalWin',
+      categoryB: 'loss',
+      coinsA: 21,
+      starsA: 6,
+      tokensA: 2,
+      coinsB: 5,
+      starsB: 2,
+      tokensB: 1,
+    },
+    {
+      experienceA: 0,
+      experienceB: 1,
+      result: 'a',
+      categoryA: 'strongerWin',
+      categoryB: 'loss',
+      coinsA: 31,
+      starsA: 7,
+      tokensA: 3,
+      coinsB: 5,
+      starsB: 2,
+      tokensB: 1,
+    },
+    {
+      experienceA: 1000,
+      experienceB: 1200,
+      result: 'draw',
+      categoryA: 'draw',
+      categoryB: 'draw',
+      coinsA: 9,
+      starsA: 3,
+      tokensA: 2,
+      coinsB: 9,
+      starsB: 3,
+      tokensB: 2,
+    },
+    {
+      experienceA: 1000,
+      experienceB: 1200,
+      result: 'double_loss',
+      categoryA: 'loss',
+      categoryB: 'loss',
+      coinsA: 5,
+      starsA: 2,
+      tokensA: 1,
+      coinsB: 5,
+      starsB: 2,
+      tokensB: 1,
+    },
+    {
+      experienceA: 1000,
+      experienceB: 1200,
+      result: 'a',
+      categoryA: 'strongerWin',
+      categoryB: 'loss',
+      coinsA: 0,
+      starsA: 0,
+      tokensA: 0,
+      coinsB: 0,
+      starsB: 0,
+      tokensB: 0,
+      zero: true,
+    },
+    {
+      experienceA: 1000,
+      experienceB: 1200,
+      result: 'a',
+      categoryA: 'strongerWin',
+      categoryB: 'loss',
+      coinsA: 10,
+      starsA: 7,
+      tokensA: 0,
+      coinsB: 0,
+      starsB: 0,
+      tokensB: 0,
+      zero: true,
+      legacy: true,
+    },
+    {
+      experienceA: 1000,
+      experienceB: 1200,
+      result: 'a',
+      categoryA: 'strongerWin',
+      categoryB: 'loss',
+      coinsA: 31,
+      starsA: 7,
+      tokensA: 3,
+      coinsB: 5,
+      starsB: 2,
+      tokensB: 1,
+      rollback: true,
+    },
+  ])(
+    'settles matrix $categoryA/$categoryB from snapshots $experienceA/$experienceB once ($result)',
+    async (fixture) => {
+      const templateId = await createTemplate({ winStarReward: 'legacy' in fixture ? 7 : 0 });
+      if ('legacy' in fixture) {
+        await pool.query(
+          'update amateur_duel_template set win_currency_reward = 10 where id = $1',
+          [templateId],
+        );
+      }
+      const rewardRules =
+        'zero' in fixture
+          ? {
+              equalExperienceTolerancePercent: 10,
+              strongerWin: { coins: 0, stars: 0, tokens: 0 },
+              equalWin: { coins: 0, stars: 0, tokens: 0 },
+              weakerWin: { coins: 0, stars: 0, tokens: 0 },
+              draw: { coins: 0, stars: 0, tokens: 0 },
+              loss: { coins: 0, stars: 0, tokens: 0 },
+            }
+          : {
+              equalExperienceTolerancePercent: 10,
+              strongerWin: { coins: 31, stars: 7, tokens: 3 },
+              equalWin: { coins: 21, stars: 6, tokens: 2 },
+              weakerWin: { coins: 11, stars: 4, tokens: 1 },
+              draw: { coins: 9, stars: 3, tokens: 2 },
+              loss: { coins: 5, stars: 2, tokens: 1 },
+            };
+      await pool.query('update amateur_duel_template set reward_rules = $2 where id = $1', [
+        templateId,
+        JSON.stringify(rewardRules),
+      ]);
+      const created = await challenge(templateId);
+      expect(created.statusCode).toBe(200);
+      const matchId = created.json().match.id;
+      const accepted = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${matchId}/accept`,
+        headers: auth(tokenB),
+      });
+      expect(accepted.statusCode).toBe(200);
+      await pool.query("update amateur_duel_match set status = 'active' where id = $1", [matchId]);
+      await pool.query(
+        `update amateur_duel_participant
+          set state = $3, current_period = 1, shots_taken = 10,
+              goals = case when user_id = $2 then $4::int else $5::int end,
+              experience_snapshot = case when user_id = $2 then $6::int else $7::int end,
+              active_duration_ms = 1000, completed_at = now()
+        where match_id = $1`,
+        [
+          matchId,
+          userA,
+          fixture.result === 'double_loss' ? 'forfeit' : 'completed',
+          fixture.result === 'b' ? 1 : 2,
+          fixture.result === 'a' ? 1 : 2,
+          fixture.experienceA,
+          fixture.experienceB,
+        ],
+      );
+      // Deliberately disagree with the snapshots and edit the template after creation.
+      await pool.query(
+        'update users set xp = 50, experience = case when id = $1 then 9999 else 0 end where id = any($2::uuid[])',
+        [userA, [userA, userB]],
+      );
+      await pool.query(
+        "update amateur_duel_template set reward_rules = jsonb_set(reward_rules, '{strongerWin,coins}', '999') where id = $1",
+        [templateId],
+      );
+      await pool.query('insert into user_reward_token_account (user_id, balance) values ($1, 10)', [
+        userA,
+      ]);
+
+      const readBalances = async () =>
+        (
+          await pool.query(
+            `select u.id, u.xp, u.experience, a.balance, coalesce(t.balance, 0) as tokens
+         from users u join user_currency_account a on a.user_id = u.id
+         left join user_reward_token_account t on t.user_id = u.id
+        where u.id = any($1::uuid[]) order by u.id`,
+            [[userA, userB]],
+          )
+        ).rows;
+      const settle = (token: string) =>
+        app.inject({
+          method: 'POST',
+          url: `/duel/amateur/matches/${matchId}/settle`,
+          headers: auth(token),
+        });
+      if ('rollback' in fixture) {
+        // Fail the second recipient's token write after the first recipient was credited.
+        await pool.query(
+          'insert into user_reward_token_account (user_id, balance) values ($1, 2147483647)',
+          [userB],
+        );
+        const before = await readBalances();
+        expect((await settle(tokenA)).statusCode).toBe(500);
+        expect(await readBalances()).toEqual(before);
+        expect(
+          (await pool.query('select status from amateur_duel_match where id = $1', [matchId]))
+            .rows[0]?.status,
+        ).toBe('active');
+        expect(
+          (
+            await pool.query(
+              "select id from currency_ledger where duel_match_id = $1 and reason = 'duel_reward'",
+              [matchId],
+            )
+          ).rows,
+        ).toEqual([]);
+        await pool.query('update user_reward_token_account set balance = 0 where user_id = $1', [
+          userB,
+        ]);
+      }
+      const responses = await Promise.all([settle(tokenA), settle(tokenB)]);
+      for (const response of responses) {
+        expect(response.statusCode).toBe(200);
+        expect(response.json().match.status).toBe('settled');
+      }
+      const balances = await readBalances();
+      expect(balances).toEqual(
+        expect.arrayContaining([
+          {
+            id: userA,
+            xp: 50 + fixture.starsA,
+            experience: 9999,
+            balance: 100 + fixture.coinsA,
+            tokens: 10 + fixture.tokensA,
+          },
+          {
+            id: userB,
+            xp: 50 + fixture.starsB,
+            experience: 0,
+            balance: 100 + fixture.coinsB,
+            tokens: fixture.tokensB,
+          },
+        ]),
+      );
+      const readLedger = async () =>
+        (
+          await pool.query(
+            `select id, user_id, available_delta, metadata from currency_ledger
+        where duel_match_id = $1 and reason = 'duel_reward' order by user_id`,
+            [matchId],
+          )
+        ).rows;
+      const ledger = await readLedger();
+      expect(ledger).toHaveLength(2);
+      for (const [userId, experience, otherExperience, category, coins, stars, tokens] of [
+        [
+          userA,
+          fixture.experienceA,
+          fixture.experienceB,
+          fixture.categoryA,
+          fixture.coinsA,
+          fixture.starsA,
+          fixture.tokensA,
+        ],
+        [
+          userB,
+          fixture.experienceB,
+          fixture.experienceA,
+          fixture.categoryB,
+          fixture.coinsB,
+          fixture.starsB,
+          fixture.tokensB,
+        ],
+      ] as const) {
+        const entry = ledger.find((row) => row.user_id === userId);
+        expect(entry?.available_delta).toBe(coins);
+        expect(entry?.metadata).toEqual({
+          match_id: matchId,
+          reward_category: category,
+          winner_experience: experience,
+          opponent_experience: otherExperience,
+          tolerance_percent: 10,
+          coins,
+          stars,
+          tokens,
+        });
+      }
+      expect((await settle(tokenA)).statusCode).toBe(200);
+      expect(await readBalances()).toEqual(balances);
+      expect(await readLedger()).toEqual(ledger);
+    },
+  );
+
   it('settles no-show after locking the star winner before currency accounts', async () => {
     const templateId = await createTemplate({ winStarReward: 7 });
     await pool.query('update amateur_duel_template set win_currency_reward = 10 where id = $1', [

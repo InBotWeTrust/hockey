@@ -75,6 +75,7 @@ import {
   DEFAULT_DUEL_REWARD_RULES,
   duelRewardRulesSchema,
   parseDuelRewardRules,
+  selectDuelRewardCategory,
   type DuelRewardRules,
 } from './rewardRules.js';
 
@@ -2740,9 +2741,12 @@ async function settleMatchIfReady(
     outcome = 'double_loss';
   }
 
-  // Coin and star rewards share the global users -> currency-account lock order.
-  if (settlementPolicy.grantTemplateRewards && winnerUserId !== null && rules.winStarReward > 0) {
-    await client.query('select id from users where id = $1 for update', [winnerUserId]);
+  // Lock both recipients before any currency/token account writes, including stakes.
+  // UUID order also serializes shared recipients across different matches.
+  if (settlementPolicy.grantTemplateRewards) {
+    await client.query('select id from users where id = any($1::uuid[]) order by id for update', [
+      [a.user_id, b.user_id],
+    ]);
   }
 
   const stake = settlementPolicy.settleStake ? Number(match.stake_amount) : 0;
@@ -2801,36 +2805,65 @@ async function settleMatchIfReady(
     }
   }
 
-  if (settlementPolicy.grantTemplateRewards && outcome === 'draw' && rules.drawCurrencyReward > 0) {
-    for (const participant of refreshed) {
+  if (settlementPolicy.grantTemplateRewards) {
+    for (const [participant, other] of [
+      [a, b],
+      [b, a],
+    ] as const) {
+      const participantOutcome =
+        outcome === 'draw' ? 'draw' : participant.user_id === winnerUserId ? 'win' : 'loss';
+      const experience = Number(participant.experience_snapshot);
+      const opponentExperience = Number(other.experience_snapshot);
+      const category = selectDuelRewardCategory(
+        rules.rewardRules,
+        participantOutcome,
+        experience,
+        opponentExperience,
+      );
+      const reward = rules.rewardRules[category];
+      // Preserve legacy configured rewards during the matrix compatibility window.
+      const coins =
+        reward.coins +
+        (participantOutcome === 'win'
+          ? rules.winCurrencyReward
+          : participantOutcome === 'draw'
+            ? rules.drawCurrencyReward
+            : 0);
+      const stars = reward.stars + (participantOutcome === 'win' ? rules.winStarReward : 0);
+      if (stars > 0) {
+        await client.query('update users set xp = xp + $2 where id = $1', [
+          participant.user_id,
+          stars,
+        ]);
+      }
       await applyCurrencyDelta(client, {
         userId: participant.user_id,
-        availableDelta: rules.drawCurrencyReward,
+        availableDelta: coins,
         reservedDelta: 0,
         reason: 'duel_reward',
         matchId: match.id,
-        metadata: { outcome, template_id: rules.templateId },
+        metadata: {
+          match_id: match.id,
+          reward_category: category,
+          winner_experience: experience,
+          opponent_experience: opponentExperience,
+          tolerance_percent: rules.rewardRules.equalExperienceTolerancePercent,
+          coins,
+          stars,
+          tokens: reward.tokens,
+        },
       });
+      if (reward.tokens > 0) {
+        await client.query(
+          `insert into user_reward_token_account (user_id, balance) values ($1, $2)
+           on conflict (user_id) do update
+             set balance = user_reward_token_account.balance + excluded.balance, updated_at = now()`,
+          [participant.user_id, reward.tokens],
+        );
+      }
     }
-  } else if (
-    settlementPolicy.grantTemplateRewards &&
-    winnerUserId !== null &&
-    rules.winCurrencyReward > 0
-  ) {
-    await applyCurrencyDelta(client, {
-      userId: winnerUserId,
-      availableDelta: rules.winCurrencyReward,
-      reservedDelta: 0,
-      reason: 'duel_reward',
-      matchId: match.id,
-      metadata: { outcome, template_id: rules.templateId },
-    });
   }
   if (settlementPolicy.grantTemplateRewards && winnerUserId !== null && rules.winStarReward > 0) {
-    await client.query(`update users set xp = xp + $2 where id = $1`, [
-      winnerUserId,
-      rules.winStarReward,
-    ]);
     await appendEvent(client, winnerUserId, 'amateur_duel_star_reward', {
       match_id: match.id,
       outcome,

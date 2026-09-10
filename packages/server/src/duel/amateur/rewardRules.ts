@@ -13,6 +13,7 @@ export type DuelRewardRules = {
 
 export type DuelExperienceOpponent = 'stronger' | 'equal' | 'weaker';
 export type DuelRewardOutcome = 'win' | 'draw' | 'loss';
+export type DuelRewardCategory = Exclude<keyof DuelRewardRules, 'equalExperienceTolerancePercent'>;
 
 const safeNonNegativeInteger = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 
@@ -66,15 +67,23 @@ export function selectDuelReward(
   winnerExperience: number,
   opponentExperience: number,
 ): DuelRewardAmount {
-  if (outcome === 'draw') return rules.draw;
-  if (outcome === 'loss') return rules.loss;
+  return rules[selectDuelRewardCategory(rules, outcome, winnerExperience, opponentExperience)];
+}
+
+export function selectDuelRewardCategory(
+  rules: DuelRewardRules,
+  outcome: DuelRewardOutcome,
+  winnerExperience: number,
+  opponentExperience: number,
+): DuelRewardCategory {
+  if (outcome === 'draw' || outcome === 'loss') return outcome;
 
   const opponent = classifyExperienceOpponent(
     winnerExperience,
     opponentExperience,
     rules.equalExperienceTolerancePercent,
   );
-  if (opponent === 'stronger') return rules.strongerWin;
-  if (opponent === 'weaker') return rules.weakerWin;
-  return rules.equalWin;
+  if (opponent === 'stronger') return 'strongerWin';
+  if (opponent === 'weaker') return 'weakerWin';
+  return 'equalWin';
 }
