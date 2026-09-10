@@ -253,6 +253,10 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
       '114_automatic_weekly_challenges.sql',
       '115_weekly_challenge_launch_marker.sql',
       '116_weekly_challenge_future_publication.sql',
+      '117_economy_achievement_rewards.sql',
+      '118_weekly_challenge_token_rewards.sql',
+      '119_duel_reward_matrix.sql',
+      '120_monthly_duel_rating_rewards.sql',
     ]);
 
     const accuracy = await pool.query<{
