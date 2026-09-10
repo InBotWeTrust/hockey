@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Check, CircleDollarSign, Sparkles, Star, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Check, CircleDollarSign, Sparkles, Star, Ticket, TrendingUp } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchWeeklyChallengeCatalog } from '../api/weeklyChallenge.js';
@@ -85,6 +85,9 @@ function rewardPartItems(
       : null,
     reward.experience > 0
       ? { tone: 'experience' as const, text: `${prefix}${numberText(reward.experience)}` }
+      : null,
+    reward.tokens > 0
+      ? { tone: 'token' as const, text: `${prefix}${numberText(reward.tokens)}` }
       : null,
   ].filter((part): part is Exclude<typeof part, null> => part !== null);
 }
@@ -336,6 +339,12 @@ function ChallengeCard({
           value={challenge.reward.experience}
           color={rewardColor('experience')}
           icon={<TrendingUp size={16} strokeWidth={2.55} />}
+        />
+        <RewardChip
+          label="Токены"
+          value={challenge.reward.tokens}
+          color={rewardColor('token')}
+          icon={<Ticket size={16} strokeWidth={2.55} />}
         />
       </div>
 

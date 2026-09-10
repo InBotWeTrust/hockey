@@ -218,7 +218,7 @@ describe('SectionsScreen', () => {
         status: 'finished',
         startAt: '2026-09-02T00:00:00.000Z',
         endAt: '2026-09-09T00:00:00.000Z',
-        reward: { coins: 0, stars: 0, experience: 0 },
+        reward: { coins: 0, stars: 0, experience: 0, tokens: 0 },
         rewardClaimedAt: null,
         tasks: [
           { id: 'task-1', type: 'goals_scored', title: 'Забросить шайбы', target: 100, progress: 72, completed: false },

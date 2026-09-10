@@ -25,7 +25,7 @@ export interface WeeklyChallenge {
   status: WeeklyChallengeStatus;
   startAt: string;
   endAt: string;
-  reward: { coins: number; stars: number; experience: number };
+  reward: { coins: number; stars: number; experience: number; tokens: number };
   rewardClaimedAt: string | null;
   tasks: WeeklyChallengeTask[];
   hasProgress: boolean;

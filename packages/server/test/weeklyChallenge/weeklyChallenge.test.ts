@@ -254,6 +254,12 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       [userId],
     );
     expect(tokenBalance.rows[0]).toMatchObject({ balance: 5 });
+    const balancesBeforeDuplicate = {
+      coins: balances.rows[0]!.balance,
+      stars: balances.rows[0]!.stars,
+      experience: balances.rows[0]!.experience,
+      tokens: tokenBalance.rows[0]!.balance,
+    };
     const tokenSnapshot = await pool.query<{ tokens: number }>(
       `select tokens from weekly_challenge_reward_claims where challenge_id = $1 and user_id = $2`,
       [challengeId, userId],
@@ -266,11 +272,32 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       headers: authHeader(),
     });
     expect(duplicate.statusCode).toBe(409);
+    const balancesAfterDuplicate = await pool.query<{
+      balance: number;
+      stars: number;
+      experience: number;
+      ledger_rows: string;
+    }>(
+      `select uca.balance,
+              u.stars,
+              u.experience,
+              (select count(*) from currency_ledger where user_id = u.id)::text as ledger_rows
+         from users u
+         join user_currency_account uca on uca.user_id = u.id
+        where u.id = $1`,
+      [userId],
+    );
+    expect(balancesAfterDuplicate.rows[0]?.ledger_rows).toBe('1');
     const tokenBalanceAfterDuplicate = await pool.query<{ balance: number }>(
       `select balance from user_reward_token_account where user_id = $1`,
       [userId],
     );
-    expect(tokenBalanceAfterDuplicate.rows[0]).toMatchObject({ balance: 5 });
+    expect({
+      coins: balancesAfterDuplicate.rows[0]!.balance,
+      stars: balancesAfterDuplicate.rows[0]!.stars,
+      experience: balancesAfterDuplicate.rows[0]!.experience,
+      tokens: tokenBalanceAfterDuplicate.rows[0]!.balance,
+    }).toEqual(balancesBeforeDuplicate);
   });
 
   it('counts progress in the half-open challenge window', async () => {
