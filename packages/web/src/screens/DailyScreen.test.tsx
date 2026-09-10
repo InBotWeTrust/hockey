@@ -7696,8 +7696,10 @@ describe('DailyScreen', () => {
 
     await waitFor(() => expect(openedNext).toBe(1));
     expect(await screen.findByRole('button', { name: 'ГОТОВ' })).toBeEnabled();
-    expect(screen.getByLabelText('location')).toHaveTextContent('fixture=f2');
-    expect(screen.getByLabelText('location')).toHaveTextContent('match=match-2');
+    await waitFor(() => {
+      expect(screen.getByLabelText('location')).toHaveTextContent('fixture=f2');
+      expect(screen.getByLabelText('location')).toHaveTextContent('match=match-2');
+    });
   });
 
   it('refreshes onboarding once when leaving a settled direct duel result', async () => {
