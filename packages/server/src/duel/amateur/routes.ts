@@ -52,6 +52,10 @@ import {
   type AmateurDuelSource,
 } from './lifecycle.js';
 import type { TournamentDuelTemplateSnapshot } from './tournamentTemplateSnapshot.js';
+import {
+  getPendingMonthlyRatingCongratulations,
+  acknowledgeMonthlyRatingCongratulations,
+} from './monthlyRewards.js';
 import { settleTournamentSegmentForDuel } from '../../tournament/fixtureLifecycle.js';
 import { lockTournamentForDuelMutation } from '../../tournament/locks.js';
 import { resolveTournamentDuelResult } from '../../tournament/playoffScheduling.js';
@@ -5776,6 +5780,26 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       }
       if (response.settled) void notifySettlement(app, response.matchId);
       return { match: response.match };
+    },
+  );
+
+  app.get(
+    '/duel/amateur/rating/congratulations/pending',
+    { preHandler: [app.authenticate] },
+    async (req) => {
+      return {
+        congratulations: await getPendingMonthlyRatingCongratulations(app.pg, req.user.id),
+      };
+    },
+  );
+
+  app.post(
+    '/duel/amateur/rating/congratulations/:id/read',
+    { preHandler: [app.authenticate] },
+    async (req) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+      await acknowledgeMonthlyRatingCongratulations(app.pg, req.user.id, id);
+      return { ok: true };
     },
   );
 
