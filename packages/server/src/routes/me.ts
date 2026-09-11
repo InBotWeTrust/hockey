@@ -9,6 +9,7 @@ import {
   fetchTrophySummary,
 } from '../profile/summary.js';
 import { listPendingRegularSeasonPodiumCongratulations } from '../tournament/podiumCongratulations.js';
+import { listExperienceRating } from '../profile/experienceRating.js';
 
 interface MeRow {
   id: string;
@@ -131,6 +132,20 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
 }
 
 export const meRoutes: FastifyPluginAsync = async (app) => {
+  app.get('/profile/experience-rating', { preHandler: [app.authenticate] }, async (req) => {
+    const query = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(50).default(30),
+        cursor: z.string().min(1).optional(),
+      })
+      .safeParse(req.query);
+    if (!query.success) throw new AppError('bad_request', 'invalid query', 400);
+    return listExperienceRating(app.pg, req.user.id, {
+      limit: query.data.limit,
+      ...(query.data.cursor !== undefined ? { cursor: query.data.cursor } : {}),
+    });
+  });
+
   app.get('/me', { preHandler: [app.authenticate] }, async (req) => {
     const query = z
       .object({ includeTournamentCongratulations: z.enum(['true', 'false']).optional() })
