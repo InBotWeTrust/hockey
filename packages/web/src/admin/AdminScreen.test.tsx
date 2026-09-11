@@ -1741,7 +1741,7 @@ describe('AdminScreen', () => {
     expect(savedGameplayPatchBody.effectShotZoneMultiplier).toBe(1);
   });
 
-  it('shows only skate tuning fields while editing skates', async () => {
+  it('keeps skate item editing focused on resource instead of global penalties', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'a',
       refreshToken: 'r',
@@ -1830,10 +1830,11 @@ describe('AdminScreen', () => {
         'Когда остаток станет не больше этого числа, иконка начнёт пульсировать.',
       ),
     ).toBeInTheDocument();
-    expect(within(dialog).getByText('Коньки и спотыкание')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Коньки и спотыкание')).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Мин. интервал спотыкания')).not.toBeInTheDocument();
     expect(
       within(dialog).getByText(
-        'Коньки расходуются в прокатах и управляют спотыканием без рабочего инвентаря.',
+        'Коньки расходуются в прокатах. Спотыкание настраивается глобально.',
       ),
     ).toBeInTheDocument();
     expect(within(dialog).queryByText('Энергия и усталость')).not.toBeInTheDocument();

@@ -6051,12 +6051,13 @@ function InventoryEditor({
   const isSkatesItem = itemKind === 'skates';
   const isNutritionItem = itemKind === 'nutrition';
   const isRecoveryItem = itemKind === 'recovery';
+  const showLegacyItemPenaltyFields = false;
   const editorIntro = isStickItem
     ? 'Скорость шайбы: 10 пунктов = +0.10.'
     : isSkatesItem
-      ? 'Коньки расходуются в прокатах и управляют спотыканием без рабочего инвентаря.'
+      ? 'Коньки расходуются в прокатах. Спотыкание настраивается глобально.'
       : isNutritionItem
-        ? 'Энергия задаётся в минутах, расход зависит от скорости игрока.'
+        ? 'Энергия задаётся в минутах. Расход и усталость настраиваются глобально.'
         : isRecoveryItem
           ? 'Одноразовый набор сокращает только обычное восстановление после игры.'
           : 'Базовые параметры расходуемого предмета.';
@@ -6279,7 +6280,7 @@ function InventoryEditor({
             </AdminField>
           </>
         )}
-        {isSkatesItem && (
+        {showLegacyItemPenaltyFields && isSkatesItem && (
           <section style={{ display: 'grid', gap: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--ink)' }}>
               Коньки и спотыкание
@@ -6397,7 +6398,7 @@ function InventoryEditor({
             </div>
           </section>
         )}
-        {isNutritionItem && (
+        {showLegacyItemPenaltyFields && isNutritionItem && (
           <section style={{ display: 'grid', gap: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--ink)' }}>
               Энергия и усталость

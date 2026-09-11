@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped to 54', () => {
-    expect(GAME_CORE_VERSION).toBe(55);
+  it('is bumped for unified duel inventory penalties', () => {
+    expect(GAME_CORE_VERSION).toBe(56);
   });
 });

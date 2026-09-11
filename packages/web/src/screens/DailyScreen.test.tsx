@@ -14,6 +14,7 @@ import { render, screen, waitFor, fireEvent, act, within, cleanup } from '@testi
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  createDuelStumbleRandomness,
   DAILY_PERIOD_SPEED_PRESETS,
   DEFAULT_DUEL_INVENTORY_TIMING,
   STICK_NEUTRAL,
@@ -1140,6 +1141,46 @@ describe('DailyScreen', () => {
         ],
       })(0, speeds)?.puckSpeedDelta,
     ).toBe(0);
+  });
+
+  it('uses global stumble timing after classic skates run out', () => {
+    const skates = {
+      id: '00000000-0000-4000-8000-000000000902',
+      itemId: '00000000-0000-4000-8000-000000000902',
+      instanceId: null,
+      kind: 'skates' as const,
+      title: 'Тестовые коньки',
+      imageUrl: null,
+      resourceUnit: 'distance' as const,
+      resourceAvailable: 0,
+      effectPuckSpeedPoints: 0,
+      effectShooterFrequencyDelta: 0,
+      effectGoalieFrequencyDelta: 0,
+      effectGoalFrequencyDelta: 0,
+      timing: {
+        ...DEFAULT_DUEL_INVENTORY_TIMING,
+        stumbleIntervalMinRolls: 1_000,
+        stumbleIntervalMaxRolls: 1_000,
+      },
+    };
+    const state: ClassicTournamentState = {
+      ...classicIdleState,
+      state: 'period_active',
+      current_period: 1,
+      loadout: { items: [skates] },
+      loadout_editable: false,
+    };
+    const speeds = { goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.75, puckSpeed: 1.3 };
+    const globalRandomness = createDuelStumbleRandomness(
+      { seed: state.daily_seed, userId: state.player_id, periodNumber: 1 },
+      DEFAULT_DUEL_INVENTORY_TIMING,
+    );
+    const firstGlobalStumbleMs = (globalRandomness.interval / (speeds.shooterFreq * 2)) * 1_000;
+
+    const condition = createClassicTournamentCondition(state)(firstGlobalStumbleMs, speeds);
+
+    expect(condition?.stumbleActive).toBe(true);
+    expect(condition?.canShoot).toBe(false);
   });
 
   it('shows classic period results before the resurfacing break', async () => {

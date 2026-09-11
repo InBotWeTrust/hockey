@@ -19,6 +19,28 @@ function loadout(
   };
 }
 
+function activeSkates(): NonNullable<DuelInventoryLoadoutSnapshot['skates']> {
+  return {
+    id: 'test-active-skates',
+    title: 'Тестовые коньки',
+    resourceUnit: 'distance',
+    resourceAvailable: 1_000_000,
+    effectPuckSpeedPoints: 0,
+    timing: DEFAULT_DUEL_INVENTORY_TIMING,
+  };
+}
+
+function activeNutrition(): NonNullable<DuelInventoryLoadoutSnapshot['nutrition']> {
+  return {
+    id: 'test-active-nutrition',
+    title: 'Тестовая энергия',
+    resourceUnit: 'energy_ms',
+    resourceAvailable: 1_000_000,
+    effectPuckSpeedPoints: 0,
+    timing: DEFAULT_DUEL_INVENTORY_TIMING,
+  };
+}
+
 describe('duel inventory condition', () => {
   it('converts +10 speed points to +0.10 puck speed units', () => {
     expect(duelInventorySpeedPointsToPuckSpeedDelta(10)).toBe(0.1);
@@ -36,6 +58,8 @@ describe('duel inventory condition', () => {
       baselineShooterSpeed: 1,
       currentShooterSpeed: 1,
       loadout: loadout({
+        skates: activeSkates(),
+        nutrition: activeNutrition(),
         stick: {
           id: 'stick-1',
           title: 'Ультимейт Ван 1',
@@ -63,6 +87,8 @@ describe('duel inventory condition', () => {
       baselineShooterSpeed: 1,
       currentShooterSpeed: 1,
       loadout: loadout({
+        skates: activeSkates(),
+        nutrition: activeNutrition(),
         stick: {
           id: 'spent-stick',
           title: 'Ультимейт Ван 1',
@@ -194,26 +220,18 @@ describe('duel inventory condition', () => {
     expect(stumbleWindows).toBeGreaterThanOrEqual(2);
   });
 
-  it('does not start default-skate stumble before the first deterministic interval', () => {
+  it('does not start global skate stumble before the first configured interval', () => {
+    const timing = {
+      ...DEFAULT_DUEL_INVENTORY_TIMING,
+      stumbleIntervalMinRolls: 10,
+      stumbleIntervalMaxRolls: 10,
+      stumbleDurationMinMs: 500,
+      stumbleDurationMaxMs: 500,
+      stumbleRecoveryMinMs: 250,
+      stumbleRecoveryMaxMs: 250,
+    };
     const timedLoadout = loadout({
-      skates: {
-        id: 'spent-skates',
-        title: 'Старт',
-        resourceUnit: 'distance',
-        resourceAvailable: 0,
-        effectPuckSpeedPoints: 0,
-        timing: {
-          ...DEFAULT_DUEL_INVENTORY_TIMING,
-          stumbleIntervalMinRolls: 10,
-          stumbleIntervalMaxRolls: 10,
-          stumbleDurationMinMs: 500,
-          stumbleDurationMaxMs: 500,
-          stumbleOffsetMinPx: 24,
-          stumbleOffsetMaxPx: 24,
-          stumbleRecoveryMinMs: 250,
-          stumbleRecoveryMaxMs: 250,
-        },
-      },
+      fallbackSkatesTiming: timing,
     });
     const baseInput = {
       seed: 'match-seed',
@@ -297,7 +315,7 @@ describe('duel inventory condition', () => {
     expect(atConfiguredInterval.canShoot).toBe(false);
   });
 
-  it('cycles accumulated fatigue through tired, rest, and normal recovery without heavy state', () => {
+  it('cycles the approved global fatigue stages after energy runs out', () => {
     const common = {
       seed: 'match-seed',
       userId: 'user-a',
@@ -305,26 +323,26 @@ describe('duel inventory condition', () => {
       movementDistancePx: 0,
       baseLaneWidthPx: 572,
       baselineShooterSpeed: 0.75,
-      currentShooterSpeed: 0.75,
-      loadout: loadout(),
+      currentShooterSpeed: 1.5,
+      loadout: loadout({ skates: activeSkates() }),
     };
 
-    const grace = getDuelPlayerCondition({ ...common, elapsedMs: 14_999 });
-    const tired = getDuelPlayerCondition({ ...common, elapsedMs: 20_000 });
-    const formerHeavy = getDuelPlayerCondition({ ...common, elapsedMs: 50_000 });
-    const stopped = getDuelPlayerCondition({ ...common, elapsedMs: 61_000 });
-    const recovery = getDuelPlayerCondition({ ...common, elapsedMs: 66_000 });
-    const afterRecovery = getDuelPlayerCondition({ ...common, elapsedMs: 96_000 });
+    const grace = getDuelPlayerCondition({ ...common, elapsedMs: 2_999 });
+    const tired = getDuelPlayerCondition({ ...common, elapsedMs: 3_000 });
+    const heavy = getDuelPlayerCondition({ ...common, elapsedMs: 8_000 });
+    const stopped = getDuelPlayerCondition({ ...common, elapsedMs: 13_000 });
+    const recovery = getDuelPlayerCondition({ ...common, elapsedMs: 16_000 });
+    const afterRecovery = getDuelPlayerCondition({ ...common, elapsedMs: 23_000 });
 
     expect(grace.status).toBe('normal');
     expect(grace.fatigueLevel).toBe('none');
     expect(grace.shooterSpeedMultiplier).toBe(1);
     expect(tired.status).toBe('tired');
     expect(tired.fatigueLevel).toBe('medium');
-    expect(tired.shooterSpeedMultiplier).toBe(0.9);
-    expect(formerHeavy.status).toBe('tired');
-    expect(formerHeavy.fatigueLevel).toBe('medium');
-    expect(formerHeavy.shooterSpeedMultiplier).toBe(0.9);
+    expect(tired.shooterSpeedMultiplier).toBe(0.85);
+    expect(heavy.status).toBe('nutrition_slowdown');
+    expect(heavy.fatigueLevel).toBe('heavy');
+    expect(heavy.shooterSpeedMultiplier).toBe(0.65);
     expect(stopped.status).toBe('exhausted_stop');
     expect(stopped.fatigueLevel).toBe('resting');
     expect(stopped.canShoot).toBe(false);
@@ -336,6 +354,7 @@ describe('duel inventory condition', () => {
     expect(afterRecovery.status).toBe('tired');
     expect(afterRecovery.fatigueLevel).toBe('medium');
     expect(afterRecovery.canShoot).toBe(true);
+    expect(afterRecovery.shooterSpeedMultiplier).toBe(0.85);
   });
 
   it('uses configured fallback timing when no nutrition is selected', () => {
@@ -358,6 +377,7 @@ describe('duel inventory condition', () => {
       baselineShooterSpeed: 1,
       currentShooterSpeed: 1,
       loadout: loadout({
+        skates: activeSkates(),
         fallbackNutritionTiming: configuredTiming,
       }),
     };
@@ -373,13 +393,7 @@ describe('duel inventory condition', () => {
     expect(resting.canShoot).toBe(false);
   });
 
-  it('starts a new period without energy from the same recovered state as after rest', () => {
-    const timing = {
-      ...DEFAULT_DUEL_INVENTORY_TIMING,
-      fatigueGraceMs: 30_000,
-      fatigueSlowdownStartMs: 30_000,
-      fatigueAfterRestMs: 45_000,
-    };
+  it('restarts the fatigue cycle at the beginning of every period', () => {
     const common = {
       seed: 'match-seed',
       userId: 'user-a',
@@ -388,34 +402,121 @@ describe('duel inventory condition', () => {
       baselineShooterSpeed: 0.75,
       currentShooterSpeed: 0.75,
       loadout: loadout({
+        skates: activeSkates(),
         nutrition: {
           id: 'spent-nutrition',
           title: 'Изотоник',
           resourceUnit: 'energy_ms' as const,
           resourceAvailable: 0,
           effectPuckSpeedPoints: 0,
-          timing,
+          timing: {
+            ...DEFAULT_DUEL_INVENTORY_TIMING,
+            fatigueGraceMs: 30_000,
+            fatigueSlowdownStartMs: 30_000,
+          },
         },
+        fallbackNutritionTiming: DEFAULT_DUEL_INVENTORY_TIMING,
       }),
     };
 
-    const recoveredStart = getDuelPlayerCondition({
+    const grace = getDuelPlayerCondition({
       ...common,
       periodNumber: 2,
-      elapsedMs: 40_000,
+      elapsedMs: 2_999,
     });
-    const tiredAfterRecovery = getDuelPlayerCondition({
+    const tired = getDuelPlayerCondition({
       ...common,
       periodNumber: 2,
-      elapsedMs: 45_000,
+      elapsedMs: 3_000,
     });
 
-    expect(recoveredStart.status).toBe('normal');
-    expect(recoveredStart.fatigueLevel).toBe('none');
-    expect(recoveredStart.canShoot).toBe(true);
-    expect(recoveredStart.shooterSpeedMultiplier).toBe(1);
-    expect(tiredAfterRecovery.status).toBe('tired');
-    expect(tiredAfterRecovery.fatigueLevel).toBe('medium');
+    expect(grace.status).toBe('normal');
+    expect(grace.shooterSpeedMultiplier).toBe(1);
+    expect(tired.status).toBe('tired');
+    expect(tired.fatigueLevel).toBe('medium');
+    expect(tired.shooterSpeedMultiplier).toBe(0.85);
+  });
+
+  it('uses global skate penalties after any selected skates run out', () => {
+    const fallbackTiming = {
+      ...DEFAULT_DUEL_INVENTORY_TIMING,
+      stumbleIntervalMinRolls: 8,
+      stumbleIntervalMaxRolls: 8,
+      stumbleDurationMinMs: 450,
+      stumbleDurationMaxMs: 450,
+      stumbleRecoveryMinMs: 150,
+      stumbleRecoveryMaxMs: 150,
+    };
+    const condition = getDuelPlayerCondition({
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      elapsedMs: 4_000,
+      movementDistancePx: 8 * 572,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 1,
+      currentShooterSpeed: 1,
+      loadout: loadout({
+        skates: {
+          id: 'spent-premium-skates',
+          title: 'Премиум',
+          resourceUnit: 'distance',
+          resourceAvailable: 0,
+          effectPuckSpeedPoints: 0,
+          timing: {
+            ...DEFAULT_DUEL_INVENTORY_TIMING,
+            stumbleIntervalMinRolls: 100,
+            stumbleIntervalMaxRolls: 100,
+          },
+        },
+        fallbackSkatesTiming: fallbackTiming,
+      }),
+    });
+
+    expect(condition.stumbleActive).toBe(true);
+    expect(condition.canShoot).toBe(false);
+  });
+
+  it('uses global energy timings and baseline for every nutrition item', () => {
+    const itemTiming = {
+      ...DEFAULT_DUEL_INVENTORY_TIMING,
+      energyBaselineSpeed: 0.5,
+      fatigueGraceMs: 30_000,
+      fatigueSlowdownStartMs: 30_000,
+    };
+    const fallbackTiming = {
+      ...DEFAULT_DUEL_INVENTORY_TIMING,
+      energyBaselineSpeed: 1,
+    };
+    const common = {
+      seed: 'match-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      movementDistancePx: 0,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 1,
+      currentShooterSpeed: 1,
+      loadout: loadout({
+        skates: activeSkates(),
+        nutrition: {
+          id: 'nutrition-premium',
+          title: 'Премиум',
+          resourceUnit: 'energy_ms' as const,
+          resourceAvailable: 1_000,
+          effectPuckSpeedPoints: 0,
+          timing: itemTiming,
+        },
+        fallbackNutritionTiming: fallbackTiming,
+      }),
+    };
+
+    const active = getDuelPlayerCondition({ ...common, elapsedMs: 750 });
+    const tired = getDuelPlayerCondition({ ...common, elapsedMs: 4_000 });
+
+    expect(active.nutritionConsumed).toBe(750);
+    expect(active.status).toBe('normal');
+    expect(tired.status).toBe('tired');
+    expect(tired.shooterSpeedMultiplier).toBe(0.85);
   });
 
   it('accumulates fatigue only after selected nutrition resource is depleted', () => {
@@ -428,6 +529,7 @@ describe('duel inventory condition', () => {
       baselineShooterSpeed: 0.75,
       currentShooterSpeed: 1.5,
       loadout: loadout({
+        skates: activeSkates(),
         nutrition: {
           id: 'nutrition-1',
           title: 'Изотоник',
@@ -440,34 +542,28 @@ describe('duel inventory condition', () => {
     };
 
     const beforeDepletion = getDuelPlayerCondition({ ...common, elapsedMs: 29_000 });
-    const afterDepletionGrace = getDuelPlayerCondition({ ...common, elapsedMs: 37_000 });
-    const tired = getDuelPlayerCondition({ ...common, elapsedMs: 38_000 });
+    const afterDepletionGrace = getDuelPlayerCondition({ ...common, elapsedMs: 32_999 });
+    const tired = getDuelPlayerCondition({ ...common, elapsedMs: 33_000 });
 
     expect(beforeDepletion.status).toBe('normal');
     expect(beforeDepletion.nutritionConsumed).toBe(58_000);
     expect(afterDepletionGrace.status).toBe('normal');
     expect(afterDepletionGrace.nutritionConsumed).toBe(60_000);
     expect(tired.status).toBe('tired');
-    expect(tired.fatigueMs).toBe(16_000);
+    expect(tired.fatigueMs).toBe(3_000);
   });
 
-  it('does not start legacy millisecond default-skate stumble before the first deterministic interval', () => {
+  it('uses the global legacy millisecond interval when roll intervals are disabled', () => {
     const timedLoadout = loadout({
-      skates: {
-        id: 'spent-skates',
-        title: 'Старт',
-        resourceUnit: 'distance',
-        resourceAvailable: 0,
-        effectPuckSpeedPoints: 0,
-        timing: {
-          ...DEFAULT_DUEL_INVENTORY_TIMING,
-          stumbleIntervalMinRolls: 0,
-          stumbleIntervalMaxRolls: 0,
-          stumbleIntervalMinMs: 25_000,
-          stumbleIntervalMaxMs: 25_000,
-          stumbleDurationMinMs: 300,
-          stumbleDurationMaxMs: 300,
-        },
+      nutrition: activeNutrition(),
+      fallbackSkatesTiming: {
+        ...DEFAULT_DUEL_INVENTORY_TIMING,
+        stumbleIntervalMinRolls: 0,
+        stumbleIntervalMaxRolls: 0,
+        stumbleIntervalMinMs: 25_000,
+        stumbleIntervalMaxMs: 25_000,
+        stumbleDurationMinMs: 300,
+        stumbleDurationMaxMs: 300,
       },
     });
     const baseInput = {
@@ -615,6 +711,7 @@ describe('duel inventory condition', () => {
       baselineShooterSpeed: 1,
       currentShooterSpeed: 1,
       loadout: loadout({
+        skates: activeSkates(),
         nutrition: {
           id: 'nutrition-empty',
           title: 'Изотоник',
@@ -622,6 +719,10 @@ describe('duel inventory condition', () => {
           resourceAvailable: 0,
           effectPuckSpeedPoints: 0,
           timing: DEFAULT_DUEL_INVENTORY_TIMING,
+        },
+        fallbackNutritionTiming: {
+          ...DEFAULT_DUEL_INVENTORY_TIMING,
+          energyBaselineSpeed: 1,
         },
       }),
     };
@@ -664,6 +765,7 @@ describe('duel inventory condition', () => {
       baselineShooterSpeed: 1,
       currentShooterSpeed: 1,
       loadout: loadout({
+        skates: activeSkates(),
         nutrition: {
           id: 'nutrition-1',
           title: 'Изотоник',
@@ -686,9 +788,10 @@ describe('duel inventory condition', () => {
       periodNumber: 1,
       movementDistancePx: 0,
       baseLaneWidthPx: 572,
-      baselineShooterSpeed: 1,
-      currentShooterSpeed: 1,
+      baselineShooterSpeed: 0.75,
+      currentShooterSpeed: 0.75,
       loadout: loadout({
+        skates: activeSkates(),
         nutrition: {
           id: 'nutrition-1',
           title: 'Изотоник',
@@ -701,8 +804,8 @@ describe('duel inventory condition', () => {
     };
 
     const beforeDepletion = getDuelPlayerCondition({ ...common, elapsedMs: 9_999 });
-    const grace = getDuelPlayerCondition({ ...common, elapsedMs: 17_000 });
-    const tired = getDuelPlayerCondition({ ...common, elapsedMs: 45_000 });
+    const grace = getDuelPlayerCondition({ ...common, elapsedMs: 12_999 });
+    const tired = getDuelPlayerCondition({ ...common, elapsedMs: 13_000 });
 
     expect(beforeDepletion.status).toBe('normal');
     expect(beforeDepletion.canShoot).toBe(true);
