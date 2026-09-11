@@ -90,8 +90,10 @@ describe.skipIf(!hasIntegrationEnv)('121 duel reward storage limits', () => {
     expect(await applyMigrations(pool, MIGRATIONS_DIR)).toEqual({
       applied: [
         MIGRATION,
+        '122_bonus_game_reward_progression.sql',
         '122_production_data_operations.sql',
         '123_sync_inventory_catalog_from_dev.sql',
+        '124_production_data_operations_if_missing.sql',
       ],
     });
     expect(await snapshot()).toEqual(before);
