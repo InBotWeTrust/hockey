@@ -111,23 +111,51 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     expect((await pool.query('select * from monthly_duel_rating_season')).rows).toHaveLength(1);
   });
 
-  it('excludes 29-match players before ranking and awards the next eligible player first place', async () => {
-    const users = await seedSeason('2026-08', 11);
-    await pool.query(
-      `delete from amateur_duel_rating_match where user_id = $1 and match_id =
-      (select match_id from amateur_duel_rating_match where user_id = $1 limit 1)`,
-      [users[0]],
-    );
+  it('uses the all-player final table for prizes and top-three achievements', async () => {
+    const users = await seedSeason('2026-08', 10);
+    await pool.query('update amateur_duel_rating_match set points = 0, wins = 0');
+    const points = [27, 100, 90, 80, 70, 60, 50, 40, 10, 5];
+    for (const [index, userId] of users.entries()) {
+      await pool.query(
+        `update amateur_duel_rating_match
+            set points = $2
+          where match_id = (
+            select match_id from amateur_duel_rating_match
+             where user_id = $1 order by match_id limit 1
+          ) and user_id = $1`,
+        [userId, points[index]],
+      );
+    }
+    for (const userId of users.slice(3, 8)) {
+      await pool.query(
+        `delete from amateur_duel_rating_match
+          where user_id = $1 and points = 0 and match_id = (
+            select match_id from amateur_duel_rating_match
+             where user_id = $1 and points = 0 order by match_id limit 1
+          )`,
+        [userId],
+      );
+    }
+
     await reconcileCompletedMonthlyRating(pool, september);
+
     const rows = await placements();
-    expect(rows).toHaveLength(10);
-    expect(rows[0]).toMatchObject({
-      user_id: users[1],
-      place: 1,
-      matches_played: 30,
-      coins: 15000,
-    });
-    expect(rows.some((r) => r.user_id === users[0])).toBe(false);
+    expect(rows.map((row) => row.user_id)).toEqual([
+      users[1],
+      users[2],
+      users[3],
+      users[4],
+      users[5],
+      users[6],
+      users[7],
+      users[0],
+      users[8],
+      users[9],
+    ]);
+    expect(rows.slice(0, 3).map((row) => row.coins)).toEqual([15000, 10000, 7500]);
+    expect(rows[7]).toMatchObject({ user_id: users[0], place: 8, coins: 0 });
+    await expect(completedMonthlyAchievementIds(pool, users[0]!)).resolves.toEqual([]);
+    await expect(completedMonthlyAchievementIds(pool, users[3]!)).resolves.toEqual(['monthly-top-3']);
   });
 
   it.each([
@@ -207,30 +235,30 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     });
   });
 
-  it('uses points then wins then less active time then name and UUID to break ties', async () => {
-    const users = await seedSeason('2026-08', 10);
-    await pool.query(
-      'update amateur_duel_rating_match set points = 1, wins = 0, active_duration_seconds = 20',
+  it('breaks equal monthly points by head-to-head results before total duels', async () => {
+    const [headToHeadWinner, tiedOpponent, firstOpponent, secondOpponent] = Array.from(
+      { length: 4 },
+      () => randomUUID(),
     );
-    await pool.query('update users set display_name = $1', ['Same']);
-    await pool.query('update amateur_duel_rating_match set points = 2 where user_id = $1', [
-      users[4],
-    ]);
-    await pool.query('update amateur_duel_rating_match set wins = 1 where user_id = $1', [
-      users[3],
-    ]);
     await pool.query(
-      'update amateur_duel_rating_match set active_duration_seconds = 10 where user_id = $1',
-      [users[2]],
+      `insert into users (id, display_name, timezone)
+       values ($1, 'Zulu', 'UTC'), ($2, 'Alpha', 'UTC'), ($3, 'First', 'UTC'), ($4, 'Second', 'UTC')`,
+      [headToHeadWinner, tiedOpponent, firstOpponent, secondOpponent],
     );
-    await pool.query('update users set display_name = $1 where id = $2', ['A', users[1]]);
+    await seedRatedMatch(pool, '2026-08', headToHeadWinner!, tiedOpponent!, 3, 0);
+    await seedRatedMatch(pool, '2026-08', headToHeadWinner!, tiedOpponent!, 3, 0);
+    await seedRatedMatch(pool, '2026-08', tiedOpponent!, firstOpponent!, 3, 0);
+    await seedRatedMatch(pool, '2026-08', tiedOpponent!, secondOpponent!, 3, 0);
+    await pool.query(
+      'update amateur_duel_rating_match set active_duration_seconds = 100 where user_id = $1',
+      [headToHeadWinner],
+    );
+
     await reconcileCompletedMonthlyRating(pool, september);
-    expect((await placements()).map((r) => r.user_id)).toEqual([
-      users[4],
-      users[3],
-      users[2],
-      users[1],
-      ...users.filter((_, i) => ![1, 2, 3, 4].includes(i)).sort(),
+
+    expect((await placements()).slice(0, 2).map((row) => row.user_id)).toEqual([
+      headToHeadWinner,
+      tiedOpponent,
     ]);
   });
 
@@ -353,3 +381,40 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     ).toEqual({ congratulations: [] });
   });
 });
+
+async function completedMonthlyAchievementIds(pool: Pool, userId: string): Promise<string[]> {
+  const { rows } = await pool.query<{ achievement_id: string }>(
+    `select achievement_id from user_achievements
+      where user_id = $1 and achievement_id in ('monthly-top-1', 'monthly-top-3')
+      order by achievement_id`,
+    [userId],
+  );
+  return rows.map((row) => row.achievement_id);
+}
+
+async function seedRatedMatch(
+  pool: Pool,
+  seasonKey: string,
+  firstUserId: string,
+  secondUserId: string,
+  firstPoints: number,
+  secondPoints: number,
+): Promise<void> {
+  const { rows } = await pool.query<{ id: string }>(
+    `insert into amateur_duel_match
+      (challenger_user_id, opponent_user_id, status, ranked, season_key, rules_snapshot,
+       match_seed, starts_at, ends_at, game_core_version)
+     values ($1, $2, 'settled', true, $3, '{}', 'head-to-head-seed', now(), now() + interval '1 hour', 1)
+     returning id`,
+    [firstUserId, secondUserId, seasonKey],
+  );
+  const match = rows[0];
+  if (!match) throw new Error('seeded match is missing');
+  await pool.query(
+    `insert into amateur_duel_rating_match
+     (match_id, user_id, season_key, points, wins, losses, active_duration_seconds)
+     values ($1, $2, $4, $5, case when $5::int > $6::int then 1 else 0 end, case when $5::int < $6::int then 1 else 0 end, 10),
+            ($1, $3, $4, $6, case when $6::int > $5::int then 1 else 0 end, case when $6::int < $5::int then 1 else 0 end, 10)`,
+    [match.id, firstUserId, secondUserId, seasonKey, firstPoints, secondPoints],
+  );
+}
