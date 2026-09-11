@@ -537,7 +537,9 @@ function BonusGameCard({
     (total, period) => total + (period.shots_limit ?? 0),
     0,
   );
-  const artworkIsLocked = compact && !isContinuable && !isPlayable(game);
+  const isUnavailableForNewAttempt = !isContinuable && isPlayable(game) && !canStartNewAttempt;
+  const artworkIsLocked =
+    (compact && !isContinuable && !isPlayable(game)) || (featured && isUnavailableForNewAttempt);
   const isWorldTourArtwork = game.arena.thumbnail_url.includes('/bonus-games/world-tour/');
   const featuredArtworkPosition =
     featured && isWorldTourArtwork
@@ -553,7 +555,7 @@ function BonusGameCard({
       {(canAct || (!isContinuable && isPlayable(game))) && (
         <button
           type="button"
-          className="bonus-game-card__hit-area"
+          className={`bonus-game-card__hit-area${isStarting ? ' bonus-game-card__hit-area--starting' : ''}${!canAct ? ' bonus-game-card__hit-area--unavailable' : ''}`}
           disabled={isStarting || !canAct}
           onClick={onAction}
           aria-label={isStarting ? 'Подготавливаем…' : visibleActionLabel}

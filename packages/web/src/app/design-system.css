@@ -1759,6 +1759,10 @@
 }
 
 .bonus-game-card__hit-area:disabled {
+  cursor: default;
+}
+
+.bonus-game-card__hit-area--starting {
   cursor: wait;
 }
 
@@ -5078,7 +5082,8 @@
 .inventory-shop-screen {
   background:
     linear-gradient(180deg, rgba(7, 18, 34, 0.2), rgba(7, 18, 34, 0.56)),
-    var(--shop-category-artwork, url('/shop/shop-background.webp')) center top / cover fixed no-repeat;
+    var(--shop-category-artwork, url('/shop/shop-background.webp')) center top / cover fixed
+      no-repeat;
 }
 
 .inventory-shop-screen--category {

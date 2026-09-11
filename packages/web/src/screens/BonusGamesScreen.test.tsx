@@ -1278,6 +1278,35 @@ describe('BonusGamesScreen', () => {
     ).toHaveLength(0);
   });
 
+  it('marks the next game unavailable when the daily attempts are exhausted', async () => {
+    mockCatalog(
+      [
+        card({ id: 'completed-1', title: 'Первая игра', state: 'completed', is_completed: true }),
+        card({
+          id: 'completed-2',
+          title: 'Вторая игра',
+          sort_order: 2,
+          state: 'completed',
+          is_completed: true,
+        }),
+        card({ id: 'next-game', title: 'Третья игра', sort_order: 3 }),
+      ],
+      { speedRemaining: 0 },
+    );
+    renderCatalog();
+
+    const nextGame = (await screen.findByRole('heading', { name: 'Третья игра' })).closest(
+      'article',
+    );
+    expect(nextGame).not.toBeNull();
+    expect(within(nextGame!).getByAltText('Площадка «Пляж»')).toHaveClass(
+      'bonus-game-card__artwork--locked',
+    );
+    expect(within(nextGame!).getByRole('button', { name: 'Попытки закончились' })).toHaveClass(
+      'bonus-game-card__hit-area--unavailable',
+    );
+  });
+
   it('does not expose a rejected catalog request error', async () => {
     mockCatalog([], { catalogFailure: new TypeError('private network topology') });
     renderCatalog();
