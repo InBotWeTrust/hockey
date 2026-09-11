@@ -115,7 +115,12 @@ export function ExperienceRatingModal({
   useEffect(() => {
     const root = scrollRef.current;
     const target = sentinelRef.current;
-    if (root === null || target === null || !query.hasNextPage) return undefined;
+    if (
+      root === null ||
+      target === null ||
+      !query.hasNextPage ||
+      typeof IntersectionObserver === 'undefined'
+    ) return undefined;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting) && !query.isFetchingNextPage) {
@@ -130,7 +135,11 @@ export function ExperienceRatingModal({
 
   useEffect(() => {
     const root = scrollRef.current;
-    if (root === null || currentRowElement === null) {
+    if (
+      root === null ||
+      currentRowElement === null ||
+      typeof IntersectionObserver === 'undefined'
+    ) {
       setCurrentRowVisible(false);
       return undefined;
     }

@@ -38,6 +38,7 @@ import {
 } from './profileSections.js';
 import type { ProfileData } from './profileTypes.js';
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
+import { ExperienceRatingModal } from '../profile/ExperienceRatingModal.js';
 
 export type TrophySectionKey = keyof NonNullable<ProfileData['trophyDetails']>;
 
@@ -72,14 +73,18 @@ function ProfileBalance({
   value,
   tone,
   icon,
+  onClick,
+  actionLabel,
 }: {
   label: string;
   value: number;
   tone: string;
   icon: JSX.Element;
+  onClick?: () => void;
+  actionLabel?: string;
 }): JSX.Element {
-  return (
-    <div className="profile-balance">
+  const content = (
+    <>
       <span className="profile-balance__label">{label}</span>
       <span className={`profile-balance__amount profile-balance__amount--${tone}`}>
         {icon}
@@ -87,7 +92,19 @@ function ProfileBalance({
           <FittedOneLineText maxFontSize={18}>{formatProfileNumber(value)}</FittedOneLineText>
         </strong>
       </span>
-    </div>
+    </>
+  );
+  return onClick === undefined ? (
+    <div className="profile-balance">{content}</div>
+  ) : (
+    <button
+      type="button"
+      className="profile-balance profile-balance--button"
+      aria-label={actionLabel ?? label}
+      onClick={onClick}
+    >
+      {content}
+    </button>
   );
 }
 
@@ -564,6 +581,7 @@ export function ProfileScreen(): JSX.Element {
     ProfileData['achievements'][number] | null
   >(null);
   const [selectedTrophySection, setSelectedTrophySection] = useState<TrophySectionKey | null>(null);
+  const [experienceRatingOpen, setExperienceRatingOpen] = useState(false);
   const updateUser = useAuthStore((state) => state.updateUser);
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -667,12 +685,21 @@ export function ProfileScreen(): JSX.Element {
               value={experienceBalance}
               tone="experience"
               icon={<TrendingUp data-testid="profile-balance-icon-experience" aria-hidden="true" />}
+              actionLabel="Открыть рейтинг по опыту"
+              onClick={() => setExperienceRatingOpen(true)}
             />
           </div>
         </div>
         <SportingMetrics profile={profile} />
         <TrophyShowcase profile={profile} onOpen={setSelectedTrophySection} />
       </section>
+
+      {experienceRatingOpen ? (
+        <ExperienceRatingModal
+          currentUserId={profile.id}
+          onClose={() => setExperienceRatingOpen(false)}
+        />
+      ) : null}
 
       <section className="profile-sports-data" aria-label="Спортивные данные игрока">
         <EquipmentPanel
