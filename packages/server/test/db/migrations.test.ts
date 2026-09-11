@@ -595,6 +595,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '125_monthly_rating_final_placements.sql',
       '126_classic_duel_three_minute_periods.sql',
       '127_refresh_inventory_catalog_copy.sql',
+      '128_experience_rating_index.sql',
+      '129_unified_duel_inventory_penalties.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -620,6 +622,55 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       `select value #>> '{}' as value from game_settings where key = 'amateur.rating_visibility'`,
     );
     expect(ratingVisibility.rows[0]?.value).toBe('enabled');
+
+    const unifiedInventoryPenalties = await pool.query<{ key: string; value: string }>(
+      `select key, value #>> '{}' as value
+         from game_settings
+        where key = any($1::text[])
+        order by key`,
+      [
+        [
+          'amateur.no_inventory.skates.stumble_interval_min_rolls',
+          'amateur.no_inventory.skates.stumble_interval_max_rolls',
+          'amateur.no_inventory.skates.stumble_duration_min_ms',
+          'amateur.no_inventory.skates.stumble_duration_max_ms',
+          'amateur.no_inventory.skates.stumble_recovery_min_ms',
+          'amateur.no_inventory.skates.stumble_recovery_max_ms',
+          'amateur.no_inventory.skates.stumble_offset_min_px',
+          'amateur.no_inventory.skates.stumble_offset_max_px',
+          'amateur.no_inventory.nutrition.energy_baseline_speed',
+          'amateur.no_inventory.nutrition.fatigue_grace_ms',
+          'amateur.no_inventory.nutrition.fatigue_slowdown_start_ms',
+          'amateur.no_inventory.nutrition.fatigue_heavy_slowdown_start_ms',
+          'amateur.no_inventory.nutrition.fatigue_stop_start_ms',
+          'amateur.no_inventory.nutrition.fatigue_stop_duration_ms',
+          'amateur.no_inventory.nutrition.fatigue_after_rest_ms',
+          'amateur.no_inventory.nutrition.fatigue_slow_multiplier',
+          'amateur.no_inventory.nutrition.fatigue_heavy_multiplier',
+        ],
+      ],
+    );
+    expect(
+      Object.fromEntries(unifiedInventoryPenalties.rows.map((row) => [row.key, row.value])),
+    ).toEqual({
+      'amateur.no_inventory.skates.stumble_interval_min_rolls': '8',
+      'amateur.no_inventory.skates.stumble_interval_max_rolls': '12',
+      'amateur.no_inventory.skates.stumble_duration_min_ms': '450',
+      'amateur.no_inventory.skates.stumble_duration_max_ms': '650',
+      'amateur.no_inventory.skates.stumble_recovery_min_ms': '150',
+      'amateur.no_inventory.skates.stumble_recovery_max_ms': '250',
+      'amateur.no_inventory.skates.stumble_offset_min_px': '0',
+      'amateur.no_inventory.skates.stumble_offset_max_px': '0',
+      'amateur.no_inventory.nutrition.energy_baseline_speed': '0.75',
+      'amateur.no_inventory.nutrition.fatigue_grace_ms': '3000',
+      'amateur.no_inventory.nutrition.fatigue_slowdown_start_ms': '3000',
+      'amateur.no_inventory.nutrition.fatigue_heavy_slowdown_start_ms': '8000',
+      'amateur.no_inventory.nutrition.fatigue_stop_start_ms': '13000',
+      'amateur.no_inventory.nutrition.fatigue_stop_duration_ms': '3000',
+      'amateur.no_inventory.nutrition.fatigue_after_rest_ms': '7000',
+      'amateur.no_inventory.nutrition.fatigue_slow_multiplier': '0.85',
+      'amateur.no_inventory.nutrition.fatigue_heavy_multiplier': '0.65',
+    });
 
     const tournamentSourceConstraint = await pool.query<{ definition: string }>(
       `select pg_get_constraintdef(oid) as definition
@@ -1414,6 +1465,8 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '125_monthly_rating_final_placements.sql',
       '126_classic_duel_three_minute_periods.sql',
       '127_refresh_inventory_catalog_copy.sql',
+      '128_experience_rating_index.sql',
+      '129_unified_duel_inventory_penalties.sql',
     ]);
 
     const activeInventory = await pool.query<{

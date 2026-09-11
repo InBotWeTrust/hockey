@@ -8109,8 +8109,7 @@ function createDuelConditionForMatch(
   if (!match.match_seed) return () => null;
   const basePreset = periodSpeedPresetFor(match.me.current_period, match.rules.periodSpeedPresets);
   const loadout = duelConditionLoadout(match);
-  const movementTiming =
-    loadout.skates?.timing ?? loadout.fallbackSkatesTiming ?? DEFAULT_DUEL_INVENTORY_TIMING;
+  const movementTiming = loadout.fallbackSkatesTiming ?? DEFAULT_DUEL_INVENTORY_TIMING;
   const staticInput = {
     seed: match.match_seed,
     userId: match.me.user_id,
@@ -8836,7 +8835,7 @@ export function createClassicTournamentCondition(
       userId: state.player_id,
       periodNumber: Math.max(1, state.current_period),
     },
-    loadout.skates?.timing ?? DEFAULT_DUEL_INVENTORY_TIMING,
+    loadout.fallbackSkatesTiming ?? DEFAULT_DUEL_INVENTORY_TIMING,
   );
   const conditionInput: DuelPlayerConditionInput = {
     seed: state.daily_seed,

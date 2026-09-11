@@ -2053,9 +2053,11 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
          ('amateur.no_inventory.skates.stumble_interval_max_rolls', '8'::jsonb, '', ''),
          ('amateur.no_inventory.nutrition.fatigue_grace_ms', '5000'::jsonb, '', ''),
          ('amateur.no_inventory.nutrition.fatigue_slowdown_start_ms', '5000'::jsonb, '', ''),
+         ('amateur.no_inventory.nutrition.fatigue_heavy_slowdown_start_ms', '7000'::jsonb, '', ''),
          ('amateur.no_inventory.nutrition.fatigue_stop_start_ms', '9000'::jsonb, '', ''),
          ('amateur.no_inventory.nutrition.fatigue_stop_duration_ms', '2000'::jsonb, '', ''),
-         ('amateur.no_inventory.nutrition.fatigue_after_rest_ms', '5000'::jsonb, '', '')
+         ('amateur.no_inventory.nutrition.fatigue_after_rest_ms', '5000'::jsonb, '', ''),
+         ('amateur.no_inventory.nutrition.fatigue_heavy_multiplier', '0.6'::jsonb, '', '')
        on conflict (key) do update
          set value = excluded.value`,
     );
@@ -2067,22 +2069,30 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       expect(created.json().match.rules.noInventoryTiming.skates.stumbleIntervalMinRolls).toBe(8);
       expect(created.json().match.rules.noInventoryTiming.skates.stumbleIntervalMaxRolls).toBe(8);
       expect(created.json().match.rules.noInventoryTiming.nutrition.fatigueGraceMs).toBe(5000);
+      expect(
+        created.json().match.rules.noInventoryTiming.nutrition.fatigueHeavySlowdownStartMs,
+      ).toBe(7000);
       expect(created.json().match.rules.noInventoryTiming.nutrition.fatigueStopStartMs).toBe(9000);
       expect(created.json().match.rules.noInventoryTiming.nutrition.fatigueStopDurationMs).toBe(
         2000,
+      );
+      expect(created.json().match.rules.noInventoryTiming.nutrition.fatigueHeavyMultiplier).toBe(
+        0.6,
       );
     } finally {
       await pool.query(
         `update game_settings gs
             set value = defaults.value
            from (values
-             ('amateur.no_inventory.skates.stumble_interval_min_rolls', '35'::jsonb),
-             ('amateur.no_inventory.skates.stumble_interval_max_rolls', '55'::jsonb),
-             ('amateur.no_inventory.nutrition.fatigue_grace_ms', '15000'::jsonb),
-             ('amateur.no_inventory.nutrition.fatigue_slowdown_start_ms', '15000'::jsonb),
-             ('amateur.no_inventory.nutrition.fatigue_stop_start_ms', '60000'::jsonb),
-             ('amateur.no_inventory.nutrition.fatigue_stop_duration_ms', '5000'::jsonb),
-             ('amateur.no_inventory.nutrition.fatigue_after_rest_ms', '30000'::jsonb)
+             ('amateur.no_inventory.skates.stumble_interval_min_rolls', '8'::jsonb),
+             ('amateur.no_inventory.skates.stumble_interval_max_rolls', '12'::jsonb),
+             ('amateur.no_inventory.nutrition.fatigue_grace_ms', '3000'::jsonb),
+             ('amateur.no_inventory.nutrition.fatigue_slowdown_start_ms', '3000'::jsonb),
+             ('amateur.no_inventory.nutrition.fatigue_heavy_slowdown_start_ms', '8000'::jsonb),
+             ('amateur.no_inventory.nutrition.fatigue_stop_start_ms', '13000'::jsonb),
+             ('amateur.no_inventory.nutrition.fatigue_stop_duration_ms', '3000'::jsonb),
+             ('amateur.no_inventory.nutrition.fatigue_after_rest_ms', '7000'::jsonb),
+             ('amateur.no_inventory.nutrition.fatigue_heavy_multiplier', '0.65'::jsonb)
            ) as defaults(key, value)
           where gs.key = defaults.key`,
       );

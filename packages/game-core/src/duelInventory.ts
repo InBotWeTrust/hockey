@@ -86,29 +86,29 @@ export interface DuelPlayerCondition {
 }
 
 export const DEFAULT_DUEL_INVENTORY_TIMING: DuelInventoryTiming = {
-  stumbleIntervalMinRolls: 35,
-  stumbleIntervalMaxRolls: 55,
+  stumbleIntervalMinRolls: 8,
+  stumbleIntervalMaxRolls: 12,
   stumbleIntervalMinMs: 25_000,
   stumbleIntervalMaxMs: 45_000,
-  stumbleDurationMinMs: 500,
-  stumbleDurationMaxMs: 700,
-  stumbleOffsetMinPx: 20,
-  stumbleOffsetMaxPx: 45,
-  stumbleRecoveryMinMs: 200,
-  stumbleRecoveryMaxMs: 300,
+  stumbleDurationMinMs: 450,
+  stumbleDurationMaxMs: 650,
+  stumbleOffsetMinPx: 0,
+  stumbleOffsetMaxPx: 0,
+  stumbleRecoveryMinMs: 150,
+  stumbleRecoveryMaxMs: 250,
   nutritionSlowdownMs: 2_000,
   nutritionStopMs: 5_000,
   energyBaselineSpeed: 0.75,
   fatigueDelayMs: 90_000,
   fatigueSpeedMultiplier: 1,
-  fatigueGraceMs: 15_000,
-  fatigueSlowdownStartMs: 15_000,
-  fatigueHeavySlowdownStartMs: 40_000,
-  fatigueStopStartMs: 60_000,
-  fatigueStopDurationMs: 5_000,
-  fatigueAfterRestMs: 30_000,
-  fatigueSlowMultiplier: 0.9,
-  fatigueHeavyMultiplier: 0.75,
+  fatigueGraceMs: 3_000,
+  fatigueSlowdownStartMs: 3_000,
+  fatigueHeavySlowdownStartMs: 8_000,
+  fatigueStopStartMs: 13_000,
+  fatigueStopDurationMs: 3_000,
+  fatigueAfterRestMs: 7_000,
+  fatigueSlowMultiplier: 0.85,
+  fatigueHeavyMultiplier: 0.65,
 };
 
 export function duelInventorySpeedPointsToPuckSpeedDelta(points: number): number {
@@ -144,11 +144,8 @@ function round4(value: number): number {
   return Number(value.toFixed(4));
 }
 
-function timingFor(
-  item: DuelInventoryItemSnapshot | null,
-  fallback?: DuelInventoryTiming,
-): DuelInventoryTiming {
-  return item?.timing ?? fallback ?? DEFAULT_DUEL_INVENTORY_TIMING;
+function globalTimingFor(fallback?: DuelInventoryTiming): DuelInventoryTiming {
+  return fallback ?? DEFAULT_DUEL_INVENTORY_TIMING;
 }
 
 function deterministicRange(seed: string, min: number, max: number): number {
@@ -208,7 +205,7 @@ export function getDuelPlayerCondition(
   input: DuelPlayerConditionInput,
   reusable?: DuelPlayerCondition,
 ): DuelPlayerCondition {
-  const nutritionTiming = timingFor(input.loadout.nutrition, input.loadout.fallbackNutritionTiming);
+  const nutritionTiming = globalTimingFor(input.loadout.fallbackNutritionTiming);
   const speedPressureMultiplier = duelSpeedPressureMultiplier(
     nutritionTiming.energyBaselineSpeed,
     input.currentShooterSpeed,
@@ -225,12 +222,10 @@ export function getDuelPlayerCondition(
   const nutritionConsumed = cappedNutritionConsumed(input, rawNutritionCost);
   const puckSpeedDelta = activeStickPuckSpeedDelta(input.loadout.stick);
 
-  const nutrition = input.loadout.nutrition;
-
   const skatesActive =
     input.loadout.skates?.resourceUnit === 'distance' &&
     input.loadout.skates.resourceAvailable > rawSkatesCost;
-  const movementTiming = timingFor(input.loadout.skates, input.loadout.fallbackSkatesTiming);
+  const movementTiming = globalTimingFor(input.loadout.fallbackSkatesTiming);
   const stumble = skatesActive
     ? { active: false, offsetPx: 0 }
     : defaultSkateStumbleWindow(input, movementTiming);
@@ -250,9 +245,8 @@ export function getDuelPlayerCondition(
     );
   }
 
-  const fatigueTiming = timingFor(nutrition, input.loadout.fallbackNutritionTiming);
-  const fatigueMs = accumulatedFatigueMs(input, rawNutritionCost, fatigueTiming);
-  const fatigue = fatigueState(fatigueMs, fatigueTiming);
+  const fatigueMs = accumulatedFatigueMs(input, nutritionTiming);
+  const fatigue = fatigueState(fatigueMs, nutritionTiming);
 
   return condition(
     reusable,
@@ -305,23 +299,18 @@ function cappedNutritionConsumed(
 
 function accumulatedFatigueMs(
   input: DuelPlayerConditionInput,
-  rawNutritionCost: number,
   timing: DuelInventoryTiming,
 ): number {
   const nutrition = input.loadout.nutrition;
   if (nutrition?.resourceUnit === 'energy_ms' && nutrition.resourceAvailable > 0) {
-    return Math.max(0, rawNutritionCost - nutrition.resourceAvailable);
+    const speedPressureMultiplier = duelSpeedPressureMultiplier(
+      timing.energyBaselineSpeed,
+      input.currentShooterSpeed,
+    );
+    const depletionElapsedMs = nutrition.resourceAvailable / speedPressureMultiplier;
+    return Math.ceil(Math.max(0, input.elapsedMs - depletionElapsedMs));
   }
-  const rawFatigueMs = Math.ceil(
-    input.elapsedMs *
-      duelSpeedPressureMultiplier(timing.energyBaselineSpeed, input.currentShooterSpeed),
-  );
-  if (input.periodNumber <= 1) return rawFatigueMs;
-
-  const recoveredWindowMs = Math.max(0, timing.fatigueAfterRestMs);
-  if (rawFatigueMs < recoveredWindowMs) return 0;
-  const fatigueStartAt = Math.max(0, timing.fatigueSlowdownStartMs, timing.fatigueGraceMs);
-  return fatigueStartAt + (rawFatigueMs - recoveredWindowMs);
+  return Math.ceil(input.elapsedMs);
 }
 
 function fatigueState(
@@ -335,7 +324,8 @@ function fatigueState(
   normalizedFatigueMs: number;
 } {
   const fatigueStartAt = Math.max(0, timing.fatigueSlowdownStartMs, timing.fatigueGraceMs);
-  const stopAt = Math.max(0, timing.fatigueStopStartMs);
+  const heavyStartAt = Math.max(fatigueStartAt, timing.fatigueHeavySlowdownStartMs);
+  const stopAt = Math.max(heavyStartAt, timing.fatigueStopStartMs);
   const stopDuration = Math.max(0, timing.fatigueStopDurationMs);
   const recoveryDuration = Math.max(0, timing.fatigueAfterRestMs);
   let fatigueMs = rawFatigueMs;
@@ -372,6 +362,15 @@ function fatigueState(
       level: 'none',
       canShoot: true,
       speedMultiplier: 1,
+      normalizedFatigueMs: Math.ceil(fatigueMs),
+    };
+  }
+  if (fatigueMs >= heavyStartAt) {
+    return {
+      status: 'nutrition_slowdown',
+      level: 'heavy',
+      canShoot: true,
+      speedMultiplier: timing.fatigueHeavyMultiplier,
       normalizedFatigueMs: Math.ceil(fatigueMs),
     };
   }
