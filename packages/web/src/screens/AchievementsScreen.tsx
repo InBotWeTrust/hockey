@@ -294,6 +294,7 @@ export function AchievementsScreen({
         unclaimedCount: response.unclaimedCount,
       });
       void queryClient.invalidateQueries({ queryKey: ['achievements'] });
+      void queryClient.invalidateQueries({ queryKey: ['profile'] });
       updateCachedProfileBalances(queryClient, response.balances);
       updateCachedInventoryBalances(queryClient, response.balances);
       setSelected(null);
