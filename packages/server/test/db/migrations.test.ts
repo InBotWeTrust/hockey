@@ -563,6 +563,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '119_duel_reward_matrix.sql',
       '120_monthly_duel_rating_rewards.sql',
       '121_duel_reward_storage_limits.sql',
+      '122_bonus_game_reward_progression.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -1349,6 +1350,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '119_duel_reward_matrix.sql',
       '120_monthly_duel_rating_rewards.sql',
       '121_duel_reward_storage_limits.sql',
+      '122_bonus_game_reward_progression.sql',
     ]);
 
     const activeInventory = await pool.query<{
