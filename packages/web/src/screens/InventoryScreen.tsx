@@ -256,7 +256,7 @@ export function InventoryScreen(): JSX.Element {
 
   return (
     <main
-      className="screen"
+      className="screen inventory-shop-screen"
       style={{
         padding: 'calc(22px + var(--app-safe-top)) 14px 24px',
         overflowY: 'auto',
@@ -399,42 +399,21 @@ function GoodsCategoryOverview({
   onOpenCategory: (category: ShopCategory) => void;
 }): JSX.Element {
   return (
-    <div style={{ display: 'grid', gap: 8 }}>
+    <div className="inventory-category-grid">
       {SHOP_CATEGORY_ORDER.map((category) => {
         const meta = SHOP_CATEGORY_META[category];
         return (
           <button
             key={category}
             type="button"
-            className={meta.className}
+            className={`inventory-category-card ${meta.className}`}
             aria-label={`Открыть раздел ${meta.title}`}
             onClick={() => onOpenCategory(category)}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '72px minmax(0, 1fr)',
-              alignItems: 'center',
-              gap: 12,
-              width: '100%',
-              minHeight: 88,
-              padding: 10,
-              border: '1px solid rgba(255,255,255,0.78)',
-              borderRadius: 22,
-              background: 'rgba(255,255,255,0.48)',
-              color: 'var(--ink)',
-              textAlign: 'left',
-              cursor: 'pointer',
-            }}
           >
-            <img
-              src={meta.artworkUrl}
-              alt=""
-              style={{ width: 72, height: 64, objectFit: 'cover', borderRadius: 14 }}
-            />
-            <span style={{ display: 'grid', gap: 3 }}>
-              <strong style={{ fontSize: 16 }}>{meta.title}</strong>
-              <span style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 700 }}>
-                {meta.description}
-              </span>
+            <img src={meta.artworkUrl} alt="" decoding="async" />
+            <span className="inventory-category-card__copy">
+              <strong>{meta.title}</strong>
+              <span>{meta.description}</span>
             </span>
           </button>
         );
@@ -462,7 +441,7 @@ function GoodsCategoryCatalog({
   const items = uniqueShopItems(inventory?.items[category] ?? []);
 
   return (
-    <section aria-label={meta.title}>
+    <section className="inventory-category-catalog" aria-label={meta.title}>
       <div
         className="inventory-shop-grid"
         style={{
@@ -793,7 +772,7 @@ function InventoryProductCard({
 function InventoryEmptyState(): JSX.Element {
   return (
     <section
-      aria-label="Пустой магазин"
+      aria-label="Пустой раздел магазина"
       className="glass"
       style={{
         borderRadius: 26,
@@ -807,12 +786,12 @@ function InventoryEmptyState(): JSX.Element {
       }}
     >
       <h2 style={{ margin: 0, color: 'var(--ink)', fontSize: 18, fontWeight: 950 }}>
-        Товары скоро появятся
+        В разделе пока нет товаров
       </h2>
       <p
         style={{ margin: 0, color: 'var(--muted)', fontSize: 13, fontWeight: 750, lineHeight: 1.4 }}
       >
-        Здесь будут клюшки, коньки и питание за монеты.
+        Загляните позже или выберите другой раздел магазина.
       </p>
     </section>
   );

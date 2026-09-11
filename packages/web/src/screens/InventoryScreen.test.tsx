@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within, type RenderResult } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryState } from '../api/inventory.js';
@@ -226,11 +226,11 @@ function mockInventoryFetch(inventory: InventoryState, purchasedInventory = inve
   });
 }
 
-function renderInventory(initialEntry = '/inventory'): void {
+function renderInventory(initialEntry = '/inventory'): RenderResult {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  render(
+  return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
@@ -246,6 +246,37 @@ describe('InventoryScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockInventoryFetch(emptyInventory);
+  });
+
+  it('delivers decorative WebP artwork in the four shop category cards', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    const { container } = renderInventory();
+
+    await screen.findByRole('button', { name: 'Открыть раздел Клюшки' });
+    expect(screen.getByRole('main')).toHaveClass('inventory-shop-screen');
+    const categoryImages = container.querySelectorAll<HTMLImageElement>('.inventory-category-card img');
+    expect(categoryImages).toHaveLength(4);
+    expect([...categoryImages].map((image) => image.getAttribute('src'))).toEqual([
+      '/shop/categories/sticks.webp',
+      '/shop/categories/skates.webp',
+      '/shop/categories/nutrition.webp',
+      '/shop/categories/recovery.webp',
+    ]);
+    for (const image of categoryImages) expect(image).toHaveAttribute('alt', '');
+  });
+
+  it('shows a category-local empty state and preserves the shop balance', async () => {
+    mockInventoryFetch({
+      ...inventoryWithItems,
+      items: { ...inventoryWithItems.items, skates: [] },
+    });
+    renderInventory('/inventory?category=skates');
+
+    expect(await screen.findByText('В разделе пока нет товаров')).toBeInTheDocument();
+    expect(screen.getByLabelText('Монеты: 1 000')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'К разделам магазина' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть раздел Клюшки' }));
+    expect(await screen.findByText('Бронзовая клюшка')).toBeInTheDocument();
   });
 
   it('keeps the main tabs and shows four goods categories', async () => {
