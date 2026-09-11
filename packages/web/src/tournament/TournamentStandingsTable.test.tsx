@@ -115,4 +115,30 @@ describe('TournamentStandingsTable', () => {
     expect(rows[2]).toHaveClass('tournament-standing-table__medal-place--bronze');
     expect(rows[3]?.className).toBe('');
   });
+
+  it('renders the experience-rating variant without medal highlighting', () => {
+    render(
+      <TournamentStandingsTable
+        variant="experience-rating"
+        regularSource="head_to_head"
+        dailyMetric={null}
+        currentUserId="user-2"
+        currentUserRowTestId="experience-current"
+        rows={[
+          { user_id: 'user-1', rank: 1, display_name: 'Первый', experience: 1500 },
+          { user_id: 'user-2', rank: 2, display_name: 'Вы', experience: 1200 },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole('columnheader', { name: 'Место' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Опыт' })).toBeInTheDocument();
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).not.toHaveClass('tournament-standing-table__medal-place--gold');
+    expect(screen.getByTestId('experience-current')).toHaveClass(
+      'tournament-standing-table__current-user',
+    );
+    expect(within(rows[0]!).getAllByRole('cell')).toHaveLength(3);
+    expect(within(rows[0]!).getAllByRole('cell').at(-1)).toHaveTextContent('1 500');
+  });
 });

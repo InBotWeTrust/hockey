@@ -121,9 +121,13 @@ describe('ExperienceRatingModal', () => {
     expect(
       await within(dialog).findByRole('columnheader', { name: 'Место' }),
     ).toBeInTheDocument();
+    expect(within(dialog).getByTestId('experience-rating-title-icon')).toBeInTheDocument();
+    expect(within(dialog).getAllByRole('table')[0]).toHaveClass(
+      'tournament-standing-table--experience-rating',
+    );
     expect(within(dialog).getByText('12 345')).toBeInTheDocument();
-    expect(within(dialog).getByRole('row', { name: '1 место, Лидер, 12345 опыта' })).toHaveClass(
-      'experience-rating__medal-place--gold',
+    expect(within(dialog).getByRole('row', { name: /^1 Лидер Лидер 12\s345$/ })).not.toHaveClass(
+      'tournament-standing-table__medal-place--gold',
     );
     expect(within(dialog).getByTestId('experience-rating-pinned-current')).toHaveTextContent(
       '31Я игрок777',
@@ -142,7 +146,7 @@ describe('ExperienceRatingModal', () => {
       '31Я игрок777',
     );
     expect(within(dialog).getByTestId('experience-rating-current-row')).toHaveClass(
-      'experience-rating__current-user',
+      'tournament-standing-table__current-user',
     );
     expect(within(dialog).getByTestId('experience-rating-pinned-current')).toBeInTheDocument();
 
