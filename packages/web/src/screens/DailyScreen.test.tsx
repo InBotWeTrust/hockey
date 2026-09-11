@@ -2062,17 +2062,17 @@ describe('DailyScreen', () => {
         ...baseCondition,
         status: 'tired',
         fatigueLevel: 'medium',
-        shooterSpeedMultiplier: 0.9,
+        shooterSpeedMultiplier: 0.85,
       }),
-    ).toBe('Усталость');
+    ).toBe('Усталость · скорость 85%');
     expect(
       duelFatigueNoticeLabel({
         ...baseCondition,
-        status: 'tired',
+        status: 'nutrition_slowdown',
         fatigueLevel: 'heavy',
-        shooterSpeedMultiplier: 0.75,
+        shooterSpeedMultiplier: 0.65,
       }),
-    ).toBe('Усталость');
+    ).toBe('Сильная усталость · скорость 65%');
     expect(
       duelFatigueNoticeLabel({
         ...baseCondition,
@@ -2081,7 +2081,7 @@ describe('DailyScreen', () => {
         fatigueLevel: 'resting',
         shooterSpeedMultiplier: 0,
       }),
-    ).toBe('Надо отдышаться');
+    ).toBe('Передышка · бросок недоступен');
   });
 
   it('shows a rest notice while the exhausted shot button is blocked', () => {
@@ -2123,13 +2123,15 @@ describe('DailyScreen', () => {
     );
 
     expect(screen.getByRole('button', { name: 'ОТДЫХ' })).toBeDisabled();
-    expect(screen.getByText('Надо отдышаться')).toBeInTheDocument();
+    expect(screen.getByText('Передышка · бросок недоступен')).toHaveClass(
+      'duel-rest-notice',
+    );
   });
 
   it('shows fatigue notice while keeping the duel shot button available', () => {
     const tiredCondition = {
       puckSpeedDelta: 0,
-      shooterSpeedMultiplier: 0.9,
+      shooterSpeedMultiplier: 0.85,
       canShoot: true,
       status: 'tired',
       fatigueLevel: 'medium',
@@ -2165,7 +2167,7 @@ describe('DailyScreen', () => {
     );
 
     expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeEnabled();
-    expect(screen.getByText('Усталость')).toBeInTheDocument();
+    expect(screen.getByText('Усталость · скорость 85%')).toHaveClass('duel-fatigue-notice');
   });
 
   it('shows a short stumble notice near the player instead of renaming the shot button', () => {
@@ -2208,13 +2210,15 @@ describe('DailyScreen', () => {
     );
 
     expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeDisabled();
-    expect(screen.getByText('Споткнулся')).toBeInTheDocument();
+    expect(screen.getByText('Споткнулся · бросок недоступен')).toHaveClass(
+      'duel-stumble-notice',
+    );
 
     act(() => {
       vi.advanceTimersByTime(700);
     });
 
-    expect(screen.queryByText('Споткнулся')).not.toBeInTheDocument();
+    expect(screen.queryByText('Споткнулся · бросок недоступен')).not.toBeInTheDocument();
   });
 
   it('uses understandable duel equipment effect labels for skates and energy', () => {

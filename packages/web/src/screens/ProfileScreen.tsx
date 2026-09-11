@@ -23,7 +23,7 @@ import {
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { CommunityLinks } from '../components/CommunityLinks.js';
 import { useAuthStore } from '../auth/authStore.js';
-import { placeholderArtworkForKind } from './inventoryArtwork.js';
+import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
   formatProfileInventoryBadgeAmount,
   formatInventoryResourceAmount,
@@ -167,7 +167,7 @@ function EquipmentPanel({
               >
                 <span className="profile-loadout-slot__image">
                   <img
-                    src={item?.imageUrl ?? placeholderArtworkForKind(equipmentKind)}
+                    src={item ? artworkForInventoryItem(item) : placeholderArtworkForKind(equipmentKind)}
                     alt={item?.title ?? baseImageAlt}
                   />
                   {item !== null ? (
@@ -372,7 +372,7 @@ function EquipmentPickerModal({
             key={item.id}
             onClick={() => onSelect(item)}
           >
-            {item.imageUrl ? <img src={item.imageUrl} alt="" /> : null}
+            <img src={artworkForInventoryItem(item)} alt="" />
             <span>
               <strong>{item.title}</strong>
               <small>
