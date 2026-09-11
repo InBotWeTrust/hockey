@@ -39,6 +39,7 @@ import {
   tournamentNextGameDisplay,
   tournamentAttemptRefetchInterval,
   tournamentDuelBackPath,
+  trainingDebugSettingsForHost,
 } from './DailyScreen.js';
 import { PlayView, duelFatigueNoticeLabel, duelPrimaryButtonLabel } from '../game/PlayView.js';
 import { useAuthStore } from '../auth/authStore.js';
@@ -425,6 +426,26 @@ describe('arena level presentation', () => {
 });
 
 describe('DailyScreen', () => {
+  it('disables persisted training debug settings on production', () => {
+    const savedSpeeds = {
+      goalFreq: 1.1,
+      goalieFreq: 1.2,
+      shooterFreq: 1.3,
+      puckSpeed: 1.4,
+    };
+
+    expect(trainingDebugSettingsForHost('hockey.inbotwetrust.ru', true, savedSpeeds)).toEqual({
+      enabled: false,
+      hitboxesVisible: false,
+      speedOverrides: null,
+    });
+    expect(trainingDebugSettingsForHost('dev.hockey.inbotwetrust.ru', true, savedSpeeds)).toEqual({
+      enabled: true,
+      hitboxesVisible: true,
+      speedOverrides: savedSpeeds,
+    });
+  });
+
   it('lets a beginner browse Amateur duel tabs but guards matchmaking locally', async () => {
     useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
     const fetchMock = vi.spyOn(globalThis, 'fetch');
