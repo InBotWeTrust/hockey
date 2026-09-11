@@ -5138,7 +5138,7 @@
 }
 
 .inventory-category-card__copy strong {
-  font-size: clamp(14px, 3.7vw, 20px);
+  font-size: clamp(14px, 3.7vw, 18px);
   font-weight: 850;
   line-height: 1.2;
 }
@@ -5153,6 +5153,16 @@
   min-width: 0;
 }
 
+@media (max-width: 520px) {
+  .inventory-shop-header--category > h1 {
+    grid-column: 2 / -1;
+  }
+
+  .inventory-shop-header--category > .inventory-shop-balance {
+    grid-column: 2 / -1;
+  }
+}
+
 @media (max-width: 380px) {
   .inventory-category-card {
     min-height: 168px;
@@ -5162,6 +5172,10 @@
     right: 10px;
     bottom: 12px;
     left: 10px;
+  }
+
+  .inventory-category-card__copy strong {
+    font-size: 13px;
   }
 }
 

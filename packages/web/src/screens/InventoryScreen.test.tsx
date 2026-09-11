@@ -265,6 +265,15 @@ describe('InventoryScreen', () => {
     for (const image of categoryImages) expect(image).toHaveAttribute('alt', '');
   });
 
+  it('shows the overall empty state instead of four empty categories', async () => {
+    renderInventory();
+
+    expect(await screen.findByText('Товары скоро появятся')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Открыть раздел Клюшки' })).toBeNull();
+    expect(screen.queryByText('В разделе пока нет товаров')).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Банк' })).toBeInTheDocument();
+  });
+
   it('shows a category-local empty state and preserves the shop balance', async () => {
     mockInventoryFetch({
       ...inventoryWithItems,
@@ -509,12 +518,11 @@ describe('InventoryScreen', () => {
     expect(empty.closest('.glass')).toBeNull();
   });
 
-  it('keeps the category overview when no products exist', async () => {
-    renderInventory();
+  it('keeps a deep-linked empty category distinct from an entirely empty shop', async () => {
+    renderInventory('/inventory?category=recovery');
 
-    expect(
-      await screen.findByRole('button', { name: 'Открыть раздел Клюшки' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('В разделе пока нет товаров')).toBeInTheDocument();
+    expect(screen.queryByText('Товары скоро появятся')).toBeNull();
   });
 
   it('opens item details and keeps parameters out of the card', async () => {
