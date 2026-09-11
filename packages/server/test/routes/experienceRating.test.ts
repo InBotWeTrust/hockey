@@ -95,25 +95,49 @@ describe.skipIf(!hasIntegrationEnv)('GET /profile/experience-rating', () => {
       login('1001', 'Alpha'),
       login('1002', 'Bravo'),
       login('1003', 'Charlie'),
-      login('1004', 'Viewer'),
+      login('1004', 'Echo'),
+      login('1005', 'Viewer'),
     ]);
-    viewerToken = players[3]!.accessToken;
-    viewerId = players[3]!.userId;
+    viewerToken = players[4]!.accessToken;
+    viewerId = players[4]!.userId;
+    const tiedPlayers = players.slice(1, 4).sort((left, right) =>
+      left.userId.localeCompare(right.userId),
+    );
     await app.pg.query(
       `update users
           set experience = case id
             when $1::uuid then 900
             when $2::uuid then 700
             when $3::uuid then 700
-            when $4::uuid then 100
+            when $4::uuid then 700
+            when $5::uuid then 100
           end,
+              lifetime_goals_total = case id
+                when $2::uuid then 80
+                when $3::uuid then 90
+                when $4::uuid then 90
+                else 10
+              end,
+              lifetime_shots_total = case id
+                when $2::uuid then 100
+                when $3::uuid then 150
+                when $4::uuid then 100
+                else 20
+              end,
+              display_name = case id
+                when $2::uuid then 'Bravo'
+                when $3::uuid then 'Charlie'
+                when $4::uuid then 'Echo'
+                else display_name
+              end,
               avatar_url = case when id = $2::uuid then null else avatar_url end
-        where id = any($5::uuid[])`,
+        where id = any($6::uuid[])`,
       [
         players[0]!.userId,
-        players[1]!.userId,
-        players[2]!.userId,
-        players[3]!.userId,
+        tiedPlayers[0]!.userId,
+        tiedPlayers[1]!.userId,
+        tiedPlayers[2]!.userId,
+        players[4]!.userId,
         players.map((player) => player.userId),
       ],
     );
@@ -133,10 +157,10 @@ describe.skipIf(!hasIntegrationEnv)('GET /profile/experience-rating', () => {
     expect(response.statusCode).toBe(200);
     const body = response.json() as RatingBody;
     expect(body.rows).toHaveLength(2);
-    expect(body.rows.map((row) => row.experience)).toEqual([900, 700]);
+    expect(body.rows.map((row) => row.displayName)).toEqual(['Alpha', 'Echo']);
     expect(body.rows.map((row) => row.place)).toEqual([1, 2]);
     expect(body.currentUser).toMatchObject({
-      place: 4,
+      place: 5,
       userId: viewerId,
       displayName: 'Viewer',
       experience: 100,
@@ -160,8 +184,9 @@ describe.skipIf(!hasIntegrationEnv)('GET /profile/experience-rating', () => {
     expect(second.statusCode).toBe(200);
     const secondBody = second.json() as RatingBody;
     expect(secondBody.rows.map((row) => row.place)).toEqual([3, 4]);
+    expect(secondBody.rows.map((row) => row.displayName)).toEqual(['Charlie', 'Bravo']);
     expect(secondBody.rows.map((row) => row.userId)).not.toContain(firstBody.rows[1]!.userId);
-    expect(secondBody.nextCursor).toBeNull();
+    expect(secondBody.nextCursor).toEqual(expect.any(String));
   });
 
   it('rejects invalid limits and malformed cursors', async () => {
@@ -188,6 +213,8 @@ describe.skipIf(!hasIntegrationEnv)('GET /profile/experience-rating', () => {
       `select indexdef from pg_indexes
         where schemaname = 'public' and indexname = 'users_experience_rating_idx'`,
     );
-    expect(result.rows[0]?.indexdef).toMatch(/\(experience DESC, id\)/);
+    expect(result.rows[0]?.indexdef).toMatch(
+      /\(experience DESC, lifetime_goals_total DESC, id\)/,
+    );
   });
 });
