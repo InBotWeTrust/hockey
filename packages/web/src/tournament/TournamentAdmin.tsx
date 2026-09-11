@@ -200,7 +200,7 @@ const defaultDraft: TournamentDraft = {
   dailyMetric: 'goals_sum',
   bestDays: '',
   classicShotsPerPeriod: 30,
-  classicPeriodMinutes: 20,
+  classicPeriodMinutes: 3,
   classicBreakMinutes: 15,
   classicIncompletePolicy: 'completed_game',
   classicPeriods: defaultClassicPeriods(),

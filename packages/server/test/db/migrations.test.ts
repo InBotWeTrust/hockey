@@ -592,6 +592,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '123_sync_inventory_catalog_from_dev.sql',
       '124_production_data_operations_if_missing.sql',
       '125_align_amateur_duel_template_puck_speed.sql',
+      '125_monthly_rating_final_placements.sql',
+      '126_classic_duel_three_minute_periods.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -683,6 +685,31 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     } finally {
       await pool.query('rollback');
     }
+  });
+
+  it('seeds the ordinary Classic duel with three-minute periods', async () => {
+    await resetDatabase(pool);
+    await applyMigrations(pool, MIGRATIONS_DIR);
+
+    const classicTemplates = await pool.query<{
+      title: string;
+      period_duration_ms: number;
+      period_duration_rules: number[] | null;
+    }>(
+      `select title, period_duration_ms,
+              jsonb_path_query_array(period_rules, '$[*].durationMs') as period_duration_rules
+         from amateur_duel_template
+        where duel_kind = 'classic' and is_active and deleted_at is null
+        order by title`,
+    );
+
+    expect(classicTemplates.rows).toEqual([
+      {
+        title: 'Классика',
+        period_duration_ms: 180_000,
+        period_duration_rules: [180_000, 180_000, 180_000],
+      },
+    ]);
   });
 
   it('backfills only amateur-duel shots into official lifetime totals', async () => {
@@ -1383,6 +1410,8 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '123_sync_inventory_catalog_from_dev.sql',
       '124_production_data_operations_if_missing.sql',
       '125_align_amateur_duel_template_puck_speed.sql',
+      '125_monthly_rating_final_placements.sql',
+      '126_classic_duel_three_minute_periods.sql',
     ]);
 
     const activeInventory = await pool.query<{
