@@ -590,6 +590,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '122_bonus_game_reward_progression.sql',
       '122_production_data_operations.sql',
       '123_sync_inventory_catalog_from_dev.sql',
+      '124_production_data_operations_if_missing.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -1379,6 +1380,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '122_bonus_game_reward_progression.sql',
       '122_production_data_operations.sql',
       '123_sync_inventory_catalog_from_dev.sql',
+      '124_production_data_operations_if_missing.sql',
     ]);
 
     const activeInventory = await pool.query<{
