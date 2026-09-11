@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { triggerHaptic } from '../feedback/haptics.js';
 import type { UseMutationResult } from '@tanstack/react-query';
@@ -226,8 +226,10 @@ export function InventoryScreen(): JSX.Element {
 
   const inventory = inventoryQuery.data;
   const tokens = inventory?.balances.tokens ?? 0;
-  const selectedCategory =
-    activeTab === 'goods' ? parseShopCategory(searchParams.get('category')) : null;
+  const selectedCategory = parseShopCategory(searchParams.get('category'));
+  useEffect(() => {
+    if (selectedCategory !== null) setActiveTab('goods');
+  }, [selectedCategory]);
   const hasSelectedCategoryItems =
     selectedCategory !== null && (inventory?.items[selectedCategory].length ?? 0) > 0;
   const hasShopItems = SHOP_CATEGORY_ORDER.some(
@@ -259,8 +261,11 @@ export function InventoryScreen(): JSX.Element {
 
   return (
     <main
-      className="screen inventory-shop-screen"
+      className={`screen inventory-shop-screen${selectedCategory === null ? '' : ` inventory-shop-screen--category ${SHOP_CATEGORY_META[selectedCategory].className}`}`}
       style={{
+        ...(selectedCategory === null
+          ? {}
+          : { '--shop-category-artwork': `url("${SHOP_CATEGORY_META[selectedCategory].artworkUrl}")` }),
         padding: 'calc(22px + var(--app-safe-top)) 14px 24px',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
@@ -278,16 +283,10 @@ export function InventoryScreen(): JSX.Element {
       >
         <div
           className={`inventory-shop-header${selectedCategory === null ? '' : ' inventory-shop-header--category'}`}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '40px minmax(0, 1fr) auto',
-            gap: 10,
-            alignItems: 'center',
-          }}
         >
           <button
             type="button"
-            className="icon-btn"
+            className="icon-btn icon-btn--page-back"
             onClick={() => {
               if (selectedCategory !== null) {
                 closeCategory();

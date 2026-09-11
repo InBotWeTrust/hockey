@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within, type RenderResult } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { act, fireEvent, render, screen, within, type RenderResult } from '@testing-library/react';
+import { BrowserRouter, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryState } from '../api/inventory.js';
 import { InventoryScreen } from './InventoryScreen.js';
@@ -288,6 +288,22 @@ describe('InventoryScreen', () => {
     expect(await screen.findByText('Бронзовая клюшка')).toBeInTheDocument();
   });
 
+  it.each([
+    ['stick', 'Клюшки', 'shop-zone--sticks', '/shop/categories/sticks.webp'],
+    ['skates', 'Коньки', 'shop-zone--skates', '/shop/categories/skates.webp'],
+    ['nutrition', 'Питание', 'shop-zone--nutrition', '/shop/categories/nutrition.webp'],
+    ['recovery', 'Восстановление', 'shop-zone--recovery', '/shop/categories/recovery.webp'],
+  ])('shows the %s category zone artwork without duplicating product images', async (category, title, zone, artwork) => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory(`/inventory?category=${category}`);
+
+    await screen.findByRole('heading', { name: title });
+    const main = screen.getByRole('main');
+    expect(main).toHaveClass(zone);
+    expect(main).toHaveStyle({ '--shop-category-artwork': `url("${artwork}")` });
+    expect(main.querySelectorAll(`img[src="${artwork}"]`)).toHaveLength(0);
+  });
+
   it('keeps the main tabs and shows four goods categories', async () => {
     mockInventoryFetch(inventoryWithItems);
 
@@ -328,6 +344,36 @@ describe('InventoryScreen', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'К разделам магазина' }));
     expect(screen.getByRole('heading', { name: 'Магазин' })).toBeInTheDocument();
     expect(screen.getByRole('tablist', { name: 'Разделы магазина' })).toBeInTheDocument();
+  });
+
+  it('restores goods when browser Forward returns to a category after selecting Bank', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    window.history.replaceState(null, '', '/inventory');
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <InventoryScreen />
+        </BrowserRouter>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть раздел Клюшки' }));
+    expect(await screen.findByRole('heading', { name: 'Клюшки' })).toBeInTheDocument();
+    act(() => window.history.back());
+    fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+    expect(screen.getByRole('tab', { name: 'Банк' })).toHaveAttribute('aria-selected', 'true');
+
+    act(() => window.history.forward());
+    expect(await screen.findByRole('heading', { name: 'Клюшки' })).toBeInTheDocument();
+    expect(window.location.search).toBe('?category=stick');
+    expect(await screen.findByText('Бронзовая клюшка')).toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Разделы магазина' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'К разделам магазина' }));
+    expect(screen.getByRole('tab', { name: 'Товары' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('falls back to the goods overview for an invalid category', async () => {

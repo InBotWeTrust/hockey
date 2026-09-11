@@ -5078,7 +5078,27 @@
 .inventory-shop-screen {
   background:
     linear-gradient(180deg, rgba(7, 18, 34, 0.2), rgba(7, 18, 34, 0.56)),
-    url('/shop/shop-background.webp') center top / cover fixed no-repeat;
+    var(--shop-category-artwork, url('/shop/shop-background.webp')) center top / cover fixed no-repeat;
+}
+
+.inventory-shop-screen--category {
+  background-attachment: scroll;
+}
+
+.inventory-shop-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.inventory-shop-header > h1 {
+  flex: 1 1 auto;
+}
+
+.inventory-shop-header > .inventory-shop-balance {
+  margin-left: auto;
+  flex-wrap: wrap;
 }
 
 .inventory-category-grid {
@@ -5153,16 +5173,6 @@
   min-width: 0;
 }
 
-@media (max-width: 520px) {
-  .inventory-shop-header--category > h1 {
-    grid-column: 2 / -1;
-  }
-
-  .inventory-shop-header--category > .inventory-shop-balance {
-    grid-column: 2 / -1;
-  }
-}
-
 @media (max-width: 380px) {
   .inventory-category-card {
     min-height: 168px;
@@ -5194,8 +5204,7 @@
 
 @media (max-width: 360px) {
   .inventory-shop-header {
-    grid-template-columns: 40px minmax(0, 1fr) auto !important;
-    gap: 6px !important;
+    gap: 6px;
   }
 
   .inventory-shop-header > h1 {
