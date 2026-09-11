@@ -3251,6 +3251,13 @@
   background: rgba(220, 38, 38, 0.94);
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
 }
+.segmented-tabs__attention--small {
+  top: 8px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.14);
+}
 
 /* === Buttons === */
 /* Text buttons are text-only: do not place icons inside .btn buttons. */
