@@ -25,7 +25,7 @@ import { CommunityLinks } from '../components/CommunityLinks.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
-  formatInventoryBadgeAmount,
+  formatProfileInventoryBadgeAmount,
   formatInventoryResourceAmount,
   formatRecoveryMinutesTotal,
   recoveryMinutesAvailable,
@@ -173,7 +173,7 @@ function EquipmentPanel({
                   {item !== null ? (
                     <strong>
                       <FittedOneLineText maxFontSize={9} minFontSize={5}>
-                        {formatInventoryBadgeAmount(
+                        {formatProfileInventoryBadgeAmount(
                           item.kind,
                           item.chargesAvailable,
                           item.resourceUnit,
