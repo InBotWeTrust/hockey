@@ -43,7 +43,11 @@ The experience column is headed `Опыт`; values do not append a second explan
 Players are ordered by:
 
 1. `users.experience DESC`;
-2. `users.id ASC` as the stable tie-breaker.
+2. `users.lifetime_goals_total DESC` when experience is equal;
+3. career shooting accuracy (`lifetime_goals_total / lifetime_shots_total`) descending when experience and goals are equal;
+4. `users.id ASC` as the stable final tie-breaker.
+
+Accuracy is zero when the player has no recorded shots.
 
 Places use `row_number` semantics, so equal experience values still receive distinct deterministic positions.
 
@@ -78,9 +82,9 @@ type ExperienceRatingResponse = {
 };
 ```
 
-The cursor encodes the final row's experience, user ID, and place. Subsequent pages use keyset conditions matching the sort order rather than `OFFSET`, preventing later pages from becoming slower as the user scrolls. The server fetches `limit + 1` rows to determine `nextCursor` and obtains the authenticated player's row and rank in the same request handler. Invalid cursors return the project's standard `400 bad_request` response.
+The cursor encodes the final row's experience, goals, exact SQL accuracy value, user ID, and place. Subsequent pages use keyset conditions matching the complete sort order rather than `OFFSET`, preventing later pages from becoming slower as the user scrolls. The server fetches `limit + 1` rows to determine `nextCursor` and obtains the authenticated player's row and rank in the same request handler. Invalid cursors return the project's standard `400 bad_request` response.
 
-Add a database index on `(experience DESC, id ASC)` so page retrieval and current-position counting use the ranking order. The migration is additive and does not rewrite experience values.
+Add a database index on `(experience DESC, lifetime_goals_total DESC, id ASC)` so the leading page and rank conditions use indexed ranking fields; accuracy remains a calculated career ratio. The migration is additive and does not rewrite player values.
 
 Experience may change while a modal is open. The list is a live best-effort snapshot: a refresh reopens from the first page, while an already open list keeps its loaded order. Exact cross-page snapshot isolation is deliberately out of scope.
 

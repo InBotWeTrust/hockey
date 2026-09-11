@@ -7,6 +7,8 @@ interface RatingRow {
   display_name: string;
   avatar_url: string | null;
   experience: number;
+  goals: number;
+  accuracy_key: string;
 }
 
 interface RankedViewerRow extends RatingRow {
@@ -15,6 +17,8 @@ interface RankedViewerRow extends RatingRow {
 
 const cursorSchema = z.object({
   experience: z.number().int().nonnegative(),
+  goals: z.number().int().nonnegative(),
+  accuracy: z.string().regex(/^\d+(?:\.\d+)?$/),
   userId: z.string().uuid(),
   place: z.number().int().positive(),
 });
@@ -53,24 +57,88 @@ export async function listExperienceRating(
 ) {
   const cursor = options.cursor === undefined ? null : decodeCursor(options.cursor);
   const page = await pg.query<RatingRow>(
-    `select u.id, u.display_name, u.avatar_url, u.experience::int as experience
+    `select u.id, u.display_name, u.avatar_url, u.experience::int as experience,
+            u.lifetime_goals_total::int as goals,
+            coalesce(
+              u.lifetime_goals_total::numeric / nullif(u.lifetime_shots_total, 0),
+              0
+            )::text as accuracy_key
        from users u
       where $1::int is null
          or u.experience < $1::int
-         or (u.experience = $1::int and u.id > $2::uuid)
-      order by u.experience desc, u.id asc
-      limit $3`,
-    [cursor?.experience ?? null, cursor?.userId ?? null, options.limit + 1],
+         or (u.experience = $1::int and u.lifetime_goals_total < $2::int)
+         or (
+           u.experience = $1::int
+           and u.lifetime_goals_total = $2::int
+           and coalesce(
+             u.lifetime_goals_total::numeric / nullif(u.lifetime_shots_total, 0),
+             0
+           ) < $3::numeric
+         )
+         or (
+           u.experience = $1::int
+           and u.lifetime_goals_total = $2::int
+           and coalesce(
+             u.lifetime_goals_total::numeric / nullif(u.lifetime_shots_total, 0),
+             0
+           ) = $3::numeric
+           and u.id > $4::uuid
+         )
+      order by u.experience desc, u.lifetime_goals_total desc,
+               coalesce(
+                 u.lifetime_goals_total::numeric / nullif(u.lifetime_shots_total, 0),
+                 0
+               ) desc,
+               u.id asc
+      limit $5`,
+    [
+      cursor?.experience ?? null,
+      cursor?.goals ?? null,
+      cursor?.accuracy ?? null,
+      cursor?.userId ?? null,
+      options.limit + 1,
+    ],
   );
 
   const viewer = await pg.query<RankedViewerRow>(
     `select viewer.id, viewer.display_name, viewer.avatar_url,
             viewer.experience::int as experience,
+            viewer.lifetime_goals_total::int as goals,
+            coalesce(
+              viewer.lifetime_goals_total::numeric / nullif(viewer.lifetime_shots_total, 0),
+              0
+            )::text as accuracy_key,
             (1 + count(ahead.id))::int as place
        from users viewer
        left join users ahead
          on ahead.experience > viewer.experience
-         or (ahead.experience = viewer.experience and ahead.id < viewer.id)
+         or (
+           ahead.experience = viewer.experience
+           and ahead.lifetime_goals_total > viewer.lifetime_goals_total
+         )
+         or (
+           ahead.experience = viewer.experience
+           and ahead.lifetime_goals_total = viewer.lifetime_goals_total
+           and coalesce(
+             ahead.lifetime_goals_total::numeric / nullif(ahead.lifetime_shots_total, 0),
+             0
+           ) > coalesce(
+             viewer.lifetime_goals_total::numeric / nullif(viewer.lifetime_shots_total, 0),
+             0
+           )
+         )
+         or (
+           ahead.experience = viewer.experience
+           and ahead.lifetime_goals_total = viewer.lifetime_goals_total
+           and coalesce(
+             ahead.lifetime_goals_total::numeric / nullif(ahead.lifetime_shots_total, 0),
+             0
+           ) = coalesce(
+             viewer.lifetime_goals_total::numeric / nullif(viewer.lifetime_shots_total, 0),
+             0
+           )
+           and ahead.id < viewer.id
+         )
       where viewer.id = $1
       group by viewer.id, viewer.display_name, viewer.avatar_url, viewer.experience`,
     [viewerUserId],
@@ -89,7 +157,13 @@ export async function listExperienceRating(
     rows: visibleRows.map(toRatingPlayer),
     nextCursor:
       hasNextPage && last !== undefined
-        ? encodeCursor({ experience: last.experience, userId: last.id, place: last.place })
+        ? encodeCursor({
+            experience: last.experience,
+            goals: last.goals,
+            accuracy: last.accuracy_key,
+            userId: last.id,
+            place: last.place,
+          })
         : null,
     currentUser: toRatingPlayer(viewerRow),
   };

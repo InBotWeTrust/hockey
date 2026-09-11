@@ -15,7 +15,7 @@
 - UI text is Russian; code identifiers and commit messages are English.
 - Use the standard `AccessibleModal` header and close-button layout.
 - Page size is 30 by default and never exceeds 50.
-- Ranking order is `experience DESC, id ASC` with distinct deterministic places.
+- Ranking order is experience, career goals, career accuracy, then user ID, with distinct deterministic places.
 - Use keyset pagination; do not load or return the complete user table.
 - Do not modify experience balances or inventory consumption.
 - Do not touch the dirty primary checkout or deploy without a separate instruction.
@@ -72,7 +72,7 @@ git commit -m "fix(profile): label inventory resource badges"
 - Test: `packages/server/test/db/migrations.integration.test.ts`
 
 **Interfaces:**
-- Consumes: authenticated `req.user.id`, `users(id, display_name, avatar_url, experience)`.
+- Consumes: authenticated `req.user.id`, `users(id, display_name, avatar_url, experience, lifetime_goals_total, lifetime_shots_total)`.
 - Produces: `GET /profile/experience-rating?limit=<1..50>&cursor=<opaque>` matching `ExperienceRatingResponse` in the spec.
 - Produces: `listExperienceRating(pg, viewerUserId, { limit, cursor })` as the query boundary.
 
@@ -107,7 +107,7 @@ Create:
 
 ```sql
 create index if not exists users_experience_rating_idx
-  on users (experience desc, id asc);
+  on users (experience desc, lifetime_goals_total desc, id asc);
 ```
 
 Extend the migration integration expectation so a missing or incorrectly ordered index fails.
@@ -117,7 +117,13 @@ Extend the migration integration expectation so a missing or incorrectly ordered
 In `experienceRating.ts`, validate and encode an opaque base64url JSON cursor shaped as:
 
 ```ts
-type ExperienceRatingCursor = { experience: number; userId: string; place: number };
+type ExperienceRatingCursor = {
+  experience: number;
+  goals: number;
+  accuracy: string;
+  userId: string;
+  place: number;
+};
 ```
 
 Fetch `limit + 1` rows with:
@@ -129,7 +135,7 @@ order by u.experience desc, u.id asc
 limit $limit_plus_one
 ```
 
-Use the equivalent explicit comparison if PostgreSQL mixed-direction row comparison cannot represent the sort safely: `u.experience < cursorExperience OR (u.experience = cursorExperience AND u.id > cursorUserId)`. Derive each returned place from `cursor.place + rowIndex + 1`. Query the viewer and calculate rank as one plus users ahead under the same tie-breaker. Return `nextCursor` only when the extra row exists.
+Use explicit comparisons for experience descending, goals descending, exact calculated accuracy descending, and ID ascending. Derive each returned place from `cursor.place + rowIndex + 1`. Query the viewer and calculate rank as one plus users ahead under the same complete tie-breaker. Return `nextCursor` only when the extra row exists.
 
 - [ ] **Step 5: Register and validate the route**
 
