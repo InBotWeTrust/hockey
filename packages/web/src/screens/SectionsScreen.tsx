@@ -37,10 +37,10 @@ const MONTHLY_RATING_CONGRATULATIONS_KEY = [
 const SECTION_ARTWORK = {
   achievements: '/achievements/first-goal.webp',
   daily: '/daily-game/start.webp',
-  training: '/modes/beginner.webp',
-  amateur: '/modes/amateur.webp',
-  pro: '/modes/pro.webp',
-  shop: '/modes/shop.webp',
+  training: '/modes/training-evening.webp',
+  amateur: '/modes/amateur-game.webp',
+  pro: '/modes/pro-game.webp',
+  shop: '/modes/shop-retail.webp',
 } as const;
 
 type SectionTone = 'active' | 'default' | 'muted';
