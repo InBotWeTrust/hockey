@@ -20,6 +20,7 @@
     "production:economy-rebase": "tsx src/ops/productionEconomyRebaseCli.ts",
     "inventory:grant-existing": "tsx src/ops/existingUserInventoryGrantCli.ts",
     "inventory:correct-existing": "tsx src/ops/existingUserInventoryGrantCorrectionCli.ts",
+    "achievement:monthly-rating-audit": "tsx src/achievements/monthlyRatingAchievementAuditCli.ts",
     "push:worker": "tsx src/push/worker-cli.ts"
   },
   "dependencies": {
