@@ -1904,6 +1904,7 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('option', { name: 'Классика' }));
 
     expect(screen.getByRole('spinbutton', { name: 'Бросков в периоде' })).toHaveValue(30);
+    expect(screen.getByRole('spinbutton', { name: 'Длительность периода, минуты' })).toHaveValue(3);
     expect(screen.getByText('1-й период')).toBeInTheDocument();
     expect(screen.getByText('2-й период')).toBeInTheDocument();
     expect(screen.getByText('3-й период')).toBeInTheDocument();
