@@ -885,6 +885,26 @@ describe('SectionsScreen', () => {
       });
   });
 
+  it('uses cache-busted artwork URLs for refreshed section images', async () => {
+    mockSectionsApi();
+    renderSections();
+
+    const expectedArtwork = [
+      ['Тренировка', '/modes/training-evening.webp'],
+      ['Магазин', '/modes/shop-retail.webp'],
+      ['Любители', '/modes/amateur-game.webp'],
+      ['Профессионалы', '/modes/pro-game.webp'],
+    ] as const;
+
+    for (const [sectionName, expectedPath] of expectedArtwork) {
+      const section = await screen.findByRole('button', { name: sectionName });
+      expect(within(section).getByRole('img', { hidden: true })).toHaveAttribute(
+        'src',
+        expectedPath,
+      );
+    }
+  });
+
   it('uses wide daily and shop cards around one compact training and tasks row', async () => {
     // Break caught: all four quick actions used the same half-width card and lost hierarchy.
     mockSectionsApi();
