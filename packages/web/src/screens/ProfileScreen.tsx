@@ -180,7 +180,7 @@ function EquipmentPanel({
               <img src={recoveryArtwork} alt="Наборы для восстановления" />
               <strong>
                 <FittedOneLineText maxFontSize={9} minFontSize={5}>
-                  {formatProfileNumber(recoveryMinutes)}
+                  {formatProfileNumber(recoveryMinutes)} мин
                 </FittedOneLineText>
               </strong>
             </span>

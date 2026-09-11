@@ -465,10 +465,10 @@ describe('ProfileScreen', () => {
     renderProfile();
 
     const equipmentCard = await screen.findByLabelText('Инвентарь');
-    expect(equipmentCard).toHaveTextContent('18КлюшкаЛедяной клинок');
-    expect(equipmentCard).toHaveTextContent('7КонькиСеверный ход');
+    expect(equipmentCard).toHaveTextContent('18 брКлюшкаЛедяной клинок');
+    expect(equipmentCard).toHaveTextContent('7 прКонькиСеверный ход');
     expect(equipmentCard).toHaveTextContent('3 минПитаниеЭнерго-гель');
-    expect(equipmentCard).toHaveTextContent('0ВосстановлениеНет в запасе');
+    expect(equipmentCard).toHaveTextContent('0 минВосстановлениеНет в запасе');
     expect(equipmentCard.querySelector('.profile-loadout')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Ледяной клинок' })).toHaveAttribute(
       'src',

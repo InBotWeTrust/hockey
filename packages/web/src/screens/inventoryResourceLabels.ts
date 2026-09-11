@@ -79,6 +79,9 @@ export function formatInventoryBadgeAmount(
     return `${numberText(normalized > 0 ? Math.ceil(normalized / 60_000) : 0)} мин`;
   }
 
+  if (resourceUnit === 'shot') return `${numberText(normalized)} бр`;
+  if (resourceUnit === 'distance') return `${numberText(normalized)} пр`;
+
   return numberText(normalized);
 }
 
