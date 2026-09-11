@@ -39,6 +39,7 @@ final result: passed
 - The experience list now renders through `TournamentStandingsTable`, preserving the duel table's header, row spacing, avatar sizing, separators, and alignment.
 - The title includes the experience icon; places 1-3 remain neutral; only the current player receives the existing duel-style highlight.
 - The out-of-range current-player row uses the same table component and rounds both lower corners.
+- Follow-up verification: the header is transparent, the rank column uses dark text and the compact `М` label, and its 24px width matches the duel table.
 - P0/P1/P2 findings: none.
 
 final result: passed

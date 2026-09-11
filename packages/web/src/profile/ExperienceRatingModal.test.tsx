@@ -119,7 +119,7 @@ describe('ExperienceRatingModal', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Рейтинг по опыту' });
     expect(
-      await within(dialog).findByRole('columnheader', { name: 'Место' }),
+      await within(dialog).findByRole('columnheader', { name: 'М' }),
     ).toBeInTheDocument();
     expect(within(dialog).getByTestId('experience-rating-title-icon')).toBeInTheDocument();
     expect(within(dialog).getAllByRole('table')[0]).toHaveClass(

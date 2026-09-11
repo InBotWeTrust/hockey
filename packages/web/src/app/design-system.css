@@ -8448,14 +8448,15 @@ button.daily-calendar__day:active {
   position: sticky;
   z-index: 2;
   top: 0;
-  background: rgba(207, 219, 232, 0.96);
+  background: transparent;
 }
 
 .tournament-standing-table--experience-rating th:first-child,
 .tournament-standing-table--experience-rating td:first-child {
-  width: 50px;
-  color: #168ddd;
-  font-weight: 900;
+  width: 24px;
+  padding-right: 2px;
+  padding-left: 2px;
+  color: var(--ink);
 }
 
 .tournament-standing-table--experience-rating th:last-child,
