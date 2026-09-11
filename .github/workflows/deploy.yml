@@ -10,6 +10,11 @@ on:
         required: false
         default: false
         type: boolean
+      correct_existing_inventory:
+        description: 'Replace the erroneous first-tier inventory grant with the intended second-tier items'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: deploy-prod
@@ -132,6 +137,7 @@ jobs:
           OBJECT_STORAGE_PUBLIC_BASE_URL: ${{ secrets.OBJECT_STORAGE_PUBLIC_BASE_URL }}
           OBJECT_STORAGE_MAX_UPLOAD_BYTES: ${{ vars.OBJECT_STORAGE_MAX_UPLOAD_BYTES || '26214400' }}
           GRANT_EXISTING_INVENTORY: ${{ github.event_name == 'workflow_dispatch' && inputs.grant_existing_inventory || 'false' }}
+          CORRECT_EXISTING_INVENTORY: ${{ github.event_name == 'workflow_dispatch' && inputs.correct_existing_inventory || 'false' }}
         run: |
           ssh -i ~/.ssh/id_ed25519 "${USER}@${HOST}" \
             IMAGE_TAG="$IMAGE_TAG" \
@@ -152,9 +158,14 @@ jobs:
             OBJECT_STORAGE_PUBLIC_BASE_URL="$OBJECT_STORAGE_PUBLIC_BASE_URL" \
             OBJECT_STORAGE_MAX_UPLOAD_BYTES="$OBJECT_STORAGE_MAX_UPLOAD_BYTES" \
             GRANT_EXISTING_INVENTORY="$GRANT_EXISTING_INVENTORY" \
+            CORRECT_EXISTING_INVENTORY="$CORRECT_EXISTING_INVENTORY" \
             bash -s <<'ENDSSH'
           set -euo pipefail
           cd "$REMOTE_PATH"
+          if [ "$GRANT_EXISTING_INVENTORY" = "true" ] && [ "$CORRECT_EXISTING_INVENTORY" = "true" ]; then
+            echo 'grant_existing_inventory and correct_existing_inventory cannot run together' >&2
+            exit 1
+          fi
           if [ -z "${PUSH_VAPID_PUBLIC_KEY:-}" ] || [ -z "${PUSH_VAPID_PRIVATE_KEY:-}" ]; then
             echo "PUSH_VAPID_PUBLIC_KEY and PUSH_VAPID_PRIVATE_KEY GitHub secrets are required for production push notifications"
             exit 1
@@ -223,6 +234,20 @@ jobs:
             docker compose run --rm -T \
               -e INVENTORY_GRANT_CONFIRM=2026-09-11-existing-user-inventory-grant-v1 \
               server node packages/server/dist/ops/existingUserInventoryGrantCli.js --apply \
+                < /dev/null
+          fi
+          if [ "$CORRECT_EXISTING_INVENTORY" = "true" ]; then
+            docker compose run --rm -T \
+              server node packages/server/dist/ops/existingUserInventoryGrantCorrectionCli.js < /dev/null
+            BACKUP_DIR="$REMOTE_PATH/backups"
+            BACKUP_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+            mkdir -p "$BACKUP_DIR"
+            docker compose exec -T postgres \
+              sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
+              > "$BACKUP_DIR/inventory-grant-correction-prod-$BACKUP_STAMP.dump"
+            docker compose run --rm -T \
+              -e INVENTORY_GRANT_CORRECTION_CONFIRM=2026-09-11-existing-user-inventory-grant-v1-correction-v1 \
+              server node packages/server/dist/ops/existingUserInventoryGrantCorrectionCli.js --apply \
               < /dev/null
           fi
           # Idempotent system-channel seed: no-op if the chat already exists,

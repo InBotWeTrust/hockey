@@ -65,10 +65,10 @@ describe.skipIf(!hasIntegrationEnv)('existing-user inventory grant operation', (
     });
     expect(applied.grants).toHaveLength(8);
     expect(applied.items).toEqual([
-      expect.objectContaining({ itemKind: 'nutrition', rarity: 'common' }),
+      expect.objectContaining({ itemKind: 'nutrition', rarity: 'rare' }),
       expect.objectContaining({ itemKind: 'recovery', rarity: 'rare', chargesPerInstance: 1 }),
-      expect.objectContaining({ itemKind: 'skates', rarity: 'common' }),
-      expect.objectContaining({ itemKind: 'stick', rarity: 'common' }),
+      expect.objectContaining({ itemKind: 'skates', rarity: 'rare' }),
+      expect.objectContaining({ itemKind: 'stick', rarity: 'rare' }),
     ]);
 
     const balances = await pool.query<{
