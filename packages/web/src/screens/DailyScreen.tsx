@@ -5065,21 +5065,23 @@ function DuelListCard({
         >
           {match.opponent.display_name}
         </div>
-        <DuelStatusBadge match={match} />
       </div>
-      <div className="duel-card-meta" style={{ gridColumn: '2 / 3', gridRow: '2' }}>
-        <span>
-          {duelKindText(match.rules.duelKind)}
-          {opensOnCardClick
-            ? ` · ${formatShortDateTime(historyDate)}`
-            : ` · ${match.me.goals}:${match.opponent.goals}`}
-        </span>
-        <span
-          className="duel-card-venue"
-          aria-label={`Площадка: ${venueRoleLabel(match.venue_role)}`}
-        >
-          {venueRoleLabel(match.venue_role)}
-        </span>
+      <div className="duel-card-details" style={{ gridColumn: '2 / 3', gridRow: '2' }}>
+        <div className="duel-card-meta">
+          <span>
+            {duelKindText(match.rules.duelKind)}
+            {opensOnCardClick
+              ? ` · ${formatShortDateTime(historyDate)}`
+              : ` · ${match.me.goals}:${match.opponent.goals}`}
+          </span>
+          <span
+            className="duel-card-venue"
+            aria-label={`Площадка: ${venueRoleLabel(match.venue_role)}`}
+          >
+            {venueRoleLabel(match.venue_role)}
+          </span>
+        </div>
+        <DuelStatusBadge match={match} />
       </div>
       {onAcceptInvite && onDeclineInvite && (
         <div
