@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      grant_existing_inventory:
+        description: 'Grant one starter inventory package set to users currently in production'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: deploy-prod
@@ -125,6 +131,7 @@ jobs:
           OBJECT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.OBJECT_STORAGE_SECRET_ACCESS_KEY }}
           OBJECT_STORAGE_PUBLIC_BASE_URL: ${{ secrets.OBJECT_STORAGE_PUBLIC_BASE_URL }}
           OBJECT_STORAGE_MAX_UPLOAD_BYTES: ${{ vars.OBJECT_STORAGE_MAX_UPLOAD_BYTES || '26214400' }}
+          GRANT_EXISTING_INVENTORY: ${{ github.event_name == 'workflow_dispatch' && inputs.grant_existing_inventory || 'false' }}
         run: |
           ssh -i ~/.ssh/id_ed25519 "${USER}@${HOST}" \
             IMAGE_TAG="$IMAGE_TAG" \
@@ -144,6 +151,7 @@ jobs:
             OBJECT_STORAGE_SECRET_ACCESS_KEY="$OBJECT_STORAGE_SECRET_ACCESS_KEY" \
             OBJECT_STORAGE_PUBLIC_BASE_URL="$OBJECT_STORAGE_PUBLIC_BASE_URL" \
             OBJECT_STORAGE_MAX_UPLOAD_BYTES="$OBJECT_STORAGE_MAX_UPLOAD_BYTES" \
+            GRANT_EXISTING_INVENTORY="$GRANT_EXISTING_INVENTORY" \
             bash -s <<'ENDSSH'
           set -euo pipefail
           cd "$REMOTE_PATH"
@@ -203,6 +211,20 @@ jobs:
           # line silently never executes. Manifests as prod stuck on the
           # previous IMAGE_TAG while Actions reports success.
           docker compose run --rm -T server node packages/server/dist/db/migrate-cli.js < /dev/null
+          if [ "$GRANT_EXISTING_INVENTORY" = "true" ]; then
+            docker compose run --rm -T \
+              server node packages/server/dist/ops/existingUserInventoryGrantCli.js < /dev/null
+            BACKUP_DIR="$REMOTE_PATH/backups"
+            BACKUP_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+            mkdir -p "$BACKUP_DIR"
+            docker compose exec -T postgres \
+              sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
+              > "$BACKUP_DIR/inventory-grant-prod-$BACKUP_STAMP.dump"
+            docker compose run --rm -T \
+              -e INVENTORY_GRANT_CONFIRM=2026-09-11-existing-user-inventory-grant-v1 \
+              server node packages/server/dist/ops/existingUserInventoryGrantCli.js --apply \
+              < /dev/null
+          fi
           # Idempotent system-channel seed: no-op if the chat already exists,
           # auto-picks the earliest user as `created_by` when SYSTEM_USER_ID
           # isn't set (the secret is optional). Failures are non-fatal so a
