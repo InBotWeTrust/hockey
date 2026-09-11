@@ -79,10 +79,19 @@ export function formatInventoryBadgeAmount(
     return `${numberText(normalized > 0 ? Math.ceil(normalized / 60_000) : 0)} мин`;
   }
 
+  return numberText(normalized);
+}
+
+export function formatProfileInventoryBadgeAmount(
+  kind: InventoryKind | null | undefined,
+  amount: number,
+  unit?: InventoryItem['resourceUnit'],
+): string {
+  const normalized = Math.max(0, Math.trunc(amount));
+  const resourceUnit = effectiveResourceUnit(kind, unit);
   if (resourceUnit === 'shot') return `${numberText(normalized)} бр`;
   if (resourceUnit === 'distance') return `${numberText(normalized)} пр`;
-
-  return numberText(normalized);
+  return formatInventoryBadgeAmount(kind, normalized, unit);
 }
 
 export function formatInventoryStockLabel(item: InventoryItem): string {

@@ -2365,12 +2365,19 @@
   max-height: min(calc(var(--app-viewport-height, 100dvh) - 32px), 760px);
   padding: 20px 16px 16px;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
 
+.experience-rating-modal > div:last-child {
+  min-height: 0;
+  height: min(68dvh, 620px);
+  display: flex;
+  flex-direction: column;
+}
+
 .experience-rating__viewport {
-  height: clamp(380px, 65dvh, 590px);
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
