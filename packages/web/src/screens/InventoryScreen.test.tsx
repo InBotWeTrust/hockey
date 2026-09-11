@@ -706,7 +706,7 @@ describe('InventoryScreen', () => {
     expect(screen.getByRole('status')).toHaveClass('inventory-purchase-toast');
     expect(screen.getByRole('img', { name: 'Бронзовая клюшка' })).toHaveAttribute(
       'src',
-      '/inventory/stick-bronze.webp?v=20260830-base-equipment-v1',
+      '/inventory/stick-bronze.webp?v=20260911-locker-equipment-v2',
     );
     expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/inventory/items/stick-bronze/purchase',
