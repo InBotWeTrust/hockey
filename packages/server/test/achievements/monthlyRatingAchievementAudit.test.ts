@@ -61,13 +61,22 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating achievement audit', () => {
       [validUserId],
     );
     await pool.query(
+      `insert into monthly_duel_rating_placement
+         (season_key, user_id, place, points, wins, matches_played, active_duration_seconds,
+          coins, stars, tokens, created_at)
+       values ('2026-08', $1, 4, 9, 4, 29, 100, 0, 0, 0, now())`,
+      [invalidUserId],
+    );
+    await pool.query(
       `insert into user_achievements
          (user_id, achievement_id, completed_at, claimed_at, completion_context)
        values
-         ($1, 'monthly-top-3', now(), now(),
-          '{"type":"monthly_duel_rating_settled","seasonKey":"2026-08","userId":"' || $1 || '","place":3}'::jsonb),
-         ($2, 'monthly-top-3', now(), now(),
-          '{"type":"monthly_duel_rating_settled","seasonKey":"2026-08","userId":"' || $2 || '","place":3}'::jsonb)`,
+         ($1::uuid, 'monthly-top-3', now(), now(),
+          jsonb_build_object('type', 'monthly_duel_rating_settled', 'seasonKey', '2026-08',
+                             'userId', $1::text, 'place', 3)),
+         ($2::uuid, 'monthly-top-3', now(), now(),
+          jsonb_build_object('type', 'monthly_duel_rating_settled', 'seasonKey', '2026-08',
+                             'userId', $2::text, 'place', 3))`,
       [validUserId, invalidUserId],
     );
 
