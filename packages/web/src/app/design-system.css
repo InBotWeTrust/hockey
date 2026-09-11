@@ -2380,7 +2380,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
 }
 
 .experience-rating__title {
@@ -8448,7 +8448,7 @@ button.daily-calendar__day:active {
   position: sticky;
   z-index: 2;
   top: 0;
-  background: transparent;
+  background: rgb(186, 195, 208);
 }
 
 .tournament-standing-table--experience-rating th:first-child,
