@@ -33,6 +33,7 @@ describe('TournamentStandingsTable', () => {
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows[0]).toHaveClass('tournament-standing-table__playoff-place');
     expect(rows[1]).toHaveClass('tournament-standing-table__playoff-place');
+    expect(rows[1]).toHaveClass('tournament-standing-table__medal-place--silver');
     expect(rows[2]).not.toHaveClass('tournament-standing-table__playoff-place');
     expect(
       within(rows[0]!)
@@ -114,6 +115,24 @@ describe('TournamentStandingsTable', () => {
     expect(rows[1]).not.toHaveClass('tournament-standing-table__medal-place--silver');
     expect(rows[2]).toHaveClass('tournament-standing-table__medal-place--bronze');
     expect(rows[3]?.className).toBe('');
+  });
+
+  it('marks second place silver in duel ratings', () => {
+    render(
+      <TournamentStandingsTable
+        variant="duel-rating"
+        regularSource="head_to_head"
+        dailyMetric={null}
+        rows={[
+          { user_id: 'user-1', rank: 1, display_name: 'Первый', played: 5, wins: 5, points: 15 },
+          { user_id: 'user-2', rank: 2, display_name: 'Второй', played: 5, wins: 3, points: 9 },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByRole('row')[2]).toHaveClass(
+      'tournament-standing-table__medal-place--silver',
+    );
   });
 
   it('renders the experience-rating variant without medal highlighting', () => {
