@@ -511,6 +511,7 @@ function BonusGameCard({
   const isPurchasable = game.state === 'purchase_required';
   const canAct =
     isContinuable || explainsLevelLock || isPurchasable || (isPlayable(game) && canStartNewAttempt);
+  const showsChevron = isContinuable || (isPlayable(game) && canStartNewAttempt);
   const visibleActionLabel =
     !isContinuable && isPlayable(game) && !canStartNewAttempt ? 'Попытки закончились' : label;
   const firstClearRewards = [
@@ -619,7 +620,7 @@ function BonusGameCard({
           </div>
         ) : null}
         <span
-          className={`card-chevron bonus-game-card__chevron${canAct ? '' : ' bonus-game-card__chevron--hidden'}`}
+          className={`card-chevron bonus-game-card__chevron${showsChevron ? '' : ' bonus-game-card__chevron--hidden'}`}
           aria-hidden="true"
         >
           <ChevronRight size={19} strokeWidth={2.7} />
