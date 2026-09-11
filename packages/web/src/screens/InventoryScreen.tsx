@@ -230,6 +230,9 @@ export function InventoryScreen(): JSX.Element {
     activeTab === 'goods' ? parseShopCategory(searchParams.get('category')) : null;
   const hasSelectedCategoryItems =
     selectedCategory !== null && (inventory?.items[selectedCategory].length ?? 0) > 0;
+  const hasShopItems = SHOP_CATEGORY_ORDER.some(
+    (category) => (inventory?.items[category].length ?? 0) > 0,
+  );
 
   const openCategory = (category: ShopCategory): void => {
     const next = new URLSearchParams(searchParams);
@@ -274,7 +277,7 @@ export function InventoryScreen(): JSX.Element {
         }}
       >
         <div
-          className="inventory-shop-header"
+          className={`inventory-shop-header${selectedCategory === null ? '' : ' inventory-shop-header--category'}`}
           style={{
             display: 'grid',
             gridTemplateColumns: '40px minmax(0, 1fr) auto',
@@ -325,7 +328,7 @@ export function InventoryScreen(): JSX.Element {
             Загрузка...
           </div>
         ) : activeTab === 'goods' && selectedCategory !== null && !hasSelectedCategoryItems ? (
-          <InventoryEmptyState />
+          <InventoryEmptyState category />
         ) : activeTab === 'goods' && selectedCategory !== null ? (
           <GoodsCategoryCatalog
             category={selectedCategory}
@@ -335,6 +338,8 @@ export function InventoryScreen(): JSX.Element {
             onDetails={setDetailsItem}
             onBuy={openPurchase}
           />
+        ) : activeTab === 'goods' && !hasShopItems ? (
+          <InventoryEmptyState />
         ) : activeTab === 'goods' ? (
           <GoodsCategoryOverview onOpenCategory={openCategory} />
         ) : activeTab === 'bank' ? (
@@ -769,10 +774,10 @@ function InventoryProductCard({
   );
 }
 
-function InventoryEmptyState(): JSX.Element {
+function InventoryEmptyState({ category = false }: { category?: boolean }): JSX.Element {
   return (
     <section
-      aria-label="Пустой раздел магазина"
+      aria-label={category ? 'Пустой раздел магазина' : 'Пустой магазин'}
       className="glass"
       style={{
         borderRadius: 26,
@@ -786,12 +791,14 @@ function InventoryEmptyState(): JSX.Element {
       }}
     >
       <h2 style={{ margin: 0, color: 'var(--ink)', fontSize: 18, fontWeight: 950 }}>
-        В разделе пока нет товаров
+        {category ? 'В разделе пока нет товаров' : 'Товары скоро появятся'}
       </h2>
       <p
         style={{ margin: 0, color: 'var(--muted)', fontSize: 13, fontWeight: 750, lineHeight: 1.4 }}
       >
-        Загляните позже или выберите другой раздел магазина.
+        {category
+          ? 'Загляните позже или выберите другой раздел магазина.'
+          : 'Загляните позже — мы пополняем ассортимент магазина.'}
       </p>
     </section>
   );
