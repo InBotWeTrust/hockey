@@ -209,16 +209,15 @@ describe('bonus game runtime assets', () => {
     expect(script).not.toContain('interpolateBoardOffsets');
   });
 
-  it('keeps the larger featured artwork height scoped to World Tour cards', () => {
+  it('uses the same featured artwork height for every bonus-game location', () => {
     const styles = readFileSync(path.resolve('src/app/design-system.css'), 'utf8');
 
     expect(styles).toContain(
-      '.bonus-game-card--featured .bonus-game-card__artwork-frame {\n  width: 100%;\n  height: 154px;',
+      '.bonus-game-card--featured .bonus-game-card__artwork-frame {\n  width: 100%;\n  height: clamp(176px, 48vw, 204px);',
     );
-    expect(styles).toContain(
+    expect(styles).not.toContain(
       '.bonus-game-card--featured.bonus-game-card--world-tour .bonus-game-card__artwork-frame {',
     );
-    expect(styles).toContain('height: clamp(176px, 48vw, 204px);');
   });
 
   it('declares all approved bonus asset paths', () => {
