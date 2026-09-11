@@ -494,6 +494,39 @@ final result: passed with rendered follow-up pending
 
 ---
 
+# Bank package design QA
+
+## Evidence
+
+- Source visual truth: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-af37ef74-b2db-40b3-905e-a861795ee6a8.png` (844 x 1034 px, approximately 422 CSS px at 2x density).
+- Browser-rendered implementation: live Codex in-app browser capture at `http://localhost:5173/inventory`, Bank tab; application shell width 430 CSS px.
+- State: authenticated local dev profile; purchase buttons disabled as in the source.
+
+## Full-view and focused comparison
+
+The implementation retains the source hierarchy and geometry: shop header, balance pill, segmented control, section label, single-column frosted cards, coin icon, copy column, price column, and disabled CTA. Seven packages use neutral purchase-oriented names. Long values, the `Премиальный банк` and `Максимальный банк` titles, prices, benefit labels, and recommendation markers remain readable without horizontal overflow or collision with the action column.
+
+## Required fidelity surfaces
+
+- Fonts and typography: existing app family, weights, sizes, and line heights are preserved.
+- Spacing and layout rhythm: original icon, padding, radius, and list gap are preserved; labels use the existing pill radius.
+- Colors and tokens: existing glass, ink, muted, and reward-coin tokens are reused; benefit pills use the established pale-blue tournament treatment so they do not merge visually with the green coin amount.
+- Image quality and assets: arena background and existing coin icon are unchanged; no placeholder assets were introduced.
+- Copy and content: seven prices from 149 ₽ to 9 990 ₽ render with a benefit ladder of 0%, 7%, 14%, 21%, 27%, 30%, and 40%. Compact absolute-positioned markers do not affect card height; `Хит` marks 699 ₽, `Топ` marks 4 990 ₽, and the gold `Премиум` marker plus `Максимальная выгода` belong only to the final package.
+
+## Findings
+
+No actionable P0, P1, or P2 differences were found. The extra labels are an intentional extension of the supplied design.
+
+## Comparison history
+
+- Initial rendered pass: recommendation badges increased card height and benefit labels merged with the coin color.
+- Final rendered pass: seven equal-height cards, blue benefit pills, and overlaid `Хит`/`Топ`/`Премиум` markers verified at 430 CSS px; no P0/P1/P2 findings.
+
+final result: passed
+
+---
+
 # Weekly challenge admin mobile task form QA
 
 ## Evidence
