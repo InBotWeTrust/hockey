@@ -240,7 +240,11 @@ describe('AchievementsScreen', () => {
 
     expect(await screen.findByText('Задания · 2/5')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Все' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Получить' })).toBeInTheDocument();
+    const claimableTab = screen.getByRole('tab', { name: 'Получить' });
+    expect(claimableTab).toBeInTheDocument();
+    expect(within(claimableTab).getByLabelText('Требуется действие')).toHaveClass(
+      'segmented-tabs__attention--small',
+    );
     expect(screen.getByRole('tab', { name: 'Ежедневная' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Тренировка' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Турниры' })).toBeInTheDocument();
@@ -358,17 +362,22 @@ describe('AchievementsScreen', () => {
       isClaimable: true,
       rewardCurrency: 10,
     });
+    let claimed = false;
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith('/api/achievements')) {
+        const achievement = claimed
+          ? { ...readyAchievement, status: 'claimed', isClaimable: false }
+          : readyAchievement;
         return Promise.resolve(
-          new Response(JSON.stringify({ achievements: [readyAchievement], unclaimedCount: 1 }), {
+          new Response(JSON.stringify({ achievements: [achievement], unclaimedCount: claimed ? 0 : 1 }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           }),
         );
       }
       if (url.endsWith('/api/achievements/daily-ready/claim')) {
+        claimed = true;
         return Promise.resolve(
           new Response(
             JSON.stringify({
@@ -398,6 +407,8 @@ describe('AchievementsScreen', () => {
     });
     renderAchievements();
 
+    const claimableTab = await screen.findByRole('tab', { name: 'Получить' });
+    expect(within(claimableTab).getByLabelText('Требуется действие')).toBeInTheDocument();
     const card = (await screen.findByText('Награда ждёт')).closest('button');
     expect(card).not.toBeNull();
     fireEvent.click(card as HTMLButtonElement);
@@ -423,5 +434,8 @@ describe('AchievementsScreen', () => {
     expect(screen.queryByText('+0 зв.', { exact: false })).toBeNull();
     expect(screen.queryByText('+0 опыта', { exact: false })).toBeNull();
     expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
+    await waitFor(() => {
+      expect(screen.queryByRole('tab', { name: 'Получить' })).toBeNull();
+    });
   });
 });

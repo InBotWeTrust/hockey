@@ -242,6 +242,8 @@ export function AchievementsScreen({
   const achievementsQuery = useQuery({
     queryKey: achievementKeys.all,
     queryFn: fetchAchievements,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
   const weeklyChallengeQuery = useQuery({
     queryKey: weeklyChallengeKeys.current,
@@ -370,7 +372,11 @@ export function AchievementsScreen({
           Задания · {countText(selectedFilterCounts.completed, selectedFilterCounts.total)}
         </div>
         <SegmentedTabs
-          items={visibleFilters}
+          items={visibleFilters.map((item) => ({
+            ...item,
+            attention: item.id === 'claimable' && hasClaimableAchievements,
+            ...(item.id === 'claimable' ? { attentionSize: 'small' as const } : {}),
+          }))}
           activeTab={filter}
           ariaLabel="Фильтр заданий"
           onChange={setFilter}
