@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryState } from '../api/inventory.js';
 import { InventoryScreen } from './InventoryScreen.js';
+import { parseShopCategory } from './inventoryShopCategories.js';
 
 const emptyInventory: InventoryState = {
   balances: { tokens: 1000, stars: 2, experience: 77 },
@@ -225,13 +226,13 @@ function mockInventoryFetch(inventory: InventoryState, purchasedInventory = inve
   });
 }
 
-function renderInventory(): void {
+function renderInventory(initialEntry = '/inventory'): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/inventory']}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/inventory" element={<InventoryScreen />} />
           <Route path="/sections" element={<div>sections screen</div>} />
@@ -247,7 +248,7 @@ describe('InventoryScreen', () => {
     mockInventoryFetch(emptyInventory);
   });
 
-  it('renders the shop catalog as product cards', async () => {
+  it('keeps the main tabs and shows four goods categories', async () => {
     mockInventoryFetch(inventoryWithItems);
 
     renderInventory();
@@ -257,29 +258,45 @@ describe('InventoryScreen', () => {
     expect(await screen.findByLabelText('Монеты: 1 000')).toBeInTheDocument();
     expect(screen.getByLabelText('Звёзды: 2')).toBeInTheDocument();
     expect(screen.queryByLabelText('Опыт: 77')).toBeNull();
-    expect(screen.getAllByText('Бронзовая клюшка').length).toBeGreaterThan(0);
-    expect(screen.getByText('Золотое питание')).toBeInTheDocument();
-    expect(screen.getByText('Серебряные коньки')).toBeInTheDocument();
-    expect(screen.getByText('5 бросков')).toBeInTheDocument();
-    expect(screen.getByText('5 прокатов')).toBeInTheDocument();
-    expect(screen.getByText('5 минут энергии')).toBeInTheDocument();
-    expect(screen.queryByText(/Осталось/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/выбрано/i)).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Купить Бронзовая клюшка за 120 монет' }),
-    ).toBeEnabled();
     expect(screen.getByRole('tab', { name: 'Товары' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Банк' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'История' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открыть раздел Клюшки' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открыть раздел Коньки' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открыть раздел Питание' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открыть раздел Восстановление' })).toBeInTheDocument();
+    expect(screen.queryByText('Бронзовая клюшка')).not.toBeInTheDocument();
     expect(screen.queryByText('-120')).not.toBeInTheDocument();
-    expect(document.querySelector('img[src^="/inventory/stick-bronze.webp"]')).toBeInTheDocument();
-    expect(document.querySelector('img[src="/inventory/sticks.webp"]')).not.toBeInTheDocument();
-    expect(document.querySelector('.inventory-shop-grid')).toBeInTheDocument();
     expect(document.querySelector('.inventory-shop-header')).toBeInTheDocument();
     expect(document.querySelector('.inventory-shop-balance')).toBeInTheDocument();
+  });
+
+  it('opens one category and hides the main shop tabs', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory('/inventory?category=stick');
+
+    expect(await screen.findByRole('heading', { name: 'Клюшки' })).toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Разделы магазина' })).toBeNull();
+    expect(await screen.findByText('Бронзовая клюшка')).toBeInTheDocument();
+    expect(screen.queryByText('Серебряные коньки')).toBeNull();
+  });
+
+  it('returns from a category to the goods overview', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory('/inventory?category=stick');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'К разделам магазина' }));
+    expect(screen.getByRole('heading', { name: 'Магазин' })).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: 'Разделы магазина' })).toBeInTheDocument();
+  });
+
+  it('falls back to the goods overview for an invalid category', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory('/inventory?category=bank');
+
+    expect(await screen.findByRole('heading', { name: 'Магазин' })).toBeInTheDocument();
     expect(
-      within(screen.getByRole('region', { name: 'Клюшки' })).getByText('Бронзовая клюшка')
-        .closest('.inventory-product-card'),
+      await screen.findByRole('button', { name: 'Открыть раздел Клюшки' }),
     ).toBeInTheDocument();
   });
 
@@ -299,7 +316,7 @@ describe('InventoryScreen', () => {
     };
     mockInventoryFetch(duplicatedInventory);
 
-    renderInventory();
+    renderInventory('/inventory?category=stick');
 
     expect(
       await screen.findByRole('button', { name: /Подробнее о Бронзовая клюшка/i }),
@@ -311,7 +328,7 @@ describe('InventoryScreen', () => {
 
   it('shows the three recovery kits with their agreed durations and prices', async () => {
     mockInventoryFetch(inventoryWithItems);
-    renderInventory();
+    renderInventory('/inventory?category=recovery');
 
     const recovery = await screen.findByRole('region', { name: 'Восстановление' });
     expect(within(recovery).getByText('Малый набор для восстановления')).toBeInTheDocument();
@@ -328,11 +345,9 @@ describe('InventoryScreen', () => {
   it('reserves two product description lines in shop cards', async () => {
     mockInventoryFetch(inventoryWithItems);
 
-    renderInventory();
+    renderInventory('/inventory?category=stick');
 
     expect(await screen.findByText('5 бросков')).toHaveStyle({ minHeight: '2.4em' });
-    expect(screen.getByText('5 прокатов')).toHaveStyle({ minHeight: '2.4em' });
-    expect(screen.getByText('5 минут энергии')).toHaveStyle({ minHeight: '2.4em' });
   });
 
   it('shows seven progressively better bank packages with highlighted offers', async () => {
@@ -463,16 +478,18 @@ describe('InventoryScreen', () => {
     expect(empty.closest('.glass')).toBeNull();
   });
 
-  it('shows an empty shop state when no products exist', async () => {
+  it('keeps the category overview when no products exist', async () => {
     renderInventory();
 
-    expect(await screen.findByText('Товары скоро появятся')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: 'Открыть раздел Клюшки' }),
+    ).toBeInTheDocument();
   });
 
   it('opens item details and keeps parameters out of the card', async () => {
     mockInventoryFetch(inventoryWithItems);
 
-    renderInventory();
+    renderInventory('/inventory?category=stick');
 
     expect(
       await screen.findByRole('button', { name: /Подробнее о Бронзовая клюшка/i }),
@@ -494,7 +511,7 @@ describe('InventoryScreen', () => {
   it('disables purchase when tokens are not enough', async () => {
     mockInventoryFetch(inventoryWithItems);
 
-    renderInventory();
+    renderInventory('/inventory?category=skates');
 
     expect(await screen.findByText('Серебряные коньки')).toBeInTheDocument();
     expect(
@@ -530,7 +547,7 @@ describe('InventoryScreen', () => {
     };
     mockInventoryFetch(inventoryWithInstanceItem, purchasedInventory);
 
-    renderInventory();
+    renderInventory('/inventory?category=stick');
 
     expect(
       await screen.findByRole('button', { name: 'Купить Бронзовая клюшка за 120 монет' }),
@@ -558,4 +575,16 @@ describe('InventoryScreen', () => {
     );
     expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
   });
+});
+
+describe('parseShopCategory', () => {
+  it.each(['stick', 'skates', 'nutrition', 'recovery'] as const)(
+    'accepts the %s shop category',
+    (category) => expect(parseShopCategory(category)).toBe(category),
+  );
+
+  it.each([null, '', 'bank', 'unknown'])(
+    'rejects invalid shop category %s',
+    (category) => expect(parseShopCategory(category)).toBeNull(),
+  );
 });

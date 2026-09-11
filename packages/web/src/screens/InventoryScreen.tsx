@@ -14,7 +14,7 @@ import {
   TrendingUp,
   X,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
@@ -22,7 +22,6 @@ import {
   fetchMyInventory,
   fetchInventoryTransactions,
   purchaseInventoryItem,
-  type InventoryKind,
   type InventoryItem,
   type InventoryState,
   type InventoryTransaction,
@@ -31,13 +30,18 @@ import {
   type InventoryTransactionFilter,
 } from '../api/inventory.js';
 import { artworkForInventoryItem } from './inventoryArtwork.js';
+import {
+  parseShopCategory,
+  SHOP_CATEGORY_META,
+  SHOP_CATEGORY_ORDER,
+  type ShopCategory,
+} from './inventoryShopCategories.js';
 import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
 import { updateCachedProfileBalances } from '../app/queryClient.js';
 
 type ShopTab = 'goods' | 'bank' | 'history';
 type HistoryFilter = InventoryTransactionFilter;
 
-const INVENTORY_KINDS: InventoryKind[] = ['stick', 'skates', 'nutrition', 'recovery'];
 const SHOP_TABS: Array<{ id: ShopTab; label: string }> = [
   { id: 'goods', label: 'Товары' },
   { id: 'bank', label: 'Банк' },
@@ -116,13 +120,6 @@ const BANK_PACKAGES = [
   },
 ] as const;
 
-const KIND_META: Record<InventoryKind, { title: string }> = {
-  stick: { title: 'Клюшки' },
-  skates: { title: 'Коньки' },
-  nutrition: { title: 'Питание' },
-  recovery: { title: 'Восстановление' },
-};
-
 function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU').format(value);
 }
@@ -189,6 +186,7 @@ function transactionDateLabel(value: string): string {
 
 export function InventoryScreen(): JSX.Element {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<ShopTab>('goods');
   const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
@@ -227,9 +225,28 @@ export function InventoryScreen(): JSX.Element {
   });
 
   const inventory = inventoryQuery.data;
-  const allItems = INVENTORY_KINDS.flatMap((kind) => inventory?.items[kind] ?? []);
-  const hasAnyItems = allItems.length > 0;
   const tokens = inventory?.balances.tokens ?? 0;
+  const selectedCategory =
+    activeTab === 'goods' ? parseShopCategory(searchParams.get('category')) : null;
+  const hasSelectedCategoryItems =
+    selectedCategory !== null && (inventory?.items[selectedCategory].length ?? 0) > 0;
+
+  const openCategory = (category: ShopCategory): void => {
+    const next = new URLSearchParams(searchParams);
+    next.set('category', category);
+    setSearchParams(next);
+  };
+
+  const closeCategory = (): void => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('category');
+    setSearchParams(next, { replace: true });
+  };
+
+  const changeTab = (tab: ShopTab): void => {
+    setActiveTab(tab);
+    if (tab === 'bank' || tab === 'history') closeCategory();
+  };
 
   const openPurchase = (item: InventoryItem): void => {
     purchaseMutation.reset();
@@ -268,9 +285,15 @@ export function InventoryScreen(): JSX.Element {
           <button
             type="button"
             className="icon-btn"
-            onClick={() => navigate('/sections')}
-            aria-label="Назад"
-            title="Назад"
+            onClick={() => {
+              if (selectedCategory !== null) {
+                closeCategory();
+                return;
+              }
+              navigate('/sections');
+            }}
+            aria-label={selectedCategory === null ? 'Назад' : 'К разделам магазина'}
+            title={selectedCategory === null ? 'Назад' : 'К разделам магазина'}
             style={{
               width: 40,
               height: 40,
@@ -290,27 +313,30 @@ export function InventoryScreen(): JSX.Element {
             className="screen-title-on-arena"
             style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}
           >
-            Магазин
+            {selectedCategory === null ? 'Магазин' : SHOP_CATEGORY_META[selectedCategory].title}
           </h1>
           <ShopBalanceBar tokens={tokens} stars={inventory?.balances.stars ?? 0} />
         </div>
 
-        <ShopTabs activeTab={activeTab} onChange={setActiveTab} />
+        {selectedCategory === null && <ShopTabs activeTab={activeTab} onChange={changeTab} />}
 
         {inventoryQuery.isLoading ? (
           <div className="glass" style={{ borderRadius: 22, padding: 16, color: 'var(--muted)' }}>
             Загрузка...
           </div>
-        ) : activeTab === 'goods' && !hasAnyItems ? (
+        ) : activeTab === 'goods' && selectedCategory !== null && !hasSelectedCategoryItems ? (
           <InventoryEmptyState />
-        ) : activeTab === 'goods' ? (
-          <GoodsTab
+        ) : activeTab === 'goods' && selectedCategory !== null ? (
+          <GoodsCategoryCatalog
+            category={selectedCategory}
             inventory={inventory}
             tokens={tokens}
             purchaseMutation={purchaseMutation}
             onDetails={setDetailsItem}
             onBuy={openPurchase}
           />
+        ) : activeTab === 'goods' ? (
+          <GoodsCategoryOverview onOpenCategory={openCategory} />
         ) : activeTab === 'bank' ? (
           <BankTab />
         ) : (
@@ -367,59 +393,99 @@ export function InventoryScreen(): JSX.Element {
   );
 }
 
-function GoodsTab({
+function GoodsCategoryOverview({
+  onOpenCategory,
+}: {
+  onOpenCategory: (category: ShopCategory) => void;
+}): JSX.Element {
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      {SHOP_CATEGORY_ORDER.map((category) => {
+        const meta = SHOP_CATEGORY_META[category];
+        return (
+          <button
+            key={category}
+            type="button"
+            className={meta.className}
+            aria-label={`Открыть раздел ${meta.title}`}
+            onClick={() => onOpenCategory(category)}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '72px minmax(0, 1fr)',
+              alignItems: 'center',
+              gap: 12,
+              width: '100%',
+              minHeight: 88,
+              padding: 10,
+              border: '1px solid rgba(255,255,255,0.78)',
+              borderRadius: 22,
+              background: 'rgba(255,255,255,0.48)',
+              color: 'var(--ink)',
+              textAlign: 'left',
+              cursor: 'pointer',
+            }}
+          >
+            <img
+              src={meta.artworkUrl}
+              alt=""
+              style={{ width: 72, height: 64, objectFit: 'cover', borderRadius: 14 }}
+            />
+            <span style={{ display: 'grid', gap: 3 }}>
+              <strong style={{ fontSize: 16 }}>{meta.title}</strong>
+              <span style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 700 }}>
+                {meta.description}
+              </span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function GoodsCategoryCatalog({
+  category,
   inventory,
   tokens,
   purchaseMutation,
   onDetails,
   onBuy,
 }: {
+  category: ShopCategory;
   inventory: InventoryState | undefined;
   tokens: number;
   purchaseMutation: UseMutationResult<InventoryState, Error, InventoryItem>;
   onDetails: (item: InventoryItem) => void;
   onBuy: (item: InventoryItem) => void;
 }): JSX.Element {
+  const meta = SHOP_CATEGORY_META[category];
+  const items = uniqueShopItems(inventory?.items[category] ?? []);
+
   return (
-    <div style={{ display: 'grid', gap: 18 }}>
-      {INVENTORY_KINDS.map((kind) => {
-        const items = uniqueShopItems(inventory?.items[kind] ?? []);
-        if (items.length === 0) return null;
-        return (
-          <section key={kind} aria-label={KIND_META[kind].title}>
-            <div className="section-label" style={{ margin: '0 0 8px -14px' }}>
-              {KIND_META[kind].title}
-            </div>
-            <div style={{ display: 'grid', gap: 18 }}>
-              <div
-                className="inventory-shop-grid"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(0, 1fr)',
-                  gap: 8,
-                }}
-              >
-                {items.map((item) => {
-                  const canBuy = tokens >= item.currencyPrice;
-                  return (
-                    <InventoryProductCard
-                      key={item.id}
-                      item={item}
-                      canBuy={canBuy}
-                      isBuying={
-                        purchaseMutation.isPending && purchaseMutation.variables?.id === item.id
-                      }
-                      onDetails={() => onDetails(item)}
-                      onBuy={() => onBuy(item)}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-        );
-      })}
-    </div>
+    <section aria-label={meta.title}>
+      <div
+        className="inventory-shop-grid"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr)',
+          gap: 8,
+        }}
+      >
+        {items.map((item) => {
+          const canBuy = tokens >= item.currencyPrice;
+          return (
+            <InventoryProductCard
+              key={item.id}
+              item={item}
+              canBuy={canBuy}
+              isBuying={purchaseMutation.isPending && purchaseMutation.variables?.id === item.id}
+              onDetails={() => onDetails(item)}
+              onBuy={() => onBuy(item)}
+            />
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
