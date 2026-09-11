@@ -5,6 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryState } from '../api/inventory.js';
 import { InventoryScreen } from './InventoryScreen.js';
 import { parseShopCategory } from './inventoryShopCategories.js';
+import { readFileSync } from 'node:fs';
+
+const designSystemCss = readFileSync('src/app/design-system.css', 'utf8');
 
 const emptyInventory: InventoryState = {
   balances: { tokens: 1000, stars: 2, experience: 77 },
@@ -246,6 +249,57 @@ describe('InventoryScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockInventoryFetch(emptyInventory);
+  });
+
+  it('reuses wide section cards with one title, unique item count and decorative artwork', async () => {
+    mockInventoryFetch({
+      ...inventoryWithItems,
+      items: {
+        ...inventoryWithItems.items,
+        stick: [...inventoryWithItems.items.stick, { ...inventoryWithItems.items.stick[0]!, id: 'duplicate-stick' }],
+      },
+    });
+    renderInventory();
+
+    for (const title of ['Клюшки', 'Коньки', 'Питание', 'Восстановление']) {
+      const card = await screen.findByRole('button', { name: `Открыть раздел ${title}` });
+      expect(within(card).getAllByText(title)).toHaveLength(1);
+      expect(within(card).queryByText(/Выбрать/)).toBeNull();
+      expect(within(card).getByText(title === 'Восстановление' ? '3 товара' : '1 товар')).toBeVisible();
+      expect(card).toHaveClass('section-card-surface', 'amateur-hub-card');
+      const image = card.querySelector('img');
+      expect(image).toHaveAttribute('alt', '');
+      expect(image?.parentElement).toHaveClass('amateur-hub-card__art');
+      expect(card.querySelector('.amateur-hub-card__copy')).not.toBeNull();
+      expect(card.querySelector('.card-chevron')).toHaveAttribute('aria-hidden', 'true');
+    }
+  });
+
+  it('keeps one column and the shared 116px wide-card / 86px artwork contract', () => {
+    const grid = designSystemCss.match(/\.inventory-category-grid\s*\{([^}]+)\}/)?.[1];
+    const card = designSystemCss.match(/\.amateur-hub-card\s*\{([^}]+)\}/)?.[1];
+    const artwork = designSystemCss.match(/\.amateur-hub-card__art\s*\{([^}]+)\}/)?.[1];
+    expect(grid).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\)/);
+    expect(card).toMatch(/min-height:\s*116px/);
+    expect(card).toMatch(/grid-template-columns:\s*86px minmax\(0, 1fr\) 20px/);
+    expect(card).not.toMatch(/aspect-ratio/);
+    expect(artwork).toMatch(/width:\s*86px/);
+    expect(artwork).toMatch(/height:\s*86px/);
+    expect(designSystemCss).not.toContain('.inventory-category-card::after');
+    expect(/\.inventory-category-card\s*\{/.test(designSystemCss)).toBe(false);
+  });
+
+  it('shows the goods section heading with the same style as Bank and History', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory();
+    await screen.findByRole('button', { name: 'Открыть раздел Клюшки' });
+    const goods = screen.getByText('Товары', { selector: '.section-label' });
+    const style = goods.getAttribute('style');
+    fireEvent.click(screen.getByRole('tab', { name: 'Банк' }));
+    expect(screen.getByText('Банк', { selector: '.section-label' }).getAttribute('style')).toBe(style);
+    fireEvent.click(screen.getByRole('tab', { name: 'История' }));
+    expect(screen.getByText('История', { selector: '.section-label' }).getAttribute('style')).toBe(style);
+    expect(screen.queryByText('Товары', { selector: '.section-label' })).toBeNull();
   });
 
   it('delivers decorative WebP artwork in the four shop category cards', async () => {

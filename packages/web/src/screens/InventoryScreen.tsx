@@ -4,6 +4,7 @@ import { triggerHaptic } from '../feedback/haptics.js';
 import type { UseMutationResult } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  ChevronRight,
   CircleDollarSign,
   Gift,
   Landmark,
@@ -38,6 +39,7 @@ import {
 } from './inventoryShopCategories.js';
 import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
 import { updateCachedProfileBalances } from '../app/queryClient.js';
+import { formatRussianCount } from '../lib/russianPlural.js';
 
 type ShopTab = 'goods' | 'bank' | 'history';
 type HistoryFilter = InventoryTransactionFilter;
@@ -340,7 +342,12 @@ export function InventoryScreen(): JSX.Element {
         ) : activeTab === 'goods' && !hasShopItems ? (
           <InventoryEmptyState />
         ) : activeTab === 'goods' ? (
-          <GoodsCategoryOverview onOpenCategory={openCategory} />
+          <section aria-label="Товары" style={{ display: 'grid', gap: 8 }}>
+            <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+              Товары
+            </div>
+            <GoodsCategoryOverview inventory={inventory} onOpenCategory={openCategory} />
+          </section>
         ) : activeTab === 'bank' ? (
           <BankTab />
         ) : (
@@ -398,27 +405,33 @@ export function InventoryScreen(): JSX.Element {
 }
 
 function GoodsCategoryOverview({
+  inventory,
   onOpenCategory,
 }: {
+  inventory: InventoryState | undefined;
   onOpenCategory: (category: ShopCategory) => void;
 }): JSX.Element {
   return (
     <div className="inventory-category-grid">
       {SHOP_CATEGORY_ORDER.map((category) => {
         const meta = SHOP_CATEGORY_META[category];
+        const count = uniqueShopItems(inventory?.items[category] ?? []).length;
         return (
           <button
             key={category}
             type="button"
-            className={`inventory-category-card ${meta.className}`}
+            className={`section-card-surface amateur-hub-card inventory-category-card ${meta.className}`}
             aria-label={`Открыть раздел ${meta.title}`}
             onClick={() => onOpenCategory(category)}
           >
-            <img src={meta.artworkUrl} alt="" decoding="async" />
-            <span className="inventory-category-card__copy">
-              <strong>{meta.title}</strong>
-              <span>{meta.description}</span>
+            <span className="amateur-hub-card__art" aria-hidden="true">
+              <img src={meta.artworkUrl} alt="" decoding="async" draggable={false} />
             </span>
+            <span className="amateur-hub-card__copy">
+              <strong>{meta.title}</strong>
+              <span>{formatRussianCount(count, 'товар', 'товара', 'товаров')}</span>
+            </span>
+            <ChevronRight className="card-chevron" size={20} strokeWidth={2.7} aria-hidden="true" />
           </button>
         );
       })}
