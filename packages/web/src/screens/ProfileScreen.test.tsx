@@ -151,6 +151,30 @@ function mockProfileRequest(
         { status: 200, headers: { 'content-type': 'application/json' } },
       );
     }
+    if (url.includes('/api/profile/experience-rating')) {
+      return new Response(
+        JSON.stringify({
+          rows: [
+            {
+              place: 1,
+              userId: 'u1',
+              displayName: 'Alice T',
+              avatarUrl: 'avatar.png',
+              experience: 77,
+            },
+          ],
+          nextCursor: null,
+          currentUser: {
+            place: 1,
+            userId: 'u1',
+            displayName: 'Alice T',
+            avatarUrl: 'avatar.png',
+            experience: 77,
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
     if (url.endsWith('/api/me/home-arenas')) {
       return new Response(
         JSON.stringify({
@@ -235,6 +259,34 @@ describe('ProfileScreen', () => {
     expect(screen.getByText('Награды и достижения (1)')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Настройки' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Раздевалка игрока')).not.toBeInTheDocument();
+  });
+
+  it('loads the experience rating only after the experience balance is opened', async () => {
+    mockProfileRequest();
+    renderProfile();
+
+    const trigger = await screen.findByRole('button', { name: 'Открыть рейтинг по опыту' });
+    expect(
+      vi.mocked(globalThis.fetch).mock.calls.some(([input]) =>
+        String(input).includes('/api/profile/experience-rating'),
+      ),
+    ).toBe(false);
+
+    fireEvent.click(trigger);
+    expect(await screen.findByRole('dialog', { name: 'Рейтинг по опыту' })).toBeInTheDocument();
+    expect(await screen.findAllByRole('row', { name: /^1 Alice T Alice T 77$/ })).not.toHaveLength(
+      0,
+    );
+    expect(
+      vi.mocked(globalThis.fetch).mock.calls.filter(([input]) =>
+        String(input).includes('/api/profile/experience-rating'),
+      ),
+    ).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Рейтинг по опыту' })).toBeNull(),
+    );
   });
 
   it('routes each direct profile card to its destination', async () => {
@@ -465,10 +517,10 @@ describe('ProfileScreen', () => {
     renderProfile();
 
     const equipmentCard = await screen.findByLabelText('Инвентарь');
-    expect(equipmentCard).toHaveTextContent('18КлюшкаЛедяной клинок');
-    expect(equipmentCard).toHaveTextContent('7КонькиСеверный ход');
+    expect(equipmentCard).toHaveTextContent('18 брКлюшкаЛедяной клинок');
+    expect(equipmentCard).toHaveTextContent('7 прКонькиСеверный ход');
     expect(equipmentCard).toHaveTextContent('3 минПитаниеЭнерго-гель');
-    expect(equipmentCard).toHaveTextContent('0ВосстановлениеНет в запасе');
+    expect(equipmentCard).toHaveTextContent('0 минВосстановлениеНет в запасе');
     expect(equipmentCard.querySelector('.profile-loadout')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Ледяной клинок' })).toHaveAttribute(
       'src',

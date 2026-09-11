@@ -33,6 +33,17 @@ No actionable P0, P1, or P2 visual differences remain for the requested admin ca
 
 final result: passed
 
+## Experience rating modal follow-up (2026-09-11)
+
+- Compared the local modal at `http://127.0.0.1:5183/profile` with the supplied experience-rating and duel-standings references.
+- The experience list now renders through `TournamentStandingsTable`, preserving the duel table's header, row spacing, avatar sizing, separators, and alignment.
+- The title includes the experience icon; places 1-3 remain neutral; only the current player receives the existing duel-style highlight.
+- The out-of-range current-player row uses the same table component and rounds both lower corners.
+- Follow-up verification: the header is transparent, the rank column uses dark text and the compact `М` label, and its 24px width matches the duel table.
+- P0/P1/P2 findings: none.
+
+final result: passed
+
 # Design QA — узкие экраны 323–360 px
 
 ## Evidence
