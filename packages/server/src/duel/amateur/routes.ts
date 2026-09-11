@@ -6069,32 +6069,60 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     const query = duelRatingQuerySchema.parse(req.query);
     const seasonKey = query.season_key ?? seasonKeyMoscow(new Date());
     const settings = await getGameSettings(app.pg);
-    const { rows } = await app.pg.query<RatingRow>(
-      `select r.user_id, u.display_name, u.avatar_url, r.points, r.wins, r.draws, r.losses,
-	              r.goals_for, r.goals_against, r.matches_played, r.active_duration_seconds
-	         from amateur_duel_rating_live r
-         join users u on u.id = r.user_id
-        where r.season_key = $1
-        order by r.points desc, r.wins desc, r.active_duration_seconds asc, u.display_name asc
-	        limit 100`,
+    const closedSeason = await app.pg.query(
+      'select 1 from monthly_duel_rating_season where season_key = $1',
       [seasonKey],
     );
-    const { rows: rankRows } = await app.pg.query<{ rank: number }>(
-      `select ranked.rank::int as rank
-	         from (
-	           select r.user_id,
-	                  row_number() over (
-	                    order by r.points desc, r.wins desc, r.active_duration_seconds asc, u.display_name asc
-	                  ) as rank
-	             from amateur_duel_rating_live r
-	             join users u on u.id = r.user_id
-	            where r.season_key = $1
-	         ) ranked
-	        where ranked.user_id = $2`,
-      [seasonKey, req.user.id],
-    );
+    const isClosedSeason = closedSeason.rowCount === 1;
+    const { rows } = isClosedSeason
+      ? await app.pg.query<RatingRow>(
+          `select p.user_id, u.display_name, u.avatar_url, p.points, p.wins, p.draws, p.losses,
+                  p.goals_for, p.goals_against, p.matches_played, p.active_duration_seconds
+             from monthly_duel_rating_placement p
+             join users u on u.id = p.user_id
+            where p.season_key = $1
+            order by p.place asc
+            limit 100`,
+          [seasonKey],
+        )
+      : await app.pg.query<RatingRow>(
+          `select r.user_id, u.display_name, u.avatar_url, r.points, r.wins, r.draws, r.losses,
+                  r.goals_for, r.goals_against, r.matches_played, r.active_duration_seconds
+             from amateur_duel_rating_live r
+             join users u on u.id = r.user_id
+            where r.season_key = $1
+            order by r.points desc, r.wins desc, r.active_duration_seconds asc, u.display_name asc
+            limit 100`,
+          [seasonKey],
+        );
+    const { rows: rankRows } = isClosedSeason
+      ? await app.pg.query<{ rank: number }>(
+          `select place as rank from monthly_duel_rating_placement
+            where season_key = $1 and user_id = $2`,
+          [seasonKey, req.user.id],
+        )
+      : await app.pg.query<{ rank: number }>(
+          `select ranked.rank::int as rank
+             from (
+               select r.user_id,
+                      row_number() over (
+                        order by r.points desc, r.wins desc, r.active_duration_seconds asc, u.display_name asc
+                      ) as rank
+                 from amateur_duel_rating_live r
+                 join users u on u.id = r.user_id
+                where r.season_key = $1
+             ) ranked
+            where ranked.user_id = $2`,
+          [seasonKey, req.user.id],
+        );
     const { rows: seasonRows } = await app.pg.query<{ season_key: string }>(
-      `select distinct season_key from amateur_duel_rating_live order by season_key desc`,
+      `select distinct season_key
+         from (
+           select season_key from amateur_duel_rating_live
+           union
+           select season_key from monthly_duel_rating_placement
+         ) seasons
+        order by season_key desc`,
     );
     return {
       season_key: seasonKey,

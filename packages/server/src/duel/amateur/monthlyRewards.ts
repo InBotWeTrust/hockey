@@ -8,6 +8,10 @@ interface RatingRow {
   user_id: string;
   points: number;
   wins: number;
+  draws: number;
+  losses: number;
+  goals_for: number;
+  goals_against: number;
   matches_played: number;
   active_duration_seconds: number;
 }
@@ -89,13 +93,37 @@ export async function reconcileCompletedMonthlyRating(pool: Pool, now: Date): Pr
 
 async function settleSeason(client: PoolClient, seasonKey: string, now: Date): Promise<void> {
   const { rows } = await client.query<RatingRow>(
-    `select r.user_id, r.points, r.wins, r.matches_played, r.active_duration_seconds
-       from amateur_duel_rating_live r
-       join users u on u.id = r.user_id
-      where r.season_key = $1 and r.matches_played >= 30
-      order by r.points desc, r.wins desc, r.active_duration_seconds asc,
-               u.display_name asc, r.user_id asc`,
-    [seasonKey],
+    `with live as (
+       select r.season_key, r.user_id, r.points, r.wins, r.draws, r.losses,
+              r.goals_for, r.goals_against, r.matches_played, r.active_duration_seconds
+         from amateur_duel_rating_live r
+        where r.season_key = $1
+     ), ranked as (
+       select live.user_id, live.points, live.wins, live.draws, live.losses,
+              live.goals_for, live.goals_against, live.matches_played,
+              live.active_duration_seconds,
+              coalesce(sum(
+                case when opponent_live.points = live.points then own_entry.points else 0 end
+              ), 0)::int as head_to_head_points
+         from live
+         left join amateur_duel_rating_match own_entry
+           on own_entry.season_key = live.season_key and own_entry.user_id = live.user_id
+         left join amateur_duel_rating_match opponent_entry
+           on opponent_entry.match_id = own_entry.match_id and opponent_entry.user_id <> live.user_id
+         left join live opponent_live
+           on opponent_live.user_id = opponent_entry.user_id
+        group by live.user_id, live.points, live.wins, live.draws, live.losses,
+                 live.goals_for, live.goals_against, live.matches_played,
+                 live.active_duration_seconds
+     )
+     select ranked.user_id, ranked.points, ranked.wins, ranked.draws, ranked.losses,
+            ranked.goals_for, ranked.goals_against, ranked.matches_played,
+            ranked.active_duration_seconds
+       from ranked
+       join users u on u.id = ranked.user_id
+      order by ranked.points desc, ranked.head_to_head_points desc,
+               ranked.matches_played desc, ranked.wins desc, u.display_name asc, ranked.user_id asc`,
+      [seasonKey],
   );
   const eligibleCount = rows.length;
   const rewardedCount =
@@ -117,8 +145,8 @@ async function settleSeason(client: PoolClient, seasonKey: string, now: Date): P
     await client.query(
       `insert into monthly_duel_rating_placement
          (season_key, user_id, place, points, wins, matches_played, active_duration_seconds,
-          coins, stars, tokens, created_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          draws, losses, goals_for, goals_against, coins, stars, tokens, created_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
         seasonKey,
         row.user_id,
@@ -127,6 +155,10 @@ async function settleSeason(client: PoolClient, seasonKey: string, now: Date): P
         row.wins,
         row.matches_played,
         row.active_duration_seconds,
+        row.draws,
+        row.losses,
+        row.goals_for,
+        row.goals_against,
         reward.coins,
         reward.stars,
         reward.tokens,
