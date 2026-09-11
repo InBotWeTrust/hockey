@@ -7172,7 +7172,7 @@ function duelOpponentStatus(match: AmateurDuelMatch): {
   const participant = match.opponent;
   if (match.status === 'invited') {
     return {
-      label: match.me.side === 'challenger' ? 'ждём ответ' : 'ждёт ответ',
+      label: match.me.side === 'challenger' ? 'ждём ответа' : 'ждёт ответ',
       color: '#f59e0b',
       glow: 'rgba(245, 158, 11, 0.2)',
     };

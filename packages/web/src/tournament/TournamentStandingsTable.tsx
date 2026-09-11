@@ -92,16 +92,17 @@ export function TournamentStandingsTable(props: {
           const isClickable = props.onPlayerClick !== undefined && userId.length > 0;
           const isPlayoffPlace = playoffSize > 0 && Number.isFinite(rank) && rank <= playoffSize;
           const isCurrentUser = props.currentUserId === userId;
-          const medalClass =
-            isDuelRating && !isCurrentUser
-              ? rank === 1
+          const medalClass = !isCurrentUser
+            ? rank === 2
+              ? 'tournament-standing-table__medal-place--silver'
+              : isDuelRating
+                ? rank === 1
                 ? 'tournament-standing-table__medal-place--gold'
-                : rank === 2
-                  ? 'tournament-standing-table__medal-place--silver'
                   : rank === 3
                     ? 'tournament-standing-table__medal-place--bronze'
                     : ''
-              : '';
+                : ''
+            : '';
           return (
             <tr
               key={String(row.user_id ?? index)}

@@ -8464,8 +8464,8 @@ button.daily-calendar__day:active {
   background: rgba(250, 204, 21, 0.16);
 }
 
-.tournament-standing-table--duel-rating tbody tr.tournament-standing-table__medal-place--silver td {
-  background: rgba(148, 163, 184, 0.18);
+.tournament-standing-table tbody tr.tournament-standing-table__medal-place--silver td {
+  background: rgba(100, 116, 139, 0.28);
 }
 
 .tournament-standing-table--duel-rating tbody tr.tournament-standing-table__medal-place--bronze td {

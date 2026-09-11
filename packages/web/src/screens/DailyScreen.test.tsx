@@ -6020,7 +6020,7 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=amateur&match=match-1']);
 
-    expect(await screen.findByLabelText('Статус соперника: ждём ответ')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Статус соперника: ждём ответа')).toBeInTheDocument();
     expect(screen.queryByLabelText('Статус соперника: ждёт ответ')).not.toBeInTheDocument();
   });
 
