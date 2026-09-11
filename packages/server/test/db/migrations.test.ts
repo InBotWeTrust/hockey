@@ -344,7 +344,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     );
     expect(inventory.rows).toEqual([
       {
-        title: 'Изотоник Тест',
+        title: 'Ультимейт Заряд',
         item_kind: 'nutrition',
         resource_unit: 'energy_ms',
         currency_price: 3750,
@@ -352,7 +352,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         effect_puck_speed_points: 0,
       },
       {
-        title: 'Энерго-заряд',
+        title: 'Ультимейт Заряд Плюс',
         item_kind: 'nutrition',
         resource_unit: 'energy_ms',
         currency_price: 7500,
@@ -360,7 +360,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         effect_puck_speed_points: 0,
       },
       {
-        title: 'Энерго-комплекс',
+        title: 'Ультимейт Заряд Макс',
         item_kind: 'nutrition',
         resource_unit: 'energy_ms',
         currency_price: 12_500,
@@ -368,7 +368,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         effect_puck_speed_points: 0,
       },
       {
-        title: 'Малый набор для восстановления',
+        title: 'Ультимейт Рестарт',
         item_kind: 'recovery',
         resource_unit: 'period',
         currency_price: 2950,
@@ -376,7 +376,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         effect_puck_speed_points: 0,
       },
       {
-        title: 'Набор для восстановления',
+        title: 'Ультимейт Рестарт Плюс',
         item_kind: 'recovery',
         resource_unit: 'period',
         currency_price: 4950,
@@ -384,7 +384,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         effect_puck_speed_points: 0,
       },
       {
-        title: 'Большой набор для восстановления',
+        title: 'Ультимейт Рестарт Макс',
         item_kind: 'recovery',
         resource_unit: 'period',
         currency_price: 7450,
@@ -392,7 +392,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         effect_puck_speed_points: 0,
       },
       {
-        title: 'Старт',
+        title: 'Ультимейт Рывок',
         item_kind: 'skates',
         resource_unit: 'distance',
         currency_price: 3750,
@@ -400,7 +400,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         effect_puck_speed_points: 0,
       },
       {
-        title: 'Коньки для теста',
+        title: 'Ультимейт Рывок Плюс',
         item_kind: 'skates',
         resource_unit: 'distance',
         currency_price: 7500,
@@ -408,7 +408,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         effect_puck_speed_points: 0,
       },
       {
-        title: 'Профи',
+        title: 'Ультимейт Рывок Макс',
         item_kind: 'skates',
         resource_unit: 'distance',
         currency_price: 12_500,
@@ -416,7 +416,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         effect_puck_speed_points: 0,
       },
       {
-        title: 'Ультимейт Ван 1',
+        title: 'Ультимейт Вектор',
         item_kind: 'stick',
         resource_unit: 'shot',
         currency_price: 3750,
@@ -424,7 +424,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         effect_puck_speed_points: 40,
       },
       {
-        title: 'Ультимейт Ван 2',
+        title: 'Ультимейт Вектор Плюс',
         item_kind: 'stick',
         resource_unit: 'shot',
         currency_price: 7500,
@@ -432,7 +432,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         effect_puck_speed_points: 40,
       },
       {
-        title: 'Ультимейт Ван 3',
+        title: 'Ультимейт Вектор Макс',
         item_kind: 'stick',
         resource_unit: 'shot',
         currency_price: 12_500,
@@ -594,6 +594,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '125_align_amateur_duel_template_puck_speed.sql',
       '125_monthly_rating_final_placements.sql',
       '126_classic_duel_three_minute_periods.sql',
+      '127_refresh_inventory_catalog_copy.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -1412,6 +1413,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '125_align_amateur_duel_template_puck_speed.sql',
       '125_monthly_rating_final_placements.sql',
       '126_classic_duel_three_minute_periods.sql',
+      '127_refresh_inventory_catalog_copy.sql',
     ]);
 
     const activeInventory = await pool.query<{
@@ -1432,7 +1434,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
     expect(activeInventory.rows).toEqual([
       {
         item_kind: 'nutrition',
-        title: 'Изотоник Тест',
+        title: 'Ультимейт Заряд',
         resource_unit: 'energy_ms',
         currency_price: 3750,
         charges_per_purchase: 4_500_000,
@@ -1440,7 +1442,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       },
       {
         item_kind: 'nutrition',
-        title: 'Энерго-заряд',
+        title: 'Ультимейт Заряд Плюс',
         resource_unit: 'energy_ms',
         currency_price: 7500,
         charges_per_purchase: 9_600_000,
@@ -1448,7 +1450,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       },
       {
         item_kind: 'nutrition',
-        title: 'Энерго-комплекс',
+        title: 'Ультимейт Заряд Макс',
         resource_unit: 'energy_ms',
         currency_price: 12_500,
         charges_per_purchase: 16_800_000,
@@ -1456,7 +1458,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       },
       {
         item_kind: 'skates',
-        title: 'Старт',
+        title: 'Ультимейт Рывок',
         resource_unit: 'distance',
         currency_price: 3750,
         charges_per_purchase: 7200,
@@ -1464,7 +1466,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       },
       {
         item_kind: 'skates',
-        title: 'Коньки для теста',
+        title: 'Ультимейт Рывок Плюс',
         resource_unit: 'distance',
         currency_price: 7500,
         charges_per_purchase: 15_200,
@@ -1472,7 +1474,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       },
       {
         item_kind: 'skates',
-        title: 'Профи',
+        title: 'Ультимейт Рывок Макс',
         resource_unit: 'distance',
         currency_price: 12_500,
         charges_per_purchase: 26_800,
@@ -1480,7 +1482,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       },
       {
         item_kind: 'stick',
-        title: 'Ультимейт Ван 1',
+        title: 'Ультимейт Вектор',
         resource_unit: 'shot',
         currency_price: 3750,
         charges_per_purchase: 1800,
@@ -1488,7 +1490,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       },
       {
         item_kind: 'stick',
-        title: 'Ультимейт Ван 2',
+        title: 'Ультимейт Вектор Плюс',
         resource_unit: 'shot',
         currency_price: 7500,
         charges_per_purchase: 3800,
@@ -1496,7 +1498,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       },
       {
         item_kind: 'stick',
-        title: 'Ультимейт Ван 3',
+        title: 'Ультимейт Вектор Макс',
         resource_unit: 'shot',
         currency_price: 12_500,
         charges_per_purchase: 6700,
@@ -1518,9 +1520,9 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       [userId],
     );
     expect(transferredInventory.rows).toEqual([
-      { title: 'Старт', charges_available: 9, charges_reserved: 3 },
-      { title: 'Ультимейт Ван 1', charges_available: 7, charges_reserved: 2 },
-      { title: 'Энерго-заряд', charges_available: 11, charges_reserved: 3 },
+      { title: 'Ультимейт Вектор', charges_available: 7, charges_reserved: 2 },
+      { title: 'Ультимейт Рывок', charges_available: 9, charges_reserved: 3 },
+      { title: 'Ультимейт Заряд Плюс', charges_available: 11, charges_reserved: 3 },
     ]);
 
     const oldInventory = await pool.query<{
@@ -1562,14 +1564,14 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       [matchId, userId],
     );
     const remappedStick = transferredInventory.rows.find(
-      (item) => item.title === 'Ультимейт Ван 1',
+      (item) => item.title === 'Ультимейт Вектор',
     );
     const newStick = await pool.query<{ id: string }>(
       `select id
          from admin_inventory_items
         where deleted_at is null
           and item_kind = 'stick'
-          and title = 'Ультимейт Ван 1'`,
+          and title = 'Ультимейт Вектор'`,
     );
     expect(remappedParticipant.rows[0]).toEqual({
       loadout_snapshot: {
@@ -1586,7 +1588,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       reserved_inventory_item_id: newStick.rows[0]?.id,
     });
     expect(remappedStick).toEqual({
-      title: 'Ультимейт Ван 1',
+      title: 'Ультимейт Вектор',
       charges_available: 7,
       charges_reserved: 2,
     });
@@ -1611,9 +1613,9 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
     );
     expect(equipment.rows).toEqual([
       {
-        equipped_stick: 'Ультимейт Ван 1',
-        equipped_skates: 'Старт',
-        equipped_nutrition: 'Энерго-заряд',
+        equipped_stick: 'Ультимейт Вектор',
+        equipped_skates: 'Ультимейт Рывок',
+        equipped_nutrition: 'Ультимейт Заряд Плюс',
       },
     ]);
   });
