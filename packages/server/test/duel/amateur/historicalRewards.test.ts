@@ -130,6 +130,7 @@ describe.skipIf(!hasIntegrationEnv)('historical duel reward API compatibility', 
         '122_production_data_operations.sql',
         '123_sync_inventory_catalog_from_dev.sql',
         '124_production_data_operations_if_missing.sql',
+        '125_align_amateur_duel_template_puck_speed.sql',
       ]);
       const catalog = await app.inject({ method: 'GET', url: '/admin/duel-templates', headers });
       expect(catalog.statusCode).toBe(200);

@@ -591,6 +591,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '122_production_data_operations.sql',
       '123_sync_inventory_catalog_from_dev.sql',
       '124_production_data_operations_if_missing.sql',
+      '125_align_amateur_duel_template_puck_speed.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -638,14 +639,14 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         goalFrequency: 0.5,
         goalieFrequency: 0.6,
         shooterFrequency: 0.75,
-        puckSpeedPerMs: 1.25,
+        puckSpeedPerMs: 0.85,
       },
       {
         periodNumber: 2,
         goalFrequency: 0.5,
         goalieFrequency: 0.6,
         shooterFrequency: 0.7,
-        puckSpeedPerMs: 1.25,
+        puckSpeedPerMs: 0.85,
       },
     ]);
 
@@ -1381,6 +1382,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '122_production_data_operations.sql',
       '123_sync_inventory_catalog_from_dev.sql',
       '124_production_data_operations_if_missing.sql',
+      '125_align_amateur_duel_template_puck_speed.sql',
     ]);
 
     const activeInventory = await pool.query<{
