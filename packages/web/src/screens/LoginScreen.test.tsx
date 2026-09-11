@@ -68,6 +68,7 @@ describe('LoginScreen', () => {
     expect(vkButton).toBeInTheDocument();
     expect(vkButton).toHaveClass('login-screen__auth-button');
     expect(vkButton).toHaveStyle({ background: '#0077ff' });
+    expect(vkButton.querySelector('img')).toHaveAttribute('src', '/icons/vk-community.png');
     expect(screen.getByRole('button', { name: /демо-режим/i })).toHaveClass(
       'login-screen__auth-button',
     );
@@ -78,6 +79,21 @@ describe('LoginScreen', () => {
       height: 'var(--app-viewport-height, 100dvh)',
       overflow: 'hidden',
     });
+  });
+
+  it('matches the native Telegram widget dimensions for every login action', () => {
+    expect(designSystemCss).toMatch(
+      /\.login-screen__auth-button\s*{[^}]*width:\s*242px;[^}]*height:\s*40px;[^}]*min-height:\s*40px;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.login-screen__actions > \.login-screen__auth-button,[\s\S]*?{[^}]*width:\s*242px;[^}]*align-self:\s*center;/,
+    );
+    expect(designSystemCss).toMatch(
+      /\.login-screen__auth-button--vk\s*{[^}]*gap:\s*8px;[^}]*font-size:\s*14px;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.login-screen__auth-button--vk \.login-screen__auth-icon\s*{[^}]*transform:\s*translateX\(-4px\);/s,
+    );
   });
 
   it('keeps the brand compact so benefit pills stay above the rink safety net', () => {

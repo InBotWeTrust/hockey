@@ -186,7 +186,7 @@ export function LoginScreen(): JSX.Element {
 
             <button
               type="button"
-              className="btn login-screen__auth-button"
+              className="btn login-screen__auth-button login-screen__auth-button--vk"
               disabled={vkPending}
               onClick={async () => {
                 setVkError(null);
@@ -204,13 +204,18 @@ export function LoginScreen(): JSX.Element {
                 background: '#0077ff',
                 color: '#ffffff',
                 justifyContent: 'center',
-                fontSize: 16,
                 fontWeight: 700,
                 letterSpacing: 0,
                 boxShadow: 'none',
                 whiteSpace: 'nowrap',
               }}
             >
+              <img
+                src="/icons/vk-community.png"
+                alt=""
+                aria-hidden="true"
+                className="login-screen__auth-icon"
+              />
               Войти через ВКонтакте
             </button>
           </>
