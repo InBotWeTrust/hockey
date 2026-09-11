@@ -17,10 +17,22 @@ function RatingRow({
   rowRef?: (node: HTMLTableRowElement | null) => void;
   testId?: string;
 }): JSX.Element {
+  const medalClass = current
+    ? ''
+    : player.place === 1
+      ? 'experience-rating__medal-place--gold'
+      : player.place === 2
+        ? 'experience-rating__medal-place--silver'
+        : player.place === 3
+          ? 'experience-rating__medal-place--bronze'
+          : '';
   return (
     <tr
       ref={rowRef}
-      className={current ? 'experience-rating__current-user' : undefined}
+      className={
+        [current ? 'experience-rating__current-user' : '', medalClass].filter(Boolean).join(' ') ||
+        undefined
+      }
       data-testid={testId}
       aria-label={`${player.place} место, ${player.displayName}, ${player.experience} опыта`}
     >
@@ -53,7 +65,7 @@ function RatingTable({
   currentRowRef: (node: HTMLTableRowElement | null) => void;
 }): JSX.Element {
   return (
-    <table className="experience-rating__table">
+    <table className="experience-rating__table tournament-standing-table">
       <thead>
         <tr>
           <th scope="col">Место</th>
@@ -193,7 +205,7 @@ export function ExperienceRatingModal({
       </div>
       {currentUser !== undefined && !currentRowVisible ? (
         <div className="experience-rating__pinned" data-testid="experience-rating-pinned-current">
-          <table className="experience-rating__table">
+          <table className="experience-rating__table tournament-standing-table">
             <tbody>
               <RatingRow player={currentUser} current />
             </tbody>
