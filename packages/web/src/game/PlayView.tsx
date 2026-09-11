@@ -212,9 +212,14 @@ export function duelPrimaryButtonLabel(
 
 export function duelFatigueNoticeLabel(condition: DuelPlayerCondition | null): string | null {
   if (!condition) return null;
-  if (condition.status === 'exhausted_stop') return 'Надо отдышаться';
+  if (condition.status === 'exhausted_stop') return 'Передышка · бросок недоступен';
+
+  const speedPercent = Math.round(condition.shooterSpeedMultiplier * 100);
+  if (condition.status === 'nutrition_slowdown' || condition.fatigueLevel === 'heavy') {
+    return `Сильная усталость · скорость ${speedPercent}%`;
+  }
   if (condition.status !== 'tired') return null;
-  return 'Усталость';
+  return `Усталость · скорость ${speedPercent}%`;
 }
 
 function sameDuelConditionUiState(
@@ -1925,17 +1930,20 @@ export function PlayView<TState>({
               className="duel-stumble-notice"
               style={routeGameStyle}
             >
-              Споткнулся
+              Споткнулся · бросок недоступен
             </div>
           ) : duelFatigueNotice ? (
             <div
               role="status"
               aria-live="polite"
-              className={
+              className={`duel-fatigue-notice${
                 currentDuelCondition?.status === 'exhausted_stop'
-                  ? 'duel-fatigue-notice duel-rest-notice'
-                  : 'duel-fatigue-notice'
-              }
+                  ? ' duel-rest-notice'
+                  : currentDuelCondition?.status === 'nutrition_slowdown' ||
+                      currentDuelCondition?.fatigueLevel === 'heavy'
+                    ? ' duel-heavy-fatigue-notice'
+                    : ''
+              }`}
               style={routeGameStyle}
             >
               {duelFatigueNotice}

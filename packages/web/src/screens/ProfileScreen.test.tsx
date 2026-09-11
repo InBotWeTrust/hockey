@@ -93,6 +93,7 @@ function mockProfileRequest(
     chargesAvailable: number;
     effectRecoveryMinutes: number;
   }> = [],
+  legacyEquipmentArtwork = false,
 ): void {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input.toString();
@@ -112,7 +113,7 @@ function mockProfileRequest(
                 id: 'stick-1',
                 kind: 'stick',
                 title: 'Ледяной клинок',
-                imageUrl: '/stick.webp',
+                imageUrl: legacyEquipmentArtwork ? '/inventory/sticks.webp' : '/stick.webp',
                 resourceUnit: 'shot',
                 chargesAvailable: 18,
               },
@@ -129,7 +130,7 @@ function mockProfileRequest(
                 id: 'skates-1',
                 kind: 'skates',
                 title: 'Северный ход',
-                imageUrl: '/skates.webp',
+                imageUrl: legacyEquipmentArtwork ? '/inventory/skates.webp' : '/skates.webp',
                 resourceUnit: 'distance',
                 chargesAvailable: 7,
               },
@@ -612,6 +613,24 @@ describe('ProfileScreen', () => {
       'src',
       expect.stringContaining('/inventory/nutrition-none.webp'),
     );
+  });
+
+  it('replaces legacy equipment artwork in the profile and picker with the current tier art', async () => {
+    mockProfileRequest(200, profile, undefined, [], true);
+    renderProfile();
+
+    expect(await screen.findByRole('img', { name: 'Ледяной клинок' })).toHaveAttribute(
+      'src',
+      expect.stringContaining('/inventory/stick-bronze.webp'),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Выбрать клюшку' }));
+    const dialog = screen.getByRole('dialog', { name: 'Выбрать клюшку' });
+    expect(
+      within(dialog)
+        .getByRole('button', { name: /Ледяной клинок/ })
+        .querySelector('img'),
+    ).toHaveAttribute('src', expect.stringContaining('/inventory/stick-bronze.webp'));
   });
 
   it('shows the latest earned achievement in the career band', async () => {
