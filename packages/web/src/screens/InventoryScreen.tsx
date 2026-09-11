@@ -267,7 +267,7 @@ export function InventoryScreen(): JSX.Element {
       style={{
         ...(selectedCategory === null
           ? {}
-          : { '--shop-category-artwork': `url("${SHOP_CATEGORY_META[selectedCategory].artworkUrl}")` }),
+          : { '--shop-category-artwork': `url("${SHOP_CATEGORY_META[selectedCategory].backgroundUrl}")` }),
         padding: 'calc(22px + var(--app-safe-top)) 14px 24px',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',

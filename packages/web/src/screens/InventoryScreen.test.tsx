@@ -343,11 +343,11 @@ describe('InventoryScreen', () => {
   });
 
   it.each([
-    ['stick', 'Клюшки', 'shop-zone--sticks', '/shop/categories/sticks.webp'],
-    ['skates', 'Коньки', 'shop-zone--skates', '/shop/categories/skates.webp'],
-    ['nutrition', 'Питание', 'shop-zone--nutrition', '/shop/categories/nutrition.webp'],
-    ['recovery', 'Восстановление', 'shop-zone--recovery', '/shop/categories/recovery.webp'],
-  ])('shows the %s category zone artwork without duplicating product images', async (category, title, zone, artwork) => {
+    ['stick', 'Клюшки', 'shop-zone--sticks', '/shop/backgrounds/sticks.webp'],
+    ['skates', 'Коньки', 'shop-zone--skates', '/shop/backgrounds/skates.webp'],
+    ['nutrition', 'Питание', 'shop-zone--nutrition', '/shop/backgrounds/nutrition.webp'],
+    ['recovery', 'Восстановление', 'shop-zone--recovery', '/shop/backgrounds/recovery.webp'],
+  ])('shows the %s category on its dedicated portrait background', async (category, title, zone, artwork) => {
     mockInventoryFetch(inventoryWithItems);
     renderInventory(`/inventory?category=${category}`);
 
