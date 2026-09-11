@@ -70,7 +70,7 @@ export function TournamentStandingsTable(props: {
       {!props.hideHeader ? (
         <thead>
           <tr>
-            <th scope="col">{isDuelRating ? 'М' : 'Место'}</th>
+            <th scope="col">{isDuelRating || isExperienceRating ? 'М' : 'Место'}</th>
             <th scope="col">Игрок</th>
             {!isExperienceRating ? <th scope="col">{isDuelRating ? 'И' : 'Игры'}</th> : null}
             {isDuelRating ? (

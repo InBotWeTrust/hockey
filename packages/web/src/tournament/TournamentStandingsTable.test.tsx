@@ -131,7 +131,7 @@ describe('TournamentStandingsTable', () => {
       />,
     );
 
-    expect(screen.getByRole('columnheader', { name: 'Место' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'М' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Опыт' })).toBeInTheDocument();
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows[0]).not.toHaveClass('tournament-standing-table__medal-place--gold');
