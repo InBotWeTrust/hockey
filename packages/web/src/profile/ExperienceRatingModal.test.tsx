@@ -122,6 +122,9 @@ describe('ExperienceRatingModal', () => {
       await within(dialog).findByRole('columnheader', { name: 'Место' }),
     ).toBeInTheDocument();
     expect(within(dialog).getByText('12 345')).toBeInTheDocument();
+    expect(within(dialog).getByRole('row', { name: '1 место, Лидер, 12345 опыта' })).toHaveClass(
+      'experience-rating__medal-place--gold',
+    );
     expect(within(dialog).getByTestId('experience-rating-pinned-current')).toHaveTextContent(
       '31Я игрок777',
     );
@@ -137,6 +140,9 @@ describe('ExperienceRatingModal', () => {
     expect(requests[1]).toContain('cursor=next-page');
     expect(await within(dialog).findByTestId('experience-rating-current-row')).toHaveTextContent(
       '31Я игрок777',
+    );
+    expect(within(dialog).getByTestId('experience-rating-current-row')).toHaveClass(
+      'experience-rating__current-user',
     );
     expect(within(dialog).getByTestId('experience-rating-pinned-current')).toBeInTheDocument();
 

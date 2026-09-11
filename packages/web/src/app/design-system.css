@@ -2381,8 +2381,6 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border-radius: 16px;
-  background: rgba(247, 250, 253, 0.62);
 }
 
 .experience-rating__table {
@@ -2393,9 +2391,8 @@
 
 .experience-rating__table th,
 .experience-rating__table td {
-  height: 48px;
-  padding: 7px 8px;
-  border-bottom: 1px solid rgba(71, 85, 105, 0.14);
+  height: 54px;
+  padding: 8px 7px;
   text-align: left;
   font-size: 13px;
 }
@@ -2404,12 +2401,8 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  height: 36px;
-  color: var(--muted);
-  background: rgba(235, 241, 248, 0.96);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  height: 40px;
+  background: rgba(207, 219, 232, 0.94);
 }
 
 .experience-rating__table th:first-child,
@@ -2443,21 +2436,24 @@
 }
 
 .experience-rating__table tr.experience-rating__current-user td {
-  color: #ffffff;
-  background: #239ee9;
-  border-bottom-color: transparent;
+  color: var(--ink);
+  background: rgba(147, 197, 253, 0.38);
 }
 
-.experience-rating__table tr.experience-rating__current-user td:first-child {
-  border-radius: 14px 0 0 14px;
+.experience-rating__table tr.experience-rating__medal-place--gold td {
+  background: rgba(250, 204, 21, 0.16);
 }
 
-.experience-rating__table tr.experience-rating__current-user td:last-child {
-  border-radius: 0 14px 14px 0;
+.experience-rating__table tr.experience-rating__medal-place--silver td {
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.experience-rating__table tr.experience-rating__medal-place--bronze td {
+  background: rgba(194, 122, 75, 0.16);
 }
 
 .experience-rating__pinned {
-  margin-top: 8px;
+  border-top: 1px solid rgba(100, 116, 139, 0.22);
   flex: none;
 }
 
