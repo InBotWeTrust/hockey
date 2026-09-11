@@ -1759,6 +1759,10 @@
 }
 
 .bonus-game-card__hit-area:disabled {
+  cursor: default;
+}
+
+.bonus-game-card__hit-area--starting {
   cursor: wait;
 }
 
