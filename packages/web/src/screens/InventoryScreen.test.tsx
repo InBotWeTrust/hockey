@@ -335,7 +335,7 @@ describe('InventoryScreen', () => {
     expect(screen.getByText('5 минут энергии')).toHaveStyle({ minHeight: '2.4em' });
   });
 
-  it('shows bank packages on the bank tab', async () => {
+  it('shows seven progressively better bank packages with highlighted offers', async () => {
     mockInventoryFetch(inventoryWithItems);
 
     renderInventory();
@@ -343,11 +343,31 @@ describe('InventoryScreen', () => {
     fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
 
     expect(screen.getByText('Стартовый набор')).toBeInTheDocument();
+    expect(screen.getByText('Малый запас')).toBeInTheDocument();
     expect(screen.getByText('Игровой запас')).toBeInTheDocument();
+    expect(screen.getByText('Большой запас')).toBeInTheDocument();
     expect(screen.getByText('Клубный банк')).toBeInTheDocument();
+    expect(screen.getByText('Премиальный банк')).toBeInTheDocument();
+    expect(screen.getByText('Максимальный банк')).toBeInTheDocument();
     expect(screen.getByText('7 450 монет')).toBeInTheDocument();
-    expect(screen.getByText('14 950 монет')).toBeInTheDocument();
-    expect(screen.getByText('34 950 монет')).toBeInTheDocument();
+    expect(screen.getByText('16 000 монет')).toBeInTheDocument();
+    expect(screen.getByText('40 000 монет')).toBeInTheDocument();
+    expect(screen.getByText('90 000 монет')).toBeInTheDocument();
+    expect(screen.getByText('190 000 монет')).toBeInTheDocument();
+    expect(screen.getByText('325 000 монет')).toBeInTheDocument();
+    expect(screen.getByText('700 000 монет')).toBeInTheDocument();
+    expect(screen.getByText('Выгода 7%')).toBeInTheDocument();
+    expect(screen.getByText('Выгода 14%')).toBeInTheDocument();
+    expect(screen.getByText('Выгода 21%')).toBeInTheDocument();
+    expect(screen.getByText('Выгода 27%')).toBeInTheDocument();
+    expect(screen.getByText('Выгода 30%')).toBeInTheDocument();
+    expect(screen.getByText('Выгода 40%')).toBeInTheDocument();
+    expect(screen.getByText('Хит')).toBeInTheDocument();
+    expect(screen.getByText('Топ')).toBeInTheDocument();
+    expect(screen.getByText('Премиум')).toBeInTheDocument();
+    expect(screen.getByText('Максимальная выгода')).toBeInTheDocument();
+    expect(screen.getByLabelText('Купить 700 000 монет за 9 990 ₽')).toBeInTheDocument();
+    expect(screen.getAllByRole('article')).toHaveLength(7);
   });
 
   it('shows transaction history with currency icons and filters', async () => {

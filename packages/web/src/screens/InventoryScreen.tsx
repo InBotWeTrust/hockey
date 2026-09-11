@@ -56,21 +56,63 @@ const BANK_PACKAGES = [
     title: 'Стартовый набор',
     tokens: 7450,
     priceRub: 149,
-    note: 'Для первых покупок',
+    note: 'Первое пополнение',
+    bonusLabel: null,
+    marker: null,
   },
   {
     id: 'player',
-    title: 'Игровой запас',
-    tokens: 14950,
+    title: 'Малый запас',
+    tokens: 16000,
     priceRub: 299,
-    note: 'Оптимальный пакет',
+    note: 'Для небольших покупок',
+    bonusLabel: 'Выгода 7%',
+    marker: null,
   },
   {
     id: 'club',
-    title: 'Клубный банк',
-    tokens: 34950,
+    title: 'Игровой запас',
+    tokens: 40000,
     priceRub: 699,
-    note: 'Максимум монет',
+    note: 'Оптимальный выбор',
+    bonusLabel: 'Выгода 14%',
+    marker: 'Хит',
+  },
+  {
+    id: 'season',
+    title: 'Большой запас',
+    tokens: 90000,
+    priceRub: 1490,
+    note: 'Для частых покупок',
+    bonusLabel: 'Выгода 21%',
+    marker: null,
+  },
+  {
+    id: 'professional',
+    title: 'Клубный банк',
+    tokens: 190000,
+    priceRub: 2990,
+    note: 'Серьёзный запас',
+    bonusLabel: 'Выгода 27%',
+    marker: null,
+  },
+  {
+    id: 'major-league',
+    title: 'Премиальный банк',
+    tokens: 325000,
+    priceRub: 4990,
+    note: 'Очень большой запас',
+    bonusLabel: 'Выгода 30%',
+    marker: 'Топ',
+  },
+  {
+    id: 'maximum',
+    title: 'Максимальный банк',
+    tokens: 700000,
+    priceRub: 9990,
+    note: 'Максимальная выгода',
+    bonusLabel: 'Выгода 40%',
+    marker: 'Премиум',
   },
 ] as const;
 
@@ -431,6 +473,13 @@ function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JS
     >
       <div className="inventory-bank-card__icon" aria-hidden="true">
         <CircleDollarSign size={24} strokeWidth={2.35} />
+        {pack.marker ? (
+          <span
+            className={`inventory-bank-card__marker${pack.marker === 'Премиум' ? ' inventory-bank-card__marker--premium' : ''}`}
+          >
+            {pack.marker}
+          </span>
+        ) : null}
       </div>
       <div className="inventory-bank-card__copy">
         <h2
@@ -447,8 +496,11 @@ function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JS
         <div style={{ color: rewardColor('coin'), fontSize: 19, fontWeight: 950, lineHeight: 1 }}>
           {numberText(pack.tokens)} монет
         </div>
-        <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800, lineHeight: 1.2 }}>
-          {pack.note}
+        <div className="inventory-bank-card__meta">
+          <span className="inventory-bank-card__note">{pack.note}</span>
+          {pack.bonusLabel ? (
+            <span className="inventory-bank-card__bonus">{pack.bonusLabel}</span>
+          ) : null}
         </div>
       </div>
       <div className="inventory-bank-card__action">
