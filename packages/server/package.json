@@ -18,6 +18,7 @@
     "tournament:lifecycle-audit": "tsx src/tournament/automaticLifecycleAuditCli.ts",
     "achievement:tournament-backfill": "tsx src/achievements/tournamentBackfillCli.ts",
     "inventory:grant-existing": "tsx src/ops/existingUserInventoryGrantCli.ts",
+    "achievement:monthly-rating-audit": "tsx src/achievements/monthlyRatingAchievementAuditCli.ts",
     "push:worker": "tsx src/push/worker-cli.ts"
   },
   "dependencies": {

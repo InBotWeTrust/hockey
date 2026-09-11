@@ -27,6 +27,26 @@ describe('monthly rating achievement evaluator boundaries', () => {
       }),
     ).resolves.toBeUndefined();
   });
+
+  it('does not complete a monthly achievement without its frozen matching placement', async () => {
+    const queries: string[] = [];
+    const db = {
+      query: async (query: string): Promise<{ rowCount: number; rows: never[] }> => {
+        queries.push(query);
+        return { rowCount: 0, rows: [] };
+      },
+    } as unknown as Pool;
+
+    await evaluateMonthlyRatingSettledAchievements(db, {
+      type: 'monthly_duel_rating_settled',
+      seasonKey: '2026-08',
+      userId: randomUUID(),
+      place: 3,
+    });
+
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toContain('monthly_duel_rating_placement');
+  });
 });
 
 describe.skipIf(!hasIntegrationEnv)('monthly rating achievement evaluator', () => {
@@ -44,6 +64,8 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating achievement evaluator', () =
 
   it('completes both career achievements for first place only once', async () => {
     const userId = await createUser(pool);
+    await createFinalPlacement(pool, userId, '2026-08', 1);
+    await createFinalPlacement(pool, userId, '2026-09', 1);
     const firstSettlement = {
       type: 'monthly_duel_rating_settled' as const,
       seasonKey: '2026-08',
@@ -62,6 +84,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating achievement evaluator', () =
 
   it.each([2, 3])('completes only the top-three achievement for place %s', async (place) => {
     const userId = await createUser(pool);
+    await createFinalPlacement(pool, userId, '2026-08', place);
 
     await evaluateMonthlyRatingSettledAchievements(pool, {
       type: 'monthly_duel_rating_settled',
@@ -93,4 +116,26 @@ async function completedIds(pool: Pool, userId: string): Promise<string[]> {
     [userId],
   );
   return rows.map((row) => row.achievement_id);
+}
+
+async function createFinalPlacement(
+  pool: Pool,
+  userId: string,
+  seasonKey: string,
+  place: number,
+): Promise<void> {
+  await pool.query(
+    `insert into monthly_duel_rating_season
+       (season_key, eligible_count, rewarded_count, closed_at)
+     values ($1, 10, 3, now())
+     on conflict (season_key) do nothing`,
+    [seasonKey],
+  );
+  await pool.query(
+    `insert into monthly_duel_rating_placement
+       (season_key, user_id, place, points, wins, matches_played, active_duration_seconds,
+        coins, stars, tokens, created_at)
+     values ($1, $2, $3, 10, 5, 30, 100, 0, 0, 0, now())`,
+    [seasonKey, userId, place],
+  );
 }

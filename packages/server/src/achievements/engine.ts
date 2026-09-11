@@ -39,6 +39,14 @@ export async function evaluateMonthlyRatingSettledAchievements(
 ): Promise<void> {
   if (!Number.isInteger(event.place) || event.place < 1) return;
 
+  const placement = await db.query(
+    `select 1
+       from monthly_duel_rating_placement
+      where season_key = $1 and user_id = $2 and place = $3`,
+    [event.seasonKey, event.userId, event.place],
+  );
+  if (placement.rowCount !== 1) return;
+
   const achievementIds: string[] = [];
   if (event.place === 1) achievementIds.push('monthly-top-1');
   if (event.place <= 3) achievementIds.push('monthly-top-3');
