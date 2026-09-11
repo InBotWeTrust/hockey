@@ -935,6 +935,80 @@ describe('BonusGamesScreen', () => {
     expect(within(lockedCard!).getByLabelText('Игра закрыта')).toBeInTheDocument();
   });
 
+  it('shows a chevron only for an available game or an unfinished attempt', async () => {
+    mockCatalog([
+      card({ id: 'available-game', title: 'Доступная игра', state: 'available' }),
+      card({
+        id: 'level-locked-game',
+        title: 'Любительская игра',
+        sort_order: 2,
+        state: 'level_locked',
+        is_unlocked: false,
+      }),
+      card({
+        id: 'purchase-required-game',
+        title: 'Платная игра',
+        sort_order: 3,
+        state: 'purchase_required',
+        is_unlocked: false,
+      }),
+    ]);
+    renderCatalog();
+
+    const availableCard = (await screen.findByRole('heading', { name: 'Доступная игра' })).closest(
+      'article',
+    );
+    const levelLockedCard = screen.getByRole('heading', { name: 'Любительская игра' }).closest('article');
+    const purchaseRequiredCard = screen
+      .getByRole('heading', { name: 'Платная игра' })
+      .closest('article');
+    expect(availableCard).not.toBeNull();
+    expect(levelLockedCard).not.toBeNull();
+    expect(purchaseRequiredCard).not.toBeNull();
+    expect(availableCard!.querySelector('.bonus-game-card__chevron')).not.toHaveClass(
+      'bonus-game-card__chevron--hidden',
+    );
+    expect(levelLockedCard!.querySelector('.bonus-game-card__chevron')).toHaveClass(
+      'bonus-game-card__chevron--hidden',
+    );
+    expect(purchaseRequiredCard!.querySelector('.bonus-game-card__chevron')).toHaveClass(
+      'bonus-game-card__chevron--hidden',
+    );
+  });
+
+  it('keeps a chevron on an unfinished featured game after new attempts run out', async () => {
+    mockCatalog(
+      [
+        card({
+          id: 'active-game',
+          title: 'Незавершённая игра',
+          state: 'in_progress',
+          active_attempt: {
+            id: 'attempt-active',
+            game_id: 'active-game',
+            state: 'period_active',
+            current_period: 1,
+            period_started_at: '2026-08-26T12:00:00.000Z',
+            break_started_at: null,
+            shots_taken: 4,
+            goals: 2,
+          },
+        }),
+      ],
+      { speedRemaining: 0 },
+    );
+    renderCatalog();
+
+    const activeCard = (await screen.findByRole('heading', { name: 'Незавершённая игра' })).closest(
+      'article',
+    );
+    expect(activeCard).not.toBeNull();
+    expect(activeCard).toHaveClass('bonus-game-card--featured');
+    expect(activeCard!.querySelector('.bonus-game-card__chevron')).not.toHaveClass(
+      'bonus-game-card__chevron--hidden',
+    );
+  });
+
   it('keeps a conflicting repeat card actionable through the card-wide control', async () => {
     mockCatalog([
       card({ id: 'speed-beach', state: 'completed', is_completed: true }),
