@@ -319,6 +319,23 @@ function isDevTrainingDebugHost(hostname: string): boolean {
   );
 }
 
+export function trainingDebugSettingsForHost(
+  hostname: string,
+  savedHitboxesVisible: boolean,
+  savedSpeedOverrides: SpeedOverrides | null,
+): {
+  enabled: boolean;
+  hitboxesVisible: boolean;
+  speedOverrides: SpeedOverrides | null;
+} {
+  const enabled = isDevTrainingDebugHost(hostname);
+  return {
+    enabled,
+    hitboxesVisible: enabled && savedHitboxesVisible,
+    speedOverrides: enabled ? savedSpeedOverrides : null,
+  };
+}
+
 function movementDistancePxForElapsed(elapsedMs: number, shooterFrequency: number): number {
   const safeElapsed = Math.max(0, elapsedMs);
   const safeFrequency = Math.max(0, shooterFrequency);
@@ -9659,18 +9676,22 @@ function TrainingPlayView({
   const submitShot = useTrainingSessionStore((s) => s.submitShot);
   const applyState = useTrainingSessionStore((s) => s.applyState);
   const refreshDaily = useDailyStore((s) => s.refresh);
-  const userRole = useAuthStore((s) => s.user?.role);
-  const experimentalTrainingCourt = useAuthStore((s) => s.user?.experimentalTrainingCourt);
-  const [hitboxesVisible, setHitboxesVisible] = useState(() => readTrainingHitboxesVisible());
+  const [initialTrainingDebugSettings] = useState(() =>
+    trainingDebugSettingsForHost(
+      window.location.hostname,
+      readTrainingHitboxesVisible(),
+      readTrainingSpeedOverrides(),
+    ),
+  );
+  const [hitboxesVisible, setHitboxesVisible] = useState(
+    initialTrainingDebugSettings.hitboxesVisible,
+  );
   const [speedControlsOpen, setSpeedControlsOpen] = useState(false);
-  const [trainingSpeedOverrides, setTrainingSpeedOverrides] = useState<SpeedOverrides | null>(() =>
-    readTrainingSpeedOverrides(),
+  const [trainingSpeedOverrides, setTrainingSpeedOverrides] = useState<SpeedOverrides | null>(
+    initialTrainingDebugSettings.speedOverrides,
   );
   const [now, setNow] = useState(Date.now());
-  const canShowTrainingDebugControls =
-    isDevTrainingDebugHost(window.location.hostname) ||
-    userRole === 'admin' ||
-    experimentalTrainingCourt === true;
+  const canShowTrainingDebugControls = initialTrainingDebugSettings.enabled;
   const trainingPeriodNumber = data?.selected_period ?? selectedPeriod;
   const trainingDefaultSpeeds = useMemo(
     () => speedOverridesForPeriod(trainingPeriodNumber, data?.period_speed_presets),
