@@ -274,7 +274,9 @@ describe('ProfileScreen', () => {
 
     fireEvent.click(trigger);
     expect(await screen.findByRole('dialog', { name: 'Рейтинг по опыту' })).toBeInTheDocument();
-    expect(await screen.findAllByLabelText('1 место, Alice T, 77 опыта')).not.toHaveLength(0);
+    expect(await screen.findAllByRole('row', { name: /^1 Alice T Alice T 77$/ })).not.toHaveLength(
+      0,
+    );
     expect(
       vi.mocked(globalThis.fetch).mock.calls.filter(([input]) =>
         String(input).includes('/api/profile/experience-rating'),

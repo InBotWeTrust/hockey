@@ -2383,73 +2383,16 @@
   overscroll-behavior: contain;
 }
 
-.experience-rating__table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-}
-
-.experience-rating__table th,
-.experience-rating__table td {
-  height: 54px;
-  padding: 8px 7px;
-  text-align: left;
-  font-size: 13px;
-}
-
-.experience-rating__table th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  height: 40px;
-  background: rgba(207, 219, 232, 0.94);
-}
-
-.experience-rating__table th:first-child,
-.experience-rating__table td:first-child {
-  width: 54px;
-  color: #168ddd;
-  font-weight: 900;
-}
-
-.experience-rating__table th:last-child,
-.experience-rating__table td:last-child {
-  width: 88px;
-  text-align: right;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.experience-rating__player {
-  min-width: 0;
+.experience-rating__title {
   display: flex;
   align-items: center;
-  gap: 9px;
-  font-weight: 750;
+  gap: 7px;
 }
 
-.experience-rating__player > span:last-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.experience-rating__table tr.experience-rating__current-user td {
-  color: var(--ink);
-  background: rgba(147, 197, 253, 0.38);
-}
-
-.experience-rating__table tr.experience-rating__medal-place--gold td {
-  background: rgba(250, 204, 21, 0.16);
-}
-
-.experience-rating__table tr.experience-rating__medal-place--silver td {
-  background: rgba(148, 163, 184, 0.18);
-}
-
-.experience-rating__table tr.experience-rating__medal-place--bronze td {
-  background: rgba(194, 122, 75, 0.16);
+.experience-rating__title svg {
+  width: 18px;
+  height: 18px;
+  color: var(--reward-experience);
 }
 
 .experience-rating__pinned {
@@ -2457,8 +2400,9 @@
   flex: none;
 }
 
-.experience-rating__pinned .experience-rating__table td {
-  border-bottom: 0;
+.experience-rating__pinned .tournament-standing-table {
+  overflow: hidden;
+  border-radius: 0 0 14px 14px;
 }
 
 .experience-rating__state {
@@ -8492,6 +8436,60 @@ button.daily-calendar__day:active {
 
 .tournament-standing-table--duel-rating tbody tr.tournament-standing-table__medal-place--bronze td {
   background: rgba(194, 122, 75, 0.16);
+}
+
+.tournament-standing-table--experience-rating th,
+.tournament-standing-table--experience-rating td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.tournament-standing-table--experience-rating th {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  background: rgba(207, 219, 232, 0.96);
+}
+
+.tournament-standing-table--experience-rating th:first-child,
+.tournament-standing-table--experience-rating td:first-child {
+  width: 50px;
+  color: #168ddd;
+  font-weight: 900;
+}
+
+.tournament-standing-table--experience-rating th:last-child,
+.tournament-standing-table--experience-rating td:last-child {
+  width: 78px;
+  text-align: right;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.tournament-standing-table--experience-rating tbody tr.tournament-standing-table__current-user {
+  color: var(--ink);
+  background: transparent;
+  box-shadow: none;
+}
+
+.tournament-standing-table--experience-rating tbody tr.tournament-standing-table__current-user td {
+  background: rgba(147, 197, 253, 0.38);
+}
+
+.experience-rating__pinned
+  .tournament-standing-table--experience-rating
+  tbody
+  tr.tournament-standing-table__current-user
+  td:first-child {
+  border-radius: 0 0 0 14px;
+}
+
+.experience-rating__pinned
+  .tournament-standing-table--experience-rating
+  tbody
+  tr.tournament-standing-table__current-user
+  td:last-child {
+  border-radius: 0 0 14px 0;
 }
 
 .tournament-fixture-card {

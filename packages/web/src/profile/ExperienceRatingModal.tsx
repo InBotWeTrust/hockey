@@ -1,58 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { X } from 'lucide-react';
+import { TrendingUp, X } from 'lucide-react';
 import { fetchExperienceRatingPage, type ExperienceRatingPlayer } from '../api/experienceRating.js';
-import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
-import { formatProfileNumber } from '../screens/profileSections.js';
+import { TournamentStandingsTable } from '../tournament/TournamentStandingsTable.js';
 
-function RatingRow({
-  player,
-  current,
-  rowRef,
-  testId,
-}: {
-  player: ExperienceRatingPlayer;
-  current: boolean;
-  rowRef?: (node: HTMLTableRowElement | null) => void;
-  testId?: string;
-}): JSX.Element {
-  const medalClass = current
-    ? ''
-    : player.place === 1
-      ? 'experience-rating__medal-place--gold'
-      : player.place === 2
-        ? 'experience-rating__medal-place--silver'
-        : player.place === 3
-          ? 'experience-rating__medal-place--bronze'
-          : '';
-  return (
-    <tr
-      ref={rowRef}
-      className={
-        [current ? 'experience-rating__current-user' : '', medalClass].filter(Boolean).join(' ') ||
-        undefined
-      }
-      data-testid={testId}
-      aria-label={`${player.place} место, ${player.displayName}, ${player.experience} опыта`}
-    >
-      <td>{player.place}</td>
-      <td>
-        <span className="experience-rating__player">
-          <UserAvatar
-            avatarUrl={player.avatarUrl}
-            name={player.displayName}
-            size={30}
-            fontSize={11}
-            alt={player.displayName}
-            style={{ background: 'linear-gradient(135deg, #2aa8f2, #2774df)' }}
-          />
-          <span title={player.displayName}>{player.displayName}</span>
-        </span>
-      </td>
-      <td>{formatProfileNumber(player.experience)}</td>
-    </tr>
-  );
+function ratingRows(players: ExperienceRatingPlayer[]): Array<Record<string, unknown>> {
+  return players.map((player) => ({
+    rank: player.place,
+    user_id: player.userId,
+    display_name: player.displayName,
+    avatar_url: player.avatarUrl,
+    experience: player.experience,
+  }));
 }
 
 function RatingTable({
@@ -65,30 +25,15 @@ function RatingTable({
   currentRowRef: (node: HTMLTableRowElement | null) => void;
 }): JSX.Element {
   return (
-    <table className="experience-rating__table tournament-standing-table">
-      <thead>
-        <tr>
-          <th scope="col">Место</th>
-          <th scope="col">Игрок</th>
-          <th scope="col">Опыт</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((player) => {
-          const current = player.userId === currentUserId;
-          return (
-            <RatingRow
-              key={player.userId}
-              player={player}
-              current={current}
-              {...(current
-                ? { rowRef: currentRowRef, testId: 'experience-rating-current-row' }
-                : {})}
-            />
-          );
-        })}
-      </tbody>
-    </table>
+    <TournamentStandingsTable
+      variant="experience-rating"
+      regularSource="head_to_head"
+      dailyMetric={null}
+      rows={ratingRows(rows)}
+      currentUserId={currentUserId}
+      currentUserRowRef={currentRowRef}
+      currentUserRowTestId="experience-rating-current-row"
+    />
   );
 }
 
@@ -165,7 +110,12 @@ export function ExperienceRatingModal({
 
   return (
     <AccessibleModal
-      title="Рейтинг по опыту"
+      title={
+        <span className="experience-rating__title">
+          <TrendingUp data-testid="experience-rating-title-icon" aria-hidden="true" />
+          <span>Рейтинг по опыту</span>
+        </span>
+      }
       ariaLabel="Рейтинг по опыту"
       onRequestClose={onClose}
       cardClassName="experience-rating-modal"
@@ -205,11 +155,14 @@ export function ExperienceRatingModal({
       </div>
       {currentUser !== undefined && !currentRowVisible ? (
         <div className="experience-rating__pinned" data-testid="experience-rating-pinned-current">
-          <table className="experience-rating__table tournament-standing-table">
-            <tbody>
-              <RatingRow player={currentUser} current />
-            </tbody>
-          </table>
+          <TournamentStandingsTable
+            variant="experience-rating"
+            regularSource="head_to_head"
+            dailyMetric={null}
+            rows={ratingRows([currentUser])}
+            currentUserId={currentUserId}
+            hideHeader
+          />
         </div>
       ) : null}
     </AccessibleModal>
