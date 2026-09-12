@@ -176,6 +176,48 @@ function mockProfileRequest(
         { status: 200, headers: { 'content-type': 'application/json' } },
       );
     }
+    if (url.includes('/api/profile/ratings/')) {
+      const metric = url.includes('/accuracy')
+        ? 'accuracy'
+        : url.includes('/streak')
+          ? 'streak'
+          : 'goals';
+      return new Response(
+        JSON.stringify({
+          metric,
+          rows: [
+            {
+              place: 1,
+              userId: 'u1',
+              displayName: 'Alice T',
+              avatarUrl: 'avatar.png',
+              goals: 64,
+              shots: 128,
+              accuracy: 50,
+              currentStreakDays: 7,
+              recordStreakDays: 12,
+            },
+          ],
+          nextCursor: null,
+          currentUser: {
+            place: 1,
+            userId: 'u1',
+            displayName: 'Alice T',
+            avatarUrl: 'avatar.png',
+            goals: 64,
+            shots: 128,
+            accuracy: 50,
+            currentStreakDays: 7,
+            recordStreakDays: 12,
+          },
+          eligibility:
+            metric === 'accuracy'
+              ? { eligible: false, goals: 64, requiredGoals: 1000 }
+              : { eligible: true },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
     if (url.endsWith('/api/me/home-arenas')) {
       return new Response(
         JSON.stringify({
@@ -268,9 +310,9 @@ describe('ProfileScreen', () => {
 
     const trigger = await screen.findByRole('button', { name: 'Открыть рейтинг по опыту' });
     expect(
-      vi.mocked(globalThis.fetch).mock.calls.some(([input]) =>
-        String(input).includes('/api/profile/experience-rating'),
-      ),
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.some(([input]) => String(input).includes('/api/profile/experience-rating')),
     ).toBe(false);
 
     fireEvent.click(trigger);
@@ -279,15 +321,41 @@ describe('ProfileScreen', () => {
       0,
     );
     expect(
-      vi.mocked(globalThis.fetch).mock.calls.filter(([input]) =>
-        String(input).includes('/api/profile/experience-rating'),
-      ),
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.filter(([input]) => String(input).includes('/api/profile/experience-rating')),
     ).toHaveLength(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Рейтинг по опыту' })).toBeNull(),
     );
+  });
+
+  it.each([
+    ['Шайбы', 'Рейтинг по шайбам', 'goals'],
+    ['Точность', 'Рейтинг по точности', 'accuracy'],
+    ['Дней подряд', 'Рейтинг игровых дней', 'streak'],
+  ])('opens the %s rating from sporting metrics', async (label, title, metric) => {
+    mockProfileRequest();
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: `Открыть рейтинг: ${label}` }));
+    const dialog = await screen.findByRole('dialog', { name: title });
+    expect(dialog).toBeInTheDocument();
+    expect(
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.some(([input]) => String(input).includes(`/api/profile/ratings/${metric}`)),
+    ).toBe(true);
+    expect(await within(dialog).findAllByTestId('stat-rating-current-row')).toHaveLength(1);
+    if (metric === 'accuracy') {
+      expect(
+        await within(dialog).findByText(
+          'Вы попадёте в рейтинг точности после 1000 забитых шайб.',
+        ),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByText('У вас 64 из 1000')).toBeInTheDocument();
+    }
   });
 
   it('routes each direct profile card to its destination', async () => {
@@ -315,10 +383,9 @@ describe('ProfileScreen', () => {
     );
     expect(screen.getByTestId('profile-community-icon-vk')).toBeInTheDocument();
     expect(screen.getByTestId('profile-community-icon-telegram')).toBeInTheDocument();
-    expect(screen.getByTestId('profile-community-icon-telegram').querySelector('img')).toHaveAttribute(
-      'src',
-      '/icons/telegram-community-v2.png',
-    );
+    expect(
+      screen.getByTestId('profile-community-icon-telegram').querySelector('img'),
+    ).toHaveAttribute('src', '/icons/telegram-community-v2.png');
     for (const link of screen.getAllByRole('link')) {
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noreferrer');

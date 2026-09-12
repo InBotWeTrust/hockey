@@ -1555,7 +1555,9 @@
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
-  text-shadow: 0 1px 3px rgba(8, 15, 27, 0.92), 0 0 10px rgba(8, 15, 27, 0.5);
+  text-shadow:
+    0 1px 3px rgba(8, 15, 27, 0.92),
+    0 0 10px rgba(8, 15, 27, 0.5);
 }
 
 .bonus-games-attempt-allowance strong {
@@ -4140,6 +4142,30 @@
   padding: 8px 3px;
   color: #fff;
   text-align: center;
+}
+
+.profile-sporting-metrics__item--button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.profile-sporting-metrics__item--button:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.stat-rating__eligibility {
+  display: grid;
+  gap: 3px;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(226, 232, 240, 0.72);
+  color: #334155;
+  font-size: 12px;
 }
 
 .profile-sporting-metrics__item + .profile-sporting-metrics__item {
@@ -8504,6 +8530,50 @@ button.daily-calendar__day:active {
   width: 78px;
   text-align: right;
   font-weight: 800;
+  white-space: nowrap;
+}
+
+.tournament-standing-table--profile-accuracy-rating th,
+.tournament-standing-table--profile-accuracy-rating td {
+  padding-right: 3px;
+  padding-left: 3px;
+}
+
+.tournament-standing-table--profile-accuracy-rating th {
+  font-size: 8px;
+  letter-spacing: 0.01em;
+}
+
+.tournament-standing-table--profile-accuracy-rating th:nth-child(n + 3),
+.tournament-standing-table--profile-accuracy-rating td:nth-child(n + 3) {
+  width: 72px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.tournament-standing-table--profile-goals-rating th:nth-child(n + 3),
+.tournament-standing-table--profile-goals-rating td:nth-child(n + 3) {
+  width: 72px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.tournament-standing-table--profile-streak-rating th:nth-child(3),
+.tournament-standing-table--profile-streak-rating td:nth-child(3) {
+  width: 82px;
+  text-align: right;
+}
+
+.tournament-standing-table--profile-streak-rating th:nth-child(3) {
+  font-size: 8px;
+  line-height: 1.1;
+  white-space: normal;
+}
+
+.tournament-standing-table--profile-streak-rating th:last-child,
+.tournament-standing-table--profile-streak-rating td:last-child {
+  width: 62px;
+  text-align: right;
   white-space: nowrap;
 }
 

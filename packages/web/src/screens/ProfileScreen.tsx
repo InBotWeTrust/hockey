@@ -39,6 +39,8 @@ import {
 import type { ProfileData } from './profileTypes.js';
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 import { ExperienceRatingModal } from '../profile/ExperienceRatingModal.js';
+import { StatRatingModal } from '../profile/StatRatingModal.js';
+import type { StatRatingMetric } from '../api/statRating.js';
 
 export type TrophySectionKey = keyof NonNullable<ProfileData['trophyDetails']>;
 
@@ -167,7 +169,11 @@ function EquipmentPanel({
               >
                 <span className="profile-loadout-slot__image">
                   <img
-                    src={item ? artworkForInventoryItem(item) : placeholderArtworkForKind(equipmentKind)}
+                    src={
+                      item
+                        ? artworkForInventoryItem(item)
+                        : placeholderArtworkForKind(equipmentKind)
+                    }
                     alt={item?.title ?? baseImageAlt}
                   />
                   {item !== null ? (
@@ -506,7 +512,13 @@ function TrophyShowcase({
   );
 }
 
-function SportingMetrics({ profile }: { profile: ProfileData }): JSX.Element {
+function SportingMetrics({
+  profile,
+  onOpenRating,
+}: {
+  profile: ProfileData;
+  onOpenRating: (metric: StatRatingMetric) => void;
+}): JSX.Element {
   const registeredDate = new Date(profile.registeredAt);
   const registeredLabel = Number.isNaN(registeredDate.getTime())
     ? '—'
@@ -516,9 +528,13 @@ function SportingMetrics({ profile }: { profile: ProfileData }): JSX.Element {
         month: '2-digit',
         year: '2-digit',
       });
-  const items: Array<{ value: ReactNode; label: string }> = [
-    { value: formatProfileNumber(profile.stats.goals), label: 'Шайбы' },
-    { value: `${formatProfileNumber(profile.stats.accuracy)}%`, label: 'Точность' },
+  const items: Array<{ value: ReactNode; label: string; metric?: StatRatingMetric }> = [
+    { value: formatProfileNumber(profile.stats.goals), label: 'Шайбы', metric: 'goals' },
+    {
+      value: `${formatProfileNumber(profile.stats.accuracy)}%`,
+      label: 'Точность',
+      metric: 'accuracy',
+    },
     {
       value: (
         <>
@@ -530,6 +546,7 @@ function SportingMetrics({ profile }: { profile: ProfileData }): JSX.Element {
         </>
       ),
       label: 'Дней подряд',
+      metric: 'streak',
     },
     {
       value:
@@ -546,14 +563,31 @@ function SportingMetrics({ profile }: { profile: ProfileData }): JSX.Element {
   ];
   return (
     <div className="profile-sporting-metrics" aria-label="Главные показатели">
-      {items.map(({ value, label }) => (
-        <div className="profile-sporting-metrics__item" key={label}>
-          <strong>
-            <FittedOneLineText maxFontSize={17}>{value}</FittedOneLineText>
-          </strong>
-          <span>{label}</span>
-        </div>
-      ))}
+      {items.map(({ value, label, metric }) => {
+        const content = (
+          <>
+            <strong>
+              <FittedOneLineText maxFontSize={17}>{value}</FittedOneLineText>
+            </strong>
+            <span>{label}</span>
+          </>
+        );
+        return metric !== undefined ? (
+          <button
+            type="button"
+            className="profile-sporting-metrics__item profile-sporting-metrics__item--button"
+            key={label}
+            aria-label={`Открыть рейтинг: ${label}`}
+            onClick={() => onOpenRating(metric)}
+          >
+            {content}
+          </button>
+        ) : (
+          <div className="profile-sporting-metrics__item" key={label}>
+            {content}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -582,6 +616,7 @@ export function ProfileScreen(): JSX.Element {
   >(null);
   const [selectedTrophySection, setSelectedTrophySection] = useState<TrophySectionKey | null>(null);
   const [experienceRatingOpen, setExperienceRatingOpen] = useState(false);
+  const [statRatingMetric, setStatRatingMetric] = useState<StatRatingMetric | null>(null);
   const updateUser = useAuthStore((state) => state.updateUser);
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -690,7 +725,7 @@ export function ProfileScreen(): JSX.Element {
             />
           </div>
         </div>
-        <SportingMetrics profile={profile} />
+        <SportingMetrics profile={profile} onOpenRating={setStatRatingMetric} />
         <TrophyShowcase profile={profile} onOpen={setSelectedTrophySection} />
       </section>
 
@@ -698,6 +733,13 @@ export function ProfileScreen(): JSX.Element {
         <ExperienceRatingModal
           currentUserId={profile.id}
           onClose={() => setExperienceRatingOpen(false)}
+        />
+      ) : null}
+      {statRatingMetric !== null ? (
+        <StatRatingModal
+          metric={statRatingMetric}
+          currentUserId={profile.id}
+          onClose={() => setStatRatingMetric(null)}
         />
       ) : null}
 
