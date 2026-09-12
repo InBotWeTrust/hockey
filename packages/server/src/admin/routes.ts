@@ -33,6 +33,7 @@ import {
 import type { PushEventType } from '../push/preferences.js';
 import { PUSH_QUEUE_PROCESSING_STALE_MS } from '../push/queue.js';
 import { createAdminPreHandlers } from './guards.js';
+import { MAX_COIN_PACKAGE_AMOUNT, type CoinPackageDTO } from '../payments/catalog.js';
 
 type UserRole = 'player' | 'admin';
 type DisplaySource = 'custom' | 'telegram' | 'vk';
@@ -309,6 +310,7 @@ interface AdminPaymentRow {
   inventory_item_id: string | null;
   title: string;
   amount_rub: number;
+  coin_amount: string | null;
   status: PaymentStatus;
   provider: string;
   provider_payment_id: string | null;
@@ -316,6 +318,24 @@ interface AdminPaymentRow {
   paid_at: Date | null;
   total_count?: string;
 }
+
+interface AdminCoinPackageRow {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  coin_amount: string;
+  price_rub: number;
+  badge_text: string | null;
+  marker: CoinPackageDTO['marker'];
+  sort_order: number;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+const coinPackageColumns = `id, slug, title, description, coin_amount, price_rub,
+  badge_text, marker, sort_order, is_active, created_at, updated_at`;
 
 interface AdminPaymentAnalyticsRow {
   month_revenue: string;
@@ -572,6 +592,39 @@ const listPaymentsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
+
+const coinPackageFieldsSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(1000),
+  coinAmount: z.number().int().positive().max(MAX_COIN_PACKAGE_AMOUNT),
+  priceRub: z.number().int().positive().max(2_147_483_647),
+  badgeText: z
+    .string()
+    .trim()
+    .max(120)
+    .nullable()
+    .transform((value) => value || null),
+  marker: z.enum(['hit', 'top', 'premium']).nullable(),
+  sortOrder: z.number().int().min(-2_147_483_648).max(2_147_483_647),
+  isActive: z.boolean(),
+});
+
+const createCoinPackageSchema = coinPackageFieldsSchema
+  .extend({
+    slug: z.string().trim().min(1).max(120),
+    description: coinPackageFieldsSchema.shape.description.default(''),
+    badgeText: coinPackageFieldsSchema.shape.badgeText.default(null),
+    marker: coinPackageFieldsSchema.shape.marker.default(null),
+    sortOrder: coinPackageFieldsSchema.shape.sortOrder.default(0),
+    isActive: coinPackageFieldsSchema.shape.isActive.default(true),
+  })
+  .strict();
+
+// Slugs remain stable after creation; payments refer to the durable package ID.
+const patchCoinPackageSchema = coinPackageFieldsSchema
+  .partial()
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, 'no changes');
 
 const listFeedbackQuerySchema = z.object({
   kind: z.enum(['all', 'review', 'suggestion', 'question']).default('all'),
@@ -1255,11 +1308,31 @@ function mapPayment(row: AdminPaymentRow) {
     inventoryItemId: row.inventory_item_id,
     title: row.title,
     amountRub: row.amount_rub,
+    coinAmount: row.coin_amount === null ? null : Number(row.coin_amount),
     status: row.status,
     provider: row.provider,
     providerPaymentId: row.provider_payment_id,
     createdAt: row.created_at.toISOString(),
     paidAt: row.paid_at?.toISOString() ?? null,
+  };
+}
+
+function mapAdminCoinPackage(
+  row: AdminCoinPackageRow,
+): CoinPackageDTO & { isActive: boolean; createdAt: string; updatedAt: string } {
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    description: row.description,
+    coinAmount: Number(row.coin_amount),
+    priceRub: row.price_rub,
+    badgeText: row.badge_text,
+    marker: row.marker,
+    sortOrder: row.sort_order,
+    isActive: row.is_active,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
   };
 }
 
@@ -3189,6 +3262,85 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
     return { ok: true };
   });
 
+  app.get('/admin/coin-packages', { preHandler: adminPreHandlers }, async () => {
+    const { rows } = await app.pg.query<AdminCoinPackageRow>(
+      `select ${coinPackageColumns} from coin_packages order by sort_order asc, slug asc`,
+    );
+    return { packages: rows.map(mapAdminCoinPackage) };
+  });
+
+  app.post('/admin/coin-packages', { preHandler: adminPreHandlers }, async (req, reply) => {
+    const parsed = createCoinPackageSchema.safeParse(req.body);
+    if (!parsed.success) throw new AppError('bad_request', 'invalid coin package', 400);
+    const body = parsed.data;
+    const result = await withTransaction(app, async (client) => {
+      const { rows } = await client.query<AdminCoinPackageRow>(
+        `insert into coin_packages (slug, title, description, coin_amount, price_rub, badge_text, marker, sort_order, is_active)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning ${coinPackageColumns}`,
+        [
+          body.slug,
+          body.title,
+          body.description,
+          body.coinAmount,
+          body.priceRub,
+          body.badgeText,
+          body.marker,
+          body.sortOrder,
+          body.isActive,
+        ],
+      );
+      const item = mapAdminCoinPackage(rows[0]!);
+      await appendEvent(client, req.user.id, 'admin_coin_package_created', {
+        package_id: item.id,
+        package: item,
+      });
+      return { package: item };
+    });
+    return reply.code(201).send(result);
+  });
+
+  app.patch('/admin/coin-packages/:id', { preHandler: adminPreHandlers }, async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const parsed = patchCoinPackageSchema.safeParse(req.body);
+    if (!parsed.success) throw new AppError('bad_request', 'invalid coin package patch', 400);
+    const columns = {
+      title: 'title',
+      description: 'description',
+      coinAmount: 'coin_amount',
+      priceRub: 'price_rub',
+      badgeText: 'badge_text',
+      marker: 'marker',
+      sortOrder: 'sort_order',
+      isActive: 'is_active',
+    } as const;
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+    for (const field of Object.keys(parsed.data) as Array<keyof typeof columns>) {
+      addAssignment(assignments, values, columns[field], parsed.data[field]);
+    }
+    return withTransaction(app, async (client) => {
+      const previous = await client.query<AdminCoinPackageRow>(
+        `select ${coinPackageColumns} from coin_packages where id = $1 for update`,
+        [id],
+      );
+      if (!previous.rows[0]) throw new AppError('not_found', 'coin package not found', 404);
+      values.push(id);
+      const { rows } = await client.query<AdminCoinPackageRow>(
+        `update coin_packages set ${assignments.join(', ')}, updated_at = now()
+         where id = $${values.length} returning ${coinPackageColumns}`,
+        values,
+      );
+      const item = mapAdminCoinPackage(rows[0]!);
+      await appendEvent(client, req.user.id, 'admin_coin_package_updated', {
+        package_id: id,
+        fields: Object.keys(parsed.data),
+        before: mapAdminCoinPackage(previous.rows[0]),
+        after: item,
+      });
+      return { package: item };
+    });
+  });
+
   app.get('/admin/payments', { preHandler: adminPreHandlers }, async (req) => {
     const parsed = listPaymentsQuerySchema.safeParse(req.query);
     if (!parsed.success) {
@@ -3224,6 +3376,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                   p.inventory_item_id,
                   p.title,
                   p.amount_rub,
+                  p.coin_amount,
                   p.status,
                   p.provider,
                   p.provider_payment_id,
@@ -3239,6 +3392,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                    or user_display_name ilike '%' || $1 || '%'
                    or title ilike '%' || $1 || '%'
                    or user_id::text = $1
+                   or id::text = $1
                    or provider_payment_id = $1)
               and ($2::text = 'all' or status = $2)
               and ($3::int is null or amount_rub >= $3)

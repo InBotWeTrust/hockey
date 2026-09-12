@@ -1,5 +1,6 @@
 import { apiFetch } from '../api/apiFetch.js';
 import type { ChatAttachmentDTO } from '../chat/api.js';
+import type { CoinPackage } from '../api/payments.js';
 
 export type AdminRole = 'player' | 'admin';
 export type AdminIdentitySource = 'custom' | 'telegram' | 'vk';
@@ -346,11 +347,38 @@ export interface AdminPayment {
   inventoryItemId: string | null;
   title: string;
   amountRub: number;
+  coinAmount: number | null;
   status: AdminPaymentStatus;
   provider: string;
   providerPaymentId: string | null;
   createdAt: string;
   paidAt: string | null;
+}
+
+export interface AdminCoinPackage extends CoinPackage {
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AdminCoinPackageInput = Omit<AdminCoinPackage, 'id' | 'createdAt' | 'updatedAt'>;
+export type AdminCoinPackagePatch = Partial<Omit<AdminCoinPackageInput, 'slug'>>;
+
+export function fetchAdminCoinPackages(): Promise<{ packages: AdminCoinPackage[] }> {
+  return apiFetch('/admin/coin-packages');
+}
+
+export function createAdminCoinPackage(
+  input: AdminCoinPackageInput,
+): Promise<{ package: AdminCoinPackage }> {
+  return apiFetch('/admin/coin-packages', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function patchAdminCoinPackage(
+  id: string,
+  input: AdminCoinPackagePatch,
+): Promise<{ package: AdminCoinPackage }> {
+  return apiFetch(`/admin/coin-packages/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
 }
 
 export interface AdminPaymentsResponse {
