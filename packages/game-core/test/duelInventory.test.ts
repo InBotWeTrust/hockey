@@ -42,6 +42,11 @@ function activeNutrition(): NonNullable<DuelInventoryLoadoutSnapshot['nutrition'
 }
 
 describe('duel inventory condition', () => {
+  it('uses an eight-to-twenty-roll interval for default-skate stumbles', () => {
+    expect(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMinRolls).toBe(8);
+    expect(DEFAULT_DUEL_INVENTORY_TIMING.stumbleIntervalMaxRolls).toBe(20);
+  });
+
   it('converts +10 speed points to +0.10 puck speed units', () => {
     expect(duelInventorySpeedPointsToPuckSpeedDelta(10)).toBe(0.1);
     expect(duelInventorySpeedPointsToPuckSpeedDelta(0)).toBe(0);
