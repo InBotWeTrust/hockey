@@ -187,9 +187,7 @@ function AppExperience(): JSX.Element {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const bottomNavVisible =
-    location.pathname !== '/dev/tournament-result-preview' &&
-    location.pathname !== '/prices' &&
-    isBottomNavVisible(location, user);
+    location.pathname !== '/dev/tournament-result-preview' && isBottomNavVisible(location, user);
   const backdropClassName = appBackdropClassName(location.pathname, location.search);
   const surfaceClassName = appSurfaceClassName(location.pathname);
   const hasArenaBackdrop = backdropClassName.split(' ').includes('app-shell--arena');

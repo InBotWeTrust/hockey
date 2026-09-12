@@ -214,6 +214,41 @@ describe('App routing + auth', () => {
     expect(screen.queryByText(/войти|регистрац|купить/i)).not.toBeInTheDocument();
   });
 
+  it('keeps /prices free of bottom navigation for an authenticated visitor', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    window.history.replaceState({}, '', '/prices');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          packages: [
+            {
+              id: '00000000-0000-4000-8000-000000000601',
+              slug: 'starter',
+              title: 'Стартовый набор',
+              description: 'Чтобы начать сезон увереннее',
+              coinAmount: 500,
+              priceRub: 199,
+              badgeText: null,
+              marker: null,
+              sortOrder: 1,
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText('500 монет')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Навигация' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
   it('shows home content when authenticated', () => {
     useAuthStore.getState().setSession({
       accessToken: 'a',
