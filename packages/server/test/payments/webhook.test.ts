@@ -240,26 +240,32 @@ describe.skipIf(!hasIntegrationEnv)('YooKassa webhook reconciliation', () => {
     );
   });
 
-  it('credits exactly up to the existing int32 balance limit', async () => {
-    await app.pg.query('update user_currency_account set balance = 2147443647 where user_id = $1', [
+  it('credits exactly up to the combined available and reserved int32 limit', async () => {
+    await app.pg.query('update user_currency_account set balance = 2147443622 where user_id = $1', [
       userId,
     ]);
     expect((await sendWebhook()).statusCode).toBe(200);
-    expect(await accountState()).toEqual({ balance: 2147483647, reserved_balance: 25 });
+    expect(await accountState()).toEqual({ balance: 2147483622, reserved_balance: 25 });
     expect((await app.pg.query('select balance_after from currency_ledger')).rows).toEqual([
-      { balance_after: 2147483647 },
+      { balance_after: 2147483622 },
     ]);
+    // Releasing all stakes after this credit must still fit the available column.
+    await app.pg.query(
+      'update user_currency_account set balance = balance + reserved_balance, reserved_balance = 0 where user_id = $1',
+      [userId],
+    );
+    expect(await accountState()).toEqual({ balance: 2147483647, reserved_balance: 0 });
   });
 
   it('leaves a succeeded provider payment retryable without partial credit when balance headroom is exhausted', async () => {
-    await app.pg.query('update user_currency_account set balance = 2147443648 where user_id = $1', [
+    await app.pg.query('update user_currency_account set balance = 2147443623 where user_id = $1', [
       userId,
     ]);
     await app.pg.query('update payments set provider_payment_id = null where id = $1', [paymentId]);
     const response = await sendWebhook();
     expect(response.statusCode).toBe(409);
     expect(response.json().error.code).toBe('payment_balance_capacity');
-    expect(await accountState()).toEqual({ balance: 2147443648, reserved_balance: 25 });
+    expect(await accountState()).toEqual({ balance: 2147443623, reserved_balance: 25 });
     expect(await paymentState()).toMatchObject({
       status: 'pending',
       paid_at: null,
@@ -322,11 +328,13 @@ describe.skipIf(!hasIntegrationEnv)('YooKassa webhook reconciliation', () => {
     });
     await started;
     if (!releaseRead) {
-      expect((await older).statusCode).toBe(200);
-      return;
+      throw new Error('The delayed provider read synchronization hook was not installed');
     }
-    expect((await sendWebhook()).statusCode).toBe(200);
-    releaseRead({ ...providerPayments.get(providerId)!, status: 'canceled' });
+    try {
+      expect((await sendWebhook()).statusCode).toBe(200);
+    } finally {
+      releaseRead({ ...providerPayments.get(providerId)!, status: 'canceled' });
+    }
     expect((await older).statusCode).toBe(200);
     expect(await paymentState()).toMatchObject({ status: 'paid' });
     expect(await accountState()).toEqual({ balance: 40100, reserved_balance: 25 });

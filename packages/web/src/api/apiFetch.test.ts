@@ -109,6 +109,32 @@ describe('apiFetch', () => {
     });
   });
 
+  it.each([
+    ['payments_unavailable', /Пополнение.*временно недоступно/],
+    ['coin_package_unavailable', /Пакет.*недоступен/],
+    ['payment_balance_capacity', /балансе.*недостаточно места/],
+    ['payment_attempt_conflict', /проверки.*поддержку/],
+    ['payment_provider_conflict', /проверки.*поддержку/],
+    ['payment_mismatch', /проверки.*поддержку/],
+    ['payment_attempt_expired', /проверки.*поддержку/],
+    ['payment_provider_unavailable', /ответ.*платёжного сервиса.*той же оплаты/],
+  ])('gives safe payment recovery guidance for %s', async (code, guidance) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockJson({ error: { code, message: 'internal payment diagnostics' } }, { status: 409 }),
+    );
+    let received: unknown;
+    try {
+      await apiFetch('/bank/payments');
+    } catch (error) {
+      received = error;
+    }
+    expect(received).toBeInstanceOf(ApiError);
+    expect((received as ApiError).message).toMatch(guidance);
+    if (code === 'payment_attempt_expired') {
+      expect((received as ApiError).message).not.toMatch(/попробуйте|повторите|ещё раз/i);
+    }
+  });
+
   it('recognizes only the stable Amateur access ApiError code', () => {
     expect(
       isAmateurLevelRequired(

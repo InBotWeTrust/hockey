@@ -32,12 +32,12 @@ Create `coin_packages` with:
 
 The migration seeds the seven packages currently shown by the Bank on `origin/dev`, preserving their names, amounts, prices, badges, markers, and order. No package is inferred from `admin_inventory_items`; inventory goods and coin packages remain separate commercial entities.
 
-Public `GET /api/bank/packages` returns active packages only, ordered by `sort_order` and a stable ID tie-breaker. Both the Bank and `/prices` consume this endpoint. Admin endpoints list all packages and allow create/update operations. Deactivation is preferred to deletion so payment history keeps a durable foreign-key target.
+Public `GET /api/bank/packages` returns active packages only, ordered by `sort_order` and then unique `slug` as a deterministic tie-breaker. Equal display orders are allowed. Both the Bank and `/prices` consume this endpoint. Admin endpoints list all packages and allow create/update operations. Deactivation is preferred to deletion so payment history keeps a durable foreign-key target.
 
 ## Payment flow
 
 1. An authenticated player selects an active package in the Bank.
-2. `POST /api/bank/payments` accepts only `packageId`. The server loads the current package and snapshots its commercial terms.
+2. `POST /api/bank/payments` accepts only `packageId` and a client-generated UUID `attemptId`. The server loads the current package and snapshots its commercial terms; client-supplied prices or coin amounts are rejected.
 3. The server creates a local `pending` payment and calls YooKassa with the exact ruble amount, `RUB`, a redirect confirmation, a dev return URL back to the Bank, and metadata containing only the local payment ID. YooKassa receives a unique idempotency key derived from the local payment attempt.
 4. The API returns the YooKassa confirmation URL. The web app navigates to that URL.
 5. Returning to the app shows a pending state and refreshes payment/balance data. Return navigation never credits coins.
@@ -45,11 +45,13 @@ Public `GET /api/bank/packages` returns active packages only, ordered by `sort_o
 7. For `succeeded`, one database transaction locks the local payment, changes it from `pending` to `paid`, credits the snapshotted coin amount to `user_currency_account`, and appends one immutable `currency_ledger` entry referencing the local and provider payment IDs.
 8. Duplicate or reordered webhooks become no-ops after reconciliation. The unique provider-payment index and a unique ledger reference prevent double credit.
 
-Client retries use a short-lived purchase-attempt identifier so double taps and network retries reuse the same local attempt rather than opening multiple YooKassa payments. A separate deliberate purchase after the first attempt completes creates a new payment.
+Before sending the first request, the client persists a purchase-attempt identifier scoped to the authenticated owner and package. Double taps, ambiguous errors, network retries, and reloads reuse the same local attempt rather than opening multiple YooKassa payments. Storage failure blocks creation. The identifier is not expired or replaced locally: only a reliable terminal server status permits a later deliberate purchase to create a new attempt. An unattached server attempt older than 23 hours requires support reconciliation rather than reuse beyond YooKassa's idempotency window.
+
+Creation and settlement both require the existing available balance plus reserved balance plus the purchased coins to fit the int32 account limit. Settlement rechecks this under account locks and rolls back without credit or terminal status if headroom has been consumed since creation.
 
 ## Failure, cancellation, and refunds
 
-- Provider creation failure leaves an auditable failed local attempt and returns a safe Russian error message.
+- All provider creation errors leave the persisted local attempt `pending` and return a safe Russian error message. This dev implementation does not distinguish a proven provider refusal from an ambiguous response loss; retries retain the same idempotency identity, and terminal state requires reconciliation. It must never assume that an error proves no payment was created.
 - YooKassa cancellation changes a still-pending payment to `canceled`; it never changes balances.
 - Unknown package, inactive package, amount mismatch, currency mismatch, metadata mismatch, or provider lookup failure never credits coins and is logged for investigation.
 - Automated refunds and coin clawback are not enabled in this dev-test release. Refunded provider state may be displayed after reconciliation, but a production release requires an explicit policy for coins already spent, partial refunds, fiscal receipts, and support operations.
@@ -73,9 +75,9 @@ Add `Пакеты монет` to the admin navigation. Administrators can:
 - create a package;
 - edit title, description, coin amount, ruble price, badge, marker, and display order;
 - activate or deactivate a package;
-- preview how its commercial labels will appear.
+- inspect saved badge and marker labels in the package list. A separate live preview before save/publish is an accepted dev limitation, not included in this release.
 
-Validation rejects empty titles, non-positive amounts/prices, invalid markers, and conflicting slugs/orders. Updates do not mutate historical payment snapshots.
+Validation rejects empty titles, non-positive amounts/prices, invalid markers, and conflicting slugs. Display orders may repeat and use the deterministic slug tie-breaker. Updates do not mutate historical payment snapshots.
 
 ## Web experience
 
