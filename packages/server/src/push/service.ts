@@ -37,7 +37,7 @@ export interface WebPushPayload {
   silent?: boolean;
 }
 
-const DEFAULT_VAPID_SUBJECT = 'mailto:push@hockey.inbotwetrust.ru';
+const DEFAULT_VAPID_SUBJECT = 'mailto:push@ultimatehockey.ru';
 const WEB_PUSH_TTL_SECONDS = 60;
 const WEB_PUSH_TIMEOUT_MS = 10_000;
 const WEB_PUSH_RECORD_SIZE = 4096;
