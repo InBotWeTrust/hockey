@@ -25,6 +25,20 @@ export interface CoinPaymentStatusResponse {
   status: CoinPaymentStatus;
 }
 
+export function redirectToPaymentConfirmation(
+  confirmationUrl: string,
+  assign: (url: string) => void = (url) => window.location.assign(url),
+): boolean {
+  try {
+    const url = new URL(confirmationUrl);
+    if (url.protocol !== 'https:') return false;
+    assign(confirmationUrl);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function fetchCoinPackages(): Promise<{ packages: CoinPackage[] }> {
   return apiFetch<{ packages: CoinPackage[] }>('/bank/packages');
 }

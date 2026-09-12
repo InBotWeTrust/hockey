@@ -44,6 +44,7 @@ import {
   createCoinPayment,
   fetchCoinPackages,
   fetchCoinPaymentStatus,
+  redirectToPaymentConfirmation,
   type CoinPackage,
   type CoinPaymentStatus,
 } from '../api/payments.js';
@@ -156,6 +157,10 @@ export function InventoryScreen(): JSX.Element {
     amount: string;
     imageUrl: string;
   } | null>(null);
+  const [paymentRedirectError, setPaymentRedirectError] = useState<string | null>(null);
+  const [returnedPaymentResult, setReturnedPaymentResult] = useState<CoinPaymentStatus | null>(
+    null,
+  );
   const paymentInFlightRef = useRef<string | null>(null);
   const [paymentPackageId, setPaymentPackageId] = useState<string | null>(null);
   const inventoryQuery = useQuery<InventoryState>({
@@ -189,8 +194,14 @@ export function InventoryScreen(): JSX.Element {
     mutationFn: ({ packageId, attemptId }: { packageId: string; attemptId: string }) =>
       createCoinPayment(packageId, attemptId),
     onSuccess: (payment) => {
+      if (
+        payment.confirmationUrl === null ||
+        !redirectToPaymentConfirmation(payment.confirmationUrl)
+      ) {
+        setPaymentRedirectError('Не удалось перейти к оплате. Попробуйте ещё раз.');
+        return;
+      }
       window.sessionStorage.setItem(PAYMENT_ID_STORAGE_KEY, payment.paymentId);
-      if (payment.confirmationUrl !== null) window.location.assign(payment.confirmationUrl);
     },
     onSettled: () => {
       paymentInFlightRef.current = null;
@@ -221,10 +232,15 @@ export function InventoryScreen(): JSX.Element {
     ) {
       return;
     }
+    setReturnedPaymentResult(paymentStatusQuery.data.status);
+    window.sessionStorage.removeItem(PAYMENT_ID_STORAGE_KEY);
+    const next = new URLSearchParams(searchParams);
+    next.delete('payment');
+    setSearchParams(next, { replace: true });
     void queryClient.invalidateQueries({ queryKey: ['profile'] });
     void queryClient.invalidateQueries({ queryKey: ['inventory', 'me'] });
     void queryClient.invalidateQueries({ queryKey: ['inventory', 'transactions'] });
-  }, [paymentStatusQuery.data?.status, queryClient]);
+  }, [paymentStatusQuery.data?.status, queryClient, searchParams, setSearchParams]);
   const hasSelectedCategoryItems =
     selectedCategory !== null && (inventory?.items[selectedCategory].length ?? 0) > 0;
   const hasShopItems = SHOP_CATEGORY_ORDER.some(
@@ -258,6 +274,7 @@ export function InventoryScreen(): JSX.Element {
     const attemptId = crypto.randomUUID();
     paymentInFlightRef.current = pack.id;
     setPaymentPackageId(pack.id);
+    setPaymentRedirectError(null);
     paymentMutation.reset();
     paymentMutation.mutate({ packageId: pack.id, attemptId });
   };
@@ -327,12 +344,18 @@ export function InventoryScreen(): JSX.Element {
 
         {selectedCategory === null && <ShopTabs activeTab={activeTab} onChange={changeTab} />}
 
-        {isPaymentReturn && (
+        {(isPaymentReturn || returnedPaymentResult !== null) && (
           <PaymentReturnNotice
-            missingPaymentId={returnedPaymentId === null}
-            isLoading={paymentStatusQuery.isLoading}
-            isError={paymentStatusQuery.isError}
-            status={paymentStatusQuery.data?.status}
+            missingPaymentId={
+              isPaymentReturn && returnedPaymentResult === null && returnedPaymentId === null
+            }
+            isLoading={
+              isPaymentReturn && returnedPaymentResult === null && paymentStatusQuery.isLoading
+            }
+            isError={
+              isPaymentReturn && returnedPaymentResult === null && paymentStatusQuery.isError
+            }
+            status={returnedPaymentResult ?? paymentStatusQuery.data?.status}
           />
         )}
 
@@ -363,7 +386,10 @@ export function InventoryScreen(): JSX.Element {
         ) : activeTab === 'bank' ? (
           <BankTab
             activePackageId={paymentPackageId}
-            error={paymentMutation.isError ? paymentMutation.error.message : null}
+            error={
+              paymentRedirectError ??
+              (paymentMutation.isError ? paymentMutation.error.message : null)
+            }
             onPurchase={startPayment}
           />
         ) : (
