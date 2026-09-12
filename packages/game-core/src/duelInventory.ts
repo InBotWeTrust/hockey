@@ -87,7 +87,7 @@ export interface DuelPlayerCondition {
 
 export const DEFAULT_DUEL_INVENTORY_TIMING: DuelInventoryTiming = {
   stumbleIntervalMinRolls: 8,
-  stumbleIntervalMaxRolls: 12,
+  stumbleIntervalMaxRolls: 20,
   stumbleIntervalMinMs: 25_000,
   stumbleIntervalMaxMs: 45_000,
   stumbleDurationMinMs: 450,
