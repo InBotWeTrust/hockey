@@ -98,4 +98,29 @@ describe('loadConfig', () => {
       OBJECT_STORAGE_MAX_UPLOAD_BYTES: 25 * 1024 * 1024,
     });
   });
+
+  it('accepts YooKassa config only when the complete provider group is present', () => {
+    const withoutProvider = loadConfig(base);
+    expect(withoutProvider.YOOKASSA_SHOP_ID).toBeUndefined();
+    expect(withoutProvider.YOOKASSA_SECRET_KEY).toBeUndefined();
+    expect(withoutProvider.YOOKASSA_RETURN_URL).toBeUndefined();
+    expect(() =>
+      loadConfig({
+        ...base,
+        YOOKASSA_SHOP_ID: '1463027',
+      }),
+    ).toThrow();
+    expect(
+      loadConfig({
+        ...base,
+        YOOKASSA_SHOP_ID: '1463027',
+        YOOKASSA_SECRET_KEY: 'test-secret',
+        YOOKASSA_RETURN_URL: 'https://dev.hockey.inbotwetrust.ru/inventory?tab=bank',
+      }),
+    ).toMatchObject({
+      YOOKASSA_SHOP_ID: '1463027',
+      YOOKASSA_SECRET_KEY: 'test-secret',
+      YOOKASSA_RETURN_URL: 'https://dev.hockey.inbotwetrust.ru/inventory?tab=bank',
+    });
+  });
 });
