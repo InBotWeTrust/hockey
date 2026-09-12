@@ -54,7 +54,10 @@ describe.skipIf(!hasIntegrationEnv)('GET /profile/experience-rating', () => {
   let viewerToken: string;
   let viewerId: string;
 
-  async function login(id: string, firstName: string): Promise<{ accessToken: string; userId: string }> {
+  async function login(
+    id: string,
+    firstName: string,
+  ): Promise<{ accessToken: string; userId: string }> {
     const payload: Record<string, string> = {
       id,
       first_name: firstName,
@@ -100,9 +103,9 @@ describe.skipIf(!hasIntegrationEnv)('GET /profile/experience-rating', () => {
     ]);
     viewerToken = players[4]!.accessToken;
     viewerId = players[4]!.userId;
-    const tiedPlayers = players.slice(1, 4).sort((left, right) =>
-      left.userId.localeCompare(right.userId),
-    );
+    const tiedPlayers = players
+      .slice(1, 4)
+      .sort((left, right) => left.userId.localeCompare(right.userId));
     await app.pg.query(
       `update users
           set experience = case id
@@ -208,13 +211,59 @@ describe.skipIf(!hasIntegrationEnv)('GET /profile/experience-rating', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('serves profile goals, accuracy and streak ratings', async () => {
+    const goals = await app.inject({
+      method: 'GET',
+      url: '/profile/ratings/goals?limit=2',
+      headers: { authorization: `Bearer ${viewerToken}` },
+    });
+    expect(goals.statusCode).toBe(200);
+    const goalsBody = goals.json() as { metric: string; rows: Array<Record<string, unknown>> };
+    expect(goalsBody.metric).toBe('goals');
+    expect(goalsBody.rows[0]).toMatchObject({ place: 1, goals: 90, shots: 100 });
+
+    const accuracy = await app.inject({
+      method: 'GET',
+      url: '/profile/ratings/accuracy',
+      headers: { authorization: `Bearer ${viewerToken}` },
+    });
+    expect(accuracy.statusCode).toBe(200);
+    expect(accuracy.json()).toMatchObject({
+      metric: 'accuracy',
+      rows: [],
+      currentUser: null,
+      eligibility: { eligible: false, goals: 10, requiredGoals: 1000 },
+    });
+
+    const streak = await app.inject({
+      method: 'GET',
+      url: '/profile/ratings/streak?limit=2',
+      headers: { authorization: `Bearer ${viewerToken}` },
+    });
+    expect(streak.statusCode).toBe(200);
+    const streakBody = streak.json() as { metric: string; rows: Array<Record<string, unknown>> };
+    expect(streakBody.metric).toBe('streak');
+    expect(streakBody.rows[0]).toMatchObject({
+      place: 1,
+      currentStreakDays: 0,
+      recordStreakDays: 0,
+    });
+  });
+
+  it('rejects unknown profile rating metrics', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/profile/ratings/unknown',
+      headers: { authorization: `Bearer ${viewerToken}` },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
   it('installs the ordered index used by experience pagination', async () => {
     const result = await app.pg.query<{ indexdef: string }>(
       `select indexdef from pg_indexes
         where schemaname = 'public' and indexname = 'users_experience_rating_idx'`,
     );
-    expect(result.rows[0]?.indexdef).toMatch(
-      /\(experience DESC, lifetime_goals_total DESC, id\)/,
-    );
+    expect(result.rows[0]?.indexdef).toMatch(/\(experience DESC, lifetime_goals_total DESC, id\)/);
   });
 });
