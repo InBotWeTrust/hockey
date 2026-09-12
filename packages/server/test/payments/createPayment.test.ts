@@ -1,0 +1,271 @@
+import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { FastifyInstance } from 'fastify';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildApp } from '../../src/app.js';
+import { createJwt } from '../../src/auth/jwt.js';
+import { applyMigrations } from '../../src/db/migrations.js';
+import type {
+  CreateYooKassaPaymentInput,
+  YooKassaPayment,
+} from '../../src/payments/yookassaClient.js';
+import {
+  createTestPool,
+  getTestUrls,
+  hasIntegrationEnv,
+  resetDatabase,
+} from '../helpers/testDb.js';
+
+const MIGRATIONS_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../db/migrations',
+);
+const secret = 'access-secret-at-least-16-chars';
+
+describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
+  let app: FastifyInstance;
+  let noProviderApp: FastifyInstance;
+  let packageId: string;
+  const userId = randomUUID();
+  const secondUserId = randomUUID();
+  let authorization: string;
+  let secondAuthorization: string;
+  const createPayment = vi.fn(
+    async (input: CreateYooKassaPaymentInput, _key: string): Promise<YooKassaPayment> => {
+      // A separate pool query proves the snapshot committed before the network request.
+      const saved = await app.pg.query(
+        'select amount_rub, coin_amount from payments where id = $1',
+        [input.localPaymentId],
+      );
+      expect(saved.rows).toEqual([{ amount_rub: 699, coin_amount: '40000' }]);
+      return {
+        id: `provider-${input.localPaymentId}`,
+        status: 'pending',
+        amount: { value: '699.00', currency: 'RUB' },
+        metadata: { local_payment_id: input.localPaymentId },
+        confirmation: { type: 'redirect', confirmationUrl: 'https://yookassa.ru/checkout/test' },
+      };
+    },
+  );
+
+  beforeAll(async () => {
+    const pool = createTestPool();
+    await resetDatabase(pool);
+    await applyMigrations(pool, MIGRATIONS_DIR);
+    await pool.query(
+      "insert into users (id, display_name, timezone) values ($1, 'Buyer', 'Europe/Moscow'), ($2, 'Other buyer', 'Europe/Moscow')",
+      [userId, secondUserId],
+    );
+    packageId = (await pool.query("select id from coin_packages where slug = 'club'")).rows[0].id;
+    await pool.end();
+    const { databaseUrl, redisUrl } = getTestUrls();
+    const config = {
+      NODE_ENV: 'test' as const,
+      HOST: '0.0.0.0',
+      PORT: 3000,
+      LOG_LEVEL: 'warn' as const,
+      DATABASE_URL: databaseUrl,
+      REDIS_URL: redisUrl,
+      JWT_SECRET: secret,
+      REFRESH_SECRET: 'refresh-secret-at-least-16-chars',
+      TELEGRAM_BOT_TOKEN: '111:fixture',
+      DAILY_SEED_SECRET: 'daily-seed-secret-at-least-16!!',
+      PUSH_WORKER_CONCURRENCY: 5,
+      PUSH_WORKER_BATCH_SIZE: 50,
+      OBJECT_STORAGE_MAX_UPLOAD_BYTES: 1024,
+    };
+    app = await buildApp({
+      config,
+      yookassaClient: {
+        createPayment,
+        getPayment: async () => {
+          throw new Error('unused');
+        },
+      },
+    });
+    noProviderApp = await buildApp({ config });
+    const jwt = createJwt({ accessSecret: secret, refreshSecret: config.REFRESH_SECRET });
+    authorization = `Bearer ${await jwt.issueAccessToken({ sub: userId })}`;
+    secondAuthorization = `Bearer ${await jwt.issueAccessToken({ sub: secondUserId })}`;
+  }, 30000);
+
+  beforeEach(async () => {
+    createPayment.mockClear();
+    await app.pg.query('delete from payments');
+    await app.pg.query(
+      "update coin_packages set title = 'Игровой запас', price_rub = 699, coin_amount = 40000, is_active = true where id = $1",
+      [packageId],
+    );
+  });
+  afterAll(async () => {
+    await app?.close();
+    await noProviderApp?.close();
+  });
+
+  const submit = (
+    attemptId = randomUUID(),
+    body: Record<string, unknown> = {},
+    auth = authorization,
+  ) =>
+    app.inject({
+      method: 'POST',
+      url: '/bank/payments',
+      headers: { authorization: auth },
+      payload: { packageId, attemptId, ...body },
+    });
+
+  it('requires an authenticated existing user', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/bank/payments',
+      payload: { packageId, attemptId: randomUUID() },
+    });
+    expect(response.statusCode).toBe(401);
+    expect(createPayment).not.toHaveBeenCalled();
+  });
+
+  it('commits server-priced immutable snapshots before contacting the provider', async () => {
+    const response = await submit();
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      paymentId: expect.any(String),
+      status: 'pending',
+      confirmationUrl: 'https://yookassa.ru/checkout/test',
+    });
+    expect(createPayment).toHaveBeenCalledWith(
+      { amountRub: 699, description: 'Игровой запас', localPaymentId: response.json().paymentId },
+      response.json().paymentId,
+    );
+    await app.pg.query('update coin_packages set price_rub = 1, coin_amount = 2 where id = $1', [
+      packageId,
+    ]);
+    expect(
+      (
+        await app.pg.query(
+          'select user_id, title, amount_rub, coin_amount, provider_payment_id from payments',
+        )
+      ).rows,
+    ).toEqual([
+      {
+        user_id: userId,
+        title: 'Игровой запас',
+        amount_rub: 699,
+        coin_amount: '40000',
+        provider_payment_id: `provider-${response.json().paymentId}`,
+      },
+    ]);
+  });
+
+  it('rejects client-supplied amounts and invalid ids', async () => {
+    expect((await submit(randomUUID(), { amountRub: 1, coinAmount: 999999 })).statusCode).toBe(400);
+    expect((await submit('invalid')).statusCode).toBe(400);
+    expect(createPayment).not.toHaveBeenCalled();
+  });
+
+  it('rejects inactive and missing packages before inserting an attempt', async () => {
+    await app.pg.query('update coin_packages set is_active = false where id = $1', [packageId]);
+    expect((await submit()).statusCode).toBe(409);
+    expect((await submit(randomUUID(), { packageId: randomUUID() })).statusCode).toBe(409);
+    expect((await app.pg.query('select id from payments')).rowCount).toBe(0);
+    expect(createPayment).not.toHaveBeenCalled();
+  });
+
+  it('reuses a completed attempt even when the package has since changed or become inactive', async () => {
+    const attempt = randomUUID();
+    const first = await submit(attempt);
+    await app.pg.query('update coin_packages set is_active = false, price_rub = 1 where id = $1', [
+      packageId,
+    ]);
+    const second = await submit(attempt);
+    expect(second.statusCode).toBe(200);
+    expect(second.json()).toEqual(first.json());
+    expect(createPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('serializes concurrent requests to one local attempt and one provider creation', async () => {
+    const attempt = randomUUID();
+    const responses = await Promise.all([submit(attempt), submit(attempt), submit(attempt)]);
+    expect(responses.map((response) => response.statusCode)).toEqual([200, 200, 200]);
+    expect(new Set(responses.map((response) => response.json().paymentId)).size).toBe(1);
+    expect((await app.pg.query('select id from payments')).rowCount).toBe(1);
+    expect(createPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('scopes attempt ids to the authenticated buyer', async () => {
+    const attempt = randomUUID();
+    const first = await submit(attempt);
+    const second = await submit(attempt, {}, secondAuthorization);
+    expect(second.statusCode).toBe(200);
+    expect(second.json().paymentId).not.toBe(first.json().paymentId);
+    expect(createPayment).toHaveBeenCalledTimes(2);
+  });
+
+  it('deduplicates equivalent UUID spellings rather than treating uppercase as another attempt', async () => {
+    const attempt = randomUUID();
+    const first = await submit(attempt);
+    const second = await submit(attempt.toUpperCase(), { packageId: packageId.toUpperCase() });
+    expect(second.statusCode).toBe(200);
+    expect(second.json()).toEqual(first.json());
+    expect(createPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects reusing an attempt id for another package', async () => {
+    const attempt = randomUUID();
+    await submit(attempt);
+    expect((await submit(attempt, { packageId: randomUUID() })).statusCode).toBe(409);
+    expect(createPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries an uncertain provider failure using the saved snapshot and identical provider key', async () => {
+    createPayment.mockRejectedValueOnce(new Error('private upstream detail'));
+    const attempt = randomUUID();
+    const first = await submit(attempt);
+    expect(first.statusCode).toBe(502);
+    expect(first.body).not.toContain('private upstream detail');
+    const row = (await app.pg.query('select id from payments')).rows[0];
+    await app.pg.query(
+      'update coin_packages set price_rub = 1, coin_amount = 2, is_active = false where id = $1',
+      [packageId],
+    );
+    const second = await submit(attempt);
+    expect(second.statusCode).toBe(200);
+    expect(second.json().paymentId).toBe(row.id);
+    expect(createPayment.mock.calls.map((call) => call[1])).toEqual([row.id, row.id]);
+    expect(createPayment.mock.calls[1]?.[0].amountRub).toBe(699);
+  });
+
+  it('does not repeat uncertain provider creation after the idempotency safety window', async () => {
+    createPayment.mockRejectedValueOnce(new Error('timeout'));
+    const attempt = randomUUID();
+    await submit(attempt);
+    await app.pg.query(
+      "update payments set created_at = now() - interval '23 hours' where purchase_attempt_id = $1",
+      [attempt],
+    );
+    const response = await submit(attempt);
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error.code).toBe('payment_attempt_expired');
+    expect(createPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns unavailable when YooKassa is not configured without creating a row', async () => {
+    const response = await noProviderApp.inject({
+      method: 'POST',
+      url: '/bank/payments',
+      headers: { authorization },
+      payload: { packageId, attemptId: randomUUID() },
+    });
+    expect(response.statusCode).toBe(503);
+    expect((await app.pg.query('select id from payments')).rowCount).toBe(0);
+  });
+
+  it('preserves legacy manual rows with nullable coin payment fields', async () => {
+    const result = await app.pg.query(
+      "insert into payments (title, amount_rub, status) values ('Legacy', 0, 'pending') returning coin_package_id, coin_amount, purchase_attempt_id",
+    );
+    expect(result.rows).toEqual([
+      { coin_package_id: null, coin_amount: null, purchase_attempt_id: null },
+    ]);
+  });
+});

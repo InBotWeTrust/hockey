@@ -23,3 +23,15 @@ values
   ('professional', 'Клубный банк', 'Серьёзный запас', 190000, 2990, 'Выгода 27%', null, 5),
   ('major-league', 'Премиальный банк', 'Очень большой запас', 325000, 4990, 'Выгода 30%', 'top', 6),
   ('maximum', 'Максимальный банк', 'Максимальная выгода', 700000, 9990, 'Выгода 40%', 'premium', 7);
+
+-- Nullable additions preserve the existing inventory/manual payment history.
+alter table payments add column coin_package_id uuid references coin_packages(id) on delete set null;
+alter table payments add column coin_amount bigint check (coin_amount is null or coin_amount > 0);
+alter table payments add column purchase_attempt_id uuid;
+alter table payments add column confirmation_url text;
+create unique index payments_user_attempt_unique_idx on payments(user_id, purchase_attempt_id)
+  where purchase_attempt_id is not null;
+
+alter table currency_ledger add column payment_id uuid references payments(id) on delete set null;
+create unique index currency_ledger_payment_unique_idx on currency_ledger(payment_id)
+  where payment_id is not null;
