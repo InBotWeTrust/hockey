@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { TermsScreen } from './TermsScreen.js';
 
 describe('TermsScreen', () => {
-  it('publishes the seller, digital delivery, payment and support terms', () => {
+  it('publishes the seller and game usage terms', () => {
     render(
       <MemoryRouter>
         <TermsScreen />
@@ -19,8 +19,8 @@ describe('TermsScreen', () => {
       'href',
       'mailto:egorgumenyuk@yandex.ru',
     );
-    expect(screen.getByRole('heading', { name: /Оплата и зачисление/ })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Возвраты/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Правила использования/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Публичная оферта' })).toHaveAttribute('href', '/offer');
     expect(screen.getByRole('link', { name: 'Вернуться к тарифам' })).toHaveAttribute(
       'href',
       '/prices',

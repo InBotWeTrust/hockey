@@ -120,6 +120,9 @@ export function isBottomNavVisible(location: string | NavLocation, user: AuthUse
     pathname !== '/login' &&
     pathname !== '/prices' &&
     pathname !== '/terms' &&
+    pathname !== '/offer' &&
+    pathname !== '/privacy' &&
+    pathname !== '/personal-data-consent' &&
     pathname !== '/demo' &&
     !isInChatRoom &&
     !isOpenRinkRoute(normalizeNavLocation(location)) &&

@@ -75,9 +75,15 @@ describe('LoginScreen', () => {
     expect(screen.getByRole('button', { name: /войти как dev/i })).toHaveClass(
       'login-screen__auth-button',
     );
+    expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms');
+    expect(screen.getByRole('link', { name: 'Политика конфиденциальности' })).toHaveAttribute('href', '/privacy');
+    expect(
+      screen.getByRole('link', { name: /согласие на обработку персональных данных/i }),
+    ).toHaveAttribute('href', '/personal-data-consent');
+
     expect(vkButton.closest('main')).toHaveStyle({
       height: 'var(--app-viewport-height, 100dvh)',
-      overflow: 'hidden',
+      overflowY: 'auto',
     });
   });
 
@@ -108,7 +114,7 @@ describe('LoginScreen', () => {
 
     expect(screen.getByRole('textbox', { name: 'Код доступа' }).closest('main')).toHaveStyle({
       height: 'var(--app-viewport-height, 100dvh)',
-      overflow: 'hidden',
+      overflowY: 'auto',
     });
   });
 
@@ -162,7 +168,7 @@ describe('LoginScreen', () => {
     });
   });
 
-  it('automatically logs in with Telegram Mini App initData', async () => {
+  it('shows the legal clickwrap before logging in with Telegram Mini App initData', async () => {
     const ready = vi.fn();
     const expand = vi.fn();
     (window as TelegramWebAppWindow).Telegram = {
@@ -185,6 +191,13 @@ describe('LoginScreen', () => {
 
     renderWith();
 
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute(
+      'href',
+      '/terms',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Войти через Telegram' }));
+
     await waitFor(() => expect(useAuthStore.getState().accessToken).toBe('mini-access'));
     expect(useAuthStore.getState().user?.grip).toBe('right');
     expect(fetchSpy).toHaveBeenCalledWith(
@@ -196,6 +209,42 @@ describe('LoginScreen', () => {
     );
     expect(ready).toHaveBeenCalled();
     expect(expand).toHaveBeenCalled();
+    expect(screen.getByText('home')).toBeInTheDocument();
+  });
+
+  it('retries Telegram Mini App login after a temporary failure', async () => {
+    (window as TelegramWebAppWindow).Telegram = {
+      WebApp: {
+        initData: 'query_id=q&user=%7B%22id%22%3A42%7D&auth_date=1&hash=h',
+      },
+    };
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'temporary_failure' }), {
+          status: 503,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            accessToken: 'mini-access',
+            refreshToken: 'mini-refresh',
+            user: { id: 'u-mini', displayName: 'Mini Player', grip: 'right' },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+
+    renderWith();
+    fireEvent.click(screen.getByRole('button', { name: 'Войти через Telegram' }));
+
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Войти через Telegram' }));
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(useAuthStore.getState().accessToken).toBe('mini-access'));
     expect(screen.getByText('home')).toBeInTheDocument();
   });
 

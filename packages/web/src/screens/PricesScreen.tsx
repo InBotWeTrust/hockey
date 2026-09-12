@@ -99,7 +99,11 @@ export function PricesScreen(): JSX.Element {
             Оплата доступна только авторизованным пользователям внутри приложения. На этой
             странице оформить покупку нельзя.
           </p>
-          <Link to="/terms">Пользовательское соглашение</Link>
+          <div className="prices-screen__legal-links">
+            <Link to="/terms">Пользовательское соглашение</Link>
+            <Link to="/offer">Публичная оферта</Link>
+            <Link to="/privacy">Политика конфиденциальности</Link>
+          </div>
 
           <h2>Продавец и поддержка</h2>
           <p>ИП Гуменюк Егор Михайлович</p>
