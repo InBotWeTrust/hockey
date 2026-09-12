@@ -31,7 +31,11 @@ dig @8.8.8.8 +short AAAA www.ultimatehockey.ru
 
 ## Phase 1: parallel-serving release evidence
 
-- Candidate commit SHA:
+- Locally verified candidate commit SHA: `a810cc5ae57e8afd25d6c09275ac6ac2d087393c`
+- Local verification (2026-09-12): `pnpm typecheck`, `pnpm lint`, `pnpm build`,
+  full `pnpm test`, focused domain/workflow/push tests, and official Caddy validation PASS.
+  DB-backed suites without configured `TEST_*` credentials were SKIPPED.
+- Deployed commit SHA (record after the evidence-only runbook commit):
 - Dev Actions run URL and conclusion:
 - Production commit SHA:
 - Production Actions run URL and conclusion:
