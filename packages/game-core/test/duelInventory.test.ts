@@ -220,6 +220,40 @@ describe('duel inventory condition', () => {
     expect(stumbleWindows).toBeGreaterThanOrEqual(2);
   });
 
+  it('varies the gaps between default-skate stumbles within one period', () => {
+    const timing = {
+      ...DEFAULT_DUEL_INVENTORY_TIMING,
+      stumbleIntervalMinRolls: 8,
+      stumbleIntervalMaxRolls: 12,
+      stumbleDurationMinMs: 100,
+      stumbleDurationMaxMs: 100,
+      stumbleRecoveryMinMs: 0,
+      stumbleRecoveryMaxMs: 0,
+    };
+    const common = {
+      seed: 'varied-stumble-seed',
+      userId: 'user-a',
+      periodNumber: 1,
+      movementDistancePx: 0,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 1,
+      currentShooterSpeed: 1,
+      loadout: loadout({ fallbackSkatesTiming: timing }),
+    };
+    const starts: number[] = [];
+    let wasStumbling = false;
+
+    for (let elapsedMs = 0; elapsedMs <= 60_000; elapsedMs += 100) {
+      const { stumbleActive } = getDuelPlayerCondition({ ...common, elapsedMs });
+      if (stumbleActive && !wasStumbling) starts.push(elapsedMs);
+      wasStumbling = stumbleActive;
+    }
+
+    const gaps = starts.slice(1).map((start, index) => start - starts[index]!);
+    expect(starts.length).toBeGreaterThanOrEqual(5);
+    expect(new Set(gaps).size).toBeGreaterThan(1);
+  });
+
   it('does not start global skate stumble before the first configured interval', () => {
     const timing = {
       ...DEFAULT_DUEL_INVENTORY_TIMING,
