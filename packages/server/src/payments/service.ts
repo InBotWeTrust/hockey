@@ -115,10 +115,15 @@ export async function createCoinPayment(
       }
       const attached = await client.query<PaymentRow>(
         `update payments set provider_payment_id = $2, confirmation_url = $3, updated_at = now()
-         where id = $1 returning *`,
+         where id = $1 and (provider_payment_id is null or provider_payment_id = $2)
+         returning *`,
         [payment.id, result.id, result.confirmation?.confirmationUrl ?? null],
       );
-      payment = attached.rows[0]!;
+      const attachedPayment = attached.rows[0];
+      if (!attachedPayment) {
+        throw new AppError('payment_provider_conflict', 'Данные платежа требуют проверки', 409);
+      }
+      payment = attachedPayment;
       // Creation never credits coins or marks a payment paid; reconciliation owns settlement.
     }
     return {

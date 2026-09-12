@@ -35,6 +35,7 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
   const secondUserId = randomUUID();
   let authorization: string;
   let secondAuthorization: string;
+  const providerPayments = new Map<string, YooKassaPayment>();
   const createPayment = vi.fn(
     async (input: CreateYooKassaPaymentInput, _key: string): Promise<YooKassaPayment> => {
       // A separate pool query proves the snapshot committed before the network request.
@@ -83,8 +84,10 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
       config,
       yookassaClient: {
         createPayment,
-        getPayment: async () => {
-          throw new Error('unused');
+        getPayment: async (providerId) => {
+          const payment = providerPayments.get(providerId);
+          if (!payment) throw new Error('unknown provider fixture');
+          return payment;
         },
       },
     });
@@ -96,6 +99,8 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
 
   beforeEach(async () => {
     createPayment.mockClear();
+    providerPayments.clear();
+    await app.pg.query('delete from currency_ledger');
     await app.pg.query('delete from payments');
     await app.pg.query('delete from user_currency_account');
     await app.pg.query(
@@ -196,6 +201,126 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
     expect((await app.pg.query('select id from payments')).rowCount).toBe(1);
     expect(createPayment).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['matching', 'conflicting'] as const)(
+    'preserves the verified early webhook binding when a delayed create returns a %s provider ID',
+    async (kind) => {
+      await app.pg.query(
+        'insert into user_currency_account (user_id, balance, reserved_balance) values ($1, 100, 25)',
+        [userId],
+      );
+      const verifiedProviderId = `verified-${randomUUID()}`;
+      const returnedProviderId =
+        kind === 'matching' ? verifiedProviderId : `conflicting-${randomUUID()}`;
+      const confirmationUrl = 'https://yookassa.ru/checkout/delayed';
+      let announceCreate!: (input: CreateYooKassaPaymentInput) => void;
+      const createStarted = new Promise<CreateYooKassaPaymentInput>((resolve) => {
+        announceCreate = resolve;
+      });
+      let releaseCreate!: () => void;
+      const delayedResponse = new Promise<void>((resolve) => {
+        releaseCreate = resolve;
+      });
+      createPayment.mockImplementationOnce(async (input) => {
+        announceCreate(input);
+        await delayedResponse;
+        return {
+          id: returnedProviderId,
+          status: 'pending',
+          amount: { value: '699.00', currency: 'RUB' },
+          metadata: { local_payment_id: input.localPaymentId },
+          confirmation: { type: 'redirect', confirmationUrl },
+        };
+      });
+      const creating = submit().then((response) => response);
+      try {
+        const input = await createStarted;
+        expect(
+          (
+            await app.pg.query('select status, provider_payment_id from payments where id = $1', [
+              input.localPaymentId,
+            ])
+          ).rows,
+        ).toEqual([{ status: 'pending', provider_payment_id: null }]);
+        providerPayments.set(verifiedProviderId, {
+          id: verifiedProviderId,
+          status: 'succeeded',
+          amount: { value: '699.00', currency: 'RUB' },
+          metadata: { local_payment_id: input.localPaymentId },
+        });
+        const webhook = await app.inject({
+          method: 'POST',
+          url: '/bank/payments/yookassa/webhook',
+          payload: {
+            type: 'notification',
+            event: 'payment.succeeded',
+            object: { id: verifiedProviderId },
+          },
+        });
+        expect(webhook.statusCode).toBe(200);
+        const settled = (
+          await app.pg.query(
+            'select status, provider_payment_id, paid_at from payments where id = $1',
+            [input.localPaymentId],
+          )
+        ).rows[0];
+        expect(settled).toMatchObject({
+          status: 'paid',
+          provider_payment_id: verifiedProviderId,
+          paid_at: expect.any(Date),
+        });
+
+        releaseCreate();
+        const response = await creating;
+        if (kind === 'matching') {
+          expect(response.statusCode).toBe(200);
+          expect(response.json()).toEqual({
+            paymentId: input.localPaymentId,
+            status: 'paid',
+            confirmationUrl,
+          });
+        } else {
+          expect(response.statusCode).toBe(409);
+          expect(response.json().error.code).toBe('payment_provider_conflict');
+          expect(response.body).not.toContain(returnedProviderId);
+          expect(response.body).not.toContain(confirmationUrl);
+        }
+        expect(
+          (
+            await app.pg.query(
+              'select status, provider_payment_id, paid_at, confirmation_url from payments where id = $1',
+              [input.localPaymentId],
+            )
+          ).rows,
+        ).toEqual([{ ...settled, confirmation_url: kind === 'matching' ? confirmationUrl : null }]);
+        expect(
+          (
+            await app.pg.query(
+              'select balance, reserved_balance from user_currency_account where user_id = $1',
+              [userId],
+            )
+          ).rows,
+        ).toEqual([{ balance: 40100, reserved_balance: 25 }]);
+        expect(
+          (
+            await app.pg.query(
+              "select payment_id, available_delta, metadata from currency_ledger where reason = 'purchase'",
+              [],
+            )
+          ).rows,
+        ).toEqual([
+          {
+            payment_id: input.localPaymentId,
+            available_delta: 40000,
+            metadata: { provider_payment_id: verifiedProviderId },
+          },
+        ]);
+      } finally {
+        releaseCreate();
+        await creating;
+      }
+    },
+  );
 
   it('scopes attempt ids to the authenticated buyer', async () => {
     const attempt = randomUUID();
