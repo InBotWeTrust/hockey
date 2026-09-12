@@ -159,17 +159,61 @@ function defaultSkateStumbleWindow(
   timing: DuelInventoryTiming,
 ): { active: boolean; offsetPx: number } {
   const randomness = input.stumbleRandomness ?? createDuelStumbleRandomness(input, timing);
-  const { usesRollInterval, interval, duration, recovery } = randomness;
-  if (interval <= 0 || duration <= 0) return { active: false, offsetPx: 0 };
+  if (randomness.interval <= 0 || randomness.duration <= 0) {
+    return { active: false, offsetPx: 0 };
+  }
 
-  const intervalMs = usesRollInterval
-    ? (interval / Math.max(0.001, input.currentShooterSpeed * 2)) * 1000
-    : interval;
-  if (input.elapsedMs < intervalMs) return { active: false, offsetPx: 0 };
-  const windowMs = duration + Math.max(0, recovery);
-  const phaseMs = (input.elapsedMs - intervalMs) % intervalMs;
-  if (phaseMs >= windowMs) return { active: false, offsetPx: 0 };
-  return { active: true, offsetPx: 0 };
+  let eventStartMs = stumbleIntervalMs(
+    randomness.interval,
+    randomness.usesRollInterval,
+    input.currentShooterSpeed,
+  );
+  let eventIndex = 0;
+  while (eventStartMs <= input.elapsedMs) {
+    const duration =
+      eventIndex === 0
+        ? randomness.duration
+        : deterministicRange(
+            `${input.seed}:${input.userId}:${input.periodNumber}:stumble-duration:${eventIndex}`,
+            timing.stumbleDurationMinMs,
+            timing.stumbleDurationMaxMs,
+          );
+    const recovery =
+      eventIndex === 0
+        ? randomness.recovery
+        : deterministicRange(
+            `${input.seed}:${input.userId}:${input.periodNumber}:stumble-recovery:${eventIndex}`,
+            timing.stumbleRecoveryMinMs,
+            timing.stumbleRecoveryMaxMs,
+          );
+    if (input.elapsedMs < eventStartMs + duration + Math.max(0, recovery)) {
+      return { active: true, offsetPx: 0 };
+    }
+
+    eventIndex += 1;
+    const interval = deterministicRange(
+      `${input.seed}:${input.userId}:${input.periodNumber}:stumble-interval:${eventIndex}`,
+      randomness.usesRollInterval ? timing.stumbleIntervalMinRolls : timing.stumbleIntervalMinMs,
+      randomness.usesRollInterval ? timing.stumbleIntervalMaxRolls : timing.stumbleIntervalMaxMs,
+    );
+    eventStartMs += stumbleIntervalMs(
+      interval,
+      randomness.usesRollInterval,
+      input.currentShooterSpeed,
+    );
+  }
+  return { active: false, offsetPx: 0 };
+}
+
+function stumbleIntervalMs(
+  interval: number,
+  usesRollInterval: boolean,
+  currentShooterSpeed: number,
+): number {
+  if (usesRollInterval) {
+    return Math.max(1, (interval / Math.max(0.001, currentShooterSpeed * 2)) * 1000);
+  }
+  return Math.max(1, interval);
 }
 
 export function createDuelStumbleRandomness(
