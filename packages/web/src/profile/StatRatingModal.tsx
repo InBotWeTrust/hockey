@@ -32,10 +32,12 @@ function tableRows(players: StatRatingPlayer[]): Array<Record<string, unknown>> 
 export function StatRatingModal({
   metric,
   currentUserId,
+  onCurrentUser,
   onClose,
 }: {
   metric: StatRatingMetric;
   currentUserId: string;
+  onCurrentUser: (player: StatRatingPlayer) => void;
   onClose: () => void;
 }): JSX.Element {
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -51,6 +53,7 @@ export function StatRatingModal({
     queryFn: ({ pageParam }) => fetchStatRatingPage(metric, pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
+    refetchOnMount: 'always',
   });
   const rows = useMemo(() => {
     const unique = new Map<string, StatRatingPlayer>();
@@ -62,6 +65,10 @@ export function StatRatingModal({
   const currentUser = firstPage?.currentUser ?? null;
   const modal = config[metric];
   const Icon = modal.icon;
+
+  useEffect(() => {
+    if (currentUser !== null) onCurrentUser(currentUser);
+  }, [currentUser, onCurrentUser]);
 
   useEffect(() => {
     const root = scrollRef.current;

@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Award,
@@ -40,7 +40,7 @@ import type { ProfileData } from './profileTypes.js';
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 import { ExperienceRatingModal } from '../profile/ExperienceRatingModal.js';
 import { StatRatingModal } from '../profile/StatRatingModal.js';
-import type { StatRatingMetric } from '../api/statRating.js';
+import type { StatRatingMetric, StatRatingPlayer } from '../api/statRating.js';
 
 export type TrophySectionKey = keyof NonNullable<ProfileData['trophyDetails']>;
 
@@ -626,6 +626,23 @@ export function ProfileScreen(): JSX.Element {
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
   });
+  const synchronizeProfileStats = useCallback(
+    (player: StatRatingPlayer): void => {
+      queryClient.setQueryData<ProfileData>(['profile'], (current) => {
+        if (current === undefined || current.id !== player.userId) return current;
+        return {
+          ...current,
+          stats: {
+            ...current.stats,
+            goals: player.goals,
+            shots: player.shots,
+            accuracy: Math.round(player.accuracy),
+          },
+        };
+      });
+    },
+    [queryClient],
+  );
   const equipmentMutation = useMutation({
     mutationFn: (patch: Partial<InventoryState['equipped']>) => patchEquipment(patch),
     onSuccess: (inventory) => {
@@ -739,6 +756,7 @@ export function ProfileScreen(): JSX.Element {
         <StatRatingModal
           metric={statRatingMetric}
           currentUserId={profile.id}
+          onCurrentUser={synchronizeProfileStats}
           onClose={() => setStatRatingMetric(null)}
         />
       ) : null}
