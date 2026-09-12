@@ -985,8 +985,8 @@ export function AdminScreen(): JSX.Element {
                 {tabs.map((item) => {
                   const label =
                     item.id === 'tournaments' && pendingTournamentApplicationCount > 0
-                        ? `${item.label} (${pendingTournamentApplicationCount})`
-                        : item.label;
+                      ? `${item.label} (${pendingTournamentApplicationCount})`
+                      : item.label;
                   return (
                     <button
                       key={item.id}
@@ -5418,7 +5418,13 @@ function CoinPackagesPanel({
   packages: AdminCoinPackage[];
   onChanged: () => void;
 }): JSX.Element {
-  const [editing, setEditing] = useState<AdminCoinPackage | 'new' | null>(null);
+  const nextEditorId = useRef(0);
+  const [editing, setEditing] = useState<{ id: number; item: AdminCoinPackage | null } | null>(
+    null,
+  );
+  function openEditor(item: AdminCoinPackage | null): void {
+    setEditing({ id: ++nextEditorId.current, item });
+  }
   return (
     <>
       <div
@@ -5427,17 +5433,18 @@ function CoinPackagesPanel({
         <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
           Пакеты монет ({numberText(packages.length)})
         </div>
-        <button type="button" className="btn btn--cta" onClick={() => setEditing('new')}>
+        <button type="button" className="btn btn--cta" onClick={() => openEditor(null)}>
           Создать пакет
         </button>
       </div>
       {editing !== null && (
         <CoinPackageEditor
-          key={editing === 'new' ? 'new' : editing.id}
-          item={editing === 'new' ? null : editing}
+          key={editing.id}
+          item={editing.item}
           onCancel={() => setEditing(null)}
           onSaved={() => {
-            setEditing(null);
+            // A delayed save must not close an editor opened after that request started.
+            setEditing((current) => (current?.id === editing.id ? null : current));
             onChanged();
           }}
         />
@@ -5478,7 +5485,7 @@ function CoinPackagesPanel({
             type="button"
             className="icon-btn"
             aria-label={`Редактировать ${item.title}`}
-            onClick={() => setEditing(item)}
+            onClick={() => openEditor(item)}
           >
             <Pencil size={15} />
           </button>
