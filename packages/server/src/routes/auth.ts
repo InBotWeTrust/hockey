@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { verifyTelegramLoginPayload, verifyTelegramMiniAppInitData } from '../auth/telegram.js';
 import { createJwt, verifyAccessToken, verifyRefreshToken } from '../auth/jwt.js';
-import { authenticateDevAccessCode } from '../auth/devAccessCode.js';
+import { authenticateDevAccessCode, isDevAccessCodeActive } from '../auth/devAccessCode.js';
 import { exchangeVkCode, fetchVkProfile, type VkProfile } from '../auth/vk.js';
 import { findOrCreateTelegramUser, findOrLinkOrCreateVkUser, type AppUser } from '../auth/users.js';
 import { canUseExperimentalTrainingCourt } from '../auth/featureAccess.js';
@@ -311,6 +311,12 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
     if (!consumed || consumed.userId !== payload.sub) {
       throw new AppError('unauthenticated', 'refresh token not recognized', 401);
     }
+    if (
+      consumed.accessCodeId !== undefined &&
+      !(await isDevAccessCodeActive(app.pg, consumed.accessCodeId))
+    ) {
+      throw new AppError('unauthenticated', 'access code has been revoked', 401);
+    }
     await assertUserCanAuthenticate(app, payload.sub);
 
     const [accessToken, refresh] = await Promise.all([
@@ -321,6 +327,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
       jti: refresh.jti,
       userId: payload.sub,
       ttlSec: refresh.expSec,
+      ...(consumed.accessCodeId !== undefined ? { accessCodeId: consumed.accessCodeId } : {}),
     });
 
     reply.send({ accessToken, refreshToken: refresh.token });
@@ -360,7 +367,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
       }
 
       const tz = safeIanaTimezone(body.data.timezone);
-      const user = await authenticateDevAccessCode(app.pg, {
+      const { user, accessCodeId } = await authenticateDevAccessCode(app.pg, {
         code: body.data.code,
         ...(tz !== undefined ? { timezone: tz } : {}),
       });
@@ -374,6 +381,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
         jti: refresh.jti,
         userId: user.id,
         ttlSec: refresh.expSec,
+        accessCodeId,
       });
       reply.send({
         accessToken,

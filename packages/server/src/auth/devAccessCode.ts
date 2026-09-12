@@ -68,7 +68,7 @@ export async function createDevAccessCode(
 export async function authenticateDevAccessCode(
   pool: Pool,
   input: { code: string; timezone?: string },
-): Promise<AppUser> {
+): Promise<{ user: AppUser; accessCodeId: string }> {
   const codeHash = hashDevAccessCode(input.code);
   const { rows } = await pool.query<{
     id: string;
@@ -109,5 +109,16 @@ export async function authenticateDevAccessCode(
     [access.id, user.id],
   );
 
-  return user;
+  return { user, accessCodeId: access.id };
+}
+
+export async function isDevAccessCodeActive(pool: Pool, accessCodeId: string): Promise<boolean> {
+  const { rowCount } = await pool.query(
+    `select 1
+       from dev_access_codes
+      where id = $1
+        and revoked_at is null`,
+    [accessCodeId],
+  );
+  return rowCount === 1;
 }
