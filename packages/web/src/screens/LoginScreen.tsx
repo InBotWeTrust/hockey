@@ -22,6 +22,7 @@ export function LoginScreen(): JSX.Element {
   const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME ?? '';
   const devCodeLoginEnabled = import.meta.env.VITE_DEV_ACCESS_CODE_LOGIN_ENABLED === 'true';
   const [devCode, setDevCode] = useState('');
+  const [devCodeExpanded, setDevCodeExpanded] = useState(false);
   const [devCodeError, setDevCodeError] = useState<string | null>(null);
   const [devCodePending, setDevCodePending] = useState(false);
   const [devError, setDevError] = useState<string | null>(null);
@@ -124,7 +125,7 @@ export function LoginScreen(): JSX.Element {
 
   return (
     <main
-      className={`screen login-screen${devCodeLoginEnabled && compactCodeViewport ? ' login-screen--compact-code' : ''}`}
+      className={`screen login-screen${devCodeExpanded && compactCodeViewport ? ' login-screen--compact-code' : ''}`}
       style={{
         textAlign: 'center',
         height: 'var(--app-viewport-height, 100dvh)',
@@ -151,7 +152,57 @@ export function LoginScreen(): JSX.Element {
       <div className="login-screen__spacer" style={{ flex: 1, minHeight: 8 }} />
 
       <div className="login-screen__actions">
-        {devCodeLoginEnabled ? (
+        <TelegramLoginButton
+          botUsername={botUsername}
+          onAuth={(payload) => mutation.mutate(payload)}
+        />
+
+        <button
+          type="button"
+          className="btn login-screen__auth-button login-screen__auth-button--vk"
+          disabled={vkPending}
+          onClick={async () => {
+            setVkError(null);
+            setVkPending(true);
+            try {
+              await startVkOAuth();
+            } catch (err) {
+              setVkPending(false);
+              setVkError(err instanceof Error ? err.message : 'Ошибка входа через ВКонтакте');
+            }
+          }}
+          style={{
+            alignSelf: 'center',
+            padding: '0 14px',
+            background: '#0077ff',
+            color: '#ffffff',
+            justifyContent: 'center',
+            fontWeight: 700,
+            letterSpacing: 0,
+            boxShadow: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <img
+            src="/icons/vk-community.png"
+            alt=""
+            aria-hidden="true"
+            className="login-screen__auth-icon"
+          />
+          Войти через ВКонтакте
+        </button>
+
+        {devCodeLoginEnabled && !devCodeExpanded ? (
+          <button
+            type="button"
+            className="btn btn--ghost login-screen__auth-button"
+            onClick={() => setDevCodeExpanded(true)}
+          >
+            Тестовый вход
+          </button>
+        ) : null}
+
+        {devCodeLoginEnabled && devCodeExpanded ? (
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -197,52 +248,10 @@ export function LoginScreen(): JSX.Element {
               disabled={devCodePending}
               style={{ justifyContent: 'center' }}
             >
-              {devCodePending ? 'Проверяем…' : 'Войти в dev'}
+              {devCodePending ? 'Проверяем…' : 'Войти'}
             </button>
           </form>
-        ) : (
-          <>
-            <TelegramLoginButton
-              botUsername={botUsername}
-              onAuth={(payload) => mutation.mutate(payload)}
-            />
-
-            <button
-              type="button"
-              className="btn login-screen__auth-button login-screen__auth-button--vk"
-              disabled={vkPending}
-              onClick={async () => {
-                setVkError(null);
-                setVkPending(true);
-                try {
-                  await startVkOAuth();
-                } catch (err) {
-                  setVkPending(false);
-                  setVkError(err instanceof Error ? err.message : 'Ошибка входа через ВКонтакте');
-                }
-              }}
-              style={{
-                alignSelf: 'center',
-                padding: '0 14px',
-                background: '#0077ff',
-                color: '#ffffff',
-                justifyContent: 'center',
-                fontWeight: 700,
-                letterSpacing: 0,
-                boxShadow: 'none',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              <img
-                src="/icons/vk-community.png"
-                alt=""
-                aria-hidden="true"
-                className="login-screen__auth-icon"
-              />
-              Войти через ВКонтакте
-            </button>
-          </>
-        )}
+        ) : null}
 
         <button
           type="button"
