@@ -32,6 +32,9 @@ const TournamentResultPreviewScreen = lazy(() =>
 const InventoryScreen = lazy(() =>
   import('../screens/InventoryScreen.js').then((module) => ({ default: module.InventoryScreen })),
 );
+const PricesScreen = lazy(() =>
+  import('../screens/PricesScreen.js').then((module) => ({ default: module.PricesScreen })),
+);
 const DailyOverviewScreen = lazy(() =>
   import('../screens/DailyOverviewScreen.js').then((module) => ({
     default: module.DailyOverviewScreen,
@@ -142,6 +145,8 @@ export function appBackdropClassName(pathname: string, search = ''): string {
     return 'app-shell--login';
   }
 
+  if (pathname === '/prices') return '';
+
   if (pathname === '/admin') {
     return 'app-shell--arena app-shell--arena-admin';
   }
@@ -182,7 +187,9 @@ function AppExperience(): JSX.Element {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const bottomNavVisible =
-    location.pathname !== '/dev/tournament-result-preview' && isBottomNavVisible(location, user);
+    location.pathname !== '/dev/tournament-result-preview' &&
+    location.pathname !== '/prices' &&
+    isBottomNavVisible(location, user);
   const backdropClassName = appBackdropClassName(location.pathname, location.search);
   const surfaceClassName = appSurfaceClassName(location.pathname);
   const hasArenaBackdrop = backdropClassName.split(' ').includes('app-shell--arena');
@@ -229,6 +236,7 @@ function AppExperience(): JSX.Element {
           <Suspense fallback={<RouteLoading />}>
             <Routes>
               <Route path="/login" element={<LoginScreen />} />
+              <Route path="/prices" element={<PricesScreen />} />
               <Route path="/demo" element={<DemoScreen />} />
               <Route
                 path="/dev/tournament-result-preview"
@@ -436,6 +444,7 @@ function AppFrame(): JSX.Element {
   const isAuthenticated = useAuthStore((state) => Boolean(state.accessToken));
   const isPublicEntry =
     location.pathname === '/login' ||
+    location.pathname === '/prices' ||
     location.pathname === '/demo' ||
     location.pathname === '/auth/vk/callback';
 

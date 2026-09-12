@@ -5110,6 +5110,202 @@
   cursor: not-allowed;
 }
 
+/* Public coin catalogue: informational only, with no purchase or auth controls. */
+.prices-screen {
+  overflow-y: auto;
+  padding: calc(24px + var(--app-safe-top)) 14px calc(28px + var(--app-safe-bottom));
+}
+
+.prices-screen__content {
+  width: min(100%, 520px);
+  margin: auto;
+  display: grid;
+  gap: 14px;
+}
+
+.prices-screen__header {
+  display: grid;
+  gap: 7px;
+}
+
+.prices-screen__header .section-label {
+  margin: 0;
+}
+
+.prices-screen__header h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(25px, 7vw, 31px);
+  font-weight: 950;
+  letter-spacing: -0.045em;
+  line-height: 1.04;
+}
+
+.prices-screen__header p {
+  max-width: 38ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.prices-screen__grid {
+  display: grid;
+  gap: 10px;
+}
+
+.prices-package-card {
+  min-width: 0;
+  min-height: 112px;
+  padding: 12px;
+  border-radius: 22px;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+}
+
+.prices-package-card__icon {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--reward-coin);
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.prices-package-card__marker {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 27px;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: var(--r-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: var(--ink);
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.2);
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.prices-package-card__marker--premium {
+  color: #563b00;
+  border-color: rgba(255, 255, 255, 0.58);
+  background: linear-gradient(135deg, #ffe18a, #f4b942);
+  box-shadow: 0 3px 9px rgba(180, 117, 10, 0.3);
+}
+
+.prices-package-card__copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.prices-package-card__copy h2,
+.prices-package-card__copy p {
+  margin: 0;
+}
+
+.prices-package-card__copy h2 {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 950;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.prices-package-card__copy strong {
+  color: var(--reward-coin);
+  font-size: 19px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.prices-package-card__copy p {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.prices-package-card__badge {
+  width: fit-content;
+  min-height: 19px;
+  padding: 3px 7px;
+  border: 1px solid rgba(30, 91, 151, 0.18);
+  border-radius: var(--r-pill);
+  color: #183e64;
+  background: rgba(213, 233, 249, 0.82);
+  font-size: 9px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.prices-package-card__price {
+  align-self: start;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1.15;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.prices-screen__state {
+  padding: 14px;
+  border-radius: 18px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+@media (max-width: 360px) {
+  .prices-screen {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .prices-package-card {
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+    gap: 9px;
+    padding: 10px;
+    border-radius: 19px;
+  }
+
+  .prices-package-card__icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 16px;
+  }
+
+  .prices-package-card__copy h2 {
+    font-size: 13px;
+  }
+
+  .prices-package-card__copy strong {
+    font-size: 17px;
+  }
+
+  .prices-package-card__price {
+    font-size: 13px;
+  }
+}
+
 .inventory-history-filters .segmented-tabs {
   width: 100%;
 }
