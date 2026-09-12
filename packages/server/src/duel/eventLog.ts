@@ -44,6 +44,8 @@ export type EventType =
   | 'admin_inventory_item_created'
   | 'admin_inventory_item_updated'
   | 'admin_inventory_item_deleted'
+  | 'admin_coin_package_created'
+  | 'admin_coin_package_updated'
   | 'profile_avatar_uploaded'
   | 'chat_attachment_uploaded';
 

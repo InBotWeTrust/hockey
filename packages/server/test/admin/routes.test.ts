@@ -95,6 +95,336 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
     return { authorization: `Bearer ${token}` };
   }
 
+  const packageInput = {
+    slug: 'admin-test-package',
+    title: ' Игровой запас ',
+    description: ' Для новых побед ',
+    coinAmount: 40000,
+    priceRub: 699,
+    badgeText: ' Выгодно ',
+    marker: 'hit',
+    sortOrder: -10,
+    isActive: true,
+  };
+
+  it('coin packages deny unauthenticated and non-admin reads and writes', async () => {
+    for (const method of ['GET', 'POST', 'PATCH'] as const) {
+      const url = `/admin/coin-packages${method === 'PATCH' ? '/11111111-1111-4111-8111-111111111111' : ''}`;
+      for (const [token, expected] of [
+        [null, 401],
+        [playerToken, 403],
+      ] as const) {
+        const response = await app.inject({
+          method,
+          url,
+          headers: token ? auth(token) : {},
+          ...(method === 'GET' ? {} : { payload: packageInput }),
+        });
+        expect(response.statusCode).toBe(expected);
+      }
+    }
+  });
+
+  it('coin packages create, update and deactivate with audited immutable payments snapshots', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/admin/coin-packages',
+      headers: auth(adminToken),
+      payload: packageInput,
+    });
+    expect(created.statusCode).toBe(201);
+    const item = created.json().package;
+    expect(item).toMatchObject({
+      ...packageInput,
+      title: 'Игровой запас',
+      description: 'Для новых побед',
+      badgeText: 'Выгодно',
+    });
+    expect(item.createdAt).toEqual(expect.any(String));
+    expect(item.updatedAt).toEqual(expect.any(String));
+
+    const paymentId = (
+      await pool.query(
+        `insert into payments (user_id, coin_package_id, title, coin_amount, amount_rub, provider, provider_payment_id, status, paid_at)
+       values ($1, $2, 'Игровой запас', 40000, 699, 'yookassa', 'provider-admin-snapshot', 'paid', now()) returning id`,
+        [playerId, item.id],
+      )
+    ).rows[0].id;
+    const updated = await app.inject({
+      method: 'PATCH',
+      url: `/admin/coin-packages/${item.id}`,
+      headers: auth(adminToken),
+      payload: {
+        title: 'Новый запас',
+        description: 'Новое описание',
+        coinAmount: 50000,
+        priceRub: 799,
+        badgeText: '',
+        marker: null,
+        sortOrder: -20,
+        isActive: false,
+      },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().package).toMatchObject({
+      id: item.id,
+      slug: packageInput.slug,
+      title: 'Новый запас',
+      coinAmount: 50000,
+      priceRub: 799,
+      badgeText: null,
+      marker: null,
+      isActive: false,
+    });
+    const listing = await app.inject({
+      method: 'GET',
+      url: '/admin/coin-packages',
+      headers: auth(adminToken),
+    });
+    expect(listing.json().packages[0]).toMatchObject({
+      id: item.id,
+      isActive: false,
+      sortOrder: -20,
+    });
+    const publicListing = await app.inject({ method: 'GET', url: '/bank/packages' });
+    expect(publicListing.json().packages.some((row: { id: string }) => row.id === item.id)).toBe(
+      false,
+    );
+
+    const payments = await app.inject({
+      method: 'GET',
+      url: `/admin/payments?q=${paymentId}`,
+      headers: auth(adminToken),
+    });
+    expect(payments.json()).toMatchObject({
+      total: 1,
+      payments: [
+        {
+          id: paymentId,
+          providerPaymentId: 'provider-admin-snapshot',
+          provider: 'yookassa',
+          title: 'Игровой запас',
+          coinAmount: 40000,
+          amountRub: 699,
+          status: 'paid',
+          createdAt: expect.any(String),
+          paidAt: expect.any(String),
+        },
+      ],
+    });
+    const audit = await pool.query(
+      "select type, payload from event_log where user_id = $1 and type like 'admin_coin_package_%' order by created_at",
+      [adminId],
+    );
+    expect(audit.rows).toEqual([
+      {
+        type: 'admin_coin_package_created',
+        payload: expect.objectContaining({ package_id: item.id }),
+      },
+      {
+        type: 'admin_coin_package_updated',
+        payload: expect.objectContaining({
+          package_id: item.id,
+          fields: expect.arrayContaining(['isActive', 'coinAmount', 'priceRub']),
+        }),
+      },
+    ]);
+  });
+
+  it('coin packages enforce unique stable slugs while allowing tied display orders', async () => {
+    const create = (slug: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/admin/coin-packages',
+        headers: auth(adminToken),
+        payload: { ...packageInput, slug, sortOrder: -100 },
+      });
+    const second = await create('admin-tie-b');
+    const first = await create('admin-tie-a');
+    expect(first.statusCode).toBe(201);
+    expect(second.statusCode).toBe(201);
+    expect((await create('admin-tie-a')).statusCode).toBe(409);
+    const id = first.json().package.id;
+    expect(
+      (
+        await app.inject({
+          method: 'PATCH',
+          url: `/admin/coin-packages/${id}`,
+          headers: auth(adminToken),
+          payload: { slug: 'renamed' },
+        })
+      ).statusCode,
+    ).toBe(400);
+    const listing = await app.inject({
+      method: 'GET',
+      url: '/admin/coin-packages',
+      headers: auth(adminToken),
+    });
+    const publicListing = await app.inject({ method: 'GET', url: '/bank/packages' });
+    for (const response of [listing, publicListing]) {
+      expect(
+        response
+          .json()
+          .packages.slice(0, 2)
+          .map((row: { slug: string }) => row.slug),
+      ).toEqual(['admin-tie-a', 'admin-tie-b']);
+    }
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: `/admin/coin-packages/${id}`,
+          headers: auth(adminToken),
+        })
+      ).statusCode,
+    ).toBe(404);
+  });
+
+  it.each([
+    { title: '   ' },
+    { coinAmount: 0 },
+    { coinAmount: 1.5 },
+    { coinAmount: 100000001 },
+    { priceRub: -1 },
+    { priceRub: 1.5 },
+    { priceRub: 2147483648 },
+    { marker: 'other' },
+    { sortOrder: 1.5 },
+    { sortOrder: 2147483648 },
+    { isActive: 'yes' },
+  ])('coin packages reject invalid commercial fields on create and update: %j', async (invalid) => {
+    const id = (await pool.query("select id from coin_packages where slug = 'starter'")).rows[0].id;
+    for (const method of ['POST', 'PATCH'] as const) {
+      const response = await app.inject({
+        method,
+        url: `/admin/coin-packages${method === 'PATCH' ? `/${id}` : ''}`,
+        headers: auth(adminToken),
+        payload: method === 'POST' ? { ...packageInput, ...invalid } : invalid,
+      });
+      expect(response.statusCode).toBe(400);
+    }
+  });
+
+  it('coin packages reject empty patches and slugs and return missing rows as 404', async () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/admin/coin-packages',
+          headers: auth(adminToken),
+          payload: { ...packageInput, slug: ' ' },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'PATCH',
+          url: `/admin/coin-packages/${id}`,
+          headers: auth(adminToken),
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'PATCH',
+          url: `/admin/coin-packages/${id}`,
+          headers: auth(adminToken),
+          payload: { coinAmount: 100000000 },
+        })
+      ).statusCode,
+    ).toBe(404);
+  });
+
+  it('coin packages accept the maximum coin amount and preserve omitted fields on partial updates', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/admin/coin-packages',
+      headers: auth(adminToken),
+      payload: { slug: ' admin-max ', title: 'Максимум', coinAmount: 100000000, priceRub: 1 },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().package).toMatchObject({
+      slug: 'admin-max',
+      description: '',
+      coinAmount: 100000000,
+      badgeText: null,
+      marker: null,
+      sortOrder: 0,
+      isActive: true,
+    });
+    const { id } = created.json().package;
+    const updated = await app.inject({
+      method: 'PATCH',
+      url: `/admin/coin-packages/${id}`,
+      headers: auth(adminToken),
+      payload: { marker: 'top', badgeText: ' Топ ' },
+    });
+    expect(updated.json().package).toMatchObject({
+      title: 'Максимум',
+      coinAmount: 100000000,
+      priceRub: 1,
+      marker: 'top',
+      badgeText: 'Топ',
+      isActive: true,
+    });
+    const deactivated = await app.inject({
+      method: 'PATCH',
+      url: `/admin/coin-packages/${id}`,
+      headers: auth(adminToken),
+      payload: { isActive: false },
+    });
+    expect(deactivated.json().package).toMatchObject({
+      coinAmount: 100000000,
+      priceRub: 1,
+      marker: 'top',
+      badgeText: 'Топ',
+      isActive: false,
+    });
+  });
+
+  it('coin packages roll back catalog writes when the required audit event cannot be saved', async () => {
+    await pool.query(`create function reject_admin_package_audit() returns trigger language plpgsql as $$
+      begin
+        if new.type in ('admin_coin_package_created', 'admin_coin_package_updated') then
+          raise exception 'audit unavailable';
+        end if;
+        return new;
+      end $$;
+      create trigger reject_admin_package_audit before insert on event_log for each row execute function reject_admin_package_audit()`);
+    try {
+      const created = await app.inject({
+        method: 'POST',
+        url: '/admin/coin-packages',
+        headers: auth(adminToken),
+        payload: { ...packageInput, slug: 'audit-rollback' },
+      });
+      expect(created.statusCode).toBe(500);
+      expect(
+        (await pool.query("select id from coin_packages where slug = 'audit-rollback'")).rowCount,
+      ).toBe(0);
+      const original = (await pool.query("select * from coin_packages where slug = 'starter'"))
+        .rows[0];
+      const updated = await app.inject({
+        method: 'PATCH',
+        url: `/admin/coin-packages/${original.id}`,
+        headers: auth(adminToken),
+        payload: { priceRub: 1, isActive: false },
+      });
+      expect(updated.statusCode).toBe(500);
+      expect(
+        (await pool.query('select * from coin_packages where id = $1', [original.id])).rows[0],
+      ).toEqual(original);
+    } finally {
+      await pool.query(
+        'drop trigger reject_admin_package_audit on event_log; drop function reject_admin_package_audit()',
+      );
+    }
+  });
+
   it('gates admin routes by global user role', async () => {
     const playerRes = await app.inject({
       method: 'GET',
@@ -994,6 +1324,7 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
           userDisplayName: 'Regular Player',
           title: 'Про-клюшка',
           amountRub: 249,
+          coinAmount: null,
           status: 'paid',
         },
       ],
