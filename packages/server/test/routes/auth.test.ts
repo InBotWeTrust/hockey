@@ -176,6 +176,46 @@ describe.skipIf(!hasIntegrationEnv)('POST /auth/telegram', () => {
     }
   });
 
+  it('rejects refresh rotation after the access code is revoked', async () => {
+    const pool = createTestPool();
+    try {
+      const { code, id } = await createDevAccessCode(pool, {
+        label: 'Revocable production review',
+        displayName: 'Review Admin',
+        telegramProviderUid: '432014500',
+        role: 'admin',
+        code: 'REVIEW-STOP-1',
+      });
+      const login = await app.inject({
+        method: 'POST',
+        url: '/auth/dev-code',
+        payload: { code },
+      });
+      expect(login.statusCode).toBe(200);
+      const firstRefreshToken = (login.json() as { refreshToken: string }).refreshToken;
+
+      const firstRefresh = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        payload: { refreshToken: firstRefreshToken },
+      });
+      expect(firstRefresh.statusCode).toBe(200);
+      const rotatedRefreshToken = (firstRefresh.json() as { refreshToken: string }).refreshToken;
+
+      await pool.query('update dev_access_codes set revoked_at = now() where id = $1', [id]);
+      const refresh = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        payload: { refreshToken: rotatedRefreshToken },
+      });
+
+      expect(refresh.statusCode).toBe(401);
+      expect(refresh.json()).toMatchObject({ error: { code: 'unauthenticated' } });
+    } finally {
+      await pool.end();
+    }
+  });
+
   it('issues tokens from valid Telegram Mini App initData', async () => {
     const res = await app.inject({
       method: 'POST',
