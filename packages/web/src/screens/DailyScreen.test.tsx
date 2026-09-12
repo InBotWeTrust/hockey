@@ -4936,6 +4936,12 @@ describe('DailyScreen', () => {
       'daily-calendar__duel-result--win',
       'daily-calendar__duel-result--win',
     ]);
+    expect(designSystemCss).toMatch(
+      /\.daily-calendar__duel-results\s*\{[^}]*overflow:\s*hidden;[^}]*\}/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.daily-calendar__duel-result\s*\{[^}]*flex:\s*1 1 4px;[^}]*max-width:\s*4px;[^}]*min-width:\s*0;[^}]*aspect-ratio:\s*1;[^}]*\}/s,
+    );
     expect(screen.getByText('Игровой день')).toBeInTheDocument();
     expect(screen.getByText('Победа')).toBeInTheDocument();
     expect(screen.getByText('Поражение')).toBeInTheDocument();
