@@ -359,6 +359,36 @@
   text-align: center;
   text-shadow: 0 2px 8px rgba(0, 8, 22, 0.94);
 }
+.login-screen__terms a {
+  color: #ffffff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.login-screen--mini-app {
+  padding: max(20px, var(--app-safe-top)) 16px max(20px, var(--app-safe-bottom));
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+}
+.login-screen__mini-app-card {
+  width: min(100%, 360px);
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+  color: var(--ink);
+  text-align: left;
+}
+.login-screen__mini-app-card h1,
+.login-screen__mini-app-card p {
+  margin: 0;
+}
+.login-screen__mini-app-card p {
+  line-height: 1.55;
+}
+.login-screen__mini-app-card a {
+  color: #075985;
+  font-weight: 800;
+}
 .login-screen .telegram-login-unavailable,
 .login-screen .telegram-login-fallback__copy {
   color: rgba(245, 250, 255, 0.92) !important;
@@ -5318,6 +5348,17 @@
 .legal-screen__back {
   justify-self: start;
   padding: 10px 2px;
+}
+
+.prices-screen__legal-links,
+.legal-screen__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.legal-screen__links {
+  padding: 18px 20px;
 }
 
 @media (max-width: 360px) {

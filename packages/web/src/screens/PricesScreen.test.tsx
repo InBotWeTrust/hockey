@@ -56,6 +56,11 @@ describe('PricesScreen', () => {
       'href',
       '/terms',
     );
+    expect(screen.getByRole('link', { name: 'Публичная оферта' })).toHaveAttribute('href', '/offer');
+    expect(screen.getByRole('link', { name: 'Политика конфиденциальности' })).toHaveAttribute(
+      'href',
+      '/privacy',
+    );
     expect(screen.getByText('ИП Гуменюк Егор Михайлович')).toBeInTheDocument();
     expect(screen.getByText(/ОГРНИП 323100000016441/)).toBeInTheDocument();
     expect(screen.getByText(/ИНН 101602099457/)).toBeInTheDocument();

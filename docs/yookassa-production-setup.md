@@ -15,6 +15,9 @@ If both are absent, deployment continues with payments disabled. If only one is 
 
 - Public prices page: `https://ultimatehockey.ru/prices`
 - Public user agreement: `https://ultimatehockey.ru/terms`
+- Public offer: `https://ultimatehockey.ru/offer`
+- Privacy policy: `https://ultimatehockey.ru/privacy`
+- Personal data consent: `https://ultimatehockey.ru/personal-data-consent`
 - Payment return URL: `https://ultimatehockey.ru/inventory?tab=bank&payment=return`
 - Webhook URL: `https://ultimatehockey.ru/api/bank/payments/yookassa/webhook`
 
