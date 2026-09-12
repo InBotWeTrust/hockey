@@ -22,9 +22,21 @@ const serverDevCompose = compose.slice(
   compose.indexOf('  server-dev:'),
   compose.indexOf('  push-worker-dev:'),
 );
+const productionServerCompose = productionCompose.slice(
+  productionCompose.indexOf('  server:'),
+  productionCompose.indexOf('  push-worker:'),
+);
+const productionPushWorkerCompose = productionCompose.slice(
+  productionCompose.indexOf('  push-worker:'),
+  productionCompose.indexOf('  web:'),
+);
 const sshCommand = workflow.slice(
   workflow.indexOf('          ssh -i ~/.ssh/id_ed25519'),
   workflow.indexOf("            bash -s <<'ENDSSH'"),
+);
+const productionSshCommand = productionWorkflow.slice(
+  productionWorkflow.indexOf('          ssh -i ~/.ssh/id_ed25519'),
+  productionWorkflow.indexOf("            bash -s <<'ENDSSH'"),
 );
 
 function encodeBase64Value(value: string): string {
@@ -123,12 +135,10 @@ describe('dev YooKassa deployment wiring', () => {
     expect(() => decodeBase64Value(encodeBase64Value(`${fixture}\n`))).toThrow();
   });
 
-  it('keeps YooKassa scoped to server-dev and out of production deployment files', () => {
+  it('keeps staging YooKassa credentials scoped to server-dev', () => {
     expect(serverDevCompose).toContain('YOOKASSA_SHOP_ID: ${STAGING_YOOKASSA_SHOP_ID:-}');
     expect(serverDevCompose).toContain('YOOKASSA_SECRET_KEY: ${STAGING_YOOKASSA_SECRET_KEY:-}');
-    expect(productionWorkflow).not.toContain('YOOKASSA_');
     expect(productionWorkflow).not.toContain('STAGING_YOOKASSA_');
-    expect(productionCompose).not.toContain('YOOKASSA_');
     expect(productionCompose).not.toContain('STAGING_YOOKASSA_');
   });
 
@@ -136,5 +146,52 @@ describe('dev YooKassa deployment wiring', () => {
     expect(compose).toContain(
       'YOOKASSA_RETURN_URL: https://dev.hockey.inbotwetrust.ru/inventory?tab=bank&payment=return',
     );
+  });
+});
+
+describe('production YooKassa deployment wiring', () => {
+  it('passes optional production credentials safely and uses the ultimatehockey.ru return URL', () => {
+    expect(productionWorkflow).toContain(
+      'PRODUCTION_YOOKASSA_SHOP_ID: ${{ secrets.PRODUCTION_YOOKASSA_SHOP_ID }}',
+    );
+    expect(productionWorkflow).toContain(
+      'PRODUCTION_YOOKASSA_SECRET_KEY: ${{ secrets.PRODUCTION_YOOKASSA_SECRET_KEY }}',
+    );
+    expect(productionWorkflow).toContain('PRODUCTION_YOOKASSA_SHOP_ID_B64=');
+    expect(productionWorkflow).toContain('PRODUCTION_YOOKASSA_SECRET_KEY_B64=');
+    expect(productionSshCommand).not.toContain(
+      'PRODUCTION_YOOKASSA_SHOP_ID="$PRODUCTION_YOOKASSA_SHOP_ID"',
+    );
+    expect(productionSshCommand).not.toContain(
+      'PRODUCTION_YOOKASSA_SECRET_KEY="$PRODUCTION_YOOKASSA_SECRET_KEY"',
+    );
+    expect(productionWorkflow).toContain(
+      'https://ultimatehockey.ru/inventory?tab=bank&payment=return',
+    );
+  });
+
+  it('allows both credentials to be absent but rejects a partial production configuration', () => {
+    expect(productionWorkflow).toContain(
+      'if [ -z "$PRODUCTION_YOOKASSA_SHOP_ID" ] && [ -z "$PRODUCTION_YOOKASSA_SECRET_KEY" ]; then',
+    );
+    expect(productionWorkflow).toContain(
+      'elif [ -z "$PRODUCTION_YOOKASSA_SHOP_ID" ] || [ -z "$PRODUCTION_YOOKASSA_SECRET_KEY" ]; then',
+    );
+    expect(productionWorkflow).toContain(
+      'PRODUCTION_YOOKASSA_SHOP_ID and PRODUCTION_YOOKASSA_SECRET_KEY must both be set or both be empty',
+    );
+  });
+
+  it('exposes YooKassa only to the production API server', () => {
+    expect(productionServerCompose).toContain(
+      'YOOKASSA_SHOP_ID: ${PRODUCTION_YOOKASSA_SHOP_ID:-}',
+    );
+    expect(productionServerCompose).toContain(
+      'YOOKASSA_SECRET_KEY: ${PRODUCTION_YOOKASSA_SECRET_KEY:-}',
+    );
+    expect(productionServerCompose).toContain(
+      'YOOKASSA_RETURN_URL: ${PRODUCTION_YOOKASSA_RETURN_URL:-}',
+    );
+    expect(productionPushWorkerCompose).not.toContain('YOOKASSA_');
   });
 });
