@@ -90,14 +90,17 @@ export async function createCoinPayment(
         throw new AppError('coin_package_unavailable', 'Этот пакет больше недоступен', 409);
       }
       const account = (
-        await client.query<{ balance: number }>(
-          'select balance from user_currency_account where user_id = $1',
+        await client.query<{ balance: number; reserved_balance: number }>(
+          'select balance, reserved_balance from user_currency_account where user_id = $1',
           [userId],
         )
       ).rows[0];
       // Recheck saved terms on retries. Settlement repeats this under row locks
       // because other rewards/payments can consume headroom after creation.
-      if ((account?.balance ?? 0) > MAX_CURRENCY_BALANCE - coins) {
+      if (
+        (account?.balance ?? 0) + (account?.reserved_balance ?? 0) >
+        MAX_CURRENCY_BALANCE - coins
+      ) {
         throw paymentBalanceCapacity();
       }
       let result;
@@ -244,7 +247,7 @@ export async function reconcileYooKassaPayment(
       const account = (
         await client.query<{ balance: number; reserved_balance: number }>(
           `update user_currency_account set balance = balance + $2::bigint, updated_at = now()
-           where user_id = $1 and balance <= ${MAX_CURRENCY_BALANCE} - $2::bigint
+           where user_id = $1 and balance::bigint + reserved_balance::bigint <= ${MAX_CURRENCY_BALANCE} - $2::bigint
            returning balance, reserved_balance`,
           [owner.user_id, payment.coin_amount],
         )

@@ -476,6 +476,34 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
     expect(createPayment).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects creation when reserved coins consume the remaining headroom', async () => {
+    await app.pg.query(
+      'insert into user_currency_account (user_id, balance, reserved_balance) values ($1, 2147443600, 48)',
+      [userId],
+    );
+    const response = await submit();
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error.code).toBe('payment_balance_capacity');
+    expect(createPayment).not.toHaveBeenCalled();
+    expect(
+      (
+        await app.pg.query(
+          'select balance, reserved_balance from user_currency_account where user_id = $1',
+          [userId],
+        )
+      ).rows,
+    ).toEqual([{ balance: 2147443600, reserved_balance: 48 }]);
+  });
+
+  it('allows creation at the combined available and reserved capacity boundary', async () => {
+    await app.pg.query(
+      'insert into user_currency_account (user_id, balance, reserved_balance) values ($1, 2147443600, 47)',
+      [userId],
+    );
+    expect((await submit()).statusCode).toBe(200);
+    expect(createPayment).toHaveBeenCalledTimes(1);
+  });
+
   it('rechecks headroom using the immutable saved coin amount on provider retries', async () => {
     createPayment.mockRejectedValueOnce(new Error('provider unavailable'));
     const attempt = randomUUID();

@@ -40,6 +40,13 @@ import {
 import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
 import { updateCachedProfileBalances } from '../app/queryClient.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
+import { useAuthStore } from '../auth/authStore.js';
+import { ApiError } from '../api/apiFetch.js';
+import {
+  completePaymentAttempt,
+  getOrCreatePaymentAttempt,
+  rememberAttemptPayment,
+} from '../api/paymentAttempts.js';
 import {
   createCoinPayment,
   fetchCoinPackages,
@@ -67,7 +74,7 @@ const HISTORY_FILTERS: Array<{ id: HistoryFilter; label: string }> = [
 const PAYMENT_ID_STORAGE_KEY = 'hockey.bank.paymentId';
 
 function isTerminalPaymentStatus(status: CoinPaymentStatus): boolean {
-  return status !== 'pending';
+  return ['paid', 'canceled', 'failed', 'refunded'].includes(status);
 }
 
 function paymentMarkerLabel(marker: CoinPackage['marker']): string | null {
@@ -142,6 +149,7 @@ function transactionDateLabel(value: string): string {
 }
 
 export function InventoryScreen(): JSX.Element {
+  const ownerId = useAuthStore((state) => state.user?.id);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -191,9 +199,33 @@ export function InventoryScreen(): JSX.Element {
     onError: () => triggerHaptic('error'),
   });
   const paymentMutation = useMutation({
-    mutationFn: ({ packageId, attemptId }: { packageId: string; attemptId: string }) =>
-      createCoinPayment(packageId, attemptId),
-    onSuccess: (payment) => {
+    mutationFn: ({
+      packageId,
+      attemptId,
+    }: {
+      ownerId: string;
+      packageId: string;
+      attemptId: string;
+    }) => createCoinPayment(packageId, attemptId),
+    onSuccess: (payment, attempt) => {
+      rememberAttemptPayment(
+        attempt.ownerId,
+        attempt.packageId,
+        attempt.attemptId,
+        payment.paymentId,
+      );
+      if (isTerminalPaymentStatus(payment.status)) {
+        completePaymentAttempt(attempt.ownerId, payment.paymentId);
+      }
+      // A response belonging to a previous login must not redirect the new owner.
+      if (useAuthStore.getState().user?.id !== attempt.ownerId) return;
+      if (isTerminalPaymentStatus(payment.status)) {
+        setReturnedPaymentResult(payment.status);
+        void queryClient.invalidateQueries({ queryKey: ['profile'] });
+        void queryClient.invalidateQueries({ queryKey: ['inventory', 'me'] });
+        void queryClient.invalidateQueries({ queryKey: ['inventory', 'transactions'] });
+        return;
+      }
       if (
         payment.confirmationUrl === null ||
         !redirectToPaymentConfirmation(payment.confirmationUrl)
@@ -209,7 +241,7 @@ export function InventoryScreen(): JSX.Element {
     },
   });
   const paymentStatusQuery = useQuery({
-    queryKey: ['bank', 'payments', returnedPaymentId],
+    queryKey: ['bank', 'payments', ownerId, returnedPaymentId],
     queryFn: () => fetchCoinPaymentStatus(returnedPaymentId!),
     enabled: returnedPaymentId !== null,
     refetchInterval: (query) =>
@@ -233,6 +265,13 @@ export function InventoryScreen(): JSX.Element {
       return;
     }
     setReturnedPaymentResult(paymentStatusQuery.data.status);
+    if (ownerId && returnedPaymentId) {
+      try {
+        completePaymentAttempt(ownerId, returnedPaymentId);
+      } catch {
+        // Retaining the old identity is safe; never replace it on storage errors.
+      }
+    }
     window.sessionStorage.removeItem(PAYMENT_ID_STORAGE_KEY);
     const next = new URLSearchParams(searchParams);
     next.delete('payment');
@@ -240,7 +279,14 @@ export function InventoryScreen(): JSX.Element {
     void queryClient.invalidateQueries({ queryKey: ['profile'] });
     void queryClient.invalidateQueries({ queryKey: ['inventory', 'me'] });
     void queryClient.invalidateQueries({ queryKey: ['inventory', 'transactions'] });
-  }, [paymentStatusQuery.data?.status, queryClient, searchParams, setSearchParams]);
+  }, [
+    paymentStatusQuery.data?.status,
+    ownerId,
+    returnedPaymentId,
+    queryClient,
+    searchParams,
+    setSearchParams,
+  ]);
   const hasSelectedCategoryItems =
     selectedCategory !== null && (inventory?.items[selectedCategory].length ?? 0) > 0;
   const hasShopItems = SHOP_CATEGORY_ORDER.some(
@@ -270,13 +316,22 @@ export function InventoryScreen(): JSX.Element {
     setPurchaseItem(item);
   };
   const startPayment = (pack: CoinPackage): void => {
-    if (paymentInFlightRef.current !== null) return;
-    const attemptId = crypto.randomUUID();
+    if (paymentInFlightRef.current !== null || !ownerId) return;
+    let attemptId: string;
+    try {
+      attemptId = getOrCreatePaymentAttempt(ownerId, pack.id);
+    } catch {
+      setPaymentRedirectError(
+        'Не удалось сохранить попытку оплаты. Проверьте доступ к хранилищу браузера или обратитесь в поддержку.',
+      );
+      return;
+    }
     paymentInFlightRef.current = pack.id;
     setPaymentPackageId(pack.id);
     setPaymentRedirectError(null);
+    setReturnedPaymentResult(null);
     paymentMutation.reset();
-    paymentMutation.mutate({ packageId: pack.id, attemptId });
+    paymentMutation.mutate({ ownerId, packageId: pack.id, attemptId });
   };
 
   return (
@@ -388,7 +443,11 @@ export function InventoryScreen(): JSX.Element {
             activePackageId={paymentPackageId}
             error={
               paymentRedirectError ??
-              (paymentMutation.isError ? paymentMutation.error.message : null)
+              (paymentMutation.isError
+                ? paymentMutation.error instanceof ApiError
+                  ? paymentMutation.error.message
+                  : 'Не удалось получить ответ об оплате. Повторное нажатие продолжит ту же оплату.'
+                : null)
             }
             onPurchase={startPayment}
           />

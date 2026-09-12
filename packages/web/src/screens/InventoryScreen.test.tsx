@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryState } from '../api/inventory.js';
 import { redirectToPaymentConfirmation } from '../api/payments.js';
 import { InventoryScreen } from './InventoryScreen.js';
+import { useAuthStore } from '../auth/authStore.js';
 import { parseShopCategory } from './inventoryShopCategories.js';
 import { readFileSync } from 'node:fs';
 
@@ -380,6 +381,12 @@ describe('InventoryScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     sessionStorage.clear();
+    localStorage.clear();
+    useAuthStore.getState().setSession({
+      accessToken: 'buyer-access',
+      refreshToken: 'buyer-refresh',
+      user: { id: 'buyer-one', displayName: 'Buyer' },
+    });
     mockInventoryFetch(emptyInventory);
   });
 
@@ -717,6 +724,175 @@ describe('InventoryScreen', () => {
     expect(assign).toHaveBeenCalledWith('https://yoomoney.ru/checkout/confirmed');
   });
 
+  it.each([
+    'network',
+    'payment_provider_unavailable',
+    'payment_attempt_expired',
+    'payment_provider_conflict',
+  ])(
+    'retains an unresolved attempt after %s across retry and reload, then replaces it only after paid',
+    async (failure) => {
+      const requests: Array<{ packageId: string; attemptId: string }> = [];
+      const fallback = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (String(input).endsWith('/api/bank/payments') && init?.method === 'POST') {
+          requests.push(JSON.parse(String(init.body)));
+          if (requests.length < 3) {
+            if (failure === 'network') throw new TypeError('Failed to fetch');
+            return new Response(JSON.stringify({ error: { code: failure } }), {
+              status: failure === 'payment_provider_unavailable' ? 502 : 409,
+            });
+          }
+          return new Response(
+            JSON.stringify({
+              paymentId: '00000000-0000-4000-8000-000000000099',
+              status: 'paid',
+              confirmationUrl: null,
+            }),
+          );
+        }
+        return fallback(input, init);
+      });
+      let view = renderInventory();
+      fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+      fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /Купить.*40.*000.*699/ })).toBeEnabled(),
+      );
+      fireEvent.click(screen.getByRole('button', { name: /Купить.*40.*000.*699/ }));
+      await waitFor(() => expect(requests).toHaveLength(2));
+      expect(requests[1]).toEqual(requests[0]);
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /Купить.*40.*000.*699/ })).toBeEnabled(),
+      );
+      view.unmount();
+      view = renderInventory();
+      fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+      fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+      await waitFor(() => expect(requests).toHaveLength(3));
+      expect(requests[2]).toEqual(requests[0]);
+      await screen.findByText(/Оплата подтверждена/);
+      fireEvent.click(screen.getByRole('button', { name: /Купить.*40.*000.*699/ }));
+      await waitFor(() => expect(requests).toHaveLength(4));
+      expect(requests[3]?.attemptId).not.toBe(requests[0]?.attemptId);
+      view.unmount();
+    },
+  );
+
+  it('scopes unresolved attempts to both buyer and package across account switches', async () => {
+    const requests: Array<{ packageId: string; attemptId: string }> = [];
+    const fallback = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input).endsWith('/api/bank/payments') && init?.method === 'POST') {
+        requests.push(JSON.parse(String(init.body)));
+        throw new TypeError('Failed to fetch');
+      }
+      return fallback(input, init);
+    });
+    for (const [buyer, packageName] of [
+      ['buyer-one', /Купить.*40.*000.*699/],
+      ['buyer-one', /Купить.*16.*000.*299/],
+      ['buyer-two', /Купить.*40.*000.*699/],
+      ['buyer-one', /Купить.*40.*000.*699/],
+    ] as const) {
+      useAuthStore.getState().updateUser({ id: buyer });
+      const view = renderInventory();
+      fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+      fireEvent.click(await screen.findByRole('button', { name: packageName }));
+      await waitFor(() => expect(screen.getByRole('button', { name: packageName })).toBeEnabled());
+      view.unmount();
+    }
+    expect(requests).toHaveLength(4);
+    expect(new Set(requests.slice(0, 3).map((request) => request.attemptId)).size).toBe(3);
+    expect(requests[3]).toEqual(requests[0]);
+  });
+
+  it('fails closed before sending a payment when persistent attempt storage is unavailable', async () => {
+    renderInventory();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+    const buy = await screen.findByRole('button', { name: /Купить.*40.*000.*699/ });
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage blocked', 'SecurityError');
+    });
+    fireEvent.click(buy);
+    await screen.findByText(/Не удалось сохранить попытку оплаты/);
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.filter(
+          ([input, init]) =>
+            String(input).endsWith('/api/bank/payments') && init?.method === 'POST',
+        ),
+    ).toHaveLength(0);
+  });
+
+  it('does not overwrite corrupt unresolved attempt data with a new payment', async () => {
+    const key = `hockey.bank.attempt.buyer-one.${coinPackages[2].id}`;
+    localStorage.setItem(key, '{broken attempt');
+    renderInventory();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+    await screen.findByText(/Не удалось сохранить попытку оплаты/);
+    expect(localStorage.getItem(key)).toBe('{broken attempt');
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.filter(
+          ([input, init]) =>
+            String(input).endsWith('/api/bank/payments') && init?.method === 'POST',
+        ),
+    ).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      'missing status',
+      { paymentId: '00000000-0000-4000-8000-000000000099', confirmationUrl: null },
+    ],
+    ['missing payment ID', { status: 'paid', confirmationUrl: null }],
+  ])(
+    'does not treat a successful response with %s as proof that a payment is terminal',
+    async (_case, response) => {
+      const requests: Array<{ packageId: string; attemptId: string }> = [];
+      const fallback = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (String(input).endsWith('/api/bank/payments') && init?.method === 'POST') {
+          requests.push(JSON.parse(String(init.body)));
+          return new Response(JSON.stringify(response));
+        }
+        return fallback(input, init);
+      });
+      renderInventory();
+      fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+      const buy = await screen.findByRole('button', { name: /Купить.*40.*000.*699/ });
+      fireEvent.click(buy);
+      await waitFor(() => expect(buy).toBeEnabled());
+      fireEvent.click(buy);
+      await waitFor(() => expect(requests).toHaveLength(2));
+      expect(requests[1]).toEqual(requests[0]);
+    },
+  );
+
+  it('styles an active bank action normally and only dims the action while disabled', async () => {
+    const style = document.createElement('style');
+    style.textContent = designSystemCss;
+    document.head.append(style);
+    try {
+      renderInventory();
+      fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+      const buy = await screen.findByRole('button', { name: /Купить.*40.*000.*699/ });
+      expect(getComputedStyle(buy).cursor).toBe('pointer');
+      expect(Number(getComputedStyle(buy).opacity || 1)).toBe(1);
+      fireEvent.click(buy);
+      expect(buy).toBeDisabled();
+      expect(getComputedStyle(buy).cursor).toBe('not-allowed');
+      expect(getComputedStyle(buy).opacity).toBe('0.5');
+      await waitFor(() => expect(buy).toBeEnabled());
+    } finally {
+      style.remove();
+    }
+  });
+
   it.each(['javascript:alert(1)', 'http://yoomoney.ru/checkout', 'not a URL'])(
     'rejects an unsafe payment confirmation URL: %s',
     (confirmationUrl) => {
@@ -737,6 +913,32 @@ describe('InventoryScreen', () => {
     expect(await screen.findByText(/Не удалось перейти к оплате/)).toBeInTheDocument();
     expect(sessionStorage.getItem('hockey.bank.paymentId')).toBeNull();
   });
+
+  it.each(['paid', 'canceled'] as const)(
+    'starts a new attempt only after the returned payment is %s',
+    async (status) => {
+      const requests: Array<{ packageId: string; attemptId: string }> = [];
+      mockInventoryFetch(inventoryWithItems, inventoryWithItems, status);
+      const fallback = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (String(input).endsWith('/api/bank/payments') && init?.method === 'POST') {
+          requests.push(JSON.parse(String(init.body)));
+        }
+        return fallback(input, init);
+      });
+      const view = renderInventory();
+      fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+      fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+      await screen.findByText(/Не удалось перейти к оплате/);
+      view.unmount();
+      sessionStorage.setItem('hockey.bank.paymentId', '00000000-0000-4000-8000-000000000099');
+      renderInventory('/inventory?payment=return');
+      await screen.findByText(status === 'paid' ? /Оплата подтверждена/ : /Оплата отменена/);
+      fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+      await waitFor(() => expect(requests).toHaveLength(2));
+      expect(requests[1]?.attemptId).not.toBe(requests[0]?.attemptId);
+    },
+  );
 
   it.each([
     ['pending', 'Платёж ожидает подтверждения', false],

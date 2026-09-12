@@ -5106,6 +5106,9 @@
   min-height: 34px;
   padding: 0 10px;
   font-size: 12px;
+}
+
+.inventory-bank-card__action .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
