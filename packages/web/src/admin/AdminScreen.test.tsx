@@ -397,14 +397,12 @@ describe('AdminScreen', () => {
     vi.restoreAllMocks();
   });
 
-  function setupCoinPackages() {
-    useAuthStore
-      .getState()
-      .setSession({
-        accessToken: 'a',
-        refreshToken: 'r',
-        user: { id: 'admin', displayName: 'Egor', role: 'admin' },
-      });
+  function setupCoinPackages(includeSecondPackage = false) {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    });
     let packages = [
       {
         id: '11111111-1111-4111-8111-111111111111',
@@ -421,14 +419,28 @@ describe('AdminScreen', () => {
         updatedAt: '2026-09-12T10:00:00Z',
       },
     ];
+    if (includeSecondPackage) {
+      packages.push({
+        ...packages[0]!,
+        id: '33333333-3333-4333-8333-333333333333',
+        slug: 'season',
+        title: 'Большой запас',
+        coinAmount: 90000,
+        priceRub: 1490,
+      });
+    }
     const writes: Array<{ method: string; body: Record<string, unknown> }> = [];
     let failSave = false;
+    let saveDelay: Promise<Response> | null = null;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
       if (url.includes('/admin/coin-packages')) {
         if (init?.method === 'POST' || init?.method === 'PATCH') {
           const body = JSON.parse(String(init.body));
           writes.push({ method: init.method, body });
+          const pending = saveDelay;
+          saveDelay = null;
+          if (pending) await pending;
           if (failSave)
             return new Response(JSON.stringify({ error: 'conflict', message: 'duplicate slug' }), {
               status: 409,
@@ -438,7 +450,10 @@ describe('AdminScreen', () => {
             ...body,
             id: init.method === 'POST' ? '22222222-2222-4222-8222-222222222222' : packages[0]!.id,
           };
-          packages = init.method === 'POST' ? [...packages, item] : [item];
+          packages =
+            init.method === 'POST'
+              ? [...packages, item]
+              : packages.map((existing) => (existing.id === item.id ? item : existing));
           return new Response(JSON.stringify({ package: item }));
         }
         return new Response(JSON.stringify({ packages }));
@@ -458,6 +473,11 @@ describe('AdminScreen', () => {
     });
     return {
       writes,
+      delayNextSave: () => {
+        const pending = deferredResponse();
+        saveDelay = pending.promise;
+        return pending;
+      },
       failNextSave: () => {
         failSave = true;
       },
@@ -510,6 +530,44 @@ describe('AdminScreen', () => {
     expect(client.getQueryState(['bank', 'packages'])?.isInvalidated).toBe(true);
     expect(screen.queryByRole('button', { name: /Удалить/ })).not.toBeInTheDocument();
   });
+
+  it.each(['another package', 'new package', 'same package'])(
+    'coin packages preserve the newer editor for %s when an earlier save completes',
+    async (target) => {
+      const { delayNextSave, writes } = setupCoinPackages(true);
+      const pending = delayNextSave();
+      renderAdmin();
+      selectAdminSection('Пакеты монет');
+      fireEvent.click(await screen.findByRole('button', { name: 'Редактировать Игровой запас' }));
+      fireEvent.change(screen.getByLabelText('Название'), {
+        target: { value: 'Сохранённый запас' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+      await waitFor(() => expect(writes).toHaveLength(1));
+      const nextButton =
+        target === 'new package'
+          ? 'Создать пакет'
+          : target === 'same package'
+            ? 'Редактировать Игровой запас'
+            : 'Редактировать Большой запас';
+      fireEvent.click(screen.getByRole('button', { name: nextButton }));
+      fireEvent.change(screen.getByLabelText('Название'), {
+        target: { value: 'Несохранённые изменения' },
+      });
+      fireEvent.change(screen.getByLabelText('Описание'), {
+        target: { value: 'Текст нового редактора' },
+      });
+      await act(async () => {
+        pending.resolve(new Response('{}'));
+      });
+      // The updated card proves the earlier save callback and catalog refresh completed.
+      expect(await screen.findByText('Сохранённый запас')).toBeInTheDocument();
+      expect(screen.getByRole('form')).toBeInTheDocument();
+      expect(screen.getByLabelText('Название')).toHaveValue('Несохранённые изменения');
+      expect(screen.getByLabelText('Описание')).toHaveValue('Текст нового редактора');
+      expect(writes).toHaveLength(1);
+    },
+  );
 
   it('coin packages create with validated commercial terms and a unique identifier', async () => {
     const { writes } = setupCoinPackages();
@@ -565,13 +623,11 @@ describe('AdminScreen', () => {
   });
 
   it('payments show immutable YooKassa snapshots and legacy rows with existing filters and analytics', async () => {
-    useAuthStore
-      .getState()
-      .setSession({
-        accessToken: 'a',
-        refreshToken: 'r',
-        user: { id: 'admin', displayName: 'Egor', role: 'admin' },
-      });
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    });
     const localId = '11111111-1111-4111-8111-111111111111';
     const payment = {
       id: localId,
@@ -692,7 +748,9 @@ describe('AdminScreen', () => {
     expect(await within(menu).findByLabelText('Новые отзывы: 2')).toBeInTheDocument();
     expect(within(menu).getByLabelText('Новые сообщения: 1')).toBeInTheDocument();
     fireEvent.click(within(menu).getByRole('button', { name: 'Коммуникации' }));
-    expect(await screen.findByRole('tab', { name: 'Диалоги Требуется действие' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('tab', { name: 'Диалоги Требуется действие' }),
+    ).toBeInTheDocument();
   });
 
   it('previews and confirms a personal broadcast from the official account', async () => {
