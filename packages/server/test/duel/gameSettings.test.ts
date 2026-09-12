@@ -26,7 +26,7 @@ describe('global duel inventory penalties', () => {
 
     expect(settings.amateur.noInventoryTiming.skates).toMatchObject({
       stumbleIntervalMinRolls: 8,
-      stumbleIntervalMaxRolls: 12,
+      stumbleIntervalMaxRolls: 20,
       stumbleDurationMinMs: 450,
       stumbleDurationMaxMs: 650,
       stumbleRecoveryMinMs: 150,
