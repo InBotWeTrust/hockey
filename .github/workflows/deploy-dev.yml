@@ -148,6 +148,9 @@ jobs:
           OBJECT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.OBJECT_STORAGE_SECRET_ACCESS_KEY }}
           OBJECT_STORAGE_PUBLIC_BASE_URL: ${{ secrets.OBJECT_STORAGE_PUBLIC_BASE_URL }}
         run: |
+          STAGING_YOOKASSA_SHOP_ID_B64="$(printf '%s' "$STAGING_YOOKASSA_SHOP_ID" | base64 | tr -d '\r\n')"
+          STAGING_YOOKASSA_SECRET_KEY_B64="$(printf '%s' "$STAGING_YOOKASSA_SECRET_KEY" | base64 | tr -d '\r\n')"
+
           ssh -i ~/.ssh/id_ed25519 "${USER}@${HOST}" \
             STAGING_IMAGE_TAG="$STAGING_IMAGE_TAG" \
             GHCR_USER="$GHCR_USER" \
@@ -161,8 +164,8 @@ jobs:
             STAGING_REFRESH_SECRET="$STAGING_REFRESH_SECRET" \
             STAGING_DAILY_SEED_SECRET="$STAGING_DAILY_SEED_SECRET" \
             STAGING_ADMIN_ACCESS_CODE="$STAGING_ADMIN_ACCESS_CODE" \
-            STAGING_YOOKASSA_SHOP_ID="$STAGING_YOOKASSA_SHOP_ID" \
-            STAGING_YOOKASSA_SECRET_KEY="$STAGING_YOOKASSA_SECRET_KEY" \
+            STAGING_YOOKASSA_SHOP_ID_B64="$STAGING_YOOKASSA_SHOP_ID_B64" \
+            STAGING_YOOKASSA_SECRET_KEY_B64="$STAGING_YOOKASSA_SECRET_KEY_B64" \
             RESET_STAGING_ACHIEVEMENTS="$RESET_STAGING_ACHIEVEMENTS" \
             REPLACE_BEGINNER_ONBOARDING="$REPLACE_BEGINNER_ONBOARDING" \
             GRANT_EXISTING_INVENTORY="$GRANT_EXISTING_INVENTORY" \
@@ -176,6 +179,32 @@ jobs:
             bash -s <<'ENDSSH'
           set -euo pipefail
           cd "$REMOTE_PATH"
+          decode_staging_yookassa_value() {
+            local encoded="$1"
+            local decoded
+            local normalized
+            if [ -z "$encoded" ] || ! decoded="$(printf '%s' "$encoded" | base64 --decode 2>/dev/null)"; then
+              return 1
+            fi
+            if [ -z "$decoded" ] || [[ "$decoded" == *$'\n'* || "$decoded" == *$'\r'* ]]; then
+              return 1
+            fi
+            normalized="$(printf '%s' "$decoded" | base64 | tr -d '\r\n')"
+            if [ "$encoded" != "$normalized" ]; then
+              return 1
+            fi
+            printf '%s' "$decoded"
+          }
+          if ! STAGING_YOOKASSA_SHOP_ID="$(decode_staging_yookassa_value "$STAGING_YOOKASSA_SHOP_ID_B64")"; then
+            echo "STAGING_YOOKASSA_SHOP_ID must be non-empty valid base64"
+            exit 1
+          fi
+          if ! STAGING_YOOKASSA_SECRET_KEY="$(decode_staging_yookassa_value "$STAGING_YOOKASSA_SECRET_KEY_B64")"; then
+            echo "STAGING_YOOKASSA_SECRET_KEY must be non-empty valid base64"
+            exit 1
+          fi
+          unset STAGING_YOOKASSA_SHOP_ID_B64 STAGING_YOOKASSA_SECRET_KEY_B64
+
           for name in \
             STAGING_POSTGRES_PASSWORD \
             STAGING_JWT_SECRET \
