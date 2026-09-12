@@ -94,6 +94,7 @@ function mockProfileRequest(
     effectRecoveryMinutes: number;
   }> = [],
   legacyEquipmentArtwork = false,
+  ratingStats: Pick<typeof profile.stats, 'shots' | 'goals' | 'accuracy'> = profile.stats,
 ): void {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input.toString();
@@ -191,9 +192,9 @@ function mockProfileRequest(
               userId: 'u1',
               displayName: 'Alice T',
               avatarUrl: 'avatar.png',
-              goals: 64,
-              shots: 128,
-              accuracy: 50,
+              goals: ratingStats.goals,
+              shots: ratingStats.shots,
+              accuracy: ratingStats.accuracy,
               currentStreakDays: 7,
               recordStreakDays: 12,
             },
@@ -204,9 +205,9 @@ function mockProfileRequest(
             userId: 'u1',
             displayName: 'Alice T',
             avatarUrl: 'avatar.png',
-            goals: 64,
-            shots: 128,
-            accuracy: 50,
+            goals: ratingStats.goals,
+            shots: ratingStats.shots,
+            accuracy: ratingStats.accuracy,
             currentStreakDays: 7,
             recordStreakDays: 12,
           },
@@ -240,7 +241,10 @@ function mockProfileRequest(
 
 function renderProfile(): void {
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      mutations: { retry: false },
+    },
   });
   render(
     <QueryClientProvider client={client}>
@@ -350,12 +354,47 @@ describe('ProfileScreen', () => {
     expect(await within(dialog).findAllByTestId('stat-rating-current-row')).toHaveLength(1);
     if (metric === 'accuracy') {
       expect(
-        await within(dialog).findByText(
-          'Вы попадёте в рейтинг точности после 1000 забитых шайб.',
-        ),
+        await within(dialog).findByText('Вы попадёте в рейтинг точности после 1000 забитых шайб.'),
       ).toBeInTheDocument();
       expect(within(dialog).getByText('У вас 64 из 1000')).toBeInTheDocument();
     }
+  });
+
+  it('synchronizes cached profile totals from the current player rating row', async () => {
+    const ratingStats = {
+      goals: 7_982,
+      shots: 10_967,
+      accuracy: 72.8,
+    };
+    mockProfileRequest(200, profile, undefined, [], false, ratingStats);
+    renderProfile();
+
+    const passport = await screen.findByLabelText('Спортивный паспорт');
+    expect(within(passport).getByText('64')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть рейтинг: Шайбы' }));
+    await screen.findByRole('dialog', { name: 'Рейтинг по шайбам' });
+
+    await waitFor(() => expect(within(passport).getByText('7 982')).toBeInTheDocument());
+    expect(within(passport).getByText('73%')).toBeInTheDocument();
+    expect(within(passport).queryByText('64')).not.toBeInTheDocument();
+    expect(
+      vi.mocked(globalThis.fetch).mock.calls.filter(([input]) => String(input).endsWith('/api/me')),
+    ).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Рейтинг по шайбам' })).toBeNull(),
+    );
+    ratingStats.goals = 8_000;
+    ratingStats.shots = 11_000;
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть рейтинг: Шайбы' }));
+
+    await waitFor(() => expect(within(passport).getByText('8 000')).toBeInTheDocument());
+    expect(
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.filter(([input]) => String(input).includes('/api/profile/ratings/goals')),
+    ).toHaveLength(2);
   });
 
   it('routes each direct profile card to its destination', async () => {
