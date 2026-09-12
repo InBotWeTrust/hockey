@@ -106,7 +106,10 @@ curl http://localhost:3000/health
 
 ## Деплой
 
-Main ветка деплоится автоматически в GitHub Actions (`.github/workflows/deploy.yml` — будет добавлен в Task 11 после подготовки VPS).
+- Прод: `https://ultimatehockey.ru`; ветка `main` деплоится только через `.github/workflows/deploy.yml`.
+- Старый прод `https://hockey.inbotwetrust.ru` сохраняется для совместимости и после приёмки нового домена постоянно перенаправляет на него.
+- Dev: `https://dev.hockey.inbotwetrust.ru`; ветка `dev` деплоится только через `.github/workflows/deploy-dev.yml`.
+- На VPS приложение не собирается и конфигурация вручную не патчится.
 
 ## Документация
 

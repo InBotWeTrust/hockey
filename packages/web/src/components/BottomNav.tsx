@@ -118,6 +118,11 @@ export function isBottomNavVisible(location: string | NavLocation, user: AuthUse
   const isInChatRoom = /^\/chat\/[^/]+(?:\/posts\/[^/]+\/comments)?$/.test(pathname);
   return (
     pathname !== '/login' &&
+    pathname !== '/prices' &&
+    pathname !== '/terms' &&
+    pathname !== '/offer' &&
+    pathname !== '/privacy' &&
+    pathname !== '/personal-data-consent' &&
     pathname !== '/demo' &&
     !isInChatRoom &&
     !isOpenRinkRoute(normalizeNavLocation(location)) &&

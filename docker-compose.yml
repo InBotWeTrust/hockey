@@ -59,6 +59,9 @@ services:
       OBJECT_STORAGE_SECRET_ACCESS_KEY: ${OBJECT_STORAGE_SECRET_ACCESS_KEY:-}
       OBJECT_STORAGE_PUBLIC_BASE_URL: ${OBJECT_STORAGE_PUBLIC_BASE_URL:-}
       OBJECT_STORAGE_MAX_UPLOAD_BYTES: ${OBJECT_STORAGE_MAX_UPLOAD_BYTES:-26214400}
+      YOOKASSA_SHOP_ID: ${PRODUCTION_YOOKASSA_SHOP_ID:-}
+      YOOKASSA_SECRET_KEY: ${PRODUCTION_YOOKASSA_SECRET_KEY:-}
+      YOOKASSA_RETURN_URL: ${PRODUCTION_YOOKASSA_RETURN_URL:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,7 +110,9 @@ services:
       - '80:80'
       - '443:443'
     environment:
-      APP_DOMAIN: ${APP_DOMAIN}
+      APP_DOMAIN: ${APP_DOMAIN:-ultimatehockey.ru}
+      LEGACY_APP_DOMAIN: ${LEGACY_APP_DOMAIN:-hockey.inbotwetrust.ru}
+      WWW_APP_DOMAIN: ${WWW_APP_DOMAIN:-www.ultimatehockey.ru}
       DEV_APP_DOMAIN: ${DEV_APP_DOMAIN:-dev.hockey.inbotwetrust.ru}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
     volumes:

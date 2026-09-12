@@ -597,6 +597,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '127_refresh_inventory_catalog_copy.sql',
       '128_experience_rating_index.sql',
       '129_unified_duel_inventory_penalties.sql',
+      '130_widen_duel_stumble_interval.sql',
+      '131_yookassa_coin_packages.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -654,7 +656,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       Object.fromEntries(unifiedInventoryPenalties.rows.map((row) => [row.key, row.value])),
     ).toEqual({
       'amateur.no_inventory.skates.stumble_interval_min_rolls': '8',
-      'amateur.no_inventory.skates.stumble_interval_max_rolls': '12',
+      'amateur.no_inventory.skates.stumble_interval_max_rolls': '20',
       'amateur.no_inventory.skates.stumble_duration_min_ms': '450',
       'amateur.no_inventory.skates.stumble_duration_max_ms': '650',
       'amateur.no_inventory.skates.stumble_recovery_min_ms': '150',
@@ -1467,6 +1469,8 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '127_refresh_inventory_catalog_copy.sql',
       '128_experience_rating_index.sql',
       '129_unified_duel_inventory_penalties.sql',
+      '130_widen_duel_stumble_interval.sql',
+      '131_yookassa_coin_packages.sql',
     ]);
 
     const activeInventory = await pool.query<{

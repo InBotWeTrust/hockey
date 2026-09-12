@@ -4,6 +4,17 @@ const API_BASE = '/api';
 const GENERIC_SERVER_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
 
 const SERVER_ERROR_MESSAGES: Record<string, string> = {
+  payments_unavailable: 'Пополнение монет временно недоступно. Загляните позже.',
+  coin_package_unavailable: 'Пакет больше недоступен. Обновите каталог и выберите другой.',
+  payment_balance_capacity:
+    'На балансе, включая зарезервированные монеты, недостаточно места для пополнения.',
+  payment_attempt_conflict: 'Данные оплаты требуют проверки. Обратитесь в поддержку.',
+  payment_provider_conflict: 'Данные оплаты требуют проверки. Обратитесь в поддержку.',
+  payment_mismatch: 'Данные оплаты требуют проверки. Обратитесь в поддержку.',
+  payment_attempt_expired:
+    'Статус старой оплаты требует проверки. Не создавайте новую оплату; обратитесь в поддержку.',
+  payment_provider_unavailable:
+    'Не удалось получить ответ платёжного сервиса. Повторное нажатие продолжит проверку той же оплаты.',
   telegram_already_linked: 'Аккаунт уже занят',
   vk_already_linked: 'Аккаунт уже занят',
   unsupported_media_type: 'Это изображение не подходит. Выберите другое из галереи.',

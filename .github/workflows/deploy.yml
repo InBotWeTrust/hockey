@@ -23,7 +23,11 @@ concurrency:
 env:
   SERVER_IMAGE: ghcr.io/inbotwetrust/hockey-server
   WEB_IMAGE: ghcr.io/inbotwetrust/hockey-web
-  HEALTH_URL: https://hockey.inbotwetrust.ru/api/health
+  APP_DOMAIN: ultimatehockey.ru
+  LEGACY_APP_DOMAIN: hockey.inbotwetrust.ru
+  WWW_APP_DOMAIN: www.ultimatehockey.ru
+  HEALTH_URL: https://ultimatehockey.ru/api/health
+  LEGACY_URL: https://hockey.inbotwetrust.ru
 
 jobs:
   build-and-push:
@@ -79,6 +83,7 @@ jobs:
           build-args: |
             VITE_TELEGRAM_BOT_USERNAME=${{ env.BOT_USERNAME }}
             VITE_VK_APP_ID=${{ env.VK_APP_ID }}
+            VITE_DEV_ACCESS_CODE_LOGIN_ENABLED=true
             APP_BUILD_SHA=${{ github.sha }}
           tags: |
             ${{ env.WEB_IMAGE }}:latest
@@ -120,6 +125,9 @@ jobs:
           USER: ${{ secrets.DEPLOY_USER }}
           HOST: ${{ secrets.DEPLOY_HOST }}
           REMOTE_PATH: ${{ secrets.DEPLOY_PATH }}
+          APP_DOMAIN: ${{ env.APP_DOMAIN }}
+          LEGACY_APP_DOMAIN: ${{ env.LEGACY_APP_DOMAIN }}
+          WWW_APP_DOMAIN: ${{ env.WWW_APP_DOMAIN }}
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -127,7 +135,7 @@ jobs:
           SYSTEM_CHAT_NAME: ${{ vars.SYSTEM_CHAT_NAME }}
           PUSH_VAPID_PUBLIC_KEY: ${{ secrets.PUSH_VAPID_PUBLIC_KEY }}
           PUSH_VAPID_PRIVATE_KEY: ${{ secrets.PUSH_VAPID_PRIVATE_KEY }}
-          PUSH_VAPID_SUBJECT: ${{ vars.PUSH_VAPID_SUBJECT || 'mailto:push@hockey.inbotwetrust.ru' }}
+          PUSH_VAPID_SUBJECT: ${{ vars.PUSH_VAPID_SUBJECT || 'mailto:push@ultimatehockey.ru' }}
           OBJECT_STORAGE_ENDPOINT: ${{ secrets.OBJECT_STORAGE_ENDPOINT }}
           OBJECT_STORAGE_REGION: ${{ secrets.OBJECT_STORAGE_REGION }}
           OBJECT_STORAGE_BUCKET: ${{ secrets.OBJECT_STORAGE_BUCKET }}
@@ -136,14 +144,22 @@ jobs:
           OBJECT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.OBJECT_STORAGE_SECRET_ACCESS_KEY }}
           OBJECT_STORAGE_PUBLIC_BASE_URL: ${{ secrets.OBJECT_STORAGE_PUBLIC_BASE_URL }}
           OBJECT_STORAGE_MAX_UPLOAD_BYTES: ${{ vars.OBJECT_STORAGE_MAX_UPLOAD_BYTES || '26214400' }}
+          PRODUCTION_YOOKASSA_SHOP_ID: ${{ secrets.PRODUCTION_YOOKASSA_SHOP_ID }}
+          PRODUCTION_YOOKASSA_SECRET_KEY: ${{ secrets.PRODUCTION_YOOKASSA_SECRET_KEY }}
           GRANT_EXISTING_INVENTORY: ${{ github.event_name == 'workflow_dispatch' && inputs.grant_existing_inventory || 'false' }}
           CORRECT_EXISTING_INVENTORY: ${{ github.event_name == 'workflow_dispatch' && inputs.correct_existing_inventory || 'false' }}
         run: |
+          PRODUCTION_YOOKASSA_SHOP_ID_B64="$(printf '%s' "$PRODUCTION_YOOKASSA_SHOP_ID" | base64 | tr -d '\r\n')"
+          PRODUCTION_YOOKASSA_SECRET_KEY_B64="$(printf '%s' "$PRODUCTION_YOOKASSA_SECRET_KEY" | base64 | tr -d '\r\n')"
+          unset PRODUCTION_YOOKASSA_SHOP_ID PRODUCTION_YOOKASSA_SECRET_KEY
           ssh -i ~/.ssh/id_ed25519 "${USER}@${HOST}" \
             IMAGE_TAG="$IMAGE_TAG" \
             GHCR_USER="$GHCR_USER" \
             GHCR_TOKEN="$GHCR_TOKEN" \
             REMOTE_PATH="$REMOTE_PATH" \
+            APP_DOMAIN="$APP_DOMAIN" \
+            LEGACY_APP_DOMAIN="$LEGACY_APP_DOMAIN" \
+            WWW_APP_DOMAIN="$WWW_APP_DOMAIN" \
             SYSTEM_USER_ID="$SYSTEM_USER_ID" \
             SYSTEM_CHAT_NAME="$SYSTEM_CHAT_NAME" \
             PUSH_VAPID_PUBLIC_KEY="$PUSH_VAPID_PUBLIC_KEY" \
@@ -157,6 +173,8 @@ jobs:
             OBJECT_STORAGE_SECRET_ACCESS_KEY="$OBJECT_STORAGE_SECRET_ACCESS_KEY" \
             OBJECT_STORAGE_PUBLIC_BASE_URL="$OBJECT_STORAGE_PUBLIC_BASE_URL" \
             OBJECT_STORAGE_MAX_UPLOAD_BYTES="$OBJECT_STORAGE_MAX_UPLOAD_BYTES" \
+            PRODUCTION_YOOKASSA_SHOP_ID_B64="$PRODUCTION_YOOKASSA_SHOP_ID_B64" \
+            PRODUCTION_YOOKASSA_SECRET_KEY_B64="$PRODUCTION_YOOKASSA_SECRET_KEY_B64" \
             GRANT_EXISTING_INVENTORY="$GRANT_EXISTING_INVENTORY" \
             CORRECT_EXISTING_INVENTORY="$CORRECT_EXISTING_INVENTORY" \
             bash -s <<'ENDSSH'
@@ -165,6 +183,43 @@ jobs:
           if [ "$GRANT_EXISTING_INVENTORY" = "true" ] && [ "$CORRECT_EXISTING_INVENTORY" = "true" ]; then
             echo 'grant_existing_inventory and correct_existing_inventory cannot run together' >&2
             exit 1
+          fi
+          decode_production_yookassa_value() {
+            local encoded="$1"
+            local decoded
+            local normalized
+            if [ -z "$encoded" ]; then
+              printf ''
+              return 0
+            fi
+            if ! decoded="$(printf '%s' "$encoded" | base64 --decode 2>/dev/null)"; then
+              return 1
+            fi
+            if [ -z "$decoded" ] || [[ "$decoded" == *$'\n'* || "$decoded" == *$'\r'* ]]; then
+              return 1
+            fi
+            normalized="$(printf '%s' "$decoded" | base64 | tr -d '\r\n')"
+            if [ "$encoded" != "$normalized" ]; then
+              return 1
+            fi
+            printf '%s' "$decoded"
+          }
+          if ! PRODUCTION_YOOKASSA_SHOP_ID="$(decode_production_yookassa_value "$PRODUCTION_YOOKASSA_SHOP_ID_B64")"; then
+            echo "PRODUCTION_YOOKASSA_SHOP_ID is not valid canonical base64"
+            exit 1
+          fi
+          if ! PRODUCTION_YOOKASSA_SECRET_KEY="$(decode_production_yookassa_value "$PRODUCTION_YOOKASSA_SECRET_KEY_B64")"; then
+            echo "PRODUCTION_YOOKASSA_SECRET_KEY is not valid canonical base64"
+            exit 1
+          fi
+          unset PRODUCTION_YOOKASSA_SHOP_ID_B64 PRODUCTION_YOOKASSA_SECRET_KEY_B64
+          if [ -z "$PRODUCTION_YOOKASSA_SHOP_ID" ] && [ -z "$PRODUCTION_YOOKASSA_SECRET_KEY" ]; then
+            PRODUCTION_YOOKASSA_RETURN_URL=''
+          elif [ -z "$PRODUCTION_YOOKASSA_SHOP_ID" ] || [ -z "$PRODUCTION_YOOKASSA_SECRET_KEY" ]; then
+            echo "PRODUCTION_YOOKASSA_SHOP_ID and PRODUCTION_YOOKASSA_SECRET_KEY must both be set or both be empty"
+            exit 1
+          else
+            PRODUCTION_YOOKASSA_RETURN_URL='https://ultimatehockey.ru/inventory?tab=bank&payment=return'
           fi
           if [ -z "${PUSH_VAPID_PUBLIC_KEY:-}" ] || [ -z "${PUSH_VAPID_PRIVATE_KEY:-}" ]; then
             echo "PUSH_VAPID_PUBLIC_KEY and PUSH_VAPID_PRIVATE_KEY GitHub secrets are required for production push notifications"
@@ -198,11 +253,15 @@ jobs:
           }
 
           docker_login_ghcr
+          export APP_DOMAIN LEGACY_APP_DOMAIN WWW_APP_DOMAIN
           export IMAGE_TAG PUSH_VAPID_PUBLIC_KEY PUSH_VAPID_PRIVATE_KEY PUSH_VAPID_SUBJECT
           export OBJECT_STORAGE_ENDPOINT OBJECT_STORAGE_REGION OBJECT_STORAGE_BUCKET
           export OBJECT_STORAGE_TENANT_ID OBJECT_STORAGE_ACCESS_KEY_ID
           export OBJECT_STORAGE_SECRET_ACCESS_KEY OBJECT_STORAGE_PUBLIC_BASE_URL
           export OBJECT_STORAGE_MAX_UPLOAD_BYTES
+          export PRODUCTION_YOOKASSA_SHOP_ID PRODUCTION_YOOKASSA_SECRET_KEY
+          export PRODUCTION_YOOKASSA_RETURN_URL
+          export DEV_ACCESS_CODE_LOGIN_ENABLED=true
           # Same flap can drop `compose pull` mid-transfer; retry a few times.
           for i in 1 2 3; do
             # Re-login before each pull attempt: after a partial failed pull,
@@ -296,3 +355,7 @@ jobs:
           printf '%s' "$js" | grep -q 'Загрузка'
           printf '%s' "$js" | grep -q 'DailyScreen-'
           echo "Frontend smoke test passed for $asset_path"
+
+          legacy_health="$(curl -fsSL --max-time 10 "$LEGACY_URL/api/health")"
+          printf '%s' "$legacy_health" | grep -q '"ok":true'
+          echo "Legacy production host serves the app during phase 1"

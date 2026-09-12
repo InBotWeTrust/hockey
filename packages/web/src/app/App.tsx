@@ -32,6 +32,23 @@ const TournamentResultPreviewScreen = lazy(() =>
 const InventoryScreen = lazy(() =>
   import('../screens/InventoryScreen.js').then((module) => ({ default: module.InventoryScreen })),
 );
+const PricesScreen = lazy(() =>
+  import('../screens/PricesScreen.js').then((module) => ({ default: module.PricesScreen })),
+);
+const TermsScreen = lazy(() =>
+  import('../screens/TermsScreen.js').then((module) => ({ default: module.TermsScreen })),
+);
+const OfferScreen = lazy(() =>
+  import('../screens/LegalDocuments.js').then((module) => ({ default: module.OfferScreen })),
+);
+const PrivacyScreen = lazy(() =>
+  import('../screens/LegalDocuments.js').then((module) => ({ default: module.PrivacyScreen })),
+);
+const PersonalDataConsentScreen = lazy(() =>
+  import('../screens/LegalDocuments.js').then((module) => ({
+    default: module.PersonalDataConsentScreen,
+  })),
+);
 const DailyOverviewScreen = lazy(() =>
   import('../screens/DailyOverviewScreen.js').then((module) => ({
     default: module.DailyOverviewScreen,
@@ -142,6 +159,15 @@ export function appBackdropClassName(pathname: string, search = ''): string {
     return 'app-shell--login';
   }
 
+  if (
+    pathname === '/prices' ||
+    pathname === '/terms' ||
+    pathname === '/offer' ||
+    pathname === '/privacy' ||
+    pathname === '/personal-data-consent'
+  )
+    return '';
+
   if (pathname === '/admin') {
     return 'app-shell--arena app-shell--arena-admin';
   }
@@ -229,6 +255,11 @@ function AppExperience(): JSX.Element {
           <Suspense fallback={<RouteLoading />}>
             <Routes>
               <Route path="/login" element={<LoginScreen />} />
+              <Route path="/prices" element={<PricesScreen />} />
+              <Route path="/terms" element={<TermsScreen />} />
+              <Route path="/offer" element={<OfferScreen />} />
+              <Route path="/privacy" element={<PrivacyScreen />} />
+              <Route path="/personal-data-consent" element={<PersonalDataConsentScreen />} />
               <Route path="/demo" element={<DemoScreen />} />
               <Route
                 path="/dev/tournament-result-preview"
@@ -436,6 +467,7 @@ function AppFrame(): JSX.Element {
   const isAuthenticated = useAuthStore((state) => Boolean(state.accessToken));
   const isPublicEntry =
     location.pathname === '/login' ||
+    location.pathname === '/prices' ||
     location.pathname === '/demo' ||
     location.pathname === '/auth/vk/callback';
 
