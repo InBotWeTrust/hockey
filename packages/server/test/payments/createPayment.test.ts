@@ -97,6 +97,7 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
   beforeEach(async () => {
     createPayment.mockClear();
     await app.pg.query('delete from payments');
+    await app.pg.query('delete from user_currency_account');
     await app.pg.query(
       "update coin_packages set title = 'Игровой запас', price_rub = 699, coin_amount = 40000, is_active = true where id = $1",
       [packageId],
@@ -324,6 +325,45 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
       await first;
       await pool.end();
     }
+  });
+
+  it('rejects an attempt before provider creation when its snapshot cannot fit the current balance', async () => {
+    await app.pg.query(
+      'insert into user_currency_account (user_id, balance) values ($1, 2147443648)',
+      [userId],
+    );
+    const response = await submit();
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error.code).toBe('payment_balance_capacity');
+    expect(createPayment).not.toHaveBeenCalled();
+    expect(
+      (await app.pg.query('select balance from user_currency_account where user_id = $1', [userId]))
+        .rows,
+    ).toEqual([{ balance: 2147443648 }]);
+  });
+
+  it('allows creation at the exact balance capacity boundary', async () => {
+    await app.pg.query(
+      'insert into user_currency_account (user_id, balance) values ($1, 2147443647)',
+      [userId],
+    );
+    expect((await submit()).statusCode).toBe(200);
+    expect(createPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('rechecks headroom using the immutable saved coin amount on provider retries', async () => {
+    createPayment.mockRejectedValueOnce(new Error('provider unavailable'));
+    const attempt = randomUUID();
+    expect((await submit(attempt)).statusCode).toBe(502);
+    await app.pg.query('update coin_packages set coin_amount = 1 where id = $1', [packageId]);
+    await app.pg.query(
+      'insert into user_currency_account (user_id, balance) values ($1, 2147483646)',
+      [userId],
+    );
+    const retry = await submit(attempt);
+    expect(retry.statusCode).toBe(409);
+    expect(retry.json().error.code).toBe('payment_balance_capacity');
+    expect(createPayment).toHaveBeenCalledTimes(1);
   });
 
   it('returns unavailable when YooKassa is not configured without creating a row', async () => {

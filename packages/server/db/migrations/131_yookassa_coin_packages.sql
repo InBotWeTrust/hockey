@@ -3,7 +3,7 @@ create table coin_packages (
   slug text not null unique,
   title text not null check (btrim(title) <> ''),
   description text not null default '',
-  coin_amount bigint not null check (coin_amount > 0),
+  coin_amount bigint not null check (coin_amount > 0 and coin_amount <= 100000000),
   price_rub int not null check (price_rub > 0),
   badge_text text,
   marker text check (marker in ('hit', 'top', 'premium')),

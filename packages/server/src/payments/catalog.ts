@@ -1,5 +1,8 @@
 import type { Pool } from 'pg';
 
+// Shared with payment creation and the admin package validation contract.
+export const MAX_COIN_PACKAGE_AMOUNT = 100_000_000;
+
 export type CoinPackageMarker = 'hit' | 'top' | 'premium';
 
 export interface CoinPackageDTO {
