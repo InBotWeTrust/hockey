@@ -195,3 +195,10 @@ describe('production YooKassa deployment wiring', () => {
     expect(productionPushWorkerCompose).not.toContain('YOOKASSA_');
   });
 });
+
+describe('production review access wiring', () => {
+  it('enables the revocable access-code route and its login control in production', () => {
+    expect(productionWorkflow).toContain('VITE_DEV_ACCESS_CODE_LOGIN_ENABLED=true');
+    expect(productionWorkflow).toContain('DEV_ACCESS_CODE_LOGIN_ENABLED=true');
+  });
+});

@@ -112,6 +112,11 @@ describe('LoginScreen', () => {
     vi.stubEnv('VITE_DEV_ACCESS_CODE_LOGIN_ENABLED', 'true');
     renderWith();
 
+    expect(screen.getByTestId('telegram-login-container')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /войти через вконтакте/i })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Код доступа' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Тестовый вход' }));
+
     expect(screen.getByRole('textbox', { name: 'Код доступа' }).closest('main')).toHaveStyle({
       height: 'var(--app-viewport-height, 100dvh)',
       overflowY: 'auto',
@@ -126,6 +131,7 @@ describe('LoginScreen', () => {
     });
     vi.stubEnv('VITE_DEV_ACCESS_CODE_LOGIN_ENABLED', 'true');
     renderWith();
+    fireEvent.click(screen.getByRole('button', { name: 'Тестовый вход' }));
 
     expect(screen.getByRole('textbox', { name: 'Код доступа' }).closest('main')).toHaveClass(
       'login-screen--compact-code',

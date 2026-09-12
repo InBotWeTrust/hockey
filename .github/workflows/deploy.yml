@@ -83,6 +83,7 @@ jobs:
           build-args: |
             VITE_TELEGRAM_BOT_USERNAME=${{ env.BOT_USERNAME }}
             VITE_VK_APP_ID=${{ env.VK_APP_ID }}
+            VITE_DEV_ACCESS_CODE_LOGIN_ENABLED=true
             APP_BUILD_SHA=${{ github.sha }}
           tags: |
             ${{ env.WEB_IMAGE }}:latest
@@ -260,6 +261,7 @@ jobs:
           export OBJECT_STORAGE_MAX_UPLOAD_BYTES
           export PRODUCTION_YOOKASSA_SHOP_ID PRODUCTION_YOOKASSA_SECRET_KEY
           export PRODUCTION_YOOKASSA_RETURN_URL
+          export DEV_ACCESS_CODE_LOGIN_ENABLED=true
           # Same flap can drop `compose pull` mid-transfer; retry a few times.
           for i in 1 2 3; do
             # Re-login before each pull attempt: after a partial failed pull,
