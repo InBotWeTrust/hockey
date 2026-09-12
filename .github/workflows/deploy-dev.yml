@@ -351,6 +351,6 @@ jobs:
             exit 1
           fi
           js="$(curl -fsSL --max-time 15 "$APP_URL$asset_path")"
-          printf '%s' "$js" | grep -q 'Код доступа'
-          printf '%s' "$js" | grep -q 'Войти в dev'
+          grep -q 'Код доступа' <<<"$js"
+          grep -q 'Тестовый вход' <<<"$js"
           echo "Staging frontend smoke test passed for $asset_path"

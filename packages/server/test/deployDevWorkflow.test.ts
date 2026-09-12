@@ -149,6 +149,14 @@ describe('dev YooKassa deployment wiring', () => {
   });
 });
 
+describe('dev frontend smoke test', () => {
+  it('checks the current review-login copy without pipefail-sensitive printf pipelines', () => {
+    expect(workflow).toContain(`grep -q 'Код доступа' <<<"$js"`);
+    expect(workflow).toContain(`grep -q 'Тестовый вход' <<<"$js"`);
+    expect(workflow).not.toContain(`printf '%s' "$js" | grep -q`);
+  });
+});
+
 describe('production YooKassa deployment wiring', () => {
   it('passes optional production credentials safely and uses the ultimatehockey.ru return URL', () => {
     expect(productionWorkflow).toContain(
