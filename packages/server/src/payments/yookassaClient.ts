@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 
 const API_URL = 'https://api.yookassa.ru/v3/payments';
+const REQUEST_TIMEOUT_MS = 10_000;
 
 type FetchLike = typeof fetch;
 
@@ -41,6 +42,7 @@ export interface CreateYooKassaClientOptions {
   secretKey: string;
   returnUrl: string;
   fetchImpl?: FetchLike;
+  requestTimeoutMs?: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -91,13 +93,22 @@ export function createYooKassaClient(options: CreateYooKassaClientOptions): YooK
   const authorization = `Basic ${Buffer.from(`${options.shopId}:${options.secretKey}`).toString('base64')}`;
 
   async function request(url: string, init: RequestInit): Promise<YooKassaPayment> {
+    const controller = new AbortController();
+    // Keep one deadline active through response.json(): headers alone do not
+    // complete a request, and an unfinished body must not retain a payment lock.
+    const timeout = setTimeout(
+      () => controller.abort(),
+      options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS,
+    );
     try {
-      const response = await fetchImpl(url, init);
+      const response = await fetchImpl(url, { ...init, signal: controller.signal });
       if (!response.ok) throw new Error('yookassa_request_failed');
       return parsePayment(await response.json());
     } catch (error) {
       if (error instanceof Error && error.message === 'yookassa_request_failed') throw error;
       throw new Error('yookassa_request_failed');
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

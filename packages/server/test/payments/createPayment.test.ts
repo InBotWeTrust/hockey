@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
@@ -6,6 +7,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { buildApp } from '../../src/app.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
+import { createPool } from '../../src/db/pool.js';
+import { createCoinPayment } from '../../src/payments/service.js';
+import { createYooKassaClient } from '../../src/payments/yookassaClient.js';
 import type {
   CreateYooKassaPaymentInput,
   YooKassaPayment,
@@ -247,6 +251,79 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
     expect(response.statusCode).toBe(409);
     expect(response.json().error.code).toBe('payment_attempt_expired');
     expect(createPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the database client and advisory lock after provider timeout and safely retries the same payment', async () => {
+    const pool = createPool(getTestUrls().databaseUrl, { max: 1, connectionTimeoutMillis: 500 });
+    const attempts: RequestInit[] = [];
+    let cancelPendingFetch: (() => void) | undefined;
+    const provider = createYooKassaClient({
+      shopId: 'fixture-shop',
+      secretKey: 'fixture-secret',
+      returnUrl: 'https://example.test/return',
+      requestTimeoutMs: 30,
+      fetchImpl: async (_url, init) => {
+        attempts.push(init!);
+        if (attempts.length === 1) {
+          return new Promise<Response>((_resolve, reject) => {
+            cancelPendingFetch = () => reject(new Error('aborted pending network request'));
+            init?.signal?.addEventListener('abort', cancelPendingFetch, { once: true });
+          });
+        }
+        const request = JSON.parse(String(init?.body));
+        return new Response(
+          JSON.stringify({
+            id: 'provider-timeout-retry',
+            status: 'pending',
+            amount: request.amount,
+            metadata: request.metadata,
+            confirmation: {
+              type: 'redirect',
+              confirmation_url: 'https://yookassa.ru/checkout/retry',
+            },
+          }),
+          { status: 200 },
+        );
+      },
+    });
+    const attemptId = randomUUID();
+    const first = createCoinPayment(pool, provider, userId, packageId, attemptId).catch(
+      (error) => error as Error,
+    );
+    try {
+      await delay(200);
+      expect(attempts[0]?.signal?.aborted).toBe(true);
+      await expect(first).resolves.toMatchObject({
+        code: 'payment_provider_unavailable',
+        statusCode: 502,
+      });
+      // A max-one pool query proves the timed-out service released its connection.
+      const state = await pool.query(
+        "select id, provider_payment_id, (select count(*)::int from pg_locks where pid = pg_backend_pid() and locktype = 'advisory') as advisory_locks from payments where purchase_attempt_id = $1",
+        [attemptId],
+      );
+      expect(state.rows).toEqual([
+        { id: expect.any(String), provider_payment_id: null, advisory_locks: 0 },
+      ]);
+      const paymentId = state.rows[0].id;
+      const retried = await createCoinPayment(pool, provider, userId, packageId, attemptId);
+      expect(retried).toEqual({
+        paymentId,
+        status: 'pending',
+        confirmationUrl: 'https://yookassa.ru/checkout/retry',
+      });
+      expect(attempts).toHaveLength(2);
+      expect(
+        attempts.map((request) => new Headers(request.headers).get('Idempotence-Key')),
+      ).toEqual([paymentId, paymentId]);
+      expect(
+        attempts.map((request) => JSON.parse(String(request.body)).metadata.local_payment_id),
+      ).toEqual([paymentId, paymentId]);
+    } finally {
+      cancelPendingFetch?.();
+      await first;
+      await pool.end();
+    }
   });
 
   it('returns unavailable when YooKassa is not configured without creating a row', async () => {
