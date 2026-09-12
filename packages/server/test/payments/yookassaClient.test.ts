@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createServer } from 'node:http';
+import { setTimeout as delay } from 'node:timers/promises';
 import { createYooKassaClient } from '../../src/payments/yookassaClient.js';
 
 const localPaymentId = 'e23f5304-0908-4bbc-8c97-4874fcf39187';
@@ -27,6 +29,46 @@ function buildClient(fetchImpl: typeof fetch) {
 }
 
 describe('YooKassa client', () => {
+  it.each(['headers', 'body'])('aborts a real HTTP request stalled during %s', async (phase) => {
+    let connectionClosed = false;
+    let requestSignal: AbortSignal | null | undefined;
+    const server = createServer((_request, response) => {
+      response.on('close', () => {
+        connectionClosed = true;
+      });
+      if (phase === 'body') {
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.write('{"id":');
+      }
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('missing test server address');
+    const client = createYooKassaClient({
+      shopId: 'fixture-shop',
+      secretKey: 'fixture-secret',
+      returnUrl: 'https://example.test/return',
+      requestTimeoutMs: 100,
+      fetchImpl: (_url, init) => {
+        requestSignal = init?.signal;
+        return fetch(`http://127.0.0.1:${address.port}`, init);
+      },
+    });
+    const result = client.getPayment('fixture-payment').catch((error) => error as Error);
+    try {
+      await delay(250);
+      expect(requestSignal?.aborted).toBe(true);
+      expect(connectionClosed).toBe(true);
+      await expect(result).resolves.toEqual(new Error('yookassa_request_failed'));
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+      await result;
+    }
+  });
+
   it('creates a redirect payment with the local payment metadata and idempotency key', async () => {
     const fetchMock = vi.fn(async () => paymentResponse()) as unknown as typeof fetch;
     const client = buildClient(fetchMock);
