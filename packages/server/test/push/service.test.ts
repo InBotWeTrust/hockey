@@ -1,6 +1,10 @@
 import { createECDH, randomBytes } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { sendWebPush, type ResolvedPushVapidOptions } from '../../src/push/service.js';
+import {
+  resolvePushVapidOptions,
+  sendWebPush,
+  type ResolvedPushVapidOptions,
+} from '../../src/push/service.js';
 
 function createP256KeyPair(): { publicKey: string; privateKey: string } {
   const ecdh = createECDH('prime256v1');
@@ -16,6 +20,16 @@ function createP256KeyPair(): { publicKey: string; privateKey: string } {
   const privateKey = normalizedPrivateKey.toString('base64url');
   return { publicKey, privateKey };
 }
+
+describe('resolvePushVapidOptions', () => {
+  it('uses the canonical production domain as the default VAPID contact', () => {
+    expect(resolvePushVapidOptions({ publicKey: 'public', privateKey: 'private' })).toEqual({
+      publicKey: 'public',
+      privateKey: 'private',
+      subject: 'mailto:push@ultimatehockey.ru',
+    });
+  });
+});
 
 describe('sendWebPush', () => {
   afterEach(() => {
