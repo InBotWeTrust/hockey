@@ -1,8 +1,17 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, within, type RenderResult } from '@testing-library/react';
-import { BrowserRouter, MemoryRouter, Route, Routes } from 'react-router-dom';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+  type RenderResult,
+} from '@testing-library/react';
+import { BrowserRouter, MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryState } from '../api/inventory.js';
+import { redirectToPaymentConfirmation } from '../api/payments.js';
 import { InventoryScreen } from './InventoryScreen.js';
 import { parseShopCategory } from './inventoryShopCategories.js';
 import { readFileSync } from 'node:fs';
@@ -265,6 +274,7 @@ function mockInventoryFetch(
   inventory: InventoryState,
   purchasedInventory = inventory,
   paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded' | 'canceled' | 'error' = 'pending',
+  confirmationUrl: string | null = null,
 ): void {
   vi.restoreAllMocks();
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -286,7 +296,7 @@ function mockInventoryFetch(
         JSON.stringify({
           paymentId: '00000000-0000-4000-8000-000000000099',
           status: 'pending',
-          confirmationUrl: null,
+          confirmationUrl,
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       );
@@ -344,6 +354,11 @@ function mockInventoryFetch(
   });
 }
 
+function LocationProbe(): JSX.Element {
+  const location = useLocation();
+  return <div data-testid="location-search">{location.search}</div>;
+}
+
 function renderInventory(initialEntry = '/inventory'): RenderResult {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -351,6 +366,7 @@ function renderInventory(initialEntry = '/inventory'): RenderResult {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialEntry]}>
+        <LocationProbe />
         <Routes>
           <Route path="/inventory" element={<InventoryScreen />} />
           <Route path="/sections" element={<div>sections screen</div>} />
@@ -363,6 +379,7 @@ function renderInventory(initialEntry = '/inventory'): RenderResult {
 describe('InventoryScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    sessionStorage.clear();
     mockInventoryFetch(emptyInventory);
   });
 
@@ -691,13 +708,43 @@ describe('InventoryScreen', () => {
     });
   });
 
+  it('redirects to a valid HTTPS payment confirmation URL', () => {
+    const assign = vi.fn();
+
+    expect(redirectToPaymentConfirmation('https://yoomoney.ru/checkout/confirmed', assign)).toBe(
+      true,
+    );
+    expect(assign).toHaveBeenCalledWith('https://yoomoney.ru/checkout/confirmed');
+  });
+
+  it.each(['javascript:alert(1)', 'http://yoomoney.ru/checkout', 'not a URL'])(
+    'rejects an unsafe payment confirmation URL: %s',
+    (confirmationUrl) => {
+      const assign = vi.fn();
+
+      expect(redirectToPaymentConfirmation(confirmationUrl, assign)).toBe(false);
+      expect(assign).not.toHaveBeenCalled();
+    },
+  );
+
+  it('shows a payment error instead of navigating to an unsafe confirmation URL', async () => {
+    mockInventoryFetch(inventoryWithItems, inventoryWithItems, 'pending', 'javascript:alert(1)');
+    renderInventory();
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+
+    expect(await screen.findByText(/Не удалось перейти к оплате/)).toBeInTheDocument();
+    expect(sessionStorage.getItem('hockey.bank.paymentId')).toBeNull();
+  });
+
   it.each([
-    ['pending', 'Платёж ожидает подтверждения'],
-    ['paid', 'Оплата подтверждена'],
-    ['canceled', 'Оплата отменена'],
+    ['pending', 'Платёж ожидает подтверждения', false],
+    ['paid', 'Оплата подтверждена', true],
+    ['canceled', 'Оплата отменена', true],
   ] as const)(
     'checks the owner payment status after a returned %s payment',
-    async (status, copy) => {
+    async (status, copy, isTerminal) => {
       sessionStorage.setItem('hockey.bank.paymentId', '00000000-0000-4000-8000-000000000099');
       mockInventoryFetch(inventoryWithItems, inventoryWithItems, status);
       renderInventory('/inventory?payment=return');
@@ -711,8 +758,50 @@ describe('InventoryScreen', () => {
         '/api/bank/payments/00000000-0000-4000-8000-000000000099',
         expect.anything(),
       );
+      expect(sessionStorage.getItem('hockey.bank.paymentId')).toBe(
+        isTerminal ? null : '00000000-0000-4000-8000-000000000099',
+      );
+      if (isTerminal) {
+        await waitFor(() => {
+          expect(screen.getByTestId('location-search')).toBeEmptyDOMElement();
+        });
+      } else {
+        expect(screen.getByTestId('location-search')).toHaveTextContent('?payment=return');
+      }
     },
   );
+
+  it('keeps polling a pending returned payment without clearing its return marker', async () => {
+    vi.useFakeTimers();
+    try {
+      sessionStorage.setItem('hockey.bank.paymentId', '00000000-0000-4000-8000-000000000099');
+      mockInventoryFetch(inventoryWithItems, inventoryWithItems, 'pending');
+      renderInventory('/inventory?payment=return');
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(
+        screen.getByText('Платёж ожидает подтверждения. Монеты будут зачислены после оплаты.'),
+      ).toBeInTheDocument();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+
+      const statusCalls = vi
+        .mocked(globalThis.fetch)
+        .mock.calls.filter(([input]) =>
+          String(input).endsWith('/api/bank/payments/00000000-0000-4000-8000-000000000099'),
+        );
+      expect(statusCalls).toHaveLength(2);
+      expect(sessionStorage.getItem('hockey.bank.paymentId')).toBe(
+        '00000000-0000-4000-8000-000000000099',
+      );
+      expect(screen.getByTestId('location-search')).toHaveTextContent('?payment=return');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it('shows transaction history with currency icons and filters', async () => {
     mockInventoryFetch(inventoryWithItems);
