@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { CircleDollarSign } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { fetchCoinPackages, type CoinPackage } from '../api/payments.js';
 
 function markerLabel(marker: CoinPackage['marker']): string | null {
@@ -87,6 +88,27 @@ export function PricesScreen(): JSX.Element {
             ))}
           </div>
         ) : null}
+
+        <section className="glass prices-screen__legal" aria-labelledby="prices-legal-title">
+          <h2 id="prices-legal-title">Оплата и получение</h2>
+          <p>
+            Монеты — цифровой товар внутри Ultimate Hockey. Они зачисляются на игровой аккаунт
+            после успешной оплаты. Физическая доставка не требуется.
+          </p>
+          <p>
+            Оплата доступна только авторизованным пользователям внутри приложения. На этой
+            странице оформить покупку нельзя.
+          </p>
+          <Link to="/terms">Пользовательское соглашение</Link>
+
+          <h2>Продавец и поддержка</h2>
+          <p>ИП Гуменюк Егор Михайлович</p>
+          <p>ОГРНИП 323100000016441 · ИНН 101602099457</p>
+          <p>
+            Email поддержки:{' '}
+            <a href="mailto:egorgumenyuk@yandex.ru">egorgumenyuk@yandex.ru</a>
+          </p>
+        </section>
       </section>
     </main>
   );

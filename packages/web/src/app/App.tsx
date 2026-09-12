@@ -35,6 +35,9 @@ const InventoryScreen = lazy(() =>
 const PricesScreen = lazy(() =>
   import('../screens/PricesScreen.js').then((module) => ({ default: module.PricesScreen })),
 );
+const TermsScreen = lazy(() =>
+  import('../screens/TermsScreen.js').then((module) => ({ default: module.TermsScreen })),
+);
 const DailyOverviewScreen = lazy(() =>
   import('../screens/DailyOverviewScreen.js').then((module) => ({
     default: module.DailyOverviewScreen,
@@ -145,7 +148,7 @@ export function appBackdropClassName(pathname: string, search = ''): string {
     return 'app-shell--login';
   }
 
-  if (pathname === '/prices') return '';
+  if (pathname === '/prices' || pathname === '/terms') return '';
 
   if (pathname === '/admin') {
     return 'app-shell--arena app-shell--arena-admin';
@@ -235,6 +238,7 @@ function AppExperience(): JSX.Element {
             <Routes>
               <Route path="/login" element={<LoginScreen />} />
               <Route path="/prices" element={<PricesScreen />} />
+              <Route path="/terms" element={<TermsScreen />} />
               <Route path="/demo" element={<DemoScreen />} />
               <Route
                 path="/dev/tournament-result-preview"

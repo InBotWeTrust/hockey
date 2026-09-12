@@ -210,8 +210,23 @@ describe('App routing + auth', () => {
     expect(await screen.findByRole('heading', { name: 'Пакеты монет' })).toBeInTheDocument();
     expect(await screen.findByText('500 монет')).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Пользовательское соглашение' })).toHaveAttribute(
+      'href',
+      '/terms',
+    );
     expect(screen.queryByText(/войти|регистрац|купить/i)).not.toBeInTheDocument();
+  });
+
+  it('shows /terms to a logged-out visitor without private app controls', async () => {
+    window.history.replaceState({}, '', '/terms');
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Пользовательское соглашение' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/ОГРНИП 323100000016441/)).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Основная навигация' })).not.toBeInTheDocument();
   });
 
   it('keeps /prices free of bottom navigation for an authenticated visitor', async () => {

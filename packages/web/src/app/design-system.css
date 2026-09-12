@@ -5277,6 +5277,49 @@
   line-height: 1.4;
 }
 
+.prices-screen__legal,
+.legal-screen__section {
+  padding: 20px;
+  color: #334155;
+}
+
+.prices-screen__legal {
+  margin-top: 20px;
+}
+
+.prices-screen__legal h2,
+.legal-screen__section h2 {
+  margin: 0 0 10px;
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.prices-screen__legal h2:not(:first-child) {
+  margin-top: 22px;
+}
+
+.prices-screen__legal p,
+.legal-screen__section p {
+  margin: 8px 0;
+  line-height: 1.55;
+}
+
+.prices-screen__legal a,
+.legal-screen a {
+  color: #075985;
+  font-weight: 700;
+}
+
+.legal-screen__content {
+  display: grid;
+  gap: 14px;
+}
+
+.legal-screen__back {
+  justify-self: start;
+  padding: 10px 2px;
+}
+
 @media (max-width: 360px) {
   .prices-screen {
     padding-right: 10px;
