@@ -5,6 +5,7 @@ import {
   type ProfileAchievementDTO,
 } from '../achievements/service.js';
 import { getGameSettings } from '../duel/gameSettings.js';
+import { ACTIVITY_STREAK_CTES } from './activityStreak.js';
 
 type Queryable = Pool | PoolClient;
 
@@ -355,51 +356,20 @@ export async function fetchPlayStreakDays(
 export async function fetchPlayStreakStats(
   db: Queryable,
   userId: string,
-  timezone: string,
+  _timezone: string,
 ): Promise<{ currentDays: number; bestDays: number }> {
   const { rows } = await db.query<{ current_days: number; best_days: number }>(
-    `with activity_days as (
-       select distinct (created_at at time zone $2)::date as day
-         from shot_session
-        where user_id = $1
-          and mode in ('daily', 'amateur_duel', 'tournament_classic')
-     ),
-     params as (
-       select (now() at time zone $2)::date as today
-     ),
-     anchor as (
-       select max(ad.day) as day
-         from activity_days ad
-         cross join params p
-        where ad.day between p.today - 1 and p.today
-     ),
-     ordered as (
-       select ad.day,
-              row_number() over (order by ad.day desc) as rn
-         from activity_days ad
-         cross join anchor a
-       where a.day is not null
-         and ad.day <= a.day
-     ),
-     current_streak as (
-       select count(*)::int as days
-         from ordered o
-         cross join anchor a
-        where o.day = a.day - (o.rn::int - 1)
-     ),
-     grouped_days as (
-       select ad.day,
-              ad.day - (row_number() over (order by ad.day))::int as streak_group
-         from activity_days ad
-     ),
-     streaks as (
-       select count(*)::int as days
-         from grouped_days
-        group by streak_group
-     )
-     select coalesce((select days from current_streak), 0)::int as current_days,
-            coalesce((select max(days) from streaks), 0)::int as best_days`,
-    [userId, timezone],
+    `with ${ACTIVITY_STREAK_CTES}
+     select coalesce(current_streaks.current_days, 0)::int as current_days,
+            greatest(
+              coalesce(historical_streaks.best_days, 0),
+              coalesce(current_streaks.current_days, 0)
+            )::int as best_days
+       from users
+       left join current_streaks on current_streaks.user_id = users.id
+       left join historical_streaks on historical_streaks.user_id = users.id
+      where users.id = $1`,
+    [userId],
   );
   const row = rows[0];
   return {

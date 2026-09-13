@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { getGameSettings } from '../duel/gameSettings.js';
+import { observeAchievementStage, openFirstAchievementStages } from './stageProgress.js';
 
 type Queryable = Pool | PoolClient;
 
@@ -37,6 +38,14 @@ export interface ProfileAchievementDTO {
   isClaimable: boolean;
   completedAt?: string;
   claimedAt?: string;
+  stage?: {
+    current: number;
+    total: number;
+    requirement: string;
+    progressValue: number;
+    targetValue: number;
+    history: Array<{ stageNumber: number; claimedAt: string; requirement: string }>;
+  };
 }
 
 interface AchievementRow {
@@ -54,6 +63,18 @@ interface AchievementRow {
   reward_tokens: number | string;
   completed_at: Date | null;
   claimed_at: Date | null;
+  stage_number: number | null;
+  stage_total: number | string | null;
+  stage_requirement: string | null;
+  stage_target: Record<string, number | string | boolean> | null;
+  stage_progress: Record<string, number | string | boolean> | null;
+  stage_reward_currency: number | string | null;
+  stage_reward_stars: number | string | null;
+  stage_reward_experience: number | string | null;
+  stage_reward_tokens: number | string | null;
+  stage_completed_at: Date | null;
+  stage_claimed_at: Date | null;
+  stage_history: Array<{ stageNumber: number; claimedAt: string; requirement: string }> | null;
 }
 
 const STAT_ACHIEVEMENT_RULES = [
@@ -64,31 +85,69 @@ const STAT_ACHIEVEMENT_RULES = [
 ] as const;
 
 function mapAchievementRow(row: AchievementRow): ProfileAchievementDTO {
+  const isTiered = row.stage_number !== null;
+  const completedAt = isTiered ? row.stage_completed_at : row.completed_at;
+  const claimedAt = isTiered ? row.stage_claimed_at : row.claimed_at;
   const status: AchievementStatus =
-    row.completed_at === null
-      ? 'locked'
-      : row.claimed_at === null
-        ? 'completed_unclaimed'
-        : 'claimed';
+    completedAt === null ? 'locked' : claimedAt === null ? 'completed_unclaimed' : 'claimed';
+
+  const targetEntries = Object.entries(row.stage_target ?? {}).filter(
+    ([, value]) => typeof value === 'number',
+  ) as Array<[string, number]>;
+  const targetEntry = targetEntries.find(([key]) =>
+    [
+      'total',
+      'goalStreak',
+      'accuracyPercent',
+      'minimumFirstTwoGoals',
+      'endingGoalStreak',
+      'recoveryGoalStreak',
+      'days',
+      'openingGoalStreak',
+      'minimumExperienceDifference',
+      'wins',
+      'minimumMargin',
+      'goals',
+      'maximumNonGoals',
+    ].includes(key),
+  );
+  const progressValue = Number(
+    targetEntry === undefined ? 0 : (row.stage_progress?.[targetEntry[0]] ?? 0),
+  );
 
   return {
     id: row.id,
     photoUrl: row.photo_url,
     title: row.title,
     description: row.description,
-    requirement: row.requirement,
+    requirement: row.stage_requirement ?? row.requirement,
     category: row.category,
     availability: row.availability,
     futureTag: row.future_tag,
-    rewardCurrency: Number(row.reward_currency),
-    rewardStars: Number(row.reward_stars),
-    rewardExperience: Number(row.reward_experience),
-    rewardTokens: Number(row.reward_tokens),
+    rewardCurrency: Number(row.stage_reward_currency ?? row.reward_currency),
+    rewardStars: Number(row.stage_reward_stars ?? row.reward_stars),
+    rewardExperience: Number(row.stage_reward_experience ?? row.reward_experience),
+    rewardTokens: Number(row.stage_reward_tokens ?? row.reward_tokens),
     status,
-    isUnlocked: row.completed_at !== null,
+    isUnlocked: completedAt !== null,
     isClaimable: status === 'completed_unclaimed',
-    ...(row.completed_at !== null ? { completedAt: row.completed_at.toISOString() } : {}),
-    ...(row.claimed_at !== null ? { claimedAt: row.claimed_at.toISOString() } : {}),
+    ...(completedAt !== null ? { completedAt: completedAt.toISOString() } : {}),
+    ...(claimedAt !== null ? { claimedAt: claimedAt.toISOString() } : {}),
+    ...(isTiered
+      ? {
+          stage: {
+            current: row.stage_number!,
+            total: Number(row.stage_total ?? 0),
+            requirement: row.stage_requirement!,
+            progressValue,
+            targetValue: targetEntry?.[1] ?? 0,
+            history: (row.stage_history ?? []).map((history) => ({
+              ...history,
+              claimedAt: new Date(history.claimedAt).toISOString(),
+            })),
+          },
+        }
+      : {}),
   };
 }
 
@@ -182,23 +241,118 @@ export async function fetchAchievementCatalogueForUser(
   userId: string,
   opts: { includeHidden?: boolean; claimedOnly?: boolean } = {},
 ): Promise<ProfileAchievementDTO[]> {
+  await openFirstAchievementStages(db, userId, new Date());
   const clauses = [opts.includeHidden === true ? 'true' : `a.availability <> 'hidden'`];
-  if (opts.claimedOnly === true) clauses.push('ua.claimed_at is not null');
+  if (opts.claimedOnly === true) {
+    clauses.push('(ua.claimed_at is not null or stage_state.stage_claimed_at is not null)');
+  }
 
   const { rows } = await db.query<AchievementRow>(
     `select a.id, a.photo_url, a.title, a.description, a.requirement,
             a.category, a.availability, a.future_tag,
             a.reward_currency, a.reward_stars, a.reward_experience, a.reward_tokens,
-            ua.completed_at, ua.claimed_at
+            ua.completed_at, ua.claimed_at,
+            stage_state.stage_number, stage_state.stage_total,
+            stage_state.stage_requirement, stage_state.stage_target, stage_state.stage_progress,
+            stage_state.stage_reward_currency, stage_state.stage_reward_stars,
+            stage_state.stage_reward_experience, stage_state.stage_reward_tokens,
+            stage_state.stage_completed_at, stage_state.stage_claimed_at,
+            coalesce(stage_history.history, '[]'::jsonb) as stage_history
        from achievements a
        left join user_achievements ua
          on ua.achievement_id = a.id and ua.user_id = $1
+       left join lateral (
+         select user_stage.stage_number,
+                (select count(*) from achievement_stages count_stage
+                  where count_stage.achievement_id = a.id and count_stage.is_enabled) as stage_total,
+                stage.requirement as stage_requirement,
+                stage.target as stage_target,
+                user_stage.progress as stage_progress,
+                stage.reward_currency as stage_reward_currency,
+                stage.reward_stars as stage_reward_stars,
+                stage.reward_experience as stage_reward_experience,
+                stage.reward_tokens as stage_reward_tokens,
+                user_stage.completed_at as stage_completed_at,
+                user_stage.claimed_at as stage_claimed_at
+           from user_achievement_stages user_stage
+           join achievement_stages stage
+             on stage.achievement_id = user_stage.achievement_id
+            and stage.stage_number = user_stage.stage_number
+          where user_stage.user_id = $1 and user_stage.achievement_id = a.id
+          order by (user_stage.claimed_at is null) desc, user_stage.stage_number desc
+          limit 1
+       ) stage_state on true
+       left join lateral (
+         select jsonb_agg(
+                  jsonb_build_object(
+                    'stageNumber', history_stage.stage_number,
+                    'claimedAt', history_stage.claimed_at,
+                    'requirement', definition.requirement
+                  ) order by history_stage.stage_number
+                ) as history
+           from user_achievement_stages history_stage
+           join achievement_stages definition
+             on definition.achievement_id = history_stage.achievement_id
+            and definition.stage_number = history_stage.stage_number
+          where history_stage.user_id = $1
+            and history_stage.achievement_id = a.id
+            and history_stage.claimed_at is not null
+       ) stage_history on true
       where ${clauses.join(' and ')}
       order by a.sort_order asc`,
     [userId],
   );
 
   return rows.map(mapAchievementRow);
+}
+
+export interface CareerGoalObservation {
+  eventKey: string;
+  occurredAt: Date;
+  mode: string;
+  lifetimeTotal: number;
+}
+
+const CAREER_GOAL_MODES = new Set(['daily', 'amateur_duel', 'tournament_classic']);
+
+export async function observeCareerGoal(
+  db: Queryable,
+  userId: string,
+  observation: CareerGoalObservation,
+): Promise<{ completed: boolean; stageNumber: number | null }> {
+  if (!CAREER_GOAL_MODES.has(observation.mode)) {
+    return { completed: false, stageNumber: null };
+  }
+  return observeAchievementStage(db, userId, 'career-goals', {
+    eventKey: observation.eventKey,
+    occurredAt: observation.occurredAt,
+    progress: { total: observation.lifetimeTotal },
+    context: { mode: observation.mode },
+  });
+}
+
+export async function observeCareerExperience(
+  db: Queryable,
+  userId: string,
+  observation: { eventKey: string; occurredAt: Date; lifetimeTotal: number },
+) {
+  return observeAchievementStage(db, userId, 'career-experience', {
+    eventKey: observation.eventKey,
+    occurredAt: observation.occurredAt,
+    progress: { total: observation.lifetimeTotal },
+  });
+}
+
+export async function observeCareerStreak(
+  db: Queryable,
+  userId: string,
+  observation: { eventKey: string; occurredAt: Date; recordDays: number },
+) {
+  return observeAchievementStage(db, userId, 'career-streak', {
+    eventKey: observation.eventKey,
+    occurredAt: observation.occurredAt,
+    progress: { days: observation.recordDays },
+  });
 }
 
 export async function fetchProfileAchievements(
