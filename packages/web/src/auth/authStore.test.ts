@@ -1,10 +1,15 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useAuthStore } from './authStore.js';
 
 describe('useAuthStore', () => {
   beforeEach(() => {
-    localStorage.clear();
+    vi.stubGlobal('__HOCKEY_NATIVE__', undefined);
     useAuthStore.getState().clearSession();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('starts empty', () => {
@@ -50,5 +55,23 @@ describe('useAuthStore', () => {
     expect(raw).toBeTruthy();
     const parsed = JSON.parse(raw!);
     expect(parsed.state.accessToken).toBe('a');
+  });
+
+  it('writes native token rotations only to protected storage', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('__HOCKEY_NATIVE__', { platform: 'android' });
+    vi.stubGlobal('Capacitor', {
+      getPlatform: () => 'android',
+      Plugins: { SecureSession: { load: vi.fn(), save, clear: vi.fn() } },
+    });
+
+    useAuthStore.getState().setSession({
+      accessToken: 'rotated-access',
+      refreshToken: 'rotated-refresh',
+      user: { id: 'u1', displayName: 'Alice' },
+    });
+
+    await vi.waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(localStorage.getItem('hockey.auth')).toBeNull();
   });
 });
