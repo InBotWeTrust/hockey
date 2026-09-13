@@ -738,7 +738,9 @@ describe('InventoryScreen', () => {
     fireEvent.click(buy);
     fireEvent.click(buy);
 
-    expect(await screen.findByText('Введите почту для получения чека')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('dialog', { name: 'Введите почту для получения чека' }),
+    ).toBeInTheDocument();
     expect(paymentCalls()).toHaveLength(0);
     fireEvent.change(screen.getByRole('textbox', { name: 'Электронная почта' }), {
       target: { value: 'buyer@example.com' },
@@ -755,10 +757,36 @@ describe('InventoryScreen', () => {
     });
   });
 
-  it('validates receipt email and cancellation does not create a payment', async () => {
+  it('uses the standard close action and one CTA in the receipt email modal', async () => {
     renderInventory();
     fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
     fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Введите почту для получения чека',
+    });
+    const heading = within(dialog).getByRole('heading');
+    expect(heading).toContainHTML('<br>');
+    expect(heading).toHaveTextContent('Введите почту дляполучения чека');
+    expect(within(dialog).queryByText('Получение чека')).not.toBeInTheDocument();
+    expect(dialog.querySelector('.modal-copy')).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Отмена' })).not.toBeInTheDocument();
+    expect(within(dialog).getByText('Электронная почта')).toHaveClass('section-label');
+    const summary = within(dialog).getByLabelText('40 000 монет за 699 рублей');
+    expect(summary).toHaveClass('receipt-payment-summary');
+    expect(summary.querySelector('.lucide-circle-dollar-sign')).not.toBeNull();
+    expect(summary.querySelector('.lucide-russian-ruble')).toBeNull();
+    expect(within(summary).getByText('40 000 монет')).toBeInTheDocument();
+    expect(within(summary).getByText('·')).toBeInTheDocument();
+    expect(within(summary).getByText('699 ₽')).toBeInTheDocument();
+    expect(within(summary).queryByText('за')).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Перейти к оплате' }).parentElement).toHaveClass(
+      'receipt-payment-actions',
+    );
+    expect(within(dialog).getByRole('button', { name: 'Перейти к оплате' })).toHaveClass(
+      'btn',
+      'btn--cta',
+    );
 
     const email = await screen.findByRole('textbox', { name: 'Электронная почта' });
     fireEvent.change(email, { target: { value: 'wrong-email' } });
@@ -766,7 +794,9 @@ describe('InventoryScreen', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Введите корректный email');
     expect(paymentCalls()).toHaveLength(0);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+    const closeButton = within(dialog).getByRole('button', { name: 'Закрыть' });
+    expect(closeButton.closest('.modal-header')).not.toBeNull();
+    fireEvent.click(closeButton);
     expect(screen.queryByText('Введите почту для получения чека')).not.toBeInTheDocument();
     expect(paymentCalls()).toHaveLength(0);
   });
