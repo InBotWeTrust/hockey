@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AchievementDto } from '../api/achievements.js';
 import type { RegularSeasonPodiumCongratulation } from '../api/tournament.js';
 import type { WeeklyChallenge } from '../api/weeklyChallenge.js';
+import { useAuthStore } from '../auth/authStore.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { SectionsScreen } from './SectionsScreen.js';
@@ -285,8 +286,34 @@ describe('SectionsScreen', () => {
   });
   beforeEach(() => {
     vi.restoreAllMocks();
+    useAuthStore.getState().clearSession();
     useDailyStore.setState({ data: null, loading: false, error: null, inFlight: false });
     useTrainingSessionStore.setState({ data: null, loading: false, error: null, inFlight: false });
+  });
+
+  it('shows the Android application card to an administrator', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      user: { id: 'admin-1', displayName: 'Администратор', role: 'admin' },
+    });
+    mockSectionsApi();
+    renderSections();
+
+    expect(await screen.findByRole('heading', { name: 'Приложение для Android' })).toBeInTheDocument();
+  });
+
+  it('hides the Android application card from a player', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      user: { id: 'player-1', displayName: 'Игрок', role: 'player' },
+    });
+    mockSectionsApi();
+    renderSections();
+
+    expect(await screen.findByText('Быстрый доступ')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Приложение для Android' })).not.toBeInTheDocument();
   });
 
   it('shows today after the current daily shot progress', async () => {

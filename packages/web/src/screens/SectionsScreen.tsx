@@ -13,7 +13,7 @@ import {
   type WeeklyChallengeFailureResponse,
 } from '../api/weeklyChallenge.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
-import { AndroidUpdateBanner } from '../components/AndroidUpdateBanner.js';
+import { AndroidAppCard } from '../components/AndroidAppCard.js';
 import { AdminAndroidReleaseOnly } from '../components/AdminAndroidReleaseOnly.js';
 import type { ProfileData } from './profileTypes.js';
 import { useDailyStore } from '../stores/dailyStore.js';
@@ -227,7 +227,7 @@ export function SectionsScreen(): JSX.Element {
         }}
       >
         <AdminAndroidReleaseOnly>
-          <AndroidUpdateBanner />
+          <AndroidAppCard />
         </AdminAndroidReleaseOnly>
         <section className="sections-group" aria-labelledby="sections-quick-access-title">
           <h2 id="sections-quick-access-title" className="section-label sections-group__title">
