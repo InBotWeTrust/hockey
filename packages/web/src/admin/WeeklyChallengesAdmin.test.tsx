@@ -53,7 +53,7 @@ const dashboard = {
   history: [challenge('history', 'Прошлая неделя')],
 };
 
-function renderAdmin(): void {
+function renderAdmin(): QueryClient {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -62,6 +62,7 @@ function renderAdmin(): void {
       <WeeklyChallengesAdmin />
     </QueryClientProvider>,
   );
+  return client;
 }
 
 describe('WeeklyChallengesAdmin', () => {
@@ -119,6 +120,21 @@ describe('WeeklyChallengesAdmin', () => {
           tasks: [{ type: 'goals_scored', title: '', target: 750, sortOrder: 0 }],
         }),
       }),
+    );
+  });
+
+  it('invalidates the player challenge catalog after saving the next week', async () => {
+    const client = renderAdmin();
+    client.setQueryData(['weekly-challenge', 'catalog'], {
+      future: [],
+      active: [],
+      completed: [],
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() =>
+      expect(client.getQueryState(['weekly-challenge', 'catalog'])?.isInvalidated).toBe(true),
     );
   });
 
