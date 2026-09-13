@@ -240,6 +240,8 @@ describe('AchievementsScreen', () => {
     expect(within(dialog).getByText('Забросить первую шайбу в игре.')).toHaveClass(
       'achievement-details-modal__description',
     );
+    expect(within(dialog).queryByRole('progressbar')).toBeNull();
+    expect(within(dialog).queryByText('0 из 1')).toBeNull();
   });
 
   it('shows a career chain as one card with current stage progress and claimed history', async () => {
@@ -280,9 +282,48 @@ describe('AchievementsScreen', () => {
     expect(within(progress).getByText('3 200 / 5 000')).toBeInTheDocument();
 
     fireEvent.click(within(card).getByRole('button', { name: /Снайперская карьера/ }));
-    expect(await screen.findByText('3200 / 5000')).toBeInTheDocument();
-    expect(screen.getByText('Пройденные уровни')).toBeInTheDocument();
-    expect(screen.getByText('Уровень 1 · 1 000 шайб')).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: 'Снайперская карьера' });
+    const details = within(dialog);
+    expect(details.getByText('Описание')).toHaveClass('achievement-details-modal__description');
+    expect(details.getByText('Текущий уровень — 1/8')).toHaveClass('achievement-details-modal__level');
+    expect(details.queryByText('Пройдено 1 из 8 уровней')).toBeNull();
+    expect(details.getByText('Задание для уровня 2')).toBeInTheDocument();
+    expect(details.getByText('Забросить 5 000 шайб')).toBeInTheDocument();
+    expect(details.getByText('3 200 / 5 000')).toBeInTheDocument();
+    expect(details.queryByText('Далее — уровень 3')).toBeNull();
+    expect(details.queryByText('Пройденные уровни')).toBeNull();
+    expect(details.queryByText('Уровень 1 · 1 000 шайб')).toBeNull();
+  });
+
+  it('shows the completed state instead of a next level for the final claimed stage', async () => {
+    mockAchievementsApi([
+      makeAchievement({
+        id: 'finished-chain',
+        title: 'Легенда льда',
+        status: 'claimed',
+        isUnlocked: true,
+        stage: {
+          current: 3,
+          total: 3,
+          requirement: 'Провести 365 дней в игре',
+          progressValue: 365,
+          targetValue: 365,
+          history: [
+            { stageNumber: 1, claimedAt: '2026-09-01T00:00:00.000Z', requirement: '5 дней' },
+            { stageNumber: 2, claimedAt: '2026-09-02T00:00:00.000Z', requirement: '10 дней' },
+          ],
+        },
+      }),
+    ]);
+    renderAchievements();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Легенда льда.*Открыть подробности/ }));
+    const details = within(screen.getByRole('dialog', { name: 'Легенда льда' }));
+    expect(details.getByText('Текущий уровень — 3/3')).toHaveClass('achievement-details-modal__level');
+    expect(details.queryByText('Пройдено 3 из 3 уровней')).toBeNull();
+    expect(details.getByText('Задание для уровня 3')).toBeInTheDocument();
+    expect(details.queryByText('Все уровни пройдены')).toBeNull();
+    expect(details.queryByText(/Далее — уровень/)).toBeNull();
   });
 
   it('uses the same list layout for one-off achievements and only shows stage UI for chains', async () => {

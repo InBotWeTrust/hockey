@@ -808,6 +808,17 @@ describe('ProfileScreen', () => {
     const task = await screen.findByRole('button', { name: 'Открыть задание Заброшено шайб' });
     expect(within(task).getByText('Ур. 2/8')).toHaveClass('profile-career-award__level');
     expect(screen.getByText('Задания · 0/1, уровни · 2/8')).toBeInTheDocument();
+
+    fireEvent.click(task);
+    const details = within(screen.getByRole('dialog', { name: 'Заброшено шайб' }));
+    expect(details.getByText('Текущий уровень — 2/8')).toHaveClass('achievement-details-modal__level');
+    expect(details.queryByText('Пройдено 2 из 8 уровней')).toBeNull();
+    expect(details.getByText('Задание для уровня 3').closest('.achievement-stage-details')?.parentElement).toBe(
+      screen.getByRole('dialog', { name: 'Заброшено шайб' }).querySelector(':scope > div:last-child'),
+    );
+    expect(details.getByText('Задание для уровня 3')).toBeInTheDocument();
+    expect(details.getByText('6 000 / 10 000')).toBeInTheDocument();
+    expect(details.queryByText('Далее — уровень 4')).toBeNull();
   });
 
   it('uses the compact achievement title treatment for training monster', async () => {

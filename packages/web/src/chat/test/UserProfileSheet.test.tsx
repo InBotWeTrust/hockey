@@ -383,6 +383,44 @@ describe('UserProfileSheet', () => {
     expect(screen.queryByText('Выполнено')).not.toBeInTheDocument();
   });
 
+  it('shows the same tier progress details in a profile opened from chat', async () => {
+    vi.mocked(api.fetchUserProfile).mockResolvedValue({
+      ...publicProfile,
+      achievements: [
+        {
+          ...publicProfile.achievements[0]!,
+          id: 'career-goals',
+          title: 'Заброшено шайб',
+          status: 'locked',
+          isUnlocked: false,
+          stage: {
+            current: 3,
+            total: 8,
+            requirement: 'Забросить 10 000 шайб',
+            progressValue: 6000,
+            targetValue: 10000,
+            history: [
+              { stageNumber: 1, claimedAt: '2026-09-01T00:00:00.000Z', requirement: '1 000 шайб' },
+              { stageNumber: 2, claimedAt: '2026-09-02T00:00:00.000Z', requirement: '5 000 шайб' },
+            ],
+          },
+        },
+      ],
+    });
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+      onClose: () => {},
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Заброшено шайб.*не получено/i }));
+    const details = within(screen.getByRole('dialog', { name: 'Заброшено шайб' }));
+    expect(details.getByText('Текущий уровень — 2/8')).toHaveClass('achievement-details-modal__level');
+    expect(details.queryByText('Пройдено 2 из 8 уровней')).toBeNull();
+    expect(details.getByText('Задание для уровня 3')).toBeInTheDocument();
+    expect(details.getByText('6 000 / 10 000')).toBeInTheDocument();
+    expect(details.queryByText('Далее — уровень 4')).toBeNull();
+  });
+
   it('hides the achievements section when the player has no completed achievements', async () => {
     vi.mocked(api.fetchUserProfile).mockResolvedValue({
       ...publicProfile,

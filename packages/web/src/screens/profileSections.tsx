@@ -5,6 +5,10 @@ import {
   highestCompletedLevel,
   summarizeAchievementProgress,
 } from '../achievements/progressSummary.js';
+import {
+  AchievementLevelBadge,
+  AchievementStageDetails,
+} from '../achievements/AchievementStageDetails.js';
 import type { CompetitionLevel, ProfileAchievement, ProfileStats } from './profileTypes.js';
 
 const LEVEL_LABELS: Record<CompetitionLevel, string> = {
@@ -382,23 +386,33 @@ export function AchievementDetailsSheet({
       }
       cardStyle={{
         width: 'min(320px, calc(100vw - 40px))',
-        maxHeight: 'calc(100dvh - 40px - var(--app-safe-top) - var(--app-safe-bottom))',
+        maxHeight: 'calc(100dvh - 20px - var(--app-safe-top) - var(--app-safe-bottom))',
         overflowY: 'auto',
         position: 'relative',
       }}
     >
       <div className="achievement-details-modal__content">
-        <img
-          className="achievement-details-modal__image"
-          src={achievement.photoUrl}
-          alt={achievement.title}
-        />
-        <p>{achievement.description}</p>
-        <div className="achievement-details-modal__requirement">
-          <strong>Цель: </strong>
-          {achievement.requirement}
+        <div className="achievement-details-modal__artwork">
+          <img
+            className="achievement-details-modal__image"
+            src={achievement.photoUrl}
+            alt={achievement.title}
+          />
+          {achievement.stage && (
+            <AchievementLevelBadge stage={achievement.stage} status={achievement.status} />
+          )}
         </div>
+        <p>{achievement.description}</p>
+        {!achievement.stage && (
+          <div className="achievement-details-modal__requirement">
+            <strong>Цель: </strong>
+            {achievement.requirement}
+          </div>
+        )}
       </div>
+      {achievement.stage && (
+        <AchievementStageDetails stage={achievement.stage} status={achievement.status} />
+      )}
     </AccessibleModal>
   );
 }

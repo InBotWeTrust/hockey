@@ -19,6 +19,10 @@ import {
 } from '../api/achievements.js';
 import { summarizeAchievementProgress } from '../achievements/progressSummary.js';
 import {
+  AchievementLevelBadge,
+  AchievementStageDetails,
+} from '../achievements/AchievementStageDetails.js';
+import {
   countClaimableWeeklyChallenges,
   fetchWeeklyChallenge,
   weeklyChallengeKeys,
@@ -355,57 +359,28 @@ export function AchievementsScreen({
           }
           cardStyle={{
             width: 'min(320px, calc(100vw - 40px))',
-            maxHeight: 'calc(100dvh - 40px - var(--app-safe-top) - var(--app-safe-bottom))',
+            maxHeight: 'calc(100dvh - 20px - var(--app-safe-top) - var(--app-safe-bottom))',
             overflowY: 'auto',
             position: 'relative',
           }}
         >
           <div className="achievement-details-modal__content">
-            <img
-              className="achievement-details-modal__image"
-              src={selected.photoUrl}
-              alt={selected.title}
-            />
+            <div className="achievement-details-modal__artwork">
+              <img
+                className="achievement-details-modal__image"
+                src={selected.photoUrl}
+                alt={selected.title}
+              />
+              {selected.stage && (
+                <AchievementLevelBadge stage={selected.stage} status={selected.status} />
+              )}
+            </div>
             <p className="achievement-details-modal__description">
               {selected.stage ? selected.description : selected.requirement}
             </p>
           </div>
           {selected.stage && (
-            <div className="achievement-stage-details">
-              <strong>
-                Уровень {selected.stage.current} из {selected.stage.total}
-              </strong>
-              <span>{selected.stage.requirement}</span>
-              {selected.stage.targetValue > 0 && (
-                <div className="achievement-stage-progress">
-                  <div
-                    className="achievement-stage-progress__bar"
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        Math.max(
-                          0,
-                          (selected.stage.progressValue / selected.stage.targetValue) * 100,
-                        ),
-                      )}%`,
-                    }}
-                  />
-                  <span>
-                    {selected.stage.progressValue} / {selected.stage.targetValue}
-                  </span>
-                </div>
-              )}
-              {selected.stage.history.length > 0 && (
-                <div className="achievement-stage-history">
-                  <small>Пройденные уровни</small>
-                  {selected.stage.history.map((entry) => (
-                    <span key={entry.stageNumber}>
-                      Уровень {entry.stageNumber} · {entry.requirement}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
+            <AchievementStageDetails stage={selected.stage} status={selected.status} />
           )}
           {rewardText(selected) && (
             <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
