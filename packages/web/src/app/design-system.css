@@ -3233,6 +3233,43 @@
   letter-spacing: 0.12em;
 }
 
+.receipt-payment-summary {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+.receipt-payment-summary__coins,
+.receipt-payment-summary__rubles {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 17px;
+  font-weight: 950;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.receipt-payment-summary__coins {
+  color: var(--reward-coin);
+}
+
+.receipt-payment-summary__rubles {
+  color: var(--ink);
+}
+
+.receipt-payment-summary__separator {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.modal-actions.receipt-payment-actions {
+  margin-top: 8px;
+}
+
 @media (hover: hover) and (pointer: fine) and (min-width: 700px) {
   .modal-backdrop {
     padding: calc(18px + var(--app-safe-top)) 18px calc(18px + var(--app-safe-bottom));
@@ -13594,6 +13631,16 @@ button.daily-calendar__day:active {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+}
+
+.android-app-card__action {
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 14px;
+  font-size: 12px;
+  letter-spacing: 0;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .android-update-banner__actions {

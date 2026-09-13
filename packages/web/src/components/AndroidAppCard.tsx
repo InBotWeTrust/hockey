@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useStore } from 'zustand';
 import { isNativeAndroid } from '../platform/runtime.js';
 import { androidUpdateStore } from '../mobileUpdate/store.js';
@@ -17,7 +18,25 @@ export function AndroidAppCard(): JSX.Element {
   const state = useStore(androidUpdateStore);
   const native = isNativeAndroid();
   const androidBrowser = isAndroidBrowser();
+  const [browserReleaseAvailable, setBrowserReleaseAvailable] = useState<boolean | null>(null);
   const outdated = state.policy === 'optional' || state.policy === 'mandatory';
+
+  useEffect(() => {
+    if (!androidBrowser) return;
+    const controller = new AbortController();
+    void fetch('/api/mobile/android/release', {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    })
+      .then((response) => setBrowserReleaseAvailable(response.ok))
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          setBrowserReleaseAvailable(false);
+        }
+      });
+    return () => controller.abort();
+  }, [androidBrowser]);
+
   return (
     <section className="glass android-app-card" aria-labelledby="android-app-card-title">
       <div>
@@ -38,9 +57,22 @@ export function AndroidAppCard(): JSX.Element {
           {outdated ? 'Обновить' : 'Проверить обновления'}
         </button>
       ) : androidBrowser ? (
-        <a className="btn btn--cta" href="/api/mobile/android/download">
-          Скачать приложение
-        </a>
+        browserReleaseAvailable ? (
+          <a
+            className="btn btn--cta android-app-card__action"
+            href="/api/mobile/android/download"
+          >
+            Скачать
+          </a>
+        ) : (
+          <button
+            type="button"
+            className="btn btn--cta android-app-card__action"
+            disabled
+          >
+            {browserReleaseAvailable === null ? 'Проверяем…' : 'Пока недоступно'}
+          </button>
+        )
       ) : (
         <span className="android-app-card__note">Доступно для Android</span>
       )}

@@ -1198,12 +1198,22 @@ function ReceiptEmailModal({
 
   return (
     <AccessibleModal
-      title="Получение чека"
-      copy="Введите почту для получения чека"
+      title={
+        <>
+          Введите почту для
+          <br />
+          получения чека
+        </>
+      }
       onRequestClose={onClose}
       initialFocusRef={inputRef}
       backdropStyle={{ zIndex: 440 }}
       cardStyle={{ width: 'min(390px, calc(100vw - 28px))' }}
+      headerAction={
+        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+          <X size={16} />
+        </button>
+      }
     >
       <form
         noValidate
@@ -1213,8 +1223,10 @@ function ReceiptEmailModal({
           submit();
         }}
       >
-        <label style={{ display: 'grid', gap: 7, color: 'var(--text)', fontWeight: 800 }}>
-          Электронная почта
+        <label style={{ display: 'grid', gap: 7, color: 'var(--text)' }}>
+          <span className="section-label" style={{ padding: 0 }}>
+            Электронная почта
+          </span>
           <input
             ref={inputRef}
             type="email"
@@ -1250,14 +1262,19 @@ function ReceiptEmailModal({
             {error}
           </div>
         )}
-        <div style={{ color: 'var(--muted)', fontSize: 13 }}>
-          {numberText(pack.coinAmount)} монет за {rubText(pack.priceRub)}
+        <div
+          className="receipt-payment-summary"
+          aria-label={`${numberText(pack.coinAmount)} монет за ${numberText(pack.priceRub)} рублей`}
+        >
+          <span className="receipt-payment-summary__coins">
+            <CircleDollarSign size={16} strokeWidth={2.55} aria-hidden="true" />
+            {numberText(pack.coinAmount)} монет
+          </span>
+          <span className="receipt-payment-summary__separator">·</span>
+          <span className="receipt-payment-summary__rubles">{rubText(pack.priceRub)}</span>
         </div>
-        <div className="modal-actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
-          <button type="button" className="btn btn--ghost" onClick={onClose}>
-            Отмена
-          </button>
-          <button type="submit" className="modal-primary btn--cta">
+        <div className="modal-actions receipt-payment-actions">
+          <button type="submit" className="modal-primary btn btn--cta">
             Перейти к оплате
           </button>
         </div>
