@@ -20,6 +20,7 @@ const taskTypeOptions: Array<{ value: AdminWeeklyChallengeTaskType; label: strin
   { value: 'duels_won', label: 'Победить в дуэлях' },
   { value: 'duel_invites_sent', label: 'Пригласить соперников' },
   { value: 'trainings_completed', label: 'Завершить тренировки' },
+  { value: 'channel_posts_commented', label: 'Прокомментировать посты канала' },
 ];
 
 function dateText(value: string): string {
@@ -195,7 +196,6 @@ function NextChallengeEditor({
       <fieldset disabled={busy} className="weekly-challenge-admin__fieldset">
         <AdminField label="Название">
           <input
-            required
             maxLength={120}
             value={form.title}
             onChange={(event) => update({ title: event.target.value })}
@@ -292,7 +292,7 @@ function NextChallengeEditor({
           >
             Добавить задание
           </button>
-          <button type="submit" className="btn btn--cta" disabled={!form.title.trim()}>
+          <button type="submit" className="btn btn--cta">
             Сохранить
           </button>
         </div>
@@ -312,14 +312,15 @@ function ChallengeCard({
   challenge: AdminWeeklyChallenge;
   onStats: (challenge: AdminWeeklyChallenge) => void;
 }): JSX.Element {
+  const adminTitle = challenge.title || 'Без названия';
   return (
     <article className="glass weekly-challenge-admin__card">
       <div className="modal-header">
-        <h4>{challenge.title}</h4>
+        <h4>{adminTitle}</h4>
         <button
           type="button"
           className="icon-btn"
-          aria-label={`Статистика ${challenge.title}`}
+          aria-label={`Статистика ${adminTitle}`}
           onClick={() => onStats(challenge)}
         >
           <BarChart3 size={16} />

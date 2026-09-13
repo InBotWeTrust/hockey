@@ -131,7 +131,7 @@ jobs:
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SYSTEM_USER_ID: ${{ secrets.SYSTEM_USER_ID }}
+          SYSTEM_USER_ID: ${{ secrets.SYSTEM_USER_ID || '00000000-0000-4000-8000-000000000099' }}
           SYSTEM_CHAT_NAME: ${{ vars.SYSTEM_CHAT_NAME }}
           PUSH_VAPID_PUBLIC_KEY: ${{ secrets.PUSH_VAPID_PUBLIC_KEY }}
           PUSH_VAPID_PRIVATE_KEY: ${{ secrets.PUSH_VAPID_PRIVATE_KEY }}
@@ -259,6 +259,7 @@ jobs:
           export OBJECT_STORAGE_TENANT_ID OBJECT_STORAGE_ACCESS_KEY_ID
           export OBJECT_STORAGE_SECRET_ACCESS_KEY OBJECT_STORAGE_PUBLIC_BASE_URL
           export OBJECT_STORAGE_MAX_UPLOAD_BYTES
+          export SYSTEM_USER_ID
           export PRODUCTION_YOOKASSA_SHOP_ID PRODUCTION_YOOKASSA_SECRET_KEY
           export PRODUCTION_YOOKASSA_RETURN_URL
           export DEV_ACCESS_CODE_LOGIN_ENABLED=true

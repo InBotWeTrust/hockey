@@ -693,7 +693,12 @@ describe('ProfileScreen', () => {
 
     const recovery = await screen.findByRole('button', { name: 'Восстановление: 90 минут' });
     expect(recovery).toHaveTextContent('90');
-    expect(recovery).toHaveTextContent('Минут');
+    expect(recovery).toHaveTextContent('Малый набор для восстановления');
+    expect(recovery).not.toHaveTextContent('Минут');
+    expect(within(recovery).getByRole('img', { name: 'Малый набор для восстановления' })).toHaveAttribute(
+      'src',
+      '/inventory/recovery-15.webp',
+    );
     fireEvent.click(recovery);
 
     const dialog = screen.getByRole('dialog', { name: 'Наборы для восстановления' });

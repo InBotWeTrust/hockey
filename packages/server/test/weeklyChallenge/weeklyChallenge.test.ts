@@ -179,6 +179,62 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     expect(res.json()).toEqual({ challenge: null, pendingRewards: [] });
   });
 
+  it('shows an automatic challenge start once and acknowledges it idempotently', async () => {
+    await pool.query(`update users set level = 2 where id = $1`, [userId]);
+    const challengeId = await createActiveChallenge();
+
+    const first = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/starts/pending',
+      headers: authHeader(),
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().challenge).toMatchObject({ id: challengeId, status: 'running' });
+
+    const acknowledged = await app.inject({
+      method: 'POST',
+      url: `/weekly-challenge/starts/${challengeId}/acknowledge`,
+      headers: authHeader(),
+    });
+    expect(acknowledged.statusCode).toBe(200);
+    expect(acknowledged.json()).toEqual({ challenge: null });
+
+    const duplicate = await app.inject({
+      method: 'POST',
+      url: `/weekly-challenge/starts/${challengeId}/acknowledge`,
+      headers: authHeader(),
+    });
+    expect(duplicate.statusCode).toBe(200);
+    expect(duplicate.json()).toEqual({ challenge: null });
+
+    const after = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/starts/pending',
+      headers: authHeader(),
+    });
+    expect(after.json()).toEqual({ challenge: null });
+  });
+
+  it('does not announce an automatic challenge to a beginner', async () => {
+    await createActiveChallenge();
+    const pending = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/starts/pending',
+      headers: authHeader(),
+    });
+    expect(pending.json()).toEqual({ challenge: null });
+  });
+
+  it('does not announce a future automatic challenge', async () => {
+    await createChallenge({ isActive: false, startOffset: '-1 day', endOffset: '-8 days' });
+    const pending = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/starts/pending',
+      headers: authHeader(),
+    });
+    expect(pending.json()).toEqual({ challenge: null });
+  });
+
   it('automatically counts progress and lets the player claim a completed reward once', async () => {
     const challengeId = await createActiveChallenge();
     await insertGoal();
@@ -693,7 +749,9 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
-      future: [{ id: futureChallengeId, title: 'Будущая неделя' }],
+      future: expect.arrayContaining([
+        expect.objectContaining({ id: futureChallengeId, title: 'Будущая неделя' }),
+      ]),
       active: [{ id: activeChallengeId, title: 'Неделя снайпера' }],
       completed: [
         {

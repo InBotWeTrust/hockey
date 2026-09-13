@@ -4,6 +4,7 @@ export const WEEKLY_CHALLENGE_TASK_TYPES = [
   'duels_won',
   'duel_invites_sent',
   'trainings_completed',
+  'channel_posts_commented',
 ] as const;
 
 export type WeeklyChallengeTaskType = (typeof WEEKLY_CHALLENGE_TASK_TYPES)[number];
@@ -78,6 +79,10 @@ export interface WeeklyChallengeCatalogResponse {
 }
 
 export interface WeeklyChallengeFailureResponse {
+  challenge: WeeklyChallengeDTO | null;
+}
+
+export interface WeeklyChallengeStartResponse {
   challenge: WeeklyChallengeDTO | null;
 }
 

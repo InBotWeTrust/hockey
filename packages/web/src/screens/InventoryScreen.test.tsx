@@ -511,6 +511,20 @@ describe('InventoryScreen', () => {
     },
   );
 
+  it('keeps the recovery title on one line without moving the balance below it', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory('/inventory?category=recovery');
+
+    const heading = await screen.findByRole('heading', { name: 'Восстановление' });
+    expect(heading.querySelector('.inventory-shop-header__fitted-title')).toHaveTextContent(
+      'Восстановление',
+    );
+    expect(heading.closest('.inventory-shop-header')).toHaveClass(
+      'inventory-shop-header--category',
+    );
+    expect(await screen.findByLabelText('Монеты: 1 000')).toBeInTheDocument();
+  });
+
   it('keeps the main tabs and shows four goods categories', async () => {
     mockInventoryFetch(inventoryWithItems);
 

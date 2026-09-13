@@ -36,15 +36,28 @@ describe('weekly challenge progress helpers', () => {
             sql.includes('shot_session') &&
             sql.includes('amateur_duel_participant') &&
             sql.includes('amateur_duel_match') &&
-            sql.includes('training_session')
+            sql.includes('training_session') &&
+            sql.includes('channel_post_comments')
           ) {
             expect(sql).toContain("event.type = 'amateur_duel_challenge_accepted'");
             expect(sql).toContain("event.payload->>'challenger_user_id' = $1::text");
             expect(sql).not.toContain("adm.source = 'challenge'");
             expect(sql).not.toMatch(/<= \$3/);
             expect(sql).toMatch(/< \$3/);
+            expect(sql).toContain('count(distinct post_message_id)');
+            expect(sql).toContain('author_id = $1');
+            expect(sql).toContain('is_deleted = false');
             return {
-              rows: [{ goals: '18', played: '7', won: '4', invites: '3', completed: '2' }],
+              rows: [
+                {
+                  goals: '18',
+                  played: '7',
+                  won: '4',
+                  invites: '3',
+                  completed: '2',
+                  commented_posts: '6',
+                },
+              ],
               command: 'SELECT',
               rowCount: 1,
               oid: 0,
@@ -71,6 +84,7 @@ describe('weekly challenge progress helpers', () => {
       duels_won: 4,
       duel_invites_sent: 3,
       trainings_completed: 2,
+      channel_posts_commented: 6,
     });
     expect(queryCount).toBe(1);
   });

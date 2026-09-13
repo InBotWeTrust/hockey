@@ -5,7 +5,8 @@ export type WeeklyChallengeTaskType =
   | 'duels_played'
   | 'duels_won'
   | 'duel_invites_sent'
-  | 'trainings_completed';
+  | 'trainings_completed'
+  | 'channel_posts_commented';
 
 export type WeeklyChallengeStatus = 'future' | 'running' | 'finished';
 
@@ -49,6 +50,10 @@ export interface WeeklyChallengeFailureResponse {
   challenge: WeeklyChallenge | null;
 }
 
+export interface WeeklyChallengeStartResponse {
+  challenge: WeeklyChallenge | null;
+}
+
 export const weeklyChallengeKeys = {
   current: ['weekly-challenge', 'current'] as const,
   catalog: ['weekly-challenge', 'catalog'] as const,
@@ -82,6 +87,18 @@ export function fetchWeeklyChallengeCatalog(): Promise<WeeklyChallengeCatalogRes
 
 export function fetchPendingWeeklyChallengeFailure(): Promise<WeeklyChallengeFailureResponse> {
   return apiFetch<WeeklyChallengeFailureResponse>('/weekly-challenge/failures/pending');
+}
+
+export function fetchPendingWeeklyChallengeStart(): Promise<WeeklyChallengeStartResponse> {
+  return apiFetch<WeeklyChallengeStartResponse>('/weekly-challenge/starts/pending');
+}
+
+export function acknowledgeWeeklyChallengeStart(
+  id: string,
+): Promise<WeeklyChallengeStartResponse> {
+  return apiFetch<WeeklyChallengeStartResponse>(`/weekly-challenge/starts/${id}/acknowledge`, {
+    method: 'POST',
+  });
 }
 
 export function acknowledgeWeeklyChallengeFailure(

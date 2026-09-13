@@ -18,7 +18,7 @@ const taskSchema = z
 
 const nextChallengeInputSchema = z
   .object({
-    title: z.string().trim().min(1).max(120),
+    title: z.string().trim().max(120).default(''),
     description: z.string().trim().max(2000).default(''),
     rewardCoins: z.number().int().min(0).max(10_000_000),
     rewardStars: z.number().int().min(0).max(10_000_000),
@@ -112,24 +112,33 @@ async function fetchDashboard(client: PoolClient, now: Date) {
       : (
           await client.query<PlayerTaskRow>(
             `with source_events as (
-       select user_id::text, 'goals_scored' as type, created_at as occurred_at
+       select user_id::text, 'goals_scored' as type, created_at as occurred_at,
+              null::text as entity_id
          from shot_session where server_result = 'goal'
        union all
-       select p.user_id::text, 'duels_played', coalesce(m.settled_at, m.updated_at)
+       select p.user_id::text, 'duels_played', coalesce(m.settled_at, m.updated_at), null::text
          from amateur_duel_participant p join amateur_duel_match m on m.id = p.match_id
         where p.state = 'completed' and m.status = 'settled'
        union all
-       select p.user_id::text, 'duels_won', coalesce(m.settled_at, m.updated_at)
+       select p.user_id::text, 'duels_won', coalesce(m.settled_at, m.updated_at), null::text
          from amateur_duel_participant p join amateur_duel_match m on m.id = p.match_id
         where m.status = 'settled' and m.winner_user_id = p.user_id
        union all
-       select payload->>'challenger_user_id', 'duel_invites_sent', created_at
+       select payload->>'challenger_user_id', 'duel_invites_sent', created_at, null::text
          from event_log where type = 'amateur_duel_challenge_accepted'
        union all
-       select user_id::text, 'trainings_completed', coalesce(closed_at, started_at)
+       select user_id::text, 'trainings_completed', coalesce(closed_at, started_at), null::text
          from training_session where state = 'closed'
+       union all
+       select author_id::text, 'channel_posts_commented', created_at, post_message_id::text
+         from channel_post_comments
+        where is_deleted = false
      ), task_progress as (
-       select wc.id as challenge_id, t.id as task_id, e.user_id, count(*) as progress
+       select wc.id as challenge_id, t.id as task_id, e.user_id,
+              case when t.type = 'channel_posts_commented'
+                then count(distinct e.entity_id)
+                else count(*)
+              end as progress
          from weekly_challenges wc
          join weekly_challenge_tasks t on t.challenge_id = wc.id
          join source_events e on e.type = t.type

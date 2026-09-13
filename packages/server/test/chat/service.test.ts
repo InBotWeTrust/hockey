@@ -189,8 +189,8 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
       const list = await getMyChats(pool, userA);
       const sys = list.find((c) => c.type === 'system')!;
       const dmRow = list.find((c) => c.type === 'direct')!;
-      // 3 users seeded in beforeAll (Alice, Bob, Charlie).
-      expect(sys.memberCount).toBe(3);
+      // 3 players seeded in beforeAll plus the official runtime account.
+      expect(sys.memberCount).toBe(4);
       expect(dmRow.memberCount).toBe(2);
     });
 

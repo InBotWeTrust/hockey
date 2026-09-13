@@ -235,6 +235,18 @@ describe.skipIf(!hasIntegrationEnv)('/admin/weekly-challenges/*', () => {
     }
   });
 
+  it('accepts an empty title and description for the next challenge', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/admin/weekly-challenges/next',
+      headers: auth(adminToken),
+      payload: { ...payload(''), description: '' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().next).toMatchObject({ title: '', description: '' });
+  });
+
   it('disabling keeps current running and next editable for admins while hidden from players', async () => {
     const id = await seed();
     await dashboard();

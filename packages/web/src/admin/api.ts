@@ -49,7 +49,8 @@ export type AdminWeeklyChallengeTaskType =
   | 'duels_played'
   | 'duels_won'
   | 'duel_invites_sent'
-  | 'trainings_completed';
+  | 'trainings_completed'
+  | 'channel_posts_commented';
 export type AdminAchievementCategory =
   | 'daily'
   | 'training'

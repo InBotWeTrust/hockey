@@ -329,7 +329,7 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
       stats: {
         shots: 1200,
         goals: 1000,
-        accuracy: 83,
+        accuracy: 83.3,
         playStreakDays: 0,
         bestPlayStreakDays: 0,
       },

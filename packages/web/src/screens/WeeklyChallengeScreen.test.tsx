@@ -210,6 +210,21 @@ describe('WeeklyChallengeScreen', () => {
     expect(screen.queryByLabelText('Токены: 0')).not.toBeInTheDocument();
   });
 
+  it('does not reserve a content block for an empty title and description', async () => {
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
+      future: [],
+      active: [challenge({ title: '', description: '' })],
+      completed: [],
+    });
+
+    renderScreen();
+
+    const tasks = await screen.findByRole('list', { name: 'Задачи челленджа' });
+    const card = tasks.closest('.weekly-challenge-card');
+    expect(card?.querySelector('.weekly-challenge-card__title')).toBeNull();
+    expect(card?.querySelector('.weekly-challenge-card__description')).toBeNull();
+  });
+
   it('lets the player claim a completed reward without participation actions', async () => {
     const completed = challenge({
       id: '33333333-3333-3333-3333-333333333333',

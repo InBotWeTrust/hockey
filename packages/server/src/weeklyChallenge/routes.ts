@@ -4,9 +4,11 @@ import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import {
   acknowledgeWeeklyChallengeFailure,
+  acknowledgeWeeklyChallengeStart,
   claimWeeklyChallengeReward,
   getCurrentWeeklyChallenge,
   getPendingWeeklyChallengeFailure,
+  getPendingWeeklyChallengeStart,
   getWeeklyChallengeCatalog,
 } from './service.js';
 import { reconcileWeeklyChallengeLifecycle } from './lifecycle.js';
@@ -51,6 +53,26 @@ export const weeklyChallengeRoutes: FastifyPluginAsync = async (app) => {
       await reconcileWeeklyChallengeLifecycle(client);
       return getPendingWeeklyChallengeFailure(client, req.user.id);
     }),
+  );
+
+  app.get('/weekly-challenge/starts/pending', { preHandler: [app.authenticate] }, async (req) =>
+    withTransaction(app, async (client) => {
+      await reconcileWeeklyChallengeLifecycle(client);
+      return getPendingWeeklyChallengeStart(client, req.user.id);
+    }),
+  );
+
+  app.post(
+    '/weekly-challenge/starts/:id/acknowledge',
+    { preHandler: [app.authenticate] },
+    async (req) => {
+      const params = paramsSchema.safeParse(req.params);
+      if (!params.success) throw new AppError('bad_request', 'invalid weekly challenge id', 400);
+      return withTransaction(app, async (client) => {
+        await reconcileWeeklyChallengeLifecycle(client);
+        return acknowledgeWeeklyChallengeStart(client, params.data.id, req.user.id);
+      });
+    },
   );
 
   app.post(

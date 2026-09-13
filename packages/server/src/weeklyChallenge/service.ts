@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from 'pg';
 import { appendEvent } from '../duel/eventLog.js';
 import { AppError } from '../plugins/errors.js';
+import { resolveAmateurAccess } from '../profile/amateurAccess.js';
 import { fetchWeeklyChallengeProgress } from './progress.js';
 import { grantWeeklyChallengeReward } from './rewards.js';
 import type {
@@ -8,6 +9,7 @@ import type {
   WeeklyChallengeCurrentResponse,
   WeeklyChallengeDTO,
   WeeklyChallengeFailureResponse,
+  WeeklyChallengeStartResponse,
   WeeklyChallengeRow,
   WeeklyChallengeStatus,
   WeeklyChallengeTaskRow,
@@ -35,6 +37,8 @@ function defaultTaskTitle(task: WeeklyChallengeTaskRow): string {
   if (task.type === 'duels_played') return `Сыграть ${task.target} дуэлей`;
   if (task.type === 'duels_won') return `Победить в ${task.target} дуэлях`;
   if (task.type === 'duel_invites_sent') return `Пригласить ${task.target} соперников`;
+  if (task.type === 'channel_posts_commented')
+    return `Прокомментировать ${task.target} постов канала`;
   return `Завершить ${task.target} тренировок`;
 }
 
@@ -316,6 +320,54 @@ export async function acknowledgeWeeklyChallengeFailure(
     [challengeId, userId, now],
   );
   return getPendingWeeklyChallengeFailure(client, userId, now);
+}
+
+export async function getPendingWeeklyChallengeStart(
+  db: Queryable,
+  userId: string,
+  now = new Date(),
+): Promise<WeeklyChallengeStartResponse> {
+  if (!(await resolveAmateurAccess(db, userId)).hasFullAccess) return { challenge: null };
+  const challenge = await fetchActiveChallenge(db, now);
+  if (challenge === null || !challenge.is_automatic || challenge.launched_at === null) {
+    return { challenge: null };
+  }
+  const acknowledged = await db.query(
+    `select 1 from weekly_challenge_start_acknowledgements
+      where challenge_id = $1 and user_id = $2`,
+    [challenge.id, userId],
+  );
+  if (acknowledged.rowCount !== 0) return { challenge: null };
+  return { challenge: await mapChallenge(db, challenge, userId, now) };
+}
+
+export async function acknowledgeWeeklyChallengeStart(
+  client: PoolClient,
+  challengeId: string,
+  userId: string,
+  now = new Date(),
+): Promise<WeeklyChallengeStartResponse> {
+  if (!(await resolveAmateurAccess(client, userId)).hasFullAccess) {
+    throw new AppError('amateur_level_required', 'weekly challenges are locked', 403);
+  }
+  const challenge = await fetchChallengeForRewardUpdate(client, challengeId);
+  if (
+    challenge === null ||
+    !challenge.is_active ||
+    !challenge.is_automatic ||
+    challenge.launched_at === null ||
+    resolveWeeklyChallengeStatus(challenge, now) !== 'running'
+  ) {
+    throw new AppError('conflict', 'weekly challenge start is not available', 409);
+  }
+  await client.query(
+    `insert into weekly_challenge_start_acknowledgements
+       (challenge_id, user_id, acknowledged_at)
+     values ($1, $2, $3)
+     on conflict (challenge_id, user_id) do nothing`,
+    [challengeId, userId, now],
+  );
+  return { challenge: null };
 }
 
 export async function claimWeeklyChallengeReward(
