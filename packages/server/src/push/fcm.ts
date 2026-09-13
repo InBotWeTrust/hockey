@@ -140,7 +140,7 @@ export async function sendFcm(
     } catch {
       // Keep a bounded, credential-free classification when FCM returns malformed data.
     }
-    const invalid = response.status === 404 || reason === 'UNREGISTERED';
+    const invalid = reason === 'UNREGISTERED';
     const retryable = !invalid && (response.status === 429 || response.status >= 500);
     return {
       ok: false,
