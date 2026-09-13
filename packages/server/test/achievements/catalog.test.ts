@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { ACHIEVEMENT_SEEDS } from '../../src/achievements/catalog.js';
+import { ACHIEVEMENT_CATEGORIES, ACHIEVEMENT_SEEDS } from '../../src/achievements/catalog.js';
+import {
+  ACHIEVEMENT_STAGE_DEFINITIONS,
+  TIERED_ACHIEVEMENT_IDS,
+} from '../../src/achievements/stageCatalog.js';
 
 type ExpectedReward = readonly [coins: number, stars: number, experience: number, tokens: number];
 
@@ -12,7 +16,6 @@ const EXPECTED_REWARDS: Record<string, ExpectedReward> = {
   'pro-ticket': [0, 0, 0, 0],
   'daily-sniper-streak': [0, 5, 5, 0],
   'ice-hand': [0, 5, 5, 0],
-  'steady-tempo': [0, 5, 5, 0],
   'third-period-decides': [0, 5, 5, 0],
   'final-push': [0, 5, 5, 0],
   'no-panic': [0, 5, 5, 0],
@@ -39,7 +42,6 @@ const EXPECTED_REWARDS: Record<string, ExpectedReward> = {
   'dangerous-guest': [0, 8, 8, 0],
   'no-room-for-error': [0, 3, 3, 0],
   wallet: [0, 15, 15, 0],
-  'economical-master': [0, 25, 25, 1],
   'regular-season-champion': [1_500, 50, 50, 3],
   'regular-season-medalist': [1_000, 45, 45, 2],
   'playoff-semifinal': [750, 50, 50, 1],
@@ -78,7 +80,14 @@ describe('achievement economy catalog', () => {
   it('hides removed achievements and activates the approved monthly rating rewards', () => {
     const byId = new Map(ACHIEVEMENT_SEEDS.map((achievement) => [achievement.id, achievement]));
 
-    for (const id of ['almost-perfect-training', 'handled-pressure', 'master-arsenal']) {
+    for (const id of [
+      'steady-tempo',
+      'almost-perfect-training',
+      'handled-pressure',
+      'economical-master',
+      'master-arsenal',
+      'no-room-for-error',
+    ]) {
       expect(byId.get(id)?.availability, id).toBe('hidden');
     }
     expect(byId.get('monthly-top-1')).toMatchObject({
@@ -94,6 +103,103 @@ describe('achievement economy catalog', () => {
       rewardStars: 50,
       rewardExperience: 50,
       rewardTokens: 2,
+    });
+  });
+
+  it('exposes career and contiguous configured stages for every tiered achievement', () => {
+    expect(ACHIEVEMENT_CATEGORIES).toContain('career');
+
+    for (const achievementId of TIERED_ACHIEVEMENT_IDS) {
+      const stages = ACHIEVEMENT_STAGE_DEFINITIONS.filter(
+        (stage) => stage.achievementId === achievementId,
+      );
+      expect(stages.length, achievementId).toBeGreaterThan(1);
+      expect(
+        stages.map((stage) => stage.stageNumber),
+        achievementId,
+      ).toEqual(Array.from({ length: stages.length }, (_, index) => index + 1));
+      expect(
+        stages.every(
+          (stage) =>
+            stage.rewardCurrency >= 0 &&
+            stage.rewardStars >= 0 &&
+            stage.rewardExperience >= 0 &&
+            stage.rewardTokens >= 0,
+        ),
+        achievementId,
+      ).toBe(true);
+    }
+
+    expect(TIERED_ACHIEVEMENT_IDS).toEqual(
+      new Set([
+        'career-goals',
+        'career-experience',
+        'career-streak',
+        'daily-sniper-streak',
+        'ice-hand',
+        'third-period-decides',
+        'final-push',
+        'no-panic',
+        'dry-finish',
+        'keeping-fit',
+        'sniper-week',
+        'sniper-month',
+        'training-monster',
+        'rhythm-control',
+        'cold-start',
+        'no-warmup-needed',
+        'finish-machine',
+        'underdog',
+        'classic-speed',
+        'stable-student',
+        'training-before-battle',
+        'dangerous-host',
+        'dangerous-guest',
+        'blowout',
+        'hunter-streak',
+        'express-sniper',
+        'mix-sniper',
+        'no-error-express',
+        'no-error-mix',
+        'no-error-classic',
+      ]),
+    );
+  });
+
+  it('keeps exact boundary stages and rewards from the approved design', () => {
+    const byKey = new Map(
+      ACHIEVEMENT_STAGE_DEFINITIONS.map((stage) => [
+        `${stage.achievementId}:${stage.stageNumber}`,
+        stage,
+      ]),
+    );
+
+    expect(byKey.get('career-goals:8')).toMatchObject({
+      target: { total: 1_000_000 },
+      rewardStars: 1_000,
+      rewardExperience: 1_000,
+      rewardTokens: 10,
+    });
+    expect(byKey.get('ice-hand:2')).toMatchObject({
+      target: { accuracyPercent: 96 },
+      rewardStars: 6,
+      rewardExperience: 6,
+    });
+    expect(byKey.get('stable-student:7')).toMatchObject({
+      target: { days: 100, minimumAccuracyPercent: 80 },
+      rewardStars: 120,
+      rewardExperience: 120,
+      rewardTokens: 3,
+    });
+    expect(byKey.get('mix-sniper:6')).toMatchObject({
+      target: { format: 'mix', goals: 110 },
+      rewardStars: 12,
+      rewardExperience: 12,
+    });
+    expect(byKey.get('no-error-classic:6')).toMatchObject({
+      target: { format: 'classic', maximumNonGoals: 0 },
+      rewardStars: 10,
+      rewardExperience: 10,
     });
   });
 });

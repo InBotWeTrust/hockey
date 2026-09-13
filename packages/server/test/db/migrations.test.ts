@@ -93,6 +93,31 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('weekly_challenge_reward_claims');
     expect(names).toContain('weekly_challenge_start_acknowledgements');
     expect(names).toContain('achievement_progress');
+    expect(names).toContain('achievement_stages');
+    expect(names).toContain('user_achievement_stages');
+    expect(names).toContain('achievement_stage_events');
+    const stageColumns = await pool.query<{ column_name: string }>(
+      `select column_name
+         from information_schema.columns
+        where table_schema = 'public' and table_name = 'achievement_stages'`,
+    );
+    expect(stageColumns.rows.map((row) => row.column_name)).toEqual(
+      expect.arrayContaining([
+        'achievement_id',
+        'stage_number',
+        'requirement',
+        'target',
+        'reward_currency',
+        'reward_stars',
+        'reward_experience',
+        'reward_tokens',
+        'is_enabled',
+      ]),
+    );
+    const stageCount = await pool.query<{ count: string }>(
+      'select count(*)::text as count from achievement_stages',
+    );
+    expect(Number(stageCount.rows[0]?.count)).toBeGreaterThan(100);
     expect(names).toContain('feedback_messages');
     expect(names).toEqual(
       expect.arrayContaining([
@@ -466,8 +491,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         item_kind: 'nutrition',
         rarity: 'rare',
         title: 'Ультимейт Заряд Плюс',
-        description:
-          'Ультимейт Заряд Плюс на 140 минут активной игры. Помогает держать темп.',
+        description: 'Ультимейт Заряд Плюс на 140 минут активной игры. Помогает держать темп.',
         charges_per_purchase: 8_400_000,
         effect_recovery_minutes: 0,
       },
@@ -475,8 +499,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         item_kind: 'nutrition',
         rarity: 'legendary',
         title: 'Ультимейт Заряд Макс',
-        description:
-          'Ультимейт Заряд Макс на 180 минут активной игры. Помогает держать темп.',
+        description: 'Ультимейт Заряд Макс на 180 минут активной игры. Помогает держать темп.',
         charges_per_purchase: 10_800_000,
         effect_recovery_minutes: 0,
       },
@@ -484,8 +507,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         item_kind: 'recovery',
         rarity: 'common',
         title: 'Ультимейт Рестарт',
-        description:
-          'Ультимейт Рестарт. Сокращает текущее восстановление на 15 минут.',
+        description: 'Ультимейт Рестарт. Сокращает текущее восстановление на 15 минут.',
         charges_per_purchase: 1,
         effect_recovery_minutes: 15,
       },
@@ -493,8 +515,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         item_kind: 'recovery',
         rarity: 'rare',
         title: 'Ультимейт Рестарт Плюс',
-        description:
-          'Ультимейт Рестарт Плюс. Сокращает текущее восстановление на 30 минут.',
+        description: 'Ультимейт Рестарт Плюс. Сокращает текущее восстановление на 30 минут.',
         charges_per_purchase: 1,
         effect_recovery_minutes: 30,
       },
@@ -502,8 +523,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         item_kind: 'recovery',
         rarity: 'legendary',
         title: 'Ультимейт Рестарт Макс',
-        description:
-          'Ультимейт Рестарт Макс. Сокращает текущее восстановление на 60 минут.',
+        description: 'Ультимейт Рестарт Макс. Сокращает текущее восстановление на 60 минут.',
         charges_per_purchase: 1,
         effect_recovery_minutes: 60,
       },
@@ -538,8 +558,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         item_kind: 'stick',
         rarity: 'common',
         title: 'Ультимейт Вектор',
-        description:
-          'Клюшка Ультимейт Вектор на 1300 бросков. Ускоряет полёт шайбы.',
+        description: 'Клюшка Ультимейт Вектор на 1300 бросков. Ускоряет полёт шайбы.',
         charges_per_purchase: 1300,
         effect_recovery_minutes: 0,
       },
@@ -547,8 +566,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         item_kind: 'stick',
         rarity: 'rare',
         title: 'Ультимейт Вектор Плюс',
-        description:
-          'Клюшка Ультимейт Вектор Плюс на 1950 бросков. Ускоряет полёт шайбы.',
+        description: 'Клюшка Ультимейт Вектор Плюс на 1950 бросков. Ускоряет полёт шайбы.',
         charges_per_purchase: 1950,
         effect_recovery_minutes: 0,
       },
@@ -556,8 +574,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         item_kind: 'stick',
         rarity: 'legendary',
         title: 'Ультимейт Вектор Макс',
-        description:
-          'Клюшка Ультимейт Вектор Макс на 2500 бросков. Ускоряет полёт шайбы.',
+        description: 'Клюшка Ультимейт Вектор Макс на 2500 бросков. Ускоряет полёт шайбы.',
         charges_per_purchase: 2500,
         effect_recovery_minutes: 0,
       },
@@ -721,6 +738,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '132_weekly_challenge_starts_and_channel_comments.sql',
       '133_official_account_runtime.sql',
       '134_optional_weekly_challenge_copy.sql',
+      '135_tiered_achievements.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -1593,6 +1611,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '132_weekly_challenge_starts_and_channel_comments.sql',
       '133_official_account_runtime.sql',
       '134_optional_weekly_challenge_copy.sql',
+      '135_tiered_achievements.sql',
     ]);
 
     const activeInventory = await pool.query<{
