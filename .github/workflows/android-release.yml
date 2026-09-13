@@ -132,6 +132,7 @@ jobs:
         run: |
           set -euo pipefail
           pnpm --filter @hockey/game-core build
+          bash .github/scripts/test-extract-apksigner-cert-sha256.sh
           pnpm typecheck
           pnpm lint
           pnpm build
@@ -206,7 +207,7 @@ jobs:
           extracted_code="$(sed -n "s/^package:.* versionCode='\([^']*\)'.*/\1/p" "$EVIDENCE/aapt-badging.txt")"
           extracted_name="$(sed -n "s/^package:.* versionName='\([^']*\)'.*/\1/p" "$EVIDENCE/aapt-badging.txt")"
           minimum_sdk="$(sed -n "s/^sdkVersion:'\([^']*\)'.*/\1/p" "$EVIDENCE/aapt-badging.txt")"
-          signer_sha256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$EVIDENCE/apksigner.txt" | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          signer_sha256="$(.github/scripts/extract-apksigner-cert-sha256.sh < "$EVIDENCE/apksigner.txt")"
           expected_signer="$(printf '%s' "$EXPECTED_SIGNING_CERT_SHA256" | tr '[:upper:]' '[:lower:]' | tr -d ':')"
 
           [ "$package_name" = 'ru.ultimatehockey.app' ]
