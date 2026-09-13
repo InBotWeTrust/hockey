@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '../api/weeklyChallenge.js';
 import type { WeeklyChallenge } from '../api/weeklyChallenge.js';
+import { createAppQueryClient } from '../app/queryClient.js';
 import { WeeklyChallengeScreen } from './WeeklyChallengeScreen.js';
 
 vi.mock('../api/weeklyChallenge.js', async (importOriginal) => ({
@@ -78,6 +79,35 @@ describe('WeeklyChallengeScreen', () => {
     expect(empty.closest('.glass')).toBeNull();
     expect(screen.getByRole('heading', { level: 2, name: 'Действующие (0)' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Челленджи', selected: true })).toBeInTheDocument();
+  });
+
+  it('refetches the catalog on every screen mount even when the session cache is fresh', async () => {
+    const client = createAppQueryClient();
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
+      future: [],
+      active: [],
+      completed: [],
+    });
+
+    const first = render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <WeeklyChallengeScreen />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(api.fetchWeeklyChallengeCatalog).toHaveBeenCalledTimes(1));
+    first.unmount();
+
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <WeeklyChallengeScreen />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(api.fetchWeeklyChallengeCatalog).toHaveBeenCalledTimes(2));
   });
 
   it('filters future, active and completed personal challenges with counts', async () => {
