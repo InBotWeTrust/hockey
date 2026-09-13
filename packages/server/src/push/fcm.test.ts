@@ -44,16 +44,22 @@ describe('sendFcm', () => {
   });
 
   it('reports an HTTP 200 response as sent', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response('{}', { status: 200 })),
+    const fetchMock = vi.fn(
+      async (_input: string | URL | Request, _init?: RequestInit) =>
+        new Response('{}', { status: 200 }),
     );
+    vi.stubGlobal('fetch', fetchMock);
 
-    await expect(sendFcm(deviceToken, options, payload)).resolves.toMatchObject({
-      ok: true,
-      invalid: false,
-      retryable: false,
-      status: 200,
+    await expect(
+      sendFcm(deviceToken, options, { ...payload, eventType: 'duel.challenge_received' }),
+    ).resolves.toMatchObject({ ok: true, invalid: false, retryable: false, status: 200 });
+    const request = fetchMock.mock.calls[0]![1]!;
+    expect(JSON.parse(request.body as string)).toMatchObject({
+      message: {
+        android: {
+          notification: { channel_id: 'gameplay', icon: 'ic_stat_hockey' },
+        },
+      },
     });
   });
 

@@ -198,7 +198,8 @@ export const pushRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, opts
           set click_count = click_count + 1,
               clicked_at = now(),
               updated_at = now()
-        where id = $1`,
+        where id = $1
+          and clicked_at is null`,
       [body.data.deliveryId],
     );
 

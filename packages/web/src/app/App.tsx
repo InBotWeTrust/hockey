@@ -1,6 +1,6 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import './global.css';
 import './design-system.css';
 import { LoginScreen } from '../screens/LoginScreen.js';
@@ -19,6 +19,7 @@ import type { ProfileData } from '../screens/profileTypes.js';
 import { arenaBackgroundClass } from '../screens/lockerRoomBackground.js';
 import { queryClient } from './queryClient.js';
 import { isNativeAndroid } from '../platform/runtime.js';
+import { initializeNativeNotifications } from '../platform/nativeNotifications.js';
 
 const DailyScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DailyScreen })),
@@ -142,6 +143,28 @@ const UserProfileScreen = lazy(() =>
   })),
 );
 
+function NativeNotificationBridge(): null {
+  const navigate = useNavigate();
+  useEffect(() => {
+    let disposed = false;
+    let cleanup: (() => Promise<void>) | undefined;
+    void initializeNativeNotifications((destination) => navigate(destination))
+      .then((value) => {
+        if (disposed) {
+          void value();
+          return;
+        }
+        cleanup = value;
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      void cleanup?.();
+    };
+  }, [navigate]);
+  return null;
+}
+
 function ChatRealtime(): JSX.Element {
   const status = useChatSocket();
   return <OfflineBanner status={status} />;
@@ -248,6 +271,7 @@ function AppExperience(): JSX.Element {
   return (
     <>
       <ChatRealtime />
+      <NativeNotificationBridge />
       <DuelInviteToast />
       <AmateurAccessToast />
       <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />

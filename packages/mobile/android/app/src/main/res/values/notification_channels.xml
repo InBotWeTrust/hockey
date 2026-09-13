@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notification_channel_messages">Сообщения</string>
+    <string name="notification_channel_gameplay">Игровые события</string>
+    <string name="notification_channel_tournaments">Турниры</string>
+    <string name="notification_channel_news">Новости</string>
+</resources>
