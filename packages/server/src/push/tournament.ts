@@ -39,7 +39,12 @@ export async function enqueueTournamentPush(
 ): Promise<boolean> {
   const { rows } = await client.query<RecipientRow>(
     `select u.id::text as user_id,
-            exists(select 1 from push_subscriptions ps where ps.user_id = u.id) as has_subscription,
+            exists(
+              select 1 from push_subscriptions ps where ps.user_id = u.id
+              union all
+              select 1 from android_push_installations api
+               where api.user_id = u.id and api.disabled_at is null
+            ) as has_subscription,
             pref.chat_new_dialog_message, pref.daily_game, pref.training_available,
             pref.duel_events, pref.tournament_events, pref.game_news
        from users u left join user_push_preferences pref on pref.user_id = u.id

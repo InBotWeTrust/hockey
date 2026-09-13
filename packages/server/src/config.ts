@@ -21,6 +21,8 @@ const objectStorageKeys = [
   'OBJECT_STORAGE_SECRET_ACCESS_KEY',
 ] as const;
 
+const fcmKeys = ['FCM_PROJECT_ID', 'FCM_CLIENT_EMAIL', 'FCM_PRIVATE_KEY'] as const;
+
 const schema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -40,6 +42,17 @@ const schema = z
     PUSH_VAPID_PUBLIC_KEY: optionalNonEmptyString,
     PUSH_VAPID_PRIVATE_KEY: optionalNonEmptyString,
     PUSH_VAPID_SUBJECT: optionalNonEmptyString,
+    FCM_PROJECT_ID: optionalNonEmptyString,
+    FCM_CLIENT_EMAIL: optionalNonEmptyString,
+    FCM_PRIVATE_KEY: z.preprocess(
+      (value) =>
+        value === '' || value === undefined
+          ? undefined
+          : typeof value === 'string'
+            ? value.replace(/\\n/g, '\n')
+            : value,
+      z.string().min(1).optional(),
+    ),
     PUSH_SCHEDULER_ENABLED: optionalBoolean,
     PUSH_WORKER_ENABLED: optionalBoolean,
     PUSH_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(25).default(5),
@@ -58,6 +71,18 @@ const schema = z
       .default(25 * 1024 * 1024),
   })
   .superRefine((value, ctx) => {
+    const configuredFcmKeys = fcmKeys.filter((key) => value[key] !== undefined);
+    if (configuredFcmKeys.length > 0 && configuredFcmKeys.length < fcmKeys.length) {
+      for (const key of fcmKeys) {
+        if (value[key] !== undefined) continue;
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: 'FCM config is incomplete',
+        });
+      }
+    }
+
     const configuredKeys = objectStorageKeys.filter((key) => value[key] !== undefined);
     if (configuredKeys.length === 0 || configuredKeys.length === objectStorageKeys.length) return;
 

@@ -31,6 +31,7 @@ export interface WebPushPayload {
   body: string;
   url: string;
   deliveryId?: string;
+  eventType?: string;
   tag?: string;
   icon?: string;
   badge?: string;
