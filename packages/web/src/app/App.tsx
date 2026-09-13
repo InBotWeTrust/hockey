@@ -18,6 +18,7 @@ import type { ProfileData } from '../screens/profileTypes.js';
 import { arenaBackgroundClass } from '../screens/lockerRoomBackground.js';
 import { isNativeAndroid } from '../platform/runtime.js';
 import { initializeNativeNotifications } from '../platform/nativeNotifications.js';
+import { initializeAndroidUpdateChecks } from '../mobileUpdate/store.js';
 import { queryClient } from './queryClient.js';
 
 const DailyScreen = lazy(() =>
@@ -147,6 +148,11 @@ function NativeNotificationBridge(): null {
   return null;
 }
 
+function NativeUpdateBridge(): null {
+  useEffect(() => initializeAndroidUpdateChecks(), []);
+  return null;
+}
+
 function ChatRealtime(): JSX.Element {
   const status = useChatSocket();
   return <OfflineBanner status={status} />;
@@ -228,6 +234,7 @@ function AppExperience(): JSX.Element {
     <>
       <ChatRealtime />
       <NativeNotificationBridge />
+      <NativeUpdateBridge />
       <DuelInviteToast />
       <AmateurAccessToast />
       <div
