@@ -25,6 +25,10 @@ export interface CoinPaymentStatusResponse {
   status: CoinPaymentStatus;
 }
 
+export interface ReceiptEmailResponse {
+  receiptEmail: string | null;
+}
+
 export function redirectToPaymentConfirmation(
   confirmationUrl: string,
   assign: (url: string) => void = (url) => window.location.assign(url),
@@ -43,10 +47,18 @@ export function fetchCoinPackages(): Promise<{ packages: CoinPackage[] }> {
   return apiFetch<{ packages: CoinPackage[] }>('/bank/packages');
 }
 
-export function createCoinPayment(packageId: string, attemptId: string): Promise<CoinPayment> {
+export function fetchReceiptEmail(): Promise<ReceiptEmailResponse> {
+  return apiFetch<ReceiptEmailResponse>('/bank/receipt-email');
+}
+
+export function createCoinPayment(
+  packageId: string,
+  attemptId: string,
+  receiptEmail: string,
+): Promise<CoinPayment> {
   return apiFetch<CoinPayment>('/bank/payments', {
     method: 'POST',
-    body: JSON.stringify({ packageId, attemptId }),
+    body: JSON.stringify({ packageId, attemptId, receiptEmail }),
   });
 }
 

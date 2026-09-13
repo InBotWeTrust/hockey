@@ -276,6 +276,7 @@ function mockInventoryFetch(
   purchasedInventory = inventory,
   paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded' | 'canceled' | 'error' = 'pending',
   confirmationUrl: string | null = null,
+  receiptEmail: string | null = null,
 ): void {
   vi.restoreAllMocks();
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -288,6 +289,12 @@ function mockInventoryFetch(
     }
     if (url.endsWith('/api/bank/packages')) {
       return new Response(JSON.stringify({ packages: coinPackages }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (url.endsWith('/api/bank/receipt-email')) {
+      return new Response(JSON.stringify({ receiptEmail }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
@@ -375,6 +382,21 @@ function renderInventory(initialEntry = '/inventory'): RenderResult {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+}
+
+function paymentCalls() {
+  return vi
+    .mocked(globalThis.fetch)
+    .mock.calls.filter(
+      ([input, init]) => String(input).endsWith('/api/bank/payments') && init?.method === 'POST',
+    );
+}
+
+function confirmReceiptEmail(email = 'buyer@example.com'): void {
+  fireEvent.change(screen.getByRole('textbox', { name: 'Электронная почта' }), {
+    target: { value: email },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Перейти к оплате' }));
 }
 
 describe('InventoryScreen', () => {
@@ -716,16 +738,53 @@ describe('InventoryScreen', () => {
     fireEvent.click(buy);
     fireEvent.click(buy);
 
+    expect(await screen.findByText('Введите почту для получения чека')).toBeInTheDocument();
+    expect(paymentCalls()).toHaveLength(0);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Электронная почта' }), {
+      target: { value: 'buyer@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Перейти к оплате' }));
+
     await screen.findByRole('button', { name: /Купить.*40.*000.*699/ });
-    const paymentCalls = vi
-      .mocked(globalThis.fetch)
-      .mock.calls.filter(
-        ([input, init]) => String(input).endsWith('/api/bank/payments') && init?.method === 'POST',
-      );
-    expect(paymentCalls).toHaveLength(1);
-    expect(JSON.parse(String(paymentCalls[0]?.[1]?.body))).toEqual({
+    const requests = paymentCalls();
+    expect(requests).toHaveLength(1);
+    expect(JSON.parse(String(requests[0]?.[1]?.body))).toEqual({
       packageId: coinPackages[2].id,
       attemptId: expect.any(String),
+      receiptEmail: 'buyer@example.com',
+    });
+  });
+
+  it('validates receipt email and cancellation does not create a payment', async () => {
+    renderInventory();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+
+    const email = await screen.findByRole('textbox', { name: 'Электронная почта' });
+    fireEvent.change(email, { target: { value: 'wrong-email' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Перейти к оплате' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Введите корректный email');
+    expect(paymentCalls()).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+    expect(screen.queryByText('Введите почту для получения чека')).not.toBeInTheDocument();
+    expect(paymentCalls()).toHaveLength(0);
+  });
+
+  it('prefills the last receipt email and lets the user replace it', async () => {
+    mockInventoryFetch(inventoryWithItems, inventoryWithItems, 'pending', null, 'last@example.com');
+    renderInventory();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+
+    const email = await screen.findByRole('textbox', { name: 'Электронная почта' });
+    await waitFor(() => expect(email).toHaveValue('last@example.com'));
+    fireEvent.change(email, { target: { value: 'new@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Перейти к оплате' }));
+
+    await waitFor(() => expect(paymentCalls()).toHaveLength(1));
+    expect(JSON.parse(String(paymentCalls()[0]?.[1]?.body))).toMatchObject({
+      receiptEmail: 'new@example.com',
     });
   });
 
@@ -770,10 +829,12 @@ describe('InventoryScreen', () => {
       let view = renderInventory();
       fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
       fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+      confirmReceiptEmail();
       await waitFor(() =>
         expect(screen.getByRole('button', { name: /Купить.*40.*000.*699/ })).toBeEnabled(),
       );
       fireEvent.click(screen.getByRole('button', { name: /Купить.*40.*000.*699/ }));
+      confirmReceiptEmail();
       await waitFor(() => expect(requests).toHaveLength(2));
       expect(requests[1]).toEqual(requests[0]);
       await waitFor(() =>
@@ -783,10 +844,12 @@ describe('InventoryScreen', () => {
       view = renderInventory();
       fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
       fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+      confirmReceiptEmail();
       await waitFor(() => expect(requests).toHaveLength(3));
       expect(requests[2]).toEqual(requests[0]);
       await screen.findByText(/Оплата подтверждена/);
       fireEvent.click(screen.getByRole('button', { name: /Купить.*40.*000.*699/ }));
+      confirmReceiptEmail();
       await waitFor(() => expect(requests).toHaveLength(4));
       expect(requests[3]?.attemptId).not.toBe(requests[0]?.attemptId);
       view.unmount();
@@ -813,6 +876,7 @@ describe('InventoryScreen', () => {
       const view = renderInventory();
       fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
       fireEvent.click(await screen.findByRole('button', { name: packageName }));
+      confirmReceiptEmail();
       await waitFor(() => expect(screen.getByRole('button', { name: packageName })).toBeEnabled());
       view.unmount();
     }
@@ -829,6 +893,7 @@ describe('InventoryScreen', () => {
       throw new DOMException('Storage blocked', 'SecurityError');
     });
     fireEvent.click(buy);
+    confirmReceiptEmail();
     await screen.findByText(/Не удалось сохранить попытку оплаты/);
     expect(
       vi
@@ -846,6 +911,7 @@ describe('InventoryScreen', () => {
     renderInventory();
     fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
     fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+    confirmReceiptEmail();
     await screen.findByText(/Не удалось сохранить попытку оплаты/);
     expect(localStorage.getItem(key)).toBe('{broken attempt');
     expect(
@@ -880,8 +946,10 @@ describe('InventoryScreen', () => {
       fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
       const buy = await screen.findByRole('button', { name: /Купить.*40.*000.*699/ });
       fireEvent.click(buy);
+      confirmReceiptEmail();
       await waitFor(() => expect(buy).toBeEnabled());
       fireEvent.click(buy);
+      confirmReceiptEmail();
       await waitFor(() => expect(requests).toHaveLength(2));
       expect(requests[1]).toEqual(requests[0]);
     },
@@ -898,6 +966,7 @@ describe('InventoryScreen', () => {
       expect(getComputedStyle(buy).cursor).toBe('pointer');
       expect(Number(getComputedStyle(buy).opacity || 1)).toBe(1);
       fireEvent.click(buy);
+      confirmReceiptEmail();
       expect(buy).toBeDisabled();
       expect(getComputedStyle(buy).cursor).toBe('not-allowed');
       expect(getComputedStyle(buy).opacity).toBe('0.5');
@@ -923,6 +992,7 @@ describe('InventoryScreen', () => {
 
     fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
     fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+    confirmReceiptEmail();
 
     expect(await screen.findByText(/Не удалось перейти к оплате/)).toBeInTheDocument();
     expect(sessionStorage.getItem('hockey.bank.paymentId')).toBeNull();
@@ -943,12 +1013,14 @@ describe('InventoryScreen', () => {
       const view = renderInventory();
       fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
       fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+      confirmReceiptEmail();
       await screen.findByText(/Не удалось перейти к оплате/);
       view.unmount();
       sessionStorage.setItem('hockey.bank.paymentId', '00000000-0000-4000-8000-000000000099');
       renderInventory('/inventory?payment=return');
       await screen.findByText(status === 'paid' ? /Оплата подтверждена/ : /Оплата отменена/);
       fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+      confirmReceiptEmail();
       await waitFor(() => expect(requests).toHaveLength(2));
       expect(requests[1]?.attemptId).not.toBe(requests[0]?.attemptId);
     },

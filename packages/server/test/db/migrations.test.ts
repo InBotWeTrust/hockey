@@ -737,8 +737,10 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '116_weekly_challenge_future_publication.sql',
       '117_admin_direct_broadcasts.sql',
       '117_economy_achievement_rewards.sql',
+      '118_android_push_installations.sql',
       '118_weekly_challenge_token_rewards.sql',
       '119_duel_reward_matrix.sql',
+      '119_push_delivery_transport_counts.sql',
       '120_monthly_duel_rating_rewards.sql',
       '121_duel_reward_storage_limits.sql',
       '122_bonus_game_reward_progression.sql',
@@ -755,6 +757,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '134_optional_weekly_challenge_copy.sql',
       '135_rebalance_inventory_currency_prices.sql',
       '136_raise_inventory_currency_prices.sql',
+      '137_payment_receipt_email.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -1611,8 +1614,10 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '116_weekly_challenge_future_publication.sql',
       '117_admin_direct_broadcasts.sql',
       '117_economy_achievement_rewards.sql',
+      '118_android_push_installations.sql',
       '118_weekly_challenge_token_rewards.sql',
       '119_duel_reward_matrix.sql',
+      '119_push_delivery_transport_counts.sql',
       '120_monthly_duel_rating_rewards.sql',
       '121_duel_reward_storage_limits.sql',
       '122_bonus_game_reward_progression.sql',
@@ -1629,6 +1634,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '134_optional_weekly_challenge_copy.sql',
       '135_rebalance_inventory_currency_prices.sql',
       '136_raise_inventory_currency_prices.sql',
+      '137_payment_receipt_email.sql',
     ]);
 
     const activeInventory = await pool.query<{
