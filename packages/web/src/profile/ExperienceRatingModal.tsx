@@ -39,9 +39,11 @@ function RatingTable({
 
 export function ExperienceRatingModal({
   currentUserId,
+  onCurrentUser,
   onClose,
 }: {
   currentUserId: string;
+  onCurrentUser: (player: ExperienceRatingPlayer) => void;
   onClose: () => void;
 }): JSX.Element {
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -58,6 +60,7 @@ export function ExperienceRatingModal({
     queryFn: ({ pageParam }) => fetchExperienceRatingPage(pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    refetchOnMount: 'always',
   });
 
   const rows = useMemo(() => {
@@ -68,6 +71,10 @@ export function ExperienceRatingModal({
     return [...unique.values()];
   }, [query.data?.pages]);
   const currentUser = query.data?.pages[0]?.currentUser;
+
+  useEffect(() => {
+    if (currentUser !== undefined) onCurrentUser(currentUser);
+  }, [currentUser, onCurrentUser]);
 
   useEffect(() => {
     const root = scrollRef.current;

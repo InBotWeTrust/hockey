@@ -94,7 +94,11 @@ function mockProfileRequest(
     effectRecoveryMinutes: number;
   }> = [],
   legacyEquipmentArtwork = false,
-  ratingStats: Pick<typeof profile.stats, 'shots' | 'goals' | 'accuracy'> = profile.stats,
+  ratingStats: Pick<typeof profile.stats, 'shots' | 'goals' | 'accuracy'> & {
+    currentStreakDays?: number;
+    recordStreakDays?: number;
+  } = profile.stats,
+  experienceRating = { value: profile.experienceBalance },
 ): void {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input.toString();
@@ -162,7 +166,7 @@ function mockProfileRequest(
               userId: 'u1',
               displayName: 'Alice T',
               avatarUrl: 'avatar.png',
-              experience: 77,
+              experience: experienceRating.value,
             },
           ],
           nextCursor: null,
@@ -171,7 +175,7 @@ function mockProfileRequest(
             userId: 'u1',
             displayName: 'Alice T',
             avatarUrl: 'avatar.png',
-            experience: 77,
+            experience: experienceRating.value,
           },
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
@@ -195,8 +199,8 @@ function mockProfileRequest(
               goals: ratingStats.goals,
               shots: ratingStats.shots,
               accuracy: ratingStats.accuracy,
-              currentStreakDays: 7,
-              recordStreakDays: 12,
+              currentStreakDays: ratingStats.currentStreakDays ?? 7,
+              recordStreakDays: ratingStats.recordStreakDays ?? 12,
             },
           ],
           nextCursor: null,
@@ -208,8 +212,8 @@ function mockProfileRequest(
             goals: ratingStats.goals,
             shots: ratingStats.shots,
             accuracy: ratingStats.accuracy,
-            currentStreakDays: 7,
-            recordStreakDays: 12,
+            currentStreakDays: ratingStats.currentStreakDays ?? 7,
+            recordStreakDays: ratingStats.recordStreakDays ?? 12,
           },
           eligibility:
             metric === 'accuracy'
@@ -309,7 +313,8 @@ describe('ProfileScreen', () => {
   });
 
   it('loads the experience rating only after the experience balance is opened', async () => {
-    mockProfileRequest();
+    const experienceRating = { value: 9_001 };
+    mockProfileRequest(200, profile, undefined, [], false, profile.stats, experienceRating);
     renderProfile();
 
     const trigger = await screen.findByRole('button', { name: 'Открыть рейтинг по опыту' });
@@ -321,9 +326,10 @@ describe('ProfileScreen', () => {
 
     fireEvent.click(trigger);
     expect(await screen.findByRole('dialog', { name: 'Рейтинг по опыту' })).toBeInTheDocument();
-    expect(await screen.findAllByRole('row', { name: /^1 Alice T Alice T 77$/ })).not.toHaveLength(
-      0,
-    );
+    expect(
+      await screen.findAllByRole('row', { name: /^1 Alice T Alice T 9\s001$/ }),
+    ).not.toHaveLength(0);
+    await waitFor(() => expect(screen.getByLabelText('Опыт: 9001')).toBeInTheDocument());
     expect(
       vi
         .mocked(globalThis.fetch)
@@ -334,6 +340,14 @@ describe('ProfileScreen', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Рейтинг по опыту' })).toBeNull(),
     );
+    experienceRating.value = 9_002;
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть рейтинг по опыту' }));
+    await waitFor(() => expect(screen.getByLabelText('Опыт: 9002')).toBeInTheDocument());
+    expect(
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.filter(([input]) => String(input).includes('/api/profile/experience-rating')),
+    ).toHaveLength(2);
   });
 
   it.each([
@@ -364,7 +378,9 @@ describe('ProfileScreen', () => {
     const ratingStats = {
       goals: 7_982,
       shots: 10_967,
-      accuracy: 72.8,
+      accuracy: 72.84,
+      currentStreakDays: 15,
+      recordStreakDays: 20,
     };
     mockProfileRequest(200, profile, undefined, [], false, ratingStats);
     renderProfile();
@@ -375,8 +391,16 @@ describe('ProfileScreen', () => {
     await screen.findByRole('dialog', { name: 'Рейтинг по шайбам' });
 
     await waitFor(() => expect(within(passport).getByText('7 982')).toBeInTheDocument());
-    expect(within(passport).getByText('73%')).toBeInTheDocument();
+    expect(within(passport).getByText('72,8%')).toBeInTheDocument();
     expect(within(passport).queryByText('64')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Рейтинг по шайбам' })).toBeNull(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть рейтинг: Дней подряд' }));
+    await screen.findByRole('dialog', { name: 'Рейтинг игровых дней' });
+    await waitFor(() => expect(passport).toHaveTextContent('15 (20)Дней подряд'));
     expect(
       vi.mocked(globalThis.fetch).mock.calls.filter(([input]) => String(input).endsWith('/api/me')),
     ).toHaveLength(1);
@@ -581,7 +605,7 @@ describe('ProfileScreen', () => {
 
     const passport = await screen.findByLabelText('Спортивный паспорт');
     expect(passport).toHaveTextContent('64Шайбы');
-    expect(passport).toHaveTextContent('50%Точность');
+    expect(passport).toHaveTextContent('50,0%Точность');
     expect(passport).toHaveTextContent('7 (12)Дней подряд');
     expect(passport).toHaveTextContent('с14.08.26В игре');
     expect(passport.querySelector('.profile-streak-record')).toHaveTextContent('(12)');
