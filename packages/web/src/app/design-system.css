@@ -13169,6 +13169,16 @@ button.daily-calendar__day:active {
   font-weight: 800;
 }
 
+.android-app-card__action {
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 14px;
+  font-size: 12px;
+  letter-spacing: 0;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .android-update-banner__actions {
   display: flex;
   gap: 8px;
