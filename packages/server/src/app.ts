@@ -8,6 +8,7 @@ import { authPlugin } from './plugins/auth.js';
 import { lastSeenPlugin } from './plugins/lastSeen.js';
 import { realtimePlugin } from './plugins/realtime.js';
 import { authRoutes } from './routes/auth.js';
+import { mobileAuthRoutes } from './routes/mobileAuth.js';
 import { achievementRoutes } from './achievements/routes.js';
 import { feedbackRoutes } from './routes/feedback.js';
 import { inventoryRoutes } from './routes/inventory.js';
@@ -118,6 +119,21 @@ export async function buildApp(options: BuildAppOptions = {}) {
     refreshSecret: config.REFRESH_SECRET,
     devLoginEnabled: config.NODE_ENV !== 'production',
     devAccessCodeLoginEnabled: config.DEV_ACCESS_CODE_LOGIN_ENABLED === true,
+  });
+  await app.register(mobileAuthRoutes, {
+    accessSecret: config.JWT_SECRET,
+    refreshSecret: config.REFRESH_SECRET,
+    telegramBotToken: config.TELEGRAM_BOT_TOKEN,
+    ...(config.VK_APP_ID === undefined ? {} : { vkAppId: config.VK_APP_ID }),
+    ...(config.ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS === undefined
+      ? {}
+      : {
+          accountRecoveryTelegramProviderUids: config.ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS.split(
+            ',',
+          )
+            .map((uid) => uid.trim())
+            .filter((uid) => uid.length > 0),
+        }),
   });
   await app.register(onboardingRoutes, {
     tutorialSeedSecret: config.DAILY_SEED_SECRET,

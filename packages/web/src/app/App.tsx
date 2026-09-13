@@ -89,6 +89,11 @@ const VkAuthCallbackScreen = lazy(() =>
     default: module.VkAuthCallbackScreen,
   })),
 );
+const MobileTelegramAuthScreen = lazy(() =>
+  import('../screens/MobileTelegramAuthScreen.js').then((module) => ({
+    default: module.MobileTelegramAuthScreen,
+  })),
+);
 const AdminScreen = lazy(() =>
   import('../admin/AdminScreen.js').then((module) => ({ default: module.AdminScreen })),
 );
@@ -175,7 +180,11 @@ export function appBackdropClassName(pathname: string, search = ''): string {
 }
 
 export function appSurfaceClassName(pathname: string): string {
-  if (pathname === '/login' || pathname.startsWith('/auth/')) {
+  if (
+    pathname === '/login' ||
+    pathname.startsWith('/auth/') ||
+    pathname.startsWith('/mobile-auth/')
+  ) {
     return 'app-shell--auth-surfaces';
   }
   return 'app-shell--unified-glass';
@@ -242,6 +251,7 @@ function AppExperience(): JSX.Element {
                 }
               />
               <Route path="/auth/vk/callback" element={<VkAuthCallbackScreen />} />
+              <Route path="/mobile-auth/telegram" element={<MobileTelegramAuthScreen />} />
               <Route
                 path="/"
                 element={
@@ -440,7 +450,8 @@ function AppFrame(): JSX.Element {
   const isPublicEntry =
     location.pathname === '/login' ||
     location.pathname === '/demo' ||
-    location.pathname === '/auth/vk/callback';
+    location.pathname === '/auth/vk/callback' ||
+    location.pathname === '/mobile-auth/telegram';
 
   if (!isAuthenticated || isPublicEntry) return <AppExperience />;
 

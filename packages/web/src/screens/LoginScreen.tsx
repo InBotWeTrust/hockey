@@ -7,6 +7,8 @@ import { useAuthStore, type AuthSession } from '../auth/authStore.js';
 import { startVkOAuth } from '../auth/vkAuth.js';
 import { detectTimezone } from '../auth/timezone.js';
 import { useTelegramMiniAppAuth } from '../auth/useTelegramMiniAppAuth.js';
+import { startMobileAuth, type MobileAuthProvider } from '../auth/mobileAuth.js';
+import { isNativeAndroid } from '../platform/runtime.js';
 
 const COMPACT_CODE_VIEWPORT_HEIGHT = 520;
 
@@ -28,6 +30,10 @@ export function LoginScreen(): JSX.Element {
   const [devPending, setDevPending] = useState(false);
   const [vkError, setVkError] = useState<string | null>(null);
   const [vkPending, setVkPending] = useState(false);
+  const [mobilePendingProvider, setMobilePendingProvider] = useState<MobileAuthProvider | null>(
+    null,
+  );
+  const [mobileAuthError, setMobileAuthError] = useState<string | null>(null);
   const [compactCodeViewport, setCompactCodeViewport] = useState(isKeyboardSizedViewport);
   const miniAppAuth = useTelegramMiniAppAuth();
 
@@ -97,6 +103,18 @@ export function LoginScreen(): JSX.Element {
       );
     } finally {
       setDevCodePending(false);
+    }
+  };
+
+  const openMobileAuth = async (provider: MobileAuthProvider): Promise<void> => {
+    setMobileAuthError(null);
+    setMobilePendingProvider(provider);
+    try {
+      await startMobileAuth(provider);
+    } catch {
+      setMobileAuthError('Не удалось открыть вход. Проверьте интернет и попробуйте ещё раз.');
+    } finally {
+      setMobilePendingProvider(null);
     }
   };
 
@@ -177,6 +195,39 @@ export function LoginScreen(): JSX.Element {
               {devCodePending ? 'Проверяем…' : 'Войти в dev'}
             </button>
           </form>
+        ) : isNativeAndroid() ? (
+          <>
+            <button
+              type="button"
+              className="btn login-screen__auth-button"
+              disabled={mobilePendingProvider !== null}
+              onClick={() => void openMobileAuth('telegram')}
+              style={{
+                alignSelf: 'center',
+                background: '#229ed9',
+                color: '#fff',
+                justifyContent: 'center',
+              }}
+            >
+              {mobilePendingProvider === 'telegram'
+                ? 'Открываем Telegram…'
+                : 'Войти через Telegram'}
+            </button>
+            <button
+              type="button"
+              className="btn login-screen__auth-button"
+              disabled={mobilePendingProvider !== null}
+              onClick={() => void openMobileAuth('vk')}
+              style={{
+                alignSelf: 'center',
+                background: '#0077ff',
+                color: '#fff',
+                justifyContent: 'center',
+              }}
+            >
+              {mobilePendingProvider === 'vk' ? 'Открываем ВКонтакте…' : 'Войти через ВКонтакте'}
+            </button>
+          </>
         ) : (
           <>
             <TelegramLoginButton
@@ -244,6 +295,11 @@ export function LoginScreen(): JSX.Element {
         {vkError && (
           <div role="alert" style={{ fontSize: 13, color: 'var(--red-deep)' }}>
             {vkError}
+          </div>
+        )}
+        {mobileAuthError && (
+          <div role="alert" style={{ fontSize: 13, color: 'var(--red-deep)' }}>
+            {mobileAuthError}
           </div>
         )}
         {devCodeError && (

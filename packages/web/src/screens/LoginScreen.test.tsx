@@ -80,6 +80,34 @@ describe('LoginScreen', () => {
     });
   });
 
+  it('opens provider authentication outside the Android WebView', async () => {
+    const open = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('__HOCKEY_NATIVE__', { platform: 'android' });
+    vi.stubGlobal('Capacitor', {
+      getPlatform: () => 'android',
+      Plugins: {
+        SecureSession: { save: vi.fn().mockResolvedValue(undefined) },
+        Browser: { open, close: vi.fn() },
+      },
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ attemptId: 'native-attempt', expiresAt: 'soon' }), {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    renderWith();
+    fireEvent.click(screen.getByRole('button', { name: /войти через telegram/i }));
+
+    await waitFor(() =>
+      expect(open).toHaveBeenCalledWith({
+        url: 'https://ultimatehockey.ru/mobile-auth/telegram?attempt=native-attempt',
+      }),
+    );
+    expect(screen.queryByTestId('telegram-login-container')).toBeNull();
+  });
+
   it('keeps the brand compact so benefit pills stay above the rink safety net', () => {
     expect(designSystemCss).toMatch(
       /\.login-screen__logo\s*{[^}]*width:\s*clamp\(76px,\s*12dvh,\s*96px\);[^}]*height:\s*clamp\(76px,\s*12dvh,\s*96px\);/s,
