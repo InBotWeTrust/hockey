@@ -23,6 +23,9 @@ concurrency:
 env:
   SERVER_IMAGE: ghcr.io/inbotwetrust/hockey-server
   WEB_IMAGE: ghcr.io/inbotwetrust/hockey-web
+  APP_DOMAIN: ultimatehockey.ru
+  LEGACY_APP_DOMAIN: hockey.inbotwetrust.ru
+  WWW_APP_DOMAIN: www.ultimatehockey.ru
   HEALTH_URL: https://dev.hockey.inbotwetrust.ru/api/health
   DEV_APP_DOMAIN: dev.hockey.inbotwetrust.ru
 
@@ -122,6 +125,9 @@ jobs:
           STAGING_IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_DOMAIN: ${{ env.APP_DOMAIN }}
+          LEGACY_APP_DOMAIN: ${{ env.LEGACY_APP_DOMAIN }}
+          WWW_APP_DOMAIN: ${{ env.WWW_APP_DOMAIN }}
           DEV_APP_DOMAIN: ${{ env.DEV_APP_DOMAIN }}
           STAGING_POSTGRES_USER: ${{ vars.STAGING_POSTGRES_USER || 'hockey_dev' }}
           STAGING_POSTGRES_PASSWORD: ${{ secrets.STAGING_POSTGRES_PASSWORD }}
@@ -145,6 +151,9 @@ jobs:
             GHCR_USER="$GHCR_USER" \
             GHCR_TOKEN="$GHCR_TOKEN" \
             REMOTE_PATH="$REMOTE_PATH" \
+            APP_DOMAIN="$APP_DOMAIN" \
+            LEGACY_APP_DOMAIN="$LEGACY_APP_DOMAIN" \
+            WWW_APP_DOMAIN="$WWW_APP_DOMAIN" \
             DEV_APP_DOMAIN="$DEV_APP_DOMAIN" \
             STAGING_POSTGRES_USER="$STAGING_POSTGRES_USER" \
             STAGING_POSTGRES_PASSWORD="$STAGING_POSTGRES_PASSWORD" \
@@ -187,7 +196,10 @@ jobs:
           STAGING_OBJECT_STORAGE_ACCESS_KEY_ID="${STAGING_OBJECT_STORAGE_ACCESS_KEY_ID:-$OBJECT_STORAGE_ACCESS_KEY_ID}"
           STAGING_OBJECT_STORAGE_SECRET_ACCESS_KEY="${STAGING_OBJECT_STORAGE_SECRET_ACCESS_KEY:-$OBJECT_STORAGE_SECRET_ACCESS_KEY}"
           STAGING_OBJECT_STORAGE_PUBLIC_BASE_URL="${STAGING_OBJECT_STORAGE_PUBLIC_BASE_URL:-$OBJECT_STORAGE_PUBLIC_BASE_URL}"
-          export STAGING_IMAGE_TAG DEV_APP_DOMAIN
+          install -d -m 0755 "$REMOTE_PATH/android-releases"
+          install -d -m 0700 "$REMOTE_PATH/android-release-staging"
+          export STAGING_IMAGE_TAG APP_DOMAIN LEGACY_APP_DOMAIN WWW_APP_DOMAIN DEV_APP_DOMAIN
+          export ANDROID_RELEASES_DIR="$REMOTE_PATH/android-releases"
           export STAGING_POSTGRES_USER STAGING_POSTGRES_PASSWORD STAGING_POSTGRES_DB
           export STAGING_DATABASE_URL STAGING_REDIS_URL
           export STAGING_JWT_SECRET STAGING_REFRESH_SECRET STAGING_DAILY_SEED_SECRET

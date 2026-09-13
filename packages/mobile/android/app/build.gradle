@@ -1,5 +1,30 @@
 apply plugin: 'com.android.application'
 
+def releaseTaskRequested = gradle.startParameter.taskNames.any {
+    it.toLowerCase().contains('release')
+}
+def releaseVersionCode = System.getenv('ANDROID_VERSION_CODE')
+def releaseVersionName = System.getenv('ANDROID_VERSION_NAME')
+def releaseKeystorePath = System.getenv('ANDROID_KEYSTORE_PATH')
+def releaseKeyAlias = System.getenv('ANDROID_KEY_ALIAS')
+def releaseKeystorePassword = System.getenv('ANDROID_KEYSTORE_PASSWORD')
+def releaseKeyPassword = System.getenv('ANDROID_KEY_PASSWORD')
+
+if (releaseTaskRequested) {
+    def requiredReleaseValues = [
+        ANDROID_VERSION_CODE: releaseVersionCode,
+        ANDROID_VERSION_NAME: releaseVersionName,
+        ANDROID_KEYSTORE_PATH: releaseKeystorePath,
+        ANDROID_KEY_ALIAS: releaseKeyAlias,
+        ANDROID_KEYSTORE_PASSWORD: releaseKeystorePassword,
+        ANDROID_KEY_PASSWORD: releaseKeyPassword,
+    ]
+    def missingReleaseValues = requiredReleaseValues.findAll { it.value == null || it.value.isEmpty() }.keySet()
+    if (!missingReleaseValues.isEmpty()) {
+        throw new GradleException("Missing CI release configuration: ${missingReleaseValues.join(', ')}")
+    }
+}
+
 android {
     namespace "ru.ultimatehockey.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -7,8 +32,8 @@ android {
         applicationId "ru.ultimatehockey.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode releaseVersionCode == null ? 1 : releaseVersionCode.toInteger()
+        versionName releaseVersionName == null ? "1.0" : releaseVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +41,21 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (releaseTaskRequested) {
+            release {
+                storeFile file(releaseKeystorePath)
+                storePassword releaseKeystorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
+            if (releaseTaskRequested) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

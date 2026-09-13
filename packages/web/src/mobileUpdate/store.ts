@@ -10,8 +10,8 @@ const DISMISSED_KEY = 'hockey.androidUpdate.dismissedVersion.v1';
 const CHECK_INTERVAL_MS = 5 * 60_000;
 const REQUEST_TIMEOUT_MS = 8_000;
 export const ANDROID_MANIFEST_PUBLIC_KEYS = {
-  'android-manifest-640cae20c448426f':
-    'MCowBQYDK2VwAyEAouJVfx/XA7gg2z0RaxdS3hzR+9+Glpfu6p43uF//wAM=',
+  'android-manifest-554cef5a349b36e9':
+    'MCowBQYDK2VwAyEAUJvxgBwc9GVnKcFkAisnjv+jUudbAq22aO3+YJPmN3M=',
 } as const;
 
 export interface AndroidUpdateState {

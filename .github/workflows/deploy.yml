@@ -12,7 +12,11 @@ concurrency:
 env:
   SERVER_IMAGE: ghcr.io/inbotwetrust/hockey-server
   WEB_IMAGE: ghcr.io/inbotwetrust/hockey-web
-  HEALTH_URL: https://hockey.inbotwetrust.ru/api/health
+  APP_DOMAIN: ultimatehockey.ru
+  LEGACY_APP_DOMAIN: hockey.inbotwetrust.ru
+  WWW_APP_DOMAIN: www.ultimatehockey.ru
+  DEV_APP_DOMAIN: dev.hockey.inbotwetrust.ru
+  HEALTH_URL: https://ultimatehockey.ru/api/health
 
 jobs:
   build-and-push:
@@ -99,6 +103,10 @@ jobs:
           USER: ${{ secrets.DEPLOY_USER }}
           HOST: ${{ secrets.DEPLOY_HOST }}
           REMOTE_PATH: ${{ secrets.DEPLOY_PATH }}
+          APP_DOMAIN: ${{ env.APP_DOMAIN }}
+          LEGACY_APP_DOMAIN: ${{ env.LEGACY_APP_DOMAIN }}
+          WWW_APP_DOMAIN: ${{ env.WWW_APP_DOMAIN }}
+          DEV_APP_DOMAIN: ${{ env.DEV_APP_DOMAIN }}
         run: |
           scp -i ~/.ssh/id_ed25519 \
             docker-compose.yml Caddyfile \
@@ -128,13 +136,19 @@ jobs:
           OBJECT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.OBJECT_STORAGE_SECRET_ACCESS_KEY }}
           OBJECT_STORAGE_PUBLIC_BASE_URL: ${{ secrets.OBJECT_STORAGE_PUBLIC_BASE_URL }}
           OBJECT_STORAGE_MAX_UPLOAD_BYTES: ${{ vars.OBJECT_STORAGE_MAX_UPLOAD_BYTES || '26214400' }}
+          ANDROID_MANIFEST_PUBLIC_KEYS_JSON: ${{ vars.ANDROID_MANIFEST_PUBLIC_KEYS_JSON }}
         run: |
           FCM_PRIVATE_KEY_BASE64="$(printf '%s' "$FCM_PRIVATE_KEY" | base64 | tr -d '\n')"
+          ANDROID_MANIFEST_PUBLIC_KEYS_BASE64="$(printf '%s' "$ANDROID_MANIFEST_PUBLIC_KEYS_JSON" | base64 | tr -d '\n')"
           ssh -i ~/.ssh/id_ed25519 "${USER}@${HOST}" \
             IMAGE_TAG="$IMAGE_TAG" \
             GHCR_USER="$GHCR_USER" \
             GHCR_TOKEN="$GHCR_TOKEN" \
             REMOTE_PATH="$REMOTE_PATH" \
+            APP_DOMAIN="$APP_DOMAIN" \
+            LEGACY_APP_DOMAIN="$LEGACY_APP_DOMAIN" \
+            WWW_APP_DOMAIN="$WWW_APP_DOMAIN" \
+            DEV_APP_DOMAIN="$DEV_APP_DOMAIN" \
             SYSTEM_USER_ID="$SYSTEM_USER_ID" \
             SYSTEM_CHAT_NAME="$SYSTEM_CHAT_NAME" \
             PUSH_VAPID_PUBLIC_KEY="$PUSH_VAPID_PUBLIC_KEY" \
@@ -151,10 +165,12 @@ jobs:
             OBJECT_STORAGE_SECRET_ACCESS_KEY="$OBJECT_STORAGE_SECRET_ACCESS_KEY" \
             OBJECT_STORAGE_PUBLIC_BASE_URL="$OBJECT_STORAGE_PUBLIC_BASE_URL" \
             OBJECT_STORAGE_MAX_UPLOAD_BYTES="$OBJECT_STORAGE_MAX_UPLOAD_BYTES" \
+            ANDROID_MANIFEST_PUBLIC_KEYS_BASE64="$ANDROID_MANIFEST_PUBLIC_KEYS_BASE64" \
             bash -s <<'ENDSSH'
           set -euo pipefail
           cd "$REMOTE_PATH"
           FCM_PRIVATE_KEY="$(printf '%s' "${FCM_PRIVATE_KEY_BASE64:-}" | base64 -d)"
+          ANDROID_MANIFEST_PUBLIC_KEYS_JSON="$(printf '%s' "${ANDROID_MANIFEST_PUBLIC_KEYS_BASE64:-}" | base64 -d)"
           if [ -z "${PUSH_VAPID_PUBLIC_KEY:-}" ] || [ -z "${PUSH_VAPID_PRIVATE_KEY:-}" ]; then
             echo "PUSH_VAPID_PUBLIC_KEY and PUSH_VAPID_PRIVATE_KEY GitHub secrets are required for production push notifications"
             exit 1
@@ -165,6 +181,12 @@ jobs:
               exit 1
             fi
           done
+          [ -n "$ANDROID_MANIFEST_PUBLIC_KEYS_JSON" ] || {
+            echo 'ANDROID_MANIFEST_PUBLIC_KEYS_JSON GitHub secret is required for Android releases'
+            exit 1
+          }
+          install -d -m 0755 "$REMOTE_PATH/android-releases"
+          install -d -m 0700 "$REMOTE_PATH/android-release-staging"
           for name in \
             OBJECT_STORAGE_ENDPOINT \
             OBJECT_STORAGE_REGION \
@@ -193,12 +215,16 @@ jobs:
           }
 
           docker_login_ghcr
+          export APP_DOMAIN LEGACY_APP_DOMAIN WWW_APP_DOMAIN DEV_APP_DOMAIN
           export IMAGE_TAG PUSH_VAPID_PUBLIC_KEY PUSH_VAPID_PRIVATE_KEY PUSH_VAPID_SUBJECT
           export FCM_PROJECT_ID FCM_CLIENT_EMAIL FCM_PRIVATE_KEY
           export OBJECT_STORAGE_ENDPOINT OBJECT_STORAGE_REGION OBJECT_STORAGE_BUCKET
           export OBJECT_STORAGE_TENANT_ID OBJECT_STORAGE_ACCESS_KEY_ID
           export OBJECT_STORAGE_SECRET_ACCESS_KEY OBJECT_STORAGE_PUBLIC_BASE_URL
           export OBJECT_STORAGE_MAX_UPLOAD_BYTES
+          export ANDROID_RELEASES_DIR="$REMOTE_PATH/android-releases"
+          export ANDROID_RELEASE_MANIFEST_PATH=/app/android-releases/current.json
+          export ANDROID_MANIFEST_PUBLIC_KEYS_JSON
           # Same flap can drop `compose pull` mid-transfer; retry a few times.
           for i in 1 2 3; do
             # Re-login before each pull attempt: after a partial failed pull,

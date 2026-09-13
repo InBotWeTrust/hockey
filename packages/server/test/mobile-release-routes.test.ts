@@ -66,6 +66,15 @@ describe('mobile Android release routes', () => {
     expect(response.headers.location).toBe(signed.apkUrl);
   });
 
+  it('serves a CSP-protected public download page from verified metadata', async () => {
+    const { app, signed } = await fixture();
+    const response = await app.inject({ method: 'GET', url: '/download/android' });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-security-policy']).toContain("default-src 'none'");
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    expect(response.body).toContain(signed.apkUrl);
+  });
+
   it('returns 503 when the manifest is absent or invalid', async () => {
     const app = Fastify();
     apps.push(app);

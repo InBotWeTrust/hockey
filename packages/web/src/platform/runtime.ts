@@ -1,7 +1,9 @@
 declare global {
   // Capacitor's native shell injects this marker before the React entrypoint runs.
   // `var` is required for a global declaration that is readable through globalThis.
+  // eslint-disable-next-line no-var
   var __HOCKEY_NATIVE__: { platform: 'android' } | undefined;
+  // eslint-disable-next-line no-var
   var Capacitor: { getPlatform?: () => string } | undefined;
 }
 

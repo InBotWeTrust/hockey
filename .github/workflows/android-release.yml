@@ -1,0 +1,457 @@
+name: Android Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      versionName:
+        description: 'Public version name (for example 1.0.0)'
+        required: true
+        type: string
+      versionCode:
+        description: 'Monotonically increasing Android version code'
+        required: true
+        type: number
+      minimumSupportedVersionCode:
+        description: 'Lowest version code allowed to continue'
+        required: true
+        type: number
+      releaseNotes:
+        description: 'Russian release notes'
+        required: true
+        type: string
+
+concurrency:
+  group: android-production-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    name: Build immutable candidate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: android-signing
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hockey
+          POSTGRES_PASSWORD: hockey_dev_password
+          POSTGRES_DB: hockey_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgres://hockey:hockey_dev_password@localhost:5432/hockey_test
+      TEST_REDIS_URL: redis://localhost:6379/15
+    outputs:
+      artifact_name: ${{ steps.metadata.outputs.artifact_name }}
+      apk_filename: ${{ steps.metadata.outputs.apk_filename }}
+      apk_sha256: ${{ steps.metadata.outputs.apk_sha256 }}
+      apk_size_bytes: ${{ steps.metadata.outputs.apk_size_bytes }}
+      version_code: ${{ steps.metadata.outputs.version_code }}
+      minimum_version_code: ${{ steps.metadata.outputs.minimum_version_code }}
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Validate requested versions
+        env:
+          VERSION_NAME: ${{ inputs.versionName }}
+          VERSION_CODE: ${{ inputs.versionCode }}
+          MINIMUM_VERSION_CODE: ${{ inputs.minimumSupportedVersionCode }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION_NAME" =~ ^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$ ]] || {
+            echo 'versionName must be filename-safe and at most 64 characters'
+            exit 1
+          }
+          [[ "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]]
+          [[ "$MINIMUM_VERSION_CODE" =~ ^[1-9][0-9]*$ ]]
+          [ "$VERSION_CODE" -le 2100000000 ]
+          [ "$MINIMUM_VERSION_CODE" -le "$VERSION_CODE" ]
+
+          active_manifest="$(curl --fail --silent --show-error --max-time 20 \
+            https://ultimatehockey.ru/api/mobile/android/release || true)"
+          if [ -n "$active_manifest" ]; then
+            active_version_code="$(printf '%s' "$active_manifest" | jq -er .latestVersionCode)"
+            active_minimum_code="$(printf '%s' "$active_manifest" | jq -er .minimumSupportedVersionCode)"
+            [ "$VERSION_CODE" -gt "$active_version_code" ] || {
+              echo "versionCode must be greater than active versionCode $active_version_code"
+              exit 1
+            }
+            [ "$MINIMUM_VERSION_CODE" = "$active_minimum_code" ] || {
+              echo 'This workflow cannot change minimumSupportedVersionCode; use a separately approved mandatory-update change'
+              exit 1
+            }
+          else
+            [ "$MINIMUM_VERSION_CODE" = 1 ] || {
+              echo 'The first release must keep minimumSupportedVersionCode at 1'
+              exit 1
+            }
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Repository checks
+        run: |
+          set -euo pipefail
+          pnpm --filter @hockey/game-core build
+          pnpm typecheck
+          pnpm lint
+          pnpm build
+          pnpm test
+
+      - name: Reconstruct temporary signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [ -n "$ANDROID_KEYSTORE_BASE64" ] || {
+            echo 'ANDROID_KEYSTORE_BASE64 is required'
+            exit 1
+          }
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/ultimate-hockey-release.keystore"
+
+      - name: Build signed release candidate
+        env:
+          ANDROID_VERSION_NAME: ${{ inputs.versionName }}
+          ANDROID_VERSION_CODE: ${{ inputs.versionCode }}
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/ultimate-hockey-release.keystore
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: pnpm mobile:android:release
+
+      - name: Inspect and verify candidate
+        id: metadata
+        env:
+          VERSION_NAME: ${{ inputs.versionName }}
+          VERSION_CODE: ${{ inputs.versionCode }}
+          MINIMUM_VERSION_CODE: ${{ inputs.minimumSupportedVersionCode }}
+          RELEASE_NOTES: ${{ inputs.releaseNotes }}
+          EXPECTED_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          APK='packages/mobile/android/app/build/outputs/apk/release/app-release.apk'
+          EVIDENCE="$RUNNER_TEMP/android-candidate"
+          mkdir -p "$EVIDENCE"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          [ -x "$APKSIGNER" ]
+          [ -x "$AAPT" ]
+
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$EVIDENCE/apksigner.txt"
+          "$AAPT" dump badging "$APK" | tee "$EVIDENCE/aapt-badging.txt"
+
+          package_name="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" "$EVIDENCE/aapt-badging.txt")"
+          extracted_code="$(sed -n "s/^package:.* versionCode='\([^']*\)'.*/\1/p" "$EVIDENCE/aapt-badging.txt")"
+          extracted_name="$(sed -n "s/^package:.* versionName='\([^']*\)'.*/\1/p" "$EVIDENCE/aapt-badging.txt")"
+          minimum_sdk="$(sed -n "s/^sdkVersion:'\([^']*\)'.*/\1/p" "$EVIDENCE/aapt-badging.txt")"
+          signer_sha256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$EVIDENCE/apksigner.txt" | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          expected_signer="$(printf '%s' "$EXPECTED_SIGNING_CERT_SHA256" | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+
+          [ "$package_name" = 'ru.ultimatehockey.app' ]
+          [ "$minimum_sdk" = '26' ]
+          [ "$extracted_code" = "$VERSION_CODE" ]
+          [ "$extracted_name" = "$VERSION_NAME" ]
+          [ -n "$expected_signer" ]
+          [ "$signer_sha256" = "$expected_signer" ]
+
+          apk_sha256="$(sha256sum "$APK" | cut -d ' ' -f 1)"
+          apk_size_bytes="$(stat -c '%s' "$APK")"
+          apk_filename="ultimate-hockey-${VERSION_NAME}-${VERSION_CODE}.apk"
+          artifact_name="android-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cp "$APK" "$EVIDENCE/$apk_filename"
+          jq -n \
+            --arg versionName "$VERSION_NAME" \
+            --argjson latestVersionCode "$VERSION_CODE" \
+            --argjson minimumSupportedVersionCode "$MINIMUM_VERSION_CODE" \
+            --arg releaseNotes "$RELEASE_NOTES" \
+            --arg apkFilename "$apk_filename" \
+            --arg apkSha256 "$apk_sha256" \
+            --argjson apkSizeBytes "$apk_size_bytes" \
+            --arg packageName "$package_name" \
+            --argjson minimumSdk "$minimum_sdk" \
+            --arg signingCertSha256 "$signer_sha256" \
+            --arg gitSha "$GITHUB_SHA" \
+            --argjson runId "$GITHUB_RUN_ID" \
+            --argjson runAttempt "$GITHUB_RUN_ATTEMPT" \
+            '{versionName:$versionName,latestVersionCode:$latestVersionCode,minimumSupportedVersionCode:$minimumSupportedVersionCode,releaseNotes:$releaseNotes,apkFilename:$apkFilename,apkSha256:$apkSha256,apkSizeBytes:$apkSizeBytes,packageName:$packageName,minimumSdk:$minimumSdk,signingCertSha256:$signingCertSha256,gitSha:$gitSha,runId:$runId,runAttempt:$runAttempt}' \
+            > "$EVIDENCE/candidate.json"
+          sha256sum "$EVIDENCE/$apk_filename" > "$EVIDENCE/$apk_filename.sha256"
+
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "apk_filename=$apk_filename" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$apk_sha256" >> "$GITHUB_OUTPUT"
+          echo "apk_size_bytes=$apk_size_bytes" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "minimum_version_code=$MINIMUM_VERSION_CODE" >> "$GITHUB_OUTPUT"
+          {
+            echo '### Android candidate awaiting physical-device acceptance'
+            echo "- Artifact: \`$artifact_name\`"
+            echo "- APK: \`$apk_filename\`"
+            echo "- SHA-256: \`$apk_sha256\`"
+            echo "- Bytes: \`$apk_size_bytes\`"
+            echo "- Source SHA: \`$GITHUB_SHA\`"
+            echo 'Approve the protected publish job only after the runbook checklist passes for this exact SHA-256.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload immutable candidate evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.metadata.outputs.artifact_name }}
+          path: ${{ runner.temp }}/android-candidate/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Remove temporary signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/ultimate-hockey-release.keystore"
+
+  publish:
+    name: Publish accepted candidate
+    needs: candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: android-production
+
+    steps:
+      - name: Checkout manifest signing code
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install manifest tooling without signing secrets
+        run: pnpm install --frozen-lockfile --filter @hockey/server...
+
+      - name: Download exact candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.candidate.outputs.artifact_name }}
+          path: ${{ runner.temp }}/android-candidate
+
+      - name: Revalidate candidate and build signed manifest
+        env:
+          APK_FILENAME: ${{ needs.candidate.outputs.apk_filename }}
+          EXPECTED_SHA256: ${{ needs.candidate.outputs.apk_sha256 }}
+          EXPECTED_SIZE_BYTES: ${{ needs.candidate.outputs.apk_size_bytes }}
+          ANDROID_MANIFEST_PRIVATE_KEY: ${{ secrets.ANDROID_MANIFEST_PRIVATE_KEY }}
+          ANDROID_MANIFEST_KEY_ID: ${{ vars.ANDROID_MANIFEST_KEY_ID }}
+          ANDROID_MANIFEST_PUBLIC_KEYS_JSON: ${{ vars.ANDROID_MANIFEST_PUBLIC_KEYS_JSON }}
+        run: |
+          set -euo pipefail
+          CANDIDATE="$RUNNER_TEMP/android-candidate"
+          APK="$CANDIDATE/$APK_FILENAME"
+          [ "$(sha256sum "$APK" | cut -d ' ' -f 1)" = "$EXPECTED_SHA256" ]
+          [ "$(stat -c '%s' "$APK")" = "$EXPECTED_SIZE_BYTES" ]
+          [ "$(jq -r .gitSha "$CANDIDATE/candidate.json")" = "$GITHUB_SHA" ]
+          [ -n "$ANDROID_MANIFEST_PRIVATE_KEY" ]
+          [ -n "$ANDROID_MANIFEST_KEY_ID" ]
+          [ -n "$ANDROID_MANIFEST_PUBLIC_KEYS_JSON" ]
+
+          jq \
+            --arg apkUrl "https://ultimatehockey.ru/mobile/android/$APK_FILENAME" \
+            --arg publishedAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg keyId "$ANDROID_MANIFEST_KEY_ID" \
+            '{versionName,latestVersionCode,minimumSupportedVersionCode,apkUrl:$apkUrl,apkSizeBytes,apkSha256,releaseNotes,publishedAt:$publishedAt,keyId:$keyId}' \
+            "$CANDIDATE/candidate.json" > "$RUNNER_TEMP/unsigned-manifest.json"
+          pnpm --filter @hockey/server mobile:release-manifest -- \
+            "$RUNNER_TEMP/unsigned-manifest.json" "$RUNNER_TEMP/current.json"
+          pnpm --filter @hockey/server mobile:verify-release-manifest -- \
+            "$RUNNER_TEMP/current.json"
+
+      - name: Prepare release directory and SSH trust
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          REMOTE_PATH: ${{ secrets.DEPLOY_PATH }}
+          VERSION_CODE: ${{ needs.candidate.outputs.version_code }}
+          MINIMUM_VERSION_CODE: ${{ needs.candidate.outputs.minimum_version_code }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${HOST}" \
+            REMOTE_PATH="$REMOTE_PATH" VERSION_CODE="$VERSION_CODE" MINIMUM_VERSION_CODE="$MINIMUM_VERSION_CODE" \
+            'bash -se' <<'ENDSSH'
+          set -euo pipefail
+          install -d -m 0755 "$REMOTE_PATH/android-releases"
+          install -d -m 0700 "$REMOTE_PATH/android-release-staging"
+          active_manifest="$REMOTE_PATH/android-releases/current.json"
+          if [ -s "$active_manifest" ]; then
+            active_version_code="$(jq -er .latestVersionCode "$active_manifest")"
+            active_minimum_code="$(jq -er .minimumSupportedVersionCode "$active_manifest")"
+            [ "$VERSION_CODE" -gt "$active_version_code" ] || {
+              echo "versionCode must be greater than active versionCode $active_version_code"
+              exit 1
+            }
+            [ "$MINIMUM_VERSION_CODE" = "$active_minimum_code" ] || {
+              echo 'This workflow cannot change minimumSupportedVersionCode'
+              exit 1
+            }
+          else
+            [ "$MINIMUM_VERSION_CODE" = 1 ] || {
+              echo 'The first release must keep minimumSupportedVersionCode at 1'
+              exit 1
+            }
+          fi
+          ENDSSH
+
+      - name: Upload candidate to non-public staging names
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          REMOTE_PATH: ${{ secrets.DEPLOY_PATH }}
+          APK_FILENAME: ${{ needs.candidate.outputs.apk_filename }}
+        run: |
+          set -euo pipefail
+          STAGE=".candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          scp -i ~/.ssh/id_ed25519 \
+            "$RUNNER_TEMP/android-candidate/$APK_FILENAME" \
+            "${DEPLOY_USER}@${HOST}:${REMOTE_PATH}/android-release-staging/${STAGE}.apk"
+          scp -i ~/.ssh/id_ed25519 \
+            "$RUNNER_TEMP/current.json" \
+            "${DEPLOY_USER}@${HOST}:${REMOTE_PATH}/android-release-staging/${STAGE}.json"
+
+      - name: Publish immutable APK
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          REMOTE_PATH: ${{ secrets.DEPLOY_PATH }}
+          APK_FILENAME: ${{ needs.candidate.outputs.apk_filename }}
+          EXPECTED_SHA256: ${{ needs.candidate.outputs.apk_sha256 }}
+          EXPECTED_SIZE_BYTES: ${{ needs.candidate.outputs.apk_size_bytes }}
+        run: |
+          set -euo pipefail
+          STAGE=".candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          ssh -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${HOST}" \
+            REMOTE_PATH="$REMOTE_PATH" STAGE="$STAGE" APK_FILENAME="$APK_FILENAME" EXPECTED_SHA256="$EXPECTED_SHA256" EXPECTED_SIZE_BYTES="$EXPECTED_SIZE_BYTES" \
+            'bash -se' <<'ENDSSH'
+          set -euo pipefail
+          cd "$REMOTE_PATH/android-release-staging"
+          [ "$(sha256sum "${STAGE}.apk" | cut -d ' ' -f 1)" = "$EXPECTED_SHA256" ]
+          [ "$(stat -c '%s' "${STAGE}.apk")" = "$EXPECTED_SIZE_BYTES" ]
+          destination="$REMOTE_PATH/android-releases/$APK_FILENAME"
+          if [ -e "$destination" ]; then
+            [ "$(sha256sum "$destination" | cut -d ' ' -f 1)" = "$EXPECTED_SHA256" ] || {
+              echo 'Refusing to overwrite an existing versioned APK with different bytes'
+              exit 1
+            }
+            rm -f "${STAGE}.apk"
+          else
+            mv "${STAGE}.apk" "$destination"
+            chmod 0644 "$destination"
+          fi
+          ENDSSH
+
+      - name: Verify public APK bytes before activation
+        env:
+          APK_FILENAME: ${{ needs.candidate.outputs.apk_filename }}
+          EXPECTED_SHA256: ${{ needs.candidate.outputs.apk_sha256 }}
+          EXPECTED_SIZE_BYTES: ${{ needs.candidate.outputs.apk_size_bytes }}
+        run: |
+          set -euo pipefail
+          PUBLIC_APK="$RUNNER_TEMP/public.apk"
+          curl --fail --silent --show-error --location --max-time 120 \
+            "https://ultimatehockey.ru/mobile/android/$APK_FILENAME" -o "$PUBLIC_APK"
+          [ "$(sha256sum "$PUBLIC_APK" | cut -d ' ' -f 1)" = "$EXPECTED_SHA256" ]
+          [ "$(stat -c '%s' "$PUBLIC_APK")" = "$EXPECTED_SIZE_BYTES" ]
+
+      - name: Activate signed manifest last
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          REMOTE_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          STAGE=".candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          ssh -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${HOST}" \
+            REMOTE_PATH="$REMOTE_PATH" STAGE="$STAGE" 'bash -se' <<'ENDSSH'
+          set -euo pipefail
+          cd "$REMOTE_PATH/android-release-staging"
+          test -s "${STAGE}.json"
+          chmod 0644 "${STAGE}.json"
+          mv "${STAGE}.json" "$REMOTE_PATH/android-releases/current.json"
+          ENDSSH
+
+      - name: Verify active manifest and artifact read-back
+        env:
+          EXPECTED_SHA256: ${{ needs.candidate.outputs.apk_sha256 }}
+          APK_FILENAME: ${{ needs.candidate.outputs.apk_filename }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5 6; do
+            manifest="$(curl --fail --silent --show-error --max-time 20 https://ultimatehockey.ru/api/mobile/android/release)"
+            if [ "$(printf '%s' "$manifest" | jq -r .apkSha256)" = "$EXPECTED_SHA256" ] && \
+              [ "$(printf '%s' "$manifest" | jq -r .apkUrl)" = "https://ultimatehockey.ru/mobile/android/$APK_FILENAME" ]; then
+              break
+            fi
+            [ "$attempt" = 6 ] && {
+              echo 'Active manifest did not converge to the accepted candidate'
+              exit 1
+            }
+            sleep 3
+          done
+          echo 'Published APK and active manifest passed public read-back.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove unactivated staging files after failure
+        if: failure()
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          REMOTE_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          STAGE=".candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          ssh -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${HOST}" \
+            REMOTE_PATH="$REMOTE_PATH" STAGE="$STAGE" \
+            'rm -f "$REMOTE_PATH/android-release-staging/${STAGE}.apk" "$REMOTE_PATH/android-release-staging/${STAGE}.json"' || true
