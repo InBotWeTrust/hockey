@@ -7,6 +7,8 @@ import { useAuthStore, type AuthSession } from '../auth/authStore.js';
 import { startVkOAuth } from '../auth/vkAuth.js';
 import { detectTimezone } from '../auth/timezone.js';
 import { useTelegramMiniAppAuth } from '../auth/useTelegramMiniAppAuth.js';
+import { startMobileAuth, type MobileAuthProvider } from '../auth/mobileAuth.js';
+import { isNativeAndroid } from '../platform/runtime.js';
 
 const COMPACT_CODE_VIEWPORT_HEIGHT = 520;
 
@@ -29,6 +31,10 @@ export function LoginScreen(): JSX.Element {
   const [devPending, setDevPending] = useState(false);
   const [vkError, setVkError] = useState<string | null>(null);
   const [vkPending, setVkPending] = useState(false);
+  const [mobilePendingProvider, setMobilePendingProvider] = useState<MobileAuthProvider | null>(
+    null,
+  );
+  const [mobileAuthError, setMobileAuthError] = useState<string | null>(null);
   const [compactCodeViewport, setCompactCodeViewport] = useState(isKeyboardSizedViewport);
   const [miniAppLoginStarted, setMiniAppLoginStarted] = useState(false);
   const miniAppAuth = useTelegramMiniAppAuth(miniAppLoginStarted);
@@ -123,6 +129,18 @@ export function LoginScreen(): JSX.Element {
     }
   };
 
+  const openMobileAuth = async (provider: MobileAuthProvider): Promise<void> => {
+    setMobileAuthError(null);
+    setMobilePendingProvider(provider);
+    try {
+      await startMobileAuth(provider);
+    } catch {
+      setMobileAuthError('Не удалось открыть вход. Проверьте интернет и попробуйте ещё раз.');
+    } finally {
+      setMobilePendingProvider(null);
+    }
+  };
+
   return (
     <main
       className={`screen login-screen${devCodeExpanded && compactCodeViewport ? ' login-screen--compact-code' : ''}`}
@@ -152,45 +170,81 @@ export function LoginScreen(): JSX.Element {
       <div className="login-screen__spacer" style={{ flex: 1, minHeight: 8 }} />
 
       <div className="login-screen__actions">
-        <TelegramLoginButton
-          botUsername={botUsername}
-          onAuth={(payload) => mutation.mutate(payload)}
-        />
-
-        <button
-          type="button"
-          className="btn login-screen__auth-button login-screen__auth-button--vk"
-          disabled={vkPending}
-          onClick={async () => {
-            setVkError(null);
-            setVkPending(true);
-            try {
-              await startVkOAuth();
-            } catch (err) {
-              setVkPending(false);
-              setVkError(err instanceof Error ? err.message : 'Ошибка входа через ВКонтакте');
-            }
-          }}
-          style={{
-            alignSelf: 'center',
-            padding: '0 14px',
-            background: '#0077ff',
-            color: '#ffffff',
-            justifyContent: 'center',
-            fontWeight: 700,
-            letterSpacing: 0,
-            boxShadow: 'none',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <img
-            src="/icons/vk-community.png"
-            alt=""
-            aria-hidden="true"
-            className="login-screen__auth-icon"
-          />
-          Войти через ВКонтакте
-        </button>
+        {isNativeAndroid() ? (
+          <>
+            <button
+              type="button"
+              className="btn login-screen__auth-button"
+              disabled={mobilePendingProvider !== null}
+              onClick={() => void openMobileAuth('telegram')}
+              style={{
+                alignSelf: 'center',
+                background: '#229ed9',
+                color: '#fff',
+                justifyContent: 'center',
+              }}
+            >
+              {mobilePendingProvider === 'telegram'
+                ? 'Открываем Telegram…'
+                : 'Войти через Telegram'}
+            </button>
+            <button
+              type="button"
+              className="btn login-screen__auth-button"
+              disabled={mobilePendingProvider !== null}
+              onClick={() => void openMobileAuth('vk')}
+              style={{
+                alignSelf: 'center',
+                background: '#0077ff',
+                color: '#fff',
+                justifyContent: 'center',
+              }}
+            >
+              {mobilePendingProvider === 'vk' ? 'Открываем ВКонтакте…' : 'Войти через ВКонтакте'}
+            </button>
+          </>
+        ) : (
+          <>
+            <TelegramLoginButton
+              botUsername={botUsername}
+              onAuth={(payload) => mutation.mutate(payload)}
+            />
+            <button
+              type="button"
+              className="btn login-screen__auth-button login-screen__auth-button--vk"
+              disabled={vkPending}
+              onClick={async () => {
+                setVkError(null);
+                setVkPending(true);
+                try {
+                  await startVkOAuth();
+                } catch (err) {
+                  setVkPending(false);
+                  setVkError(err instanceof Error ? err.message : 'Ошибка входа через ВКонтакте');
+                }
+              }}
+              style={{
+                alignSelf: 'center',
+                padding: '0 14px',
+                background: '#0077ff',
+                color: '#ffffff',
+                justifyContent: 'center',
+                fontWeight: 700,
+                letterSpacing: 0,
+                boxShadow: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <img
+                src="/icons/vk-community.png"
+                alt=""
+                aria-hidden="true"
+                className="login-screen__auth-icon"
+              />
+              Войти через ВКонтакте
+            </button>
+          </>
+        )}
 
         {devCodeLoginEnabled && !devCodeExpanded ? (
           <button
@@ -281,6 +335,11 @@ export function LoginScreen(): JSX.Element {
         {vkError && (
           <div role="alert" style={{ fontSize: 13, color: 'var(--red-deep)' }}>
             {vkError}
+          </div>
+        )}
+        {mobileAuthError && (
+          <div role="alert" style={{ fontSize: 13, color: 'var(--red-deep)' }}>
+            {mobileAuthError}
           </div>
         )}
         {devCodeError && (

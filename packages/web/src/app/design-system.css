@@ -13171,3 +13171,60 @@ button.daily-calendar__day:active {
 .user-avatar__initial::before {
   content: attr(data-initial);
 }
+.android-app-card,
+.android-update-banner {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.android-app-card {
+  border-radius: 22px;
+}
+
+.android-app-card h3,
+.android-update-banner strong {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.android-app-card p,
+.android-update-banner span {
+  display: block;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.android-app-card__note {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.android-app-card__action {
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 14px;
+  font-size: 12px;
+  letter-spacing: 0;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.android-update-banner__actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 380px) {
+  .android-update-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

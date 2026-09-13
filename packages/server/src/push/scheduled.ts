@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { getGameSettings } from '../duel/gameSettings.js';
 import { trainingDailyCooldownMs } from '../duel/trainingCooldown.js';
 import type { PushEventType } from './preferences.js';
+import type { FcmOptions } from './fcm.js';
 import { enqueuePushDelivery, processPushDeliveryQueue } from './queue.js';
 import { resolvePushVapidOptions, type PushVapidOptions, type WebPushPayload } from './service.js';
 import {
@@ -77,6 +78,7 @@ export interface ScheduledPushRunResult {
 }
 
 export interface RunScheduledPushesOptions extends PushVapidOptions {
+  fcm?: FcmOptions;
   now?: Date;
   dailyAvailableLocalHour?: number;
   trainingAvailableLocalHour?: number;
@@ -205,7 +207,7 @@ async function fetchDailyAvailableRows(
             null::timestamptz as event_due_at,
             null::uuid as training_shot_id
        from candidates c
-       join push_subscriptions ps on ps.user_id = c.user_id
+       join push_delivery_targets ps on ps.user_id = c.user_id
       where not exists (
         select 1
           from push_delivery_log pdl
@@ -274,7 +276,7 @@ async function fetchDailyUnlockedAfterTrainingRows(
             c.event_due_at,
             c.training_shot_id
        from candidates c
-       join push_subscriptions ps on ps.user_id = c.user_id
+       join push_delivery_targets ps on ps.user_id = c.user_id
       where not exists (
         select 1
           from push_delivery_log pdl
@@ -338,7 +340,7 @@ async function fetchDailyPeriodEndingRows(
             ws.event_due_at,
             null::uuid as training_shot_id
        from with_shots ws
-       join push_subscriptions ps on ps.user_id = ws.user_id
+       join push_delivery_targets ps on ps.user_id = ws.user_id
       where ws.shots_taken < $4
         and not exists (
           select 1
@@ -393,7 +395,7 @@ async function fetchDailyBreakFinishedRows(
             fb.event_due_at,
             null::uuid as training_shot_id
        from finished_breaks fb
-       join push_subscriptions ps on ps.user_id = fb.user_id
+       join push_delivery_targets ps on ps.user_id = fb.user_id
       where not exists (
         select 1
           from push_delivery_log pdl
@@ -453,7 +455,7 @@ async function fetchTrainingAvailableRows(
             null::timestamptz as event_due_at,
             null::uuid as training_shot_id
        from candidates c
-       join push_subscriptions ps on ps.user_id = c.user_id
+       join push_delivery_targets ps on ps.user_id = c.user_id
       where not exists (
         select 1
           from push_delivery_log pdl
@@ -528,7 +530,7 @@ async function fetchTournamentLiveSoonRows(
             c.tournament_title, c.fixture_id, c.reminder_offset_ms,
             c.notification_override
        from candidates c
-       join push_subscriptions ps on ps.user_id = c.user_id
+       join push_delivery_targets ps on ps.user_id = c.user_id
       where not exists (
          select 1 from push_delivery_log pdl
          where pdl.user_id = c.user_id
@@ -577,7 +579,7 @@ async function fetchTournamentFixtureOpenedRows(
             null::timestamptz as event_due_at, null::uuid as training_shot_id,
             c.tournament_title, c.fixture_id, c.notification_override
        from candidates c
-       join push_subscriptions ps on ps.user_id = c.user_id
+       join push_delivery_targets ps on ps.user_id = c.user_id
       where not exists (
         select 1 from push_delivery_log pdl
          where pdl.user_id = c.user_id
@@ -644,7 +646,7 @@ async function fetchTournamentFixtureDeadlineRows(
             d.event_due_at, null::uuid as training_shot_id,
             d.tournament_title, d.fixture_id, d.window_ends_at, d.notification_override
        from due d
-       join push_subscriptions ps on ps.user_id = d.user_id
+       join push_delivery_targets ps on ps.user_id = d.user_id
       where d.event_due_at <= $1::timestamptz
         and d.event_due_at > $1::timestamptz - ($2::bigint * interval '1 millisecond')
         and not exists (
@@ -700,7 +702,7 @@ async function fetchTournamentReadinessEndingRows(
             c.event_due_at, null::uuid as training_shot_id,
             c.tournament_title, c.fixture_id
        from candidates c
-       join push_subscriptions ps on ps.user_id = c.user_id
+       join push_delivery_targets ps on ps.user_id = c.user_id
       where c.event_due_at <= $1::timestamptz
         and c.event_due_at > $1::timestamptz - ($2::bigint * interval '1 millisecond')
         and not exists (
@@ -984,7 +986,7 @@ export async function runScheduledPushes(
   options: RunScheduledPushesOptions,
 ): Promise<ScheduledPushRunResult> {
   const config = resolvePushVapidOptions(options);
-  if (config === null) return { enabled: false, events: [] };
+  if (config === null && options.fcm === undefined) return { enabled: false, events: [] };
 
   const now = options.now ?? new Date();
   const events: ScheduledPushEventResult[] = [];

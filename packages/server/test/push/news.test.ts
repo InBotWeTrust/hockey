@@ -33,17 +33,25 @@ describe.skipIf(!hasIntegrationEnv)('news push delivery', () => {
       `insert into users (id, display_name, timezone)
        values (gen_random_uuid(), 'Admin', 'UTC'),
               (gen_random_uuid(), 'News enabled', 'UTC'),
-              (gen_random_uuid(), 'News muted', 'UTC')
+              (gen_random_uuid(), 'News muted', 'UTC'),
+              (gen_random_uuid(), 'Android news enabled', 'UTC')
        returning id, display_name`,
     );
     const admin = users.rows.find((user) => user.display_name === 'Admin')!;
     const enabled = users.rows.find((user) => user.display_name === 'News enabled')!;
     const muted = users.rows.find((user) => user.display_name === 'News muted')!;
+    const androidEnabled = users.rows.find((user) => user.display_name === 'Android news enabled')!;
 
     await pool.query(
       `insert into user_push_preferences (user_id, game_news)
        values ($1, false)`,
       [muted.id],
+    );
+    await pool.query(
+      `insert into android_push_installations
+         (user_id, installation_id, fcm_token, platform, app_version_code)
+       values ($1, gen_random_uuid(), 'news-android-token', 'android', 1)`,
+      [androidEnabled.id],
     );
     await pool.query(
       `insert into push_subscriptions (user_id, endpoint, p256dh, auth)
@@ -67,25 +75,31 @@ describe.skipIf(!hasIntegrationEnv)('news push delivery', () => {
       tag: 'news-test',
     });
 
-    expect(result).toEqual({ total: 2, queued: 1, skipped: 1 });
+    expect(result).toEqual({ total: 3, queued: 2, skipped: 1 });
     const queued = await pool.query<{
       user_id: string;
       event_type: string;
       event_key: string;
       payload: { title: string; body: string; url: string; tag: string };
     }>(`select user_id::text, event_type, event_key, payload from push_delivery_log`);
-    expect(queued.rows).toEqual([
-      expect.objectContaining({
-        user_id: enabled.id,
-        event_type: 'news.posted',
-        event_key: 'news:news-test',
-        payload: expect.objectContaining({
-          title: 'Новости игры',
-          body: 'Большое обновление уже на льду',
-          url: '/chat/news',
-          tag: 'news-test',
+    expect(queued.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          user_id: enabled.id,
+          event_type: 'news.posted',
+          event_key: 'news:news-test',
+          payload: expect.objectContaining({
+            title: 'Новости игры',
+            body: 'Большое обновление уже на льду',
+            url: '/chat/news',
+            tag: 'news-test',
+          }),
         }),
-      }),
-    ]);
+        expect.objectContaining({
+          user_id: androidEnabled.id,
+          event_type: 'news.posted',
+        }),
+      ]),
+    );
   });
 });

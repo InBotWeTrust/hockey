@@ -3,10 +3,12 @@ import fp from 'fastify-plugin';
 import { cleanupPushDeliveryLog, processPushDeliveryQueue } from '../push/queue.js';
 import { runScheduledPushes } from '../push/scheduled.js';
 import type { PushVapidOptions } from '../push/service.js';
+import type { FcmOptions } from '../push/fcm.js';
 import { finalizeDueClassicTournamentDays } from '../tournament/classicGame.js';
 import { isTournamentFeatureEnabled } from '../tournament/service.js';
 
 export interface PushSchedulerPluginOptions extends PushVapidOptions {
+  fcm?: FcmOptions;
   scheduleEnabled?: boolean;
   workerEnabled?: boolean;
   intervalMs?: number;

@@ -26,7 +26,25 @@ describe('apiFetch', () => {
   });
 
   afterEach(() => {
+    Object.defineProperty(globalThis, '__HOCKEY_NATIVE__', {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
     vi.restoreAllMocks();
+  });
+
+  it('uses the canonical production API origin inside the Android shell', async () => {
+    Object.defineProperty(globalThis, '__HOCKEY_NATIVE__', {
+      configurable: true,
+      value: { platform: 'android' },
+      writable: true,
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockJson({ ok: 1 }));
+
+    await apiFetch('/me');
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://ultimatehockey.ru/api/me');
   });
 
   it('sends Authorization header when token present', async () => {

@@ -1,6 +1,6 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import './global.css';
 import './design-system.css';
 import { LoginScreen } from '../screens/LoginScreen.js';
@@ -18,6 +18,11 @@ import { apiFetch } from '../api/apiFetch.js';
 import type { ProfileData } from '../screens/profileTypes.js';
 import { arenaBackgroundClass } from '../screens/lockerRoomBackground.js';
 import { queryClient } from './queryClient.js';
+import { isNativeAndroid } from '../platform/runtime.js';
+import { initializeNativeNotifications } from '../platform/nativeNotifications.js';
+import { initializeAndroidUpdateChecks } from '../mobileUpdate/store.js';
+import { canAccessAndroidRelease } from '../mobileUpdate/access.js';
+import { MandatoryAndroidUpdateModal } from '../components/MandatoryAndroidUpdateModal.js';
 
 const DailyScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DailyScreen })),
@@ -107,6 +112,11 @@ const VkAuthCallbackScreen = lazy(() =>
     default: module.VkAuthCallbackScreen,
   })),
 );
+const MobileTelegramAuthScreen = lazy(() =>
+  import('../screens/MobileTelegramAuthScreen.js').then((module) => ({
+    default: module.MobileTelegramAuthScreen,
+  })),
+);
 const AdminScreen = lazy(() =>
   import('../admin/AdminScreen.js').then((module) => ({ default: module.AdminScreen })),
 );
@@ -135,6 +145,36 @@ const UserProfileScreen = lazy(() =>
     default: module.UserProfileScreen,
   })),
 );
+
+function NativeNotificationBridge(): null {
+  const navigate = useNavigate();
+  useEffect(() => {
+    let disposed = false;
+    let cleanup: (() => Promise<void>) | undefined;
+    void initializeNativeNotifications((destination) => navigate(destination))
+      .then((value) => {
+        if (disposed) {
+          void value();
+          return;
+        }
+        cleanup = value;
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      void cleanup?.();
+    };
+  }, [navigate]);
+  return null;
+}
+
+function NativeUpdateBridge({ enabled }: { enabled: boolean }): null {
+  useEffect(() => {
+    if (!enabled) return undefined;
+    return initializeAndroidUpdateChecks();
+  }, [enabled]);
+  return null;
+}
 
 function ChatRealtime(): JSX.Element {
   const status = useChatSocket();
@@ -199,7 +239,11 @@ export function appBackdropClassName(pathname: string, search = ''): string {
 }
 
 export function appSurfaceClassName(pathname: string): string {
-  if (pathname === '/login' || pathname.startsWith('/auth/')) {
+  if (
+    pathname === '/login' ||
+    pathname.startsWith('/auth/') ||
+    pathname.startsWith('/mobile-auth/')
+  ) {
     return 'app-shell--auth-surfaces';
   }
   return 'app-shell--unified-glass';
@@ -208,6 +252,7 @@ export function appSurfaceClassName(pathname: string): string {
 function AppExperience(): JSX.Element {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
+  const androidReleaseAccess = canAccessAndroidRelease(user?.role);
   const bottomNavVisible =
     location.pathname !== '/dev/tournament-result-preview' && isBottomNavVisible(location, user);
   const backdropClassName = appBackdropClassName(location.pathname, location.search);
@@ -238,9 +283,12 @@ function AppExperience(): JSX.Element {
   return (
     <>
       <ChatRealtime />
+      <NativeNotificationBridge />
+      <NativeUpdateBridge enabled={androidReleaseAccess} />
       <DuelInviteToast />
       <AmateurAccessToast />
       <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />
+      {androidReleaseAccess && <MandatoryAndroidUpdateModal />}
       <div
         className={`app-shell ${surfaceClassName}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
         style={{
@@ -285,6 +333,7 @@ function AppExperience(): JSX.Element {
                 }
               />
               <Route path="/auth/vk/callback" element={<VkAuthCallbackScreen />} />
+              <Route path="/mobile-auth/telegram" element={<MobileTelegramAuthScreen />} />
               <Route
                 path="/"
                 element={
@@ -472,7 +521,7 @@ function AppExperience(): JSX.Element {
         </div>
         <BottomNav />
       </div>
-      <UpdatePrompt />
+      {!isNativeAndroid() && <UpdatePrompt />}
     </>
   );
 }
@@ -484,7 +533,8 @@ function AppFrame(): JSX.Element {
     location.pathname === '/login' ||
     location.pathname === '/prices' ||
     location.pathname === '/demo' ||
-    location.pathname === '/auth/vk/callback';
+    location.pathname === '/auth/vk/callback' ||
+    location.pathname === '/mobile-auth/telegram';
 
   if (!isAuthenticated || isPublicEntry) return <AppExperience />;
 

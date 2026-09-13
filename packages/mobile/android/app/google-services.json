@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "947636864929",
+    "project_id": "ultimate-hockey-b8097",
+    "storage_bucket": "ultimate-hockey-b8097.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:947636864929:android:631d6b22175357600f2de0",
+        "android_client_info": {
+          "package_name": "ru.ultimatehockey.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAUKuGaIzPvCCaTxNEFmIrR0oEIuevNAmU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

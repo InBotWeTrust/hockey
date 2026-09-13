@@ -1,0 +1,29 @@
+{
+  "name": "@hockey/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "cap:sync": "cap sync android",
+    "android:debug": "cd android && ./gradlew assembleDebug",
+    "android:release": "cd android && ./gradlew assembleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/browser": "^7.0.5",
+    "@capacitor/core": "^7.6.9",
+    "@capacitor/filesystem": "^7.1.8",
+    "@capacitor/preferences": "^7.0.4",
+    "@capacitor/push-notifications": "^7.0.7"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.6.9",
+    "@types/node": "^20.19.39",
+    "typescript": "^5.9.3",
+    "vitest": "^1.6.1"
+  }
+}

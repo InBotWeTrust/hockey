@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Ультимейт Хоккей</string>
+    <string name="title_activity_main">Ультимейт Хоккей</string>
+    <string name="package_name">ru.ultimatehockey.app</string>
+    <string name="custom_url_scheme">ru.ultimatehockey.app</string>
+</resources>

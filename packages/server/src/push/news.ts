@@ -58,9 +58,10 @@ export async function sendNewsPostPush(
             pref.training_available,
             pref.game_news
        from (
-         select distinct user_id
-           from push_subscriptions
-          where user_id <> $1
+         select user_id from push_subscriptions where user_id <> $1
+         union
+         select user_id from android_push_installations
+          where user_id <> $1 and disabled_at is null
        ) ps
        left join user_push_preferences pref on pref.user_id = ps.user_id
       order by ps.user_id`,

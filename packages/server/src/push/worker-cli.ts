@@ -31,6 +31,17 @@ const pushOptions = {
     ? { privateKey: config.PUSH_VAPID_PRIVATE_KEY }
     : {}),
   ...(config.PUSH_VAPID_SUBJECT !== undefined ? { subject: config.PUSH_VAPID_SUBJECT } : {}),
+  ...(config.FCM_PROJECT_ID !== undefined &&
+  config.FCM_CLIENT_EMAIL !== undefined &&
+  config.FCM_PRIVATE_KEY !== undefined
+    ? {
+        fcm: {
+          projectId: config.FCM_PROJECT_ID,
+          clientEmail: config.FCM_CLIENT_EMAIL,
+          privateKey: config.FCM_PRIVATE_KEY,
+        },
+      }
+    : {}),
   batchSize: config.PUSH_WORKER_BATCH_SIZE,
   concurrency: config.PUSH_WORKER_CONCURRENCY,
 };

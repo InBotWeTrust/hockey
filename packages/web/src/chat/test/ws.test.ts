@@ -91,6 +91,15 @@ describe('ChatSocket', () => {
     expect(onStatus).toHaveBeenCalledWith('connecting');
   });
 
+  it('connects to the canonical secure WebSocket origin inside Android', () => {
+    vi.stubGlobal('__HOCKEY_NATIVE__', { platform: 'android' });
+    const sock = new ChatSocket({ getToken, refresh, onEvent, onStatus });
+
+    sock.connect();
+
+    expect(lastSocket().url).toBe('wss://ultimatehockey.ru/api/chat/ws?token=TOKEN-A');
+  });
+
   it('reports status open after the WS opens', () => {
     const sock = new ChatSocket({ getToken, refresh, onEvent, onStatus });
     sock.connect();

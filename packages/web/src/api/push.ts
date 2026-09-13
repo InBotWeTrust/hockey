@@ -60,6 +60,23 @@ export function deletePushSubscription(endpoint: string): Promise<{ ok: true }> 
   });
 }
 
+export function saveAndroidPushInstallation(
+  installationId: string,
+  token: string,
+  appVersionCode: number,
+): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/push/android/installations/${installationId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ token, appVersionCode }),
+  });
+}
+
+export function deleteAndroidPushInstallation(installationId: string): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/push/android/installations/${installationId}`, {
+    method: 'DELETE',
+  });
+}
+
 export function sendTestPush(): Promise<TestPushResult> {
   return apiFetch<TestPushResult>('/push/test', { method: 'POST' });
 }

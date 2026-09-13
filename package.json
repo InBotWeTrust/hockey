@@ -10,7 +10,10 @@
     "lint": "eslint 'packages/*/src/**/*.{ts,tsx}'",
     "format": "prettier --write 'packages/*/src/**/*.{ts,tsx,json,md}'",
     "dev:server": "pnpm --filter @hockey/server dev",
-    "dev:web": "pnpm --filter @hockey/web dev"
+    "dev:web": "pnpm --filter @hockey/web dev",
+    "mobile:sync": "pnpm --filter @hockey/game-core build && pnpm --filter @hockey/web build && pnpm --filter @hockey/mobile cap:sync",
+    "mobile:android:debug": "pnpm mobile:sync && pnpm --filter @hockey/mobile android:debug",
+    "mobile:android:release": "pnpm mobile:sync && pnpm --filter @hockey/mobile android:release"
   },
   "devDependencies": {
     "@types/node": "^20.12.0",
