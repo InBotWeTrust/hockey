@@ -80,6 +80,7 @@ export async function observeAchievementStage(
   observation: StageObservation,
 ): Promise<{ completed: boolean; stageNumber: number | null }> {
   return inTransaction(db, async (client) => {
+    await openFirstAchievementStages(client, userId, observation.occurredAt);
     const current = await client.query<ActiveStageRow>(
       `select user_stage.stage_number, user_stage.opened_at, user_stage.completed_at,
               stage.target

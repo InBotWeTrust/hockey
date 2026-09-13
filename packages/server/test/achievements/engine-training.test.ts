@@ -27,9 +27,6 @@ describe.skipIf(!hasIntegrationEnv)('training achievement evaluator', () => {
 
   it('completes 100-shot training achievements and first-training', async () => {
     const userId = await createUser(pool);
-    await pool.query(
-      `update achievements set availability = 'active' where id = 'almost-perfect-training'`,
-    );
     const trainingSessionId = await seedClosedTraining(pool, {
       userId,
       dayDate: '2026-05-31',
@@ -43,15 +40,11 @@ describe.skipIf(!hasIntegrationEnv)('training achievement evaluator', () => {
       shotsLimit: 100,
     });
 
-    await expect(completedIds(pool, userId)).resolves.toEqual(
-      expect.arrayContaining([
-        'first-training',
-        'training-monster',
-        'almost-perfect-training',
-        'rhythm-control',
-        'no-warmup-needed',
-      ]),
+    await expect(completedIds(pool, userId)).resolves.toContain('first-training');
+    await expect(completedStageIds(pool, userId)).resolves.toEqual(
+      expect.arrayContaining(['training-monster', 'rhythm-control', 'no-warmup-needed']),
     );
+    await expect(completedIds(pool, userId)).resolves.not.toContain('almost-perfect-training');
   });
 
   it('uses actual shots_limit for finish-machine last 20 shots', async () => {
@@ -69,7 +62,7 @@ describe.skipIf(!hasIntegrationEnv)('training achievement evaluator', () => {
       shotsLimit: 25,
     });
 
-    await expect(completedIds(pool, userId)).resolves.toContain('finish-machine');
+    await expect(completedStageIds(pool, userId)).resolves.toContain('finish-machine');
   });
 
   it('completes stable-student after five distinct 80-of-100 trainings', async () => {
@@ -95,7 +88,7 @@ describe.skipIf(!hasIntegrationEnv)('training achievement evaluator', () => {
       });
     }
 
-    await expect(completedIds(pool, userId)).resolves.toContain('stable-student');
+    await expect(completedStageIds(pool, userId)).resolves.toContain('stable-student');
     await expect(trainingStreakProgress(pool, userId)).resolves.toMatchObject({ count: 5 });
   });
 
@@ -216,6 +209,17 @@ async function completedIds(pool: Pool, userId: string): Promise<string[]> {
        from user_achievements
       where user_id = $1
       order by achievement_id asc`,
+    [userId],
+  );
+  return rows.map((row) => row.achievement_id);
+}
+
+async function completedStageIds(pool: Pool, userId: string): Promise<string[]> {
+  const { rows } = await pool.query<{ achievement_id: string }>(
+    `select achievement_id
+       from user_achievement_stages
+      where user_id = $1 and completed_at is not null
+      order by achievement_id`,
     [userId],
   );
   return rows.map((row) => row.achievement_id);
