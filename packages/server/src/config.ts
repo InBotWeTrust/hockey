@@ -22,6 +22,7 @@ const objectStorageKeys = [
 ] as const;
 
 const yookassaKeys = ['YOOKASSA_SHOP_ID', 'YOOKASSA_SECRET_KEY', 'YOOKASSA_RETURN_URL'] as const;
+const fcmKeys = ['FCM_PROJECT_ID', 'FCM_CLIENT_EMAIL', 'FCM_PRIVATE_KEY'] as const;
 
 const schema = z
   .object({
@@ -42,6 +43,17 @@ const schema = z
     PUSH_VAPID_PUBLIC_KEY: optionalNonEmptyString,
     PUSH_VAPID_PRIVATE_KEY: optionalNonEmptyString,
     PUSH_VAPID_SUBJECT: optionalNonEmptyString,
+    FCM_PROJECT_ID: optionalNonEmptyString,
+    FCM_CLIENT_EMAIL: optionalNonEmptyString,
+    FCM_PRIVATE_KEY: z.preprocess(
+      (value) =>
+        value === '' || value === undefined
+          ? undefined
+          : typeof value === 'string'
+            ? value.replace(/\\n/g, '\n')
+            : value,
+      z.string().min(1).optional(),
+    ),
     PUSH_SCHEDULER_ENABLED: optionalBoolean,
     PUSH_WORKER_ENABLED: optionalBoolean,
     PUSH_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(25).default(5),
@@ -63,6 +75,18 @@ const schema = z
     YOOKASSA_RETURN_URL: optionalNonEmptyString,
   })
   .superRefine((value, ctx) => {
+    const configuredFcmKeys = fcmKeys.filter((key) => value[key] !== undefined);
+    if (configuredFcmKeys.length > 0 && configuredFcmKeys.length < fcmKeys.length) {
+      for (const key of fcmKeys) {
+        if (value[key] !== undefined) continue;
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: 'FCM config is incomplete',
+        });
+      }
+    }
+
     const configuredKeys = objectStorageKeys.filter((key) => value[key] !== undefined);
     if (configuredKeys.length > 0 && configuredKeys.length < objectStorageKeys.length) {
       for (const key of objectStorageKeys) {

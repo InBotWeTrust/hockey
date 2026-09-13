@@ -55,6 +55,10 @@ async function enqueueMessagePush(
               select 1
                 from push_subscriptions ps
                where ps.user_id = cm.user_id
+              union all
+              select 1
+                from android_push_installations api
+               where api.user_id = cm.user_id and api.disabled_at is null
             ) as has_subscription,
             pref.chat_new_dialog_message,
             pref.daily_game,

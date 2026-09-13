@@ -69,6 +69,16 @@ export async function buildApp(options: BuildAppOptions = {}) {
       : {}),
     ...(config.PUSH_VAPID_SUBJECT !== undefined ? { subject: config.PUSH_VAPID_SUBJECT } : {}),
   };
+  const fcmOptions =
+    config.FCM_PROJECT_ID !== undefined &&
+    config.FCM_CLIENT_EMAIL !== undefined &&
+    config.FCM_PRIVATE_KEY !== undefined
+      ? {
+          projectId: config.FCM_PROJECT_ID,
+          clientEmail: config.FCM_CLIENT_EMAIL,
+          privateKey: config.FCM_PRIVATE_KEY,
+        }
+      : undefined;
   const objectStorage =
     config.OBJECT_STORAGE_ENDPOINT !== undefined &&
     config.OBJECT_STORAGE_REGION !== undefined &&
@@ -225,6 +235,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   );
   await app.register(pushSchedulerPlugin, {
     ...pushVapidOptions,
+    ...(fcmOptions === undefined ? {} : { fcm: fcmOptions }),
     scheduleEnabled:
       options.pushSchedulerEnabled ??
       config.PUSH_SCHEDULER_ENABLED ??

@@ -69,6 +69,30 @@ describe('loadConfig', () => {
     );
   });
 
+  it('requires FCM credentials as a complete group and normalizes private-key newlines', () => {
+    expect(loadConfig({ ...base, FCM_PROJECT_ID: '' }).FCM_PROJECT_ID).toBeUndefined();
+    expect(() =>
+      loadConfig({
+        ...base,
+        FCM_PROJECT_ID: 'ultimate-hockey',
+        FCM_CLIENT_EMAIL: 'sender@example.test',
+      }),
+    ).toThrow();
+
+    expect(
+      loadConfig({
+        ...base,
+        FCM_PROJECT_ID: 'ultimate-hockey',
+        FCM_CLIENT_EMAIL: 'sender@example.test',
+        FCM_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nsecret\\n-----END PRIVATE KEY-----\\n',
+      }),
+    ).toMatchObject({
+      FCM_PROJECT_ID: 'ultimate-hockey',
+      FCM_CLIENT_EMAIL: 'sender@example.test',
+      FCM_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----\n',
+    });
+  });
+
   it('requires object storage config as a complete group', () => {
     expect(
       loadConfig({ ...base, OBJECT_STORAGE_ENDPOINT: '' }).OBJECT_STORAGE_ENDPOINT,
