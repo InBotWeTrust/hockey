@@ -2,6 +2,8 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import { fetchAchievementCatalogueForUser } from './service.js';
+import { TIERED_ACHIEVEMENT_IDS } from './stageCatalog.js';
+import { claimCurrentAchievementStage } from './claimStage.js';
 
 const paramsSchema = z.object({
   achievementId: z.string().min(1).max(120),
@@ -45,6 +47,25 @@ export const achievementRoutes: FastifyPluginAsync = async (app) => {
       const client = await app.pg.connect();
       try {
         await client.query('begin');
+        if (TIERED_ACHIEVEMENT_IDS.has(params.data.achievementId)) {
+          const result = await claimCurrentAchievementStage(
+            client,
+            req.user.id,
+            params.data.achievementId,
+            new Date(),
+          );
+          await client.query('commit');
+          const achievements = await fetchAchievementCatalogueForUser(app.pg, req.user.id);
+          return {
+            achievement: achievements.find(
+              (achievement) => achievement.id === params.data.achievementId,
+            ),
+            ...result,
+            unclaimedCount: achievements.filter(
+              (achievement) => achievement.status === 'completed_unclaimed',
+            ).length,
+          };
+        }
         // Global economy lock order: users before user_currency_account.
         const lockedUser = await client.query('select id from users where id = $1 for update', [
           req.user.id,

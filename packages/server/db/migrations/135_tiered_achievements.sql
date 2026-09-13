@@ -86,6 +86,17 @@ create table achievement_stage_events (
     references achievement_stages(achievement_id, stage_number) on delete cascade
 );
 
+alter table achievement_token_ledger
+  drop constraint if exists achievement_token_ledger_user_id_achievement_id_key,
+  add column if not exists stage_number int;
+
+alter table achievement_token_ledger
+  add constraint achievement_token_ledger_user_achievement_stage_key
+    unique nulls not distinct (user_id, achievement_id, stage_number),
+  add constraint achievement_token_ledger_stage_fk
+    foreign key (achievement_id, stage_number)
+    references achievement_stages(achievement_id, stage_number) on delete restrict;
+
 with stage_seed as (
   select *
     from jsonb_to_recordset(
