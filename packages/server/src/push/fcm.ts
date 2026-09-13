@@ -58,6 +58,13 @@ function responseReason(value: unknown): string {
   return typeof status === 'string' && status.length > 0 ? status : 'unknown_error';
 }
 
+function notificationChannel(eventType: string | undefined): string {
+  if (eventType?.startsWith('chat.')) return 'messages';
+  if (eventType?.startsWith('tournament.')) return 'tournaments';
+  if (eventType?.startsWith('news.')) return 'news';
+  return 'gameplay';
+}
+
 export async function sendFcm(
   token: string,
   options: FcmOptions,
@@ -100,7 +107,14 @@ export async function sendFcm(
                 ...(payload.deliveryId === undefined ? {} : { deliveryId: payload.deliveryId }),
                 ...(payload.eventType === undefined ? {} : { eventType: payload.eventType }),
               },
-              android: { priority: 'normal' },
+              android: {
+                priority: 'high',
+                notification: {
+                  channel_id: notificationChannel(payload.eventType),
+                  icon: 'ic_stat_hockey',
+                  visibility: 'PRIVATE',
+                },
+              },
             },
           }),
           signal: controller.signal,

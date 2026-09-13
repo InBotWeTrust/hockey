@@ -343,6 +343,12 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       payload: { deliveryId: delivery.rows[0]!.id },
     });
     expect(click.statusCode).toBe(200);
+    const duplicateClick = await app.inject({
+      method: 'POST',
+      url: '/push/click',
+      payload: { deliveryId: delivery.rows[0]!.id },
+    });
+    expect(duplicateClick.statusCode).toBe(200);
 
     const monitoringDenied = await app.inject({
       method: 'GET',
