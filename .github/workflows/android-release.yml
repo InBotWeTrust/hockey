@@ -135,7 +135,29 @@ jobs:
           pnpm typecheck
           pnpm lint
           pnpm build
-          pnpm test
+          pnpm --filter @hockey/game-core test
+          pnpm --filter @hockey/mobile test
+          pnpm --filter @hockey/web test
+          pnpm --filter @hockey/server exec vitest run \
+            src/auth/mobileHandoff.test.ts \
+            src/mobileRelease/build-manifest-cli.test.ts \
+            src/mobileRelease/downloadPage.test.ts \
+            src/mobileRelease/schema.test.ts \
+            src/mobileRelease/signature.test.ts \
+            src/mobileRelease/verify-manifest-cli.test.ts \
+            src/push/fcm.test.ts \
+            src/push/installations.test.ts \
+            test/config.test.ts \
+            test/mobile-auth.test.ts \
+            test/mobile-release-routes.test.ts \
+            test/android-push-routes.test.ts \
+            test/plugins/nativeCors.test.ts \
+            test/push/news.test.ts \
+            test/push/preferences.test.ts \
+            test/push/queue.test.ts \
+            test/push/scheduled.test.ts \
+            test/push/service.test.ts \
+            test/tournament/push-preferences.test.ts
 
       - name: Reconstruct temporary signing keystore
         env:
