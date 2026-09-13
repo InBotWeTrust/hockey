@@ -26,7 +26,7 @@ describe.skipIf(!hasIntegrationEnv)('duel achievement evaluator', () => {
     await pool?.end();
   });
 
-  it('completes winner margin, clean classic, pressure, and underdog achievements', async () => {
+  it('keeps one-time wins, advances eligible stages, and ignores removed duel achievements', async () => {
     const winnerUserId = await createUser(pool, 50);
     const loserUserId = await createUser(pool, 200);
     const matchId = await seedSettledDuel(pool, {
@@ -44,18 +44,17 @@ describe.skipIf(!hasIntegrationEnv)('duel achievement evaluator', () => {
     await evaluateDuelSettledAchievements(pool, { matchId, winnerUserId });
 
     await expect(completedIds(pool, winnerUserId)).resolves.toEqual(
-      expect.arrayContaining([
-        'thin-edge',
-        'clean-win',
-        'handled-pressure',
-        'underdog',
-        'master-arsenal',
-        'no-room-for-error',
-      ]),
+      expect.arrayContaining(['thin-edge', 'clean-win']),
+    );
+    await expect(completedIds(pool, winnerUserId)).resolves.not.toEqual(
+      expect.arrayContaining(['handled-pressure', 'master-arsenal', 'no-room-for-error']),
+    );
+    await expect(completedStageIds(pool, winnerUserId)).resolves.toEqual(
+      expect.arrayContaining(['underdog', 'no-error-classic']),
     );
   });
 
-  it('tracks win streaks, host streaks, and economical wins idempotently', async () => {
+  it('tracks win and host stages idempotently without economical-master progress', async () => {
     const winnerUserId = await createUser(pool, 100);
     const loserUserId = await createUser(pool, 100);
 
@@ -72,12 +71,10 @@ describe.skipIf(!hasIntegrationEnv)('duel achievement evaluator', () => {
       await evaluateDuelSettledAchievements(pool, { matchId, winnerUserId });
     }
 
-    await expect(completedIds(pool, winnerUserId)).resolves.toEqual(
+    await expect(completedStageIds(pool, winnerUserId)).resolves.toEqual(
       expect.arrayContaining(['hunter-streak', 'dangerous-host']),
     );
-    await expect(progress(pool, winnerUserId, 'economical_duel_wins')).resolves.toMatchObject({
-      count: 5,
-    });
+    await expect(progress(pool, winnerUserId, 'economical_duel_wins')).resolves.toBeNull();
   });
 
   it('reconciles achievements omitted from already-settled tournament duels idempotently', async () => {
@@ -116,6 +113,53 @@ describe.skipIf(!hasIntegrationEnv)('duel achievement evaluator', () => {
     );
     expect(event.rowCount).toBe(1);
   });
+
+  it.each([
+    ['express', 60, 'express-sniper', 'no-error-express'],
+    ['express_plus', 85, 'mix-sniper', 'no-error-mix'],
+  ] as const)(
+    'evaluates %s format stages independently',
+    async (duelKind, goals, sniperId, noErrorId) => {
+      const winnerUserId = await createUser(pool, 100);
+      const loserUserId = await createUser(pool, 100);
+      const matchId = await seedSettledDuel(pool, {
+        winnerUserId,
+        loserUserId,
+        winnerSide: 'challenger',
+        goalsByPeriod: [[goals, goals - 1]],
+        completedAt: ['2026-05-31T12:01:00Z', '2026-05-31T12:02:00Z'],
+        loadoutKinds: [],
+        duelKind,
+        winnerNonGoals: 0,
+      });
+
+      await evaluateDuelSettledAchievements(pool, { matchId, winnerUserId });
+
+      await expect(completedStageIds(pool, winnerUserId)).resolves.toEqual(
+        expect.arrayContaining([sniperId, noErrorId]),
+      );
+    },
+  );
+
+  it('does not evaluate a technical settlement as a played duel', async () => {
+    const winnerUserId = await createUser(pool, 100);
+    const loserUserId = await createUser(pool, 100);
+    const matchId = await seedSettledDuel(pool, {
+      winnerUserId,
+      loserUserId,
+      winnerSide: 'challenger',
+      goalsByPeriod: [[60, 0]],
+      completedAt: ['2026-05-31T12:01:00Z', '2026-05-31T12:02:00Z'],
+      loadoutKinds: [],
+      duelKind: 'express',
+      settledReason: 'forfeit',
+    });
+
+    await evaluateDuelSettledAchievements(pool, { matchId, winnerUserId });
+
+    await expect(completedStageIds(pool, winnerUserId)).resolves.toEqual([]);
+    await expect(completedIds(pool, winnerUserId)).resolves.toEqual([]);
+  });
 });
 
 async function createUser(pool: Pool, experience: number): Promise<string> {
@@ -138,6 +182,9 @@ async function seedSettledDuel(
     completedAt: [string, string];
     loadoutKinds: Array<'stick' | 'skates' | 'nutrition'>;
     source?: 'challenge' | 'tournament';
+    duelKind?: 'classic' | 'express' | 'express_plus';
+    settledReason?: 'completed' | 'forfeit';
+    winnerNonGoals?: number;
   },
 ): Promise<string> {
   const challengerUserId =
@@ -148,8 +195,8 @@ async function seedSettledDuel(
     title: 'Классическая дуэль',
     description: '',
     difficulty: 'hard',
-    duelKind: 'classic',
-    duelVariant: 'classic',
+    duelKind: input.duelKind ?? 'classic',
+    duelVariant: input.duelKind ?? 'classic',
     rankedEnabled: true,
     matchmakingEnabled: true,
     totalPeriods: input.goalsByPeriod.length,
@@ -191,10 +238,10 @@ async function seedSettledDuel(
     `insert into amateur_duel_match
        (challenger_user_id, opponent_user_id, status, ranked, season_key, rules_snapshot,
         match_seed, starts_at, ends_at, winner_user_id, outcome, settled_reason,
-        game_core_version, accepted_at, settled_at, source)
+        game_core_version, accepted_at, settled_at, source, duel_kind)
      values ($1, $2, 'settled', true, '2026-05', $3, 'seed',
              now() - interval '1 hour', now() + interval '1 hour',
-             $4, $5, 'completed', 1, now() - interval '30 minutes', now(), $6)
+             $4, $5, $7, 1, now() - interval '30 minutes', now(), $6, $8)
      returning id`,
     [
       challengerUserId,
@@ -203,6 +250,8 @@ async function seedSettledDuel(
       input.winnerUserId,
       input.winnerSide === 'challenger' ? 'challenger_win' : 'opponent_win',
       input.source ?? 'challenge',
+      input.settledReason ?? 'completed',
+      input.duelKind ?? 'classic',
     ],
   );
   const matchId = rows[0]!.id;
@@ -223,8 +272,11 @@ async function seedSettledDuel(
   const emptyLoadout = { items: [] };
   const winnerGoalsTotal = input.goalsByPeriod.reduce((sum, period) => sum + period[0], 0);
   const loserGoalsTotal = input.goalsByPeriod.reduce((sum, period) => sum + period[1], 0);
-  const winnerShotsTaken = winnerGoalsTotal + 5;
-  const loserShotsTaken = input.goalsByPeriod.length * 30;
+  const winnerShotsTaken = winnerGoalsTotal + (input.winnerNonGoals ?? 5);
+  const loserShotsTaken = Math.max(
+    input.goalsByPeriod.length * 30,
+    loserGoalsTotal + (input.winnerNonGoals ?? 5),
+  );
   const challengerGoalsTotal =
     input.winnerSide === 'challenger' ? winnerGoalsTotal : loserGoalsTotal;
   const opponentGoalsTotal = input.winnerSide === 'opponent' ? winnerGoalsTotal : loserGoalsTotal;
@@ -267,9 +319,18 @@ async function seedSettledDuel(
          (match_id, user_id, period_number, started_at, ended_at, shots_taken, goals,
           duration_ms, closed_reason)
        values
-         ($1, $2, $4, now() - interval '2 minutes', now(), 30, $5, 60000, 'quota'),
-         ($1, $3, $4, now() - interval '2 minutes', now(), 30, $6, 60000, 'quota')`,
-      [matchId, input.winnerUserId, input.loserUserId, periodNumber, winnerGoals, loserGoals],
+         ($1, $2, $4, now() - interval '2 minutes', now(), $7, $5, 60000, 'quota'),
+         ($1, $3, $4, now() - interval '2 minutes', now(), $8, $6, 60000, 'quota')`,
+      [
+        matchId,
+        input.winnerUserId,
+        input.loserUserId,
+        periodNumber,
+        winnerGoals,
+        loserGoals,
+        winnerGoals + (input.winnerNonGoals ?? 5),
+        loserGoals + 5,
+      ],
     );
   }
 
@@ -282,6 +343,17 @@ async function completedIds(pool: Pool, userId: string): Promise<string[]> {
        from user_achievements
       where user_id = $1
       order by achievement_id asc`,
+    [userId],
+  );
+  return rows.map((row) => row.achievement_id);
+}
+
+async function completedStageIds(pool: Pool, userId: string): Promise<string[]> {
+  const { rows } = await pool.query<{ achievement_id: string }>(
+    `select achievement_id
+       from user_achievement_stages
+      where user_id = $1 and completed_at is not null
+      order by achievement_id`,
     [userId],
   );
   return rows.map((row) => row.achievement_id);
