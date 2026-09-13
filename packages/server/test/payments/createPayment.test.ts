@@ -150,7 +150,7 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
         localPaymentId: response.json().paymentId,
         receiptEmail: 'buyer@example.com',
       },
-      response.json().paymentId,
+      `receipt-v1-${response.json().paymentId}`,
     );
     await app.pg.query('update coin_packages set price_rub = 1, coin_amount = 2 where id = $1', [
       packageId,
@@ -191,11 +191,14 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
 
   it('normalizes receipt email before sending it to YooKassa', async () => {
     const response = await submit(randomUUID(), { receiptEmail: '  Buyer@Example.COM  ' });
+    const payment = (
+      await app.pg.query<{ id: string }>('select id from payments order by created_at desc limit 1')
+    ).rows[0]!;
 
     expect(response.statusCode).toBe(200);
     expect(createPayment).toHaveBeenCalledWith(
       expect.objectContaining({ receiptEmail: 'buyer@example.com' }),
-      expect.any(String),
+      `receipt-v1-${payment.id}`,
     );
   });
 
@@ -475,7 +478,10 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
     const second = await submit(attempt);
     expect(second.statusCode).toBe(200);
     expect(second.json().paymentId).toBe(row.id);
-    expect(createPayment.mock.calls.map((call) => call[1])).toEqual([row.id, row.id]);
+    expect(createPayment.mock.calls.map((call) => call[1])).toEqual([
+      `receipt-v1-${row.id}`,
+      `receipt-v1-${row.id}`,
+    ]);
     expect(createPayment.mock.calls[1]?.[0].amountRub).toBe(699);
   });
 
@@ -567,7 +573,7 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
       expect(attempts).toHaveLength(2);
       expect(
         attempts.map((request) => new Headers(request.headers).get('Idempotence-Key')),
-      ).toEqual([paymentId, paymentId]);
+      ).toEqual([`receipt-v1-${paymentId}`, `receipt-v1-${paymentId}`]);
       expect(
         attempts.map((request) => JSON.parse(String(request.body)).metadata.local_payment_id),
       ).toEqual([paymentId, paymentId]);

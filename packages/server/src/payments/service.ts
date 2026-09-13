@@ -132,7 +132,10 @@ export async function createCoinPayment(
             localPaymentId: payment.id,
             receiptEmail: payment.receipt_email!,
           },
-          payment.id,
+          // The receipt payload changed after the initial production rollout.
+          // Version the deterministic key so YooKassa does not replay an older
+          // response cached for the same payment id with a different body.
+          `receipt-v1-${payment.id}`,
         );
       } catch (error) {
         onProviderError?.({
