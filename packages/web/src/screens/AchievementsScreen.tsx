@@ -28,14 +28,12 @@ import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { useAuthStore } from '../auth/authStore.js';
-import {
-  updateCachedInventoryBalances,
-  updateCachedProfileBalances,
-} from '../app/queryClient.js';
+import { updateCachedInventoryBalances, updateCachedProfileBalances } from '../app/queryClient.js';
 
 type AchievementFilter =
   | 'all'
   | 'claimable'
+  | 'career'
   | 'daily'
   | 'training'
   | 'duel'
@@ -47,6 +45,7 @@ type AchievementPageTab = 'achievements' | 'challenges';
 const FILTERS: Array<{ id: AchievementFilter; label: string }> = [
   { id: 'all', label: 'Все' },
   { id: 'claimable', label: 'Получить' },
+  { id: 'career', label: 'Карьера' },
   { id: 'daily', label: 'Ежедневная' },
   { id: 'training', label: 'Тренировка' },
   { id: 'duel', label: 'Дуэли' },
@@ -137,6 +136,9 @@ function FitOneLineTitle({ text }: { text: string }): JSX.Element {
 
 function statusText(achievement: AchievementDto): string {
   if (achievement.availability === 'future') return 'Скоро';
+  if (achievement.stage && achievement.status !== 'claimed') {
+    return `Этап ${achievement.stage.current} из ${achievement.stage.total}`;
+  }
   if (achievement.status === 'claimed') return 'Получено';
   return 'Не получено';
 }
@@ -441,6 +443,43 @@ export function AchievementsScreen({
             />
             <p>{selected.description}</p>
           </div>
+          {selected.stage && (
+            <div className="achievement-stage-details">
+              <strong>
+                Этап {selected.stage.current} из {selected.stage.total}
+              </strong>
+              <span>{selected.stage.requirement}</span>
+              {selected.stage.targetValue > 0 && (
+                <div className="achievement-stage-progress">
+                  <div
+                    className="achievement-stage-progress__bar"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.max(
+                          0,
+                          (selected.stage.progressValue / selected.stage.targetValue) * 100,
+                        ),
+                      )}%`,
+                    }}
+                  />
+                  <span>
+                    {selected.stage.progressValue} / {selected.stage.targetValue}
+                  </span>
+                </div>
+              )}
+              {selected.stage.history.length > 0 && (
+                <div className="achievement-stage-history">
+                  <small>Полученные этапы</small>
+                  {selected.stage.history.map((entry) => (
+                    <span key={entry.stageNumber}>
+                      Этап {entry.stageNumber} · {entry.requirement}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {rewardText(selected) && (
             <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <RewardChip
@@ -564,7 +603,7 @@ function AchievementCard({
         overflow: 'hidden',
         padding: 0,
         display: 'grid',
-        gridTemplateRows: 'auto 88px',
+        gridTemplateRows: `auto ${achievement.stage ? '108px' : '88px'}`,
         alignSelf: 'stretch',
         color: 'var(--ink)',
         textAlign: 'left',
@@ -637,7 +676,7 @@ function AchievementCard({
           minHeight: 0,
           padding: '8px 10px 9px',
           display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr)',
+          gridTemplateRows: achievement.stage ? 'auto minmax(0, 1fr) auto' : 'auto minmax(0, 1fr)',
           gap: 5,
         }}
       >
@@ -659,6 +698,16 @@ function AchievementCard({
         >
           {achievement.requirement}
         </div>
+        {achievement.stage && achievement.stage.targetValue > 0 && (
+          <div className="achievement-card__stage-progress">
+            <span>
+              Этап {achievement.stage.current} из {achievement.stage.total}
+            </span>
+            <strong>
+              {achievement.stage.progressValue}/{achievement.stage.targetValue}
+            </strong>
+          </div>
+        )}
       </div>
     </button>
   );

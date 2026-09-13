@@ -150,9 +150,7 @@ describe('AchievementsScreen', () => {
           new Response(
             JSON.stringify({
               challenge: { id: 'challenge-1', status: 'running', canClaimReward: false },
-              pendingRewards: [
-                { id: 'challenge-future', status: 'future', canClaimReward: false },
-              ],
+              pendingRewards: [{ id: 'challenge-future', status: 'future', canClaimReward: false }],
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           ),
@@ -209,24 +207,18 @@ describe('AchievementsScreen', () => {
     fireEvent.click(card!);
 
     const dialog = screen.getByRole('dialog', { name: 'Первая шайба' });
-    expect(dialog).toHaveClass(
-      'achievement-details-modal',
-      'achievement-details-modal--crisp',
-    );
+    expect(dialog).toHaveClass('achievement-details-modal', 'achievement-details-modal--crisp');
     const details = within(dialog);
     const requirement = details.getByText('Условие');
     const artwork = details.getByRole('img', { name: 'Первая шайба' });
     const description = details.getByText('Описание');
-    expect(artwork).toHaveAttribute(
-      'src',
-      '/achievements/first-goal.webp?v=20260906-hd1',
-    );
-    expect(requirement.compareDocumentPosition(artwork) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
-      0,
-    );
-    expect(artwork.compareDocumentPosition(description) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
-      0,
-    );
+    expect(artwork).toHaveAttribute('src', '/achievements/first-goal.webp?v=20260906-hd1');
+    expect(
+      requirement.compareDocumentPosition(artwork) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      artwork.compareDocumentPosition(description) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
     expect(screen.getByRole('button', { name: 'Закрыть окно' })).toBeInTheDocument();
     expect(document.body.firstElementChild).toHaveAttribute('inert');
   });
@@ -243,6 +235,39 @@ describe('AchievementsScreen', () => {
     expect(screen.getByText('Забросить первую шайбу в игре.')).toHaveClass(
       'achievement-card__requirement',
     );
+  });
+
+  it('shows a career chain as one card with current stage progress and claimed history', async () => {
+    mockAchievementsApi([
+      makeAchievement({
+        id: 'career-goals',
+        title: 'Снайперская карьера',
+        category: 'career',
+        requirement: 'Забросить 5 000 шайб',
+        rewardStars: 10,
+        stage: {
+          current: 2,
+          total: 8,
+          requirement: 'Забросить 5 000 шайб',
+          progressValue: 3200,
+          targetValue: 5000,
+          history: [
+            { stageNumber: 1, claimedAt: '2026-09-01T00:00:00.000Z', requirement: '1 000 шайб' },
+          ],
+        },
+      }),
+    ]);
+    renderAchievements();
+
+    expect(await screen.findByRole('tab', { name: 'Карьера' })).toBeInTheDocument();
+    expect(await screen.findByText('Снайперская карьера')).toBeInTheDocument();
+    expect(screen.getAllByText('Этап 2 из 8')).toHaveLength(2);
+    expect(screen.getByText('3200/5000')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Снайперская карьера').closest('button')!);
+    expect(await screen.findByText('3200 / 5000')).toBeInTheDocument();
+    expect(screen.getByText('Полученные этапы')).toBeInTheDocument();
+    expect(screen.getByText('Этап 1 · 1 000 шайб')).toBeInTheDocument();
   });
 
   it('shows completed and total counts in the section label for the selected filter', async () => {
@@ -404,10 +429,13 @@ describe('AchievementsScreen', () => {
           ? { ...readyAchievement, status: 'claimed', isClaimable: false }
           : readyAchievement;
         return Promise.resolve(
-          new Response(JSON.stringify({ achievements: [achievement], unclaimedCount: claimed ? 0 : 1 }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
+          new Response(
+            JSON.stringify({ achievements: [achievement], unclaimedCount: claimed ? 0 : 1 }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          ),
         );
       }
       if (url.endsWith('/api/achievements/daily-ready/claim')) {

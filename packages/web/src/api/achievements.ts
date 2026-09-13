@@ -9,7 +9,7 @@ export interface AchievementDto {
   title: string;
   description: string;
   requirement: string;
-  category: 'daily' | 'training' | 'duel' | 'tournament' | 'shop' | 'rating' | 'level';
+  category: 'career' | 'daily' | 'training' | 'duel' | 'tournament' | 'shop' | 'rating' | 'level';
   availability: AchievementAvailability;
   futureTag: string | null;
   rewardCurrency: number;
@@ -21,6 +21,14 @@ export interface AchievementDto {
   isClaimable: boolean;
   completedAt?: string;
   claimedAt?: string;
+  stage?: {
+    current: number;
+    total: number;
+    requirement: string;
+    progressValue: number;
+    targetValue: number;
+    history: Array<{ stageNumber: number; claimedAt: string; requirement: string }>;
+  };
 }
 
 export interface AchievementsResponse {

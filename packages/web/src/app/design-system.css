@@ -13,6 +13,71 @@
   margin-top: 10px;
 }
 
+.achievement-card__stage-progress {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.achievement-card__stage-progress strong {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.achievement-stage-details {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.achievement-stage-progress {
+  position: relative;
+  height: 24px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+}
+
+.achievement-stage-progress__bar {
+  height: 100%;
+  border-radius: inherit;
+  background: rgba(14, 165, 233, 0.3);
+}
+
+.achievement-stage-progress span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.achievement-stage-history {
+  display: grid;
+  gap: 5px;
+  padding-top: 4px;
+}
+
+.achievement-stage-history small {
+  color: var(--muted);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.achievement-stage-history span {
+  padding: 7px 9px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.45);
+}
+
 .admin-achievement-stage {
   min-width: 0;
   padding: 12px;
