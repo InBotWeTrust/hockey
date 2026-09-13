@@ -10,18 +10,19 @@ import { BottomNav, isBottomNavVisible } from '../components/BottomNav.js';
 import { DuelInviteToast } from '../components/DuelInviteToast.js';
 import { AmateurAccessToast } from '../amateur/AmateurAccessToast.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
+import { WeeklyChallengeStartModal } from '../components/WeeklyChallengeStartModal.js';
 import { OfflineBanner } from '../chat/components/OfflineBanner.js';
 import { useChatSocket } from '../chat/useChatSocket.js';
 import { OnboardingGate } from '../onboarding/OnboardingGate.js';
 import { apiFetch } from '../api/apiFetch.js';
 import type { ProfileData } from '../screens/profileTypes.js';
 import { arenaBackgroundClass } from '../screens/lockerRoomBackground.js';
+import { queryClient } from './queryClient.js';
 import { isNativeAndroid } from '../platform/runtime.js';
 import { initializeNativeNotifications } from '../platform/nativeNotifications.js';
 import { initializeAndroidUpdateChecks } from '../mobileUpdate/store.js';
 import { canAccessAndroidRelease } from '../mobileUpdate/access.js';
 import { MandatoryAndroidUpdateModal } from '../components/MandatoryAndroidUpdateModal.js';
-import { queryClient } from './queryClient.js';
 
 const DailyScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DailyScreen })),
@@ -36,6 +37,23 @@ const TournamentResultPreviewScreen = lazy(() =>
 );
 const InventoryScreen = lazy(() =>
   import('../screens/InventoryScreen.js').then((module) => ({ default: module.InventoryScreen })),
+);
+const PricesScreen = lazy(() =>
+  import('../screens/PricesScreen.js').then((module) => ({ default: module.PricesScreen })),
+);
+const TermsScreen = lazy(() =>
+  import('../screens/TermsScreen.js').then((module) => ({ default: module.TermsScreen })),
+);
+const OfferScreen = lazy(() =>
+  import('../screens/LegalDocuments.js').then((module) => ({ default: module.OfferScreen })),
+);
+const PrivacyScreen = lazy(() =>
+  import('../screens/LegalDocuments.js').then((module) => ({ default: module.PrivacyScreen })),
+);
+const PersonalDataConsentScreen = lazy(() =>
+  import('../screens/LegalDocuments.js').then((module) => ({
+    default: module.PersonalDataConsentScreen,
+  })),
 );
 const DailyOverviewScreen = lazy(() =>
   import('../screens/DailyOverviewScreen.js').then((module) => ({
@@ -166,7 +184,11 @@ function ChatRealtime(): JSX.Element {
 export function RouteLoading(): JSX.Element {
   return (
     <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <div className="route-loading" role="status">
+      <div
+        className="route-loading"
+        role="status"
+        style={{ color: '#0f172a', background: 'rgba(255, 255, 255, 0.9)' }}
+      >
         Загрузка…
       </div>
     </main>
@@ -177,6 +199,15 @@ export function appBackdropClassName(pathname: string, search = ''): string {
   if (pathname === '/login') {
     return 'app-shell--login';
   }
+
+  if (
+    pathname === '/prices' ||
+    pathname === '/terms' ||
+    pathname === '/offer' ||
+    pathname === '/privacy' ||
+    pathname === '/personal-data-consent'
+  )
+    return '';
 
   if (pathname === '/admin') {
     return 'app-shell--arena app-shell--arena-admin';
@@ -226,6 +257,19 @@ function AppExperience(): JSX.Element {
     location.pathname !== '/dev/tournament-result-preview' && isBottomNavVisible(location, user);
   const backdropClassName = appBackdropClassName(location.pathname, location.search);
   const surfaceClassName = appSurfaceClassName(location.pathname);
+  const weeklyStartModalEnabled =
+    (user?.competitionLevel === 'amateur' || user?.competitionLevel === 'professional') &&
+    location.pathname !== '/admin' &&
+    !location.pathname.startsWith('/auth/') &&
+    ![
+      '/login',
+      '/prices',
+      '/terms',
+      '/offer',
+      '/privacy',
+      '/personal-data-consent',
+      '/demo',
+    ].includes(location.pathname);
   const hasArenaBackdrop = backdropClassName.split(' ').includes('app-shell--arena');
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -243,6 +287,7 @@ function AppExperience(): JSX.Element {
       <NativeUpdateBridge enabled={androidReleaseAccess} />
       <DuelInviteToast />
       <AmateurAccessToast />
+      <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />
       {androidReleaseAccess && <MandatoryAndroidUpdateModal />}
       <div
         className={`app-shell ${surfaceClassName}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
@@ -273,6 +318,11 @@ function AppExperience(): JSX.Element {
           <Suspense fallback={<RouteLoading />}>
             <Routes>
               <Route path="/login" element={<LoginScreen />} />
+              <Route path="/prices" element={<PricesScreen />} />
+              <Route path="/terms" element={<TermsScreen />} />
+              <Route path="/offer" element={<OfferScreen />} />
+              <Route path="/privacy" element={<PrivacyScreen />} />
+              <Route path="/personal-data-consent" element={<PersonalDataConsentScreen />} />
               <Route path="/demo" element={<DemoScreen />} />
               <Route
                 path="/dev/tournament-result-preview"
@@ -481,6 +531,7 @@ function AppFrame(): JSX.Element {
   const isAuthenticated = useAuthStore((state) => Boolean(state.accessToken));
   const isPublicEntry =
     location.pathname === '/login' ||
+    location.pathname === '/prices' ||
     location.pathname === '/demo' ||
     location.pathname === '/auth/vk/callback' ||
     location.pathname === '/mobile-auth/telegram';

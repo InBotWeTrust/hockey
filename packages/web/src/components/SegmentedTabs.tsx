@@ -2,6 +2,7 @@ export interface SegmentedTabItem<T extends string> {
   id: T;
   label: string;
   attention?: boolean;
+  attentionSize?: 'default' | 'small';
 }
 
 export function SegmentedTabs<T extends string>({
@@ -50,7 +51,13 @@ export function SegmentedTabs<T extends string>({
           >
             {tab.label}
             {tab.attention && (
-              <span aria-label="Требуется действие" className="segmented-tabs__attention" />
+              <span
+                aria-label="Требуется действие"
+                aria-hidden={tab.attentionSize === 'small' ? true : undefined}
+                className={`segmented-tabs__attention${
+                  tab.attentionSize === 'small' ? ' segmented-tabs__attention--small' : ''
+                }`}
+              />
             )}
           </button>
         );

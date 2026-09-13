@@ -21,6 +21,7 @@ const objectStorageKeys = [
   'OBJECT_STORAGE_SECRET_ACCESS_KEY',
 ] as const;
 
+const yookassaKeys = ['YOOKASSA_SHOP_ID', 'YOOKASSA_SECRET_KEY', 'YOOKASSA_RETURN_URL'] as const;
 const fcmKeys = ['FCM_PROJECT_ID', 'FCM_CLIENT_EMAIL', 'FCM_PRIVATE_KEY'] as const;
 
 const schema = z
@@ -71,6 +72,9 @@ const schema = z
       .int()
       .min(1)
       .default(25 * 1024 * 1024),
+    YOOKASSA_SHOP_ID: optionalNonEmptyString,
+    YOOKASSA_SECRET_KEY: optionalNonEmptyString,
+    YOOKASSA_RETURN_URL: optionalNonEmptyString,
   })
   .superRefine((value, ctx) => {
     const releaseValues = [
@@ -118,15 +122,27 @@ const schema = z
     }
 
     const configuredKeys = objectStorageKeys.filter((key) => value[key] !== undefined);
-    if (configuredKeys.length === 0 || configuredKeys.length === objectStorageKeys.length) return;
+    if (configuredKeys.length > 0 && configuredKeys.length < objectStorageKeys.length) {
+      for (const key of objectStorageKeys) {
+        if (value[key] !== undefined) continue;
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: 'object storage config is incomplete',
+        });
+      }
+    }
 
-    for (const key of objectStorageKeys) {
-      if (value[key] !== undefined) continue;
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: [key],
-        message: 'object storage config is incomplete',
-      });
+    const configuredYooKassaKeys = yookassaKeys.filter((key) => value[key] !== undefined);
+    if (configuredYooKassaKeys.length > 0 && configuredYooKassaKeys.length < yookassaKeys.length) {
+      for (const key of yookassaKeys) {
+        if (value[key] !== undefined) continue;
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: 'YooKassa config is incomplete',
+        });
+      }
     }
   });
 

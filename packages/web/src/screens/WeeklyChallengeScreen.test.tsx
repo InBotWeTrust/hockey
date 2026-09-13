@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '../api/weeklyChallenge.js';
 import type { WeeklyChallenge } from '../api/weeklyChallenge.js';
+import { createAppQueryClient } from '../app/queryClient.js';
 import { WeeklyChallengeScreen } from './WeeklyChallengeScreen.js';
 
 vi.mock('../api/weeklyChallenge.js', async (importOriginal) => ({
@@ -45,7 +46,7 @@ describe('WeeklyChallengeScreen', () => {
       status: 'running',
       startAt: '2026-06-02T09:00:00.000Z',
       endAt: '2026-06-09T09:00:00.000Z',
-      reward: { coins: 100, stars: 50, experience: 50 },
+      reward: { coins: 100, stars: 50, experience: 50, tokens: 5 },
       rewardClaimedAt: null,
       tasks: [
         {
@@ -78,6 +79,35 @@ describe('WeeklyChallengeScreen', () => {
     expect(empty.closest('.glass')).toBeNull();
     expect(screen.getByRole('heading', { level: 2, name: 'Действующие (0)' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Челленджи', selected: true })).toBeInTheDocument();
+  });
+
+  it('refetches the catalog on every screen mount even when the session cache is fresh', async () => {
+    const client = createAppQueryClient();
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
+      future: [],
+      active: [],
+      completed: [],
+    });
+
+    const first = render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <WeeklyChallengeScreen />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(api.fetchWeeklyChallengeCatalog).toHaveBeenCalledTimes(1));
+    first.unmount();
+
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <WeeklyChallengeScreen />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(api.fetchWeeklyChallengeCatalog).toHaveBeenCalledTimes(2));
   });
 
   it('filters future, active and completed personal challenges with counts', async () => {
@@ -190,6 +220,41 @@ describe('WeeklyChallengeScreen', () => {
     expect(list.querySelector('.weekly-challenge-task__check')).toBeInTheDocument();
   });
 
+  it('renders a token reward chip only when its value is positive', async () => {
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
+      future: [],
+      active: [
+        challenge({ reward: { coins: 0, stars: 0, experience: 0, tokens: 7 } }),
+        challenge({
+          id: '22222222-2222-2222-2222-222222222222',
+          title: 'Без токенов',
+          reward: { coins: 0, stars: 0, experience: 0, tokens: 0 },
+        }),
+      ],
+      completed: [],
+    });
+
+    renderScreen();
+
+    expect(await screen.findByLabelText('Токены: 7')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Токены: 0')).not.toBeInTheDocument();
+  });
+
+  it('does not reserve a content block for an empty title and description', async () => {
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
+      future: [],
+      active: [challenge({ title: '', description: '' })],
+      completed: [],
+    });
+
+    renderScreen();
+
+    const tasks = await screen.findByRole('list', { name: 'Задачи челленджа' });
+    const card = tasks.closest('.weekly-challenge-card');
+    expect(card?.querySelector('.weekly-challenge-card__title')).toBeNull();
+    expect(card?.querySelector('.weekly-challenge-card__description')).toBeNull();
+  });
+
   it('lets the player claim a completed reward without participation actions', async () => {
     const completed = challenge({
       id: '33333333-3333-3333-3333-333333333333',
@@ -219,6 +284,33 @@ describe('WeeklyChallengeScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Получить награду' }));
     await waitFor(() => expect(api.claimWeeklyChallengeReward).toHaveBeenCalledWith(completed.id));
     expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
+  });
+
+  it('shows positive token rewards in the claim toast', async () => {
+    const completed = challenge({
+      id: '44444444-4444-4444-4444-444444444444',
+      title: 'Токены за неделю',
+      status: 'finished',
+      allTasksCompleted: true,
+      canClaimReward: true,
+      reward: { coins: 0, stars: 0, experience: 0, tokens: 7 },
+      tasks: [{ ...challenge().tasks[0]!, progress: 500, completed: true }],
+    });
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
+      future: [],
+      active: [],
+      completed: [completed],
+    });
+    vi.mocked(api.claimWeeklyChallengeReward).mockResolvedValue({
+      challenge: null,
+      pendingRewards: [],
+    });
+
+    renderScreen();
+
+    await screen.findByText('Токены за неделю');
+    fireEvent.click(screen.getByRole('button', { name: 'Получить награду' }));
+    expect(await screen.findByText('+7')).toBeInTheDocument();
   });
 
   it('refreshes the open future catalog into the active week at Monday midnight Moscow', async () => {

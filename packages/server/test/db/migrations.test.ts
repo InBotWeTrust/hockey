@@ -91,6 +91,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('weekly_challenge_participants');
     expect(names).toContain('weekly_challenge_declines');
     expect(names).toContain('weekly_challenge_reward_claims');
+    expect(names).toContain('weekly_challenge_start_acknowledgements');
     expect(names).toContain('achievement_progress');
     expect(names).toContain('feedback_messages');
     expect(names).toEqual(
@@ -108,6 +109,25 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       ]),
     );
     expect(names).toContain('_migrations');
+
+    const officialAccount = await pool.query<{
+      display_name: string;
+      avatar_url: string;
+      timezone: string;
+      account_kind: string;
+    }>(
+      `select display_name, avatar_url, timezone, account_kind
+         from users
+        where id = '00000000-0000-4000-8000-000000000099'`,
+    );
+    expect(officialAccount.rows).toEqual([
+      {
+        display_name: 'Ультимейт Хоккей',
+        avatar_url: '/icons/official-account.webp',
+        timezone: 'Europe/Moscow',
+        account_kind: 'official',
+      },
+    ]);
 
     const seededBonusGames = await pool.query<{
       slug: string;
@@ -344,77 +364,235 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     );
     expect(inventory.rows).toEqual([
       {
-        title: 'Изотоник',
+        title: 'Ультимейт Заряд',
         item_kind: 'nutrition',
         resource_unit: 'energy_ms',
-        currency_price: 1490,
+        currency_price: 7490,
         charges_per_purchase: 5_700_000,
         effect_puck_speed_points: 0,
       },
       {
-        title: 'Энерго-заряд',
+        title: 'Ультимейт Заряд Плюс',
         item_kind: 'nutrition',
         resource_unit: 'energy_ms',
-        currency_price: 2490,
+        currency_price: 14_990,
         charges_per_purchase: 8_400_000,
         effect_puck_speed_points: 0,
       },
       {
-        title: 'Энерго-комплекс',
+        title: 'Ультимейт Заряд Макс',
         item_kind: 'nutrition',
         resource_unit: 'energy_ms',
-        currency_price: 3490,
+        currency_price: 24_990,
         charges_per_purchase: 10_800_000,
         effect_puck_speed_points: 0,
       },
       {
-        title: 'Разгон',
+        title: 'Ультимейт Рывок',
         item_kind: 'skates',
         resource_unit: 'distance',
-        currency_price: 2490,
-        charges_per_purchase: 12_500,
-        effect_puck_speed_points: 0,
-      },
-      {
-        title: 'Старт',
-        item_kind: 'skates',
-        resource_unit: 'distance',
-        currency_price: 2990,
+        currency_price: 6490,
         charges_per_purchase: 8500,
         effect_puck_speed_points: 0,
       },
       {
-        title: 'Профи',
+        title: 'Ультимейт Рывок Плюс',
         item_kind: 'skates',
         resource_unit: 'distance',
-        currency_price: 3740,
+        currency_price: 12_490,
+        charges_per_purchase: 12_500,
+        effect_puck_speed_points: 0,
+      },
+      {
+        title: 'Ультимейт Рывок Макс',
+        item_kind: 'skates',
+        resource_unit: 'distance',
+        currency_price: 20_990,
         charges_per_purchase: 16_000,
         effect_puck_speed_points: 0,
       },
       {
-        title: 'Ультимейт Ван 1',
+        title: 'Ультимейт Вектор',
         item_kind: 'stick',
         resource_unit: 'shot',
-        currency_price: 1490,
+        currency_price: 6490,
         charges_per_purchase: 1300,
         effect_puck_speed_points: 40,
       },
       {
-        title: 'Ультимейт Ван 2',
+        title: 'Ультимейт Вектор Плюс',
         item_kind: 'stick',
         resource_unit: 'shot',
-        currency_price: 2490,
+        currency_price: 12_490,
         charges_per_purchase: 1950,
         effect_puck_speed_points: 40,
       },
       {
-        title: 'Ультимейт Ван 3',
+        title: 'Ультимейт Вектор Макс',
         item_kind: 'stick',
         resource_unit: 'shot',
-        currency_price: 3740,
+        currency_price: 20_990,
         charges_per_purchase: 2500,
         effect_puck_speed_points: 40,
       },
+    ]);
+
+    const inventoryCopy = await pool.query<{
+      item_kind: string;
+      rarity: string;
+      title: string;
+      description: string;
+      charges_per_purchase: number;
+      effect_recovery_minutes: number;
+    }>(
+      `select item_kind, rarity, title, description, charges_per_purchase,
+              effect_recovery_minutes
+         from admin_inventory_items
+        where deleted_at is null
+          and item_kind in ('stick', 'skates', 'nutrition', 'recovery')
+        order by item_kind,
+                 case rarity when 'common' then 1 when 'rare' then 2 else 3 end`,
+    );
+    expect(inventoryCopy.rows).toEqual([
+      {
+        item_kind: 'nutrition',
+        rarity: 'common',
+        title: 'Ультимейт Заряд',
+        description: 'Ультимейт Заряд на 95 минут активной игры. Помогает держать темп.',
+        charges_per_purchase: 5_700_000,
+        effect_recovery_minutes: 0,
+      },
+      {
+        item_kind: 'nutrition',
+        rarity: 'rare',
+        title: 'Ультимейт Заряд Плюс',
+        description:
+          'Ультимейт Заряд Плюс на 140 минут активной игры. Помогает держать темп.',
+        charges_per_purchase: 8_400_000,
+        effect_recovery_minutes: 0,
+      },
+      {
+        item_kind: 'nutrition',
+        rarity: 'legendary',
+        title: 'Ультимейт Заряд Макс',
+        description:
+          'Ультимейт Заряд Макс на 180 минут активной игры. Помогает держать темп.',
+        charges_per_purchase: 10_800_000,
+        effect_recovery_minutes: 0,
+      },
+      {
+        item_kind: 'recovery',
+        rarity: 'common',
+        title: 'Ультимейт Рестарт',
+        description:
+          'Ультимейт Рестарт. Сокращает текущее восстановление на 15 минут.',
+        charges_per_purchase: 1,
+        effect_recovery_minutes: 15,
+      },
+      {
+        item_kind: 'recovery',
+        rarity: 'rare',
+        title: 'Ультимейт Рестарт Плюс',
+        description:
+          'Ультимейт Рестарт Плюс. Сокращает текущее восстановление на 30 минут.',
+        charges_per_purchase: 1,
+        effect_recovery_minutes: 30,
+      },
+      {
+        item_kind: 'recovery',
+        rarity: 'legendary',
+        title: 'Ультимейт Рестарт Макс',
+        description:
+          'Ультимейт Рестарт Макс. Сокращает текущее восстановление на 60 минут.',
+        charges_per_purchase: 1,
+        effect_recovery_minutes: 60,
+      },
+      {
+        item_kind: 'skates',
+        rarity: 'common',
+        title: 'Ультимейт Рывок',
+        description:
+          'Коньки Ультимейт Рывок на 8500 прокатов. Убирают спотыкания, пока есть ресурс.',
+        charges_per_purchase: 8500,
+        effect_recovery_minutes: 0,
+      },
+      {
+        item_kind: 'skates',
+        rarity: 'rare',
+        title: 'Ультимейт Рывок Плюс',
+        description:
+          'Коньки Ультимейт Рывок Плюс на 12500 прокатов. Убирают спотыкания, пока есть ресурс.',
+        charges_per_purchase: 12_500,
+        effect_recovery_minutes: 0,
+      },
+      {
+        item_kind: 'skates',
+        rarity: 'legendary',
+        title: 'Ультимейт Рывок Макс',
+        description:
+          'Коньки Ультимейт Рывок Макс на 16000 прокатов. Убирают спотыкания, пока есть ресурс.',
+        charges_per_purchase: 16_000,
+        effect_recovery_minutes: 0,
+      },
+      {
+        item_kind: 'stick',
+        rarity: 'common',
+        title: 'Ультимейт Вектор',
+        description:
+          'Клюшка Ультимейт Вектор на 1300 бросков. Ускоряет полёт шайбы.',
+        charges_per_purchase: 1300,
+        effect_recovery_minutes: 0,
+      },
+      {
+        item_kind: 'stick',
+        rarity: 'rare',
+        title: 'Ультимейт Вектор Плюс',
+        description:
+          'Клюшка Ультимейт Вектор Плюс на 1950 бросков. Ускоряет полёт шайбы.',
+        charges_per_purchase: 1950,
+        effect_recovery_minutes: 0,
+      },
+      {
+        item_kind: 'stick',
+        rarity: 'legendary',
+        title: 'Ультимейт Вектор Макс',
+        description:
+          'Клюшка Ультимейт Вектор Макс на 2500 бросков. Ускоряет полёт шайбы.',
+        charges_per_purchase: 2500,
+        effect_recovery_minutes: 0,
+      },
+    ]);
+
+    const inventoryPrices = await pool.query<{
+      item_kind: string;
+      rarity: string;
+      currency_price: number;
+    }>(
+      `select item_kind, rarity, currency_price
+         from admin_inventory_items
+        where deleted_at is null
+          and item_kind in ('stick', 'skates', 'nutrition', 'recovery')
+        order by case item_kind
+                   when 'stick' then 1
+                   when 'skates' then 2
+                   when 'nutrition' then 3
+                   else 4
+                 end,
+                 case rarity when 'common' then 1 when 'rare' then 2 else 3 end`,
+    );
+    expect(inventoryPrices.rows).toEqual([
+      { item_kind: 'stick', rarity: 'common', currency_price: 6490 },
+      { item_kind: 'stick', rarity: 'rare', currency_price: 12_490 },
+      { item_kind: 'stick', rarity: 'legendary', currency_price: 20_990 },
+      { item_kind: 'skates', rarity: 'common', currency_price: 6490 },
+      { item_kind: 'skates', rarity: 'rare', currency_price: 12_490 },
+      { item_kind: 'skates', rarity: 'legendary', currency_price: 20_990 },
+      { item_kind: 'nutrition', rarity: 'common', currency_price: 7490 },
+      { item_kind: 'nutrition', rarity: 'rare', currency_price: 14_990 },
+      { item_kind: 'nutrition', rarity: 'legendary', currency_price: 24_990 },
+      { item_kind: 'recovery', rarity: 'common', currency_price: 4990 },
+      { item_kind: 'recovery', rarity: 'rare', currency_price: 8490 },
+      { item_kind: 'recovery', rarity: 'legendary', currency_price: 12_490 },
     ]);
 
     const notifications = await pool.query<{ key: string; click_url: string }>(
@@ -558,6 +736,25 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '115_weekly_challenge_launch_marker.sql',
       '116_weekly_challenge_future_publication.sql',
       '117_admin_direct_broadcasts.sql',
+      '117_economy_achievement_rewards.sql',
+      '118_weekly_challenge_token_rewards.sql',
+      '119_duel_reward_matrix.sql',
+      '120_monthly_duel_rating_rewards.sql',
+      '121_duel_reward_storage_limits.sql',
+      '122_bonus_game_reward_progression.sql',
+      '124_production_data_operations_if_missing.sql',
+      '125_monthly_rating_final_placements.sql',
+      '126_classic_duel_three_minute_periods.sql',
+      '127_refresh_inventory_catalog_copy.sql',
+      '128_experience_rating_index.sql',
+      '129_unified_duel_inventory_penalties.sql',
+      '130_widen_duel_stumble_interval.sql',
+      '131_yookassa_coin_packages.sql',
+      '132_weekly_challenge_starts_and_channel_comments.sql',
+      '133_official_account_runtime.sql',
+      '134_optional_weekly_challenge_copy.sql',
+      '135_rebalance_inventory_currency_prices.sql',
+      '136_raise_inventory_currency_prices.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -583,6 +780,55 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       `select value #>> '{}' as value from game_settings where key = 'amateur.rating_visibility'`,
     );
     expect(ratingVisibility.rows[0]?.value).toBe('enabled');
+
+    const unifiedInventoryPenalties = await pool.query<{ key: string; value: string }>(
+      `select key, value #>> '{}' as value
+         from game_settings
+        where key = any($1::text[])
+        order by key`,
+      [
+        [
+          'amateur.no_inventory.skates.stumble_interval_min_rolls',
+          'amateur.no_inventory.skates.stumble_interval_max_rolls',
+          'amateur.no_inventory.skates.stumble_duration_min_ms',
+          'amateur.no_inventory.skates.stumble_duration_max_ms',
+          'amateur.no_inventory.skates.stumble_recovery_min_ms',
+          'amateur.no_inventory.skates.stumble_recovery_max_ms',
+          'amateur.no_inventory.skates.stumble_offset_min_px',
+          'amateur.no_inventory.skates.stumble_offset_max_px',
+          'amateur.no_inventory.nutrition.energy_baseline_speed',
+          'amateur.no_inventory.nutrition.fatigue_grace_ms',
+          'amateur.no_inventory.nutrition.fatigue_slowdown_start_ms',
+          'amateur.no_inventory.nutrition.fatigue_heavy_slowdown_start_ms',
+          'amateur.no_inventory.nutrition.fatigue_stop_start_ms',
+          'amateur.no_inventory.nutrition.fatigue_stop_duration_ms',
+          'amateur.no_inventory.nutrition.fatigue_after_rest_ms',
+          'amateur.no_inventory.nutrition.fatigue_slow_multiplier',
+          'amateur.no_inventory.nutrition.fatigue_heavy_multiplier',
+        ],
+      ],
+    );
+    expect(
+      Object.fromEntries(unifiedInventoryPenalties.rows.map((row) => [row.key, row.value])),
+    ).toEqual({
+      'amateur.no_inventory.skates.stumble_interval_min_rolls': '8',
+      'amateur.no_inventory.skates.stumble_interval_max_rolls': '20',
+      'amateur.no_inventory.skates.stumble_duration_min_ms': '450',
+      'amateur.no_inventory.skates.stumble_duration_max_ms': '650',
+      'amateur.no_inventory.skates.stumble_recovery_min_ms': '150',
+      'amateur.no_inventory.skates.stumble_recovery_max_ms': '250',
+      'amateur.no_inventory.skates.stumble_offset_min_px': '0',
+      'amateur.no_inventory.skates.stumble_offset_max_px': '0',
+      'amateur.no_inventory.nutrition.energy_baseline_speed': '0.75',
+      'amateur.no_inventory.nutrition.fatigue_grace_ms': '3000',
+      'amateur.no_inventory.nutrition.fatigue_slowdown_start_ms': '3000',
+      'amateur.no_inventory.nutrition.fatigue_heavy_slowdown_start_ms': '8000',
+      'amateur.no_inventory.nutrition.fatigue_stop_start_ms': '13000',
+      'amateur.no_inventory.nutrition.fatigue_stop_duration_ms': '3000',
+      'amateur.no_inventory.nutrition.fatigue_after_rest_ms': '7000',
+      'amateur.no_inventory.nutrition.fatigue_slow_multiplier': '0.85',
+      'amateur.no_inventory.nutrition.fatigue_heavy_multiplier': '0.65',
+    });
 
     const tournamentSourceConstraint = await pool.query<{ definition: string }>(
       `select pg_get_constraintdef(oid) as definition
@@ -649,6 +895,31 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     } finally {
       await pool.query('rollback');
     }
+  });
+
+  it('seeds the ordinary Classic duel with three-minute periods', async () => {
+    await resetDatabase(pool);
+    await applyMigrations(pool, MIGRATIONS_DIR);
+
+    const classicTemplates = await pool.query<{
+      title: string;
+      period_duration_ms: number;
+      period_duration_rules: number[] | null;
+    }>(
+      `select title, period_duration_ms,
+              jsonb_path_query_array(period_rules, '$[*].durationMs') as period_duration_rules
+         from amateur_duel_template
+        where duel_kind = 'classic' and is_active and deleted_at is null
+        order by title`,
+    );
+
+    expect(classicTemplates.rows).toEqual([
+      {
+        title: 'Классика',
+        period_duration_ms: 180_000,
+        period_duration_rules: [180_000, 180_000, 180_000],
+      },
+    ]);
   });
 
   it('backfills only amateur-duel shots into official lifetime totals', async () => {
@@ -1339,6 +1610,25 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '115_weekly_challenge_launch_marker.sql',
       '116_weekly_challenge_future_publication.sql',
       '117_admin_direct_broadcasts.sql',
+      '117_economy_achievement_rewards.sql',
+      '118_weekly_challenge_token_rewards.sql',
+      '119_duel_reward_matrix.sql',
+      '120_monthly_duel_rating_rewards.sql',
+      '121_duel_reward_storage_limits.sql',
+      '122_bonus_game_reward_progression.sql',
+      '124_production_data_operations_if_missing.sql',
+      '125_monthly_rating_final_placements.sql',
+      '126_classic_duel_three_minute_periods.sql',
+      '127_refresh_inventory_catalog_copy.sql',
+      '128_experience_rating_index.sql',
+      '129_unified_duel_inventory_penalties.sql',
+      '130_widen_duel_stumble_interval.sql',
+      '131_yookassa_coin_packages.sql',
+      '132_weekly_challenge_starts_and_channel_comments.sql',
+      '133_official_account_runtime.sql',
+      '134_optional_weekly_challenge_copy.sql',
+      '135_rebalance_inventory_currency_prices.sql',
+      '136_raise_inventory_currency_prices.sql',
     ]);
 
     const activeInventory = await pool.query<{
@@ -1359,73 +1649,73 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
     expect(activeInventory.rows).toEqual([
       {
         item_kind: 'nutrition',
-        title: 'Изотоник',
+        title: 'Ультимейт Заряд',
         resource_unit: 'energy_ms',
-        currency_price: 1490,
+        currency_price: 7490,
         charges_per_purchase: 5_700_000,
         effect_puck_speed_points: 0,
       },
       {
         item_kind: 'nutrition',
-        title: 'Энерго-заряд',
+        title: 'Ультимейт Заряд Плюс',
         resource_unit: 'energy_ms',
-        currency_price: 2490,
+        currency_price: 14_990,
         charges_per_purchase: 8_400_000,
         effect_puck_speed_points: 0,
       },
       {
         item_kind: 'nutrition',
-        title: 'Энерго-комплекс',
+        title: 'Ультимейт Заряд Макс',
         resource_unit: 'energy_ms',
-        currency_price: 3490,
+        currency_price: 24_990,
         charges_per_purchase: 10_800_000,
         effect_puck_speed_points: 0,
       },
       {
         item_kind: 'skates',
-        title: 'Разгон',
+        title: 'Ультимейт Рывок',
         resource_unit: 'distance',
-        currency_price: 2490,
-        charges_per_purchase: 12_500,
-        effect_puck_speed_points: 0,
-      },
-      {
-        item_kind: 'skates',
-        title: 'Старт',
-        resource_unit: 'distance',
-        currency_price: 2990,
+        currency_price: 6490,
         charges_per_purchase: 8500,
         effect_puck_speed_points: 0,
       },
       {
         item_kind: 'skates',
-        title: 'Профи',
+        title: 'Ультимейт Рывок Плюс',
         resource_unit: 'distance',
-        currency_price: 3740,
+        currency_price: 12_490,
+        charges_per_purchase: 12_500,
+        effect_puck_speed_points: 0,
+      },
+      {
+        item_kind: 'skates',
+        title: 'Ультимейт Рывок Макс',
+        resource_unit: 'distance',
+        currency_price: 20_990,
         charges_per_purchase: 16_000,
         effect_puck_speed_points: 0,
       },
       {
         item_kind: 'stick',
-        title: 'Ультимейт Ван 1',
+        title: 'Ультимейт Вектор',
         resource_unit: 'shot',
-        currency_price: 1490,
+        currency_price: 6490,
         charges_per_purchase: 1300,
         effect_puck_speed_points: 40,
       },
       {
         item_kind: 'stick',
-        title: 'Ультимейт Ван 2',
+        title: 'Ультимейт Вектор Плюс',
         resource_unit: 'shot',
-        currency_price: 2490,
+        currency_price: 12_490,
         charges_per_purchase: 1950,
         effect_puck_speed_points: 40,
       },
       {
         item_kind: 'stick',
-        title: 'Ультимейт Ван 3',
+        title: 'Ультимейт Вектор Макс',
         resource_unit: 'shot',
-        currency_price: 3740,
+        currency_price: 20_990,
         charges_per_purchase: 2500,
         effect_puck_speed_points: 40,
       },
@@ -1445,9 +1735,9 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       [userId],
     );
     expect(transferredInventory.rows).toEqual([
-      { title: 'Старт', charges_available: 9, charges_reserved: 3 },
-      { title: 'Ультимейт Ван 1', charges_available: 7, charges_reserved: 2 },
-      { title: 'Энерго-заряд', charges_available: 11, charges_reserved: 3 },
+      { title: 'Ультимейт Вектор', charges_available: 7, charges_reserved: 2 },
+      { title: 'Ультимейт Рывок', charges_available: 9, charges_reserved: 3 },
+      { title: 'Ультимейт Заряд Плюс', charges_available: 11, charges_reserved: 3 },
     ]);
 
     const oldInventory = await pool.query<{
@@ -1489,14 +1779,14 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       [matchId, userId],
     );
     const remappedStick = transferredInventory.rows.find(
-      (item) => item.title === 'Ультимейт Ван 1',
+      (item) => item.title === 'Ультимейт Вектор',
     );
     const newStick = await pool.query<{ id: string }>(
       `select id
          from admin_inventory_items
         where deleted_at is null
           and item_kind = 'stick'
-          and title = 'Ультимейт Ван 1'`,
+          and title = 'Ультимейт Вектор'`,
     );
     expect(remappedParticipant.rows[0]).toEqual({
       loadout_snapshot: {
@@ -1513,7 +1803,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       reserved_inventory_item_id: newStick.rows[0]?.id,
     });
     expect(remappedStick).toEqual({
-      title: 'Ультимейт Ван 1',
+      title: 'Ультимейт Вектор',
       charges_available: 7,
       charges_reserved: 2,
     });
@@ -1538,9 +1828,9 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
     );
     expect(equipment.rows).toEqual([
       {
-        equipped_stick: 'Ультимейт Ван 1',
-        equipped_skates: 'Старт',
-        equipped_nutrition: 'Энерго-заряд',
+        equipped_stick: 'Ультимейт Вектор',
+        equipped_skates: 'Ультимейт Рывок',
+        equipped_nutrition: 'Ультимейт Заряд Плюс',
       },
     ]);
   });

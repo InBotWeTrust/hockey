@@ -179,6 +179,62 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
     expect(res.json()).toEqual({ challenge: null, pendingRewards: [] });
   });
 
+  it('shows an automatic challenge start once and acknowledges it idempotently', async () => {
+    await pool.query(`update users set level = 2 where id = $1`, [userId]);
+    const challengeId = await createActiveChallenge();
+
+    const first = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/starts/pending',
+      headers: authHeader(),
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().challenge).toMatchObject({ id: challengeId, status: 'running' });
+
+    const acknowledged = await app.inject({
+      method: 'POST',
+      url: `/weekly-challenge/starts/${challengeId}/acknowledge`,
+      headers: authHeader(),
+    });
+    expect(acknowledged.statusCode).toBe(200);
+    expect(acknowledged.json()).toEqual({ challenge: null });
+
+    const duplicate = await app.inject({
+      method: 'POST',
+      url: `/weekly-challenge/starts/${challengeId}/acknowledge`,
+      headers: authHeader(),
+    });
+    expect(duplicate.statusCode).toBe(200);
+    expect(duplicate.json()).toEqual({ challenge: null });
+
+    const after = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/starts/pending',
+      headers: authHeader(),
+    });
+    expect(after.json()).toEqual({ challenge: null });
+  });
+
+  it('does not announce an automatic challenge to a beginner', async () => {
+    await createActiveChallenge();
+    const pending = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/starts/pending',
+      headers: authHeader(),
+    });
+    expect(pending.json()).toEqual({ challenge: null });
+  });
+
+  it('does not announce a future automatic challenge', async () => {
+    await createChallenge({ isActive: false, startOffset: '-1 day', endOffset: '-8 days' });
+    const pending = await app.inject({
+      method: 'GET',
+      url: '/weekly-challenge/starts/pending',
+      headers: authHeader(),
+    });
+    expect(pending.json()).toEqual({ challenge: null });
+  });
+
   it('automatically counts progress and lets the player claim a completed reward once', async () => {
     const challengeId = await createActiveChallenge();
     await insertGoal();
@@ -196,6 +252,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       allTasksCompleted: true,
       canClaimReward: true,
       rewardClaimedAt: null,
+      reward: { coins: 10, stars: 2, experience: 3, tokens: 5 },
       tasks: [expect.objectContaining({ progress: 1, completed: true })],
     });
     expect(current.json().challenge).not.toHaveProperty('participant');
@@ -233,7 +290,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       ledger_rows: string;
     }>(
       `select uca.balance,
-              u.stars,
+              u.xp as stars,
               u.experience,
               (select count(*) from currency_ledger where user_id = u.id)::text as ledger_rows
          from users u
@@ -247,6 +304,25 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       experience: 3,
       ledger_rows: '1',
     });
+    const profile = await app.inject({ method: 'GET', url: '/me', headers: authHeader() });
+    expect(profile.json().starBalance).toBe(2);
+
+    const tokenBalance = await pool.query<{ balance: number }>(
+      `select balance from user_reward_token_account where user_id = $1`,
+      [userId],
+    );
+    expect(tokenBalance.rows[0]).toMatchObject({ balance: 5 });
+    const balancesBeforeDuplicate = {
+      coins: balances.rows[0]!.balance,
+      stars: balances.rows[0]!.stars,
+      experience: balances.rows[0]!.experience,
+      tokens: tokenBalance.rows[0]!.balance,
+    };
+    const tokenSnapshot = await pool.query<{ tokens: number }>(
+      `select tokens from weekly_challenge_reward_claims where challenge_id = $1 and user_id = $2`,
+      [challengeId, userId],
+    );
+    expect(tokenSnapshot.rows[0]).toMatchObject({ tokens: 5 });
 
     const duplicate = await app.inject({
       method: 'POST',
@@ -254,6 +330,32 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
       headers: authHeader(),
     });
     expect(duplicate.statusCode).toBe(409);
+    const balancesAfterDuplicate = await pool.query<{
+      balance: number;
+      stars: number;
+      experience: number;
+      ledger_rows: string;
+    }>(
+      `select uca.balance,
+              u.xp as stars,
+              u.experience,
+              (select count(*) from currency_ledger where user_id = u.id)::text as ledger_rows
+         from users u
+         join user_currency_account uca on uca.user_id = u.id
+        where u.id = $1`,
+      [userId],
+    );
+    expect(balancesAfterDuplicate.rows[0]?.ledger_rows).toBe('1');
+    const tokenBalanceAfterDuplicate = await pool.query<{ balance: number }>(
+      `select balance from user_reward_token_account where user_id = $1`,
+      [userId],
+    );
+    expect({
+      coins: balancesAfterDuplicate.rows[0]!.balance,
+      stars: balancesAfterDuplicate.rows[0]!.stars,
+      experience: balancesAfterDuplicate.rows[0]!.experience,
+      tokens: tokenBalanceAfterDuplicate.rows[0]!.balance,
+    }).toEqual(balancesBeforeDuplicate);
   });
 
   it('counts progress in the half-open challenge window', async () => {
@@ -528,11 +630,7 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
         url: `/weekly-challenge/${challengeId}/claim-reward`,
         headers: authHeader(),
       });
-      const blocked = await waitForBlockedWriter(
-        pool,
-        blockerBackend.rows[0]!.pid,
-        /set stars = stars/i,
-      );
+      const blocked = await waitForBlockedWriter(pool, blockerBackend.rows[0]!.pid, /set xp = xp/i);
 
       await blocker.query('commit');
       const claim = await claimPromise;
@@ -651,7 +749,9 @@ describe.skipIf(!hasIntegrationEnv)('/weekly-challenge/*', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
-      future: [{ id: futureChallengeId, title: 'Будущая неделя' }],
+      future: expect.arrayContaining([
+        expect.objectContaining({ id: futureChallengeId, title: 'Будущая неделя' }),
+      ]),
       active: [{ id: activeChallengeId, title: 'Неделя снайпера' }],
       completed: [
         {

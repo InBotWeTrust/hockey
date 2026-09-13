@@ -1,15 +1,109 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+  type RenderResult,
+} from '@testing-library/react';
+import { BrowserRouter, MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InventoryState } from '../api/inventory.js';
+import { redirectToPaymentConfirmation } from '../api/payments.js';
 import { InventoryScreen } from './InventoryScreen.js';
+import { useAuthStore } from '../auth/authStore.js';
+import { parseShopCategory } from './inventoryShopCategories.js';
+import { readFileSync } from 'node:fs';
+
+const designSystemCss = readFileSync('src/app/design-system.css', 'utf8');
 
 const emptyInventory: InventoryState = {
   balances: { tokens: 1000, stars: 2, experience: 77 },
   equipped: { stickItemId: null, skatesItemId: null, nutritionItemId: null },
   items: { stick: [], skates: [], nutrition: [], recovery: [] },
 };
+
+const coinPackages = [
+  {
+    id: '00000000-0000-4000-8000-000000000001',
+    slug: 'starter',
+    title: 'Стартовый набор',
+    description: 'Первое пополнение',
+    coinAmount: 7450,
+    priceRub: 149,
+    badgeText: null,
+    marker: null,
+    sortOrder: 1,
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000002',
+    slug: 'player',
+    title: 'Малый запас',
+    description: 'Для небольших покупок',
+    coinAmount: 16000,
+    priceRub: 299,
+    badgeText: 'Выгода 7%',
+    marker: null,
+    sortOrder: 2,
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000003',
+    slug: 'club',
+    title: 'Игровой запас',
+    description: 'Оптимальный выбор',
+    coinAmount: 40000,
+    priceRub: 699,
+    badgeText: 'Выгода 14%',
+    marker: 'hit' as const,
+    sortOrder: 3,
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000004',
+    slug: 'season',
+    title: 'Большой запас',
+    description: 'Для частых покупок',
+    coinAmount: 90000,
+    priceRub: 1490,
+    badgeText: 'Выгода 21%',
+    marker: null,
+    sortOrder: 4,
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000005',
+    slug: 'professional',
+    title: 'Клубный банк',
+    description: 'Серьёзный запас',
+    coinAmount: 190000,
+    priceRub: 2990,
+    badgeText: 'Выгода 27%',
+    marker: null,
+    sortOrder: 5,
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000006',
+    slug: 'major-league',
+    title: 'Премиальный банк',
+    description: 'Очень большой запас',
+    coinAmount: 325000,
+    priceRub: 4990,
+    badgeText: 'Выгода 30%',
+    marker: 'top' as const,
+    sortOrder: 6,
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000007',
+    slug: 'maximum',
+    title: 'Максимальный банк',
+    description: 'Максимальная выгода',
+    coinAmount: 700000,
+    priceRub: 9990,
+    badgeText: 'Выгода 40%',
+    marker: 'premium' as const,
+    sortOrder: 7,
+  },
+] as const;
 
 const inventoryWithItems: InventoryState = {
   balances: { tokens: 1000, stars: 2, experience: 77 },
@@ -177,12 +271,48 @@ const inventoryWithItems: InventoryState = {
   ],
 };
 
-function mockInventoryFetch(inventory: InventoryState, purchasedInventory = inventory): void {
+function mockInventoryFetch(
+  inventory: InventoryState,
+  purchasedInventory = inventory,
+  paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded' | 'canceled' | 'error' = 'pending',
+  confirmationUrl: string | null = null,
+): void {
   vi.restoreAllMocks();
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     if (url.endsWith('/api/inventory/me')) {
       return new Response(JSON.stringify(inventory), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (url.endsWith('/api/bank/packages')) {
+      return new Response(JSON.stringify({ packages: coinPackages }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (url.endsWith('/api/bank/payments') && init?.method === 'POST') {
+      return new Response(
+        JSON.stringify({
+          paymentId: '00000000-0000-4000-8000-000000000099',
+          status: 'pending',
+          confirmationUrl,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
+    if (/\/api\/bank\/payments\/[\w-]+$/.test(url)) {
+      if (paymentStatus === 'error') {
+        return new Response(
+          JSON.stringify({ error: { code: 'unavailable', message: 'unavailable' } }),
+          {
+            status: 503,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
+      }
+      return new Response(JSON.stringify({ status: paymentStatus }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
@@ -225,13 +355,19 @@ function mockInventoryFetch(inventory: InventoryState, purchasedInventory = inve
   });
 }
 
-function renderInventory(): void {
+function LocationProbe(): JSX.Element {
+  const location = useLocation();
+  return <div data-testid="location-search">{location.search}</div>;
+}
+
+function renderInventory(initialEntry = '/inventory'): RenderResult {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  render(
+  return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/inventory']}>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <LocationProbe />
         <Routes>
           <Route path="/inventory" element={<InventoryScreen />} />
           <Route path="/sections" element={<div>sections screen</div>} />
@@ -244,10 +380,152 @@ function renderInventory(): void {
 describe('InventoryScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    sessionStorage.clear();
+    localStorage.clear();
+    useAuthStore.getState().setSession({
+      accessToken: 'buyer-access',
+      refreshToken: 'buyer-refresh',
+      user: { id: 'buyer-one', displayName: 'Buyer' },
+    });
     mockInventoryFetch(emptyInventory);
   });
 
-  it('renders the shop catalog as product cards', async () => {
+  it('reuses wide section cards with one title, unique item count and decorative artwork', async () => {
+    mockInventoryFetch({
+      ...inventoryWithItems,
+      items: {
+        ...inventoryWithItems.items,
+        stick: [
+          ...inventoryWithItems.items.stick,
+          { ...inventoryWithItems.items.stick[0]!, id: 'duplicate-stick' },
+        ],
+      },
+    });
+    renderInventory();
+
+    for (const title of ['Клюшки', 'Коньки', 'Питание', 'Восстановление']) {
+      const card = await screen.findByRole('button', { name: `Открыть раздел ${title}` });
+      expect(within(card).getAllByText(title)).toHaveLength(1);
+      expect(within(card).queryByText(/Выбрать/)).toBeNull();
+      expect(
+        within(card).getByText(title === 'Восстановление' ? '3 товара' : '1 товар'),
+      ).toBeVisible();
+      expect(card).toHaveClass('section-card-surface', 'amateur-hub-card');
+      const image = card.querySelector('img');
+      expect(image).toHaveAttribute('alt', '');
+      expect(image?.parentElement).toHaveClass('amateur-hub-card__art');
+      expect(card.querySelector('.amateur-hub-card__copy')).not.toBeNull();
+      expect(card.querySelector('.card-chevron')).toHaveAttribute('aria-hidden', 'true');
+    }
+  });
+
+  it('keeps one column and the shared 116px wide-card / 86px artwork contract', () => {
+    const grid = designSystemCss.match(/\.inventory-category-grid\s*\{([^}]+)\}/)?.[1];
+    const card = designSystemCss.match(/\.amateur-hub-card\s*\{([^}]+)\}/)?.[1];
+    const artwork = designSystemCss.match(/\.amateur-hub-card__art\s*\{([^}]+)\}/)?.[1];
+    expect(grid).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\)/);
+    expect(card).toMatch(/min-height:\s*116px/);
+    expect(card).toMatch(/grid-template-columns:\s*86px minmax\(0, 1fr\) 20px/);
+    expect(card).not.toMatch(/aspect-ratio/);
+    expect(artwork).toMatch(/width:\s*86px/);
+    expect(artwork).toMatch(/height:\s*86px/);
+    expect(designSystemCss).not.toContain('.inventory-category-card::after');
+    expect(/\.inventory-category-card\s*\{/.test(designSystemCss)).toBe(false);
+  });
+
+  it('shows the goods section heading with the same style as Bank and History', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory();
+    await screen.findByRole('button', { name: 'Открыть раздел Клюшки' });
+    const goods = screen.getByText('Товары', { selector: '.section-label' });
+    const style = goods.getAttribute('style');
+    fireEvent.click(screen.getByRole('tab', { name: 'Банк' }));
+    expect(screen.getByText('Банк', { selector: '.section-label' }).getAttribute('style')).toBe(
+      style,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'История' }));
+    expect(screen.getByText('История', { selector: '.section-label' }).getAttribute('style')).toBe(
+      style,
+    );
+    expect(screen.queryByText('Товары', { selector: '.section-label' })).toBeNull();
+  });
+
+  it('delivers decorative WebP artwork in the four shop category cards', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    const { container } = renderInventory();
+
+    await screen.findByRole('button', { name: 'Открыть раздел Клюшки' });
+    expect(screen.getByRole('main')).toHaveClass('inventory-shop-screen');
+    const categoryImages = container.querySelectorAll<HTMLImageElement>(
+      '.inventory-category-card img',
+    );
+    expect(categoryImages).toHaveLength(4);
+    expect([...categoryImages].map((image) => image.getAttribute('src'))).toEqual([
+      '/shop/categories/sticks.webp',
+      '/shop/categories/skates.webp',
+      '/shop/categories/nutrition.webp',
+      '/shop/categories/recovery.webp',
+    ]);
+    for (const image of categoryImages) expect(image).toHaveAttribute('alt', '');
+  });
+
+  it('shows the overall empty state instead of four empty categories', async () => {
+    renderInventory();
+
+    expect(await screen.findByText('Товары скоро появятся')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Открыть раздел Клюшки' })).toBeNull();
+    expect(screen.queryByText('В разделе пока нет товаров')).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Банк' })).toBeInTheDocument();
+  });
+
+  it('shows a category-local empty state and preserves the shop balance', async () => {
+    mockInventoryFetch({
+      ...inventoryWithItems,
+      items: { ...inventoryWithItems.items, skates: [] },
+    });
+    renderInventory('/inventory?category=skates');
+
+    expect(await screen.findByText('В разделе пока нет товаров')).toBeInTheDocument();
+    expect(screen.getByLabelText('Монеты: 1 000')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'К разделам магазина' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть раздел Клюшки' }));
+    expect(await screen.findByText('Бронзовая клюшка')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['stick', 'Клюшки', 'shop-zone--sticks', '/shop/backgrounds/sticks.webp'],
+    ['skates', 'Коньки', 'shop-zone--skates', '/shop/backgrounds/skates.webp'],
+    ['nutrition', 'Питание', 'shop-zone--nutrition', '/shop/backgrounds/nutrition.webp'],
+    ['recovery', 'Восстановление', 'shop-zone--recovery', '/shop/backgrounds/recovery.webp'],
+  ])(
+    'shows the %s category on its dedicated portrait background',
+    async (category, title, zone, artwork) => {
+      mockInventoryFetch(inventoryWithItems);
+      renderInventory(`/inventory?category=${category}`);
+
+      await screen.findByRole('heading', { name: title });
+      const main = screen.getByRole('main');
+      expect(main).toHaveClass(zone);
+      expect(main).toHaveStyle({ '--shop-category-artwork': `url("${artwork}")` });
+      expect(main.querySelectorAll(`img[src="${artwork}"]`)).toHaveLength(0);
+    },
+  );
+
+  it('keeps the recovery title on one line without moving the balance below it', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory('/inventory?category=recovery');
+
+    const heading = await screen.findByRole('heading', { name: 'Восстановление' });
+    expect(heading.querySelector('.inventory-shop-header__fitted-title')).toHaveTextContent(
+      'Восстановление',
+    );
+    expect(heading.closest('.inventory-shop-header')).toHaveClass(
+      'inventory-shop-header--category',
+    );
+    expect(await screen.findByLabelText('Монеты: 1 000')).toBeInTheDocument();
+  });
+
+  it('keeps the main tabs and shows four goods categories', async () => {
     mockInventoryFetch(inventoryWithItems);
 
     renderInventory();
@@ -257,29 +535,77 @@ describe('InventoryScreen', () => {
     expect(await screen.findByLabelText('Монеты: 1 000')).toBeInTheDocument();
     expect(screen.getByLabelText('Звёзды: 2')).toBeInTheDocument();
     expect(screen.queryByLabelText('Опыт: 77')).toBeNull();
-    expect(screen.getAllByText('Бронзовая клюшка').length).toBeGreaterThan(0);
-    expect(screen.getByText('Золотое питание')).toBeInTheDocument();
-    expect(screen.getByText('Серебряные коньки')).toBeInTheDocument();
-    expect(screen.getByText('5 бросков')).toBeInTheDocument();
-    expect(screen.getByText('5 прокатов')).toBeInTheDocument();
-    expect(screen.getByText('5 минут энергии')).toBeInTheDocument();
-    expect(screen.queryByText(/Осталось/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/выбрано/i)).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Купить Бронзовая клюшка за 120 монет' }),
-    ).toBeEnabled();
     expect(screen.getByRole('tab', { name: 'Товары' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Банк' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'История' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открыть раздел Клюшки' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открыть раздел Коньки' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открыть раздел Питание' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Открыть раздел Восстановление' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Бронзовая клюшка')).not.toBeInTheDocument();
     expect(screen.queryByText('-120')).not.toBeInTheDocument();
-    expect(document.querySelector('img[src^="/inventory/stick-bronze.webp"]')).toBeInTheDocument();
-    expect(document.querySelector('img[src="/inventory/sticks.webp"]')).not.toBeInTheDocument();
-    expect(document.querySelector('.inventory-shop-grid')).toBeInTheDocument();
     expect(document.querySelector('.inventory-shop-header')).toBeInTheDocument();
     expect(document.querySelector('.inventory-shop-balance')).toBeInTheDocument();
+  });
+
+  it('opens one category and hides the main shop tabs', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory('/inventory?category=stick');
+
+    expect(await screen.findByRole('heading', { name: 'Клюшки' })).toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Разделы магазина' })).toBeNull();
+    expect(await screen.findByText('Бронзовая клюшка')).toBeInTheDocument();
+    expect(screen.queryByText('Серебряные коньки')).toBeNull();
+  });
+
+  it('returns from a category to the goods overview', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory('/inventory?category=stick');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'К разделам магазина' }));
+    expect(screen.getByRole('heading', { name: 'Магазин' })).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: 'Разделы магазина' })).toBeInTheDocument();
+  });
+
+  it('restores goods when browser Forward returns to a category after selecting Bank', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    window.history.replaceState(null, '', '/inventory');
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <InventoryScreen />
+        </BrowserRouter>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть раздел Клюшки' }));
+    expect(await screen.findByRole('heading', { name: 'Клюшки' })).toBeInTheDocument();
+    act(() => window.history.back());
+    fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+    expect(screen.getByRole('tab', { name: 'Банк' })).toHaveAttribute('aria-selected', 'true');
+
+    act(() => window.history.forward());
+    expect(await screen.findByRole('heading', { name: 'Клюшки' })).toBeInTheDocument();
+    expect(window.location.search).toBe('?category=stick');
+    expect(await screen.findByText('Бронзовая клюшка')).toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Разделы магазина' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'К разделам магазина' }));
+    expect(screen.getByRole('tab', { name: 'Товары' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('falls back to the goods overview for an invalid category', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory('/inventory?category=bank');
+
+    expect(await screen.findByRole('heading', { name: 'Магазин' })).toBeInTheDocument();
     expect(
-      within(screen.getByRole('region', { name: 'Клюшки' })).getByText('Бронзовая клюшка')
-        .closest('.inventory-product-card'),
+      await screen.findByRole('button', { name: 'Открыть раздел Клюшки' }),
     ).toBeInTheDocument();
   });
 
@@ -299,7 +625,7 @@ describe('InventoryScreen', () => {
     };
     mockInventoryFetch(duplicatedInventory);
 
-    renderInventory();
+    renderInventory('/inventory?category=stick');
 
     expect(
       await screen.findByRole('button', { name: /Подробнее о Бронзовая клюшка/i }),
@@ -309,9 +635,18 @@ describe('InventoryScreen', () => {
     );
   });
 
+  it('does not claim payment success when the owner status cannot be checked', async () => {
+    sessionStorage.setItem('hockey.bank.paymentId', '00000000-0000-4000-8000-000000000099');
+    mockInventoryFetch(inventoryWithItems, inventoryWithItems, 'error');
+    renderInventory('/inventory?payment=return');
+
+    expect(await screen.findByText(/Не удалось проверить статус оплаты/)).toBeInTheDocument();
+    expect(screen.queryByText('Оплата подтверждена')).toBeNull();
+  });
+
   it('shows the three recovery kits with their agreed durations and prices', async () => {
     mockInventoryFetch(inventoryWithItems);
-    renderInventory();
+    renderInventory('/inventory?category=recovery');
 
     const recovery = await screen.findByRole('region', { name: 'Восстановление' });
     expect(within(recovery).getByText('Малый набор для восстановления')).toBeInTheDocument();
@@ -328,26 +663,360 @@ describe('InventoryScreen', () => {
   it('reserves two product description lines in shop cards', async () => {
     mockInventoryFetch(inventoryWithItems);
 
-    renderInventory();
+    renderInventory('/inventory?category=stick');
 
     expect(await screen.findByText('5 бросков')).toHaveStyle({ minHeight: '2.4em' });
-    expect(screen.getByText('5 прокатов')).toHaveStyle({ minHeight: '2.4em' });
-    expect(screen.getByText('5 минут энергии')).toHaveStyle({ minHeight: '2.4em' });
   });
 
-  it('shows bank packages on the bank tab', async () => {
+  it('shows seven progressively better bank packages with highlighted offers', async () => {
     mockInventoryFetch(inventoryWithItems);
 
     renderInventory();
 
     fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
 
+    await screen.findByText('Стартовый набор');
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/bank/packages', expect.anything());
+
     expect(screen.getByText('Стартовый набор')).toBeInTheDocument();
+    expect(screen.getByText('Малый запас')).toBeInTheDocument();
     expect(screen.getByText('Игровой запас')).toBeInTheDocument();
+    expect(screen.getByText('Большой запас')).toBeInTheDocument();
     expect(screen.getByText('Клубный банк')).toBeInTheDocument();
+    expect(screen.getByText('Премиальный банк')).toBeInTheDocument();
+    expect(screen.getByText('Максимальный банк')).toBeInTheDocument();
     expect(screen.getByText('7 450 монет')).toBeInTheDocument();
-    expect(screen.getByText('14 950 монет')).toBeInTheDocument();
-    expect(screen.getByText('34 950 монет')).toBeInTheDocument();
+    expect(screen.getByText('16 000 монет')).toBeInTheDocument();
+    expect(screen.getByText('40 000 монет')).toBeInTheDocument();
+    expect(screen.getByText('90 000 монет')).toBeInTheDocument();
+    expect(screen.getByText('190 000 монет')).toBeInTheDocument();
+    expect(screen.getByText('325 000 монет')).toBeInTheDocument();
+    expect(screen.getByText('700 000 монет')).toBeInTheDocument();
+    expect(screen.getByText('Выгода 7%')).toBeInTheDocument();
+    expect(screen.getByText('Выгода 14%')).toBeInTheDocument();
+    expect(screen.getByText('Выгода 21%')).toBeInTheDocument();
+    expect(screen.getByText('Выгода 27%')).toBeInTheDocument();
+    expect(screen.getByText('Выгода 30%')).toBeInTheDocument();
+    expect(screen.getByText('Выгода 40%')).toBeInTheDocument();
+    expect(screen.getByText('Хит')).toBeInTheDocument();
+    expect(screen.getByText('Топ')).toBeInTheDocument();
+    expect(screen.getByText('Премиум')).toBeInTheDocument();
+    expect(screen.getByText('Максимальная выгода')).toBeInTheDocument();
+    expect(screen.getByLabelText('Купить 700 000 монет за 9 990 ₽')).toBeInTheDocument();
+    expect(screen.getAllByRole('article')).toHaveLength(7);
+  });
+
+  it('creates one payment for the selected API package', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory();
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+    const buy = await screen.findByRole('button', { name: /Купить.*40.*000.*699/ });
+    expect(buy).toBeEnabled();
+    fireEvent.click(buy);
+    fireEvent.click(buy);
+
+    await screen.findByRole('button', { name: /Купить.*40.*000.*699/ });
+    const paymentCalls = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.filter(
+        ([input, init]) => String(input).endsWith('/api/bank/payments') && init?.method === 'POST',
+      );
+    expect(paymentCalls).toHaveLength(1);
+    expect(JSON.parse(String(paymentCalls[0]?.[1]?.body))).toEqual({
+      packageId: coinPackages[2].id,
+      attemptId: expect.any(String),
+    });
+  });
+
+  it('redirects to a valid HTTPS payment confirmation URL', () => {
+    const assign = vi.fn();
+
+    expect(redirectToPaymentConfirmation('https://yoomoney.ru/checkout/confirmed', assign)).toBe(
+      true,
+    );
+    expect(assign).toHaveBeenCalledWith('https://yoomoney.ru/checkout/confirmed');
+  });
+
+  it.each([
+    'network',
+    'payment_provider_unavailable',
+    'payment_attempt_expired',
+    'payment_provider_conflict',
+  ])(
+    'retains an unresolved attempt after %s across retry and reload, then replaces it only after paid',
+    async (failure) => {
+      const requests: Array<{ packageId: string; attemptId: string }> = [];
+      const fallback = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (String(input).endsWith('/api/bank/payments') && init?.method === 'POST') {
+          requests.push(JSON.parse(String(init.body)));
+          if (requests.length < 3) {
+            if (failure === 'network') throw new TypeError('Failed to fetch');
+            return new Response(JSON.stringify({ error: { code: failure } }), {
+              status: failure === 'payment_provider_unavailable' ? 502 : 409,
+            });
+          }
+          return new Response(
+            JSON.stringify({
+              paymentId: '00000000-0000-4000-8000-000000000099',
+              status: 'paid',
+              confirmationUrl: null,
+            }),
+          );
+        }
+        return fallback(input, init);
+      });
+      let view = renderInventory();
+      fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+      fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /Купить.*40.*000.*699/ })).toBeEnabled(),
+      );
+      fireEvent.click(screen.getByRole('button', { name: /Купить.*40.*000.*699/ }));
+      await waitFor(() => expect(requests).toHaveLength(2));
+      expect(requests[1]).toEqual(requests[0]);
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /Купить.*40.*000.*699/ })).toBeEnabled(),
+      );
+      view.unmount();
+      view = renderInventory();
+      fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+      fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+      await waitFor(() => expect(requests).toHaveLength(3));
+      expect(requests[2]).toEqual(requests[0]);
+      await screen.findByText(/Оплата подтверждена/);
+      fireEvent.click(screen.getByRole('button', { name: /Купить.*40.*000.*699/ }));
+      await waitFor(() => expect(requests).toHaveLength(4));
+      expect(requests[3]?.attemptId).not.toBe(requests[0]?.attemptId);
+      view.unmount();
+    },
+  );
+
+  it('scopes unresolved attempts to both buyer and package across account switches', async () => {
+    const requests: Array<{ packageId: string; attemptId: string }> = [];
+    const fallback = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input).endsWith('/api/bank/payments') && init?.method === 'POST') {
+        requests.push(JSON.parse(String(init.body)));
+        throw new TypeError('Failed to fetch');
+      }
+      return fallback(input, init);
+    });
+    for (const [buyer, packageName] of [
+      ['buyer-one', /Купить.*40.*000.*699/],
+      ['buyer-one', /Купить.*16.*000.*299/],
+      ['buyer-two', /Купить.*40.*000.*699/],
+      ['buyer-one', /Купить.*40.*000.*699/],
+    ] as const) {
+      useAuthStore.getState().updateUser({ id: buyer });
+      const view = renderInventory();
+      fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+      fireEvent.click(await screen.findByRole('button', { name: packageName }));
+      await waitFor(() => expect(screen.getByRole('button', { name: packageName })).toBeEnabled());
+      view.unmount();
+    }
+    expect(requests).toHaveLength(4);
+    expect(new Set(requests.slice(0, 3).map((request) => request.attemptId)).size).toBe(3);
+    expect(requests[3]).toEqual(requests[0]);
+  });
+
+  it('fails closed before sending a payment when persistent attempt storage is unavailable', async () => {
+    renderInventory();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+    const buy = await screen.findByRole('button', { name: /Купить.*40.*000.*699/ });
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage blocked', 'SecurityError');
+    });
+    fireEvent.click(buy);
+    await screen.findByText(/Не удалось сохранить попытку оплаты/);
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.filter(
+          ([input, init]) =>
+            String(input).endsWith('/api/bank/payments') && init?.method === 'POST',
+        ),
+    ).toHaveLength(0);
+  });
+
+  it('does not overwrite corrupt unresolved attempt data with a new payment', async () => {
+    const key = `hockey.bank.attempt.buyer-one.${coinPackages[2].id}`;
+    localStorage.setItem(key, '{broken attempt');
+    renderInventory();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+    await screen.findByText(/Не удалось сохранить попытку оплаты/);
+    expect(localStorage.getItem(key)).toBe('{broken attempt');
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.filter(
+          ([input, init]) =>
+            String(input).endsWith('/api/bank/payments') && init?.method === 'POST',
+        ),
+    ).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      'missing status',
+      { paymentId: '00000000-0000-4000-8000-000000000099', confirmationUrl: null },
+    ],
+    ['missing payment ID', { status: 'paid', confirmationUrl: null }],
+  ])(
+    'does not treat a successful response with %s as proof that a payment is terminal',
+    async (_case, response) => {
+      const requests: Array<{ packageId: string; attemptId: string }> = [];
+      const fallback = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (String(input).endsWith('/api/bank/payments') && init?.method === 'POST') {
+          requests.push(JSON.parse(String(init.body)));
+          return new Response(JSON.stringify(response));
+        }
+        return fallback(input, init);
+      });
+      renderInventory();
+      fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+      const buy = await screen.findByRole('button', { name: /Купить.*40.*000.*699/ });
+      fireEvent.click(buy);
+      await waitFor(() => expect(buy).toBeEnabled());
+      fireEvent.click(buy);
+      await waitFor(() => expect(requests).toHaveLength(2));
+      expect(requests[1]).toEqual(requests[0]);
+    },
+  );
+
+  it('styles an active bank action normally and only dims the action while disabled', async () => {
+    const style = document.createElement('style');
+    style.textContent = designSystemCss;
+    document.head.append(style);
+    try {
+      renderInventory();
+      fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+      const buy = await screen.findByRole('button', { name: /Купить.*40.*000.*699/ });
+      expect(getComputedStyle(buy).cursor).toBe('pointer');
+      expect(Number(getComputedStyle(buy).opacity || 1)).toBe(1);
+      fireEvent.click(buy);
+      expect(buy).toBeDisabled();
+      expect(getComputedStyle(buy).cursor).toBe('not-allowed');
+      expect(getComputedStyle(buy).opacity).toBe('0.5');
+      await waitFor(() => expect(buy).toBeEnabled());
+    } finally {
+      style.remove();
+    }
+  });
+
+  it.each(['javascript:alert(1)', 'http://yoomoney.ru/checkout', 'not a URL'])(
+    'rejects an unsafe payment confirmation URL: %s',
+    (confirmationUrl) => {
+      const assign = vi.fn();
+
+      expect(redirectToPaymentConfirmation(confirmationUrl, assign)).toBe(false);
+      expect(assign).not.toHaveBeenCalled();
+    },
+  );
+
+  it('shows a payment error instead of navigating to an unsafe confirmation URL', async () => {
+    mockInventoryFetch(inventoryWithItems, inventoryWithItems, 'pending', 'javascript:alert(1)');
+    renderInventory();
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+
+    expect(await screen.findByText(/Не удалось перейти к оплате/)).toBeInTheDocument();
+    expect(sessionStorage.getItem('hockey.bank.paymentId')).toBeNull();
+  });
+
+  it.each(['paid', 'canceled'] as const)(
+    'starts a new attempt only after the returned payment is %s',
+    async (status) => {
+      const requests: Array<{ packageId: string; attemptId: string }> = [];
+      mockInventoryFetch(inventoryWithItems, inventoryWithItems, status);
+      const fallback = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (String(input).endsWith('/api/bank/payments') && init?.method === 'POST') {
+          requests.push(JSON.parse(String(init.body)));
+        }
+        return fallback(input, init);
+      });
+      const view = renderInventory();
+      fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
+      fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+      await screen.findByText(/Не удалось перейти к оплате/);
+      view.unmount();
+      sessionStorage.setItem('hockey.bank.paymentId', '00000000-0000-4000-8000-000000000099');
+      renderInventory('/inventory?payment=return');
+      await screen.findByText(status === 'paid' ? /Оплата подтверждена/ : /Оплата отменена/);
+      fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
+      await waitFor(() => expect(requests).toHaveLength(2));
+      expect(requests[1]?.attemptId).not.toBe(requests[0]?.attemptId);
+    },
+  );
+
+  it.each([
+    ['pending', 'Платёж ожидает подтверждения', false],
+    ['paid', 'Оплата подтверждена', true],
+    ['canceled', 'Оплата отменена', true],
+  ] as const)(
+    'checks the owner payment status after a returned %s payment',
+    async (status, copy, isTerminal) => {
+      sessionStorage.setItem('hockey.bank.paymentId', '00000000-0000-4000-8000-000000000099');
+      mockInventoryFetch(inventoryWithItems, inventoryWithItems, status);
+      renderInventory('/inventory?payment=return');
+
+      expect(window.sessionStorage.getItem('hockey.bank.paymentId')).toBe(
+        '00000000-0000-4000-8000-000000000099',
+      );
+      expect(await screen.findByText('Проверяем статус оплаты…')).toBeInTheDocument();
+      expect(await screen.findByText(new RegExp(copy))).toBeInTheDocument();
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        '/api/bank/payments/00000000-0000-4000-8000-000000000099',
+        expect.anything(),
+      );
+      expect(sessionStorage.getItem('hockey.bank.paymentId')).toBe(
+        isTerminal ? null : '00000000-0000-4000-8000-000000000099',
+      );
+      if (isTerminal) {
+        await waitFor(() => {
+          expect(screen.getByTestId('location-search')).toBeEmptyDOMElement();
+        });
+      } else {
+        expect(screen.getByTestId('location-search')).toHaveTextContent('?payment=return');
+      }
+    },
+  );
+
+  it('keeps polling a pending returned payment without clearing its return marker', async () => {
+    vi.useFakeTimers();
+    try {
+      sessionStorage.setItem('hockey.bank.paymentId', '00000000-0000-4000-8000-000000000099');
+      mockInventoryFetch(inventoryWithItems, inventoryWithItems, 'pending');
+      renderInventory('/inventory?payment=return');
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(
+        screen.getByText('Платёж ожидает подтверждения. Монеты будут зачислены после оплаты.'),
+      ).toBeInTheDocument();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+
+      const statusCalls = vi
+        .mocked(globalThis.fetch)
+        .mock.calls.filter(([input]) =>
+          String(input).endsWith('/api/bank/payments/00000000-0000-4000-8000-000000000099'),
+        );
+      expect(statusCalls).toHaveLength(2);
+      expect(sessionStorage.getItem('hockey.bank.paymentId')).toBe(
+        '00000000-0000-4000-8000-000000000099',
+      );
+      expect(screen.getByTestId('location-search')).toHaveTextContent('?payment=return');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows transaction history with currency icons and filters', async () => {
@@ -356,9 +1025,9 @@ describe('InventoryScreen', () => {
     renderInventory();
 
     expect(
-      vi.mocked(globalThis.fetch).mock.calls.some(([input]) =>
-        String(input).includes('/api/inventory/transactions'),
-      ),
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.some(([input]) => String(input).includes('/api/inventory/transactions')),
     ).toBe(false);
 
     fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
@@ -443,16 +1112,17 @@ describe('InventoryScreen', () => {
     expect(empty.closest('.glass')).toBeNull();
   });
 
-  it('shows an empty shop state when no products exist', async () => {
-    renderInventory();
+  it('keeps a deep-linked empty category distinct from an entirely empty shop', async () => {
+    renderInventory('/inventory?category=recovery');
 
-    expect(await screen.findByText('Товары скоро появятся')).toBeInTheDocument();
+    expect(await screen.findByText('В разделе пока нет товаров')).toBeInTheDocument();
+    expect(screen.queryByText('Товары скоро появятся')).toBeNull();
   });
 
   it('opens item details and keeps parameters out of the card', async () => {
     mockInventoryFetch(inventoryWithItems);
 
-    renderInventory();
+    renderInventory('/inventory?category=stick');
 
     expect(
       await screen.findByRole('button', { name: /Подробнее о Бронзовая клюшка/i }),
@@ -474,7 +1144,7 @@ describe('InventoryScreen', () => {
   it('disables purchase when tokens are not enough', async () => {
     mockInventoryFetch(inventoryWithItems);
 
-    renderInventory();
+    renderInventory('/inventory?category=skates');
 
     expect(await screen.findByText('Серебряные коньки')).toBeInTheDocument();
     expect(
@@ -510,7 +1180,7 @@ describe('InventoryScreen', () => {
     };
     mockInventoryFetch(inventoryWithInstanceItem, purchasedInventory);
 
-    renderInventory();
+    renderInventory('/inventory?category=stick');
 
     expect(
       await screen.findByRole('button', { name: 'Купить Бронзовая клюшка за 120 монет' }),
@@ -530,7 +1200,7 @@ describe('InventoryScreen', () => {
     expect(screen.getByRole('status')).toHaveClass('inventory-purchase-toast');
     expect(screen.getByRole('img', { name: 'Бронзовая клюшка' })).toHaveAttribute(
       'src',
-      '/inventory/stick-bronze.webp?v=20260830-base-equipment-v1',
+      '/inventory/stick-bronze.webp?v=20260911-locker-equipment-v2',
     );
     expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/inventory/items/stick-bronze/purchase',
@@ -538,4 +1208,15 @@ describe('InventoryScreen', () => {
     );
     expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
   });
+});
+
+describe('parseShopCategory', () => {
+  it.each(['stick', 'skates', 'nutrition', 'recovery'] as const)(
+    'accepts the %s shop category',
+    (category) => expect(parseShopCategory(category)).toBe(category),
+  );
+
+  it.each([null, '', 'bank', 'unknown'])('rejects invalid shop category %s', (category) =>
+    expect(parseShopCategory(category)).toBeNull(),
+  );
 });

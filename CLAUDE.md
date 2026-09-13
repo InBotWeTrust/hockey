@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Ultimate Hockey — мобильная хоккейная PWA в духе OVI Universe + Prison: тайминг-механика «поймай окно между движущимся вратарём и движущимися воротами», три уровня игры (начальный, любители, профессионалы), расходуемый инвентарь, дуэли/турниры и соревновательные рейтинги. Вход через Telegram Login Widget и VK ID OAuth. Монетизация — через внутреннюю валюту + ЮKassa.
 
-Прод: https://hockey.inbotwetrust.ru, GHCR-образы `ghcr.io/inbotwetrust/hockey-server|web`. Деплой — только через GitHub Actions (`.github/workflows/deploy.yml`): CI билдит образы, пушит в GHCR, SSH-сессия на VPS делает `docker compose pull && up -d --force-recreate`. На VPS ничего не собирается.
+Прод: https://ultimatehockey.ru; старый https://hockey.inbotwetrust.ru сохраняется как постоянный редирект. GHCR-образы `ghcr.io/inbotwetrust/hockey-server|web`. Деплой — только через GitHub Actions (`.github/workflows/deploy.yml`): CI билдит образы, пушит в GHCR, SSH-сессия на VPS делает `docker compose pull && up -d --force-recreate`. На VPS ничего не собирается.
 
 Дизайн-спек: `docs/superpowers/specs/2026-04-12-ultimate-hockey-pwa-mvp-design.md`. Имплементационные планы: `docs/superpowers/plans/`. Spec на текущий рабочий подпроект 0+1 (базовая модель `shot_session` + дневная игра): `~/.claude/plans/1-1-async-dawn.md`. Roadmap (см. plan-файл): уровни игры → тренировка → инвентарь/внутренняя валюта → любительские дуэли/турниры → рейтинги → про-раздел → офлайн-режим (resilience + read-only PWA-кеш для профиля/чата/daily-state, без офлайн-геймплея). Сюжет/прохождение вратарей, HP-модель и колесо удачи удалены из плана.
 

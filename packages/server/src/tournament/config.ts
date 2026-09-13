@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import type { TournamentConfig } from './types.js';
 
+export const TOURNAMENT_PARTICIPANT_LIMIT_MAX = 10_000;
+
 const playoffSizeSchema = z.union([
   z.literal(2),
   z.literal(4),
@@ -112,7 +114,7 @@ const classicSchema = z
     classicRules: classicRulesSchema,
   })
   .superRefine((config, ctx) => {
-    if (config.participantLimit > 10_000) {
+    if (config.participantLimit > TOURNAMENT_PARTICIPANT_LIMIT_MAX) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['participantLimit'],

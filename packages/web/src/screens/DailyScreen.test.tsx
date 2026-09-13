@@ -14,6 +14,7 @@ import { render, screen, waitFor, fireEvent, act, within, cleanup } from '@testi
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  createDuelStumbleRandomness,
   DAILY_PERIOD_SPEED_PRESETS,
   DEFAULT_DUEL_INVENTORY_TIMING,
   STICK_NEUTRAL,
@@ -1142,6 +1143,46 @@ describe('DailyScreen', () => {
     ).toBe(0);
   });
 
+  it('uses global stumble timing after classic skates run out', () => {
+    const skates = {
+      id: '00000000-0000-4000-8000-000000000902',
+      itemId: '00000000-0000-4000-8000-000000000902',
+      instanceId: null,
+      kind: 'skates' as const,
+      title: 'Тестовые коньки',
+      imageUrl: null,
+      resourceUnit: 'distance' as const,
+      resourceAvailable: 0,
+      effectPuckSpeedPoints: 0,
+      effectShooterFrequencyDelta: 0,
+      effectGoalieFrequencyDelta: 0,
+      effectGoalFrequencyDelta: 0,
+      timing: {
+        ...DEFAULT_DUEL_INVENTORY_TIMING,
+        stumbleIntervalMinRolls: 1_000,
+        stumbleIntervalMaxRolls: 1_000,
+      },
+    };
+    const state: ClassicTournamentState = {
+      ...classicIdleState,
+      state: 'period_active',
+      current_period: 1,
+      loadout: { items: [skates] },
+      loadout_editable: false,
+    };
+    const speeds = { goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.75, puckSpeed: 1.3 };
+    const globalRandomness = createDuelStumbleRandomness(
+      { seed: state.daily_seed, userId: state.player_id, periodNumber: 1 },
+      DEFAULT_DUEL_INVENTORY_TIMING,
+    );
+    const firstGlobalStumbleMs = (globalRandomness.interval / (speeds.shooterFreq * 2)) * 1_000;
+
+    const condition = createClassicTournamentCondition(state)(firstGlobalStumbleMs, speeds);
+
+    expect(condition?.stumbleActive).toBe(true);
+    expect(condition?.canShoot).toBe(false);
+  });
+
   it('shows classic period results before the resurfacing break', async () => {
     const breakState: ClassicTournamentState = {
       ...classicIdleState,
@@ -2021,17 +2062,17 @@ describe('DailyScreen', () => {
         ...baseCondition,
         status: 'tired',
         fatigueLevel: 'medium',
-        shooterSpeedMultiplier: 0.9,
+        shooterSpeedMultiplier: 0.85,
       }),
-    ).toBe('Усталость');
+    ).toBe('Усталость · скорость 85%');
     expect(
       duelFatigueNoticeLabel({
         ...baseCondition,
-        status: 'tired',
+        status: 'nutrition_slowdown',
         fatigueLevel: 'heavy',
-        shooterSpeedMultiplier: 0.75,
+        shooterSpeedMultiplier: 0.65,
       }),
-    ).toBe('Усталость');
+    ).toBe('Сильная усталость · скорость 65%');
     expect(
       duelFatigueNoticeLabel({
         ...baseCondition,
@@ -2040,7 +2081,7 @@ describe('DailyScreen', () => {
         fatigueLevel: 'resting',
         shooterSpeedMultiplier: 0,
       }),
-    ).toBe('Надо отдышаться');
+    ).toBe('Передышка · бросок недоступен');
   });
 
   it('shows a rest notice while the exhausted shot button is blocked', () => {
@@ -2082,13 +2123,15 @@ describe('DailyScreen', () => {
     );
 
     expect(screen.getByRole('button', { name: 'ОТДЫХ' })).toBeDisabled();
-    expect(screen.getByText('Надо отдышаться')).toBeInTheDocument();
+    expect(screen.getByText('Передышка · бросок недоступен')).toHaveClass(
+      'duel-rest-notice',
+    );
   });
 
   it('shows fatigue notice while keeping the duel shot button available', () => {
     const tiredCondition = {
       puckSpeedDelta: 0,
-      shooterSpeedMultiplier: 0.9,
+      shooterSpeedMultiplier: 0.85,
       canShoot: true,
       status: 'tired',
       fatigueLevel: 'medium',
@@ -2124,7 +2167,7 @@ describe('DailyScreen', () => {
     );
 
     expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeEnabled();
-    expect(screen.getByText('Усталость')).toBeInTheDocument();
+    expect(screen.getByText('Усталость · скорость 85%')).toHaveClass('duel-fatigue-notice');
   });
 
   it('shows a short stumble notice near the player instead of renaming the shot button', () => {
@@ -2167,13 +2210,15 @@ describe('DailyScreen', () => {
     );
 
     expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeDisabled();
-    expect(screen.getByText('Споткнулся')).toBeInTheDocument();
+    expect(screen.getByText('Споткнулся · бросок недоступен')).toHaveClass(
+      'duel-stumble-notice',
+    );
 
     act(() => {
       vi.advanceTimersByTime(700);
     });
 
-    expect(screen.queryByText('Споткнулся')).not.toBeInTheDocument();
+    expect(screen.queryByText('Споткнулся · бросок недоступен')).not.toBeInTheDocument();
   });
 
   it('uses understandable duel equipment effect labels for skates and energy', () => {
@@ -4891,6 +4936,12 @@ describe('DailyScreen', () => {
       'daily-calendar__duel-result--win',
       'daily-calendar__duel-result--win',
     ]);
+    expect(designSystemCss).toMatch(
+      /\.daily-calendar__duel-results\s*\{[^}]*overflow:\s*hidden;[^}]*\}/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.daily-calendar__duel-result\s*\{[^}]*flex:\s*1 1 4px;[^}]*max-width:\s*4px;[^}]*min-width:\s*0;[^}]*aspect-ratio:\s*1;[^}]*\}/s,
+    );
     expect(screen.getByText('Игровой день')).toBeInTheDocument();
     expect(screen.getByText('Победа')).toBeInTheDocument();
     expect(screen.getByText('Поражение')).toBeInTheDocument();
@@ -5360,13 +5411,13 @@ describe('DailyScreen', () => {
     const currentRegion = await screen.findByRole('region', { name: 'Текущие дуэли' });
     const currentStatus = await within(currentRegion).findByLabelText('Статус: Ваш ход');
     expect(currentStatus).toHaveClass('duel-card-status');
-    expect(currentStatus.parentElement).toHaveClass('duel-card-heading');
+    expect(currentStatus.parentElement).toHaveClass('duel-card-details');
     expect(currentStatus.querySelector('[aria-hidden="true"]')).not.toBeInTheDocument();
 
     const incomingRegion = await screen.findByRole('region', { name: 'Входящие приглашения' });
     const incomingStatus = within(incomingRegion).getByLabelText('Статус: Вас вызвали');
     expect(incomingStatus).toHaveClass('duel-card-status');
-    expect(incomingStatus.parentElement).toHaveClass('duel-card-heading');
+    expect(incomingStatus.parentElement).toHaveClass('duel-card-details');
     const venue = within(incomingRegion).getByLabelText('Площадка: Нейтральное поле');
     expect(venue).toHaveClass('duel-card-venue');
     expect(venue).not.toHaveClass('venue-badge');
@@ -5976,8 +6027,9 @@ describe('DailyScreen', () => {
       whiteSpace: 'nowrap',
     });
     expect(status).toHaveClass('duel-card-status');
-    expect(status.parentElement).toHaveClass('duel-card-heading');
-    expect(status.parentElement).toContainElement(opponentName);
+    expect(status.parentElement).toHaveClass('duel-card-details');
+    expect(status.parentElement).not.toContainElement(opponentName);
+    expect(status.previousElementSibling).toHaveClass('duel-card-meta');
   });
 
   it('labels an outgoing duel detail as waiting from my perspective', async () => {
@@ -6019,7 +6071,7 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=amateur&match=match-1']);
 
-    expect(await screen.findByLabelText('Статус соперника: ждём ответ')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Статус соперника: ждём ответа')).toBeInTheDocument();
     expect(screen.queryByLabelText('Статус соперника: ждёт ответ')).not.toBeInTheDocument();
   });
 
@@ -7339,6 +7391,7 @@ describe('DailyScreen', () => {
     ).toHaveTextContent('3:1');
     expect(within(dialog).getByText('Формат:')).toBeInTheDocument();
     expect(within(dialog).getByText('Экспресс')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Очки за дуэль: +3')).toHaveTextContent('+3');
     expect(within(dialog).queryByText('Соперник')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Начало')).not.toBeInTheDocument();
     expect(within(dialog).getByText('+3')).toBeInTheDocument();

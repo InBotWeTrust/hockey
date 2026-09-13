@@ -1,5 +1,6 @@
 import { apiFetch } from '../api/apiFetch.js';
 import type { ChatAttachmentDTO } from '../chat/api.js';
+import type { CoinPackage } from '../api/payments.js';
 
 export type AdminRole = 'player' | 'admin';
 export type AdminIdentitySource = 'custom' | 'telegram' | 'vk';
@@ -48,7 +49,8 @@ export type AdminWeeklyChallengeTaskType =
   | 'duels_played'
   | 'duels_won'
   | 'duel_invites_sent'
-  | 'trainings_completed';
+  | 'trainings_completed'
+  | 'channel_posts_commented';
 export type AdminAchievementCategory =
   | 'daily'
   | 'training'
@@ -214,6 +216,7 @@ export interface AdminWeeklyChallenge {
   rewardCoins: number;
   rewardStars: number;
   rewardExperience: number;
+  rewardTokens: number;
   tasks: AdminWeeklyChallengeTask[];
   stats: AdminWeeklyChallengeStats;
   players: AdminWeeklyChallengePlayer[];
@@ -227,6 +230,7 @@ export interface AdminWeeklyChallengeInput {
   rewardCoins: number;
   rewardStars: number;
   rewardExperience: number;
+  rewardTokens: number;
   tasks: Array<{
     type: AdminWeeklyChallengeTaskType;
     title?: string;
@@ -344,11 +348,38 @@ export interface AdminPayment {
   inventoryItemId: string | null;
   title: string;
   amountRub: number;
+  coinAmount: number | null;
   status: AdminPaymentStatus;
   provider: string;
   providerPaymentId: string | null;
   createdAt: string;
   paidAt: string | null;
+}
+
+export interface AdminCoinPackage extends CoinPackage {
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AdminCoinPackageInput = Omit<AdminCoinPackage, 'id' | 'createdAt' | 'updatedAt'>;
+export type AdminCoinPackagePatch = Partial<Omit<AdminCoinPackageInput, 'slug'>>;
+
+export function fetchAdminCoinPackages(): Promise<{ packages: AdminCoinPackage[] }> {
+  return apiFetch('/admin/coin-packages');
+}
+
+export function createAdminCoinPackage(
+  input: AdminCoinPackageInput,
+): Promise<{ package: AdminCoinPackage }> {
+  return apiFetch('/admin/coin-packages', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function patchAdminCoinPackage(
+  id: string,
+  input: AdminCoinPackagePatch,
+): Promise<{ package: AdminCoinPackage }> {
+  return apiFetch(`/admin/coin-packages/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
 }
 
 export interface AdminPaymentsResponse {
@@ -584,6 +615,21 @@ export interface AdminDuelPeriodRule {
   shotsLimit: number | null;
 }
 
+export interface AdminDuelRewardAmount {
+  coins: number;
+  stars: number;
+  tokens: number;
+}
+
+export interface AdminDuelRewardRules {
+  equalExperienceTolerancePercent: number;
+  strongerWin: AdminDuelRewardAmount;
+  equalWin: AdminDuelRewardAmount;
+  weakerWin: AdminDuelRewardAmount;
+  draw: AdminDuelRewardAmount;
+  loss: AdminDuelRewardAmount;
+}
+
 export interface AdminDuelTemplate {
   id: string;
   title: string;
@@ -619,6 +665,7 @@ export interface AdminDuelTemplate {
   winCurrencyReward: number;
   drawCurrencyReward: number;
   winStarReward: number;
+  rewardRules: AdminDuelRewardRules;
   createdAt: string;
   updatedAt: string;
 }
@@ -1396,8 +1443,13 @@ export function uploadAdminBonusGameMedia(
   });
 }
 
-export function fetchAdminDuelTemplates(): Promise<{ templates: AdminDuelTemplate[] }> {
-  return apiFetch<{ templates: AdminDuelTemplate[] }>('/admin/duel-templates');
+export function fetchAdminDuelTemplates(): Promise<{
+  templates: AdminDuelTemplate[];
+  rewardAmountLimit: number;
+}> {
+  return apiFetch<{ templates: AdminDuelTemplate[]; rewardAmountLimit: number }>(
+    '/admin/duel-templates',
+  );
 }
 
 export function fetchAdminDuelHistory(params: {

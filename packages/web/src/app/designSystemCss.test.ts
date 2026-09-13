@@ -18,3 +18,14 @@ describe('design system toast positioning', () => {
     expect(inventoryToast).toContain('animation: duel-challenge-toast-in');
   });
 });
+
+describe('experience rating scroll containment', () => {
+  it('disables scroll chaining and gives the sticky header an opaque surface', () => {
+    const viewport = rule('.experience-rating__viewport');
+    const header = rule('.tournament-standing-table--experience-rating th');
+
+    expect(viewport).toContain('overscroll-behavior: none');
+    expect(header).toContain('background: rgb(186, 195, 208)');
+    expect(header).not.toContain('background: transparent');
+  });
+});

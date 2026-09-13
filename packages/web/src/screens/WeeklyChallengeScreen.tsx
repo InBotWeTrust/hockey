@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Check, CircleDollarSign, Sparkles, Star, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Check, CircleDollarSign, Sparkles, Star, Ticket, TrendingUp } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchWeeklyChallengeCatalog } from '../api/weeklyChallenge.js';
+import { fetchWeeklyChallengeCatalog, weeklyChallengeKeys } from '../api/weeklyChallenge.js';
 import {
   claimWeeklyChallengeReward,
   weeklyChallengeNeedsAction,
@@ -86,6 +86,9 @@ function rewardPartItems(
     reward.experience > 0
       ? { tone: 'experience' as const, text: `${prefix}${numberText(reward.experience)}` }
       : null,
+    reward.tokens > 0
+      ? { tone: 'token' as const, text: `${prefix}${numberText(reward.tokens)}` }
+      : null,
   ].filter((part): part is Exclude<typeof part, null> => part !== null);
 }
 
@@ -140,12 +143,10 @@ export function WeeklyChallengeScreen({
   } | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
   const query = useQuery({
-    queryKey: ['weekly-challenge', 'catalog'],
+    queryKey: weeklyChallengeKeys.catalog,
     queryFn: fetchWeeklyChallengeCatalog,
-    refetchInterval: 30_000,
-    refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
   });
-  const { refetch } = query;
   const catalog = query.data ?? { future: [], active: [], completed: [] };
   const visibleChallenges = catalog[filter];
   const selectedFilter = FILTERS.find((item) => item.id === filter) ?? FILTERS[0]!;
@@ -162,6 +163,8 @@ export function WeeklyChallengeScreen({
       setClaimedReward({ title: challenge.title, reward: challenge.reward });
       window.setTimeout(() => setClaimedReward(null), 2800);
       void queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
+      void queryClient.invalidateQueries({ queryKey: ['profile'] });
+      void queryClient.invalidateQueries({ queryKey: ['inventory'] });
     },
     onError: (error) => {
       triggerHaptic('error');
@@ -175,8 +178,28 @@ export function WeeklyChallengeScreen({
   }, []);
 
   useEffect(() => {
+    if (query.data === undefined) return;
+    const boundaryDelays = [
+      ...query.data.future.map(
+        (challenge) => Date.parse(challenge.startAt) - Date.parse(challenge.serverNow),
+      ),
+      ...query.data.active.map(
+        (challenge) => Date.parse(challenge.endAt) - Date.parse(challenge.serverNow),
+      ),
+    ].filter((delay) => Number.isFinite(delay) && delay >= 0);
+    if (boundaryDelays.length === 0) return;
+    const id = window.setInterval(() => {
+      window.clearInterval(id);
+      void queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
+    }, Math.min(...boundaryDelays) + 250);
+    return () => window.clearInterval(id);
+  }, [query.data, queryClient]);
+
+  useEffect(() => {
     const refresh = (): void => {
-      if (document.visibilityState !== 'hidden') void refetch({ cancelRefetch: false });
+      if (document.visibilityState !== 'hidden') {
+        void queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
+      }
     };
     window.addEventListener('focus', refresh);
     window.addEventListener('pageshow', refresh);
@@ -186,7 +209,7 @@ export function WeeklyChallengeScreen({
       window.removeEventListener('pageshow', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [refetch]);
+  }, [queryClient]);
 
   useEffect(() => {
     if (query.data === undefined) return;
@@ -309,7 +332,9 @@ function ChallengeCard({
         )}
       </div>
       <div>
-        <h2 className="weekly-challenge-card__title">{challenge.title}</h2>
+        {challenge.title && (
+          <h2 className="weekly-challenge-card__title">{challenge.title}</h2>
+        )}
         <div className="weekly-challenge-card__dates">
           {dateText(challenge.startAt)} — {dateText(challenge.endAt)} МСК
         </div>
@@ -337,9 +362,18 @@ function ChallengeCard({
           color={rewardColor('experience')}
           icon={<TrendingUp size={16} strokeWidth={2.55} />}
         />
+        <RewardChip
+          label="Токены"
+          value={challenge.reward.tokens}
+          color={rewardColor('token')}
+          icon={<Ticket size={16} strokeWidth={2.55} />}
+        />
       </div>
 
-      <ul className="weekly-challenge-task-list" aria-label={`Задачи челленджа ${challenge.title}`}>
+      <ul
+        className="weekly-challenge-task-list"
+        aria-label={challenge.title ? `Задачи челленджа ${challenge.title}` : 'Задачи челленджа'}
+      >
         {challenge.tasks.map((task) => {
           const percent =
             task.progress === null

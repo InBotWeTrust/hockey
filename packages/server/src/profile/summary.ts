@@ -415,7 +415,7 @@ export async function buildProfileProgress(
   const level = toNumber(row.level);
   const shots = toNumber(row.lifetime_shots_total);
   const goals = toNumber(row.lifetime_goals_total);
-  const accuracy = shots > 0 ? Math.round((goals / shots) * 100) : 0;
+  const accuracy = shots > 0 ? Math.round((goals / shots) * 1_000) / 10 : 0;
   await grantStatAchievements(db, row.id, {
     lifetimeShots: shots,
     lifetimeGoals: goals,

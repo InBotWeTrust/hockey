@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from './authStore.js';
+import { queryClient } from '../app/queryClient.js';
 import { getApiBaseUrl, isNativeAndroid } from '../platform/runtime.js';
 import { sessionStorage } from './sessionStorage.js';
 import { nativePush } from '../platform/push.js';
@@ -27,6 +28,7 @@ export function useLogout(): () => Promise<void> {
     } catch {
       // fire-and-forget
     }
+    queryClient.clear();
     clearSession();
     await sessionStorage.clear().catch(() => undefined);
     navigate('/login', { replace: true });

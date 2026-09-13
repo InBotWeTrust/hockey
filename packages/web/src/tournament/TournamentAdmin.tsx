@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { ApiError } from '../api/apiFetch.js';
@@ -9,11 +9,13 @@ import {
   fetchAdminTournamentDuelTemplates,
   fetchAdminTournamentUsers,
   fetchAdminTournaments,
+  fetchTournamentEconomyPreset,
   publishAdminTournament,
   uploadAdminTournamentArtwork,
   updateAdminTournament,
   type AdminTournament,
   type AdminTournamentUserOption,
+  type TournamentEconomyPreset,
 } from './adminApi.js';
 import { tournamentTimezoneLabel, tournamentTimezoneOptionLabel } from './timezoneLabel.js';
 import { TournamentOperations } from './TournamentOperations.js';
@@ -51,6 +53,7 @@ type Visibility = 'public' | 'hidden';
 type DailyMetric = 'goals_sum' | 'accuracy_average' | 'daily_place_points';
 type PlayoffSize = 2 | 4 | 8 | 16;
 type NumericDraftValue = number | '';
+type EconomyPresetState = 'loading' | 'pristine' | 'custom' | 'error';
 type ClassicIncompletePolicy = 'all_shots' | 'completed_periods' | 'completed_game';
 
 interface ClassicPeriodDraft {
@@ -197,7 +200,7 @@ const defaultDraft: TournamentDraft = {
   dailyMetric: 'goals_sum',
   bestDays: '',
   classicShotsPerPeriod: 30,
-  classicPeriodMinutes: 20,
+  classicPeriodMinutes: 3,
   classicBreakMinutes: 15,
   classicIncompletePolicy: 'completed_game',
   classicPeriods: defaultClassicPeriods(),
@@ -519,6 +522,20 @@ function rewardsDraft(value: unknown): string {
         })
         .join('\n')
     : '';
+}
+
+function economyPresetDraft(
+  preset: TournamentEconomyPreset,
+): Pick<TournamentDraft, 'entryFeeCoins' | 'regularRewards' | 'playoffRewards'> {
+  return {
+    entryFeeCoins: preset.entryFeeCoins,
+    regularRewards: rewardsDraft(preset.regularRewards),
+    playoffRewards: rewardsDraft(preset.playoffRewards),
+  };
+}
+
+function isEconomyPresetParticipantLimit(value: NumericDraftValue): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 2 && value <= 10_000;
 }
 
 const UNSUPPORTED_REGULAR_SOURCE_NOTICE =
@@ -1665,6 +1682,8 @@ export function TournamentAdmin(): JSX.Element {
   const [validationNotice, setValidationNotice] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState(freshDraft);
+  const [economyPresetState, setEconomyPresetState] = useState<EconomyPresetState>('pristine');
+  const [pendingInitialCreate, setPendingInitialCreate] = useState(false);
   const [editingTournament, setEditingTournament] = useState<AdminTournament | null>(null);
   const [playoffScheduleOnly, setPlayoffScheduleOnly] = useState(false);
   const [selectedTournament, setSelectedTournament] = useState<AdminTournament | null>(null);
@@ -1677,6 +1696,20 @@ export function TournamentAdmin(): JSX.Element {
   const saveQueueGeneration = useRef(0);
   const createInFlight = useRef(false);
   const artworkUploadGeneration = useRef(0);
+  const economyPresetRequestGeneration = useRef(0);
+  const appliedEconomyPresetParticipantLimit = useRef<number | null>(null);
+  const currentParticipantLimit = useRef<NumericDraftValue>(draft.participantLimit);
+  currentParticipantLimit.current = draft.participantLimit;
+  const economyReady =
+    economyPresetState === 'custom' ||
+    (economyPresetState === 'pristine' &&
+      appliedEconomyPresetParticipantLimit.current === draft.participantLimit);
+  const liveDraft = useRef({ draft, ready: economyReady, wizardOpen });
+  liveDraft.current = { draft, ready: playoffScheduleOnly || economyReady, wizardOpen };
+  const markEconomyCustom = () => {
+    economyPresetRequestGeneration.current += 1;
+    setEconomyPresetState('custom');
+  };
   const artworkUpload = useMutation({
     mutationFn: ({ file }: { file: File; generation: number }) =>
       uploadAdminTournamentArtwork(file),
@@ -1692,6 +1725,7 @@ export function TournamentAdmin(): JSX.Element {
     saveQueue.current = new TournamentDraftSaveQueue({
       initialRevision: tournament.revision,
       initialSnapshotKey: snapshot,
+      canDispatch: () => liveDraft.current.ready && liveDraft.current.wizardOpen,
       save: (body, expectedRevision) =>
         updateAdminTournament(tournament.id, expectedRevision, body),
       revisionOf: (result) => result.tournament.revision,
@@ -1729,8 +1763,81 @@ export function TournamentAdmin(): JSX.Element {
     },
   });
 
+  const requestEconomyPreset = useCallback((participantLimit: NumericDraftValue, force = false) => {
+    if (!force && appliedEconomyPresetParticipantLimit.current === participantLimit) return;
+    liveDraft.current.ready = false;
+    saveQueue.current?.pause();
+    if (!isEconomyPresetParticipantLimit(participantLimit)) {
+      setEconomyPresetState('error');
+      return;
+    }
+    const generation = economyPresetRequestGeneration.current + 1;
+    economyPresetRequestGeneration.current = generation;
+    setValidationNotice(null);
+    setEconomyPresetState('loading');
+    void fetchTournamentEconomyPreset(participantLimit)
+      .then((preset) => {
+        if (
+          economyPresetRequestGeneration.current !== generation ||
+          currentParticipantLimit.current !== participantLimit ||
+          preset.participantLimit !== participantLimit
+        ) {
+          return;
+        }
+        appliedEconomyPresetParticipantLimit.current = participantLimit;
+        setDraft((current) => ({ ...current, ...economyPresetDraft(preset) }));
+        setEconomyPresetState('pristine');
+      })
+      .catch(() => {
+        if (
+          economyPresetRequestGeneration.current === generation &&
+          currentParticipantLimit.current === participantLimit
+        ) {
+          setEconomyPresetState('error');
+          setValidationNotice(
+            'Не удалось подобрать рекомендуемые значения. Проверьте лимит участников и попробуйте ещё раз.',
+          );
+        }
+      });
+  }, []);
+
   useEffect(() => {
-    if (!wizardOpen || editingTournament === null || create.isPending || playoffScheduleOnly)
+    if (!wizardOpen || economyPresetState !== 'pristine') return;
+    requestEconomyPreset(draft.participantLimit);
+  }, [draft.participantLimit, economyPresetState, requestEconomyPreset, wizardOpen]);
+
+  useEffect(() => {
+    if (
+      !pendingInitialCreate ||
+      economyPresetState === 'loading' ||
+      economyPresetState === 'error' ||
+      (economyPresetState === 'pristine' &&
+        appliedEconomyPresetParticipantLimit.current !== draft.participantLimit)
+    ) {
+      return;
+    }
+    setPendingInitialCreate(false);
+    if (!draft.title.trim() || createInFlight.current || create.isPending) return;
+    let body: ReturnType<typeof serializeDraft>;
+    try {
+      body = serializeDraft(draft);
+    } catch (error) {
+      setValidationNotice(error instanceof Error ? error.message : 'Проверьте заполненные поля.');
+      return;
+    }
+    createInFlight.current = true;
+    create.mutate({ body, snapshot: JSON.stringify(body) });
+  }, [create, draft, economyPresetState, pendingInitialCreate]);
+
+  useEffect(() => {
+    if (!economyReady && !playoffScheduleOnly) saveQueue.current?.pause();
+    if (
+      !wizardOpen ||
+      editingTournament === null ||
+      create.isPending ||
+      playoffScheduleOnly ||
+      !economyReady
+    )
       return;
     setValidationNotice(null);
     let snapshot: string;
@@ -1745,18 +1852,26 @@ export function TournamentAdmin(): JSX.Element {
     if (snapshot === lastSavedSnapshot.current) {
       const queueStatus = saveQueue.current?.status;
       if (queueStatus === 'saving' || queueStatus === 'error') {
-        saveQueue.current?.enqueue(body, snapshot);
+        saveQueue.current?.resume(body, snapshot);
       } else {
+        saveQueue.current?.resume(body, snapshot);
         setSaveState('saved');
       }
       return;
     }
     setSaveState('saving');
     saveDebounce.current = window.setTimeout(() => {
-      saveQueue.current?.enqueue(body, snapshot);
+      saveQueue.current?.resume(body, snapshot);
     }, 600);
     return () => window.clearTimeout(saveDebounce.current);
-  }, [draft, editingTournament?.id, wizardOpen, create.isPending, playoffScheduleOnly]);
+  }, [
+    draft,
+    editingTournament?.id,
+    wizardOpen,
+    create.isPending,
+    playoffScheduleOnly,
+    economyReady,
+  ]);
   const updatePlayoffRound = (index: number, patch: Partial<PlayoffRoundDraft>) => {
     setDraft((current) => ({
       ...current,
@@ -1852,9 +1967,12 @@ export function TournamentAdmin(): JSX.Element {
     setSaveError(null);
     artworkUploadGeneration.current += 1;
     artworkUpload.reset();
+    economyPresetRequestGeneration.current += 1;
+    appliedEconomyPresetParticipantLimit.current = null;
     setWizardOpen(false);
     setConfirmClose(false);
     setFinishing(false);
+    setPendingInitialCreate(false);
     setPlayoffScheduleOnly(false);
     if (tournament !== null) setSelectedTournament(tournament);
     setEditingTournament(null);
@@ -1878,7 +1996,13 @@ export function TournamentAdmin(): JSX.Element {
   };
 
   const finishWizard = async () => {
-    if (!draft.title.trim() || finishing || artworkUpload.isPending) return;
+    if (
+      !draft.title.trim() ||
+      finishing ||
+      artworkUpload.isPending ||
+      (!playoffScheduleOnly && !economyReady)
+    )
+      return;
     let body: ReturnType<typeof serializeDraft>;
     try {
       body = serializeDraft(draft);
@@ -1888,6 +2012,21 @@ export function TournamentAdmin(): JSX.Element {
     }
     setValidationNotice(null);
     setFinishing(true);
+    const snapshot = JSON.stringify(body);
+    const presetGeneration = economyPresetRequestGeneration.current;
+    const queueGeneration = saveQueueGeneration.current;
+    const stillCurrent = () => {
+      try {
+        return (
+          liveDraft.current.wizardOpen &&
+          liveDraft.current.ready &&
+          economyPresetRequestGeneration.current === presetGeneration &&
+          JSON.stringify(serializeDraft(liveDraft.current.draft)) === snapshot
+        );
+      } catch {
+        return false;
+      }
+    };
     if (saveDebounce.current !== undefined) window.clearTimeout(saveDebounce.current);
     let publishingDraft = false;
     try {
@@ -1895,6 +2034,10 @@ export function TournamentAdmin(): JSX.Element {
         if (createInFlight.current) return;
         createInFlight.current = true;
         const result = await create.mutateAsync({ body, snapshot: JSON.stringify(body) });
+        if (!stillCurrent()) {
+          setFinishing(false);
+          return;
+        }
         publishingDraft = true;
         const published = await publishAdminTournament(
           result.tournament.id,
@@ -1915,9 +2058,15 @@ export function TournamentAdmin(): JSX.Element {
         );
         return;
       }
-      saveQueue.current?.enqueue(body, JSON.stringify(body));
-      if (saveQueue.current?.status === 'error') saveQueue.current.retry();
-      const result = await saveQueue.current?.flush();
+      const result = await saveQueue.current?.flushSnapshot(body, snapshot, stillCurrent);
+      if (
+        !stillCurrent() ||
+        saveQueueGeneration.current !== queueGeneration ||
+        saveQueue.current?.snapshotKey !== snapshot
+      ) {
+        setFinishing(false);
+        return;
+      }
       const savedTournament = result?.tournament ?? editingTournament;
       if (savedTournament.status === 'draft') {
         publishingDraft = true;
@@ -1983,8 +2132,11 @@ export function TournamentAdmin(): JSX.Element {
           }
           artworkUploadGeneration.current += 1;
           artworkUpload.reset();
+          economyPresetRequestGeneration.current += 1;
+          appliedEconomyPresetParticipantLimit.current = null;
           setEditingTournament(selectedTournament);
           setDraft(nextDraft);
+          setEconomyPresetState('custom');
           const snapshot = JSON.stringify(serializeDraft(nextDraft));
           lastSavedSnapshot.current = snapshot;
           initializeSaveQueue(selectedTournament, snapshot);
@@ -1994,6 +2146,7 @@ export function TournamentAdmin(): JSX.Element {
           setSaveState('saved');
           setSaveError(null);
           setValidationNotice(null);
+          setPendingInitialCreate(false);
           setWizardOpen(true);
           setSelectedTournament(null);
         }}
@@ -2023,17 +2176,21 @@ export function TournamentAdmin(): JSX.Element {
             setSaveNotice(null);
             artworkUploadGeneration.current += 1;
             artworkUpload.reset();
+            economyPresetRequestGeneration.current += 1;
+            appliedEconomyPresetParticipantLimit.current = null;
             saveQueueGeneration.current += 1;
             saveQueue.current = undefined;
             setEditingTournament(null);
             const nextDraft = freshDraft();
             setDraft(nextDraft);
+            setEconomyPresetState('pristine');
             lastSavedSnapshot.current = JSON.stringify(serializeDraft(nextDraft));
             setStage(0);
             setMaxStage(0);
             setSaveState('idle');
             setValidationNotice(null);
             setFinishing(false);
+            setPendingInitialCreate(false);
             setPlayoffScheduleOnly(false);
             setWizardOpen(true);
           }}
@@ -2089,6 +2246,7 @@ export function TournamentAdmin(): JSX.Element {
                   type="button"
                   className="icon-btn"
                   aria-label="Закрыть"
+                  disabled={finishing}
                   onClick={requestClose}
                 >
                   <X size={16} />
@@ -2101,7 +2259,7 @@ export function TournamentAdmin(): JSX.Element {
                       key={label}
                       type="button"
                       className={stage === index ? 'chip chip--active' : 'chip'}
-                      disabled={index > maxStage}
+                      disabled={finishing || index > maxStage}
                       onClick={() => setStage(index)}
                     >
                       {index + 1}. {label}
@@ -2109,7 +2267,11 @@ export function TournamentAdmin(): JSX.Element {
                   ))}
                 </div>
               )}
-              <div className="modal-copy tournament-wizard__body">
+              <fieldset
+                className="modal-copy tournament-wizard__body"
+                disabled={finishing}
+                style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
+              >
                 {stage === 0 && (
                   <div className="tournament-admin-grid tournament-admin-grid--single">
                     <TournamentAdminField
@@ -2227,9 +2389,10 @@ export function TournamentAdmin(): JSX.Element {
                         type="number"
                         min="0"
                         value={draft.entryFeeCoins}
-                        onChange={(event) =>
-                          setDraft({ ...draft, entryFeeCoins: editableNumber(event.target.value) })
-                        }
+                        onChange={(event) => {
+                          setDraft({ ...draft, entryFeeCoins: editableNumber(event.target.value) });
+                          markEconomyCustom();
+                        }}
                       />
                     </TournamentAdminField>
                     <TournamentAdminField
@@ -2328,12 +2491,18 @@ export function TournamentAdmin(): JSX.Element {
                         min="2"
                         max={draft.regularSource === 'head_to_head' ? 64 : 10_000}
                         value={draft.participantLimit}
-                        onChange={(event) =>
+                        onChange={(event) => {
                           setDraft({
                             ...draft,
                             participantLimit: editableNumber(event.target.value),
-                          })
-                        }
+                          });
+                          appliedEconomyPresetParticipantLimit.current = null;
+                          if (economyPresetState !== 'custom') {
+                            liveDraft.current.ready = false;
+                            saveQueue.current?.pause();
+                            setEconomyPresetState('pristine');
+                          }
+                        }}
                       />
                     </TournamentAdminField>
                     {draft.regularSource === 'head_to_head' ? (
@@ -2978,15 +3147,36 @@ export function TournamentAdmin(): JSX.Element {
                 )}
                 {stage === 5 && (
                   <>
+                    <div className="tournament-admin-note">
+                      {economyPresetState === 'loading'
+                        ? 'Подбираем рекомендуемые значения экономики…'
+                        : economyPresetState === 'error'
+                          ? 'Не удалось подобрать рекомендуемые значения. Проверьте лимит участников и попробуйте ещё раз.'
+                          : 'Рекомендуемые значения учитывают текущий лимит участников.'}
+                      <button
+                        type="button"
+                        className="admin-compact-btn"
+                        disabled={finishing || economyPresetState === 'loading'}
+                        onClick={() => requestEconomyPreset(draft.participantLimit, true)}
+                      >
+                        Применить рекомендуемые значения
+                      </button>
+                    </div>
                     <RewardsEditor
                       label="регулярки"
                       value={draft.regularRewards}
-                      onChange={(regularRewards) => setDraft({ ...draft, regularRewards })}
+                      onChange={(regularRewards) => {
+                        setDraft({ ...draft, regularRewards });
+                        markEconomyCustom();
+                      }}
                     />
                     <RewardsEditor
                       label="плей-офф"
                       value={draft.playoffRewards}
-                      onChange={(playoffRewards) => setDraft({ ...draft, playoffRewards })}
+                      onChange={(playoffRewards) => {
+                        setDraft({ ...draft, playoffRewards });
+                        markEconomyCustom();
+                      }}
                     />
                   </>
                 )}
@@ -3053,7 +3243,7 @@ export function TournamentAdmin(): JSX.Element {
                     </span>
                   </div>
                 )}
-              </div>
+              </fieldset>
               <div className="modal-actions">
                 <div
                   className="tournament-wizard__save-state"
@@ -3089,18 +3279,31 @@ export function TournamentAdmin(): JSX.Element {
                         <button
                           type="button"
                           className="admin-compact-btn"
-                          onClick={() => saveQueue.current?.retry()}
+                          disabled={!economyReady}
+                          onClick={() => {
+                            if (economyReady) saveQueue.current?.retry();
+                          }}
                         >
                           Повторить сохранение
                         </button>
                       )}
                     </>
                   )}
+                  {economyPresetState === 'error' && (
+                    <button
+                      type="button"
+                      className="admin-compact-btn"
+                      onClick={() => requestEconomyPreset(draft.participantLimit, true)}
+                    >
+                      Повторить подбор экономики
+                    </button>
+                  )}
                 </div>
                 {!playoffScheduleOnly && stage > 0 && (
                   <button
                     type="button"
                     className="btn btn--ghost"
+                    disabled={finishing}
                     onClick={() => setStage(stage - 1)}
                   >
                     Назад
@@ -3111,23 +3314,13 @@ export function TournamentAdmin(): JSX.Element {
                     type="button"
                     className="modal-primary btn btn--cta"
                     disabled={
+                      finishing ||
                       artworkUpload.isPending ||
                       (stage === 0 && (draft.title.trim() === '' || create.isPending))
                     }
                     onClick={() => {
                       if (stage === 0 && editingTournament === null) {
-                        if (createInFlight.current) return;
-                        let body: ReturnType<typeof serializeDraft>;
-                        try {
-                          body = serializeDraft(draft);
-                        } catch (error) {
-                          setValidationNotice(
-                            error instanceof Error ? error.message : 'Проверьте заполненные поля.',
-                          );
-                          return;
-                        }
-                        createInFlight.current = true;
-                        create.mutate({ body, snapshot: JSON.stringify(body) });
+                        if (!createInFlight.current) setPendingInitialCreate(true);
                         return;
                       }
                       try {
@@ -3154,7 +3347,8 @@ export function TournamentAdmin(): JSX.Element {
                       !draft.title.trim() ||
                       create.isPending ||
                       artworkUpload.isPending ||
-                      finishing
+                      finishing ||
+                      (!playoffScheduleOnly && !economyReady)
                     }
                     onClick={() => void finishWizard()}
                   >

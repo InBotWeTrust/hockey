@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -68,6 +68,40 @@ function renderAchievements(): void {
   });
   render(
     <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/achievements']}>
+        <AchievementsScreen />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+function ProfileAchievementCount(): JSX.Element {
+  const profileQuery = useQuery<{ achievements: Array<{ id: string }> }>({
+    queryKey: ['profile'],
+    queryFn: async () => {
+      const response = await globalThis.fetch('/api/me');
+      return (await response.json()) as { achievements: Array<{ id: string }> };
+    },
+  });
+
+  return (
+    <output aria-label="Полученных достижений в профиле">
+      {profileQuery.data?.achievements.length ?? 0}
+    </output>
+  );
+}
+
+function renderAchievementsWithCachedProfile(achievementCount: number): void {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  client.setQueryDefaults(['profile'], { staleTime: Infinity });
+  client.setQueryData(['profile'], {
+    achievements: Array.from({ length: achievementCount }, (_, index) => ({ id: `${index}` })),
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <ProfileAchievementCount />
       <MemoryRouter initialEntries={['/achievements']}>
         <AchievementsScreen />
       </MemoryRouter>
@@ -240,7 +274,11 @@ describe('AchievementsScreen', () => {
 
     expect(await screen.findByText('Задания · 2/5')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Все' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Получить' })).toBeInTheDocument();
+    const claimableTab = screen.getByRole('tab', { name: 'Получить' });
+    expect(claimableTab).toBeInTheDocument();
+    expect(within(claimableTab).getByLabelText('Требуется действие')).toHaveClass(
+      'segmented-tabs__attention--small',
+    );
     expect(screen.getByRole('tab', { name: 'Ежедневная' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Тренировка' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Турниры' })).toBeInTheDocument();
@@ -358,17 +396,22 @@ describe('AchievementsScreen', () => {
       isClaimable: true,
       rewardCurrency: 10,
     });
+    let claimed = false;
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith('/api/achievements')) {
+        const achievement = claimed
+          ? { ...readyAchievement, status: 'claimed', isClaimable: false }
+          : readyAchievement;
         return Promise.resolve(
-          new Response(JSON.stringify({ achievements: [readyAchievement], unclaimedCount: 1 }), {
+          new Response(JSON.stringify({ achievements: [achievement], unclaimedCount: claimed ? 0 : 1 }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           }),
         );
       }
       if (url.endsWith('/api/achievements/daily-ready/claim')) {
+        claimed = true;
         return Promise.resolve(
           new Response(
             JSON.stringify({
@@ -398,6 +441,8 @@ describe('AchievementsScreen', () => {
     });
     renderAchievements();
 
+    const claimableTab = await screen.findByRole('tab', { name: 'Получить' });
+    expect(within(claimableTab).getByLabelText('Требуется действие')).toBeInTheDocument();
     const card = (await screen.findByText('Награда ждёт')).closest('button');
     expect(card).not.toBeNull();
     fireEvent.click(card as HTMLButtonElement);
@@ -423,5 +468,72 @@ describe('AchievementsScreen', () => {
     expect(screen.queryByText('+0 зв.', { exact: false })).toBeNull();
     expect(screen.queryByText('+0 опыта', { exact: false })).toBeNull();
     expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
+    await waitFor(() => {
+      expect(screen.queryByRole('tab', { name: 'Получить' })).toBeNull();
+    });
+  });
+
+  it('refreshes the cached profile achievements after claiming a reward', async () => {
+    const readyAchievement = makeAchievement({
+      id: 'tournament-cup',
+      title: 'Кубок над головой',
+      status: 'completed_unclaimed',
+      isUnlocked: true,
+      isClaimable: true,
+      rewardCurrency: 3750,
+    });
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/achievements')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ achievements: [readyAchievement], unclaimedCount: 1 }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      if (url.endsWith('/api/achievements/tournament-cup/claim')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              achievement: { ...readyAchievement, status: 'claimed', isClaimable: false },
+              rewards: { currency: 3750, stars: 100, experience: 100, tokens: 5 },
+              balances: { currencyBalance: 100, starBalance: 10, experienceBalance: 20 },
+              unclaimedCount: 0,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      if (url.endsWith('/api/me')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              achievements: Array.from({ length: 24 }, (_, index) => ({ id: `${index}` })),
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      if (url.endsWith('/api/weekly-challenge/current')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ challenge: null, pendingRewards: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
+    });
+    renderAchievementsWithCachedProfile(23);
+
+    expect(await screen.findByLabelText('Полученных достижений в профиле')).toHaveTextContent('23');
+    const card = (await screen.findByText('Кубок над головой')).closest('button');
+    expect(card).not.toBeNull();
+    fireEvent.click(card as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Полученных достижений в профиле')).toHaveTextContent('24');
+    });
   });
 });

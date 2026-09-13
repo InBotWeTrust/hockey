@@ -17,6 +17,7 @@ describe.skipIf(!hasIntegrationEnv)('refresh session storage', () => {
 
   it('saves refresh and consumes it exactly once', async () => {
     await saveRefresh(redis, { jti: 'j-1', userId: 'u-1', ttlSec: 60 });
+    expect(await redis.get('refresh:j-1')).toBe('u-1');
     const first = await consumeRefresh(redis, 'j-1');
     expect(first).toEqual({ userId: 'u-1' });
     const second = await consumeRefresh(redis, 'j-1');

@@ -63,6 +63,11 @@ import { OnboardingAdmin } from './OnboardingAdmin.js';
 import { TournamentAdmin } from '../tournament/TournamentAdmin.js';
 import { tournamentTimezoneLabel } from '../tournament/timezoneLabel.js';
 import {
+  createAdminCoinPackage,
+  fetchAdminCoinPackages,
+  patchAdminCoinPackage,
+  type AdminCoinPackage,
+  type AdminCoinPackageInput,
   createAdminInventoryItem,
   createAdminDuelTemplate,
   deleteAdminDuelTemplate,
@@ -116,6 +121,7 @@ import {
   type AdminDuelHistoryItem,
   type AdminDuelHistoryResponse,
   type AdminDuelPeriodSpeedPreset,
+  type AdminDuelRewardRules,
   type AdminDuelTemplate,
   type AdminDuelTemplateInput,
   type AdminChannelPeriod,
@@ -161,6 +167,7 @@ type AdminTab =
   | 'channel'
   | 'anticheat'
   | 'payments'
+  | 'coin-packages'
   | 'inventory'
   | 'achievements'
   | 'bonus-games'
@@ -184,6 +191,7 @@ const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'channel', label: 'Коммуникации', icon: <Megaphone size={15} /> },
   { id: 'anticheat', label: 'Античит', icon: <ShieldAlert size={15} /> },
   { id: 'payments', label: 'Платежи', icon: <CreditCard size={15} /> },
+  { id: 'coin-packages', label: 'Пакеты монет', icon: <Wallet size={15} /> },
   { id: 'inventory', label: 'Инвентарь', icon: <Package size={15} /> },
   { id: 'achievements', label: 'Задания', icon: <Medal size={15} /> },
   { id: 'bonus-games', label: 'Бонусные игры', icon: <Gamepad2 size={15} /> },
@@ -221,6 +229,23 @@ const venueOptions = [
 const venueSelectOptions: Array<GlassSelectOption<AdminMatchmakingVenuePolicy>> = venueOptions.map(
   (option) => ({ ...option }),
 );
+
+const defaultDuelRewardRules: AdminDuelRewardRules = {
+  equalExperienceTolerancePercent: 10,
+  strongerWin: { coins: 0, stars: 0, tokens: 0 },
+  equalWin: { coins: 0, stars: 0, tokens: 0 },
+  weakerWin: { coins: 0, stars: 0, tokens: 0 },
+  draw: { coins: 0, stars: 0, tokens: 0 },
+  loss: { coins: 0, stars: 0, tokens: 0 },
+};
+
+const duelRewardRows = [
+  { key: 'strongerWin', label: 'Победа над более опытным' },
+  { key: 'equalWin', label: 'Победа над равным' },
+  { key: 'weakerWin', label: 'Победа над менее опытным' },
+  { key: 'draw', label: 'Ничья' },
+  { key: 'loss', label: 'Поражение' },
+] as const;
 
 const adminAchievementsTabs: Array<{ id: AdminAchievementsTab; label: string }> = [
   { id: 'achievements', label: 'Задания' },
@@ -802,6 +827,11 @@ export function AdminScreen(): JSX.Element {
     queryFn: () => fetchAdminPayments(paymentsQuery),
     enabled: canTryAdmin && tab === 'payments',
   });
+  const coinPackages = useQuery({
+    queryKey: ['admin', 'coin-packages'],
+    queryFn: fetchAdminCoinPackages,
+    enabled: canTryAdmin && tab === 'coin-packages',
+  });
   const feedbackQuery = {
     kind: feedbackKind,
     status: feedbackStatus,
@@ -863,6 +893,7 @@ export function AdminScreen(): JSX.Element {
       settings.error,
       achievements.error,
       payments.error,
+      coinPackages.error,
       inventory.error,
       duelTemplates.error,
       feedback.error,
@@ -954,8 +985,8 @@ export function AdminScreen(): JSX.Element {
                 {tabs.map((item) => {
                   const label =
                     item.id === 'tournaments' && pendingTournamentApplicationCount > 0
-                        ? `${item.label} (${pendingTournamentApplicationCount})`
-                        : item.label;
+                      ? `${item.label} (${pendingTournamentApplicationCount})`
+                      : item.label;
                   return (
                     <button
                       key={item.id}
@@ -1103,6 +1134,17 @@ export function AdminScreen(): JSX.Element {
           onResetFilters={resetPaymentFilters}
         />
       )}
+      {tab === 'coin-packages' && (
+        <CoinPackagesPanel
+          loading={coinPackages.isLoading}
+          error={coinPackages.isError}
+          packages={coinPackages.data?.packages ?? []}
+          onChanged={() => {
+            void queryClient.invalidateQueries({ queryKey: ['admin', 'coin-packages'] });
+            void queryClient.invalidateQueries({ queryKey: ['bank', 'packages'] });
+          }}
+        />
+      )}
       {tab === 'inventory' && (
         <InventoryPanel
           loading={inventory.isLoading}
@@ -1127,6 +1169,7 @@ export function AdminScreen(): JSX.Element {
         <DuelTemplatesPanel
           loading={duelTemplates.isLoading}
           templates={duelTemplates.data?.templates ?? []}
+          rewardAmountLimit={duelTemplates.data?.rewardAmountLimit ?? 0}
           onChanged={() => {
             void queryClient.invalidateQueries({ queryKey: ['admin', 'duel-templates'] });
           }}
@@ -4131,9 +4174,18 @@ function OfficialBroadcastPanel(): JSX.Element {
         <div>
           <div className="admin-broadcast-card__title">Личное сообщение от профиля игры</div>
           <div className="admin-broadcast-card__audience">
-            {audience.isLoading ? 'Считаем получателей...' : `${recipientCount} получателей`}
+            {audience.isLoading
+              ? 'Считаем получателей...'
+              : audience.isError
+                ? null
+                : `${recipientCount} получателей`}
           </div>
         </div>
+        {audience.isError && (
+          <div role="alert" className="admin-official-dialog__error">
+            Не удалось загрузить получателей
+          </div>
+        )}
         <p>
           Сообщение появится отдельным личным диалогом у каждого незаблокированного игрока.
           Администраторы и официальный аккаунт исключены.
@@ -4156,7 +4208,12 @@ function OfficialBroadcastPanel(): JSX.Element {
         <button
           type="button"
           className="btn btn--cta"
-          disabled={trimmedContent.length === 0 || recipientCount === 0 || sendMutation.isPending}
+          disabled={
+            trimmedContent.length === 0 ||
+            recipientCount === 0 ||
+            audience.isError ||
+            sendMutation.isPending
+          }
           onClick={() => setConfirmOpen(true)}
         >
           Проверить и отправить
@@ -5335,11 +5392,23 @@ function PaymentCard({ payment }: { payment: AdminPayment }): JSX.Element {
       <div style={{ minWidth: 0 }}>
         <div style={{ color: 'var(--ink)', fontSize: 14, fontWeight: 950 }}>{payment.title}</div>
         <div style={{ marginTop: 5, color: 'var(--muted)', fontSize: 11, fontWeight: 800 }}>
-          {payment.userDisplayName} · {dateText(payment.createdAt)}
+          {payment.userDisplayName}
         </div>
-        <div style={{ marginTop: 5, color: 'var(--muted)', fontSize: 10, fontWeight: 750 }}>
-          {payment.provider}
-          {payment.providerPaymentId ? ` · ${payment.providerPaymentId}` : ''}
+        <div
+          style={{
+            marginTop: 5,
+            color: 'var(--muted)',
+            fontSize: 11,
+            lineHeight: 1.5,
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {payment.coinAmount != null && <div>{numberText(payment.coinAmount)} монет</div>}
+          <div>{payment.provider}</div>
+          <div>ID: {payment.id}</div>
+          <div>ID провайдера: {payment.providerPaymentId ?? '—'}</div>
+          <div>Создан: {dateTimeText(payment.createdAt)}</div>
+          <div>Оплачен: {dateTimeText(payment.paidAt)}</div>
         </div>
       </div>
       <div style={{ display: 'grid', justifyItems: 'end', gap: 6 }}>
@@ -5349,6 +5418,266 @@ function PaymentCard({ payment }: { payment: AdminPayment }): JSX.Element {
         </span>
       </div>
     </article>
+  );
+}
+
+function CoinPackagesPanel({
+  loading,
+  error,
+  packages,
+  onChanged,
+}: {
+  loading: boolean;
+  error: boolean;
+  packages: AdminCoinPackage[];
+  onChanged: () => void;
+}): JSX.Element {
+  const nextEditorId = useRef(0);
+  const [editing, setEditing] = useState<{ id: number; item: AdminCoinPackage | null } | null>(
+    null,
+  );
+  function openEditor(item: AdminCoinPackage | null): void {
+    setEditing({ id: ++nextEditorId.current, item });
+  }
+  return (
+    <>
+      <div
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}
+      >
+        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+          Пакеты монет ({numberText(packages.length)})
+        </div>
+        <button type="button" className="btn btn--cta" onClick={() => openEditor(null)}>
+          Создать пакет
+        </button>
+      </div>
+      {editing !== null && (
+        <CoinPackageEditor
+          key={editing.id}
+          item={editing.item}
+          onCancel={() => setEditing(null)}
+          onSaved={() => {
+            // A delayed save must not close an editor opened after that request started.
+            setEditing((current) => (current?.id === editing.id ? null : current));
+            onChanged();
+          }}
+        />
+      )}
+      {loading && <AdminPlainState>Загрузка пакетов...</AdminPlainState>}
+      {error && <div role="alert">Не удалось загрузить пакеты монет</div>}
+      {!loading && !error && packages.length === 0 && (
+        <AdminPlainState>Пакетов пока нет</AdminPlainState>
+      )}
+      {packages.map((item) => (
+        <article
+          key={item.id}
+          className="glass"
+          style={{ borderRadius: 18, padding: 12, display: 'flex', gap: 10, alignItems: 'start' }}
+        >
+          <div style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
+            <div style={{ fontWeight: 900 }}>{item.title}</div>
+            <div style={{ marginTop: 5 }}>
+              {numberText(item.coinAmount)} монет · {moneyText(item.priceRub)}
+            </div>
+            <div style={{ marginTop: 5, color: 'var(--muted)', fontSize: 12 }}>
+              {item.description}
+            </div>
+            <div style={{ marginTop: 5, color: 'var(--muted)', fontSize: 11 }}>
+              Порядок: {item.sortOrder} · {item.slug}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+              <span className="pill">{item.isActive ? 'Активен' : 'Неактивен'}</span>
+              {item.badgeText && <span className="pill">{item.badgeText}</span>}
+              {item.marker && (
+                <span className="pill">
+                  {coinPackageMarkerOptions.find((option) => option.value === item.marker)?.label}
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={`Редактировать ${item.title}`}
+            onClick={() => openEditor(item)}
+          >
+            <Pencil size={15} />
+          </button>
+        </article>
+      ))}
+    </>
+  );
+}
+
+const coinPackageMarkerOptions: Array<
+  GlassSelectOption<NonNullable<AdminCoinPackage['marker']> | ''>
+> = [
+  { value: '', label: 'Без маркера' },
+  { value: 'hit', label: 'Хит' },
+  { value: 'top', label: 'Топ' },
+  { value: 'premium', label: 'Премиум' },
+];
+
+function CoinPackageEditor({
+  item,
+  onCancel,
+  onSaved,
+}: {
+  item: AdminCoinPackage | null;
+  onCancel: () => void;
+  onSaved: () => void;
+}): JSX.Element {
+  const [slug, setSlug] = useState(item?.slug ?? '');
+  const [title, setTitle] = useState(item?.title ?? '');
+  const [description, setDescription] = useState(item?.description ?? '');
+  const [coinAmount, setCoinAmount] = useState(item ? String(item.coinAmount) : '');
+  const [priceRub, setPriceRub] = useState(item ? String(item.priceRub) : '');
+  const [badgeText, setBadgeText] = useState(item?.badgeText ?? '');
+  const [marker, setMarker] = useState<NonNullable<AdminCoinPackage['marker']> | ''>(
+    item?.marker ?? '',
+  );
+  const [sortOrder, setSortOrder] = useState(String(item?.sortOrder ?? 0));
+  const [isActive, setIsActive] = useState(item?.isActive ?? true);
+  const mutation = useMutation({
+    mutationFn: (input: Omit<AdminCoinPackageInput, 'slug'>) =>
+      item
+        ? patchAdminCoinPackage(item.id, input)
+        : createAdminCoinPackage({ ...input, slug: slug.trim() }),
+    onSuccess: onSaved,
+  });
+  return (
+    <form
+      aria-label={item ? 'Редактирование пакета монет' : 'Создание пакета монет'}
+      className="glass"
+      style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 12 }}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (mutation.isPending || !event.currentTarget.reportValidity()) return;
+        mutation.mutate({
+          title: title.trim(),
+          description: description.trim(),
+          coinAmount: Number(coinAmount),
+          priceRub: Number(priceRub),
+          badgeText: badgeText.trim() || null,
+          marker: marker || null,
+          sortOrder: Number(sortOrder),
+          isActive,
+        });
+      }}
+    >
+      <div className="modal-header">
+        <h2 className="modal-title">{item ? 'Редактирование пакета' : 'Новый пакет'}</h2>
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Закрыть редактор пакета"
+          onClick={onCancel}
+          disabled={mutation.isPending}
+        >
+          <X size={16} />
+        </button>
+      </div>
+      <AdminField label="Идентификатор">
+        <input
+          value={slug}
+          onChange={(event) => setSlug(event.target.value)}
+          required
+          maxLength={120}
+          readOnly={item !== null}
+          pattern=".*\S.*"
+        />
+      </AdminField>
+      <AdminField label="Название">
+        <input
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          required
+          maxLength={120}
+          pattern=".*\S.*"
+        />
+      </AdminField>
+      <AdminField label="Описание">
+        <textarea
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          maxLength={1000}
+          rows={3}
+        />
+      </AdminField>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <AdminField label="Монеты">
+          <input
+            type="number"
+            min={1}
+            max={100_000_000}
+            step={1}
+            required
+            value={coinAmount}
+            onChange={(event) => setCoinAmount(event.target.value)}
+          />
+        </AdminField>
+        <AdminField label="Цена, ₽">
+          <input
+            type="number"
+            min={1}
+            max={2_147_483_647}
+            step={1}
+            required
+            value={priceRub}
+            onChange={(event) => setPriceRub(event.target.value)}
+          />
+        </AdminField>
+      </div>
+      <AdminField label="Бейдж">
+        <input
+          value={badgeText}
+          onChange={(event) => setBadgeText(event.target.value)}
+          maxLength={120}
+        />
+      </AdminField>
+      <AdminField label="Маркер">
+        <GlassSelect
+          value={marker}
+          options={coinPackageMarkerOptions}
+          onChange={setMarker}
+          ariaLabel="Маркер"
+        />
+      </AdminField>
+      <AdminField label="Порядок">
+        <input
+          type="number"
+          min={-2_147_483_648}
+          max={2_147_483_647}
+          step={1}
+          required
+          value={sortOrder}
+          onChange={(event) => setSortOrder(event.target.value)}
+        />
+      </AdminField>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input
+          type="checkbox"
+          checked={isActive}
+          onChange={(event) => setIsActive(event.target.checked)}
+        />
+        Активен
+      </label>
+      <p style={{ margin: 0, fontSize: 12, color: 'var(--muted)' }}>
+        Неактивный пакет скрыт из Банка и с публичной страницы цен. Уже созданные платежи сохраняют
+        прежние условия.
+      </p>
+      {mutation.isError && (
+        <div role="alert">
+          Не удалось сохранить пакет.{' '}
+          {mutation.error instanceof ApiError && mutation.error.status === 409
+            ? 'Пакет с таким идентификатором уже существует.'
+            : 'Проверьте поля и попробуйте ещё раз.'}
+        </div>
+      )}
+      <button type="submit" className="btn btn--cta" disabled={mutation.isPending}>
+        {mutation.isPending ? 'Сохранение...' : item ? 'Сохранить' : 'Создать'}
+      </button>
+    </form>
   );
 }
 
@@ -6032,15 +6361,16 @@ function InventoryEditor({
   const isSkatesItem = itemKind === 'skates';
   const isNutritionItem = itemKind === 'nutrition';
   const isRecoveryItem = itemKind === 'recovery';
+  const showLegacyItemPenaltyFields = false;
   const editorIntro = isStickItem
     ? 'Скорость шайбы: 10 пунктов = +0.10.'
     : isSkatesItem
-      ? 'Коньки расходуются в прокатах и управляют спотыканием без рабочего инвентаря.'
+      ? 'Коньки расходуются в прокатах. Спотыкание настраивается глобально.'
       : isNutritionItem
-        ? 'Энергия задаётся в минутах, расход зависит от скорости игрока.'
+        ? 'Энергия задаётся в минутах. Расход и усталость настраиваются глобально.'
         : isRecoveryItem
           ? 'Одноразовый набор сокращает только обычное восстановление после игры.'
-        : 'Базовые параметры расходуемого предмета.';
+          : 'Базовые параметры расходуемого предмета.';
 
   return createPortal(
     <div
@@ -6260,7 +6590,7 @@ function InventoryEditor({
             </AdminField>
           </>
         )}
-        {isSkatesItem && (
+        {showLegacyItemPenaltyFields && isSkatesItem && (
           <section style={{ display: 'grid', gap: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--ink)' }}>
               Коньки и спотыкание
@@ -6378,7 +6708,7 @@ function InventoryEditor({
             </div>
           </section>
         )}
-        {isNutritionItem && (
+        {showLegacyItemPenaltyFields && isNutritionItem && (
           <section style={{ display: 'grid', gap: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--ink)' }}>
               Энергия и усталость
@@ -6968,10 +7298,12 @@ function normalizeDuelPresets(
 function DuelTemplatesPanel({
   loading,
   templates,
+  rewardAmountLimit,
   onChanged,
 }: {
   loading: boolean;
   templates: AdminDuelTemplate[];
+  rewardAmountLimit: number;
   onChanged: () => void;
 }): JSX.Element {
   const [duelView, setDuelView] = useState<'templates' | 'history'>('templates');
@@ -7023,6 +7355,7 @@ function DuelTemplatesPanel({
       </div>
       {editingTemplate !== null && (
         <DuelTemplateEditor
+          rewardAmountLimit={rewardAmountLimit}
           template={editingTemplate === 'new' ? null : editingTemplate}
           onCancel={() => setEditingTemplate(null)}
           onSaved={() => {
@@ -7356,10 +7689,12 @@ function DuelHistoryParticipantRow({
 
 function DuelTemplateEditor({
   template,
+  rewardAmountLimit,
   onCancel,
   onSaved,
 }: {
   template: AdminDuelTemplate | null;
+  rewardAmountLimit: number;
   onCancel: () => void;
   onSaved: () => void;
 }): JSX.Element {
@@ -7406,6 +7741,9 @@ function DuelTemplateEditor({
     fieldNumber(template?.drawCurrencyReward ?? 0),
   );
   const [winStarReward, setWinStarReward] = useState(fieldNumber(template?.winStarReward ?? 0));
+  const [rewardRules, setRewardRules] = useState<AdminDuelRewardRules>(
+    () => template?.rewardRules ?? defaultDuelRewardRules,
+  );
   const [periodSpeedPresets, setPeriodSpeedPresets] = useState(() =>
     normalizeDuelPresets(
       template?.periodSpeedPresets,
@@ -7445,6 +7783,28 @@ function DuelTemplateEditor({
         return Number.isFinite(value) && value >= field.min && value <= field.max;
       }),
     );
+  const rewardRulesValid =
+    Number.isSafeInteger(rewardRules.equalExperienceTolerancePercent) &&
+    rewardRules.equalExperienceTolerancePercent >= 0 &&
+    rewardRules.equalExperienceTolerancePercent <= 100 &&
+    duelRewardRows.every((row) =>
+      (['coins', 'stars', 'tokens'] as const).every((currency) => {
+        const amount = rewardRules[row.key][currency];
+        const isWin =
+          row.key === 'strongerWin' || row.key === 'equalWin' || row.key === 'weakerWin';
+        const legacy =
+          currency === 'coins'
+            ? isWin
+              ? parseAdminNumberInput(winCurrencyReward)
+              : row.key === 'draw'
+                ? parseAdminNumberInput(drawCurrencyReward)
+                : 0
+            : currency === 'stars' && isWin
+              ? parseAdminNumberInput(winStarReward)
+              : 0;
+        return Number.isSafeInteger(amount) && amount >= 0 && amount + legacy <= rewardAmountLimit;
+      }),
+    );
   const canSave =
     title.trim() !== '' &&
     numericValues.every(Number.isFinite) &&
@@ -7460,7 +7820,8 @@ function DuelTemplateEditor({
     parseAdminNumberInput(drawCurrencyReward) >= 0 &&
     parseAdminNumberInput(winStarReward) >= 0 &&
     new Date(startsIso).getTime() < new Date(endsIso).getTime() &&
-    speedPresetsValid;
+    speedPresetsValid &&
+    rewardRulesValid;
   useEffect(() => {
     if (totalPeriodsCount <= 0) return;
     setPeriodSpeedPresets((current) => normalizeDuelPresets(current, totalPeriodsCount));
@@ -7506,6 +7867,21 @@ function DuelTemplateEditor({
     );
   }
 
+  function updateRewardAmount(
+    outcome: keyof Pick<
+      AdminDuelRewardRules,
+      'strongerWin' | 'equalWin' | 'weakerWin' | 'draw' | 'loss'
+    >,
+    currency: 'coins' | 'stars' | 'tokens',
+    value: string,
+  ): void {
+    const amount = parseAdminIntegerInput(value);
+    setRewardRules((current) => ({
+      ...current,
+      [outcome]: { ...current[outcome], [currency]: amount },
+    }));
+  }
+
   const mutation = useMutation({
     mutationFn: () => {
       const body: AdminDuelTemplateInput = {
@@ -7542,6 +7918,7 @@ function DuelTemplateEditor({
         winCurrencyReward: parseAdminNumberInput(winCurrencyReward),
         drawCurrencyReward: parseAdminNumberInput(drawCurrencyReward),
         winStarReward: parseAdminNumberInput(winStarReward),
+        rewardRules,
       };
       return template === null
         ? createAdminDuelTemplate(body)
@@ -7746,6 +8123,75 @@ function DuelTemplateEditor({
             />
           </AdminField>
         </div>
+        <section
+          className="glass"
+          style={{
+            borderRadius: 18,
+            padding: 12,
+            display: 'grid',
+            gap: 10,
+            background: 'rgba(255,255,255,0.34)',
+          }}
+        >
+          <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 950 }}>
+            Награды за результат
+          </div>
+          <AdminField label="Допуск равного опыта, %">
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={
+                Number.isFinite(rewardRules.equalExperienceTolerancePercent)
+                  ? rewardRules.equalExperienceTolerancePercent
+                  : ''
+              }
+              onChange={(event) =>
+                setRewardRules((current) => ({
+                  ...current,
+                  equalExperienceTolerancePercent: parseAdminIntegerInput(event.target.value),
+                }))
+              }
+            />
+          </AdminField>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr repeat(3, 1fr)', gap: 6 }}>
+            <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>Результат</span>
+            <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>Монеты</span>
+            <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>Звёзды</span>
+            <span style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 850 }}>Жетоны</span>
+            {duelRewardRows.flatMap((row) => [
+              <span
+                key={`${row.key}-label`}
+                style={{ color: 'var(--ink)', fontSize: 11, fontWeight: 800, alignSelf: 'center' }}
+              >
+                {row.label}
+              </span>,
+              ...(['coins', 'stars', 'tokens'] as const).map((currency) => {
+                const amount = rewardRules[row.key][currency];
+                const label = `${row.label}: ${
+                  currency === 'coins' ? 'монеты' : currency === 'stars' ? 'звёзды' : 'жетоны'
+                }`;
+                return (
+                  <input
+                    key={`${row.key}-${currency}`}
+                    aria-label={label}
+                    type="number"
+                    min="0"
+                    max={rewardAmountLimit}
+                    step="1"
+                    value={Number.isFinite(amount) ? amount : ''}
+                    onChange={(event) => updateRewardAmount(row.key, currency, event.target.value)}
+                  />
+                );
+              }),
+            ])}
+          </div>
+          {!rewardRulesValid && (
+            <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 12 }}>
+              Награды должны быть неотрицательными целыми числами, допуск — от 0 до 100
+            </div>
+          )}
+        </section>
         <section
           className="glass"
           style={{

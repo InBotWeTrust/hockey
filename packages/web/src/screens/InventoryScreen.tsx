@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { triggerHaptic } from '../feedback/haptics.js';
 import type { UseMutationResult } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  ChevronRight,
   CircleDollarSign,
   Gift,
   Landmark,
@@ -14,7 +15,7 @@ import {
   TrendingUp,
   X,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
@@ -22,7 +23,6 @@ import {
   fetchMyInventory,
   fetchInventoryTransactions,
   purchaseInventoryItem,
-  type InventoryKind,
   type InventoryItem,
   type InventoryState,
   type InventoryTransaction,
@@ -31,12 +31,35 @@ import {
   type InventoryTransactionFilter,
 } from '../api/inventory.js';
 import { artworkForInventoryItem } from './inventoryArtwork.js';
+import {
+  parseShopCategory,
+  SHOP_CATEGORY_META,
+  SHOP_CATEGORY_ORDER,
+  type ShopCategory,
+} from './inventoryShopCategories.js';
 import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
+import { FittedOneLineText } from './profileSections.js';
+import { updateCachedProfileBalances } from '../app/queryClient.js';
+import { formatRussianCount } from '../lib/russianPlural.js';
+import { useAuthStore } from '../auth/authStore.js';
+import { ApiError } from '../api/apiFetch.js';
+import {
+  completePaymentAttempt,
+  getOrCreatePaymentAttempt,
+  rememberAttemptPayment,
+} from '../api/paymentAttempts.js';
+import {
+  createCoinPayment,
+  fetchCoinPackages,
+  fetchCoinPaymentStatus,
+  redirectToPaymentConfirmation,
+  type CoinPackage,
+  type CoinPaymentStatus,
+} from '../api/payments.js';
 
 type ShopTab = 'goods' | 'bank' | 'history';
 type HistoryFilter = InventoryTransactionFilter;
 
-const INVENTORY_KINDS: InventoryKind[] = ['stick', 'skates', 'nutrition', 'recovery'];
 const SHOP_TABS: Array<{ id: ShopTab; label: string }> = [
   { id: 'goods', label: 'Товары' },
   { id: 'bank', label: 'Банк' },
@@ -49,36 +72,18 @@ const HISTORY_FILTERS: Array<{ id: HistoryFilter; label: string }> = [
   { id: 'ruble', label: 'Рубли' },
 ];
 
-const BANK_PACKAGES = [
-  {
-    id: 'starter',
-    title: 'Стартовый набор',
-    tokens: 7450,
-    priceRub: 149,
-    note: 'Для первых покупок',
-  },
-  {
-    id: 'player',
-    title: 'Игровой запас',
-    tokens: 14950,
-    priceRub: 299,
-    note: 'Оптимальный пакет',
-  },
-  {
-    id: 'club',
-    title: 'Клубный банк',
-    tokens: 34950,
-    priceRub: 699,
-    note: 'Максимум монет',
-  },
-] as const;
+const PAYMENT_ID_STORAGE_KEY = 'hockey.bank.paymentId';
 
-const KIND_META: Record<InventoryKind, { title: string }> = {
-  stick: { title: 'Клюшки' },
-  skates: { title: 'Коньки' },
-  nutrition: { title: 'Питание' },
-  recovery: { title: 'Восстановление' },
-};
+function isTerminalPaymentStatus(status: CoinPaymentStatus): boolean {
+  return ['paid', 'canceled', 'failed', 'refunded'].includes(status);
+}
+
+function paymentMarkerLabel(marker: CoinPackage['marker']): string | null {
+  if (marker === 'hit') return 'Хит';
+  if (marker === 'top') return 'Топ';
+  if (marker === 'premium') return 'Премиум';
+  return null;
+}
 
 function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU').format(value);
@@ -145,9 +150,15 @@ function transactionDateLabel(value: string): string {
 }
 
 export function InventoryScreen(): JSX.Element {
+  const ownerId = useAuthStore((state) => state.user?.id);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<ShopTab>('goods');
+  const isPaymentReturn = searchParams.get('payment') === 'return';
+  const returnedPaymentId = isPaymentReturn
+    ? window.sessionStorage.getItem(PAYMENT_ID_STORAGE_KEY)
+    : null;
+  const [activeTab, setActiveTab] = useState<ShopTab>(isPaymentReturn ? 'bank' : 'goods');
   const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
   const [purchaseItem, setPurchaseItem] = useState<InventoryItem | null>(null);
   const [purchaseNotice, setPurchaseNotice] = useState<{
@@ -155,6 +166,12 @@ export function InventoryScreen(): JSX.Element {
     amount: string;
     imageUrl: string;
   } | null>(null);
+  const [paymentRedirectError, setPaymentRedirectError] = useState<string | null>(null);
+  const [returnedPaymentResult, setReturnedPaymentResult] = useState<CoinPaymentStatus | null>(
+    null,
+  );
+  const paymentInFlightRef = useRef<string | null>(null);
+  const [paymentPackageId, setPaymentPackageId] = useState<string | null>(null);
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
@@ -164,6 +181,14 @@ export function InventoryScreen(): JSX.Element {
     onSuccess: (inventory, item) => {
       triggerHaptic('success');
       queryClient.setQueryData(['inventory', 'me'], inventory);
+      void queryClient.invalidateQueries({ queryKey: ['inventory', 'transactions'] });
+      updateCachedProfileBalances(queryClient, {
+        currencyBalance: inventory.balances.tokens,
+        starBalance: inventory.balances.stars,
+        ...(inventory.balances.experience === undefined
+          ? {}
+          : { experienceBalance: inventory.balances.experience }),
+      });
       setPurchaseItem(null);
       setPurchaseNotice({
         title: addedInventoryTitle(item),
@@ -174,22 +199,151 @@ export function InventoryScreen(): JSX.Element {
     },
     onError: () => triggerHaptic('error'),
   });
+  const paymentMutation = useMutation({
+    mutationFn: ({
+      packageId,
+      attemptId,
+    }: {
+      ownerId: string;
+      packageId: string;
+      attemptId: string;
+    }) => createCoinPayment(packageId, attemptId),
+    onSuccess: (payment, attempt) => {
+      rememberAttemptPayment(
+        attempt.ownerId,
+        attempt.packageId,
+        attempt.attemptId,
+        payment.paymentId,
+      );
+      if (isTerminalPaymentStatus(payment.status)) {
+        completePaymentAttempt(attempt.ownerId, payment.paymentId);
+      }
+      // A response belonging to a previous login must not redirect the new owner.
+      if (useAuthStore.getState().user?.id !== attempt.ownerId) return;
+      if (isTerminalPaymentStatus(payment.status)) {
+        setReturnedPaymentResult(payment.status);
+        void queryClient.invalidateQueries({ queryKey: ['profile'] });
+        void queryClient.invalidateQueries({ queryKey: ['inventory', 'me'] });
+        void queryClient.invalidateQueries({ queryKey: ['inventory', 'transactions'] });
+        return;
+      }
+      if (
+        payment.confirmationUrl === null ||
+        !redirectToPaymentConfirmation(payment.confirmationUrl)
+      ) {
+        setPaymentRedirectError('Не удалось перейти к оплате. Попробуйте ещё раз.');
+        return;
+      }
+      window.sessionStorage.setItem(PAYMENT_ID_STORAGE_KEY, payment.paymentId);
+    },
+    onSettled: () => {
+      paymentInFlightRef.current = null;
+      setPaymentPackageId(null);
+    },
+  });
+  const paymentStatusQuery = useQuery({
+    queryKey: ['bank', 'payments', ownerId, returnedPaymentId],
+    queryFn: () => fetchCoinPaymentStatus(returnedPaymentId!),
+    enabled: returnedPaymentId !== null,
+    refetchInterval: (query) =>
+      query.state.data && isTerminalPaymentStatus(query.state.data.status) ? false : 2_000,
+  });
 
   const inventory = inventoryQuery.data;
-  const allItems = INVENTORY_KINDS.flatMap((kind) => inventory?.items[kind] ?? []);
-  const hasAnyItems = allItems.length > 0;
   const tokens = inventory?.balances.tokens ?? 0;
+  const selectedCategory = parseShopCategory(searchParams.get('category'));
+  useEffect(() => {
+    if (selectedCategory !== null) setActiveTab('goods');
+  }, [selectedCategory]);
+  useEffect(() => {
+    if (isPaymentReturn) setActiveTab('bank');
+  }, [isPaymentReturn]);
+  useEffect(() => {
+    if (
+      paymentStatusQuery.data === undefined ||
+      !isTerminalPaymentStatus(paymentStatusQuery.data.status)
+    ) {
+      return;
+    }
+    setReturnedPaymentResult(paymentStatusQuery.data.status);
+    if (ownerId && returnedPaymentId) {
+      try {
+        completePaymentAttempt(ownerId, returnedPaymentId);
+      } catch {
+        // Retaining the old identity is safe; never replace it on storage errors.
+      }
+    }
+    window.sessionStorage.removeItem(PAYMENT_ID_STORAGE_KEY);
+    const next = new URLSearchParams(searchParams);
+    next.delete('payment');
+    setSearchParams(next, { replace: true });
+    void queryClient.invalidateQueries({ queryKey: ['profile'] });
+    void queryClient.invalidateQueries({ queryKey: ['inventory', 'me'] });
+    void queryClient.invalidateQueries({ queryKey: ['inventory', 'transactions'] });
+  }, [
+    paymentStatusQuery.data?.status,
+    ownerId,
+    returnedPaymentId,
+    queryClient,
+    searchParams,
+    setSearchParams,
+  ]);
+  const hasSelectedCategoryItems =
+    selectedCategory !== null && (inventory?.items[selectedCategory].length ?? 0) > 0;
+  const hasShopItems = SHOP_CATEGORY_ORDER.some(
+    (category) => (inventory?.items[category].length ?? 0) > 0,
+  );
+
+  const openCategory = (category: ShopCategory): void => {
+    const next = new URLSearchParams(searchParams);
+    next.set('category', category);
+    setSearchParams(next);
+  };
+
+  const closeCategory = (): void => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('category');
+    setSearchParams(next, { replace: true });
+  };
+
+  const changeTab = (tab: ShopTab): void => {
+    setActiveTab(tab);
+    if (tab === 'bank' || tab === 'history') closeCategory();
+  };
 
   const openPurchase = (item: InventoryItem): void => {
     purchaseMutation.reset();
     setDetailsItem(null);
     setPurchaseItem(item);
   };
+  const startPayment = (pack: CoinPackage): void => {
+    if (paymentInFlightRef.current !== null || !ownerId) return;
+    let attemptId: string;
+    try {
+      attemptId = getOrCreatePaymentAttempt(ownerId, pack.id);
+    } catch {
+      setPaymentRedirectError(
+        'Не удалось сохранить попытку оплаты. Проверьте доступ к хранилищу браузера или обратитесь в поддержку.',
+      );
+      return;
+    }
+    paymentInFlightRef.current = pack.id;
+    setPaymentPackageId(pack.id);
+    setPaymentRedirectError(null);
+    setReturnedPaymentResult(null);
+    paymentMutation.reset();
+    paymentMutation.mutate({ ownerId, packageId: pack.id, attemptId });
+  };
 
   return (
     <main
-      className="screen"
+      className={`screen inventory-shop-screen${selectedCategory === null ? '' : ` inventory-shop-screen--category ${SHOP_CATEGORY_META[selectedCategory].className}`}`}
       style={{
+        ...(selectedCategory === null
+          ? {}
+          : {
+              '--shop-category-artwork': `url("${SHOP_CATEGORY_META[selectedCategory].backgroundUrl}")`,
+            }),
         padding: 'calc(22px + var(--app-safe-top)) 14px 24px',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
@@ -206,20 +360,20 @@ export function InventoryScreen(): JSX.Element {
         }}
       >
         <div
-          className="inventory-shop-header"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '40px minmax(0, 1fr) auto',
-            gap: 10,
-            alignItems: 'center',
-          }}
+          className={`inventory-shop-header${selectedCategory === null ? '' : ' inventory-shop-header--category'}`}
         >
           <button
             type="button"
-            className="icon-btn"
-            onClick={() => navigate('/sections')}
-            aria-label="Назад"
-            title="Назад"
+            className="icon-btn icon-btn--page-back"
+            onClick={() => {
+              if (selectedCategory !== null) {
+                closeCategory();
+                return;
+              }
+              navigate('/sections');
+            }}
+            aria-label={selectedCategory === null ? 'Назад' : 'К разделам магазина'}
+            title={selectedCategory === null ? 'Назад' : 'К разделам магазина'}
             style={{
               width: 40,
               height: 40,
@@ -239,29 +393,71 @@ export function InventoryScreen(): JSX.Element {
             className="screen-title-on-arena"
             style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}
           >
-            Магазин
+            <FittedOneLineText
+              className="inventory-shop-header__fitted-title"
+              maxFontSize={24}
+              minFontSize={14}
+            >
+              {selectedCategory === null ? 'Магазин' : SHOP_CATEGORY_META[selectedCategory].title}
+            </FittedOneLineText>
           </h1>
           <ShopBalanceBar tokens={tokens} stars={inventory?.balances.stars ?? 0} />
         </div>
 
-        <ShopTabs activeTab={activeTab} onChange={setActiveTab} />
+        {selectedCategory === null && <ShopTabs activeTab={activeTab} onChange={changeTab} />}
+
+        {(isPaymentReturn || returnedPaymentResult !== null) && (
+          <PaymentReturnNotice
+            missingPaymentId={
+              isPaymentReturn && returnedPaymentResult === null && returnedPaymentId === null
+            }
+            isLoading={
+              isPaymentReturn && returnedPaymentResult === null && paymentStatusQuery.isLoading
+            }
+            isError={
+              isPaymentReturn && returnedPaymentResult === null && paymentStatusQuery.isError
+            }
+            status={returnedPaymentResult ?? paymentStatusQuery.data?.status}
+          />
+        )}
 
         {inventoryQuery.isLoading ? (
           <div className="glass" style={{ borderRadius: 22, padding: 16, color: 'var(--muted)' }}>
             Загрузка...
           </div>
-        ) : activeTab === 'goods' && !hasAnyItems ? (
-          <InventoryEmptyState />
-        ) : activeTab === 'goods' ? (
-          <GoodsTab
+        ) : activeTab === 'goods' && selectedCategory !== null && !hasSelectedCategoryItems ? (
+          <InventoryEmptyState category />
+        ) : activeTab === 'goods' && selectedCategory !== null ? (
+          <GoodsCategoryCatalog
+            category={selectedCategory}
             inventory={inventory}
             tokens={tokens}
             purchaseMutation={purchaseMutation}
             onDetails={setDetailsItem}
             onBuy={openPurchase}
           />
+        ) : activeTab === 'goods' && !hasShopItems ? (
+          <InventoryEmptyState />
+        ) : activeTab === 'goods' ? (
+          <section aria-label="Товары" style={{ display: 'grid', gap: 8 }}>
+            <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+              Товары
+            </div>
+            <GoodsCategoryOverview inventory={inventory} onOpenCategory={openCategory} />
+          </section>
         ) : activeTab === 'bank' ? (
-          <BankTab />
+          <BankTab
+            activePackageId={paymentPackageId}
+            error={
+              paymentRedirectError ??
+              (paymentMutation.isError
+                ? paymentMutation.error instanceof ApiError
+                  ? paymentMutation.error.message
+                  : 'Не удалось получить ответ об оплате. Повторное нажатие продолжит ту же оплату.'
+                : null)
+            }
+            onPurchase={startPayment}
+          />
         ) : (
           <TransactionHistorySection />
         )}
@@ -295,11 +491,7 @@ export function InventoryScreen(): JSX.Element {
       )}
 
       {purchaseNotice && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="inventory-purchase-toast"
-        >
+        <div role="status" aria-live="polite" className="inventory-purchase-toast">
           <img
             className="inventory-purchase-toast__artwork"
             src={purchaseNotice.imageUrl}
@@ -316,59 +508,84 @@ export function InventoryScreen(): JSX.Element {
   );
 }
 
-function GoodsTab({
+function GoodsCategoryOverview({
+  inventory,
+  onOpenCategory,
+}: {
+  inventory: InventoryState | undefined;
+  onOpenCategory: (category: ShopCategory) => void;
+}): JSX.Element {
+  return (
+    <div className="inventory-category-grid">
+      {SHOP_CATEGORY_ORDER.map((category) => {
+        const meta = SHOP_CATEGORY_META[category];
+        const count = uniqueShopItems(inventory?.items[category] ?? []).length;
+        return (
+          <button
+            key={category}
+            type="button"
+            className={`section-card-surface amateur-hub-card inventory-category-card ${meta.className}`}
+            aria-label={`Открыть раздел ${meta.title}`}
+            onClick={() => onOpenCategory(category)}
+          >
+            <span className="amateur-hub-card__art" aria-hidden="true">
+              <img src={meta.artworkUrl} alt="" decoding="async" draggable={false} />
+            </span>
+            <span className="amateur-hub-card__copy">
+              <strong>{meta.title}</strong>
+              <span>{formatRussianCount(count, 'товар', 'товара', 'товаров')}</span>
+            </span>
+            <ChevronRight className="card-chevron" size={20} strokeWidth={2.7} aria-hidden="true" />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function GoodsCategoryCatalog({
+  category,
   inventory,
   tokens,
   purchaseMutation,
   onDetails,
   onBuy,
 }: {
+  category: ShopCategory;
   inventory: InventoryState | undefined;
   tokens: number;
   purchaseMutation: UseMutationResult<InventoryState, Error, InventoryItem>;
   onDetails: (item: InventoryItem) => void;
   onBuy: (item: InventoryItem) => void;
 }): JSX.Element {
+  const meta = SHOP_CATEGORY_META[category];
+  const items = uniqueShopItems(inventory?.items[category] ?? []);
+
   return (
-    <div style={{ display: 'grid', gap: 18 }}>
-      {INVENTORY_KINDS.map((kind) => {
-        const items = uniqueShopItems(inventory?.items[kind] ?? []);
-        if (items.length === 0) return null;
-        return (
-          <section key={kind} aria-label={KIND_META[kind].title}>
-            <div className="section-label" style={{ margin: '0 0 8px -14px' }}>
-              {KIND_META[kind].title}
-            </div>
-            <div style={{ display: 'grid', gap: 18 }}>
-              <div
-                className="inventory-shop-grid"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(0, 1fr)',
-                  gap: 8,
-                }}
-              >
-                {items.map((item) => {
-                  const canBuy = tokens >= item.currencyPrice;
-                  return (
-                    <InventoryProductCard
-                      key={item.id}
-                      item={item}
-                      canBuy={canBuy}
-                      isBuying={
-                        purchaseMutation.isPending && purchaseMutation.variables?.id === item.id
-                      }
-                      onDetails={() => onDetails(item)}
-                      onBuy={() => onBuy(item)}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-        );
-      })}
-    </div>
+    <section className="inventory-category-catalog" aria-label={meta.title}>
+      <div
+        className="inventory-shop-grid"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr)',
+          gap: 8,
+        }}
+      >
+        {items.map((item) => {
+          const canBuy = tokens >= item.currencyPrice;
+          return (
+            <InventoryProductCard
+              key={item.id}
+              item={item}
+              canBuy={canBuy}
+              isBuying={purchaseMutation.isPending && purchaseMutation.variables?.id === item.id}
+              onDetails={() => onDetails(item)}
+              onBuy={() => onBuy(item)}
+            />
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -389,22 +606,64 @@ function ShopTabs({
   );
 }
 
-function BankTab(): JSX.Element {
+function BankTab({
+  activePackageId,
+  error,
+  onPurchase,
+}: {
+  activePackageId: string | null;
+  error: string | null;
+  onPurchase: (pack: CoinPackage) => void;
+}): JSX.Element {
+  const packagesQuery = useQuery({
+    queryKey: ['bank', 'packages'],
+    queryFn: fetchCoinPackages,
+  });
+
   return (
     <section aria-label="Банк" style={{ display: 'grid', gap: 8 }}>
       <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
         Банк
       </div>
-      <div className="inventory-bank-grid">
-        {BANK_PACKAGES.map((pack) => (
-          <BankPackageCard key={pack.id} pack={pack} />
-        ))}
-      </div>
+      {packagesQuery.isLoading ? (
+        <div className="inventory-history-empty">Загружаем пакеты…</div>
+      ) : null}
+      {packagesQuery.isError ? (
+        <div className="inventory-history-empty" role="alert">
+          Не удалось загрузить пакеты. Попробуйте ещё раз.
+        </div>
+      ) : null}
+      {error !== null ? (
+        <div className="inventory-history-empty" role="alert">
+          {error}
+        </div>
+      ) : null}
+      {packagesQuery.data ? (
+        <div className="inventory-bank-grid">
+          {packagesQuery.data.packages.map((pack) => (
+            <BankPackageCard
+              key={pack.id}
+              pack={pack}
+              isBuying={activePackageId === pack.id}
+              onPurchase={() => onPurchase(pack)}
+            />
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
 
-function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JSX.Element {
+function BankPackageCard({
+  pack,
+  isBuying,
+  onPurchase,
+}: {
+  pack: CoinPackage;
+  isBuying: boolean;
+  onPurchase: () => void;
+}): JSX.Element {
+  const marker = paymentMarkerLabel(pack.marker);
   return (
     <article
       className="glass inventory-bank-card"
@@ -422,6 +681,13 @@ function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JS
     >
       <div className="inventory-bank-card__icon" aria-hidden="true">
         <CircleDollarSign size={24} strokeWidth={2.35} />
+        {marker !== null ? (
+          <span
+            className={`inventory-bank-card__marker${pack.marker === 'premium' ? ' inventory-bank-card__marker--premium' : ''}`}
+          >
+            {marker}
+          </span>
+        ) : null}
       </div>
       <div className="inventory-bank-card__copy">
         <h2
@@ -436,10 +702,13 @@ function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JS
           {pack.title}
         </h2>
         <div style={{ color: rewardColor('coin'), fontSize: 19, fontWeight: 950, lineHeight: 1 }}>
-          {numberText(pack.tokens)} монет
+          {numberText(pack.coinAmount)} монет
         </div>
-        <div style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 800, lineHeight: 1.2 }}>
-          {pack.note}
+        <div className="inventory-bank-card__meta">
+          <span className="inventory-bank-card__note">{pack.description}</span>
+          {pack.badgeText ? (
+            <span className="inventory-bank-card__bonus">{pack.badgeText}</span>
+          ) : null}
         </div>
       </div>
       <div className="inventory-bank-card__action">
@@ -447,13 +716,53 @@ function BankPackageCard({ pack }: { pack: (typeof BANK_PACKAGES)[number] }): JS
         <button
           type="button"
           className="btn btn--cta"
-          disabled
-          aria-label={`Купить ${numberText(pack.tokens)} монет за ${rubText(pack.priceRub)}`}
+          disabled={isBuying}
+          onClick={onPurchase}
+          aria-label={`Купить ${numberText(pack.coinAmount)} монет за ${rubText(pack.priceRub)}`}
         >
-          Скоро
+          {isBuying ? 'Переходим…' : 'Купить'}
         </button>
       </div>
     </article>
+  );
+}
+
+function PaymentReturnNotice({
+  missingPaymentId,
+  isLoading,
+  isError,
+  status,
+}: {
+  missingPaymentId: boolean;
+  isLoading: boolean;
+  isError: boolean;
+  status: CoinPaymentStatus | undefined;
+}): JSX.Element {
+  let copy = 'Проверяем статус оплаты…';
+  let role: 'status' | 'alert' = 'status';
+
+  if (missingPaymentId) {
+    copy = 'Не удалось определить платёж для проверки.';
+    role = 'alert';
+  } else if (isError) {
+    copy = 'Не удалось проверить статус оплаты. Обновите страницу и попробуйте ещё раз.';
+    role = 'alert';
+  } else if (!isLoading && status === 'pending') {
+    copy = 'Платёж ожидает подтверждения. Монеты будут зачислены после оплаты.';
+  } else if (!isLoading && status === 'paid') {
+    copy = 'Оплата подтверждена. Монеты зачислены.';
+  } else if (!isLoading && status === 'canceled') {
+    copy = 'Оплата отменена. Монеты не зачислены.';
+    role = 'alert';
+  } else if (!isLoading && (status === 'failed' || status === 'refunded')) {
+    copy = 'Оплата не завершена. Монеты не зачислены.';
+    role = 'alert';
+  }
+
+  return (
+    <div className="glass" role={role} style={{ borderRadius: 18, padding: '12px 14px' }}>
+      {copy}
+    </div>
   );
 }
 
@@ -649,9 +958,9 @@ function InventoryProductCard({
             : `Не хватает монет на ${item.title}`
         }
         style={{
-        minWidth: 86,
-        minHeight: 38,
-        padding: '0 12px',
+          minWidth: 86,
+          minHeight: 38,
+          padding: '0 12px',
           fontSize: 12,
           opacity: !canBuy ? 0.5 : undefined,
           cursor: !canBuy ? 'not-allowed' : undefined,
@@ -663,10 +972,10 @@ function InventoryProductCard({
   );
 }
 
-function InventoryEmptyState(): JSX.Element {
+function InventoryEmptyState({ category = false }: { category?: boolean }): JSX.Element {
   return (
     <section
-      aria-label="Пустой магазин"
+      aria-label={category ? 'Пустой раздел магазина' : 'Пустой магазин'}
       className="glass"
       style={{
         borderRadius: 26,
@@ -680,12 +989,14 @@ function InventoryEmptyState(): JSX.Element {
       }}
     >
       <h2 style={{ margin: 0, color: 'var(--ink)', fontSize: 18, fontWeight: 950 }}>
-        Товары скоро появятся
+        {category ? 'В разделе пока нет товаров' : 'Товары скоро появятся'}
       </h2>
       <p
         style={{ margin: 0, color: 'var(--muted)', fontSize: 13, fontWeight: 750, lineHeight: 1.4 }}
       >
-        Здесь будут клюшки, коньки и питание за монеты.
+        {category
+          ? 'Загляните позже или выберите другой раздел магазина.'
+          : 'Загляните позже — мы пополняем ассортимент магазина.'}
       </p>
     </section>
   );
@@ -877,19 +1188,31 @@ function TransactionHistorySection(): JSX.Element {
           {groups.map((group) => (
             <section key={group.key} className="inventory-history-group">
               <h3 className="section-label">{group.label}</h3>
-              <div className="inventory-history-list" role="list" aria-label={`Операции за ${group.label}`}>
+              <div
+                className="inventory-history-list"
+                role="list"
+                aria-label={`Операции за ${group.label}`}
+              >
                 {group.entries.map((entry) => (
                   <article key={entry.id} className="glass inventory-history-row" role="listitem">
-                    <div className={`inventory-history-row__icon inventory-history-row__icon--${entry.category}`} aria-hidden="true">
+                    <div
+                      className={`inventory-history-row__icon inventory-history-row__icon--${entry.category}`}
+                      aria-hidden="true"
+                    >
                       {transactionCategoryIcon(entry)}
                     </div>
                     <div className="inventory-history-row__copy">
                       <strong>{entry.title}</strong>
-                      <span>{formatTransactionTime(entry.createdAt)} · {transactionSubtitleText(entry)}</span>
+                      <span>
+                        {formatTransactionTime(entry.createdAt)} · {transactionSubtitleText(entry)}
+                      </span>
                     </div>
                     <div className="inventory-history-row__amounts">
                       {entry.amounts.map((amount) => (
-                        <TransactionAmountBadge key={`${entry.id}-${amount.currency}`} amount={amount} />
+                        <TransactionAmountBadge
+                          key={`${entry.id}-${amount.currency}`}
+                          amount={amount}
+                        />
                       ))}
                     </div>
                   </article>
@@ -899,9 +1222,13 @@ function TransactionHistorySection(): JSX.Element {
           ))}
         </div>
       ) : null}
-      {history.isLoading ? <div className="inventory-history-empty">Загружаем операции…</div> : null}
+      {history.isLoading ? (
+        <div className="inventory-history-empty">Загружаем операции…</div>
+      ) : null}
       {history.isError ? (
-        <div className="inventory-history-empty" role="alert">Не удалось загрузить историю.</div>
+        <div className="inventory-history-empty" role="alert">
+          Не удалось загрузить историю.
+        </div>
       ) : null}
       {!history.isLoading && !history.isError && groups.length === 0 ? (
         <div className="inventory-history-empty">Операций пока нет.</div>

@@ -10,16 +10,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 
 const expectedTournamentAchievements = [
-  ['regular-season-medalist', 'Призёр регулярки', 220, 45, 45, 2],
-  ['playoff-semifinal', 'Турнирный характер', 100, 50, 50, 1],
+  ['regular-season-medalist', 'Призёр регулярки', 1000, 45, 45, 2],
+  ['playoff-semifinal', 'Турнирный характер', 750, 50, 50, 1],
   ['no-shake', 'Без дрожи', 0, 20, 20, 0],
   ['dark-horse', 'Тёмная лошадка', 0, 25, 25, 0],
-  ['regular-season-champion', 'Победитель регулярки', 250, 50, 50, 3],
-  ['playoff-final', 'Финальный лёд', 150, 75, 75, 2],
+  ['regular-season-champion', 'Победитель регулярки', 1500, 50, 50, 3],
+  ['playoff-final', 'Финальный лёд', 1500, 75, 75, 2],
   ['series-comeback', 'Мощный камбэк', 0, 35, 35, 0],
-  ['tournament-cup', 'Кубок над головой', 1000, 100, 100, 5],
+  ['tournament-cup', 'Кубок над головой', 3750, 100, 100, 5],
   ['death-bracket', 'Сетка смерти', 0, 25, 25, 0],
-  ['tournament-streak', 'Турнирная серия', 2500, 250, 250, 5],
+  ['tournament-streak', 'Турнирная серия', 7500, 250, 250, 5],
 ] as const;
 
 function tuple(achievement: (typeof ACHIEVEMENT_SEEDS)[number]) {

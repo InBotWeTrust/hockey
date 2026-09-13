@@ -570,9 +570,12 @@ export function BonusGamePlayScreen(): JSX.Element {
 
   const navigateToCatalog = useCallback(() => navigate('/bonus-games'), [navigate]);
   const leavePlaySurface = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['bonus-games'], refetchType: 'none' });
+    void queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
+    void queryClient.invalidateQueries({ queryKey: ['achievements'] });
     navigate('/bonus-games');
     void refreshAfterGameExit();
-  }, [navigate, refreshAfterGameExit]);
+  }, [navigate, queryClient, refreshAfterGameExit]);
   useEffect(() => {
     if (!isAuthoritativeBreak) return;
     setConfirmAbandon(false);

@@ -82,6 +82,18 @@ export function formatInventoryBadgeAmount(
   return numberText(normalized);
 }
 
+export function formatProfileInventoryBadgeAmount(
+  kind: InventoryKind | null | undefined,
+  amount: number,
+  unit?: InventoryItem['resourceUnit'],
+): string {
+  const normalized = Math.max(0, Math.trunc(amount));
+  const resourceUnit = effectiveResourceUnit(kind, unit);
+  if (resourceUnit === 'shot') return `${numberText(normalized)} бр`;
+  if (resourceUnit === 'distance') return `${numberText(normalized)} пр`;
+  return formatInventoryBadgeAmount(kind, normalized, unit);
+}
+
 export function formatInventoryStockLabel(item: InventoryItem): string {
   if (item.chargesAvailable <= 0) return 'Нет запаса';
   return `Осталось ${formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}`;

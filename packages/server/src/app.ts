@@ -32,11 +32,14 @@ import { onboardingAdminRoutes } from './onboarding/adminRoutes.js';
 import { tournamentRoutes } from './tournament/routes.js';
 import { tournamentWs } from './tournament/ws.js';
 import { validateOfficialAccount } from './chat/officialAccount.js';
+import { coinPackageRoutes } from './payments/routes.js';
+import { createYooKassaClient, type YooKassaClient } from './payments/yookassaClient.js';
 import { nativeCorsPlugin } from './plugins/nativeCors.js';
 import { mobileReleaseRoutes } from './mobileRelease/routes.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
+  yookassaClient?: YooKassaClient;
   pushSchedulerEnabled?: boolean;
   pushWorkerEnabled?: boolean;
   tournamentLifecycleEnabled?: boolean;
@@ -126,6 +129,18 @@ export async function buildApp(options: BuildAppOptions = {}) {
         ? {}
         : (JSON.parse(config.ANDROID_MANIFEST_PUBLIC_KEYS_JSON) as Record<string, string>),
   });
+  const yookassaClient =
+    options.yookassaClient ??
+    (config.YOOKASSA_SHOP_ID !== undefined &&
+    config.YOOKASSA_SECRET_KEY !== undefined &&
+    config.YOOKASSA_RETURN_URL !== undefined
+      ? createYooKassaClient({
+          shopId: config.YOOKASSA_SHOP_ID,
+          secretKey: config.YOOKASSA_SECRET_KEY,
+          returnUrl: config.YOOKASSA_RETURN_URL,
+        })
+      : undefined);
+  await app.register(coinPackageRoutes, yookassaClient ? { yookassaClient } : {});
   await app.register(authRoutes, {
     telegramBotToken: config.TELEGRAM_BOT_TOKEN,
     ...(config.VK_APP_ID !== undefined ? { vkAppId: config.VK_APP_ID } : {}),

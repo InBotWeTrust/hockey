@@ -57,7 +57,7 @@ export function AccessibleModal({
   beforeHeader,
   children,
 }: {
-  title: string;
+  title: ReactNode;
   ariaLabel?: string;
   copy?: ReactNode;
   onClose?: () => void;

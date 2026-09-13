@@ -449,3 +449,71 @@ git commit -m "fix(shop): polish category navigation"
 ```
 
 If no correction was required, do not create an empty commit.
+
+---
+
+### Task 4: Match category cards to the project and replace the shop background
+
+Final user ruling supersedes earlier visual revisions: reuse the exact `DailyScreen` amateur card and generate four square opaque category scenes with their own full backgrounds. Existing transparent product icons and the rejected transparent category compositions are not the final deliverables.
+
+Add the root-only `Товары` section label using exactly the existing Bank/History `section-label` and margin, grouped with the category grid in a `display: grid; gap: 8px` section. Verify matching label style and tab-specific visibility.
+
+**Files:**
+- Replace: `packages/web/public/shop/shop-background.webp`
+- Replace: `packages/web/public/shop/categories/{sticks,skates,nutrition,recovery}.webp`
+- Modify: `packages/web/src/screens/inventoryShopCategories.ts`
+- Modify: `packages/web/src/screens/InventoryScreen.tsx`
+- Modify: `packages/web/src/screens/InventoryScreen.test.tsx`
+- Modify: `packages/web/src/app/design-system.css`
+
+**Interfaces:**
+- Preserve: the four category IDs, URLs, category query navigation, bank/history tabs, and category-specific inner accents.
+- Change: category metadata retains category artwork URLs and no longer exposes secondary description copy.
+- Change: `.inventory-category-card` uses `section-card-surface amateur-hub-card`, `amateur-hub-card__art`, `amateur-hub-card__copy`, and `card-chevron`: 86×86 artwork left, title and unique product count in the middle, chevron right.
+
+- [ ] **Step 1: Add failing tests for the approved card contract**
+
+Add assertions that each category card contains exactly one visible category name, no `Выбрать…` secondary copy, the correct unique-item count (including duplicate source items), a category WebP, and a decorative chevron. Assert the exact shared `section-card-surface amateur-hub-card` structure and existing dimensions, without independent card CSS.
+
+- [ ] **Step 2: Run RED**
+
+Run: `pnpm --filter @hockey/web exec vitest run src/screens/InventoryScreen.test.tsx`
+
+Expected: FAIL because the old metadata and cards still render secondary copy and use two tall columns without the shared wide-card structure.
+
+- [ ] **Step 3: Generate square category scenes and a new shop background**
+
+Generate four distinct square scenes, each with a full opaque hockey-shop display background, no text, logos, windows, people or watermark:
+
+- `/shop/categories/sticks.webp` — several hockey sticks;
+- `/shop/categories/skates.webp` — a pair of hockey skates;
+- `/shop/categories/nutrition.webp` — sports nutrition containers;
+- `/shop/categories/recovery.webp` — sports bag and recovery kit.
+
+Generate one new vertical/mobile shop background with the built-in image tool. It must clearly show a closed hockey equipment store with visible racks of sticks, skates, helmets, jerseys and protective gear on the side and back walls. Keep the center calmer for UI. Avoid windows, forest or outdoor views, office-like emptiness, people, readable text, logos, price tags and watermarks. Save the accepted result as `packages/web/public/shop/shop-background.webp`.
+
+- [ ] **Step 4: Implement minimal compact cards**
+
+Remove `description` from category metadata and markup. Use a single-column grid with four instances of the exact `section-card-surface amateur-hub-card` structure from `DailyScreen`: shared surface and border, 116px height, 86×86 image on the left, title and unique-item count in the middle, and existing chevron on the right. Preserve category-specific artwork on internal catalog screens.
+
+- [ ] **Step 5: Run GREEN and build**
+
+Run:
+
+```bash
+pnpm --filter @hockey/web exec vitest run src/screens/InventoryScreen.test.tsx
+pnpm --filter @hockey/web build
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Rendered QA**
+
+At 320px and 390px compare the cards directly with `/sections`: shared material, radius, artwork size, typography, chevron and pressed behavior must match. Verify all four rows, title/count readability, no horizontal scroll, and enough new hockey-shop background visible around the cards. Open all four categories and confirm their product lists and visual accents still work.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add docs/superpowers/specs/2026-09-11-shop-categories-redesign.md docs/superpowers/plans/2026-09-11-shop-categories-redesign.md packages/web/public/shop/shop-background.webp packages/web/src/screens/inventoryShopCategories.ts packages/web/src/screens/InventoryScreen.tsx packages/web/src/screens/InventoryScreen.test.tsx packages/web/src/app/design-system.css
+git commit -m "feat(shop): simplify category cards"
+```

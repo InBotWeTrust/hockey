@@ -17,6 +17,7 @@ export const EMPTY_WEEKLY_CHALLENGE_PROGRESS: WeeklyChallengeProgressMap = {
   duels_won: 0,
   duel_invites_sent: 0,
   trainings_completed: 0,
+  channel_posts_commented: 0,
 };
 
 export async function fetchWeeklyChallengeProgress(
@@ -29,6 +30,7 @@ export async function fetchWeeklyChallengeProgress(
     won: string;
     invites: string;
     completed: string;
+    commented_posts: string;
   }>(
     `with goal_progress as (
        select count(*)::text as goals
@@ -61,12 +63,20 @@ export async function fetchWeeklyChallengeProgress(
           and state = 'closed'
           and coalesce(closed_at, started_at) >= $2
           and coalesce(closed_at, started_at) < $3
+     ), comment_progress as (
+       select count(distinct post_message_id)::text as commented_posts
+         from channel_post_comments
+        where author_id = $1
+          and is_deleted = false
+          and created_at >= $2
+          and created_at < $3
      )
-     select goals, played, won, invites, completed
+     select goals, played, won, invites, completed, commented_posts
        from goal_progress
        cross join duel_progress
        cross join invite_progress
-       cross join training_progress`,
+       cross join training_progress
+       cross join comment_progress`,
     [window.userId, window.from, window.to],
   );
   const row = rows[0];
@@ -77,6 +87,7 @@ export async function fetchWeeklyChallengeProgress(
     duels_won: Number(row?.won ?? 0),
     duel_invites_sent: Number(row?.invites ?? 0),
     trainings_completed: Number(row?.completed ?? 0),
+    channel_posts_commented: Number(row?.commented_posts ?? 0),
   };
 }
 

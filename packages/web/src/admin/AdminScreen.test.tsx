@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AdminScreen } from './AdminScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
 
-function renderAdmin(): void {
+function renderAdmin(): QueryClient {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -13,6 +13,7 @@ function renderAdmin(): void {
       <AdminScreen />
     </QueryClientProvider>,
   );
+  return client;
 }
 
 function deferredResponse(): {
@@ -396,6 +397,320 @@ describe('AdminScreen', () => {
     vi.restoreAllMocks();
   });
 
+  function setupCoinPackages(includeSecondPackage = false) {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    });
+    let packages = [
+      {
+        id: '11111111-1111-4111-8111-111111111111',
+        slug: 'club',
+        title: 'Игровой запас',
+        description: 'Для новых побед',
+        coinAmount: 40000,
+        priceRub: 699,
+        badgeText: 'Выгодно',
+        marker: 'hit',
+        sortOrder: 3,
+        isActive: false,
+        createdAt: '2026-09-12T10:00:00Z',
+        updatedAt: '2026-09-12T10:00:00Z',
+      },
+    ];
+    if (includeSecondPackage) {
+      packages.push({
+        ...packages[0]!,
+        id: '33333333-3333-4333-8333-333333333333',
+        slug: 'season',
+        title: 'Большой запас',
+        coinAmount: 90000,
+        priceRub: 1490,
+      });
+    }
+    const writes: Array<{ method: string; body: Record<string, unknown> }> = [];
+    let failSave = false;
+    let saveDelay: Promise<Response> | null = null;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes('/admin/coin-packages')) {
+        if (init?.method === 'POST' || init?.method === 'PATCH') {
+          const body = JSON.parse(String(init.body));
+          writes.push({ method: init.method, body });
+          const pending = saveDelay;
+          saveDelay = null;
+          if (pending) await pending;
+          if (failSave)
+            return new Response(JSON.stringify({ error: 'conflict', message: 'duplicate slug' }), {
+              status: 409,
+            });
+          const item = {
+            ...packages[0]!,
+            ...body,
+            id: init.method === 'POST' ? '22222222-2222-4222-8222-222222222222' : packages[0]!.id,
+          };
+          packages =
+            init.method === 'POST'
+              ? [...packages, item]
+              : packages.map((existing) => (existing.id === item.id ? item : existing));
+          return new Response(JSON.stringify({ package: item }));
+        }
+        return new Response(JSON.stringify({ packages }));
+      }
+      if (url.includes('/admin/users'))
+        return new Response(
+          JSON.stringify({
+            users: [],
+            total: 0,
+            limit: 20,
+            offset: 0,
+            notificationStats: makeNotificationStats(),
+          }),
+        );
+      if (url.includes('/admin/summary')) return new Response(JSON.stringify(makeAdminSummary()));
+      return new Response('{}');
+    });
+    return {
+      writes,
+      delayNextSave: () => {
+        const pending = deferredResponse();
+        saveDelay = pending.promise;
+        return pending;
+      },
+      failNextSave: () => {
+        failSave = true;
+      },
+    };
+  }
+
+  it('coin packages edit inactive offers and invalidate the Bank and public catalog after save', async () => {
+    const { writes } = setupCoinPackages();
+    const client = renderAdmin();
+    client.setQueryData(['bank', 'packages'], { packages: [] });
+    selectAdminSection('Пакеты монет');
+    expect(await screen.findByText('Игровой запас')).toBeInTheDocument();
+    expect(screen.getByText('Неактивен')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать Игровой запас' }));
+    const form = screen.getByRole('form', { name: 'Редактирование пакета монет' });
+    expect(within(form).getByDisplayValue('Игровой запас')).toBeInTheDocument();
+    expect(within(form).getByLabelText('Идентификатор')).toHaveAttribute('readonly');
+    expect(within(form).getByRole('combobox', { name: 'Маркер' })).toHaveTextContent('Хит');
+    for (const [label, value] of [
+      ['Название', 'Новый запас'],
+      ['Описание', 'Новое описание'],
+      ['Монеты', '50000'],
+      ['Цена, ₽', '799'],
+      ['Бейдж', 'Особый'],
+      ['Порядок', '-2'],
+    ]) {
+      fireEvent.change(within(form).getByLabelText(label!), { target: { value } });
+    }
+    fireEvent.click(within(form).getByRole('combobox', { name: 'Маркер' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Премиум' }));
+    fireEvent.click(within(form).getByRole('checkbox', { name: 'Активен' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(screen.queryByRole('form')).not.toBeInTheDocument());
+    expect(await screen.findByText('Новый запас')).toBeInTheDocument();
+    expect(writes).toEqual([
+      {
+        method: 'PATCH',
+        body: {
+          title: 'Новый запас',
+          description: 'Новое описание',
+          coinAmount: 50000,
+          priceRub: 799,
+          badgeText: 'Особый',
+          marker: 'premium',
+          sortOrder: -2,
+          isActive: true,
+        },
+      },
+    ]);
+    expect(client.getQueryState(['bank', 'packages'])?.isInvalidated).toBe(true);
+    expect(screen.queryByRole('button', { name: /Удалить/ })).not.toBeInTheDocument();
+  });
+
+  it.each(['another package', 'new package', 'same package'])(
+    'coin packages preserve the newer editor for %s when an earlier save completes',
+    async (target) => {
+      const { delayNextSave, writes } = setupCoinPackages(true);
+      const pending = delayNextSave();
+      renderAdmin();
+      selectAdminSection('Пакеты монет');
+      fireEvent.click(await screen.findByRole('button', { name: 'Редактировать Игровой запас' }));
+      fireEvent.change(screen.getByLabelText('Название'), {
+        target: { value: 'Сохранённый запас' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+      await waitFor(() => expect(writes).toHaveLength(1));
+      const nextButton =
+        target === 'new package'
+          ? 'Создать пакет'
+          : target === 'same package'
+            ? 'Редактировать Игровой запас'
+            : 'Редактировать Большой запас';
+      fireEvent.click(screen.getByRole('button', { name: nextButton }));
+      fireEvent.change(screen.getByLabelText('Название'), {
+        target: { value: 'Несохранённые изменения' },
+      });
+      fireEvent.change(screen.getByLabelText('Описание'), {
+        target: { value: 'Текст нового редактора' },
+      });
+      await act(async () => {
+        pending.resolve(new Response('{}'));
+      });
+      // The updated card proves the earlier save callback and catalog refresh completed.
+      expect(await screen.findByText('Сохранённый запас')).toBeInTheDocument();
+      expect(screen.getByRole('form')).toBeInTheDocument();
+      expect(screen.getByLabelText('Название')).toHaveValue('Несохранённые изменения');
+      expect(screen.getByLabelText('Описание')).toHaveValue('Текст нового редактора');
+      expect(writes).toHaveLength(1);
+    },
+  );
+
+  it('coin packages create with validated commercial terms and a unique identifier', async () => {
+    const { writes } = setupCoinPackages();
+    renderAdmin();
+    selectAdminSection('Пакеты монет');
+    await screen.findByText('Игровой запас');
+    fireEvent.click(screen.getByRole('button', { name: 'Создать пакет' }));
+    const form = screen.getByRole('form', { name: 'Создание пакета монет' });
+    for (const [label, value] of [
+      ['Идентификатор', 'new-package'],
+      ['Название', 'Новый пакет'],
+      ['Монеты', '100000001'],
+      ['Цена, ₽', '149'],
+    ]) {
+      fireEvent.change(within(form).getByLabelText(label!), { target: { value } });
+    }
+    expect(within(form).getByLabelText('Монеты')).toBeInvalid();
+    fireEvent.change(within(form).getByLabelText('Монеты'), { target: { value: '7450' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Создать' }));
+    await waitFor(() => expect(screen.queryByRole('form')).not.toBeInTheDocument());
+    expect(await screen.findByText('Новый пакет')).toBeInTheDocument();
+    expect(writes).toEqual([
+      {
+        method: 'POST',
+        body: {
+          slug: 'new-package',
+          title: 'Новый пакет',
+          description: '',
+          coinAmount: 7450,
+          priceRub: 149,
+          badgeText: null,
+          marker: null,
+          sortOrder: 0,
+          isActive: true,
+        },
+      },
+    ]);
+  });
+
+  it('coin packages keep edits and show a useful error when saving fails', async () => {
+    const { failNextSave } = setupCoinPackages();
+    failNextSave();
+    renderAdmin();
+    selectAdminSection('Пакеты монет');
+    await screen.findByText('Игровой запас');
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать Игровой запас' }));
+    fireEvent.change(screen.getByLabelText('Название'), {
+      target: { value: 'Несохранённое название' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось сохранить пакет');
+    expect(screen.getByDisplayValue('Несохранённое название')).toBeInTheDocument();
+  });
+
+  it('payments show immutable YooKassa snapshots and legacy rows with existing filters and analytics', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    });
+    const localId = '11111111-1111-4111-8111-111111111111';
+    const payment = {
+      id: localId,
+      userId: 'player',
+      userDisplayName: 'Игрок',
+      userAvatarUrl: null,
+      inventoryItemId: null,
+      title: 'Игровой запас до изменения',
+      amountRub: 699,
+      coinAmount: 40000,
+      status: 'paid',
+      provider: 'yookassa',
+      providerPaymentId: 'provider-123',
+      createdAt: '2026-09-10T10:00:00Z',
+      paidAt: '2026-09-11T11:00:00Z',
+    };
+    const legacy = {
+      ...payment,
+      id: 'legacy-payment',
+      title: 'Клюшка',
+      provider: 'manual',
+      providerPaymentId: null,
+      coinAmount: null,
+      paidAt: null,
+      status: 'pending',
+    };
+    const requests: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/admin/payments')) {
+        requests.push(url);
+        return new Response(
+          JSON.stringify({
+            payments: [payment, legacy],
+            total: 2,
+            limit: 50,
+            offset: 0,
+            analytics: {
+              month: { revenueRub: 699, paidCount: 1 },
+              quarter: { revenueRub: 699, paidCount: 1 },
+              year: { revenueRub: 699, paidCount: 1 },
+            },
+          }),
+        );
+      }
+      if (url.includes('/admin/users'))
+        return new Response(
+          JSON.stringify({
+            users: [],
+            total: 0,
+            limit: 20,
+            offset: 0,
+            notificationStats: makeNotificationStats(),
+          }),
+        );
+      if (url.includes('/admin/summary')) return new Response(JSON.stringify(makeAdminSummary()));
+      return new Response('{}');
+    });
+    renderAdmin();
+    selectAdminSection('Платежи');
+    const card = (await screen.findByText(payment.title)).closest('article')!;
+    expect(within(card).getByText(`ID: ${localId}`)).toBeInTheDocument();
+    expect(within(card).getByText('ID провайдера: provider-123')).toBeInTheDocument();
+    expect(within(card).getByText(/40\s*000 монет/)).toBeInTheDocument();
+    expect(within(card).getByText(/Создан:.*10\.09\.2026/)).toBeInTheDocument();
+    expect(within(card).getByText(/Оплачен:.*11\.09\.2026/)).toBeInTheDocument();
+    expect(within(card).getByText('yookassa')).toBeInTheDocument();
+    expect(within(card).getByText('Оплачен')).toBeInTheDocument();
+    const legacyCard = screen.getByText('Клюшка').closest('article')!;
+    expect(within(legacyCard).queryByText(/монет/)).not.toBeInTheDocument();
+    expect(within(legacyCard).getByText('ID: legacy-payment')).toBeInTheDocument();
+    expect(screen.getByText('Месяц')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Поиск платежей'), { target: { value: localId } });
+    fireEvent.change(screen.getByLabelText('Цена от'), { target: { value: '200' } });
+    await waitFor(() =>
+      expect(
+        requests.some((url) => url.includes(`q=${localId}`) && url.includes('minAmount=200')),
+      ).toBe(true),
+    );
+    expect(screen.getByRole('combobox', { name: 'Фильтр по статусу платежа' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Сортировка платежей' })).toBeInTheDocument();
+  });
+
   it('keeps onboarding as a top-level admin tab', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'a',
@@ -433,7 +748,9 @@ describe('AdminScreen', () => {
     expect(await within(menu).findByLabelText('Новые отзывы: 2')).toBeInTheDocument();
     expect(within(menu).getByLabelText('Новые сообщения: 1')).toBeInTheDocument();
     fireEvent.click(within(menu).getByRole('button', { name: 'Коммуникации' }));
-    expect(await screen.findByRole('tab', { name: 'Диалоги Требуется действие' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('tab', { name: 'Диалоги Требуется действие' }),
+    ).toBeInTheDocument();
   });
 
   it('previews and confirms a personal broadcast from the official account', async () => {
@@ -487,6 +804,40 @@ describe('AdminScreen', () => {
       ),
     );
     expect(await screen.findByText('Сообщение отправлено 12 игрокам')).toBeInTheDocument();
+  });
+
+  it('shows an audience loading error instead of a false zero recipient count', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/admin/communications/broadcasts/audience')) {
+        return new Response(JSON.stringify({ code: 'configuration_error' }), { status: 409 });
+      }
+      if (url.includes('/admin/attention')) {
+        return new Response(
+          JSON.stringify({
+            feedbackUnreadCount: 0,
+            officialDialogsUnreadCount: 0,
+            totalCount: 0,
+          }),
+        );
+      }
+      return new Promise<Response>(() => undefined);
+    });
+
+    renderAdmin();
+    selectAdminSection('Коммуникации');
+    fireEvent.click(screen.getByRole('tab', { name: 'Рассылка' }));
+
+    expect(await screen.findByText('Не удалось загрузить получателей')).toHaveAttribute(
+      'role',
+      'alert',
+    );
+    expect(screen.queryByText('0 получателей')).not.toBeInTheDocument();
   });
 
   it('starts with dashboard and renders game settings for admins', async () => {
@@ -1148,7 +1499,7 @@ describe('AdminScreen', () => {
     const adminNavigation = within(adminMenu).getByRole('navigation', {
       name: 'Разделы администратора',
     });
-    expect(within(adminNavigation).getAllByRole('button')).toHaveLength(14);
+    expect(within(adminNavigation).getAllByRole('button')).toHaveLength(15);
     expect(within(adminNavigation).getByRole('button', { name: 'Обзор' })).toHaveAttribute(
       'aria-current',
       'page',
@@ -1421,16 +1772,20 @@ describe('AdminScreen', () => {
       }
       if (url.includes('/admin/duel-templates/duel-template-1')) {
         templatePatchBody = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+        Object.assign(duelTemplate, templatePatchBody);
         return new Response(JSON.stringify({ template: duelTemplate }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
       }
       if (url.includes('/admin/duel-templates')) {
-        return new Response(JSON.stringify({ templates: [duelTemplate] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
+        return new Response(
+          JSON.stringify({ templates: [duelTemplate], rewardAmountLimit: 2147483647 }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
       }
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
     });
@@ -1443,6 +1798,8 @@ describe('AdminScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать Классика' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Редактирование дуэли' });
+    expect(within(dialog).getByText('Награды за результат')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Допуск равного опыта, %')).toHaveValue(10);
     expect(screen.getByLabelText('Площадка при автоматическом подборе')).toHaveTextContent(
       'Нейтральная стандартная',
     );
@@ -1456,6 +1813,10 @@ describe('AdminScreen', () => {
     fireEvent.change(within(dialog).getByLabelText('Минут на ответ'), {
       target: { value: '15' },
     });
+    const rewardCoins = within(dialog).getByLabelText('Победа над более опытным: монеты');
+    fireEvent.change(rewardCoins, { target: { value: '2147483648' } });
+    expect(within(dialog).getByRole('button', { name: 'Сохранить' })).toBeDisabled();
+    fireEvent.change(rewardCoins, { target: { value: '777' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
 
     await waitFor(() => expect(templatePatchBody).not.toBeNull());
@@ -1463,6 +1824,23 @@ describe('AdminScreen', () => {
     expect(savedTemplatePatchBody.challengeTtlMs).toBe(900_000);
     expect(savedTemplatePatchBody.readyDurationMs).toBe(900_000);
     expect(savedTemplatePatchBody.matchmakingVenuePolicy).toBe('random_unselected');
+    expect(savedTemplatePatchBody.rewardRules).toEqual({
+      equalExperienceTolerancePercent: 10,
+      strongerWin: { coins: 777, stars: 0, tokens: 0 },
+      equalWin: { coins: 0, stars: 0, tokens: 0 },
+      weakerWin: { coins: 0, stars: 0, tokens: 0 },
+      draw: { coins: 0, stars: 0, tokens: 0 },
+      loss: { coins: 0, stars: 0, tokens: 0 },
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Редактирование дуэли' }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(await screen.findByText('Ответ 15 мин')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать Классика' }));
+    const reopened = await screen.findByRole('dialog', { name: 'Редактирование дуэли' });
+    expect(within(reopened).getByLabelText('Победа над более опытным: монеты')).toHaveValue(777);
   });
 
   it('keeps the duel editor open and prevents duplicate submit while save is pending', async () => {
@@ -1557,10 +1935,13 @@ describe('AdminScreen', () => {
         return patchResponse;
       }
       if (url.includes('/admin/duel-templates')) {
-        return new Response(JSON.stringify({ templates: [duelTemplate] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
+        return new Response(
+          JSON.stringify({ templates: [duelTemplate], rewardAmountLimit: 2147483647 }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
       }
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
     });
@@ -1711,7 +2092,7 @@ describe('AdminScreen', () => {
     expect(savedGameplayPatchBody.effectShotZoneMultiplier).toBe(1);
   });
 
-  it('shows only skate tuning fields while editing skates', async () => {
+  it('keeps skate item editing focused on resource instead of global penalties', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'a',
       refreshToken: 'r',
@@ -1800,10 +2181,11 @@ describe('AdminScreen', () => {
         'Когда остаток станет не больше этого числа, иконка начнёт пульсировать.',
       ),
     ).toBeInTheDocument();
-    expect(within(dialog).getByText('Коньки и спотыкание')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Коньки и спотыкание')).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Мин. интервал спотыкания')).not.toBeInTheDocument();
     expect(
       within(dialog).getByText(
-        'Коньки расходуются в прокатах и управляют спотыканием без рабочего инвентаря.',
+        'Коньки расходуются в прокатах. Спотыкание настраивается глобально.',
       ),
     ).toBeInTheDocument();
     expect(within(dialog).queryByText('Энергия и усталость')).not.toBeInTheDocument();

@@ -220,6 +220,11 @@ describe.skipIf(!hasIntegrationEnv)('071 accuracy World Tour migration', () => {
       '115_weekly_challenge_launch_marker.sql',
       '116_weekly_challenge_future_publication.sql',
       '117_admin_direct_broadcasts.sql',
+      '117_economy_achievement_rewards.sql',
+      '118_weekly_challenge_token_rewards.sql',
+      '119_duel_reward_matrix.sql',
+      '120_monthly_duel_rating_rewards.sql',
+      '121_duel_reward_storage_limits.sql',
     ]);
 
     const preserved = await pool.query<{

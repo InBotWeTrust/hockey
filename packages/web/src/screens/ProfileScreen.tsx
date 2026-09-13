@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Award,
@@ -23,8 +23,9 @@ import {
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { CommunityLinks } from '../components/CommunityLinks.js';
 import { useAuthStore } from '../auth/authStore.js';
-import { placeholderArtworkForKind } from './inventoryArtwork.js';
+import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
+  formatProfileInventoryBadgeAmount,
   formatInventoryResourceAmount,
   formatRecoveryMinutesTotal,
   recoveryMinutesAvailable,
@@ -37,6 +38,10 @@ import {
 } from './profileSections.js';
 import type { ProfileData } from './profileTypes.js';
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
+import { ExperienceRatingModal } from '../profile/ExperienceRatingModal.js';
+import type { ExperienceRatingPlayer } from '../api/experienceRating.js';
+import { StatRatingModal } from '../profile/StatRatingModal.js';
+import type { StatRatingMetric, StatRatingPlayer } from '../api/statRating.js';
 
 export type TrophySectionKey = keyof NonNullable<ProfileData['trophyDetails']>;
 
@@ -71,14 +76,18 @@ function ProfileBalance({
   value,
   tone,
   icon,
+  onClick,
+  actionLabel,
 }: {
   label: string;
   value: number;
   tone: string;
   icon: JSX.Element;
+  onClick?: () => void;
+  actionLabel?: string;
 }): JSX.Element {
-  return (
-    <div className="profile-balance">
+  const content = (
+    <>
       <span className="profile-balance__label">{label}</span>
       <span className={`profile-balance__amount profile-balance__amount--${tone}`}>
         {icon}
@@ -86,7 +95,19 @@ function ProfileBalance({
           <FittedOneLineText maxFontSize={18}>{formatProfileNumber(value)}</FittedOneLineText>
         </strong>
       </span>
-    </div>
+    </>
+  );
+  return onClick === undefined ? (
+    <div className="profile-balance">{content}</div>
+  ) : (
+    <button
+      type="button"
+      className="profile-balance profile-balance--button"
+      aria-label={actionLabel ?? label}
+      onClick={onClick}
+    >
+      {content}
+    </button>
   );
 }
 
@@ -122,9 +143,8 @@ function EquipmentPanel({
   ] as const;
   const recoveryItems = inventory?.items.recovery ?? [];
   const recoveryMinutes = recoveryMinutesAvailable(recoveryItems);
-  const recoveryArtwork =
-    recoveryItems.find((item) => item.chargesAvailable > 0)?.imageUrl ??
-    '/inventory/recovery-30.webp';
+  const recoveryItem = recoveryItems.find((item) => item.chargesAvailable > 0) ?? null;
+  const recoveryArtwork = recoveryItem?.imageUrl ?? '/inventory/recovery-30.webp';
   return (
     <section className="profile-equipment-section" aria-label="Инвентарь">
       <button
@@ -149,13 +169,21 @@ function EquipmentPanel({
               >
                 <span className="profile-loadout-slot__image">
                   <img
-                    src={item?.imageUrl ?? placeholderArtworkForKind(equipmentKind)}
+                    src={
+                      item
+                        ? artworkForInventoryItem(item)
+                        : placeholderArtworkForKind(equipmentKind)
+                    }
                     alt={item?.title ?? baseImageAlt}
                   />
                   {item !== null ? (
                     <strong>
                       <FittedOneLineText maxFontSize={9} minFontSize={5}>
-                        {formatProfileNumber(item.chargesAvailable)}
+                        {formatProfileInventoryBadgeAmount(
+                          item.kind,
+                          item.chargesAvailable,
+                          item.resourceUnit,
+                        )}
                       </FittedOneLineText>
                     </strong>
                   ) : null}
@@ -172,16 +200,16 @@ function EquipmentPanel({
             onClick={onOpenRecovery}
           >
             <span className="profile-loadout-slot__image">
-              <img src={recoveryArtwork} alt="Наборы для восстановления" />
+              <img src={recoveryArtwork} alt={recoveryItem?.title ?? 'Наборы для восстановления'} />
               <strong>
                 <FittedOneLineText maxFontSize={9} minFontSize={5}>
-                  {formatProfileNumber(recoveryMinutes)}
+                  {formatProfileNumber(recoveryMinutes)} мин
                 </FittedOneLineText>
               </strong>
             </span>
             <span className="profile-loadout-slot__kind">Восстановление</span>
             <span className="profile-loadout-slot__title">
-              {recoveryMinutes > 0 ? 'Минут' : 'Нет в запасе'}
+              {recoveryItem?.title ?? 'Нет в запасе'}
             </span>
           </button>
         </span>
@@ -282,7 +310,15 @@ function CareerPanel({
                 onClick={() => onChoose(achievement)}
               >
                 <img src={achievement.photoUrl} alt="" />
-                <span>{achievement.title}</span>
+                <span
+                  className={`profile-achievement-title${
+                    achievement.id === 'training-monster'
+                      ? ' profile-achievement-title--compact'
+                      : ''
+                  }`}
+                >
+                  {achievement.title}
+                </span>
               </button>
             ))}
           </span>
@@ -342,7 +378,7 @@ function EquipmentPickerModal({
             key={item.id}
             onClick={() => onSelect(item)}
           >
-            {item.imageUrl ? <img src={item.imageUrl} alt="" /> : null}
+            <img src={artworkForInventoryItem(item)} alt="" />
             <span>
               <strong>{item.title}</strong>
               <small>
@@ -476,7 +512,13 @@ function TrophyShowcase({
   );
 }
 
-function SportingMetrics({ profile }: { profile: ProfileData }): JSX.Element {
+function SportingMetrics({
+  profile,
+  onOpenRating,
+}: {
+  profile: ProfileData;
+  onOpenRating: (metric: StatRatingMetric) => void;
+}): JSX.Element {
   const registeredDate = new Date(profile.registeredAt);
   const registeredLabel = Number.isNaN(registeredDate.getTime())
     ? '—'
@@ -486,9 +528,16 @@ function SportingMetrics({ profile }: { profile: ProfileData }): JSX.Element {
         month: '2-digit',
         year: '2-digit',
       });
-  const items: Array<{ value: ReactNode; label: string }> = [
-    { value: formatProfileNumber(profile.stats.goals), label: 'Шайбы' },
-    { value: `${formatProfileNumber(profile.stats.accuracy)}%`, label: 'Точность' },
+  const items: Array<{ value: ReactNode; label: string; metric?: StatRatingMetric }> = [
+    { value: formatProfileNumber(profile.stats.goals), label: 'Шайбы', metric: 'goals' },
+    {
+      value: `${profile.stats.accuracy.toLocaleString('ru-RU', {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      })}%`,
+      label: 'Точность',
+      metric: 'accuracy',
+    },
     {
       value: (
         <>
@@ -500,6 +549,7 @@ function SportingMetrics({ profile }: { profile: ProfileData }): JSX.Element {
         </>
       ),
       label: 'Дней подряд',
+      metric: 'streak',
     },
     {
       value:
@@ -516,14 +566,31 @@ function SportingMetrics({ profile }: { profile: ProfileData }): JSX.Element {
   ];
   return (
     <div className="profile-sporting-metrics" aria-label="Главные показатели">
-      {items.map(({ value, label }) => (
-        <div className="profile-sporting-metrics__item" key={label}>
-          <strong>
-            <FittedOneLineText maxFontSize={17}>{value}</FittedOneLineText>
-          </strong>
-          <span>{label}</span>
-        </div>
-      ))}
+      {items.map(({ value, label, metric }) => {
+        const content = (
+          <>
+            <strong>
+              <FittedOneLineText maxFontSize={17}>{value}</FittedOneLineText>
+            </strong>
+            <span>{label}</span>
+          </>
+        );
+        return metric !== undefined ? (
+          <button
+            type="button"
+            className="profile-sporting-metrics__item profile-sporting-metrics__item--button"
+            key={label}
+            aria-label={`Открыть рейтинг: ${label}`}
+            onClick={() => onOpenRating(metric)}
+          >
+            {content}
+          </button>
+        ) : (
+          <div className="profile-sporting-metrics__item" key={label}>
+            {content}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -551,6 +618,8 @@ export function ProfileScreen(): JSX.Element {
     ProfileData['achievements'][number] | null
   >(null);
   const [selectedTrophySection, setSelectedTrophySection] = useState<TrophySectionKey | null>(null);
+  const [experienceRatingOpen, setExperienceRatingOpen] = useState(false);
+  const [statRatingMetric, setStatRatingMetric] = useState<StatRatingMetric | null>(null);
   const updateUser = useAuthStore((state) => state.updateUser);
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -560,6 +629,34 @@ export function ProfileScreen(): JSX.Element {
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
   });
+  const synchronizeProfileStats = useCallback(
+    (player: StatRatingPlayer): void => {
+      queryClient.setQueryData<ProfileData>(['profile'], (current) => {
+        if (current === undefined || current.id !== player.userId) return current;
+        return {
+          ...current,
+          stats: {
+            ...current.stats,
+            goals: player.goals,
+            shots: player.shots,
+            accuracy: Math.round(player.accuracy * 10) / 10,
+            playStreakDays: player.currentStreakDays,
+            bestPlayStreakDays: player.recordStreakDays,
+          },
+        };
+      });
+    },
+    [queryClient],
+  );
+  const synchronizeProfileExperience = useCallback(
+    (player: ExperienceRatingPlayer): void => {
+      queryClient.setQueryData<ProfileData>(['profile'], (current) => {
+        if (current === undefined || current.id !== player.userId) return current;
+        return { ...current, experienceBalance: player.experience };
+      });
+    },
+    [queryClient],
+  );
   const equipmentMutation = useMutation({
     mutationFn: (patch: Partial<InventoryState['equipped']>) => patchEquipment(patch),
     onSuccess: (inventory) => {
@@ -654,12 +751,30 @@ export function ProfileScreen(): JSX.Element {
               value={experienceBalance}
               tone="experience"
               icon={<TrendingUp data-testid="profile-balance-icon-experience" aria-hidden="true" />}
+              actionLabel="Открыть рейтинг по опыту"
+              onClick={() => setExperienceRatingOpen(true)}
             />
           </div>
         </div>
-        <SportingMetrics profile={profile} />
+        <SportingMetrics profile={profile} onOpenRating={setStatRatingMetric} />
         <TrophyShowcase profile={profile} onOpen={setSelectedTrophySection} />
       </section>
+
+      {experienceRatingOpen ? (
+        <ExperienceRatingModal
+          currentUserId={profile.id}
+          onCurrentUser={synchronizeProfileExperience}
+          onClose={() => setExperienceRatingOpen(false)}
+        />
+      ) : null}
+      {statRatingMetric !== null ? (
+        <StatRatingModal
+          metric={statRatingMetric}
+          currentUserId={profile.id}
+          onCurrentUser={synchronizeProfileStats}
+          onClose={() => setStatRatingMetric(null)}
+        />
+      ) : null}
 
       <section className="profile-sports-data" aria-label="Спортивные данные игрока">
         <EquipmentPanel

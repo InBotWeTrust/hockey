@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { reconcileTournamentAchievements } from '../achievements/tournamentEvaluator.js';
 import { AppError } from '../plugins/errors.js';
 import { enqueueTournamentAudiencePush } from '../push/tournament.js';
+import { lockTournament, lockTournamentParticipants } from './locks.js';
 
 interface CompletedSeries {
   higherId: string;
@@ -96,10 +97,11 @@ async function grantOne(
       where user_id = $1 returning balance, reserved_balance`,
     [input.userId, input.reward.coins],
   );
-  await client.query(
-    `update users set stars = stars + $2, experience = experience + $3 where id = $1`,
-    [input.userId, input.reward.stars, input.reward.experience],
-  );
+  await client.query(`update users set xp = xp + $2, experience = experience + $3 where id = $1`, [
+    input.userId,
+    input.reward.stars,
+    input.reward.experience,
+  ]);
   await client.query(
     `insert into currency_ledger
        (user_id, reason, available_delta, reserved_delta, balance_after, reserved_after, metadata)
@@ -131,6 +133,8 @@ export async function grantTournamentStageRewardsWithClient(
   tournamentId: string,
   stage: 'regular' | 'playoff',
 ) {
+  await lockTournament(client, tournamentId);
+  await lockTournamentParticipants(client, tournamentId);
   const tournament = await client.query<{
     title: string;
     rules_snapshot: Record<string, unknown>;

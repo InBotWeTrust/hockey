@@ -33,6 +33,7 @@ describe('TournamentStandingsTable', () => {
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows[0]).toHaveClass('tournament-standing-table__playoff-place');
     expect(rows[1]).toHaveClass('tournament-standing-table__playoff-place');
+    expect(rows[1]).toHaveClass('tournament-standing-table__medal-place--silver');
     expect(rows[2]).not.toHaveClass('tournament-standing-table__playoff-place');
     expect(
       within(rows[0]!)
@@ -114,5 +115,92 @@ describe('TournamentStandingsTable', () => {
     expect(rows[1]).not.toHaveClass('tournament-standing-table__medal-place--silver');
     expect(rows[2]).toHaveClass('tournament-standing-table__medal-place--bronze');
     expect(rows[3]?.className).toBe('');
+  });
+
+  it('marks second place silver in duel ratings', () => {
+    render(
+      <TournamentStandingsTable
+        variant="duel-rating"
+        regularSource="head_to_head"
+        dailyMetric={null}
+        rows={[
+          { user_id: 'user-1', rank: 1, display_name: 'Первый', played: 5, wins: 5, points: 15 },
+          { user_id: 'user-2', rank: 2, display_name: 'Второй', played: 5, wins: 3, points: 9 },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByRole('row')[2]).toHaveClass(
+      'tournament-standing-table__medal-place--silver',
+    );
+  });
+
+  it('renders the experience-rating variant without medal highlighting', () => {
+    render(
+      <TournamentStandingsTable
+        variant="experience-rating"
+        regularSource="head_to_head"
+        dailyMetric={null}
+        currentUserId="user-2"
+        currentUserRowTestId="experience-current"
+        rows={[
+          { user_id: 'user-1', rank: 1, display_name: 'Первый', experience: 1500 },
+          { user_id: 'user-2', rank: 2, display_name: 'Вы', experience: 1200 },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole('columnheader', { name: 'М' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Опыт' })).toBeInTheDocument();
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).not.toHaveClass('tournament-standing-table__medal-place--gold');
+    expect(screen.getByTestId('experience-current')).toHaveClass(
+      'tournament-standing-table__current-user',
+    );
+    expect(within(rows[0]!).getAllByRole('cell')).toHaveLength(3);
+    expect(within(rows[0]!).getAllByRole('cell').at(-1)).toHaveTextContent('1 500');
+  });
+
+  it.each(['profile-goals-rating', 'profile-accuracy-rating', 'profile-streak-rating'] as const)(
+    'does not highlight second place in %s',
+    (variant) => {
+      render(
+        <TournamentStandingsTable
+          variant={variant}
+          regularSource="head_to_head"
+          dailyMetric={null}
+          rows={[
+            { user_id: 'u1', rank: 1, display_name: 'Первый' },
+            { user_id: 'u2', rank: 2, display_name: 'Второй' },
+          ]}
+        />,
+      );
+      expect(screen.getAllByRole('row')[2]).not.toHaveClass(
+        'tournament-standing-table__medal-place--silver',
+      );
+    },
+  );
+
+  it('keeps goals as the rightmost primary column in the goals rating', () => {
+    render(
+      <TournamentStandingsTable
+        variant="profile-goals-rating"
+        regularSource="head_to_head"
+        dailyMetric={null}
+        rows={[{ user_id: 'u1', rank: 1, display_name: 'Игрок', goals: 1086, shots: 1417 }]}
+      />,
+    );
+
+    expect(screen.getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual([
+      'М',
+      'Игрок',
+      'Броски',
+      'Шайбы',
+    ]);
+    expect(
+      within(screen.getAllByRole('row')[1]!)
+        .getAllByRole('cell')
+        .map((cell) => cell.textContent),
+    ).toEqual(['1', 'Игрок', '1\u00a0417', '1\u00a0086']);
   });
 });

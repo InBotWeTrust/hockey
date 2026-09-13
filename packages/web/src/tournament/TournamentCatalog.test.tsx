@@ -741,12 +741,33 @@ describe('TournamentCatalog', () => {
     }
   });
 
+  it('keeps playoff series wins inset symmetrically with the seed', () => {
+    const style = document.createElement('style');
+    style.textContent = designSystemCss;
+    const row = document.createElement('div');
+    row.className = 'tournament-bracket-player';
+    row.innerHTML =
+      '<span class="tournament-bracket-player__seed">1</span><span></span><span></span><strong class="tournament-bracket-player__wins">4</strong>';
+    document.head.append(style);
+    document.body.append(row);
+    try {
+      const rowStyle = getComputedStyle(row);
+      const columns = rowStyle.gridTemplateColumns.trim().split(/\s+/);
+      expect(columns[0]).toBe(columns.at(-1));
+      expect(getComputedStyle(row.firstElementChild!).textAlign).toBe('center');
+      expect(getComputedStyle(row.lastElementChild!).textAlign).toBe('center');
+    } finally {
+      row.remove();
+      style.remove();
+    }
+  });
+
   it('uses compact two-column playoff cards and safe bottom spacing on narrow screens', () => {
     expect(designSystemCss).toMatch(
       /@media \(max-width:\s*360px\)[\s\S]*?\.tournament-bracket-overview__grid\s*\{[^}]*--playoff-bracket-column-gap:\s*8px;[^}]*padding-bottom:\s*calc\(20px \+ var\(--app-safe-bottom\)\);/s,
     );
     expect(designSystemCss).toMatch(
-      /@media \(max-width:\s*360px\)[\s\S]*?\.tournament-bracket-series--compact\s+\.tournament-bracket-player\s*\{[^}]*grid-template-columns:\s*8px auto minmax\(0,\s*1fr\) 10px;/s,
+      /@media \(max-width:\s*360px\)[\s\S]*?\.tournament-bracket-series--compact\s+\.tournament-bracket-player\s*\{[^}]*grid-template-columns:\s*8px auto minmax\(0,\s*1fr\) 8px;/s,
     );
     expect(designSystemCss).toMatch(
       /@media \(max-width:\s*360px\)[\s\S]*?\.segmented-tabs--scrollable\s*\{[^}]*padding-right:\s*28px;/s,

@@ -10,11 +10,12 @@ import {
   type TelegramMiniAppWebApp,
 } from './telegramMiniApp.js';
 
-export function useTelegramMiniAppAuth(): {
+export function useTelegramMiniAppAuth(enabled = true): {
   isTelegramMiniApp: boolean;
   isPending: boolean;
   isError: boolean;
   error: Error | null;
+  retry: () => void;
 } {
   const setSession = useAuthStore((s) => s.setSession);
   const startedRef = useRef(false);
@@ -52,13 +53,13 @@ export function useTelegramMiniAppAuth(): {
   }, [isTelegramMiniApp, loadError, webApp]);
 
   useEffect(() => {
-    if (startedRef.current) return;
+    if (!enabled || startedRef.current) return;
     if (!webApp?.initData) return;
     startedRef.current = true;
     webApp.ready?.();
     webApp.expand?.();
     mutation.mutate(webApp.initData);
-  }, [mutation, webApp]);
+  }, [enabled, mutation, webApp]);
 
   return {
     isTelegramMiniApp,
@@ -66,5 +67,17 @@ export function useTelegramMiniAppAuth(): {
       isTelegramMiniApp && !loadError && (!webApp || mutation.isIdle || mutation.isPending),
     isError: Boolean(loadError) || mutation.isError,
     error: loadError ?? mutation.error,
+    retry: () => {
+      if (loadError) {
+        startedRef.current = false;
+        setLoadError(null);
+        return;
+      }
+      if (!webApp?.initData || mutation.isPending) return;
+      mutation.reset();
+      webApp.ready?.();
+      webApp.expand?.();
+      mutation.mutate(webApp.initData);
+    },
   };
 }

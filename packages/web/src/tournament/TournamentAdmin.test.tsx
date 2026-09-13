@@ -18,6 +18,95 @@ const TEST_LIFECYCLE: TournamentLifecycleDTO = {
   reason: null,
 };
 
+const ECONOMY_PRESETS: Record<number, api.TournamentEconomyPreset> = {
+  16: {
+    participantLimit: 16,
+    entryFeeCoins: 10_000,
+    regularRewards: [
+      { place: 1, experience: 112, coins: 5_600, stars: 112 },
+      { place: 2, experience: 64, coins: 3_200, stars: 64 },
+      { place: 3, experience: 32, coins: 1_600, stars: 32 },
+    ],
+    playoffRewards: [
+      { place: 1, experience: 608, coins: 30_400, stars: 608 },
+      { place: 2, experience: 320, coins: 16_000, stars: 320 },
+      { place: 3, experience: 144, coins: 7_200, stars: 144 },
+      { place: 4, experience: 80, coins: 4_000, stars: 80 },
+    ],
+    payoutValueCoins: 136_000,
+    sinkValueCoins: 24_000,
+  },
+  32: {
+    participantLimit: 32,
+    entryFeeCoins: 12_500,
+    regularRewards: [
+      { place: 1, experience: 280, coins: 14_000, stars: 280 },
+      { place: 2, experience: 160, coins: 8_000, stars: 160 },
+      { place: 3, experience: 80, coins: 4_000, stars: 80 },
+    ],
+    playoffRewards: [
+      { place: 1, experience: 1_520, coins: 76_000, stars: 1_520 },
+      { place: 2, experience: 800, coins: 40_000, stars: 800 },
+      { place: 3, experience: 360, coins: 18_000, stars: 360 },
+      { place: 4, experience: 200, coins: 10_000, stars: 200 },
+    ],
+    payoutValueCoins: 340_000,
+    sinkValueCoins: 60_000,
+  },
+};
+
+function economyPresetFor(participantLimit: number): api.TournamentEconomyPreset {
+  return (
+    ECONOMY_PRESETS[participantLimit] ?? {
+      ...ECONOMY_PRESETS[16]!,
+      participantLimit,
+    }
+  );
+}
+
+function newDraftTournament(): api.AdminTournament {
+  return {
+    id: '00000000-0000-4000-8000-000000000960',
+    slug: 'economy-cup',
+    title: 'Кубок экономики',
+    description: '',
+    status: 'draft',
+    regularSource: 'head_to_head',
+    revision: 1,
+    participantCount: 0,
+    lifecycle: TEST_LIFECYCLE,
+  };
+}
+
+async function openNewTournamentWizard(): Promise<void> {
+  vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+  vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+  vi.spyOn(api, 'createAdminTournament').mockResolvedValue({ tournament: newDraftTournament() });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <TournamentAdmin />
+    </QueryClientProvider>,
+  );
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+    target: { value: 'Кубок экономики' },
+  });
+  const next = screen.getByRole('button', { name: 'Далее' });
+  await waitFor(() => expect(api.fetchTournamentEconomyPreset).toHaveBeenCalledWith(16));
+  await waitFor(() => expect(next).toBeEnabled());
+  fireEvent.click(next);
+  await screen.findByRole('combobox', { name: 'Регистрация' });
+}
+
+async function moveToRewardsStep(): Promise<void> {
+  for (let index = 0; index < 4; index += 1) {
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+  }
+  await screen.findByRole('button', { name: 'Применить рекомендуемые значения' });
+}
+
 async function chooseGlassOption(label: string, option: string | RegExp): Promise<void> {
   fireEvent.click(screen.getByRole('combobox', { name: label }));
   fireEvent.click(await screen.findByRole('option', { name: option }));
@@ -50,11 +139,517 @@ function dstOverlapTournament(): api.AdminTournament {
 describe('TournamentAdmin', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(api, 'fetchTournamentEconomyPreset').mockImplementation(async (participantLimit) =>
+      economyPresetFor(participantLimit),
+    );
     vi.spyOn(api, 'publishAdminTournament').mockResolvedValue({
       tournamentId: 'published-tournament',
       status: 'registration',
       revision: 1,
     });
+  });
+
+  it('applies the exact 16-player economy preset to a fresh draft', async () => {
+    const fetchPreset = vi
+      .spyOn(api, 'fetchTournamentEconomyPreset')
+      .mockImplementation(async (participantLimit) => economyPresetFor(participantLimit));
+
+    await openNewTournamentWizard();
+
+    await waitFor(() => expect(fetchPreset).toHaveBeenCalledWith(16));
+    await waitFor(() => expect(api.createAdminTournament).toHaveBeenCalledTimes(1));
+    expect(api.createAdminTournament).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rules: expect.objectContaining({
+          config: expect.objectContaining({ entryFeeCoins: 10_000 }),
+          stageRewards: {
+            regular: ECONOMY_PRESETS[16]!.regularRewards,
+            playoff: ECONOMY_PRESETS[16]!.playoffRewards,
+          },
+        }),
+      }),
+    );
+    expect(screen.getByRole('spinbutton', { name: 'Вступительный взнос, монеты' })).toHaveValue(
+      10_000,
+    );
+
+    await moveToRewardsStep();
+    expect(screen.getByRole('spinbutton', { name: 'Монеты награды регулярки 1' })).toHaveValue(
+      5_600,
+    );
+    expect(screen.getByRole('spinbutton', { name: 'Опыт награды регулярки 1' })).toHaveValue(112);
+    expect(screen.getByRole('spinbutton', { name: 'Монеты награды плей-офф 4' })).toHaveValue(
+      4_000,
+    );
+    expect(screen.getByRole('spinbutton', { name: 'Звёзды награды плей-офф 4' })).toHaveValue(80);
+  });
+
+  it('waits for the initial preset before snapshotting a fast first create', async () => {
+    let resolvePreset!: (preset: api.TournamentEconomyPreset) => void;
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+    const create = vi
+      .spyOn(api, 'createAdminTournament')
+      .mockResolvedValue({ tournament: newDraftTournament() });
+    vi.spyOn(api, 'fetchTournamentEconomyPreset').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePreset = resolve;
+        }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+      target: { value: 'Быстрый кубок' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await waitFor(() => expect(api.fetchTournamentEconomyPreset).toHaveBeenCalledWith(16));
+    expect(create).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolvePreset(ECONOMY_PRESETS[16]!);
+    });
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rules: expect.objectContaining({
+            stageRewards: {
+              regular: ECONOMY_PRESETS[16]!.regularRewards,
+              playoff: ECONOMY_PRESETS[16]!.playoffRewards,
+            },
+          }),
+        }),
+      ),
+    );
+  });
+
+  it('keeps a direct economy edit when an older recommended-values response arrives', async () => {
+    let resolvePreset!: (preset: api.TournamentEconomyPreset) => void;
+    vi.spyOn(api, 'fetchTournamentEconomyPreset')
+      .mockImplementationOnce(async () => economyPresetFor(16))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolvePreset = resolve;
+          }),
+      );
+
+    await openNewTournamentWizard();
+    await moveToRewardsStep();
+    fireEvent.click(screen.getByRole('button', { name: 'Применить рекомендуемые значения' }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Монеты награды регулярки 1' }), {
+      target: { value: '777' },
+    });
+
+    await act(async () => {
+      resolvePreset(ECONOMY_PRESETS[16]!);
+    });
+
+    expect(screen.getByRole('spinbutton', { name: 'Монеты награды регулярки 1' })).toHaveValue(777);
+  });
+
+  it('does not create a draft when the initial economy preset fails', async () => {
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+    const create = vi.spyOn(api, 'createAdminTournament');
+    vi.spyOn(api, 'fetchTournamentEconomyPreset').mockRejectedValue(new Error('preset failed'));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
+      target: { value: 'Кубок без пресета' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+
+    expect(
+      await screen.findByText(
+        'Не удалось подобрать рекомендуемые значения. Проверьте лимит участников и попробуйте ещё раз.',
+      ),
+    ).toBeInTheDocument();
+    expect(create).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Повторить подбор экономики' })).toBeInTheDocument();
+  });
+
+  it.each(['loading', 'error'] as const)(
+    'blocks stale autosave and publication after create while recommendations are %s',
+    async (state) => {
+      const update = vi
+        .spyOn(api, 'updateAdminTournament')
+        .mockResolvedValue({ tournament: { ...newDraftTournament(), revision: 2 } });
+      await openNewTournamentWizard();
+      await moveToRewardsStep();
+      let rejectPreset!: (error: Error) => void;
+      vi.mocked(api.fetchTournamentEconomyPreset).mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectPreset = reject;
+          }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Применить рекомендуемые значения' }));
+      if (state === 'error')
+        await act(async () => {
+          rejectPreset(new Error('preset failed'));
+        });
+      fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+      const finish = screen.getByRole('button', { name: 'Сохранить и опубликовать' });
+      expect(finish).toBeDisabled();
+      fireEvent.click(finish);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 650));
+      });
+      expect(update).not.toHaveBeenCalled();
+      expect(api.publishAdminTournament).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: '6. Награды' }));
+      fireEvent.change(screen.getByRole('spinbutton', { name: 'Монеты награды регулярки 1' }), {
+        target: { value: '777' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: '8. Проверка' }));
+      expect(screen.getByRole('button', { name: 'Сохранить и опубликовать' })).toBeEnabled();
+      await waitFor(() =>
+        expect(update).toHaveBeenCalledWith(
+          newDraftTournament().id,
+          1,
+          expect.objectContaining({
+            rules: expect.objectContaining({
+              stageRewards: expect.objectContaining({
+                regular: expect.arrayContaining([expect.objectContaining({ coins: 777 })]),
+              }),
+            }),
+          }),
+        ),
+      );
+    },
+  );
+
+  it.each(['loading', 'error'] as const)(
+    'does not autosave the old preset after a participant-limit change is %s',
+    async (state) => {
+      const update = vi
+        .spyOn(api, 'updateAdminTournament')
+        .mockResolvedValue({ tournament: { ...newDraftTournament(), revision: 2 } });
+      await openNewTournamentWizard();
+      let resolvePreset!: (preset: api.TournamentEconomyPreset) => void;
+      let rejectPreset!: (error: Error) => void;
+      vi.mocked(api.fetchTournamentEconomyPreset).mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            resolvePreset = resolve;
+            rejectPreset = reject;
+          }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+      fireEvent.change(screen.getByRole('spinbutton', { name: 'Участников' }), {
+        target: { value: '32' },
+      });
+      if (state === 'error')
+        await act(async () => {
+          rejectPreset(new Error('preset failed'));
+        });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 650));
+      });
+      expect(update).not.toHaveBeenCalled();
+      if (state === 'error')
+        fireEvent.click(screen.getByRole('button', { name: 'Повторить подбор экономики' }));
+      await act(async () => {
+        resolvePreset(economyPresetFor(32));
+      });
+      await waitFor(() =>
+        expect(update).toHaveBeenCalledWith(
+          newDraftTournament().id,
+          1,
+          expect.objectContaining({
+            rules: expect.objectContaining({
+              config: expect.objectContaining({ participantLimit: 32, entryFeeCoins: 12500 }),
+            }),
+          }),
+        ),
+      );
+    },
+  );
+
+  it.each(['loading', 'error'] as const)(
+    'revokes an already queued autosave while the preset is %s',
+    async (state) => {
+      let resolveSave!: (value: { tournament: api.AdminTournament }) => void;
+      const update = vi
+        .spyOn(api, 'updateAdminTournament')
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveSave = resolve;
+          }),
+        )
+        .mockResolvedValue({ tournament: { ...newDraftTournament(), revision: 3 } });
+      await openNewTournamentWizard();
+      vi.useFakeTimers();
+      try {
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Минимальный уровень' }), {
+          target: { value: '1' },
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(601);
+        });
+        expect(update).toHaveBeenCalledTimes(1);
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Минимальный уровень' }), {
+          target: { value: '2' },
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(601);
+        });
+        let resolvePreset!: (value: api.TournamentEconomyPreset) => void;
+        let rejectPreset!: (error: Error) => void;
+        vi.mocked(api.fetchTournamentEconomyPreset).mockImplementation(
+          () =>
+            new Promise((resolve, reject) => {
+              resolvePreset = resolve;
+              rejectPreset = reject;
+            }),
+        );
+        for (let index = 0; index < 4; index += 1)
+          fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Применить рекомендуемые значения' }));
+        if (state === 'error')
+          await act(async () => {
+            rejectPreset(new Error('preset failed'));
+          });
+        await act(async () => {
+          resolveSave({ tournament: { ...newDraftTournament(), revision: 2 } });
+        });
+        expect(update).toHaveBeenCalledTimes(1);
+        if (state === 'error') {
+          fireEvent.change(screen.getByRole('spinbutton', { name: 'Монеты награды регулярки 1' }), {
+            target: { value: '777' },
+          });
+        } else {
+          await act(async () => {
+            resolvePreset({ ...economyPresetFor(16), entryFeeCoins: 12345 });
+          });
+        }
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(601);
+        });
+        expect(update).toHaveBeenCalledTimes(2);
+        expect(update.mock.calls[1]).toEqual([
+          newDraftTournament().id,
+          2,
+          expect.objectContaining({
+            rules: expect.objectContaining({
+              eligibility: expect.objectContaining({ minLevel: 2 }),
+            }),
+          }),
+        ]);
+        const body = update.mock.calls[1]![2];
+        expect(body.rules).toMatchObject(
+          state === 'error'
+            ? {
+                stageRewards: {
+                  regular: [
+                    expect.objectContaining({ coins: 777 }),
+                    expect.anything(),
+                    expect.anything(),
+                  ],
+                },
+              }
+            : { config: { entryFeeCoins: 12345 } },
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it('autosaves the visible preset values after a pristine participant-limit change', async () => {
+    const update = vi.spyOn(api, 'updateAdminTournament').mockResolvedValue({
+      tournament: { ...newDraftTournament(), revision: 2 },
+    });
+    vi.spyOn(api, 'fetchTournamentEconomyPreset').mockImplementation(async (participantLimit) =>
+      economyPresetFor(participantLimit),
+    );
+
+    await openNewTournamentWizard();
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    fireEvent.change(await screen.findByRole('spinbutton', { name: 'Участников' }), {
+      target: { value: '32' },
+    });
+
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(
+        newDraftTournament().id,
+        1,
+        expect.objectContaining({
+          rules: expect.objectContaining({
+            config: expect.objectContaining({ entryFeeCoins: 12_500 }),
+            stageRewards: {
+              regular: ECONOMY_PRESETS[32]!.regularRewards,
+              playoff: ECONOMY_PRESETS[32]!.playoffRewards,
+            },
+          }),
+        }),
+      ),
+    );
+  });
+
+  it('refreshes a pristine economy after changing the participant limit from 16 to 32', async () => {
+    const fetchPreset = vi
+      .spyOn(api, 'fetchTournamentEconomyPreset')
+      .mockImplementation(async (participantLimit) => economyPresetFor(participantLimit));
+
+    await openNewTournamentWizard();
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    const participantLimit = await screen.findByRole('spinbutton', { name: 'Участников' });
+    fireEvent.change(participantLimit, { target: { value: '32' } });
+
+    await waitFor(() => expect(fetchPreset).toHaveBeenCalledWith(32));
+    fireEvent.click(screen.getByRole('button', { name: '2. Доступ' }));
+    expect(screen.getByRole('spinbutton', { name: 'Вступительный взнос, монеты' })).toHaveValue(
+      12_500,
+    );
+
+    await moveToRewardsStep();
+    expect(screen.getByRole('spinbutton', { name: 'Монеты награды регулярки 1' })).toHaveValue(
+      14_000,
+    );
+    expect(screen.getByRole('spinbutton', { name: 'Монеты награды плей-офф 1' })).toHaveValue(
+      76_000,
+    );
+  });
+
+  it.each([
+    {
+      field: 'Вступительный взнос, монеты',
+      stage: 'access',
+      value: '777',
+    },
+    {
+      field: 'Монеты награды регулярки 1',
+      stage: 'rewards',
+      value: '777',
+    },
+    {
+      field: 'Монеты награды плей-офф 1',
+      stage: 'rewards',
+      value: '777',
+    },
+  ])(
+    'keeps a custom economy after editing $field and changing the participant limit',
+    async ({ field, stage, value }) => {
+      const fetchPreset = vi
+        .spyOn(api, 'fetchTournamentEconomyPreset')
+        .mockImplementation(async (participantLimit) => economyPresetFor(participantLimit));
+
+      await openNewTournamentWizard();
+      if (stage === 'rewards') await moveToRewardsStep();
+      fireEvent.change(screen.getByRole('spinbutton', { name: field }), { target: { value } });
+
+      if (stage === 'rewards') {
+        fireEvent.click(screen.getByRole('button', { name: '3. Регулярка' }));
+      } else {
+        fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+      }
+      fireEvent.change(await screen.findByRole('spinbutton', { name: 'Участников' }), {
+        target: { value: '32' },
+      });
+
+      await act(async () => new Promise((resolve) => window.setTimeout(resolve, 0)));
+      expect(fetchPreset).not.toHaveBeenCalledWith(32);
+      if (stage === 'access') {
+        fireEvent.click(screen.getByRole('button', { name: '2. Доступ' }));
+      } else {
+        fireEvent.click(screen.getByRole('button', { name: '6. Награды' }));
+      }
+      expect(screen.getByRole('spinbutton', { name: field })).toHaveValue(Number(value));
+    },
+  );
+
+  it('replaces every custom economy field when the recommended values are applied explicitly', async () => {
+    const fetchPreset = vi
+      .spyOn(api, 'fetchTournamentEconomyPreset')
+      .mockImplementation(async (participantLimit) => economyPresetFor(participantLimit));
+
+    await openNewTournamentWizard();
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Вступительный взнос, монеты' }), {
+      target: { value: '777' },
+    });
+    await moveToRewardsStep();
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Монеты награды регулярки 1' }), {
+      target: { value: '888' },
+    });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Монеты награды плей-офф 1' }), {
+      target: { value: '999' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Применить рекомендуемые значения' }));
+
+    await waitFor(() => expect(fetchPreset).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('spinbutton', { name: 'Монеты награды регулярки 1' })).toHaveValue(
+      5_600,
+    );
+    expect(screen.getByRole('spinbutton', { name: 'Монеты награды плей-офф 1' })).toHaveValue(
+      30_400,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '2. Доступ' }));
+    expect(screen.getByRole('spinbutton', { name: 'Вступительный взнос, монеты' })).toHaveValue(
+      10_000,
+    );
+  });
+
+  it('ignores an older preset response after the participant limit changes again', async () => {
+    let resolve32!: (preset: api.TournamentEconomyPreset) => void;
+    let resolveLatest16!: (preset: api.TournamentEconomyPreset) => void;
+    let initial16 = true;
+    const fetchPreset = vi
+      .spyOn(api, 'fetchTournamentEconomyPreset')
+      .mockImplementation((limit) => {
+        if (limit === 16 && initial16) {
+          initial16 = false;
+          return Promise.resolve(ECONOMY_PRESETS[16]!);
+        }
+        if (limit === 32) {
+          return new Promise((resolve) => {
+            resolve32 = resolve;
+          });
+        }
+        return new Promise((resolve) => {
+          resolveLatest16 = resolve;
+        });
+      });
+
+    await openNewTournamentWizard();
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    fireEvent.change(await screen.findByRole('spinbutton', { name: 'Участников' }), {
+      target: { value: '32' },
+    });
+    await waitFor(() => expect(fetchPreset).toHaveBeenCalledWith(32));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Участников' }), {
+      target: { value: '16' },
+    });
+    await waitFor(() => expect(fetchPreset).toHaveBeenNthCalledWith(3, 16));
+
+    await act(async () => {
+      resolveLatest16(ECONOMY_PRESETS[16]!);
+    });
+    fireEvent.click(screen.getByRole('button', { name: '2. Доступ' }));
+    expect(screen.getByRole('spinbutton', { name: 'Вступительный взнос, монеты' })).toHaveValue(
+      10_000,
+    );
+
+    await act(async () => {
+      resolve32(ECONOMY_PRESETS[32]!);
+    });
+    expect(screen.getByRole('spinbutton', { name: 'Вступительный взнос, монеты' })).toHaveValue(
+      10_000,
+    );
   });
 
   it('configures playoff rounds by days, daily game limit, readiness and start interval', async () => {
@@ -373,6 +968,9 @@ describe('TournamentAdmin', () => {
 
     expect(screen.getByRole('button', { name: 'Публикуем…' })).toBeDisabled();
     expect(screen.getByRole('status')).toHaveTextContent('Публикуем…');
+    expect(screen.getByRole('button', { name: '3. Регулярка' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '6. Награды' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Назад' })).toBeDisabled();
 
     expect(update).toHaveBeenCalledWith(
       tournament.id,
@@ -1306,6 +1904,7 @@ describe('TournamentAdmin', () => {
     fireEvent.click(screen.getByRole('option', { name: 'Классика' }));
 
     expect(screen.getByRole('spinbutton', { name: 'Бросков в периоде' })).toHaveValue(30);
+    expect(screen.getByRole('spinbutton', { name: 'Длительность периода, минуты' })).toHaveValue(3);
     expect(screen.getByText('1-й период')).toBeInTheDocument();
     expect(screen.getByText('2-й период')).toBeInTheDocument();
     expect(screen.getByText('3-й период')).toBeInTheDocument();
@@ -1349,7 +1948,9 @@ describe('TournamentAdmin', () => {
         <TournamentAdmin />
       </QueryClientProvider>,
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    });
     fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
       target: { value: 'Несохранённый кубок' },
     });
@@ -1389,7 +1990,9 @@ describe('TournamentAdmin', () => {
       </div>,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    });
 
     const appContent = screen.getByTestId('app-content');
     const dialog = screen.getByRole('dialog', { name: 'Создание турнира' });
@@ -1581,7 +2184,7 @@ describe('TournamentAdmin', () => {
             },
           },
           stageRewards: expect.objectContaining({
-            regular: [{ place: 1, experience: 100, coins: 50, stars: 3 }],
+            regular: expect.arrayContaining([{ place: 1, experience: 100, coins: 50, stars: 3 }]),
           }),
         }),
       }),

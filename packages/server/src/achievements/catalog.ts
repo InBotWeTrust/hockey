@@ -120,6 +120,7 @@ const APPROVED_REWARDS: Record<string, AchievementReward> = {
   'no-shake': approvedReward(0, 20),
   'tournament-streak': approvedReward(7_500, 250, 5),
   'monthly-top-1': approvedReward(7_500, 100, 3),
+  'monthly-top-3': approvedReward(3_750, 50, 2),
 };
 
 const REMOVED_ACHIEVEMENT_IDS = new Set([
@@ -761,8 +762,8 @@ const ACHIEVEMENT_SEED_DEFINITIONS: Array<Omit<AchievementSeed, 'rewardTokens'>>
     description: 'Месяц завершен на вершине рейтинга.',
     requirement: 'Стать победителем рейтинга дуэлей по итогам месяца.',
     category: 'rating',
-    availability: 'future',
-    futureTag: 'future/monthly_rating',
+    availability: 'active',
+    futureTag: null,
     ...reward('rating'),
     sortOrder: 500,
   },
@@ -773,8 +774,8 @@ const ACHIEVEMENT_SEED_DEFINITIONS: Array<Omit<AchievementSeed, 'rewardTokens'>>
     description: 'Месяц завершен в числе лидеров.',
     requirement: 'Попасть в топ-3 рейтинга дуэлей по итогам месяца.',
     category: 'rating',
-    availability: 'future',
-    futureTag: 'future/monthly_rating',
+    availability: 'active',
+    futureTag: null,
     ...reward('rating'),
     sortOrder: 510,
   },

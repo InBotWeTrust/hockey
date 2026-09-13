@@ -84,6 +84,16 @@ describe('BottomNav remembered navigation', () => {
     expect(screen.getByLabelText('Навигация')).toHaveStyle({ borderRadius: '19px' });
   });
 
+  it('does not fetch monthly rating congratulations from the shared navigation', async () => {
+    renderBottomNav('/sections');
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(
+      '/api/duel/amateur/rating/congratulations/pending',
+      expect.anything(),
+    );
+  });
+
   it('resets the active game section to the arena', () => {
     renderBottomNav('/?view=amateur&match=m1');
 
@@ -188,6 +198,13 @@ describe('BottomNav remembered navigation', () => {
     renderBottomNav('/demo');
 
     expect(screen.queryByRole('navigation', { name: 'Демо-навигация' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
+  });
+
+  it('hides the dock on the public price catalogue', () => {
+    renderBottomNav('/prices');
+
+    expect(screen.queryByRole('navigation', { name: 'Навигация' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
   });
 
@@ -436,7 +453,7 @@ describe('BottomNav remembered navigation', () => {
     const client = renderBottomNav('/profile');
 
     await waitFor(() =>
-      expect(client.getQueryState(['weekly-challenge', 'nav'])?.status).toBe('success'),
+      expect(client.getQueryState(['weekly-challenge', 'current'])?.status).toBe('success'),
     );
     await waitFor(() => expect(client.isFetching()).toBe(0));
     expect(screen.queryByLabelText(/События разделов:/)).toBeNull();

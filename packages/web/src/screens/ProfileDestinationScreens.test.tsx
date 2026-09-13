@@ -118,9 +118,23 @@ describe('profile destination screens', () => {
     expect(screen.getByText('Клюшка')).toBeInTheDocument();
     expect(screen.getByText('Коньки')).toBeInTheDocument();
     expect(screen.getByText('Питание')).toBeInTheDocument();
-    expect(screen.getAllByText('Не выбрано')).toHaveLength(2);
-    fireEvent.click(screen.getByRole('button', { name: 'Открыть магазин' }));
+    expect(screen.getByText('Обычные коньки')).toBeInTheDocument();
+    expect(screen.getByText('Без питания')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'В магазин' }));
     expect(screen.getByText('inventory screen')).toBeInTheDocument();
+  });
+
+  it('reuses the interactive duel locker layout on the profile inventory page', async () => {
+    const view = renderDestination('/profile/equipment', <ProfileEquipmentScreen />);
+    const heading = await screen.findByRole('heading', { name: 'Инвентарь' });
+
+    expect(heading).toHaveClass('bonus-games-catalog__title');
+    expect(view.container.querySelectorAll('.duel-locker-slot')).toHaveLength(4);
+    expect(screen.getByText('Осталось 25 бросков')).toBeInTheDocument();
+    expect(screen.getByText('Наборы для восстановления')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Клюшка: Точная клюшка/ }));
+    expect(await screen.findByRole('dialog', { name: 'Клюшка' })).toBeInTheDocument();
   });
 
   it('shows base artwork for every empty beginner equipment slot', async () => {
@@ -152,7 +166,7 @@ describe('profile destination screens', () => {
     const view = renderDestination('/profile/equipment', <ProfileEquipmentScreen />);
     expect(await screen.findByText('Точная клюшка')).toBeInTheDocument();
     const image = view.container.querySelector<HTMLImageElement>(
-      'img[src="/inventory/broken-stick.webp"]',
+      'img[src^="/inventory/broken-stick.webp"]',
     );
     expect(image).not.toBeNull();
 

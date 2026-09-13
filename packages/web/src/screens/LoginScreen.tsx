@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
 import { apiFetch, ApiError } from '../api/apiFetch.js';
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
@@ -24,6 +24,7 @@ export function LoginScreen(): JSX.Element {
   const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME ?? '';
   const devCodeLoginEnabled = import.meta.env.VITE_DEV_ACCESS_CODE_LOGIN_ENABLED === 'true';
   const [devCode, setDevCode] = useState('');
+  const [devCodeExpanded, setDevCodeExpanded] = useState(false);
   const [devCodeError, setDevCodeError] = useState<string | null>(null);
   const [devCodePending, setDevCodePending] = useState(false);
   const [devError, setDevError] = useState<string | null>(null);
@@ -35,7 +36,8 @@ export function LoginScreen(): JSX.Element {
   );
   const [mobileAuthError, setMobileAuthError] = useState<string | null>(null);
   const [compactCodeViewport, setCompactCodeViewport] = useState(isKeyboardSizedViewport);
-  const miniAppAuth = useTelegramMiniAppAuth();
+  const [miniAppLoginStarted, setMiniAppLoginStarted] = useState(false);
+  const miniAppAuth = useTelegramMiniAppAuth(miniAppLoginStarted);
 
   const mutation = useMutation<AuthSession, Error, TelegramAuthPayload>({
     mutationFn: (payload) =>
@@ -70,9 +72,30 @@ export function LoginScreen(): JSX.Element {
 
   if (miniAppAuth.isTelegramMiniApp) {
     return (
-      <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ color: 'var(--muted)', fontSize: 14 }}>
-          {miniAppAuth.isError ? 'Не удалось войти через Telegram' : 'Входим через Telegram...'}
+      <main className="screen login-screen login-screen--mini-app">
+        <div className="glass login-screen__mini-app-card">
+          <h1>Вход в Ultimate Hockey</h1>
+          <p>
+            Нажимая «Войти через Telegram», вы соглашаетесь с документами:{' '}
+            <Link to="/terms">Условия использования</Link> и{' '}
+            <Link to="/privacy">Политика конфиденциальности</Link>, а также даёте{' '}
+            <Link to="/personal-data-consent">согласие на обработку персональных данных</Link>.
+          </p>
+          <button
+            type="button"
+            className="btn btn--cta"
+            disabled={miniAppLoginStarted && !miniAppAuth.isError}
+            onClick={() => {
+              if (miniAppAuth.isError) {
+                miniAppAuth.retry();
+                return;
+              }
+              setMiniAppLoginStarted(true);
+            }}
+          >
+            {miniAppLoginStarted && !miniAppAuth.isError ? 'Входим…' : 'Войти через Telegram'}
+          </button>
+          {miniAppAuth.isError ? <div role="alert">Не удалось войти через Telegram</div> : null}
         </div>
       </main>
     );
@@ -120,12 +143,13 @@ export function LoginScreen(): JSX.Element {
 
   return (
     <main
-      className={`screen login-screen${devCodeLoginEnabled && compactCodeViewport ? ' login-screen--compact-code' : ''}`}
+      className={`screen login-screen${devCodeExpanded && compactCodeViewport ? ' login-screen--compact-code' : ''}`}
       style={{
         textAlign: 'center',
         height: 'var(--app-viewport-height, 100dvh)',
         minHeight: 0,
-        overflow: 'hidden',
+        overflowX: 'hidden',
+        overflowY: 'auto',
         paddingTop: 'var(--app-safe-top)',
         paddingBottom: 'max(12px, var(--app-safe-bottom))',
       }}
@@ -146,7 +170,93 @@ export function LoginScreen(): JSX.Element {
       <div className="login-screen__spacer" style={{ flex: 1, minHeight: 8 }} />
 
       <div className="login-screen__actions">
-        {devCodeLoginEnabled ? (
+        {isNativeAndroid() ? (
+          <>
+            <button
+              type="button"
+              className="btn login-screen__auth-button"
+              disabled={mobilePendingProvider !== null}
+              onClick={() => void openMobileAuth('telegram')}
+              style={{
+                alignSelf: 'center',
+                background: '#229ed9',
+                color: '#fff',
+                justifyContent: 'center',
+              }}
+            >
+              {mobilePendingProvider === 'telegram'
+                ? 'Открываем Telegram…'
+                : 'Войти через Telegram'}
+            </button>
+            <button
+              type="button"
+              className="btn login-screen__auth-button"
+              disabled={mobilePendingProvider !== null}
+              onClick={() => void openMobileAuth('vk')}
+              style={{
+                alignSelf: 'center',
+                background: '#0077ff',
+                color: '#fff',
+                justifyContent: 'center',
+              }}
+            >
+              {mobilePendingProvider === 'vk' ? 'Открываем ВКонтакте…' : 'Войти через ВКонтакте'}
+            </button>
+          </>
+        ) : (
+          <>
+            <TelegramLoginButton
+              botUsername={botUsername}
+              onAuth={(payload) => mutation.mutate(payload)}
+            />
+            <button
+              type="button"
+              className="btn login-screen__auth-button login-screen__auth-button--vk"
+              disabled={vkPending}
+              onClick={async () => {
+                setVkError(null);
+                setVkPending(true);
+                try {
+                  await startVkOAuth();
+                } catch (err) {
+                  setVkPending(false);
+                  setVkError(err instanceof Error ? err.message : 'Ошибка входа через ВКонтакте');
+                }
+              }}
+              style={{
+                alignSelf: 'center',
+                padding: '0 14px',
+                background: '#0077ff',
+                color: '#ffffff',
+                justifyContent: 'center',
+                fontWeight: 700,
+                letterSpacing: 0,
+                boxShadow: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <img
+                src="/icons/vk-community.png"
+                alt=""
+                aria-hidden="true"
+                className="login-screen__auth-icon"
+              />
+              Войти через ВКонтакте
+            </button>
+          </>
+        )}
+
+        {devCodeLoginEnabled && !devCodeExpanded ? (
+          <button
+            type="button"
+            className="btn btn--ghost login-screen__auth-button"
+            onClick={() => setDevCodeExpanded(true)}
+          >
+            Тестовый вход
+          </button>
+        ) : null}
+
+        {devCodeLoginEnabled && devCodeExpanded ? (
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -192,80 +302,10 @@ export function LoginScreen(): JSX.Element {
               disabled={devCodePending}
               style={{ justifyContent: 'center' }}
             >
-              {devCodePending ? 'Проверяем…' : 'Войти в dev'}
+              {devCodePending ? 'Проверяем…' : 'Войти'}
             </button>
           </form>
-        ) : isNativeAndroid() ? (
-          <>
-            <button
-              type="button"
-              className="btn login-screen__auth-button"
-              disabled={mobilePendingProvider !== null}
-              onClick={() => void openMobileAuth('telegram')}
-              style={{
-                alignSelf: 'center',
-                background: '#229ed9',
-                color: '#fff',
-                justifyContent: 'center',
-              }}
-            >
-              {mobilePendingProvider === 'telegram'
-                ? 'Открываем Telegram…'
-                : 'Войти через Telegram'}
-            </button>
-            <button
-              type="button"
-              className="btn login-screen__auth-button"
-              disabled={mobilePendingProvider !== null}
-              onClick={() => void openMobileAuth('vk')}
-              style={{
-                alignSelf: 'center',
-                background: '#0077ff',
-                color: '#fff',
-                justifyContent: 'center',
-              }}
-            >
-              {mobilePendingProvider === 'vk' ? 'Открываем ВКонтакте…' : 'Войти через ВКонтакте'}
-            </button>
-          </>
-        ) : (
-          <>
-            <TelegramLoginButton
-              botUsername={botUsername}
-              onAuth={(payload) => mutation.mutate(payload)}
-            />
-
-            <button
-              type="button"
-              className="btn login-screen__auth-button"
-              disabled={vkPending}
-              onClick={async () => {
-                setVkError(null);
-                setVkPending(true);
-                try {
-                  await startVkOAuth();
-                } catch (err) {
-                  setVkPending(false);
-                  setVkError(err instanceof Error ? err.message : 'Ошибка входа через ВКонтакте');
-                }
-              }}
-              style={{
-                alignSelf: 'center',
-                padding: '0 14px',
-                background: '#0077ff',
-                color: '#ffffff',
-                justifyContent: 'center',
-                fontSize: 16,
-                fontWeight: 700,
-                letterSpacing: 0,
-                boxShadow: 'none',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              Войти через ВКонтакте
-            </button>
-          </>
-        )}
+        ) : null}
 
         <button
           type="button"
@@ -359,8 +399,10 @@ export function LoginScreen(): JSX.Element {
             paddingBottom: 'max(2px, var(--app-safe-bottom))',
           }}
         >
-          Нажимая «Войти», вы соглашаетесь
-          <br />с условиями использования
+          Нажимая «Войти», вы соглашаетесь с документами:{' '}
+          <Link to="/terms">Условия использования</Link> и{' '}
+          <Link to="/privacy">Политика конфиденциальности</Link> и даёте{' '}
+          <Link to="/personal-data-consent">согласие на обработку персональных данных</Link>.
         </div>
       </div>
     </main>

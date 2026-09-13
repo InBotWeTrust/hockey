@@ -744,7 +744,7 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
       stats: {
         shots: 30,
         goals: 10,
-        accuracy: 33,
+        accuracy: 33.3,
         playStreakDays: 0,
         bestPlayStreakDays: 0,
       },

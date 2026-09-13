@@ -20,6 +20,7 @@ const taskTypeOptions: Array<{ value: AdminWeeklyChallengeTaskType; label: strin
   { value: 'duels_won', label: 'Победить в дуэлях' },
   { value: 'duel_invites_sent', label: 'Пригласить соперников' },
   { value: 'trainings_completed', label: 'Завершить тренировки' },
+  { value: 'channel_posts_commented', label: 'Прокомментировать посты канала' },
 ];
 
 function dateText(value: string): string {
@@ -43,8 +44,9 @@ function toInput(challenge: AdminWeeklyChallenge | null): AdminWeeklyChallengeIn
       title: '',
       description: '',
       rewardCoins: 0,
-      rewardStars: 0,
-      rewardExperience: 0,
+      rewardStars: 30,
+      rewardExperience: 30,
+      rewardTokens: 5,
       tasks: [{ type: 'goals_scored', title: '', target: 500, sortOrder: 0 }],
     };
   return {
@@ -53,6 +55,7 @@ function toInput(challenge: AdminWeeklyChallenge | null): AdminWeeklyChallengeIn
     rewardCoins: challenge.rewardCoins,
     rewardStars: challenge.rewardStars,
     rewardExperience: challenge.rewardExperience,
+    rewardTokens: challenge.rewardTokens,
     tasks: challenge.tasks.map((task, index) => ({
       type: task.type,
       title: task.title ?? '',
@@ -68,6 +71,7 @@ export function WeeklyChallengesAdmin(): JSX.Element {
   const query = useQuery({ queryKey, queryFn: fetchAdminWeeklyChallenges });
   const updateDashboard = (data: AdminWeeklyChallengeDashboard): void => {
     queryClient.setQueryData(queryKey, data);
+    void queryClient.invalidateQueries({ queryKey: ['weekly-challenge', 'catalog'] });
   };
   const settings = useMutation({
     mutationFn: updateAdminWeeklyChallengeSettings,
@@ -193,7 +197,6 @@ function NextChallengeEditor({
       <fieldset disabled={busy} className="weekly-challenge-admin__fieldset">
         <AdminField label="Название">
           <input
-            required
             maxLength={120}
             value={form.title}
             onChange={(event) => update({ title: event.target.value })}
@@ -213,6 +216,7 @@ function NextChallengeEditor({
               { key: 'rewardCoins', label: 'Монеты' },
               { key: 'rewardStars', label: 'Звёзды' },
               { key: 'rewardExperience', label: 'Опыт' },
+              { key: 'rewardTokens', label: 'Токены' },
             ] as const
           ).map(({ key, label }) => (
             <AdminField key={key} label={label}>
@@ -289,7 +293,7 @@ function NextChallengeEditor({
           >
             Добавить задание
           </button>
-          <button type="submit" className="btn btn--cta" disabled={!form.title.trim()}>
+          <button type="submit" className="btn btn--cta">
             Сохранить
           </button>
         </div>
@@ -309,14 +313,15 @@ function ChallengeCard({
   challenge: AdminWeeklyChallenge;
   onStats: (challenge: AdminWeeklyChallenge) => void;
 }): JSX.Element {
+  const adminTitle = challenge.title || 'Без названия';
   return (
     <article className="glass weekly-challenge-admin__card">
       <div className="modal-header">
-        <h4>{challenge.title}</h4>
+        <h4>{adminTitle}</h4>
         <button
           type="button"
           className="icon-btn"
-          aria-label={`Статистика ${challenge.title}`}
+          aria-label={`Статистика ${adminTitle}`}
           onClick={() => onStats(challenge)}
         >
           <BarChart3 size={16} />
@@ -328,7 +333,7 @@ function ChallengeCard({
       {challenge.description && <p>{challenge.description}</p>}
       <p>
         Монеты: {challenge.rewardCoins} · Звёзды: {challenge.rewardStars} · Опыт:{' '}
-        {challenge.rewardExperience}
+        {challenge.rewardExperience} · Токены: {challenge.rewardTokens}
       </p>
       <ChallengeMetrics challenge={challenge} />
       <TaskStats challenge={challenge} />

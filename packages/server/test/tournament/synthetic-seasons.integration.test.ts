@@ -699,7 +699,7 @@ async function assertTerminalInvariants(
     stars: number;
     experience: number;
   }>(
-    `select participant.user_id, account.balance, users.stars, users.experience
+    `select participant.user_id, account.balance, users.xp as stars, users.experience
        from tournament_standing standing
        join tournament_participant participant on participant.id = standing.participant_id
        join users on users.id = participant.user_id

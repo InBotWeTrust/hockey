@@ -18,6 +18,7 @@ function challenge(id: string, title: string): AdminWeeklyChallenge {
     rewardCoins: 100,
     rewardStars: 5,
     rewardExperience: 50,
+    rewardTokens: 5,
     tasks: [
       {
         id: 'task-1',
@@ -52,7 +53,7 @@ const dashboard = {
   history: [challenge('history', 'Прошлая неделя')],
 };
 
-function renderAdmin(): void {
+function renderAdmin(): QueryClient {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -61,6 +62,7 @@ function renderAdmin(): void {
       <WeeklyChallengesAdmin />
     </QueryClientProvider>,
   );
+  return client;
 }
 
 describe('WeeklyChallengesAdmin', () => {
@@ -114,10 +116,58 @@ describe('WeeklyChallengesAdmin', () => {
           rewardCoins: 250,
           rewardStars: 5,
           rewardExperience: 50,
+          rewardTokens: 5,
           tasks: [{ type: 'goals_scored', title: '', target: 750, sortOrder: 0 }],
         }),
       }),
     );
+  });
+
+  it('invalidates the player challenge catalog after saving the next week', async () => {
+    const client = renderAdmin();
+    client.setQueryData(['weekly-challenge', 'catalog'], {
+      future: [],
+      active: [],
+      completed: [],
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() =>
+      expect(client.getQueryState(['weekly-challenge', 'catalog'])?.isInvalidated).toBe(true),
+    );
+  });
+
+  it('allows the next challenge to be saved without a title or description', async () => {
+    renderAdmin();
+    const title = await screen.findByRole('textbox', { name: 'Название' });
+    const description = screen.getByRole('textbox', { name: 'Описание' });
+    expect(title).not.toBeRequired();
+    expect(description).not.toBeRequired();
+    fireEvent.change(title, { target: { value: '   ' } });
+    fireEvent.change(description, { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/admin/weekly-challenges/next',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: expect.stringContaining('"title":"","description":""'),
+        }),
+      ),
+    );
+  });
+
+  it('labels a titleless challenge for admins without changing stored content', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      ...dashboard,
+      current: challenge('current', ''),
+    });
+    renderAdmin();
+
+    expect(await screen.findByText('Без названия')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Статистика Без названия' })).toBeInTheDocument();
   });
 
   it('keeps the next editor available when the global setting is disabled', async () => {
@@ -142,6 +192,10 @@ describe('WeeklyChallengesAdmin', () => {
       const title = await screen.findByRole('textbox', { name: 'Название' });
       expect(title).toHaveValue('');
       expect(screen.queryByLabelText('Дата начала')).not.toBeInTheDocument();
+      expect(screen.getByRole('spinbutton', { name: 'Монеты' })).toHaveValue(0);
+      expect(screen.getByRole('spinbutton', { name: 'Звёзды' })).toHaveValue(30);
+      expect(screen.getByRole('spinbutton', { name: 'Опыт' })).toHaveValue(30);
+      expect(screen.getByRole('spinbutton', { name: 'Токены' })).toHaveValue(5);
       fireEvent.change(title, { target: { value: 'Первая неделя' } });
       fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
       await waitFor(() =>
@@ -151,8 +205,9 @@ describe('WeeklyChallengesAdmin', () => {
             title: 'Первая неделя',
             description: '',
             rewardCoins: 0,
-            rewardStars: 0,
-            rewardExperience: 0,
+            rewardStars: 30,
+            rewardExperience: 30,
+            rewardTokens: 5,
             tasks: [{ type: 'goals_scored', title: '', target: 500, sortOrder: 0 }],
           }),
         }),
@@ -168,6 +223,16 @@ describe('WeeklyChallengesAdmin', () => {
     expect(fields).toContainElement(screen.getByRole('textbox', { name: 'Название задания 1' }));
     expect(fields).toContainElement(screen.getByRole('spinbutton', { name: 'Цель задания 1' }));
     expect(fields).toContainElement(screen.getByRole('button', { name: 'Удалить задание 1' }));
+  });
+
+  it('offers commenting on distinct channel posts as a configurable task', async () => {
+    renderAdmin();
+
+    const type = await screen.findByRole('combobox', { name: 'Тип задания 1' });
+    fireEvent.click(type);
+    expect(
+      screen.getByRole('option', { name: 'Прокомментировать посты канала' }),
+    ).toBeInTheDocument();
   });
 
   it('reports save errors visibly and preserves the draft for retry', async () => {

@@ -836,6 +836,29 @@ describe('BonusGamePlayScreen', () => {
     expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
   });
 
+  it('refreshes the cached bonus catalog once after a completed game', async () => {
+    setStore({
+      attempt: attempt({
+        status: 'completed',
+        state: 'closed',
+        period_started_at: null,
+        period_ends_at: null,
+        reward_granted: true,
+      }),
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    queryClient.setQueryData(['bonus-games'], '22/23 пройдено');
+    const loadCatalog = vi.fn(async () => '23/23 пройдено');
+    renderScreen(undefined, { queryClient, loadCatalog });
+
+    fireEvent.click(screen.getByRole('button', { name: 'К бонусным играм' }));
+
+    expect(await screen.findByText('23/23 пройдено')).toBeInTheDocument();
+    expect(loadCatalog).toHaveBeenCalledTimes(1);
+  });
+
   it('uses Russian plural forms for every granted reward', () => {
     setStore({
       attempt: attempt({

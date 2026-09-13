@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { queryClient } from './queryClient.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -87,6 +88,7 @@ describe('App routing + auth', () => {
       value: undefined,
       writable: true,
     });
+    queryClient.clear();
     localStorage.clear();
     window.history.replaceState({}, '', '/');
     vi.restoreAllMocks();
@@ -196,6 +198,90 @@ describe('App routing + auth', () => {
   it('redirects unauthenticated users from / to /login', () => {
     renderAt('/');
     expect(screen.getByRole('heading', { name: /ультимейт хоккей/i })).toBeInTheDocument();
+  });
+
+  it('shows /prices to a logged-out visitor without private app controls', async () => {
+    window.history.replaceState({}, '', '/prices');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          packages: [
+            {
+              id: '00000000-0000-4000-8000-000000000601',
+              slug: 'starter',
+              title: 'Стартовый набор',
+              description: 'Чтобы начать сезон увереннее',
+              coinAmount: 500,
+              priceRub: 199,
+              badgeText: null,
+              marker: null,
+              sortOrder: 1,
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Пакеты монет' })).toBeInTheDocument();
+    expect(await screen.findByText('500 монет')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Пользовательское соглашение' })).toHaveAttribute(
+      'href',
+      '/terms',
+    );
+    expect(screen.queryByText(/войти|регистрац|купить/i)).not.toBeInTheDocument();
+  });
+
+  it('shows /terms to a logged-out visitor without private app controls', async () => {
+    window.history.replaceState({}, '', '/terms');
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Пользовательское соглашение' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/ОГРНИП 323100000016441/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('navigation', { name: 'Основная навигация' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps /prices free of bottom navigation for an authenticated visitor', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    window.history.replaceState({}, '', '/prices');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          packages: [
+            {
+              id: '00000000-0000-4000-8000-000000000601',
+              slug: 'starter',
+              title: 'Стартовый набор',
+              description: 'Чтобы начать сезон увереннее',
+              coinAmount: 500,
+              priceRub: 199,
+              badgeText: null,
+              marker: null,
+              sortOrder: 1,
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText('500 монет')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Навигация' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('shows home content when authenticated', () => {
@@ -403,7 +489,12 @@ describe('app backdrop variants', () => {
   it('renders lazy route loading text with a high-contrast arena treatment', () => {
     render(<RouteLoading />);
 
-    expect(screen.getByRole('status')).toHaveClass('route-loading');
+    const loading = screen.getByRole('status');
+    expect(loading).toHaveClass('route-loading');
+    expect(loading).toHaveStyle({
+      color: '#0f172a',
+      background: 'rgba(255, 255, 255, 0.9)',
+    });
   });
 
   it('uses the dedicated login rink background on the sign-in screen', () => {

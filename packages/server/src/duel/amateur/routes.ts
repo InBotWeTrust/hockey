@@ -1,6 +1,8 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
+import { lockRatingLifecycle, nextRatingMonthBoundary } from './ratingLock.js';
+import { REWARD_AMOUNT_LIMIT } from './rewardRules.js';
 import {
   DEFAULT_DUEL_INVENTORY_TIMING,
   GAME_CORE_VERSION,
@@ -52,8 +54,12 @@ import {
   type AmateurDuelSource,
 } from './lifecycle.js';
 import type { TournamentDuelTemplateSnapshot } from './tournamentTemplateSnapshot.js';
+import {
+  getPendingMonthlyRatingCongratulations,
+  acknowledgeMonthlyRatingCongratulations,
+} from './monthlyRewards.js';
 import { settleTournamentSegmentForDuel } from '../../tournament/fixtureLifecycle.js';
-import { lockTournamentForDuelMutation } from '../../tournament/locks.js';
+import { lockTournament } from '../../tournament/locks.js';
 import { resolveTournamentDuelResult } from '../../tournament/playoffScheduling.js';
 import { publishTournamentFixtureProgress } from '../../tournament/realtimeProgress.js';
 import {
@@ -67,10 +73,16 @@ import {
   TOURNAMENT_PERIOD_LOADOUT_LIFECYCLE_VERSION,
   usesTournamentPeriodLoadoutLifecycle,
 } from './periodLoadout.js';
+import { assertNotPlayoffOpponents, getBlockedPlayoffOpponentIds } from './playoffOpponentLock.js';
 import {
-  assertNotPlayoffOpponents,
-  getBlockedPlayoffOpponentIds,
-} from './playoffOpponentLock.js';
+  DEFAULT_DUEL_REWARD_RULES,
+  duelRewardRulesSchema,
+  parseDuelRewardRules,
+  storedDuelRewardRulesSchema,
+  duelRewardStorageCompatible,
+  selectDuelRewardCategory,
+  type DuelRewardRules,
+} from './rewardRules.js';
 
 type MatchStatus = 'invited' | 'ready_check' | 'active' | 'settled' | 'cancelled' | 'expired';
 
@@ -290,15 +302,21 @@ const createTemplateSchema = z.object({
   goalieId: z.string().trim().min(1).max(80).default('rookie'),
   periodSpeedPresets: z.array(periodPresetSchema).min(1).max(9),
   periodRules: z.array(periodRuleSchema).min(1).max(9).nullable().default(null),
-  stakeAmount: z.number().int().min(0).max(9_000_000_000).default(0),
-  entryFeeAmount: z.number().int().min(0).max(9_000_000_000).default(0),
+  stakeAmount: z
+    .number()
+    .int()
+    .min(0)
+    .max(Math.floor(REWARD_AMOUNT_LIMIT / 2))
+    .default(0),
+  entryFeeAmount: z.number().int().min(0).max(REWARD_AMOUNT_LIMIT).default(0),
   requiredInventoryItemId: uuid.nullable().default(null),
   inventoryChargesPerPeriod: z.number().int().min(0).max(1000).default(0),
   winPoints: z.number().int().min(0).max(1_000_000).default(3),
   drawPoints: z.number().int().min(0).max(1_000_000).default(1),
-  winCurrencyReward: z.number().int().min(0).max(9_000_000_000).default(0),
-  drawCurrencyReward: z.number().int().min(0).max(9_000_000_000).default(0),
-  winStarReward: z.number().int().min(0).max(1_000_000).default(0),
+  winCurrencyReward: z.number().int().min(0).max(REWARD_AMOUNT_LIMIT).default(0),
+  drawCurrencyReward: z.number().int().min(0).max(REWARD_AMOUNT_LIMIT).default(0),
+  winStarReward: z.number().int().min(0).max(REWARD_AMOUNT_LIMIT).default(0),
+  rewardRules: duelRewardRulesSchema.default(DEFAULT_DUEL_REWARD_RULES),
 });
 
 const updateTemplateSchema = createTemplateSchema.partial().refine((value) => {
@@ -452,6 +470,7 @@ interface DuelTemplateRow {
   win_currency_reward: number;
   draw_currency_reward: number;
   win_star_reward: number;
+  reward_rules: unknown;
   created_at: Date;
   updated_at: Date;
 }
@@ -467,6 +486,7 @@ interface DuelMatchRow {
   season_key: string;
   duel_kind: DuelKind;
   rules_snapshot: unknown;
+  reward_rules: unknown;
   match_seed: string;
   home_user_id: string | null;
   arena_theme_id: string | null;
@@ -677,6 +697,7 @@ interface DuelRulesSnapshot {
   winCurrencyReward: number;
   drawCurrencyReward: number;
   winStarReward: number;
+  rewardRules: DuelRewardRules;
   tournamentLoadoutLifecycleVersion?: 1;
 }
 
@@ -1145,6 +1166,7 @@ function periodSpeedEffectsForLoadout(
 function makeRulesSnapshot(
   template: DuelTemplateRow,
   settings: { amateur: { noInventoryTiming: DuelRulesSnapshot['noInventoryTiming'] } },
+  rewardRulesOverride?: unknown,
 ): DuelRulesSnapshot {
   const startsAt = template.starts_at.getTime();
   const endsAt = template.ends_at.getTime();
@@ -1164,7 +1186,7 @@ function makeRulesSnapshot(
     shotsPerPeriod: Number(template.shots_per_period),
     periodDurationMs: Number(template.period_duration_ms),
   });
-  return {
+  const snapshot: DuelRulesSnapshot = {
     templateId: template.id,
     title: template.title,
     description: template.description,
@@ -1198,7 +1220,18 @@ function makeRulesSnapshot(
     winCurrencyReward: Number(template.win_currency_reward),
     drawCurrencyReward: Number(template.draw_currency_reward),
     winStarReward: Number(template.win_star_reward),
+    rewardRules: parseDuelRewardRules(rewardRulesOverride ?? template.reward_rules),
   };
+  if (
+    !duelRewardStorageCompatible({
+      ...snapshot,
+      stakeAmount: Number(template.stake_amount),
+      entryFeeAmount: Number(template.entry_fee_amount),
+    })
+  ) {
+    throw unsupportedRewardConfiguration();
+  }
+  return snapshot;
 }
 
 function defaultPeriodRules({
@@ -1286,6 +1319,7 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       winCurrencyReward: z.number().int().min(0).default(0),
       drawCurrencyReward: z.number().int().min(0).default(0),
       winStarReward: z.number().int().min(0).default(0),
+      rewardRules: storedDuelRewardRulesSchema.default(DEFAULT_DUEL_REWARD_RULES),
       tournamentLoadoutLifecycleVersion: z.literal(1).optional(),
     })
     .safeParse(value);
@@ -1357,6 +1391,23 @@ async function materializeLegacyVenueSnapshot(
   const arena = rows[0];
   if (arena === undefined) {
     throw new AppError('arena_unavailable', 'home arena is unavailable', 503);
+  }
+  if (!matchRewardStorageCompatible(match)) {
+    // NOT VALID constraints still reject any UPDATE of an unsafe old row.
+    // Supply the established legacy neutral venue for display without rewriting it.
+    return {
+      ...match,
+      home_user_id: null,
+      arena_theme_id: arena.id,
+      venue_policy: 'neutral_default',
+      arena_snapshot: {
+        id: arena.id,
+        slug: arena.slug,
+        title: arena.title,
+        artworkUrl: arena.artwork_url,
+        thumbnailUrl: arena.thumbnail_url,
+      },
+    };
   }
   await client.query(
     `update amateur_duel_match
@@ -1456,7 +1507,7 @@ async function fetchTemplate(client: PoolClient, templateId: string): Promise<Du
             ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
             stake_amount, entry_fee_amount, required_inventory_item_id,
             inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
-            win_star_reward, created_at, updated_at
+            win_star_reward, reward_rules, created_at, updated_at
        from amateur_duel_template
       where id = $1 and deleted_at is null`,
     [templateId],
@@ -1509,6 +1560,7 @@ function tournamentTemplateFromSnapshot(input: {
     win_currency_reward: input.snapshot.winCurrencyReward,
     draw_currency_reward: input.snapshot.drawCurrencyReward,
     win_star_reward: input.snapshot.winStarReward,
+    reward_rules: DEFAULT_DUEL_REWARD_RULES,
     created_at: input.now,
     updated_at: input.now,
   };
@@ -1539,8 +1591,8 @@ async function applyCurrencyDelta(
             reserved_balance = reserved_balance + $3,
             updated_at = now()
       where user_id = $1
-        and balance + $2 >= 0
-        and reserved_balance + $3 >= 0
+        and balance::bigint + $2 between 0 and ${REWARD_AMOUNT_LIMIT}
+        and reserved_balance::bigint + $3 between 0 and ${REWARD_AMOUNT_LIMIT}
       returning balance, reserved_balance`,
     [opts.userId, opts.availableDelta, opts.reservedDelta],
   );
@@ -2272,8 +2324,42 @@ async function resolveActiveTournamentAttemptOutcome(
   return { outcome: 'draw', winnerUserId: null };
 }
 
+async function lockMatchRewardRecipients(client: PoolClient, matchIds: string[]): Promise<void> {
+  const identities = await client.query<{
+    source: string;
+    challenger_user_id: string;
+    opponent_user_id: string;
+  }>(
+    'select source,challenger_user_id,opponent_user_id from amateur_duel_match where id=any($1::uuid[])',
+    [matchIds],
+  );
+  if (identities.rows.some((row) => row.source !== 'tournament')) await lockRatingLifecycle(client);
+  const tournaments = await client.query<{ tournament_id: string }>(
+    `select distinct f.tournament_id from tournament_fixture f
+       join tournament_fixture_segment s on s.fixture_id=f.id where s.duel_match_id=any($1::uuid[]) order by f.tournament_id`,
+    [matchIds],
+  );
+  for (const row of tournaments.rows) await lockTournament(client, row.tournament_id);
+  await client.query(
+    'select m.id from amateur_duel_match m where m.id=any($1::uuid[]) order by m.id for update of m',
+    [matchIds],
+  );
+  const tournamentUsers = await client.query<{ user_id: string }>(
+    'select user_id from tournament_participant where tournament_id=any($1::uuid[])',
+    [tournaments.rows.map((row) => row.tournament_id)],
+  );
+  // A final can pay players outside this duel. Batch readers must acquire their
+  // entire recipient set before the first match, not extend locks in recent order.
+  await client.query('select id from users where id = any($1::uuid[]) order by id for update', [
+    [
+      ...identities.rows.flatMap((row) => [row.challenger_user_id, row.opponent_user_id]),
+      ...tournamentUsers.rows.map((row) => row.user_id),
+    ],
+  ]);
+}
+
 async function fetchMatchForUpdate(client: PoolClient, matchId: string): Promise<DuelMatchRow> {
-  await lockTournamentForDuelMutation(client, matchId);
+  await lockMatchRewardRecipients(client, [matchId]);
   const { rows } = await client.query<DuelMatchRow>(
     `select m.*, cu.display_name as challenger_name, cu.avatar_url as challenger_avatar_url,
             ou.display_name as opponent_name, ou.avatar_url as opponent_avatar_url
@@ -2499,7 +2585,7 @@ async function closeParticipantPeriod(
         set state = $3,
             period_started_at = null,
             break_started_at = case when $3 = 'break_active' then $4::timestamptz else null end,
-            completed_at = case when $3 = 'completed' then $4::timestamptz else completed_at end,
+            completed_at = case when $3 in ('completed','forfeit') then $4::timestamptz else completed_at end,
             ready_at = null,
             shots_taken = shots_taken + $5,
             goals = goals + $6,
@@ -2726,12 +2812,61 @@ async function settleMatchIfReady(
     outcome = 'double_loss';
   }
 
-  // Coin and star rewards share the global users -> currency-account lock order.
-  if (settlementPolicy.grantTemplateRewards && winnerUserId !== null && rules.winStarReward > 0) {
-    await client.query('select id from users where id = $1 for update', [winnerUserId]);
+  // Lock both recipients before any currency/token account writes, including stakes.
+  // UUID order also serializes shared recipients across different matches.
+  if (settlementPolicy.grantTemplateRewards) {
+    await client.query('select id from users where id = any($1::uuid[]) order by id for update', [
+      [a.user_id, b.user_id],
+    ]);
   }
 
   const stake = settlementPolicy.settleStake ? Number(match.stake_amount) : 0;
+  if (settlementPolicy.grantTemplateRewards) {
+    // Full rewards are retryable when an account has no room. Never truncate a
+    // promised amount or let PostgreSQL overflow after a partial payout.
+    for (const [participant, other] of [
+      [a, b],
+      [b, a],
+    ] as const) {
+      const participantOutcome =
+        outcome === 'draw' ? 'draw' : participant.user_id === winnerUserId ? 'win' : 'loss';
+      const reward =
+        rules.rewardRules[
+          selectDuelRewardCategory(
+            rules.rewardRules,
+            participantOutcome,
+            Number(participant.experience_snapshot),
+            Number(other.experience_snapshot),
+          )
+        ];
+      const coins =
+        reward.coins +
+        (participantOutcome === 'win'
+          ? rules.winCurrencyReward + stake * 2
+          : participantOutcome === 'draw'
+            ? rules.drawCurrencyReward + stake
+            : 0);
+      const stars = reward.stars + (participantOutcome === 'win' ? rules.winStarReward : 0);
+      const account = await client.query<{ xp: number; coins: number; tokens: number }>(
+        `select u.xp,coalesce(c.balance,0) as coins,coalesce(t.balance,0) as tokens from users u
+          left join user_currency_account c on c.user_id=u.id
+          left join user_reward_token_account t on t.user_id=u.id where u.id=$1`,
+        [participant.user_id],
+      );
+      const current = account.rows[0]!;
+      if (
+        current.xp + stars > REWARD_AMOUNT_LIMIT ||
+        current.coins + coins > REWARD_AMOUNT_LIMIT ||
+        current.tokens + reward.tokens > REWARD_AMOUNT_LIMIT
+      ) {
+        throw new AppError(
+          'reward_balance_capacity',
+          'Недостаточно места на балансе для награды. Потратьте валюту и повторите получение.',
+          409,
+        );
+      }
+    }
+  }
   if (stake > 0) {
     if (outcome === 'draw') {
       for (const participant of refreshed) {
@@ -2787,36 +2922,65 @@ async function settleMatchIfReady(
     }
   }
 
-  if (settlementPolicy.grantTemplateRewards && outcome === 'draw' && rules.drawCurrencyReward > 0) {
-    for (const participant of refreshed) {
+  if (settlementPolicy.grantTemplateRewards) {
+    for (const [participant, other] of [
+      [a, b],
+      [b, a],
+    ] as const) {
+      const participantOutcome =
+        outcome === 'draw' ? 'draw' : participant.user_id === winnerUserId ? 'win' : 'loss';
+      const experience = Number(participant.experience_snapshot);
+      const opponentExperience = Number(other.experience_snapshot);
+      const category = selectDuelRewardCategory(
+        rules.rewardRules,
+        participantOutcome,
+        experience,
+        opponentExperience,
+      );
+      const reward = rules.rewardRules[category];
+      // Preserve legacy configured rewards during the matrix compatibility window.
+      const coins =
+        reward.coins +
+        (participantOutcome === 'win'
+          ? rules.winCurrencyReward
+          : participantOutcome === 'draw'
+            ? rules.drawCurrencyReward
+            : 0);
+      const stars = reward.stars + (participantOutcome === 'win' ? rules.winStarReward : 0);
+      if (stars > 0) {
+        await client.query('update users set xp = xp + $2 where id = $1', [
+          participant.user_id,
+          stars,
+        ]);
+      }
       await applyCurrencyDelta(client, {
         userId: participant.user_id,
-        availableDelta: rules.drawCurrencyReward,
+        availableDelta: coins,
         reservedDelta: 0,
         reason: 'duel_reward',
         matchId: match.id,
-        metadata: { outcome, template_id: rules.templateId },
+        metadata: {
+          match_id: match.id,
+          reward_category: category,
+          winner_experience: experience,
+          opponent_experience: opponentExperience,
+          tolerance_percent: rules.rewardRules.equalExperienceTolerancePercent,
+          coins,
+          stars,
+          tokens: reward.tokens,
+        },
       });
+      if (reward.tokens > 0) {
+        await client.query(
+          `insert into user_reward_token_account (user_id, balance) values ($1, $2)
+           on conflict (user_id) do update
+             set balance = user_reward_token_account.balance + excluded.balance, updated_at = now()`,
+          [participant.user_id, reward.tokens],
+        );
+      }
     }
-  } else if (
-    settlementPolicy.grantTemplateRewards &&
-    winnerUserId !== null &&
-    rules.winCurrencyReward > 0
-  ) {
-    await applyCurrencyDelta(client, {
-      userId: winnerUserId,
-      availableDelta: rules.winCurrencyReward,
-      reservedDelta: 0,
-      reason: 'duel_reward',
-      matchId: match.id,
-      metadata: { outcome, template_id: rules.templateId },
-    });
   }
   if (settlementPolicy.grantTemplateRewards && winnerUserId !== null && rules.winStarReward > 0) {
-    await client.query(`update users set xp = xp + $2 where id = $1`, [
-      winnerUserId,
-      rules.winStarReward,
-    ]);
     await appendEvent(client, winnerUserId, 'amateur_duel_star_reward', {
       match_id: match.id,
       outcome,
@@ -2841,7 +3005,13 @@ async function settleMatchIfReady(
     [match.id, a.user_id, aPoints, b.user_id, bPoints],
   );
 
-  if (settlementPolicy.updateRating) {
+  if (settlementPolicy.updateRating && match.ranked) {
+    const closed = await client.query(
+      'select 1 from monthly_duel_rating_season where season_key=$1',
+      [match.season_key],
+    );
+    if (closed.rowCount !== 0)
+      throw new AppError('conflict', 'rating season is already closed', 409);
     for (const participant of [
       { mine: a, other: b, points: aPoints },
       { mine: b, other: a, points: bPoints },
@@ -2942,7 +3112,7 @@ async function fetchMatchmakingTemplates(
               ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
               stake_amount, entry_fee_amount, required_inventory_item_id,
               inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
-              win_star_reward, created_at, updated_at,
+              win_star_reward, reward_rules, created_at, updated_at,
               row_number() over (partition by duel_kind order by starts_at asc, created_at desc, id asc) as template_rank
          from amateur_duel_template
         where deleted_at is null
@@ -2958,7 +3128,7 @@ async function fetchMatchmakingTemplates(
              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
              stake_amount, entry_fee_amount, required_inventory_item_id,
              inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
-             win_star_reward, created_at, updated_at
+             win_star_reward, reward_rules, created_at, updated_at
         from ranked_templates
        where template_rank = 1
        order by array_position($1::text[], duel_kind)`,
@@ -2967,12 +3137,72 @@ async function fetchMatchmakingTemplates(
   return rows;
 }
 
+async function ratingMatchCompletedAt(client: PoolClient, matchId: string): Promise<Date | null> {
+  const completion = await client.query<{ completed_at: Date | null }>(
+    `select case when count(*)=2 and bool_and(state in ('completed','forfeit'))
+       then max(coalesce(completed_at,updated_at)) end as completed_at
+       from amateur_duel_participant where match_id=$1`,
+    [matchId],
+  );
+  return completion.rows[0]?.completed_at ?? null;
+}
+
+function unsupportedRewardConfiguration(): AppError {
+  return new AppError(
+    'reward_configuration_capacity',
+    'Историческая награда превышает допустимый размер баланса. Обратитесь в поддержку; результат и награда сохранены без изменений.',
+    409,
+  );
+}
+
+function matchRewardStorageCompatible(match: DuelMatchRow): boolean {
+  const rules = parseRulesSnapshot(match.rules_snapshot);
+  const input = {
+    ...rules,
+    stakeAmount: Number(match.stake_amount),
+    entryFeeAmount: Number(match.entry_fee_amount),
+  };
+  return (
+    duelRewardStorageCompatible(input) &&
+    duelRewardStorageCompatible({ ...input, rewardRules: parseDuelRewardRules(match.reward_rules) })
+  );
+}
+
 async function reconcileMatch(
   client: PoolClient,
   match: DuelMatchRow,
   now: Date,
+  inspectHistorical = false,
 ): Promise<ReconciledMatch> {
   if (isTerminalMatchStatus(match.status)) return { match, changed: false };
+  if (!matchRewardStorageCompatible(match)) {
+    if (inspectHistorical) return { match, changed: false };
+    throw unsupportedRewardConfiguration();
+  }
+  // Lazy participant transitions supply the effective completion timestamp used
+  // for season attribution. Materialize them before choosing a rating month.
+  let changed =
+    match.source !== 'tournament' && match.status === 'active'
+      ? await reconcileParticipantTimers(client, match, now)
+      : false;
+  if (match.source !== 'tournament' && match.ranked) {
+    const boundary = nextRatingMonthBoundary(match.season_key);
+    if (now >= boundary && match.ends_at >= boundary) {
+      const completedAt = await ratingMatchCompletedAt(client, match.id);
+      if (completedAt === null || completedAt >= boundary) {
+        const seasonKey = seasonKeyMoscow(
+          new Date(
+            Math.min(now.getTime(), match.ends_at.getTime(), completedAt?.getTime() ?? Infinity),
+          ),
+        );
+        await client.query('update amateur_duel_match set season_key=$2 where id=$1', [
+          match.id,
+          seasonKey,
+        ]);
+        match = { ...match, season_key: seasonKey };
+      }
+    }
+  }
   const tournamentAttempt = await reconcileTournamentAttemptForDuel(client, {
     duelMatchId: match.id,
     now,
@@ -2991,69 +3221,8 @@ async function reconcileMatch(
     return settleMatchIfReady(client, match, now);
   }
 
-  const rules = parseRulesSnapshot(match.rules_snapshot);
-  const participants = await fetchParticipants(client, match.id);
-  let changed = false;
-  for (const participant of participants) {
-    if (participant.state === 'period_active' && participant.period_started_at !== null) {
-      const periodRule = getDuelPeriodRule(rules, participant.current_period);
-      const timeoutAt = new Date(participant.period_started_at.getTime() + periodRule.durationMs);
-      if (now >= match.ends_at) {
-        changed =
-          (await closeParticipantPeriod(client, participant, rules, match.ends_at, 'window_end')) ||
-          changed;
-      } else if (now >= timeoutAt) {
-        changed =
-          (await closeParticipantPeriod(client, participant, rules, timeoutAt, 'timeout')) ||
-          changed;
-      }
-    }
-    if (participant.state === 'break_active' && participant.break_started_at !== null) {
-      const breakEndsAt = new Date(participant.break_started_at.getTime() + rules.breakDurationMs);
-      if (now >= breakEndsAt) {
-        const updated = await client.query(
-          `update amateur_duel_participant
-              set state = 'accepted',
-                  break_started_at = null,
-                  ready_at = $3,
-                  updated_at = now()
-            where match_id = $1 and user_id = $2 and state = 'break_active'`,
-          [match.id, participant.user_id, breakEndsAt],
-        );
-        changed = (updated.rowCount ?? 0) > 0 || changed;
-      }
-    }
-    if (
-      participant.state === 'accepted' &&
-      participant.current_period > 0 &&
-      participant.ready_at !== null
-    ) {
-      const latestPeriod = await client.query<{ ended_at: Date }>(
-        `select ended_at
-           from amateur_duel_period_log
-          where match_id = $1 and user_id = $2 and period_number = $3
-          limit 1`,
-        [match.id, participant.user_id, participant.current_period],
-      );
-      const latestEndedAt = latestPeriod.rows[0]?.ended_at ?? null;
-      if (latestEndedAt !== null && participant.ready_at >= latestEndedAt) {
-        const continueDeadline = new Date(
-          participant.ready_at.getTime() + DUEL_INTERMISSION_CONTINUE_GRACE_MS,
-        );
-        if (now >= continueDeadline) {
-          const updated = await client.query(
-            `update amateur_duel_participant
-                set state = 'forfeit',
-                    period_started_at = null,
-                    break_started_at = null,
-                    updated_at = now()
-              where match_id = $1 and user_id = $2 and state = 'accepted'`,
-            [match.id, participant.user_id],
-          );
-          changed = (updated.rowCount ?? 0) > 0 || changed;
-        }
-      }
-    }
+  if (match.source === 'tournament') {
+    changed = (await reconcileParticipantTimers(client, match, now)) || changed;
   }
   const refreshed = await fetchMatchForUpdate(client, match.id);
   if (changed && refreshed.source === 'tournament') {
@@ -3079,6 +3248,125 @@ async function reconcileMatch(
       ? {}
       : { newlySettledRegularFixture: settled.newlySettledRegularFixture }),
   };
+}
+
+/** Materialize elapsed transitions without writing a result or rating ledger. */
+async function reconcileParticipantTimers(
+  client: PoolClient,
+  match: DuelMatchRow,
+  now: Date,
+): Promise<boolean> {
+  const rules = parseRulesSnapshot(match.rules_snapshot);
+  const participants = await fetchParticipants(client, match.id);
+  let changed = false;
+  for (let participant of participants) {
+    if (participant.state === 'period_active' && participant.period_started_at !== null) {
+      const periodRule = getDuelPeriodRule(rules, participant.current_period);
+      const timeoutAt = new Date(participant.period_started_at.getTime() + periodRule.durationMs);
+      let closed = false;
+      if (now >= timeoutAt && timeoutAt <= match.ends_at) {
+        closed = await closeParticipantPeriod(client, participant, rules, timeoutAt, 'timeout');
+      } else if (now >= match.ends_at) {
+        closed = await closeParticipantPeriod(
+          client,
+          participant,
+          rules,
+          match.ends_at,
+          'window_end',
+        );
+      }
+      if (closed) {
+        changed = true;
+        participant = (await fetchParticipants(client, match.id)).find(
+          (row) => row.user_id === participant.user_id,
+        )!;
+      }
+    }
+    if (participant.state === 'break_active' && participant.break_started_at !== null) {
+      const breakEndsAt = new Date(participant.break_started_at.getTime() + rules.breakDurationMs);
+      if (now >= breakEndsAt) {
+        const updated = await client.query(
+          `update amateur_duel_participant
+              set state = 'accepted',
+                  break_started_at = null,
+                  ready_at = $3,
+                  updated_at = now()
+            where match_id = $1 and user_id = $2 and state = 'break_active'`,
+          [match.id, participant.user_id, breakEndsAt],
+        );
+        changed = (updated.rowCount ?? 0) > 0 || changed;
+        participant.state = 'accepted';
+        participant.ready_at = breakEndsAt;
+      }
+    }
+    if (
+      participant.state === 'accepted' &&
+      participant.current_period > 0 &&
+      participant.ready_at !== null
+    ) {
+      const latestPeriod = await client.query<{ ended_at: Date }>(
+        `select ended_at
+           from amateur_duel_period_log
+          where match_id = $1 and user_id = $2 and period_number = $3
+          limit 1`,
+        [match.id, participant.user_id, participant.current_period],
+      );
+      const latestEndedAt = latestPeriod.rows[0]?.ended_at ?? null;
+      if (latestEndedAt !== null && participant.ready_at >= latestEndedAt) {
+        const continueDeadline = new Date(
+          participant.ready_at.getTime() + DUEL_INTERMISSION_CONTINUE_GRACE_MS,
+        );
+        if (now >= continueDeadline) {
+          const updated = await client.query(
+            `update amateur_duel_participant
+                set state = 'forfeit',
+                    period_started_at = null,
+                    break_started_at = null,
+                    completed_at = $3,
+                    updated_at = now()
+              where match_id = $1 and user_id = $2 and state = 'accepted'`,
+            [match.id, participant.user_id, continueDeadline],
+          );
+          changed = (updated.rowCount ?? 0) > 0 || changed;
+        }
+      }
+    }
+  }
+  return changed;
+}
+
+/** Called under the rating lifecycle gate before freezing a month. */
+export async function reconcileRatingSeasonMatches(
+  client: PoolClient,
+  seasonKey: string,
+): Promise<void> {
+  const boundary = nextRatingMonthBoundary(seasonKey);
+  const beforeBoundary = new Date(boundary.getTime() - 1);
+  const matches = await client.query<{ id: string }>(
+    `select id from amateur_duel_match where season_key=$1 and ranked and source<>'tournament'
+       and status in ('invited','ready_check','active') order by id`,
+    [seasonKey],
+  );
+  for (const row of matches.rows) {
+    const match = await fetchMatchForUpdate(client, row.id);
+    if (!matchRewardStorageCompatible(match)) throw unsupportedRewardConfiguration();
+    if (match.status === 'active') await reconcileParticipantTimers(client, match, beforeBoundary);
+    const completedAt = await ratingMatchCompletedAt(client, row.id);
+    if (match.ends_at >= boundary && (completedAt === null || completedAt >= boundary)) {
+      await client.query('update amateur_duel_match set season_key=$2 where id=$1', [
+        row.id,
+        seasonKeyMoscow(boundary),
+      ]);
+      continue;
+    }
+    const result = await reconcileMatch(client, match, beforeBoundary);
+    if (!isTerminalMatchStatus(result.match.status)) {
+      await client.query('update amateur_duel_match set season_key=$2 where id=$1', [
+        row.id,
+        seasonKeyMoscow(boundary),
+      ]);
+    }
+  }
 }
 
 async function fetchAvailableInventory(
@@ -3268,7 +3556,9 @@ async function buildMatchDto(
           ).rows[0] ?? null)
         : null;
     const admissionRules =
-      template === null ? rules : makeRulesSnapshot(template, await getGameSettings(client));
+      template === null || !matchRewardStorageCompatible(match)
+        ? rules
+        : makeRulesSnapshot(template, await getGameSettings(client));
     const duration = duelAdmissionDurationMs(admissionRules);
     duelLock ??= await duelLockDto(client, currentUserId, now, duration);
     duelLock ??= await duelLockDto(client, opponent.user_id, now, duration);
@@ -3677,6 +3967,10 @@ async function createOpenMatch(
         }
       : baseRules;
   if (opts.source !== 'tournament') {
+    await lockRatingLifecycle(client);
+    await client.query('select id from users where id = any($1::uuid[]) order by id for update', [
+      [opts.challengerUserId, opts.opponentUserId],
+    ]);
     const duplicate = await client.query<{ id: string }>(
       `select id
          from amateur_duel_match
@@ -3706,10 +4000,10 @@ async function createOpenMatch(
   const { rows } = await client.query<DuelMatchRow>(
     `insert into amateur_duel_match
       (template_id, challenger_user_id, opponent_user_id, status, source, ranked, season_key,
-        duel_kind, rules_snapshot, match_seed, starts_at, ends_at, ready_expires_at, stake_amount,
+        duel_kind, rules_snapshot, reward_rules, match_seed, starts_at, ends_at, ready_expires_at, stake_amount,
         entry_fee_amount, bank_amount, game_core_version)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, greatest($11::timestamptz, $12::timestamptz),
-             $13, $14, $15, $16, 0, $17)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, greatest($12::timestamptz, $13::timestamptz),
+             $14, $15, $16, $17, 0, $18)
      returning *`,
     [
       opts.template.id,
@@ -3721,6 +4015,7 @@ async function createOpenMatch(
       seasonKeyMoscow(opts.now),
       rules.duelKind,
       JSON.stringify(rules),
+      JSON.stringify(rules.rewardRules),
       seedBasis,
       opts.startsAt ?? opts.template.starts_at,
       opts.readyExpiresAt === undefined ? opts.now : (opts.startsAt ?? opts.template.starts_at),
@@ -4041,7 +4336,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
                 ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
                 stake_amount, entry_fee_amount, required_inventory_item_id,
                 inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
-                win_star_reward, created_at, updated_at,
+                win_star_reward, reward_rules, created_at, updated_at,
                 row_number() over (partition by duel_kind order by starts_at asc, created_at desc, id asc) as template_rank
            from amateur_duel_template
           where deleted_at is null and is_active
@@ -4053,7 +4348,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
               ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
               stake_amount, entry_fee_amount, required_inventory_item_id,
               inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
-              win_star_reward, created_at, updated_at
+              win_star_reward, reward_rules, created_at, updated_at
          from ranked_templates
         where template_rank = 1
         order by starts_at asc, created_at desc`,
@@ -4107,9 +4402,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     '/duel/amateur/challenge/availability',
     { preHandler: [app.authenticate] },
     async (req) => {
-      const query = z
-        .object({ opponent_user_id: z.string().uuid() })
-        .parse(req.query);
+      const query = z.object({ opponent_user_id: z.string().uuid() }).parse(req.query);
       return withTransaction(app, async (client) => {
         await assertNotPlayoffOpponents(client, req.user.id, query.opponent_user_id);
         return { available: true };
@@ -4212,6 +4505,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         [req.user.id],
       );
       const matches: DuelMatchDTO[] = [];
+      await lockMatchRewardRecipients(
+        client,
+        rows.map((row) => row.id),
+      );
       const changedMatchIds = new Set<string>();
       const newlySettledRegularFixtures = new Map<string, NewlySettledRegularFixture>();
       for (const row of rows) {
@@ -4221,7 +4518,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           reconciled = { match: visibleMatch, changed: false };
         } else {
           await assertTournamentDuelPlayable(client, visibleMatch);
-          reconciled = await reconcileMatch(client, visibleMatch, now);
+          reconciled = await reconcileMatch(client, visibleMatch, now, true);
         }
         if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
         if (reconciled.newlySettledRegularFixture !== undefined)
@@ -4501,6 +4798,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         [req.user.id],
       );
       const events: DuelMatchDTO[] = [];
+      await lockMatchRewardRecipients(
+        client,
+        rows.map((row) => row.id),
+      );
       const changedMatchIds = new Set<string>();
       const newlySettledRegularFixtures = new Map<string, NewlySettledRegularFixture>();
       for (const row of rows) {
@@ -4508,6 +4809,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           client,
           await fetchPlayableMatchForUpdate(client, row.id),
           now,
+          true,
         );
         if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
         if (reconciled.newlySettledRegularFixture !== undefined)
@@ -4636,11 +4938,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         await assertFullAmateurAccess(client, match.challenger_user_id);
         await assertFullAmateurAccess(client, match.opponent_user_id);
         if (match.source !== 'tournament') {
-          await assertNotPlayoffOpponents(
-            client,
-            match.challenger_user_id,
-            match.opponent_user_id,
-          );
+          await assertNotPlayoffOpponents(client, match.challenger_user_id, match.opponent_user_id);
         }
         const template = match.template_id ? await fetchTemplate(client, match.template_id) : null;
         if (!template || !template.is_active) {
@@ -4648,7 +4946,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         }
         if (now >= template.ends_at) throw new AppError('conflict', 'duel window is closed', 409);
         const settings = await getGameSettings(client);
-        const rules = makeRulesSnapshot(template, settings);
+        const rules = makeRulesSnapshot(template, settings, match.reward_rules);
         if (match.source !== 'tournament')
           await assertOrdinaryDuelStart(
             client,
@@ -5281,6 +5579,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         client,
         await fetchVisibleMatchForUpdate(client, params.matchId),
         now,
+        true,
       );
       const match = reconciled.match;
       if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id) {
@@ -5746,36 +6045,84 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     },
   );
 
+  app.get(
+    '/duel/amateur/rating/congratulations/pending',
+    { preHandler: [app.authenticate] },
+    async (req) => {
+      return {
+        congratulations: await getPendingMonthlyRatingCongratulations(app.pg, req.user.id),
+      };
+    },
+  );
+
+  app.post(
+    '/duel/amateur/rating/congratulations/:id/read',
+    { preHandler: [app.authenticate] },
+    async (req) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+      await acknowledgeMonthlyRatingCongratulations(app.pg, req.user.id, id);
+      return { ok: true };
+    },
+  );
+
   app.get('/duel/amateur/rating', { preHandler: [app.authenticate] }, async (req) => {
     const query = duelRatingQuerySchema.parse(req.query);
     const seasonKey = query.season_key ?? seasonKeyMoscow(new Date());
     const settings = await getGameSettings(app.pg);
-    const { rows } = await app.pg.query<RatingRow>(
-      `select r.user_id, u.display_name, u.avatar_url, r.points, r.wins, r.draws, r.losses,
-	              r.goals_for, r.goals_against, r.matches_played, r.active_duration_seconds
-	         from amateur_duel_rating_live r
-         join users u on u.id = r.user_id
-        where r.season_key = $1
-        order by r.points desc, r.wins desc, r.active_duration_seconds asc, u.display_name asc
-	        limit 100`,
+    const closedSeason = await app.pg.query(
+      'select 1 from monthly_duel_rating_season where season_key = $1',
       [seasonKey],
     );
-    const { rows: rankRows } = await app.pg.query<{ rank: number }>(
-      `select ranked.rank::int as rank
-	         from (
-	           select r.user_id,
-	                  row_number() over (
-	                    order by r.points desc, r.wins desc, r.active_duration_seconds asc, u.display_name asc
-	                  ) as rank
-	             from amateur_duel_rating_live r
-	             join users u on u.id = r.user_id
-	            where r.season_key = $1
-	         ) ranked
-	        where ranked.user_id = $2`,
-      [seasonKey, req.user.id],
-    );
+    const isClosedSeason = closedSeason.rowCount === 1;
+    const { rows } = isClosedSeason
+      ? await app.pg.query<RatingRow>(
+          `select p.user_id, u.display_name, u.avatar_url, p.points, p.wins, p.draws, p.losses,
+                  p.goals_for, p.goals_against, p.matches_played, p.active_duration_seconds
+             from monthly_duel_rating_placement p
+             join users u on u.id = p.user_id
+            where p.season_key = $1
+            order by p.place asc
+            limit 100`,
+          [seasonKey],
+        )
+      : await app.pg.query<RatingRow>(
+          `select r.user_id, u.display_name, u.avatar_url, r.points, r.wins, r.draws, r.losses,
+                  r.goals_for, r.goals_against, r.matches_played, r.active_duration_seconds
+             from amateur_duel_rating_live r
+             join users u on u.id = r.user_id
+            where r.season_key = $1
+            order by r.points desc, r.wins desc, r.active_duration_seconds asc, u.display_name asc
+            limit 100`,
+          [seasonKey],
+        );
+    const { rows: rankRows } = isClosedSeason
+      ? await app.pg.query<{ rank: number }>(
+          `select place as rank from monthly_duel_rating_placement
+            where season_key = $1 and user_id = $2`,
+          [seasonKey, req.user.id],
+        )
+      : await app.pg.query<{ rank: number }>(
+          `select ranked.rank::int as rank
+             from (
+               select r.user_id,
+                      row_number() over (
+                        order by r.points desc, r.wins desc, r.active_duration_seconds asc, u.display_name asc
+                      ) as rank
+                 from amateur_duel_rating_live r
+                 join users u on u.id = r.user_id
+                where r.season_key = $1
+             ) ranked
+            where ranked.user_id = $2`,
+          [seasonKey, req.user.id],
+        );
     const { rows: seasonRows } = await app.pg.query<{ season_key: string }>(
-      `select distinct season_key from amateur_duel_rating_live order by season_key desc`,
+      `select distinct season_key
+         from (
+           select season_key from amateur_duel_rating_live
+           union
+           select season_key from monthly_duel_rating_placement
+         ) seasons
+        order by season_key desc`,
     );
     return {
       season_key: seasonKey,
@@ -5934,12 +6281,12 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
               ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
               stake_amount, entry_fee_amount, required_inventory_item_id,
               inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
-              win_star_reward, created_at, updated_at
+              win_star_reward, reward_rules, created_at, updated_at
          from amateur_duel_template
         where deleted_at is null
         order by created_at desc`,
       );
-      return { templates: rows.map(mapAdminTemplate) };
+      return { templates: rows.map(mapAdminTemplate), rewardAmountLimit: REWARD_AMOUNT_LIMIT };
     },
   );
 
@@ -5961,10 +6308,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
             stake_amount, entry_fee_amount, required_inventory_item_id, inventory_charges_per_period,
             win_points, draw_points, win_currency_reward, draw_currency_reward, win_star_reward,
-            matchmaking_venue_policy)
+            matchmaking_venue_policy, reward_rules)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
                  $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27,
-                 $28, $29, $30, $31, $32, $33)
+                 $28, $29, $30, $31, $32, $33, $34)
          returning id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
                    matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
                    period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
@@ -5972,7 +6319,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
                    ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
                    stake_amount, entry_fee_amount, required_inventory_item_id,
                    inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
-                   win_star_reward, created_at, updated_at`,
+                   win_star_reward, reward_rules, created_at, updated_at`,
           [
             data.title,
             data.description,
@@ -6008,9 +6355,22 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             data.drawCurrencyReward,
             data.winStarReward,
             data.matchmakingVenuePolicy,
+            JSON.stringify(data.rewardRules),
           ],
         ));
       } catch (err) {
+        if (
+          typeof err === 'object' &&
+          err !== null &&
+          'constraint' in err &&
+          String(err.constraint).includes('reward_storage')
+        ) {
+          throw new AppError(
+            'bad_request',
+            'Сумма наград и прежних настроек превышает допустимый баланс.',
+            400,
+          );
+        }
         if (isActiveDuelTemplateKindConflict(err)) {
           throw new AppError('conflict', 'active duel template for kind already exists', 409);
         }
@@ -6095,6 +6455,12 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       addPatch(assignments, values, 'win_currency_reward', body.data.winCurrencyReward);
       addPatch(assignments, values, 'draw_currency_reward', body.data.drawCurrencyReward);
       addPatch(assignments, values, 'win_star_reward', body.data.winStarReward);
+      addPatch(
+        assignments,
+        values,
+        'reward_rules',
+        body.data.rewardRules === undefined ? undefined : JSON.stringify(body.data.rewardRules),
+      );
       values.push(params.templateId);
       let rows: DuelTemplateRow[];
       try {
@@ -6110,10 +6476,22 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
                       ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
                       stake_amount, entry_fee_amount, required_inventory_item_id,
                       inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
-                      win_star_reward, created_at, updated_at`,
+                      win_star_reward, reward_rules, created_at, updated_at`,
           values,
         ));
       } catch (err) {
+        if (
+          typeof err === 'object' &&
+          err !== null &&
+          'constraint' in err &&
+          String(err.constraint).includes('reward_storage')
+        ) {
+          throw new AppError(
+            'bad_request',
+            'Сумма наград и прежних настроек превышает допустимый баланс.',
+            400,
+          );
+        }
         if (isActiveDuelTemplateKindConflict(err)) {
           throw new AppError('conflict', 'active duel template for kind already exists', 409);
         }
@@ -6430,6 +6808,7 @@ function mapAdminTemplate(template: DuelTemplateRow) {
     winCurrencyReward: Number(template.win_currency_reward),
     drawCurrencyReward: Number(template.draw_currency_reward),
     winStarReward: Number(template.win_star_reward),
+    rewardRules: parseDuelRewardRules(template.reward_rules),
     createdAt: template.created_at.toISOString(),
     updatedAt: template.updated_at.toISOString(),
   };

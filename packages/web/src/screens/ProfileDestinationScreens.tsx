@@ -6,14 +6,13 @@ import { apiFetch } from '../api/apiFetch.js';
 import { fetchHomeArenas, type HomeArenasResponse } from '../api/arenas.js';
 import {
   fetchMyInventory,
-  type InventoryEquipmentKind,
-  type InventoryItem,
   type InventoryState,
 } from '../api/inventory.js';
 import { HomeArenaModal } from '../components/HomeArenaModal.js';
-import { formatProfileNumber, ProfileStatsGrid } from './profileSections.js';
+import { DuelLockerTab } from '../components/duel/DuelLockerTab.js';
+import { ProfileStatsGrid } from './profileSections.js';
 import type { ProfileData } from './profileTypes.js';
-import { placeholderArtworkForKind } from './inventoryArtwork.js';
+import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 
 function ProfilePageHeader({ title }: { title: string }): JSX.Element {
   const navigate = useNavigate();
@@ -77,34 +76,13 @@ export function ProfileStatsScreen(): JSX.Element {
   );
 }
 
-function equipmentLabel(kind: keyof InventoryState['equipped']): string {
-  if (kind === 'stickItemId') return 'Клюшка';
-  if (kind === 'skatesItemId') return 'Коньки';
-  return 'Питание';
-}
-
-function equipmentKind(kind: keyof InventoryState['equipped']): InventoryEquipmentKind {
-  if (kind === 'stickItemId') return 'stick';
-  if (kind === 'skatesItemId') return 'skates';
-  return 'nutrition';
-}
-
-function equippedItem(
-  inventory: InventoryState,
-  kind: keyof InventoryState['equipped'],
-): InventoryItem | null {
-  const itemId = inventory.equipped[kind];
-  if (itemId === null) return null;
-  const inventoryKind = equipmentKind(kind);
-  return (
-    inventory.items[inventoryKind].find(
-      (item) => item.id === itemId || item.instanceId === itemId,
-    ) ?? null
-  );
-}
-
 export function ProfileEquipmentScreen(): JSX.Element {
   const navigate = useNavigate();
+  const [infoOpen, setInfoOpen] = useState(false);
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiFetch<ProfileData>('/me'),
+  });
   const query = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
@@ -124,47 +102,51 @@ export function ProfileEquipmentScreen(): JSX.Element {
     );
   }
 
-  const slots = (Object.keys(query.data.equipped) as Array<keyof InventoryState['equipped']>).map(
-    (kind) => ({
-      kind,
-      item: equippedItem(query.data!, kind),
-    }),
-  );
   return (
-    <main className="screen profile-detail-screen">
-      <ProfilePageHeader title="Инвентарь" />
-      <section className="profile-equipment-list" aria-label="Активная экипировка">
-        {slots.map(({ kind, item }) => (
-          <section className="profile-equipment-group" key={kind} aria-label={equipmentLabel(kind)}>
-            <div className="section-label">{equipmentLabel(kind)}</div>
-            <article className="profile-equipment-slot glass">
-              <div className="profile-equipment-slot__image" aria-hidden="true">
-                <img
-                  src={item?.imageUrl ?? placeholderArtworkForKind(equipmentKind(kind))}
-                  alt=""
-                  onError={(event) => {
-                    const fallback = placeholderArtworkForKind(equipmentKind(kind));
-                    if (event.currentTarget.getAttribute('src') !== fallback) {
-                      event.currentTarget.setAttribute('src', fallback);
-                    }
-                  }}
-                />
-              </div>
-              <div>
-                <h2>{item?.title ?? 'Не выбрано'}</h2>
-                <span>
-                  {item === null
-                    ? 'Выберите вещь в магазине'
-                    : `Осталось: ${formatProfileNumber(item.chargesAvailable)}`}
-                </span>
-              </div>
-            </article>
+    <main
+      className={`screen profile-detail-screen profile-detail-screen--locker mode-shell--locker ${lockerRoomBackgroundClass(profileQuery.data?.competitionLevel)}`}
+    >
+      <header className="bonus-games-catalog__header">
+        <button
+          type="button"
+          className="icon-btn icon-btn--page-back catalog-header-back"
+          aria-label="Назад"
+          onClick={() => navigate('/profile')}
+        >
+          <ArrowLeft size={16} />
+        </button>
+        <h1 className="bonus-games-catalog__title screen-title-on-arena">Инвентарь</h1>
+      </header>
+      <DuelLockerTab
+        onInfo={() => setInfoOpen(true)}
+        onOpenInventory={() => navigate('/inventory')}
+      />
+      {infoOpen && (
+        <div className="modal-backdrop" onClick={() => setInfoOpen(false)}>
+          <section
+            role="dialog"
+            aria-label="Раздевалка"
+            className="modal-card"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2 className="modal-title">Раздевалка</h2>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Закрыть"
+                onClick={() => setInfoOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <p className="modal-copy">
+              Здесь выбирается купленный инвентарь для дуэлей: одна клюшка, одна пара коньков и
+              одно питание. Если предметов нет, их можно купить в магазине.
+            </p>
           </section>
-        ))}
-      </section>
-      <button type="button" className="btn btn--cta" onClick={() => navigate('/inventory')}>
-        Открыть магазин
-      </button>
+        </div>
+      )}
     </main>
   );
 }

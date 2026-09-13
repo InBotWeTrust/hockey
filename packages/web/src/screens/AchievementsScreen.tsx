@@ -19,11 +19,19 @@ import {
   fetchAchievements,
   type AchievementDto,
 } from '../api/achievements.js';
-import { countClaimableWeeklyChallenges, fetchWeeklyChallenge } from '../api/weeklyChallenge.js';
+import {
+  countClaimableWeeklyChallenges,
+  fetchWeeklyChallenge,
+  weeklyChallengeKeys,
+} from '../api/weeklyChallenge.js';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { useAuthStore } from '../auth/authStore.js';
+import {
+  updateCachedInventoryBalances,
+  updateCachedProfileBalances,
+} from '../app/queryClient.js';
 
 type AchievementFilter =
   | 'all'
@@ -234,9 +242,11 @@ export function AchievementsScreen({
   const achievementsQuery = useQuery({
     queryKey: achievementKeys.all,
     queryFn: fetchAchievements,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
   const weeklyChallengeQuery = useQuery({
-    queryKey: ['weekly-challenge', 'achievements'],
+    queryKey: weeklyChallengeKeys.current,
     queryFn: fetchWeeklyChallenge,
   });
   const achievements = achievementsQuery.data?.achievements ?? [];
@@ -285,6 +295,8 @@ export function AchievementsScreen({
       });
       void queryClient.invalidateQueries({ queryKey: ['achievements'] });
       void queryClient.invalidateQueries({ queryKey: ['profile'] });
+      updateCachedProfileBalances(queryClient, response.balances);
+      updateCachedInventoryBalances(queryClient, response.balances);
       setSelected(null);
       setClaimedReward({
         title: response.achievement.title,
@@ -361,7 +373,11 @@ export function AchievementsScreen({
           Задания · {countText(selectedFilterCounts.completed, selectedFilterCounts.total)}
         </div>
         <SegmentedTabs
-          items={visibleFilters}
+          items={visibleFilters.map((item) => ({
+            ...item,
+            attention: item.id === 'claimable' && hasClaimableAchievements,
+            ...(item.id === 'claimable' ? { attentionSize: 'small' as const } : {}),
+          }))}
           activeTab={filter}
           ariaLabel="Фильтр заданий"
           onChange={setFilter}

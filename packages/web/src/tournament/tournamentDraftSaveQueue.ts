@@ -19,6 +19,7 @@ export class TournamentDraftSaveQueue<TSnapshot, TResult> {
   private failure: unknown = null;
   private waiters: FlushWaiter<TResult>[] = [];
   private currentStatus: TournamentDraftSaveStatus = 'idle';
+  private paused = false;
 
   constructor(
     private readonly options: {
@@ -28,6 +29,7 @@ export class TournamentDraftSaveQueue<TSnapshot, TResult> {
       revisionOf: (result: TResult) => number;
       onStatusChange?: (status: TournamentDraftSaveStatus, error?: unknown) => void;
       onSaved?: (result: TResult, snapshotKey: string) => void;
+      canDispatch?: () => boolean;
     },
   ) {
     this.revision = options.initialRevision;
@@ -40,6 +42,21 @@ export class TournamentDraftSaveQueue<TSnapshot, TResult> {
 
   get snapshotKey(): string {
     return this.savedKey;
+  }
+
+  pause(): void {
+    this.paused = true;
+    this.pending = null;
+    this.failure = null;
+    this.rejectWaiters(new Error('draft save paused'));
+  }
+
+  resume(snapshot: TSnapshot, key: string): void {
+    // Rebase on the latest valid form, never on work queued before the pause.
+    if (this.paused) this.failure = null;
+    this.enqueue(snapshot, key);
+    this.paused = false;
+    this.pump();
   }
 
   enqueue(snapshot: TSnapshot, key: string): void {
@@ -59,12 +76,26 @@ export class TournamentDraftSaveQueue<TSnapshot, TResult> {
   }
 
   flush(): Promise<TResult | undefined> {
+    if (this.paused) return Promise.reject(new Error('draft save paused'));
     if (this.failure !== null) return Promise.reject(this.failure);
     if (this.active === null && this.pending === null) return Promise.resolve(this.lastResult);
     return new Promise<TResult | undefined>((resolve, reject) => {
       this.waiters.push({ resolve, reject });
       this.pump();
     });
+  }
+
+  async flushSnapshot(
+    snapshot: TSnapshot,
+    key: string,
+    isCurrent: () => boolean,
+  ): Promise<TResult | undefined> {
+    if (!isCurrent()) throw new Error('draft changed while finishing');
+    this.resume(snapshot, key);
+    if (this.failure !== null) this.retry();
+    const result = await this.flush();
+    if (!isCurrent() || this.savedKey !== key) throw new Error('draft changed while finishing');
+    return result;
   }
 
   retry(): void {
@@ -81,6 +112,8 @@ export class TournamentDraftSaveQueue<TSnapshot, TResult> {
 
   private pump(): void {
     if (this.active !== null || this.failure !== null) return;
+    if (this.options.canDispatch?.() === false) this.pause();
+    if (this.paused) return;
     const item = this.pending;
     if (item === null) {
       if (this.currentStatus === 'saving') this.setStatus('saved');

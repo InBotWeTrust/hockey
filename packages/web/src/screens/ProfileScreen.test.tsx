@@ -93,6 +93,12 @@ function mockProfileRequest(
     chargesAvailable: number;
     effectRecoveryMinutes: number;
   }> = [],
+  legacyEquipmentArtwork = false,
+  ratingStats: Pick<typeof profile.stats, 'shots' | 'goals' | 'accuracy'> & {
+    currentStreakDays?: number;
+    recordStreakDays?: number;
+  } = profile.stats,
+  experienceRating = { value: profile.experienceBalance },
 ): void {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input.toString();
@@ -112,7 +118,7 @@ function mockProfileRequest(
                 id: 'stick-1',
                 kind: 'stick',
                 title: 'Ледяной клинок',
-                imageUrl: '/stick.webp',
+                imageUrl: legacyEquipmentArtwork ? '/inventory/sticks.webp' : '/stick.webp',
                 resourceUnit: 'shot',
                 chargesAvailable: 18,
               },
@@ -129,7 +135,7 @@ function mockProfileRequest(
                 id: 'skates-1',
                 kind: 'skates',
                 title: 'Северный ход',
-                imageUrl: '/skates.webp',
+                imageUrl: legacyEquipmentArtwork ? '/inventory/skates.webp' : '/skates.webp',
                 resourceUnit: 'distance',
                 chargesAvailable: 7,
               },
@@ -147,6 +153,72 @@ function mockProfileRequest(
             recovery,
           },
           equipped,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
+    if (url.includes('/api/profile/experience-rating')) {
+      return new Response(
+        JSON.stringify({
+          rows: [
+            {
+              place: 1,
+              userId: 'u1',
+              displayName: 'Alice T',
+              avatarUrl: 'avatar.png',
+              experience: experienceRating.value,
+            },
+          ],
+          nextCursor: null,
+          currentUser: {
+            place: 1,
+            userId: 'u1',
+            displayName: 'Alice T',
+            avatarUrl: 'avatar.png',
+            experience: experienceRating.value,
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
+    if (url.includes('/api/profile/ratings/')) {
+      const metric = url.includes('/accuracy')
+        ? 'accuracy'
+        : url.includes('/streak')
+          ? 'streak'
+          : 'goals';
+      return new Response(
+        JSON.stringify({
+          metric,
+          rows: [
+            {
+              place: 1,
+              userId: 'u1',
+              displayName: 'Alice T',
+              avatarUrl: 'avatar.png',
+              goals: ratingStats.goals,
+              shots: ratingStats.shots,
+              accuracy: ratingStats.accuracy,
+              currentStreakDays: ratingStats.currentStreakDays ?? 7,
+              recordStreakDays: ratingStats.recordStreakDays ?? 12,
+            },
+          ],
+          nextCursor: null,
+          currentUser: {
+            place: 1,
+            userId: 'u1',
+            displayName: 'Alice T',
+            avatarUrl: 'avatar.png',
+            goals: ratingStats.goals,
+            shots: ratingStats.shots,
+            accuracy: ratingStats.accuracy,
+            currentStreakDays: ratingStats.currentStreakDays ?? 7,
+            recordStreakDays: ratingStats.recordStreakDays ?? 12,
+          },
+          eligibility:
+            metric === 'accuracy'
+              ? { eligible: false, goals: 64, requiredGoals: 1000 }
+              : { eligible: true },
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       );
@@ -173,7 +245,10 @@ function mockProfileRequest(
 
 function renderProfile(): void {
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      mutations: { retry: false },
+    },
   });
   render(
     <QueryClientProvider client={client}>
@@ -237,6 +312,115 @@ describe('ProfileScreen', () => {
     expect(screen.queryByLabelText('Раздевалка игрока')).not.toBeInTheDocument();
   });
 
+  it('loads the experience rating only after the experience balance is opened', async () => {
+    const experienceRating = { value: 9_001 };
+    mockProfileRequest(200, profile, undefined, [], false, profile.stats, experienceRating);
+    renderProfile();
+
+    const trigger = await screen.findByRole('button', { name: 'Открыть рейтинг по опыту' });
+    expect(
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.some(([input]) => String(input).includes('/api/profile/experience-rating')),
+    ).toBe(false);
+
+    fireEvent.click(trigger);
+    expect(await screen.findByRole('dialog', { name: 'Рейтинг по опыту' })).toBeInTheDocument();
+    expect(
+      await screen.findAllByRole('row', { name: /^1 Alice T Alice T 9\s001$/ }),
+    ).not.toHaveLength(0);
+    await waitFor(() => expect(screen.getByLabelText('Опыт: 9001')).toBeInTheDocument());
+    expect(
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.filter(([input]) => String(input).includes('/api/profile/experience-rating')),
+    ).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Рейтинг по опыту' })).toBeNull(),
+    );
+    experienceRating.value = 9_002;
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть рейтинг по опыту' }));
+    await waitFor(() => expect(screen.getByLabelText('Опыт: 9002')).toBeInTheDocument());
+    expect(
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.filter(([input]) => String(input).includes('/api/profile/experience-rating')),
+    ).toHaveLength(2);
+  });
+
+  it.each([
+    ['Шайбы', 'Рейтинг по шайбам', 'goals'],
+    ['Точность', 'Рейтинг по точности', 'accuracy'],
+    ['Дней подряд', 'Рейтинг игровых дней', 'streak'],
+  ])('opens the %s rating from sporting metrics', async (label, title, metric) => {
+    mockProfileRequest();
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: `Открыть рейтинг: ${label}` }));
+    const dialog = await screen.findByRole('dialog', { name: title });
+    expect(dialog).toBeInTheDocument();
+    expect(
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.some(([input]) => String(input).includes(`/api/profile/ratings/${metric}`)),
+    ).toBe(true);
+    expect(await within(dialog).findAllByTestId('stat-rating-current-row')).toHaveLength(1);
+    if (metric === 'accuracy') {
+      expect(
+        await within(dialog).findByText('Вы попадёте в рейтинг точности после 1000 забитых шайб.'),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByText('У вас 64 из 1000')).toBeInTheDocument();
+    }
+  });
+
+  it('synchronizes cached profile totals from the current player rating row', async () => {
+    const ratingStats = {
+      goals: 7_982,
+      shots: 10_967,
+      accuracy: 72.84,
+      currentStreakDays: 15,
+      recordStreakDays: 20,
+    };
+    mockProfileRequest(200, profile, undefined, [], false, ratingStats);
+    renderProfile();
+
+    const passport = await screen.findByLabelText('Спортивный паспорт');
+    expect(within(passport).getByText('64')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть рейтинг: Шайбы' }));
+    await screen.findByRole('dialog', { name: 'Рейтинг по шайбам' });
+
+    await waitFor(() => expect(within(passport).getByText('7 982')).toBeInTheDocument());
+    expect(within(passport).getByText('72,8%')).toBeInTheDocument();
+    expect(within(passport).queryByText('64')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Рейтинг по шайбам' })).toBeNull(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть рейтинг: Дней подряд' }));
+    await screen.findByRole('dialog', { name: 'Рейтинг игровых дней' });
+    await waitFor(() => expect(passport).toHaveTextContent('15 (20)Дней подряд'));
+    expect(
+      vi.mocked(globalThis.fetch).mock.calls.filter(([input]) => String(input).endsWith('/api/me')),
+    ).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Рейтинг по шайбам' })).toBeNull(),
+    );
+    ratingStats.goals = 8_000;
+    ratingStats.shots = 11_000;
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть рейтинг: Шайбы' }));
+
+    await waitFor(() => expect(within(passport).getByText('8 000')).toBeInTheDocument());
+    expect(
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.filter(([input]) => String(input).includes('/api/profile/ratings/goals')),
+    ).toHaveLength(2);
+  });
+
   it('routes each direct profile card to its destination', async () => {
     mockProfileRequest();
 
@@ -262,10 +446,9 @@ describe('ProfileScreen', () => {
     );
     expect(screen.getByTestId('profile-community-icon-vk')).toBeInTheDocument();
     expect(screen.getByTestId('profile-community-icon-telegram')).toBeInTheDocument();
-    expect(screen.getByTestId('profile-community-icon-telegram').querySelector('img')).toHaveAttribute(
-      'src',
-      '/icons/telegram-community-v2.png',
-    );
+    expect(
+      screen.getByTestId('profile-community-icon-telegram').querySelector('img'),
+    ).toHaveAttribute('src', '/icons/telegram-community-v2.png');
     for (const link of screen.getAllByRole('link')) {
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noreferrer');
@@ -422,7 +605,7 @@ describe('ProfileScreen', () => {
 
     const passport = await screen.findByLabelText('Спортивный паспорт');
     expect(passport).toHaveTextContent('64Шайбы');
-    expect(passport).toHaveTextContent('50%Точность');
+    expect(passport).toHaveTextContent('50,0%Точность');
     expect(passport).toHaveTextContent('7 (12)Дней подряд');
     expect(passport).toHaveTextContent('с14.08.26В игре');
     expect(passport.querySelector('.profile-streak-record')).toHaveTextContent('(12)');
@@ -465,10 +648,10 @@ describe('ProfileScreen', () => {
     renderProfile();
 
     const equipmentCard = await screen.findByLabelText('Инвентарь');
-    expect(equipmentCard).toHaveTextContent('18КлюшкаЛедяной клинок');
-    expect(equipmentCard).toHaveTextContent('7КонькиСеверный ход');
-    expect(equipmentCard).toHaveTextContent('180 000ПитаниеЭнерго-гель');
-    expect(equipmentCard).toHaveTextContent('0ВосстановлениеНет в запасе');
+    expect(equipmentCard).toHaveTextContent('18 брКлюшкаЛедяной клинок');
+    expect(equipmentCard).toHaveTextContent('7 прКонькиСеверный ход');
+    expect(equipmentCard).toHaveTextContent('3 минПитаниеЭнерго-гель');
+    expect(equipmentCard).toHaveTextContent('0 минВосстановлениеНет в запасе');
     expect(equipmentCard.querySelector('.profile-loadout')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Ледяной клинок' })).toHaveAttribute(
       'src',
@@ -510,7 +693,12 @@ describe('ProfileScreen', () => {
 
     const recovery = await screen.findByRole('button', { name: 'Восстановление: 90 минут' });
     expect(recovery).toHaveTextContent('90');
-    expect(recovery).toHaveTextContent('Минут');
+    expect(recovery).toHaveTextContent('Малый набор для восстановления');
+    expect(recovery).not.toHaveTextContent('Минут');
+    expect(within(recovery).getByRole('img', { name: 'Малый набор для восстановления' })).toHaveAttribute(
+      'src',
+      '/inventory/recovery-15.webp',
+    );
     fireEvent.click(recovery);
 
     const dialog = screen.getByRole('dialog', { name: 'Наборы для восстановления' });
@@ -562,6 +750,24 @@ describe('ProfileScreen', () => {
     );
   });
 
+  it('replaces legacy equipment artwork in the profile and picker with the current tier art', async () => {
+    mockProfileRequest(200, profile, undefined, [], true);
+    renderProfile();
+
+    expect(await screen.findByRole('img', { name: 'Ледяной клинок' })).toHaveAttribute(
+      'src',
+      expect.stringContaining('/inventory/stick-bronze.webp'),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Выбрать клюшку' }));
+    const dialog = screen.getByRole('dialog', { name: 'Выбрать клюшку' });
+    expect(
+      within(dialog)
+        .getByRole('button', { name: /Ледяной клинок/ })
+        .querySelector('img'),
+    ).toHaveAttribute('src', expect.stringContaining('/inventory/stick-bronze.webp'));
+  });
+
   it('shows the latest earned achievement in the career band', async () => {
     mockProfileRequest();
     renderProfile();
@@ -570,6 +776,27 @@ describe('ProfileScreen', () => {
     expect(career).toHaveTextContent('Снайпер недели');
     expect(career.querySelector('img')).toHaveAttribute('src', '/achievement-1.webp');
     expect(career.querySelector('.profile-career-list')).toHaveClass('profile-career-list--scroll');
+  });
+
+  it('uses the compact achievement title treatment for training monster', async () => {
+    mockProfileRequest(200, {
+      ...profile,
+      achievements: [
+        {
+          ...profile.achievements[0]!,
+          id: 'training-monster',
+          title: 'Тренировочный монстр',
+        },
+      ],
+    });
+    renderProfile();
+
+    const achievement = await screen.findByRole('button', {
+      name: 'Открыть достижение Тренировочный монстр',
+    });
+    expect(achievement.querySelector('.profile-achievement-title')).toHaveClass(
+      'profile-achievement-title--compact',
+    );
   });
 
   it('orders earned achievements from newest to oldest in the career band', async () => {

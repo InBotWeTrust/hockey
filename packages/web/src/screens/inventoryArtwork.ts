@@ -5,7 +5,7 @@ type InventoryArtworkItem = Pick<InventoryItem, 'kind' | 'rarity'> & {
   imageUrl?: string | null;
 };
 
-const INVENTORY_ARTWORK_VERSION = '20260830-base-equipment-v1';
+const INVENTORY_ARTWORK_VERSION = '20260911-locker-equipment-v2';
 
 function versionInventoryArtwork(url: string): string {
   if (!url.startsWith('/inventory/') || url.includes('?')) return url;
