@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { MotionConfig } from 'motion/react';
 import { App } from './app/App.js';
+import { initializeAuthSession } from './auth/authStore.js';
 
 const LOCAL_DEV_CACHE_RESET_KEY = 'hockey.localDevCacheReset.v1';
 
@@ -54,10 +55,12 @@ if (!rootElement) {
   throw new Error('Root element #root not found');
 }
 
-ReactDOM.createRoot(rootElement).render(
-  <React.StrictMode>
-    <MotionConfig reducedMotion="user">
-      <App />
-    </MotionConfig>
-  </React.StrictMode>,
-);
+void initializeAuthSession().finally(() => {
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <MotionConfig reducedMotion="user">
+        <App />
+      </MotionConfig>
+    </React.StrictMode>,
+  );
+});
