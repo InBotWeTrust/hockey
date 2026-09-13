@@ -9,7 +9,11 @@ import {
   getSessionPhaseOffsets,
   resolvePerspectiveCourtShot,
 } from '@hockey/game-core';
-import { grantStatAchievements } from '../achievements/service.js';
+import {
+  grantStatAchievements,
+  observeCareerActivityStreak,
+  observeCareerGoal,
+} from '../achievements/service.js';
 import { deriveClassicTournamentSeed, deriveShotSeed } from '../duel/seed.js';
 import {
   assertGameplayActionAllowed,
@@ -1635,11 +1639,20 @@ export async function submitClassicGameShot(
       [input.userId, serverResult === 'goal' ? 1 : 0],
     );
     const user = updatedUser.rows[0]!;
+    await observeCareerActivityStreak(client, input.userId, now);
     await grantStatAchievements(client, input.userId, {
       lifetimeShots: Number(user.lifetime_shots_total),
       lifetimeGoals: Number(user.lifetime_goals_total),
       level: Number(user.level),
     });
+    if (serverResult === 'goal') {
+      await observeCareerGoal(client, input.userId, {
+        eventKey: `tournament-classic:${session.id}:${session.current_period}:${input.shotIndex}`,
+        occurredAt: now,
+        mode: 'tournament_classic',
+        lifetimeTotal: Number(user.lifetime_goals_total),
+      });
+    }
     if (input.claimedResult !== serverResult) {
       await appendEvent(
         client,

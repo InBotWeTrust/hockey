@@ -739,6 +739,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '133_official_account_runtime.sql',
       '134_optional_weekly_challenge_copy.sql',
       '135_tiered_achievements.sql',
+      '136_remove_recurring_duel_star_reward.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -1612,6 +1613,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '133_official_account_runtime.sql',
       '134_optional_weekly_challenge_copy.sql',
       '135_tiered_achievements.sql',
+      '136_remove_recurring_duel_star_reward.sql',
     ]);
 
     const activeInventory = await pool.query<{

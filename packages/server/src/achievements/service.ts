@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from 'pg';
 import { getGameSettings } from '../duel/gameSettings.js';
 import { observeAchievementStage, openFirstAchievementStages } from './stageProgress.js';
+import { ACTIVITY_STREAK_CTES } from '../profile/activityStreak.js';
 
 type Queryable = Pool | PoolClient;
 
@@ -352,6 +353,25 @@ export async function observeCareerStreak(
     eventKey: observation.eventKey,
     occurredAt: observation.occurredAt,
     progress: { days: observation.recordDays },
+  });
+}
+
+export async function observeCareerActivityStreak(db: Queryable, userId: string, occurredAt: Date) {
+  const { rows } = await db.query<{ activity_day: string; best_days: number }>(
+    `with ${ACTIVITY_STREAK_CTES}
+     select (date_trunc('day', $2::timestamptz at time zone users.timezone))::date::text as activity_day,
+            coalesce(historical_streaks.best_days, 0)::int as best_days
+       from users
+       left join historical_streaks on historical_streaks.user_id = users.id
+      where users.id = $1`,
+    [userId, occurredAt],
+  );
+  const row = rows[0];
+  if (!row) return { completed: false, stageNumber: null };
+  return observeCareerStreak(db, userId, {
+    eventKey: `activity-day:${row.activity_day}`,
+    occurredAt,
+    recordDays: Number(row.best_days),
   });
 }
 

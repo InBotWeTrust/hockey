@@ -17,7 +17,7 @@ interface ActiveStageRow {
 }
 
 function isPool(db: Queryable): db is Pool {
-  return 'connect' in db && typeof db.connect === 'function';
+  return !('release' in db) && 'connect' in db && typeof db.connect === 'function';
 }
 
 async function inTransaction<T>(db: Queryable, work: (client: PoolClient) => Promise<T>) {

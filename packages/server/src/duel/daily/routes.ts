@@ -15,6 +15,7 @@ import {
   evaluateDailyShotAchievements,
   type DailyClosedAchievementEvent,
 } from '../../achievements/engine.js';
+import { observeCareerActivityStreak, observeCareerGoal } from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveDailySeed, deriveShotSeed } from '../seed.js';
@@ -823,6 +824,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
         shotIndex: body.shot_index,
         result: serverResult,
       });
+      await observeCareerActivityStreak(client, req.user.id, now);
 
       if (body.claimed_result !== serverResult) {
         await appendEvent(client, req.user.id, 'shot_mismatch', {
@@ -855,13 +857,22 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
             goals,
           ],
         );
-        await client.query(
+        const updatedUser = await client.query<{ lifetime_goals_total: number }>(
           `update users
                 set lifetime_shots_total = lifetime_shots_total + $1,
                     lifetime_goals_total = lifetime_goals_total + $2
-              where id = $3`,
+              where id = $3
+          returning lifetime_goals_total`,
           [settings.daily.shotsPerPeriod, goals, req.user.id],
         );
+        if (goals > 0) {
+          await observeCareerGoal(client, req.user.id, {
+            eventKey: `daily-period:${pool.id}:${pool.current_period}`,
+            occurredAt: now,
+            mode: 'daily',
+            lifetimeTotal: Number(updatedUser.rows[0]!.lifetime_goals_total),
+          });
+        }
         await appendEvent(client, req.user.id, 'period_closed', {
           day_pool_id: pool.id,
           period_number: pool.current_period,
