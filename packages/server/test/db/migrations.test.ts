@@ -91,6 +91,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(names).toContain('weekly_challenge_participants');
     expect(names).toContain('weekly_challenge_declines');
     expect(names).toContain('weekly_challenge_reward_claims');
+    expect(names).toContain('weekly_challenge_start_acknowledgements');
     expect(names).toContain('achievement_progress');
     expect(names).toContain('feedback_messages');
     expect(names).toEqual(
@@ -108,6 +109,25 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       ]),
     );
     expect(names).toContain('_migrations');
+
+    const officialAccount = await pool.query<{
+      display_name: string;
+      avatar_url: string;
+      timezone: string;
+      account_kind: string;
+    }>(
+      `select display_name, avatar_url, timezone, account_kind
+         from users
+        where id = '00000000-0000-4000-8000-000000000099'`,
+    );
+    expect(officialAccount.rows).toEqual([
+      {
+        display_name: 'Ультимейт Хоккей',
+        avatar_url: '/icons/official-account.webp',
+        timezone: 'Europe/Moscow',
+        account_kind: 'official',
+      },
+    ]);
 
     const seededBonusGames = await pool.query<{
       slug: string;
@@ -696,6 +716,11 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '127_refresh_inventory_catalog_copy.sql',
       '128_experience_rating_index.sql',
       '129_unified_duel_inventory_penalties.sql',
+      '130_widen_duel_stumble_interval.sql',
+      '131_yookassa_coin_packages.sql',
+      '132_weekly_challenge_starts_and_channel_comments.sql',
+      '133_official_account_runtime.sql',
+      '134_optional_weekly_challenge_copy.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -753,7 +778,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       Object.fromEntries(unifiedInventoryPenalties.rows.map((row) => [row.key, row.value])),
     ).toEqual({
       'amateur.no_inventory.skates.stumble_interval_min_rolls': '8',
-      'amateur.no_inventory.skates.stumble_interval_max_rolls': '12',
+      'amateur.no_inventory.skates.stumble_interval_max_rolls': '20',
       'amateur.no_inventory.skates.stumble_duration_min_ms': '450',
       'amateur.no_inventory.skates.stumble_duration_max_ms': '650',
       'amateur.no_inventory.skates.stumble_recovery_min_ms': '150',
@@ -1563,6 +1588,11 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '127_refresh_inventory_catalog_copy.sql',
       '128_experience_rating_index.sql',
       '129_unified_duel_inventory_penalties.sql',
+      '130_widen_duel_stumble_interval.sql',
+      '131_yookassa_coin_packages.sql',
+      '132_weekly_challenge_starts_and_channel_comments.sql',
+      '133_official_account_runtime.sql',
+      '134_optional_weekly_challenge_copy.sql',
     ]);
 
     const activeInventory = await pool.query<{

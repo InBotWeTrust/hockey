@@ -143,9 +143,8 @@ function EquipmentPanel({
   ] as const;
   const recoveryItems = inventory?.items.recovery ?? [];
   const recoveryMinutes = recoveryMinutesAvailable(recoveryItems);
-  const recoveryArtwork =
-    recoveryItems.find((item) => item.chargesAvailable > 0)?.imageUrl ??
-    '/inventory/recovery-30.webp';
+  const recoveryItem = recoveryItems.find((item) => item.chargesAvailable > 0) ?? null;
+  const recoveryArtwork = recoveryItem?.imageUrl ?? '/inventory/recovery-30.webp';
   return (
     <section className="profile-equipment-section" aria-label="Инвентарь">
       <button
@@ -201,7 +200,7 @@ function EquipmentPanel({
             onClick={onOpenRecovery}
           >
             <span className="profile-loadout-slot__image">
-              <img src={recoveryArtwork} alt="Наборы для восстановления" />
+              <img src={recoveryArtwork} alt={recoveryItem?.title ?? 'Наборы для восстановления'} />
               <strong>
                 <FittedOneLineText maxFontSize={9} minFontSize={5}>
                   {formatProfileNumber(recoveryMinutes)} мин
@@ -210,7 +209,7 @@ function EquipmentPanel({
             </span>
             <span className="profile-loadout-slot__kind">Восстановление</span>
             <span className="profile-loadout-slot__title">
-              {recoveryMinutes > 0 ? 'Минут' : 'Нет в запасе'}
+              {recoveryItem?.title ?? 'Нет в запасе'}
             </span>
           </button>
         </span>

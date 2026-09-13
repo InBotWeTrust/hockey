@@ -806,6 +806,40 @@ describe('AdminScreen', () => {
     expect(await screen.findByText('Сообщение отправлено 12 игрокам')).toBeInTheDocument();
   });
 
+  it('shows an audience loading error instead of a false zero recipient count', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/admin/communications/broadcasts/audience')) {
+        return new Response(JSON.stringify({ code: 'configuration_error' }), { status: 409 });
+      }
+      if (url.includes('/admin/attention')) {
+        return new Response(
+          JSON.stringify({
+            feedbackUnreadCount: 0,
+            officialDialogsUnreadCount: 0,
+            totalCount: 0,
+          }),
+        );
+      }
+      return new Promise<Response>(() => undefined);
+    });
+
+    renderAdmin();
+    selectAdminSection('Коммуникации');
+    fireEvent.click(screen.getByRole('tab', { name: 'Рассылка' }));
+
+    expect(await screen.findByText('Не удалось загрузить получателей')).toHaveAttribute(
+      'role',
+      'alert',
+    );
+    expect(screen.queryByText('0 получателей')).not.toBeInTheDocument();
+  });
+
   it('starts with dashboard and renders game settings for admins', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'a',

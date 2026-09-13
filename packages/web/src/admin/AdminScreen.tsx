@@ -4174,9 +4174,18 @@ function OfficialBroadcastPanel(): JSX.Element {
         <div>
           <div className="admin-broadcast-card__title">Личное сообщение от профиля игры</div>
           <div className="admin-broadcast-card__audience">
-            {audience.isLoading ? 'Считаем получателей...' : `${recipientCount} получателей`}
+            {audience.isLoading
+              ? 'Считаем получателей...'
+              : audience.isError
+                ? null
+                : `${recipientCount} получателей`}
           </div>
         </div>
+        {audience.isError && (
+          <div role="alert" className="admin-official-dialog__error">
+            Не удалось загрузить получателей
+          </div>
+        )}
         <p>
           Сообщение появится отдельным личным диалогом у каждого незаблокированного игрока.
           Администраторы и официальный аккаунт исключены.
@@ -4199,7 +4208,12 @@ function OfficialBroadcastPanel(): JSX.Element {
         <button
           type="button"
           className="btn btn--cta"
-          disabled={trimmedContent.length === 0 || recipientCount === 0 || sendMutation.isPending}
+          disabled={
+            trimmedContent.length === 0 ||
+            recipientCount === 0 ||
+            audience.isError ||
+            sendMutation.isPending
+          }
           onClick={() => setConfirmOpen(true)}
         >
           Проверить и отправить

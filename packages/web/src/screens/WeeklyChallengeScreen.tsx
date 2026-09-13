@@ -331,7 +331,9 @@ function ChallengeCard({
         )}
       </div>
       <div>
-        <h2 className="weekly-challenge-card__title">{challenge.title}</h2>
+        {challenge.title && (
+          <h2 className="weekly-challenge-card__title">{challenge.title}</h2>
+        )}
         <div className="weekly-challenge-card__dates">
           {dateText(challenge.startAt)} — {dateText(challenge.endAt)} МСК
         </div>
@@ -367,7 +369,10 @@ function ChallengeCard({
         />
       </div>
 
-      <ul className="weekly-challenge-task-list" aria-label={`Задачи челленджа ${challenge.title}`}>
+      <ul
+        className="weekly-challenge-task-list"
+        aria-label={challenge.title ? `Задачи челленджа ${challenge.title}` : 'Задачи челленджа'}
+      >
         {challenge.tasks.map((task) => {
           const percent =
             task.progress === null

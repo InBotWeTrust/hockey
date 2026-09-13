@@ -122,6 +122,38 @@ describe('WeeklyChallengesAdmin', () => {
     );
   });
 
+  it('allows the next challenge to be saved without a title or description', async () => {
+    renderAdmin();
+    const title = await screen.findByRole('textbox', { name: 'Название' });
+    const description = screen.getByRole('textbox', { name: 'Описание' });
+    expect(title).not.toBeRequired();
+    expect(description).not.toBeRequired();
+    fireEvent.change(title, { target: { value: '   ' } });
+    fireEvent.change(description, { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/admin/weekly-challenges/next',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: expect.stringContaining('"title":"","description":""'),
+        }),
+      ),
+    );
+  });
+
+  it('labels a titleless challenge for admins without changing stored content', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      ...dashboard,
+      current: challenge('current', ''),
+    });
+    renderAdmin();
+
+    expect(await screen.findByText('Без названия')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Статистика Без названия' })).toBeInTheDocument();
+  });
+
   it('keeps the next editor available when the global setting is disabled', async () => {
     renderAdmin();
     const toggle = await screen.findByRole('checkbox', { name: 'Недельные челленджи включены' });
@@ -175,6 +207,16 @@ describe('WeeklyChallengesAdmin', () => {
     expect(fields).toContainElement(screen.getByRole('textbox', { name: 'Название задания 1' }));
     expect(fields).toContainElement(screen.getByRole('spinbutton', { name: 'Цель задания 1' }));
     expect(fields).toContainElement(screen.getByRole('button', { name: 'Удалить задание 1' }));
+  });
+
+  it('offers commenting on distinct channel posts as a configurable task', async () => {
+    renderAdmin();
+
+    const type = await screen.findByRole('combobox', { name: 'Тип задания 1' });
+    fireEvent.click(type);
+    expect(
+      screen.getByRole('option', { name: 'Прокомментировать посты канала' }),
+    ).toBeInTheDocument();
   });
 
   it('reports save errors visibly and preserves the draft for retry', async () => {

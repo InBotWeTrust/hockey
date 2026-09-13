@@ -10,6 +10,7 @@ import { BottomNav, isBottomNavVisible } from '../components/BottomNav.js';
 import { DuelInviteToast } from '../components/DuelInviteToast.js';
 import { AmateurAccessToast } from '../amateur/AmateurAccessToast.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
+import { WeeklyChallengeStartModal } from '../components/WeeklyChallengeStartModal.js';
 import { OfflineBanner } from '../chat/components/OfflineBanner.js';
 import { useChatSocket } from '../chat/useChatSocket.js';
 import { OnboardingGate } from '../onboarding/OnboardingGate.js';
@@ -211,6 +212,19 @@ function AppExperience(): JSX.Element {
     location.pathname !== '/dev/tournament-result-preview' && isBottomNavVisible(location, user);
   const backdropClassName = appBackdropClassName(location.pathname, location.search);
   const surfaceClassName = appSurfaceClassName(location.pathname);
+  const weeklyStartModalEnabled =
+    (user?.competitionLevel === 'amateur' || user?.competitionLevel === 'professional') &&
+    location.pathname !== '/admin' &&
+    !location.pathname.startsWith('/auth/') &&
+    ![
+      '/login',
+      '/prices',
+      '/terms',
+      '/offer',
+      '/privacy',
+      '/personal-data-consent',
+      '/demo',
+    ].includes(location.pathname);
   const hasArenaBackdrop = backdropClassName.split(' ').includes('app-shell--arena');
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -226,6 +240,7 @@ function AppExperience(): JSX.Element {
       <ChatRealtime />
       <DuelInviteToast />
       <AmateurAccessToast />
+      <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />
       <div
         className={`app-shell ${surfaceClassName}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
         style={{
