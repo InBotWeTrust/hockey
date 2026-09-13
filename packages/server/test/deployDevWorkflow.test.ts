@@ -70,8 +70,10 @@ describe('production YooKassa deployment wiring', () => {
 });
 
 describe('production review access wiring', () => {
-  it('enables the revocable access-code route and its login control in production', () => {
-    expect(productionWorkflow).toContain('VITE_DEV_ACCESS_CODE_LOGIN_ENABLED=true');
-    expect(productionWorkflow).toContain('DEV_ACCESS_CODE_LOGIN_ENABLED=true');
+  it('disables the access-code route and its login control in production', () => {
+    expect(productionWorkflow).toContain('VITE_DEV_ACCESS_CODE_LOGIN_ENABLED=false');
+    expect(productionWorkflow).toContain('DEV_ACCESS_CODE_LOGIN_ENABLED=false');
+    expect(productionWorkflow).not.toContain('VITE_DEV_ACCESS_CODE_LOGIN_ENABLED=true');
+    expect(productionWorkflow).not.toContain('DEV_ACCESS_CODE_LOGIN_ENABLED=true');
   });
 });
