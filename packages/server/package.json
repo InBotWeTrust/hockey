@@ -21,7 +21,8 @@
     "inventory:grant-existing": "tsx src/ops/existingUserInventoryGrantCli.ts",
     "inventory:correct-existing": "tsx src/ops/existingUserInventoryGrantCorrectionCli.ts",
     "achievement:monthly-rating-audit": "tsx src/achievements/monthlyRatingAchievementAuditCli.ts",
-    "push:worker": "tsx src/push/worker-cli.ts"
+    "push:worker": "tsx src/push/worker-cli.ts",
+    "mobile:release-manifest": "tsx src/mobileRelease/build-manifest-cli.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

@@ -93,6 +93,26 @@ describe('loadConfig', () => {
     });
   });
 
+  it('requires valid Android release path and public keys together', () => {
+    expect(() =>
+      loadConfig({ ...base, ANDROID_RELEASE_MANIFEST_PATH: '/tmp/release.json' }),
+    ).toThrow();
+    expect(() =>
+      loadConfig({
+        ...base,
+        ANDROID_RELEASE_MANIFEST_PATH: '/tmp/release.json',
+        ANDROID_MANIFEST_PUBLIC_KEYS_JSON: 'not-json',
+      }),
+    ).toThrow();
+    expect(
+      loadConfig({
+        ...base,
+        ANDROID_RELEASE_MANIFEST_PATH: '/tmp/release.json',
+        ANDROID_MANIFEST_PUBLIC_KEYS_JSON: JSON.stringify({ key1: 'public-pem' }),
+      }).ANDROID_RELEASE_MANIFEST_PATH,
+    ).toBe('/tmp/release.json');
+  });
+
   it('requires object storage config as a complete group', () => {
     expect(
       loadConfig({ ...base, OBJECT_STORAGE_ENDPOINT: '' }).OBJECT_STORAGE_ENDPOINT,
