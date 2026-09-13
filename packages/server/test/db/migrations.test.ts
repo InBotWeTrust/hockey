@@ -367,7 +367,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         title: 'Ультимейт Заряд',
         item_kind: 'nutrition',
         resource_unit: 'energy_ms',
-        currency_price: 1490,
+        currency_price: 3490,
         charges_per_purchase: 5_700_000,
         effect_puck_speed_points: 0,
       },
@@ -375,7 +375,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         title: 'Ультимейт Заряд Плюс',
         item_kind: 'nutrition',
         resource_unit: 'energy_ms',
-        currency_price: 2490,
+        currency_price: 4990,
         charges_per_purchase: 8_400_000,
         effect_puck_speed_points: 0,
       },
@@ -383,16 +383,8 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         title: 'Ультимейт Заряд Макс',
         item_kind: 'nutrition',
         resource_unit: 'energy_ms',
-        currency_price: 3490,
+        currency_price: 7490,
         charges_per_purchase: 10_800_000,
-        effect_puck_speed_points: 0,
-      },
-      {
-        title: 'Ультимейт Рывок Плюс',
-        item_kind: 'skates',
-        resource_unit: 'distance',
-        currency_price: 2490,
-        charges_per_purchase: 12_500,
         effect_puck_speed_points: 0,
       },
       {
@@ -404,10 +396,18 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         effect_puck_speed_points: 0,
       },
       {
+        title: 'Ультимейт Рывок Плюс',
+        item_kind: 'skates',
+        resource_unit: 'distance',
+        currency_price: 4190,
+        charges_per_purchase: 12_500,
+        effect_puck_speed_points: 0,
+      },
+      {
         title: 'Ультимейт Рывок Макс',
         item_kind: 'skates',
         resource_unit: 'distance',
-        currency_price: 3740,
+        currency_price: 6290,
         charges_per_purchase: 16_000,
         effect_puck_speed_points: 0,
       },
@@ -415,7 +415,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         title: 'Ультимейт Вектор',
         item_kind: 'stick',
         resource_unit: 'shot',
-        currency_price: 1490,
+        currency_price: 2990,
         charges_per_purchase: 1300,
         effect_puck_speed_points: 40,
       },
@@ -423,7 +423,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         title: 'Ультимейт Вектор Плюс',
         item_kind: 'stick',
         resource_unit: 'shot',
-        currency_price: 2490,
+        currency_price: 4190,
         charges_per_purchase: 1950,
         effect_puck_speed_points: 40,
       },
@@ -431,7 +431,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         title: 'Ультимейт Вектор Макс',
         item_kind: 'stick',
         resource_unit: 'shot',
-        currency_price: 3740,
+        currency_price: 6290,
         charges_per_purchase: 2500,
         effect_puck_speed_points: 40,
       },
@@ -561,6 +561,38 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         charges_per_purchase: 2500,
         effect_recovery_minutes: 0,
       },
+    ]);
+
+    const inventoryPrices = await pool.query<{
+      item_kind: string;
+      rarity: string;
+      currency_price: number;
+    }>(
+      `select item_kind, rarity, currency_price
+         from admin_inventory_items
+        where deleted_at is null
+          and item_kind in ('stick', 'skates', 'nutrition', 'recovery')
+        order by case item_kind
+                   when 'stick' then 1
+                   when 'skates' then 2
+                   when 'nutrition' then 3
+                   else 4
+                 end,
+                 case rarity when 'common' then 1 when 'rare' then 2 else 3 end`,
+    );
+    expect(inventoryPrices.rows).toEqual([
+      { item_kind: 'stick', rarity: 'common', currency_price: 2990 },
+      { item_kind: 'stick', rarity: 'rare', currency_price: 4190 },
+      { item_kind: 'stick', rarity: 'legendary', currency_price: 6290 },
+      { item_kind: 'skates', rarity: 'common', currency_price: 2990 },
+      { item_kind: 'skates', rarity: 'rare', currency_price: 4190 },
+      { item_kind: 'skates', rarity: 'legendary', currency_price: 6290 },
+      { item_kind: 'nutrition', rarity: 'common', currency_price: 3490 },
+      { item_kind: 'nutrition', rarity: 'rare', currency_price: 4990 },
+      { item_kind: 'nutrition', rarity: 'legendary', currency_price: 7490 },
+      { item_kind: 'recovery', rarity: 'common', currency_price: 990 },
+      { item_kind: 'recovery', rarity: 'rare', currency_price: 1690 },
+      { item_kind: 'recovery', rarity: 'legendary', currency_price: 2990 },
     ]);
 
     const notifications = await pool.query<{ key: string; click_url: string }>(
@@ -721,6 +753,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '132_weekly_challenge_starts_and_channel_comments.sql',
       '133_official_account_runtime.sql',
       '134_optional_weekly_challenge_copy.sql',
+      '135_rebalance_inventory_currency_prices.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -1593,6 +1626,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '132_weekly_challenge_starts_and_channel_comments.sql',
       '133_official_account_runtime.sql',
       '134_optional_weekly_challenge_copy.sql',
+      '135_rebalance_inventory_currency_prices.sql',
     ]);
 
     const activeInventory = await pool.query<{
@@ -1615,7 +1649,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
         item_kind: 'nutrition',
         title: 'Ультимейт Заряд',
         resource_unit: 'energy_ms',
-        currency_price: 1490,
+        currency_price: 3490,
         charges_per_purchase: 5_700_000,
         effect_puck_speed_points: 0,
       },
@@ -1623,7 +1657,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
         item_kind: 'nutrition',
         title: 'Ультимейт Заряд Плюс',
         resource_unit: 'energy_ms',
-        currency_price: 2490,
+        currency_price: 4990,
         charges_per_purchase: 8_400_000,
         effect_puck_speed_points: 0,
       },
@@ -1631,16 +1665,8 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
         item_kind: 'nutrition',
         title: 'Ультимейт Заряд Макс',
         resource_unit: 'energy_ms',
-        currency_price: 3490,
+        currency_price: 7490,
         charges_per_purchase: 10_800_000,
-        effect_puck_speed_points: 0,
-      },
-      {
-        item_kind: 'skates',
-        title: 'Ультимейт Рывок Плюс',
-        resource_unit: 'distance',
-        currency_price: 2490,
-        charges_per_purchase: 12_500,
         effect_puck_speed_points: 0,
       },
       {
@@ -1653,9 +1679,17 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       },
       {
         item_kind: 'skates',
+        title: 'Ультимейт Рывок Плюс',
+        resource_unit: 'distance',
+        currency_price: 4190,
+        charges_per_purchase: 12_500,
+        effect_puck_speed_points: 0,
+      },
+      {
+        item_kind: 'skates',
         title: 'Ультимейт Рывок Макс',
         resource_unit: 'distance',
-        currency_price: 3740,
+        currency_price: 6290,
         charges_per_purchase: 16_000,
         effect_puck_speed_points: 0,
       },
@@ -1663,7 +1697,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
         item_kind: 'stick',
         title: 'Ультимейт Вектор',
         resource_unit: 'shot',
-        currency_price: 1490,
+        currency_price: 2990,
         charges_per_purchase: 1300,
         effect_puck_speed_points: 40,
       },
@@ -1671,7 +1705,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
         item_kind: 'stick',
         title: 'Ультимейт Вектор Плюс',
         resource_unit: 'shot',
-        currency_price: 2490,
+        currency_price: 4190,
         charges_per_purchase: 1950,
         effect_puck_speed_points: 40,
       },
@@ -1679,7 +1713,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
         item_kind: 'stick',
         title: 'Ультимейт Вектор Макс',
         resource_unit: 'shot',
-        currency_price: 3740,
+        currency_price: 6290,
         charges_per_purchase: 2500,
         effect_puck_speed_points: 40,
       },
