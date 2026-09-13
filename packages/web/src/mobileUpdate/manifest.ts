@@ -22,7 +22,13 @@ function decodeBase64(value: string): Uint8Array {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
-function asArrayBuffer(value: Uint8Array): ArrayBuffer {
+function asCryptoBufferSource(value: Uint8Array): BufferSource {
+  const nodeBuffer = (
+    globalThis as typeof globalThis & {
+      Buffer?: { from(bytes: Uint8Array): Uint8Array };
+    }
+  ).Buffer;
+  if (nodeBuffer !== undefined) return nodeBuffer.from(value) as BufferSource;
   const copy = new Uint8Array(value.byteLength);
   copy.set(value);
   return copy.buffer;
@@ -129,7 +135,7 @@ export async function verifyReleaseManifest(
   };
   const key = await crypto.subtle.importKey(
     'spki',
-    asArrayBuffer(decodeBase64(publicKey)),
+    asCryptoBufferSource(decodeBase64(publicKey)),
     { name: 'Ed25519' },
     false,
     ['verify'],
@@ -137,8 +143,8 @@ export async function verifyReleaseManifest(
   const valid = await crypto.subtle.verify(
     { name: 'Ed25519' },
     key,
-    asArrayBuffer(signature),
-    asArrayBuffer(canonicalizeReleaseManifest(unsigned)),
+    asCryptoBufferSource(signature),
+    asCryptoBufferSource(canonicalizeReleaseManifest(unsigned)),
   );
   if (!valid) throw new Error('Invalid manifest signature');
   return manifest;
