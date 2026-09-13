@@ -66,6 +66,10 @@ services:
       YOOKASSA_SHOP_ID: ${PRODUCTION_YOOKASSA_SHOP_ID:-}
       YOOKASSA_SECRET_KEY: ${PRODUCTION_YOOKASSA_SECRET_KEY:-}
       YOOKASSA_RETURN_URL: ${PRODUCTION_YOOKASSA_RETURN_URL:-}
+      ANDROID_RELEASE_MANIFEST_PATH: ${ANDROID_RELEASE_MANIFEST_PATH:-}
+      ANDROID_MANIFEST_PUBLIC_KEYS_JSON: ${ANDROID_MANIFEST_PUBLIC_KEYS_JSON:-}
+    volumes:
+      - ${ANDROID_RELEASES_DIR:-/opt/hockey/android-releases}:/app/android-releases:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -125,6 +129,7 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${ANDROID_RELEASES_DIR:-/opt/hockey/android-releases}:/srv/android-releases:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:

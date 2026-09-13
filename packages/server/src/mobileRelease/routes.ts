@@ -3,6 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { parseSignedAndroidReleaseManifest, type SignedAndroidReleaseManifest } from './schema.js';
 import { verifyReleaseManifest } from './signature.js';
+import { renderAndroidDownloadPage } from './downloadPage.js';
 
 export interface MobileReleaseRouteOptions {
   manifestPath: string;
@@ -71,5 +72,16 @@ export const mobileReleaseRoutes: FastifyPluginAsync<MobileReleaseRouteOptions> 
     const release = await load();
     if (release === null) return unavailable(reply);
     return reply.redirect(release.manifest.apkUrl, 302);
+  });
+
+  app.get('/download/android', async (_request, reply) => {
+    const release = await load();
+    if (release === null) return unavailable(reply);
+    reply.header(
+      'Content-Security-Policy',
+      "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    );
+    reply.header('X-Content-Type-Options', 'nosniff');
+    return reply.type('text/html; charset=utf-8').send(renderAndroidDownloadPage(release.manifest));
   });
 };
