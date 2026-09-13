@@ -17,7 +17,8 @@
     "playoff:schedule-backfill": "tsx src/tournament/playoffScheduleBackfillCli.ts",
     "tournament:lifecycle-audit": "tsx src/tournament/automaticLifecycleAuditCli.ts",
     "achievement:tournament-backfill": "tsx src/achievements/tournamentBackfillCli.ts",
-    "push:worker": "tsx src/push/worker-cli.ts"
+    "push:worker": "tsx src/push/worker-cli.ts",
+    "mobile:release-manifest": "tsx src/mobileRelease/build-manifest-cli.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

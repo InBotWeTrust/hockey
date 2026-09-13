@@ -33,6 +33,7 @@ import { tournamentRoutes } from './tournament/routes.js';
 import { tournamentWs } from './tournament/ws.js';
 import { validateOfficialAccount } from './chat/officialAccount.js';
 import { nativeCorsPlugin } from './plugins/nativeCors.js';
+import { mobileReleaseRoutes } from './mobileRelease/routes.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -117,6 +118,14 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(authPlugin, { accessSecret: config.JWT_SECRET });
   await app.register(lastSeenPlugin);
   await app.register(healthRoutes);
+  await app.register(mobileReleaseRoutes, {
+    manifestPath:
+      config.ANDROID_RELEASE_MANIFEST_PATH ?? '/var/lib/ultimate-hockey/android-release.json',
+    publicKeys:
+      config.ANDROID_MANIFEST_PUBLIC_KEYS_JSON === undefined
+        ? {}
+        : (JSON.parse(config.ANDROID_MANIFEST_PUBLIC_KEYS_JSON) as Record<string, string>),
+  });
   await app.register(authRoutes, {
     telegramBotToken: config.TELEGRAM_BOT_TOKEN,
     ...(config.VK_APP_ID !== undefined ? { vkAppId: config.VK_APP_ID } : {}),

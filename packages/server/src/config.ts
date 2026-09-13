@@ -53,6 +53,8 @@ const schema = z
             : value,
       z.string().min(1).optional(),
     ),
+    ANDROID_RELEASE_MANIFEST_PATH: optionalNonEmptyString,
+    ANDROID_MANIFEST_PUBLIC_KEYS_JSON: optionalNonEmptyString,
     PUSH_SCHEDULER_ENABLED: optionalBoolean,
     PUSH_WORKER_ENABLED: optionalBoolean,
     PUSH_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(25).default(5),
@@ -71,6 +73,38 @@ const schema = z
       .default(25 * 1024 * 1024),
   })
   .superRefine((value, ctx) => {
+    const releaseValues = [
+      value.ANDROID_RELEASE_MANIFEST_PATH,
+      value.ANDROID_MANIFEST_PUBLIC_KEYS_JSON,
+    ];
+    if (
+      releaseValues.some((item) => item !== undefined) &&
+      releaseValues.some((item) => item === undefined)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ANDROID_RELEASE_MANIFEST_PATH'],
+        message: 'Android release config is incomplete',
+      });
+    }
+    if (value.ANDROID_MANIFEST_PUBLIC_KEYS_JSON !== undefined) {
+      try {
+        const parsed = JSON.parse(value.ANDROID_MANIFEST_PUBLIC_KEYS_JSON) as unknown;
+        if (
+          parsed === null ||
+          typeof parsed !== 'object' ||
+          Array.isArray(parsed) ||
+          Object.values(parsed).some((item) => typeof item !== 'string' || item.length === 0)
+        )
+          throw new Error();
+      } catch {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ANDROID_MANIFEST_PUBLIC_KEYS_JSON'],
+          message: 'invalid Android manifest public keys',
+        });
+      }
+    }
     const configuredFcmKeys = fcmKeys.filter((key) => value[key] !== undefined);
     if (configuredFcmKeys.length > 0 && configuredFcmKeys.length < fcmKeys.length) {
       for (const key of fcmKeys) {
