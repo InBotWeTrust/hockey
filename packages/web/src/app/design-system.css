@@ -6,6 +6,81 @@
   height: 100vh;
   height: var(--app-viewport-height, 100dvh);
 }
+
+.admin-achievement-stages {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.admin-achievement-stage {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(100, 116, 139, 0.18);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.admin-achievement-stage__header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.admin-achievement-stage__header small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.admin-achievement-stage__header .btn {
+  width: auto;
+  min-width: 112px;
+}
+
+.admin-achievement-stage__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.admin-achievement-stage__toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-achievement-stage__toggle input {
+  width: 18px;
+  height: 18px;
+}
+
+.admin-achievement-stage__error {
+  margin-top: 8px;
+  color: var(--red-deep);
+  font-size: 12px;
+}
+
+@media (max-width: 430px) {
+  .admin-achievement-stage__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-achievement-stage__header .btn {
+    width: 100%;
+  }
+
+  .admin-achievement-stage__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .app-shell::before {
   content: '';
   position: absolute;
@@ -12679,10 +12754,18 @@ button.daily-calendar__day:active {
   font-weight: 700;
 }
 
-.weekly-challenge-start-modal__rewards .reward--coin { color: var(--reward-coin); }
-.weekly-challenge-start-modal__rewards .reward--star { color: var(--reward-star); }
-.weekly-challenge-start-modal__rewards .reward--experience { color: var(--reward-experience); }
-.weekly-challenge-start-modal__rewards .reward--token { color: var(--reward-token); }
+.weekly-challenge-start-modal__rewards .reward--coin {
+  color: var(--reward-coin);
+}
+.weekly-challenge-start-modal__rewards .reward--star {
+  color: var(--reward-star);
+}
+.weekly-challenge-start-modal__rewards .reward--experience {
+  color: var(--reward-experience);
+}
+.weekly-challenge-start-modal__rewards .reward--token {
+  color: var(--reward-token);
+}
 
 .weekly-challenge-start-modal .weekly-challenge-task-list {
   border-top-color: rgba(71, 85, 105, 0.14);
