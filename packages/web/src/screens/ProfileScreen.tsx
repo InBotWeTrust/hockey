@@ -37,6 +37,10 @@ import {
   getLevelLabel,
 } from './profileSections.js';
 import type { ProfileData } from './profileTypes.js';
+import {
+  highestCompletedLevel,
+  summarizeAchievementProgress,
+} from '../achievements/progressSummary.js';
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 import { ExperienceRatingModal } from '../profile/ExperienceRatingModal.js';
 import type { ExperienceRatingPlayer } from '../api/experienceRating.js';
@@ -278,8 +282,9 @@ function CareerPanel({
   onOpen: () => void;
   onChoose: (achievement: ProfileData['achievements'][number]) => void;
 }): JSX.Element {
+  const summary = summarizeAchievementProgress(profile.achievements);
   const earned = profile.achievements
-    .filter((achievement) => achievement.isUnlocked)
+    .filter((achievement) => achievement.isUnlocked || highestCompletedLevel(achievement) > 0)
     .sort((left, right) => {
       const leftTime = left.completedAt ? Date.parse(left.completedAt) : Number.NaN;
       const rightTime = right.completedAt ? Date.parse(right.completedAt) : Number.NaN;
@@ -289,14 +294,14 @@ function CareerPanel({
       return 0;
     });
   return (
-    <section className="profile-career-section" aria-label="Награды и достижения">
+    <section className="profile-career-section" aria-label="Задания">
       <button
         type="button"
         className="section-label profile-section-label"
-        aria-label="Открыть карьеру и награды"
+        aria-label="Открыть задания"
         onClick={onOpen}
       >
-        Награды и достижения ({earned.length})
+        Задания · {summary.completed}/{summary.total}, уровни · {summary.levels.completed}/{summary.levels.total}
       </button>
       <div className="profile-career-panel glass">
         {earned.length > 0 ? (
@@ -305,11 +310,18 @@ function CareerPanel({
               <button
                 type="button"
                 className="profile-career-award"
-                aria-label={`Открыть достижение ${achievement.title}`}
+                aria-label={`Открыть задание ${achievement.title}`}
                 key={achievement.id}
                 onClick={() => onChoose(achievement)}
               >
-                <img src={achievement.photoUrl} alt="" />
+                <span className="profile-career-award__image">
+                  <img src={achievement.photoUrl} alt="" />
+                  {achievement.stage && highestCompletedLevel(achievement) > 0 && (
+                    <span className="profile-career-award__level">
+                      Ур. {highestCompletedLevel(achievement)}/{achievement.stage.total}
+                    </span>
+                  )}
+                </span>
                 <span
                   className={`profile-achievement-title${
                     achievement.id === 'training-monster'

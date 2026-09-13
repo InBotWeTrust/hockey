@@ -791,7 +791,7 @@ const ACHIEVEMENT_SEED_DEFINITIONS: Array<Omit<AchievementSeed, 'rewardTokens'>>
     photoUrl: '/achievements/dark-horse.webp',
     title: 'Тёмная лошадка',
     description: 'Более опытный соперник выбит из сетки.',
-    requirement: 'Выбить из плей-офф более опытного игрока.',
+    requirement: 'Выиграть серию плей-офф у соперника, у которого на начало серии больше опыта.',
     category: 'tournament',
     availability: 'active',
     futureTag: null,

@@ -436,7 +436,7 @@ export async function getUserPublicProfile(
   );
   if (r.rowCount === 0) return null;
   const row = r.rows[0]!;
-  const profileProgress = await buildProfileProgress(pool, row);
+  const profileProgress = await buildProfileProgress(pool, row, { claimedOnly: false });
   const [trophySummary, trophyDetails] = await Promise.all([
     fetchTrophySummary(pool, row.id),
     fetchTrophyDetails(pool, row.id),

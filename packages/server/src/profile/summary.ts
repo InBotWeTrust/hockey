@@ -381,6 +381,7 @@ export async function fetchPlayStreakStats(
 export async function buildProfileProgress(
   db: Queryable,
   row: ProfileProgressRow,
+  opts: { claimedOnly?: boolean } = {},
 ): Promise<ProfileProgressDTO> {
   const level = toNumber(row.level);
   const shots = toNumber(row.lifetime_shots_total);
@@ -395,7 +396,7 @@ export async function buildProfileProgress(
   const [settings, playStreakStats, achievements, unclaimedAchievementsCount] = await Promise.all([
     getGameSettings(db),
     fetchPlayStreakStats(db, row.id, row.timezone),
-    fetchAchievementCatalogueForUser(db, row.id, { claimedOnly: true }),
+    fetchAchievementCatalogueForUser(db, row.id, { claimedOnly: opts.claimedOnly ?? true }),
     fetchUnclaimedAchievementCount(db, row.id),
   ]);
 

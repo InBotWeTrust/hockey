@@ -85,16 +85,35 @@ const STAT_ACHIEVEMENT_RULES = [
   },
 ] as const;
 
-function mapAchievementRow(row: AchievementRow): ProfileAchievementDTO {
-  const isTiered = row.stage_number !== null;
-  const completedAt = isTiered ? row.stage_completed_at : row.completed_at;
-  const claimedAt = isTiered ? row.stage_claimed_at : row.claimed_at;
-  const status: AchievementStatus =
-    completedAt === null ? 'locked' : claimedAt === null ? 'completed_unclaimed' : 'claimed';
+const COMPOUND_EVENT_STAGE_IDS = new Set([
+  'third-period-decides',
+  'underdog',
+  'ice-hand',
+  'training-monster',
+  'classic-speed',
+  'blowout',
+  'no-error-express',
+  'no-error-mix',
+  'no-error-classic',
+]);
 
-  const targetEntries = Object.entries(row.stage_target ?? {}).filter(
-    ([, value]) => typeof value === 'number',
-  ) as Array<[string, number]>;
+export function resolveStageDisplayProgress({
+  achievementId,
+  target,
+  progress,
+  completed,
+}: {
+  achievementId: string;
+  target: Record<string, number | string | boolean>;
+  progress: Record<string, number | string | boolean>;
+  completed: boolean;
+}): { progressValue: number; targetValue: number } {
+  if (COMPOUND_EVENT_STAGE_IDS.has(achievementId)) {
+    return { progressValue: completed ? 1 : 0, targetValue: 1 };
+  }
+
+  const targetEntries = Object.entries(target).filter(([, value]) => typeof value === 'number') as
+    Array<[string, number]>;
   const targetEntry = targetEntries.find(([key]) =>
     [
       'total',
@@ -112,9 +131,25 @@ function mapAchievementRow(row: AchievementRow): ProfileAchievementDTO {
       'maximumNonGoals',
     ].includes(key),
   );
-  const progressValue = Number(
-    targetEntry === undefined ? 0 : (row.stage_progress?.[targetEntry[0]] ?? 0),
-  );
+  return {
+    progressValue: Number(targetEntry === undefined ? 0 : (progress[targetEntry[0]] ?? 0)),
+    targetValue: targetEntry?.[1] ?? 0,
+  };
+}
+
+function mapAchievementRow(row: AchievementRow): ProfileAchievementDTO {
+  const isTiered = row.stage_number !== null;
+  const completedAt = isTiered ? row.stage_completed_at : row.completed_at;
+  const claimedAt = isTiered ? row.stage_claimed_at : row.claimed_at;
+  const status: AchievementStatus =
+    completedAt === null ? 'locked' : claimedAt === null ? 'completed_unclaimed' : 'claimed';
+
+  const displayProgress = resolveStageDisplayProgress({
+    achievementId: row.id,
+    target: row.stage_target ?? {},
+    progress: row.stage_progress ?? {},
+    completed: completedAt !== null,
+  });
 
   return {
     id: row.id,
@@ -140,8 +175,7 @@ function mapAchievementRow(row: AchievementRow): ProfileAchievementDTO {
             current: row.stage_number!,
             total: Number(row.stage_total ?? 0),
             requirement: row.stage_requirement!,
-            progressValue,
-            targetValue: targetEntry?.[1] ?? 0,
+            ...displayProgress,
             history: (row.stage_history ?? []).map((history) => ({
               ...history,
               claimedAt: new Date(history.claimedAt).toISOString(),

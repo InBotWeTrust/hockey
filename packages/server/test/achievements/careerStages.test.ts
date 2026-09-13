@@ -76,6 +76,35 @@ describe.skipIf(!hasIntegrationEnv)('career achievement stages', () => {
     });
   });
 
+  it('reports compound event stages as one required completion instead of the qualifier value', async () => {
+    await pool.query(
+      `update user_achievement_stages
+          set progress = '{"minimumExperienceDifference":0}'
+        where user_id = $1 and achievement_id = 'underdog' and stage_number = 1`,
+      [userId],
+    );
+
+    let catalogue = await fetchAchievementCatalogueForUser(pool, userId);
+    expect(catalogue.find((achievement) => achievement.id === 'underdog')?.stage).toMatchObject({
+      progressValue: 0,
+      targetValue: 1,
+    });
+
+    await pool.query(
+      `update user_achievement_stages
+          set progress = '{"minimumExperienceDifference":150}',
+              completed_at = '2026-09-13T12:00:00.000Z'
+        where user_id = $1 and achievement_id = 'underdog' and stage_number = 1`,
+      [userId],
+    );
+
+    catalogue = await fetchAchievementCatalogueForUser(pool, userId);
+    expect(catalogue.find((achievement) => achievement.id === 'underdog')?.stage).toMatchObject({
+      progressValue: 1,
+      targetValue: 1,
+    });
+  });
+
   it('counts only eligible goal modes and deduplicates the same accepted event', async () => {
     await expect(
       observeCareerGoal(pool, userId, {

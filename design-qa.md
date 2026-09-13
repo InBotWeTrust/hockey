@@ -33,6 +33,30 @@ No actionable P0, P1, or P2 visual differences remain for the requested admin ca
 
 final result: passed
 
+---
+
+# Design QA — карточки этапных достижений
+
+## Evidence
+
+- Selected reference: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-9d215b43-dfa9-48ee-8fa0-62e4e987c075.png`.
+- Browser-rendered implementation: `http://127.0.0.1:5176/achievements` in the in-app browser.
+- Verified states: mixed achievement list, tiered career cards with zero progress, completed one-off cards, and the `Получить` filter with claimable cards.
+
+## Comparison
+
+- The old two-column image grid is replaced by a full-width single-column list.
+- Each tiered card shows a compact image, current-stage reward, stage number, requirement, and a wide numeric progress bar without opening the modal.
+- Claimable cards have a distinct border and a full-width text CTA; opening details and claiming are separate valid controls.
+- One-off achievements use the same card anatomy without an irrelevant stage label or progress bar.
+- At the tested mobile width, long requirements wrap without horizontal overflow and the bottom navigation remains clear of the active card content.
+
+## Findings
+
+No actionable P0, P1, or P2 visual issues remain for the requested experimental layout.
+
+final result: passed
+
 ## Experience rating modal follow-up (2026-09-11)
 
 - Compared the local modal at `http://127.0.0.1:5183/profile` with the supplied experience-rating and duel-standings references.

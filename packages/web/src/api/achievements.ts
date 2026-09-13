@@ -38,6 +38,10 @@ export interface AchievementsResponse {
 
 export interface ClaimAchievementResponse {
   achievement: AchievementDto;
+  stage?: {
+    claimed: number;
+    opened: number | null;
+  };
   rewards: {
     currency: number;
     stars: number;

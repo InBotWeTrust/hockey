@@ -57,6 +57,11 @@ const EXPECTED_REWARDS: Record<string, ExpectedReward> = {
 };
 
 describe('achievement economy catalog', () => {
+  it('explains the exact experience comparison for the dark horse achievement', () => {
+    expect(ACHIEVEMENT_SEEDS.find((achievement) => achievement.id === 'dark-horse')?.requirement)
+      .toBe('Выиграть серию плей-офф у соперника, у которого на начало серии больше опыта.');
+  });
+
   it('keeps the approved reward for every in-scope achievement', () => {
     const byId = new Map(ACHIEVEMENT_SEEDS.map((achievement) => [achievement.id, achievement]));
 

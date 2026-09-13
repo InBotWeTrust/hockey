@@ -1,6 +1,10 @@
 import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import {
+  highestCompletedLevel,
+  summarizeAchievementProgress,
+} from '../achievements/progressSummary.js';
 import type { CompetitionLevel, ProfileAchievement, ProfileStats } from './profileTypes.js';
 
 const LEVEL_LABELS: Record<CompetitionLevel, string> = {
@@ -228,6 +232,11 @@ export function AchievementTile({
             opacity: achievement.isUnlocked ? 1 : 0.58,
           }}
         />
+        {achievement.stage && highestCompletedLevel(achievement) > 0 && (
+          <span className="profile-career-award__level">
+            Ур. {highestCompletedLevel(achievement)}/{achievement.stage.total}
+          </span>
+        )}
       </div>
       <span
         className={`profile-achievement-title${
@@ -288,7 +297,10 @@ export function ProfileAchievementsSection({
     if (Number.isFinite(rightTime)) return 1;
     return 0;
   });
-  const unlockedAchievements = sortedAchievements.filter((achievement) => achievement.isUnlocked).length;
+  const summary = summarizeAchievementProgress(sortedAchievements);
+  const visibleAchievements = sortedAchievements.filter(
+    (achievement) => achievement.isUnlocked || highestCompletedLevel(achievement) > 0,
+  );
 
   return (
     <>
@@ -304,8 +316,7 @@ export function ProfileAchievementsSection({
         }}
       >
         <span style={{ minWidth: 0, whiteSpace: 'nowrap' }}>
-          Выполненные задания
-          {unlockedAchievements > 0 ? ` (${unlockedAchievements})` : ''}
+          Задания · {summary.completed}/{summary.total}, уровни · {summary.levels.completed}/{summary.levels.total}
         </span>
         {labelAccessory}
       </div>
@@ -332,7 +343,7 @@ export function ProfileAchievementsSection({
             scrollSnapType: 'x proximity',
           }}
         >
-          {sortedAchievements.map((achievement) => (
+          {visibleAchievements.map((achievement) => (
             <AchievementTile
               key={achievement.id}
               achievement={achievement}

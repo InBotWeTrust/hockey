@@ -15,6 +15,7 @@ import {
 import { chatKeys, userKeys } from '../../lib/queryKeys.js';
 import { UserAvatar } from './UserAvatar.js';
 import type { ProfileAchievement } from '../../screens/profileTypes.js';
+import { highestCompletedLevel } from '../../achievements/progressSummary.js';
 import {
   AchievementDetailsSheet,
   FittedOneLineText,
@@ -350,8 +351,9 @@ function UserProfileSheetContent({
 
   const displayName = profile?.displayName ?? sender.displayName;
   const avatarUrl = profile?.avatarUrl ?? sender.avatarUrl;
-  const completedAchievements = (profile?.achievements ?? []).filter(
-    (achievement) => achievement.isUnlocked,
+  const profileAchievements = profile?.achievements ?? [];
+  const hasVisibleAchievements = profileAchievements.some(
+    (achievement) => achievement.isUnlocked || highestCompletedLevel(achievement) > 0,
   );
 
   return (
@@ -400,9 +402,9 @@ function UserProfileSheetContent({
           </div>
         )}
 
-        {completedAchievements.length > 0 && (
+        {hasVisibleAchievements && (
           <ProfileAchievementsSection
-            achievements={completedAchievements}
+            achievements={profileAchievements}
             onOpenAchievement={setSelectedAchievement}
             labelStyle={{ margin: '18px 0 6px', padding: '2px 6px' }}
             style={{ margin: 0 }}
