@@ -70,6 +70,47 @@ describe('Android update store', () => {
     expect(store.getState()).toMatchObject({ manifest, policy: 'mandatory', status: 'ready' });
   });
 
+  it('rejects a signed rollback after a cold start and keeps the highest verified manifest', async () => {
+    let watermark: { latestVersionCode: number; minimumSupportedVersionCode: number } | null = null;
+    let cachedManifest: SignedAndroidReleaseManifest | null = null;
+    const persistence = {
+      loadVersionWatermark: async () => watermark,
+      saveVersionWatermark: async (next: NonNullable<typeof watermark>) => {
+        watermark = next;
+      },
+      loadCachedManifest: async () => cachedManifest,
+      saveCachedManifest: async (next: SignedAndroidReleaseManifest) => {
+        cachedManifest = next;
+      },
+    };
+    const getInstalledVersion = async () => ({ versionCode: 1, versionName: '1.0' });
+    const firstStore = createAndroidUpdateStore({
+      ...persistence,
+      fetchManifest: async () => ({ ...manifest, latestVersionCode: 3 }),
+      getInstalledVersion,
+    });
+    await firstStore.getState().check();
+
+    const coldStartedStore = createAndroidUpdateStore({
+      ...persistence,
+      fetchManifest: async () => ({
+        ...manifest,
+        latestVersionCode: 2,
+        minimumSupportedVersionCode: 1,
+      }),
+      getInstalledVersion,
+    });
+    await coldStartedStore.getState().check();
+
+    expect(coldStartedStore.getState()).toMatchObject({
+      manifest: { latestVersionCode: 3, minimumSupportedVersionCode: 2 },
+      policy: 'mandatory',
+      status: 'ready',
+    });
+    expect(watermark).toEqual({ latestVersionCode: 3, minimumSupportedVersionCode: 2 });
+    expect((cachedManifest as SignedAndroidReleaseManifest | null)?.latestVersionCode).toBe(3);
+  });
+
   it('coalesces overlapping checks', async () => {
     let resolve!: (value: SignedAndroidReleaseManifest) => void;
     const fetchManifest = vi.fn(

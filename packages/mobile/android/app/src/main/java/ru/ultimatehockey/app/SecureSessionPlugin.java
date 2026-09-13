@@ -25,6 +25,7 @@ public final class SecureSessionPlugin extends Plugin {
     private static final String PREFS_NAME = "ultimate_hockey_secure_session";
     private static final String PREF_VALUE = "encrypted_session";
     private static final String PREF_PENDING_AUTH = "encrypted_pending_auth";
+    private static final String PREF_UPDATE_WATERMARK = "encrypted_update_watermark";
     private static final int IV_BYTES = 12;
 
     private SharedPreferences preferences() {
@@ -35,6 +36,7 @@ public final class SecureSessionPlugin extends Plugin {
         String slot = call.getString("slot");
         if (slot == null || slot.equals("session")) return PREF_VALUE;
         if (slot.equals("pendingAuth")) return PREF_PENDING_AUTH;
+        if (slot.equals("updateWatermark")) return PREF_UPDATE_WATERMARK;
         throw new IllegalArgumentException("Unknown secure storage slot");
     }
 
@@ -98,7 +100,9 @@ public final class SecureSessionPlugin extends Plugin {
             call.resolve(result);
         } catch (Exception error) {
             String slot = call.getString("slot");
-            String key = "pendingAuth".equals(slot) ? PREF_PENDING_AUTH : PREF_VALUE;
+            String key = "pendingAuth".equals(slot)
+                    ? PREF_PENDING_AUTH
+                    : "updateWatermark".equals(slot) ? PREF_UPDATE_WATERMARK : PREF_VALUE;
             preferences().edit().remove(key).apply();
             call.resolve(new JSObject());
         }
