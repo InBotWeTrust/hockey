@@ -6,6 +6,7 @@ import {
 } from './progress.js';
 import { completeAchievements } from './service.js';
 import { appendEvent } from '../duel/eventLog.js';
+import { observeAchievementStage } from './stageProgress.js';
 
 type Queryable = Pool | PoolClient;
 type ShotResult = 'goal' | 'save' | 'miss';
@@ -116,6 +117,8 @@ interface DuelMatchAchievementRow {
   outcome: string | null;
   duel_kind: string;
   rules_snapshot: unknown;
+  settled_reason: string | null;
+  settled_at: Date | null;
 }
 
 interface DuelParticipantAchievementRow {
@@ -178,6 +181,41 @@ export function hasGoalStreak(results: readonly ShotResult[], target: number): b
   return false;
 }
 
+function longestGoalStreak(results: readonly ShotResult[]): number {
+  let current = 0;
+  let best = 0;
+  for (const result of results) {
+    current = result === 'goal' ? current + 1 : 0;
+    best = Math.max(best, current);
+  }
+  return best;
+}
+
+function endingGoalStreak(results: readonly ShotResult[]): number {
+  let count = 0;
+  for (let index = results.length - 1; index >= 0 && results[index] === 'goal'; index -= 1) {
+    count += 1;
+  }
+  return count;
+}
+
+function openingGoalStreak(results: readonly ShotResult[]): number {
+  return results.findIndex((result) => result !== 'goal') === -1
+    ? results.length
+    : results.findIndex((result) => result !== 'goal');
+}
+
+function longestNoPanicRecovery(results: readonly ShotResult[]): number {
+  let best = 0;
+  for (let index = 0; index <= results.length - 3; index += 1) {
+    if (!results.slice(index, index + 3).every((result) => result !== 'goal')) continue;
+    let goals = 0;
+    while (results[index + 3 + goals] === 'goal') goals += 1;
+    best = Math.max(best, goals);
+  }
+  return best;
+}
+
 export function lastNAllGoals(results: readonly ShotResult[], target: number): boolean {
   if (target <= 0) return true;
   if (results.length < target) return false;
@@ -209,8 +247,19 @@ export async function evaluateDailyShotAchievements(
   if (event.result === 'goal') completed.add('first-goal');
 
   const results = await fetchDailyResults(db, event.dayPoolId);
-  if (hasGoalStreak(results, 25)) completed.add('daily-sniper-streak');
-  if (hasNoPanicPattern(results)) completed.add('no-panic');
+  const occurredAt = new Date();
+  await observeAchievementStage(db, event.userId, 'daily-sniper-streak', {
+    eventKey: `daily:${event.dayPoolId}:shot:${event.shotIndex}`,
+    occurredAt,
+    progress: { goalStreak: longestGoalStreak(results) },
+    context: { source: 'daily_shot', ...event },
+  });
+  await observeAchievementStage(db, event.userId, 'no-panic', {
+    eventKey: `daily:${event.dayPoolId}:shot:${event.shotIndex}`,
+    occurredAt,
+    progress: { recoveryGoalStreak: longestNoPanicRecovery(results), precedingNonGoals: 3 },
+    context: { source: 'daily_shot', ...event },
+  });
 
   await completeAchievements(db, event.userId, [...completed], { source: 'daily_shot', ...event });
 }
@@ -220,12 +269,12 @@ export async function evaluateDailyPeriodClosedAchievements(
   event: DailyPeriodClosedAchievementEvent,
 ): Promise<void> {
   const results = await fetchDailyPeriodResults(db, event.dayPoolId, event.periodNumber);
-  await completeAchievements(
-    db,
-    event.userId,
-    lastNAllGoals(results, 10) ? ['final-push'] : [],
-    { source: 'daily_period_closed', ...event },
-  );
+  await observeAchievementStage(db, event.userId, 'final-push', {
+    eventKey: `daily:${event.dayPoolId}:period:${event.periodNumber}`,
+    occurredAt: new Date(),
+    progress: { endingGoalStreak: endingGoalStreak(results) },
+    context: { source: 'daily_period_closed', ...event },
+  });
 }
 
 export async function evaluatePendingDailyPeriodClosedAchievements(
@@ -277,43 +326,54 @@ export async function evaluateDailyClosedAchievements(
   const results = await fetchDailyResults(db, event.dayPoolId);
   const goals = results.filter((result) => result === 'goal').length;
   const accuracy = results.length > 0 ? goals / results.length : 0;
+  const occurredAt = new Date();
 
-  if (accuracy >= 0.95) completed.add('ice-hand');
+  await observeAchievementStage(db, event.userId, 'ice-hand', {
+    eventKey: `daily:${event.dayPoolId}:closed`,
+    occurredAt,
+    progress: { accuracyPercent: accuracy * 100 },
+    context: { source: 'daily_closed', ...event },
+  });
   if (event.totalPeriods === 3 && periods.length >= 3) {
     const [p1, p2, p3] = periods;
-    if (
-      p1 !== undefined &&
-      p2 !== undefined &&
-      p3 !== undefined &&
-      p1.goals >= 20 &&
-      p1.goals === p2.goals &&
-      p2.goals === p3.goals
-    ) {
-      completed.add('steady-tempo');
-    }
-    if (
-      p1 !== undefined &&
-      p2 !== undefined &&
-      p3 !== undefined &&
-      p1.goals >= 20 &&
-      p2.goals >= 20 &&
-      p3.goals > p1.goals &&
-      p3.goals > p2.goals
-    ) {
-      completed.add('third-period-decides');
+    if (p1 !== undefined && p2 !== undefined && p3 !== undefined) {
+      await observeAchievementStage(db, event.userId, 'third-period-decides', {
+        eventKey: `daily:${event.dayPoolId}:closed`,
+        occurredAt,
+        progress: {
+          minimumFirstTwoGoals: Math.min(p1.goals, p2.goals),
+          thirdPeriodStrictlyBetter: p3.goals > p1.goals && p3.goals > p2.goals,
+        },
+        context: { source: 'daily_closed', ...event },
+      });
     }
   }
-  if (lastNAllGoals(results, 20)) completed.add('dry-finish');
-  if (await hasCompletedDailyAccuracyWindow(db, event, 7, 0.5, 'each')) {
-    completed.add('keeping-fit');
-  }
-  if (await hasCompletedDailyAccuracyWindow(db, event, 7, 0.75, 'combined')) {
-    completed.add('sniper-week');
-  }
-  if (await hasCompletedDailyAccuracyWindow(db, event, 30, 0.75, 'combined')) {
-    completed.add('sniper-month');
-  }
-  if (await hasIdealDay(db, event.userId, event.dayDate, event.totalPeriods, event.shotsPerPeriod)) {
+  await observeAchievementStage(db, event.userId, 'dry-finish', {
+    eventKey: `daily:${event.dayPoolId}:closed`,
+    occurredAt,
+    progress: { endingGoalStreak: endingGoalStreak(results) },
+    context: { source: 'daily_closed', ...event },
+  });
+  const week = await fetchCompletedDailyAccuracyWindow(db, event, 7);
+  const month = await fetchCompletedDailyAccuracyWindow(db, event, 30);
+  await observeAchievementStage(db, event.userId, 'keeping-fit', {
+    eventKey: `daily:${event.dayPoolId}:keeping-fit`,
+    occurredAt,
+    progress: { days: week.complete ? 7 : 0, minimumAccuracyPercent: week.minimumAccuracyPercent },
+  });
+  await observeAchievementStage(db, event.userId, 'sniper-week', {
+    eventKey: `daily:${event.dayPoolId}:sniper-week`,
+    occurredAt,
+    progress: { games: week.complete ? 7 : 0, accuracyPercent: week.combinedAccuracyPercent },
+  });
+  await observeAchievementStage(db, event.userId, 'sniper-month', {
+    eventKey: `daily:${event.dayPoolId}:sniper-month`,
+    occurredAt,
+    progress: { games: month.complete ? 30 : 0, accuracyPercent: month.combinedAccuracyPercent },
+  });
+  if (
+    await hasIdealDay(db, event.userId, event.dayDate, event.totalPeriods, event.shotsPerPeriod)
+  ) {
     completed.add('ideal-day');
   }
   if (await hasReachedAmateurGoalThreshold(db, event.userId)) {
@@ -337,25 +397,49 @@ export async function evaluateTrainingClosedAchievements(
   const goals = results.filter((result) => result === 'goal').length;
   const completed = new Set<string>(['first-training']);
   const finishedQuota = results.length >= event.shotsLimit;
+  const occurredAt = new Date();
+  const accuracyPercent = results.length > 0 ? (goals / event.shotsLimit) * 100 : 0;
 
-  if (finishedQuota && event.shotsLimit === 100 && results.length === 100 && goals >= 90) {
-    completed.add('training-monster');
-  }
-  if (finishedQuota && event.shotsLimit === 100 && results.length === 100 && goals === 99) {
-    completed.add('almost-perfect-training');
-  }
-  if (hasGoalStreak(results, 30)) completed.add('rhythm-control');
-  if (firstNAllGoals(results, 20)) completed.add('no-warmup-needed');
-  if (finishedQuota && event.shotsLimit >= 20 && lastNAllGoals(results, 20)) {
-    completed.add('finish-machine');
-  }
+  const eventKey = `training:${event.trainingSessionId}:closed`;
+  await observeAchievementStage(db, event.userId, 'training-monster', {
+    eventKey,
+    occurredAt,
+    progress: { accuracyPercent: finishedQuota ? accuracyPercent : 0 },
+  });
+  await observeAchievementStage(db, event.userId, 'rhythm-control', {
+    eventKey,
+    occurredAt,
+    progress: { goalStreak: finishedQuota ? longestGoalStreak(results) : 0 },
+  });
+  await observeAchievementStage(db, event.userId, 'no-warmup-needed', {
+    eventKey,
+    occurredAt,
+    progress: { openingGoalStreak: finishedQuota ? openingGoalStreak(results) : 0 },
+  });
+  await observeAchievementStage(db, event.userId, 'finish-machine', {
+    eventKey,
+    occurredAt,
+    progress: { endingGoalStreak: finishedQuota ? endingGoalStreak(results) : 0 },
+  });
 
-  if (finishedQuota && event.shotsLimit === 100 && results.length === 100 && goals >= 80) {
-    const streak = await incrementTraining40Of50Streak(db, event.userId, event.trainingSessionId);
-    if (streak >= 5) completed.add('stable-student');
+  let stableTrainingDays = 0;
+  if (finishedQuota && accuracyPercent >= 80) {
+    stableTrainingDays = await incrementTraining40Of50Streak(
+      db,
+      event.userId,
+      event.trainingSessionId,
+    );
   } else {
     await resetTraining40Of50Streak(db, event.userId, event.trainingSessionId);
   }
+  await observeAchievementStage(db, event.userId, 'stable-student', {
+    eventKey,
+    occurredAt,
+    progress: {
+      days: stableTrainingDays,
+      minimumAccuracyPercent: finishedQuota ? accuracyPercent : 0,
+    },
+  });
 
   if (
     await hasIdealDay(
@@ -396,35 +480,91 @@ export async function evaluateDuelSettledAchievements(
 
   const ctx = await fetchDuelAchievementContext(db, event.matchId, event.winnerUserId);
   if (!ctx) return;
+  if (ctx.match.settled_reason !== 'completed') {
+    await updateDuelNonWinProgress(db, event.matchId, participants);
+    return;
+  }
 
   const completed = new Set<string>();
   const margin = ctx.winner.goals - ctx.loser.goals;
+  const occurredAt = ctx.match.settled_at ?? new Date();
+  const eventKey = `duel:${event.matchId}:settled`;
+  const format = ctx.match.duel_kind === 'express_plus' ? 'mix' : ctx.match.duel_kind;
+  const nonGoals = Math.max(0, ctx.winner.shots - ctx.winner.goals);
 
   if (margin === 1) completed.add('nervous-finish');
   if (margin === 2) completed.add('thin-edge');
-  if (margin >= 20) completed.add('blowout');
-  if (ctx.winner.shots - ctx.winner.goals <= 5) completed.add('no-room-for-error');
-  if (
-    ctx.winner.experienceSnapshot < ctx.loser.experienceSnapshot &&
-    ctx.loser.experienceSnapshot >= 100
-  ) {
-    completed.add('underdog');
-  }
-  if (ctx.winner.completedAt !== null && ctx.loser.completedAt !== null) {
-    if (ctx.loser.completedAt.getTime() < ctx.winner.completedAt.getTime()) {
-      completed.add('handled-pressure');
-    }
-  }
-  if (firstNAllGoals(ctx.winnerResults, 20)) completed.add('cold-start');
-  if (hasNoPanicPattern(ctx.winnerResults)) completed.add('no-panic');
-  if (ctx.winnerPeriodResults.some((results) => lastNAllGoals(results, 10))) {
-    completed.add('final-push');
-  }
+  await observeAchievementStage(db, ctx.winner.userId, 'blowout', {
+    eventKey,
+    occurredAt,
+    progress: { minimumMargin: margin },
+  });
+  await observeAchievementStage(db, ctx.winner.userId, 'underdog', {
+    eventKey,
+    occurredAt,
+    progress: {
+      minimumExperienceDifference: Math.max(
+        0,
+        ctx.loser.experienceSnapshot - ctx.winner.experienceSnapshot,
+      ),
+    },
+  });
+  await observeAchievementStage(db, ctx.winner.userId, 'cold-start', {
+    eventKey,
+    occurredAt,
+    progress: { openingGoalStreak: openingGoalStreak(ctx.winnerResults) },
+  });
+  await observeAchievementStage(db, ctx.winner.userId, 'no-panic', {
+    eventKey,
+    occurredAt,
+    progress: {
+      recoveryGoalStreak: longestNoPanicRecovery(ctx.winnerResults),
+      precedingNonGoals: 3,
+    },
+  });
+  await observeAchievementStage(db, ctx.winner.userId, 'final-push', {
+    eventKey,
+    occurredAt,
+    progress: {
+      endingGoalStreak: Math.max(...ctx.winnerPeriodResults.map(endingGoalStreak), 0),
+    },
+  });
   if (isClassicDuel(ctx.match) && hasCleanPeriodWin(ctx)) completed.add('clean-win');
-  if (isClassicDuel(ctx.match) && hasClassicSpeedPeriod(ctx.periods, ctx.winner.userId)) {
-    completed.add('classic-speed');
+  const fastestClassicPeriod = bestClassicSpeedPeriod(ctx.periods, ctx.winner.userId);
+  await observeAchievementStage(db, ctx.winner.userId, 'classic-speed', {
+    eventKey,
+    occurredAt,
+    progress: {
+      format,
+      maximumDurationSeconds: fastestClassicPeriod?.durationSeconds ?? 999_999,
+      accuracyPercent: fastestClassicPeriod?.accuracyPercent ?? 0,
+    },
+  });
+  if (format === 'express') {
+    await observeAchievementStage(db, ctx.winner.userId, 'express-sniper', {
+      eventKey,
+      occurredAt,
+      progress: { format, goals: ctx.winner.goals },
+    });
   }
-  if (hasFullPurchasedLoadout(ctx.winner.loadout)) completed.add('master-arsenal');
+  if (format === 'mix') {
+    await observeAchievementStage(db, ctx.winner.userId, 'mix-sniper', {
+      eventKey,
+      occurredAt,
+      progress: { format, goals: ctx.winner.goals },
+    });
+  }
+  const noErrorAchievement =
+    format === 'express'
+      ? 'no-error-express'
+      : format === 'mix'
+        ? 'no-error-mix'
+        : 'no-error-classic';
+  await observeAchievementStage(db, ctx.winner.userId, noErrorAchievement, {
+    eventKey,
+    occurredAt,
+    progress: { format, maximumNonGoals: nonGoals },
+  });
 
   if (await updateCountProgress(db, ctx.winner.userId, 'duel_win_streak', event.matchId, true)) {
     const progress = await getAchievementProgress<CountProgress>(
@@ -432,51 +572,43 @@ export async function evaluateDuelSettledAchievements(
       ctx.winner.userId,
       'duel_win_streak',
     );
-    if ((progress?.count ?? 0) >= 5) completed.add('hunter-streak');
+    await observeAchievementStage(db, ctx.winner.userId, 'hunter-streak', {
+      eventKey,
+      occurredAt,
+      progress: { wins: progress?.count ?? 0 },
+    });
   }
 
   const isHostWin = ctx.winner.side === 'challenger';
   if (
-    await updateCountProgress(
-      db,
-      ctx.winner.userId,
-      'duel_host_win_streak',
-      event.matchId,
-      isHostWin,
-    )
+    isHostWin &&
+    (await updateCountProgress(db, ctx.winner.userId, 'duel_host_win_streak', event.matchId, true))
   ) {
     const progress = await getAchievementProgress<CountProgress>(
       db,
       ctx.winner.userId,
       'duel_host_win_streak',
     );
-    if ((progress?.count ?? 0) >= 3) completed.add('dangerous-host');
+    await observeAchievementStage(db, ctx.winner.userId, 'dangerous-host', {
+      eventKey,
+      occurredAt,
+      progress: { wins: progress?.count ?? 0, role: 'host' },
+    });
   }
   if (
-    await updateCountProgress(
-      db,
-      ctx.winner.userId,
-      'duel_guest_win_streak',
-      event.matchId,
-      !isHostWin,
-    )
+    !isHostWin &&
+    (await updateCountProgress(db, ctx.winner.userId, 'duel_guest_win_streak', event.matchId, true))
   ) {
     const progress = await getAchievementProgress<CountProgress>(
       db,
       ctx.winner.userId,
       'duel_guest_win_streak',
     );
-    if ((progress?.count ?? 0) >= 3) completed.add('dangerous-guest');
-  }
-
-  if (isEconomicalWin(ctx.winner)) {
-    await updateCountProgress(db, ctx.winner.userId, 'economical_duel_wins', event.matchId, true);
-    const progress = await getAchievementProgress<CountProgress>(
-      db,
-      ctx.winner.userId,
-      'economical_duel_wins',
-    );
-    if ((progress?.count ?? 0) >= 10) completed.add('economical-master');
+    await observeAchievementStage(db, ctx.winner.userId, 'dangerous-guest', {
+      eventKey,
+      occurredAt,
+      progress: { wins: progress?.count ?? 0, role: 'guest' },
+    });
   }
 
   const lastLoss = await getAchievementProgress<LastLossProgress>(
@@ -493,7 +625,36 @@ export async function evaluateDuelSettledAchievements(
     ctx.winner.userId,
     'training_before_duel_pending',
   );
-  if (pendingTraining !== null) completed.add('training-before-battle');
+  if (pendingTraining !== null) {
+    const updated = await updateCountProgress(
+      db,
+      ctx.winner.userId,
+      'training_before_duel_wins',
+      event.matchId,
+      true,
+    );
+    const trainingWins = await getAchievementProgress<CountProgress>(
+      db,
+      ctx.winner.userId,
+      'training_before_duel_wins',
+    );
+    if (updated) {
+      const observed = await observeAchievementStage(
+        db,
+        ctx.winner.userId,
+        'training-before-battle',
+        {
+          eventKey,
+          occurredAt,
+          progress: { wins: trainingWins?.count ?? 0, requiresCompletedTraining: true },
+        },
+      );
+      if (observed.completed) {
+        await deleteAchievementProgress(db, ctx.winner.userId, 'training_before_duel_pending');
+        await deleteAchievementProgress(db, ctx.winner.userId, 'training_before_duel_wins');
+      }
+    }
+  }
 
   await completeAchievements(db, ctx.winner.userId, [...completed], {
     source: 'duel_settled',
@@ -611,7 +772,7 @@ async function fetchDuelAchievementContext(
 ): Promise<DuelAchievementContext | null> {
   const { rows } = await db.query<DuelMatchAchievementRow>(
     `select id, challenger_user_id, opponent_user_id, winner_user_id, outcome,
-            duel_kind, rules_snapshot
+            duel_kind, rules_snapshot, settled_reason, settled_at
        from amateur_duel_match
       where id = $1`,
     [matchId],
@@ -728,25 +889,25 @@ function hasCleanPeriodWin(ctx: DuelAchievementContext): boolean {
   });
 }
 
-function hasClassicSpeedPeriod(periods: DuelPeriodAchievementRow[], userId: string): boolean {
-  return periods.some((period) => {
-    if (period.user_id !== userId) return false;
+function bestClassicSpeedPeriod(
+  periods: DuelPeriodAchievementRow[],
+  userId: string,
+): { durationSeconds: number; accuracyPercent: number } | null {
+  const values = periods.flatMap((period) => {
+    if (period.user_id !== userId) return [];
     const shots = Number(period.shots_taken);
-    if (shots <= 0) return false;
-    return Number(period.duration_ms) <= 90_000 && Number(period.goals) / shots >= 0.85;
+    if (shots <= 0 || Number(period.duration_ms) > 90_000) return [];
+    return [
+      {
+        durationSeconds: Number(period.duration_ms) / 1_000,
+        accuracyPercent: (Number(period.goals) / shots) * 100,
+      },
+    ];
   });
-}
-
-function hasFullPurchasedLoadout(loadout: LoadoutSnapshotLike): boolean {
-  const kinds = new Set(loadout.items.map((item) => item.kind).filter(Boolean));
-  return kinds.has('stick') && kinds.has('skates') && kinds.has('nutrition');
-}
-
-function isEconomicalWin(participant: DuelParticipantAchievement): boolean {
   return (
-    participant.loadout.items.length === 0 &&
-    participant.consumedInventoryCharges === 0 &&
-    participant.reservedInventoryCharges === 0
+    values.sort(
+      (a, b) => b.accuracyPercent - a.accuracyPercent || a.durationSeconds - b.durationSeconds,
+    )[0] ?? null
   );
 }
 
@@ -771,9 +932,15 @@ async function updateDuelNonWinProgress(
 ): Promise<void> {
   for (const participant of participants) {
     await updateCountProgress(db, participant.userId, 'duel_win_streak', matchId, false);
-    await updateCountProgress(db, participant.userId, 'duel_host_win_streak', matchId, false);
-    await updateCountProgress(db, participant.userId, 'duel_guest_win_streak', matchId, false);
+    await updateCountProgress(
+      db,
+      participant.userId,
+      participant.side === 'challenger' ? 'duel_host_win_streak' : 'duel_guest_win_streak',
+      matchId,
+      false,
+    );
     await deleteAchievementProgress(db, participant.userId, 'training_before_duel_pending');
+    await deleteAchievementProgress(db, participant.userId, 'training_before_duel_wins');
   }
 }
 
@@ -783,15 +950,20 @@ async function updateDuelPostSettleProgress(
   ctx: DuelAchievementContext,
 ): Promise<void> {
   await deleteAchievementProgress(db, ctx.winner.userId, 'duel_last_loss');
-  await deleteAchievementProgress(db, ctx.winner.userId, 'training_before_duel_pending');
   await setAchievementProgress(db, ctx.loser.userId, 'duel_last_loss', {
     opponentUserId: ctx.winner.userId,
     matchId,
   });
   await deleteAchievementProgress(db, ctx.loser.userId, 'training_before_duel_pending');
+  await deleteAchievementProgress(db, ctx.loser.userId, 'training_before_duel_wins');
   await updateCountProgress(db, ctx.loser.userId, 'duel_win_streak', matchId, false);
-  await updateCountProgress(db, ctx.loser.userId, 'duel_host_win_streak', matchId, false);
-  await updateCountProgress(db, ctx.loser.userId, 'duel_guest_win_streak', matchId, false);
+  await updateCountProgress(
+    db,
+    ctx.loser.userId,
+    ctx.loser.side === 'challenger' ? 'duel_host_win_streak' : 'duel_guest_win_streak',
+    matchId,
+    false,
+  );
 }
 
 async function incrementTraining40Of50Streak(
@@ -851,13 +1023,11 @@ async function fetchDailyPeriods(db: Queryable, dayPoolId: string): Promise<Dail
   }));
 }
 
-async function hasCompletedDailyAccuracyWindow(
+async function fetchCompletedDailyAccuracyWindow(
   db: Queryable,
   event: DailyClosedAchievementEvent,
   days: number,
-  minAccuracy: number,
-  mode: 'each' | 'combined',
-): Promise<boolean> {
+): Promise<{ complete: boolean; minimumAccuracyPercent: number; combinedAccuracyPercent: number }> {
   const { rows } = await db.query<{
     day_date: string;
     pool_id: string | null;
@@ -906,7 +1076,9 @@ async function hasCompletedDailyAccuracyWindow(
     [event.userId, event.dayDate, days],
   );
 
-  if (rows.length !== days) return false;
+  if (rows.length !== days) {
+    return { complete: false, minimumAccuracyPercent: 0, combinedAccuracyPercent: 0 };
+  }
 
   const dailyStats = rows.map((row) => ({
     dayDate: row.day_date,
@@ -921,16 +1093,16 @@ async function hasCompletedDailyAccuracyWindow(
       (row) => row.poolId === null || row.closedPeriods < event.totalPeriods || row.shots <= 0,
     )
   ) {
-    return false;
-  }
-
-  if (mode === 'each') {
-    return dailyStats.every((row) => row.goals / row.shots >= minAccuracy);
+    return { complete: false, minimumAccuracyPercent: 0, combinedAccuracyPercent: 0 };
   }
 
   const totalShots = dailyStats.reduce((sum, row) => sum + row.shots, 0);
   const totalGoals = dailyStats.reduce((sum, row) => sum + row.goals, 0);
-  return totalShots > 0 && totalGoals / totalShots >= minAccuracy;
+  return {
+    complete: true,
+    minimumAccuracyPercent: Math.min(...dailyStats.map((row) => (row.goals / row.shots) * 100)),
+    combinedAccuracyPercent: totalShots > 0 ? (totalGoals / totalShots) * 100 : 0,
+  };
 }
 
 async function hasIdealDay(

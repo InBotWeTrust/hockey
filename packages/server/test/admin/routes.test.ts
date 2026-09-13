@@ -1441,4 +1441,55 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
       ]),
     );
   });
+
+  it('lists and updates achievement stages while protecting claimed rewards', async () => {
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/admin/achievements/career-goals/stages',
+      headers: auth(adminToken),
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().stages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          achievementId: 'career-goals',
+          stageNumber: 1,
+          currentPlayers: expect.any(Number),
+        }),
+      ]),
+    );
+
+    const updated = await app.inject({
+      method: 'PATCH',
+      url: '/admin/achievements/career-goals/stages/2',
+      headers: auth(adminToken),
+      payload: { requirement: 'Забросить 6 000 шайб', isEnabled: false },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().stage).toMatchObject({
+      stageNumber: 2,
+      requirement: 'Забросить 6 000 шайб',
+      isEnabled: false,
+    });
+
+    await pool.query(
+      `insert into user_achievement_stages
+         (user_id, achievement_id, stage_number, opened_at, completed_at, claimed_at,
+          progress, reward_snapshot)
+       values ($1, 'career-goals', 1, now(), now(), now(), '{}'::jsonb,
+               '{"currency":1,"stars":1,"experience":1,"tokens":0}'::jsonb)
+       on conflict (user_id, achievement_id, stage_number) do update
+         set completed_at = excluded.completed_at,
+             claimed_at = excluded.claimed_at,
+             reward_snapshot = excluded.reward_snapshot`,
+      [playerId],
+    );
+    const rejected = await app.inject({
+      method: 'PATCH',
+      url: '/admin/achievements/career-goals/stages/1',
+      headers: auth(adminToken),
+      payload: { rewardStars: 999 },
+    });
+    expect(rejected.statusCode).toBe(409);
+  });
 });

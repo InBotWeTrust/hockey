@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
+import { observeCareerExperience } from '../achievements/service.js';
 import { assertBonusGameAccessibleToUser, lockBonusGameCatalogForRead } from './catalog.js';
 import type { BonusGameAccessType, BonusRewardSnapshot } from './types.js';
 
@@ -327,6 +328,13 @@ export async function grantFirstClearReward(
   );
   const user = userResult.rows[0];
   if (user === undefined) throw new AppError('not_found', 'user not found', 404);
+  if (input.reward.experience > 0) {
+    await observeCareerExperience(client, input.userId, {
+      eventKey: `bonus-game:${completionId}:reward`,
+      occurredAt: input.now,
+      lifetimeTotal: Number(user.experience),
+    });
+  }
 
   await client.query(
     `insert into currency_ledger

@@ -52,6 +52,7 @@ export type AdminWeeklyChallengeTaskType =
   | 'trainings_completed'
   | 'channel_posts_commented';
 export type AdminAchievementCategory =
+  | 'career'
   | 'daily'
   | 'training'
   | 'duel'
@@ -1100,6 +1101,32 @@ export interface AdminAchievementPatch {
   sortOrder?: number;
 }
 
+export interface AdminAchievementStage {
+  achievementId: string;
+  stageNumber: number;
+  requirement: string;
+  target: Record<string, string | number | boolean>;
+  rewardCurrency: number;
+  rewardStars: number;
+  rewardExperience: number;
+  rewardTokens: number;
+  isEnabled: boolean;
+  currentPlayers: number;
+  completedPlayers: number;
+  claimedPlayers: number;
+}
+
+export type AdminAchievementStageInput = Pick<
+  AdminAchievementStage,
+  | 'requirement'
+  | 'target'
+  | 'rewardCurrency'
+  | 'rewardStars'
+  | 'rewardExperience'
+  | 'rewardTokens'
+  | 'isEnabled'
+>;
+
 export interface AdminUserPatch {
   role?: AdminRole;
   displayName?: string;
@@ -1556,5 +1583,34 @@ export function patchAdminAchievement(
       method: 'PATCH',
       body: JSON.stringify(body),
     },
+  );
+}
+
+export function fetchAdminAchievementStages(
+  achievementId: string,
+): Promise<{ stages: AdminAchievementStage[] }> {
+  return apiFetch<{ stages: AdminAchievementStage[] }>(
+    `/admin/achievements/${encodeURIComponent(achievementId)}/stages`,
+  );
+}
+
+export function createAdminAchievementStage(
+  achievementId: string,
+  body: AdminAchievementStageInput,
+): Promise<{ stage: AdminAchievementStage }> {
+  return apiFetch<{ stage: AdminAchievementStage }>(
+    `/admin/achievements/${encodeURIComponent(achievementId)}/stages`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+}
+
+export function patchAdminAchievementStage(
+  achievementId: string,
+  stageNumber: number,
+  body: Partial<AdminAchievementStageInput>,
+): Promise<{ stage: AdminAchievementStage }> {
+  return apiFetch<{ stage: AdminAchievementStage }>(
+    `/admin/achievements/${encodeURIComponent(achievementId)}/stages/${stageNumber}`,
+    { method: 'PATCH', body: JSON.stringify(body) },
   );
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { UserProfileSheet } from '../components/UserProfileSheet.js';
@@ -233,7 +233,7 @@ describe('UserProfileSheet', () => {
     expect(screen.getByText('Шайбы')).toBeInTheDocument();
     expect(screen.getByText('64')).toBeInTheDocument();
     expect(screen.getByText('(12)')).toBeInTheDocument();
-    expect(screen.getByText('Выполненные задания (1)')).toBeInTheDocument();
+    expect(screen.getByText('Задания · 1/1, уровни · 1/1')).toBeInTheDocument();
     expect(screen.getByLabelText('Публичный спортивный паспорт')).toBeInTheDocument();
     expect(screen.queryByLabelText('Монеты: 220')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Звёзды: 20')).not.toBeInTheDocument();
@@ -263,6 +263,44 @@ describe('UserProfileSheet', () => {
         .getByRole('heading', { name: 'Профиль игрока' })
         .parentElement?.querySelector(':scope > button[aria-label="Закрыть"]'),
     ).toBeInTheDocument();
+  });
+
+  it('shows started task chains with their completed level in a public profile', async () => {
+    vi.mocked(api.fetchUserProfile).mockResolvedValueOnce({
+      ...publicProfile,
+      achievements: [
+        ...publicProfile.achievements,
+        {
+          id: 'career-goals',
+          photoUrl: '/achievements/goals.webp',
+          title: 'Заброшено шайб',
+          description: 'Карьерная цепочка',
+          requirement: 'Забросить 10 000 шайб',
+          status: 'locked',
+          isUnlocked: false,
+          stage: {
+            current: 3,
+            total: 8,
+            requirement: 'Забросить 10 000 шайб',
+            progressValue: 6000,
+            targetValue: 10000,
+            history: [
+              { stageNumber: 1, claimedAt: '2026-09-01T00:00:00.000Z', requirement: '1 000 шайб' },
+              { stageNumber: 2, claimedAt: '2026-09-02T00:00:00.000Z', requirement: '5 000 шайб' },
+            ],
+          },
+        },
+      ],
+    });
+
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+      onClose: () => {},
+    });
+
+    expect(await screen.findByText('Задания · 1/2, уровни · 3/9')).toBeInTheDocument();
+    const task = screen.getByRole('button', { name: /Заброшено шайб/ });
+    expect(within(task).getByText('Ур. 2/8')).toHaveClass('profile-career-award__level');
   });
 
   it('uses the compact achievement title treatment for training monster', async () => {
@@ -357,7 +395,7 @@ describe('UserProfileSheet', () => {
     });
 
     expect(await screen.findByText('Иван Петров')).toBeInTheDocument();
-    expect(screen.queryByText(/Выполненные задания/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Задания/)).not.toBeInTheDocument();
   });
 
   it('clicking "Написать в личку" calls findOrCreateDM and closes the sheet', async () => {

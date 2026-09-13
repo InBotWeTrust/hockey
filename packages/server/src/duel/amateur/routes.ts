@@ -24,7 +24,11 @@ import { invalidateUnreadCache } from '../../chat/cache.js';
 import { publishChatRead, publishMessageNew } from '../../chat/events.js';
 import { findOrCreateDM, markChatAsRead, sendMessage } from '../../chat/service.js';
 import { evaluateDuelSettledAchievements } from '../../achievements/engine.js';
-import { grantStatAchievements } from '../../achievements/service.js';
+import {
+  grantStatAchievements,
+  observeCareerActivityStreak,
+  observeCareerGoal,
+} from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
 import { assertFullAmateurAccess } from '../../profile/amateurAccess.js';
 import { enqueueDuelPush } from '../../push/duel.js';
@@ -5951,11 +5955,20 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           [req.user.id, serverResult === 'goal' ? 1 : 0],
         );
         const user = updatedUser.rows[0]!;
+        await observeCareerActivityStreak(client, req.user.id, now);
         await grantStatAchievements(client, req.user.id, {
           lifetimeShots: Number(user.lifetime_shots_total),
           lifetimeGoals: Number(user.lifetime_goals_total),
           level: Number(user.level),
         });
+        if (serverResult === 'goal') {
+          await observeCareerGoal(client, req.user.id, {
+            eventKey: `amateur-duel:${match.id}:${participant.current_period}:${body.shot_index}`,
+            occurredAt: now,
+            mode: 'amateur_duel',
+            lifetimeTotal: Number(user.lifetime_goals_total),
+          });
+        }
 
         if (body.claimed_result !== serverResult) {
           await appendEvent(client, req.user.id, 'shot_mismatch', {

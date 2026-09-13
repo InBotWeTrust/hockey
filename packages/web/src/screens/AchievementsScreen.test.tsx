@@ -126,7 +126,7 @@ describe('AchievementsScreen', () => {
     expect(screen.getByRole('heading', { name: 'Задания' })).toBeInTheDocument();
     expect(await screen.findByRole('tab', { name: 'Задания', selected: true })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Челленджи' })).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: 'Получить' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Забрать' })).toBeNull();
     expect(await screen.findByLabelText('Требуется действие')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Челлендж недели' })).toBeNull();
   });
@@ -150,9 +150,7 @@ describe('AchievementsScreen', () => {
           new Response(
             JSON.stringify({
               challenge: { id: 'challenge-1', status: 'running', canClaimReward: false },
-              pendingRewards: [
-                { id: 'challenge-future', status: 'future', canClaimReward: false },
-              ],
+              pendingRewards: [{ id: 'challenge-future', status: 'future', canClaimReward: false }],
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           ),
@@ -189,7 +187,7 @@ describe('AchievementsScreen', () => {
     renderAchievements();
 
     expect(await screen.findByRole('tab', { name: 'Задания', selected: true })).toBeInTheDocument();
-    expect(await screen.findByText('Задания · 1/1')).toBeInTheDocument();
+    expect(await screen.findByText('Задания · 1/1, уровни · 1/1')).toBeInTheDocument();
     expect((await screen.findAllByLabelText('Требуется действие')).length).toBeGreaterThanOrEqual(
       1,
     );
@@ -209,40 +207,135 @@ describe('AchievementsScreen', () => {
     fireEvent.click(card!);
 
     const dialog = screen.getByRole('dialog', { name: 'Первая шайба' });
-    expect(dialog).toHaveClass(
-      'achievement-details-modal',
-      'achievement-details-modal--crisp',
-    );
+    expect(dialog).toHaveClass('achievement-details-modal', 'achievement-details-modal--crisp');
     const details = within(dialog);
-    const requirement = details.getByText('Условие');
     const artwork = details.getByRole('img', { name: 'Первая шайба' });
-    const description = details.getByText('Описание');
-    expect(artwork).toHaveAttribute(
-      'src',
-      '/achievements/first-goal.webp?v=20260906-hd1',
-    );
-    expect(requirement.compareDocumentPosition(artwork) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
-      0,
-    );
-    expect(artwork.compareDocumentPosition(description) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
-      0,
-    );
+    const description = details.getByText('Условие');
+    expect(artwork).toHaveAttribute('src', '/achievements/first-goal.webp?v=20260906-hd1');
+    expect(details.queryByText('Описание')).toBeNull();
+    expect(
+      artwork.compareDocumentPosition(description) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
     expect(screen.getByRole('button', { name: 'Закрыть окно' })).toBeInTheDocument();
     expect(document.body.firstElementChild).toHaveAttribute('inert');
   });
 
-  it('uses a dense text surface for achievement card copy', async () => {
+  it('shows the exact requirement for a one-off achievement on the card and in details', async () => {
     mockAchievementsApi([
       makeAchievement({ title: 'Первая шайба', requirement: 'Забросить первую шайбу в игре.' }),
     ]);
     renderAchievements();
 
     const title = await screen.findByText('Первая шайба');
-    expect(title.closest('button')).toHaveClass('achievement-card');
+    expect(title.closest('.achievement-card')).toHaveClass('achievement-card--list');
     expect(title.closest('.achievement-card__body')).not.toBeNull();
     expect(screen.getByText('Забросить первую шайбу в игре.')).toHaveClass(
       'achievement-card__requirement',
     );
+
+    fireEvent.click(screen.getByRole('button', { name: /Первая шайба.*Открыть подробности/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Первая шайба' });
+    expect(within(dialog).queryByText('Описание')).toBeNull();
+    expect(within(dialog).queryByText('Что сделать')).toBeNull();
+    expect(within(dialog).getByText('Забросить первую шайбу в игре.')).toHaveClass(
+      'achievement-details-modal__description',
+    );
+  });
+
+  it('shows a career chain as one card with current stage progress and claimed history', async () => {
+    mockAchievementsApi([
+      makeAchievement({
+        id: 'career-goals',
+        title: 'Снайперская карьера',
+        category: 'career',
+        requirement: 'Забросить 5 000 шайб',
+        rewardStars: 10,
+        stage: {
+          current: 2,
+          total: 8,
+          requirement: 'Забросить 5 000 шайб',
+          progressValue: 3200,
+          targetValue: 5000,
+          history: [
+            { stageNumber: 1, claimedAt: '2026-09-01T00:00:00.000Z', requirement: '1 000 шайб' },
+          ],
+        },
+      }),
+    ]);
+    renderAchievements();
+
+    expect(await screen.findByRole('tab', { name: 'Карьера' })).toBeInTheDocument();
+    const card = (await screen.findByText('Снайперская карьера')).closest(
+      '.achievement-card',
+    ) as HTMLElement;
+    expect(card).toHaveClass('achievement-card--list');
+    expect(within(card).getByText('Уровень 2 из 8')).toHaveClass('achievement-card__stage');
+    const reward = within(card).getByLabelText('Награда: 10 зв.');
+    expect(reward).toHaveClass('achievement-card__rewards--inline');
+    expect(within(reward).getByText('10')).toBeInTheDocument();
+    expect(within(card).queryByText(/зв\.|опыта/)).toBeNull();
+    const progress = within(card).getByRole('progressbar', { name: 'Прогресс достижения' });
+    expect(progress).toHaveAttribute('aria-valuenow', '3200');
+    expect(progress).toHaveAttribute('aria-valuemax', '5000');
+    expect(within(progress).getByText('3 200 / 5 000')).toBeInTheDocument();
+
+    fireEvent.click(within(card).getByRole('button', { name: /Снайперская карьера/ }));
+    expect(await screen.findByText('3200 / 5000')).toBeInTheDocument();
+    expect(screen.getByText('Пройденные уровни')).toBeInTheDocument();
+    expect(screen.getByText('Уровень 1 · 1 000 шайб')).toBeInTheDocument();
+  });
+
+  it('uses the same list layout for one-off achievements and only shows stage UI for chains', async () => {
+    mockAchievementsApi([
+      makeAchievement({
+        id: 'one-off',
+        title: 'Первая шайба',
+        requirement: 'Забросить первую шайбу в игре.',
+        rewardCurrency: 25,
+      }),
+    ]);
+    renderAchievements();
+
+    const card = (await screen.findByText('Первая шайба')).closest(
+      '.achievement-card',
+    ) as HTMLElement;
+    expect(card).toHaveClass('achievement-card--list');
+    expect(within(card).queryByText(/Уровень \d+ из \d+/)).toBeNull();
+    expect(within(card).queryByRole('progressbar')).toBeNull();
+    const reward = within(card).getByLabelText('Награда: 25 монет');
+    expect(within(reward).getByText('25')).toBeInTheDocument();
+  });
+
+  it('keeps the full achievement title available when the card title is visually truncated', async () => {
+    mockAchievementsApi([
+      makeAchievement({ title: 'Без права на ошибку: Классика' }),
+    ]);
+    renderAchievements();
+
+    expect(await screen.findByText('Без права на ошибку: Классика')).toHaveAttribute(
+      'title',
+      'Без права на ошибку: Классика',
+    );
+  });
+
+  it('shows a prominent claim action on a completed card', async () => {
+    mockAchievementsApi([
+      makeAchievement({
+        id: 'ready',
+        title: 'Меткий бросок',
+        status: 'completed_unclaimed',
+        isUnlocked: true,
+        isClaimable: true,
+        rewardStars: 5,
+      }),
+    ]);
+    renderAchievements();
+
+    const card = (await screen.findByText('Меткий бросок')).closest(
+      '.achievement-card',
+    ) as HTMLElement;
+    expect(card).toHaveClass('achievement-card--claimable');
+    expect(within(card).getByRole('button', { name: 'Забрать награду' })).toBeInTheDocument();
   });
 
   it('shows completed and total counts in the section label for the selected filter', async () => {
@@ -272,9 +365,9 @@ describe('AchievementsScreen', () => {
     ]);
     renderAchievements();
 
-    expect(await screen.findByText('Задания · 2/5')).toBeInTheDocument();
+    expect(await screen.findByText('Задания · 2/5, уровни · 2/5')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Все' })).toBeInTheDocument();
-    const claimableTab = screen.getByRole('tab', { name: 'Получить' });
+    const claimableTab = screen.getByRole('tab', { name: 'Забрать' });
     expect(claimableTab).toBeInTheDocument();
     expect(within(claimableTab).getByLabelText('Требуется действие')).toHaveClass(
       'segmented-tabs__attention--small',
@@ -292,23 +385,53 @@ describe('AchievementsScreen', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Ежедневная' }));
 
     expect(screen.getByRole('tab', { name: 'Ежедневная', selected: true })).toBeInTheDocument();
-    expect(screen.getByText('Задания · 2/3')).toBeInTheDocument();
+    expect(screen.getByText('Задания · 2/3, уровни · 2/3')).toBeInTheDocument();
     expect(screen.getByText('День 1')).toBeInTheDocument();
     expect(screen.queryByText('Тренировочная цель')).toBeNull();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Получить' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Забрать' }));
 
-    expect(screen.getByRole('tab', { name: 'Получить', selected: true })).toBeInTheDocument();
-    expect(screen.getByText('Задания · 1/1')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Забрать', selected: true })).toBeInTheDocument();
+    expect(screen.getByText('Задания · 1/1, уровни · 1/1')).toBeInTheDocument();
     expect(screen.getByText('День 2')).toBeInTheDocument();
     expect(screen.queryByText('День 1')).toBeNull();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Тренировка' }));
 
     expect(screen.getByRole('tab', { name: 'Тренировка', selected: true })).toBeInTheDocument();
-    expect(screen.getByText('Задания · 0/1')).toBeInTheDocument();
+    expect(screen.getByText('Задания · 0/1, уровни · 0/1')).toBeInTheDocument();
     expect(screen.getByText('Тренировочная цель')).toBeInTheDocument();
     expect(screen.queryByText('День 1')).toBeNull();
+  });
+
+  it('counts a chain as one task and its claimed steps as completed levels', async () => {
+    mockAchievementsApi([
+      makeAchievement({
+        id: 'career-chain',
+        title: 'Снайперская карьера',
+        category: 'career',
+        stage: {
+          current: 3,
+          total: 8,
+          requirement: 'Забросить 10 000 шайб',
+          progressValue: 6000,
+          targetValue: 10000,
+          history: [
+            { stageNumber: 1, claimedAt: '2026-09-01T00:00:00.000Z', requirement: '1 000 шайб' },
+            { stageNumber: 2, claimedAt: '2026-09-02T00:00:00.000Z', requirement: '5 000 шайб' },
+          ],
+        },
+      }),
+      makeAchievement({
+        id: 'one-off-claimed',
+        title: 'Первая шайба',
+        category: 'career',
+        status: 'claimed',
+      }),
+    ]);
+    renderAchievements();
+
+    expect(await screen.findByText('Задания · 1/2, уровни · 3/9')).toBeInTheDocument();
   });
 
   it('shows all ten active tournament achievements without future labels', async () => {
@@ -340,7 +463,7 @@ describe('AchievementsScreen', () => {
 
     fireEvent.click(await screen.findByRole('tab', { name: 'Турниры' }));
 
-    expect(screen.getByText('Задания · 0/10')).toBeInTheDocument();
+    expect(screen.getByText('Задания · 0/10, уровни · 0/10')).toBeInTheDocument();
     expect(screen.queryByText('Скоро')).toBeNull();
     expect(screen.getByText('Победитель регулярки')).toBeInTheDocument();
     expect(screen.getByText('Призёр регулярки')).toBeInTheDocument();
@@ -380,9 +503,16 @@ describe('AchievementsScreen', () => {
     expect(screen.getByText('Получено')).toBeInTheDocument();
     expect(screen.getByText('Скоро')).toBeInTheDocument();
     expect(screen.getAllByText('Не получено').length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByRole('tab', { name: 'Получить' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Забрать' })).toBeInTheDocument();
     expect(screen.queryByText('Закрыто')).toBeNull();
-    expect(screen.queryByText('Забрать')).toBeNull();
+    expect(screen.queryByText('Получить')).toBeNull();
+
+    const cards = screen.getAllByRole('article');
+    for (const card of cards) {
+      expect(card.querySelector('img')).not.toHaveStyle({ filter: 'grayscale(1) saturate(0.1)' });
+    }
+    expect(document.querySelectorAll('.achievement-card__status')).toHaveLength(1);
+    expect(document.querySelector('.achievement-card__status .lucide-check')).toBeInTheDocument();
   });
 
   it('claims a ready achievement directly from the card', async () => {
@@ -404,10 +534,13 @@ describe('AchievementsScreen', () => {
           ? { ...readyAchievement, status: 'claimed', isClaimable: false }
           : readyAchievement;
         return Promise.resolve(
-          new Response(JSON.stringify({ achievements: [achievement], unclaimedCount: claimed ? 0 : 1 }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
+          new Response(
+            JSON.stringify({ achievements: [achievement], unclaimedCount: claimed ? 0 : 1 }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          ),
         );
       }
       if (url.endsWith('/api/achievements/daily-ready/claim')) {
@@ -423,6 +556,7 @@ describe('AchievementsScreen', () => {
               },
               rewards: { currency: 10, stars: 0, experience: 0 },
               balances: { currencyBalance: 10, starBalance: 0, experienceBalance: 0 },
+              stage: { claimed: 1, opened: 2 },
               unclaimedCount: 0,
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -441,11 +575,10 @@ describe('AchievementsScreen', () => {
     });
     renderAchievements();
 
-    const claimableTab = await screen.findByRole('tab', { name: 'Получить' });
+    const claimableTab = await screen.findByRole('tab', { name: 'Забрать' });
     expect(within(claimableTab).getByLabelText('Требуется действие')).toBeInTheDocument();
-    const card = (await screen.findByText('Награда ждёт')).closest('button');
-    expect(card).not.toBeNull();
-    fireEvent.click(card as HTMLButtonElement);
+    await screen.findByText('Награда ждёт');
+    fireEvent.click(screen.getByRole('button', { name: 'Забрать награду' }));
 
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -458,6 +591,7 @@ describe('AchievementsScreen', () => {
     expect(rewardToast).toHaveClass('achievement-reward-toast');
     expect(rewardToast).toHaveTextContent('Награда за достижение начислена');
     expect(rewardToast).toHaveTextContent('Награда ждёт');
+    expect(rewardToast).toHaveTextContent('Следующий уровень открыт');
     expect(screen.getByTestId('achievement-reward-icon-coins')).toBeInTheDocument();
     expect(screen.getByTestId('achievement-reward-icon-coins').parentElement).toHaveClass(
       'achievement-reward-toast__icon',
@@ -469,7 +603,7 @@ describe('AchievementsScreen', () => {
     expect(screen.queryByText('+0 опыта', { exact: false })).toBeNull();
     expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
     await waitFor(() => {
-      expect(screen.queryByRole('tab', { name: 'Получить' })).toBeNull();
+      expect(screen.queryByRole('tab', { name: 'Забрать' })).toBeNull();
     });
   });
 
@@ -528,12 +662,14 @@ describe('AchievementsScreen', () => {
     renderAchievementsWithCachedProfile(23);
 
     expect(await screen.findByLabelText('Полученных достижений в профиле')).toHaveTextContent('23');
-    const card = (await screen.findByText('Кубок над головой')).closest('button');
-    expect(card).not.toBeNull();
-    fireEvent.click(card as HTMLButtonElement);
+    await screen.findByText('Кубок над головой');
+    fireEvent.click(screen.getByRole('button', { name: 'Забрать награду' }));
 
     await waitFor(() => {
       expect(screen.getByLabelText('Полученных достижений в профиле')).toHaveTextContent('24');
     });
+    expect(document.querySelector('.achievement-reward-toast')).not.toHaveTextContent(
+      'Следующий уровень открыт',
+    );
   });
 });

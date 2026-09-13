@@ -84,6 +84,7 @@ import {
   fetchAdminFeedback,
   fetchAdminGameSettings,
   fetchAdminAchievements,
+  fetchAdminAchievementStages,
   fetchAdminInventory,
   fetchAdminMismatches,
   fetchAdminNotifications,
@@ -102,6 +103,7 @@ import {
   patchAdminInventoryGameplay,
   patchAdminInventoryItem,
   patchAdminAchievement,
+  patchAdminAchievementStage,
   patchAdminGameSetting,
   patchAdminNotification,
   patchAdminUser,
@@ -114,6 +116,7 @@ import {
   type AdminDashboardPeriod,
   type AdminDashboardSeriesPoint,
   type AdminAchievement,
+  type AdminAchievementStage,
   type AdminAchievementAvailability,
   type AdminAchievementCategory,
   type AdminAchievementFutureTag,
@@ -330,6 +333,7 @@ const inventoryItemKindOptions: Array<GlassSelectOption<AdminInventoryItemKind>>
 ];
 
 const achievementCategoryOptions: Array<GlassSelectOption<AdminAchievementCategory>> = [
+  { value: 'career', label: 'Карьера' },
   { value: 'daily', label: 'Ежедневная' },
   { value: 'training', label: 'Тренировка' },
   { value: 'duel', label: 'Дуэли' },
@@ -6987,6 +6991,12 @@ function AchievementAdminCard({
   achievement: AdminAchievement;
   onChanged: () => void;
 }): JSX.Element {
+  const [stagesOpen, setStagesOpen] = useState(false);
+  const stages = useQuery({
+    queryKey: ['admin', 'achievements', achievement.id, 'stages'],
+    queryFn: () => fetchAdminAchievementStages(achievement.id),
+    enabled: stagesOpen,
+  });
   const [draft, setDraft] = useState({
     title: achievement.title,
     description: achievement.description,
@@ -7242,7 +7252,163 @@ function AchievementAdminCard({
           {mutation.error instanceof Error ? mutation.error.message : 'Ошибка сохранения'}
         </div>
       )}
+      <button
+        type="button"
+        className="btn btn--ghost"
+        style={{ width: '100%', marginTop: 12 }}
+        onClick={() => setStagesOpen((value) => !value)}
+      >
+        {stagesOpen ? 'Скрыть этапы' : 'Настроить этапы'}
+      </button>
+      {stagesOpen && (
+        <div className="admin-achievement-stages">
+          {stages.isLoading && <AdminPlainState>Загрузка этапов...</AdminPlainState>}
+          {stages.data?.stages.length === 0 && (
+            <AdminPlainState>У этого задания пока нет этапов.</AdminPlainState>
+          )}
+          {stages.data?.stages.map((stage) => (
+            <AchievementStageAdminCard
+              key={stage.stageNumber}
+              stage={stage}
+              onChanged={() => {
+                void stages.refetch();
+                onChanged();
+              }}
+            />
+          ))}
+          {stages.isError && <div role="alert">Не удалось загрузить этапы.</div>}
+        </div>
+      )}
     </article>
+  );
+}
+
+function AchievementStageAdminCard({
+  stage,
+  onChanged,
+}: {
+  stage: AdminAchievementStage;
+  onChanged: () => void;
+}): JSX.Element {
+  const [draft, setDraft] = useState({
+    requirement: stage.requirement,
+    target: JSON.stringify(stage.target),
+    rewardCurrency: String(stage.rewardCurrency),
+    rewardStars: String(stage.rewardStars),
+    rewardExperience: String(stage.rewardExperience),
+    rewardTokens: String(stage.rewardTokens),
+    isEnabled: stage.isEnabled,
+  });
+  useEffect(() => {
+    setDraft({
+      requirement: stage.requirement,
+      target: JSON.stringify(stage.target),
+      rewardCurrency: String(stage.rewardCurrency),
+      rewardStars: String(stage.rewardStars),
+      rewardExperience: String(stage.rewardExperience),
+      rewardTokens: String(stage.rewardTokens),
+      isEnabled: stage.isEnabled,
+    });
+  }, [stage]);
+  let target: Record<string, string | number | boolean> | null = null;
+  try {
+    const parsed: unknown = JSON.parse(draft.target);
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      target = parsed as Record<string, string | number | boolean>;
+    }
+  } catch {
+    target = null;
+  }
+  const rewards = [
+    Number(draft.rewardCurrency),
+    Number(draft.rewardStars),
+    Number(draft.rewardExperience),
+    Number(draft.rewardTokens),
+  ];
+  const valid =
+    draft.requirement.trim().length > 0 &&
+    target !== null &&
+    rewards.every((value) => Number.isInteger(value) && value >= 0);
+  const mutation = useMutation({
+    mutationFn: () =>
+      patchAdminAchievementStage(stage.achievementId, stage.stageNumber, {
+        requirement: draft.requirement.trim(),
+        target: target!,
+        rewardCurrency: rewards[0]!,
+        rewardStars: rewards[1]!,
+        rewardExperience: rewards[2]!,
+        rewardTokens: rewards[3]!,
+        isEnabled: draft.isEnabled,
+      }),
+    onSuccess: onChanged,
+  });
+  return (
+    <section className="admin-achievement-stage">
+      <div className="admin-achievement-stage__header">
+        <div>
+          <strong>Этап {stage.stageNumber}</strong>
+          <small>
+            Сейчас {numberText(stage.currentPlayers)} · выполнили{' '}
+            {numberText(stage.completedPlayers)} · получили {numberText(stage.claimedPlayers)}
+          </small>
+        </div>
+        <button
+          type="button"
+          className="btn btn--cta"
+          disabled={!valid || mutation.isPending}
+          onClick={() => mutation.mutate()}
+        >
+          Сохранить
+        </button>
+      </div>
+      <div className="admin-achievement-stage__grid">
+        <AdminField label="Условие">
+          <input
+            value={draft.requirement}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, requirement: event.target.value }))
+            }
+          />
+        </AdminField>
+        <AdminField label="Цель (JSON)">
+          <input
+            value={draft.target}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, target: event.target.value }))
+            }
+          />
+        </AdminField>
+        {(['rewardCurrency', 'rewardStars', 'rewardExperience', 'rewardTokens'] as const).map(
+          (field, index) => (
+            <AdminField key={field} label={['Монеты', 'Звёзды', 'Опыт', 'Токены'][index]!}>
+              <input
+                type="number"
+                min={0}
+                value={draft[field]}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, [field]: event.target.value }))
+                }
+              />
+            </AdminField>
+          ),
+        )}
+        <label className="admin-achievement-stage__toggle">
+          <input
+            type="checkbox"
+            checked={draft.isEnabled}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, isEnabled: event.target.checked }))
+            }
+          />
+          Этап включён
+        </label>
+      </div>
+      {mutation.isError && (
+        <div role="alert" className="admin-achievement-stage__error">
+          {mutation.error instanceof Error ? mutation.error.message : 'Ошибка сохранения этапа'}
+        </div>
+      )}
+    </section>
   );
 }
 

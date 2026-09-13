@@ -83,7 +83,7 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
     throw new AppError('not_found', 'user not found', 404);
   }
   const row = rows[0]!;
-  const profileProgress = await buildProfileProgress(app.pg, row);
+  const profileProgress = await buildProfileProgress(app.pg, row, { claimedOnly: false });
   const [trophySummary, trophyDetails] = await Promise.all([
     fetchTrophySummary(app.pg, row.id),
     fetchTrophyDetails(app.pg, row.id),

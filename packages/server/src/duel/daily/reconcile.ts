@@ -1,8 +1,7 @@
 import type { PoolClient } from 'pg';
-import {
-  evaluateDailyClosedAchievements,
-} from '../../achievements/engine.js';
+import { evaluateDailyClosedAchievements } from '../../achievements/engine.js';
 import { AppError } from '../../plugins/errors.js';
+import { observeCareerGoal } from '../../achievements/service.js';
 import { appendEvent } from '../eventLog.js';
 
 export const PERIOD_DURATION_MS = 20 * 60 * 1000;
@@ -92,13 +91,22 @@ async function insertPeriodLog(
   // Only bump lifetime stats when the row was actually inserted (idempotent
   // reconcile may try to close the same period twice).
   if (inserted.rowCount && inserted.rowCount > 0) {
-    await client.query(
+    const updatedUser = await client.query<{ lifetime_goals_total: number }>(
       `update users
           set lifetime_shots_total = lifetime_shots_total + $1,
               lifetime_goals_total = lifetime_goals_total + $2
-        where id = $3`,
+        where id = $3
+      returning lifetime_goals_total`,
       [agg.shots_taken, agg.goals, pool.user_id],
     );
+    if (agg.goals > 0) {
+      await observeCareerGoal(client, pool.user_id, {
+        eventKey: `daily-period:${pool.id}:${pool.current_period}`,
+        occurredAt: endedAt,
+        mode: 'daily',
+        lifetimeTotal: Number(updatedUser.rows[0]!.lifetime_goals_total),
+      });
+    }
   }
   await appendEvent(client, pool.user_id, 'period_closed', {
     day_pool_id: pool.id,

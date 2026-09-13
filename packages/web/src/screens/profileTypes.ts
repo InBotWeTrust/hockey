@@ -28,6 +28,14 @@ export interface ProfileAchievement {
   unlockedAt?: string;
   completedAt?: string;
   claimedAt?: string;
+  stage?: {
+    current: number;
+    total: number;
+    requirement: string;
+    progressValue: number;
+    targetValue: number;
+    history: Array<{ stageNumber: number; claimedAt: string; requirement: string }>;
+  };
 }
 
 export interface ProfileData {

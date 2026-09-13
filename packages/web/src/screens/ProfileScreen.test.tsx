@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProfileScreen } from './ProfileScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
+import type { ProfileData } from './profileTypes.js';
 
 const profile = {
   id: 'u1',
@@ -67,13 +68,13 @@ const profile = {
   currencyBalance: 1000,
   starBalance: 3,
   experienceBalance: 77,
-};
+} satisfies ProfileData;
 
 function mockProfileRequest(
   status = 200,
-  response: Omit<typeof profile, 'currencyBalance' | 'starBalance' | 'experienceBalance'> &
+  response: Omit<ProfileData, 'currencyBalance' | 'starBalance' | 'experienceBalance'> &
     Partial<
-      Pick<typeof profile, 'currencyBalance' | 'starBalance' | 'experienceBalance'>
+      Pick<ProfileData, 'currencyBalance' | 'starBalance' | 'experienceBalance'>
     > = profile,
   equipped: {
     stickItemId: string | null;
@@ -306,8 +307,8 @@ describe('ProfileScreen', () => {
     expect(screen.getByText('Профиль и уведомления')).toHaveClass('profile-settings-card__title');
     expect(screen.queryByText('Профиль и аккаунт')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Домашняя арена' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Открыть карьеру и награды' })).toBeInTheDocument();
-    expect(screen.getByText('Награды и достижения (1)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открыть задания' })).toBeInTheDocument();
+    expect(screen.getByText('Задания · 1/1, уровни · 1/1')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Настройки' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Раздевалка игрока')).not.toBeInTheDocument();
   });
@@ -490,7 +491,7 @@ describe('ProfileScreen', () => {
     renderProfile();
 
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Открыть достижение Снайпер недели' }),
+      await screen.findByRole('button', { name: 'Открыть задание Снайпер недели' }),
     );
 
     expect(screen.getByRole('dialog', { name: 'Снайпер недели' })).toBeInTheDocument();
@@ -518,8 +519,8 @@ describe('ProfileScreen', () => {
       'Выбрать коньки',
       'Выбрать питание',
       'Восстановление: 0 минут',
-      'Открыть карьеру и награды',
-      'Открыть достижение Снайпер недели',
+      'Открыть задания',
+      'Открыть задание Снайпер недели',
       'Настройки',
     ]);
   });
@@ -772,10 +773,41 @@ describe('ProfileScreen', () => {
     mockProfileRequest();
     renderProfile();
 
-    const career = await screen.findByLabelText('Награды и достижения');
+    const career = await screen.findByLabelText('Задания');
     expect(career).toHaveTextContent('Снайпер недели');
     expect(career.querySelector('img')).toHaveAttribute('src', '/achievement-1.webp');
     expect(career.querySelector('.profile-career-list')).toHaveClass('profile-career-list--scroll');
+  });
+
+  it('shows the highest completed level on a tiered task in the profile band', async () => {
+    mockProfileRequest(200, {
+      ...profile,
+      achievements: [
+        {
+          ...profile.achievements[0]!,
+          id: 'career-goals',
+          title: 'Заброшено шайб',
+          status: 'locked',
+          isUnlocked: false,
+          stage: {
+            current: 3,
+            total: 8,
+            requirement: 'Забросить 10 000 шайб',
+            progressValue: 6000,
+            targetValue: 10000,
+            history: [
+              { stageNumber: 1, claimedAt: '2026-09-01T00:00:00.000Z', requirement: '1 000 шайб' },
+              { stageNumber: 2, claimedAt: '2026-09-02T00:00:00.000Z', requirement: '5 000 шайб' },
+            ],
+          },
+        },
+      ],
+    });
+    renderProfile();
+
+    const task = await screen.findByRole('button', { name: 'Открыть задание Заброшено шайб' });
+    expect(within(task).getByText('Ур. 2/8')).toHaveClass('profile-career-award__level');
+    expect(screen.getByText('Задания · 0/1, уровни · 2/8')).toBeInTheDocument();
   });
 
   it('uses the compact achievement title treatment for training monster', async () => {
@@ -792,7 +824,7 @@ describe('ProfileScreen', () => {
     renderProfile();
 
     const achievement = await screen.findByRole('button', {
-      name: 'Открыть достижение Тренировочный монстр',
+      name: 'Открыть задание Тренировочный монстр',
     });
     expect(achievement.querySelector('.profile-achievement-title')).toHaveClass(
       'profile-achievement-title--compact',
@@ -825,9 +857,9 @@ describe('ProfileScreen', () => {
     });
     renderProfile();
 
-    const career = await screen.findByLabelText('Награды и достижения');
+    const career = await screen.findByLabelText('Задания');
     const achievementButtons = within(career).getAllByRole('button', {
-      name: /Открыть достижение/,
+      name: /Открыть задание/,
     });
 
     expect(achievementButtons.map((button) => button.textContent)).toEqual([
@@ -841,7 +873,7 @@ describe('ProfileScreen', () => {
     mockProfileRequest(200, { ...profile, achievements: [] });
     renderProfile();
 
-    const career = await screen.findByLabelText('Награды и достижения');
+    const career = await screen.findByLabelText('Задания');
     const panel = career.querySelector('.profile-career-panel');
     const emptyCopy = screen.getByText('Первая награда ещё впереди');
 

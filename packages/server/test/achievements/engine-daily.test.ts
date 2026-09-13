@@ -27,16 +27,9 @@ describe('daily achievement result helpers', () => {
 
   it('detects three non-goals followed by ten goals', () => {
     expect(hasNoPanicPattern([...makeResults(3, 0), ...makeResults(10, 10)])).toBe(true);
-    expect(
-      hasNoPanicPattern([
-        'save',
-        'miss',
-        'save',
-        ...makeResults(9, 9),
-        'save',
-        'goal',
-      ]),
-    ).toBe(false);
+    expect(hasNoPanicPattern(['save', 'miss', 'save', ...makeResults(9, 9), 'save', 'goal'])).toBe(
+      false,
+    );
   });
 });
 
@@ -53,7 +46,7 @@ describe.skipIf(!hasIntegrationEnv)('daily achievement evaluator', () => {
     await pool?.end();
   });
 
-  it('completes daily close achievements for 95 percent, equal periods, dry finish, and first daily', async () => {
+  it('completes current stages for daily accuracy and dry finish without removed steady-tempo', async () => {
     const userId = await createUser(pool);
     const dayPoolId = await seedClosedDaily(pool, {
       userId,
@@ -70,14 +63,11 @@ describe.skipIf(!hasIntegrationEnv)('daily achievement evaluator', () => {
       shotsPerPeriod: 30,
     });
 
-    await expect(completedIds(pool, userId)).resolves.toEqual(
-      expect.arrayContaining([
-        'first-daily-game',
-        'ice-hand',
-        'steady-tempo',
-        'dry-finish',
-      ]),
+    await expect(completedIds(pool, userId)).resolves.toContain('first-daily-game');
+    await expect(completedStageIds(pool, userId)).resolves.toEqual(
+      expect.arrayContaining(['ice-hand', 'dry-finish']),
     );
+    await expect(completedIds(pool, userId)).resolves.not.toContain('steady-tempo');
   });
 
   it('requires third period to be strictly best', async () => {
@@ -86,11 +76,7 @@ describe.skipIf(!hasIntegrationEnv)('daily achievement evaluator', () => {
       userId,
       dayDate: '2026-05-31',
       goalsByPeriod: [20, 21, 22],
-      results: [
-        ...makeResults(30, 20),
-        ...makeResults(30, 21),
-        ...makeResults(30, 22),
-      ],
+      results: [...makeResults(30, 20), ...makeResults(30, 21), ...makeResults(30, 22)],
     });
 
     await evaluateDailyClosedAchievements(pool, {
@@ -101,7 +87,7 @@ describe.skipIf(!hasIntegrationEnv)('daily achievement evaluator', () => {
       shotsPerPeriod: 30,
     });
 
-    await expect(completedIds(pool, userId)).resolves.toContain('third-period-decides');
+    await expect(completedStageIds(pool, userId)).resolves.toContain('third-period-decides');
   });
 
   it('completes 7-day and 30-day daily accuracy windows only when every local day is completed', async () => {
@@ -112,11 +98,7 @@ describe.skipIf(!hasIntegrationEnv)('daily achievement evaluator', () => {
         userId,
         dayDate: `2026-05-${String(day).padStart(2, '0')}`,
         goalsByPeriod: [23, 23, 23],
-        results: [
-          ...makeResults(30, 23),
-          ...makeResults(30, 23),
-          ...makeResults(30, 23),
-        ],
+        results: [...makeResults(30, 23), ...makeResults(30, 23), ...makeResults(30, 23)],
       });
     }
 
@@ -128,7 +110,7 @@ describe.skipIf(!hasIntegrationEnv)('daily achievement evaluator', () => {
       shotsPerPeriod: 30,
     });
 
-    await expect(completedIds(pool, userId)).resolves.toEqual(
+    await expect(completedStageIds(pool, userId)).resolves.toEqual(
       expect.arrayContaining(['keeping-fit', 'sniper-week', 'sniper-month']),
     );
   });
@@ -201,6 +183,17 @@ async function completedIds(pool: Pool, userId: string): Promise<string[]> {
        from user_achievements
       where user_id = $1
       order by achievement_id asc`,
+    [userId],
+  );
+  return rows.map((row) => row.achievement_id);
+}
+
+async function completedStageIds(pool: Pool, userId: string): Promise<string[]> {
+  const { rows } = await pool.query<{ achievement_id: string }>(
+    `select achievement_id
+       from user_achievement_stages
+      where user_id = $1 and completed_at is not null
+      order by achievement_id`,
     [userId],
   );
   return rows.map((row) => row.achievement_id);

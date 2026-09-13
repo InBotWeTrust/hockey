@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { reconcileTournamentAchievements } from '../achievements/tournamentEvaluator.js';
+import { observeCareerExperience } from '../achievements/service.js';
 import { AppError } from '../plugins/errors.js';
 import { enqueueTournamentAudiencePush } from '../push/tournament.js';
 import { lockTournament, lockTournamentParticipants } from './locks.js';
@@ -97,11 +98,17 @@ async function grantOne(
       where user_id = $1 returning balance, reserved_balance`,
     [input.userId, input.reward.coins],
   );
-  await client.query(`update users set xp = xp + $2, experience = experience + $3 where id = $1`, [
-    input.userId,
-    input.reward.stars,
-    input.reward.experience,
-  ]);
+  const user = await client.query<{ experience: number }>(
+    `update users set xp = xp + $2, experience = experience + $3 where id = $1 returning experience`,
+    [input.userId, input.reward.stars, input.reward.experience],
+  );
+  if (input.reward.experience > 0) {
+    await observeCareerExperience(client, input.userId, {
+      eventKey: key,
+      occurredAt: new Date(),
+      lifetimeTotal: Number(user.rows[0]!.experience),
+    });
+  }
   await client.query(
     `insert into currency_ledger
        (user_id, reason, available_delta, reserved_delta, balance_after, reserved_after, metadata)

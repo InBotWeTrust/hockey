@@ -1,12 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { triggerHaptic } from '../feedback/haptics.js';
 import {
   ArrowLeft,
   Check,
-  Circle,
   CircleDollarSign,
-  Lock,
   Star,
   Ticket,
   TrendingUp,
@@ -19,6 +17,7 @@ import {
   fetchAchievements,
   type AchievementDto,
 } from '../api/achievements.js';
+import { summarizeAchievementProgress } from '../achievements/progressSummary.js';
 import {
   countClaimableWeeklyChallenges,
   fetchWeeklyChallenge,
@@ -28,14 +27,12 @@ import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { useAuthStore } from '../auth/authStore.js';
-import {
-  updateCachedInventoryBalances,
-  updateCachedProfileBalances,
-} from '../app/queryClient.js';
+import { updateCachedInventoryBalances, updateCachedProfileBalances } from '../app/queryClient.js';
 
 type AchievementFilter =
   | 'all'
   | 'claimable'
+  | 'career'
   | 'daily'
   | 'training'
   | 'duel'
@@ -46,7 +43,8 @@ type AchievementPageTab = 'achievements' | 'challenges';
 
 const FILTERS: Array<{ id: AchievementFilter; label: string }> = [
   { id: 'all', label: 'Все' },
-  { id: 'claimable', label: 'Получить' },
+  { id: 'claimable', label: 'Забрать' },
+  { id: 'career', label: 'Карьера' },
   { id: 'daily', label: 'Ежедневная' },
   { id: 'training', label: 'Тренировка' },
   { id: 'duel', label: 'Дуэли' },
@@ -66,85 +64,10 @@ function categoryMatches(achievement: AchievementDto, filter: AchievementFilter)
   return achievement.category === filter;
 }
 
-function achievementCompleted(achievement: AchievementDto): boolean {
-  return achievement.status === 'claimed' || achievement.status === 'completed_unclaimed';
-}
-
-function countText(completed: number, total: number): string {
-  return `${completed}/${total}`;
-}
-
-function FitOneLineTitle({ text }: { text: string }): JSX.Element {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const textRef = useRef<HTMLSpanElement>(null);
-
-  useLayoutEffect(() => {
-    const container = containerRef.current;
-    const title = textRef.current;
-    if (!container || !title) return;
-
-    let frame = 0;
-    const fitTitle = (): void => {
-      title.style.fontSize = '13px';
-      const availableWidth = Math.max(0, container.clientWidth - 4);
-      const titleWidth = title.scrollWidth;
-      const nextFontSize =
-        availableWidth > 0 && titleWidth > availableWidth
-          ? Math.max(7.5, Math.floor(((13 * availableWidth) / titleWidth) * 10) / 10)
-          : 13;
-      title.style.fontSize = `${nextFontSize}px`;
-    };
-
-    const scheduleFit = (): void => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(fitTitle);
-    };
-
-    scheduleFit();
-    const timeoutId = window.setTimeout(scheduleFit, 120);
-    void document.fonts?.ready.then(scheduleFit).catch(() => undefined);
-    window.addEventListener('resize', scheduleFit);
-    const resizeObserver =
-      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleFit);
-    resizeObserver?.observe(container);
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.clearTimeout(timeoutId);
-      window.removeEventListener('resize', scheduleFit);
-      resizeObserver?.disconnect();
-    };
-  }, [text]);
-
-  return (
-    <div ref={containerRef} style={{ minWidth: 0, overflow: 'hidden', marginTop: 1 }}>
-      <span
-        ref={textRef}
-        style={{
-          display: 'block',
-          whiteSpace: 'nowrap',
-          overflow: 'visible',
-          fontSize: 13,
-          fontWeight: 950,
-          lineHeight: 1.15,
-        }}
-      >
-        {text}
-      </span>
-    </div>
-  );
-}
-
 function statusText(achievement: AchievementDto): string {
   if (achievement.availability === 'future') return 'Скоро';
   if (achievement.status === 'claimed') return 'Получено';
   return 'Не получено';
-}
-
-function statusIcon(achievement: AchievementDto): JSX.Element {
-  if (achievement.availability === 'future') return <Lock size={12} />;
-  if (achievement.status === 'claimed') return <Check size={12} strokeWidth={3} />;
-  return <Circle size={11} strokeWidth={2.7} />;
 }
 
 function rewardParts(
@@ -157,20 +80,20 @@ function rewardParts(
 function rewardPartItems(
   rewards: { currency: number; stars: number; experience: number; tokens: number },
   opts: { plus?: boolean } = {},
-): Array<{ tone: RewardTone; text: string }> {
+): Array<{ tone: RewardTone; text: string; value: number }> {
   const prefix = opts.plus === true ? '+' : '';
   return [
     rewards.currency > 0
-      ? { tone: 'coin' as const, text: `${prefix}${rewards.currency} монет` }
+      ? { tone: 'coin' as const, text: `${prefix}${rewards.currency} монет`, value: rewards.currency }
       : null,
-    rewards.stars > 0 ? { tone: 'star' as const, text: `${prefix}${rewards.stars} зв.` } : null,
+    rewards.stars > 0 ? { tone: 'star' as const, text: `${prefix}${rewards.stars} зв.`, value: rewards.stars } : null,
     rewards.experience > 0
-      ? { tone: 'experience' as const, text: `${prefix}${rewards.experience} опыта` }
+      ? { tone: 'experience' as const, text: `${prefix}${rewards.experience} опыта`, value: rewards.experience }
       : null,
     rewards.tokens > 0
-      ? { tone: 'token' as const, text: `${prefix}${rewards.tokens} токенов` }
+      ? { tone: 'token' as const, text: `${prefix}${rewards.tokens} токенов`, value: rewards.tokens }
       : null,
-  ].filter((part): part is { tone: RewardTone; text: string } => part !== null);
+  ].filter((part): part is { tone: RewardTone; text: string; value: number } => part !== null);
 }
 
 function rewardText(achievement: AchievementDto): string {
@@ -217,6 +140,13 @@ function rewardToastIcon(tone: RewardTone): JSX.Element {
   return <Ticket size={15} strokeWidth={2.55} aria-hidden="true" />;
 }
 
+function rewardCardIcon(tone: RewardTone): JSX.Element {
+  if (tone === 'coin') return <CircleDollarSign size={12} aria-hidden="true" />;
+  if (tone === 'star') return <Star size={12} fill="currentColor" aria-hidden="true" />;
+  if (tone === 'experience') return <TrendingUp size={12} aria-hidden="true" />;
+  return <Ticket size={12} aria-hidden="true" />;
+}
+
 export function AchievementsScreen({
   profileContext = false,
 }: {
@@ -237,6 +167,7 @@ export function AchievementsScreen({
     stars: number;
     experience: number;
     tokens: number;
+    nextLevelOpened: boolean;
   } | null>(null);
 
   const achievementsQuery = useQuery({
@@ -272,12 +203,15 @@ export function AchievementsScreen({
         const matching = achievements.filter((achievement) =>
           categoryMatches(achievement, item.id),
         );
-        const completed = matching.filter(achievementCompleted).length;
-        return [item.id, { completed, total: matching.length }] as const;
+        return [item.id, summarizeAchievementProgress(matching)] as const;
       }),
     );
   }, [achievements, visibleFilters]);
-  const selectedFilterCounts = filterCounts.get(filter) ?? { completed: 0, total: 0 };
+  const selectedFilterCounts = filterCounts.get(filter) ?? {
+    completed: 0,
+    total: 0,
+    levels: { completed: 0, total: 0 },
+  };
 
   useEffect(() => {
     if (filter === 'claimable' && !hasClaimableAchievements) setFilter('all');
@@ -304,6 +238,7 @@ export function AchievementsScreen({
         stars: response.rewards.stars,
         experience: response.rewards.experience,
         tokens: response.rewards.tokens ?? 0,
+        nextLevelOpened: response.stage?.opened != null,
       });
       window.setTimeout(() => setClaimedReward(null), 5000);
     },
@@ -369,8 +304,8 @@ export function AchievementsScreen({
             if (tab === 'challenges') navigate(weeklyChallengeRoute);
           }}
         />
-        <div className="section-label section-label--page">
-          Задания · {countText(selectedFilterCounts.completed, selectedFilterCounts.total)}
+        <div className="section-label section-label--page achievement-counts">
+          Задания · {selectedFilterCounts.completed}/{selectedFilterCounts.total}, уровни · {selectedFilterCounts.levels.completed}/{selectedFilterCounts.levels.total}
         </div>
         <SegmentedTabs
           items={visibleFilters.map((item) => ({
@@ -387,14 +322,7 @@ export function AchievementsScreen({
         {achievementsQuery.isLoading ? (
           <div style={{ color: 'var(--muted)', fontSize: 14, padding: '32px 0' }}>Загрузка…</div>
         ) : (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-              gap: 10,
-              paddingBottom: 80,
-            }}
-          >
+          <div className="achievement-list">
             {filtered.map((achievement) => (
               <AchievementCard
                 key={achievement.id}
@@ -411,7 +339,6 @@ export function AchievementsScreen({
       {selected && (
         <AccessibleModal
           title={selected.title}
-          copy={selected.requirement}
           onRequestClose={() => setSelected(null)}
           closeBlocked={claimMutation.isPending}
           cardClassName="achievement-details-modal achievement-details-modal--crisp"
@@ -439,8 +366,47 @@ export function AchievementsScreen({
               src={selected.photoUrl}
               alt={selected.title}
             />
-            <p>{selected.description}</p>
+            <p className="achievement-details-modal__description">
+              {selected.stage ? selected.description : selected.requirement}
+            </p>
           </div>
+          {selected.stage && (
+            <div className="achievement-stage-details">
+              <strong>
+                Уровень {selected.stage.current} из {selected.stage.total}
+              </strong>
+              <span>{selected.stage.requirement}</span>
+              {selected.stage.targetValue > 0 && (
+                <div className="achievement-stage-progress">
+                  <div
+                    className="achievement-stage-progress__bar"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.max(
+                          0,
+                          (selected.stage.progressValue / selected.stage.targetValue) * 100,
+                        ),
+                      )}%`,
+                    }}
+                  />
+                  <span>
+                    {selected.stage.progressValue} / {selected.stage.targetValue}
+                  </span>
+                </div>
+              )}
+              {selected.stage.history.length > 0 && (
+                <div className="achievement-stage-history">
+                  <small>Пройденные уровни</small>
+                  {selected.stage.history.map((entry) => (
+                    <span key={entry.stageNumber}>
+                      Уровень {entry.stageNumber} · {entry.requirement}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {rewardText(selected) && (
             <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <RewardChip
@@ -498,6 +464,11 @@ export function AchievementsScreen({
               </span>
             ))}
           </div>
+          {claimedReward.nextLevelOpened && (
+            <span className="achievement-reward-toast__next-level">
+              Следующий уровень открыт
+            </span>
+          )}
         </div>
       )}
     </main>
@@ -544,122 +515,99 @@ function AchievementCard({
   onClaim: () => void;
   claimDisabled: boolean;
 }): JSX.Element {
-  const muted = achievement.status !== 'claimed' || achievement.availability === 'future';
   const claimable = achievement.status === 'completed_unclaimed';
+  const stage = achievement.stage;
+  const progressPercent =
+    stage && stage.targetValue > 0
+      ? Math.min(100, Math.max(0, (stage.progressValue / stage.targetValue) * 100))
+      : 0;
+  const formatNumber = (value: number): string =>
+    new Intl.NumberFormat('ru-RU').format(value).replaceAll('\u00a0', ' ');
+  const rewards = rewardPartItems({
+    currency: achievement.rewardCurrency,
+    stars: achievement.rewardStars,
+    experience: achievement.rewardExperience,
+    tokens: achievement.rewardTokens ?? 0,
+  });
+
   return (
-    <button
-      type="button"
-      className={`achievement-card${claimable ? ' achievement-card--claimable' : ''}`}
-      disabled={claimable && claimDisabled}
-      onClick={() => {
-        if (claimable) {
-          onClaim();
-          return;
-        }
-        onOpen();
-      }}
-      style={{
-        border: '1px solid rgba(255,255,255,0.7)',
-        borderRadius: 8,
-        overflow: 'hidden',
-        padding: 0,
-        display: 'grid',
-        gridTemplateRows: 'auto 88px',
-        alignSelf: 'stretch',
-        color: 'var(--ink)',
-        textAlign: 'left',
-        boxShadow: claimable
-          ? '0 10px 26px rgba(15, 118, 110, 0.16)'
-          : '0 8px 20px rgba(15,23,42,0.08)',
-        position: 'relative',
-        cursor: claimable && claimDisabled ? 'wait' : 'pointer',
-      }}
+    <article
+      className={`achievement-card achievement-card--list${claimable ? ' achievement-card--claimable' : ''}`}
     >
-      <div
-        style={{
-          width: '100%',
-          aspectRatio: '1 / 1',
-          background: 'rgba(15,23,42,0.08)',
-          position: 'relative',
-        }}
+      <button
+        type="button"
+        className="achievement-card__open"
+        aria-label={`${achievement.title}. Открыть подробности`}
+        onClick={onOpen}
       >
-        <img
-          src={achievement.photoUrl}
-          alt=""
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            display: 'block',
-            filter: muted ? 'grayscale(1) saturate(0.1)' : 'none',
-            opacity: muted ? 0.6 : 1,
-          }}
-        />
-        <span
-          className={achievement.status === 'claimed' ? 'pill pill--dark' : 'pill'}
-          style={{
-            position: 'absolute',
-            top: 8,
-            left: 8,
-            minHeight: 25,
-            padding: '0 8px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 5,
-            fontSize: 10,
-            fontWeight: 950,
-            boxShadow: '0 6px 18px rgba(15,23,42,0.12)',
-          }}
-        >
-          {statusIcon(achievement)}
-          {statusText(achievement)}
-        </span>
-        {claimable && (
-          <span
-            aria-label="Требуется действие"
-            className="attention-dot-pulse"
-            style={{
-              position: 'absolute',
-              top: 10,
-              right: 10,
-              width: 9,
-              height: 9,
-              borderRadius: 999,
-              background: 'rgba(220, 38, 38, 0.96)',
-              boxShadow: '0 0 0 4px rgba(220, 38, 38, 0.18)',
-            }}
-          />
-        )}
-      </div>
-      <div
-        className="achievement-card__body"
-        style={{
-          minHeight: 0,
-          padding: '8px 10px 9px',
-          display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr)',
-          gap: 5,
-        }}
-      >
-        <FitOneLineTitle text={achievement.title} />
-        <div
-          data-achievement-requirement
-          className="achievement-card__requirement"
-          style={{
-            fontSize: 11,
-            lineHeight: '14px',
-            maxHeight: 42,
-            fontWeight: 700,
-            display: '-webkit-box',
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-            overflowWrap: 'break-word',
-          }}
-        >
-          {achievement.requirement}
+        <div className="achievement-card__thumbnail">
+          <img src={achievement.photoUrl} alt="" />
+          {achievement.status === 'claimed' && (
+            <span className="achievement-card__status achievement-card__status--claimed">
+              <Check size={12} strokeWidth={3} />
+            </span>
+          )}
         </div>
-      </div>
-    </button>
+
+        <div className="achievement-card__body">
+          <div className="achievement-card__heading">
+            <strong className="achievement-card__title" title={achievement.title}>
+              {achievement.title}
+            </strong>
+            {stage ? (
+              <span className="achievement-card__stage">Уровень {stage.current} из {stage.total}</span>
+            ) : (
+              <span className="achievement-card__status-copy">{statusText(achievement)}</span>
+            )}
+          </div>
+
+          {rewards.length > 0 && (
+            <span
+              className="achievement-card__rewards achievement-card__rewards--inline"
+              aria-label={`Награда: ${rewardText(achievement)}`}
+            >
+              {rewards.map((reward) => (
+                <span key={reward.tone} style={{ color: rewardColor(reward.tone) }}>
+                  {rewardCardIcon(reward.tone)} {reward.value}
+                </span>
+              ))}
+            </span>
+          )}
+
+          {!stage && (
+            <div className="achievement-card__requirement">{achievement.requirement}</div>
+          )}
+
+          {stage && stage.targetValue > 0 && (
+            <div
+              className="achievement-card__stage-progress"
+              role="progressbar"
+              aria-label="Прогресс достижения"
+              aria-valuemin={0}
+              aria-valuenow={stage.progressValue}
+              aria-valuemax={stage.targetValue}
+            >
+              <span className="achievement-card__stage-progress-fill" style={{ width: `${progressPercent}%` }} />
+              <strong>{formatNumber(stage.progressValue)} / {formatNumber(stage.targetValue)}</strong>
+            </div>
+          )}
+
+          {achievement.status === 'claimed' && stage && stage.current >= stage.total && (
+            <span className="achievement-card__complete">Все уровни пройдены</span>
+          )}
+        </div>
+      </button>
+
+      {claimable && (
+        <button
+          type="button"
+          className="btn btn--cta achievement-card__claim"
+          disabled={claimDisabled}
+          onClick={onClaim}
+        >
+          Забрать награду
+        </button>
+      )}
+    </article>
   );
 }

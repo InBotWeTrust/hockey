@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
+import { observeCareerExperience } from '../achievements/service.js';
 
 export interface WeeklyChallengeRewardInput {
   challengeId: string;
@@ -35,6 +36,13 @@ export async function grantWeeklyChallengeReward(
   );
   const user = userResult.rows[0];
   if (!user) throw new AppError('not_found', 'user not found', 404);
+  if (input.experience > 0) {
+    await observeCareerExperience(client, input.userId, {
+      eventKey: `weekly-challenge:${input.challengeId}:reward`,
+      occurredAt: new Date(),
+      lifetimeTotal: Number(user.experience),
+    });
+  }
 
   await client.query(
     `insert into user_currency_account (user_id) values ($1) on conflict do nothing`,

@@ -34,6 +34,11 @@ import type { PushEventType } from '../push/preferences.js';
 import { PUSH_QUEUE_PROCESSING_STALE_MS } from '../push/queue.js';
 import { createAdminPreHandlers } from './guards.js';
 import { MAX_COIN_PACKAGE_AMOUNT, type CoinPackageDTO } from '../payments/catalog.js';
+import {
+  createAdminAchievementStage,
+  listAdminAchievementStages,
+  updateAdminAchievementStage,
+} from '../achievements/adminStages.js';
 
 type UserRole = 'player' | 'admin';
 type DisplaySource = 'custom' | 'telegram' | 'vk';
@@ -580,6 +585,26 @@ const achievementPatchSchema = z
       value.sortOrder !== undefined,
     'no changes',
   );
+
+const achievementStageTargetSchema = z
+  .record(z.union([z.string().min(1).max(120), z.number().finite(), z.boolean()]))
+  .refine((target) => Object.keys(target).length > 0, 'empty target');
+
+const achievementStageSchema = z
+  .object({
+    requirement: z.string().trim().min(1).max(1000),
+    target: achievementStageTargetSchema,
+    rewardCurrency: z.number().int().min(0).max(9_000_000_000),
+    rewardStars: z.number().int().min(0).max(9_000_000_000),
+    rewardExperience: z.number().int().min(0).max(9_000_000_000),
+    rewardTokens: z.number().int().min(0).max(9_000_000_000),
+    isEnabled: z.boolean(),
+  })
+  .strict();
+
+const achievementStagePatchSchema = achievementStageSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, 'no changes');
 
 const listPaymentsQuerySchema = z.object({
   q: z.string().trim().min(1).max(80).optional(),
@@ -2160,10 +2185,10 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
           order by user_id`,
         [body.id],
       );
-      await app.pg.query(
-        `update admin_direct_broadcasts set recipient_count = $2 where id = $1`,
-        [body.id, recipients.rows.length],
-      );
+      await app.pg.query(`update admin_direct_broadcasts set recipient_count = $2 where id = $1`, [
+        body.id,
+        recipients.rows.length,
+      ]);
 
       for (const recipient of recipients.rows) {
         try {
@@ -2195,7 +2220,11 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
             `update admin_direct_broadcast_recipients
                 set status = 'failed', error = $3, updated_at = now()
               where broadcast_id = $1 and user_id = $2`,
-            [body.id, recipient.user_id, err instanceof Error ? err.message.slice(0, 500) : 'unknown'],
+            [
+              body.id,
+              recipient.user_id,
+              err instanceof Error ? err.message.slice(0, 500) : 'unknown',
+            ],
           );
         }
       }
@@ -2714,6 +2743,60 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
     );
     return { achievements: rows.map(mapAdminAchievement) };
   });
+
+  app.get(
+    '/admin/achievements/:achievementId/stages',
+    { preHandler: adminPreHandlers },
+    async (req) => {
+      const params = z.object({ achievementId: z.string().min(1).max(120) }).parse(req.params);
+      return { stages: await listAdminAchievementStages(app.pg, params.achievementId) };
+    },
+  );
+
+  app.post(
+    '/admin/achievements/:achievementId/stages',
+    { preHandler: adminPreHandlers },
+    async (req) => {
+      const params = z.object({ achievementId: z.string().min(1).max(120) }).parse(req.params);
+      const body = achievementStageSchema.safeParse(req.body);
+      if (!body.success) throw new AppError('bad_request', 'invalid achievement stage', 400);
+      const stage = await createAdminAchievementStage(app.pg, params.achievementId, body.data);
+      await appendEvent(app.pg, req.user.id, 'admin_achievement_updated', {
+        achievement_id: params.achievementId,
+        action: 'stage_created',
+        stage_number: stage.stageNumber,
+      });
+      return { stage };
+    },
+  );
+
+  app.patch(
+    '/admin/achievements/:achievementId/stages/:stageNumber',
+    { preHandler: adminPreHandlers },
+    async (req) => {
+      const params = z
+        .object({
+          achievementId: z.string().min(1).max(120),
+          stageNumber: z.coerce.number().int().positive(),
+        })
+        .parse(req.params);
+      const body = achievementStagePatchSchema.safeParse(req.body);
+      if (!body.success) throw new AppError('bad_request', 'invalid achievement stage patch', 400);
+      const stage = await updateAdminAchievementStage(
+        app.pg,
+        params.achievementId,
+        params.stageNumber,
+        body.data,
+      );
+      await appendEvent(app.pg, req.user.id, 'admin_achievement_updated', {
+        achievement_id: params.achievementId,
+        action: 'stage_updated',
+        stage_number: stage.stageNumber,
+        fields: Object.keys(body.data),
+      });
+      return { stage };
+    },
+  );
 
   app.patch('/admin/achievements/:achievementId', { preHandler: adminPreHandlers }, async (req) => {
     const params = z.object({ achievementId: z.string().min(1).max(120) }).parse(req.params);

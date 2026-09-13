@@ -15,6 +15,7 @@ import {
   resetRedis,
 } from '../helpers/testDb.js';
 import { waitForBlockedWriter } from '../helpers/postgresLocks.js';
+import { openFirstAchievementStages } from '../../src/achievements/stageProgress.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -178,6 +179,116 @@ describe.skipIf(!hasIntegrationEnv)('achievement claim routes', () => {
         }),
       ]),
     );
+  });
+
+  it('claims one completed stage atomically and opens only the next stage', async () => {
+    const userId = await createUser(app);
+    const token = await issueAccessToken(userId);
+    const openedAt = new Date('2026-09-13T10:00:00.000Z');
+    await openFirstAchievementStages(app.pg, userId, openedAt);
+    await app.pg.query(
+      `update achievement_stages
+          set reward_currency = 12, reward_stars = 3, reward_experience = 3, reward_tokens = 2
+        where achievement_id = 'ice-hand' and stage_number = 1`,
+    );
+    await app.pg.query(
+      `update user_achievement_stages
+          set completed_at = '2026-09-13T10:01:00.000Z', progress = '{"accuracyPercent":100}'
+        where user_id = $1 and achievement_id = 'ice-hand' and stage_number = 1`,
+      [userId],
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/achievements/ice-hand/claim',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      stage: { claimed: 1, opened: 2 },
+      rewards: { currency: 12, stars: 3, experience: 3, tokens: 2 },
+      balances: {
+        currencyBalance: 12,
+        starBalance: 3,
+        experienceBalance: 3,
+        tokenBalance: 2,
+      },
+    });
+
+    const stages = await app.pg.query<{
+      stage_number: number;
+      claimed_at: Date | null;
+      completed_at: Date | null;
+      reward_snapshot: Record<string, number> | null;
+    }>(
+      `select stage_number, claimed_at, completed_at, reward_snapshot
+         from user_achievement_stages
+        where user_id = $1 and achievement_id = 'ice-hand'
+        order by stage_number`,
+      [userId],
+    );
+    expect(stages.rows).toEqual([
+      expect.objectContaining({
+        stage_number: 1,
+        claimed_at: expect.any(Date),
+        completed_at: expect.any(Date),
+        reward_snapshot: { currency: 12, stars: 3, experience: 3, tokens: 2 },
+      }),
+      expect.objectContaining({
+        stage_number: 2,
+        claimed_at: null,
+        completed_at: null,
+        reward_snapshot: null,
+      }),
+    ]);
+
+    const ledger = await app.pg.query<{ metadata: Record<string, unknown> }>(
+      `select metadata from currency_ledger
+        where user_id = $1 and reason = 'achievement_reward'`,
+      [userId],
+    );
+    expect(ledger.rows[0]?.metadata).toMatchObject({
+      achievement_id: 'ice-hand',
+      stage_number: 1,
+    });
+
+    const again = await app.inject({
+      method: 'POST',
+      url: '/achievements/ice-hand/claim',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(again.statusCode).toBe(409);
+  });
+
+  it('does not complete the next experience stage from claim reward experience', async () => {
+    const userId = await createUser(app);
+    const token = await issueAccessToken(userId);
+    await openFirstAchievementStages(app.pg, userId, new Date('2026-09-13T10:00:00.000Z'));
+    await app.pg.query(
+      `update achievement_stages
+          set reward_experience = 1000
+        where achievement_id = 'career-experience' and stage_number = 1`,
+    );
+    await app.pg.query(
+      `update user_achievement_stages
+          set completed_at = '2026-09-13T10:01:00.000Z'
+        where user_id = $1 and achievement_id = 'career-experience' and stage_number = 1`,
+      [userId],
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/achievements/career-experience/claim',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(200);
+
+    const next = await app.pg.query<{ completed_at: Date | null }>(
+      `select completed_at from user_achievement_stages
+        where user_id = $1 and achievement_id = 'career-experience' and stage_number = 2`,
+      [userId],
+    );
+    expect(next.rows).toEqual([{ completed_at: null }]);
   });
 
   it('waits for the users row before taking a currency-account write lock', async () => {
