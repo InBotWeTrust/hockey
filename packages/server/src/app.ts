@@ -31,6 +31,7 @@ import { onboardingAdminRoutes } from './onboarding/adminRoutes.js';
 import { tournamentRoutes } from './tournament/routes.js';
 import { tournamentWs } from './tournament/ws.js';
 import { validateOfficialAccount } from './chat/officialAccount.js';
+import { nativeCorsPlugin } from './plugins/nativeCors.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -81,6 +82,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
         })
       : undefined;
 
+  await app.register(nativeCorsPlugin);
   await app.register(errorsPlugin);
   await app.register(dbPlugin, { connectionString: config.DATABASE_URL });
   if (config.SYSTEM_USER_ID !== undefined) {

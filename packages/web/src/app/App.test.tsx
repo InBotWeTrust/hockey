@@ -82,6 +82,11 @@ function renderAt(path: string): void {
 
 describe('App routing + auth', () => {
   beforeEach(() => {
+    Object.defineProperty(globalThis, '__HOCKEY_NATIVE__', {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
     localStorage.clear();
     window.history.replaceState({}, '', '/');
     vi.restoreAllMocks();
@@ -101,6 +106,19 @@ describe('App routing + auth', () => {
       receivedAtPerformanceMs: null,
     });
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
+  });
+
+  it('does not mount the browser service-worker update prompt inside Android', () => {
+    Object.defineProperty(globalThis, '__HOCKEY_NATIVE__', {
+      configurable: true,
+      value: { platform: 'android' },
+      writable: true,
+    });
+    window.history.replaceState({}, '', '/login');
+
+    render(<App />);
+
+    expect(screen.queryByTestId('update-prompt')).not.toBeInTheDocument();
   });
 
   it('gates a direct authenticated URL and hides routed content and app chrome', async () => {

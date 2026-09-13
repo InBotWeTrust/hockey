@@ -97,6 +97,23 @@ describe('TournamentSocket', () => {
     expect(onStatus).toHaveBeenCalledWith('connecting');
   });
 
+  it('connects to the canonical secure WebSocket origin inside Android', () => {
+    vi.stubGlobal('__HOCKEY_NATIVE__', { platform: 'android' });
+    const socket = new TournamentSocket({
+      fixtureId: sampleEvent.fixtureId,
+      getToken,
+      refresh,
+      onEvent,
+      onStatus,
+    });
+
+    socket.connect();
+
+    expect(lastSocket().url).toBe(
+      'wss://ultimatehockey.ru/api/tournaments/fixtures/00000000-0000-4000-8000-000000000801/ws?token=TOKEN-A',
+    );
+  });
+
   it('forwards valid events once and ignores malformed or duplicate frames', () => {
     const socket = new TournamentSocket({
       fixtureId: sampleEvent.fixtureId,

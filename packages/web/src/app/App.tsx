@@ -16,6 +16,7 @@ import { OnboardingGate } from '../onboarding/OnboardingGate.js';
 import { apiFetch } from '../api/apiFetch.js';
 import type { ProfileData } from '../screens/profileTypes.js';
 import { arenaBackgroundClass } from '../screens/lockerRoomBackground.js';
+import { isNativeAndroid } from '../platform/runtime.js';
 
 const DailyScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DailyScreen })),
@@ -428,7 +429,7 @@ function AppExperience(): JSX.Element {
         </div>
         <BottomNav />
       </div>
-      <UpdatePrompt />
+      {!isNativeAndroid() && <UpdatePrompt />}
     </>
   );
 }

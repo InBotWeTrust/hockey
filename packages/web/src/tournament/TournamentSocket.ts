@@ -1,3 +1,5 @@
+import { getWebSocketBaseUrl } from '../platform/runtime.js';
+
 export type TournamentSocketStatus = 'connecting' | 'open' | 'reconnecting' | 'closed';
 
 export interface TournamentRealtimeEvent {
@@ -45,8 +47,7 @@ function isTournamentEventFrame(value: unknown, fixtureId: string): value is Tou
 function buildUrl(fixtureId: string, token: string): string {
   const path = `/api/tournaments/fixtures/${encodeURIComponent(fixtureId)}/ws?token=${encodeURIComponent(token)}`;
   if (typeof window === 'undefined') return path;
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${protocol}://${window.location.host}${path}`;
+  return `${getWebSocketBaseUrl()}${path}`;
 }
 
 export class TournamentSocket {
