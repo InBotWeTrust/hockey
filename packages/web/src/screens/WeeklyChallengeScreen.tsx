@@ -145,6 +145,7 @@ export function WeeklyChallengeScreen({
   const query = useQuery({
     queryKey: weeklyChallengeKeys.catalog,
     queryFn: fetchWeeklyChallengeCatalog,
+    refetchOnMount: 'always',
   });
   const catalog = query.data ?? { future: [], active: [], completed: [] };
   const visibleChallenges = catalog[filter];
