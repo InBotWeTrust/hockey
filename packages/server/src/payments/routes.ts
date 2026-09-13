@@ -10,7 +10,11 @@ interface CoinPackageRoutesOptions {
 }
 
 const createPaymentBody = z
-  .object({ packageId: z.string().uuid(), attemptId: z.string().uuid() })
+  .object({
+    packageId: z.string().uuid(),
+    attemptId: z.string().uuid(),
+    receiptEmail: z.string().trim().toLowerCase().email().max(254),
+  })
   .strict();
 const paymentParams = z.object({ id: z.string().uuid() });
 const webhookBody = z.object({
@@ -24,6 +28,19 @@ export const coinPackageRoutes: FastifyPluginAsync<CoinPackageRoutesOptions> = a
   options,
 ) => {
   app.get('/bank/packages', async () => ({ packages: await listActiveCoinPackages(app.pg) }));
+  app.get('/bank/receipt-email', { preHandler: app.authenticate }, async (req) => {
+    const payment = (
+      await app.pg.query<{ receipt_email: string }>(
+        `select receipt_email
+           from payments
+          where user_id = $1 and receipt_email is not null
+          order by created_at desc, id desc
+          limit 1`,
+        [req.user.id],
+      )
+    ).rows[0];
+    return { receiptEmail: payment?.receipt_email ?? null };
+  });
   app.get('/bank/payments/:id', { preHandler: app.authenticate }, async (req) => {
     const { id } = paymentParams.parse(req.params);
     const payment = (
@@ -66,6 +83,8 @@ export const coinPackageRoutes: FastifyPluginAsync<CoinPackageRoutesOptions> = a
       req.user.id,
       body.packageId,
       body.attemptId,
+      body.receiptEmail,
+      (diagnostic) => req.log.warn(diagnostic, 'YooKassa payment creation failed'),
     );
   });
 };

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
-import { createYooKassaClient } from '../../src/payments/yookassaClient.js';
+import { createYooKassaClient, YooKassaRequestError } from '../../src/payments/yookassaClient.js';
 
 const localPaymentId = 'e23f5304-0908-4bbc-8c97-4874fcf39187';
 
@@ -75,7 +75,12 @@ describe('YooKassa client', () => {
 
     await expect(
       client.createPayment(
-        { amountRub: 299, description: 'Малый запас', localPaymentId },
+        {
+          amountRub: 299,
+          description: 'Малый запас',
+          localPaymentId,
+          receiptEmail: 'buyer@example.com',
+        },
         'attempt-id',
       ),
     ).resolves.toMatchObject({
@@ -104,6 +109,19 @@ describe('YooKassa client', () => {
       },
       description: 'Малый запас',
       metadata: { local_payment_id: localPaymentId },
+      receipt: {
+        customer: { email: 'buyer@example.com' },
+        items: [
+          {
+            description: 'Малый запас',
+            quantity: '1.00',
+            amount: { value: '299.00', currency: 'RUB' },
+            vat_code: 1,
+            payment_mode: 'full_payment',
+            payment_subject: 'service',
+          },
+        ],
+      },
     });
   });
 
@@ -140,5 +158,36 @@ describe('YooKassa client', () => {
     await expect(client.getPayment('provider-payment-id')).rejects.not.toThrow(
       'secret provider diagnostic',
     );
+  });
+
+  it('keeps only safe YooKassa diagnostics on provider failures', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            type: 'error',
+            id: 'request-id-that-must-not-be-retained',
+            code: 'invalid_request',
+            description: 'Receipt data is required',
+            parameter: 'receipt',
+            secret: 'must-not-leak',
+          }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        ),
+    ) as unknown as typeof fetch;
+    const client = buildClient(fetchMock);
+
+    const error = await client.getPayment('provider-payment-id').catch((value) => value);
+
+    expect(error).toBeInstanceOf(YooKassaRequestError);
+    expect(error).toMatchObject({
+      message: 'yookassa_request_failed',
+      status: 400,
+      providerCode: 'invalid_request',
+      providerDescription: 'Receipt data is required',
+      providerParameter: 'receipt',
+    });
+    expect(JSON.stringify(error)).not.toContain('must-not-leak');
+    expect(JSON.stringify(error)).not.toContain('request-id-that-must-not-be-retained');
   });
 });

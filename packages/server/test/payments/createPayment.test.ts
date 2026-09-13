@@ -9,7 +9,7 @@ import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { createPool } from '../../src/db/pool.js';
 import { createCoinPayment } from '../../src/payments/service.js';
-import { createYooKassaClient } from '../../src/payments/yookassaClient.js';
+import { createYooKassaClient, YooKassaRequestError } from '../../src/payments/yookassaClient.js';
 import type {
   CreateYooKassaPaymentInput,
   YooKassaPayment,
@@ -122,14 +122,14 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
       method: 'POST',
       url: '/bank/payments',
       headers: { authorization: auth },
-      payload: { packageId, attemptId, ...body },
+      payload: { packageId, attemptId, receiptEmail: 'buyer@example.com', ...body },
     });
 
   it('requires an authenticated existing user', async () => {
     const response = await app.inject({
       method: 'POST',
       url: '/bank/payments',
-      payload: { packageId, attemptId: randomUUID() },
+      payload: { packageId, attemptId: randomUUID(), receiptEmail: 'buyer@example.com' },
     });
     expect(response.statusCode).toBe(401);
     expect(createPayment).not.toHaveBeenCalled();
@@ -144,7 +144,12 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
       confirmationUrl: 'https://yookassa.ru/checkout/test',
     });
     expect(createPayment).toHaveBeenCalledWith(
-      { amountRub: 699, description: 'Игровой запас', localPaymentId: response.json().paymentId },
+      {
+        amountRub: 699,
+        description: 'Игровой запас',
+        localPaymentId: response.json().paymentId,
+        receiptEmail: 'buyer@example.com',
+      },
       response.json().paymentId,
     );
     await app.pg.query('update coin_packages set price_rub = 1, coin_amount = 2 where id = $1', [
@@ -171,6 +176,115 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
     expect((await submit(randomUUID(), { amountRub: 1, coinAmount: 999999 })).statusCode).toBe(400);
     expect((await submit('invalid')).statusCode).toBe(400);
     expect(createPayment).not.toHaveBeenCalled();
+  });
+
+  it.each(['', 'not-an-email', 'buyer@', `${'a'.repeat(245)}@example.com`])(
+    'rejects invalid receipt email %j before inserting an attempt',
+    async (receiptEmail) => {
+      const response = await submit(randomUUID(), { receiptEmail });
+
+      expect(response.statusCode).toBe(400);
+      expect((await app.pg.query('select id from payments')).rowCount).toBe(0);
+      expect(createPayment).not.toHaveBeenCalled();
+    },
+  );
+
+  it('normalizes receipt email before sending it to YooKassa', async () => {
+    const response = await submit(randomUUID(), { receiptEmail: '  Buyer@Example.COM  ' });
+
+    expect(response.statusCode).toBe(200);
+    expect(createPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ receiptEmail: 'buyer@example.com' }),
+      expect.any(String),
+    );
+  });
+
+  it('returns only the current user latest receipt email for the next payment', async () => {
+    await app.pg.query(
+      `insert into payments (user_id, title, amount_rub, status, receipt_email, created_at)
+       values ($1, 'Older', 149, 'paid', 'older@example.com', now() - interval '2 minutes'),
+              ($1, 'Latest', 299, 'pending', 'latest@example.com', now() - interval '1 minute'),
+              ($2, 'Other user', 699, 'paid', 'other@example.com', now())`,
+      [userId, secondUserId],
+    );
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/bank/receipt-email',
+      headers: { authorization },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ receiptEmail: 'latest@example.com' });
+  });
+
+  it('rejects a different receipt email when retrying the same provider request', async () => {
+    createPayment.mockRejectedValueOnce(new Error('provider unavailable'));
+    const attemptId = randomUUID();
+
+    expect((await submit(attemptId, { receiptEmail: 'first@example.com' })).statusCode).toBe(502);
+    const retry = await submit(attemptId, { receiptEmail: 'other@example.com' });
+
+    expect(retry.statusCode).toBe(409);
+    expect(retry.json().error.code).toBe('payment_attempt_conflict');
+    expect(createPayment).toHaveBeenCalledTimes(1);
+    expect(
+      (
+        await app.pg.query('select receipt_email from payments where purchase_attempt_id = $1', [
+          attemptId,
+        ])
+      ).rows,
+    ).toEqual([{ receipt_email: 'first@example.com' }]);
+  });
+
+  it('rejects a different receipt email after the provider payment is attached', async () => {
+    const attemptId = randomUUID();
+
+    expect((await submit(attemptId, { receiptEmail: 'first@example.com' })).statusCode).toBe(200);
+    const retry = await submit(attemptId, { receiptEmail: 'other@example.com' });
+
+    expect(retry.statusCode).toBe(409);
+    expect(retry.json().error.code).toBe('payment_attempt_conflict');
+    expect(createPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not include provider free text in creation diagnostics', async () => {
+    const diagnostics: Array<Record<string, unknown>> = [];
+    const provider = {
+      createPayment: vi.fn(async () => {
+        throw new YooKassaRequestError({
+          status: 400,
+          providerCode: 'invalid_request',
+          providerDescription: 'Invalid email reflected@example.com secret-body',
+          providerParameter: 'receipt.customer.email',
+        });
+      }),
+    };
+    const pool = createPool(getTestUrls().databaseUrl);
+    try {
+      await expect(
+        createCoinPayment(
+          pool,
+          provider,
+          userId,
+          packageId,
+          randomUUID(),
+          'buyer@example.com',
+          (diagnostic) => diagnostics.push(diagnostic),
+        ),
+      ).rejects.toMatchObject({ code: 'payment_provider_unavailable' });
+    } finally {
+      await pool.end();
+    }
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({
+      providerStatus: 400,
+      providerCode: 'invalid_request',
+      providerParameter: 'receipt.customer.email',
+    });
+    expect(JSON.stringify(diagnostics)).not.toContain('reflected@example.com');
+    expect(JSON.stringify(diagnostics)).not.toContain('secret-body');
   });
 
   it('rejects inactive and missing packages before inserting an attempt', async () => {
@@ -413,9 +527,14 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
       },
     });
     const attemptId = randomUUID();
-    const first = createCoinPayment(pool, provider, userId, packageId, attemptId).catch(
-      (error) => error as Error,
-    );
+    const first = createCoinPayment(
+      pool,
+      provider,
+      userId,
+      packageId,
+      attemptId,
+      'buyer@example.com',
+    ).catch((error) => error as Error);
     try {
       await delay(200);
       expect(attempts[0]?.signal?.aborted).toBe(true);
@@ -432,7 +551,14 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
         { id: expect.any(String), provider_payment_id: null, advisory_locks: 0 },
       ]);
       const paymentId = state.rows[0].id;
-      const retried = await createCoinPayment(pool, provider, userId, packageId, attemptId);
+      const retried = await createCoinPayment(
+        pool,
+        provider,
+        userId,
+        packageId,
+        attemptId,
+        'buyer@example.com',
+      );
       expect(retried).toEqual({
         paymentId,
         status: 'pending',
@@ -524,7 +650,7 @@ describe.skipIf(!hasIntegrationEnv)('coin payment creation', () => {
       method: 'POST',
       url: '/bank/payments',
       headers: { authorization },
-      payload: { packageId, attemptId: randomUUID() },
+      payload: { packageId, attemptId: randomUUID(), receiptEmail: 'buyer@example.com' },
     });
     expect(response.statusCode).toBe(503);
     expect((await app.pg.query('select id from payments')).rowCount).toBe(0);
