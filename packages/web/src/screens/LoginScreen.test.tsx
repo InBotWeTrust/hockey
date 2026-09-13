@@ -75,8 +75,14 @@ describe('LoginScreen', () => {
     expect(screen.getByRole('button', { name: /войти как dev/i })).toHaveClass(
       'login-screen__auth-button',
     );
-    expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute('href', '/terms');
-    expect(screen.getByRole('link', { name: 'Политика конфиденциальности' })).toHaveAttribute('href', '/privacy');
+    expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute(
+      'href',
+      '/terms',
+    );
+    expect(screen.getByRole('link', { name: 'Политика конфиденциальности' })).toHaveAttribute(
+      'href',
+      '/privacy',
+    );
     expect(
       screen.getByRole('link', { name: /согласие на обработку персональных данных/i }),
     ).toHaveAttribute('href', '/personal-data-consent');
@@ -100,6 +106,34 @@ describe('LoginScreen', () => {
     expect(designSystemCss).toMatch(
       /\.login-screen__auth-button--vk \.login-screen__auth-icon\s*{[^}]*transform:\s*translateX\(-4px\);/s,
     );
+  });
+
+  it('opens provider authentication outside the Android WebView', async () => {
+    const open = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('__HOCKEY_NATIVE__', { platform: 'android' });
+    vi.stubGlobal('Capacitor', {
+      getPlatform: () => 'android',
+      Plugins: {
+        SecureSession: { save: vi.fn().mockResolvedValue(undefined) },
+        Browser: { open, close: vi.fn() },
+      },
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ attemptId: 'native-attempt', expiresAt: 'soon' }), {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    renderWith();
+    fireEvent.click(screen.getByRole('button', { name: /войти через telegram/i }));
+
+    await waitFor(() =>
+      expect(open).toHaveBeenCalledWith({
+        url: 'https://ultimatehockey.ru/mobile-auth/telegram?attempt=native-attempt',
+      }),
+    );
+    expect(screen.queryByTestId('telegram-login-container')).toBeNull();
   });
 
   it('keeps the brand compact so benefit pills stay above the rink safety net', () => {

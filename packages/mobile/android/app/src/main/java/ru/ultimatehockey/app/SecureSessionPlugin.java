@@ -24,10 +24,18 @@ public final class SecureSessionPlugin extends Plugin {
     private static final String KEY_ALIAS = "ultimate_hockey_session_v1";
     private static final String PREFS_NAME = "ultimate_hockey_secure_session";
     private static final String PREF_VALUE = "encrypted_session";
+    private static final String PREF_PENDING_AUTH = "encrypted_pending_auth";
     private static final int IV_BYTES = 12;
 
     private SharedPreferences preferences() {
         return getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    }
+
+    private String preferenceKey(PluginCall call) {
+        String slot = call.getString("slot");
+        if (slot == null || slot.equals("session")) return PREF_VALUE;
+        if (slot.equals("pendingAuth")) return PREF_PENDING_AUTH;
+        throw new IllegalArgumentException("Unknown secure storage slot");
     }
 
     private SecretKey getOrCreateKey() throws Exception {
@@ -55,6 +63,7 @@ public final class SecureSessionPlugin extends Plugin {
             return;
         }
         try {
+            String preferenceKey = preferenceKey(call);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey());
             byte[] encrypted = cipher.doFinal(value.getBytes(StandardCharsets.UTF_8));
@@ -62,7 +71,7 @@ public final class SecureSessionPlugin extends Plugin {
             if (iv.length != IV_BYTES) throw new IllegalStateException("Unexpected GCM IV length");
             String stored = Base64.encodeToString(iv, Base64.NO_WRAP) + "." +
                     Base64.encodeToString(encrypted, Base64.NO_WRAP);
-            preferences().edit().putString(PREF_VALUE, stored).apply();
+            preferences().edit().putString(preferenceKey, stored).apply();
             call.resolve();
         } catch (Exception error) {
             call.reject("Unable to protect session", error);
@@ -71,13 +80,14 @@ public final class SecureSessionPlugin extends Plugin {
 
     @PluginMethod
     public void load(PluginCall call) {
-        String stored = preferences().getString(PREF_VALUE, null);
         JSObject result = new JSObject();
-        if (stored == null) {
-            call.resolve(result);
-            return;
-        }
         try {
+            String preferenceKey = preferenceKey(call);
+            String stored = preferences().getString(preferenceKey, null);
+            if (stored == null) {
+                call.resolve(result);
+                return;
+            }
             String[] parts = stored.split("\\.", 2);
             if (parts.length != 2) throw new IllegalArgumentException("Invalid encrypted session");
             byte[] iv = Base64.decode(parts[0], Base64.NO_WRAP);
@@ -87,14 +97,20 @@ public final class SecureSessionPlugin extends Plugin {
             result.put("value", new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8));
             call.resolve(result);
         } catch (Exception error) {
-            preferences().edit().remove(PREF_VALUE).apply();
+            String slot = call.getString("slot");
+            String key = "pendingAuth".equals(slot) ? PREF_PENDING_AUTH : PREF_VALUE;
+            preferences().edit().remove(key).apply();
             call.resolve(new JSObject());
         }
     }
 
     @PluginMethod
     public void clear(PluginCall call) {
-        preferences().edit().remove(PREF_VALUE).apply();
-        call.resolve();
+        try {
+            preferences().edit().remove(preferenceKey(call)).apply();
+            call.resolve();
+        } catch (Exception error) {
+            call.reject("Unable to clear protected session", error);
+        }
     }
 }
