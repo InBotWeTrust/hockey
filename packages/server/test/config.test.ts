@@ -69,6 +69,50 @@ describe('loadConfig', () => {
     );
   });
 
+  it('requires FCM credentials as a complete group and normalizes private-key newlines', () => {
+    expect(loadConfig({ ...base, FCM_PROJECT_ID: '' }).FCM_PROJECT_ID).toBeUndefined();
+    expect(() =>
+      loadConfig({
+        ...base,
+        FCM_PROJECT_ID: 'ultimate-hockey',
+        FCM_CLIENT_EMAIL: 'sender@example.test',
+      }),
+    ).toThrow();
+
+    expect(
+      loadConfig({
+        ...base,
+        FCM_PROJECT_ID: 'ultimate-hockey',
+        FCM_CLIENT_EMAIL: 'sender@example.test',
+        FCM_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nsecret\\n-----END PRIVATE KEY-----\\n',
+      }),
+    ).toMatchObject({
+      FCM_PROJECT_ID: 'ultimate-hockey',
+      FCM_CLIENT_EMAIL: 'sender@example.test',
+      FCM_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----\n',
+    });
+  });
+
+  it('requires valid Android release path and public keys together', () => {
+    expect(() =>
+      loadConfig({ ...base, ANDROID_RELEASE_MANIFEST_PATH: '/tmp/release.json' }),
+    ).toThrow();
+    expect(() =>
+      loadConfig({
+        ...base,
+        ANDROID_RELEASE_MANIFEST_PATH: '/tmp/release.json',
+        ANDROID_MANIFEST_PUBLIC_KEYS_JSON: 'not-json',
+      }),
+    ).toThrow();
+    expect(
+      loadConfig({
+        ...base,
+        ANDROID_RELEASE_MANIFEST_PATH: '/tmp/release.json',
+        ANDROID_MANIFEST_PUBLIC_KEYS_JSON: JSON.stringify({ key1: 'public-pem' }),
+      }).ANDROID_RELEASE_MANIFEST_PATH,
+    ).toBe('/tmp/release.json');
+  });
+
   it('requires object storage config as a complete group', () => {
     expect(
       loadConfig({ ...base, OBJECT_STORAGE_ENDPOINT: '' }).OBJECT_STORAGE_ENDPOINT,

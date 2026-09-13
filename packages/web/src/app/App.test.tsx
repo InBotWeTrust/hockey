@@ -83,6 +83,11 @@ function renderAt(path: string): void {
 
 describe('App routing + auth', () => {
   beforeEach(() => {
+    Object.defineProperty(globalThis, '__HOCKEY_NATIVE__', {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
     queryClient.clear();
     localStorage.clear();
     window.history.replaceState({}, '', '/');
@@ -103,6 +108,19 @@ describe('App routing + auth', () => {
       receivedAtPerformanceMs: null,
     });
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
+  });
+
+  it('does not mount the browser service-worker update prompt inside Android', () => {
+    Object.defineProperty(globalThis, '__HOCKEY_NATIVE__', {
+      configurable: true,
+      value: { platform: 'android' },
+      writable: true,
+    });
+    window.history.replaceState({}, '', '/login');
+
+    render(<App />);
+
+    expect(screen.queryByTestId('update-prompt')).not.toBeInTheDocument();
   });
 
   it('gates a direct authenticated URL and hides routed content and app chrome', async () => {
@@ -226,7 +244,9 @@ describe('App routing + auth', () => {
       await screen.findByRole('heading', { name: 'Пользовательское соглашение' }),
     ).toBeInTheDocument();
     expect(screen.getByText(/ОГРНИП 323100000016441/)).toBeInTheDocument();
-    expect(screen.queryByRole('navigation', { name: 'Основная навигация' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('navigation', { name: 'Основная навигация' }),
+    ).not.toBeInTheDocument();
   });
 
   it('keeps /prices free of bottom navigation for an authenticated visitor', async () => {

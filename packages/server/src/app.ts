@@ -8,6 +8,7 @@ import { authPlugin } from './plugins/auth.js';
 import { lastSeenPlugin } from './plugins/lastSeen.js';
 import { realtimePlugin } from './plugins/realtime.js';
 import { authRoutes } from './routes/auth.js';
+import { mobileAuthRoutes } from './routes/mobileAuth.js';
 import { achievementRoutes } from './achievements/routes.js';
 import { feedbackRoutes } from './routes/feedback.js';
 import { inventoryRoutes } from './routes/inventory.js';
@@ -33,6 +34,8 @@ import { tournamentWs } from './tournament/ws.js';
 import { validateOfficialAccount } from './chat/officialAccount.js';
 import { coinPackageRoutes } from './payments/routes.js';
 import { createYooKassaClient, type YooKassaClient } from './payments/yookassaClient.js';
+import { nativeCorsPlugin } from './plugins/nativeCors.js';
+import { mobileReleaseRoutes } from './mobileRelease/routes.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -49,9 +52,13 @@ export async function buildApp(options: BuildAppOptions = {}) {
     config.NODE_ENV === 'development'
       ? {
           level: config.LOG_LEVEL,
+          redact: { paths: ['req.body.token'], censor: '[REDACTED]' },
           transport: { target: 'pino-pretty', options: { colorize: true } },
         }
-      : { level: config.LOG_LEVEL };
+      : {
+          level: config.LOG_LEVEL,
+          redact: { paths: ['req.body.token'], censor: '[REDACTED]' },
+        };
 
   const app = Fastify({ logger: loggerOptions });
   const pushVapidOptions = {
@@ -63,6 +70,16 @@ export async function buildApp(options: BuildAppOptions = {}) {
       : {}),
     ...(config.PUSH_VAPID_SUBJECT !== undefined ? { subject: config.PUSH_VAPID_SUBJECT } : {}),
   };
+  const fcmOptions =
+    config.FCM_PROJECT_ID !== undefined &&
+    config.FCM_CLIENT_EMAIL !== undefined &&
+    config.FCM_PRIVATE_KEY !== undefined
+      ? {
+          projectId: config.FCM_PROJECT_ID,
+          clientEmail: config.FCM_CLIENT_EMAIL,
+          privateKey: config.FCM_PRIVATE_KEY,
+        }
+      : undefined;
   const objectStorage =
     config.OBJECT_STORAGE_ENDPOINT !== undefined &&
     config.OBJECT_STORAGE_REGION !== undefined &&
@@ -84,6 +101,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
         })
       : undefined;
 
+  await app.register(nativeCorsPlugin);
   await app.register(errorsPlugin);
   await app.register(dbPlugin, { connectionString: config.DATABASE_URL });
   if (config.SYSTEM_USER_ID !== undefined) {
@@ -103,6 +121,14 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(authPlugin, { accessSecret: config.JWT_SECRET });
   await app.register(lastSeenPlugin);
   await app.register(healthRoutes);
+  await app.register(mobileReleaseRoutes, {
+    manifestPath:
+      config.ANDROID_RELEASE_MANIFEST_PATH ?? '/var/lib/ultimate-hockey/android-release.json',
+    publicKeys:
+      config.ANDROID_MANIFEST_PUBLIC_KEYS_JSON === undefined
+        ? {}
+        : (JSON.parse(config.ANDROID_MANIFEST_PUBLIC_KEYS_JSON) as Record<string, string>),
+  });
   const yookassaClient =
     options.yookassaClient ??
     (config.YOOKASSA_SHOP_ID !== undefined &&
@@ -131,6 +157,21 @@ export async function buildApp(options: BuildAppOptions = {}) {
     refreshSecret: config.REFRESH_SECRET,
     devLoginEnabled: config.NODE_ENV !== 'production',
     devAccessCodeLoginEnabled: config.DEV_ACCESS_CODE_LOGIN_ENABLED === true,
+  });
+  await app.register(mobileAuthRoutes, {
+    accessSecret: config.JWT_SECRET,
+    refreshSecret: config.REFRESH_SECRET,
+    telegramBotToken: config.TELEGRAM_BOT_TOKEN,
+    ...(config.VK_APP_ID === undefined ? {} : { vkAppId: config.VK_APP_ID }),
+    ...(config.ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS === undefined
+      ? {}
+      : {
+          accountRecoveryTelegramProviderUids: config.ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS.split(
+            ',',
+          )
+            .map((uid) => uid.trim())
+            .filter((uid) => uid.length > 0),
+        }),
   });
   await app.register(onboardingRoutes, {
     tutorialSeedSecret: config.DAILY_SEED_SECRET,
@@ -203,6 +244,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   );
   await app.register(pushSchedulerPlugin, {
     ...pushVapidOptions,
+    ...(fcmOptions === undefined ? {} : { fcm: fcmOptions }),
     scheduleEnabled:
       options.pushSchedulerEnabled ??
       config.PUSH_SCHEDULER_ENABLED ??

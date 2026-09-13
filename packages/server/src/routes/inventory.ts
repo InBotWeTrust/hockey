@@ -589,7 +589,7 @@ async function fetchTransactionHistory(
               0::numeric,
               0::numeric
          from payments
-        where user_id = $1
+        where user_id = $1 and status in ('paid', 'refunded')
      )
      select id, source, created_at, reason, available_delta, metadata, title,
             amount_rub, status, paid_at
@@ -840,14 +840,7 @@ async function useRecoveryKit(
        (user_id, shot_session_id, inventory_item_id, inventory_instance_id,
         recovery_minutes, idempotency_key)
      values ($1, $2, $3, $4, $5, $6)`,
-    [
-      userId,
-      recovery.shotSessionId,
-      item.id,
-      instanceId,
-      appliedMinutes,
-      input.idempotencyKey,
-    ],
+    [userId, recovery.shotSessionId, item.id, instanceId, appliedMinutes, input.idempotencyKey],
   );
   await syncLegacyInventoryAggregate(client, userId, item.id);
 
@@ -892,7 +885,8 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/inventory/transactions', { preHandler: [app.authenticate] }, async (req) => {
     const parsed = transactionHistoryQuerySchema.safeParse(req.query);
-    if (!parsed.success) throw new AppError('bad_request', 'invalid transaction history query', 400);
+    if (!parsed.success)
+      throw new AppError('bad_request', 'invalid transaction history query', 400);
     return fetchTransactionHistory(
       app.pg,
       req.user.id,

@@ -22,6 +22,7 @@ const objectStorageKeys = [
 ] as const;
 
 const yookassaKeys = ['YOOKASSA_SHOP_ID', 'YOOKASSA_SECRET_KEY', 'YOOKASSA_RETURN_URL'] as const;
+const fcmKeys = ['FCM_PROJECT_ID', 'FCM_CLIENT_EMAIL', 'FCM_PRIVATE_KEY'] as const;
 
 const schema = z
   .object({
@@ -42,6 +43,19 @@ const schema = z
     PUSH_VAPID_PUBLIC_KEY: optionalNonEmptyString,
     PUSH_VAPID_PRIVATE_KEY: optionalNonEmptyString,
     PUSH_VAPID_SUBJECT: optionalNonEmptyString,
+    FCM_PROJECT_ID: optionalNonEmptyString,
+    FCM_CLIENT_EMAIL: optionalNonEmptyString,
+    FCM_PRIVATE_KEY: z.preprocess(
+      (value) =>
+        value === '' || value === undefined
+          ? undefined
+          : typeof value === 'string'
+            ? value.replace(/\\n/g, '\n')
+            : value,
+      z.string().min(1).optional(),
+    ),
+    ANDROID_RELEASE_MANIFEST_PATH: optionalNonEmptyString,
+    ANDROID_MANIFEST_PUBLIC_KEYS_JSON: optionalNonEmptyString,
     PUSH_SCHEDULER_ENABLED: optionalBoolean,
     PUSH_WORKER_ENABLED: optionalBoolean,
     PUSH_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(25).default(5),
@@ -63,6 +77,50 @@ const schema = z
     YOOKASSA_RETURN_URL: optionalNonEmptyString,
   })
   .superRefine((value, ctx) => {
+    const releaseValues = [
+      value.ANDROID_RELEASE_MANIFEST_PATH,
+      value.ANDROID_MANIFEST_PUBLIC_KEYS_JSON,
+    ];
+    if (
+      releaseValues.some((item) => item !== undefined) &&
+      releaseValues.some((item) => item === undefined)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ANDROID_RELEASE_MANIFEST_PATH'],
+        message: 'Android release config is incomplete',
+      });
+    }
+    if (value.ANDROID_MANIFEST_PUBLIC_KEYS_JSON !== undefined) {
+      try {
+        const parsed = JSON.parse(value.ANDROID_MANIFEST_PUBLIC_KEYS_JSON) as unknown;
+        if (
+          parsed === null ||
+          typeof parsed !== 'object' ||
+          Array.isArray(parsed) ||
+          Object.values(parsed).some((item) => typeof item !== 'string' || item.length === 0)
+        )
+          throw new Error();
+      } catch {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ANDROID_MANIFEST_PUBLIC_KEYS_JSON'],
+          message: 'invalid Android manifest public keys',
+        });
+      }
+    }
+    const configuredFcmKeys = fcmKeys.filter((key) => value[key] !== undefined);
+    if (configuredFcmKeys.length > 0 && configuredFcmKeys.length < fcmKeys.length) {
+      for (const key of fcmKeys) {
+        if (value[key] !== undefined) continue;
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: 'FCM config is incomplete',
+        });
+      }
+    }
+
     const configuredKeys = objectStorageKeys.filter((key) => value[key] !== undefined);
     if (configuredKeys.length > 0 && configuredKeys.length < objectStorageKeys.length) {
       for (const key of objectStorageKeys) {

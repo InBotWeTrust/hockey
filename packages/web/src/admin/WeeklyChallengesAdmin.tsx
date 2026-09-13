@@ -71,6 +71,7 @@ export function WeeklyChallengesAdmin(): JSX.Element {
   const query = useQuery({ queryKey, queryFn: fetchAdminWeeklyChallenges });
   const updateDashboard = (data: AdminWeeklyChallengeDashboard): void => {
     queryClient.setQueryData(queryKey, data);
+    void queryClient.invalidateQueries({ queryKey: ['weekly-challenge', 'catalog'] });
   };
   const settings = useMutation({
     mutationFn: updateAdminWeeklyChallengeSettings,

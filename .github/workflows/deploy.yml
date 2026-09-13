@@ -21,6 +21,7 @@ env:
   APP_DOMAIN: ultimatehockey.ru
   LEGACY_APP_DOMAIN: hockey.inbotwetrust.ru
   WWW_APP_DOMAIN: www.ultimatehockey.ru
+  DEV_APP_DOMAIN: dev.hockey.inbotwetrust.ru
   HEALTH_URL: https://ultimatehockey.ru/api/health
   LEGACY_URL: https://hockey.inbotwetrust.ru
 
@@ -123,6 +124,7 @@ jobs:
           APP_DOMAIN: ${{ env.APP_DOMAIN }}
           LEGACY_APP_DOMAIN: ${{ env.LEGACY_APP_DOMAIN }}
           WWW_APP_DOMAIN: ${{ env.WWW_APP_DOMAIN }}
+          DEV_APP_DOMAIN: ${{ env.DEV_APP_DOMAIN }}
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -131,6 +133,9 @@ jobs:
           PUSH_VAPID_PUBLIC_KEY: ${{ secrets.PUSH_VAPID_PUBLIC_KEY }}
           PUSH_VAPID_PRIVATE_KEY: ${{ secrets.PUSH_VAPID_PRIVATE_KEY }}
           PUSH_VAPID_SUBJECT: ${{ vars.PUSH_VAPID_SUBJECT || 'mailto:push@ultimatehockey.ru' }}
+          FCM_PROJECT_ID: ${{ secrets.FCM_PROJECT_ID }}
+          FCM_CLIENT_EMAIL: ${{ secrets.FCM_CLIENT_EMAIL }}
+          FCM_PRIVATE_KEY: ${{ secrets.FCM_PRIVATE_KEY }}
           OBJECT_STORAGE_ENDPOINT: ${{ secrets.OBJECT_STORAGE_ENDPOINT }}
           OBJECT_STORAGE_REGION: ${{ secrets.OBJECT_STORAGE_REGION }}
           OBJECT_STORAGE_BUCKET: ${{ secrets.OBJECT_STORAGE_BUCKET }}
@@ -142,7 +147,10 @@ jobs:
           PRODUCTION_YOOKASSA_SHOP_ID: ${{ secrets.PRODUCTION_YOOKASSA_SHOP_ID }}
           PRODUCTION_YOOKASSA_SECRET_KEY: ${{ secrets.PRODUCTION_YOOKASSA_SECRET_KEY }}
           GRANT_EXISTING_INVENTORY: ${{ github.event_name == 'workflow_dispatch' && inputs.grant_existing_inventory || 'false' }}
+          ANDROID_MANIFEST_PUBLIC_KEYS_JSON: ${{ vars.ANDROID_MANIFEST_PUBLIC_KEYS_JSON }}
         run: |
+          FCM_PRIVATE_KEY_BASE64="$(printf '%s' "$FCM_PRIVATE_KEY" | base64 | tr -d '\r\n')"
+          ANDROID_MANIFEST_PUBLIC_KEYS_BASE64="$(printf '%s' "$ANDROID_MANIFEST_PUBLIC_KEYS_JSON" | base64 | tr -d '\r\n')"
           PRODUCTION_YOOKASSA_SHOP_ID_B64="$(printf '%s' "$PRODUCTION_YOOKASSA_SHOP_ID" | base64 | tr -d '\r\n')"
           PRODUCTION_YOOKASSA_SECRET_KEY_B64="$(printf '%s' "$PRODUCTION_YOOKASSA_SECRET_KEY" | base64 | tr -d '\r\n')"
           unset PRODUCTION_YOOKASSA_SHOP_ID PRODUCTION_YOOKASSA_SECRET_KEY
@@ -154,11 +162,15 @@ jobs:
             APP_DOMAIN="$APP_DOMAIN" \
             LEGACY_APP_DOMAIN="$LEGACY_APP_DOMAIN" \
             WWW_APP_DOMAIN="$WWW_APP_DOMAIN" \
+            DEV_APP_DOMAIN="$DEV_APP_DOMAIN" \
             SYSTEM_USER_ID="$SYSTEM_USER_ID" \
             SYSTEM_CHAT_NAME="$SYSTEM_CHAT_NAME" \
             PUSH_VAPID_PUBLIC_KEY="$PUSH_VAPID_PUBLIC_KEY" \
             PUSH_VAPID_PRIVATE_KEY="$PUSH_VAPID_PRIVATE_KEY" \
             PUSH_VAPID_SUBJECT="$PUSH_VAPID_SUBJECT" \
+            FCM_PROJECT_ID="$FCM_PROJECT_ID" \
+            FCM_CLIENT_EMAIL="$FCM_CLIENT_EMAIL" \
+            FCM_PRIVATE_KEY_BASE64="$FCM_PRIVATE_KEY_BASE64" \
             OBJECT_STORAGE_ENDPOINT="$OBJECT_STORAGE_ENDPOINT" \
             OBJECT_STORAGE_REGION="$OBJECT_STORAGE_REGION" \
             OBJECT_STORAGE_BUCKET="$OBJECT_STORAGE_BUCKET" \
@@ -170,9 +182,12 @@ jobs:
             PRODUCTION_YOOKASSA_SHOP_ID_B64="$PRODUCTION_YOOKASSA_SHOP_ID_B64" \
             PRODUCTION_YOOKASSA_SECRET_KEY_B64="$PRODUCTION_YOOKASSA_SECRET_KEY_B64" \
             GRANT_EXISTING_INVENTORY="$GRANT_EXISTING_INVENTORY" \
+            ANDROID_MANIFEST_PUBLIC_KEYS_BASE64="$ANDROID_MANIFEST_PUBLIC_KEYS_BASE64" \
             bash -s <<'ENDSSH'
           set -euo pipefail
           cd "$REMOTE_PATH"
+          FCM_PRIVATE_KEY="$(printf '%s' "${FCM_PRIVATE_KEY_BASE64:-}" | base64 --decode)"
+          ANDROID_MANIFEST_PUBLIC_KEYS_JSON="$(printf '%s' "${ANDROID_MANIFEST_PUBLIC_KEYS_BASE64:-}" | base64 --decode)"
           decode_production_yookassa_value() {
             local encoded="$1"
             local decoded
@@ -210,6 +225,18 @@ jobs:
           else
             PRODUCTION_YOOKASSA_RETURN_URL='https://ultimatehockey.ru/inventory?tab=bank&payment=return'
           fi
+          for name in FCM_PROJECT_ID FCM_CLIENT_EMAIL FCM_PRIVATE_KEY; do
+            if [ -z "${!name:-}" ]; then
+              echo "$name GitHub secret is required for Android push notifications"
+              exit 1
+            fi
+          done
+          [ -n "$ANDROID_MANIFEST_PUBLIC_KEYS_JSON" ] || {
+            echo 'ANDROID_MANIFEST_PUBLIC_KEYS_JSON GitHub variable is required for Android releases'
+            exit 1
+          }
+          install -d -m 0755 "$REMOTE_PATH/android-releases"
+          install -d -m 0700 "$REMOTE_PATH/android-release-staging"
           if [ -z "${PUSH_VAPID_PUBLIC_KEY:-}" ] || [ -z "${PUSH_VAPID_PRIVATE_KEY:-}" ]; then
             echo "PUSH_VAPID_PUBLIC_KEY and PUSH_VAPID_PRIVATE_KEY GitHub secrets are required for production push notifications"
             exit 1
@@ -242,8 +269,9 @@ jobs:
           }
 
           docker_login_ghcr
-          export APP_DOMAIN LEGACY_APP_DOMAIN WWW_APP_DOMAIN
+          export APP_DOMAIN LEGACY_APP_DOMAIN WWW_APP_DOMAIN DEV_APP_DOMAIN
           export IMAGE_TAG PUSH_VAPID_PUBLIC_KEY PUSH_VAPID_PRIVATE_KEY PUSH_VAPID_SUBJECT
+          export FCM_PROJECT_ID FCM_CLIENT_EMAIL FCM_PRIVATE_KEY
           export OBJECT_STORAGE_ENDPOINT OBJECT_STORAGE_REGION OBJECT_STORAGE_BUCKET
           export OBJECT_STORAGE_TENANT_ID OBJECT_STORAGE_ACCESS_KEY_ID
           export OBJECT_STORAGE_SECRET_ACCESS_KEY OBJECT_STORAGE_PUBLIC_BASE_URL
@@ -252,6 +280,9 @@ jobs:
           export PRODUCTION_YOOKASSA_SHOP_ID PRODUCTION_YOOKASSA_SECRET_KEY
           export PRODUCTION_YOOKASSA_RETURN_URL
           export DEV_ACCESS_CODE_LOGIN_ENABLED=true
+          export ANDROID_RELEASES_DIR="$REMOTE_PATH/android-releases"
+          export ANDROID_RELEASE_MANIFEST_PATH=/app/android-releases/current.json
+          export ANDROID_MANIFEST_PUBLIC_KEYS_JSON
           # Same flap can drop `compose pull` mid-transfer; retry a few times.
           for i in 1 2 3; do
             # Re-login before each pull attempt: after a partial failed pull,

@@ -15,6 +15,10 @@ import {
 import { getTelegramMiniApp } from '../auth/telegramMiniApp.js';
 import { OFFICIAL_ACCOUNT_AVATAR_URL } from '../chat/chatAvatar.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { AndroidAppCard } from '../components/AndroidAppCard.js';
+import { AdminAndroidReleaseOnly } from '../components/AdminAndroidReleaseOnly.js';
+import { isNativeAndroid } from '../platform/runtime.js';
+import { nativePush } from '../platform/push.js';
 
 type PushStatus =
   | 'idle'
@@ -547,6 +551,7 @@ function OfficialMessageModal({ onClose }: { onClose: () => void }): JSX.Element
 export function ProfileSupportSections({ profileReady }: { profileReady: boolean }): JSX.Element {
   const queryClient = useQueryClient();
   const isTelegramMiniApp = getTelegramMiniApp() !== null;
+  const nativeAndroid = isNativeAndroid();
   const [pushStatus, setPushStatus] = useState<PushStatus>('idle');
   const [pushMessage, setPushMessage] = useState('');
   const [pendingPreference, setPendingPreference] = useState<PushPreferenceKey | null>(null);
@@ -557,7 +562,7 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
   const { data: pushConfig, isLoading: isPushConfigLoading } = useQuery<PushConfig>({
     queryKey: ['push', 'config'],
     queryFn: fetchPushConfig,
-    enabled: profileReady && !isTelegramMiniApp,
+    enabled: profileReady && !isTelegramMiniApp && !nativeAndroid,
   });
 
   const { data: pushPreferences } = useQuery<PushPreferences>({
@@ -568,6 +573,31 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
 
   useEffect(() => {
     if (isTelegramMiniApp || !profileReady) return;
+
+    if (nativeAndroid) {
+      let disposed = false;
+      void nativePush
+        .getStatus()
+        .then(({ status }) => {
+          if (disposed) return;
+          if (status === 'granted') {
+            setPushStatus('subscribed');
+            setPushMessage('Уведомления включены');
+          } else if (status === 'denied') {
+            setPushStatus('denied');
+            setPushMessage('Запрещено в настройках Android');
+          }
+        })
+        .catch(() => {
+          if (!disposed) {
+            setPushStatus('error');
+            setPushMessage('Не удалось проверить уведомления');
+          }
+        });
+      return () => {
+        disposed = true;
+      };
+    }
 
     if (!supportsPushNotifications()) {
       setPushStatus('unsupported');
@@ -600,9 +630,28 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
     return () => {
       disposed = true;
     };
-  }, [profileReady, isTelegramMiniApp]);
+  }, [profileReady, isTelegramMiniApp, nativeAndroid]);
 
   async function handleSubscribePush(): Promise<void> {
+    if (nativeAndroid) {
+      setPushStatus('subscribing');
+      setPushMessage('');
+      try {
+        const { status } = await nativePush.subscribe();
+        if (status === 'granted') {
+          setPushStatus('subscribed');
+          setPushMessage('Уведомления включены');
+        } else {
+          setPushStatus(status === 'denied' ? 'denied' : 'idle');
+          setPushMessage('Разрешение не выдано');
+        }
+      } catch {
+        setPushStatus('error');
+        setPushMessage('Не удалось включить уведомления');
+      }
+      return;
+    }
+
     if (!supportsPushNotifications()) {
       setPushStatus('unsupported');
       setPushMessage('Недоступно в этом браузере');
@@ -652,6 +701,20 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
   }
 
   async function handleUnsubscribePush(): Promise<void> {
+    if (nativeAndroid) {
+      setPushStatus('unsubscribing');
+      setPushMessage('');
+      try {
+        await nativePush.unsubscribe();
+        setPushStatus('idle');
+        setPushMessage('Уведомления выключены');
+      } catch {
+        setPushStatus('error');
+        setPushMessage('Не удалось отключить уведомления');
+      }
+      return;
+    }
+
     if (!supportsPushNotifications()) {
       setPushStatus('unsupported');
       setPushMessage('Недоступно в этом браузере');
@@ -718,7 +781,9 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
     pushStatus === 'subscribing' ||
     pushStatus === 'unsubscribing' ||
     (!isPushSubscribed &&
-      (pushStatus === 'unsupported' || pushStatus === 'denied' || isPushConfigLoading));
+      (pushStatus === 'unsupported' ||
+        pushStatus === 'denied' ||
+        (!nativeAndroid && isPushConfigLoading)));
 
   return (
     <>
@@ -849,6 +914,17 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
           </div>
         </>
       )}
+
+      <AdminAndroidReleaseOnly>
+        <>
+          <div className="section-label" style={{ marginBottom: 8 }}>
+            Android
+          </div>
+          <div style={{ margin: '0 14px 14px' }}>
+            <AndroidAppCard />
+          </div>
+        </>
+      </AdminAndroidReleaseOnly>
 
       <div className="section-label" style={{ marginBottom: 8 }}>
         Обратная связь

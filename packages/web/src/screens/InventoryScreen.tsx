@@ -52,6 +52,7 @@ import {
   createCoinPayment,
   fetchCoinPackages,
   fetchCoinPaymentStatus,
+  fetchReceiptEmail,
   redirectToPaymentConfirmation,
   type CoinPackage,
   type CoinPaymentStatus,
@@ -172,9 +173,15 @@ export function InventoryScreen(): JSX.Element {
   );
   const paymentInFlightRef = useRef<string | null>(null);
   const [paymentPackageId, setPaymentPackageId] = useState<string | null>(null);
+  const [receiptPackage, setReceiptPackage] = useState<CoinPackage | null>(null);
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
+  });
+  const receiptEmailQuery = useQuery({
+    queryKey: ['bank', 'receipt-email', ownerId],
+    queryFn: fetchReceiptEmail,
+    enabled: ownerId !== undefined,
   });
   const purchaseMutation = useMutation<InventoryState, Error, InventoryItem>({
     mutationFn: (item) => purchaseInventoryItem(item.itemId ?? item.id),
@@ -203,11 +210,13 @@ export function InventoryScreen(): JSX.Element {
     mutationFn: ({
       packageId,
       attemptId,
+      receiptEmail,
     }: {
       ownerId: string;
       packageId: string;
       attemptId: string;
-    }) => createCoinPayment(packageId, attemptId),
+      receiptEmail: string;
+    }) => createCoinPayment(packageId, attemptId, receiptEmail),
     onSuccess: (payment, attempt) => {
       rememberAttemptPayment(
         attempt.ownerId,
@@ -316,7 +325,7 @@ export function InventoryScreen(): JSX.Element {
     setDetailsItem(null);
     setPurchaseItem(item);
   };
-  const startPayment = (pack: CoinPackage): void => {
+  const startPayment = (pack: CoinPackage, receiptEmail: string): void => {
     if (paymentInFlightRef.current !== null || !ownerId) return;
     let attemptId: string;
     try {
@@ -332,7 +341,9 @@ export function InventoryScreen(): JSX.Element {
     setPaymentRedirectError(null);
     setReturnedPaymentResult(null);
     paymentMutation.reset();
-    paymentMutation.mutate({ ownerId, packageId: pack.id, attemptId });
+    setReceiptPackage(null);
+    queryClient.setQueryData(['bank', 'receipt-email', ownerId], { receiptEmail });
+    paymentMutation.mutate({ ownerId, packageId: pack.id, attemptId, receiptEmail });
   };
 
   return (
@@ -456,7 +467,7 @@ export function InventoryScreen(): JSX.Element {
                   : 'Не удалось получить ответ об оплате. Повторное нажатие продолжит ту же оплату.'
                 : null)
             }
-            onPurchase={startPayment}
+            onPurchase={setReceiptPackage}
           />
         ) : (
           <TransactionHistorySection />
@@ -487,6 +498,15 @@ export function InventoryScreen(): JSX.Element {
             setPurchaseItem(null);
           }}
           onConfirm={() => purchaseMutation.mutate(purchaseItem)}
+        />
+      )}
+
+      {receiptPackage !== null && (
+        <ReceiptEmailModal
+          pack={receiptPackage}
+          initialEmail={receiptEmailQuery.data?.receiptEmail ?? ''}
+          onClose={() => setReceiptPackage(null)}
+          onConfirm={(receiptEmail) => startPayment(receiptPackage, receiptEmail)}
         />
       )}
 
@@ -1144,6 +1164,104 @@ function PurchaseConfirmModal({
           </button>
         </div>
       </div>
+    </AccessibleModal>
+  );
+}
+
+function ReceiptEmailModal({
+  pack,
+  initialEmail,
+  onClose,
+  onConfirm,
+}: {
+  pack: CoinPackage;
+  initialEmail: string;
+  onClose: () => void;
+  onConfirm: (receiptEmail: string) => void;
+}): JSX.Element {
+  const [email, setEmail] = useState(initialEmail);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (email === '' && initialEmail !== '') setEmail(initialEmail);
+  }, [email, initialEmail]);
+
+  const submit = (): void => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setError('Введите корректный email');
+      return;
+    }
+    onConfirm(normalizedEmail);
+  };
+
+  return (
+    <AccessibleModal
+      title="Получение чека"
+      copy="Введите почту для получения чека"
+      onRequestClose={onClose}
+      initialFocusRef={inputRef}
+      backdropStyle={{ zIndex: 440 }}
+      cardStyle={{ width: 'min(390px, calc(100vw - 28px))' }}
+    >
+      <form
+        noValidate
+        style={{ display: 'grid', gap: 14 }}
+        onSubmit={(event) => {
+          event.preventDefault();
+          submit();
+        }}
+      >
+        <label style={{ display: 'grid', gap: 7, color: 'var(--text)', fontWeight: 800 }}>
+          Электронная почта
+          <input
+            ref={inputRef}
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            value={email}
+            maxLength={254}
+            aria-invalid={error !== null}
+            aria-describedby={error === null ? undefined : 'receipt-email-error'}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              if (error !== null) setError(null);
+            }}
+            style={{
+              width: '100%',
+              minHeight: 46,
+              borderRadius: 14,
+              border: `1px solid ${error === null ? 'var(--border)' : 'var(--red-deep)'}`,
+              background: 'rgba(255, 255, 255, 0.72)',
+              padding: '0 14px',
+              color: 'var(--text)',
+              font: 'inherit',
+              boxSizing: 'border-box',
+            }}
+          />
+        </label>
+        {error !== null && (
+          <div
+            id="receipt-email-error"
+            role="alert"
+            style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}
+          >
+            {error}
+          </div>
+        )}
+        <div style={{ color: 'var(--muted)', fontSize: 13 }}>
+          {numberText(pack.coinAmount)} монет за {rubText(pack.priceRub)}
+        </div>
+        <div className="modal-actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <button type="button" className="btn btn--ghost" onClick={onClose}>
+            Отмена
+          </button>
+          <button type="submit" className="modal-primary btn--cta">
+            Перейти к оплате
+          </button>
+        </div>
+      </form>
     </AccessibleModal>
   );
 }

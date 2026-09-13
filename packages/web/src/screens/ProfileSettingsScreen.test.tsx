@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fireEvent,
   render,
@@ -195,6 +195,31 @@ describe('ProfileSettingsScreen', () => {
       createObjectURL: vi.fn(() => 'blob:avatar-preview'),
       revokeObjectURL: vi.fn(),
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('uses native notification permission inside the Android application', async () => {
+    vi.stubGlobal('__HOCKEY_NATIVE__', { platform: 'android' });
+    vi.stubGlobal('Capacitor', {
+      getPlatform: () => 'android',
+      Plugins: {
+        PushNotifications: {
+          checkPermissions: vi.fn().mockResolvedValue({ receive: 'prompt' }),
+        },
+        Preferences: { get: vi.fn().mockResolvedValue({ value: 'false' }) },
+        App: {},
+      },
+    });
+    mockSettingsFetch();
+
+    renderProfileSettings();
+
+    const enable = await screen.findByRole('button', { name: 'Включить уведомления' });
+    await waitFor(() => expect(enable).toBeEnabled());
+    expect(screen.queryByText('Недоступно в этом браузере')).not.toBeInTheDocument();
   });
 
   it.each(['beginner', 'amateur', 'professional'] as const)(

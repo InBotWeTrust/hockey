@@ -289,6 +289,7 @@ describe('SectionsScreen', () => {
     useTrainingSessionStore.setState({ data: null, loading: false, error: null, inFlight: false });
   });
 
+
   it('shows today after the current daily shot progress', async () => {
     mockSectionsApi({ dailyTotalShots: 50 });
     renderSections();

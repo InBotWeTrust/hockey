@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import type { PushEventType } from './preferences.js';
+import { sendFcm, type FcmOptions } from './fcm.js';
 import {
   resolvePushVapidOptions,
   sendWebPush,
@@ -23,6 +24,7 @@ export interface EnqueuePushDeliveryInput {
 }
 
 export interface ProcessPushDeliveryQueueOptions extends PushVapidOptions {
+  fcm?: FcmOptions;
   batchSize?: number;
   concurrency?: number;
   maxAttempts?: number;
@@ -67,6 +69,18 @@ interface PushSubscriptionRow {
   endpoint: string;
   p256dh: string;
   auth: string;
+}
+
+interface AndroidInstallationRow {
+  id: string;
+  fcm_token: string;
+}
+
+interface TransportCounts {
+  webSubscriptionCount: number;
+  webSentCount: number;
+  fcmInstallationCount: number;
+  fcmSentCount: number;
 }
 
 type Queryable = Pool | PoolClient;
@@ -232,6 +246,20 @@ async function fetchSubscriptions(pool: Pool, userId: string): Promise<PushSubsc
   return rows;
 }
 
+async function fetchAndroidInstallations(
+  pool: Pool,
+  userId: string,
+): Promise<AndroidInstallationRow[]> {
+  const { rows } = await pool.query<AndroidInstallationRow>(
+    `select id, fcm_token
+       from android_push_installations
+      where user_id = $1 and disabled_at is null
+      order by updated_at desc`,
+    [userId],
+  );
+  return rows;
+}
+
 async function markSubscriptionSuccess(pool: Pool, subscriptionId: string): Promise<void> {
   await pool.query(
     `update push_subscriptions
@@ -265,6 +293,7 @@ async function finishDelivery(
   sent: number,
   failed: number,
   lastError: string | null,
+  counts: TransportCounts,
 ): Promise<void> {
   await pool.query(
     `update push_delivery_log
@@ -273,9 +302,24 @@ async function finishDelivery(
             sent_count = $4,
             failed_count = $5,
             last_error_message = $6,
+            web_subscription_count = $7,
+            web_sent_count = $8,
+            fcm_installation_count = $9,
+            fcm_sent_count = $10,
             updated_at = now()
       where id = $1`,
-    [row.id, status, subscriptionCount, sent, failed, lastError],
+    [
+      row.id,
+      status,
+      subscriptionCount,
+      sent,
+      failed,
+      lastError,
+      counts.webSubscriptionCount,
+      counts.webSentCount,
+      counts.fcmInstallationCount,
+      counts.fcmSentCount,
+    ],
   );
 }
 
@@ -285,6 +329,7 @@ async function retryDelivery(
   subscriptionCount: number,
   failed: number,
   lastError: string | null,
+  counts: TransportCounts,
 ): Promise<void> {
   const backoffMinutes = Math.min(30, Math.max(1, row.attempt_count * row.attempt_count));
   await pool.query(
@@ -293,10 +338,24 @@ async function retryDelivery(
             subscription_count = $2,
             failed_count = $3,
             last_error_message = $4,
+            web_subscription_count = $6,
+            web_sent_count = $7,
+            fcm_installation_count = $8,
+            fcm_sent_count = $9,
             next_attempt_at = now() + ($5::int * interval '1 minute'),
             updated_at = now()
       where id = $1`,
-    [row.id, subscriptionCount, failed, lastError, backoffMinutes],
+    [
+      row.id,
+      subscriptionCount,
+      failed,
+      lastError,
+      backoffMinutes,
+      counts.webSubscriptionCount,
+      counts.webSentCount,
+      counts.fcmInstallationCount,
+      counts.fcmSentCount,
+    ],
   );
 }
 
@@ -304,29 +363,52 @@ async function processDelivery(
   pool: Pool,
   row: QueueDeliveryRow,
   options: {
-    vapid: NonNullable<ReturnType<typeof resolvePushVapidOptions>>;
+    vapid: ReturnType<typeof resolvePushVapidOptions>;
+    fcm?: FcmOptions;
     maxAttempts: number;
   },
 ): Promise<DeliveryResult> {
+  const emptyCounts: TransportCounts = {
+    webSubscriptionCount: 0,
+    webSentCount: 0,
+    fcmInstallationCount: 0,
+    fcmSentCount: 0,
+  };
   const payload = parsePayload(row.payload);
   if (payload === null) {
-    await finishDelivery(pool, row, 'skipped', 0, 0, 0, 'invalid push payload');
+    await finishDelivery(pool, row, 'skipped', 0, 0, 0, 'invalid push payload', emptyCounts);
     return { eventType: row.event_type, sent: 0, skipped: 1, failed: 0, retried: 0 };
   }
 
-  const subscriptions = await fetchSubscriptions(pool, row.user_id);
-  if (subscriptions.length === 0) {
-    await finishDelivery(pool, row, 'skipped', 0, 0, 0, 'no active push subscriptions');
+  const [subscriptions, installations] = await Promise.all([
+    options.vapid === null ? Promise.resolve([]) : fetchSubscriptions(pool, row.user_id),
+    options.fcm === undefined ? Promise.resolve([]) : fetchAndroidInstallations(pool, row.user_id),
+  ]);
+  const counts: TransportCounts = {
+    webSubscriptionCount: subscriptions.length,
+    webSentCount: 0,
+    fcmInstallationCount: installations.length,
+    fcmSentCount: 0,
+  };
+  const targetCount = subscriptions.length + installations.length;
+  if (targetCount === 0) {
+    await finishDelivery(pool, row, 'skipped', 0, 0, 0, 'no active push subscriptions', counts);
     return { eventType: row.event_type, sent: 0, skipped: 1, failed: 0, retried: 0 };
   }
 
   let sent = 0;
   let failed = 0;
+  let retryableFailures = 0;
   let lastError: string | null = null;
-  const deliveryPayload: WebPushPayload = { ...payload, deliveryId: row.id };
+  const deliveryPayload: WebPushPayload = {
+    ...payload,
+    deliveryId: row.id,
+    eventType: row.event_type,
+  };
 
   for (const subscription of subscriptions) {
     try {
+      if (options.vapid === null) break;
       const result = await sendWebPush(
         toSubscription(subscription),
         options.vapid,
@@ -334,6 +416,7 @@ async function processDelivery(
       );
       if (result.ok) {
         sent += 1;
+        counts.webSentCount += 1;
         await markSubscriptionSuccess(pool, subscription.id);
         continue;
       }
@@ -343,22 +426,58 @@ async function processDelivery(
       if (result.gone) {
         await pool.query('delete from push_subscriptions where id = $1', [subscription.id]);
       } else {
+        if (result.status === 429 || result.status >= 500) retryableFailures += 1;
         await markSubscriptionFailure(pool, subscription.id, lastError);
       }
     } catch (err) {
       failed += 1;
+      retryableFailures += 1;
       lastError = err instanceof Error ? err.message : 'push send failed';
       await markSubscriptionFailure(pool, subscription.id, lastError);
     }
   }
 
-  if (sent === 0 && failed > 0 && row.attempt_count < options.maxAttempts) {
-    await retryDelivery(pool, row, subscriptions.length, failed, lastError);
+  if (options.fcm !== undefined) {
+    for (const installation of installations) {
+      const result = await sendFcm(installation.fcm_token, options.fcm, deliveryPayload);
+      if (result.ok) {
+        sent += 1;
+        counts.fcmSentCount += 1;
+        await pool.query(
+          `update android_push_installations
+              set last_success_at = now(), last_error_at = null
+            where id = $1`,
+          [installation.id],
+        );
+        continue;
+      }
+
+      failed += 1;
+      lastError = result.diagnostic;
+      if (result.retryable) retryableFailures += 1;
+      if (result.invalid) {
+        await pool.query(
+          `update android_push_installations
+              set disabled_at = coalesce(disabled_at, now()), last_error_at = now()
+            where id = $1`,
+          [installation.id],
+        );
+      } else {
+        await pool.query(
+          `update android_push_installations set last_error_at = now() where id = $1`,
+          [installation.id],
+        );
+      }
+    }
+  }
+
+  if (sent === 0 && retryableFailures > 0 && row.attempt_count < options.maxAttempts) {
+    await retryDelivery(pool, row, targetCount, failed, lastError, counts);
     return { eventType: row.event_type, sent: 0, skipped: 0, failed: 0, retried: 1 };
   }
 
   const status = sent > 0 && failed === 0 ? 'sent' : sent > 0 ? 'partial' : 'failed';
-  await finishDelivery(pool, row, status, subscriptions.length, sent, failed, lastError);
+  await finishDelivery(pool, row, status, targetCount, sent, failed, lastError, counts);
   return { eventType: row.event_type, sent, skipped: 0, failed, retried: 0 };
 }
 
@@ -388,7 +507,7 @@ export async function processPushDeliveryQueue(
   options: ProcessPushDeliveryQueueOptions,
 ): Promise<ProcessPushDeliveryQueueResult> {
   const vapid = resolvePushVapidOptions(options);
-  if (vapid === null) {
+  if (vapid === null && options.fcm === undefined) {
     return {
       enabled: false,
       claimed: 0,
@@ -411,7 +530,11 @@ export async function processPushDeliveryQueue(
   );
   const rows = await claimQueuedDeliveries(pool, batchSize, maxAttempts, processingStaleMs);
   const results = await mapWithConcurrency(rows, concurrency, (row) =>
-    processDelivery(pool, row, { vapid, maxAttempts }),
+    processDelivery(pool, row, {
+      vapid,
+      ...(options.fcm === undefined ? {} : { fcm: options.fcm }),
+      maxAttempts,
+    }),
   );
 
   return {

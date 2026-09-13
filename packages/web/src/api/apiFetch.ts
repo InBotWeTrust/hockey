@@ -1,6 +1,6 @@
 import { useAuthStore } from '../auth/authStore.js';
+import { getApiBaseUrl } from '../platform/runtime.js';
 
-const API_BASE = '/api';
 const GENERIC_SERVER_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
 
 const SERVER_ERROR_MESSAGES: Record<string, string> = {
@@ -112,7 +112,7 @@ async function runRefresh(): Promise<string | null> {
   const refreshToken = useAuthStore.getState().refreshToken;
   if (!refreshToken) return null;
 
-  const res = await fetch(`${API_BASE}/auth/refresh`, {
+  const res = await fetch(`${getApiBaseUrl()}/auth/refresh`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ refreshToken }),
@@ -156,7 +156,7 @@ async function rawRequest(
   init: RequestInit | undefined,
   token: string | null,
 ): Promise<Response> {
-  return fetch(`${API_BASE}${path}`, {
+  return fetch(`${getApiBaseUrl()}${path}`, {
     ...init,
     headers: buildHeaders(init, token),
   });

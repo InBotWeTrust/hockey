@@ -57,6 +57,19 @@ async function addSubscription(
   );
 }
 
+async function addAndroidInstallation(
+  pool: ReturnType<typeof createTestPool>,
+  userId: string,
+  token: string,
+): Promise<void> {
+  await pool.query(
+    `insert into android_push_installations
+       (user_id, installation_id, fcm_token, platform, app_version_code)
+     values ($1, gen_random_uuid(), $2, 'android', 1)`,
+    [userId, token],
+  );
+}
+
 async function addTrainingShot(
   pool: ReturnType<typeof createTestPool>,
   userId: string,
@@ -178,6 +191,29 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
         await pool.end();
       }
     }
+  });
+
+  it('enqueues a daily notification for an FCM-only user without VAPID', async () => {
+    const userId = await createUser(pool, 'Android-only daily player');
+    await addAndroidInstallation(pool, userId, 'daily-android-token');
+
+    const result = await runScheduledPushes(pool, {
+      fcm: {
+        projectId: 'ultimate-hockey',
+        clientEmail: 'sender@example.test',
+        privateKey: 'private-key',
+      },
+      now: new Date('2026-05-04T06:00:00.000Z'),
+      processQueue: false,
+    });
+
+    expect(result.enabled).toBe(true);
+    const queued = await pool.query<{ user_id: string; event_type: string }>(
+      `select user_id::text, event_type
+         from push_delivery_log
+        where event_type = 'daily.available'`,
+    );
+    expect(queued.rows).toEqual([{ user_id: userId, event_type: 'daily.available' }]);
   });
 
   it('enqueues each valid reminder offset only for active opted-in participants', async () => {

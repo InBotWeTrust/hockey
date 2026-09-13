@@ -35,6 +35,7 @@ COPY --from=builder /repo/packages/server/db ./packages/server/db
 COPY --from=builder /repo/packages/server/seed-assets ./packages/server/seed-assets
 
 RUN pnpm install --prod --frozen-lockfile --filter @hockey/server... --filter @hockey/game-core
+RUN mkdir -p /app/android-releases
 
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
