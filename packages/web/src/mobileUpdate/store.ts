@@ -41,6 +41,7 @@ function readDismissed(): number | null {
 
 export function createAndroidUpdateStore(dependencies: Dependencies): StoreApi<AndroidUpdateState> {
   let inFlight: Promise<void> | null = null;
+  let downloadInFlight: Promise<void> | null = null;
   return createStore<AndroidUpdateState>((set, get) => ({
     status: 'idle',
     manifest: null,
@@ -99,25 +100,32 @@ export function createAndroidUpdateStore(dependencies: Dependencies): StoreApi<A
       set({ dismissedVersionCode: manifest.latestVersionCode });
     },
     async download() {
+      if (downloadInFlight !== null) return downloadInFlight;
       const manifest = get().manifest;
       if (manifest === null) return;
-      set({ status: 'downloading', progress: 0, error: null });
-      let listener: { remove(): Promise<void> } | null = null;
-      try {
-        listener = await nativeUpdater.onProgress(({ bytesDownloaded, totalBytes }) => {
-          set({ progress: totalBytes > 0 ? Math.floor((bytesDownloaded / totalBytes) * 100) : 0 });
-        });
-        await nativeUpdater.download(manifest);
-        set({ status: 'downloaded', progress: 100 });
-      } catch (error) {
-        set({ status: 'error', error: String(error) });
-      } finally {
+      downloadInFlight = (async () => {
+        set({ status: 'downloading', progress: 0, error: null });
+        let listener: { remove(): Promise<void> } | null = null;
         try {
-          await listener?.remove();
-        } catch {
-          // Listener cleanup must not replace the download outcome.
+          listener = await nativeUpdater.onProgress(({ bytesDownloaded, totalBytes }) => {
+            set({
+              progress: totalBytes > 0 ? Math.floor((bytesDownloaded / totalBytes) * 100) : 0,
+            });
+          });
+          await nativeUpdater.download(manifest);
+          set({ status: 'downloaded', progress: 100 });
+        } catch (error) {
+          set({ status: 'error', error: String(error) });
+        } finally {
+          try {
+            await listener?.remove();
+          } catch {
+            // Listener cleanup must not replace the download outcome.
+          }
+          downloadInFlight = null;
         }
-      }
+      })();
+      return downloadInFlight;
     },
   }));
 }
