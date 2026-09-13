@@ -12,6 +12,7 @@ import {
   savePushPreferences,
   type PushPreferencePatch,
 } from './preferences.js';
+import { deleteAndroidInstallation, saveAndroidInstallation } from './installations.js';
 
 type UserRole = 'player' | 'admin';
 
@@ -37,6 +38,15 @@ const deleteSubscriptionSchema = z.object({
 
 const clickSchema = z.object({
   deliveryId: z.string().uuid(),
+});
+
+const androidInstallationParamsSchema = z.object({
+  installationId: z.string().uuid(),
+});
+
+const androidInstallationSchema = z.object({
+  token: z.string().min(1).max(4096),
+  appVersionCode: z.number().int().positive(),
 });
 
 const testPushSchema = z
@@ -87,6 +97,33 @@ function getUserAgent(header: string | string[] | undefined): string | null {
 }
 
 export const pushRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, opts) => {
+  app.put(
+    '/push/android/installations/:installationId',
+    { preHandler: [app.authenticate] },
+    async (req) => {
+      const params = androidInstallationParamsSchema.safeParse(req.params);
+      const body = androidInstallationSchema.safeParse(req.body);
+      if (!params.success || !body.success) {
+        throw new AppError('bad_request', 'invalid Android push installation', 400);
+      }
+      await saveAndroidInstallation(app.pg, req.user.id, params.data.installationId, body.data);
+      return { ok: true };
+    },
+  );
+
+  app.delete(
+    '/push/android/installations/:installationId',
+    { preHandler: [app.authenticate] },
+    async (req) => {
+      const params = androidInstallationParamsSchema.safeParse(req.params);
+      if (!params.success) {
+        throw new AppError('bad_request', 'invalid Android push installation', 400);
+      }
+      await deleteAndroidInstallation(app.pg, req.user.id, params.data.installationId);
+      return { ok: true };
+    },
+  );
+
   app.get('/push/config', { preHandler: [app.authenticate] }, async () => {
     const config = resolvePushVapidOptions(opts);
     return {

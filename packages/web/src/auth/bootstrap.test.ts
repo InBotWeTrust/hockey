@@ -11,9 +11,13 @@ describe('initializeApplicationAuth', () => {
       async () => {
         calls.push('deep-link');
       },
+      undefined,
+      async () => {
+        calls.push('push-listener');
+      },
     );
 
-    expect(calls).toEqual(['session', 'deep-link']);
+    expect(calls).toEqual(['session', 'deep-link', 'push-listener']);
   });
 
   it('does not prevent startup when deep-link initialization fails', async () => {
