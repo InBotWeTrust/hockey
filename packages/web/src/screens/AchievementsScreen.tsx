@@ -700,9 +700,7 @@ function AchievementCard({
         </div>
         {achievement.stage && achievement.stage.targetValue > 0 && (
           <div className="achievement-card__stage-progress">
-            <span>
-              Этап {achievement.stage.current} из {achievement.stage.total}
-            </span>
+            <span>Прогресс</span>
             <strong>
               {achievement.stage.progressValue}/{achievement.stage.targetValue}
             </strong>

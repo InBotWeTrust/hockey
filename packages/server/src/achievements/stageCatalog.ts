@@ -55,6 +55,23 @@ function numericStages(
   );
 }
 
+function russianCount(value: number, one: string, few: string, many: string) {
+  const modulo100 = value % 100;
+  const modulo10 = value % 10;
+  if (modulo100 >= 11 && modulo100 <= 14) return many;
+  if (modulo10 === 1) return one;
+  if (modulo10 >= 2 && modulo10 <= 4) return few;
+  return many;
+}
+
+function duelCount(value: number) {
+  return `${value} ${russianCount(value, 'дуэль', 'дуэли', 'дуэлей')}`;
+}
+
+function missedShotCount(value: number) {
+  return `${value} ${value === 1 ? 'незабитого броска' : 'незабитых бросков'}`;
+}
+
 export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[] = [
   ...numericStages(
     'career-goals',
@@ -217,7 +234,7 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
     'wins',
     [1, 2, 3, 4, 5],
     [5, 10, 15, 20, 25],
-    (value) => `После тренировки выиграть ${value} дуэлей подряд`,
+    (value) => `После тренировки выиграть ${duelCount(value)} подряд`,
     { requiresCompletedTraining: true },
   ),
   ...numericStages(
@@ -225,7 +242,7 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
     'wins',
     [3, 4, 5, 6, 7, 8, 10],
     [5, 10, 15, 20, 25, 30, 35],
-    (value) => `Выиграть ${value} собственных дуэлей подряд`,
+    (value) => `Выиграть ${duelCount(value)} подряд в роли хозяина`,
     { role: 'host' },
   ),
   ...numericStages(
@@ -233,7 +250,7 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
     'wins',
     [3, 4, 5, 6, 7, 8, 10],
     [8, 13, 18, 23, 28, 33, 38],
-    (value) => `Выиграть ${value} гостевых дуэлей подряд`,
+    (value) => `Выиграть ${duelCount(value)} подряд в роли гостя`,
     { role: 'guest' },
   ),
   ...numericStages(
@@ -248,7 +265,7 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
     'wins',
     [5, 6, 7, 8, 9, 10, 15],
     [10, 15, 20, 25, 30, 35, 50],
-    (value) => `Выиграть ${value} любых дуэлей подряд`,
+    (value) => `Выиграть ${duelCount(value)} подряд`,
     {},
     { 7: 2 },
   ),
@@ -273,7 +290,7 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
     'maximumNonGoals',
     [5, 4, 3, 2, 1, 0],
     [3, 4, 5, 6, 7, 10],
-    (value) => `Выиграть Экспресс, допустив не больше ${value} незабитых бросков`,
+    (value) => `Выиграть Экспресс, допустив не больше ${missedShotCount(value)}`,
     { format: 'express' },
   ),
   ...numericStages(
@@ -281,7 +298,7 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
     'maximumNonGoals',
     [5, 4, 3, 2, 1, 0],
     [3, 4, 5, 6, 7, 10],
-    (value) => `Выиграть Микс, допустив не больше ${value} незабитых бросков`,
+    (value) => `Выиграть Микс, допустив не больше ${missedShotCount(value)}`,
     { format: 'mix' },
   ),
   ...numericStages(
@@ -289,7 +306,7 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
     'maximumNonGoals',
     [5, 4, 3, 2, 1, 0],
     [3, 4, 5, 6, 7, 10],
-    (value) => `Выиграть Классику, допустив не больше ${value} незабитых бросков`,
+    (value) => `Выиграть Классику, допустив не больше ${missedShotCount(value)}`,
     { format: 'classic' },
   ),
 ];

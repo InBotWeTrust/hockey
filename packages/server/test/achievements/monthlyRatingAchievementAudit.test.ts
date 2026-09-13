@@ -40,7 +40,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating achievement audit', () => {
     );
     await pool.query(
       `insert into user_currency_account (user_id, balance)
-       values ($1, 3_750), ($2, 5_000)`,
+       values ($1, 3750), ($2, 5000)`,
       [validUserId, invalidUserId],
     );
     await pool.query(
@@ -57,7 +57,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating achievement audit', () => {
       `insert into monthly_duel_rating_placement
          (season_key, user_id, place, points, wins, matches_played, active_duration_seconds,
           coins, stars, tokens, created_at)
-       values ('2026-08', $1, 3, 10, 5, 30, 100, 7_500, 150, 5, now())`,
+       values ('2026-08', $1, 3, 10, 5, 30, 100, 7500, 150, 5, now())`,
       [validUserId],
     );
     await pool.query(

@@ -261,7 +261,8 @@ describe('AchievementsScreen', () => {
 
     expect(await screen.findByRole('tab', { name: 'Карьера' })).toBeInTheDocument();
     expect(await screen.findByText('Снайперская карьера')).toBeInTheDocument();
-    expect(screen.getAllByText('Этап 2 из 8')).toHaveLength(2);
+    expect(screen.getByText('Этап 2 из 8')).toBeInTheDocument();
+    expect(screen.getByText('Прогресс')).toBeInTheDocument();
     expect(screen.getByText('3200/5000')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Снайперская карьера').closest('button')!);
