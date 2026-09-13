@@ -2,7 +2,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import { MAX_COIN_PACKAGE_AMOUNT } from './catalog.js';
-import type { YooKassaClient } from './yookassaClient.js';
+import { YooKassaRequestError, type YooKassaClient } from './yookassaClient.js';
 
 const MAX_CURRENCY_BALANCE = 2_147_483_647;
 
@@ -23,6 +23,7 @@ interface PaymentRow {
   status: string;
   provider_payment_id: string | null;
   confirmation_url: string | null;
+  receipt_email: string | null;
   attempt_expired: boolean;
 }
 
@@ -38,6 +39,8 @@ export async function createCoinPayment(
   userId: string,
   packageId: string,
   attemptId: string,
+  receiptEmail: string,
+  onProviderError?: (diagnostic: Record<string, unknown>) => void,
 ): Promise<CoinPaymentDTO> {
   // PostgreSQL UUID equality is case-insensitive; the advisory key must agree.
   userId = userId.toLowerCase();
@@ -67,11 +70,12 @@ export async function createCoinPayment(
     if (!payment) {
       const inserted = await client.query<PaymentRow>(
         `insert into payments
-          (user_id, coin_package_id, purchase_attempt_id, title, amount_rub, coin_amount, status, provider)
-         select $1, id, $2, title, price_rub, coin_amount, 'pending', 'yookassa'
+          (user_id, coin_package_id, purchase_attempt_id, title, amount_rub, coin_amount, status,
+           provider, receipt_email)
+         select $1, id, $2, title, price_rub, coin_amount, 'pending', 'yookassa', $4
          from coin_packages where id = $3 and is_active = true
          returning *, false as attempt_expired`,
-        [userId, attemptId, packageId],
+        [userId, attemptId, packageId, receiptEmail],
       );
       payment = inserted.rows[0];
       if (!payment) {
@@ -79,7 +83,23 @@ export async function createCoinPayment(
       }
     }
 
+    if (payment.receipt_email !== null && payment.receipt_email !== receiptEmail) {
+      throw new AppError(
+        'payment_attempt_conflict',
+        'Попытка оплаты создана для другого адреса электронной почты',
+        409,
+      );
+    }
+
     if (!payment.provider_payment_id) {
+      if (payment.receipt_email === null) {
+        payment = (
+          await client.query<PaymentRow>(
+            'update payments set receipt_email = $2, updated_at = now() where id = $1 returning *',
+            [payment.id, receiptEmail],
+          )
+        ).rows[0]!;
+      }
       // YooKassa retains idempotency keys for 24h. Beyond this conservative
       // window an uncertain request must be reconciled, never silently recreated.
       if (payment.attempt_expired) {
@@ -106,10 +126,25 @@ export async function createCoinPayment(
       let result;
       try {
         result = await provider.createPayment(
-          { amountRub: payment.amount_rub, description: payment.title, localPaymentId: payment.id },
+          {
+            amountRub: payment.amount_rub,
+            description: payment.title,
+            localPaymentId: payment.id,
+            receiptEmail: payment.receipt_email!,
+          },
           payment.id,
         );
-      } catch {
+      } catch (error) {
+        onProviderError?.({
+          localPaymentId: payment.id,
+          ...(error instanceof YooKassaRequestError
+            ? {
+                providerStatus: error.status,
+                providerCode: error.providerCode,
+                providerParameter: error.providerParameter,
+              }
+            : { providerCode: 'unknown_provider_error' }),
+        });
         throw new AppError(
           'payment_provider_unavailable',
           'Не удалось получить ответ платёжного сервиса. Повторите попытку',
