@@ -78,7 +78,7 @@ describe('sendFcm', () => {
   });
 
   it.each([[404, 'NOT_FOUND']])(
-    'marks %i %s as an invalid installation token',
+    'does not disable an installation token for generic %i %s responses',
     async (status, reason) => {
       vi.stubGlobal(
         'fetch',
@@ -87,7 +87,7 @@ describe('sendFcm', () => {
 
       await expect(sendFcm(deviceToken, options, payload)).resolves.toMatchObject({
         ok: false,
-        invalid: true,
+        invalid: false,
         retryable: false,
         status,
       });
