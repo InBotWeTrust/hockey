@@ -1,4 +1,5 @@
 import type { ChatEvent, ChatEventFrame } from './api.js';
+import { getWebSocketBaseUrl } from '../platform/runtime.js';
 
 export type ChatSocketStatus = 'connecting' | 'open' | 'reconnecting' | 'closed';
 
@@ -36,8 +37,7 @@ function isChatEventFrame(value: unknown): value is ChatEventFrame {
 
 function buildUrl(token: string): string {
   if (typeof window === 'undefined') return `/api/chat/ws?token=${encodeURIComponent(token)}`;
-  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${proto}://${window.location.host}/api/chat/ws?token=${encodeURIComponent(token)}`;
+  return `${getWebSocketBaseUrl()}/api/chat/ws?token=${encodeURIComponent(token)}`;
 }
 
 export class ChatSocket {

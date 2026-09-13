@@ -12,10 +12,38 @@ function wrapper({ children }: { children: ReactNode }): JSX.Element {
 
 describe('useLogout', () => {
   beforeEach(() => {
+    Object.defineProperty(globalThis, '__HOCKEY_NATIVE__', {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
     localStorage.clear();
     useAuthStore.getState().clearSession();
     vi.restoreAllMocks();
     queryClient.clear();
+  });
+
+  it('calls the canonical logout endpoint inside the Android shell', async () => {
+    Object.defineProperty(globalThis, '__HOCKEY_NATIVE__', {
+      configurable: true,
+      value: { platform: 'android' },
+      writable: true,
+    });
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    const { result } = renderHook(() => useLogout(), { wrapper });
+    await act(async () => {
+      await result.current();
+    });
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://ultimatehockey.ru/api/auth/logout');
   });
 
   it('calls POST /auth/logout with refresh token and clears session', async () => {
