@@ -39,6 +39,7 @@ import {
 import type { ProfileData } from './profileTypes.js';
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 import { ExperienceRatingModal } from '../profile/ExperienceRatingModal.js';
+import type { ExperienceRatingPlayer } from '../api/experienceRating.js';
 import { StatRatingModal } from '../profile/StatRatingModal.js';
 import type { StatRatingMetric, StatRatingPlayer } from '../api/statRating.js';
 
@@ -531,7 +532,10 @@ function SportingMetrics({
   const items: Array<{ value: ReactNode; label: string; metric?: StatRatingMetric }> = [
     { value: formatProfileNumber(profile.stats.goals), label: 'Шайбы', metric: 'goals' },
     {
-      value: `${formatProfileNumber(profile.stats.accuracy)}%`,
+      value: `${profile.stats.accuracy.toLocaleString('ru-RU', {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      })}%`,
       label: 'Точность',
       metric: 'accuracy',
     },
@@ -636,9 +640,20 @@ export function ProfileScreen(): JSX.Element {
             ...current.stats,
             goals: player.goals,
             shots: player.shots,
-            accuracy: Math.round(player.accuracy),
+            accuracy: Math.round(player.accuracy * 10) / 10,
+            playStreakDays: player.currentStreakDays,
+            bestPlayStreakDays: player.recordStreakDays,
           },
         };
+      });
+    },
+    [queryClient],
+  );
+  const synchronizeProfileExperience = useCallback(
+    (player: ExperienceRatingPlayer): void => {
+      queryClient.setQueryData<ProfileData>(['profile'], (current) => {
+        if (current === undefined || current.id !== player.userId) return current;
+        return { ...current, experienceBalance: player.experience };
       });
     },
     [queryClient],
@@ -749,6 +764,7 @@ export function ProfileScreen(): JSX.Element {
       {experienceRatingOpen ? (
         <ExperienceRatingModal
           currentUserId={profile.id}
+          onCurrentUser={synchronizeProfileExperience}
           onClose={() => setExperienceRatingOpen(false)}
         />
       ) : null}

@@ -46,7 +46,11 @@ function renderModal(): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <ExperienceRatingModal currentUserId="u9" onClose={() => undefined} />
+      <ExperienceRatingModal
+        currentUserId="u9"
+        onCurrentUser={() => undefined}
+        onClose={() => undefined}
+      />
     </QueryClientProvider>,
   );
 }
