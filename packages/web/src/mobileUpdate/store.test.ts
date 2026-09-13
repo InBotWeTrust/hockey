@@ -17,7 +17,10 @@ const manifest: SignedAndroidReleaseManifest = {
 };
 
 describe('Android update store', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
 
   it('keeps an already verified mandatory gate after a network failure', async () => {
     const fetchManifest = vi
@@ -93,5 +96,29 @@ describe('Android update store', () => {
     await store.getState().check();
     await store.getState().download();
     expect(store.getState()).toMatchObject({ status: 'error', error: 'Error: bridge unavailable' });
+  });
+
+  it('coalesces overlapping downloads', async () => {
+    let finish!: () => void;
+    const remove = vi.fn(async () => undefined);
+    vi.spyOn(nativeUpdater, 'onProgress').mockResolvedValue({ remove });
+    const download = vi.spyOn(nativeUpdater, 'download').mockImplementation(
+      () =>
+        new Promise<{ path: string }>((resolve) => {
+          finish = () => resolve({ path: 'updates/app.apk' });
+        }),
+    );
+    const store = createAndroidUpdateStore({
+      fetchManifest: async () => manifest,
+      getInstalledVersion: async () => ({ versionCode: 1, versionName: '1.0' }),
+    });
+    await store.getState().check();
+    const first = store.getState().download();
+    const second = store.getState().download();
+    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1));
+    finish();
+    await Promise.all([first, second]);
+    expect(store.getState().status).toBe('downloaded');
+    expect(remove).toHaveBeenCalledTimes(1);
   });
 });

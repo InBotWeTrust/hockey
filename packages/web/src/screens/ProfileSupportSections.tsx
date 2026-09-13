@@ -15,6 +15,8 @@ import {
 import { getTelegramMiniApp } from '../auth/telegramMiniApp.js';
 import { OFFICIAL_ACCOUNT_AVATAR_URL } from '../chat/chatAvatar.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { AndroidAppCard } from '../components/AndroidAppCard.js';
+import { AdminAndroidReleaseOnly } from '../components/AdminAndroidReleaseOnly.js';
 import { isNativeAndroid } from '../platform/runtime.js';
 import { nativePush } from '../platform/push.js';
 
@@ -912,6 +914,17 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
           </div>
         </>
       )}
+
+      <AdminAndroidReleaseOnly>
+        <>
+          <div className="section-label" style={{ marginBottom: 8 }}>
+            Android
+          </div>
+          <div style={{ margin: '0 14px 14px' }}>
+            <AndroidAppCard />
+          </div>
+        </>
+      </AdminAndroidReleaseOnly>
 
       <div className="section-label" style={{ marginBottom: 8 }}>
         Обратная связь

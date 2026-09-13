@@ -19,6 +19,8 @@ import { arenaBackgroundClass } from '../screens/lockerRoomBackground.js';
 import { isNativeAndroid } from '../platform/runtime.js';
 import { initializeNativeNotifications } from '../platform/nativeNotifications.js';
 import { initializeAndroidUpdateChecks } from '../mobileUpdate/store.js';
+import { canAccessAndroidRelease } from '../mobileUpdate/access.js';
+import { MandatoryAndroidUpdateModal } from '../components/MandatoryAndroidUpdateModal.js';
 import { queryClient } from './queryClient.js';
 
 const DailyScreen = lazy(() =>
@@ -148,8 +150,11 @@ function NativeNotificationBridge(): null {
   return null;
 }
 
-function NativeUpdateBridge(): null {
-  useEffect(() => initializeAndroidUpdateChecks(), []);
+function NativeUpdateBridge({ enabled }: { enabled: boolean }): null {
+  useEffect(() => {
+    if (!enabled) return undefined;
+    return initializeAndroidUpdateChecks();
+  }, [enabled]);
   return null;
 }
 
@@ -216,6 +221,7 @@ export function appSurfaceClassName(pathname: string): string {
 function AppExperience(): JSX.Element {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
+  const androidReleaseAccess = canAccessAndroidRelease(user?.role);
   const bottomNavVisible =
     location.pathname !== '/dev/tournament-result-preview' && isBottomNavVisible(location, user);
   const backdropClassName = appBackdropClassName(location.pathname, location.search);
@@ -234,9 +240,10 @@ function AppExperience(): JSX.Element {
     <>
       <ChatRealtime />
       <NativeNotificationBridge />
-      <NativeUpdateBridge />
+      <NativeUpdateBridge enabled={androidReleaseAccess} />
       <DuelInviteToast />
       <AmateurAccessToast />
+      {androidReleaseAccess && <MandatoryAndroidUpdateModal />}
       <div
         className={`app-shell ${surfaceClassName}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
         style={{
