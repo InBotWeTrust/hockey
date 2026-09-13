@@ -13143,6 +13143,10 @@ button.daily-calendar__day:active {
   gap: 14px;
 }
 
+.android-app-card {
+  border-radius: 22px;
+}
+
 .android-app-card h3,
 .android-update-banner strong {
   margin: 0;
@@ -13172,7 +13176,6 @@ button.daily-calendar__day:active {
 }
 
 @media (max-width: 380px) {
-  .android-app-card,
   .android-update-banner {
     align-items: stretch;
     flex-direction: column;
