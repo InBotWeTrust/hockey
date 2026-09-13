@@ -624,6 +624,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '134_optional_weekly_challenge_copy.sql',
       '135_rebalance_inventory_currency_prices.sql',
       '136_raise_inventory_currency_prices.sql',
+      '137_payment_receipt_email.sql',
     ]);
     const achievementEventIndexes = await pool.query<{
       indexname: string;
@@ -1501,6 +1502,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '134_optional_weekly_challenge_copy.sql',
       '135_rebalance_inventory_currency_prices.sql',
       '136_raise_inventory_currency_prices.sql',
+      '137_payment_receipt_email.sql',
     ]);
 
     const activeInventory = await pool.query<{

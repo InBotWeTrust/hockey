@@ -2865,6 +2865,29 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(rubles.json().transactions[0]).toMatchObject({ category: 'bank' });
   });
 
+  it('shows only successful payments and refunds in user transaction history', async () => {
+    await pool.query(
+      `insert into payments (user_id, title, amount_rub, status, paid_at, created_at)
+       values ($1, 'Успешная оплата', 149, 'paid', now(), now() - interval '4 minutes'),
+              ($1, 'Возврат', 299, 'refunded', now(), now() - interval '3 minutes'),
+              ($1, 'Ожидает', 699, 'pending', null, now() - interval '2 minutes'),
+              ($1, 'Отменена', 1490, 'canceled', null, now() - interval '1 minute')`,
+      [userA],
+    );
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/inventory/transactions?filter=ruble&limit=20',
+      headers: auth(tokenA),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().transactions.map((entry: { title: string }) => entry.title)).toEqual([
+      'Возврат',
+      'Успешная оплата',
+    ]);
+  });
+
   it('keeps duplicate inventory purchases as separate instances', async () => {
     const stickId = await createInventoryItem('stick', 'Duplicate shop stick');
     await pool.query(

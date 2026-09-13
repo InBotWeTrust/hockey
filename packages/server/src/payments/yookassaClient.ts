@@ -9,6 +9,34 @@ export interface CreateYooKassaPaymentInput {
   amountRub: number;
   description: string;
   localPaymentId: string;
+  receiptEmail: string;
+}
+
+export class YooKassaRequestError extends Error {
+  readonly status?: number;
+  readonly providerCode?: string;
+  readonly providerDescription?: string;
+  readonly providerParameter?: string;
+
+  constructor(
+    diagnostic: {
+      status?: number;
+      providerCode?: string;
+      providerDescription?: string;
+      providerParameter?: string;
+    } = {},
+  ) {
+    super('yookassa_request_failed');
+    this.name = 'YooKassaRequestError';
+    if (diagnostic.status !== undefined) this.status = diagnostic.status;
+    if (diagnostic.providerCode !== undefined) this.providerCode = diagnostic.providerCode;
+    if (diagnostic.providerDescription !== undefined) {
+      this.providerDescription = diagnostic.providerDescription;
+    }
+    if (diagnostic.providerParameter !== undefined) {
+      this.providerParameter = diagnostic.providerParameter;
+    }
+  }
 }
 
 export interface YooKassaPaymentAmount {
@@ -51,12 +79,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function requiredString(record: Record<string, unknown>, key: string): string {
   const value = record[key];
-  if (typeof value !== 'string' || value.length === 0) throw new Error('yookassa_request_failed');
+  if (typeof value !== 'string' || value.length === 0) throw new YooKassaRequestError();
   return value;
 }
 
 function parsePayment(value: unknown): YooKassaPayment {
-  if (!isRecord(value) || !isRecord(value.amount)) throw new Error('yookassa_request_failed');
+  if (!isRecord(value) || !isRecord(value.amount)) throw new YooKassaRequestError();
 
   const payment: YooKassaPayment = {
     id: requiredString(value, 'id'),
@@ -102,11 +130,29 @@ export function createYooKassaClient(options: CreateYooKassaClientOptions): YooK
     );
     try {
       const response = await fetchImpl(url, { ...init, signal: controller.signal });
-      if (!response.ok) throw new Error('yookassa_request_failed');
+      if (!response.ok) {
+        let providerError: Record<string, unknown> = {};
+        try {
+          const value: unknown = await response.json();
+          if (isRecord(value)) providerError = value;
+        } catch {
+          // Non-JSON provider responses intentionally collapse to status only.
+        }
+        throw new YooKassaRequestError({
+          status: response.status,
+          ...(typeof providerError.code === 'string' ? { providerCode: providerError.code } : {}),
+          ...(typeof providerError.description === 'string'
+            ? { providerDescription: providerError.description }
+            : {}),
+          ...(typeof providerError.parameter === 'string'
+            ? { providerParameter: providerError.parameter }
+            : {}),
+        });
+      }
       return parsePayment(await response.json());
     } catch (error) {
-      if (error instanceof Error && error.message === 'yookassa_request_failed') throw error;
-      throw new Error('yookassa_request_failed');
+      if (error instanceof YooKassaRequestError) throw error;
+      throw new YooKassaRequestError();
     } finally {
       clearTimeout(timeout);
     }
@@ -127,6 +173,19 @@ export function createYooKassaClient(options: CreateYooKassaClientOptions): YooK
           confirmation: { type: 'redirect', return_url: options.returnUrl },
           description: input.description,
           metadata: { local_payment_id: input.localPaymentId },
+          receipt: {
+            customer: { email: input.receiptEmail },
+            items: [
+              {
+                description: input.description,
+                quantity: '1.00',
+                amount: { value: input.amountRub.toFixed(2), currency: 'RUB' },
+                vat_code: 1,
+                payment_mode: 'full_payment',
+                payment_subject: 'service',
+              },
+            ],
+          },
         }),
       }),
     getPayment: (providerPaymentId) =>
