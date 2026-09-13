@@ -51,9 +51,13 @@ export async function buildApp(options: BuildAppOptions = {}) {
     config.NODE_ENV === 'development'
       ? {
           level: config.LOG_LEVEL,
+          redact: { paths: ['req.body.token'], censor: '[REDACTED]' },
           transport: { target: 'pino-pretty', options: { colorize: true } },
         }
-      : { level: config.LOG_LEVEL };
+      : {
+          level: config.LOG_LEVEL,
+          redact: { paths: ['req.body.token'], censor: '[REDACTED]' },
+        };
 
   const app = Fastify({ logger: loggerOptions });
   const pushVapidOptions = {

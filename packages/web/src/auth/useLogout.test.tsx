@@ -12,6 +12,7 @@ function wrapper({ children }: { children: ReactNode }): JSX.Element {
 
 describe('useLogout', () => {
   beforeEach(() => {
+    vi.unstubAllGlobals();
     Object.defineProperty(globalThis, '__HOCKEY_NATIVE__', {
       configurable: true,
       value: undefined,
@@ -44,6 +45,45 @@ describe('useLogout', () => {
     });
 
     expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://ultimatehockey.ru/api/auth/logout');
+  });
+
+  it('removes only this Android push installation before clearing the session', async () => {
+    Object.defineProperty(globalThis, '__HOCKEY_NATIVE__', {
+      configurable: true,
+      value: { platform: 'android' },
+      writable: true,
+    });
+    vi.stubGlobal('Capacitor', {
+      getPlatform: () => 'android',
+      Plugins: {
+        PushNotifications: {},
+        Preferences: {
+          get: vi.fn().mockResolvedValue({
+            value: '22222222-2222-4222-8222-222222222222',
+          }),
+          set: vi.fn().mockResolvedValue(undefined),
+        },
+        App: {},
+      },
+    });
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u', displayName: 'A' },
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    const { result } = renderHook(() => useLogout(), { wrapper });
+    await act(async () => {
+      await result.current();
+    });
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://ultimatehockey.ru/api/push/android/installations/22222222-2222-4222-8222-222222222222',
+    );
+    expect(fetchSpy.mock.calls[0]?.[1]).toMatchObject({ method: 'DELETE' });
   });
 
   it('calls POST /auth/logout with refresh token and clears session', async () => {
