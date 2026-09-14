@@ -1778,7 +1778,14 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       tournament_loadout_version: 1,
       titles: ['A stick', 'A skates', 'A nutrition'],
     });
-    expect(boundaryAfterBreak.rows[0]!.inventory_report).toHaveLength(2);
+    expect(boundaryAfterBreak.rows[0]!.inventory_report).toHaveLength(1);
+    expect(
+      (
+        boundaryAfterBreak.rows[0]!.inventory_report[0] as {
+          consumed: Array<{ title: string; charges: number }>;
+        }
+      ).consumed,
+    ).toHaveLength(3);
     const reportAfterFirstPeriod = boundaryAfterBreak.rows[0]!.inventory_report;
     const carried = await app.inject({
       method: 'POST',

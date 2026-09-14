@@ -816,6 +816,22 @@ interface DuelMatchStateDTO extends DuelMatchDTO {
   }>;
 }
 
+interface SubmitAmateurDuelShotResponse {
+  match_id: string;
+  server_result: DuelShotResult;
+  confirmed_shot_index: number;
+  participant: {
+    state: ParticipantState;
+    current_period: number;
+    current_period_shots: number;
+    current_period_goals: number;
+    shots_taken: number;
+    goals: number;
+  };
+  current_period_inventory: InventoryPeriodReport;
+  settled: boolean;
+}
+
 interface RatingRow {
   user_id: string;
   display_name: string;
@@ -1020,18 +1036,47 @@ function inventoryReportFromUnknown(value: unknown): InventoryPeriodReport[] {
     )
     .safeParse(value ?? []);
   if (!parsed.success) return [];
-  return parsed.data.map((entry) => ({
-    periodNumber: entry.periodNumber,
-    consumed: entry.consumed.map((item) => ({
-      id: item.id,
-      ...(item.itemId !== undefined ? { itemId: item.itemId } : {}),
-      ...(item.instanceId !== undefined ? { instanceId: item.instanceId } : {}),
-      kind: item.kind,
-      title: item.title,
-      charges: item.charges,
-      remainingReserved: item.remainingReserved,
-    })),
-  }));
+  const periods = new Map<number, InventoryPeriodReport>();
+  for (const entry of parsed.data) {
+    let period = periods.get(entry.periodNumber);
+    if (!period) {
+      period = { periodNumber: entry.periodNumber, consumed: [] };
+      periods.set(entry.periodNumber, period);
+    }
+    for (const item of entry.consumed) {
+      const existingIndex = period.consumed.findIndex((candidate) => candidate.id === item.id);
+      const normalized = {
+        id: item.id,
+        ...(item.itemId !== undefined ? { itemId: item.itemId } : {}),
+        ...(item.instanceId !== undefined ? { instanceId: item.instanceId } : {}),
+        kind: item.kind,
+        title: item.title,
+        charges: item.charges,
+        remainingReserved: item.remainingReserved,
+      };
+      if (existingIndex === -1) {
+        period.consumed.push(normalized);
+      } else {
+        const existing = period.consumed[existingIndex]!;
+        period.consumed[existingIndex] = {
+          ...normalized,
+          charges: roundInventoryCharge(existing.charges + normalized.charges),
+        };
+      }
+    }
+  }
+  return [...periods.values()];
+}
+
+function mergeInventoryReport(
+  report: InventoryPeriodReport[],
+  periodNumber: number,
+  consumed: InventoryPeriodReport['consumed'],
+): InventoryPeriodReport[] {
+  return inventoryReportFromUnknown([
+    ...report,
+    ...(consumed.length > 0 ? [{ periodNumber, consumed }] : []),
+  ]);
 }
 
 function duelInventoryItemFromSnapshot(
@@ -2135,7 +2180,11 @@ async function consumeInventoryForPeriod(
     periodNumber: participant.current_period + 1,
     consumed,
   };
-  const report = [...inventoryReportFromUnknown(participant.inventory_report), periodReport];
+  const report = mergeInventoryReport(
+    inventoryReportFromUnknown(participant.inventory_report),
+    periodReport.periodNumber,
+    periodReport.consumed,
+  );
   const consumedCharges = consumed.reduce((sum, item) => sum + item.charges, 0);
   await client.query(
     `update amateur_duel_participant
@@ -2280,13 +2329,7 @@ async function consumeInventoryForShot(
   }
 
   if (consumed.length === 0) return;
-  const nextReport = [
-    ...reportBeforeShot,
-    {
-      periodNumber,
-      consumed,
-    },
-  ];
+  const nextReport = mergeInventoryReport(reportBeforeShot, periodNumber, consumed);
   await client.query(
     `update amateur_duel_participant
         set consumed_inventory_charges = consumed_inventory_charges + $3,
@@ -6068,7 +6111,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           periodRule.shotsLimit !== null &&
           body.shot_index >= periodRule.shotsLimit
         ) {
-          await closeParticipantPeriod(client, participant, rules, now, 'quota');
+          const participantAfterShot = (await fetchParticipants(client, match.id)).find(
+            (candidate) => candidate.user_id === req.user.id,
+          );
+          if (!participantAfterShot) {
+            throw new AppError('server_error', 'duel participant disappeared after shot', 500);
+          }
+          await closeParticipantPeriod(client, participantAfterShot, rules, now, 'quota');
         }
         const settledReconciliation = await reconcileMatch(
           client,
@@ -6076,6 +6125,44 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           now,
         );
         match = settledReconciliation.match;
+        const refreshedParticipant = (await fetchParticipants(client, match.id)).find(
+          (candidate) => candidate.user_id === req.user.id,
+        );
+        if (!refreshedParticipant) {
+          throw new AppError('server_error', 'duel participant disappeared after shot', 500);
+        }
+        const confirmedPeriod = participant.current_period;
+        const confirmedStats = await fetchCurrentPeriodStats(
+          client,
+          match.id,
+          req.user.id,
+          confirmedPeriod,
+        );
+        const compactReport = inventoryReportFromUnknown(refreshedParticipant.inventory_report);
+        const currentPeriodInventory = compactReport.find(
+          (entry) => entry.periodNumber === confirmedPeriod,
+        ) ?? { periodNumber: confirmedPeriod, consumed: [] };
+        const participantTotalsIncludeCurrentPeriod =
+          refreshedParticipant.state !== 'period_active';
+        const response: SubmitAmateurDuelShotResponse = {
+          match_id: match.id,
+          server_result: serverResult,
+          confirmed_shot_index: confirmedStats.shots,
+          participant: {
+            state: refreshedParticipant.state,
+            current_period: refreshedParticipant.current_period,
+            current_period_shots: confirmedStats.shots,
+            current_period_goals: confirmedStats.goals,
+            shots_taken:
+              Number(refreshedParticipant.shots_taken) +
+              (participantTotalsIncludeCurrentPeriod ? 0 : confirmedStats.shots),
+            goals:
+              Number(refreshedParticipant.goals) +
+              (participantTotalsIncludeCurrentPeriod ? 0 : confirmedStats.goals),
+          },
+          current_period_inventory: currentPeriodInventory,
+          settled: match.status === 'settled',
+        };
         return {
           matchId: match.id,
           settled: match.status === 'settled',
@@ -6084,8 +6171,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             : {
                 newlySettledRegularFixture: settledReconciliation.newlySettledRegularFixture,
               }),
-          server_result: serverResult,
-          match: await buildMatchStateDto(client, match, req.user.id, now),
+          response,
         };
       });
       await publishDuelFixtureProgress(app, response.matchId);
@@ -6093,7 +6179,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         await reconcileNewlySettledRegularFixture(app, response.newlySettledRegularFixture);
       }
       if (response.settled) void notifySettlement(app, response.matchId);
-      return response;
+      return response.response;
     },
   );
 
