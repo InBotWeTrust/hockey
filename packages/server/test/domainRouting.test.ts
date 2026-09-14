@@ -9,6 +9,7 @@ const caddy = repoFile('Caddyfile');
 const compose = repoFile('docker-compose.yml');
 const productionWorkflow = repoFile('.github/workflows/deploy.yml');
 const devWorkflow = repoFile('.github/workflows/deploy-dev.yml');
+const androidAssetLinks = repoFile('packages/web/public/.well-known/assetlinks.json');
 
 describe('production domain migration phase 1', () => {
   it('serves canonical and legacy production hosts while redirecting www', () => {
@@ -16,6 +17,26 @@ describe('production domain migration phase 1', () => {
     expect(caddy).toContain('{$WWW_APP_DOMAIN}');
     expect(caddy).toContain('redir https://{$APP_DOMAIN}{uri} 308');
     expect(caddy).toContain('{$DEV_APP_DOMAIN}');
+  });
+
+  it('ships Android App Links metadata in the web bundle and verifies it after deploy', () => {
+    expect(JSON.parse(androidAssetLinks)).toEqual([
+      {
+        relation: ['delegate_permission/common.handle_all_urls'],
+        target: {
+          namespace: 'android_app',
+          package_name: 'ru.ultimatehockey.app',
+          sha256_cert_fingerprints: [
+            '28:93:C7:19:1C:A8:77:B0:E7:1F:16:CF:4E:83:9D:31:DB:0D:11:C2:3B:A9:E9:D2:A8:D7:51:99:7C:0B:49:7F',
+          ],
+        },
+      },
+    ]);
+    expect(productionWorkflow).toContain('Android App Links smoke test passed');
+    expect(productionWorkflow).toContain('/.well-known/assetlinks.json');
+    expect(productionWorkflow).toMatch(
+      /any\(\.\[\];\s*\(\.relation \| index\("delegate_permission\/common\.handle_all_urls"\) != null\)\s*and\s*\.target\.namespace == "android_app"/,
+    );
   });
 
   it('gives shared Caddy explicit safe hostname defaults', () => {

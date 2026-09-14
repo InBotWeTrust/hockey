@@ -53,8 +53,7 @@ export function MobileTelegramAuthScreen({
 
   return (
     <main
-      className="screen login-screen"
-      style={{ alignItems: 'center', justifyContent: 'center' }}
+      className="screen login-screen mobile-telegram-auth-screen"
     >
       <h1 className="login-screen__title">Вход через Telegram</h1>
       {!validAttempt ? (
