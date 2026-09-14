@@ -5288,6 +5288,16 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     const started = await acceptReadyAndStart(matchId, { loadout: { nutrition: nutritionId } });
     expect(started.statusCode).toBe(200);
     await pool.query(
+      `update amateur_duel_match
+          set rules_snapshot = jsonb_set(
+            rules_snapshot,
+            '{noInventoryTiming,nutrition}',
+            '{"energyBaselineSpeed":0.8,"fatigueGraceMs":30000,"fatigueSlowdownStartMs":30000,"fatigueHeavySlowdownStartMs":75000,"fatigueStopStartMs":90000,"fatigueStopDurationMs":5000,"fatigueAfterRestMs":45000}'::jsonb
+          )
+        where id = $1`,
+      [matchId],
+    );
+    await pool.query(
       `update amateur_duel_participant
           set period_started_at = now() - interval '93000 milliseconds'
         where match_id = $1 and user_id = $2`,
