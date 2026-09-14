@@ -102,9 +102,15 @@ async function openNewTournamentWizard(): Promise<void> {
 
 async function moveToRewardsStep(): Promise<void> {
   for (let index = 0; index < 4; index += 1) {
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await clickNext();
   }
   await screen.findByRole('button', { name: 'Применить рекомендуемые значения' });
+}
+
+async function clickNext(): Promise<void> {
+  const next = screen.getByRole('button', { name: 'Далее' });
+  await waitFor(() => expect(next).toBeEnabled());
+  fireEvent.click(next);
 }
 
 async function chooseGlassOption(label: string, option: string | RegExp): Promise<void> {
@@ -681,11 +687,11 @@ describe('TournamentAdmin', () => {
     fireEvent.change(titleInput, {
       target: { value: 'Кубок расписания' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await clickNext();
     expect(await screen.findByRole('combobox', { name: 'Регистрация' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await clickNext();
     expect(await screen.findByRole('spinbutton', { name: 'Кругов' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await clickNext();
 
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1: дней на раунд' })).toHaveValue(2);
     expect(screen.getByRole('spinbutton', { name: 'Раунд 1: максимум игр в день' })).toHaveValue(4);
@@ -734,9 +740,9 @@ describe('TournamentAdmin', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
       target: { value: draftTournament.title },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await clickNext();
     for (let step = 0; step < 6; step += 1) {
-      fireEvent.click(await screen.findByRole('button', { name: 'Далее' }));
+      await clickNext();
     }
 
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить и опубликовать' }));
@@ -771,9 +777,9 @@ describe('TournamentAdmin', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
       target: { value: draftTournament.title },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await clickNext();
     for (let step = 0; step < 6; step += 1) {
-      fireEvent.click(await screen.findByRole('button', { name: 'Далее' }));
+      await clickNext();
     }
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить и опубликовать' }));
 
@@ -1659,9 +1665,9 @@ describe('TournamentAdmin', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
       target: { value: tournament.title },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await clickNext();
     await screen.findByRole('combobox', { name: 'Регистрация' });
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await clickNext();
 
     await screen.findByRole('combobox', { name: 'Шаблон дуэли регулярки' });
     fireEvent.click(screen.getByRole('combobox', { name: 'Шаблон дуэли регулярки' }));
@@ -1801,13 +1807,13 @@ describe('TournamentAdmin', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
       target: { value: tournament.title },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await clickNext();
     await screen.findByRole('combobox', { name: 'Регистрация' });
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await clickNext();
 
     expect(screen.getByRole('button', { name: 'Опустить Очки' })).toBeInTheDocument();
     await chooseGlassOption('Шаблон дуэли регулярки', /Классика/);
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await clickNext();
 
     expect(screen.getByRole('button', { name: 'Раунд 1, игра 1: Дома' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: /порядок площадок/i })).not.toBeInTheDocument();
@@ -1840,23 +1846,23 @@ describe('TournamentAdmin', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Название' }), {
       target: { value: 'Визуальный кубок' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await clickNext();
     await screen.findByRole('combobox', { name: 'Регистрация' });
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await clickNext();
     await chooseGlassOption('Формат', 'Классика');
     expect(screen.getByRole('button', { name: 'Добавить место' })).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('10,8,6,5')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Добавить место' }));
     expect(screen.getByRole('spinbutton', { name: 'Очки за 1 место' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await clickNext();
+    await clickNext();
+    await clickNext();
     fireEvent.click(screen.getByRole('button', { name: '6. Награды' }));
     expect(screen.getByRole('button', { name: 'Добавить награду регулярки' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Награды регулярки' })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await clickNext();
     expect(screen.getByRole('button', { name: 'Добавить напоминание' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Настроить событие' })).toBeInTheDocument();
     expect(

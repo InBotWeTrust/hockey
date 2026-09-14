@@ -10,6 +10,11 @@ on:
         required: false
         default: false
         type: boolean
+      correct_existing_inventory:
+        description: 'Replace the erroneous first-tier inventory grant with the intended second-tier items'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: deploy-prod
@@ -21,9 +26,9 @@ env:
   APP_DOMAIN: ultimatehockey.ru
   LEGACY_APP_DOMAIN: hockey.inbotwetrust.ru
   WWW_APP_DOMAIN: www.ultimatehockey.ru
-  DEV_APP_DOMAIN: dev.hockey.inbotwetrust.ru
   HEALTH_URL: https://ultimatehockey.ru/api/health
   LEGACY_URL: https://hockey.inbotwetrust.ru
+  DEV_APP_DOMAIN: dev.hockey.inbotwetrust.ru
 
 jobs:
   build-and-push:
@@ -79,7 +84,7 @@ jobs:
           build-args: |
             VITE_TELEGRAM_BOT_USERNAME=${{ env.BOT_USERNAME }}
             VITE_VK_APP_ID=${{ env.VK_APP_ID }}
-            VITE_DEV_ACCESS_CODE_LOGIN_ENABLED=true
+            VITE_DEV_ACCESS_CODE_LOGIN_ENABLED=false
             APP_BUILD_SHA=${{ github.sha }}
           tags: |
             ${{ env.WEB_IMAGE }}:latest
@@ -111,6 +116,10 @@ jobs:
           USER: ${{ secrets.DEPLOY_USER }}
           HOST: ${{ secrets.DEPLOY_HOST }}
           REMOTE_PATH: ${{ secrets.DEPLOY_PATH }}
+          APP_DOMAIN: ${{ env.APP_DOMAIN }}
+          LEGACY_APP_DOMAIN: ${{ env.LEGACY_APP_DOMAIN }}
+          WWW_APP_DOMAIN: ${{ env.WWW_APP_DOMAIN }}
+          DEV_APP_DOMAIN: ${{ env.DEV_APP_DOMAIN }}
         run: |
           scp -i ~/.ssh/id_ed25519 \
             docker-compose.yml Caddyfile \
@@ -124,7 +133,6 @@ jobs:
           APP_DOMAIN: ${{ env.APP_DOMAIN }}
           LEGACY_APP_DOMAIN: ${{ env.LEGACY_APP_DOMAIN }}
           WWW_APP_DOMAIN: ${{ env.WWW_APP_DOMAIN }}
-          DEV_APP_DOMAIN: ${{ env.DEV_APP_DOMAIN }}
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -146,14 +154,15 @@ jobs:
           OBJECT_STORAGE_MAX_UPLOAD_BYTES: ${{ vars.OBJECT_STORAGE_MAX_UPLOAD_BYTES || '26214400' }}
           PRODUCTION_YOOKASSA_SHOP_ID: ${{ secrets.PRODUCTION_YOOKASSA_SHOP_ID }}
           PRODUCTION_YOOKASSA_SECRET_KEY: ${{ secrets.PRODUCTION_YOOKASSA_SECRET_KEY }}
-          GRANT_EXISTING_INVENTORY: ${{ github.event_name == 'workflow_dispatch' && inputs.grant_existing_inventory || 'false' }}
           ANDROID_MANIFEST_PUBLIC_KEYS_JSON: ${{ vars.ANDROID_MANIFEST_PUBLIC_KEYS_JSON }}
+          GRANT_EXISTING_INVENTORY: ${{ github.event_name == 'workflow_dispatch' && inputs.grant_existing_inventory || 'false' }}
+          CORRECT_EXISTING_INVENTORY: ${{ github.event_name == 'workflow_dispatch' && inputs.correct_existing_inventory || 'false' }}
         run: |
           FCM_PRIVATE_KEY_BASE64="$(printf '%s' "$FCM_PRIVATE_KEY" | base64 | tr -d '\r\n')"
-          ANDROID_MANIFEST_PUBLIC_KEYS_BASE64="$(printf '%s' "$ANDROID_MANIFEST_PUBLIC_KEYS_JSON" | base64 | tr -d '\r\n')"
           PRODUCTION_YOOKASSA_SHOP_ID_B64="$(printf '%s' "$PRODUCTION_YOOKASSA_SHOP_ID" | base64 | tr -d '\r\n')"
           PRODUCTION_YOOKASSA_SECRET_KEY_B64="$(printf '%s' "$PRODUCTION_YOOKASSA_SECRET_KEY" | base64 | tr -d '\r\n')"
           unset PRODUCTION_YOOKASSA_SHOP_ID PRODUCTION_YOOKASSA_SECRET_KEY
+          ANDROID_MANIFEST_PUBLIC_KEYS_BASE64="$(printf '%s' "$ANDROID_MANIFEST_PUBLIC_KEYS_JSON" | base64 | tr -d '\r\n')"
           ssh -i ~/.ssh/id_ed25519 "${USER}@${HOST}" \
             IMAGE_TAG="$IMAGE_TAG" \
             GHCR_USER="$GHCR_USER" \
@@ -179,15 +188,20 @@ jobs:
             OBJECT_STORAGE_SECRET_ACCESS_KEY="$OBJECT_STORAGE_SECRET_ACCESS_KEY" \
             OBJECT_STORAGE_PUBLIC_BASE_URL="$OBJECT_STORAGE_PUBLIC_BASE_URL" \
             OBJECT_STORAGE_MAX_UPLOAD_BYTES="$OBJECT_STORAGE_MAX_UPLOAD_BYTES" \
+            ANDROID_MANIFEST_PUBLIC_KEYS_BASE64="$ANDROID_MANIFEST_PUBLIC_KEYS_BASE64" \
             PRODUCTION_YOOKASSA_SHOP_ID_B64="$PRODUCTION_YOOKASSA_SHOP_ID_B64" \
             PRODUCTION_YOOKASSA_SECRET_KEY_B64="$PRODUCTION_YOOKASSA_SECRET_KEY_B64" \
             GRANT_EXISTING_INVENTORY="$GRANT_EXISTING_INVENTORY" \
-            ANDROID_MANIFEST_PUBLIC_KEYS_BASE64="$ANDROID_MANIFEST_PUBLIC_KEYS_BASE64" \
+            CORRECT_EXISTING_INVENTORY="$CORRECT_EXISTING_INVENTORY" \
             bash -s <<'ENDSSH'
           set -euo pipefail
           cd "$REMOTE_PATH"
           FCM_PRIVATE_KEY="$(printf '%s' "${FCM_PRIVATE_KEY_BASE64:-}" | base64 --decode)"
           ANDROID_MANIFEST_PUBLIC_KEYS_JSON="$(printf '%s' "${ANDROID_MANIFEST_PUBLIC_KEYS_BASE64:-}" | base64 --decode)"
+          if [ "$GRANT_EXISTING_INVENTORY" = "true" ] && [ "$CORRECT_EXISTING_INVENTORY" = "true" ]; then
+            echo 'grant_existing_inventory and correct_existing_inventory cannot run together' >&2
+            exit 1
+          fi
           decode_production_yookassa_value() {
             local encoded="$1"
             local decoded
@@ -225,6 +239,10 @@ jobs:
           else
             PRODUCTION_YOOKASSA_RETURN_URL='https://ultimatehockey.ru/inventory?tab=bank&payment=return'
           fi
+          if [ -z "${PUSH_VAPID_PUBLIC_KEY:-}" ] || [ -z "${PUSH_VAPID_PRIVATE_KEY:-}" ]; then
+            echo "PUSH_VAPID_PUBLIC_KEY and PUSH_VAPID_PRIVATE_KEY GitHub secrets are required for production push notifications"
+            exit 1
+          fi
           for name in FCM_PROJECT_ID FCM_CLIENT_EMAIL FCM_PRIVATE_KEY; do
             if [ -z "${!name:-}" ]; then
               echo "$name GitHub secret is required for Android push notifications"
@@ -232,15 +250,11 @@ jobs:
             fi
           done
           [ -n "$ANDROID_MANIFEST_PUBLIC_KEYS_JSON" ] || {
-            echo 'ANDROID_MANIFEST_PUBLIC_KEYS_JSON GitHub variable is required for Android releases'
+            echo 'ANDROID_MANIFEST_PUBLIC_KEYS_JSON GitHub secret is required for Android releases'
             exit 1
           }
           install -d -m 0755 "$REMOTE_PATH/android-releases"
           install -d -m 0700 "$REMOTE_PATH/android-release-staging"
-          if [ -z "${PUSH_VAPID_PUBLIC_KEY:-}" ] || [ -z "${PUSH_VAPID_PRIVATE_KEY:-}" ]; then
-            echo "PUSH_VAPID_PUBLIC_KEY and PUSH_VAPID_PRIVATE_KEY GitHub secrets are required for production push notifications"
-            exit 1
-          fi
           for name in \
             OBJECT_STORAGE_ENDPOINT \
             OBJECT_STORAGE_REGION \
@@ -279,7 +293,7 @@ jobs:
           export SYSTEM_USER_ID
           export PRODUCTION_YOOKASSA_SHOP_ID PRODUCTION_YOOKASSA_SECRET_KEY
           export PRODUCTION_YOOKASSA_RETURN_URL
-          export DEV_ACCESS_CODE_LOGIN_ENABLED=true
+          export DEV_ACCESS_CODE_LOGIN_ENABLED=false
           export ANDROID_RELEASES_DIR="$REMOTE_PATH/android-releases"
           export ANDROID_RELEASE_MANIFEST_PATH=/app/android-releases/current.json
           export ANDROID_MANIFEST_PUBLIC_KEYS_JSON
@@ -314,6 +328,20 @@ jobs:
             docker compose run --rm -T \
               -e INVENTORY_GRANT_CONFIRM=2026-09-11-existing-user-inventory-grant-v1 \
               server node packages/server/dist/ops/existingUserInventoryGrantCli.js --apply \
+                < /dev/null
+          fi
+          if [ "$CORRECT_EXISTING_INVENTORY" = "true" ]; then
+            docker compose run --rm -T \
+              server node packages/server/dist/ops/existingUserInventoryGrantCorrectionCli.js < /dev/null
+            BACKUP_DIR="$REMOTE_PATH/backups"
+            BACKUP_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+            mkdir -p "$BACKUP_DIR"
+            docker compose exec -T postgres \
+              sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
+              > "$BACKUP_DIR/inventory-grant-correction-prod-$BACKUP_STAMP.dump"
+            docker compose run --rm -T \
+              -e INVENTORY_GRANT_CORRECTION_CONFIRM=2026-09-11-existing-user-inventory-grant-v1-correction-v1 \
+              server node packages/server/dist/ops/existingUserInventoryGrantCorrectionCli.js --apply \
               < /dev/null
           fi
           # Idempotent system-channel seed: no-op if the chat already exists,

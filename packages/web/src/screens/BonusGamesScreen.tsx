@@ -540,7 +540,8 @@ function BonusGameCard({
   );
   const isUnavailableForNewAttempt = !isContinuable && isPlayable(game) && !canStartNewAttempt;
   const artworkIsLocked =
-    (compact && !isContinuable && !isPlayable(game)) || (featured && isUnavailableForNewAttempt);
+    (compact && !isContinuable && !isPlayable(game)) ||
+    (featured && isUnavailableForNewAttempt);
   const isWorldTourArtwork = game.arena.thumbnail_url.includes('/bonus-games/world-tour/');
   const featuredArtworkPosition =
     featured && isWorldTourArtwork

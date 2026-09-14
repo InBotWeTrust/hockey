@@ -3,6 +3,13 @@ import type { Pool } from 'pg';
 export const EXISTING_USER_INVENTORY_GRANT_KEY =
   '2026-09-11-existing-user-inventory-grant-v1';
 
+export const EXISTING_USER_INVENTORY_GRANT_TIERS = {
+  stick: 'rare',
+  skates: 'rare',
+  nutrition: 'rare',
+  recovery: 'rare',
+} as const;
+
 interface RecipientRow {
   id: string;
   display_name: string;
@@ -73,13 +80,19 @@ export async function runExistingUserInventoryGrant(
          from admin_inventory_items
         where deleted_at is null
           and (
-            (item_kind = 'stick' and rarity = 'common')
-            or (item_kind = 'skates' and rarity = 'common')
-            or (item_kind = 'nutrition' and rarity = 'common')
-            or (item_kind = 'recovery' and rarity = 'rare')
+            (item_kind = 'stick' and rarity = $1)
+            or (item_kind = 'skates' and rarity = $2)
+            or (item_kind = 'nutrition' and rarity = $3)
+            or (item_kind = 'recovery' and rarity = $4)
           )
         order by item_kind
         for share`,
+      [
+        EXISTING_USER_INVENTORY_GRANT_TIERS.stick,
+        EXISTING_USER_INVENTORY_GRANT_TIERS.skates,
+        EXISTING_USER_INVENTORY_GRANT_TIERS.nutrition,
+        EXISTING_USER_INVENTORY_GRANT_TIERS.recovery,
+      ],
     );
     if (items.rows.length !== 4) {
       throw new Error(`expected exactly 4 inventory grant items, found ${items.rows.length}`);

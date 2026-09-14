@@ -1369,9 +1369,7 @@ describe('BonusGamesScreen', () => {
     );
     renderCatalog();
 
-    const nextGame = (await screen.findByRole('heading', { name: 'Третья игра' })).closest(
-      'article',
-    );
+    const nextGame = (await screen.findByRole('heading', { name: 'Третья игра' })).closest('article');
     expect(nextGame).not.toBeNull();
     expect(within(nextGame!).getByAltText('Площадка «Пляж»')).toHaveClass(
       'bonus-game-card__artwork--locked',

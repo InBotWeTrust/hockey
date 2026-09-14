@@ -89,6 +89,11 @@ describe('App routing + auth', () => {
       writable: true,
     });
     queryClient.clear();
+    Object.defineProperty(globalThis, '__HOCKEY_NATIVE__', {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
     localStorage.clear();
     window.history.replaceState({}, '', '/');
     vi.restoreAllMocks();

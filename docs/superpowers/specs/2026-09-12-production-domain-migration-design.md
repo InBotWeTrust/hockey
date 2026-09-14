@@ -1,9 +1,9 @@
 # Ultimate Hockey production domain migration design
 
-**Date:** 2026-09-12  
-**Status:** approved in chat; pending written-spec review  
-**Primary production URL:** `https://ultimatehockey.ru`  
-**Legacy production URL:** `https://hockey.inbotwetrust.ru`  
+**Date:** 2026-09-12
+**Status:** approved in chat; pending written-spec review
+**Primary production URL:** `https://ultimatehockey.ru`
+**Legacy production URL:** `https://hockey.inbotwetrust.ru`
 **Development URL:** `https://dev.hockey.inbotwetrust.ru` (unchanged)
 
 ## Goal
