@@ -9,6 +9,7 @@ import {
   updateAmateurDuelLoadout,
   type AmateurDuelLoadoutSelection,
   type AmateurDuelMatchState,
+  type SubmitAmateurDuelShotResponse,
 } from '../api/amateurDuel.js';
 import {
   isDefinitiveGameRequestError,
@@ -42,6 +43,31 @@ interface AmateurDuelStoreState {
     state: AmateurDuelMatchState;
     isCurrent: () => boolean;
   } | null>;
+}
+
+function applyShotAcknowledgement(
+  match: AmateurDuelMatchState,
+  acknowledgement: SubmitAmateurDuelShotResponse,
+): AmateurDuelMatchState {
+  const inventoryReport = match.me.inventory_report.filter(
+    (report) => report.periodNumber !== acknowledgement.current_period_inventory.periodNumber,
+  );
+  inventoryReport.push(acknowledgement.current_period_inventory);
+  return {
+    ...match,
+    current_period_shots: acknowledgement.participant.current_period_shots,
+    current_period_goals: acknowledgement.participant.current_period_goals,
+    me: {
+      ...match.me,
+      state: acknowledgement.participant.state,
+      current_period: acknowledgement.participant.current_period,
+      current_period_shots: acknowledgement.participant.current_period_shots,
+      current_period_goals: acknowledgement.participant.current_period_goals,
+      shots_taken: acknowledgement.participant.shots_taken,
+      goals: acknowledgement.participant.goals,
+      inventory_report: inventoryReport,
+    },
+  };
 }
 
 export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) => ({
@@ -215,15 +241,30 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
         }
         return null;
       }
-      const res =
-        outcome.kind === 'request'
-          ? outcome.value
-          : { server_result: claimedResult, match: outcome.value };
       if (get().match !== current) return null;
+      if (outcome.kind === 'reconciled') {
+        set({ error: null });
+        return {
+          serverResult: claimedResult,
+          state: outcome.value,
+          isCurrent: () => get().match === current,
+        };
+      }
+      const acknowledgement = outcome.value;
+      let next = applyShotAcknowledgement(current, acknowledgement);
+      if (acknowledgement.settled || acknowledgement.participant.state !== 'period_active') {
+        try {
+          next = (await fetchAmateurMatch(current.id)).match;
+        } catch {
+          // The shot is already authoritative. Keep the compact transition state
+          // and let normal polling reconcile the richer break/result DTO.
+        }
+        if (get().match !== current) return null;
+      }
       set({ error: null });
       return {
-        serverResult: res.server_result,
-        state: res.match,
+        serverResult: acknowledgement.server_result,
+        state: next,
         isCurrent: () => get().match === current,
       };
     } catch (err) {

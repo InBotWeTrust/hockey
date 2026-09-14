@@ -585,6 +585,172 @@ describe('game session stores', () => {
     expect(useAmateurDuelStore.getState().inFlight).toBe(false);
   });
 
+  it('applies a compact duel shot acknowledgement without fetching the full match', async () => {
+    const active = {
+      ...amateurDuelState,
+      current_period_shots: 1,
+      current_period_goals: 1,
+      me: {
+        state: 'period_active',
+        current_period: 1,
+        current_period_shots: 1,
+        current_period_goals: 1,
+        shots_taken: 1,
+        goals: 1,
+        inventory_report: [],
+      },
+      opponent: { user_id: 'opponent', shots_taken: 7, goals: 3 },
+    } as unknown as AmateurDuelMatchState;
+    useAmateurDuelStore.setState({ match: active });
+    vi.mocked(submitAmateurDuelShot).mockResolvedValueOnce({
+      match_id: active.id,
+      server_result: 'save',
+      confirmed_shot_index: 2,
+      participant: {
+        state: 'period_active',
+        current_period: 1,
+        current_period_shots: 2,
+        current_period_goals: 1,
+        shots_taken: 2,
+        goals: 1,
+      },
+      current_period_inventory: {
+        periodNumber: 1,
+        consumed: [
+          {
+            id: 'stick',
+            kind: 'stick',
+            title: 'Stick',
+            charges: 2,
+            remainingReserved: 8,
+          },
+        ],
+      },
+      settled: false,
+    });
+
+    const result = await useAmateurDuelStore.getState().submitShot({
+      shotIndex: 2,
+      input: { tapTime: 3000 },
+      claimedResult: 'goal',
+    });
+
+    expect(fetchAmateurMatch).not.toHaveBeenCalled();
+    expect(result?.serverResult).toBe('save');
+    expect(result?.state).toMatchObject({
+      current_period_shots: 2,
+      current_period_goals: 1,
+      me: {
+        state: 'period_active',
+        shots_taken: 2,
+        goals: 1,
+        inventory_report: [
+          {
+            periodNumber: 1,
+            consumed: [{ id: 'stick', charges: 2, remainingReserved: 8 }],
+          },
+        ],
+      },
+      opponent: { user_id: 'opponent', shots_taken: 7, goals: 3 },
+    });
+  });
+
+  it('fetches the full duel once when a compact acknowledgement closes the period', async () => {
+    const active = {
+      ...amateurDuelState,
+      current_period_shots: 30,
+      current_period_goals: 16,
+      me: {
+        state: 'period_active',
+        current_period: 1,
+        current_period_shots: 30,
+        current_period_goals: 16,
+        shots_taken: 30,
+        goals: 16,
+        inventory_report: [],
+      },
+    } as unknown as AmateurDuelMatchState;
+    const breakState = {
+      ...active,
+      current_period_shots: 0,
+      current_period_goals: 0,
+      me: { ...active.me, state: 'break_active' as const },
+    };
+    useAmateurDuelStore.setState({ match: active });
+    vi.mocked(submitAmateurDuelShot).mockResolvedValueOnce({
+      match_id: active.id,
+      server_result: 'goal',
+      confirmed_shot_index: 30,
+      participant: {
+        state: 'break_active',
+        current_period: 1,
+        current_period_shots: 30,
+        current_period_goals: 16,
+        shots_taken: 30,
+        goals: 16,
+      },
+      current_period_inventory: { periodNumber: 1, consumed: [] },
+      settled: false,
+    });
+    vi.mocked(fetchAmateurMatch).mockResolvedValueOnce({ match: breakState });
+
+    const result = await useAmateurDuelStore.getState().submitShot({
+      shotIndex: 30,
+      input: { tapTime: 3000 },
+      claimedResult: 'goal',
+    });
+
+    expect(fetchAmateurMatch).toHaveBeenCalledTimes(1);
+    expect(fetchAmateurMatch).toHaveBeenCalledWith(active.id);
+    expect(result?.state).toBe(breakState);
+  });
+
+  it('does not roll back an accepted final shot when the transition refresh fails', async () => {
+    const active = {
+      ...amateurDuelState,
+      current_period_shots: 30,
+      current_period_goals: 16,
+      me: {
+        state: 'period_active',
+        current_period: 1,
+        current_period_shots: 30,
+        current_period_goals: 16,
+        shots_taken: 30,
+        goals: 16,
+        inventory_report: [],
+      },
+    } as unknown as AmateurDuelMatchState;
+    useAmateurDuelStore.setState({ match: active });
+    vi.mocked(submitAmateurDuelShot).mockResolvedValueOnce({
+      match_id: active.id,
+      server_result: 'goal',
+      confirmed_shot_index: 30,
+      participant: {
+        state: 'break_active',
+        current_period: 1,
+        current_period_shots: 30,
+        current_period_goals: 16,
+        shots_taken: 30,
+        goals: 16,
+      },
+      current_period_inventory: { periodNumber: 1, consumed: [] },
+      settled: false,
+    });
+    vi.mocked(fetchAmateurMatch).mockRejectedValueOnce(new TypeError('Network unavailable'));
+
+    const result = await useAmateurDuelStore.getState().submitShot({
+      shotIndex: 30,
+      input: { tapTime: 3000 },
+      claimedResult: 'goal',
+    });
+
+    expect(result?.state).toMatchObject({
+      current_period_shots: 30,
+      current_period_goals: 16,
+      me: { state: 'break_active', shots_taken: 30, goals: 16 },
+    });
+  });
+
   it('recovers duel state when a shot request stalls', async () => {
     vi.useFakeTimers();
     const active = {

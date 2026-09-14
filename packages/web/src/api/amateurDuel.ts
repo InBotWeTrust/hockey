@@ -368,8 +368,19 @@ export interface SubmitAmateurDuelShotRequest {
 }
 
 export interface SubmitAmateurDuelShotResponse {
+  match_id: string;
   server_result: ShotResultType;
-  match: AmateurDuelMatchState;
+  confirmed_shot_index: number;
+  participant: {
+    state: AmateurDuelParticipantState;
+    current_period: number;
+    current_period_shots: number;
+    current_period_goals: number;
+    shots_taken: number;
+    goals: number;
+  };
+  current_period_inventory: AmateurDuelInventoryPeriodReport;
+  settled: boolean;
 }
 
 export interface AmateurDuelLoadoutSelection {
@@ -569,7 +580,7 @@ export function submitAmateurDuelShot(
       method: 'POST',
       body: JSON.stringify(body),
       ...(options?.signal === undefined ? {} : { signal: options.signal }),
-    }).then((res) => ({ ...res, match: stampMatch(res.match) })),
+    }),
   );
 }
 
