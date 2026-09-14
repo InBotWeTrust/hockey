@@ -72,8 +72,20 @@ jobs:
       - name: Build web
         run: pnpm --filter @hockey/web build
 
-      - name: Test
-        run: pnpm test
+      # Server integration tests use the shared Postgres/Redis services and are
+      # intentionally run after browser suites. Running every workspace test
+      # script concurrently makes the CI job exceed its 25-minute budget.
+      - name: Test game core
+        run: pnpm --filter @hockey/game-core test
+
+      - name: Test mobile
+        run: pnpm --filter @hockey/mobile test
+
+      - name: Test web
+        run: pnpm --filter @hockey/web test
+
+      - name: Test server
+        run: pnpm --filter @hockey/server test
 
   docker-build:
     runs-on: ubuntu-latest
