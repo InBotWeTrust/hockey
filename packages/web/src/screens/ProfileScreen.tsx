@@ -7,6 +7,7 @@ import {
   Medal,
   Settings,
   Star,
+  Sunrise,
   Target,
   TrendingUp,
   Trophy,
@@ -632,6 +633,7 @@ export function ProfileScreen(): JSX.Element {
   const [selectedTrophySection, setSelectedTrophySection] = useState<TrophySectionKey | null>(null);
   const [experienceRatingOpen, setExperienceRatingOpen] = useState(false);
   const [statRatingMetric, setStatRatingMetric] = useState<StatRatingMetric | null>(null);
+  const [earlyPlayerStatusOpen, setEarlyPlayerStatusOpen] = useState(false);
   const updateUser = useAuthStore((state) => state.updateUser);
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -736,6 +738,19 @@ export function ProfileScreen(): JSX.Element {
                 {getLevelLabel(profile.competitionLevel)}
               </span>
             </div>
+            <button
+              type="button"
+              className="profile-early-player-badge"
+              aria-label="Статус: У истоков"
+              onClick={() => setEarlyPlayerStatusOpen(true)}
+            >
+              <Sunrise
+                data-testid="profile-early-player-icon"
+                aria-hidden="true"
+                size={21}
+                strokeWidth={1.8}
+              />
+            </button>
           </div>
           <div className="profile-balances" aria-label="Баланс игрока">
             <ProfileBalance
@@ -786,6 +801,39 @@ export function ProfileScreen(): JSX.Element {
           onCurrentUser={synchronizeProfileStats}
           onClose={() => setStatRatingMetric(null)}
         />
+      ) : null}
+      {earlyPlayerStatusOpen ? (
+        <AccessibleModal
+          title="Ранний игрок"
+          ariaLabel="Ранний игрок"
+          onRequestClose={() => setEarlyPlayerStatusOpen(false)}
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть"
+              onClick={() => setEarlyPlayerStatusOpen(false)}
+            >
+              <X size={15} />
+            </button>
+          }
+        >
+          <div className="profile-early-player-modal__badge" aria-hidden="true">
+            <img src="/profile/early-player-badge.png" alt="" />
+          </div>
+          <p className="modal-copy">
+            Вы присоединились к игре «Ультимейт Хоккей» на старте проекта.
+          </p>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="modal-primary btn btn--cta"
+              onClick={() => setEarlyPlayerStatusOpen(false)}
+            >
+              Понятно
+            </button>
+          </div>
+        </AccessibleModal>
       ) : null}
 
       <section className="profile-sports-data" aria-label="Спортивные данные игрока">

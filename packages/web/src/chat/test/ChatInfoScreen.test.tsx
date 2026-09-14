@@ -50,7 +50,7 @@ describe('ChatInfoScreen', () => {
 
     const main = renderScreen();
 
-    expect(await screen.findByText('Участники')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Участники' })).toHaveClass('section-label');
     expect(screen.getByRole('button', { name: 'Player 12' })).toBeInTheDocument();
     expect(main).toHaveStyle({
       height: '100%',

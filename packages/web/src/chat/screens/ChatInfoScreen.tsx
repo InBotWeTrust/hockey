@@ -274,9 +274,9 @@ export function ChatInfoScreen(): JSX.Element {
             )}
           </div>
 
-          <div style={{ padding: '4px 14px 0', fontSize: 12, color: 'var(--muted)' }}>
+          <h2 className="section-label" style={{ margin: 0, padding: '4px 14px 0' }}>
             Участники
-          </div>
+          </h2>
           <div
             style={{
               display: 'flex',

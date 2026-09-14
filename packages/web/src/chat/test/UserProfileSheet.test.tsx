@@ -265,6 +265,47 @@ describe('UserProfileSheet', () => {
     ).toBeInTheDocument();
   });
 
+  it('explains the early player status from a public profile in third person', async () => {
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+      onClose: () => {},
+    });
+
+    const statusButton = await screen.findByRole('button', { name: 'Статус: У истоков' });
+    const statusIcon = within(statusButton).getByTestId('public-profile-early-player-icon');
+    expect(statusIcon).toHaveAttribute('width', '21');
+    expect(statusIcon).toHaveAttribute('height', '21');
+    expect(statusIcon).toHaveAttribute('stroke-width', '1.8');
+
+    fireEvent.click(statusButton);
+
+    const dialog = screen.getByRole('dialog', { name: 'Ранний игрок' });
+    expect(dialog).toHaveTextContent(
+      'Игрок присоединился к игре «Ультимейт Хоккей» на старте проекта.',
+    );
+    expect(within(dialog).getByRole('button', { name: 'Понятно' })).toBeInTheDocument();
+  });
+
+  it('explains the early player status in first person when opening yourself from chat', async () => {
+    useAuthStore.setState({
+      accessToken: 'token',
+      refreshToken: 'refresh',
+      user: { id: 'u1', displayName: 'Иван Петров', grip: 'right' },
+    });
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+      onClose: () => {},
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Статус: У истоков' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Ранний игрок' });
+    expect(dialog).toHaveTextContent(
+      'Вы присоединились к игре «Ультимейт Хоккей» на старте проекта.',
+    );
+    expect(dialog).not.toHaveTextContent('Игрок присоединился');
+  });
+
   it('shows started task chains with their completed level in a public profile', async () => {
     vi.mocked(api.fetchUserProfile).mockResolvedValueOnce({
       ...publicProfile,
