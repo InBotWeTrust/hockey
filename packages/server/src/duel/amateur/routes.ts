@@ -2179,7 +2179,7 @@ async function consumeInventoryForShot(
       target = consumedTotals.nutritionConsumed;
     }
     target = Math.min(availableForPeriod, Math.max(previous, target));
-    const delta = roundInventoryCharge(target - previous);
+    let delta = roundInventoryCharge(target - previous);
     if (delta <= 0) continue;
 
     const integerBefore = Math.floor(previous);
@@ -2189,7 +2189,7 @@ async function consumeInventoryForShot(
         ? Math.ceil(delta)
         : Math.max(0, integerAfter - integerBefore);
     if (availableDelta > 0) {
-      const { rowCount } = item.instanceId
+      let { rowCount } = item.instanceId
         ? await client.query(
             `update user_inventory_instance
                 set charges_available = charges_available - $3,
@@ -2209,12 +2209,61 @@ async function consumeInventoryForShot(
             [participant.user_id, item.itemId, availableDelta],
           );
       if (rowCount === 0) {
-        throw new AppError('conflict', 'not enough inventory resource for duel shot', 409);
+        if (consumedTotals.consumeShot !== false) {
+          throw new AppError('conflict', 'not enough inventory resource for duel shot', 409);
+        }
+        const available = item.instanceId
+          ? await client.query<{ charges_available: number }>(
+              `select charges_available
+                 from user_inventory_instance
+                where user_id = $1 and id = $2
+                for update`,
+              [participant.user_id, item.instanceId],
+            )
+          : await client.query<{ charges_available: number }>(
+              `select charges_available
+                 from user_inventory_item
+                where user_id = $1 and inventory_item_id = $2
+                for update`,
+              [participant.user_id, item.itemId],
+            );
+        const availableToConsume = Math.min(
+          availableDelta,
+          Math.max(0, Number(available.rows[0]?.charges_available ?? 0)),
+        );
+        if (availableToConsume > 0) {
+          rowCount = item.instanceId
+            ? (
+                await client.query(
+                  `update user_inventory_instance
+                      set charges_available = charges_available - $3,
+                          updated_at = now()
+                    where user_id = $1 and id = $2`,
+                  [participant.user_id, item.instanceId, availableToConsume],
+                )
+              ).rowCount
+            : (
+                await client.query(
+                  `update user_inventory_item
+                      set charges_available = charges_available - $3,
+                          updated_at = now()
+                    where user_id = $1 and inventory_item_id = $2`,
+                  [participant.user_id, item.itemId, availableToConsume],
+                )
+              ).rowCount;
+        }
+        if (availableToConsume < availableDelta) {
+          delta = roundInventoryCharge(Math.min(delta, availableToConsume));
+          target = roundInventoryCharge(previous + delta);
+        }
+        if (delta <= 0) continue;
+        consumedInventoryChargesDelta += availableToConsume;
+      } else {
+        consumedInventoryChargesDelta += availableDelta;
       }
-      if (item.instanceId) {
+      if (item.instanceId && rowCount !== 0) {
         await syncLegacyInventoryAggregate(client, participant.user_id, item.itemId);
       }
-      consumedInventoryChargesDelta += availableDelta;
     }
 
     consumed.push({
@@ -4516,21 +4565,35 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       const changedMatchIds = new Set<string>();
       const newlySettledRegularFixtures = new Map<string, NewlySettledRegularFixture>();
       for (const row of rows) {
-        const visibleMatch = await fetchVisibleMatchForUpdate(client, row.id);
-        let reconciled: ReconciledMatch;
-        if (isTerminalMatchStatus(visibleMatch.status)) {
-          reconciled = { match: visibleMatch, changed: false };
-        } else {
-          await assertTournamentDuelPlayable(client, visibleMatch);
-          reconciled = await reconcileMatch(client, visibleMatch, now, true);
-        }
-        if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
-        if (reconciled.newlySettledRegularFixture !== undefined)
-          newlySettledRegularFixtures.set(
-            reconciled.newlySettledRegularFixture.fixtureId,
-            reconciled.newlySettledRegularFixture,
+        await client.query('savepoint duel_read_item');
+        let match: DuelMatchRow;
+        try {
+          const visibleMatch = await fetchVisibleMatchForUpdate(client, row.id);
+          let reconciled: ReconciledMatch;
+          if (isTerminalMatchStatus(visibleMatch.status)) {
+            reconciled = { match: visibleMatch, changed: false };
+          } else {
+            await assertTournamentDuelPlayable(client, visibleMatch);
+            reconciled = await reconcileMatch(client, visibleMatch, now, true);
+          }
+          if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
+          if (reconciled.newlySettledRegularFixture !== undefined)
+            newlySettledRegularFixtures.set(
+              reconciled.newlySettledRegularFixture.fixtureId,
+              reconciled.newlySettledRegularFixture,
+            );
+          match = reconciled.match;
+          await client.query('release savepoint duel_read_item');
+        } catch (err) {
+          await client.query('rollback to savepoint duel_read_item');
+          await client.query('release savepoint duel_read_item');
+          if (!(err instanceof AppError) || err.statusCode !== 409) throw err;
+          app.log.warn(
+            { matchId: row.id, conflictCode: err.code },
+            'duel list kept unreconciled match after read conflict',
           );
-        const match = reconciled.match;
+          match = await fetchVisibleMatchForUpdate(client, row.id);
+        }
         if (
           match.status === 'invited' ||
           match.status === 'ready_check' ||
@@ -4809,19 +4872,33 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       const changedMatchIds = new Set<string>();
       const newlySettledRegularFixtures = new Map<string, NewlySettledRegularFixture>();
       for (const row of rows) {
-        const reconciled = await reconcileMatch(
-          client,
-          await fetchPlayableMatchForUpdate(client, row.id),
-          now,
-          true,
-        );
-        if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
-        if (reconciled.newlySettledRegularFixture !== undefined)
-          newlySettledRegularFixtures.set(
-            reconciled.newlySettledRegularFixture.fixtureId,
-            reconciled.newlySettledRegularFixture,
+        await client.query('savepoint duel_event_read_item');
+        let match: DuelMatchRow;
+        try {
+          const reconciled = await reconcileMatch(
+            client,
+            await fetchPlayableMatchForUpdate(client, row.id),
+            now,
+            true,
           );
-        const match = reconciled.match;
+          if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
+          if (reconciled.newlySettledRegularFixture !== undefined)
+            newlySettledRegularFixtures.set(
+              reconciled.newlySettledRegularFixture.fixtureId,
+              reconciled.newlySettledRegularFixture,
+            );
+          match = reconciled.match;
+          await client.query('release savepoint duel_event_read_item');
+        } catch (err) {
+          await client.query('rollback to savepoint duel_event_read_item');
+          await client.query('release savepoint duel_event_read_item');
+          if (!(err instanceof AppError) || err.statusCode !== 409) throw err;
+          app.log.warn(
+            { matchId: row.id, conflictCode: err.code },
+            'duel events kept unreconciled match after read conflict',
+          );
+          match = await fetchPlayableMatchForUpdate(client, row.id);
+        }
         if (
           match.status === 'invited' ||
           match.status === 'ready_check' ||
