@@ -201,6 +201,20 @@ describe('ProfileSettingsScreen', () => {
     vi.unstubAllGlobals();
   });
 
+  it('labels the Android download area as a mobile application section', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: { id: 'u1', displayName: 'Alice T', role: 'admin' },
+    });
+    mockSettingsFetch();
+
+    renderProfileSettings();
+
+    expect(await screen.findByText('Мобильное приложение')).toHaveClass('section-label');
+    expect(screen.queryByText('Android', { selector: '.section-label' })).toBeNull();
+  });
+
   it('uses native notification permission inside the Android application', async () => {
     vi.stubGlobal('__HOCKEY_NATIVE__', { platform: 'android' });
     vi.stubGlobal('Capacitor', {

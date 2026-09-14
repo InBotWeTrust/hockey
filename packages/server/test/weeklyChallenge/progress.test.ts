@@ -41,6 +41,8 @@ describe('weekly challenge progress helpers', () => {
           ) {
             expect(sql).toContain("event.type = 'amateur_duel_challenge_accepted'");
             expect(sql).toContain("event.payload->>'challenger_user_id' = $1::text");
+            expect(sql).toContain("and mode <> 'bonus'");
+            expect(sql).not.toContain("mode <> 'training'");
             expect(sql).not.toContain("adm.source = 'challenge'");
             expect(sql).not.toMatch(/<= \$3/);
             expect(sql).toMatch(/< \$3/);

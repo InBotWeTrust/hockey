@@ -37,6 +37,7 @@ export async function fetchWeeklyChallengeProgress(
          from shot_session
         where user_id = $1
           and server_result = 'goal'
+          and mode <> 'bonus'
           and created_at >= $2
           and created_at < $3
      ), duel_progress as (

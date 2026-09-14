@@ -918,7 +918,7 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
       <AdminAndroidReleaseOnly>
         <>
           <div className="section-label" style={{ marginBottom: 8 }}>
-            Android
+            Мобильное приложение
           </div>
           <div style={{ margin: '0 14px 14px' }}>
             <AndroidAppCard />

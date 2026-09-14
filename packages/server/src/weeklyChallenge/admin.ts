@@ -114,7 +114,7 @@ async function fetchDashboard(client: PoolClient, now: Date) {
             `with source_events as (
        select user_id::text, 'goals_scored' as type, created_at as occurred_at,
               null::text as entity_id
-         from shot_session where server_result = 'goal'
+         from shot_session where server_result = 'goal' and mode <> 'bonus'
        union all
        select p.user_id::text, 'duels_played', coalesce(m.settled_at, m.updated_at), null::text
          from amateur_duel_participant p join amateur_duel_match m on m.id = p.match_id

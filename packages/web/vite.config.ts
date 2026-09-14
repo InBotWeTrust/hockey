@@ -46,7 +46,7 @@ export default defineConfig({
             options: {
               cacheName: 'hockey-images',
               expiration: {
-                maxEntries: 140,
+                maxEntries: 500,
                 maxAgeSeconds: 60 * 60 * 24 * 30,
               },
             },

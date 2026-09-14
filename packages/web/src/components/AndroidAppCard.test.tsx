@@ -28,6 +28,10 @@ describe('AndroidAppCard in an Android browser', () => {
 
     render(<AndroidAppCard />);
 
+    expect(screen.getByRole('heading', { name: 'Приложение для Android' })).toBeInTheDocument();
+    expect(
+      screen.getByText('Установите игру на телефон и получайте мобильные уведомления.'),
+    ).toBeInTheDocument();
     const link = await screen.findByRole('link', { name: 'Скачать' });
     expect(link).toHaveAttribute('href', '/api/mobile/android/download');
     expect(link).toHaveClass('android-app-card__action');

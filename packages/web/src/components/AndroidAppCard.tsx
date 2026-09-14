@@ -44,7 +44,7 @@ export function AndroidAppCard(): JSX.Element {
         <p>
           {native
             ? `Установлена ${state.installedVersionName ?? '—'}${state.manifest ? ` · актуальная ${state.manifest.versionName}` : ''}`
-            : 'Установите игру на Android и получайте мобильные уведомления.'}
+            : 'Установите игру на телефон и получайте мобильные уведомления.'}
         </p>
       </div>
       {native ? (
