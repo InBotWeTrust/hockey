@@ -4009,6 +4009,56 @@
   gap: 12px;
 }
 
+.profile-early-player-badge {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  margin: 0 3px 0 auto;
+  padding: 0;
+  border: 0;
+  display: grid;
+  place-items: center;
+  color: var(--reward-experience);
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.profile-early-player-badge svg {
+  width: 21px;
+  height: 21px;
+  stroke-width: 1.8;
+  transition: transform 140ms ease;
+}
+
+.profile-early-player-badge:active svg {
+  transform: scale(0.94);
+}
+
+.profile-early-player-badge:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.68);
+  outline-offset: 3px;
+  border-radius: 12px;
+}
+
+.profile-early-player-modal__badge {
+  width: 112px;
+  height: 112px;
+  margin: -2px auto 2px;
+}
+
+.profile-early-player-modal__badge img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 14px rgba(11, 31, 55, 0.22));
+}
+
+.profile-early-player-modal__badge + .modal-copy {
+  text-align: center;
+}
+
 .profile-identity__avatar {
   width: 56px;
   height: 56px;

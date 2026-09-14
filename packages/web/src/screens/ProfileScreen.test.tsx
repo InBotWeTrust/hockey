@@ -313,6 +313,24 @@ describe('ProfileScreen', () => {
     expect(screen.queryByLabelText('Раздевалка игрока')).not.toBeInTheDocument();
   });
 
+  it('explains the early player status from the passport badge', async () => {
+    mockProfileRequest();
+    renderProfile();
+
+    const statusButton = await screen.findByRole('button', { name: 'Статус: У истоков' });
+    expect(screen.queryByText('У истоков')).not.toBeInTheDocument();
+    fireEvent.click(statusButton);
+
+    expect(screen.getByTestId('profile-early-player-icon')).toBeInTheDocument();
+    expect(screen.getByTestId('profile-early-player-icon')).toHaveAttribute('width', '21');
+    expect(screen.getByTestId('profile-early-player-icon')).toHaveAttribute('height', '21');
+    expect(screen.getByTestId('profile-early-player-icon')).toHaveAttribute('stroke-width', '1.8');
+    expect(screen.getByRole('dialog', { name: 'Ранний игрок' })).toBeInTheDocument();
+    expect(
+      screen.getByText('Вы присоединились к игре «Ультимейт Хоккей» на старте проекта.'),
+    ).toBeInTheDocument();
+  });
+
   it('loads the experience rating only after the experience balance is opened', async () => {
     const experienceRating = { value: 9_001 };
     mockProfileRequest(200, profile, undefined, [], false, profile.stats, experienceRating);

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Award, Medal, Target, TrendingUp, Trophy, X } from 'lucide-react';
+import { Award, Medal, Sunrise, Target, TrendingUp, Trophy, X } from 'lucide-react';
 import {
   fetchUserProfile,
   findOrCreateDM,
@@ -29,6 +29,7 @@ import { Sheet } from '../../components/Sheet.js';
 import { TrophyHistoryModal, type TrophySectionKey } from '../../screens/ProfileScreen.js';
 import { CommunityLinks } from '../../components/CommunityLinks.js';
 import { AppToast } from '../../components/AppToast.js';
+import { AccessibleModal } from '../../components/AccessibleModal.js';
 
 interface UserProfileSheetProps {
   sender: UserPickerItem | null;
@@ -86,11 +87,13 @@ function PublicSportingPassport({
   displayName,
   avatarUrl,
   onOpenTrophy,
+  onOpenEarlyPlayerStatus,
 }: {
   profile: UserPublicProfileDTO;
   displayName: string;
   avatarUrl: string | null;
   onOpenTrophy: (section: TrophySectionKey) => void;
+  onOpenEarlyPlayerStatus: () => void;
 }): JSX.Element {
   const registeredDate = new Date(profile.createdAt);
   const registeredLabel = Number.isNaN(registeredDate.getTime())
@@ -133,6 +136,19 @@ function PublicSportingPassport({
               {getLevelLabel(profile.competitionLevel)}
             </span>
           </div>
+          <button
+            type="button"
+            className="profile-early-player-badge"
+            aria-label="Статус: У истоков"
+            onClick={onOpenEarlyPlayerStatus}
+          >
+            <Sunrise
+              data-testid="public-profile-early-player-icon"
+              aria-hidden="true"
+              size={21}
+              strokeWidth={1.8}
+            />
+          </button>
         </div>
       </div>
       <div className="profile-sporting-metrics" aria-label="Главные показатели">
@@ -299,6 +315,7 @@ function UserProfileSheetContent({
   const senderId = sender.userId;
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
   const [selectedTrophy, setSelectedTrophy] = useState<TrophySectionKey | null>(null);
+  const [earlyPlayerStatusOpen, setEarlyPlayerStatusOpen] = useState(false);
   const [duelPickerOpen, setDuelPickerOpen] = useState(false);
   const [duelToast, setDuelToast] = useState<string | null>(null);
 
@@ -384,6 +401,7 @@ function UserProfileSheetContent({
             displayName={displayName}
             avatarUrl={avatarUrl}
             onOpenTrophy={setSelectedTrophy}
+            onOpenEarlyPlayerStatus={() => setEarlyPlayerStatusOpen(true)}
           />
         ) : (
           <div
@@ -465,6 +483,41 @@ function UserProfileSheetContent({
             details={profile.trophyDetails}
             onClose={() => setSelectedTrophy(null)}
           />
+        )}
+        {earlyPlayerStatusOpen && (
+          <AccessibleModal
+            title="Ранний игрок"
+            ariaLabel="Ранний игрок"
+            onRequestClose={() => setEarlyPlayerStatusOpen(false)}
+            headerAction={
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Закрыть"
+                onClick={() => setEarlyPlayerStatusOpen(false)}
+              >
+                <X size={15} />
+              </button>
+            }
+          >
+            <div className="profile-early-player-modal__badge" aria-hidden="true">
+              <img src="/profile/early-player-badge.png" alt="" />
+            </div>
+            <p className="modal-copy">
+              {isSelf
+                ? 'Вы присоединились к игре «Ультимейт Хоккей» на старте проекта.'
+                : 'Игрок присоединился к игре «Ультимейт Хоккей» на старте проекта.'}
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="modal-primary btn btn--cta"
+                onClick={() => setEarlyPlayerStatusOpen(false)}
+              >
+                Понятно
+              </button>
+            </div>
+          </AccessibleModal>
         )}
         {duelPickerOpen && (
           <DuelChallengeModal
