@@ -1,7 +1,7 @@
 # Compact Duel Inventory Report Design
 
-**Date:** 2026-09-14  
-**Status:** Approved in conversation; awaiting final document review  
+**Date:** 2026-09-14
+**Status:** Approved in conversation; awaiting final document review
 **Scope:** Amateur duel shot persistence and response performance. Inventory penalty mechanics are explicitly out of scope.
 
 ## Problem
