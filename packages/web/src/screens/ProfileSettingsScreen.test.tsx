@@ -299,7 +299,7 @@ describe('ProfileSettingsScreen', () => {
     renderProfileSettings();
 
     expect(await screen.findByText('Профиль игрока')).toBeInTheDocument();
-    expect(screen.getByLabelText('Имя')).toHaveValue('Alice');
+    await waitFor(() => expect(screen.getByLabelText('Имя')).toHaveValue('Alice'));
     expect(screen.getByLabelText('Фамилия')).toHaveValue('T');
     expect(screen.getByRole('button', { name: 'Изменить аватар' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Сохранить профиль' })).toBeDisabled();
