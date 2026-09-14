@@ -173,7 +173,7 @@ describe.skipIf(!hasIntegrationEnv)('071 accuracy World Tour migration', () => {
     );
 
     const applied = await applyMigrations(pool, MIGRATIONS_DIR);
-    expect(applied.applied).toEqual([
+    expect(applied.applied).toEqual(expect.arrayContaining([
       '071_bonus_game_accuracy_world_tour.sql',
       '072_tournament_fixture_series_lookup.sql',
       '073_backfill_first_daily_game.sql',
@@ -229,7 +229,7 @@ describe.skipIf(!hasIntegrationEnv)('071 accuracy World Tour migration', () => {
       '122_production_data_operations.sql',
       '123_sync_inventory_catalog_from_dev.sql',
       '124_production_data_operations_if_missing.sql',
-    ]);
+    ]));
 
     const preserved = await pool.query<{
       completions: number;

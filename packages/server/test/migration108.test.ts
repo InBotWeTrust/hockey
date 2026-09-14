@@ -711,6 +711,17 @@ describe.skipIf(!hasIntegrationEnv)('migration 108 removes daily aggregate tourn
   beforeEach(async () => {
     await resetDatabase(pool);
     await applyMigrations(pool, priorMigrationsDir);
+    // The current writer checks FCM installations (migration 118), while this
+    // historical test intentionally starts from the schema immediately before 108.
+    // An empty relation keeps that later read from masking the writer race below.
+    await pool.query(
+      `create table android_push_installations (
+         id uuid primary key default gen_random_uuid(),
+         user_id uuid not null references users(id),
+         fcm_token text not null,
+         disabled_at timestamptz
+       )`,
+    );
     removed.clear();
     users = [randomUUID(), randomUUID(), randomUUID()];
     for (const id of users)

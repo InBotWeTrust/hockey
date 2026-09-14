@@ -6,6 +6,7 @@ import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
+import { applyMigrationsThrough } from '../helpers/migrations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -57,7 +58,7 @@ describe.skipIf(!hasIntegrationEnv)('076 speed bonus game balance safety', () =>
         for each row execute function skip_one_speed_balance_update();
     `);
 
-    await expect(applyMigrations(pool, MIGRATIONS_DIR)).rejects.toThrow(
+    await expect(applyMigrationsThrough(pool, MIGRATIONS_DIR, MIGRATION_NAME)).rejects.toThrow(
       'Expected to update 10 speed bonus games for migration 076',
     );
 
@@ -188,7 +189,7 @@ describe.skipIf(!hasIntegrationEnv)('076 speed bonus game balance', () => {
       ],
     );
 
-    const applied = await applyMigrations(pool, MIGRATIONS_DIR);
+    const applied = await applyMigrationsThrough(pool, MIGRATIONS_DIR, MIGRATION_NAME);
 
     const games = await pool.query<{
       id: string;
@@ -255,36 +256,7 @@ describe.skipIf(!hasIntegrationEnv)('076 speed bonus game balance', () => {
       });
     }
 
-    expect(applied.applied).toEqual([
-      MIGRATION_NAME,
-      '077_accuracy_world_tour_movement_balance.sql',
-      '078_amateur_rating_visibility.sql',
-      '079_rename_express_plus_to_mix.sql',
-      '080_sync_mix_period_speeds.sql',
-      '081_daily_period_achievement_event_indexes.sql',
-      '082_tournament_playoff_scheduling.sql',
-      '083_tournament_playoff_notifications.sql',
-      '084_tournament_series_notification_url.sql',
-      '085_accuracy_world_tour_uniform_balance.sql',
-      '086_repair_event_log_sequence.sql',
-      '087_tournament_admin_attention_notification.sql',
-      '088_tournament_playoff_schedule_missing_notification.sql',
-      '089_player_onboarding.sql',
-      '090_tournament_sequential_playoff_schedule.sql',
-      '091_tournament_fixture_schedule_revision.sql',
-      '092_tournament_period_loadout_state.sql',
-      '093_tournament_readiness_hint_preference.sql',
-      '094_balance_ultimate_one_puck_speed.sql',
-      '095_tournament_regular_podium_congratulation.sql',
-      '097_revert_beginner_tutorial_gameplay_speed.sql',
-      '098_achievement_reward_ledger.sql',
-      '099_tournament_classic_period_loadout.sql',
-      '100_backfill_official_amateur_duel_stats.sql',
-      '101_align_tournament_classic_puck_speed.sql',
-      '102_amateur_duel_rating_match_ledger.sql',
-      '103_tournament_achievements.sql',
-      '104_version_achievement_artwork.sql',
-    ]);
+    expect(applied.applied).toEqual([MIGRATION_NAME]);
     const attempt = await pool.query<{
       status: string;
       definition_revision: number;

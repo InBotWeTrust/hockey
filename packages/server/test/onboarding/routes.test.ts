@@ -3,11 +3,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   GAME_CORE_VERSION,
-  STICK_NEUTRAL,
-  deriveShotSeed,
   getGoalie,
   getSessionPhaseOffsets,
-  resolveShot,
+  resolveEmptyGoalShot,
   type ShotInput,
   type ShotResult,
 } from '@hockey/game-core';
@@ -57,31 +55,19 @@ interface TutorialSpeeds {
 
 function findTutorialInput(
   seed: string,
-  shotIndex: number,
   speeds: TutorialSpeeds,
   wanted: ShotResult['type'],
   rejectedSpeeds?: TutorialSpeeds,
 ): ShotInput {
   const goalie = getGoalie('rookie');
-  const shotSeed = deriveShotSeed(seed, 1, shotIndex);
   const phaseOffsets = getSessionPhaseOffsets(seed);
   for (let tapTime = 0; tapTime <= 60_000; tapTime += 5) {
     const input = { tapTime, shooterTapTime: tapTime, ...speeds };
-    const serverResult = resolveShot(
-      input,
-      goalie,
-      shotSeed,
-      shotIndex,
-      STICK_NEUTRAL,
-      phaseOffsets,
-    ).type;
+    const serverResult = resolveEmptyGoalShot(input, goalie, phaseOffsets).type;
     const rejectedOverrideResult = rejectedSpeeds
-      ? resolveShot(
+      ? resolveEmptyGoalShot(
           { tapTime, shooterTapTime: tapTime, ...rejectedSpeeds },
           goalie,
-          shotSeed,
-          shotIndex,
-          STICK_NEUTRAL,
           phaseOffsets,
         ).type
       : undefined;
@@ -325,7 +311,7 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
     return rows[0];
   }
 
-  async function addTutorialGoal(input: {
+  async function addTutorialAttempt(input: {
     runId: string;
     userId: string;
     versionId: string;
@@ -334,7 +320,7 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
     await pool.query(
       `insert into onboarding_event
          (run_id, user_id, chain_key, version_id, step_id, kind, result, attempt_number)
-       values ($1, $2, 'beginner', $3, $4, 'tutorial_goal', 'goal', 1)`,
+       values ($1, $2, 'beginner', $3, $4, 'tutorial_attempt', 'goal', 1)`,
       [input.runId, input.userId, input.versionId, input.stepId],
     );
   }
@@ -427,7 +413,7 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
       goalieFrequency: 2,
       goalFrequency: 2,
     };
-    const missInput = findTutorialInput(tutorial.json().seed, 1, speeds, 'miss', rejectedSpeeds);
+    const missInput = findTutorialInput(tutorial.json().seed, speeds, 'miss', rejectedSpeeds);
     const miss = await submitTutorialShot(user.authorization, runId, {
       shotIndex: 1,
       input: {
@@ -441,6 +427,7 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
     expect(miss.json()).toEqual({
       serverResult: 'miss',
       nextShotIndex: 2,
+      result: 'miss',
       goalConfirmed: false,
     });
 
@@ -451,22 +438,16 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
     });
     expect(repeatedShot.statusCode).toBe(409);
 
-    const goalInput = findTutorialInput(tutorial.json().seed, 2, speeds, 'goal', rejectedSpeeds);
-    const goal = await submitTutorialShot(user.authorization, runId, {
+    const secondShot = await submitTutorialShot(user.authorization, runId, {
       shotIndex: 2,
       input: {
-        tapTime: goalInput.tapTime,
-        shooterTapTime: goalInput.shooterTapTime!,
+        tapTime: missInput.tapTime,
+        shooterTapTime: missInput.shooterTapTime!,
         ...rejectedSpeeds,
       },
       claimedResult: 'miss',
     });
-    expect(goal.statusCode).toBe(200);
-    expect(goal.json()).toEqual({
-      serverResult: 'goal',
-      nextShotIndex: 3,
-      goalConfirmed: true,
-    });
+    expect(secondShot.statusCode).toBe(409);
 
     const events = await pool.query<{
       kind: string;
@@ -475,14 +456,12 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
     }>(
       `select kind, result, attempt_number
          from onboarding_event
-        where run_id = $1 and kind in ('tutorial_attempt', 'tutorial_goal')
+        where run_id = $1 and kind = 'tutorial_attempt'
         order by created_at, kind`,
       [runId],
     );
     expect(events.rows).toEqual([
       { kind: 'tutorial_attempt', result: 'miss', attempt_number: 1 },
-      { kind: 'tutorial_attempt', result: 'goal', attempt_number: 2 },
-      { kind: 'tutorial_goal', result: 'goal', attempt_number: 2 },
     ]);
     expect(await gameStateSnapshot(user.userId)).toEqual(before);
   });
@@ -579,7 +558,7 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
     expect(eventCounts.rows).toEqual([{ run_id: first.json().runId, count: 1 }]);
   });
 
-  it('requires every viewed step and an authoritative tutorial goal before idempotent completion', async () => {
+  it('requires every viewed step and an authoritative tutorial shot before idempotent completion', async () => {
     const published = await publishChain('beginner', [
       { position: 1, kind: 'informational' },
       { position: 2, kind: 'tutorial_shot' },
@@ -589,7 +568,7 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
     const stale = await start(user.authorization, randomUUID());
     const runId = started.json().runId as string;
 
-    await addTutorialGoal({
+    await addTutorialAttempt({
       runId,
       userId: user.userId,
       versionId: published.versionId,
@@ -601,13 +580,13 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
     for (const stepId of published.stepIds) {
       expect((await view(user.authorization, runId, stepId)).statusCode).toBe(200);
     }
-    await pool.query(`delete from onboarding_event where run_id = $1 and kind = 'tutorial_goal'`, [
+    await pool.query(`delete from onboarding_event where run_id = $1 and kind = 'tutorial_attempt'`, [
       runId,
     ]);
-    const missingGoal = await complete(user.authorization, runId);
-    expect(missingGoal.statusCode).toBe(409);
+    const missingShot = await complete(user.authorization, runId);
+    expect(missingShot.statusCode).toBe(409);
 
-    await addTutorialGoal({
+    await addTutorialAttempt({
       runId,
       userId: user.userId,
       versionId: published.versionId,
@@ -643,7 +622,7 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
     for (const stepId of published.stepIds) {
       await view(user.authorization, stale.json().runId, stepId);
     }
-    await addTutorialGoal({
+    await addTutorialAttempt({
       runId: stale.json().runId,
       userId: user.userId,
       versionId: published.versionId,

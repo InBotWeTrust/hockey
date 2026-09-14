@@ -2,11 +2,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { applyMigrations } from '../../src/db/migrations.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
+import { applyMigrationsThrough } from '../helpers/migrations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
+const MIGRATION_NAME = '106_achievement_bonus_economy.sql';
+const PREVIOUS_MIGRATION_NAME = '105_training_history.sql';
 
 const expectedBonusRewards = new Map<string, number>([
   ['speed-beach', 5],
@@ -34,26 +36,35 @@ const expectedBonusRewards = new Map<string, number>([
   ['accuracy-tokyo', 25],
 ]);
 
-const expectedSpeedLimits = new Map<string, number>([
-  ['speed-beach', 115_000],
-  ['speed-ski-resort', 115_000],
-  ['speed-cyberpunk-yard', 115_000],
-  ['speed-abandoned-waterpark', 175_000],
-  ['speed-pirate-bay', 175_000],
-  ['speed-north-pole', 175_000],
-  ['speed-desert', 235_000],
-  ['speed-volcanic-ice', 235_000],
-  ['speed-castle', 235_000],
-  ['speed-space', 355_000],
-]);
+const speedSlugs = [
+  'speed-beach',
+  'speed-ski-resort',
+  'speed-cyberpunk-yard',
+  'speed-abandoned-waterpark',
+  'speed-pirate-bay',
+  'speed-north-pole',
+  'speed-desert',
+  'speed-volcanic-ice',
+  'speed-castle',
+  'speed-space',
+];
 
 describe.skipIf(!hasIntegrationEnv)('migration 106 achievement and bonus economy', () => {
   let pool: Pool;
+  let speedLimitsBefore = new Map<string, number>();
 
   beforeAll(async () => {
     pool = createTestPool();
     await resetDatabase(pool);
-    await applyMigrations(pool, MIGRATIONS_DIR);
+    await applyMigrationsThrough(pool, MIGRATIONS_DIR, PREVIOUS_MIGRATION_NAME);
+    const before = await pool.query<{ slug: string; active_time_ms: number }>(
+      `select slug, (qualification_rules->>'activeTimeMs')::int as active_time_ms
+         from bonus_game
+        where slug = any($1::text[])`,
+      [speedSlugs],
+    );
+    speedLimitsBefore = new Map(before.rows.map((row) => [row.slug, row.active_time_ms]));
+    await applyMigrationsThrough(pool, MIGRATIONS_DIR, MIGRATION_NAME);
   });
 
   afterAll(async () => {
@@ -90,7 +101,6 @@ describe.skipIf(!hasIntegrationEnv)('migration 106 achievement and bonus economy
   });
 
   it('reduces every speed limit by five seconds and keeps period totals aligned', async () => {
-    const speedSlugs = [...expectedSpeedLimits.keys()];
     const { rows } = await pool.query<{
       slug: string;
       active_time_ms: number;
@@ -106,14 +116,16 @@ describe.skipIf(!hasIntegrationEnv)('migration 106 achievement and bonus economy
       [speedSlugs],
     );
 
-    expect(rows).toHaveLength(expectedSpeedLimits.size);
+    expect(rows).toHaveLength(speedSlugs.length);
     for (const row of rows) {
-      expect(row.active_time_ms, row.slug).toBe(expectedSpeedLimits.get(row.slug));
+      expect(row.active_time_ms, row.slug).toBe(speedLimitsBefore.get(row.slug)! - 5_000);
       expect(row.period_time_ms, row.slug).toBe(row.active_time_ms);
     }
   });
 
   it('is a migration-ledger no-op when migrations are applied again', async () => {
-    await expect(applyMigrations(pool, MIGRATIONS_DIR)).resolves.toBeUndefined();
+    await expect(applyMigrationsThrough(pool, MIGRATIONS_DIR, MIGRATION_NAME)).resolves.toEqual({
+      applied: [],
+    });
   });
 });

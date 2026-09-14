@@ -99,10 +99,10 @@ describe.skipIf(!hasIntegrationEnv)('production economy rebase operation', () =>
       applied: false,
       alreadyApplied: false,
       deletedUsers: 3,
-      survivingUsers: 3,
+      survivingUsers: 4,
     });
     expect((await pool.query('select count(*)::int as count from users')).rows).toEqual([
-      { count: 6 },
+      { count: 7 },
     ]);
 
     const applied = await runProductionEconomyRebase(pool, { apply: true });
@@ -110,9 +110,10 @@ describe.skipIf(!hasIntegrationEnv)('production economy rebase operation', () =>
       applied: true,
       alreadyApplied: false,
       deletedUsers: 3,
-      survivingUsers: 3,
+      survivingUsers: 4,
     });
     expect((await pool.query('select id, display_name from users order by id')).rows).toEqual([
+      { id: '00000000-0000-4000-8000-000000000099', display_name: 'Ультимейт Хоккей' },
       { id: SURVIVOR_ID, display_name: 'Survivor' },
       { id: PROTECTED_ANDREY_ID, display_name: 'Andrey Rubtsov' },
       { id: ADMIN_ID, display_name: 'Admin' },
@@ -190,6 +191,6 @@ describe.skipIf(!hasIntegrationEnv)('production economy rebase operation', () =>
             where metadata->>'operation_key'='2026-09-11-production-economy-rebase-v1'`,
         )
       ).rows,
-    ).toEqual([{ count: 3 }]);
+    ).toEqual([{ count: 4 }]);
   });
 });

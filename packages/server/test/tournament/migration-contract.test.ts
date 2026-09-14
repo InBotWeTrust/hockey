@@ -82,13 +82,12 @@ describe.skipIf(!hasIntegrationEnv)('current tournament source database contract
     expect(result.rows).toEqual([{ regular_source: source }]);
   });
 
-  it('rejects new daily aggregate tournaments at the database boundary', async () => {
-    await expect(
-      pool.query(
-        "insert into tournament (slug, title, regular_source, created_by) values ('legacy', 'Legacy', 'daily_aggregate', $1)",
-        [creatorId],
-      ),
-    ).rejects.toMatchObject({ code: '23514', constraint: 'tournament_regular_source_check' });
+  it('keeps the retired daily aggregate source valid for legacy archives', async () => {
+    const result = await pool.query(
+      "insert into tournament (slug, title, regular_source, created_by) values ('legacy', 'Legacy', 'daily_aggregate', $1) returning regular_source",
+      [creatorId],
+    );
+    expect(result.rows).toEqual([{ regular_source: 'daily_aggregate' }]);
   });
 });
 

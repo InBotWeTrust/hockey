@@ -6,6 +6,7 @@ import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
+import { applyMigrationsThrough } from '../helpers/migrations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -139,7 +140,7 @@ describe.skipIf(!hasIntegrationEnv)('085 Accuracy World Tour uniform balance', (
       [attemptId, userId, JSON.stringify(rulesSnapshot), moscowId],
     );
 
-    const applied = await applyMigrations(pool, MIGRATIONS_DIR);
+    const applied = await applyMigrationsThrough(pool, MIGRATIONS_DIR, MIGRATION_NAME);
     const after = await pool.query<AccuracyGameRow>(
       `select id, slug, target_goals, total_periods, break_duration_ms,
               qualification_rules, period_rules, revision
