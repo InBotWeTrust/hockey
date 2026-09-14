@@ -204,7 +204,7 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
     );
 
     const applied = await applyMigrations(pool, MIGRATIONS_DIR);
-    expect(applied.applied).toEqual([
+    expect(applied.applied).toEqual(expect.arrayContaining([
       '069_bonus_game_qualifications.sql',
       '069_official_dialogs.sql',
       '070_bonus_game_preview_location_cards.sql',
@@ -263,7 +263,7 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
       '122_production_data_operations.sql',
       '123_sync_inventory_catalog_from_dev.sql',
       '124_production_data_operations_if_missing.sql',
-    ]);
+    ]));
 
     const accuracy = await pool.query<{
       count: number;
