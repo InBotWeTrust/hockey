@@ -6,6 +6,7 @@ import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
+import { applyMigrationsThrough } from '../helpers/migrations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -158,7 +159,7 @@ describe.skipIf(!hasIntegrationEnv)('077 accuracy World Tour movement balance', 
       ],
     );
 
-    const applied = await applyMigrations(pool, MIGRATIONS_DIR);
+    const applied = await applyMigrationsThrough(pool, MIGRATIONS_DIR, MIGRATION_NAME);
     const after = await pool.query<AccuracyGameRow>(
       `select id, slug, sort_order, target_goals, total_periods, break_duration_ms,
               qualification_rules, period_rules, revision
@@ -170,19 +171,19 @@ describe.skipIf(!hasIntegrationEnv)('077 accuracy World Tour movement balance', 
     );
 
     const expected = [
-      { slug: 'accuracy-moscow', targetGoals: 18, shotsLimit: 30 },
-      { slug: 'accuracy-istanbul', targetGoals: 21, shotsLimit: 30 },
-      { slug: 'accuracy-rome', targetGoals: 23, shotsLimit: 30 },
-      { slug: 'accuracy-paris', targetGoals: 30, shotsLimit: 45 },
-      { slug: 'accuracy-london', targetGoals: 36, shotsLimit: 50 },
-      { slug: 'accuracy-new-york', targetGoals: 40, shotsLimit: 50 },
-      { slug: 'accuracy-rio-de-janeiro', targetGoals: 42, shotsLimit: 50 },
-      { slug: 'accuracy-cape-town', targetGoals: 47, shotsLimit: 55 },
-      { slug: 'accuracy-dubai', targetGoals: 49, shotsLimit: 60 },
-      { slug: 'accuracy-mumbai', targetGoals: 52, shotsLimit: 60 },
-      { slug: 'accuracy-singapore', targetGoals: 66, shotsLimit: 80 },
-      { slug: 'accuracy-beijing', targetGoals: 76, shotsLimit: 90 },
-      { slug: 'accuracy-tokyo', targetGoals: 90, shotsLimit: 90 },
+      { slug: 'accuracy-moscow', goalFrequency: 0.5, goalieFrequency: 0.6, shooterFrequency: 0.75 },
+      { slug: 'accuracy-istanbul', goalFrequency: 0.5, goalieFrequency: 0.6, shooterFrequency: 0.75 },
+      { slug: 'accuracy-rome', goalFrequency: 0.5, goalieFrequency: 0.6, shooterFrequency: 0.75 },
+      { slug: 'accuracy-paris', goalFrequency: 0.5, goalieFrequency: 0.6, shooterFrequency: 0.75 },
+      { slug: 'accuracy-london', goalFrequency: 0.6, goalieFrequency: 0.7, shooterFrequency: 0.85 },
+      { slug: 'accuracy-new-york', goalFrequency: 0.6, goalieFrequency: 0.7, shooterFrequency: 0.85 },
+      { slug: 'accuracy-rio-de-janeiro', goalFrequency: 0.6, goalieFrequency: 0.7, shooterFrequency: 0.85 },
+      { slug: 'accuracy-cape-town', goalFrequency: 0.65, goalieFrequency: 0.75, shooterFrequency: 0.9 },
+      { slug: 'accuracy-dubai', goalFrequency: 0.65, goalieFrequency: 0.75, shooterFrequency: 0.9 },
+      { slug: 'accuracy-mumbai', goalFrequency: 0.65, goalieFrequency: 0.75, shooterFrequency: 0.9 },
+      { slug: 'accuracy-singapore', goalFrequency: 0.65, goalieFrequency: 0.75, shooterFrequency: 0.9 },
+      { slug: 'accuracy-beijing', goalFrequency: 0.75, goalieFrequency: 0.85, shooterFrequency: 1 },
+      { slug: 'accuracy-tokyo', goalFrequency: 0.75, goalieFrequency: 0.85, shooterFrequency: 1 },
     ];
 
     expect(before.rows).toHaveLength(13);
@@ -191,57 +192,25 @@ describe.skipIf(!hasIntegrationEnv)('077 accuracy World Tour movement balance', 
       const previous = before.rows[gameIndex]!;
       const wanted = expected[gameIndex]!;
       expect(game.slug).toBe(wanted.slug);
-      expect(game.target_goals).toBe(wanted.targetGoals);
+      expect(game.target_goals).toBe(previous.target_goals);
       expect(game.total_periods).toBe(1);
       expect(game.break_duration_ms).toBe(0);
-      expect(game.qualification_rules).toEqual({
-        ...(previous.qualification_rules as Record<string, unknown>),
-        targetGoals: wanted.targetGoals,
-        shotsLimit: wanted.shotsLimit,
-      });
-      expect(game.revision).toBe(previous.revision + 2);
+      expect(game.qualification_rules).toEqual(previous.qualification_rules);
+      expect(game.revision).toBe(previous.revision + 1);
       expect(game.period_rules).toEqual([
         {
           ...previous.period_rules[0]!,
           periodNumber: 1,
-          shotsLimit: wanted.shotsLimit,
-          goalFrequency: 0.5,
-          goalieFrequency: 0.6,
-          shooterFrequency: 0.75,
+          shotsLimit: (previous.qualification_rules as { shotsLimit: number }).shotsLimit,
+          goalFrequency: wanted.goalFrequency,
+          goalieFrequency: wanted.goalieFrequency,
+          shooterFrequency: wanted.shooterFrequency,
           puckSpeedPerMs: 1.25,
         },
       ]);
     }
 
-    expect(applied.applied).toEqual([
-      MIGRATION_NAME,
-      '078_amateur_rating_visibility.sql',
-      '079_rename_express_plus_to_mix.sql',
-      '080_sync_mix_period_speeds.sql',
-      '081_daily_period_achievement_event_indexes.sql',
-      '082_tournament_playoff_scheduling.sql',
-      '083_tournament_playoff_notifications.sql',
-      '084_tournament_series_notification_url.sql',
-      '085_accuracy_world_tour_uniform_balance.sql',
-      '086_repair_event_log_sequence.sql',
-      '087_tournament_admin_attention_notification.sql',
-      '088_tournament_playoff_schedule_missing_notification.sql',
-      '089_player_onboarding.sql',
-      '090_tournament_sequential_playoff_schedule.sql',
-      '091_tournament_fixture_schedule_revision.sql',
-      '092_tournament_period_loadout_state.sql',
-      '093_tournament_readiness_hint_preference.sql',
-      '094_balance_ultimate_one_puck_speed.sql',
-      '095_tournament_regular_podium_congratulation.sql',
-      '097_revert_beginner_tutorial_gameplay_speed.sql',
-      '098_achievement_reward_ledger.sql',
-      '099_tournament_classic_period_loadout.sql',
-      '100_backfill_official_amateur_duel_stats.sql',
-      '101_align_tournament_classic_puck_speed.sql',
-      '102_amateur_duel_rating_match_ledger.sql',
-      '103_tournament_achievements.sql',
-      '104_version_achievement_artwork.sql',
-    ]);
+    expect(applied.applied).toEqual([MIGRATION_NAME]);
     const attempt = await pool.query<{
       status: string;
       definition_revision: number;

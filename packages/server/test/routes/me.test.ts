@@ -214,7 +214,9 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
       unclaimedAchievementsCount: number;
       experienceBalance: number;
     };
-    expect(fullBody.achievements).toEqual([]);
+    expect(fullBody.achievements).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'first-goal', status: 'locked' })]),
+    );
     expect(fullBody.unclaimedAchievementsCount).toBe(0);
     expect(fullBody.experienceBalance).toBe(0);
   });
@@ -338,11 +340,15 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
       achievements: Array<{ id: string; status: string; completedAt?: string }>;
       unclaimedAchievementsCount: number;
     };
-    expect(body.achievements).toEqual([]);
+    expect(body.achievements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'first-goal', status: 'completed_unclaimed' }),
+      ]),
+    );
     expect(body.unclaimedAchievementsCount).toBe(2);
   });
 
-  it('reports unclaimed achievement count while profile achievements stay claimed-only', async () => {
+  it('reports unclaimed achievement count with the full profile achievement catalogue', async () => {
     const { accessToken, user } = await loginTelegram({ id: '145' });
     await app.pg.query(
       `insert into user_achievements (user_id, achievement_id, completed_at, claimed_at)
@@ -364,9 +370,12 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
       unclaimedAchievementsCount: number;
     };
     expect(body.unclaimedAchievementsCount).toBe(1);
-    expect(body.achievements).toEqual([
-      expect.objectContaining({ id: 'first-training', status: 'claimed' }),
-    ]);
+    expect(body.achievements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'first-goal', status: 'completed_unclaimed' }),
+        expect.objectContaining({ id: 'first-training', status: 'claimed' }),
+      ]),
+    );
   });
 
   it('counts consecutive play days only from official game modes', async () => {

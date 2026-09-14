@@ -49,8 +49,8 @@ describe.skipIf(!hasIntegrationEnv)('existing-user inventory grant operation', (
     expect(dryRun).toMatchObject({
       applied: false,
       alreadyApplied: false,
-      recipientCount: 2,
-      grantedInstanceCount: 8,
+      recipientCount: 3,
+      grantedInstanceCount: 12,
     });
     expect(
       (await pool.query('select count(*)::int as count from user_inventory_instance')).rows,
@@ -60,10 +60,10 @@ describe.skipIf(!hasIntegrationEnv)('existing-user inventory grant operation', (
     expect(applied).toMatchObject({
       applied: true,
       alreadyApplied: false,
-      recipientCount: 2,
-      grantedInstanceCount: 8,
+      recipientCount: 3,
+      grantedInstanceCount: 12,
     });
-    expect(applied.grants).toHaveLength(8);
+    expect(applied.grants).toHaveLength(12);
     expect(applied.items).toEqual([
       expect.objectContaining({ itemKind: 'nutrition', rarity: 'rare' }),
       expect.objectContaining({ itemKind: 'recovery', rarity: 'rare', chargesPerInstance: 1 }),
@@ -103,7 +103,7 @@ describe.skipIf(!hasIntegrationEnv)('existing-user inventory grant operation', (
     expect(repeated).toMatchObject({ applied: false, alreadyApplied: true });
     expect(
       (await pool.query('select count(*)::int as count from user_inventory_instance')).rows,
-    ).toEqual([{ count: 9 }]);
+    ).toEqual([{ count: 13 }]);
 
     await pool.query(
       `insert into users (id, display_name, timezone) values ($1, 'Future', 'Europe/Moscow')`,
