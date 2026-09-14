@@ -391,6 +391,12 @@ jobs:
           printf '%s' "$js" | grep -q 'DailyScreen-'
           echo "Frontend smoke test passed for $asset_path"
 
+          assetlinks="$(curl -fsSL --max-time 10 "$APP_URL/.well-known/assetlinks.json")"
+          printf '%s' "$assetlinks" | jq -e \
+            '. | type == "array" and length > 0 and any(.[]; (.relation | index("delegate_permission/common.handle_all_urls") != null) and .target.namespace == "android_app" and .target.package_name == "ru.ultimatehockey.app" and (.target.sha256_cert_fingerprints | index("28:93:C7:19:1C:A8:77:B0:E7:1F:16:CF:4E:83:9D:31:DB:0D:11:C2:3B:A9:E9:D2:A8:D7:51:99:7C:0B:49:7F") != null))' \
+            >/dev/null
+          echo "Android App Links smoke test passed"
+
           legacy_health="$(curl -fsSL --max-time 10 "$LEGACY_URL/api/health")"
           printf '%s' "$legacy_health" | grep -q '"ok":true'
           echo "Legacy production host serves the app during phase 1"
