@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
 import { fetchHomeArenas, type HomeArenasResponse } from '../api/arenas.js';
@@ -34,6 +34,38 @@ function ProfilePageHeader({ title }: { title: string }): JSX.Element {
 function ProfilePageStatus({ children }: { children: ReactNode }): JSX.Element {
   return (
     <main className="screen profile-detail-screen profile-detail-screen--status">{children}</main>
+  );
+}
+
+export function ProfileStoryScreen(): JSX.Element {
+  return (
+    <main className="screen profile-detail-screen profile-story-screen">
+      <ProfilePageHeader title="Сюжет" />
+      <div className="profile-story-series-list">
+        {Array.from({ length: 10 }, (_, index) => {
+          const series = index + 1;
+          return (
+            <section className="profile-story-series" key={series} aria-labelledby={`story-series-${series}`}>
+              <h2
+                className="section-label section-label--page profile-section-label"
+                id={`story-series-${series}`}
+              >
+                Серия {series}
+              </h2>
+              <article className="profile-story-series-card glass" aria-label={`Серия ${series}: закрыто`}>
+                <span className="profile-story-series-card__visual" aria-hidden="true">
+                  <Lock data-testid="profile-story-series-lock" />
+                </span>
+                <span className="profile-story-series-card__copy">
+                  <strong>Серия {series}</strong>
+                  <small>В разработке</small>
+                </span>
+              </article>
+            </section>
+          );
+        })}
+      </div>
+    </main>
   );
 }
 

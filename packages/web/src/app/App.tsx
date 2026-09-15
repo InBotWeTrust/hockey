@@ -89,6 +89,11 @@ const ProfileArenaScreen = lazy(() =>
     default: module.ProfileArenaScreen,
   })),
 );
+const ProfileStoryScreen = lazy(() =>
+  import('../screens/ProfileDestinationScreens.js').then((module) => ({
+    default: module.ProfileStoryScreen,
+  })),
+);
 const SectionsScreen = lazy(() =>
   import('../screens/SectionsScreen.js').then((module) => ({ default: module.SectionsScreen })),
 );
@@ -451,6 +456,14 @@ function AppExperience(): JSX.Element {
                 element={
                   <PrivateRoute>
                     <ProfileArenaScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile/story"
+                element={
+                  <PrivateRoute>
+                    <ProfileStoryScreen />
                   </PrivateRoute>
                 }
               />

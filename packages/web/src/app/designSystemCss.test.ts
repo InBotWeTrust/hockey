@@ -29,3 +29,19 @@ describe('experience rating scroll containment', () => {
     expect(header).not.toContain('background: transparent');
   });
 });
+
+describe('profile story section heading alignment', () => {
+  it('keeps story series headings on the shared page-label offset', () => {
+    const heading = rule('.profile-story-series > h2');
+
+    expect(heading).toContain('margin: 0 0 -2px -14px');
+  });
+});
+
+describe('profile story image treatment', () => {
+  it('uses the same white image border as other profile cards', () => {
+    const image = rule('.profile-story-card > img');
+
+    expect(image).toContain('border: 1px solid rgba(255, 255, 255, 0.88)');
+  });
+});
