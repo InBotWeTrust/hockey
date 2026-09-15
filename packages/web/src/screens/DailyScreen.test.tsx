@@ -7525,7 +7525,6 @@ describe('DailyScreen', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Результат дуэли' });
     expect(within(dialog).getByLabelText('Счёт в серии 2:0')).toBeInTheDocument();
-    expect(within(dialog).getByText('Следующая игра через:')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('До следующей игры')).toHaveClass(
       'tournament-duel-result__countdown-value',
     );

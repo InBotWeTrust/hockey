@@ -91,7 +91,7 @@ describe('DuelChallengeModal Amateur preview access', () => {
     renderModal();
 
     const option = await screen.findByRole('button', { name: /Экспресс/ });
-    expect(option).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => expect(option).toHaveAttribute('aria-pressed', 'true'));
     expect(option.querySelector('.duel-challenge-option__indicator')).toHaveAttribute(
       'data-selected',
       'true',

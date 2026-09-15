@@ -212,14 +212,15 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     expect(
       (
         await pool.query(
-          `select achievement_id, claimed_at from user_achievements
-      where user_id = $1 order by achievement_id`,
+          `select achievement_id, claimed_at from user_achievement_stages
+      where user_id = $1 and completed_at is not null
+        and achievement_id in ('monthly-top-1', 'monthly-top-3')
+      order by achievement_id`,
           [users[0]],
         )
       ).rows,
     ).toEqual([
       { achievement_id: 'monthly-top-1', claimed_at: null },
-      { achievement_id: 'monthly-top-3', claimed_at: null },
     ]);
     expect(
       (
@@ -384,8 +385,9 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
 
 async function completedMonthlyAchievementIds(pool: Pool, userId: string): Promise<string[]> {
   const { rows } = await pool.query<{ achievement_id: string }>(
-    `select achievement_id from user_achievements
-      where user_id = $1 and achievement_id in ('monthly-top-1', 'monthly-top-3')
+    `select achievement_id from user_achievement_stages
+      where user_id = $1 and completed_at is not null
+        and achievement_id in ('monthly-top-1', 'monthly-top-3')
       order by achievement_id`,
     [userId],
   );

@@ -1769,8 +1769,8 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
     );
     expect(transferredInventory.rows).toEqual([
       { title: 'Ультимейт Вектор', charges_available: 7, charges_reserved: 2 },
-      { title: 'Ультимейт Рывок', charges_available: 9, charges_reserved: 3 },
       { title: 'Ультимейт Заряд Плюс', charges_available: 11, charges_reserved: 3 },
+      { title: 'Ультимейт Рывок', charges_available: 9, charges_reserved: 3 },
     ]);
 
     const oldInventory = await pool.query<{

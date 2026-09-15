@@ -2483,10 +2483,11 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     expect(series.rows[0]!.count).toBe(1);
     const achievements = await pool.query<{ achievement_id: string; count: number }>(
       `select achievement_id, count(*)::int as count
-         from user_achievements
+         from user_achievement_stages
         where achievement_id in (
           'regular-season-champion', 'regular-season-medalist', 'playoff-final'
         )
+          and completed_at is not null
         group by achievement_id
         order by achievement_id`,
     );
@@ -7394,7 +7395,20 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
            where tournament_id=$1 and kind='third_place'`,
           [tournament.id, participants[0], participants[3]],
         );
-        await pool.query('delete from user_achievements where user_id=$1', [PLAYER_IDS[0]]);
+        await pool.query(
+          `delete from user_achievement_stages
+            where user_id=$1 and achievement_id in (
+              'playoff-semifinal', 'playoff-final', 'tournament-cup'
+            )`,
+          [PLAYER_IDS[0]],
+        );
+        await pool.query(
+          `delete from achievement_stage_events
+            where user_id=$1 and achievement_id in (
+              'playoff-semifinal', 'playoff-final', 'tournament-cup'
+            )`,
+          [PLAYER_IDS[0]],
+        );
       }
       const blocker = await pool.connect();
       let pending: Promise<unknown> | undefined;
@@ -7443,9 +7457,11 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       ).toEqual([{ count: 1 }]);
       expect(
         (
-          await pool.query('select achievement_id from user_achievements where user_id=$1', [
-            PLAYER_IDS[0],
-          ])
+          await pool.query(
+            `select achievement_id from user_achievement_stages
+              where user_id=$1 and completed_at is not null`,
+            [PLAYER_IDS[0]],
+          )
         ).rows,
       ).toContainEqual({ achievement_id: 'playoff-semifinal' });
     },
