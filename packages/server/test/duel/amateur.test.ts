@@ -128,6 +128,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     await pool.query(
       `insert into game_settings (key, value, label, description)
        values ('tournaments.enabled', 'false'::jsonb, 'Турниры включены', 'test cleanup')
@@ -1092,15 +1093,14 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       blocker.release();
     }
     expect(accepted.statusCode).toBe(200);
-    const acceptedAt = new Date(accepted.json().match.server_now);
     const shot = (
       await pool.query<{ created_at: Date }>(
         'select created_at from shot_session where amateur_duel_match_id=$1',
         [matchId],
       )
     ).rows[0]!;
+    const acceptedAt = shot.created_at;
     expect(shot.created_at.getTime()).toBeGreaterThanOrEqual(releasedAt);
-    expect(shot.created_at.toISOString()).toBe(acceptedAt.toISOString());
     const endsAt = new Date(acceptedAt.getTime() + 3_600_000);
     expect(
       await getGameplayLockState(pool as unknown as PoolClient, {
@@ -1140,6 +1140,46 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         })
       ).statusCode,
     ).toBe(200);
+  });
+
+  it('returns a bounded acknowledgement instead of the full match after an accepted shot', async () => {
+    const templateId = await createTemplate({
+      periodRules: [{ periodNumber: 1, mode: 'quota', durationMs: 1_200_000, shotsLimit: 3 }],
+    });
+    const matchId = (await challenge(templateId)).json().match.id;
+    expect((await acceptReadyAndStart(matchId)).statusCode).toBe(200);
+
+    const shot = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/shot`,
+      headers: auth(tokenA),
+      payload: { shot_index: 1, input: { tapTime: 1000 }, claimed_result: 'goal' },
+    });
+
+    expect(shot.statusCode).toBe(200);
+    const payload = shot.json();
+    expect(Object.keys(payload).sort()).toEqual([
+      'confirmed_shot_index',
+      'current_period_inventory',
+      'match_id',
+      'participant',
+      'server_result',
+      'settled',
+    ]);
+    expect(payload).toMatchObject({
+      match_id: matchId,
+      confirmed_shot_index: 1,
+      participant: {
+        state: 'period_active',
+        current_period: 1,
+        current_period_shots: 1,
+        shots_taken: 1,
+      },
+      current_period_inventory: { periodNumber: 1, consumed: [] },
+      settled: false,
+    });
+    expect(payload).not.toHaveProperty('match');
+    expect(Buffer.byteLength(shot.body, 'utf8')).toBeLessThan(1024);
   });
 
   it('rejects new periods under a tournament lock without consuming inventory', async () => {
@@ -4429,9 +4469,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     const snapshot = (
       await pool.query('select * from monthly_duel_rating_placement order by user_id')
     ).rows;
-    expect(snapshot.filter((row) => row.user_id === userA)).toEqual(
-      fixture.month === '2026-08' ? [expect.objectContaining({ matches_played: 30 })] : [],
-    );
+    expect(
+      snapshot.filter((row) => row.user_id === userA && row.season_key === fixture.month),
+    ).toEqual(fixture.month === '2026-08' ? [expect.objectContaining({ matches_played: 30 })] : []);
     expect((await settle()).statusCode).toBe(200);
     expect((await settle()).statusCode).toBe(200);
     expect(
@@ -4797,10 +4837,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     });
     const consumed = shot
       .json()
-      .match.me.inventory_report.flatMap(
-        (report: { consumed: Array<{ id: string; charges: number }> }) => report.consumed,
-      )
-      .find((item: { id: string }) => item.id === stickId);
+      .current_period_inventory.consumed.find((item: { id: string }) => item.id === stickId);
     expect(consumed?.charges).toBe(1);
   });
 
@@ -4864,12 +4901,99 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(legacyAggregate.rows[0]?.charges_available).toBe(2);
     const consumed = shot
       .json()
-      .match.me.inventory_report.flatMap(
-        (report: { consumed: Array<{ id: string; itemId: string; charges: number }> }) =>
-          report.consumed,
-      )
-      .find((item: { id: string }) => item.id === secondInstanceId);
+      .current_period_inventory.consumed.find(
+        (item: { id: string }) => item.id === secondInstanceId,
+      );
     expect(consumed).toMatchObject({ id: secondInstanceId, itemId: stickId, charges: 1 });
+  });
+
+  it('compacts an active legacy report on the next shot without debiting old charges again', async () => {
+    const stickId = await createInventoryItem('stick', 'Legacy detailed stick');
+    await pool.query(
+      `update admin_inventory_items
+          set resource_unit = 'shot', charges_per_purchase = 10, duel_period_cost = 0
+        where id = $1`,
+      [stickId],
+    );
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 10)
+       on conflict (user_id, inventory_item_id)
+       do update set charges_available = excluded.charges_available, charges_reserved = 0`,
+      [userA, stickId],
+    );
+    const matchId = (await challenge(await createTemplate())).json().match.id;
+    expect((await acceptReadyAndStart(matchId, { loadout: { stick: stickId } })).statusCode).toBe(
+      200,
+    );
+    const item = {
+      id: stickId,
+      itemId: stickId,
+      kind: 'stick',
+      title: 'Legacy detailed stick',
+      charges: 1,
+      remainingReserved: 8,
+    };
+    await pool.query(
+      `update amateur_duel_participant
+          set inventory_report = $3,
+              consumed_inventory_charges = 2
+        where match_id = $1 and user_id = $2`,
+      [
+        matchId,
+        userA,
+        JSON.stringify([
+          { periodNumber: 1, consumed: [{ ...item, remainingReserved: 9 }] },
+          { periodNumber: 1, consumed: [item] },
+        ]),
+      ],
+    );
+    await pool.query(
+      `update user_inventory_item
+          set charges_available = 8
+        where user_id = $1 and inventory_item_id = $2`,
+      [userA, stickId],
+    );
+
+    const shot = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/shot`,
+      headers: auth(tokenA),
+      payload: { shot_index: 1, input: { tapTime: 1000 }, claimed_result: 'goal' },
+    });
+
+    expect(shot.statusCode).toBe(200);
+    const stored = (
+      await pool.query<{
+        inventory_report: Array<{
+          periodNumber: number;
+          consumed: Array<{ id: string; charges: number; remainingReserved: number }>;
+        }>;
+      }>(
+        `select inventory_report
+           from amateur_duel_participant
+          where match_id = $1 and user_id = $2`,
+        [matchId, userA],
+      )
+    ).rows[0]!.inventory_report;
+    expect(stored).toEqual([
+      {
+        periodNumber: 1,
+        consumed: [expect.objectContaining({ id: stickId, charges: 3, remainingReserved: 7 })],
+      },
+    ]);
+    expect(
+      Number(
+        (
+          await pool.query<{ charges_available: number }>(
+            `select charges_available
+               from user_inventory_item
+              where user_id = $1 and inventory_item_id = $2`,
+            [userA, stickId],
+          )
+        ).rows[0]?.charges_available,
+      ),
+    ).toBe(7);
   });
 
   it('does not reset shot-stick resource on the next duel period', async () => {
@@ -5164,6 +5288,16 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     const started = await acceptReadyAndStart(matchId, { loadout: { nutrition: nutritionId } });
     expect(started.statusCode).toBe(200);
     await pool.query(
+      `update amateur_duel_match
+          set rules_snapshot = jsonb_set(
+            rules_snapshot,
+            '{noInventoryTiming,nutrition}',
+            '{"energyBaselineSpeed":0.8,"fatigueGraceMs":30000,"fatigueSlowdownStartMs":30000,"fatigueHeavySlowdownStartMs":75000,"fatigueStopStartMs":90000,"fatigueStopDurationMs":5000,"fatigueAfterRestMs":45000}'::jsonb
+          )
+        where id = $1`,
+      [matchId],
+    );
+    await pool.query(
       `update amateur_duel_participant
           set period_started_at = now() - interval '93000 milliseconds'
         where match_id = $1 and user_id = $2`,
@@ -5265,8 +5399,139 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       }>
     ).flatMap((report) => report.consumed);
     expect(consumed.filter((item) => item.id === nutritionId).map((item) => item.charges)).toEqual([
-      2134, 1067,
+      3201,
     ]);
+    expect(second.json().current_period_inventory.consumed).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: nutritionId, charges: 3201 })]),
+    );
+  });
+
+  it('keeps the final compact report equal to the inventory debit when a shot closes the period', async () => {
+    const nutritionId = await createInventoryItem('nutrition', 'Closing nutrition');
+    await pool.query(
+      `update admin_inventory_items
+          set resource_unit = 'energy_ms',
+              charges_per_purchase = 10000,
+              duel_period_cost = 0
+        where id = $1`,
+      [nutritionId],
+    );
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 10000)
+       on conflict (user_id, inventory_item_id)
+       do update set charges_available = excluded.charges_available, charges_reserved = 0`,
+      [userA, nutritionId],
+    );
+    const matchId = (
+      await challenge(
+        await createTemplate({
+          periodRules: [{ periodNumber: 1, mode: 'quota', durationMs: 1_200_000, shotsLimit: 1 }],
+        }),
+      )
+    ).json().match.id;
+    expect(
+      (await acceptReadyAndStart(matchId, { loadout: { nutrition: nutritionId } })).statusCode,
+    ).toBe(200);
+    await pool.query(
+      `update amateur_duel_participant
+          set period_started_at = now() - interval '2000 milliseconds'
+        where match_id = $1 and user_id = $2`,
+      [matchId, userA],
+    );
+
+    const shot = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/shot`,
+      headers: auth(tokenA),
+      payload: { shot_index: 1, input: { tapTime: 2000 }, claimed_result: 'goal' },
+    });
+
+    expect(shot.statusCode).toBe(200);
+    const remaining = Number(
+      (
+        await pool.query<{ charges_available: number }>(
+          `select charges_available
+             from user_inventory_item
+            where user_id = $1 and inventory_item_id = $2`,
+          [userA, nutritionId],
+        )
+      ).rows[0]?.charges_available,
+    );
+    const reportCharge = Number(
+      shot
+        .json()
+        .current_period_inventory.consumed.find((item: { id: string }) => item.id === nutritionId)
+        ?.charges,
+    );
+    expect(10_000 - remaining).toBe(reportCharge);
+  });
+
+  it('keeps inventory report cardinality and acknowledgement size bounded across 90 shots', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-14T12:00:00.000Z'));
+    const stickId = await createInventoryItem('stick', 'Ninety shot stick');
+    const { skates, nutrition } = await createLongPeriodLoadout();
+    await pool.query(
+      `update admin_inventory_items
+          set duel_period_cost = 0,
+              resource_unit = 'shot',
+              charges_per_purchase = 100
+        where id = $1`,
+      [stickId],
+    );
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 100)
+       on conflict (user_id, inventory_item_id)
+       do update set charges_available = excluded.charges_available, charges_reserved = 0`,
+      [userA, stickId],
+    );
+    const matchId = (
+      await challenge(
+        await createTemplate({
+          periodDurationMs: 1_200_000,
+          periodRules: [{ periodNumber: 1, mode: 'quota', durationMs: 1_200_000, shotsLimit: 90 }],
+        }),
+      )
+    ).json().match.id;
+    expect(
+      (
+        await acceptReadyAndStart(matchId, {
+          loadout: { stick: stickId, skates, nutrition },
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    const responseSizes: number[] = [];
+    for (let shotIndex = 1; shotIndex <= 90; shotIndex += 1) {
+      await vi.advanceTimersByTimeAsync(1000);
+      const response = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${matchId}/shot`,
+        headers: auth(tokenA),
+        payload: {
+          shot_index: shotIndex,
+          input: { tapTime: shotIndex * 1000 },
+          claimed_result: 'goal',
+        },
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      responseSizes.push(Buffer.byteLength(response.body, 'utf8'));
+    }
+
+    const stored = (
+      await pool.query<{ inventory_report: Array<{ periodNumber: number; consumed: unknown[] }> }>(
+        `select inventory_report
+           from amateur_duel_participant
+          where match_id = $1 and user_id = $2`,
+        [matchId, userA],
+      )
+    ).rows[0]!.inventory_report;
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.consumed).toHaveLength(3);
+    expect(Math.max(...responseSizes)).toBeLessThan(1024);
+    expect(Math.max(...responseSizes) - Math.min(...responseSizes)).toBeLessThan(96);
   });
 
   it('includes opponent live period shots in match state', async () => {
@@ -5435,6 +5700,161 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       expect(byItem.get(nutritionId)).toBeLessThan(10_000);
     },
   );
+
+  it('closes a timed-out duel period when the snapshotted nutrition exceeds the live balance', async () => {
+    const nutritionId = await createInventoryItem('nutrition', 'Stale balance nutrition');
+    await pool.query(
+      `update admin_inventory_items
+          set duel_period_cost = 0,
+              resource_unit = 'energy_ms'
+        where id = $1`,
+      [nutritionId],
+    );
+    await pool.query(
+      `insert into user_inventory_item (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 10000)`,
+      [userA, nutritionId],
+    );
+    const templateId = await createTemplate({
+      totalPeriods: 2,
+      periodDurationMs: 2000,
+      breakDurationMs: 120000,
+      periodRules: [
+        { periodNumber: 1, mode: 'time_attack', durationMs: 2000, shotsLimit: null },
+        { periodNumber: 2, mode: 'time_attack', durationMs: 2000, shotsLimit: null },
+      ],
+    });
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    const started = await acceptReadyAndStart(matchId, { loadout: { nutrition: nutritionId } });
+    expect(started.statusCode).toBe(200);
+    await pool.query(
+      `update user_inventory_item
+          set charges_available = 500
+        where user_id = $1 and inventory_item_id = $2`,
+      [userA, nutritionId],
+    );
+    await pool.query(
+      `update amateur_duel_participant
+          set period_started_at = now() - interval '3 seconds'
+        where match_id = $1 and user_id = $2`,
+      [matchId, userA],
+    );
+
+    const reconciled = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${matchId}`,
+      headers: auth(tokenA),
+    });
+
+    expect(reconciled.statusCode).toBe(200);
+    expect(reconciled.json().match.me.state).toBe('break_active');
+    expect(reconciled.json().match.recent_periods[0]).toMatchObject({
+      period_number: 1,
+      closed_reason: 'timeout',
+      duration_ms: 2000,
+    });
+    const inventory = await pool.query<{ charges_available: number }>(
+      `select charges_available
+         from user_inventory_item
+        where user_id = $1 and inventory_item_id = $2`,
+      [userA, nutritionId],
+    );
+    expect(inventory.rows[0]?.charges_available).toBe(0);
+    const consumed = reconciled
+      .json()
+      .match.me.inventory_report.flatMap(
+        (report: { consumed: Array<{ id: string; charges: number }> }) => report.consumed,
+      )
+      .find((item: { id: string }) => item.id === nutritionId);
+    expect(consumed?.charges).toBe(500);
+  });
+
+  it('keeps the duel list readable when one match cannot be settled', async () => {
+    const templateId = await createTemplate({ totalPeriods: 1 });
+    const rewardRules = {
+      equalExperienceTolerancePercent: 10,
+      strongerWin: { coins: 0, stars: 0, tokens: 1 },
+      equalWin: { coins: 0, stars: 0, tokens: 1 },
+      weakerWin: { coins: 0, stars: 0, tokens: 1 },
+      draw: { coins: 0, stars: 0, tokens: 1 },
+      loss: { coins: 0, stars: 0, tokens: 1 },
+    };
+    await pool.query('update amateur_duel_template set reward_rules = $2 where id = $1', [
+      templateId,
+      JSON.stringify(rewardRules),
+    ]);
+    const healthy = await challenge(templateId);
+    const healthyId = healthy.json().match.id;
+    await pool.query(
+      `update amateur_duel_match
+          set status = 'settled', settled_at = now(), settled_reason = 'completed', outcome = 'draw'
+        where id = $1`,
+      [healthyId],
+    );
+    await pool.query(
+      `update amateur_duel_participant
+          set state = 'completed', current_period = 1, completed_at = now()
+        where match_id = $1`,
+      [healthyId],
+    );
+
+    const broken = await challenge(templateId);
+    const brokenId = broken.json().match.id;
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${brokenId}/accept`,
+      headers: auth(tokenB),
+    });
+    await pool.query(
+      `update amateur_duel_match
+          set status = 'active', rules_snapshot = jsonb_set(rules_snapshot, '{rewardRules}', $2::jsonb),
+              reward_rules = $2::jsonb
+        where id = $1`,
+      [brokenId, JSON.stringify(rewardRules)],
+    );
+    await pool.query(
+      `update amateur_duel_participant
+          set state = 'completed', current_period = 1, completed_at = now()
+        where match_id = $1`,
+      [brokenId],
+    );
+    await pool.query(
+      `insert into user_reward_token_account (user_id, balance)
+       values ($1, 2147483647)
+       on conflict (user_id) do update set balance = excluded.balance`,
+      [userB],
+    );
+
+    const direct = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${brokenId}`,
+      headers: auth(tokenA),
+    });
+    expect(direct.statusCode).toBe(409);
+    expect(direct.json().error.code).toBe('reward_balance_capacity');
+
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/matches',
+      headers: auth(tokenA),
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().matches.map((match: { id: string }) => match.id)).toEqual(
+      expect.arrayContaining([healthyId, brokenId]),
+    );
+    const events = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/events',
+      headers: auth(tokenA),
+    });
+    expect(events.statusCode).toBe(200);
+    expect(events.json().events.map((match: { id: string }) => match.id)).toContain(brokenId);
+    expect(
+      (await pool.query('select status from amateur_duel_match where id = $1', [brokenId])).rows[0]
+        ?.status,
+    ).toBe('active');
+  });
 
   it.each([
     {

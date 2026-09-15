@@ -816,6 +816,22 @@ interface DuelMatchStateDTO extends DuelMatchDTO {
   }>;
 }
 
+interface SubmitAmateurDuelShotResponse {
+  match_id: string;
+  server_result: DuelShotResult;
+  confirmed_shot_index: number;
+  participant: {
+    state: ParticipantState;
+    current_period: number;
+    current_period_shots: number;
+    current_period_goals: number;
+    shots_taken: number;
+    goals: number;
+  };
+  current_period_inventory: InventoryPeriodReport;
+  settled: boolean;
+}
+
 interface RatingRow {
   user_id: string;
   display_name: string;
@@ -1020,18 +1036,47 @@ function inventoryReportFromUnknown(value: unknown): InventoryPeriodReport[] {
     )
     .safeParse(value ?? []);
   if (!parsed.success) return [];
-  return parsed.data.map((entry) => ({
-    periodNumber: entry.periodNumber,
-    consumed: entry.consumed.map((item) => ({
-      id: item.id,
-      ...(item.itemId !== undefined ? { itemId: item.itemId } : {}),
-      ...(item.instanceId !== undefined ? { instanceId: item.instanceId } : {}),
-      kind: item.kind,
-      title: item.title,
-      charges: item.charges,
-      remainingReserved: item.remainingReserved,
-    })),
-  }));
+  const periods = new Map<number, InventoryPeriodReport>();
+  for (const entry of parsed.data) {
+    let period = periods.get(entry.periodNumber);
+    if (!period) {
+      period = { periodNumber: entry.periodNumber, consumed: [] };
+      periods.set(entry.periodNumber, period);
+    }
+    for (const item of entry.consumed) {
+      const existingIndex = period.consumed.findIndex((candidate) => candidate.id === item.id);
+      const normalized = {
+        id: item.id,
+        ...(item.itemId !== undefined ? { itemId: item.itemId } : {}),
+        ...(item.instanceId !== undefined ? { instanceId: item.instanceId } : {}),
+        kind: item.kind,
+        title: item.title,
+        charges: item.charges,
+        remainingReserved: item.remainingReserved,
+      };
+      if (existingIndex === -1) {
+        period.consumed.push(normalized);
+      } else {
+        const existing = period.consumed[existingIndex]!;
+        period.consumed[existingIndex] = {
+          ...normalized,
+          charges: roundInventoryCharge(existing.charges + normalized.charges),
+        };
+      }
+    }
+  }
+  return [...periods.values()];
+}
+
+function mergeInventoryReport(
+  report: InventoryPeriodReport[],
+  periodNumber: number,
+  consumed: InventoryPeriodReport['consumed'],
+): InventoryPeriodReport[] {
+  return inventoryReportFromUnknown([
+    ...report,
+    ...(consumed.length > 0 ? [{ periodNumber, consumed }] : []),
+  ]);
 }
 
 function duelInventoryItemFromSnapshot(
@@ -2135,7 +2180,11 @@ async function consumeInventoryForPeriod(
     periodNumber: participant.current_period + 1,
     consumed,
   };
-  const report = [...inventoryReportFromUnknown(participant.inventory_report), periodReport];
+  const report = mergeInventoryReport(
+    inventoryReportFromUnknown(participant.inventory_report),
+    periodReport.periodNumber,
+    periodReport.consumed,
+  );
   const consumedCharges = consumed.reduce((sum, item) => sum + item.charges, 0);
   await client.query(
     `update amateur_duel_participant
@@ -2179,7 +2228,7 @@ async function consumeInventoryForShot(
       target = consumedTotals.nutritionConsumed;
     }
     target = Math.min(availableForPeriod, Math.max(previous, target));
-    const delta = roundInventoryCharge(target - previous);
+    let delta = roundInventoryCharge(target - previous);
     if (delta <= 0) continue;
 
     const integerBefore = Math.floor(previous);
@@ -2189,7 +2238,7 @@ async function consumeInventoryForShot(
         ? Math.ceil(delta)
         : Math.max(0, integerAfter - integerBefore);
     if (availableDelta > 0) {
-      const { rowCount } = item.instanceId
+      let { rowCount } = item.instanceId
         ? await client.query(
             `update user_inventory_instance
                 set charges_available = charges_available - $3,
@@ -2209,12 +2258,61 @@ async function consumeInventoryForShot(
             [participant.user_id, item.itemId, availableDelta],
           );
       if (rowCount === 0) {
-        throw new AppError('conflict', 'not enough inventory resource for duel shot', 409);
+        if (consumedTotals.consumeShot !== false) {
+          throw new AppError('conflict', 'not enough inventory resource for duel shot', 409);
+        }
+        const available = item.instanceId
+          ? await client.query<{ charges_available: number }>(
+              `select charges_available
+                 from user_inventory_instance
+                where user_id = $1 and id = $2
+                for update`,
+              [participant.user_id, item.instanceId],
+            )
+          : await client.query<{ charges_available: number }>(
+              `select charges_available
+                 from user_inventory_item
+                where user_id = $1 and inventory_item_id = $2
+                for update`,
+              [participant.user_id, item.itemId],
+            );
+        const availableToConsume = Math.min(
+          availableDelta,
+          Math.max(0, Number(available.rows[0]?.charges_available ?? 0)),
+        );
+        if (availableToConsume > 0) {
+          rowCount = item.instanceId
+            ? (
+                await client.query(
+                  `update user_inventory_instance
+                      set charges_available = charges_available - $3,
+                          updated_at = now()
+                    where user_id = $1 and id = $2`,
+                  [participant.user_id, item.instanceId, availableToConsume],
+                )
+              ).rowCount
+            : (
+                await client.query(
+                  `update user_inventory_item
+                      set charges_available = charges_available - $3,
+                          updated_at = now()
+                    where user_id = $1 and inventory_item_id = $2`,
+                  [participant.user_id, item.itemId, availableToConsume],
+                )
+              ).rowCount;
+        }
+        if (availableToConsume < availableDelta) {
+          delta = roundInventoryCharge(Math.min(delta, availableToConsume));
+          target = roundInventoryCharge(previous + delta);
+        }
+        if (delta <= 0) continue;
+        consumedInventoryChargesDelta += availableToConsume;
+      } else {
+        consumedInventoryChargesDelta += availableDelta;
       }
-      if (item.instanceId) {
+      if (item.instanceId && rowCount !== 0) {
         await syncLegacyInventoryAggregate(client, participant.user_id, item.itemId);
       }
-      consumedInventoryChargesDelta += availableDelta;
     }
 
     consumed.push({
@@ -2231,13 +2329,7 @@ async function consumeInventoryForShot(
   }
 
   if (consumed.length === 0) return;
-  const nextReport = [
-    ...reportBeforeShot,
-    {
-      periodNumber,
-      consumed,
-    },
-  ];
+  const nextReport = mergeInventoryReport(reportBeforeShot, periodNumber, consumed);
   await client.query(
     `update amateur_duel_participant
         set consumed_inventory_charges = consumed_inventory_charges + $3,
@@ -4516,21 +4608,35 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       const changedMatchIds = new Set<string>();
       const newlySettledRegularFixtures = new Map<string, NewlySettledRegularFixture>();
       for (const row of rows) {
-        const visibleMatch = await fetchVisibleMatchForUpdate(client, row.id);
-        let reconciled: ReconciledMatch;
-        if (isTerminalMatchStatus(visibleMatch.status)) {
-          reconciled = { match: visibleMatch, changed: false };
-        } else {
-          await assertTournamentDuelPlayable(client, visibleMatch);
-          reconciled = await reconcileMatch(client, visibleMatch, now, true);
-        }
-        if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
-        if (reconciled.newlySettledRegularFixture !== undefined)
-          newlySettledRegularFixtures.set(
-            reconciled.newlySettledRegularFixture.fixtureId,
-            reconciled.newlySettledRegularFixture,
+        await client.query('savepoint duel_read_item');
+        let match: DuelMatchRow;
+        try {
+          const visibleMatch = await fetchVisibleMatchForUpdate(client, row.id);
+          let reconciled: ReconciledMatch;
+          if (isTerminalMatchStatus(visibleMatch.status)) {
+            reconciled = { match: visibleMatch, changed: false };
+          } else {
+            await assertTournamentDuelPlayable(client, visibleMatch);
+            reconciled = await reconcileMatch(client, visibleMatch, now, true);
+          }
+          if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
+          if (reconciled.newlySettledRegularFixture !== undefined)
+            newlySettledRegularFixtures.set(
+              reconciled.newlySettledRegularFixture.fixtureId,
+              reconciled.newlySettledRegularFixture,
+            );
+          match = reconciled.match;
+          await client.query('release savepoint duel_read_item');
+        } catch (err) {
+          await client.query('rollback to savepoint duel_read_item');
+          await client.query('release savepoint duel_read_item');
+          if (!(err instanceof AppError) || err.statusCode !== 409) throw err;
+          app.log.warn(
+            { matchId: row.id, conflictCode: err.code },
+            'duel list kept unreconciled match after read conflict',
           );
-        const match = reconciled.match;
+          match = await fetchVisibleMatchForUpdate(client, row.id);
+        }
         if (
           match.status === 'invited' ||
           match.status === 'ready_check' ||
@@ -4809,19 +4915,33 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       const changedMatchIds = new Set<string>();
       const newlySettledRegularFixtures = new Map<string, NewlySettledRegularFixture>();
       for (const row of rows) {
-        const reconciled = await reconcileMatch(
-          client,
-          await fetchPlayableMatchForUpdate(client, row.id),
-          now,
-          true,
-        );
-        if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
-        if (reconciled.newlySettledRegularFixture !== undefined)
-          newlySettledRegularFixtures.set(
-            reconciled.newlySettledRegularFixture.fixtureId,
-            reconciled.newlySettledRegularFixture,
+        await client.query('savepoint duel_event_read_item');
+        let match: DuelMatchRow;
+        try {
+          const reconciled = await reconcileMatch(
+            client,
+            await fetchPlayableMatchForUpdate(client, row.id),
+            now,
+            true,
           );
-        const match = reconciled.match;
+          if (reconciled.changed) changedMatchIds.add(reconciled.match.id);
+          if (reconciled.newlySettledRegularFixture !== undefined)
+            newlySettledRegularFixtures.set(
+              reconciled.newlySettledRegularFixture.fixtureId,
+              reconciled.newlySettledRegularFixture,
+            );
+          match = reconciled.match;
+          await client.query('release savepoint duel_event_read_item');
+        } catch (err) {
+          await client.query('rollback to savepoint duel_event_read_item');
+          await client.query('release savepoint duel_event_read_item');
+          if (!(err instanceof AppError) || err.statusCode !== 409) throw err;
+          app.log.warn(
+            { matchId: row.id, conflictCode: err.code },
+            'duel events kept unreconciled match after read conflict',
+          );
+          match = await fetchPlayableMatchForUpdate(client, row.id);
+        }
         if (
           match.status === 'invited' ||
           match.status === 'ready_check' ||
@@ -5991,7 +6111,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           periodRule.shotsLimit !== null &&
           body.shot_index >= periodRule.shotsLimit
         ) {
-          await closeParticipantPeriod(client, participant, rules, now, 'quota');
+          const participantAfterShot = (await fetchParticipants(client, match.id)).find(
+            (candidate) => candidate.user_id === req.user.id,
+          );
+          if (!participantAfterShot) {
+            throw new AppError('server_error', 'duel participant disappeared after shot', 500);
+          }
+          await closeParticipantPeriod(client, participantAfterShot, rules, now, 'quota');
         }
         const settledReconciliation = await reconcileMatch(
           client,
@@ -5999,6 +6125,44 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           now,
         );
         match = settledReconciliation.match;
+        const refreshedParticipant = (await fetchParticipants(client, match.id)).find(
+          (candidate) => candidate.user_id === req.user.id,
+        );
+        if (!refreshedParticipant) {
+          throw new AppError('server_error', 'duel participant disappeared after shot', 500);
+        }
+        const confirmedPeriod = participant.current_period;
+        const confirmedStats = await fetchCurrentPeriodStats(
+          client,
+          match.id,
+          req.user.id,
+          confirmedPeriod,
+        );
+        const compactReport = inventoryReportFromUnknown(refreshedParticipant.inventory_report);
+        const currentPeriodInventory = compactReport.find(
+          (entry) => entry.periodNumber === confirmedPeriod,
+        ) ?? { periodNumber: confirmedPeriod, consumed: [] };
+        const participantTotalsIncludeCurrentPeriod =
+          refreshedParticipant.state !== 'period_active';
+        const response: SubmitAmateurDuelShotResponse = {
+          match_id: match.id,
+          server_result: serverResult,
+          confirmed_shot_index: confirmedStats.shots,
+          participant: {
+            state: refreshedParticipant.state,
+            current_period: refreshedParticipant.current_period,
+            current_period_shots: confirmedStats.shots,
+            current_period_goals: confirmedStats.goals,
+            shots_taken:
+              Number(refreshedParticipant.shots_taken) +
+              (participantTotalsIncludeCurrentPeriod ? 0 : confirmedStats.shots),
+            goals:
+              Number(refreshedParticipant.goals) +
+              (participantTotalsIncludeCurrentPeriod ? 0 : confirmedStats.goals),
+          },
+          current_period_inventory: currentPeriodInventory,
+          settled: match.status === 'settled',
+        };
         return {
           matchId: match.id,
           settled: match.status === 'settled',
@@ -6007,8 +6171,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             : {
                 newlySettledRegularFixture: settledReconciliation.newlySettledRegularFixture,
               }),
-          server_result: serverResult,
-          match: await buildMatchStateDto(client, match, req.user.id, now),
+          response,
         };
       });
       await publishDuelFixtureProgress(app, response.matchId);
@@ -6016,7 +6179,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         await reconcileNewlySettledRegularFixture(app, response.newlySettledRegularFixture);
       }
       if (response.settled) void notifySettlement(app, response.matchId);
-      return response;
+      return response.response;
     },
   );
 

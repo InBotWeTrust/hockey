@@ -260,6 +260,7 @@ function renderProfile(): void {
           <Route path="/profile/equipment" element={<div>equipment screen</div>} />
           <Route path="/profile/achievements" element={<div>achievements screen</div>} />
           <Route path="/profile/settings" element={<div>settings screen</div>} />
+          <Route path="/profile/story" element={<div>story screen</div>} />
           <Route path="/inventory" element={<div>inventory shop</div>} />
         </Routes>
       </MemoryRouter>
@@ -465,6 +466,10 @@ describe('ProfileScreen', () => {
     );
     expect(screen.getByTestId('profile-community-icon-vk')).toBeInTheDocument();
     expect(screen.getByTestId('profile-community-icon-telegram')).toBeInTheDocument();
+    expect(screen.getByText('Новости и обновления')).toBeInTheDocument();
+    expect(screen.getByText('Официальный канал')).toBeInTheDocument();
+    expect(screen.queryByText('Новости, обновления и обсуждения')).not.toBeInTheDocument();
+    expect(screen.queryByText('Официальный канал игры')).not.toBeInTheDocument();
     expect(
       screen.getByTestId('profile-community-icon-telegram').querySelector('img'),
     ).toHaveAttribute('src', '/icons/telegram-community-v2.png');
@@ -472,6 +477,19 @@ describe('ProfileScreen', () => {
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noreferrer');
     }
+  });
+
+  it('opens the story destination from the profile story card', async () => {
+    mockProfileRequest();
+    renderProfile();
+
+    expect(
+      await screen.findByText('Сюжет', { selector: '.profile-section-label' }),
+    ).toHaveClass('profile-section-label');
+    const storyCard = screen.getByRole('button', { name: 'Открыть раздел «Сюжет»' });
+    expect(within(storyCard).queryByText('Сюжет')).not.toBeInTheDocument();
+    fireEvent.click(storyCard);
+    expect(screen.getByText('story screen')).toBeInTheDocument();
   });
 
   it('opens the matching equipment picker from an equipped item', async () => {
@@ -540,6 +558,7 @@ describe('ProfileScreen', () => {
       'Открыть задания',
       'Открыть задание Снайпер недели',
       'Настройки',
+      'Открыть раздел «Сюжет»',
     ]);
   });
 

@@ -9,6 +9,7 @@ import {
   updateAmateurDuelLoadout,
   type AmateurDuelLoadoutSelection,
   type AmateurDuelMatchState,
+  type SubmitAmateurDuelShotResponse,
 } from '../api/amateurDuel.js';
 import {
   isDefinitiveGameRequestError,
@@ -44,6 +45,56 @@ interface AmateurDuelStoreState {
   } | null>;
 }
 
+function applyShotAcknowledgement(
+  match: AmateurDuelMatchState,
+  acknowledgement: SubmitAmateurDuelShotResponse,
+): AmateurDuelMatchState {
+  const inventoryReport = match.me.inventory_report.filter(
+    (report) => report.periodNumber !== acknowledgement.current_period_inventory.periodNumber,
+  );
+  inventoryReport.push(acknowledgement.current_period_inventory);
+  return {
+    ...match,
+    current_period_shots: acknowledgement.participant.current_period_shots,
+    current_period_goals: acknowledgement.participant.current_period_goals,
+    me: {
+      ...match.me,
+      state: acknowledgement.participant.state,
+      current_period: acknowledgement.participant.current_period,
+      current_period_shots: acknowledgement.participant.current_period_shots,
+      current_period_goals: acknowledgement.participant.current_period_goals,
+      shots_taken: acknowledgement.participant.shots_taken,
+      goals: acknowledgement.participant.goals,
+      inventory_report: inventoryReport,
+    },
+  };
+}
+
+function applyLateOpponentProgress(
+  current: AmateurDuelMatchState,
+  polled: AmateurDuelMatchState,
+): AmateurDuelMatchState {
+  const currentOpponent = current.opponent;
+  const polledOpponent = polled.opponent;
+  const polledIsOlder =
+    polledOpponent.current_period < currentOpponent.current_period ||
+    (polledOpponent.current_period === currentOpponent.current_period &&
+      polledOpponent.shots_taken < currentOpponent.shots_taken) ||
+    (polledOpponent.current_period === currentOpponent.current_period &&
+      polledOpponent.shots_taken === currentOpponent.shots_taken &&
+      polledOpponent.current_period_shots < currentOpponent.current_period_shots);
+  if (polledIsOlder) return current;
+  return {
+    ...current,
+    server_now: polled.server_now,
+    ...(polled.received_at_performance_ms === undefined
+      ? {}
+      : { received_at_performance_ms: polled.received_at_performance_ms }),
+    opponent: polled.opponent,
+    opponent_recent_periods: polled.opponent_recent_periods,
+  };
+}
+
 export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) => ({
   match: null,
   loading: false,
@@ -55,7 +106,23 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     set({ loading: true, error: null });
     try {
       const { match } = await fetchAmateurMatch(matchId);
-      if (get().match !== startedFromMatch) return match;
+      const current = get().match;
+      if (current !== startedFromMatch) {
+        if (
+          startedFromMatch?.id === match.id &&
+          current?.id === match.id &&
+          startedFromMatch.status === 'active' &&
+          current.status === 'active' &&
+          match.status === 'active'
+        ) {
+          set({
+            match: applyLateOpponentProgress(current, match),
+            loading: false,
+            error: null,
+          });
+        }
+        return match;
+      }
       set({ match, loading: false, error: null });
       return match;
     } catch (err) {
@@ -215,15 +282,30 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
         }
         return null;
       }
-      const res =
-        outcome.kind === 'request'
-          ? outcome.value
-          : { server_result: claimedResult, match: outcome.value };
       if (get().match !== current) return null;
+      if (outcome.kind === 'reconciled') {
+        set({ error: null });
+        return {
+          serverResult: claimedResult,
+          state: outcome.value,
+          isCurrent: () => get().match === current,
+        };
+      }
+      const acknowledgement = outcome.value;
+      let next = applyShotAcknowledgement(current, acknowledgement);
+      if (acknowledgement.settled || acknowledgement.participant.state !== 'period_active') {
+        try {
+          next = (await fetchAmateurMatch(current.id)).match;
+        } catch {
+          // The shot is already authoritative. Keep the compact transition state
+          // and let normal polling reconcile the richer break/result DTO.
+        }
+        if (get().match !== current) return null;
+      }
       set({ error: null });
       return {
-        serverResult: res.server_result,
-        state: res.match,
+        serverResult: acknowledgement.server_result,
+        state: next,
         isCurrent: () => get().match === current,
       };
     } catch (err) {

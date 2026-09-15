@@ -6,6 +6,7 @@ import type { InventoryState } from '../api/inventory.js';
 import {
   ProfileArenaScreen,
   ProfileEquipmentScreen,
+  ProfileStoryScreen,
   ProfileStatsScreen,
 } from './ProfileDestinationScreens.js';
 
@@ -100,6 +101,24 @@ beforeEach(() => {
 });
 
 describe('profile destination screens', () => {
+  it('renders the story placeholder and returns to profile', () => {
+    renderDestination('/profile/story', <ProfileStoryScreen />);
+
+    expect(screen.getByRole('heading', { name: 'Сюжет' })).toBeInTheDocument();
+    expect(screen.getAllByRole('article', { name: /Серия \d+: закрыто/ })).toHaveLength(10);
+    for (let series = 1; series <= 10; series += 1) {
+      const card = screen.getByRole('article', { name: `Серия ${series}: закрыто` });
+      expect(screen.getByRole('heading', { name: `Серия ${series}` })).toHaveClass(
+        'section-label--page',
+      );
+      expect(card).toHaveTextContent(`Серия ${series}`);
+      expect(card).toHaveTextContent('В разработке');
+    }
+    expect(screen.getAllByTestId('profile-story-series-lock')).toHaveLength(10);
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
+    expect(screen.getByText('profile screen')).toBeInTheDocument();
+  });
+
   it('shows aggregate statistics without inventing mode totals', async () => {
     renderDestination('/profile/stats', <ProfileStatsScreen />);
     expect(await screen.findByRole('heading', { name: 'Статистика' })).toBeInTheDocument();
