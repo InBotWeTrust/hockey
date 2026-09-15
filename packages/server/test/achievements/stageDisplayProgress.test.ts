@@ -4,11 +4,8 @@ import { resolveStageDisplayProgress } from '../../src/achievements/service.js';
 describe('resolveStageDisplayProgress', () => {
   it.each([
     'underdog',
-    'ice-hand',
-    'training-monster',
     'third-period-decides',
     'classic-speed',
-    'blowout',
     'no-error-express',
     'no-error-mix',
     'no-error-classic',
@@ -41,5 +38,18 @@ describe('resolveStageDisplayProgress', () => {
         completed: false,
       }),
     ).toEqual({ progressValue: 3_200, targetValue: 5_000 });
+  });
+
+  it.each([
+    ['ice-hand', 'accuracyPercent', 92, 97],
+    ['training-monster', 'accuracyPercent', 94, 98],
+    ['blowout', 'minimumMargin', 35, 41],
+  ])('shows the best result for %s on its numeric scale', (achievementId, field, target, progress) => {
+    expect(resolveStageDisplayProgress({
+      achievementId,
+      target: { [field]: target },
+      progress: { [field]: progress },
+      completed: progress >= target,
+    })).toEqual({ progressValue: progress, targetValue: target });
   });
 });

@@ -62,7 +62,20 @@ export function isSeriesComeback(input: {
     played: boolean;
   }[];
 }): boolean {
-  if (input.winsRequired < 2) return false;
+  return seriesComebackDeficit(input) > 0;
+}
+
+export function seriesComebackDeficit(input: {
+  winsRequired: number;
+  eventualWinnerParticipantId: string;
+  fixtures: readonly {
+    fixtureId: string;
+    settledAt: Date;
+    winnerParticipantId: string | null;
+    played: boolean;
+  }[];
+}): number {
+  if (input.winsRequired < 2) return 0;
 
   const fixtures = [...input.fixtures].sort(
     (left, right) =>
@@ -71,20 +84,20 @@ export function isSeriesComeback(input: {
   );
   let winnerWins = 0;
   let opponentWins = 0;
-  let trailedAfterPlayedFixture = false;
+  let maximumDeficit = 0;
 
   for (const fixture of fixtures) {
     if (fixture.winnerParticipantId === input.eventualWinnerParticipantId) {
-      if (!fixture.played) return false;
+      if (!fixture.played) return 0;
       winnerWins += 1;
     } else if (fixture.played && fixture.winnerParticipantId !== null) {
       opponentWins += 1;
     }
 
     if (fixture.played && opponentWins > winnerWins) {
-      trailedAfterPlayedFixture = true;
+      maximumDeficit = Math.max(maximumDeficit, opponentWins - winnerWins);
     }
   }
 
-  return trailedAfterPlayedFixture && winnerWins >= input.winsRequired;
+  return winnerWins >= input.winsRequired ? maximumDeficit : 0;
 }

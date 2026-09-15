@@ -7,6 +7,7 @@ export interface StageObservation {
   occurredAt: Date;
   progress: Record<string, number | string | boolean>;
   context?: Record<string, unknown>;
+  progressMode?: 'max' | 'increment';
 }
 
 interface ActiveStageRow {
@@ -14,6 +15,35 @@ interface ActiveStageRow {
   opened_at: Date;
   completed_at: Date | null;
   target: Record<string, number | string | boolean>;
+  progress: Record<string, number | string | boolean>;
+}
+
+export function mergeAchievementStageProgress(
+  stored: Record<string, number | string | boolean>,
+  observed: Record<string, number | string | boolean>,
+): Record<string, number | string | boolean> {
+  const merged = { ...stored };
+  for (const [key, value] of Object.entries(observed)) {
+    const previous = merged[key];
+    merged[key] = typeof value === 'number' && typeof previous === 'number'
+      ? Math.max(previous, value)
+      : value;
+  }
+  return merged;
+}
+
+function incrementAchievementStageProgress(
+  stored: Record<string, number | string | boolean>,
+  observed: Record<string, number | string | boolean>,
+) {
+  const merged = { ...stored };
+  for (const [key, value] of Object.entries(observed)) {
+    const previous = merged[key];
+    merged[key] = typeof value === 'number'
+      ? Number(typeof previous === 'number' ? previous : 0) + value
+      : value;
+  }
+  return merged;
 }
 
 function isPool(db: Queryable): db is Pool {
@@ -36,7 +66,7 @@ async function inTransaction<T>(db: Queryable, work: (client: PoolClient) => Pro
   }
 }
 
-function satisfiesTarget(
+export function satisfiesTarget(
   progress: Record<string, number | string | boolean>,
   target: Record<string, number | string | boolean>,
 ): boolean {
@@ -83,7 +113,7 @@ export async function observeAchievementStage(
     await openFirstAchievementStages(client, userId, observation.occurredAt);
     const current = await client.query<ActiveStageRow>(
       `select user_stage.stage_number, user_stage.opened_at, user_stage.completed_at,
-              stage.target
+              stage.target, user_stage.progress
          from user_achievement_stages user_stage
          join achievement_stages stage
            on stage.achievement_id = user_stage.achievement_id
@@ -113,7 +143,10 @@ export async function observeAchievementStage(
     );
     if (event.rowCount === 0) return { completed: false, stageNumber: active.stage_number };
 
-    const completed = satisfiesTarget(observation.progress, active.target);
+    const displayProgress = observation.progressMode === 'increment'
+      ? incrementAchievementStageProgress(active.progress ?? {}, observation.progress)
+      : mergeAchievementStageProgress(active.progress ?? {}, observation.progress);
+    const completed = satisfiesTarget(displayProgress, active.target);
     await client.query(
       `update user_achievement_stages
           set progress = $4::jsonb,
@@ -124,7 +157,7 @@ export async function observeAchievementStage(
         userId,
         achievementId,
         active.stage_number,
-        JSON.stringify(observation.progress),
+        JSON.stringify(displayProgress),
         completed,
         observation.occurredAt,
         JSON.stringify(observation.context ?? {}),

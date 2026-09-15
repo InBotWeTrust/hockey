@@ -1,10 +1,11 @@
 import type { Pool, PoolClient } from 'pg';
 import type { TournamentRegularSource } from '../tournament/types.js';
 import { completeAchievementCandidates, type AchievementCompletionCandidate } from './service.js';
+import { observeAchievementStage } from './stageProgress.js';
 import {
   accuracyAtLeast,
   hockeySeasonKey,
-  isSeriesComeback,
+  seriesComebackDeficit,
   reachesDeathBracket,
   type ResolvedPlayerSeries,
 } from './tournamentRules.js';
@@ -232,15 +233,15 @@ export async function collectTournamentAchievementCandidates(
             add(userId, 'dark-horse', series.completed_at, { seriesId: series.series_id });
           }
           const fixtures = await loadSeriesFixtures(db, series.series_id);
-          if (
-            isSeriesComeback({
+          const comebackDeficit = seriesComebackDeficit({
               winsRequired: Number(series.wins_required),
               eventualWinnerParticipantId: series.participant_id,
               fixtures,
-            })
-          ) {
+            });
+          if (comebackDeficit >= 2) {
             add(userId, 'series-comeback', series.completed_at, {
               seriesId: series.series_id,
+              comebackDeficit,
             });
           }
         }
@@ -549,6 +550,47 @@ export async function reconcileTournamentAchievements(
   diagnostics: TournamentAchievementDiagnostics;
 }> {
   const collected = await collectTournamentAchievementCandidates(db, input);
-  const persisted = await completeAchievementCandidates(db, collected.candidates);
-  return { ...persisted, diagnostics: collected.diagnostics };
+  const stagedIds = new Set([
+    'regular-season-champion', 'regular-season-medalist', 'playoff-semifinal',
+    'playoff-final', 'tournament-cup', 'series-comeback', 'no-shake',
+  ]);
+  let stagedCompleted = 0;
+  for (const candidate of collected.candidates.filter((item) => stagedIds.has(item.achievementId))) {
+    const context = candidate.context;
+    let progress: Record<string, number>;
+    let progressMode: 'max' | 'increment' = 'increment';
+    if (candidate.achievementId === 'no-shake') {
+      progressMode = 'max';
+      progress = {
+        accuracyPercent: Number(context.shots) > 0
+          ? (Number(context.goals) * 100) / Number(context.shots)
+          : 0,
+      };
+    } else if (candidate.achievementId === 'series-comeback') {
+      progressMode = 'max';
+      progress = { minimumDeficit: Number(context.comebackDeficit ?? 0) };
+    } else if (candidate.achievementId === 'tournament-cup') {
+      progress = { wins: 1 };
+    } else if (candidate.achievementId.startsWith('regular-season')) {
+      progress = { placements: 1 };
+    } else {
+      progress = { appearances: 1 };
+    }
+    const eventKey = `tournament:${input.tournamentId}:${candidate.achievementId}:${String(context.seriesId ?? context.fixtureId ?? candidate.userId)}`;
+    const result = await observeAchievementStage(db, candidate.userId, candidate.achievementId, {
+      eventKey,
+      occurredAt: candidate.achievedAt,
+      progress,
+      progressMode,
+      context,
+    });
+    if (result.completed) stagedCompleted += 1;
+  }
+  const legacy = collected.candidates.filter((item) => !stagedIds.has(item.achievementId));
+  const persisted = await completeAchievementCandidates(db, legacy);
+  return {
+    attempted: persisted.attempted + collected.candidates.length - legacy.length,
+    inserted: persisted.inserted + stagedCompleted,
+    diagnostics: collected.diagnostics,
+  };
 }

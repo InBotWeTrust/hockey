@@ -88,13 +88,11 @@ const STAT_ACHIEVEMENT_RULES = [
 const COMPOUND_EVENT_STAGE_IDS = new Set([
   'third-period-decides',
   'underdog',
-  'ice-hand',
-  'training-monster',
   'classic-speed',
-  'blowout',
   'no-error-express',
   'no-error-mix',
   'no-error-classic',
+  'series-comeback',
 ]);
 
 export function resolveStageDisplayProgress({
@@ -128,6 +126,9 @@ export function resolveStageDisplayProgress({
       'wins',
       'minimumMargin',
       'goals',
+      'placements',
+      'appearances',
+      'minimumDeficit',
       'maximumNonGoals',
     ].includes(key),
   );

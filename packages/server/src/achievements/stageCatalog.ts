@@ -27,7 +27,7 @@ function stages(achievementId: string, definitions: readonly StageInput[]) {
       rewardCurrency: definition.coins ?? 0,
       rewardStars: definition.stars,
       rewardExperience: definition.stars,
-      rewardTokens: definition.tokens ?? 0,
+      rewardTokens: 0,
     }),
   );
 }
@@ -68,8 +68,20 @@ function duelCount(value: number) {
   return `${value} ${russianCount(value, 'дуэль', 'дуэли', 'дуэлей')}`;
 }
 
-function missedShotCount(value: number) {
-  return `${value} ${value === 1 ? 'незабитого броска' : 'незабитых бросков'}`;
+function countedStages(
+  achievementId: string,
+  field: string,
+  values: readonly number[],
+  coins: readonly number[],
+  rewards: readonly number[],
+  requirement: (value: number) => string,
+) {
+  return stages(achievementId, values.map((value, index) => ({
+    requirement: requirement(value),
+    target: { [field]: value },
+    coins: coins[index] ?? 0,
+    stars: rewards[index] ?? 0,
+  })));
 }
 
 export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[] = [
@@ -103,15 +115,15 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
   ...numericStages(
     'daily-sniper-streak',
     'goalStreak',
-    [30, 50, 60, 70, 75, 80, 85, 90],
+    [30, 50, 60, 65, 70, 75, 80, 85],
     [5, 6, 7, 8, 9, 10, 12, 15],
     (value) => `Забить ${value} бросков подряд в ежедневной игре`,
   ),
   ...numericStages(
     'ice-hand',
     'accuracyPercent',
-    [90, 96, 97, 98, 99, 100],
-    [5, 6, 7, 8, 9, 10],
+    [90, 92, 96, 97, 98, 99, 100],
+    [5, 6, 7, 8, 9, 10, 12],
     (value) => `Завершить ежедневную игру с точностью ${value}%`,
   ),
   ...numericStages(
@@ -134,7 +146,7 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
     'recoveryGoalStreak',
     [10, 15, 20, 25, 30],
     [5, 6, 7, 8, 9],
-    (value) => `После трёх незабитых бросков забить ${value} подряд`,
+    (value) => `После трёх промахов подряд забить ${value} подряд`,
     { precedingNonGoals: 3 },
   ),
   ...numericStages(
@@ -147,7 +159,7 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
   ...numericStages(
     'keeping-fit',
     'minimumAccuracyPercent',
-    [50, 65, 75, 85, 95, 100],
+    [50, 60, 65, 75, 85, 95],
     [15, 20, 25, 30, 35, 40],
     (value) => `7 дней подряд завершать ежедневную игру с точностью не ниже ${value}%`,
     { days: 7 },
@@ -155,7 +167,7 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
   ...numericStages(
     'sniper-week',
     'accuracyPercent',
-    [75, 80, 85, 90, 95, 100],
+    [70, 75, 80, 85, 90, 95],
     [20, 25, 30, 35, 40, 45],
     (value) => `Показать суммарную точность ${value}% за 7 завершённых ежедневных игр`,
     { games: 7 },
@@ -164,7 +176,7 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
   ...numericStages(
     'sniper-month',
     'accuracyPercent',
-    [75, 80, 85, 90, 95, 100],
+    [70, 75, 80, 85, 90, 95],
     [50, 60, 70, 80, 90, 100],
     (value) => `Показать суммарную точность ${value}% за 30 завершённых ежедневных игр`,
     { games: 30 },
@@ -173,15 +185,15 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
   ...numericStages(
     'training-monster',
     'accuracyPercent',
-    [90, 96, 97, 98, 99, 100],
-    [5, 6, 7, 8, 9, 10],
+    [90, 92, 94, 96, 97, 98, 99, 100],
+    [5, 6, 7, 8, 9, 10, 12, 15],
     (value) => `Завершить тренировку с точностью ${value}%`,
   ),
   ...numericStages(
     'rhythm-control',
     'goalStreak',
-    [30, 40, 50, 60, 75, 90],
-    [5, 6, 7, 8, 10, 15],
+    [30, 40, 50, 60, 75, 80, 85, 90],
+    [5, 6, 7, 8, 9, 10, 12, 15],
     (value) => `Забить ${value} бросков подряд в тренировке`,
   ),
   ...numericStages(
@@ -256,8 +268,8 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
   ...numericStages(
     'blowout',
     'minimumMargin',
-    [20, 25, 30, 40, 45],
-    [3, 4, 5, 6, 7],
+    [20, 25, 30, 35, 40, 45],
+    [3, 4, 5, 6, 7, 8],
     (value) => `Выиграть дуэль с разницей не меньше ${value} шайб`,
   ),
   ...numericStages(
@@ -272,16 +284,16 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
   ...numericStages(
     'express-sniper',
     'goals',
-    [60, 65, 70, 75, 80],
-    [5, 6, 7, 8, 10],
+    [50, 55, 60, 65, 70, 75, 80],
+    [3, 4, 5, 6, 7, 8, 10],
     (value) => `Забить ${value} шайб в дуэли Экспресс`,
     { format: 'express' },
   ),
   ...numericStages(
     'mix-sniper',
     'goals',
-    [85, 90, 95, 100, 105, 110],
-    [6, 7, 8, 9, 10, 12],
+    [75, 80, 85, 90, 95, 100, 105, 110],
+    [3, 4, 5, 6, 7, 8, 10, 12],
     (value) => `Забить ${value} шайб за два периода дуэли Микс`,
     { format: 'mix' },
   ),
@@ -290,7 +302,7 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
     'maximumNonGoals',
     [5, 4, 3, 2, 1, 0],
     [3, 4, 5, 6, 7, 10],
-    (value) => `Выиграть Экспресс, допустив не больше ${missedShotCount(value)}`,
+    (value) => `Выиграть Экспресс, допустив не больше ${value} ${value === 1 ? 'промаха' : 'промахов'}`,
     { format: 'express' },
   ),
   ...numericStages(
@@ -298,7 +310,7 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
     'maximumNonGoals',
     [5, 4, 3, 2, 1, 0],
     [3, 4, 5, 6, 7, 10],
-    (value) => `Выиграть Микс, допустив не больше ${missedShotCount(value)}`,
+    (value) => `Выиграть Микс, допустив не больше ${value} ${value === 1 ? 'промаха' : 'промахов'}`,
     { format: 'mix' },
   ),
   ...numericStages(
@@ -306,8 +318,55 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
     'maximumNonGoals',
     [5, 4, 3, 2, 1, 0],
     [3, 4, 5, 6, 7, 10],
-    (value) => `Выиграть Классику, допустив не больше ${missedShotCount(value)}`,
+    (value) => `Выиграть Классику, допустив не больше ${value} ${value === 1 ? 'промаха' : 'промахов'}`,
     { format: 'classic' },
+  ),
+  ...countedStages(
+    'monthly-top-1', 'placements', [1, 2, 3, 4, 5],
+    [7_500, 10_000, 12_500, 15_000, 20_000], [100, 125, 150, 200, 300],
+    (value) => `Стать победителем рейтинга дуэлей ${value} раз`,
+  ),
+  ...countedStages(
+    'monthly-top-3', 'placements', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    [3_750, 4_000, 4_500, 5_000, 5_500, 6_000, 7_000, 8_000, 9_000, 10_000],
+    [50, 55, 60, 65, 70, 75, 85, 100, 125, 150],
+    (value) => `Занять 2-е или 3-е место в рейтинге дуэлей ${value} раз`,
+  ),
+  ...countedStages(
+    'regular-season-champion', 'placements', [1, 2, 3, 4, 5],
+    [1_500, 2_000, 2_500, 3_500, 5_000], [50, 65, 80, 100, 150],
+    (value) => `Занять 1-е место в регулярном чемпионате ${value} раз`,
+  ),
+  ...countedStages(
+    'regular-season-medalist', 'placements', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    [1_000, 1_250, 1_500, 1_750, 2_000, 2_500, 3_000, 3_500, 4_000, 5_000],
+    [45, 50, 55, 60, 65, 75, 85, 100, 120, 150],
+    (value) => `Занять 2-е или 3-е место в регулярном чемпионате ${value} раз`,
+  ),
+  ...countedStages(
+    'playoff-semifinal', 'appearances', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    [750, 1_000, 1_250, 1_500, 1_750, 2_000, 2_500, 3_000, 3_500, 4_000],
+    [50, 55, 60, 65, 70, 80, 90, 105, 125, 150],
+    (value) => `Дойти до полуфинала плей-офф ${value} раз`,
+  ),
+  ...countedStages(
+    'playoff-final', 'appearances', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    [1_500, 1_750, 2_000, 2_500, 3_000, 3_500, 4_000, 5_000, 6_000, 7_500],
+    [75, 85, 95, 105, 115, 130, 145, 165, 190, 225],
+    (value) => `Дойти до финала плей-офф ${value} раз`,
+  ),
+  ...countedStages(
+    'tournament-cup', 'wins', [1, 2, 3, 4, 5],
+    [3_750, 5_000, 7_500, 10_000, 15_000], [100, 125, 160, 210, 300],
+    (value) => `Выиграть турнир ${value} раз`,
+  ),
+  ...numericStages(
+    'series-comeback', 'minimumDeficit', [2, 3], [35, 60],
+    (value) => `Выиграть серию плей-офф после отставания в ${value} победы`,
+  ),
+  ...numericStages(
+    'no-shake', 'accuracyPercent', [90, 92, 94, 95, 97, 99, 100], [20, 25, 30, 35, 40, 50, 65],
+    (value) => `В матче плей-офф показать точность не ниже ${value}%`,
   ),
 ];
 

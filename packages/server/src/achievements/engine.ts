@@ -48,10 +48,25 @@ export async function evaluateMonthlyRatingSettledAchievements(
   );
   if (placement.rowCount !== 1) return;
 
-  const achievementIds: string[] = [];
-  if (event.place === 1) achievementIds.push('monthly-top-1');
-  if (event.place <= 3) achievementIds.push('monthly-top-3');
-  await completeAchievements(db, event.userId, achievementIds, event);
+  const achievementId = event.place === 1
+    ? 'monthly-top-1'
+    : event.place <= 3
+      ? 'monthly-top-3'
+      : null;
+  if (achievementId === null) return;
+  const count = await db.query<{ total: number | string }>(
+    `select count(*)::int as total
+       from monthly_duel_rating_placement
+      where user_id = $1
+        and ${event.place === 1 ? 'place = 1' : 'place between 2 and 3'}`,
+    [event.userId],
+  );
+  await observeAchievementStage(db, event.userId, achievementId, {
+    eventKey: `monthly-rating:${event.seasonKey}:${event.userId}:${event.place}`,
+    occurredAt: new Date(),
+    progress: { placements: Number(count.rows[0]?.total ?? 0) },
+    context: event,
+  });
 }
 
 export async function evaluateShotAchievements(

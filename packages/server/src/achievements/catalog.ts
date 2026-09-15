@@ -132,6 +132,7 @@ const REMOVED_ACHIEVEMENT_IDS = new Set([
   'economical-master',
   'master-arsenal',
   'no-room-for-error',
+  'tournament-streak',
 ]);
 
 const ACHIEVEMENT_ARTWORK_VERSION = '20260906-hd1';
@@ -325,7 +326,7 @@ const ACHIEVEMENT_SEED_DEFINITIONS: Array<Omit<AchievementSeed, 'rewardTokens'>>
     title: 'Без паники',
     description: 'Плохая серия не сбила темп.',
     requirement:
-      'После 3 не-голов подряд забить 10 следующих бросков. Любая игра кроме тренировки.',
+      'После трёх промахов подряд забить 10 следующих бросков. Любая игра кроме тренировки.',
     category: 'duel',
     availability: 'active',
     futureTag: null,
@@ -553,7 +554,7 @@ const ACHIEVEMENT_SEED_DEFINITIONS: Array<Omit<AchievementSeed, 'rewardTokens'>>
     photoUrl: '/achievements/revenge.webp',
     title: 'Реванш',
     description: 'Ответ на прошлое поражение пришел сразу.',
-    requirement: 'Победить игрока, которому только что проиграл прошлую дуэль.',
+    requirement: 'Проиграть сопернику и в следующей дуэли снова сыграть именно с ним и победить.',
     category: 'duel',
     availability: 'active',
     futureTag: null,
@@ -819,7 +820,7 @@ const ACHIEVEMENT_SEED_DEFINITIONS: Array<Omit<AchievementSeed, 'rewardTokens'>>
     photoUrl: '/achievements/series-comeback.webp',
     title: 'Мощный камбэк',
     description: 'Серия была перевернута после отставания.',
-    requirement: 'Выиграть матч после отставания в серии до нескольких побед.',
+    requirement: 'Выиграть серию плей-офф после отставания в две победы.',
     category: 'tournament',
     availability: 'active',
     futureTag: null,
@@ -873,7 +874,7 @@ const ACHIEVEMENT_SEED_DEFINITIONS: Array<Omit<AchievementSeed, 'rewardTokens'>>
     photoUrl: '/achievements/monthly-top-3.webp',
     title: 'Топ 3 месяца',
     description: 'Месяц завершен в числе лидеров.',
-    requirement: 'Попасть в топ-3 рейтинга дуэлей по итогам месяца.',
+    requirement: 'Занять 2-е или 3-е место в рейтинге дуэлей по итогам месяца.',
     category: 'rating',
     availability: 'active',
     futureTag: null,
@@ -885,8 +886,8 @@ const ACHIEVEMENT_SEED_DEFINITIONS: Array<Omit<AchievementSeed, 'rewardTokens'>>
 export const ACHIEVEMENT_SEEDS: AchievementSeed[] = ACHIEVEMENT_SEED_DEFINITIONS.map(
   (achievement) => ({
     ...achievement,
-    rewardTokens: 0,
     ...(APPROVED_REWARDS[achievement.id] ?? {}),
+    rewardTokens: 0,
     ...(REMOVED_ACHIEVEMENT_IDS.has(achievement.id) ? { availability: 'hidden' as const } : {}),
     photoUrl: versionArtworkUrl(achievement.photoUrl),
   }),

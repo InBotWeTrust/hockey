@@ -4,6 +4,7 @@ import {
   hockeySeasonKey,
   isMoreExperiencedOpponent,
   isSeriesComeback,
+  seriesComebackDeficit,
   reachesDeathBracket,
   type ResolvedPlayerSeries,
 } from '../../src/achievements/tournamentRules.js';
@@ -131,6 +132,22 @@ describe('isSeriesComeback', () => {
         ],
       }),
     ).toBe(true);
+  });
+
+  it('reports the largest played deficit overcome by the series winner', () => {
+    expect(seriesComebackDeficit({
+      winsRequired: 4,
+      eventualWinnerParticipantId: winner,
+      fixtures: [
+        fixture('loss-1', 1, opponent),
+        fixture('loss-2', 2, opponent),
+        fixture('loss-3', 3, opponent),
+        fixture('win-1', 4, winner),
+        fixture('win-2', 5, winner),
+        fixture('win-3', 6, winner),
+        fixture('win-4', 7, winner),
+      ],
+    })).toBe(3);
   });
 
   it.each([

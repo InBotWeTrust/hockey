@@ -5,9 +5,27 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
 import { applyMigrations } from '../../src/db/migrations.js';
 import {
+  mergeAchievementStageProgress,
   observeAchievementStage,
   openFirstAchievementStages,
 } from '../../src/achievements/stageProgress.js';
+
+describe('mergeAchievementStageProgress', () => {
+  it('keeps the best numeric result when a later attempt is weaker', () => {
+    expect(mergeAchievementStageProgress({ endingGoalStreak: 8 }, { endingGoalStreak: 5 })).toEqual({
+      endingGoalStreak: 8,
+    });
+  });
+
+  it('adds new progress fields while preserving stage qualifiers', () => {
+    expect(
+      mergeAchievementStageProgress(
+        { wins: 4, role: 'host' },
+        { wins: 1, role: 'host', format: 'classic' },
+      ),
+    ).toEqual({ wins: 4, role: 'host', format: 'classic' });
+  });
+});
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

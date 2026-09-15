@@ -1,5 +1,13 @@
 import type { PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
+import { satisfiesTarget } from './stageProgress.js';
+
+const CUMULATIVE_STAGE_IDS = new Set([
+  'career-goals', 'career-experience', 'career-streak',
+  'monthly-top-1', 'monthly-top-3',
+  'regular-season-champion', 'regular-season-medalist',
+  'playoff-semifinal', 'playoff-final', 'tournament-cup',
+]);
 
 interface ClaimableStageRow {
   achievement_id: string;
@@ -144,21 +152,40 @@ export async function claimCurrentAchievementStage(
     [userId, achievementId, stage.stage_number, now, JSON.stringify(rewards)],
   );
 
-  const opened = await client.query<{ stage_number: number }>(
+  const opened = await client.query<{
+    stage_number: number;
+    target: Record<string, number | string | boolean>;
+    progress: Record<string, number | string | boolean>;
+  }>(
     `insert into user_achievement_stages
-       (user_id, achievement_id, stage_number, opened_at)
-     select $1, stage.achievement_id, stage.stage_number, $4
+       (user_id, achievement_id, stage_number, opened_at, progress)
+     select $1, stage.achievement_id, stage.stage_number, $4,
+            case when $5 then previous.progress else '{}'::jsonb end
        from achievement_stages stage
+       join user_achievement_stages previous
+         on previous.user_id = $1 and previous.achievement_id = $2
+        and previous.stage_number = $3
       where stage.achievement_id = $2
         and stage.stage_number = $3 + 1
         and stage.is_enabled
      on conflict (user_id, achievement_id, stage_number) do nothing
-     returning stage_number`,
-    [userId, achievementId, stage.stage_number, now],
+     returning stage_number,
+       (select target from achievement_stages definition
+         where definition.achievement_id = $2 and definition.stage_number = $3 + 1) as target,
+       progress`,
+    [userId, achievementId, stage.stage_number, now, CUMULATIVE_STAGE_IDS.has(achievementId)],
   );
+  const openedStage = opened.rows[0];
+  if (openedStage !== undefined && satisfiesTarget(openedStage.progress, openedStage.target)) {
+    await client.query(
+      `update user_achievement_stages set completed_at = $4, completion_context = $5::jsonb
+        where user_id = $1 and achievement_id = $2 and stage_number = $3`,
+      [userId, achievementId, openedStage.stage_number, now, JSON.stringify({ source: 'cumulative_carry' })],
+    );
+  }
 
   return {
-    stage: { claimed: stage.stage_number, opened: opened.rows[0]?.stage_number ?? null },
+    stage: { claimed: stage.stage_number, opened: openedStage?.stage_number ?? null },
     rewards,
     balances: {
       currencyBalance: Number(account.balance),
