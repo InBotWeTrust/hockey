@@ -10,16 +10,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 
 const expectedTournamentAchievements = [
-  ['regular-season-medalist', 'Призёр регулярки', 1000, 45, 45, 2],
-  ['playoff-semifinal', 'Турнирный характер', 750, 50, 50, 1],
+  ['regular-season-medalist', 'Призёр регулярки', 1000, 45, 45, 0],
+  ['playoff-semifinal', 'Турнирный характер', 750, 50, 50, 0],
   ['no-shake', 'Без дрожи', 0, 20, 20, 0],
   ['dark-horse', 'Тёмная лошадка', 0, 25, 25, 0],
-  ['regular-season-champion', 'Победитель регулярки', 1500, 50, 50, 3],
-  ['playoff-final', 'Финальный лёд', 1500, 75, 75, 2],
+  ['regular-season-champion', 'Победитель регулярки', 1500, 50, 50, 0],
+  ['playoff-final', 'Финальный лёд', 1500, 75, 75, 0],
   ['series-comeback', 'Мощный камбэк', 0, 35, 35, 0],
-  ['tournament-cup', 'Кубок над головой', 3750, 100, 100, 5],
+  ['tournament-cup', 'Кубок над головой', 3750, 100, 100, 0],
   ['death-bracket', 'Сетка смерти', 0, 25, 25, 0],
-  ['tournament-streak', 'Турнирная серия', 7500, 250, 250, 5],
+  ['tournament-streak', 'Турнирная серия', 7500, 250, 250, 0],
 ] as const;
 
 function tuple(achievement: (typeof ACHIEVEMENT_SEEDS)[number]) {
@@ -43,15 +43,19 @@ describe('tournament achievement catalogue', () => {
     ).toBe(true);
   });
 
-  it('defines ten active tournament achievements with the approved rewards', () => {
+  it('defines the tournament achievements with the approved availability and rewards', () => {
     const tournamentAchievements = ACHIEVEMENT_SEEDS.filter(
       (achievement) => achievement.category === 'tournament',
     );
 
     expect(tournamentAchievements).toHaveLength(10);
     expect(
-      tournamentAchievements.every((achievement) => achievement.availability === 'active'),
-    ).toBe(true);
+      tournamentAchievements.filter((achievement) => achievement.availability === 'active'),
+    ).toHaveLength(9);
+    expect(
+      tournamentAchievements.find((achievement) => achievement.id === 'tournament-streak')
+        ?.availability,
+    ).toBe('hidden');
     expect(tournamentAchievements.every((achievement) => achievement.futureTag === null)).toBe(
       true,
     );
@@ -76,7 +80,7 @@ describe.skipIf(!hasIntegrationEnv)('migration 103 tournament achievements', () 
     await pool?.end();
   });
 
-  it('stores the same ten active achievements in PostgreSQL', async () => {
+  it('stores the same tournament achievements in PostgreSQL', async () => {
     const { rows } = await pool.query<{
       id: string;
       title: string;
@@ -96,9 +100,9 @@ describe.skipIf(!hasIntegrationEnv)('migration 103 tournament achievements', () 
     );
 
     expect(rows).toHaveLength(10);
-    expect(rows.every((row) => row.availability === 'active' && row.future_tag === null)).toBe(
-      true,
-    );
+    expect(rows.filter((row) => row.availability === 'active')).toHaveLength(9);
+    expect(rows.find((row) => row.id === 'tournament-streak')?.availability).toBe('hidden');
+    expect(rows.every((row) => row.future_tag === null)).toBe(true);
     expect(
       rows.every((row) => /^\/achievements\/[^?]+\.webp\?v=20260906-hd1$/.test(row.photo_url)),
     ).toBe(true);

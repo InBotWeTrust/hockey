@@ -131,7 +131,7 @@ describe.skipIf(!hasIntegrationEnv)('production economy rebase operation', () =>
           [SURVIVOR_ID],
         )
       ).rows,
-    ).toEqual([{ stars: 251, experience: 251, coins: 25000, reserved: 0, tokens: 5 }]);
+    ).toEqual([{ stars: 251, experience: 251, coins: 25000, reserved: 0, tokens: 0 }]);
     expect(
       (
         await pool.query(
@@ -150,7 +150,7 @@ describe.skipIf(!hasIntegrationEnv)('production economy rebase operation', () =>
           [SURVIVOR_ID],
         )
       ).rows,
-    ).toEqual([{ achievement_id: 'amateur-ticket', amount: 5, balance_after: 5 }]);
+    ).toEqual([]);
     expect(
       (
         await pool.query(
