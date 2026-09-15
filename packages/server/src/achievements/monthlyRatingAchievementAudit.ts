@@ -54,7 +54,7 @@ async function findInvalidMonthlyAchievements(
              and placement.season_key = ua.completion_context->>'seasonKey'
              and (
                (ua.achievement_id = 'monthly-top-1' and placement.place = 1)
-               or (ua.achievement_id = 'monthly-top-3' and placement.place between 1 and 3)
+               or (ua.achievement_id = 'monthly-top-3' and placement.place between 2 and 3)
              )
         )
       order by ua.user_id, ua.achievement_id

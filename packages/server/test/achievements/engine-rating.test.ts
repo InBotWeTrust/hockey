@@ -62,7 +62,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating achievement evaluator', () =
     await pool?.end();
   });
 
-  it('completes both career achievements for first place only once', async () => {
+  it('completes only the champion stage for first place', async () => {
     const userId = await createUser(pool);
     await createFinalPlacement(pool, userId, '2026-08', 1);
     await createFinalPlacement(pool, userId, '2026-09', 1);
@@ -79,7 +79,9 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating achievement evaluator', () =
       seasonKey: '2026-09',
     });
 
-    await expect(completedIds(pool, userId)).resolves.toEqual(['monthly-top-1', 'monthly-top-3']);
+    await expect(completedStages(pool, userId)).resolves.toEqual([
+      { achievementId: 'monthly-top-1', stageNumber: 1, progress: { placements: 2 } },
+    ]);
   });
 
   it.each([2, 3])('completes only the top-three achievement for place %s', async (place) => {
@@ -93,7 +95,9 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating achievement evaluator', () =
       place,
     });
 
-    await expect(completedIds(pool, userId)).resolves.toEqual(['monthly-top-3']);
+    await expect(completedStages(pool, userId)).resolves.toEqual([
+      { achievementId: 'monthly-top-3', stageNumber: 1, progress: { placements: 1 } },
+    ]);
   });
 });
 
@@ -107,15 +111,27 @@ async function createUser(pool: Pool): Promise<string> {
   return id;
 }
 
-async function completedIds(pool: Pool, userId: string): Promise<string[]> {
-  const { rows } = await pool.query<{ achievement_id: string }>(
-    `select achievement_id
-       from user_achievements
-      where user_id = $1
-      order by achievement_id asc`,
+async function completedStages(
+  pool: Pool,
+  userId: string,
+): Promise<Array<{ achievementId: string; stageNumber: number; progress: Record<string, number> }>> {
+  const { rows } = await pool.query<{
+    achievement_id: string;
+    stage_number: number;
+    progress: Record<string, number>;
+  }>(
+    `select achievement_id, stage_number, progress
+       from user_achievement_stages
+      where user_id = $1 and completed_at is not null
+        and achievement_id in ('monthly-top-1', 'monthly-top-3')
+      order by achievement_id asc, stage_number asc`,
     [userId],
   );
-  return rows.map((row) => row.achievement_id);
+  return rows.map((row) => ({
+    achievementId: row.achievement_id,
+    stageNumber: row.stage_number,
+    progress: row.progress,
+  }));
 }
 
 async function createFinalPlacement(

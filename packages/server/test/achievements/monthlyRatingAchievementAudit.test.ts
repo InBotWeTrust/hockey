@@ -103,7 +103,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating achievement audit', () => {
         [invalidUserId],
       ),
     ).resolves.toMatchObject({
-      rows: [{ xp: 0, experience: 0, coins: 1_250, tokens: 1 }],
+      rows: [{ xp: 0, experience: 0, coins: 1_250, tokens: 3 }],
     });
   });
 });

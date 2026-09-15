@@ -230,13 +230,15 @@ describe.skipIf(!hasIntegrationEnv)('tournament achievement evaluator', () => {
          (id, tournament_id, round_id, bracket_position, higher_seed_participant_id,
           lower_seed_participant_id, winner_participant_id, wins_required,
           higher_seed_wins, lower_seed_wins, home_sequence, status, updated_at)
-       values ($1, $2, $3, 1, $4, $5, $4, 2, 2, 1, '[]', 'completed',
+       values ($1, $2, $3, 1, $4, $5, $4, 3, 3, 2, '[]', 'completed',
                '2026-09-09T10:00:00Z')`,
       [seriesId, tournamentId, roundId, winnerParticipant, opponentParticipant],
     );
 
     for (const [index, winningParticipant] of [
       opponentParticipant,
+      opponentParticipant,
+      winnerParticipant,
       winnerParticipant,
       winnerParticipant,
     ].entries()) {

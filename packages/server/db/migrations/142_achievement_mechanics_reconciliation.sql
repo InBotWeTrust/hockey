@@ -42,3 +42,24 @@ update achievements
  where id = 'series-comeback';
 update achievements set availability = 'hidden' where id = 'tournament-streak';
 
+create table if not exists achievement_mechanics_reconciliation_run (
+  run_id uuid primary key,
+  audit_hash text not null,
+  backup_marker text not null,
+  target_user_count integer not null check (target_user_count >= 0),
+  applied_at timestamptz not null default now()
+);
+
+create table if not exists achievement_mechanics_reconciliation_adjustment (
+  run_id uuid not null references achievement_mechanics_reconciliation_run(run_id) on delete restrict,
+  user_id uuid not null references users(id) on delete restrict,
+  currency_delta integer not null default 0,
+  stars_delta integer not null default 0,
+  experience_delta integer not null default 0,
+  tokens_delta integer not null default 0,
+  tokens_award_reconciled integer not null default 0 check (tokens_award_reconciled >= 0),
+  balances_after jsonb not null,
+  removed_stages jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  primary key (run_id, user_id)
+);

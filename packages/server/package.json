@@ -20,6 +20,7 @@
     "inventory:grant-existing": "tsx src/ops/existingUserInventoryGrantCli.ts",
     "achievement:monthly-rating-audit": "tsx src/achievements/monthlyRatingAchievementAuditCli.ts",
     "achievements:removed:reconcile": "tsx src/ops/removedAchievementReconciliationCli.ts",
+    "achievements:mechanics:reconcile": "tsx src/ops/achievementMechanicsReconciliationCli.ts",
     "push:worker": "tsx src/push/worker-cli.ts",
     "mobile:release-manifest": "tsx src/mobileRelease/build-manifest-cli.ts",
     "mobile:verify-release-manifest": "tsx src/mobileRelease/verify-manifest-cli.ts"
