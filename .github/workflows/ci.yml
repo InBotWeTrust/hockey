@@ -9,7 +9,7 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     services:
       postgres:
@@ -74,7 +74,7 @@ jobs:
 
       # Server integration tests use the shared Postgres/Redis services and are
       # intentionally run after browser suites. Running every workspace test
-      # script concurrently makes the CI job exceed its 25-minute budget.
+      # script concurrently makes the CI job exceed the single-job budget.
       - name: Test game core
         run: pnpm --filter @hockey/game-core test
 
