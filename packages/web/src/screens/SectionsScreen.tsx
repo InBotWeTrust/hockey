@@ -167,9 +167,9 @@ export function SectionsScreen(): JSX.Element {
   });
 
   useEffect(() => {
-    void refreshDaily();
-    void refreshTraining();
-  }, [refreshDaily, refreshTraining]);
+    if (dailyData === null) void refreshDaily();
+    if (trainingData === null) void refreshTraining();
+  }, [dailyData, refreshDaily, refreshTraining, trainingData]);
 
   const amateurUnlockGoalsRequired = Math.max(
     0,
@@ -181,8 +181,9 @@ export function SectionsScreen(): JSX.Element {
     profileQuery.data?.competitionLevel === 'amateur' ||
     profileQuery.data?.competitionLevel === 'professional' ||
     (dailyData?.lifetime_total_goals ?? 0) >= amateurUnlockGoalsRequired;
-  const trainingShotsLimit = trainingData?.shots_limit ?? 500;
-  const trainingShotsTaken = trainingData?.shots_taken ?? 0;
+  const trainingMeta = trainingData
+    ? `${trainingData.shots_taken}/${trainingData.shots_limit} бросков`
+    : 'Загрузка тренировки…';
   const dailyShotsLimit = (dailyData?.shots_per_period ?? 30) * (dailyData?.total_periods ?? 3);
   const achievements = achievementsQuery.data?.achievements ?? [];
   const achievementsCompletedCount = achievements.filter(
@@ -239,7 +240,7 @@ export function SectionsScreen(): JSX.Element {
             />
             <QuickSectionCard
               title="Тренировка"
-              meta={`${trainingShotsTaken}/${trainingShotsLimit} бросков`}
+              meta={trainingMeta}
               tone="active"
               artworkSrc={SECTION_ARTWORK.training}
               onClick={() => navigate('/?view=training&from=sections')}

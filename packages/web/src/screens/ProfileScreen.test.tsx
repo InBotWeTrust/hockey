@@ -304,8 +304,8 @@ describe('ProfileScreen', () => {
     expect(screen.getByRole('button', { name: 'Открыть инвентарь' })).toHaveClass(
       'profile-section-label',
     );
-    expect(screen.getByText('Настройки')).toHaveClass('profile-section-label');
-    expect(screen.getByText('Профиль и уведомления')).toHaveClass('profile-settings-card__title');
+    expect(screen.getByText('Профиль')).toHaveClass('profile-section-label');
+    expect(screen.getByText('Настройки', { selector: '.profile-settings-card__title' })).toBeInTheDocument();
     expect(screen.queryByText('Профиль и аккаунт')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Домашняя арена' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Открыть задания' })).toBeInTheDocument();
@@ -456,18 +456,35 @@ describe('ProfileScreen', () => {
     renderProfile();
 
     expect(await screen.findByText('Сообщества')).toHaveClass('profile-section-label');
-    expect(screen.getByRole('link', { name: 'Открыть сообщество ВКонтакте' })).toHaveAttribute(
+    const vkLink = screen.getByRole('link', { name: 'Открыть сообщество ВКонтакте' });
+    const telegramLink = screen.getByRole('link', { name: 'Открыть канал в Telegram' });
+
+    expect(vkLink).toHaveAttribute(
       'href',
       'https://vk.ru/ultimate_hockey',
     );
-    expect(screen.getByRole('link', { name: 'Открыть канал в Telegram' })).toHaveAttribute(
+    expect(telegramLink).toHaveAttribute(
       'href',
       'https://t.me/ultimate_hockey',
     );
     expect(screen.getByTestId('profile-community-icon-vk')).toBeInTheDocument();
     expect(screen.getByTestId('profile-community-icon-telegram')).toBeInTheDocument();
-    expect(screen.getByText('Новости и обновления')).toBeInTheDocument();
-    expect(screen.getByText('Официальный канал')).toBeInTheDocument();
+    expect(screen.getByTestId('profile-community-icon-vk')).toHaveClass(
+      'profile-community-card__icon',
+    );
+    expect(screen.getByTestId('profile-community-icon-telegram')).toHaveClass(
+      'profile-community-card__icon',
+    );
+    expect(vkLink).toHaveClass('profile-community-icon-card');
+    expect(telegramLink).toHaveClass('profile-community-icon-card');
+    const communityGrid = vkLink.closest('.profile-community-icon-grid');
+    expect(communityGrid).not.toHaveClass('glass');
+    expect(vkLink).not.toHaveClass('glass');
+    expect(telegramLink).not.toHaveClass('glass');
+    expect(vkLink).toHaveTextContent('');
+    expect(telegramLink).toHaveTextContent('');
+    expect(vkLink.querySelector('svg')).toBeNull();
+    expect(telegramLink.querySelector('svg')).toBeNull();
     expect(screen.queryByText('Новости, обновления и обсуждения')).not.toBeInTheDocument();
     expect(screen.queryByText('Официальный канал игры')).not.toBeInTheDocument();
     expect(
@@ -477,6 +494,21 @@ describe('ProfileScreen', () => {
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noreferrer');
     }
+  });
+
+  it('keeps settings and communities together in the left side of the story layout', async () => {
+    mockProfileRequest();
+
+    renderProfile();
+
+    const settingsButton = await screen.findByRole('button', { name: 'Настройки' });
+    const settingsColumn = settingsButton.closest('.profile-community-settings-column');
+    const storyLayout = screen.getByRole('button', { name: 'Открыть раздел «Сюжет»' }).closest(
+      '.profile-community-story-grid',
+    );
+
+    expect(settingsColumn).toContainElement(screen.getByText('Сообщества'));
+    expect(storyLayout).toContainElement(settingsButton);
   });
 
   it('opens the story destination from the profile story card', async () => {

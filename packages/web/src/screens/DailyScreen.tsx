@@ -207,6 +207,11 @@ const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
 const DUEL_INTERMISSION_CONTINUE_GRACE_MS = 5 * 60 * 1000;
 const ARENA_SELECTED_ENTRY_STORAGE_KEY = 'hockey.arenaSelectedEntryId';
 
+export function trainingProgressLabel(data: TrainingStateResponse | null): string {
+  if (!data) return 'Загрузка тренировки…';
+  return `${data.shots_taken}/${data.shots_limit} бросков сегодня`;
+}
+
 function readArenaSelectedEntryId(): string | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -555,8 +560,9 @@ export function DailyScreen(): JSX.Element {
 
   useEffect(() => {
     if (tournamentGameRoute) return;
+    if (data !== null) return;
     void refresh();
-  }, [refresh, tournamentGameRoute]);
+  }, [data, refresh, tournamentGameRoute]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -1074,8 +1080,7 @@ function GameHub({
 
   useEffect(() => {
     void refreshTraining();
-    void refresh();
-  }, [refreshTraining, refresh]);
+  }, [refreshTraining]);
 
   useEffect(() => {
     if (
@@ -1181,11 +1186,9 @@ function GameHub({
                 activePeriod: nextPeriod,
                 ariaLabel: `${dailyAvailableTitle}. Время периода ${formatMs(HUB_PERIOD_DURATION_MS)}. Период ${nextPeriod}`,
               };
-  const trainingShotsLimit = trainingData?.shots_limit ?? 500;
-  const trainingShotsTaken = trainingData?.shots_taken ?? 0;
   const trainingAvailability = trainingData?.gameplay_lock?.blocked
     ? gameplayLockCopy(trainingData.gameplay_lock, now)
-    : `${trainingShotsTaken}/${trainingShotsLimit} бросков сегодня`;
+    : trainingProgressLabel(trainingData);
 
   const runArenaLaunch = useCallback(
     async <T,>(
@@ -3492,8 +3495,8 @@ function TrainingPlaceholder({
   const refreshedTrainingDayRef = useRef<string | null>(null);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (data === null) void refresh();
+  }, [data, refresh]);
 
   useEffect(() => {
     if (data?.selected_period === 1 || data?.selected_period === 2 || data?.selected_period === 3) {
@@ -3509,13 +3512,12 @@ function TrainingPlaceholder({
     if (autoPlay && data) setPlayTraining(true);
   }, [autoPlay, data]);
 
-  const shotsLimit = data?.shots_limit ?? 500;
   const shotsTaken = data?.shots_taken ?? 0;
   const goals = data?.goals ?? 0;
   const accuracy = shotsTaken > 0 ? Math.round((goals / shotsTaken) * 100) : 0;
   const nextDayAt = data ? new Date(data.next_day_starts_at).getTime() : 0;
   const nextDayRemaining = Math.max(0, nextDayAt - now);
-  const canConfigureTraining = !data || data.state === 'idle' || data.state === 'active';
+  const canConfigureTraining = data?.state === 'idle' || data?.state === 'active';
   const trainingActionLabel = data?.state === 'active' ? 'Продолжить тренировку' : 'На лёд';
 
   useEffect(() => {
@@ -3593,7 +3595,10 @@ function TrainingPlaceholder({
           </div>
         </div>
         <div className="training-summary-grid">
-          <TotalCell label="ЛИМИТ" value={`${shotsTaken}/${shotsLimit}`} />
+          <TotalCell
+            label="ЛИМИТ"
+            value={data ? `${data.shots_taken}/${data.shots_limit}` : '—'}
+          />
           <TotalCell label="ЧАСТОТА" value="24ч" />
           <TotalCell
             label="ДО ОБНОВЛЕНИЯ"
@@ -3603,7 +3608,10 @@ function TrainingPlaceholder({
         {!loading && data?.state === 'closed' && (
           <div className="training-summary-grid">
             <TotalCell label="ГОЛЫ" value={String(goals)} />
-            <TotalCell label="БРОСКИ" value={`${shotsTaken}/${shotsLimit}`} />
+            <TotalCell
+              label="БРОСКИ"
+              value={data ? `${data.shots_taken}/${data.shots_limit}` : '—'}
+            />
             <TotalCell label="ТОЧНОСТЬ" value={`${accuracy}%`} />
           </div>
         )}

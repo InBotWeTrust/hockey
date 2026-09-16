@@ -40,6 +40,7 @@ import {
   tournamentNextGameDisplay,
   tournamentAttemptRefetchInterval,
   tournamentDuelBackPath,
+  trainingProgressLabel,
   trainingDebugSettingsForHost,
 } from './DailyScreen.js';
 import { PlayView, duelFatigueNoticeLabel, duelPrimaryButtonLabel } from '../game/PlayView.js';
@@ -135,6 +136,13 @@ describe('daily character visuals', () => {
       },
     });
     expect(dailyCharacterVisuals(true)).toEqual({});
+  });
+});
+
+describe('training progress label', () => {
+  it('does not present an unhydrated training limit as a factual score', () => {
+    expect(trainingProgressLabel(null)).toBe('Загрузка тренировки…');
+    expect(trainingProgressLabel(trainingIdleState)).toBe('0/500 бросков сегодня');
   });
 });
 

@@ -4486,13 +4486,19 @@
 .profile-community-story-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: 8px;
 }
 
+.profile-community-settings-column,
 .profile-story-section {
   min-width: 0;
   display: grid;
-  grid-template-rows: auto 1fr;
+  align-content: start;
+  gap: 14px;
+}
+
+.profile-story-section {
   gap: 7px;
 }
 
@@ -4987,6 +4993,11 @@
   border-radius: 19px;
 }
 
+.profile-utility-card--settings {
+  min-height: 70px;
+  grid-template-columns: 50px minmax(0, 1fr) 14px;
+}
+
 .profile-utility-card__visual {
   width: 42px;
   height: 42px;
@@ -4995,6 +5006,11 @@
   overflow: hidden;
   border-radius: 13px;
   background: rgba(208, 228, 244, 0.76);
+}
+
+.profile-utility-card--settings .profile-utility-card__visual {
+  width: 50px;
+  height: 50px;
 }
 
 .profile-utility-card__visual img {
@@ -5060,34 +5076,35 @@
   color: var(--muted-soft);
 }
 
-.profile-community-list {
+.profile-community-icon-grid {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 12px 2px 0;
+  border-top: 1px solid rgba(100, 116, 139, 0.24);
 }
 
-.profile-community-card {
+.profile-community-icon-card {
   min-width: 0;
+  min-height: 50px;
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) 12px;
-  align-items: center;
-  gap: 7px;
-  padding: 8px;
-  border: 1px solid var(--glass-border);
-  border-radius: 19px;
+  place-items: center;
+  padding: 0;
   color: var(--ink);
   text-decoration: none;
 }
 
-.profile-community-card:active {
+.profile-community-icon-card:active {
   transform: scale(0.985);
 }
 
 .profile-community-card__icon {
-  width: 34px;
-  height: 34px;
+  width: 50px;
+  height: 50px;
+  aspect-ratio: 1;
   display: grid;
   place-items: center;
-  border-radius: 13px;
+  border-radius: 16px;
   color: #fff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
@@ -5100,7 +5117,8 @@
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
 }
 
 .profile-community-card__icon--telegram {
@@ -5112,37 +5130,15 @@
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: cover;
-}
-
-.profile-community-card__copy {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-
-.profile-community-card__copy strong {
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.profile-community-card__copy small {
-  color: var(--muted);
-  font-size: 8px;
-  font-weight: 750;
-  line-height: 1.25;
-}
-
-.profile-community-card > svg {
-  width: 12px;
-  height: 12px;
-  color: var(--muted-soft);
+  object-fit: contain;
+  object-position: center;
 }
 
 .profile-story-card {
   position: relative;
   min-width: 0;
-  min-height: 108px;
+  min-height: 0;
+  aspect-ratio: 1 / 1;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.88);
   border-radius: 19px;

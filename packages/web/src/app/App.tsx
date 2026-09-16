@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useCallback, useEffect } from 'react';
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import './global.css';
@@ -24,10 +24,13 @@ import { initializeAndroidUpdateChecks } from '../mobileUpdate/store.js';
 import { canAccessAndroidRelease } from '../mobileUpdate/access.js';
 import { MandatoryAndroidUpdateModal } from '../components/MandatoryAndroidUpdateModal.js';
 import { preloadCriticalArtwork } from './artworkCache.js';
+import { prepareInitialPlayerExperience } from './playerStartup.js';
 
-const DailyScreen = lazy(() =>
-  import('../screens/DailyScreen.js').then((module) => ({ default: module.DailyScreen })),
-);
+function loadDailyScreen() {
+  return import('../screens/DailyScreen.js');
+}
+
+const DailyScreen = lazy(() => loadDailyScreen().then((module) => ({ default: module.DailyScreen })));
 const DemoScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DemoScreen })),
 );
@@ -546,6 +549,16 @@ function AppExperience(): JSX.Element {
 function AppFrame(): JSX.Element {
   const location = useLocation();
   const isAuthenticated = useAuthStore((state) => Boolean(state.accessToken));
+  const preparePlayer = useCallback(
+    () =>
+      prepareInitialPlayerExperience(
+        queryClient,
+        location.pathname === '/'
+          ? { preloadRootRoute: () => loadDailyScreen().then(() => undefined) }
+          : {},
+      ),
+    [location.pathname],
+  );
   const isPublicEntry =
     location.pathname === '/login' ||
     location.pathname === '/prices' ||
@@ -556,7 +569,7 @@ function AppFrame(): JSX.Element {
   if (!isAuthenticated || isPublicEntry) return <AppExperience />;
 
   return (
-    <OnboardingGate>
+    <OnboardingGate preparePlayer={preparePlayer}>
       <AppExperience />
     </OnboardingGate>
   );

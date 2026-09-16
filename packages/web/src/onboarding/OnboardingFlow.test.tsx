@@ -31,6 +31,7 @@ vi.mock('./TutorialShotStep.js', () => ({
 }));
 
 const onboardingCss = readFileSync(resolve(process.cwd(), 'src/onboarding/onboarding.css'), 'utf8');
+const staticStartupHtml = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
 
 function deferred<T>(): {
   promise: Promise<T>;
@@ -210,6 +211,15 @@ describe('OnboardingFlow', () => {
     expect(onboardingCss).toMatch(/\n\s*height:\s*var\(--app-viewport-height,\s*100dvh\)/);
     expect(onboardingCss).toMatch(/overscroll-behavior-y:\s*contain/);
     expect(onboardingCss).toMatch(/overflow-y:\s*auto/);
+  });
+
+  it('blends the opaque app-icon backdrop into the dark startup screen', () => {
+    const startupIconRule = onboardingCss.match(
+      /\.onboarding-flow__startup-icon\s*\{[^}]*\}/s,
+    )?.[0];
+
+    expect(startupIconRule).toContain('mix-blend-mode: screen');
+    expect(staticStartupHtml).toContain('mix-blend-mode: screen');
   });
 
   it('keeps tutorial navigation forward-only', async () => {

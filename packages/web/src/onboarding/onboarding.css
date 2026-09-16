@@ -164,6 +164,36 @@
   color: var(--muted);
 }
 
+.onboarding-flow--startup {
+  width: 100%;
+  max-width: none;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse at 68% 12%, rgba(59, 130, 246, 0.2), transparent 36%),
+    radial-gradient(ellipse at 26% 88%, rgba(23, 79, 138, 0.24), transparent 42%),
+    linear-gradient(165deg, #102137 0%, #08182b 52%, #050d18 100%);
+}
+.onboarding-flow__startup {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  text-align: center;
+  color: rgba(238, 246, 255, 0.82);
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.onboarding-flow__startup p {
+  margin: 0;
+}
+.onboarding-flow__startup-icon {
+  width: 88px;
+  height: 88px;
+  object-fit: contain;
+  mix-blend-mode: screen;
+  filter: drop-shadow(0 16px 28px rgba(0, 8, 22, 0.42));
+}
+
 .onboarding-tutorial {
   display: grid;
   gap: 16px;

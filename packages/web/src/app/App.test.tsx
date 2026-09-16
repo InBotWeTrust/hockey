@@ -22,6 +22,10 @@ import {
   lockerRoomBackgroundClass,
 } from '../screens/lockerRoomBackground.js';
 
+const prepareInitialPlayerExperience = vi.hoisted(() => vi.fn());
+
+vi.mock('./playerStartup.js', () => ({ prepareInitialPlayerExperience }));
+
 vi.mock('../game/PlayView.js', () => ({
   PlayView: () => <div data-testid="play-view" />,
 }));
@@ -101,6 +105,7 @@ describe('App routing + auth', () => {
     vi.mocked(fetchRequiredOnboarding).mockReset().mockResolvedValue({ required: null });
     vi.mocked(startOnboarding).mockReset();
     vi.mocked(recordStepView).mockReset().mockResolvedValue({ viewed: true });
+    prepareInitialPlayerExperience.mockReset().mockResolvedValue(undefined);
     useBonusGameStore.setState({
       attempt: null,
       loading: false,

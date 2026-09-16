@@ -45,3 +45,43 @@ describe('profile story image treatment', () => {
     expect(image).toContain('border: 1px solid rgba(255, 255, 255, 0.88)');
   });
 });
+
+describe('profile community and story layout', () => {
+  it('keeps the story square while making room for a taller profile card', () => {
+    const storyCard = rule('.profile-story-card');
+    const communityCard = rule('.profile-community-icon-card');
+    const communityGrid = rule('.profile-community-icon-grid');
+
+    expect(storyCard).toContain('aspect-ratio: 1 / 1');
+    expect(communityCard).toContain('min-height: 50px');
+    expect(communityGrid).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))');
+    expect(communityGrid).toContain('border-top: 1px solid rgba(100, 116, 139, 0.24)');
+    expect(communityGrid).toContain('padding: 12px 2px 0');
+  });
+
+  it('gives the profile settings card and its icon one larger size step', () => {
+    const settingsCard = rule('.profile-utility-card--settings');
+    const settingsIcon = rule('.profile-utility-card--settings .profile-utility-card__visual');
+
+    expect(settingsCard).toContain('min-height: 70px');
+    expect(settingsCard).toContain('grid-template-columns: 50px minmax(0, 1fr) 14px');
+    expect(settingsIcon).toContain('width: 50px');
+    expect(settingsIcon).toContain('height: 50px');
+  });
+
+  it('keeps community logos centered and proportional inside their cards', () => {
+    const icon = rule('.profile-community-card__icon');
+    const vkImage = rule('.profile-community-card__icon--vk img');
+    const telegramImage = rule('.profile-community-card__icon--telegram img');
+
+    expect(icon).toContain('width: 50px');
+    expect(icon).toContain('height: 50px');
+    expect(icon).toContain('aspect-ratio: 1');
+    expect(icon).not.toContain('height: 88%');
+    expect(icon).toContain('aspect-ratio: 1');
+    expect(vkImage).toContain('object-fit: contain');
+    expect(vkImage).toContain('object-position: center');
+    expect(telegramImage).toContain('object-fit: contain');
+    expect(telegramImage).toContain('object-position: center');
+  });
+});

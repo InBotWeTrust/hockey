@@ -2,10 +2,8 @@ import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Award,
-  ChevronRight,
   CircleDollarSign,
   Medal,
-  Settings,
   Star,
   Sunrise,
   Target,
@@ -848,25 +846,6 @@ export function ProfileScreen(): JSX.Element {
           onOpen={() => navigate('/profile/achievements')}
           onChoose={setSelectedAchievement}
         />
-        <section className="profile-settings-section" aria-label="Настройки">
-          <span className="section-label profile-section-label">Настройки</span>
-          <div className="profile-utility-grid">
-            <button
-              type="button"
-              className="profile-utility-card glass"
-              aria-label="Настройки"
-              onClick={() => navigate('/profile/settings')}
-            >
-              <span className="profile-utility-card__visual profile-utility-card__visual--icon">
-                <Settings aria-hidden="true" />
-              </span>
-              <span className="profile-utility-card__copy">
-                <strong className="profile-settings-card__title">Профиль и уведомления</strong>
-              </span>
-              <ChevronRight aria-hidden="true" />
-            </button>
-          </div>
-        </section>
         <CommunityLinks />
       </section>
       {pickerKind !== null && inventoryQuery.data !== undefined ? (
