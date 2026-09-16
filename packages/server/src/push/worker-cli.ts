@@ -3,18 +3,12 @@ import { loadConfig } from '../config.js';
 import { loadDotEnv } from '../env.js';
 import { cleanupPushDeliveryLog, processPushDeliveryQueue } from './queue.js';
 import { runScheduledPushes } from './scheduled.js';
+import { waitForWorkerTick } from './workerLoop.js';
 import { finalizeDueClassicTournamentDays } from '../tournament/classicGame.js';
 import { isTournamentFeatureEnabled } from '../tournament/service.js';
 
 const DEFAULT_TICK_MS = 60 * 1000;
 const CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    timer.unref();
-  });
-}
 
 loadDotEnv();
 
@@ -114,6 +108,6 @@ while (!stopping) {
     console.error(err);
   }
   if (!stopping) {
-    await wait(DEFAULT_TICK_MS);
+    await waitForWorkerTick(DEFAULT_TICK_MS).promise;
   }
 }
