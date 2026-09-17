@@ -9,7 +9,10 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # Server integration files must remain sequential because they reset the
+    # shared Postgres/Redis services. Allow headroom for temporarily slow
+    # GitHub-hosted runners instead of cancelling an otherwise progressing suite.
+    timeout-minutes: 50
 
     services:
       postgres:
