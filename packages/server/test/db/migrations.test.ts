@@ -777,6 +777,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       '137_payment_receipt_email.sql',
       '138_tiered_achievements.sql',
       '142_achievement_mechanics_reconciliation.sql',
+      '143_restore_tournament_artwork_media_purpose.sql',
       '139_remove_recurring_duel_star_reward.sql',
       '140_fix_tiered_achievement_copy.sql',
       '141_clarify_dark_horse_requirement.sql',
@@ -1196,6 +1197,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     expect(constraints.get('currency_ledger_reason_check')).toContain("'bonus_game_reward'::text");
     expect(constraints.get('currency_ledger_reason_check')).toContain("'achievement_reward'::text");
     expect(constraints.get('media_objects_purpose_check')).toContain("'bonus_game_media'::text");
+    expect(constraints.get('media_objects_purpose_check')).toContain("'tournament_artwork'::text");
   });
 });
 
@@ -1659,6 +1661,7 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
       '137_payment_receipt_email.sql',
       '138_tiered_achievements.sql',
       '142_achievement_mechanics_reconciliation.sql',
+      '143_restore_tournament_artwork_media_purpose.sql',
       '139_remove_recurring_duel_star_reward.sql',
       '140_fix_tiered_achievement_copy.sql',
       '141_clarify_dark_horse_requirement.sql',

@@ -31,6 +31,10 @@ const tournamentArtworkMigrationUrl = new URL(
   '../../db/migrations/067_tournament_artwork.sql',
   import.meta.url,
 );
+const tournamentArtworkPurposeRepairMigrationUrl = new URL(
+  '../../db/migrations/143_restore_tournament_artwork_media_purpose.sql',
+  import.meta.url,
+);
 const tournamentClassicMigrationUrl = new URL(
   '../../db/migrations/075_tournament_classic.sql',
   import.meta.url,
@@ -88,6 +92,20 @@ describe.skipIf(!hasIntegrationEnv)('current tournament source database contract
       [creatorId],
     );
     expect(result.rows).toEqual([{ regular_source: 'daily_aggregate' }]);
+  });
+
+  it('accepts tournament artwork media uploaded by a tournament creator', async () => {
+    const result = await pool.query<{ purpose: string }>(
+      `insert into media_objects
+         (owner_user_id, purpose, object_key, url, content_type, size_bytes, original_name)
+       values ($1, 'tournament_artwork', 'tournaments/test-artwork.webp',
+               'https://storage.example.test/tournaments/test-artwork.webp',
+               'image/webp', 1, 'test-artwork.webp')
+       returning purpose`,
+      [creatorId],
+    );
+
+    expect(result.rows).toEqual([{ purpose: 'tournament_artwork' }]);
   });
 });
 
@@ -179,6 +197,13 @@ describe('tournament migration contract', () => {
 
     expect(sql).toMatch(/alter table tournament\s+add column if not exists image_url text/i);
     expect(sql).not.toMatch(/drop\s+(column|table)/i);
+  });
+
+  it('keeps tournament artwork as an allowed media purpose after later media migrations', async () => {
+    const sql = await readFile(tournamentArtworkPurposeRepairMigrationUrl, 'utf8');
+
+    expect(sql).toContain('media_objects_purpose_check');
+    expect(sql).toContain("'tournament_artwork'");
   });
 
   it('adds isolated classic sessions with idempotent constraints', async () => {
