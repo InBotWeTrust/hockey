@@ -17,6 +17,13 @@ import { useAuthStore } from '../auth/authStore.js';
 import { parseShopCategory } from './inventoryShopCategories.js';
 import { readFileSync } from 'node:fs';
 
+const { preloadArtwork } = vi.hoisted(() => ({ preloadArtwork: vi.fn() }));
+
+vi.mock('../app/artworkCache.js', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return { ...actual, preloadArtwork };
+});
+
 const designSystemCss = readFileSync('src/app/design-system.css', 'utf8');
 
 const emptyInventory: InventoryState = {
@@ -402,6 +409,7 @@ function confirmReceiptEmail(email = 'buyer@example.com'): void {
 describe('InventoryScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    preloadArtwork.mockClear();
     sessionStorage.clear();
     localStorage.clear();
     useAuthStore.getState().setSession({
@@ -410,6 +418,27 @@ describe('InventoryScreen', () => {
       user: { id: 'buyer-one', displayName: 'Buyer' },
     });
     mockInventoryFetch(emptyInventory);
+  });
+
+  it('retains the overview and current category artwork after loading shop data', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory('/inventory?category=recovery');
+
+    await screen.findByRole('heading', { name: 'Восстановление' });
+
+    await waitFor(() =>
+      expect(preloadArtwork).toHaveBeenCalledWith([
+        '/shop/shop-background.webp',
+        '/shop/categories/sticks.webp',
+        '/shop/categories/skates.webp',
+        '/shop/categories/nutrition.webp',
+        '/shop/categories/recovery.webp',
+        '/shop/backgrounds/recovery.webp',
+        '/inventory/recovery-15.webp?v=20260911-locker-equipment-v2',
+        '/inventory/recovery-30.webp?v=20260911-locker-equipment-v2',
+        '/inventory/recovery-60.webp?v=20260911-locker-equipment-v2',
+      ]),
+    );
   });
 
   it('reuses wide section cards with one title, unique item count and decorative artwork', async () => {

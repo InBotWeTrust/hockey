@@ -176,7 +176,6 @@
 .onboarding-flow__startup {
   display: grid;
   justify-items: center;
-  gap: 16px;
   text-align: center;
   color: rgba(238, 246, 255, 0.82);
   font-size: 16px;
@@ -186,14 +185,6 @@
 .onboarding-flow__startup p {
   margin: 0;
 }
-.onboarding-flow__startup-icon {
-  width: 88px;
-  height: 88px;
-  object-fit: contain;
-  mix-blend-mode: screen;
-  filter: drop-shadow(0 16px 28px rgba(0, 8, 22, 0.42));
-}
-
 .onboarding-tutorial {
   display: grid;
   gap: 16px;

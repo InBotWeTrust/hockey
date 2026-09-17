@@ -40,6 +40,7 @@ import {
 import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
 import { FittedOneLineText } from './profileSections.js';
 import { updateCachedProfileBalances } from '../app/queryClient.js';
+import { preloadArtwork, shopArtworkUrls } from '../app/artworkCache.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { ApiError } from '../api/apiFetch.js';
@@ -261,6 +262,10 @@ export function InventoryScreen(): JSX.Element {
   const inventory = inventoryQuery.data;
   const tokens = inventory?.balances.tokens ?? 0;
   const selectedCategory = parseShopCategory(searchParams.get('category'));
+  useEffect(() => {
+    if (inventory === undefined || activeTab !== 'goods') return;
+    preloadArtwork(shopArtworkUrls(inventory, selectedCategory));
+  }, [activeTab, inventory, selectedCategory]);
   useEffect(() => {
     if (selectedCategory !== null) setActiveTab('goods');
   }, [selectedCategory]);

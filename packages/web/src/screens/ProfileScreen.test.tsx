@@ -6,6 +6,13 @@ import { ProfileScreen } from './ProfileScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { ProfileData } from './profileTypes.js';
 
+const { preloadArtwork } = vi.hoisted(() => ({ preloadArtwork: vi.fn() }));
+
+vi.mock('../app/artworkCache.js', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return { ...actual, preloadArtwork };
+});
+
 const profile = {
   id: 'u1',
   displayName: 'Alice T',
@@ -271,11 +278,33 @@ function renderProfile(): void {
 describe('ProfileScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    preloadArtwork.mockClear();
     useAuthStore.getState().setSession({
       accessToken: 'access',
       refreshToken: 'refresh',
       user: { id: 'u1', displayName: 'Alice T' },
     });
+  });
+
+  it('retains the currently visible profile artwork when its data is loaded', async () => {
+    mockProfileRequest();
+    renderProfile();
+
+    await screen.findByLabelText('Спортивный паспорт');
+
+    await waitFor(() =>
+      expect(preloadArtwork).toHaveBeenCalledWith([
+        'avatar.png',
+        '/stick.webp',
+        '/skates.webp',
+        '/food.webp',
+        '/inventory/recovery-30.webp',
+        '/achievement-1.webp',
+        '/icons/vk-community.png',
+        '/icons/telegram-community-v2.png',
+        '/profile/story-cinema.webp',
+      ]),
+    );
   });
 
   it('renders a direct profile hub instead of the locker hotspots', async () => {

@@ -199,7 +199,6 @@ export function StartupSplash({
   return (
     <main className="onboarding-flow onboarding-flow--startup" aria-label="Загрузка приложения">
       <div className="onboarding-flow__startup" role={retry ? 'alert' : 'status'}>
-        <img className="onboarding-flow__startup-icon" src="/icons/icon-192.png" alt="" />
         <p>{message}</p>
         {retry && (
           <button className="btn btn--cta" type="button" onClick={retry}>

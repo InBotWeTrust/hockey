@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OnboardingRequired, OnboardingRequiredResponse } from '../api/onboarding.js';
 import type * as OnboardingApi from '../api/onboarding.js';
 import { completeOnboarding, recordStepView } from '../api/onboarding.js';
-import { OnboardingFlow } from './OnboardingFlow.js';
+import { OnboardingFlow, StartupSplash } from './OnboardingFlow.js';
 
 vi.mock('./TutorialShotStep.js', () => ({
   TutorialShotStep: ({
@@ -213,13 +213,12 @@ describe('OnboardingFlow', () => {
     expect(onboardingCss).toMatch(/overflow-y:\s*auto/);
   });
 
-  it('blends the opaque app-icon backdrop into the dark startup screen', () => {
-    const startupIconRule = onboardingCss.match(
-      /\.onboarding-flow__startup-icon\s*\{[^}]*\}/s,
-    )?.[0];
+  it('keeps the web startup screen text-only after the native splash', () => {
+    render(<StartupSplash />);
 
-    expect(startupIconRule).toContain('mix-blend-mode: screen');
-    expect(staticStartupHtml).toContain('mix-blend-mode: screen');
+    expect(screen.getByText('Идёт загрузка…')).toBeInTheDocument();
+    expect(document.querySelector('.onboarding-flow__startup-icon')).toBeNull();
+    expect(staticStartupHtml).not.toContain('<img src="/icons/icon-192.png"');
   });
 
   it('keeps tutorial navigation forward-only', async () => {

@@ -9,6 +9,13 @@ import type { DailyStateResponse } from '../api/duel.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { BonusGamesScreen } from './BonusGamesScreen.js';
 
+const { preloadArtwork } = vi.hoisted(() => ({ preloadArtwork: vi.fn() }));
+
+vi.mock('../app/artworkCache.js', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return { ...actual, preloadArtwork };
+});
+
 function LocationProbe(): JSX.Element {
   const location = useLocation();
   return <output aria-label="location">{`${location.pathname}${location.search}`}</output>;
@@ -230,6 +237,7 @@ function renderCatalog(): QueryClient {
 describe('BonusGamesScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    preloadArtwork.mockClear();
     localStorage.clear();
     useAuthStore.setState({
       accessToken: null,
@@ -1044,7 +1052,7 @@ describe('BonusGamesScreen', () => {
     const artwork = await screen.findByAltText('Площадка «Пляж»');
     expect(artwork).toHaveAttribute(
       'src',
-      '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
+      '/bonus-games/arenas/featured/beach.webp?v=20260829-world-tour-user-pngs-v10',
     );
     expect(artwork).toHaveStyle({ objectPosition: 'center top' });
     expect(artwork.parentElement).toHaveClass('bonus-game-card__artwork-frame');
@@ -1187,7 +1195,7 @@ describe('BonusGamesScreen', () => {
 
     expect(await screen.findByAltText('Площадка «Пляж»')).toHaveAttribute(
       'src',
-      '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
+      '/bonus-games/arenas/featured/beach.webp?v=20260829-world-tour-user-pngs-v10',
     );
   });
 
@@ -1339,6 +1347,50 @@ describe('BonusGamesScreen', () => {
     expect(await screen.findByText('1 из 2 попыток')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Точность' }));
     expect(screen.getByText('2 из 2 попыток')).toBeInTheDocument();
+  });
+
+  it('retains only the first three currently visible arena artworks for the active skill', async () => {
+    mockCatalog([
+      card({
+        id: 'speed-1',
+        sort_order: 1,
+        arena: { id: 'arena-1', slug: 'speed-1', title: 'Первая', artwork_url: '/bonus-games/arenas/speed-1.webp', thumbnail_url: '/bonus-games/arenas/speed-1.webp' },
+      }),
+      card({
+        id: 'speed-2',
+        sort_order: 2,
+        state: 'sequence_locked',
+        is_unlocked: false,
+        arena: { id: 'arena-2', slug: 'speed-2', title: 'Вторая', artwork_url: '/bonus-games/arenas/speed-2.webp', thumbnail_url: '/bonus-games/arenas/speed-2.webp' },
+      }),
+      card({
+        id: 'speed-3',
+        sort_order: 3,
+        state: 'sequence_locked',
+        is_unlocked: false,
+        arena: { id: 'arena-3', slug: 'speed-3', title: 'Третья', artwork_url: '/bonus-games/arenas/speed-3.webp', thumbnail_url: '/bonus-games/arenas/speed-3.webp' },
+      }),
+      card({
+        id: 'speed-4',
+        sort_order: 4,
+        state: 'sequence_locked',
+        is_unlocked: false,
+        arena: { id: 'arena-4', slug: 'speed-4', title: 'Четвёртая', artwork_url: '/bonus-games/arenas/speed-4.webp', thumbnail_url: '/bonus-games/arenas/speed-4.webp' },
+      }),
+    ]);
+    renderCatalog();
+
+    await screen.findByAltText('Площадка «Вторая»');
+
+    expect(screen.getByAltText('Площадка «Вторая»')).toHaveAttribute('loading', 'lazy');
+
+    await waitFor(() =>
+      expect(preloadArtwork).toHaveBeenCalledWith([
+        '/bonus-games/arenas/featured/speed-1.webp?v=20260829-world-tour-user-pngs-v10',
+        '/bonus-games/arenas/compact/speed-2.webp?v=20260829-world-tour-user-pngs-v10',
+        '/bonus-games/arenas/compact/speed-3.webp?v=20260829-world-tour-user-pngs-v10',
+      ]),
+    );
   });
 
   it('blocks a new attempt when the selected skill has no attempts left', async () => {

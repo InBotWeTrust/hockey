@@ -1,4 +1,14 @@
-import type { CompetitionLevel } from '../screens/profileTypes.js';
+import type { InventoryEquipmentKind, InventoryState } from '../api/inventory.js';
+import type { BonusGameCard, BonusSkillCode } from '../api/bonusGames.js';
+import { achievementThumbnailUrl } from '../achievements/artwork.js';
+import { catalogBonusGameArtwork } from '../game/bonusGameArtwork.js';
+import { artworkForInventoryItem, placeholderArtworkForKind } from '../screens/inventoryArtwork.js';
+import {
+  SHOP_CATEGORY_META,
+  SHOP_CATEGORY_ORDER,
+  type ShopCategory,
+} from '../screens/inventoryShopCategories.js';
+import type { CompetitionLevel, ProfileData } from '../screens/profileTypes.js';
 import { arenaCourtImage, arenaVideoCubeImage } from '../screens/lockerRoomBackground.js';
 
 const CRITICAL_ARTWORK = [
@@ -20,6 +30,105 @@ const CRITICAL_ARTWORK = [
 ] as const;
 
 const retainedArtwork = new Map<string, HTMLImageElement>();
+
+const PROFILE_COMMUNITY_ARTWORK = [
+  '/icons/vk-community.png',
+  '/icons/telegram-community-v2.png',
+  '/profile/story-cinema.webp',
+] as const;
+
+const EQUIPMENT_ARTWORK_SLOTS: ReadonlyArray<{
+  kind: InventoryEquipmentKind;
+  equippedKey: keyof InventoryState['equipped'];
+}> = [
+  { kind: 'stick', equippedKey: 'stickItemId' },
+  { kind: 'skates', equippedKey: 'skatesItemId' },
+  { kind: 'nutrition', equippedKey: 'nutritionItemId' },
+];
+
+const RETAINED_BONUS_GAME_ARTWORK_COUNT = 3;
+
+function selectedEquipmentArtwork(
+  inventory: InventoryState,
+  kind: InventoryEquipmentKind,
+  equippedKey: keyof InventoryState['equipped'],
+): string {
+  const selectedId = inventory.equipped[equippedKey];
+  const selectedItem =
+    selectedId === null
+      ? undefined
+      : inventory.items[kind].find(
+          (item) => item.id === selectedId || item.instanceId === selectedId,
+        );
+  return selectedItem === undefined
+    ? placeholderArtworkForKind(kind)
+    : artworkForInventoryItem(selectedItem);
+}
+
+export function profileArtworkUrls(
+  profile: ProfileData,
+  inventory: InventoryState,
+): readonly string[] {
+  const recoveryItem = inventory.items.recovery.find((item) => item.chargesAvailable > 0);
+  const urls: Array<string | null | undefined> = [
+    profile.avatarUrl,
+    ...EQUIPMENT_ARTWORK_SLOTS.map(({ kind, equippedKey }) =>
+      selectedEquipmentArtwork(inventory, kind, equippedKey),
+    ),
+    recoveryItem?.imageUrl ?? '/inventory/recovery-30.webp',
+    ...profile.achievements.map((achievement) => achievementThumbnailUrl(achievement.photoUrl)),
+    ...PROFILE_COMMUNITY_ARTWORK,
+  ];
+  return [
+    ...new Set(urls.filter((url): url is string => typeof url === 'string' && url.length > 0)),
+  ];
+}
+
+export function shopArtworkUrls(
+  inventory: InventoryState,
+  selectedCategory: ShopCategory | null,
+): readonly string[] {
+  const categoryArtwork =
+    selectedCategory === null
+      ? []
+      : [
+          SHOP_CATEGORY_META[selectedCategory].backgroundUrl,
+          ...inventory.items[selectedCategory].map(artworkForInventoryItem),
+        ];
+  return [
+    ...new Set([
+      '/shop/shop-background.webp',
+      ...SHOP_CATEGORY_ORDER.map((category) => SHOP_CATEGORY_META[category].artworkUrl),
+      ...categoryArtwork,
+    ]),
+  ];
+}
+
+export function bonusGameArtworkUrls(
+  games: readonly BonusGameCard[],
+  selectedSkill: BonusSkillCode,
+  featuredGameId: string | null,
+): readonly string[] {
+  const selectedGames = games.filter((game) => game.skill_code === selectedSkill);
+  selectedGames.sort((left, right) => left.sort_order - right.sort_order);
+  const featuredGame =
+    featuredGameId === null
+      ? undefined
+      : selectedGames.find((game) => game.id === featuredGameId);
+  const compactGames = selectedGames.filter((game) => game.id !== featuredGame?.id);
+  return [
+    ...new Set<string>(
+      [
+        ...(featuredGame === undefined
+          ? []
+          : [catalogBonusGameArtwork(featuredGame.arena.thumbnail_url, 'featured')]),
+        ...compactGames
+          .slice(0, RETAINED_BONUS_GAME_ARTWORK_COUNT - (featuredGame === undefined ? 0 : 1))
+          .map((game) => catalogBonusGameArtwork(game.arena.thumbnail_url, 'compact')),
+      ],
+    ),
+  ];
+}
 
 export function startupArtworkUrls(level: CompetitionLevel): readonly string[] {
   const urls = [arenaCourtImage(level), arenaVideoCubeImage(level)];

@@ -22,6 +22,7 @@ import {
   AchievementLevelBadge,
   AchievementStageDetails,
 } from '../achievements/AchievementStageDetails.js';
+import { achievementThumbnailUrl } from '../achievements/artwork.js';
 import {
   countClaimableWeeklyChallenges,
   fetchWeeklyChallenge,
@@ -516,7 +517,12 @@ function AchievementCard({
         onClick={onOpen}
       >
         <div className="achievement-card__thumbnail">
-          <img src={achievement.photoUrl} alt="" />
+          <img
+            src={achievementThumbnailUrl(achievement.photoUrl)}
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
           {achievement.status === 'claimed' && (
             <span className="achievement-card__status achievement-card__status--claimed">
               <Check size={12} strokeWidth={3} />

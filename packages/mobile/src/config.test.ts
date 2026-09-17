@@ -29,4 +29,12 @@ describe('Android application configuration', () => {
 
     expect(manifest).toContain('android:screenOrientation="portrait"');
   });
+
+  it('uses the dark launcher splash with the app icon before the web view is ready', () => {
+    const styles = readFileSync(`${mobileRoot}/android/app/src/main/res/values/styles.xml`, 'utf8');
+
+    expect(styles).toContain('<item name="windowSplashScreenBackground">#08182b</item>');
+    expect(styles).toContain('<item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>');
+    expect(styles).toContain('<item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>');
+  });
 });

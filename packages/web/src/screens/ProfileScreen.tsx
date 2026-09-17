@@ -40,11 +40,13 @@ import {
   highestCompletedLevel,
   summarizeAchievementProgress,
 } from '../achievements/progressSummary.js';
+import { achievementThumbnailUrl } from '../achievements/artwork.js';
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 import { ExperienceRatingModal } from '../profile/ExperienceRatingModal.js';
 import type { ExperienceRatingPlayer } from '../api/experienceRating.js';
 import { StatRatingModal } from '../profile/StatRatingModal.js';
 import type { StatRatingMetric, StatRatingPlayer } from '../api/statRating.js';
+import { preloadArtwork, profileArtworkUrls } from '../app/artworkCache.js';
 
 export type TrophySectionKey = keyof NonNullable<ProfileData['trophyDetails']>;
 
@@ -314,7 +316,7 @@ function CareerPanel({
                 onClick={() => onChoose(achievement)}
               >
                 <span className="profile-career-award__image">
-                  <img src={achievement.photoUrl} alt="" />
+                  <img src={achievementThumbnailUrl(achievement.photoUrl)} alt="" />
                   {achievement.stage && highestCompletedLevel(achievement) > 0 && (
                     <span className="profile-career-award__level">
                       Ур. {highestCompletedLevel(achievement)}/{achievement.stage.total}
@@ -690,6 +692,12 @@ export function ProfileScreen(): JSX.Element {
         : {}),
     });
   }, [profileQuery.data, updateUser]);
+  useEffect(() => {
+    const profile = profileQuery.data;
+    const inventory = inventoryQuery.data;
+    if (profile === undefined || inventory === undefined) return;
+    preloadArtwork(profileArtworkUrls(profile, inventory));
+  }, [inventoryQuery.data, profileQuery.data]);
 
   if (profileQuery.isLoading) {
     return (

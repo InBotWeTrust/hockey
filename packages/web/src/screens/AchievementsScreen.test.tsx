@@ -193,6 +193,20 @@ describe('AchievementsScreen', () => {
     );
   });
 
+  it('defers list artwork so an achievements catalog does not decode every card at once', async () => {
+    mockAchievementsApi([makeAchievement({ title: 'Первая шайба' })]);
+    renderAchievements();
+
+    const card = (await screen.findByText('Первая шайба')).closest('.achievement-card');
+    expect(card).not.toBeNull();
+    const artwork = within(card as HTMLElement).getByRole('img', { hidden: true });
+    expect(artwork).toHaveAttribute(
+      'loading',
+      'lazy',
+    );
+    expect(artwork).toHaveAttribute('src', '/achievements/thumbnails/first-goal.webp');
+  });
+
   it('opens achievement details in the shared accessible modal', async () => {
     mockAchievementsApi([
       makeAchievement({

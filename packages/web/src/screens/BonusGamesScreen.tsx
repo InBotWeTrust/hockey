@@ -31,7 +31,8 @@ import { useAuthStore } from '../auth/authStore.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { qualificationDescription } from '../game/bonusGameQualification.js';
-import { versionBonusGameArtwork } from '../game/bonusGameArtwork.js';
+import { catalogBonusGameArtwork } from '../game/bonusGameArtwork.js';
+import { bonusGameArtworkUrls, preloadArtwork } from '../app/artworkCache.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 
@@ -226,6 +227,10 @@ export function BonusGamesScreen(): JSX.Element {
       game.state !== 'available' &&
       game.state !== 'in_progress',
   );
+  useEffect(() => {
+    if (allGames.length === 0) return;
+    preloadArtwork(bonusGameArtworkUrls(allGames, selectedSkill, focusGame?.id ?? null));
+  }, [allGames, focusGame?.id, selectedSkill]);
 
   return (
     <main
@@ -566,8 +571,9 @@ function BonusGameCard({
       <div className="bonus-game-card__artwork-frame">
         <img
           className={`bonus-game-card__artwork${game.state === 'completed' ? ' bonus-game-card__artwork--completed' : ''}${artworkIsLocked ? ' bonus-game-card__artwork--locked' : ''}`}
-          src={versionBonusGameArtwork(game.arena.thumbnail_url)}
+          src={catalogBonusGameArtwork(game.arena.thumbnail_url, featured ? 'featured' : 'compact')}
           alt={`Площадка «${game.arena.title}»`}
+          loading={compact ? 'lazy' : 'eager'}
           style={{
             objectPosition: featuredArtworkPosition,
           }}
