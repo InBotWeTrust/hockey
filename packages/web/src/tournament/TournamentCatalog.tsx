@@ -473,6 +473,28 @@ function zonedDateAndTime(value: string, timezone: string) {
   };
 }
 
+function shiftScheduleDaysToEffectiveStart(
+  days: Array<{ localDate: string; startTime: string }>,
+  firstGameStartsAt: unknown,
+  timezone: string,
+) {
+  if (days.length === 0 || typeof firstGameStartsAt !== 'string') return days;
+  const effectiveStart = zonedDateAndTime(firstGameStartsAt, timezone);
+  const configuredStart = days[0]?.localDate;
+  if (effectiveStart === null || configuredStart === undefined) return days;
+
+  const configuredStartMs = Date.parse(`${configuredStart}T00:00:00.000Z`);
+  const effectiveStartMs = Date.parse(`${effectiveStart.localDate}T00:00:00.000Z`);
+  const offsetDays = Math.round((effectiveStartMs - configuredStartMs) / 86_400_000);
+  if (!Number.isFinite(offsetDays) || offsetDays <= 0) return days;
+
+  return days.map((day) => {
+    const date = new Date(`${day.localDate}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + offsetDays);
+    return { ...day, localDate: date.toISOString().slice(0, 10) };
+  });
+}
+
 export function tournamentPlayoffScheduleBlocks(
   tournament: TournamentSummary,
 ): TournamentPlayoffScheduleBlock[] {
@@ -499,7 +521,12 @@ export function tournamentPlayoffScheduleBlocks(
       days.length === 0 && typeof round.firstGameStartsAt === 'string'
         ? zonedDateAndTime(round.firstGameStartsAt, timezone)
         : null;
-    const scheduledDays = days.length > 0 ? days : fallback === null ? [] : [fallback];
+    const scheduledDays =
+      days.length > 0
+        ? shiftScheduleDaysToEffectiveStart(days, round.firstGameStartsAt, timezone)
+        : fallback === null
+          ? []
+          : [fallback];
     const stages: Array<{ stage: 'playoff' | 'third_place'; label: string }> = [
       { stage: 'playoff', label: stageLabel },
       ...(stageLabel === 'Финал' && playoffSize >= 4

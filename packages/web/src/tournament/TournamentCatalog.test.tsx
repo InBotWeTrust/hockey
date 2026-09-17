@@ -225,6 +225,30 @@ describe('TournamentCatalog', () => {
     ]);
   });
 
+  it('shifts every configured playoff day with the effective first game after the regular season moves', () => {
+    const tournament = {
+      playoffFormats: [{ roundNumber: 1, duelKind: 'express' }],
+      rules: {
+        config: { playoffSize: 2, timezone: 'Europe/Moscow' },
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            firstGameStartsAt: '2030-10-05T16:00:00.000Z',
+            scheduleDays: [
+              { localDate: '2030-09-28', firstWaveLocalTime: '19:00' },
+              { localDate: '2030-09-29', firstWaveLocalTime: '19:00' },
+            ],
+          },
+        ],
+      },
+    } as unknown as api.TournamentSummary;
+
+    expect(tournamentPlayoffScheduleBlocks(tournament)).toEqual([
+      expect.objectContaining({ localDate: '2030-10-05', startTime: '19:00' }),
+      expect.objectContaining({ localDate: '2030-10-06', startTime: '19:00' }),
+    ]);
+  });
+
   it('puts the combined rules tab first and opens it before the tournament starts', () => {
     const startsAt = '2099-09-11T07:00:00.000Z';
 
