@@ -38,6 +38,7 @@ import {
 } from './TournamentScheduleCalendar.js';
 import { TournamentPlayoffBracket } from './TournamentPlayoffBracket.js';
 import { TournamentMatchdayResults } from './TournamentMatchdayResults.js';
+import { TournamentDescription } from './TournamentDescription.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 
 type TournamentTab = 'standings' | 'schedule' | 'playoff' | 'rules';
@@ -910,7 +911,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
           <span className="tournament-participation-badge">{participationLabel(tournament)}</span>
         </div>
         <h2>{tournament.title}</h2>
-        <div className="tournament-details__description">{tournament.description}</div>
+        <TournamentDescription value={tournament.description} />
         {registrationState.timingLabel && (
           <div className="tournament-details__timing">{registrationState.timingLabel}</div>
         )}
@@ -928,6 +929,22 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
         }}
         scrollable
       />
+      {tournament.status === 'registration' &&
+        !registrationState.hideAction &&
+        (tournament.myParticipantState === null || tournament.myParticipantState === 'invited') && (
+          <button
+            type="button"
+            className="btn btn--cta tournament-details__registration"
+            disabled={!registrationState.isOpen || registration.isPending}
+            onClick={() => guardAmateurMutation(amateurAccess, () => registration.mutate())}
+          >
+            {!registrationState.isOpen
+              ? registrationState.actionLabel
+              : tournament.myParticipantState === 'invited'
+                ? 'Принять приглашение'
+                : 'Подать заявку'}
+          </button>
+        )}
       <section className="glass tournament-details__content">
         {tab === 'rules' && (
           <>
@@ -1007,6 +1024,19 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
               </div>
             </div>
             <TournamentRules tournament={tournament} />
+            {tournament.status === 'registration' &&
+              !registrationState.hideAction &&
+              (tournament.myParticipantState === 'applied' ||
+                tournament.myParticipantState === 'approved') && (
+                <button
+                  type="button"
+                  className="btn btn--cta tournament-details__registration tournament-details__registration--withdraw tournament-registration-btn--danger"
+                  disabled={!registrationState.isOpen || registration.isPending}
+                  onClick={() => guardAmateurMutation(amateurAccess, () => registration.mutate())}
+                >
+                  Отменить заявку
+                </button>
+              )}
           </>
         )}
         {tab === 'standings' &&
@@ -1217,30 +1247,6 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
             <div>Сетка появится после завершения регулярного чемпионата.</div>
           ))}
       </section>
-      {tournament.status === 'registration' &&
-        !registrationState.hideAction &&
-        (tournament.myParticipantState === null ||
-          ['invited', 'applied', 'approved'].includes(tournament.myParticipantState)) && (
-          <button
-            type="button"
-            className={`btn btn--cta tournament-details__registration${
-              tournament.myParticipantState === 'applied' ||
-              tournament.myParticipantState === 'approved'
-                ? ' tournament-registration-btn--danger'
-                : ''
-            }`}
-            disabled={!registrationState.isOpen || registration.isPending}
-            onClick={() => guardAmateurMutation(amateurAccess, () => registration.mutate())}
-          >
-            {!registrationState.isOpen
-              ? registrationState.actionLabel
-              : tournament.myParticipantState === null
-                ? 'Подать заявку'
-                : tournament.myParticipantState === 'invited'
-                  ? 'Принять приглашение'
-                  : 'Отменить заявку'}
-          </button>
-        )}
       {registration.isError && amateurAccessDetailsFromError(registration.error) === null && (
         <div role="alert" className="tournament-details__registration-error">
           Не удалось изменить участие. Проверьте соединение и попробуйте ещё раз.

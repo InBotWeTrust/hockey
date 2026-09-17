@@ -155,6 +155,32 @@ describe('TournamentAdmin', () => {
     });
   });
 
+  it('prefills a new tournament description and provides Markdown formatting controls', async () => {
+    vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
+    vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TournamentAdmin />
+      </QueryClientProvider>,
+    );
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Создать' }));
+    });
+
+    const description = screen.getByRole('textbox', { name: 'Описание' }) as HTMLTextAreaElement;
+    expect(description).toHaveValue(
+      'Турнир для тех, кто уже считает этот лёд в этой игре своим.\nБросок за броском, серия за серией — до финальной сирены.',
+    );
+    description.setSelectionRange(0, 6);
+    fireEvent.click(screen.getByRole('button', { name: 'Жирный' }));
+    expect(description).toHaveValue(
+      '**Турнир** для тех, кто уже считает этот лёд в этой игре своим.\nБросок за броском, серия за серией — до финальной сирены.',
+    );
+    expect(screen.getByRole('button', { name: 'Курсив' })).toBeInTheDocument();
+  });
+
   it('applies the exact 16-player economy preset to a fresh draft', async () => {
     const fetchPreset = vi
       .spyOn(api, 'fetchTournamentEconomyPreset')

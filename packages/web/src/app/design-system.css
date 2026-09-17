@@ -5893,7 +5893,8 @@
 .inventory-shop-screen {
   background:
     linear-gradient(180deg, rgba(7, 18, 34, 0.2), rgba(7, 18, 34, 0.56)),
-    var(--shop-category-artwork, url('/shop/shop-background.webp')) center top / cover fixed no-repeat;
+    var(--shop-category-artwork, url('/shop/shop-background.webp')) center top / cover fixed
+      no-repeat;
 }
 
 .inventory-shop-screen--category {
@@ -9140,7 +9141,7 @@ button.daily-calendar__day:active {
 .tournament-details__hero h2 {
   margin: 6px 0 4px;
   color: var(--ink);
-  font-size: 21px;
+  font-size: 24px;
   line-height: 1.15;
 }
 
@@ -9149,6 +9150,23 @@ button.daily-calendar__day:active {
   font-size: 12px;
   font-weight: 560;
   line-height: 1.5;
+}
+
+.tournament-details__description p {
+  margin: 0;
+}
+
+.tournament-details__description p + p {
+  margin-top: 7px;
+}
+
+.tournament-details__description strong {
+  color: var(--ink);
+  font-weight: 760;
+}
+
+.tournament-details__description em {
+  font-style: italic;
 }
 
 .tournament-details__timing {
@@ -11261,7 +11279,17 @@ button.daily-calendar__day:active {
 }
 
 .tournament-details__registration {
-  margin-top: 2px;
+  margin: 2px 0 0;
+}
+
+.tournament-details__registration--withdraw {
+  margin-top: 14px;
+}
+
+.tournament-description-editor__toolbar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 7px;
 }
 
 .tournament-registration-btn--danger {

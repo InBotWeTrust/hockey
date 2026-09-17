@@ -26,6 +26,7 @@ import {
   TournamentDraftSaveQueue,
   type TournamentDraftSaveStatus,
 } from './tournamentDraftSaveQueue.js';
+import { DEFAULT_TOURNAMENT_DESCRIPTION } from './TournamentDescription.js';
 
 const stages = [
   'Основное',
@@ -173,7 +174,7 @@ const defaultClassicPeriods = (): [ClassicPeriodDraft, ClassicPeriodDraft, Class
 const defaultDraft: TournamentDraft = {
   slug: '',
   title: '',
-  description: '',
+  description: DEFAULT_TOURNAMENT_DESCRIPTION,
   imageUrl: null,
   regularSource: 'head_to_head',
   registrationMode: 'open',
@@ -1694,11 +1695,23 @@ export function TournamentAdmin(): JSX.Element {
     >();
   const saveDebounce = useRef<number>();
   const saveQueueGeneration = useRef(0);
+  const descriptionTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const createInFlight = useRef(false);
   const artworkUploadGeneration = useRef(0);
   const economyPresetRequestGeneration = useRef(0);
   const appliedEconomyPresetParticipantLimit = useRef<number | null>(null);
   const currentParticipantLimit = useRef<NumericDraftValue>(draft.participantLimit);
+  const wrapDescriptionSelection = (marker: '**' | '*') => {
+    const field = descriptionTextareaRef.current;
+    if (field === null) return;
+    const start = field.selectionStart;
+    const end = field.selectionEnd;
+    if (start === end) return;
+    setDraft((current) => ({
+      ...current,
+      description: `${current.description.slice(0, start)}${marker}${current.description.slice(start, end)}${marker}${current.description.slice(end)}`,
+    }));
+  };
   currentParticipantLimit.current = draft.participantLimit;
   const economyReady =
     economyPresetState === 'custom' ||
@@ -2334,11 +2347,35 @@ export function TournamentAdmin(): JSX.Element {
                     </TournamentAdminField>
                     <TournamentAdminField
                       label="Описание"
-                      help="Коротко объясните формат и главную идею турнира для участников."
+                      help="Коротко объясните формат и главную идею турнира для участников. Поддерживаются жирный текст и курсив."
                     >
+                      <div
+                        className="tournament-description-editor__toolbar"
+                        aria-label="Форматирование описания"
+                      >
+                        <button
+                          type="button"
+                          className="admin-compact-btn"
+                          aria-label="Жирный"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => wrapDescriptionSelection('**')}
+                        >
+                          Жирный
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-compact-btn"
+                          aria-label="Курсив"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => wrapDescriptionSelection('*')}
+                        >
+                          Курсив
+                        </button>
+                      </div>
                       <textarea
                         aria-label="Описание"
                         className="tournament-admin-textarea"
+                        ref={descriptionTextareaRef}
                         value={draft.description}
                         onChange={(event) =>
                           setDraft({ ...draft, description: event.target.value })

@@ -57,7 +57,7 @@ describe('TournamentCatalog', () => {
           id: 'preview-cup',
           slug: 'preview-cup',
           title: 'Кубок для просмотра',
-          description: 'Регулярка и плей-офф',
+          description: '**Свой** *лёд*',
           status: 'registration',
           regularSource: 'head_to_head',
           visibility: 'public',
@@ -96,7 +96,13 @@ describe('TournamentCatalog', () => {
       fireEvent.click(screen.getByRole('tab', { name: tab }));
       expect(screen.getByRole('tab', { name: tab })).toHaveAttribute('aria-selected', 'true');
     }
-    fireEvent.click(screen.getByRole('button', { name: 'Подать заявку' }));
+    const applyButton = screen.getByRole('button', { name: 'Подать заявку' });
+    const details = screen.getByText('Сроки').closest('.tournament-details__content');
+    expect(applyButton.compareDocumentPosition(details!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByText('Свой').tagName).toBe('STRONG');
+    expect(screen.getByText('лёд').tagName).toBe('EM');
+
+    fireEvent.click(applyButton);
 
     expect(apply).not.toHaveBeenCalled();
     expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
@@ -1020,6 +1026,12 @@ describe('TournamentCatalog', () => {
     expect(screen.getByText('Идёт регистрация').parentElement).toHaveClass(
       'tournament-details__status-row',
     );
+    expect(screen.getByRole('button', { name: 'Отменить заявку' })).toHaveClass(
+      'tournament-registration-btn--danger',
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Таблица' }));
+    expect(screen.queryByRole('button', { name: 'Отменить заявку' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Правила' }));
     expect(screen.getByRole('button', { name: 'Отменить заявку' })).toHaveClass(
       'tournament-registration-btn--danger',
     );
