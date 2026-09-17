@@ -969,6 +969,7 @@ interface TournamentRow {
   slug: string;
   title: string;
   description: string;
+  rules_text: string;
   image_url: string | null;
   status: TournamentStatus;
   regular_source: TournamentConfig['regularSource'];
@@ -1069,6 +1070,7 @@ function mapTournament(row: TournamentRow, lifecycle?: TournamentLifecycleDTO) {
     slug: row.slug,
     title: row.title,
     description: row.description,
+    rulesText: row.rules_text,
     imageUrl: row.image_url,
     status: row.status,
     regularSource: row.regular_source,
@@ -1242,6 +1244,7 @@ export async function createTournamentDraft(
     slug?: string;
     title: string;
     description: string;
+    rulesText?: string;
     imageUrl?: string | null;
     rules: TournamentRulesSnapshot;
     createdBy: string;
@@ -1254,15 +1257,16 @@ export async function createTournamentDraft(
     const slug = input.slug ?? (await createUniqueTournamentSlug(client, input.title));
     const { rows } = await client.query<TournamentRow>(
       `insert into tournament
-         (slug, title, description, image_url, regular_source, visibility, current_revision,
+         (slug, title, description, rules_text, image_url, regular_source, visibility, current_revision,
           registration_opens_at, registration_closes_at, starts_at, created_by, updated_by)
-       values ($1, $2, $3, $4, $5, $6, 1, $7, $8, $9, $10, $10)
+       values ($1, $2, $3, $4, $5, $6, $7, 1, $8, $9, $10, $11, $11)
        returning *, 0::int as participant_count, 0::int as pending_application_count,
-                 $11::jsonb as rules_snapshot`,
+                 $12::jsonb as rules_snapshot`,
       [
         slug,
         input.title,
         input.description,
+        input.rulesText ?? '',
         input.imageUrl ?? null,
         input.rules.config.regularSource,
         input.rules.config.visibility,
@@ -1438,6 +1442,7 @@ export async function updateTournamentDraft(
     expectedRevision: number;
     title: string;
     description: string;
+    rulesText?: string;
     imageUrl?: string | null;
     rules: TournamentRulesSnapshot;
     updatedBy: string;
@@ -1456,6 +1461,7 @@ export async function updateTournamentDraft(
       playoff_series_exists: boolean;
       title: string;
       description: string;
+      rules_text: string;
       image_url: string | null;
       registration_opens_at: Date | null;
       registration_closes_at: Date | null;
@@ -1468,7 +1474,7 @@ export async function updateTournamentDraft(
               exists (
                 select 1 from tournament_playoff_series series where series.tournament_id = t.id
               ) as playoff_series_exists,
-              t.title, t.description, t.image_url,
+              t.title, t.description, t.rules_text, t.image_url,
               t.registration_opens_at, t.registration_closes_at, t.starts_at
          from tournament t
          join tournament_revision revision
@@ -1478,11 +1484,13 @@ export async function updateTournamentDraft(
     );
     const tournament = current.rows[0];
     if (!tournament) throw new AppError('not_found', 'tournament not found', 404);
+    const nextRulesText = input.rulesText ?? tournament.rules_text;
     const regularScheduleRecovery =
       tournament.status === 'regular' &&
       !tournament.playoff_series_exists &&
       tournament.title === input.title &&
       tournament.description === input.description &&
+      tournament.rules_text === nextRulesText &&
       (input.imageUrl === undefined || input.imageUrl === tournament.image_url) &&
       input.registrationOpensAt?.getTime() === tournament.registration_opens_at?.getTime() &&
       input.registrationClosesAt?.getTime() === tournament.registration_closes_at?.getTime() &&
@@ -1493,6 +1501,7 @@ export async function updateTournamentDraft(
       tournament.playoff_series_exists &&
       tournament.title === input.title &&
       tournament.description === input.description &&
+      tournament.rules_text === nextRulesText &&
       (input.imageUrl === undefined || input.imageUrl === tournament.image_url) &&
       input.registrationOpensAt?.getTime() === tournament.registration_opens_at?.getTime() &&
       input.registrationClosesAt?.getTime() === tournament.registration_closes_at?.getTime() &&
@@ -1567,23 +1576,24 @@ export async function updateTournamentDraft(
       `update tournament
           set status = case
                 when status = 'registration_blocked'
-                  and $10::timestamptz > now()
-                  and (registration_closes_at is null or $10::timestamptz > registration_closes_at)
+                  and $11::timestamptz > now()
+                  and (registration_closes_at is null or $11::timestamptz > registration_closes_at)
                 then 'registration'
                 else status
               end,
-              title = $2, description = $3,
-              image_url = case when $4::boolean then $5 else image_url end,
-              regular_source = $6, visibility = $7,
-              current_revision = $8, registration_opens_at = $9,
-              registration_closes_at = $10, starts_at = $11, updated_by = $12,
-              published_revision_id = case when $13::boolean then $14 else published_revision_id end,
+              title = $2, description = $3, rules_text = $4,
+              image_url = case when $5::boolean then $6 else image_url end,
+              regular_source = $7, visibility = $8,
+              current_revision = $9, registration_opens_at = $10,
+              registration_closes_at = $11, starts_at = $12, updated_by = $13,
+              published_revision_id = case when $14::boolean then $15 else published_revision_id end,
               updated_at = now()
         where id = $1`,
       [
         input.tournamentId,
         input.title,
         input.description,
+        nextRulesText,
         updatesImage,
         input.imageUrl ?? null,
         input.rules.config.regularSource,

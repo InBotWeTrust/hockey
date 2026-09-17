@@ -26,7 +26,10 @@ import {
   TournamentDraftSaveQueue,
   type TournamentDraftSaveStatus,
 } from './tournamentDraftSaveQueue.js';
-import { DEFAULT_TOURNAMENT_DESCRIPTION } from './TournamentDescription.js';
+import {
+  DEFAULT_TOURNAMENT_DESCRIPTION,
+  DEFAULT_TOURNAMENT_RULES_TEXT,
+} from './TournamentDescription.js';
 
 const stages = [
   'Основное',
@@ -99,6 +102,7 @@ interface TournamentDraft {
   slug: string;
   title: string;
   description: string;
+  rulesText: string;
   imageUrl: string | null;
   regularSource: TournamentRegularSource;
   registrationMode: RegistrationMode;
@@ -175,6 +179,7 @@ const defaultDraft: TournamentDraft = {
   slug: '',
   title: '',
   description: DEFAULT_TOURNAMENT_DESCRIPTION,
+  rulesText: DEFAULT_TOURNAMENT_RULES_TEXT,
   imageUrl: null,
   regularSource: 'head_to_head',
   registrationMode: 'open',
@@ -579,6 +584,7 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
     slug: tournament.slug,
     title: tournament.title,
     description: tournament.description,
+    rulesText: tournament.rulesText?.trim() || DEFAULT_TOURNAMENT_RULES_TEXT,
     imageUrl: tournament.imageUrl ?? null,
     regularSource: editableRegularSource(tournament, config),
     registrationMode:
@@ -884,6 +890,7 @@ function serializeDraft(draft: TournamentDraft): Record<string, unknown> {
   return {
     title: draft.title,
     description: draft.description,
+    rulesText: draft.rulesText,
     imageUrl: draft.imageUrl,
     startsAt: dateOrNull(
       draft.startsAt === ''
@@ -1696,6 +1703,7 @@ export function TournamentAdmin(): JSX.Element {
   const saveDebounce = useRef<number>();
   const saveQueueGeneration = useRef(0);
   const descriptionTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const rulesTextTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const createInFlight = useRef(false);
   const artworkUploadGeneration = useRef(0);
   const economyPresetRequestGeneration = useRef(0);
@@ -1710,6 +1718,17 @@ export function TournamentAdmin(): JSX.Element {
     setDraft((current) => ({
       ...current,
       description: `${current.description.slice(0, start)}${marker}${current.description.slice(start, end)}${marker}${current.description.slice(end)}`,
+    }));
+  };
+  const wrapRulesTextSelection = (marker: '**' | '*') => {
+    const field = rulesTextTextareaRef.current;
+    if (field === null) return;
+    const start = field.selectionStart;
+    const end = field.selectionEnd;
+    if (start === end) return;
+    setDraft((current) => ({
+      ...current,
+      rulesText: `${current.rulesText.slice(0, start)}${marker}${current.rulesText.slice(start, end)}${marker}${current.rulesText.slice(end)}`,
     }));
   };
   currentParticipantLimit.current = draft.participantLimit;
@@ -2380,6 +2399,41 @@ export function TournamentAdmin(): JSX.Element {
                         onChange={(event) =>
                           setDraft({ ...draft, description: event.target.value })
                         }
+                      />
+                    </TournamentAdminField>
+                    <TournamentAdminField
+                      label="Правила турнира"
+                      help="Этот текст увидят участники на вкладке «Правила». Поддерживаются заголовки ##, жирный текст и курсив."
+                    >
+                      <div
+                        className="tournament-description-editor__toolbar"
+                        aria-label="Форматирование правил турнира"
+                      >
+                        <button
+                          type="button"
+                          className="admin-compact-btn"
+                          aria-label="Жирный текст правил"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => wrapRulesTextSelection('**')}
+                        >
+                          Жирный
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-compact-btn"
+                          aria-label="Курсив правил"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => wrapRulesTextSelection('*')}
+                        >
+                          Курсив
+                        </button>
+                      </div>
+                      <textarea
+                        aria-label="Правила турнира"
+                        className="tournament-admin-textarea"
+                        ref={rulesTextTextareaRef}
+                        value={draft.rulesText}
+                        onChange={(event) => setDraft({ ...draft, rulesText: event.target.value })}
                       />
                     </TournamentAdminField>
                   </div>

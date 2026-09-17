@@ -10,6 +10,7 @@ export interface AdminTournament {
   slug: string;
   title: string;
   description: string;
+  rulesText?: string;
   imageUrl?: string | null;
   status: string;
   regularSource: TournamentRegularSource;

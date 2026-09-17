@@ -157,6 +157,7 @@ describe.skipIf(!hasIntegrationEnv)('beginner read-only tournament routes', () =
       slug: 'beginner-read-only-preview',
       title: 'Турнир для просмотра',
       description: 'Новичок видит детали, правила и таблицы',
+      rulesText: '## Правила для просмотра\n\n**Без скрытых условий**.',
       rules: previewTournamentRules(),
       createdBy: ADMIN_ID,
       registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
@@ -280,7 +281,11 @@ describe.skipIf(!hasIntegrationEnv)('beginner read-only tournament routes', () =
       ]);
       expect(reads.map((response) => response.statusCode)).toEqual([200, 200, 200, 200, 200]);
       expect(reads[1]!.json()).toMatchObject({
-        tournament: { id: tournament.id, rules: expect.any(Object) },
+        tournament: {
+          id: tournament.id,
+          rulesText: '## Правила для просмотра\n\n**Без скрытых условий**.',
+          rules: expect.any(Object),
+        },
       });
 
       const restricted = await Promise.all([

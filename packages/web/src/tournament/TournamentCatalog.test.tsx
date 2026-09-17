@@ -58,6 +58,7 @@ describe('TournamentCatalog', () => {
           slug: 'preview-cup',
           title: 'Кубок для просмотра',
           description: '**Свой** *лёд*',
+          rulesText: '## Свои правила\n\n**Только для участников**.',
           status: 'registration',
           regularSource: 'head_to_head',
           visibility: 'public',
@@ -101,6 +102,8 @@ describe('TournamentCatalog', () => {
     expect(applyButton.compareDocumentPosition(details!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByText('Свой').tagName).toBe('STRONG');
     expect(screen.getByText('лёд').tagName).toBe('EM');
+    expect(screen.getByText('Свои правила').tagName).toBe('H2');
+    expect(screen.getByText('Только для участников').tagName).toBe('STRONG');
 
     fireEvent.click(applyButton);
 

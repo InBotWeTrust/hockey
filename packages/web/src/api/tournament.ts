@@ -60,6 +60,7 @@ export interface TournamentSummary {
   slug: string;
   title: string;
   description: string;
+  rulesText?: string;
   imageUrl?: string | null;
   status: TournamentStatus;
   regularSource: TournamentRegularSource;

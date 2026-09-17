@@ -155,7 +155,7 @@ describe('TournamentAdmin', () => {
     });
   });
 
-  it('prefills a new tournament description and provides Markdown formatting controls', async () => {
+  it('prefills a new tournament description and editable rules with Markdown formatting controls', async () => {
     vi.spyOn(api, 'fetchAdminTournaments').mockResolvedValue({ tournaments: [] });
     vi.spyOn(api, 'fetchAdminTournamentDuelTemplates').mockResolvedValue({ templates: [] });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -179,6 +179,10 @@ describe('TournamentAdmin', () => {
       '**Турнир** для тех, кто уже считает этот лёд в этой игре своим.\nБросок за броском, серия за серией — до финальной сирены.',
     );
     expect(screen.getByRole('button', { name: 'Курсив' })).toBeInTheDocument();
+
+    const rulesText = screen.getByRole('textbox', { name: 'Правила турнира' });
+    expect((rulesText as HTMLTextAreaElement).value).toContain('Регулярный чемпионат');
+    expect((rulesText as HTMLTextAreaElement).value).toContain('Плей-офф');
   });
 
   it('applies the exact 16-player economy preset to a fresh draft', async () => {
@@ -3112,6 +3116,7 @@ describe('TournamentAdmin', () => {
       'registrationClosesAt',
       'registrationOpensAt',
       'rules',
+      'rulesText',
       'startsAt',
       'title',
     ]);

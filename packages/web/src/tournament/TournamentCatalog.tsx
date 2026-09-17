@@ -685,6 +685,9 @@ function playoffFormatLabel(kind: 'express' | 'express_plus' | 'classic'): strin
 }
 
 function TournamentRules({ tournament }: { tournament: TournamentSummary }): JSX.Element {
+  if (tournament.rulesText?.trim()) {
+    return <TournamentDescription value={tournament.rulesText} />;
+  }
   const config = objectValue(tournament.rules.config);
   const playoffRounds = Array.isArray(tournament.rules.playoffRounds)
     ? tournament.rules.playoffRounds
