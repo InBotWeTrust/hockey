@@ -13505,7 +13505,7 @@ button.daily-calendar__day:active {
 }
 
 .weekly-challenge-card__details {
-  padding: 14px 16px 16px;
+  padding: 16px;
   display: grid;
   gap: 10px;
   border-top: 2px solid rgba(83, 136, 192, 0.16);
