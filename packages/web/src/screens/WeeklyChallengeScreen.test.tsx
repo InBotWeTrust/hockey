@@ -281,7 +281,8 @@ describe('WeeklyChallengeScreen', () => {
     expect(screen.queryByRole('button', { name: 'Участвовать' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Отказаться' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Отклонить' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Получить награду' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Готовая награда' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Забрать награду' }));
     await waitFor(() => expect(api.claimWeeklyChallengeReward).toHaveBeenCalledWith(completed.id));
     expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
   });
@@ -309,8 +310,48 @@ describe('WeeklyChallengeScreen', () => {
     renderScreen();
 
     await screen.findByText('Токены за неделю');
-    fireEvent.click(screen.getByRole('button', { name: 'Получить награду' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Токены за неделю' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Забрать награду' }));
     expect(await screen.findByText('+7')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveClass('achievement-reward-toast');
+    expect(screen.getByRole('status')).toHaveTextContent('Награда за челлендж начислена');
+  });
+
+  it('keeps a completed challenge compact until the player opens its details', async () => {
+    const completed = challenge({
+      id: '55555555-5555-5555-5555-555555555555',
+      title: 'Закрытая неделя',
+      status: 'finished',
+      allTasksCompleted: true,
+      canClaimReward: true,
+      tasks: [{ ...challenge().tasks[0]!, progress: 500, completed: true }],
+    });
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
+      future: [],
+      active: [],
+      completed: [completed],
+    });
+
+    renderScreen();
+
+    await screen.findByText('Закрытая неделя');
+    expect(screen.getByRole('button', { name: 'Закрытая неделя' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(screen.queryByRole('list', { name: 'Задачи челленджа Закрытая неделя' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Забрать награду' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрытая неделя' }));
+
+    expect(screen.getByRole('button', { name: 'Закрытая неделя' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    expect(
+      screen.getByRole('list', { name: 'Задачи челленджа Закрытая неделя' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Забрать награду' })).toBeInTheDocument();
   });
 
   it('refreshes the open future catalog into the active week at Monday midnight Moscow', async () => {
@@ -360,9 +401,13 @@ describe('WeeklyChallengeScreen', () => {
     renderScreen();
     await screen.findByText('Идёт сейчас');
     await act(() => vi.advanceTimersByTimeAsync(30_000));
-    expect(await screen.findByText('Пройден')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Неделя снайпера' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
     expect(screen.getByRole('heading', { name: 'Пройденные (1)' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Получить награду' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Неделя снайпера' }));
+    expect(screen.getByRole('button', { name: 'Забрать награду' })).toBeInTheDocument();
   });
 
   it.each(['focus', 'pageshow', 'visibilitychange'])(

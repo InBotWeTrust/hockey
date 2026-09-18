@@ -28,8 +28,16 @@ describe('weekly challenge personal catalogue', () => {
     expect(classifyWeeklyChallengeForCatalog(challenge())).toBe('future');
   });
 
-  it('shows every running challenge as active', () => {
+  it('keeps an unclaimed running challenge active', () => {
     expect(classifyWeeklyChallengeForCatalog(challenge({ status: 'running' }))).toBe('active');
+  });
+
+  it('moves a claimed running challenge into history immediately', () => {
+    expect(
+      classifyWeeklyChallengeForCatalog(
+        challenge({ status: 'running', rewardClaimedAt: '2026-09-09T12:00:00.000Z' }),
+      ),
+    ).toBe('completed');
   });
 
   it('keeps only successfully completed challenges in history', () => {

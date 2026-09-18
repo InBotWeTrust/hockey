@@ -90,6 +90,8 @@ export function classifyWeeklyChallengeForCatalog(
   challenge: WeeklyChallengeDTO,
 ): WeeklyChallengeCatalogSection | null {
   if (challenge.status === 'future') return 'future';
-  if (challenge.status === 'running') return 'active';
+  if (challenge.status === 'running') {
+    return challenge.rewardClaimedAt !== null ? 'completed' : 'active';
+  }
   return challenge.allTasksCompleted || challenge.rewardClaimedAt !== null ? 'completed' : null;
 }

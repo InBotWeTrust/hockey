@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Check, CircleDollarSign, Sparkles, Star, Ticket, TrendingUp } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  CircleDollarSign,
+  Star,
+  Ticket,
+  TrendingUp,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchWeeklyChallengeCatalog, weeklyChallengeKeys } from '../api/weeklyChallenge.js';
@@ -135,6 +143,7 @@ export function WeeklyChallengeScreen({
   const achievementsRoute = profileContext ? '/profile/achievements' : '/achievements';
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [filter, setFilter] = useState<ChallengeFilter>('active');
+  const [expandedChallengeId, setExpandedChallengeId] = useState<string | null>(null);
   const [filterInitialized, setFilterInitialized] = useState(false);
   const previousCatalog = useRef<WeeklyChallengeCatalogResponse>();
   const [claimedReward, setClaimedReward] = useState<{
@@ -161,7 +170,7 @@ export function WeeklyChallengeScreen({
       triggerHaptic('success');
       setClaimError(null);
       setClaimedReward({ title: challenge.title, reward: challenge.reward });
-      window.setTimeout(() => setClaimedReward(null), 2800);
+      window.setTimeout(() => setClaimedReward(null), 5000);
       void queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
       void queryClient.invalidateQueries({ queryKey: ['profile'] });
       void queryClient.invalidateQueries({ queryKey: ['inventory'] });
@@ -188,10 +197,13 @@ export function WeeklyChallengeScreen({
       ),
     ].filter((delay) => Number.isFinite(delay) && delay >= 0);
     if (boundaryDelays.length === 0) return;
-    const id = window.setInterval(() => {
-      window.clearInterval(id);
-      void queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
-    }, Math.min(...boundaryDelays) + 250);
+    const id = window.setInterval(
+      () => {
+        window.clearInterval(id);
+        void queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
+      },
+      Math.min(...boundaryDelays) + 250,
+    );
     return () => window.clearInterval(id);
   }, [query.data, queryClient]);
 
@@ -263,7 +275,10 @@ export function WeeklyChallengeScreen({
               role="tab"
               className={`segmented-tabs__item weekly-challenge-filter${filter === item.id ? ' segmented-tabs__item--active' : ''}`}
               aria-selected={filter === item.id}
-              onClick={() => setFilter(item.id)}
+              onClick={() => {
+                setFilter(item.id);
+                setExpandedChallengeId(null);
+              }}
             >
               {item.label}
             </button>
@@ -285,9 +300,16 @@ export function WeeklyChallengeScreen({
                 key={challenge.id}
                 challenge={challenge}
                 nowMs={Date.parse(challenge.serverNow) + Math.max(0, nowMs - query.dataUpdatedAt)}
+                compact={filter === 'completed'}
+                expanded={expandedChallengeId === challenge.id}
                 claimPending={claim.isPending}
                 claimError={claimError}
                 onClaim={() => claim.mutate(challenge)}
+                onToggle={() =>
+                  setExpandedChallengeId((current) =>
+                    current === challenge.id ? null : challenge.id,
+                  )
+                }
               />
             ))}
           </div>
@@ -302,15 +324,21 @@ export function WeeklyChallengeScreen({
 function ChallengeCard({
   challenge,
   nowMs,
+  compact,
+  expanded,
   claimPending,
   claimError,
   onClaim,
+  onToggle,
 }: {
   challenge: WeeklyChallenge;
   nowMs: number;
+  compact: boolean;
+  expanded: boolean;
   claimPending: boolean;
   claimError: string | null;
   onClaim: () => void;
+  onToggle: () => void;
 }): JSX.Element {
   const timer = timerTargetText(challenge);
   const remaining = timer === null ? null : formatRemaining(Date.parse(timer.target) - nowMs);
@@ -320,6 +348,42 @@ function ChallengeCard({
       : challenge.status === 'running'
         ? 'Идёт сейчас'
         : 'Скоро';
+
+  if (compact) {
+    return (
+      <article
+        className={`glass weekly-challenge-card weekly-challenge-card--completed${expanded ? ' weekly-challenge-card--expanded' : ''}`}
+      >
+        <button
+          type="button"
+          className="weekly-challenge-card__summary"
+          aria-label={challenge.title || 'Пройденный челлендж'}
+          aria-expanded={expanded}
+          onClick={onToggle}
+        >
+          <span className="weekly-challenge-card__summary-copy">
+            {challenge.title && <strong>{challenge.title}</strong>}
+            <span>Завершён {dateText(challenge.endAt)} МСК</span>
+          </span>
+          <ChevronRight
+            className="weekly-challenge-card__summary-chevron"
+            size={18}
+            aria-hidden="true"
+          />
+        </button>
+        {expanded && (
+          <div className="weekly-challenge-card__details">
+            <ChallengeDetails
+              challenge={challenge}
+              claimPending={claimPending}
+              claimError={claimError}
+              onClaim={onClaim}
+            />
+          </div>
+        )}
+      </article>
+    );
+  }
 
   return (
     <article className="glass weekly-challenge-card">
@@ -332,17 +396,38 @@ function ChallengeCard({
         )}
       </div>
       <div>
-        {challenge.title && (
-          <h2 className="weekly-challenge-card__title">{challenge.title}</h2>
-        )}
+        {challenge.title && <h2 className="weekly-challenge-card__title">{challenge.title}</h2>}
         <div className="weekly-challenge-card__dates">
           {dateText(challenge.startAt)} — {dateText(challenge.endAt)} МСК
         </div>
-        {challenge.description && (
-          <p className="weekly-challenge-card__description">{challenge.description}</p>
-        )}
       </div>
 
+      <ChallengeDetails
+        challenge={challenge}
+        claimPending={claimPending}
+        claimError={claimError}
+        onClaim={onClaim}
+      />
+    </article>
+  );
+}
+
+function ChallengeDetails({
+  challenge,
+  claimPending,
+  claimError,
+  onClaim,
+}: {
+  challenge: WeeklyChallenge;
+  claimPending: boolean;
+  claimError: string | null;
+  onClaim: () => void;
+}): JSX.Element {
+  return (
+    <>
+      {challenge.description && (
+        <p className="weekly-challenge-card__description">{challenge.description}</p>
+      )}
       <div className="weekly-challenge-card__rewards" aria-label="Награда">
         <RewardChip
           label="Монеты"
@@ -411,7 +496,7 @@ function ChallengeCard({
 
       {challenge.canClaimReward && (
         <button type="button" className="btn btn--cta" onClick={onClaim} disabled={claimPending}>
-          Получить награду
+          Забрать награду
         </button>
       )}
       {challenge.rewardClaimedAt !== null && (
@@ -422,7 +507,7 @@ function ChallengeCard({
           {claimError}
         </div>
       )}
-    </article>
+    </>
   );
 }
 
@@ -434,21 +519,31 @@ function RewardToast({
   reward: WeeklyChallenge['reward'];
 }): JSX.Element {
   return (
-    <div className="weekly-challenge-reward-toast" aria-live="polite">
-      <div className="glass weekly-challenge-reward-toast__card">
-        <Sparkles size={24} color="var(--reward-coin)" />
-        <div>
-          <div className="weekly-challenge-reward-toast__title">{title}</div>
-          <div className="weekly-challenge-reward-toast__values">
-            {rewardPartItems(reward, { plus: true }).map((part, index) => (
-              <span key={part.tone} style={{ color: rewardColor(part.tone) }}>
-                {index > 0 ? '· ' : ''}
-                {part.text}
-              </span>
-            ))}
-          </div>
-        </div>
+    <div role="status" aria-live="polite" className="achievement-reward-toast">
+      <span className="achievement-reward-toast__status">Награда за челлендж начислена</span>
+      <strong className="achievement-reward-toast__title">{title}</strong>
+      <div className="achievement-reward-toast__values">
+        {rewardPartItems(reward, { plus: true }).map((part) => (
+          <span
+            className="achievement-reward-toast__value"
+            key={part.tone}
+            style={{ color: rewardColor(part.tone) }}
+          >
+            <span className="achievement-reward-toast__icon">
+              {rewardToastIcon(part.tone)}
+              <span>{part.text}</span>
+            </span>
+          </span>
+        ))}
       </div>
     </div>
   );
+}
+
+function rewardToastIcon(tone: RewardTone): JSX.Element {
+  if (tone === 'coin') return <CircleDollarSign size={15} strokeWidth={2.55} aria-hidden="true" />;
+  if (tone === 'star')
+    return <Star size={15} strokeWidth={2.55} fill="currentColor" aria-hidden="true" />;
+  if (tone === 'experience') return <TrendingUp size={15} strokeWidth={2.55} aria-hidden="true" />;
+  return <Ticket size={15} strokeWidth={2.55} aria-hidden="true" />;
 }

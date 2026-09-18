@@ -13447,6 +13447,71 @@ button.daily-calendar__day:active {
   gap: 10px;
 }
 
+.weekly-challenge-card--completed {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.weekly-challenge-card__summary {
+  width: 100%;
+  min-width: 0;
+  padding: 15px 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 0;
+  border-radius: 21px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.weekly-challenge-card__summary-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.weekly-challenge-card__summary-copy strong,
+.weekly-challenge-card__summary-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weekly-challenge-card__summary-copy strong {
+  font-size: 17px;
+  font-weight: 950;
+  line-height: 1.18;
+}
+
+.weekly-challenge-card__summary-copy span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.weekly-challenge-card__summary-chevron {
+  color: rgba(15, 23, 42, 0.42);
+  transition: transform 160ms ease;
+}
+
+.weekly-challenge-card__summary[aria-expanded='true'] .weekly-challenge-card__summary-chevron {
+  transform: rotate(-90deg);
+}
+
+.weekly-challenge-card__details {
+  padding: 14px 16px 16px;
+  display: grid;
+  gap: 10px;
+  border-top: 2px solid rgba(83, 136, 192, 0.16);
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .weekly-challenge-card__topline {
   min-height: 20px;
   display: flex;
@@ -13753,45 +13818,8 @@ button.daily-calendar__day:active {
   }
 }
 
-.weekly-challenge-reward-toast {
-  position: fixed;
-  z-index: 280;
-  right: 18px;
-  bottom: calc(88px + var(--app-safe-bottom));
-  left: 18px;
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.weekly-challenge-reward-toast__card {
-  width: min(100%, 330px);
-  padding: 14px 16px;
-  border-radius: 18px;
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-  animation: reward-pop 2.6s ease both;
-}
-
-.weekly-challenge-reward-toast__title {
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 950;
-}
-
-.weekly-challenge-reward-toast__values {
-  margin-top: 3px;
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  font-weight: 900;
-}
-
 @media (max-width: 420px) {
-  .weekly-challenge-card {
+  .weekly-challenge-card:not(.weekly-challenge-card--completed) {
     padding-right: 14px;
     padding-left: 14px;
   }
