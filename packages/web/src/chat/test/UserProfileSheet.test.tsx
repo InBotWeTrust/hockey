@@ -191,6 +191,45 @@ describe('UserProfileSheet', () => {
       'Кубок открытия',
     );
   });
+
+  it('reveals completed challenge tasks from a public profile only after selecting a challenge', async () => {
+    vi.mocked(api.fetchUserProfile).mockResolvedValueOnce({
+      ...publicProfile,
+      trophySummary: {
+        regularSeasonWins: publicProfile.trophySummary?.regularSeasonWins ?? 0,
+        tournamentChampionships: publicProfile.trophySummary?.tournamentChampionships ?? 0,
+        tournamentPodiums: publicProfile.trophySummary?.tournamentPodiums ?? 0,
+        completedChallenges: 1,
+      },
+      trophyDetails: {
+        regularSeasonWins: publicProfile.trophyDetails?.regularSeasonWins ?? [],
+        tournamentChampionships: publicProfile.trophyDetails?.tournamentChampionships ?? [],
+        tournamentPodiums: publicProfile.trophyDetails?.tournamentPodiums ?? [],
+        completedChallenges: [
+          {
+            id: 'challenge-1',
+            title: 'Неделя точности',
+            startsAt: '2026-08-10T10:00:00.000Z',
+            endsAt: '2026-08-17T10:00:00.000Z',
+            tasks: [{ title: 'Забросить шайбы', target: 25 }],
+          },
+        ],
+      },
+    });
+    await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
+      onClose: vi.fn(),
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /пройденные челленджи/i }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Пройденные челленджи (1)' });
+    expect(within(dialog).queryByRole('listitem')).not.toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Неделя точности' }));
+    expect(within(dialog).getByRole('listitem')).toHaveTextContent('Забросить шайбы');
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
     act(() => {

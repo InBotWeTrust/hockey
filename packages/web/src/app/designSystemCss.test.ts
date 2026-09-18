@@ -98,3 +98,16 @@ describe('completed weekly challenge details', () => {
     expect(detailsDescription).toContain('margin-top: 0');
   });
 });
+
+describe('completed challenge history modal', () => {
+  it('keeps its header fixed while the list scrolls inside an 80% viewport cap', () => {
+    const modal = rule('.modal-card.profile-trophy-history-modal');
+    const viewport = rule('.profile-trophy-history-modal > div:last-child');
+
+    expect(modal).toContain('80dvh');
+    expect(modal).toContain('grid-template-rows: auto minmax(0, 1fr)');
+    expect(modal).toContain('overflow: hidden');
+    expect(viewport).toContain('overflow-y: auto');
+    expect(viewport).toContain('overscroll-behavior: contain');
+  });
+});

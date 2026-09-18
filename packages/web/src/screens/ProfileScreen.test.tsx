@@ -651,17 +651,37 @@ describe('ProfileScreen', () => {
     expect(screen.getByRole('img', { name: 'Кубок открытия' })).toHaveAttribute('src', '/cup.webp');
   });
 
-  it('renders completed challenge tasks as aligned rows with their targets', async () => {
-    mockProfileRequest();
+  it('reveals tasks for only the selected completed challenge', async () => {
+    mockProfileRequest(200, {
+      ...profile,
+      trophyDetails: {
+        ...profile.trophyDetails,
+        completedChallenges: [
+          ...profile.trophyDetails.completedChallenges,
+          {
+            id: 'challenge-2',
+            title: 'Неделя силы',
+            startsAt: '2026-08-17T10:00:00.000Z',
+            endsAt: '2026-08-24T10:00:00.000Z',
+            tasks: [{ title: 'Сделать силовые броски', target: 10 }],
+          },
+        ],
+      },
+    });
     renderProfile();
 
     fireEvent.click(await screen.findByRole('button', { name: /пройденные челленджи/i }));
 
-    const dialog = await screen.findByRole('dialog', { name: 'Пройденные челленджи (1)' });
-    const task = within(dialog).getByRole('listitem');
-    expect(task).toHaveTextContent('Забросить шайбы');
-    expect(task).toHaveTextContent('25');
-    expect(dialog.querySelector('.profile-trophy-history__challenge-tasks')).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: 'Пройденные челленджи (2)' });
+    expect(within(dialog).queryByRole('listitem')).not.toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /Неделя точности/i }));
+    expect(within(dialog).getByRole('listitem')).toHaveTextContent('Забросить шайбы');
+    expect(within(dialog).getByRole('listitem')).toHaveTextContent('25');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /Неделя силы/i }));
+    expect(within(dialog).queryByText('Забросить шайбы')).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('listitem')).toHaveTextContent('Сделать силовые броски');
   });
 
   it('uses the default tournament artwork when a trophy has no image', async () => {

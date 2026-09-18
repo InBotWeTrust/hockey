@@ -4229,6 +4229,34 @@
   display: grid;
   gap: 10px;
 }
+
+.modal-card.profile-trophy-history-modal {
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(
+    80dvh,
+    calc(
+      var(--app-viewport-height, 100dvh) - var(--app-safe-top) - var(--app-safe-bottom) - 32px
+    ),
+    760px
+  );
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.profile-trophy-history-modal > div:last-child {
+  min-height: 0;
+  max-height: min(
+    calc(80dvh - 74px),
+    calc(
+      var(--app-viewport-height, 100dvh) - var(--app-safe-top) - var(--app-safe-bottom) - 106px
+    ),
+    660px
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .profile-trophy-history__tournament {
   min-width: 0;
   display: grid;
@@ -4259,7 +4287,7 @@
   color: var(--ink);
 }
 .profile-trophy-history__tournament small,
-.profile-trophy-history__challenge > span {
+.profile-trophy-history__challenge-summary small {
   color: var(--muted);
   font-size: 12px;
 }
@@ -4274,13 +4302,50 @@
 .profile-trophy-history__challenge {
   display: grid;
   gap: 5px;
-  padding: 12px;
+  padding: 8px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.32);
   border: 1px solid rgba(255, 255, 255, 0.5);
 }
-.profile-trophy-history__challenge strong {
+.profile-trophy-history__challenge-toggle {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.profile-trophy-history__challenge-toggle:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.72);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+.profile-trophy-history__challenge-summary {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.profile-trophy-history__challenge-summary strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--ink);
+}
+.profile-trophy-history__challenge-toggle svg {
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  transition: transform 160ms ease;
+}
+.profile-trophy-history__challenge-toggle[aria-expanded='true'] svg {
+  transform: rotate(180deg);
 }
 .profile-trophy-history__challenge p {
   margin: 2px 0 0;

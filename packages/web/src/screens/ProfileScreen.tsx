@@ -2,6 +2,7 @@ import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Award,
+  ChevronDown,
   CircleDollarSign,
   Medal,
   Star,
@@ -415,6 +416,7 @@ export function TrophyHistoryModal({
   details: NonNullable<ProfileData['trophyDetails']>;
   onClose: () => void;
 }): JSX.Element {
+  const [expandedChallengeId, setExpandedChallengeId] = useState<string | null>(null);
   const title = TROPHY_SECTION_TITLES[section];
   const isChallenge = section === 'completedChallenges';
   const challengeItems = details.completedChallenges;
@@ -426,11 +428,6 @@ export function TrophyHistoryModal({
       ariaLabel={`${title} (${itemCount})`}
       onRequestClose={onClose}
       cardClassName="profile-trophy-history-modal"
-      cardStyle={{
-        width: 'min(560px, calc(100vw - 32px))',
-        maxHeight: 'calc(100dvh - 32px - var(--app-safe-top) - var(--app-safe-bottom))',
-        overflowY: 'auto',
-      }}
       headerAction={
         <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
           <X size={16} />
@@ -443,16 +440,31 @@ export function TrophyHistoryModal({
         {isChallenge
           ? challengeItems.map((item) => (
               <article className="profile-trophy-history__challenge" key={item.id}>
-                <strong>{item.title}</strong>
-                <span>{formatTrophyDateRange(item.startsAt, item.endsAt)}</span>
-                <ul className="profile-trophy-history__challenge-tasks">
-                  {item.tasks.map((task, index) => (
-                    <li key={`${task.title}:${index}`}>
-                      <span>{task.title}</span>
-                      <strong>{formatProfileNumber(task.target)}</strong>
-                    </li>
-                  ))}
-                </ul>
+                <button
+                  type="button"
+                  className="profile-trophy-history__challenge-toggle"
+                  aria-label={item.title}
+                  aria-expanded={expandedChallengeId === item.id}
+                  onClick={() =>
+                    setExpandedChallengeId((current) => (current === item.id ? null : item.id))
+                  }
+                >
+                  <span className="profile-trophy-history__challenge-summary">
+                    <strong>{item.title}</strong>
+                    <small>{formatTrophyDateRange(item.startsAt, item.endsAt)}</small>
+                  </span>
+                  <ChevronDown aria-hidden="true" />
+                </button>
+                {expandedChallengeId === item.id ? (
+                  <ul className="profile-trophy-history__challenge-tasks">
+                    {item.tasks.map((task, index) => (
+                      <li key={`${task.title}:${index}`}>
+                        <span>{task.title}</span>
+                        <strong>{formatProfileNumber(task.target)}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </article>
             ))
           : tournamentItems.map((item) => (
