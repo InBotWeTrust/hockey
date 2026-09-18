@@ -509,7 +509,7 @@ export interface UserPublicProfileDTO {
       title: string;
       startsAt: string;
       endsAt: string;
-      tasks: Array<{ title: string; target: number }>;
+      tasks: Array<{ title: string; progress: number; target: number }>;
     }>;
   };
   createdAt: string; // ISO

@@ -110,4 +110,12 @@ describe('completed challenge history modal', () => {
     expect(viewport).toContain('overflow-y: auto');
     expect(viewport).toContain('overscroll-behavior: contain');
   });
+
+  it('uses the duel-style divider below an expanded challenge summary', () => {
+    const expandedSummary = rule(
+      ".profile-trophy-history__challenge-toggle[aria-expanded='true']",
+    );
+
+    expect(expandedSummary).toContain('border-bottom: 1px solid rgba(15, 23, 42, 0.08)');
+  });
 });

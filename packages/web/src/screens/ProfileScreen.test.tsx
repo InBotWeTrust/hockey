@@ -68,7 +68,7 @@ const profile = {
         title: 'Неделя точности',
         startsAt: '2026-08-10T10:00:00.000Z',
         endsAt: '2026-08-17T10:00:00.000Z',
-        tasks: [{ title: 'Забросить шайбы', target: 25 }],
+        tasks: [{ title: 'Забросить шайбы', progress: 29, target: 25 }],
       },
     ],
   },
@@ -663,7 +663,7 @@ describe('ProfileScreen', () => {
             title: 'Неделя силы',
             startsAt: '2026-08-17T10:00:00.000Z',
             endsAt: '2026-08-24T10:00:00.000Z',
-            tasks: [{ title: 'Сделать силовые броски', target: 10 }],
+            tasks: [{ title: 'Сделать силовые броски', progress: 14, target: 10 }],
           },
         ],
       },
@@ -674,14 +674,28 @@ describe('ProfileScreen', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Пройденные челленджи (2)' });
     expect(within(dialog).queryByRole('listitem')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Неделя точности')).not.toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole('button', { name: /Неделя точности/i }));
+    const firstChallenge = within(dialog).getByRole('button', {
+      name: 'Завершён 17 августа, 13:00 МСК',
+    });
+    expect(firstChallenge).toHaveAttribute('aria-expanded', 'false');
+    expect(firstChallenge.querySelector('svg')).toHaveClass(
+      'profile-trophy-history__challenge-chevron',
+    );
+
+    fireEvent.click(firstChallenge);
+    expect(firstChallenge).toHaveAttribute('aria-expanded', 'true');
+    expect(within(dialog).getByText('Неделя точности')).toBeInTheDocument();
     expect(within(dialog).getByRole('listitem')).toHaveTextContent('Забросить шайбы');
-    expect(within(dialog).getByRole('listitem')).toHaveTextContent('25');
+    expect(within(dialog).getByRole('listitem')).toHaveTextContent('29 / 25');
 
-    fireEvent.click(within(dialog).getByRole('button', { name: /Неделя силы/i }));
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Завершён 24 августа, 13:00 МСК' }),
+    );
     expect(within(dialog).queryByText('Забросить шайбы')).not.toBeInTheDocument();
     expect(within(dialog).getByRole('listitem')).toHaveTextContent('Сделать силовые броски');
+    expect(within(dialog).getByRole('listitem')).toHaveTextContent('14 / 10');
   });
 
   it('uses the default tournament artwork when a trophy has no image', async () => {

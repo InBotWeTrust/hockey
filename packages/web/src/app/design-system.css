@@ -4301,8 +4301,7 @@
 }
 .profile-trophy-history__challenge {
   display: grid;
-  gap: 5px;
-  padding: 8px;
+  overflow: hidden;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.32);
   border: 1px solid rgba(255, 255, 255, 0.5);
@@ -4314,8 +4313,9 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 4px;
+  padding: 15px 16px;
   border: 0;
+  border-radius: 15px;
   background: transparent;
   color: inherit;
   font: inherit;
@@ -4329,31 +4329,41 @@
 }
 .profile-trophy-history__challenge-summary {
   min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-.profile-trophy-history__challenge-summary strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--ink);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
 }
-.profile-trophy-history__challenge-toggle svg {
+.profile-trophy-history__challenge-chevron {
   width: 18px;
   height: 18px;
-  color: var(--muted);
+  color: rgba(15, 23, 42, 0.42);
   transition: transform 160ms ease;
 }
-.profile-trophy-history__challenge-toggle[aria-expanded='true'] svg {
-  transform: rotate(180deg);
+.profile-trophy-history__challenge-toggle[aria-expanded='true'] .profile-trophy-history__challenge-chevron {
+  transform: rotate(-90deg);
 }
-.profile-trophy-history__challenge p {
-  margin: 2px 0 0;
+.profile-trophy-history__challenge-toggle[aria-expanded='true'] {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 15px 15px 0 0;
+}
+.profile-trophy-history__challenge-details {
+  display: grid;
+  gap: 10px;
+  padding: 10px 16px 16px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.profile-trophy-history__challenge-details > strong {
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.25;
 }
 .profile-trophy-history__challenge-tasks {
   display: grid;
   gap: 7px;
-  margin: 4px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }

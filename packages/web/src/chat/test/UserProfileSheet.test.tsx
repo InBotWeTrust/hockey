@@ -211,7 +211,7 @@ describe('UserProfileSheet', () => {
             title: 'Неделя точности',
             startsAt: '2026-08-10T10:00:00.000Z',
             endsAt: '2026-08-17T10:00:00.000Z',
-            tasks: [{ title: 'Забросить шайбы', target: 25 }],
+            tasks: [{ title: 'Забросить шайбы', progress: 41, target: 25 }],
           },
         ],
       },
@@ -226,8 +226,11 @@ describe('UserProfileSheet', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Пройденные челленджи (1)' });
     expect(within(dialog).queryByRole('listitem')).not.toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Неделя точности' }));
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Завершён 17 августа, 13:00 МСК' }),
+    );
     expect(within(dialog).getByRole('listitem')).toHaveTextContent('Забросить шайбы');
+    expect(within(dialog).getByRole('listitem')).toHaveTextContent('41 / 25');
   });
 
   afterEach(() => {

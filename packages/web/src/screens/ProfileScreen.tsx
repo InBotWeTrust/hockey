@@ -2,7 +2,7 @@ import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Award,
-  ChevronDown,
+  ChevronRight,
   CircleDollarSign,
   Medal,
   Star,
@@ -75,6 +75,19 @@ function formatTrophyDateRange(startsAt: string | null, endsAt: string | null): 
   const end = format(endsAt);
   if (start !== null && end !== null) return `${start} — ${end}`;
   return start ?? end ?? 'Дата проведения не указана';
+}
+
+function formatChallengeCompletedAt(value: string): string {
+  const parts = new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Moscow',
+  }).formatToParts(new Date(value));
+  const get = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return `Завершён ${get('day')} ${get('month')}, ${get('hour')}:${get('minute')} МСК`;
 }
 
 function ProfileBalance({
@@ -443,27 +456,31 @@ export function TrophyHistoryModal({
                 <button
                   type="button"
                   className="profile-trophy-history__challenge-toggle"
-                  aria-label={item.title}
+                  aria-label={formatChallengeCompletedAt(item.endsAt)}
                   aria-expanded={expandedChallengeId === item.id}
                   onClick={() =>
                     setExpandedChallengeId((current) => (current === item.id ? null : item.id))
                   }
                 >
                   <span className="profile-trophy-history__challenge-summary">
-                    <strong>{item.title}</strong>
-                    <small>{formatTrophyDateRange(item.startsAt, item.endsAt)}</small>
+                    {formatChallengeCompletedAt(item.endsAt)}
                   </span>
-                  <ChevronDown aria-hidden="true" />
+                  <ChevronRight className="profile-trophy-history__challenge-chevron" aria-hidden="true" />
                 </button>
                 {expandedChallengeId === item.id ? (
-                  <ul className="profile-trophy-history__challenge-tasks">
-                    {item.tasks.map((task, index) => (
-                      <li key={`${task.title}:${index}`}>
-                        <span>{task.title}</span>
-                        <strong>{formatProfileNumber(task.target)}</strong>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="profile-trophy-history__challenge-details">
+                    {item.title !== '' ? <strong>{item.title}</strong> : null}
+                    <ul className="profile-trophy-history__challenge-tasks">
+                      {item.tasks.map((task, index) => (
+                        <li key={`${task.title}:${index}`}>
+                          <span>{task.title}</span>
+                          <strong>
+                            {formatProfileNumber(task.progress)} / {formatProfileNumber(task.target)}
+                          </strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ) : null}
               </article>
             ))

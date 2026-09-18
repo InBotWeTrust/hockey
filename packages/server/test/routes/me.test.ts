@@ -221,6 +221,48 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     expect(fullBody.experienceBalance).toBe(0);
   });
 
+  it('returns uncapped completed challenge progress in the trophy history', async () => {
+    const player = await loginTelegram({ id: '4199', first_name: 'Challenge history player' });
+    const challenge = await app.pg.query<{ id: string }>(
+      `insert into weekly_challenges (title, join_open_at, start_at, end_at)
+       values ('История челленджа', now() - interval '6 days', now() - interval '6 days', now() - interval '1 day')
+       returning id`,
+    );
+    const challengeId = challenge.rows[0]!.id;
+    await app.pg.query(
+      `insert into weekly_challenge_tasks (challenge_id, type, title, target)
+       values ($1, 'goals_scored', 'Забросить шайбы', 2)`,
+      [challengeId],
+    );
+    await app.pg.query(
+      `insert into weekly_challenge_reward_claims (challenge_id, user_id, coins, stars, experience)
+       values ($1, $2, 0, 0, 0)`,
+      [challengeId, player.user.id],
+    );
+    await insertDailyShot(player.user.id, 5, 1);
+    await insertDailyShot(player.user.id, 4, 1);
+    await insertDailyShot(player.user.id, 3, 1);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { authorization: `Bearer ${player.accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      trophyDetails: {
+        completedChallenges: [
+          {
+            id: challengeId,
+            title: 'История челленджа',
+            tasks: [{ title: 'Забросить шайбы', progress: 3, target: 2 }],
+          },
+        ],
+      },
+    });
+  });
+
   it('opts Sections into pending podium congratulations and acknowledges them idempotently', async () => {
     const owner = await loginTelegram({ id: '4201', first_name: 'Winner' });
     const other = await loginTelegram({ id: '4202', first_name: 'Other' });

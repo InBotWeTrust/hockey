@@ -6,6 +6,8 @@ import {
 } from '../achievements/service.js';
 import { getGameSettings } from '../duel/gameSettings.js';
 import { ACTIVITY_STREAK_CTES } from './activityStreak.js';
+import { fetchWeeklyChallengeProgress } from '../weeklyChallenge/progress.js';
+import type { WeeklyChallengeTaskType } from '../weeklyChallenge/types.js';
 
 type Queryable = Pool | PoolClient;
 
@@ -47,7 +49,7 @@ export interface ChallengeTrophyDetailDTO {
   title: string;
   startsAt: string;
   endsAt: string;
-  tasks: Array<{ title: string; target: number }>;
+  tasks: Array<{ title: string; progress: number; target: number }>;
 }
 
 export interface TrophyDetailsDTO {
@@ -277,7 +279,7 @@ export async function fetchTrophyDetails(db: Queryable, userId: string): Promise
     title: string;
     start_at: Date;
     end_at: Date;
-    tasks: Array<{ title: string; target: number }>;
+    tasks: Array<{ title: string; type: WeeklyChallengeTaskType; target: number }>;
   }>(
     `select challenge.id, challenge.title, challenge.start_at, challenge.end_at,
             jsonb_agg(jsonb_build_object(
@@ -287,6 +289,7 @@ export async function fetchTrophyDetails(db: Queryable, userId: string): Promise
                 when 'duels_won' then 'Победить в дуэлях'
                 when 'duel_invites_sent' then 'Пригласить соперников'
                 else 'Завершить тренировки' end),
+              'type', task.type,
               'target', task.target
             ) order by task.sort_order asc, task.created_at asc) as tasks
        from weekly_challenge_reward_claims claim
@@ -297,17 +300,31 @@ export async function fetchTrophyDetails(db: Queryable, userId: string): Promise
       order by challenge.end_at desc, challenge.start_at desc`,
     [userId],
   );
+  const completedChallenges = await Promise.all(
+    challengeRows.map(async (row) => {
+      const progress = await fetchWeeklyChallengeProgress(db, {
+        userId,
+        from: row.start_at,
+        to: row.end_at,
+      });
+      return {
+        id: row.id,
+        title: row.title,
+        startsAt: row.start_at.toISOString(),
+        endsAt: row.end_at.toISOString(),
+        tasks: row.tasks.map((task) => ({
+          title: task.title,
+          progress: progress[task.type],
+          target: task.target,
+        })),
+      };
+    }),
+  );
   const details: TrophyDetailsDTO = {
     regularSeasonWins: [],
     tournamentChampionships: [],
     tournamentPodiums: [],
-    completedChallenges: challengeRows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      startsAt: row.start_at.toISOString(),
-      endsAt: row.end_at.toISOString(),
-      tasks: row.tasks,
-    })),
+    completedChallenges,
   };
   for (const row of tournamentRows) {
     details[row.category].push({
