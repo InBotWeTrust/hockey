@@ -85,3 +85,16 @@ describe('profile community and story layout', () => {
     expect(telegramImage).toContain('object-position: center');
   });
 });
+
+describe('completed weekly challenge details', () => {
+  it('uses the same 10px rhythm above and below the description', () => {
+    const details = rule('.weekly-challenge-card__details');
+    const detailsDescription = rule(
+      '.weekly-challenge-card__details > .weekly-challenge-card__description',
+    );
+
+    expect(details).toContain('padding: 10px 16px 16px');
+    expect(details).toContain('gap: 10px');
+    expect(detailsDescription).toContain('margin-top: 0');
+  });
+});
