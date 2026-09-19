@@ -4138,7 +4138,7 @@ describe('DailyScreen', () => {
 
   it('starts an available course exercise on the courtyard with first-period speeds', async () => {
     const firstPreset = DAILY_PERIOD_SPEED_PRESETS[0]!;
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, _init) => {
       const url = input instanceof Request ? input.url : String(input);
       let body: unknown = trainingIdleState;
       if (url.endsWith('/duel/training/course/first-shot/start')) {
