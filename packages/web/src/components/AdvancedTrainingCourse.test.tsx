@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   AdvancedTrainingCatalog,
   AdvancedTrainingHubCard,
+  advancedTrainingFeedbackCopy,
+  advancedTrainingFeedbackTone,
   type AdvancedTrainingCatalogModel,
 } from './AdvancedTrainingCourse.js';
 
@@ -34,6 +36,21 @@ const catalog: AdvancedTrainingCatalogModel = {
 };
 
 describe('advanced training course UI', () => {
+  it.each([
+    ['technique_success', 'Приём выполнен', 'success'],
+    ['early', 'Рано', 'error'],
+    ['late', 'Поздно', 'error'],
+    ['goalie_blocked', 'Сэйв', 'error'],
+    ['miss_wide', 'Мимо', 'error'],
+    ['goal_wrong_technique', 'Гол, но', 'error'],
+    ['intentional_miss_required', 'намеренно промахнуться', 'error'],
+    ['series_step_accepted', 'Бросок серии выполнен', 'success'],
+    ['series_incomplete', 'Серия не завершена', 'error'],
+  ] as const)('maps %s to an instructional post-shot notice', (code, copy, tone) => {
+    expect(advancedTrainingFeedbackCopy(code)).toContain(copy);
+    expect(advancedTrainingFeedbackTone(code)).toBe(tone);
+  });
+
   it('uses its own artwork on the global course card', () => {
     render(
       <AdvancedTrainingHubCard

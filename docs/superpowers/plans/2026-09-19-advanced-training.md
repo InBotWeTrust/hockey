@@ -31,6 +31,7 @@
 - A user satisfying only one of the two access conditions must see the card and both condition states but cannot start an exercise; Tasks 1 and 4 cover all four combinations.
 - Direct URLs and stale clients must not bypass amateur access, beginner completion, or sequential unlocks; Task 4 tests every server guard.
 - A normal goal that does not satisfy the requested technique must fail the situation and return specific feedback; Tasks 2 and 5 cover classification and response copy.
+- Every server-verified shot produces a post-result scene notice using the initial-course visual pattern: correct technique, save, miss, early, late, wrong technique, and series progress/failure. Generic request-failure copy is reserved for transport/API errors.
 - Retried or concurrent final requests must not add a second completion, star, or experience point; Tasks 3 and 5 pin atomicity.
 - Leaving during demonstration, practice, or assessment must discard the run while retaining earlier completed exercises only; Tasks 3, 5, and 7 cover fresh restart behavior.
 
@@ -414,6 +415,8 @@ export interface AdvancedTrainingShotResponse {
 - [ ] **Step 3: Implement demonstrations and practice guidance**
 
 Drive two read-only scripted shots from the server’s demonstration definitions. Pause before each important moment, draw the trajectory overlay, and show explanation copy. Practice uses the server-selected scenario, a soft pre-window glow, and mapped feedback: `Рано`, `Поздно`, `Вратарь перекрыл`, `Мимо створа`, or the exercise-specific wrong-technique message.
+
+Feed every accepted practice and assessment response into `PlayView.statusNotice`, reusing the initial-course notice styling. Delay the notice until the result overlay clears (`500 ms`) and keep it visible for `3.5 s`. Use success tone only for a correctly completed technique or an accepted intermediate series step; saves, misses, timing errors, wrong-technique goals, and broken series use error tone. API failures remain separate generic error notices.
 
 - [ ] **Step 4: Implement assessment and series behavior**
 

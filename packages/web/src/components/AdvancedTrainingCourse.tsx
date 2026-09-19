@@ -13,6 +13,41 @@ export type AdvancedTrainingExerciseKey =
   | 'second-tempo'
   | 'rhythm-reset';
 
+export type AdvancedTrainingFeedbackCode =
+  | 'technique_success'
+  | 'early'
+  | 'late'
+  | 'goalie_blocked'
+  | 'miss_wide'
+  | 'goal_wrong_technique'
+  | 'intentional_miss_required'
+  | 'series_step_accepted'
+  | 'series_incomplete';
+
+const advancedTrainingFeedback: Record<AdvancedTrainingFeedbackCode, string> = {
+  technique_success: 'Приём выполнен — продолжай в том же ритме!',
+  early: 'Рано — дай ситуации раскрыться и бросай чуть позже.',
+  late: 'Поздно — окно уже закрылось, попробуй бросить раньше.',
+  goalie_blocked: 'Сэйв — вратарь перекрыл траекторию. Ищи свободную сторону.',
+  miss_wide: 'Мимо — скорректируй направление броска по створу.',
+  goal_wrong_technique: 'Гол, но нужен приём этого упражнения.',
+  intentional_miss_required: 'Сначала нужно было намеренно промахнуться, чтобы сбросить ритм.',
+  series_step_accepted: 'Бросок серии выполнен — продолжай комбинацию.',
+  series_incomplete: 'Серия не завершена — следующий бросок должен продолжить комбинацию.',
+};
+
+export function advancedTrainingFeedbackCopy(code: AdvancedTrainingFeedbackCode): string {
+  return advancedTrainingFeedback[code];
+}
+
+export function advancedTrainingFeedbackTone(
+  code: AdvancedTrainingFeedbackCode,
+): 'success' | 'error' {
+  return code === 'technique_success' || code === 'series_step_accepted'
+    ? 'success'
+    : 'error';
+}
+
 export interface AdvancedTrainingCatalogExercise {
   key: AdvancedTrainingExerciseKey;
   position: number;
