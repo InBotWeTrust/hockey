@@ -6,6 +6,7 @@ export interface ResultModalProps {
   subText?: string | null;
   displayKind?: ResultModalKind | undefined;
   title?: string | undefined;
+  details?: readonly string[] | undefined;
 }
 
 export type ResultModalKind = ShotResult['type'] | 'post';
@@ -48,6 +49,7 @@ export function ResultModal({
   durationMs,
   displayKind,
   title,
+  details,
 }: ResultModalProps): JSX.Element {
   const theme = THEMES[displayKind ?? result.type];
 
@@ -105,6 +107,15 @@ export function ResultModal({
         >
           {title ?? theme.title}
         </div>
+        {details && details.length > 0 ? (
+          <div className="result-modal__details">
+            {details.map((detail) => (
+              <div key={detail} className="result-modal__detail">
+                {detail}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
     </>
   );

@@ -2414,6 +2414,23 @@
   line-height: 1;
 }
 
+.result-modal__details {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  color: #111827;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+.result-modal__detail:first-child {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
 .bonus-game-result-reward {
   margin-top: 12px;
   padding: 12px 14px;

@@ -1010,6 +1010,60 @@ describe('PlayView', () => {
     expect(applyState).toHaveBeenCalledWith({});
   });
 
+  it('renders the local shot presentation and replaces it with authoritative details', async () => {
+    vi.useFakeTimers();
+    let resolveShot:
+      | ((value: {
+          serverResult: 'goal';
+          state: { total: number };
+          resultPresentation: { title: string; details: string[] };
+        }) => void)
+      | undefined;
+    render(
+      <PlayView<{ total: number }>
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        reduceMotion
+        active
+        seed="marksmanship-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotResolver={() => ({ type: 'goal', hitPoint: { x: 286, y: 60 } })}
+        onShotResolved={() => ({
+          title: 'ГОЛ',
+          details: ['+170', 'Точный момент · противоход'],
+        })}
+        optimisticAddShot={() => undefined}
+        submitShot={() =>
+          new Promise((resolve) => {
+            resolveShot = resolve;
+          })
+        }
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+
+    expect(screen.getByRole('status')).toHaveTextContent('ГОЛ+170Точный момент · противоход');
+
+    await act(async () => {
+      resolveShot?.({
+        serverResult: 'goal',
+        state: { total: 155 },
+        resultPresentation: { title: 'ГОЛ', details: ['+155', 'Узкое окно'] },
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole('status')).toHaveTextContent('ГОЛ+155Узкое окно');
+  });
+
   it('does not apply a resolved shot after its game session is no longer current', async () => {
     vi.useFakeTimers();
     vi.spyOn(performance, 'now').mockReturnValue(1_000);
