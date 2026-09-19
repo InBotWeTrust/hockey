@@ -550,7 +550,7 @@ git commit -m "feat(web): add marksmanship bonus game UI"
 - Consumes: all previous tasks.
 - Produces: reviewed branch ready for a PR to `dev`; production remains out of scope.
 
-- [ ] **Step 1: Run all proportional local checks**
+- [x] **Step 1: Run all proportional local checks**
 
 Run:
 
@@ -564,7 +564,7 @@ pnpm lint
 git diff --check
 ```
 
-- [ ] **Step 2: Review the branch diff against the spec**
+- [x] **Step 2: Review the branch diff against the spec**
 
 Confirm no changes to speed/accuracy seeded rules, no inventory consumption, no arena unlock, no records, marksmanship allowance exactly 100, and no production workflow edits.
 
@@ -572,7 +572,7 @@ Confirm no changes to speed/accuracy seeded rules, no inventory consumption, no 
 
 At a small mobile viewport, exercise success, failure, save/miss, counter-direction, exact target completion, final pre-zero shot, reload, and duplicate request. Capture screenshots of the catalog tab, score HUD, goal modal, and failure screen.
 
-- [ ] **Step 4: Commit verification notes**
+- [x] **Step 4: Commit verification notes**
 
 ```bash
 git add docs/superpowers/plans/2026-09-19-marksmanship-bonus-games.md
@@ -582,3 +582,17 @@ git commit -m "docs: record marksmanship verification"
 - [ ] **Step 5: Open a PR targeting `dev` only after user approval**
 
 Do not merge or deploy from this step without the user’s explicit dev-release authorization. Report local checks, CI, integrated SHA, dev runtime, and browser acceptance separately.
+
+#### Verification evidence — 2026-09-20
+
+- `pnpm --filter @hockey/game-core test`: PASS, 16 files and 103 tests; the 30-seed target sweep passed with the seven stored targets unchanged.
+- `pnpm --filter @hockey/game-core build`: PASS.
+- Default-timeout scoped server run: BLOCKED by three migration-heavy `beforeAll` hook timeouts; 167 assertions passed and no assertion failed. `pg_stat_activity` showed no blocking session.
+- The same scoped server suites with `--hookTimeout 30000`: PASS, 10 files and 206 tests in 50.42 seconds. `attempts.test.ts` also passed 20/20 separately with that hook timeout. No production timeout was changed for a local migration-speed issue.
+- `pnpm --filter @hockey/web test`: PASS. The runner passed the 148-file/1390-test main block, the three isolated suites (`36`, `14`, and `67` tests), and every enumerated `DailyScreen` scenario.
+- `pnpm typecheck`: PASS for game-core, mobile, server, and web.
+- `pnpm lint`: PASS.
+- `git diff --check 821f81e2..HEAD`: PASS.
+- Diff review: speed/accuracy seed rules are unchanged; marksmanship has `use_inventory=false`, no arena unlock or record/best-time UI, allowance `100`, and no workflow changes.
+- Local rendered acceptance: BLOCKED before gameplay. The current branch opened at `http://127.0.0.1:5173/login`; continuing required the `Войти как Dev` action, which would alter authentication/session state without explicit authorization. No login, credential, account, dev deployment, or production action was performed. The catalog/HUD/modal/failure behaviors remain covered by rendered component tests, but those tests are not reported as real-browser acceptance.
+- CI: not run. Integrated SHA/dev runtime/production: absent; nothing was pushed, merged, or deployed.
