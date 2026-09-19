@@ -48,6 +48,7 @@ import { useAuthStore } from '../auth/authStore.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { useClassicTournamentStore } from '../stores/classicTournamentStore.js';
+import { useAmateurDuelStore } from '../stores/amateurDuelStore.js';
 import type { DailyStateResponse, PeriodLogEntry } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
 import type { AmateurDuelMatchState } from '../api/amateurDuel.js';
@@ -397,6 +398,12 @@ beforeEach(() => {
   useClassicTournamentStore.setState({
     tournamentId: null,
     data: null,
+    loading: false,
+    inFlight: false,
+    error: null,
+  });
+  useAmateurDuelStore.setState({
+    match: null,
     loading: false,
     inFlight: false,
     error: null,
@@ -6449,6 +6456,141 @@ describe('DailyScreen', () => {
         ),
       ).toBe(true);
     });
+  });
+
+  it('keeps the two-second duel poll alive while local shots update the match', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-19T12:00:00.000Z'));
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      duel_kind: 'classic',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: '2026-09-19T11:59:00.000Z',
+      ends_at: '2026-09-19T13:00:00.000Z',
+      server_now: '2026-09-19T12:00:00.000Z',
+      period_started_at: '2026-09-19T11:59:30.000Z',
+      period_ends_at: '2026-09-19T12:19:30.000Z',
+      break_ends_at: null,
+      current_period_shots: 0,
+      current_period_goals: 0,
+      me: {
+        ...settledDuelMatch.me,
+        state: 'period_active',
+        current_period: 1,
+        current_period_shots: 0,
+        current_period_goals: 0,
+        shots_taken: 0,
+        goals: 0,
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'period_active',
+        current_period: 1,
+        current_period_shots: 0,
+        current_period_goals: 0,
+        shots_taken: 0,
+        goals: 0,
+      },
+    };
+    let matchReads = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        matchReads += 1;
+        return new Response(JSON.stringify({ match: activeMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(matchReads).toBe(1);
+
+    for (let second = 0; second < 5; second += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+        useAmateurDuelStore.getState().optimisticAddShot('miss');
+      });
+    }
+
+    expect(matchReads).toBe(3);
+  });
+
+  it('refreshes an active duel immediately after tab return and reconnect', async () => {
+    const now = new Date();
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: new Date(now.getTime() - 60_000).toISOString(),
+      ends_at: new Date(now.getTime() + 60 * 60_000).toISOString(),
+      server_now: now.toISOString(),
+      period_started_at: new Date(now.getTime() - 30_000).toISOString(),
+      period_ends_at: new Date(now.getTime() + 20 * 60_000).toISOString(),
+      me: { ...settledDuelMatch.me, state: 'period_active', current_period: 1 },
+      opponent: { ...settledDuelMatch.opponent, state: 'period_active', current_period: 1 },
+    };
+    let matchReads = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/amateur/matches/match-1')) {
+        matchReads += 1;
+        return new Response(JSON.stringify({ match: activeMatch }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible',
+    });
+
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+    await waitFor(() => expect(matchReads).toBe(1));
+
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(matchReads).toBe(2));
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(matchReads).toBe(3));
   });
 
   it('uses the frozen home arena artwork for a tournament duel', async () => {

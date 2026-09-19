@@ -5384,9 +5384,28 @@ function AmateurDuelPlayView({
     }
     const id = window.setInterval(() => {
       void refresh();
-    }, 3000);
+    }, 2000);
     return () => window.clearInterval(id);
-  }, [match, matchId, refresh]);
+  }, [match?.id, match?.status, matchId, refresh]);
+
+  useEffect(() => {
+    if (!match || match.id !== matchId) return undefined;
+    if (match.status === 'settled' || match.status === 'cancelled' || match.status === 'expired') {
+      return undefined;
+    }
+    const refreshVisibleMatch = (): void => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    const refreshOnlineMatch = (): void => {
+      void refresh();
+    };
+    document.addEventListener('visibilitychange', refreshVisibleMatch);
+    window.addEventListener('online', refreshOnlineMatch);
+    return () => {
+      document.removeEventListener('visibilitychange', refreshVisibleMatch);
+      window.removeEventListener('online', refreshOnlineMatch);
+    };
+  }, [match?.id, match?.status, matchId, refresh]);
 
   const duelCondition = useMemo(
     () => (match ? createDuelConditionForMatch(match) : () => null),
