@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Star, TrendingUp } from 'lucide-react';
 import {
   resolvePerspectiveCourtEmptyGoalShot,
   resolvePerspectiveCourtShot,
@@ -15,10 +16,13 @@ import {
 import {
   PlayView,
   TRAINING_AMATEUR_GOALIE_OPTIONS,
+  TRAINING_COURSE_GOAL_OPTIONS,
   TRAINING_STREET_PLAYER_OPTIONS,
   type PlayShotResolver,
 } from '../game/PlayView.js';
 import { TRAINING_LONG_COURT_BACKGROUND } from '../game/trainingNewCourt.js';
+import { rewardColor } from '../app/rewardColors.js';
+import { AccessibleModal } from './AccessibleModal.js';
 import { initialTrainingFeedbackCopy } from './InitialTrainingCourse.js';
 
 export function resolveInitialTrainingClientShot(
@@ -62,17 +66,28 @@ export function InitialTrainingResult({
         role="dialog"
         aria-modal="true"
         aria-label="Упражнение завершено"
-        className="modal-card initial-training-result"
+        className="modal-card duel-result-card initial-training-result"
       >
-        <div className="initial-training-result__mark" aria-hidden="true">✓</div>
-        <h2>Упражнение завершено</h2>
-        <p>
-          {reward
-            ? `+${reward.stars} звезда · +${reward.experience} опыт`
-            : 'Повтор завершён без награды'}
-        </p>
-        <div className="initial-training-result__actions">
-          <button type="button" className="btn btn--cta" onClick={isFinal ? onOpenTraining : onNext}>
+        <div className="section-label" style={{ margin: 0, padding: 0 }}>
+          Результат
+        </div>
+        <h2 className="modal-title">Упражнение завершено</h2>
+        {reward ? (
+          <div className="initial-training-result__rewards" aria-label="Полученная награда">
+            <span aria-label={`Звёзды: +${reward.stars}`} style={{ color: rewardColor('star') }}>
+              <Star data-testid="initial-training-result-star" fill="currentColor" aria-hidden="true" />
+              +{reward.stars}
+            </span>
+            <span aria-label={`Опыт: +${reward.experience}`} style={{ color: rewardColor('experience') }}>
+              <TrendingUp data-testid="initial-training-result-experience" aria-hidden="true" />
+              +{reward.experience}
+            </span>
+          </div>
+        ) : (
+          <p className="modal-copy">Повтор завершён без награды</p>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-primary btn btn--cta" onClick={isFinal ? onOpenTraining : onNext}>
             {isFinal ? 'В открытую тренировку' : 'Следующий уровень'}
           </button>
           <button type="button" className="btn btn--ghost" onClick={onCourse}>
@@ -105,17 +120,35 @@ export function InitialTrainingPlay({
   const [completion, setCompletion] = useState<{
     reward: { stars: number; experience: number } | null;
   } | null>(null);
+  const [showBriefing, setShowBriefing] = useState(true);
   const [showResult, setShowResult] = useState(false);
   const completionRef = useRef(completion);
   completionRef.current = completion;
   const resultAnimationCompleteRef = useRef(false);
+  const feedbackTimerRef = useRef<number | null>(null);
+
+  const clearFeedback = useCallback(() => {
+    if (feedbackTimerRef.current !== null) {
+      window.clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = null;
+    }
+    setFeedback(null);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     let active = true;
     setRun(null);
     setError(null);
-    setFeedback(null);
+    clearFeedback();
     setCompletion(null);
+    setShowBriefing(true);
     setShowResult(false);
     void startInitialTrainingExercise(exerciseKey)
       .then((next) => {
@@ -127,7 +160,7 @@ export function InitialTrainingPlay({
     return () => {
       active = false;
     };
-  }, [exerciseKey]);
+  }, [clearFeedback, exerciseKey]);
 
   const speedOverrides = useMemo(() => {
     if (!run) return undefined;
@@ -184,7 +217,12 @@ export function InitialTrainingPlay({
           input,
           claimed_result: claimedResult,
         });
+        clearFeedback();
         setFeedback(response.feedback_code);
+        feedbackTimerRef.current = window.setTimeout(() => {
+          feedbackTimerRef.current = null;
+          setFeedback(null);
+        }, 3_500);
         if (response.completed) {
           const nextCompletion = { reward: response.reward_granted };
           completionRef.current = nextCompletion;
@@ -211,7 +249,7 @@ export function InitialTrainingPlay({
         return null;
       }
     },
-    [exerciseKey, onCatalogRefresh, run],
+    [clearFeedback, exerciseKey, onCatalogRefresh, run],
   );
 
   if (error && !run) {
@@ -233,14 +271,15 @@ export function InitialTrainingPlay({
   return (
     <>
       <PlayView<InitialTrainingShotState>
-        suppressedByModal={showResult}
+        suppressedByModal={showBriefing || showResult}
         showIceCar={false}
         onBack={onBack}
-        active={!completion}
+        active={!showBriefing && !showResult}
         seed={run.seed}
         goalieId={run.scene.goalie_id}
         goalieConfig={run.scene.goalie_config}
         periodNumber={1}
+        periodLabel="УПРАЖНЕНИЕ"
         scoreboardPeriodNumber={run.exercise.position}
         scoreboardPeriodsTotal={5}
         speedOverrides={speedOverrides}
@@ -256,28 +295,39 @@ export function InitialTrainingPlay({
         applyState={applyShotState}
         longCourtBackground={TRAINING_LONG_COURT_BACKGROUND}
         playerOptions={TRAINING_STREET_PLAYER_OPTIONS}
+        goalOptions={TRAINING_COURSE_GOAL_OPTIONS}
         goalieOptions={TRAINING_AMATEUR_GOALIE_OPTIONS}
         hideGoalie={!run.scene.has_goalie}
         shotResolver={shotResolver}
         resultCopy={{
-          goal: 'Гол подтверждён',
-          save: 'Вратарь отбил',
-          miss: 'Бросок мимо',
+          goal: 'ГОЛ',
+          save: 'СЭЙВ',
+          miss: 'МИМО',
         }}
-        hudAddon={
-          <div className="initial-training-play-hud">
-            <span>Уровень {run.exercise.position} из 5</span>
-            <strong>{run.exercise.title}</strong>
-            <b>{run.goals}/{run.target_goals} голов</b>
-            {feedback && <em role="status">{initialTrainingFeedbackCopy(feedback)}</em>}
-            {error && <em role="alert">{error}</em>}
-          </div>
-        }
+        statusNotice={feedback ? initialTrainingFeedbackCopy(feedback) : error}
+        statusNoticeTone={feedback && feedback !== 'goal_timing' ? 'error' : error ? 'error' : 'success'}
+        statusNoticeDelayMs={500}
         onResultComplete={() => {
           resultAnimationCompleteRef.current = true;
           if (completionRef.current) setShowResult(true);
         }}
       />
+      <AccessibleModal
+        open={showBriefing}
+        title={run.exercise.title}
+        onRequestClose={onCourse}
+        cardClassName="bonus-game-preview-modal initial-training-briefing-modal"
+      >
+        <p className="modal-copy bonus-game-preview-modal__story">{run.exercise.description}</p>
+        <p className="bonus-game-preview-modal__condition">
+          Цель: забить {run.target_goals} голов
+        </p>
+        <div className="modal-actions">
+          <button type="button" className="modal-primary btn btn--cta" onClick={() => setShowBriefing(false)}>
+            Начать
+          </button>
+        </div>
+      </AccessibleModal>
       {showResult && completion && (
         <InitialTrainingResult
           exercisePosition={run.exercise.position}

@@ -1,4 +1,5 @@
-import { Check, ChevronRight, Lock, RotateCcw, Star } from 'lucide-react';
+import { Check, ChevronRight, Star, TrendingUp } from 'lucide-react';
+import { rewardColor } from '../app/rewardColors.js';
 import type {
   InitialTrainingCatalogResponse,
   InitialTrainingExercise,
@@ -7,11 +8,11 @@ import type {
 } from '../api/initialTraining.js';
 
 const exerciseSkill: Record<InitialTrainingExerciseKey, string> = {
-  'first-shot': 'Точность броска',
-  'three-positions': 'Выбор позиции',
-  'follow-the-goal': 'Наблюдение',
+  'first-shot': 'Точность',
+  'three-positions': 'Позиция',
+  'follow-the-goal': 'Фокус',
   'moving-goal': 'Тайминг',
-  'find-the-gap': 'Чтение вратаря',
+  'find-the-gap': 'Угол',
 };
 
 export function initialTrainingFeedbackCopy(code: InitialTrainingFeedbackCode): string {
@@ -19,24 +20,6 @@ export function initialTrainingFeedbackCopy(code: InitialTrainingFeedbackCode): 
   if (code === 'miss_right') return 'Возьми чуть левее — бросок прошёл правее ворот.';
   if (code === 'goalie_blocked') return 'Этот угол перекрыл вратарь. Дождись свободной стороны.';
   return 'Точный тайминг — продолжай в том же ритме!';
-}
-
-function ProgressSegments({ catalog }: { catalog: InitialTrainingCatalogResponse }): JSX.Element {
-  return (
-    <ol className="initial-training-progress" aria-label="Прогресс начального обучения">
-      {Array.from({ length: catalog.total_count }, (_, index) => (
-        <li
-          key={index}
-          className={index < catalog.completed_count ? 'is-complete' : undefined}
-          aria-label={
-            index < catalog.completed_count
-              ? `Упражнение ${index + 1} завершено`
-              : `Упражнение ${index + 1} не завершено`
-          }
-        />
-      ))}
-    </ol>
-  );
 }
 
 export function InitialTrainingHub({
@@ -52,85 +35,57 @@ export function InitialTrainingHub({
     <div className="initial-training-hub">
       <button
         type="button"
-        className="initial-training-mode-card initial-training-mode-card--course"
+        className="section-card-surface amateur-hub-card initial-training-mode-card"
         onClick={onOpenCourse}
-        aria-label={`Начальное обучение, пройдено ${catalog.completed_count} из ${catalog.total_count}`}
+        aria-label={`Начальный уровень, пройдено ${catalog.completed_count} из ${catalog.total_count} упражнений`}
       >
-        <img src="/sprites/training-court.webp" alt="Дворовая площадка" draggable={false} />
-        <span className="initial-training-mode-card__shade" />
-        <span className="initial-training-mode-card__content">
-          <span className="initial-training-mode-card__eyebrow">Курс из 5 упражнений</span>
-          <strong>Начальное обучение</strong>
-          <span>Освой точность, движение ворот и игру против вратаря.</span>
-          <span className="initial-training-mode-card__progress-row">
-            <ProgressSegments catalog={catalog} />
-            <b>{catalog.completed_count} из {catalog.total_count}</b>
-          </span>
+        <span className="amateur-hub-card__art" aria-hidden="true">
+          <img src="/sprites/initial-training-course-cover.webp" alt="" draggable={false} />
         </span>
-        <ChevronRight className="initial-training-mode-card__chevron" aria-hidden="true" />
+        <span className="amateur-hub-card__copy">
+          <strong>Начальный уровень</strong>
+          <span>{catalog.completed_count} из {catalog.total_count} упражнений</span>
+        </span>
+        <ChevronRight className="card-chevron" size={20} strokeWidth={2.7} aria-hidden="true" />
       </button>
 
       <button
         type="button"
-        className="initial-training-mode-card initial-training-mode-card--open"
+        className="section-card-surface amateur-hub-card initial-training-mode-card initial-training-mode-card--open"
         disabled={!catalog.open_training_unlocked}
         onClick={onOpenTraining}
         aria-label="Открытая тренировка"
       >
-        <img src="/modes/training-evening.webp" alt="Открытая тренировка" draggable={false} />
-        <span className="initial-training-mode-card__shade" />
-        <span className="initial-training-mode-card__content">
-          <span className="initial-training-mode-card__eyebrow">Свободный режим</span>
-          <strong>Открытая тренировка</strong>
-          <span>Настрой период, тренируйся в своём темпе и следи за историей.</span>
-          {!catalog.open_training_unlocked && (
-            <span className="initial-training-mode-card__lock-copy">
-              <Lock size={15} aria-hidden="true" />
-              Пройдите все 5 упражнений: {catalog.completed_count} из {catalog.total_count}
-            </span>
-          )}
+        <span className="amateur-hub-card__art" aria-hidden="true">
+          <img src="/modes/training-evening.webp" alt="" draggable={false} />
         </span>
-        {catalog.open_training_unlocked ? (
-          <ChevronRight className="initial-training-mode-card__chevron" aria-hidden="true" />
-        ) : (
-          <Lock className="initial-training-mode-card__chevron" aria-hidden="true" />
-        )}
+        <span className="amateur-hub-card__copy">
+          <strong>Открытая тренировка</strong>
+          <span>
+            {catalog.open_training_unlocked
+              ? 'Свободный режим и история тренировок'
+              : `Откроется после ${catalog.total_count} упражнений`}
+          </span>
+        </span>
+        <ChevronRight className="card-chevron" size={20} strokeWidth={2.7} aria-hidden="true" />
       </button>
     </div>
   );
 }
 
 function ExercisePreview({ exercise }: { exercise: InitialTrainingExercise }): JSX.Element {
-  const hasGoalie = exercise.key === 'find-the-gap';
   return (
-    <div className={`initial-training-preview initial-training-preview--${exercise.key}`}>
+    <>
       <img
         className="initial-training-preview__court"
-        src="/sprites/training-court.webp"
+        src="/sprites/initial-training-course-cover.webp"
         alt="Дворовая сцена упражнения"
         draggable={false}
       />
-      <img
-        className="initial-training-preview__goal"
-        src="/sprites/test-goal-clean.webp"
-        alt="Ворота"
-        draggable={false}
-      />
-      {hasGoalie && (
-        <img
-          className="initial-training-preview__goalie"
-          src="/sprites/training-goalie-amateur.webp"
-          alt="Дворовой вратарь"
-          draggable={false}
-        />
-      )}
-      <img
-        className="initial-training-preview__player"
-        src="/sprites/street-player-left.webp"
-        alt="Дворовой игрок"
-        draggable={false}
-      />
-    </div>
+      <span className="initial-training-preview__number" aria-label={`Упражнение ${exercise.position}`}>
+        {exercise.position}
+      </span>
+    </>
   );
 }
 
@@ -141,56 +96,109 @@ export function InitialTrainingCatalog({
   catalog: InitialTrainingCatalogResponse;
   onStart: (key: InitialTrainingExerciseKey) => void;
 }): JSX.Element {
+  const courseCompleted =
+    catalog.total_count > 0 && catalog.completed_count >= catalog.total_count;
+  const progressPercent =
+    catalog.total_count > 0 ? (catalog.completed_count / catalog.total_count) * 100 : 0;
+
+  const renderExercise = (exercise: InitialTrainingExercise) => {
+    const locked = exercise.state === 'locked';
+    const completed = exercise.state === 'completed';
+    const statusClass = completed
+      ? 'initial-training-exercise-card__stage--complete'
+      : locked
+        ? 'initial-training-exercise-card__stage--locked'
+        : 'initial-training-exercise-card__stage--available';
+    const statusText = completed ? 'Пройдено' : locked ? 'Закрыто' : 'Не пройдено';
+    return (
+      <article
+        key={exercise.key}
+        className="achievement-card achievement-card--list"
+        aria-label={`Упражнение ${exercise.position}: ${exercise.title}`}
+      >
+        <button
+          type="button"
+          className="achievement-card__open"
+          disabled={locked}
+          aria-label={`${locked ? 'Недоступно' : completed ? 'Повторить' : 'Начать'}: ${exercise.title}`}
+          onClick={() => onStart(exercise.key)}
+        >
+          <div className="achievement-card__thumbnail initial-training-preview">
+            <ExercisePreview exercise={exercise} />
+            {completed ? (
+              <span
+                className="achievement-card__status achievement-card__status--claimed initial-training-exercise-card__completion"
+                aria-label="Упражнение пройдено"
+              >
+                <Check size={12} strokeWidth={3} aria-hidden="true" />
+              </span>
+            ) : null}
+          </div>
+          <div className="achievement-card__body">
+            <div className="achievement-card__heading">
+              <strong className="achievement-card__title" title={exercise.title}>
+                {exercise.title}
+              </strong>
+              <span
+                className={`achievement-card__stage initial-training-exercise-card__stage ${statusClass}`}
+              >
+                {statusText}
+              </span>
+            </div>
+            <span
+              className={`achievement-card__rewards achievement-card__rewards--inline${
+                completed ? ' initial-training-exercise-card__rewards--claimed' : ''
+              }`}
+              data-testid="initial-training-reward-slot"
+              aria-label={
+                completed
+                  ? 'Награда получена'
+                  : `Награда: ${exercise.rewardStars} звезда и ${exercise.rewardExperience} опыт`
+              }
+            >
+              <span style={completed ? undefined : { color: rewardColor('star') }}>
+                <Star size={12} fill="currentColor" data-testid="initial-training-reward-star" aria-hidden="true" />
+                {exercise.rewardStars}
+              </span>
+              <span style={completed ? undefined : { color: rewardColor('experience') }}>
+                <TrendingUp size={12} data-testid="initial-training-reward-experience" aria-hidden="true" />
+                {exercise.rewardExperience}
+              </span>
+            </span>
+            <div className="initial-training-exercise-card__meta">
+              <span className="initial-training-exercise-card__skill">{exerciseSkill[exercise.key]}</span>
+              <span aria-hidden="true">·</span>
+              <span>Цель: {exercise.targetGoals} забитых шайб</span>
+            </div>
+          </div>
+        </button>
+      </article>
+    );
+  };
+
   return (
     <div className="initial-training-catalog">
-      <div className="initial-training-course-summary">
-        <ProgressSegments catalog={catalog} />
-        <strong>{catalog.completed_count} из {catalog.total_count}</strong>
-      </div>
-      <div className="section-label section-label--page">Упражнения</div>
+      <section className="initial-training-course-summary" aria-labelledby="initial-training-progress-title">
+        <h2 id="initial-training-progress-title" className="section-label section-label--page">
+          Прогресс
+        </h2>
+        <div
+          className="initial-training-course-progress"
+          role="progressbar"
+          aria-label="Прогресс начального обучения"
+          aria-valuemin={0}
+          aria-valuenow={catalog.completed_count}
+          aria-valuemax={catalog.total_count}
+        >
+          <span style={{ width: `${progressPercent}%` }} />
+          <strong>{catalog.completed_count} / {catalog.total_count}</strong>
+        </div>
+      </section>
+      {!courseCompleted ? (
+        <div className="section-label section-label--page">Упражнения ({catalog.total_count})</div>
+      ) : null}
       <div className="initial-training-exercise-list">
-        {catalog.exercises.map((exercise) => {
-          const locked = exercise.state === 'locked';
-          const completed = exercise.state === 'completed';
-          return (
-            <article
-              key={exercise.key}
-              className={`initial-training-exercise-card initial-training-exercise-card--${exercise.state}`}
-              aria-label={`Упражнение ${exercise.position}: ${exercise.title}`}
-            >
-              <ExercisePreview exercise={exercise} />
-              <div className="initial-training-exercise-card__body">
-                <div className="initial-training-exercise-card__meta">
-                  <span>Упражнение {exercise.position}</span>
-                  <span>{exerciseSkill[exercise.key]}</span>
-                </div>
-                <h2>{exercise.title}</h2>
-                <p>{exercise.description}</p>
-                <div className="initial-training-exercise-card__goal">
-                  Цель: {exercise.targetGoals} успешных голов
-                </div>
-                <div className="initial-training-exercise-card__footer">
-                  <span className="initial-training-exercise-card__reward">
-                    <Star size={15} aria-hidden="true" />
-                    {completed
-                      ? 'Повтор без награды'
-                      : `${exercise.rewardStars} звезда + ${exercise.rewardExperience} опыт`}
-                  </span>
-                  <button
-                    type="button"
-                    className="btn btn--cta initial-training-exercise-card__action"
-                    disabled={locked}
-                    aria-label={`${locked ? 'Недоступно' : completed ? 'Повторить' : 'Начать'}: ${exercise.title}`}
-                    onClick={() => onStart(exercise.key)}
-                  >
-                    {locked ? <Lock size={16} aria-hidden="true" /> : completed ? <RotateCcw size={16} aria-hidden="true" /> : <Check size={16} aria-hidden="true" />}
-                    {locked ? 'Закрыто' : completed ? 'Повторить' : 'Начать'}
-                  </button>
-                </div>
-              </div>
-            </article>
-          );
-        })}
+        {catalog.exercises.map(renderExercise)}
       </div>
     </div>
   );

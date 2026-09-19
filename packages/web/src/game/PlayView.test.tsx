@@ -2,7 +2,11 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type GoalieConfig } from '@hockey/game-core';
 import { useState } from 'react';
-import { PlayView, type PlayShotResolver } from './PlayView.js';
+import {
+  PlayView,
+  TRAINING_COURSE_GOAL_OPTIONS,
+  type PlayShotResolver,
+} from './PlayView.js';
 import type * as ReactModule from 'react';
 
 const tickerCallbacks = vi.hoisted(() => [] as Array<() => void>);
@@ -139,6 +143,13 @@ describe('PlayView', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it('keeps the upright transparent goal asset scoped to the initial training course', () => {
+    expect(TRAINING_COURSE_GOAL_OPTIONS).toMatchObject({
+      spriteUrl: '/sprites/training-course-goal-transparent.png',
+      gateAspect: 1533 / 1026,
+    });
   });
 
   it('passes the exact supplied goalie configuration to local shot resolution', () => {
@@ -435,6 +446,7 @@ describe('PlayView', () => {
         goalieId={null}
         goalieConfig={beachGoalie}
         periodNumber={3}
+        periodLabel="УПРАЖНЕНИЕ"
         scoreboardPeriodNumber={1}
         scoreboardPeriodsTotal={1}
         goals={0}
@@ -446,7 +458,8 @@ describe('PlayView', () => {
       />,
     );
 
-    expect(screen.getByLabelText('Игровое табло')).toHaveTextContent('ПЕРИОД1/1');
+    expect(screen.getByLabelText('Игровое табло')).toHaveTextContent('УПРАЖНЕНИЕ1/1');
+    expect(screen.getByText('УПРАЖНЕНИЕ')).toHaveClass('game-scoreboard__label--small');
   });
 
   it('blocks the primary action without stopping an active scene', () => {
@@ -533,6 +546,29 @@ describe('PlayView', () => {
 
     expect(playerContainers.at(-1)?.visible).toBe(true);
     expect(goalieContainers.at(-1)?.visible).toBe(true);
+  });
+
+  it('keeps a hidden goalkeeper out of the entrance animation', async () => {
+    const commonProps = {
+      showIceCar: false,
+      onBack: () => undefined,
+      seed: 'course-seed',
+      goalieId: 'rookie',
+      goalieConfig: beachGoalie,
+      periodNumber: 1,
+      goals: 0,
+      shots: 0,
+      optimisticAddShot: () => undefined,
+      submitShot: async () => null,
+      applyState: () => undefined,
+      hideGoalie: true,
+    } as const;
+    const view = render(<PlayView {...commonProps} active={false} suppressedByModal />);
+    await act(async () => Promise.resolve());
+
+    view.rerender(<PlayView {...commonProps} active suppressedByModal={false} />);
+
+    expect(goalieContainers.at(-1)?.visible).toBe(false);
   });
 
   it('keeps authoritative clocks continuous through the shot result pause', async () => {

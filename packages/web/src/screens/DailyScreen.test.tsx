@@ -134,11 +134,11 @@ const initialTrainingCatalog: InitialTrainingCatalogResponse = {
   open_training_unlock_source: null,
   gameplay_lock: null,
   exercises: [
-    ['first-shot', 'Первый бросок', 'available', 5],
-    ['three-positions', 'Три позиции', 'locked', 6],
-    ['follow-the-goal', 'Следи за воротами', 'locked', 5],
-    ['moving-goal', 'Ворота в движении', 'locked', 5],
-    ['find-the-gap', 'Найди свободный угол', 'locked', 5],
+    ['first-shot', 'Первый бросок', 'available', 10],
+    ['three-positions', 'Три позиции', 'locked', 9],
+    ['follow-the-goal', 'Следи за воротами', 'locked', 10],
+    ['moving-goal', 'Ворота в движении', 'locked', 10],
+    ['find-the-gap', 'Найди свободный угол', 'locked', 10],
   ].map(([key, title, state, targetGoals], index) => ({
     key,
     position: index + 1,
@@ -4110,7 +4110,7 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=training']);
 
-    fireEvent.click(await screen.findByRole('button', { name: /Начальное обучение/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Начальный уровень/ }));
     expect(screen.getByLabelText('location')).toHaveTextContent('/?view=training&section=course');
     expect(await screen.findAllByRole('article')).toHaveLength(5);
     expect(screen.getByRole('button', { name: 'Начать: Первый бросок' })).toBeEnabled();
@@ -4151,7 +4151,7 @@ describe('DailyScreen', () => {
           game_core_version: 59,
           shots_taken: 0,
           goals: 0,
-          target_goals: 5,
+          target_goals: 10,
           started_at: '2026-04-25T12:00:00.000Z',
           server_now: '2026-04-25T12:00:00.000Z',
           scene: {
@@ -4183,8 +4183,8 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=training&section=course&exercise=first-shot&play=1']);
 
-    expect(await screen.findByText('Уровень 1 из 5')).toBeInTheDocument();
-    expect(screen.getByText('Первый бросок')).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Первый бросок' })).toBeInTheDocument();
+    expect(screen.getByText('УПРАЖНЕНИЕ')).toBeInTheDocument();
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
     const startCall = fetchSpy.mock.calls.find(([url]) =>
       String(url).endsWith('/duel/training/course/first-shot/start'),
@@ -4246,7 +4246,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=training']);
 
     expect(await screen.findByRole('button', { name: 'На лёд' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Начальное обучение/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Начальный уровень/ })).not.toBeInTheDocument();
   });
 
   it('switches an active training session to the selected period before opening the rink', async () => {

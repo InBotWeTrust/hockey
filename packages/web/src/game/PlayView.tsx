@@ -251,6 +251,7 @@ export interface PlayViewProps<TState> {
   goalieId: string | null;
   goalieConfig?: GoalieConfig | undefined;
   periodNumber: number;
+  periodLabel?: string | undefined;
   scoreboardPeriodNumber?: number;
   periodSpeedPresets?: readonly DailyPeriodSpeedPreset[] | undefined;
   speedOverrides?: SpeedOverrides | undefined;
@@ -320,6 +321,9 @@ export interface PlayViewProps<TState> {
       ) => DuelPlayerCondition | null)
     | undefined;
   hudAddon?: ReactNode;
+  statusNotice?: ReactNode;
+  statusNoticeTone?: 'success' | 'error' | undefined;
+  statusNoticeDelayMs?: number | undefined;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
   readyPresence?: ReadyPresence | undefined;
   resultCopy?: Partial<Record<ResultModalKind, string>> | undefined;
@@ -396,6 +400,12 @@ const PERSPECTIVE_GOAL_OPTIONS: GoalOptions = {
   visualYOffset: TRAINING_NEW_COURT_GOAL_VISUAL_Y_OFFSET,
   visualOffsetXScale: TRAINING_NEW_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
   spriteAnchorY: 1,
+};
+
+export const TRAINING_COURSE_GOAL_OPTIONS: GoalOptions = {
+  ...PERSPECTIVE_GOAL_OPTIONS,
+  spriteUrl: '/sprites/training-course-goal-transparent.png',
+  gateAspect: 1533 / 1026,
 };
 
 const PERSPECTIVE_GOALIE_OPTIONS: GoalieOptions = {
@@ -542,6 +552,7 @@ export function PlayView<TState>({
   goalieId,
   goalieConfig,
   periodNumber,
+  periodLabel,
   scoreboardPeriodNumber,
   periodSpeedPresets,
   speedOverrides,
@@ -597,6 +608,9 @@ export function PlayView<TState>({
   shotResolver = resolveNewTrainingCourtShot,
   duelCondition,
   hudAddon,
+  statusNotice,
+  statusNoticeTone,
+  statusNoticeDelayMs = 0,
   scoreboardOpponent,
   readyPresence,
   resultCopy,
@@ -621,6 +635,16 @@ export function PlayView<TState>({
     }),
     [active, seed, goalieId, goalieConfig, periodNumber, shots, shotIndexBase, shotsTotal],
   );
+  const [visibleStatusNotice, setVisibleStatusNotice] = useState<ReactNode>(null);
+
+  useEffect(() => {
+    if (!statusNotice) {
+      setVisibleStatusNotice(null);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setVisibleStatusNotice(statusNotice), statusNoticeDelayMs);
+    return () => window.clearTimeout(timer);
+  }, [statusNotice, statusNoticeDelayMs]);
   const sessionRef = useRef(session);
   sessionRef.current = session;
   const sessionTimingRef = useRef<PlaySessionTiming>({
@@ -714,6 +738,8 @@ export function PlayView<TState>({
   suppressedRef.current = suppressedByModal;
   const showIceCarRef = useRef(showIceCar);
   showIceCarRef.current = showIceCar;
+  const hideGoalieRef = useRef(hideGoalie);
+  hideGoalieRef.current = hideGoalie;
   const playEntranceOnMountRef = useRef(playEntranceOnMount);
   playEntranceOnMountRef.current = playEntranceOnMount;
   const goalsOnlyWhileInactiveRef = useRef(goalsOnlyWhileInactive);
@@ -1033,9 +1059,10 @@ export function PlayView<TState>({
         const goalStartOffsetY = animateGoal ? -140 : 0;
         const t0 = performance.now();
 
+        const hasVisibleGoalie = !hideGoalieRef.current;
         goal.container.visible = true;
         player.container.visible = true;
-        goalie.container.visible = true;
+        goalie.container.visible = hasVisibleGoalie;
         puck.container.visible = false;
 
         const drawAt = (
@@ -1047,14 +1074,16 @@ export function PlayView<TState>({
         ): void => {
           goal.update(scaleRef.current, 0, goalOffsetY);
           player.update(scaleRef.current, px, py);
-          goalie.update(
-            {
-              position: { x: gx, y: gy },
-              width: GOALIE_SIZE.width,
-              height: GOALIE_SIZE.height,
-            },
-            scaleRef.current,
-          );
+          if (hasVisibleGoalie) {
+            goalie.update(
+              {
+                position: { x: gx, y: gy },
+                width: GOALIE_SIZE.width,
+                height: GOALIE_SIZE.height,
+              },
+              scaleRef.current,
+            );
+          }
         };
 
         drawAt(goalieStartX, goalieStartY, playerStartX, playerStartY, goalStartOffsetY);
@@ -1247,7 +1276,7 @@ export function PlayView<TState>({
       layer.addChild(iceCar.container);
       layer.addChild(goal.container);
       layer.addChild(goalie.container);
-      goalie.container.visible = !hideGoalie;
+      goalie.container.visible = !hideGoalieRef.current;
       layer.addChild(player.container);
       layer.addChild(puck.container);
       layer.addChild(hitboxes.container);
@@ -1393,7 +1422,7 @@ export function PlayView<TState>({
       wasReadyPresenceModeRef.current = false;
       goal.container.visible = true;
       player.container.visible = true;
-      goalie.container.visible = true;
+      goalie.container.visible = !hideGoalieRef.current;
       puck.container.visible = true;
       loop.resetTime();
       loop.attach(ticker);
@@ -1403,7 +1432,7 @@ export function PlayView<TState>({
       skipNextUnsuppressedEntranceRef.current = false;
       goal.container.visible = true;
       player.container.visible = true;
-      goalie.container.visible = true;
+      goalie.container.visible = !hideGoalieRef.current;
       puck.container.visible = true;
       loop.resetTime();
       loop.attach(ticker);
@@ -1771,6 +1800,7 @@ export function PlayView<TState>({
             {...buildGameScoreboardModel({
               period: scoreboardPeriodNumber ?? periodNumber,
               periodsTotal: scoreboardPeriodsTotal ?? periodsTotal,
+              periodLabel,
               timer: timerValue,
               timerLabel: timerLabel ?? 'ВРЕМЯ',
               goals: visibleScoreboardGoals,
@@ -1840,6 +1870,7 @@ export function PlayView<TState>({
         {!hideScoreboard && (
           <ScoreBoard
             period={scoreboardPeriodNumber ?? periodNumber}
+            periodLabel={periodLabel}
             periodsTotal={scoreboardPeriodsTotal ?? periodsTotal}
             timer={timerValue}
             timerLabel={timerLabel}
@@ -1947,6 +1978,17 @@ export function PlayView<TState>({
               style={routeGameStyle}
             >
               {duelFatigueNotice}
+            </div>
+          ) : visibleStatusNotice ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className={`initial-training-feedback-notice${
+                statusNoticeTone === 'error' ? ' initial-training-feedback-notice--error' : ''
+              }`}
+              style={routeGameStyle}
+            >
+              {visibleStatusNotice}
             </div>
           ) : null}
         </div>

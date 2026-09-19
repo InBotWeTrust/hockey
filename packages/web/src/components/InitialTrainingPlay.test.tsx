@@ -44,7 +44,15 @@ describe('initial training play', () => {
     );
 
     expect(screen.getByRole('dialog', { name: 'Упражнение завершено' })).toBeInTheDocument();
-    expect(screen.getByText('+1 звезда · +1 опыт')).toBeInTheDocument();
+    expect(screen.getByText('Результат')).toHaveClass('section-label');
+    expect(screen.getByRole('dialog', { name: 'Упражнение завершено' })).toHaveClass(
+      'duel-result-card',
+    );
+    expect(document.querySelector('.initial-training-result__mark')).toBeNull();
+    expect(screen.getByLabelText('Звёзды: +1')).toHaveStyle({ color: 'var(--reward-star)' });
+    expect(screen.getByLabelText('Опыт: +1')).toHaveStyle({ color: 'var(--reward-experience)' });
+    expect(screen.getByTestId('initial-training-result-star')).toHaveAttribute('fill', 'currentColor');
+    expect(screen.getByTestId('initial-training-result-experience')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Следующий уровень' }));
     fireEvent.click(screen.getByRole('button', { name: 'К упражнениям' }));
     expect(onNext).toHaveBeenCalledOnce();

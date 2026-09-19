@@ -44,11 +44,11 @@ export type InitialTrainingConfig = z.infer<typeof initialTrainingConfigSchema>;
 export const DEFAULT_INITIAL_TRAINING_CONFIG: InitialTrainingConfig = {
   enabled: false,
   targetGoals: {
-    'first-shot': 5,
-    'three-positions': 6,
-    'follow-the-goal': 5,
-    'moving-goal': 5,
-    'find-the-gap': 5,
+    'first-shot': 10,
+    'three-positions': 9,
+    'follow-the-goal': 10,
+    'moving-goal': 10,
+    'find-the-gap': 10,
   },
   positionOffsetX: 160,
   goalieFrequencyMultiplier: 0.5,
@@ -62,7 +62,7 @@ const exerciseCopy: Record<
 > = {
   'first-shot': {
     title: 'Первый бросок',
-    description: 'Поймай момент и попади в неподвижные ворота по центру.',
+    description: 'Попади в неподвижные пустые ворота.',
   },
   'three-positions': {
     title: 'Три позиции',
@@ -133,7 +133,8 @@ export function exerciseSceneForProgress(
 ): InitialTrainingExerciseScene {
   const positionOffsets = [-config.positionOffsetX, 0, config.positionOffsetX] as const;
   if (key === 'three-positions') {
-    const position = Math.min(2, Math.floor(progress.goals / 2));
+    const goalsPerPosition = Math.max(1, Math.ceil(config.targetGoals['three-positions'] / 3));
+    const position = Math.min(2, Math.floor(progress.goals / goalsPerPosition));
     return {
       goalOffsetX: positionOffsets[position]!,
       movingGoal: false,

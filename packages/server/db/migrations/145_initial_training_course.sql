@@ -1,7 +1,7 @@
 insert into game_settings (key, value, label, description)
 values (
   'training.initial_course.config',
-  '{"enabled":false,"targetGoals":{"first-shot":5,"three-positions":6,"follow-the-goal":5,"moving-goal":5,"find-the-gap":5},"positionOffsetX":160,"goalieFrequencyMultiplier":0.5,"rewardStars":1,"rewardExperience":1}'::jsonb,
+  '{"enabled":false,"targetGoals":{"first-shot":10,"three-positions":9,"follow-the-goal":10,"moving-goal":10,"find-the-gap":10},"positionOffsetX":160,"goalieFrequencyMultiplier":0.5,"rewardStars":1,"rewardExperience":1}'::jsonb,
   'Начальное обучение',
   'Служебная конфигурация начального обучения. Не редактируется через административный интерфейс.'
 )

@@ -12,6 +12,46 @@ afterEach(async () => {
 });
 
 describe('migration transaction modes', () => {
+  it('recognizes renamed applied migrations before running new ones', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hockey-migration-runner-'));
+    tempDirs.push(dir);
+    await fs.writeFile(
+      path.join(dir, '138_tiered_achievements.sql'),
+      'create table achievement_stages (id text primary key);',
+    );
+    await fs.writeFile(
+      path.join(dir, '145_initial_training_course.sql'),
+      'create table initial_training_run (id text primary key);',
+    );
+
+    const executedMigrations: string[] = [];
+    const client = {
+      async query(text: string) {
+        if (text === 'begin' || text === 'commit' || text === 'rollback') {
+          return { rows: [] } as unknown as QueryResult;
+        }
+        if (text.includes('create table')) executedMigrations.push(text);
+        return { rows: [] } as unknown as QueryResult;
+      },
+      release() {},
+    } as unknown as PoolClient;
+    const pool = {
+      async query(text: string) {
+        return text.includes('select name from _migrations')
+          ? ({ rows: [{ name: '135_tiered_achievements.sql' }] } as unknown as QueryResult)
+          : ({ rows: [] } as unknown as QueryResult);
+      },
+      async connect() {
+        return client;
+      },
+    } as unknown as Pool;
+
+    await expect(applyMigrations(pool, dir)).resolves.toEqual({
+      applied: ['145_initial_training_course.sql'],
+    });
+    expect(executedMigrations).toEqual(['create table initial_training_run (id text primary key);']);
+  });
+
   it('runs explicitly non-transactional migrations without BEGIN', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hockey-migration-runner-'));
     tempDirs.push(dir);
