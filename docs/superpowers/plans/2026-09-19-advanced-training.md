@@ -18,6 +18,8 @@
 - Exercises are free, unlimited, and never select or consume inventory.
 - Seven main exercises unlock sequentially; the eighth is shown as locked “Бонусное упражнение” until the first seven are complete, then reveals “Сброс ритма”.
 - The advanced catalog mirrors task cards: a bare “Прогресс обучения” label and progress bar followed by one “Упражнения (8)” section of eight equal compact cards. Current, future, and completed exercises differ only by `Не пройдено`, `Закрыто`, and `Пройдено` status/access states; there are no large cards or next/completed groups.
+- The advanced hub card has its own square cover artwork. Every exercise thumbnail reuses that artwork with its number overlaid by the UI, matching the initial-course pattern.
+- Selecting an available or completed exercise opens an initial-course-style confirmation modal with title, description, goal, and `Начать`; gameplay starts only from that button.
 - Every main exercise is two demonstrations, five practice situations, then an assessment of ten situations requiring at least seven successes.
 - Every accepted practice/assessment shot is checked by the server; a goal using the wrong technique is a failed situation.
 - A series is one situation: exercise 7 requires complete two-goal and three-goal variants; exercise 8 requires the prescribed miss followed by the complete scoring series.
@@ -447,6 +449,8 @@ git commit -m "feat(web): add advanced training play flow"
 
 Assert card order, card always visible, separate checked/unchecked access conditions for four combinations, direct locked URL fallback to catalog, a bare `Прогресс обучения` bar with `completed / 8`, one `Упражнения (8)` section, eight equal compact cards in sequence, `Не пройдено` on the current available exercise, `Закрыто` on future exercises, `Пройдено` on replayable completions, progress/status-only changes after completion, concealed eighth-card copy, and reveal after seven completions.
 
+Also assert the dedicated advanced cover on the hub, the same cover plus numeric overlay on all eight exercise thumbnails, and the pre-play modal containing the selected exercise title, description, goal, and `Начать` button. Clicking the card must not mount gameplay until `Начать` is pressed.
+
 - [ ] **Step 2: Refactor the existing hub into the agreed three cards**
 
 Render in this order:
@@ -464,6 +468,8 @@ Keep the cards visibly labeled, use `.section-label.section-label--page` above c
 Use `section=advanced`, `exercise=<key>`, and `play=1`. Locked or unknown deep links resolve to the advanced catalog. The bonus card uses only “Бонусное упражнение” while concealed, then switches to “Сброс ритма” with its actual description.
 
 Follow the existing task-card hierarchy. Put `.section-label.section-label--page` with text `Прогресс обучения` directly above the existing task/initial-training progress-bar primitive, without an extra panel or card wrapper. Then render `.section-label.section-label--page` with `Упражнения (8)` and eight equal compact cards: numbered square artwork, title, `1` star and `1` experience, technique/goal copy, and the right-aligned status pill. Do not render a large primary card or separate next/completed sections.
+
+Use `/sprites/advanced-training-course-cover.webp` for the hub card and as the shared exercise thumbnail image, with the number rendered as a CSS/HTML overlay. Before entering `AdvancedTrainingPlay`, show the same modal structure used by the initial course: title, short description, explicit goal, and `Начать`.
 
 - [ ] **Step 4: Add responsive CSS without changing open training gameplay**
 
