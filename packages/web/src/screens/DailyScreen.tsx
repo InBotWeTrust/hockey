@@ -5384,7 +5384,7 @@ function AmateurDuelPlayView({
     }
     const id = window.setInterval(() => {
       void refresh();
-    }, 3000);
+    }, 2000);
     return () => window.clearInterval(id);
   }, [match?.id, match?.status, matchId, refresh]);
 

@@ -6458,7 +6458,7 @@ describe('DailyScreen', () => {
     });
   });
 
-  it('keeps the three-second duel poll alive while local shots update the match', async () => {
+  it('keeps the two-second duel poll alive while local shots update the match', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-19T12:00:00.000Z'));
     const activeMatch: AmateurDuelMatchState = {
@@ -6525,14 +6525,14 @@ describe('DailyScreen', () => {
     });
     expect(matchReads).toBe(1);
 
-    for (let second = 0; second < 8; second += 2) {
+    for (let second = 0; second < 5; second += 1) {
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(2_000);
+        await vi.advanceTimersByTimeAsync(1_000);
         useAmateurDuelStore.getState().optimisticAddShot('miss');
       });
     }
 
-    expect(matchReads).toBeGreaterThanOrEqual(3);
+    expect(matchReads).toBe(3);
   });
 
   it('refreshes an active duel immediately after tab return and reconnect', async () => {
