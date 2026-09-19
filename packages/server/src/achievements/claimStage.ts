@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
+import { observeCareerExperience } from './service.js';
 import { satisfiesTarget } from './stageProgress.js';
 
 const CUMULATIVE_STAGE_IDS = new Set([
@@ -182,6 +183,14 @@ export async function claimCurrentAchievementStage(
         where user_id = $1 and achievement_id = $2 and stage_number = $3`,
       [userId, achievementId, openedStage.stage_number, now, JSON.stringify({ source: 'cumulative_carry' })],
     );
+  }
+
+  if (rewards.experience > 0) {
+    await observeCareerExperience(client, userId, {
+      eventKey: `achievement-stage:${achievementId}:${stage.stage_number}:reward`,
+      occurredAt: now,
+      lifetimeTotal: Number(user.experience),
+    });
   }
 
   return {

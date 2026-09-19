@@ -122,6 +122,13 @@ describe.skipIf(!hasIntegrationEnv)('achievement claim routes', () => {
     );
     expect(userRows.rows[0]).toMatchObject({ xp: 3, experience: 3 });
 
+    const experienceStage = await app.pg.query<{ progress: Record<string, number> }>(
+      `select progress from user_achievement_stages
+        where user_id = $1 and achievement_id = 'career-experience' and stage_number = 1`,
+      [userId],
+    );
+    expect(experienceStage.rows).toEqual([{ progress: { total: 3 } }]);
+
     const tokenRows = await app.pg.query<{ balance: number }>(
       `select balance from user_reward_token_account where user_id = $1`,
       [userId],
@@ -260,7 +267,7 @@ describe.skipIf(!hasIntegrationEnv)('achievement claim routes', () => {
     expect(again.statusCode).toBe(409);
   });
 
-  it('does not complete the next experience stage from claim reward experience', async () => {
+  it('completes the next experience stage from claim reward experience', async () => {
     const userId = await createUser(app);
     const token = await issueAccessToken(userId);
     await openFirstAchievementStages(app.pg, userId, new Date('2026-09-13T10:00:00.000Z'));
@@ -283,12 +290,20 @@ describe.skipIf(!hasIntegrationEnv)('achievement claim routes', () => {
     });
     expect(response.statusCode).toBe(200);
 
-    const next = await app.pg.query<{ completed_at: Date | null }>(
-      `select completed_at from user_achievement_stages
+    const next = await app.pg.query<{
+      progress: Record<string, number>;
+      completed_at: Date | null;
+    }>(
+      `select progress, completed_at from user_achievement_stages
         where user_id = $1 and achievement_id = 'career-experience' and stage_number = 2`,
       [userId],
     );
-    expect(next.rows).toEqual([{ completed_at: null }]);
+    expect(next.rows).toEqual([
+      {
+        progress: { total: 1000 },
+        completed_at: expect.any(Date),
+      },
+    ]);
   });
 
   it('waits for the users row before taking a currency-account write lock', async () => {
