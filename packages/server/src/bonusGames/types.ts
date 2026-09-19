@@ -151,6 +151,7 @@ export interface BonusGamePeriodLogRow {
   ended_at: Date;
   shots_taken: number;
   goals: number;
+  total_points: number;
   duration_ms: number;
   closed_reason: BonusPeriodClosedReason;
   created_at: Date;
@@ -240,6 +241,7 @@ export interface BonusGameAttemptDTO {
   shotsTaken: number;
   currentPeriodShotsTaken: number;
   goals: number;
+  totalPoints: number;
   currentGoalStreak: number;
   bestGoalStreak: number;
   previewRequired: boolean;

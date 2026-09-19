@@ -267,6 +267,7 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
     shots_taken: attempt.shotsTaken,
     current_period_shots_taken: attempt.currentPeriodShotsTaken,
     goals: attempt.goals,
+    total_points: attempt.totalPoints,
     current_goal_streak: attempt.currentGoalStreak,
     best_goal_streak: attempt.bestGoalStreak,
     preview_required: attempt.previewRequired,
@@ -525,6 +526,10 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
         });
         return {
           server_result: result.serverResult,
+          awarded_points: result.awardedPoints,
+          total_points: result.totalPoints,
+          difficulty_code: result.difficultyCode,
+          counter_direction: result.counterDirection,
           attempt: toAttemptHttpDto(result.attempt, now),
           reward_granted: result.attempt.rewardGranted,
           balances: result.balances,
