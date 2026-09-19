@@ -17,7 +17,7 @@
 - The advanced card is always visible and opens only when both `hasFullAmateurAccess` and `beginnerTrainingCompleted` are true; show each condition separately.
 - Exercises are free, unlimited, and never select or consume inventory.
 - Seven main exercises unlock sequentially; the eighth is shown as locked “Бонусное упражнение” until the first seven are complete, then reveals “Сброс ритма”.
-- The advanced catalog mirrors bonus games: a bare “Прогресс обучения” section label and progress bar, one large current exercise, then compact “Следующие упражнения” and “Пройденные упражнения” groups; completing the current exercise promotes the next one into the large card.
+- The advanced catalog mirrors task cards: a bare “Прогресс обучения” label and progress bar followed by one “Упражнения (8)” section of eight equal compact cards. Current, future, and completed exercises differ only by `Не пройдено`, `Закрыто`, and `Пройдено` status/access states; there are no large cards or next/completed groups.
 - Every main exercise is two demonstrations, five practice situations, then an assessment of ten situations requiring at least seven successes.
 - Every accepted practice/assessment shot is checked by the server; a goal using the wrong technique is a failed situation.
 - A series is one situation: exercise 7 requires complete two-goal and three-goal variants; exercise 8 requires the prescribed miss followed by the complete scoring series.
@@ -445,7 +445,7 @@ git commit -m "feat(web): add advanced training play flow"
 
 - [ ] **Step 1: Write failing hub and route tests**
 
-Assert card order, card always visible, separate checked/unchecked access conditions for four combinations, direct locked URL fallback to catalog, a bare `Прогресс обучения` bar with `completed / 8`, one large current card, compact next cards before compact completed cards, promotion of the next exercise after completion, concealed eighth card, reveal after seven completions, the all-complete state without a current card, and repeat labels after completion.
+Assert card order, card always visible, separate checked/unchecked access conditions for four combinations, direct locked URL fallback to catalog, a bare `Прогресс обучения` bar with `completed / 8`, one `Упражнения (8)` section, eight equal compact cards in sequence, `Не пройдено` on the current available exercise, `Закрыто` on future exercises, `Пройдено` on replayable completions, progress/status-only changes after completion, concealed eighth-card copy, and reveal after seven completions.
 
 - [ ] **Step 2: Refactor the existing hub into the agreed three cards**
 
@@ -463,11 +463,11 @@ Keep the cards visibly labeled, use `.section-label.section-label--page` above c
 
 Use `section=advanced`, `exercise=<key>`, and `play=1`. Locked or unknown deep links resolve to the advanced catalog. The bonus card uses only “Бонусное упражнение” while concealed, then switches to “Сброс ритма” with its actual description.
 
-Follow the bonus-games catalog hierarchy rather than rendering an equal-card grid: the sole available next exercise is the large primary card; locked future exercises are compact under `Следующие упражнения`; completed exercises are compact under `Пройденные упражнения`. Put `.section-label.section-label--page` with text `Прогресс обучения` directly above the existing task/initial-training progress-bar primitive, without an extra panel or card wrapper.
+Follow the existing task-card hierarchy. Put `.section-label.section-label--page` with text `Прогресс обучения` directly above the existing task/initial-training progress-bar primitive, without an extra panel or card wrapper. Then render `.section-label.section-label--page` with `Упражнения (8)` and eight equal compact cards: numbered square artwork, title, `1` star and `1` experience, technique/goal copy, and the right-aligned status pill. Do not render a large primary card or separate next/completed sections.
 
 - [ ] **Step 4: Add responsive CSS without changing open training gameplay**
 
-Reuse the existing course card primitives and add only advanced modifiers for completion, lock checklist, demonstration overlay, hint glow, and series progress. Verify computed alignment of `.section-label--page` against card left edges.
+Reuse the existing task/course card and progress primitives and add only advanced modifiers for the three status/access states, concealed bonus copy, demonstration overlay, hint glow, and series progress. Verify equal card dimensions, status alignment, and computed alignment of `.section-label--page` against card left edges.
 
 - [ ] **Step 5: Run rendered tests and commit**
 
@@ -507,7 +507,7 @@ Confirm no duplicate beginner progress, no inventory calls, no daily limits, no 
 
 - [ ] **Step 3: Perform local rendered acceptance**
 
-At a small mobile viewport, capture the hub in locked/partial/open states, the bare progress bar, current/next/completed card hierarchy before and after promotion, one demonstration, one practice error for each feedback class, a `6/10` failure, a `7/10` success, the second-tempo series, the concealed/revealed bonus card, reload during a run, repeat after completion, and the all-complete catalog.
+At a small mobile viewport, capture the hub in locked/partial/open states, the bare progress bar, all eight equal exercise cards, all three card statuses, progress/status transitions after completion without layout promotion, one demonstration, one practice error for each feedback class, a `6/10` failure, a `7/10` success, the second-tempo series, the concealed/revealed bonus card, reload during a run, repeat after completion, and the all-complete catalog.
 
 - [ ] **Step 4: Commit verification notes**
 
