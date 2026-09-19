@@ -44,4 +44,16 @@ describe('MobileTelegramAuthScreen', () => {
       ),
     );
   });
+
+  it('uses the dedicated mobile layout so the title stays separated from the Telegram widget', () => {
+    render(
+      <MemoryRouter initialEntries={[`/mobile-auth/telegram?attempt=${'a'.repeat(43)}`]}>
+        <MobileTelegramAuthScreen />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Вход через Telegram' }).closest('main')).toHaveClass(
+      'mobile-telegram-auth-screen',
+    );
+  });
 });
