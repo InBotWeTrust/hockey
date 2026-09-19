@@ -39,6 +39,7 @@ import {
   listAdminAchievementStages,
   updateAdminAchievementStage,
 } from '../achievements/adminStages.js';
+import { observeCareerExperience } from '../achievements/service.js';
 
 type UserRole = 'player' | 'admin';
 type DisplaySource = 'custom' | 'telegram' | 'vk';
@@ -4140,6 +4141,14 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
           `update users set ${userAssignments.join(', ')} where id = $${userValues.length}`,
           userValues,
         );
+      }
+      if (body.data.experience !== undefined) {
+        const occurredAt = new Date();
+        await observeCareerExperience(client, params.userId, {
+          eventKey: `admin-experience:${req.user.id}:${occurredAt.toISOString()}:${req.id}`,
+          occurredAt,
+          lifetimeTotal: body.data.experience,
+        });
       }
 
       for (const onboardingChange of onboardingChanges) {
