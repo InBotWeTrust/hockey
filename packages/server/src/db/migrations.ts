@@ -16,6 +16,16 @@ const LEDGER_DDL = `
 const NON_TRANSACTIONAL_DIRECTIVE = /^\s*--\s*hockey:migration-mode\s+non-transactional\s*$/m;
 const NON_TRANSACTIONAL_STATEMENT_SEPARATOR = /^\s*--\s*hockey:migration-statement\s*$/m;
 
+// These migrations were renamed after they had already been applied to the
+// development database. Their SQL content is unchanged; preserve the ledger
+// history so the runner never executes the same schema/data changes twice.
+const RENAMED_MIGRATION_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  '138_tiered_achievements.sql': ['135_tiered_achievements.sql'],
+  '139_remove_recurring_duel_star_reward.sql': ['136_remove_recurring_duel_star_reward.sql'],
+  '140_fix_tiered_achievement_copy.sql': ['137_fix_tiered_achievement_copy.sql'],
+  '141_clarify_dark_horse_requirement.sql': ['138_clarify_dark_horse_requirement.sql'],
+};
+
 export async function applyMigrations(pool: Pool, dir: string): Promise<MigrationResult> {
   await pool.query(LEDGER_DDL);
 
@@ -25,6 +35,11 @@ export async function applyMigrations(pool: Pool, dir: string): Promise<Migratio
 
   const { rows } = await pool.query<{ name: string }>('select name from _migrations');
   const alreadyApplied = new Set(rows.map((r) => r.name));
+  for (const [currentName, legacyNames] of Object.entries(RENAMED_MIGRATION_ALIASES)) {
+    if (legacyNames.some((legacyName) => alreadyApplied.has(legacyName))) {
+      alreadyApplied.add(currentName);
+    }
+  }
 
   const applied: string[] = [];
   for (const file of files) {

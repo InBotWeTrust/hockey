@@ -18,6 +18,7 @@ import {
   DAILY_PERIOD_SPEED_PRESETS,
   DEFAULT_DUEL_INVENTORY_TIMING,
   STICK_NEUTRAL,
+  getGoalie,
 } from '@hockey/game-core';
 
 const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
@@ -34,6 +35,8 @@ import {
   duelScoreboardOpponent,
   duelRinkReadyPresenceForMatch,
   initialGameRouteState,
+  initialTrainingCatalogAfterRefresh,
+  initialTrainingCatalogAfterCompletion,
   isDuelInventoryLow,
   isDuelLoadoutEditable,
   isDuelReadyPresenceState,
@@ -51,6 +54,7 @@ import { useClassicTournamentStore } from '../stores/classicTournamentStore.js';
 import { useAmateurDuelStore } from '../stores/amateurDuelStore.js';
 import type { DailyStateResponse, PeriodLogEntry } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
+import type { InitialTrainingCatalogResponse } from '../api/initialTraining.js';
 import type { AmateurDuelMatchState } from '../api/amateurDuel.js';
 import type { BonusGameCard } from '../api/bonusGames.js';
 import type { ClassicTournamentState } from '../api/tournamentClassic.js';
@@ -120,6 +124,31 @@ const trainingActiveState: TrainingStateResponse = {
   goals: 5,
   training_seed: 'a'.repeat(64),
   started_at: '2026-04-25T11:55:00.000Z',
+};
+
+const initialTrainingCatalog: InitialTrainingCatalogResponse = {
+  enabled: true,
+  completed_count: 0,
+  total_count: 5,
+  open_training_unlocked: false,
+  open_training_unlock_source: null,
+  gameplay_lock: null,
+  exercises: [
+    ['first-shot', 'Первый бросок', 'available', 10],
+    ['three-positions', 'Три позиции', 'locked', 9],
+    ['follow-the-goal', 'Следи за воротами', 'locked', 10],
+    ['moving-goal', 'Ворота в движении', 'locked', 10],
+    ['find-the-gap', 'Найди свободный угол', 'locked', 10],
+  ].map(([key, title, state, targetGoals], index) => ({
+    key,
+    position: index + 1,
+    title,
+    description: `Описание: ${title}`,
+    targetGoals,
+    rewardStars: 1,
+    rewardExperience: 1,
+    state,
+  })) as InitialTrainingCatalogResponse['exercises'],
 };
 
 describe('daily character visuals', () => {
@@ -4063,6 +4092,161 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ' })).not.toBeInTheDocument();
+  });
+
+  it('shows the initial-course hub and opens its five-card catalog when enabled', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/duel/training/course')
+        ? initialTrainingCatalog
+        : url.includes('/duel/training/state')
+          ? trainingIdleState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=training']);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Начальный уровень/ }));
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=training&section=course');
+    expect(await screen.findAllByRole('article')).toHaveLength(5);
+    expect(screen.getByRole('button', { name: 'Начать: Первый бросок' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Недоступно: Три позиции' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Начать: Первый бросок' }));
+    expect(screen.getByLabelText('location')).toHaveTextContent(
+      '/?view=training&section=course&exercise=first-shot&play=1',
+    );
+  });
+
+  it('keeps direct locked course routes in the exercise catalog', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      return new Response(
+        JSON.stringify(url.includes('/duel/training/course') ? initialTrainingCatalog : trainingIdleState),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+
+    renderWith(['/?view=training&section=course&exercise=three-positions&play=1']);
+
+    expect(await screen.findByRole('button', { name: 'Недоступно: Три позиции' })).toBeDisabled();
+    expect(
+      fetchSpy.mock.calls.some(([url]) => String(url).includes('/three-positions/start')),
+    ).toBe(false);
+  });
+
+  it('starts an available course exercise on the courtyard with first-period speeds', async () => {
+    const firstPreset = DAILY_PERIOD_SPEED_PRESETS[0]!;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, _init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      let body: unknown = trainingIdleState;
+      if (url.endsWith('/duel/training/course/first-shot/start')) {
+        body = {
+          run_id: '11111111-1111-4111-8111-111111111111',
+          exercise: initialTrainingCatalog.exercises[0],
+          seed: 'a'.repeat(64),
+          game_core_version: 59,
+          shots_taken: 0,
+          goals: 0,
+          target_goals: 10,
+          started_at: '2026-04-25T12:00:00.000Z',
+          server_now: '2026-04-25T12:00:00.000Z',
+          scene: {
+            has_goalie: false,
+            goalie_id: 'rookie',
+            goalie_config: {
+              ...getGoalie('rookie'),
+              goalOffsetX: 0,
+              goalAmplitude: 0,
+              goalFrequency: 0,
+              frequency: firstPreset.goalieFrequency,
+            },
+            speeds: {
+              shooter_frequency: firstPreset.shooterFrequency,
+              goalie_frequency: firstPreset.goalieFrequency,
+              goal_frequency: 0,
+              puck_speed_per_ms: firstPreset.puckSpeedPerMs,
+            },
+          },
+        };
+      } else if (url.endsWith('/duel/training/course')) {
+        body = initialTrainingCatalog;
+      }
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=training&section=course&exercise=first-shot&play=1']);
+
+    expect(await screen.findByRole('dialog', { name: 'Первый бросок' })).toBeInTheDocument();
+    expect(screen.getByText('УПРАЖНЕНИЕ')).toBeInTheDocument();
+    expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
+    const startCall = fetchSpy.mock.calls.find(([url]) =>
+      String(url).endsWith('/duel/training/course/first-shot/start'),
+    );
+    expect(startCall?.[1]).toMatchObject({ method: 'POST' });
+  });
+
+  it('keeps the last confirmed course catalog when its refresh fails', () => {
+    expect(initialTrainingCatalogAfterRefresh(initialTrainingCatalog, undefined)).toBe(
+      initialTrainingCatalog,
+    );
+    expect(
+      initialTrainingCatalogAfterRefresh(initialTrainingCatalog, {
+        ...initialTrainingCatalog,
+        enabled: false,
+      }),
+    ).toBeNull();
+  });
+
+  it('optimistically unlocks the next exercise after a verified completion', () => {
+    const next = initialTrainingCatalogAfterCompletion(initialTrainingCatalog, 'first-shot');
+
+    expect(next.completed_count).toBe(1);
+    expect(next.exercises.slice(0, 2)).toMatchObject([
+      { key: 'first-shot', state: 'completed' },
+      { key: 'three-positions', state: 'available' },
+    ]);
+    const finalCatalog = {
+      ...initialTrainingCatalog,
+      completed_count: 4,
+      exercises: initialTrainingCatalog.exercises.map((exercise) => ({
+        ...exercise,
+        state: exercise.key === 'find-the-gap' ? 'available' : 'completed',
+      })) as InitialTrainingCatalogResponse['exercises'],
+    };
+    expect(
+      initialTrainingCatalogAfterCompletion(finalCatalog, 'find-the-gap'),
+    ).toMatchObject({
+      completed_count: 5,
+      open_training_unlocked: true,
+      open_training_unlock_source: 'course',
+    });
+  });
+
+  it('preserves the existing open-training screen while the course flag is disabled', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/duel/training/course')
+        ? { ...initialTrainingCatalog, enabled: false }
+        : url.includes('/duel/training/state')
+          ? trainingIdleState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=training']);
+
+    expect(await screen.findByRole('button', { name: 'На лёд' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Начальный уровень/ })).not.toBeInTheDocument();
   });
 
   it('switches an active training session to the selected period before opening the rink', async () => {

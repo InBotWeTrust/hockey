@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for deterministic marksmanship classification', () => {
-    expect(GAME_CORE_VERSION).toBe(59);
+  it('is bumped for merged marksmanship classification and explicit training goal placement', () => {
+    expect(GAME_CORE_VERSION).toBe(60);
   });
 });

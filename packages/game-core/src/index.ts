@@ -39,6 +39,8 @@ export {
   PERSPECTIVE_COURT_VISUAL_Y_OFFSET,
   PERSPECTIVE_COURT_VISUAL_Y_SCALE,
   PERSPECTIVE_COURT_VISUAL_X_CENTER,
+  getPerspectiveCourtGoalOpening,
+  resolvePerspectiveCourtEmptyGoalShot,
   resolvePerspectiveCourtShot,
 } from './court/perspective.js';
 export {
