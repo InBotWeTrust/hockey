@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveShot } from '../../src/shot/resolve.js';
+import { resolveEmptyGoalShot, resolveShot } from '../../src/shot/resolve.js';
 import { simulateShooter } from '../../src/shooter/simulate.js';
 import { simulateGoalie } from '../../src/goalie/simulate.js';
 import { STICK_NEUTRAL, PUCK_SPEED_PER_MS } from '../../src/shot/types.js';
@@ -102,5 +102,19 @@ describe('resolveShot', () => {
     );
     expect(saveRes.type).toBe('save');
     expect(goalRes.type).toBe('goal');
+  });
+});
+
+describe('resolveEmptyGoalShot', () => {
+  it('uses the configured static goal offset', () => {
+    const tapTime = findTapTimeForShooter(PUCK_START.x);
+    const centered = resolveEmptyGoalShot({ tapTime }, baseCfg);
+    const shifted = resolveEmptyGoalShot(
+      { tapTime },
+      { ...baseCfg, goalOffsetX: 100 },
+    );
+
+    expect(centered.type).toBe('goal');
+    expect(shifted).toEqual({ type: 'miss', reason: 'wide' });
   });
 });
