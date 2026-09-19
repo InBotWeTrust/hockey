@@ -549,6 +549,35 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     });
   });
 
+  it('clips a repeated-shot goal window to the moment control returns after puck flight', async () => {
+    const userId = await createUser();
+    const game = await createMarksmanshipGame(1_000);
+    const attemptId = await createActiveAttempt(userId, game.id);
+    await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: marksmanshipInput(500),
+      claimedResult: 'miss',
+      now: new Date(NOW.getTime() + 500),
+    });
+
+    const response = await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 2,
+      input: { ...marksmanshipInput(916), shooterTapTime: 500 },
+      claimedResult: 'goal',
+      now: new Date(NOW.getTime() + 1_916),
+    });
+
+    expect(response).toMatchObject({
+      awardedPoints: 155,
+      difficultyCode: 'very_narrow',
+      counterDirection: false,
+    });
+  });
+
   it('settles a shot started at the deadline after wall time expires', async () => {
     const userId = await createUser();
     const game = await createMarksmanshipGame(1_000);

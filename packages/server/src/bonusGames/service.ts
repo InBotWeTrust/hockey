@@ -1112,7 +1112,11 @@ export async function submitBonusShot(
                   seed: shotSeed,
                   shotIndex: expectedShotIndex,
                   phaseOffsets: getSessionPhaseOffsets(attempt.attempt_seed),
-                  earliestTapTime: previousInput?.tapTime ?? 0,
+                  earliestTapTime:
+                    previousInput === null
+                      ? 0
+                      : previousInput.tapTime +
+                        (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs,
                   scoring: qualificationRules.scoring,
                 })
               : null;
