@@ -320,6 +320,187 @@ describe('game session stores', () => {
     });
   });
 
+  it('keeps live opponent progress when duel polls finish out of order during local shots', async () => {
+    const initial = {
+      ...amateurDuelState,
+      current_period_shots: 0,
+      current_period_goals: 0,
+      me: {
+        state: 'period_active',
+        current_period: 1,
+        current_period_shots: 0,
+        current_period_goals: 0,
+        shots_taken: 0,
+        goals: 0,
+      },
+      opponent: {
+        state: 'period_active',
+        current_period: 1,
+        current_period_shots: 2,
+        current_period_goals: 0,
+        shots_taken: 2,
+        goals: 0,
+      },
+      opponent_recent_periods: [],
+    } as unknown as AmateurDuelMatchState;
+    const olderOpponentProgress = {
+      ...initial,
+      opponent: {
+        ...initial.opponent,
+        current_period_shots: 3,
+        current_period_goals: 1,
+        shots_taken: 3,
+        goals: 1,
+      },
+    };
+    const newerOpponentProgress = {
+      ...initial,
+      opponent: {
+        ...initial.opponent,
+        current_period_shots: 7,
+        current_period_goals: 4,
+        shots_taken: 7,
+        goals: 4,
+      },
+    };
+    const pendingPolls: Array<(value: { match: AmateurDuelMatchState }) => void> = [];
+    vi.mocked(fetchAmateurMatch).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          pendingPolls.push(resolve);
+        }),
+    );
+    useAmateurDuelStore.setState({ match: initial });
+
+    const olderPoll = useAmateurDuelStore.getState().refresh();
+    const newerPoll = useAmateurDuelStore.getState().refresh();
+    useAmateurDuelStore.getState().optimisticAddShot('goal');
+    pendingPolls[1]?.({ match: newerOpponentProgress });
+    await newerPoll;
+
+    expect(useAmateurDuelStore.getState().match).toMatchObject({
+      current_period_shots: 1,
+      current_period_goals: 1,
+      opponent: { current_period_shots: 7, current_period_goals: 4, goals: 4 },
+    });
+
+    pendingPolls[0]?.({ match: olderOpponentProgress });
+    await olderPoll;
+    expect(useAmateurDuelStore.getState().match).toMatchObject({
+      current_period_shots: 1,
+      current_period_goals: 1,
+      opponent: { current_period_shots: 7, current_period_goals: 4, goals: 4 },
+    });
+  });
+
+  it('does not roll the active duel back to the previous shot from a stale poll', async () => {
+    const optimistic = {
+      ...amateurDuelState,
+      current_period_shots: 3,
+      current_period_goals: 2,
+      me: {
+        state: 'period_active',
+        current_period: 1,
+        current_period_shots: 3,
+        current_period_goals: 2,
+        shots_taken: 3,
+        goals: 2,
+      },
+      opponent: {
+        state: 'period_active',
+        current_period: 1,
+        current_period_shots: 2,
+        current_period_goals: 0,
+        shots_taken: 2,
+        goals: 0,
+      },
+      opponent_recent_periods: [],
+    } as unknown as AmateurDuelMatchState;
+    const staleOwnShot = {
+      ...optimistic,
+      current_period_shots: 2,
+      current_period_goals: 1,
+      me: {
+        ...optimistic.me,
+        current_period_shots: 2,
+        current_period_goals: 1,
+        shots_taken: 2,
+        goals: 1,
+      },
+      opponent: {
+        ...optimistic.opponent,
+        current_period_shots: 5,
+        current_period_goals: 2,
+        shots_taken: 5,
+        goals: 2,
+      },
+    };
+    vi.mocked(fetchAmateurMatch).mockResolvedValueOnce({ match: staleOwnShot });
+    useAmateurDuelStore.setState({ match: optimistic });
+
+    await useAmateurDuelStore.getState().refresh();
+
+    expect(useAmateurDuelStore.getState().match).toMatchObject({
+      current_period_shots: 3,
+      current_period_goals: 2,
+      me: { shots_taken: 3, goals: 2 },
+      opponent: { current_period_shots: 5, current_period_goals: 2, goals: 2 },
+    });
+  });
+
+  it('applies an authoritative post-break state after a delayed local snapshot changed identity', async () => {
+    const breakState = {
+      ...amateurDuelState,
+      status: 'active',
+      break_ends_at: '2026-09-19T12:00:00.000Z',
+      me: {
+        state: 'break_active',
+        current_period: 1,
+        current_period_shots: 30,
+        current_period_goals: 14,
+        shots_taken: 30,
+        goals: 14,
+      },
+      opponent: {
+        state: 'period_active',
+        current_period: 1,
+        current_period_shots: 20,
+        current_period_goals: 8,
+        shots_taken: 20,
+        goals: 8,
+      },
+      opponent_recent_periods: [],
+    } as unknown as AmateurDuelMatchState;
+    const delayedBreakSnapshot = {
+      ...breakState,
+      server_now: '2026-09-19T12:00:00.100Z',
+    };
+    const postBreakState = {
+      ...breakState,
+      server_now: '2026-09-19T12:00:01.000Z',
+      break_ends_at: null,
+      me: { ...breakState.me, state: 'accepted' as const },
+    };
+    let resolveRefresh: ((value: { match: AmateurDuelMatchState }) => void) | undefined;
+    vi.mocked(fetchAmateurMatch).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRefresh = resolve;
+        }),
+    );
+    useAmateurDuelStore.setState({ match: breakState });
+
+    const refresh = useAmateurDuelStore.getState().refresh();
+    useAmateurDuelStore.getState().applyState(delayedBreakSnapshot);
+    resolveRefresh?.({ match: postBreakState });
+    await refresh;
+
+    expect(useAmateurDuelStore.getState().match).toMatchObject({
+      break_ends_at: null,
+      me: { state: 'accepted', current_period: 1 },
+    });
+  });
+
   it('does not start a second daily period request while one is already in flight', async () => {
     useDailyStore.setState({ inFlight: true });
 

@@ -22,7 +22,10 @@ interface AmateurDuelStoreState {
   loading: boolean;
   error: string | null;
   inFlight: boolean;
-  load: (matchId: string) => Promise<AmateurDuelMatchState | null>;
+  load: (
+    matchId: string,
+    options?: { reconcilePolling?: boolean },
+  ) => Promise<AmateurDuelMatchState | null>;
   refresh: () => Promise<void>;
   ready: (loadout?: AmateurDuelLoadoutSelection) => Promise<AmateurDuelMatchState | null>;
   confirmTournamentLoadout: (
@@ -70,29 +73,103 @@ function applyShotAcknowledgement(
   };
 }
 
-function applyLateOpponentProgress(
+const PARTICIPANT_STATE_ORDER: Record<AmateurDuelMatchState['me']['state'], number> = {
+  invited: 0,
+  loadout_pending: 1,
+  ready: 2,
+  period_active: 3,
+  break_active: 4,
+  accepted: 5,
+  completed: 6,
+  forfeit: 6,
+};
+
+const MATCH_STATUS_ORDER: Record<AmateurDuelMatchState['status'], number> = {
+  invited: 0,
+  ready_check: 1,
+  active: 2,
+  settled: 3,
+  cancelled: 3,
+  expired: 3,
+};
+
+function compareParticipantProgress(
+  left: AmateurDuelMatchState['me'],
+  right: AmateurDuelMatchState['me'],
+): number {
+  if (left.current_period !== right.current_period) {
+    return left.current_period - right.current_period;
+  }
+  const stateDelta = PARTICIPANT_STATE_ORDER[left.state] - PARTICIPANT_STATE_ORDER[right.state];
+  if (stateDelta !== 0) return stateDelta;
+  if (left.shots_taken !== right.shots_taken) return left.shots_taken - right.shots_taken;
+  if (left.current_period_shots !== right.current_period_shots) {
+    return left.current_period_shots - right.current_period_shots;
+  }
+  return 0;
+}
+
+function newerServerTime(
   current: AmateurDuelMatchState,
   polled: AmateurDuelMatchState,
-): AmateurDuelMatchState {
-  const currentOpponent = current.opponent;
-  const polledOpponent = polled.opponent;
-  const polledIsOlder =
-    polledOpponent.current_period < currentOpponent.current_period ||
-    (polledOpponent.current_period === currentOpponent.current_period &&
-      polledOpponent.shots_taken < currentOpponent.shots_taken) ||
-    (polledOpponent.current_period === currentOpponent.current_period &&
-      polledOpponent.shots_taken === currentOpponent.shots_taken &&
-      polledOpponent.current_period_shots < currentOpponent.current_period_shots);
-  if (polledIsOlder) return current;
+): {
+  server_now: string;
+  received_at_performance_ms?: number;
+} {
+  const currentServerNow = Date.parse(current.server_now);
+  const polledServerNow = Date.parse(polled.server_now);
+  if (Number.isFinite(currentServerNow) && currentServerNow > polledServerNow) {
+    return {
+      server_now: current.server_now,
+      ...(current.received_at_performance_ms === undefined
+        ? {}
+        : { received_at_performance_ms: current.received_at_performance_ms }),
+    };
+  }
   return {
-    ...current,
     server_now: polled.server_now,
     ...(polled.received_at_performance_ms === undefined
       ? {}
       : { received_at_performance_ms: polled.received_at_performance_ms }),
+  };
+}
+
+function mergeOpponentProgress(
+  current: AmateurDuelMatchState,
+  polled: AmateurDuelMatchState,
+): AmateurDuelMatchState {
+  if (compareParticipantProgress(polled.opponent, current.opponent) < 0) return current;
+  return {
+    ...current,
+    ...newerServerTime(current, polled),
     opponent: polled.opponent,
     opponent_recent_periods: polled.opponent_recent_periods,
   };
+}
+
+function reconcilePolledMatch(
+  current: AmateurDuelMatchState,
+  polled: AmateurDuelMatchState,
+): AmateurDuelMatchState {
+  if (current.id !== polled.id) return current;
+  const statusDelta = MATCH_STATUS_ORDER[polled.status] - MATCH_STATUS_ORDER[current.status];
+  if (statusDelta < 0) {
+    return current.opponent && polled.opponent
+      ? mergeOpponentProgress(current, polled)
+      : current;
+  }
+  if (statusDelta > 0) return polled;
+  if (!current.opponent || !polled.opponent) return polled;
+
+  const myProgressDelta = compareParticipantProgress(polled.me, current.me);
+  if (myProgressDelta > 0) return polled;
+  if (myProgressDelta < 0) return mergeOpponentProgress(current, polled);
+
+  const opponentProgressDelta = compareParticipantProgress(polled.opponent, current.opponent);
+  if (opponentProgressDelta < 0) {
+    return current;
+  }
+  return polled;
 }
 
 export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) => ({
@@ -101,29 +178,22 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
   error: null,
   inFlight: false,
 
-  load: async (matchId) => {
+  load: async (matchId, options = {}) => {
     const startedFromMatch = get().match;
     set({ loading: true, error: null });
     try {
       const { match } = await fetchAmateurMatch(matchId);
       const current = get().match;
-      if (current !== startedFromMatch) {
-        if (
-          startedFromMatch?.id === match.id &&
-          current?.id === match.id &&
-          startedFromMatch.status === 'active' &&
-          current.status === 'active' &&
-          match.status === 'active'
-        ) {
-          set({
-            match: applyLateOpponentProgress(current, match),
-            loading: false,
-            error: null,
-          });
-        }
-        return match;
-      }
-      set({ match, loading: false, error: null });
+      if (current !== startedFromMatch && !options.reconcilePolling) return match;
+      if (current !== startedFromMatch && current?.id !== match.id) return match;
+      set({
+        match:
+          options.reconcilePolling && current?.id === match.id
+            ? reconcilePolledMatch(current, match)
+            : match,
+        loading: false,
+        error: null,
+      });
       return match;
     } catch (err) {
       if (get().match !== startedFromMatch) return null;
@@ -138,7 +208,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
   refresh: async () => {
     const current = get().match;
     if (!current) return;
-    await get().load(current.id);
+    await get().load(current.id, { reconcilePolling: true });
   },
 
   ready: async (loadout = {}) => {
