@@ -126,6 +126,10 @@ export function InitialTrainingPlay({
   completionRef.current = completion;
   const resultAnimationCompleteRef = useRef(false);
   const feedbackTimerRef = useRef<number | null>(null);
+  const startRequestRef = useRef<{
+    exerciseKey: InitialTrainingExerciseKey;
+    request: ReturnType<typeof startInitialTrainingExercise>;
+  } | null>(null);
 
   const clearFeedback = useCallback(() => {
     if (feedbackTimerRef.current !== null) {
@@ -150,7 +154,13 @@ export function InitialTrainingPlay({
     setCompletion(null);
     setShowBriefing(true);
     setShowResult(false);
-    void startInitialTrainingExercise(exerciseKey)
+    if (startRequestRef.current?.exerciseKey !== exerciseKey) {
+      startRequestRef.current = {
+        exerciseKey,
+        request: startInitialTrainingExercise(exerciseKey),
+      };
+    }
+    void startRequestRef.current.request
       .then((next) => {
         if (active) setRun(next);
       })

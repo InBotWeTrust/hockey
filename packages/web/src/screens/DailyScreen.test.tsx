@@ -134,6 +134,17 @@ const initialTrainingCatalog: InitialTrainingCatalogResponse = {
   open_training_unlocked: false,
   open_training_unlock_source: null,
   gameplay_lock: null,
+  advanced_training: {
+    enabled: true,
+    access: {
+      amateur_completed: true,
+      beginner_training_completed: false,
+      unlocked: false,
+    },
+    completed_count: 0,
+    total_count: 8,
+    exercises: [],
+  },
   exercises: [
     ['first-shot', 'Первый бросок', 'available', 10],
     ['three-positions', 'Три позиции', 'locked', 9],
@@ -4120,6 +4131,34 @@ describe('DailyScreen', () => {
     expect(screen.getByLabelText('location')).toHaveTextContent(
       '/?view=training&section=course&exercise=first-shot&play=1',
     );
+  });
+
+  it('does not flash the open-training screen while the course catalog is loading', async () => {
+    let resolveCourse!: (response: Response) => void;
+    const courseResponse = new Promise<Response>((resolve) => {
+      resolveCourse = resolve;
+    });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/course')) return courseResponse;
+      return new Response(JSON.stringify(url.includes('/duel/training/state') ? trainingIdleState : baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=training&from=sections']);
+
+    expect(await screen.findByText('Загрузка раздела…')).toBeInTheDocument();
+    expect(screen.queryByText(/Выбери модель периода/)).not.toBeInTheDocument();
+
+    resolveCourse(
+      new Response(JSON.stringify(initialTrainingCatalog), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    expect(await screen.findByRole('button', { name: /Начальный уровень/ })).toBeInTheDocument();
   });
 
   it('keeps direct locked course routes in the exercise catalog', async () => {

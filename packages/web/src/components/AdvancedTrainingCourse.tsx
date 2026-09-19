@@ -72,11 +72,16 @@ export function AdvancedTrainingHubCard({
   completedCount,
   totalCount,
   unlocked,
+  access,
   onOpen,
 }: {
   completedCount: number;
   totalCount: number;
   unlocked: boolean;
+  access?: {
+    amateur_completed: boolean;
+    beginner_training_completed: boolean;
+  };
   onOpen: () => void;
 }): JSX.Element {
   return (
@@ -88,14 +93,21 @@ export function AdvancedTrainingHubCard({
       aria-label={`Продвинутый уровень, пройдено ${completedCount} из ${totalCount} упражнений`}
     >
       <span className="amateur-hub-card__art" aria-hidden="true">
-        <img src={ADVANCED_COVER} alt="Продвинутый уровень" draggable={false} />
+        <img
+          src={ADVANCED_COVER}
+          alt="Продвинутый уровень"
+          className={unlocked ? undefined : 'advanced-training-mode-card__artwork--locked'}
+          draggable={false}
+        />
       </span>
       <span className="amateur-hub-card__copy">
         <strong>Продвинутый уровень</strong>
         <span>
           {unlocked
             ? `${completedCount} из ${totalCount} упражнений`
-            : 'Заверши начальное обучение и открой любительский режим'}
+            : access
+              ? `${access.amateur_completed ? '✓' : '○'} Любители · ${access.beginner_training_completed ? '✓' : '○'} Начальный уровень`
+              : 'Заверши начальное обучение и открой любительский режим'}
         </span>
       </span>
       <ChevronRight className="card-chevron" size={20} strokeWidth={2.7} aria-hidden="true" />
@@ -147,7 +159,7 @@ function ExerciseStartModal({
       <p className="advanced-training-start-modal__goal">
         <strong>Цель:</strong> {exercise.goal}
       </p>
-      <button type="button" className="btn btn--primary advanced-training-start-modal__button" onClick={onStart}>
+      <button type="button" className="btn btn--cta advanced-training-start-modal__button" onClick={onStart}>
         Начать
       </button>
     </AccessibleModal>

@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { getGoalie } from '@hockey/game-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ReactNode } from 'react';
+import { StrictMode, type ReactNode } from 'react';
 import type { InitialTrainingRun } from '../api/initialTraining.js';
 
 type CapturedPlayViewProps = {
@@ -133,6 +133,24 @@ describe('initial training completion lifecycle', () => {
     expect(testState.playViewProps?.active).toBe(false);
     expect(testState.playViewProps?.periodLabel).toBe('УПРАЖНЕНИЕ');
     expect(testState.playViewProps?.suppressedByModal).toBe(true);
+  });
+
+  it('starts only one server run under StrictMode', async () => {
+    render(
+      <StrictMode>
+        <InitialTrainingPlay
+          exerciseKey="first-shot"
+          onBack={vi.fn()}
+          onNext={vi.fn()}
+          onCourse={vi.fn()}
+          onOpenTraining={vi.fn()}
+          onCatalogRefresh={vi.fn()}
+        />
+      </StrictMode>,
+    );
+
+    await screen.findByTestId('play-view');
+    expect(testState.startExercise).toHaveBeenCalledTimes(1);
   });
 
   it('starts the scene only after the player closes the briefing', async () => {

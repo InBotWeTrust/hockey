@@ -15,6 +15,17 @@ const catalog: InitialTrainingCatalogResponse = {
   open_training_unlocked: false,
   open_training_unlock_source: null,
   gameplay_lock: null,
+  advanced_training: {
+    enabled: true,
+    access: {
+      amateur_completed: true,
+      beginner_training_completed: false,
+      unlocked: false,
+    },
+    completed_count: 0,
+    total_count: 8,
+    exercises: [],
+  },
   exercises: [
     {
       key: 'first-shot',
@@ -70,20 +81,28 @@ const catalog: InitialTrainingCatalogResponse = {
 };
 
 describe('initial training course UI', () => {
-  it('shows the course and open-training modes as concise section cards', () => {
+  it('shows open, initial and advanced training as three concise section cards', () => {
     render(
       <InitialTrainingHub
         catalog={catalog}
         onOpenCourse={vi.fn()}
         onOpenTraining={vi.fn()}
+        onOpenAdvanced={vi.fn()}
       />,
     );
 
     expect(screen.getByText('Начальный уровень')).toBeInTheDocument();
+    expect(screen.getByText('Продвинутый уровень')).toBeInTheDocument();
     expect(document.querySelector('img[src="/sprites/initial-training-course-cover.webp"]')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Открытая тренировка/ })).toBeDisabled();
     expect(screen.getByText('1 из 5 упражнений')).toBeInTheDocument();
     expect(screen.getByText('Откроется после 5 упражнений')).toBeInTheDocument();
+    const modeCards = screen.getAllByRole('button');
+    expect(modeCards.map((card) => card.textContent)).toEqual([
+      expect.stringContaining('Начальный уровень'),
+      expect.stringContaining('Продвинутый уровень'),
+      expect.stringContaining('Открытая тренировка'),
+    ]);
   });
 
   it('uses the task-card pattern with task statuses and reward icons', () => {

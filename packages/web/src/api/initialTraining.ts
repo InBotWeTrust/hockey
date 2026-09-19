@@ -37,6 +37,37 @@ export interface InitialTrainingCatalogResponse {
   open_training_unlock_source: 'course' | 'legacy' | null;
   gameplay_lock: GameplayLockDTO | null;
   exercises: InitialTrainingExercise[];
+  advanced_training: AdvancedTrainingCatalogResponse;
+}
+
+export interface AdvancedTrainingCatalogResponse {
+  enabled: boolean;
+  access: {
+    amateur_completed: boolean;
+    beginner_training_completed: boolean;
+    unlocked: boolean;
+  };
+  completed_count: number;
+  total_count: number;
+  exercises: Array<{
+    key:
+      | 'board-side'
+      | 'open-net'
+      | 'crossing'
+      | 'goalie-leaving'
+      | 'narrow-gap'
+      | 'counter-direction'
+      | 'second-tempo'
+      | 'rhythm-reset';
+    position: number;
+    title: string;
+    description: string | null;
+    skill: string | null;
+    goal: string | null;
+    rewardStars: number;
+    rewardExperience: number;
+    state: 'completed' | 'available' | 'locked';
+  }>;
 }
 
 export interface InitialTrainingScene {

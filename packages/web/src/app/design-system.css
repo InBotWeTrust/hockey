@@ -6486,11 +6486,10 @@
 
 .advanced-training-mode-card:disabled {
   cursor: not-allowed;
-  opacity: 0.58;
 }
 
-.advanced-training-mode-card:disabled .amateur-hub-card__art {
-  filter: saturate(0.32) brightness(0.88);
+.advanced-training-mode-card__artwork--locked {
+  filter: grayscale(1);
 }
 
 .advanced-training-start-modal {

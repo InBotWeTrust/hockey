@@ -68,6 +68,23 @@ describe('advanced training course UI', () => {
     );
   });
 
+  it('marks only the artwork as locked when the global course is unavailable', () => {
+    render(
+      <AdvancedTrainingHubCard
+        completedCount={0}
+        totalCount={8}
+        unlocked={false}
+        access={{ amateur_completed: true, beginner_training_completed: false }}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).toBeDisabled();
+    expect(screen.getByAltText('Продвинутый уровень')).toHaveClass(
+      'advanced-training-mode-card__artwork--locked',
+    );
+  });
+
   it('renders eight equal task cards from the shared artwork with numbered overlays', () => {
     render(<AdvancedTrainingCatalog catalog={catalog} onStart={vi.fn()} />);
 
@@ -114,7 +131,9 @@ describe('advanced training course UI', () => {
     expect(dialog.querySelector('.advanced-training-start-modal__goal')).toHaveTextContent(
       'Цель: Гол в свободный створ',
     );
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Начать' }));
+    const startButton = within(dialog).getByRole('button', { name: 'Начать' });
+    expect(startButton).toHaveClass('btn--cta');
+    fireEvent.click(startButton);
     expect(onStart).toHaveBeenCalledWith('open-net');
   });
 

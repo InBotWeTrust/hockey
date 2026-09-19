@@ -1,11 +1,13 @@
 import { Check, ChevronRight, Star, TrendingUp } from 'lucide-react';
 import { rewardColor } from '../app/rewardColors.js';
 import type {
+  AdvancedTrainingCatalogResponse,
   InitialTrainingCatalogResponse,
   InitialTrainingExercise,
   InitialTrainingExerciseKey,
   InitialTrainingFeedbackCode,
 } from '../api/initialTraining.js';
+import { AdvancedTrainingHubCard } from './AdvancedTrainingCourse.js';
 
 const exerciseSkill: Record<InitialTrainingExerciseKey, string> = {
   'first-shot': 'Точность',
@@ -26,11 +28,14 @@ export function InitialTrainingHub({
   catalog,
   onOpenCourse,
   onOpenTraining,
+  onOpenAdvanced,
 }: {
   catalog: InitialTrainingCatalogResponse;
   onOpenCourse: () => void;
   onOpenTraining: () => void;
+  onOpenAdvanced: () => void;
 }): JSX.Element {
+  const advanced = catalog.advanced_training;
   return (
     <div className="initial-training-hub">
       <button
@@ -48,6 +53,14 @@ export function InitialTrainingHub({
         </span>
         <ChevronRight className="card-chevron" size={20} strokeWidth={2.7} aria-hidden="true" />
       </button>
+
+      <AdvancedTrainingHubCard
+        completedCount={advanced.completed_count}
+        totalCount={advanced.total_count}
+        unlocked={advanced.enabled && advanced.access.unlocked}
+        access={advanced.access}
+        onOpen={onOpenAdvanced}
+      />
 
       <button
         type="button"

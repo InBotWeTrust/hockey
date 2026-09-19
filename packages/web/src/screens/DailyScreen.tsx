@@ -95,6 +95,7 @@ import {
   InitialTrainingCatalog,
   InitialTrainingHub,
 } from '../components/InitialTrainingCourse.js';
+import { AdvancedTrainingCatalog } from '../components/AdvancedTrainingCourse.js';
 import { InitialTrainingPlay } from '../components/InitialTrainingPlay.js';
 import { fetchBonusGames } from '../api/bonusGames.js';
 import type { ProfileData } from './profileTypes.js';
@@ -3540,6 +3541,7 @@ function TrainingPlaceholder({
   const [localPlayEntrance, setLocalPlayEntrance] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [courseCatalog, setCourseCatalog] = useState<InitialTrainingCatalogResponse | null>(null);
+  const [courseCatalogLoaded, setCourseCatalogLoaded] = useState(false);
   const refreshedTrainingDayRef = useRef<string | null>(null);
 
   const refreshCourseCatalog = useCallback(async (): Promise<void> => {
@@ -3548,6 +3550,8 @@ function TrainingPlaceholder({
       setCourseCatalog((current) => initialTrainingCatalogAfterRefresh(current, next));
     } catch {
       setCourseCatalog((current) => initialTrainingCatalogAfterRefresh(current, undefined));
+    } finally {
+      setCourseCatalogLoaded(true);
     }
   }, []);
 
@@ -3606,9 +3610,20 @@ function TrainingPlaceholder({
     onPlayStart?.();
   };
 
+  const trainingParams = new URLSearchParams(location.search);
+  const trainingSection = trainingParams.get('section');
+
+  if (!courseCatalogLoaded && !autoPlay && trainingSection !== 'open') {
+    return (
+      <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
+        <div className="training-info-copy" role="status">Загрузка раздела…</div>
+      </ModeShell>
+    );
+  }
+
   if (courseCatalog) {
-    const params = new URLSearchParams(location.search);
-    const section = params.get('section');
+    const params = trainingParams;
+    const section = trainingSection;
     const exerciseParam = params.get('exercise');
     const fromSectionsSuffix = params.get('from') === 'sections' ? '&from=sections' : '';
     const exercise = courseCatalog.exercises.find((item) => item.key === exerciseParam);
@@ -3659,6 +3674,31 @@ function TrainingPlaceholder({
         </ModeShell>
       );
     }
+    if (section === 'advanced') {
+      const advanced = courseCatalog.advanced_training;
+      return (
+        <ModeShell
+          title="Продвинутое обучение"
+          onBack={() => navigate(`/?view=training${fromSectionsSuffix}`, { replace: true })}
+          variant="section-hub"
+          className="advanced-training-course-screen"
+        >
+          <AdvancedTrainingCatalog
+            catalog={{
+              completedCount: advanced.completed_count,
+              totalCount: advanced.total_count,
+              exercises: advanced.exercises,
+            }}
+            onStart={(key) =>
+              navigate(
+                `/?view=training&section=advanced&exercise=${encodeURIComponent(key)}&play=1${fromSectionsSuffix}`,
+                { replace: true },
+              )
+            }
+          />
+        </ModeShell>
+      );
+    }
     if (!autoPlay && section !== 'open') {
       return (
         <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
@@ -3669,6 +3709,9 @@ function TrainingPlaceholder({
             }
             onOpenTraining={() =>
               navigate(`/?view=training&section=open${fromSectionsSuffix}`, { replace: true })
+            }
+            onOpenAdvanced={() =>
+              navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })
             }
           />
         </ModeShell>

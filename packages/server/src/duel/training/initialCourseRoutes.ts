@@ -19,6 +19,7 @@ import {
 } from '@hockey/game-core';
 import { observeCareerExperience } from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
+import { resolveAmateurAccess } from '../../profile/amateurAccess.js';
 import { appendEvent } from '../eventLog.js';
 import {
   assertGameplayActionAllowed,
@@ -42,6 +43,13 @@ import {
   type InitialTrainingConfig,
   type InitialTrainingExerciseKey,
 } from './initialCourse.js';
+import {
+  ADVANCED_TRAINING_EXERCISES,
+  buildAdvancedTrainingCatalog,
+  fetchAdvancedTrainingCompletions,
+  loadAdvancedTrainingConfig,
+  resolveAdvancedTrainingAccess,
+} from './advancedCourse.js';
 
 const paramsSchema = z.object({ exerciseKey: z.string().min(1).max(80) });
 const shotBodySchema = z.object({
@@ -195,6 +203,13 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
       const config = await loadInitialTrainingConfig(client);
       const completed = await fetchInitialTrainingCompletions(client, req.user.id);
       const beginnerTrainingCompleted = await isInitialTrainingCompleted(client, req.user.id);
+      const advancedConfig = await loadAdvancedTrainingConfig(client);
+      const advancedCompleted = await fetchAdvancedTrainingCompletions(client, req.user.id);
+      const amateurAccess = await resolveAmateurAccess(client, req.user.id);
+      const advancedAccess = resolveAdvancedTrainingAccess(
+        amateurAccess.hasFullAccess,
+        beginnerTrainingCompleted,
+      );
       const accessSource = await fetchInitialTrainingOpenAccess(client, req.user.id);
       const gameplayLock = await getGameplayLockState(client, {
         userId: req.user.id,
@@ -218,6 +233,17 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
         open_training_unlock_source: accessSource,
         gameplay_lock: toGameplayLockDto(gameplayLock),
         exercises,
+        advanced_training: {
+          enabled: advancedConfig.enabled,
+          access: advancedAccess,
+          completed_count: advancedCompleted.size,
+          total_count: ADVANCED_TRAINING_EXERCISES.length,
+          exercises: buildAdvancedTrainingCatalog(
+            advancedCompleted,
+            advancedConfig.enabled && advancedAccess.unlocked,
+            advancedConfig,
+          ),
+        },
       };
     });
   });
