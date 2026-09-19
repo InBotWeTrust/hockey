@@ -151,6 +151,11 @@ export interface MarksmanshipShotClassification {
   difficultyCode: MarksmanshipDifficultyCode | null;
 }
 
+export interface MarksmanshipShotContext {
+  result: ShotResult;
+  counterDirection: boolean;
+}
+
 export interface StrictCounterDirectionInput {
   puckX: number;
   goalieCenterX: number;
@@ -307,9 +312,9 @@ function counterDirectionForGoal(
   });
 }
 
-export function classifyMarksmanshipShot(
+export function resolveMarksmanshipShotContext(
   input: MarksmanshipShotInput,
-): MarksmanshipShotClassification {
+): MarksmanshipShotContext {
   const result = resolvePerspectiveCourtShot(
     input.shotInput,
     input.goalie,
@@ -318,6 +323,16 @@ export function classifyMarksmanshipShot(
     STICK_NEUTRAL,
     input.phaseOffsets,
   );
+  return {
+    result,
+    counterDirection: result.type === 'goal' ? counterDirectionForGoal(input, result) : false,
+  };
+}
+
+export function classifyMarksmanshipShot(
+  input: MarksmanshipShotInput,
+): MarksmanshipShotClassification {
+  const { result, counterDirection } = resolveMarksmanshipShotContext(input);
   if (result.type !== 'goal') {
     return {
       result,
@@ -331,7 +346,6 @@ export function classifyMarksmanshipShot(
 
   const windowDurationMs = goalWindowDuration(input);
   const bracket = bracketForWindow(windowDurationMs, input.scoring);
-  const counterDirection = counterDirectionForGoal(input, result);
   return {
     result,
     windowDurationMs,

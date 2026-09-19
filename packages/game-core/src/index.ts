@@ -46,11 +46,13 @@ export {
   classifyMarksmanshipShot,
   isStrictCounterDirection,
   parseMarksmanshipScoringRules,
+  resolveMarksmanshipShotContext,
   scoreMarksmanshipWindow,
   type MarksmanshipDifficultyCode,
   type MarksmanshipScoreBracket,
   type MarksmanshipScoringRules,
   type MarksmanshipShotClassification,
+  type MarksmanshipShotContext,
   type MarksmanshipShotInput,
   type StrictCounterDirectionInput,
 } from './marksmanship.js';
