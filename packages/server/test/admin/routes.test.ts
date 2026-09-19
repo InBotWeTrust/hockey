@@ -1205,6 +1205,33 @@ describe.skipIf(!hasIntegrationEnv)('/admin/*', () => {
     expect(selfDemote.statusCode).toBe(409);
   });
 
+  it('keeps the career experience stage claimable after an admin experience update', async () => {
+    const catalogue = await app.inject({
+      method: 'GET',
+      url: '/achievements',
+      headers: auth(playerToken),
+    });
+    expect(catalogue.statusCode).toBe(200);
+
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: `/admin/users/${playerId}`,
+      headers: auth(adminToken),
+      payload: { experience: 1_000 },
+    });
+    expect(patch.statusCode).toBe(200);
+
+    const claim = await app.inject({
+      method: 'POST',
+      url: '/achievements/career-experience/claim',
+      headers: auth(playerToken),
+    });
+    expect(claim.statusCode).toBe(200);
+    expect(claim.json()).toMatchObject({
+      stage: { claimed: 1, opened: 2 },
+    });
+  });
+
   it('updates game settings', async () => {
     const update = await app.inject({
       method: 'PATCH',
