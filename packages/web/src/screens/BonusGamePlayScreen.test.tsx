@@ -115,6 +115,7 @@ function attempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAttempt {
     shots_taken: 28,
     current_period_shots_taken: 3,
     goals: 18,
+    total_points: 0,
     current_goal_streak: 2,
     best_goal_streak: 4,
     preview_required: false,
@@ -177,6 +178,18 @@ function attempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAttempt {
     goalkeeper_ready_url: '/bonus-games/goalkeepers/beach-ready.webp',
     goalkeeper_save_url: '/bonus-games/goalkeepers/beach-save.webp',
     ...overrides,
+  };
+}
+
+function pendingShot(attemptValue: BonusGameAttempt, receivedAtPerformanceMs = 1_000) {
+  return {
+    attempt: attemptValue,
+    awardedPoints: 0,
+    totalPoints: attemptValue.total_points,
+    difficultyCode: null,
+    counterDirection: false,
+    predictedMarksmanship: null,
+    receivedAtPerformanceMs,
   };
 }
 
@@ -453,6 +466,11 @@ describe('BonusGamePlayScreen', () => {
     });
     const submitShot = vi.fn(async () => ({
       serverResult: 'goal' as const,
+      awardedPoints: 0,
+      totalPoints: completedAttempt.total_points,
+      difficultyCode: null,
+      counterDirection: false,
+      predictedMarksmanship: null,
       attempt: completedAttempt,
       rewardGranted: true,
     }));
@@ -467,7 +485,7 @@ describe('BonusGamePlayScreen', () => {
     setStore({
       submitShot,
       applyPendingShot,
-      pendingShot: { attempt: completedAttempt, receivedAtPerformanceMs: 1_000 },
+      pendingShot: pendingShot(completedAttempt),
       inFlight: true,
     });
     renderScreen();
@@ -519,6 +537,11 @@ describe('BonusGamePlayScreen', () => {
     });
     const submitShot = vi.fn(async () => ({
       serverResult: 'goal' as const,
+      awardedPoints: 0,
+      totalPoints: completedAttempt.total_points,
+      difficultyCode: null,
+      counterDirection: false,
+      predictedMarksmanship: null,
       attempt: completedAttempt,
       rewardGranted: true,
     }));
@@ -544,6 +567,11 @@ describe('BonusGamePlayScreen', () => {
     // This catches a late successful response leaving the store permanently locked with no reward view.
     const responsePending = deferred<{
       serverResult: 'goal';
+      awardedPoints: number;
+      totalPoints: number;
+      difficultyCode: null;
+      counterDirection: boolean;
+      predictedMarksmanship: null;
       attempt: BonusGameAttempt;
       rewardGranted: true;
     }>();
@@ -560,10 +588,7 @@ describe('BonusGamePlayScreen', () => {
     const submitShot = vi.fn(async () => {
       const result = await responsePending.promise;
       useBonusGameStore.setState({
-        pendingShot: {
-          attempt: result.attempt,
-          receivedAtPerformanceMs: performance.now(),
-        },
+        pendingShot: pendingShot(result.attempt, performance.now()),
         inFlight: true,
       });
       return result;
@@ -587,6 +612,11 @@ describe('BonusGamePlayScreen', () => {
     await act(async () => {
       responsePending.resolve({
         serverResult: 'goal',
+        awardedPoints: 0,
+        totalPoints: completedAttempt.total_points,
+        difficultyCode: null,
+        counterDirection: false,
+        predictedMarksmanship: null,
         attempt: completedAttempt,
         rewardGranted: true,
       });
@@ -641,7 +671,7 @@ describe('BonusGamePlayScreen', () => {
     });
     setStore({
       attempt: acceptedAttempt,
-      pendingShot: { attempt: acceptedAttempt, receivedAtPerformanceMs: 1_000 },
+      pendingShot: pendingShot(acceptedAttempt),
       inFlight: true,
       applyPendingShot,
     });

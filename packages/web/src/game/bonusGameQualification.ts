@@ -6,10 +6,15 @@ function formatTime(ms: number): string {
 }
 
 function streakSuffix(rules: BonusQualificationRules): string {
-  return rules.requiredGoalStreak === undefined ? '' : ` · серия ${rules.requiredGoalStreak}`;
+  return rules.type === 'points_in_time' || rules.requiredGoalStreak === undefined
+    ? ''
+    : ` · серия ${rules.requiredGoalStreak}`;
 }
 
 export function qualificationDescription(rules: BonusQualificationRules): string {
+  if (rules.type === 'points_in_time') {
+    return `${rules.targetPoints} очков за ${formatTime(rules.activeTimeMs)}`;
+  }
   if (rules.type === 'goals_in_time') {
     return `${rules.targetGoals} голов за ${formatTime(rules.activeTimeMs)}${streakSuffix(rules)}`;
   }
@@ -18,8 +23,17 @@ export function qualificationDescription(rules: BonusQualificationRules): string
 
 export function qualificationProgress(
   rules: BonusQualificationRules,
-  state: { goals: number; shots: number; currentStreak: number; bestStreak: number },
+  state: {
+    goals: number;
+    shots: number;
+    totalPoints?: number;
+    currentStreak: number;
+    bestStreak: number;
+  },
 ): string {
+  if (rules.type === 'points_in_time') {
+    return `ЦЕЛЬ ${state.totalPoints ?? 0}/${rules.targetPoints}`;
+  }
   const primary = `ЦЕЛЬ ${state.goals}/${rules.targetGoals}`;
   if (rules.requiredGoalStreak === undefined) return primary;
   const achieved =

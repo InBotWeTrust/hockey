@@ -23,6 +23,7 @@ function activeAttempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAtte
     shots_taken: 0,
     current_period_shots_taken: 0,
     goals: 0,
+    total_points: 0,
     current_goal_streak: 0,
     best_goal_streak: 0,
     preview_required: false,

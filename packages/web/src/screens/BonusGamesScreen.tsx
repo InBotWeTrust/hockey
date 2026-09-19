@@ -52,6 +52,7 @@ function formatAttemptResetCountdown(resetsAt: string, nowMs: number): string | 
 const skillLabels: Record<BonusSkillCode, string> = {
   speed: 'Скорость',
   accuracy: 'Точность',
+  marksmanship: 'Меткость',
 };
 
 function safeUiError(error: unknown): string {

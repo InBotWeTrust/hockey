@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_MARKSMANSHIP_SCORING_RULES } from '@hockey/game-core';
 import { qualificationDescription, qualificationProgress } from './bonusGameQualification.js';
 
 describe('qualificationDescription', () => {
@@ -12,6 +13,17 @@ describe('qualificationDescription', () => {
     expect(
       qualificationDescription({ type: 'goals_in_time', targetGoals: 20, activeTimeMs: 120_000 }),
     ).toBe('20 голов за 02:00');
+  });
+
+  it('describes points in active time', () => {
+    expect(
+      qualificationDescription({
+        type: 'points_in_time',
+        targetPoints: 1_100,
+        activeTimeMs: 30_000,
+        scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
+      }),
+    ).toBe('1100 очков за 00:30');
   });
 
   it('describes accuracy qualification as goals from a fixed shot quota', () => {
@@ -61,5 +73,19 @@ describe('qualificationProgress', () => {
         { goals: 10, shots: 15, currentStreak: 1, bestStreak: 4 },
       ),
     ).toBe('ЦЕЛЬ 10/21');
+  });
+
+  it('shows point progress for marksmanship qualifications', () => {
+    expect(
+      qualificationProgress(
+        {
+          type: 'points_in_time',
+          targetPoints: 1_100,
+          activeTimeMs: 30_000,
+          scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
+        },
+        { goals: 4, shots: 5, totalPoints: 450, currentStreak: 2, bestStreak: 3 },
+      ),
+    ).toBe('ЦЕЛЬ 450/1100');
   });
 });
