@@ -997,6 +997,9 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
   });
 
   it('enforces the bonus snapshot, index, and enum constraint contract', async () => {
+    await resetDatabase(pool);
+    await applyMigrations(pool, MIGRATIONS_DIR);
+
     const userId = '00000000-0000-4000-8000-000000000581';
     const invalidUserId = '00000000-0000-4000-8000-000000000582';
     const arenaThemeId = '00000000-0000-4000-8000-000000000583';

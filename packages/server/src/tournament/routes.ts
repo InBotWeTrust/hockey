@@ -162,7 +162,9 @@ const draftSchema = z.object({
     .optional(),
   title: tournamentTitleSchema,
   description: z.string().trim().max(10_000).default(''),
-  rulesText: z.string().trim().min(1).max(30_000).default(''),
+  // Legacy admin clients did not send this field.  Keep it optional at the
+  // transport boundary so an update retains the stored text in the service.
+  rulesText: z.string().trim().min(1).max(30_000).optional(),
   imageUrl: nullableImageUrl,
   rules: rulesSchema,
   registrationOpensAt: nullableDate,
@@ -775,7 +777,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       ...(body.slug !== undefined ? { slug: body.slug } : {}),
       title: body.title,
       description: body.description,
-      rulesText: body.rulesText,
+      ...(body.rulesText !== undefined ? { rulesText: body.rulesText } : {}),
       ...(body.imageUrl !== undefined ? { imageUrl: body.imageUrl } : {}),
       rules: parseRules(body.rules, { markNewAutomaticLifecycle: true }),
       createdBy: req.user.id,
@@ -797,7 +799,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       expectedRevision: body.expectedRevision,
       title: body.title,
       description: body.description,
-      rulesText: body.rulesText,
+      ...(body.rulesText !== undefined ? { rulesText: body.rulesText } : {}),
       ...(body.imageUrl !== undefined ? { imageUrl: body.imageUrl } : {}),
       rules: parseRules(body.rules),
       updatedBy: req.user.id,

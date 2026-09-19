@@ -223,9 +223,9 @@ describe('player tournament catalog', () => {
       startsAt: null,
     });
 
-    expect(updateSql).toContain('case when $4::boolean then $5 else image_url end');
-    expect(updateValues[3]).toBe(false);
-    expect(updateValues[4]).toBeNull();
+    expect(updateSql).toContain('case when $5::boolean then $6 else image_url end');
+    expect(updateValues[4]).toBe(false);
+    expect(updateValues[5]).toBeNull();
   });
 
   it('returns only approved participants through the player-safe shape', async () => {
