@@ -109,8 +109,12 @@ describe('initial training course UI', () => {
   });
 
   it('maps verified shot feedback to useful Russian hints', () => {
-    expect(initialTrainingFeedbackCopy('miss_left')).toMatch(/левее/i);
-    expect(initialTrainingFeedbackCopy('miss_right')).toMatch(/правее/i);
+    expect(initialTrainingFeedbackCopy('miss_left')).toBe(
+      'Возьми чуть правее — бросок прошёл левее ворот.',
+    );
+    expect(initialTrainingFeedbackCopy('miss_right')).toBe(
+      'Возьми чуть левее — бросок прошёл правее ворот.',
+    );
     expect(initialTrainingFeedbackCopy('goalie_blocked')).toMatch(/вратарь/i);
     expect(initialTrainingFeedbackCopy('goal_timing')).toMatch(/тайминг/i);
   });

@@ -3473,6 +3473,14 @@ function ModeShell({
   );
 }
 
+export function initialTrainingCatalogAfterRefresh(
+  current: InitialTrainingCatalogResponse | null,
+  refreshed: InitialTrainingCatalogResponse | undefined,
+): InitialTrainingCatalogResponse | null {
+  if (refreshed === undefined) return current;
+  return refreshed.enabled ? refreshed : null;
+}
+
 function TrainingPlaceholder({
   autoPlay = false,
   onBack,
@@ -3510,9 +3518,9 @@ function TrainingPlaceholder({
   const refreshCourseCatalog = useCallback(async (): Promise<void> => {
     try {
       const next = await fetchInitialTrainingCourse();
-      setCourseCatalog(next.enabled === true ? next : null);
+      setCourseCatalog((current) => initialTrainingCatalogAfterRefresh(current, next));
     } catch {
-      setCourseCatalog(null);
+      setCourseCatalog((current) => initialTrainingCatalogAfterRefresh(current, undefined));
     }
   }, []);
 

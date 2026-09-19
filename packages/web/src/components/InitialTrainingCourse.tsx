@@ -15,8 +15,8 @@ const exerciseSkill: Record<InitialTrainingExerciseKey, string> = {
 };
 
 export function initialTrainingFeedbackCopy(code: InitialTrainingFeedbackCode): string {
-  if (code === 'miss_left') return 'Возьми чуть левее — ворота были левее броска.';
-  if (code === 'miss_right') return 'Возьми чуть правее — ворота были правее броска.';
+  if (code === 'miss_left') return 'Возьми чуть правее — бросок прошёл левее ворот.';
+  if (code === 'miss_right') return 'Возьми чуть левее — бросок прошёл правее ворот.';
   if (code === 'goalie_blocked') return 'Этот угол перекрыл вратарь. Дождись свободной стороны.';
   return 'Точный тайминг — продолжай в том же ритме!';
 }

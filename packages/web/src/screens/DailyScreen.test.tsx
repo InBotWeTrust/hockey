@@ -35,6 +35,7 @@ import {
   duelScoreboardOpponent,
   duelRinkReadyPresenceForMatch,
   initialGameRouteState,
+  initialTrainingCatalogAfterRefresh,
   isDuelInventoryLow,
   isDuelLoadoutEditable,
   isDuelReadyPresenceState,
@@ -4188,6 +4189,18 @@ describe('DailyScreen', () => {
       String(url).endsWith('/duel/training/course/first-shot/start'),
     );
     expect(startCall?.[1]).toMatchObject({ method: 'POST' });
+  });
+
+  it('keeps the last confirmed course catalog when its refresh fails', () => {
+    expect(initialTrainingCatalogAfterRefresh(initialTrainingCatalog, undefined)).toBe(
+      initialTrainingCatalog,
+    );
+    expect(
+      initialTrainingCatalogAfterRefresh(initialTrainingCatalog, {
+        ...initialTrainingCatalog,
+        enabled: false,
+      }),
+    ).toBeNull();
   });
 
   it('preserves the existing open-training screen while the course flag is disabled', async () => {

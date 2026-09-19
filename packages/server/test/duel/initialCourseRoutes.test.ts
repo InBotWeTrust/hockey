@@ -170,6 +170,20 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
       reward_granted: { stars: 1, experience: 1 },
     });
 
+    const replayedCompleted = await app.inject({
+      method: 'POST',
+      url: '/duel/training/course/first-shot/shot',
+      headers: headers(),
+      payload: {
+        run_id: session.run_id,
+        shot_index: 1,
+        input: { tapTime, shooterTapTime: tapTime },
+        claimed_result: 'goal',
+      },
+    });
+    expect(replayedCompleted.statusCode).toBe(200);
+    expect(replayedCompleted.json()).toEqual(completed.json());
+
     const repeated = await app.inject({
       method: 'POST',
       url: '/duel/training/course/first-shot/start',

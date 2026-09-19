@@ -46,6 +46,7 @@ create table initial_training_shot (
   seed text not null,
   input_payload jsonb not null,
   server_result text not null check (server_result in ('goal', 'save', 'miss')),
+  response_payload jsonb not null,
   game_core_version int not null,
   created_at timestamptz not null default now(),
   primary key (run_id, shot_index)

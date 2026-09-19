@@ -4,14 +4,12 @@ import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import {
   GAME_CORE_VERSION,
-  GOAL_OPENING,
-  PUCK_START,
   STICK_NEUTRAL,
+  getPerspectiveCourtGoalOpening,
   getGoalie,
   getSessionPhaseOffsets,
-  resolveEmptyGoalShot,
+  resolvePerspectiveCourtEmptyGoalShot,
   resolvePerspectiveCourtShot,
-  simulateGoal,
   simulateShooter,
   type DailyPeriodSpeedPreset,
   type GoalieConfig,
@@ -69,6 +67,21 @@ interface InitialTrainingRunRow {
 interface InitialTrainingStats {
   shots: number;
   goals: number;
+}
+
+interface InitialTrainingShotResponse {
+  server_result: ShotResult['type'];
+  feedback_code: ReturnType<typeof feedbackCode>;
+  completed: boolean;
+  reward_granted: { stars: number; experience: number } | null;
+  state: {
+    run_id: string;
+    exercise_key: InitialTrainingExerciseKey;
+    shots_taken: number;
+    goals: number;
+    target_goals: number;
+    scene: ReturnType<typeof sceneDto>;
+  };
 }
 
 async function withTransaction<T>(
@@ -168,11 +181,8 @@ function feedbackCode(
     shooterTime + offsets.shooter,
     input.shooterFrequency,
   ).x;
-  const puckSpeed = input.puckSpeedPerMs ?? 1.2;
-  const goalCrossTime = input.tapTime + (PUCK_START.y - GOAL_OPENING.y) / puckSpeed;
-  const goalCenter =
-    (GOAL_OPENING.xMin + GOAL_OPENING.xMax) / 2 +
-    simulateGoal(goalieConfig, goalCrossTime, offsets.goal).offsetX;
+  const opening = getPerspectiveCourtGoalOpening(input, goalieConfig, offsets);
+  const goalCenter = (opening.xMin + opening.xMax) / 2;
   return shooterX < goalCenter ? 'miss_left' : 'miss_right';
 }
 
@@ -322,6 +332,13 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
         if (!run || run.exercise_key !== exerciseKey) {
           throw new AppError('not_found', 'initial training run not found', 404);
         }
+        const replay = await client.query<{ response_payload: InitialTrainingShotResponse }>(
+          `select response_payload
+             from initial_training_shot
+            where run_id = $1 and shot_index = $2`,
+          [run.id, body.shot_index],
+        );
+        if (replay.rows[0]) return replay.rows[0].response_payload;
         if (run.state !== 'active') {
           throw new AppError('initial_training_run_closed', 'initial training run is closed', 409);
         }
@@ -378,23 +395,7 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
               STICK_NEUTRAL,
               offsets,
             )
-          : resolveEmptyGoalShot(shotInput, goalieConfig, offsets);
-        await client.query(
-          `insert into initial_training_shot
-             (run_id, user_id, shot_index, seed, input_payload, server_result,
-              game_core_version, created_at)
-           values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)`,
-          [
-            run.id,
-            req.user.id,
-            expectedShotIndex,
-            shotSeed,
-            JSON.stringify(shotInput),
-            result.type,
-            run.game_core_version,
-            now,
-          ],
-        );
+          : resolvePerspectiveCourtEmptyGoalShot(shotInput, goalieConfig, offsets);
         if (body.claimed_result !== result.type) {
           await appendEvent(client, req.user.id, 'shot_mismatch', {
             mode: 'initial_training',
@@ -462,7 +463,7 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
             await grantInitialTrainingOpenAccess(client, req.user.id, 'course', now);
           }
         }
-        return {
+        const response: InitialTrainingShotResponse = {
           server_result: result.type,
           feedback_code: feedbackCode(result, shotInput, goalieConfig, offsets),
           completed,
@@ -482,6 +483,24 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
             ),
           },
         };
+        await client.query(
+          `insert into initial_training_shot
+             (run_id, user_id, shot_index, seed, input_payload, server_result,
+              response_payload, game_core_version, created_at)
+           values ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8, $9)`,
+          [
+            run.id,
+            req.user.id,
+            expectedShotIndex,
+            shotSeed,
+            JSON.stringify(shotInput),
+            result.type,
+            JSON.stringify(response),
+            run.game_core_version,
+            now,
+          ],
+        );
+        return response;
       });
     },
   );

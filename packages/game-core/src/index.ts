@@ -38,6 +38,8 @@ export {
   PERSPECTIVE_COURT_PUCK_FLIGHT_VISUAL_Y_OFFSET,
   PERSPECTIVE_COURT_VISUAL_Y_OFFSET,
   PERSPECTIVE_COURT_VISUAL_Y_SCALE,
+  getPerspectiveCourtGoalOpening,
+  resolvePerspectiveCourtEmptyGoalShot,
   resolvePerspectiveCourtShot,
 } from './court/perspective.js';
 export { GOALIES, getGoalie } from './balance/goalies.js';

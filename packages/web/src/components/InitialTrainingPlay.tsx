@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  resolveEmptyGoalShot,
+  resolvePerspectiveCourtEmptyGoalShot,
   resolvePerspectiveCourtShot,
   type ShotResult,
 } from '@hockey/game-core';
@@ -26,7 +26,11 @@ export function resolveInitialTrainingClientShot(
   context: Parameters<PlayShotResolver>[0],
 ): ShotResult {
   if (!hasGoalie) {
-    return resolveEmptyGoalShot(context.input, context.goalieConfig, context.phaseOffsets);
+    return resolvePerspectiveCourtEmptyGoalShot(
+      context.input,
+      context.goalieConfig,
+      context.phaseOffsets,
+    );
   }
   return resolvePerspectiveCourtShot(
     context.input,
