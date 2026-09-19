@@ -36,6 +36,7 @@ import {
   duelRinkReadyPresenceForMatch,
   initialGameRouteState,
   initialTrainingCatalogAfterRefresh,
+  initialTrainingCatalogAfterCompletion,
   isDuelInventoryLow,
   isDuelLoadoutEditable,
   isDuelReadyPresenceState,
@@ -4201,6 +4202,31 @@ describe('DailyScreen', () => {
         enabled: false,
       }),
     ).toBeNull();
+  });
+
+  it('optimistically unlocks the next exercise after a verified completion', () => {
+    const next = initialTrainingCatalogAfterCompletion(initialTrainingCatalog, 'first-shot');
+
+    expect(next.completed_count).toBe(1);
+    expect(next.exercises.slice(0, 2)).toMatchObject([
+      { key: 'first-shot', state: 'completed' },
+      { key: 'three-positions', state: 'available' },
+    ]);
+    const finalCatalog = {
+      ...initialTrainingCatalog,
+      completed_count: 4,
+      exercises: initialTrainingCatalog.exercises.map((exercise) => ({
+        ...exercise,
+        state: exercise.key === 'find-the-gap' ? 'available' : 'completed',
+      })) as InitialTrainingCatalogResponse['exercises'],
+    };
+    expect(
+      initialTrainingCatalogAfterCompletion(finalCatalog, 'find-the-gap'),
+    ).toMatchObject({
+      completed_count: 5,
+      open_training_unlocked: true,
+      open_training_unlock_source: 'course',
+    });
   });
 
   it('preserves the existing open-training screen while the course flag is disabled', async () => {

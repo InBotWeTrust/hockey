@@ -97,7 +97,7 @@ export function InitialTrainingPlay({
   onNext: () => void;
   onCourse: () => void;
   onOpenTraining: () => void;
-  onCatalogRefresh: () => void;
+  onCatalogRefresh: (completedKey: InitialTrainingExerciseKey) => void;
 }): JSX.Element {
   const [run, setRun] = useState<InitialTrainingRun | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -189,7 +189,7 @@ export function InitialTrainingPlay({
           const nextCompletion = { reward: response.reward_granted };
           completionRef.current = nextCompletion;
           setCompletion(nextCompletion);
-          onCatalogRefresh();
+          onCatalogRefresh(exerciseKey);
           if (resultAnimationCompleteRef.current) setShowResult(true);
         }
         return {

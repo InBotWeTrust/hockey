@@ -3481,6 +3481,33 @@ export function initialTrainingCatalogAfterRefresh(
   return refreshed.enabled ? refreshed : null;
 }
 
+export function initialTrainingCatalogAfterCompletion(
+  current: InitialTrainingCatalogResponse,
+  completedKey: InitialTrainingExerciseKey,
+): InitialTrainingCatalogResponse {
+  const completedExercise = current.exercises.find((exercise) => exercise.key === completedKey);
+  if (!completedExercise || completedExercise.state === 'completed') return current;
+  const completedCount = Math.min(current.total_count, current.completed_count + 1);
+  const unlocked = completedCount === current.total_count;
+  return {
+    ...current,
+    completed_count: completedCount,
+    open_training_unlocked: current.open_training_unlocked || unlocked,
+    open_training_unlock_source:
+      current.open_training_unlock_source ?? (unlocked ? 'course' : null),
+    exercises: current.exercises.map((exercise) => {
+      if (exercise.key === completedKey) return { ...exercise, state: 'completed' };
+      if (
+        exercise.position === completedExercise.position + 1 &&
+        exercise.state === 'locked'
+      ) {
+        return { ...exercise, state: 'available' };
+      }
+      return exercise;
+    }),
+  };
+}
+
 function TrainingPlaceholder({
   autoPlay = false,
   onBack,
@@ -3603,7 +3630,12 @@ function TrainingPlaceholder({
             }
           }}
           onOpenTraining={() => navigate(`/?view=training&section=open${fromSectionsSuffix}`, { replace: true })}
-          onCatalogRefresh={() => void refreshCourseCatalog()}
+          onCatalogRefresh={(completedKey) => {
+            setCourseCatalog((current) =>
+              current ? initialTrainingCatalogAfterCompletion(current, completedKey) : current,
+            );
+            void refreshCourseCatalog();
+          }}
         />
       );
     }
