@@ -214,7 +214,7 @@ export function AdvancedTrainingCatalog({
                   <ExercisePreview exercise={exercise} />
                   {completed ? (
                     <span
-                      className="achievement-card__status achievement-card__status--claimed"
+                      className="achievement-card__status achievement-card__status--claimed advanced-training-exercise-card__completion"
                       aria-label="Упражнение пройдено"
                     >
                       <Check size={12} strokeWidth={3} aria-hidden="true" />
@@ -228,21 +228,35 @@ export function AdvancedTrainingCatalog({
                     </strong>
                     <span className={`achievement-card__stage ${statusClass}`}>{statusText}</span>
                   </div>
-                  {!completed ? (
-                    <span
-                      className="achievement-card__rewards achievement-card__rewards--inline"
-                      aria-label={`Награда: ${exercise.rewardStars} звезда и ${exercise.rewardExperience} опыт`}
-                    >
-                      <span style={{ color: rewardColor('star') }}>
-                        <Star size={12} fill="currentColor" aria-hidden="true" />
-                        {exercise.rewardStars}
-                      </span>
-                      <span style={{ color: rewardColor('experience') }}>
-                        <TrendingUp size={12} aria-hidden="true" />
-                        {exercise.rewardExperience}
-                      </span>
+                  <span
+                    className={`achievement-card__rewards achievement-card__rewards--inline${
+                      completed ? ' advanced-training-exercise-card__rewards--claimed' : ''
+                    }`}
+                    data-testid="advanced-training-reward-slot"
+                    aria-label={
+                      completed
+                        ? 'Награда получена'
+                        : `Награда: ${exercise.rewardStars} звезда и ${exercise.rewardExperience} опыт`
+                    }
+                  >
+                    <span style={completed ? undefined : { color: rewardColor('star') }}>
+                      <Star
+                        size={12}
+                        fill="currentColor"
+                        data-testid="advanced-training-reward-star"
+                        aria-hidden="true"
+                      />
+                      {exercise.rewardStars}
                     </span>
-                  ) : null}
+                    <span style={completed ? undefined : { color: rewardColor('experience') }}>
+                      <TrendingUp
+                        size={12}
+                        data-testid="advanced-training-reward-experience"
+                        aria-hidden="true"
+                      />
+                      {exercise.rewardExperience}
+                    </span>
+                  </span>
                   {exercise.skill && exercise.goal ? (
                     <div className="advanced-training-exercise-card__meta">
                       <span className="advanced-training-exercise-card__skill">{exercise.skill}</span>

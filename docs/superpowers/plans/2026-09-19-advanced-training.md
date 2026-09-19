@@ -18,6 +18,7 @@
 - Exercises are free, unlimited, and never select or consume inventory.
 - Seven main exercises unlock sequentially; the eighth is shown as locked “Бонусное упражнение” until the first seven are complete, then reveals “Сброс ритма”.
 - The advanced catalog mirrors task cards: a bare “Прогресс обучения” label and progress bar followed by one “Упражнения (8)” section of eight equal compact cards. Current, future, and completed exercises differ only by `Не пройдено`, `Закрыто`, and `Пройдено` status/access states; there are no large cards or next/completed groups.
+- Completed cards retain their reward row as grayscale claimed rewards and add the circular check badge over the numbered thumbnail; the row is never removed, so card geometry stays stable.
 - The advanced hub card has its own square cover artwork. Every exercise thumbnail reuses that artwork with its number overlaid by the UI, matching the initial-course pattern.
 - Selecting an available or completed exercise opens an initial-course-style confirmation modal with title, description, goal, and `Начать`; gameplay starts only from that button.
 - Every main exercise is two demonstrations, five practice situations, then an assessment of ten situations requiring at least seven successes.

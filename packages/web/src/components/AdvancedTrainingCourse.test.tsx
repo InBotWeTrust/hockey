@@ -90,6 +90,15 @@ describe('advanced training course UI', () => {
     expect(screen.getByText('Не пройдено')).toBeInTheDocument();
     expect(screen.getAllByText('Закрыто')).toHaveLength(6);
     expect(screen.queryByText('Сброс ритма')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('advanced-training-reward-slot')).toHaveLength(8);
+    expect(screen.getAllByTestId('advanced-training-reward-star')).toHaveLength(8);
+    expect(screen.getAllByTestId('advanced-training-reward-experience')).toHaveLength(8);
+    expect(screen.getByLabelText('Награда получена')).toHaveClass(
+      'advanced-training-exercise-card__rewards--claimed',
+    );
+    expect(screen.getByLabelText('Упражнение пройдено')).toHaveClass(
+      'advanced-training-exercise-card__completion',
+    );
   });
 
   it('opens a descriptive modal before starting an available exercise', () => {

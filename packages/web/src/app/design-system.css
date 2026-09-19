@@ -6417,6 +6417,19 @@
   font-weight: 850;
 }
 
+.advanced-training-exercise-card__completion {
+  z-index: 2;
+  top: auto;
+  right: 5px;
+  bottom: 5px;
+}
+
+.advanced-training-exercise-card__rewards--claimed {
+  color: #52677d;
+  filter: grayscale(1);
+  opacity: 0.72;
+}
+
 .advanced-training-exercise-card__meta {
   display: flex;
   min-width: 0;
