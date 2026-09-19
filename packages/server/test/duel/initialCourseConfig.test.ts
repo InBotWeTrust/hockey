@@ -3,11 +3,20 @@ import {
   DEFAULT_INITIAL_TRAINING_CONFIG,
   buildInitialTrainingCatalog,
   exerciseSceneForProgress,
+  isInitialTrainingCompleted,
   parseInitialTrainingConfig,
   resolveInitialTrainingGoalieId,
 } from '../../src/duel/training/initialCourse.js';
 
 describe('initial training course configuration', () => {
+  it('maps the durable completion count to one authoritative boolean', async () => {
+    const db = {
+      query: async () => ({ rows: [{ completed: true }] }),
+    };
+
+    expect(await isInitialTrainingCompleted(db as never, 'user-id')).toBe(true);
+  });
+
   it('uses the courtyard rookie goalie independently of open training settings', () => {
     expect(resolveInitialTrainingGoalieId('wall')).toBe('rookie');
   });

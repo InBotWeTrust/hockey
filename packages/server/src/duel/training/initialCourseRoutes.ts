@@ -35,6 +35,7 @@ import {
   fetchInitialTrainingCompletions,
   fetchInitialTrainingOpenAccess,
   grantInitialTrainingOpenAccess,
+  isInitialTrainingCompleted,
   isInitialTrainingExerciseKey,
   loadInitialTrainingConfig,
   resolveInitialTrainingGoalieId,
@@ -193,6 +194,7 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
     return withTransaction(app, async (client) => {
       const config = await loadInitialTrainingConfig(client);
       const completed = await fetchInitialTrainingCompletions(client, req.user.id);
+      const beginnerTrainingCompleted = await isInitialTrainingCompleted(client, req.user.id);
       const accessSource = await fetchInitialTrainingOpenAccess(client, req.user.id);
       const gameplayLock = await getGameplayLockState(client, {
         userId: req.user.id,
@@ -209,6 +211,7 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
       return {
         enabled: config.enabled,
         completed_count: completed.size,
+        beginner_training_completed: beginnerTrainingCompleted,
         total_count: INITIAL_TRAINING_EXERCISE_KEYS.length,
         open_training_unlocked:
           !config.enabled || accessSource !== null || activeTraining.rows[0]?.active === true,

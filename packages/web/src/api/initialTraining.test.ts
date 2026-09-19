@@ -4,9 +4,15 @@ import {
   fetchInitialTrainingCourse,
   startInitialTrainingExercise,
   submitInitialTrainingShot,
+  type InitialTrainingCatalogResponse,
 } from './initialTraining.js';
 
 describe('initial training course API', () => {
+  it('types the authoritative beginner completion field', () => {
+    const catalog = { beginner_training_completed: true } as InitialTrainingCatalogResponse;
+    expect(catalog.beginner_training_completed).toBe(true);
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
     useAuthStore.setState({ accessToken: 'TOKEN', refreshToken: null });

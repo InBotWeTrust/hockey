@@ -10,6 +10,7 @@ import {
 const catalog: InitialTrainingCatalogResponse = {
   enabled: true,
   completed_count: 1,
+  beginner_training_completed: false,
   total_count: 5,
   open_training_unlocked: false,
   open_training_unlock_source: null,

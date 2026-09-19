@@ -31,6 +31,7 @@ export interface InitialTrainingExercise {
 export interface InitialTrainingCatalogResponse {
   enabled: boolean;
   completed_count: number;
+  beginner_training_completed: boolean;
   total_count: number;
   open_training_unlocked: boolean;
   open_training_unlock_source: 'course' | 'legacy' | null;

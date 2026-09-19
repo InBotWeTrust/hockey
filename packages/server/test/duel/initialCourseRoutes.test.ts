@@ -13,6 +13,10 @@ import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import {
+  INITIAL_TRAINING_EXERCISE_KEYS,
+  isInitialTrainingCompleted,
+} from '../../src/duel/training/initialCourse.js';
+import {
   createTestPool,
   createTestRedis,
   getTestUrls,
@@ -100,6 +104,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
     expect(catalog.statusCode).toBe(200);
     expect(catalog.json()).toMatchObject({
       enabled: true,
+      beginner_training_completed: false,
       completed_count: 0,
       open_training_unlocked: false,
       exercises: [
@@ -119,6 +124,26 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
     });
     expect(openTraining.statusCode).toBe(409);
     expect(openTraining.json().error.code).toBe('initial_training_required');
+  });
+
+  it('publishes completion from the five durable exercise rows', async () => {
+    expect(await isInitialTrainingCompleted(pool, userId)).toBe(false);
+    for (const exerciseKey of INITIAL_TRAINING_EXERCISE_KEYS) {
+      await pool.query(
+        `insert into initial_training_completion
+           (user_id, exercise_key, reward_stars, reward_experience)
+         values ($1, $2, 1, 1)`,
+        [userId, exerciseKey],
+      );
+    }
+
+    expect(await isInitialTrainingCompleted(pool, userId)).toBe(true);
+    const catalog = await app.inject({
+      method: 'GET',
+      url: '/duel/training/course',
+      headers: headers(),
+    });
+    expect(catalog.json()).toMatchObject({ beginner_training_completed: true });
   });
 
   it('rejects a locked exercise', async () => {

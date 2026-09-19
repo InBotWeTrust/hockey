@@ -189,6 +189,19 @@ export async function fetchInitialTrainingCompletions(
   return new Set(rows.map((row) => row.exercise_key));
 }
 
+export async function isInitialTrainingCompleted(
+  db: Queryable,
+  userId: string,
+): Promise<boolean> {
+  const { rows } = await db.query<{ completed: boolean }>(
+    `select count(*) = $2::int as completed
+       from initial_training_completion
+      where user_id = $1`,
+    [userId, INITIAL_TRAINING_EXERCISE_KEYS.length],
+  );
+  return rows[0]?.completed === true;
+}
+
 export async function fetchInitialTrainingOpenAccess(
   db: Queryable,
   userId: string,
