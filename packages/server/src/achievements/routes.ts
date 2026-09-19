@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
-import { fetchAchievementCatalogueForUser } from './service.js';
+import { fetchAchievementCatalogueForUser, observeCareerExperience } from './service.js';
 import { TIERED_ACHIEVEMENT_IDS } from './stageCatalog.js';
 import { claimCurrentAchievementStage } from './claimStage.js';
 
@@ -86,13 +86,21 @@ export const achievementRoutes: FastifyPluginAsync = async (app) => {
           throw new AppError('conflict', 'achievement already claimed', 409);
         }
 
-        await client.query(
+        const updatedUser = await client.query<{ experience: number }>(
           `update users
             set xp = xp + $2,
                 experience = experience + $3
-          where id = $1`,
+          where id = $1
+          returning experience`,
           [req.user.id, row.reward_stars, row.reward_experience],
         );
+        if (Number(row.reward_experience) > 0) {
+          await observeCareerExperience(client, req.user.id, {
+            eventKey: `achievement:${row.achievement_id}:reward`,
+            occurredAt: new Date(),
+            lifetimeTotal: Number(updatedUser.rows[0]!.experience),
+          });
+        }
         await client.query(
           `insert into user_currency_account (user_id) values ($1)
          on conflict do nothing`,
