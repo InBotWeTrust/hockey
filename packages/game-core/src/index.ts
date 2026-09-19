@@ -38,8 +38,21 @@ export {
   PERSPECTIVE_COURT_PUCK_FLIGHT_VISUAL_Y_OFFSET,
   PERSPECTIVE_COURT_VISUAL_Y_OFFSET,
   PERSPECTIVE_COURT_VISUAL_Y_SCALE,
+  PERSPECTIVE_COURT_VISUAL_X_CENTER,
   resolvePerspectiveCourtShot,
 } from './court/perspective.js';
+export {
+  DEFAULT_MARKSMANSHIP_SCORING_RULES,
+  classifyMarksmanshipShot,
+  isStrictCounterDirection,
+  scoreMarksmanshipWindow,
+  type MarksmanshipDifficultyCode,
+  type MarksmanshipScoreBracket,
+  type MarksmanshipScoringRules,
+  type MarksmanshipShotClassification,
+  type MarksmanshipShotInput,
+  type StrictCounterDirectionInput,
+} from './marksmanship.js';
 export { GOALIES, getGoalie } from './balance/goalies.js';
 export {
   STICKS,
