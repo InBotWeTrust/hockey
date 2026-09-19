@@ -5,6 +5,7 @@ import {
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
   classifyMarksmanshipShot,
   isStrictCounterDirection,
+  parseMarksmanshipScoringRules,
   scoreMarksmanshipWindow,
 } from '../src/marksmanship.js';
 import { STICK_NEUTRAL, type ShotInput } from '../src/shot/types.js';
@@ -76,6 +77,35 @@ describe('scoreMarksmanshipWindow', () => {
     expect(scoreMarksmanshipWindow(windowDurationMs, DEFAULT_MARKSMANSHIP_SCORING_RULES)).toBe(
       expected,
     );
+  });
+});
+
+describe('parseMarksmanshipScoringRules', () => {
+  it('accepts the complete scoring snapshot', () => {
+    expect(parseMarksmanshipScoringRules(DEFAULT_MARKSMANSHIP_SCORING_RULES)).toEqual(
+      DEFAULT_MARKSMANSHIP_SCORING_RULES,
+    );
+  });
+
+  it('rejects unknown difficulty codes', () => {
+    expect(() =>
+      parseMarksmanshipScoringRules({
+        ...DEFAULT_MARKSMANSHIP_SCORING_RULES,
+        brackets: [
+          ...DEFAULT_MARKSMANSHIP_SCORING_RULES.brackets.slice(0, -1),
+          { minWindowMs: 0, points: 170, code: 'unknown' },
+        ],
+      }),
+    ).toThrow('invalid marksmanship scoring rules');
+  });
+
+  it('rejects incomplete scoring snapshots', () => {
+    expect(() =>
+      parseMarksmanshipScoringRules({
+        ...DEFAULT_MARKSMANSHIP_SCORING_RULES,
+        brackets: [DEFAULT_MARKSMANSHIP_SCORING_RULES.brackets[5]],
+      }),
+    ).toThrow('invalid marksmanship scoring rules');
   });
 });
 

@@ -225,7 +225,9 @@ async function lockUser(client: PoolClient, userId: string): Promise<LockedUserR
   return user;
 }
 
-const BONUS_DAILY_ATTEMPT_LIMIT = 2 as const;
+export function bonusDailyAttemptLimit(skillCode: BonusSkillCode): number {
+  return skillCode === 'marksmanship' ? 100 : 2;
+}
 
 async function reserveDailyAttemptSlot(
   client: PoolClient,
@@ -256,7 +258,7 @@ async function reserveDailyAttemptSlot(
       )
       order by candidate.slot
       limit 1`,
-    [input.userId, localDate, input.skillCode, BONUS_DAILY_ATTEMPT_LIMIT],
+    [input.userId, localDate, input.skillCode, bonusDailyAttemptLimit(input.skillCode)],
   );
   const slot = slotResult.rows[0]?.slot;
   if (slot === undefined) {
@@ -282,7 +284,9 @@ export async function fetchBonusAttemptAllowances(
                 at time zone timezone) as resets_at
          from users
         where id = $1
-     ), skills(skill_code) as (values ('speed'::text), ('accuracy'::text))
+     ), skills(skill_code) as (
+       values ('speed'::text), ('accuracy'::text), ('marksmanship'::text)
+     )
      select skills.skill_code,
             count(slot.attempt_id)::int as used,
             player.resets_at
@@ -297,14 +301,15 @@ export async function fetchBonusAttemptAllowances(
   );
   const fallbackReset = new Date(now.getTime() + 86_400_000).toISOString();
   const result = {} as Record<BonusSkillCode, BonusAttemptAllowanceDTO>;
-  for (const skillCode of ['speed', 'accuracy'] as const) {
+  for (const skillCode of ['speed', 'accuracy', 'marksmanship'] as const) {
     const row = rows.find((candidate) => candidate.skill_code === skillCode);
-    const used = Math.min(BONUS_DAILY_ATTEMPT_LIMIT, Number(row?.used ?? 0));
+    const dailyLimit = bonusDailyAttemptLimit(skillCode);
+    const used = Math.min(dailyLimit, Number(row?.used ?? 0));
     result[skillCode] = {
       skillCode,
-      dailyLimit: BONUS_DAILY_ATTEMPT_LIMIT,
+      dailyLimit,
       used,
-      remaining: BONUS_DAILY_ATTEMPT_LIMIT - used,
+      remaining: dailyLimit - used,
       resetsAt: row?.resets_at.toISOString() ?? fallbackReset,
     };
   }
@@ -1122,6 +1127,7 @@ export async function submitBonusShot(
             shotsTaken: Number(attempt.shots_taken),
             bestGoalStreak: Number(attempt.best_goal_streak),
             activeElapsedMs: await activeElapsedMs(client, attempt, input.now),
+            totalPoints: Number(attempt.total_points),
           });
           if (qualification.passed) {
             await closeBonusPeriod(client, attempt, input.now, 'target_reached');

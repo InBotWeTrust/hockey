@@ -52,6 +52,86 @@ export const DEFAULT_MARKSMANSHIP_SCORING_RULES = {
   ],
 } as const satisfies MarksmanshipScoringRules;
 
+const MARKSMANSHIP_DIFFICULTY_CODES = new Set<MarksmanshipDifficultyCode>([
+  'open',
+  'timed',
+  'precise',
+  'narrow',
+  'very_narrow',
+  'instant',
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+export function parseMarksmanshipScoringRules(value: unknown): MarksmanshipScoringRules {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      'scanStepMs',
+      'counterDirectionBonus',
+      'counterDirectionGoalDistance',
+      'brackets',
+    ]) ||
+    !Number.isInteger(value.scanStepMs) ||
+    (value.scanStepMs as number) < 1 ||
+    (value.scanStepMs as number) > 1_000 ||
+    !Number.isInteger(value.counterDirectionBonus) ||
+    (value.counterDirectionBonus as number) < 0 ||
+    (value.counterDirectionBonus as number) > 1_000_000 ||
+    typeof value.counterDirectionGoalDistance !== 'number' ||
+    !Number.isFinite(value.counterDirectionGoalDistance) ||
+    value.counterDirectionGoalDistance < 0 ||
+    value.counterDirectionGoalDistance > 10_000 ||
+    !Array.isArray(value.brackets) ||
+    value.brackets.length !== MARKSMANSHIP_DIFFICULTY_CODES.size
+  ) {
+    throw new Error('invalid marksmanship scoring rules');
+  }
+
+  const seenCodes = new Set<MarksmanshipDifficultyCode>();
+  const seenThresholds = new Set<number>();
+  const brackets = value.brackets.map((bracket): MarksmanshipScoreBracket => {
+    if (
+      !isRecord(bracket) ||
+      !hasExactKeys(bracket, ['minWindowMs', 'points', 'code']) ||
+      !Number.isInteger(bracket.minWindowMs) ||
+      (bracket.minWindowMs as number) < 0 ||
+      (bracket.minWindowMs as number) > 60_000 ||
+      !Number.isInteger(bracket.points) ||
+      (bracket.points as number) < 0 ||
+      (bracket.points as number) > 1_000_000 ||
+      typeof bracket.code !== 'string' ||
+      !MARKSMANSHIP_DIFFICULTY_CODES.has(bracket.code as MarksmanshipDifficultyCode)
+    ) {
+      throw new Error('invalid marksmanship scoring rules');
+    }
+    const code = bracket.code as MarksmanshipDifficultyCode;
+    const minWindowMs = bracket.minWindowMs as number;
+    if (seenCodes.has(code) || seenThresholds.has(minWindowMs)) {
+      throw new Error('invalid marksmanship scoring rules');
+    }
+    seenCodes.add(code);
+    seenThresholds.add(minWindowMs);
+    return { minWindowMs, points: bracket.points as number, code };
+  });
+  if (!seenThresholds.has(0)) throw new Error('invalid marksmanship scoring rules');
+
+  return {
+    scanStepMs: value.scanStepMs as number,
+    counterDirectionBonus: value.counterDirectionBonus as number,
+    counterDirectionGoalDistance: value.counterDirectionGoalDistance,
+    brackets,
+  };
+}
+
 export interface MarksmanshipShotInput {
   shotInput: ShotInput;
   goalie: GoalieConfig;

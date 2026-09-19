@@ -1449,6 +1449,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     expect(catalog.json().attempt_allowances).toMatchObject({
       accuracy: { daily_limit: 2, used: 2, remaining: 0 },
       speed: { daily_limit: 2, used: 1, remaining: 1 },
+      marksmanship: { daily_limit: 100, used: 0, remaining: 100 },
     });
 
     await pool.query(

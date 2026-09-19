@@ -45,6 +45,7 @@ export {
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
   classifyMarksmanshipShot,
   isStrictCounterDirection,
+  parseMarksmanshipScoringRules,
   scoreMarksmanshipWindow,
   type MarksmanshipDifficultyCode,
   type MarksmanshipScoreBracket,

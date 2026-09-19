@@ -133,11 +133,13 @@ interface AdminGameDto {
   status: 'draft' | 'active' | 'archived';
   targetGoals: number;
   qualificationRules: {
-    type: 'goals_from_shots' | 'goals_in_time';
-    targetGoals: number;
+    type: 'goals_from_shots' | 'goals_in_time' | 'points_in_time';
+    targetGoals?: number;
+    targetPoints?: number;
     shotsLimit?: number;
     activeTimeMs?: number;
     requiredGoalStreak?: number;
+    scoring?: unknown;
   };
   rewardStars: number;
   revision: number;
@@ -801,6 +803,65 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
       activeTimeMs: 240_000,
       requiredGoalStreak: 3,
     });
+  });
+
+  it('activates a complete marksmanship game and rejects inventory-enabled activation', async () => {
+    const marksmanship = {
+      skillCode: 'marksmanship',
+      targetGoals: 1,
+      totalPeriods: 1,
+      breakDurationMs: 0,
+      periods: [{ ...PERIODS[0]!, durationMs: 30_000, shotsLimit: null }],
+      qualificationRules: {
+        type: 'points_in_time',
+        targetPoints: 1_100,
+        activeTimeMs: 30_000,
+        scoring: {
+          scanStepMs: 10,
+          counterDirectionBonus: 15,
+          counterDirectionGoalDistance: 24,
+          brackets: [
+            { minWindowMs: 250, points: 100, code: 'open' },
+            { minWindowMs: 160, points: 115, code: 'timed' },
+            { minWindowMs: 100, points: 130, code: 'precise' },
+            { minWindowMs: 70, points: 140, code: 'narrow' },
+            { minWindowMs: 50, points: 155, code: 'very_narrow' },
+            { minWindowMs: 0, points: 170, code: 'instant' },
+          ],
+        },
+      },
+      ...committedMedia('beach'),
+    };
+
+    const active = await createGame({ ...marksmanship, status: 'active' });
+    expect(active).toMatchObject({
+      status: 'active',
+      qualificationRules: { type: 'points_in_time', targetPoints: 1_100 },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/bonus-games',
+      headers: adminHeaders,
+      payload: gamePayload({
+        ...marksmanship,
+        slug: 'inventory-marksmanship',
+        sortOrder: 2,
+        status: 'active',
+        useInventory: true,
+        arena: {
+          ...committedMedia('ski-resort').arena,
+          slug: 'inventory-marksmanship-arena',
+        },
+        goalkeeperReadyUrl: committedMedia('ski-resort').goalkeeperReadyUrl,
+        goalkeeperSaveUrl: committedMedia('ski-resort').goalkeeperSaveUrl,
+        previewTitle: committedMedia('ski-resort').previewTitle,
+        previewStory: committedMedia('ski-resort').previewStory,
+        previewArtworkUrl: committedMedia('ski-resort').previewArtworkUrl,
+      }),
+    });
+    expect(response.statusCode, response.body).toBe(409);
+    expect(response.json().error.code).toBe('bonus_game_incomplete');
   });
 
   it('increments revision only for effective price, gameplay, reward, or media changes', async () => {

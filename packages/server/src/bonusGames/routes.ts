@@ -393,6 +393,13 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
             remaining: attemptAllowances.accuracy.remaining,
             resets_at: attemptAllowances.accuracy.resetsAt,
           },
+          marksmanship: {
+            skill_code: attemptAllowances.marksmanship.skillCode,
+            daily_limit: attemptAllowances.marksmanship.dailyLimit,
+            used: attemptAllowances.marksmanship.used,
+            remaining: attemptAllowances.marksmanship.remaining,
+            resets_at: attemptAllowances.marksmanship.resetsAt,
+          },
         },
       };
     }),
