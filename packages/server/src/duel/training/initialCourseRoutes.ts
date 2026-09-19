@@ -39,6 +39,7 @@ import {
   grantInitialTrainingOpenAccess,
   isInitialTrainingExerciseKey,
   loadInitialTrainingConfig,
+  resolveInitialTrainingGoalieId,
   type InitialTrainingConfig,
   type InitialTrainingExerciseKey,
 } from './initialCourse.js';
@@ -278,7 +279,13 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
           target_goals: exercise.targetGoals,
           started_at: rows[0]!.started_at.toISOString(),
           server_now: now.toISOString(),
-          scene: sceneDto(exerciseKey, { shots: 0, goals: 0 }, config, preset, getGoalie(settings.training.goalieId)),
+          scene: sceneDto(
+            exerciseKey,
+            { shots: 0, goals: 0 },
+            config,
+            preset,
+            getGoalie(resolveInitialTrainingGoalieId(settings.training.goalieId)),
+          ),
         };
       });
     },
@@ -346,7 +353,7 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
           config,
         );
         const goalieConfig = resolvedGoalieConfig(
-          getGoalie(settings.training.goalieId),
+          getGoalie(resolveInitialTrainingGoalieId(settings.training.goalieId)),
           preset,
           scene,
         );
@@ -471,7 +478,7 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
               nextStats,
               config,
               preset,
-              getGoalie(settings.training.goalieId),
+              getGoalie(resolveInitialTrainingGoalieId(settings.training.goalieId)),
             ),
           },
         };

@@ -11,6 +11,12 @@ export const INITIAL_TRAINING_EXERCISE_KEYS = [
   'find-the-gap',
 ] as const;
 
+export const INITIAL_TRAINING_GOALIE_ID = 'rookie' as const;
+
+export function resolveInitialTrainingGoalieId(_openTrainingGoalieId: string): 'rookie' {
+  return INITIAL_TRAINING_GOALIE_ID;
+}
+
 export type InitialTrainingExerciseKey = (typeof INITIAL_TRAINING_EXERCISE_KEYS)[number];
 export type InitialTrainingExerciseState = 'completed' | 'available' | 'locked';
 

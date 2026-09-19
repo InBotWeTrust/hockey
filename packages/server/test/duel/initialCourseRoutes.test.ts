@@ -132,6 +132,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
   });
 
   it('grants the first-clear reward once and unlocks the next exercise', async () => {
+    await pool.query(
+      `update game_settings set value = to_jsonb('wall'::text) where key = 'training.goalie_id'`,
+    );
     const started = await app.inject({
       method: 'POST',
       url: '/duel/training/course/first-shot/start',
@@ -139,6 +142,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
     });
     expect(started.statusCode).toBe(200);
     const session = started.json();
+    expect(session.scene.goalie_id).toBe('rookie');
     const preset = getDailyPeriodSpeedPreset(1);
     const offsets = getSessionPhaseOffsets(session.seed);
     let tapTime = 0;

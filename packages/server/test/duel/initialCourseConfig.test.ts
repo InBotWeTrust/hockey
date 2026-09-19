@@ -4,9 +4,14 @@ import {
   buildInitialTrainingCatalog,
   exerciseSceneForProgress,
   parseInitialTrainingConfig,
+  resolveInitialTrainingGoalieId,
 } from '../../src/duel/training/initialCourse.js';
 
 describe('initial training course configuration', () => {
+  it('uses the courtyard rookie goalie independently of open training settings', () => {
+    expect(resolveInitialTrainingGoalieId('wall')).toBe('rookie');
+  });
+
   it('falls back atomically when the hidden setting is invalid', () => {
     expect(parseInitialTrainingConfig({ targetGoals: [0] })).toEqual(
       DEFAULT_INITIAL_TRAINING_CONFIG,
