@@ -35,6 +35,8 @@ function profileWithArtwork(): ProfileData {
     avatarUrl: '/avatars/player.webp',
     grip: 'right',
     competitionLevel: 'beginner',
+    beginnerOnboardingCompleted: false,
+    amateurUnlockGoalsRequired: 300,
     stats: { shots: 0, goals: 0, accuracy: 0, playStreakDays: 0 },
     achievements: [
       {

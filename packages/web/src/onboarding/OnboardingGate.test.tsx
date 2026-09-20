@@ -2,7 +2,12 @@ import { StrictMode, useContext } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchRequiredOnboarding, startOnboarding } from '../api/onboarding.js';
+import {
+  completeOnboarding,
+  fetchRequiredOnboarding,
+  recordStepView,
+  startOnboarding,
+} from '../api/onboarding.js';
 import type * as OnboardingApi from '../api/onboarding.js';
 import { OnboardingGate, OnboardingGateContext } from './OnboardingGate.js';
 
@@ -10,6 +15,8 @@ vi.mock('../api/onboarding.js', async (importOriginal) => ({
   ...(await importOriginal<typeof OnboardingApi>()),
   fetchRequiredOnboarding: vi.fn(),
   startOnboarding: vi.fn(),
+  completeOnboarding: vi.fn(),
+  recordStepView: vi.fn(),
 }));
 
 const required = {
@@ -48,6 +55,8 @@ describe('OnboardingGate', () => {
   beforeEach(() => {
     vi.mocked(fetchRequiredOnboarding).mockReset();
     vi.mocked(startOnboarding).mockReset();
+    vi.mocked(completeOnboarding).mockReset();
+    vi.mocked(recordStepView).mockReset().mockResolvedValue({ viewed: true });
   });
 
   it('shows loading, then passes through only when no onboarding is required', async () => {
@@ -86,6 +95,20 @@ describe('OnboardingGate', () => {
     renderGate();
     expect(await screen.findByText('Всё начинается здесь')).toBeInTheDocument();
     expect(screen.queryByText('Профиль')).not.toBeInTheDocument();
+  });
+
+  it('invalidates the cached profile after completing onboarding', async () => {
+    vi.mocked(fetchRequiredOnboarding).mockResolvedValue({ required });
+    vi.mocked(startOnboarding).mockResolvedValue({ runId: 'run-1', required });
+    vi.mocked(completeOnboarding).mockResolvedValue({ required: null });
+    const { client } = renderGate();
+    client.setQueryData(['profile'], { beginnerOnboardingCompleted: false });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Далее' }));
+
+    await waitFor(() => {
+      expect(client.getQueryState(['profile'])?.isInvalidated).toBe(true);
+    });
   });
 
   it('uses one client session id across Strict Mode start retries', async () => {

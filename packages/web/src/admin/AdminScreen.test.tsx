@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AdminScreen } from './AdminScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
+import { onboardingQueryKeys } from '../api/onboarding.js';
 
 function renderAdmin(): QueryClient {
   const client = new QueryClient({
@@ -111,7 +112,7 @@ it('saves onboarding flags independently and updates persisted display only from
   useAuthStore.getState().setSession({
     accessToken: 'a',
     refreshToken: 'r',
-    user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    user: { id: 'u1', displayName: 'Egor', role: 'admin' },
   });
   let patchBody: Record<string, unknown> | null = null;
   let authoritativeUser = makeAdminUser();
@@ -165,7 +166,8 @@ it('saves onboarding flags independently and updates persisted display only from
     return new Response('{}');
   });
 
-  renderAdmin();
+  const queryClient = renderAdmin();
+  queryClient.setQueryData(onboardingQueryKeys.required(), { required: null });
   await screen.findByText('Ультимейт Хоккей');
   selectAdminSection('Игроки');
   fireEvent.click(await screen.findByRole('button', { name: /Regular Player/ }));
@@ -191,6 +193,7 @@ it('saves onboarding flags independently and updates persisted display only from
       'Не пройден',
     ),
   );
+  expect(queryClient.getQueryState(onboardingQueryKeys.required())?.isInvalidated).toBe(true);
   expect(within(dialog).getByTestId('amateur-onboarding-status')).toHaveTextContent('Пройден');
   pendingDetail.resolve(
     new Response(

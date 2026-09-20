@@ -212,7 +212,7 @@ export async function submitTutorialShot(
     shooterTapTime: input.input.shooterTapTime,
     shooterFrequency: state.speeds.shooterFrequency,
     goalieFrequency: state.speeds.goalieFrequency,
-    goalFrequency: state.speeds.goalFrequency,
+    goalFrequency: 0,
   };
   const resolved = resolveEmptyGoalShot(
     shotInput,
