@@ -182,7 +182,7 @@ export function AdvancedTrainingCatalog({
     <div className="advanced-training-catalog">
       <section className="advanced-training-course-summary" aria-labelledby="advanced-training-progress-title">
         <h2 id="advanced-training-progress-title" className="section-label section-label--page">
-          Прогресс обучения
+          Прогресс
         </h2>
         <div
           className="advanced-training-course-progress"
@@ -204,10 +204,10 @@ export function AdvancedTrainingCatalog({
           const completed = exercise.state === 'completed';
           const statusText = completed ? 'Пройдено' : locked ? 'Закрыто' : 'Не пройдено';
           const statusClass = completed
-            ? 'advanced-training-exercise-card__stage--complete'
+            ? 'training-exercise-card__stage--complete'
             : locked
-              ? 'advanced-training-exercise-card__stage--locked'
-              : 'advanced-training-exercise-card__stage--available';
+              ? 'training-exercise-card__stage--locked'
+              : 'training-exercise-card__stage--available';
 
           return (
             <article

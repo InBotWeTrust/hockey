@@ -190,8 +190,8 @@ export function AdvancedTrainingPlay({
         goals={run.successes}
         scoreLabel="ПРИЁМЫ"
         shots={run.shots_taken}
-        timer={`${Math.min(run.situation_index, run.total_situations)}/${run.total_situations}`}
-        timerLabel="СИТУАЦИИ"
+        timer={`${isDemonstrating ? 0 : Math.min(run.situation_index + 1, run.total_situations)}/${run.total_situations}`}
+        timerLabel="МОМЕНТЫ"
         shotButtonLabel={isDemonstrating ? 'ПОКАЗ' : 'БРОСОК'}
         primaryActionBlocked={isDemonstrating}
         backLabel="К упражнениям"

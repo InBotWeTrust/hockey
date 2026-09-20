@@ -120,7 +120,7 @@ describe('advanced training play', () => {
     expect(testState.playViewProps?.periodLabel).toBe('УПРАЖНЕНИЯ');
     expect(testState.playViewProps?.timer).toBe('0/5');
     expect(testState.playViewProps?.scoreLabel).toBe('ПРИЁМЫ');
-    expect(testState.playViewProps?.timerLabel).toBe('СИТУАЦИИ');
+    expect(testState.playViewProps?.timerLabel).toBe('МОМЕНТЫ');
     expect(testState.playViewProps?.active).toBe(true);
     expect(testState.playViewProps?.autoShotDelayMs).toBe(scenario.targetTapTimeMs);
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -130,6 +130,7 @@ describe('advanced training play', () => {
     await act(async () => testState.playViewProps?.onResultComplete());
     await waitFor(() => expect(testState.playViewProps?.active).toBe(true));
     expect(testState.playViewProps?.autoShotDelayMs).toBeUndefined();
+    expect(testState.playViewProps?.timer).toBe('1/5');
   });
 
   it('shows server technique feedback and moves from practice to assessment', async () => {
@@ -176,7 +177,7 @@ describe('advanced training play', () => {
     expect(testState.playViewProps?.statusNotice).toBeTruthy();
     expect(await screen.findByRole('dialog', { name: 'Практика завершена' })).toBeInTheDocument();
     await act(async () => screen.getByRole('button', { name: 'Начать зачёт' }).click());
-    await waitFor(() => expect(testState.playViewProps?.timerLabel).toBe('СИТУАЦИИ'));
+    await waitFor(() => expect(testState.playViewProps?.timerLabel).toBe('МОМЕНТЫ'));
     expect(testState.playViewProps?.scoreLabel).toBe('ПРИЁМЫ');
     expect(testState.assessment).toHaveBeenCalledWith('board-side', practice.run_id);
   });

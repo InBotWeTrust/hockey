@@ -6469,17 +6469,17 @@
   line-height: 1.25;
 }
 
-.advanced-training-exercise-card__stage--complete {
+.training-exercise-card__stage--complete {
   background: rgba(32, 122, 82, 0.13);
   color: #287457;
 }
 
-.advanced-training-exercise-card__stage--available {
+.training-exercise-card__stage--available {
   background: rgba(180, 137, 38, 0.14);
   color: #87681f;
 }
 
-.advanced-training-exercise-card__stage--locked {
+.training-exercise-card__stage--locked {
   background: rgba(59, 79, 104, 0.1);
   color: #52677d;
 }
@@ -7628,21 +7628,6 @@
   font-size: 11px;
   line-height: 1.25;
   font-weight: 650;
-}
-
-.initial-training-exercise-card__stage--complete {
-  background: rgba(32, 122, 82, 0.13);
-  color: #287457;
-}
-
-.initial-training-exercise-card__stage--available {
-  background: rgba(180, 137, 38, 0.14);
-  color: #87681f;
-}
-
-.initial-training-exercise-card__stage--locked {
-  background: rgba(59, 79, 104, 0.1);
-  color: #52677d;
 }
 
 .initial-training-play-state {

@@ -117,10 +117,10 @@ export function InitialTrainingCatalog({
     const locked = exercise.state === 'locked';
     const completed = exercise.state === 'completed';
     const statusClass = completed
-      ? 'initial-training-exercise-card__stage--complete'
+      ? 'training-exercise-card__stage--complete'
       : locked
-        ? 'initial-training-exercise-card__stage--locked'
-        : 'initial-training-exercise-card__stage--available';
+        ? 'training-exercise-card__stage--locked'
+        : 'training-exercise-card__stage--available';
     const statusText = completed ? 'Пройдено' : locked ? 'Закрыто' : 'Не пройдено';
     return (
       <article

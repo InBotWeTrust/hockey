@@ -88,7 +88,7 @@ describe('advanced training course UI', () => {
   it('renders eight equal task cards from the shared artwork with numbered overlays', () => {
     render(<AdvancedTrainingCatalog catalog={catalog} onStart={vi.fn()} />);
 
-    expect(screen.getByRole('heading', { name: 'Прогресс обучения' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Прогресс' })).toBeInTheDocument();
     expect(screen.getByText('Упражнения (8)')).toBeInTheDocument();
     expect(within(screen.getByRole('progressbar')).getByText('1 / 8')).toBeInTheDocument();
     const cards = screen.getAllByRole('article');
@@ -106,6 +106,9 @@ describe('advanced training course UI', () => {
     expect(screen.getByText('Пройдено')).toBeInTheDocument();
     expect(screen.getByText('Не пройдено')).toBeInTheDocument();
     expect(screen.getAllByText('Закрыто')).toHaveLength(6);
+    screen.getAllByText('Закрыто').forEach((status) => {
+      expect(status).toHaveClass('training-exercise-card__stage--locked');
+    });
     expect(screen.queryByText('Сброс ритма')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('advanced-training-reward-slot')).toHaveLength(8);
     expect(screen.getAllByTestId('advanced-training-reward-star')).toHaveLength(8);

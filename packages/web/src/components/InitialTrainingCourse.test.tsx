@@ -137,11 +137,11 @@ describe('initial training course UI', () => {
     expect(screen.getByText('Точность')).toHaveClass('initial-training-exercise-card__skill');
     expect(screen.getByText('Тайминг')).toHaveClass('initial-training-exercise-card__skill');
     expect(screen.getByText('Не пройдено')).toHaveClass(
-      'initial-training-exercise-card__stage--available',
+      'training-exercise-card__stage--available',
     );
     expect(screen.getAllByText('Закрыто')).toHaveLength(3);
     screen.getAllByText('Закрыто').forEach((status) => {
-      expect(status).toHaveClass('initial-training-exercise-card__stage--locked');
+      expect(status).toHaveClass('training-exercise-card__stage--locked');
     });
     expect(screen.getByLabelText('Упражнение пройдено')).toHaveClass(
       'achievement-card__status--claimed',
