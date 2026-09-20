@@ -4161,6 +4161,39 @@ describe('DailyScreen', () => {
     expect(await screen.findByRole('button', { name: /Начальный уровень/ })).toBeInTheDocument();
   });
 
+  it('does not replace the training hub with open training when the course catalog fails to load', async () => {
+    let courseAttempts = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/course')) {
+        courseAttempts += 1;
+        return new Response(
+          JSON.stringify(
+            courseAttempts === 1 ? { error: 'temporary_failure' } : initialTrainingCatalog,
+          ),
+          {
+            status: courseAttempts === 1 ? 500 : 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
+      }
+      return new Response(JSON.stringify(url.includes('/duel/training/state') ? trainingIdleState : baseState), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=training&from=sections']);
+
+    expect(await screen.findByText('Не удалось загрузить раздел тренировки.')).toBeInTheDocument();
+    expect(screen.queryByText(/Выбери модель периода/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+    expect(await screen.findByRole('button', { name: /Начальный уровень/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).toBeInTheDocument();
+  });
+
   it('keeps direct locked course routes in the exercise catalog', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
