@@ -34,13 +34,25 @@ vi.mock('./BeginnerStoryFlow.js', () => ({
   BeginnerStoryFlow: ({
     unlockGoalsRequired,
     onCompleted,
+    completing,
+    completionError,
+    onRetry,
   }: {
     unlockGoalsRequired: number;
     onCompleted: () => void;
+    completing?: boolean;
+    completionError?: string;
+    onRetry?: () => void;
   }) => (
     <section aria-label="Кинематографичный онбординг">
       <span>Порог: {unlockGoalsRequired}</span>
-      <button type="button" onClick={onCompleted}>Завершить историю</button>
+      <button type="button" onClick={onCompleted} disabled={completing}>Завершить историю</button>
+      {completionError ? (
+        <div role="alert">
+          <span>{completionError}</span>
+          <button type="button" onClick={onRetry}>Повторить историю</button>
+        </div>
+      ) : null}
     </section>
   ),
 }));
@@ -146,6 +158,34 @@ describe('OnboardingFlow', () => {
     await waitFor(() => expect(recordStepView).toHaveBeenCalledWith('run-beginner', 'beginner-shot'));
     await waitFor(() => expect(completeOnboarding).toHaveBeenCalledWith('run-beginner'));
     expect(onCompleted).toHaveBeenCalledWith({ required: null });
+  });
+
+  it('shows a retryable completion error inside the cinematic beginner flow', async () => {
+    const beginnerRequired: OnboardingRequired = {
+      chain: 'beginner',
+      versionId: 'beginner-v1',
+      steps: [{ ...required.steps[0]!, id: 'beginner-info' }],
+    };
+    vi.mocked(completeOnboarding)
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce({ required: null });
+    const onCompleted = vi.fn();
+
+    render(
+      <OnboardingFlow
+        runId="run-beginner"
+        required={beginnerRequired}
+        unlockGoalsRequired={300}
+        onCompleted={onCompleted}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Завершить историю' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось завершить онбординг');
+    expect(onCompleted).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить историю' }));
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledWith({ required: null }));
   });
 
   it('shows semantic progress, navigation and records each reached step only once', async () => {

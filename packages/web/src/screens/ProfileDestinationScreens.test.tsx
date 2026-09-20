@@ -138,7 +138,7 @@ describe('profile destination screens', () => {
     expect(card).toHaveTextContent('Пройдено');
     expect(card.querySelector('img')).toHaveAttribute(
       'src',
-      '/onboarding/story/scene-01-court.png',
+      '/onboarding/story/scene-01-court.webp',
     );
     expect(screen.getAllByTestId('profile-story-series-lock')).toHaveLength(9);
   });

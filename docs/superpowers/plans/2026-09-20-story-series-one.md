@@ -190,11 +190,11 @@ Commit message: `feat: unlock and replay first story series`
 - Consumes: all prior tasks
 - Produces: verified local branch ready for user acceptance, not deployed
 
-- [ ] **Step 1: Run focused server and web suites**
+- [x] **Step 1: Run focused server and web suites**
 
 Run `/me`, onboarding, story destination, story replay, and App route tests.
 
-- [ ] **Step 2: Run repository checks**
+- [x] **Step 2: Run repository checks**
 
 Run `pnpm typecheck`, `pnpm lint`, relevant package tests, and `pnpm build`.
 
@@ -202,10 +202,10 @@ Run `pnpm typecheck`, `pnpm lint`, relevant package tests, and `pnpm build`.
 
 Verify mandatory onboarding, replay launch, close from narrative and shot scenes, goal/miss branches, final return, and 360/390/430px layouts. Confirm replay produces no mutating onboarding requests.
 
-- [ ] **Step 4: Review the complete diff**
+- [x] **Step 4: Review the complete diff**
 
 Check assets, copy, accessibility labels, API compatibility, and absence of unrelated changes.
 
-- [ ] **Step 5: Commit verification-only fixes if any**
+- [x] **Step 5: Commit verification-only fixes if any**
 
 Use a focused commit message describing the regression fixed.

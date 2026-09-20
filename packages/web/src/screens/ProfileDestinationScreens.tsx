@@ -83,7 +83,7 @@ export function ProfileStoryScreen(): JSX.Element {
                   onClick={() => navigate('/profile/story/series-1')}
                 >
                   <span className="profile-story-series-card__visual" aria-hidden="true">
-                    <img src="/onboarding/story/scene-01-court.png" alt="" />
+                    <img src="/onboarding/story/scene-01-court.webp" alt="" />
                   </span>
                   <span className="profile-story-series-card__copy">
                     <strong>Путь со двора</strong>

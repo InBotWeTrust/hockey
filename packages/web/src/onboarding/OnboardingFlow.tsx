@@ -115,6 +115,16 @@ export function OnboardingFlow({
         required={required}
         unlockGoalsRequired={unlockGoalsRequired}
         onCompleted={() => void finish()}
+        completing={completing}
+        {...(lifecycleError
+          ? {
+              completionError:
+                lifecycleError === 'view'
+                  ? 'Не удалось сохранить прогресс. Проверьте соединение.'
+                  : 'Не удалось завершить онбординг. Проверьте соединение.',
+            }
+          : {})}
+        onRetry={() => void finish()}
       />
     );
   }

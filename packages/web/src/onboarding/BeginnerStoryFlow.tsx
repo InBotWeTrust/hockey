@@ -19,6 +19,9 @@ interface BeginnerStoryFlowProps {
   unlockGoalsRequired: number;
   onCompleted: () => void;
   onClose?: () => void;
+  completing?: boolean;
+  completionError?: string;
+  onRetry?: () => void;
 }
 
 const replayTutorialStep: Extract<OnboardingStep, { kind: 'tutorial_shot' }> = {
@@ -78,6 +81,9 @@ export function BeginnerStoryFlow({
   unlockGoalsRequired,
   onCompleted,
   onClose,
+  completing = false,
+  completionError,
+  onRetry,
 }: BeginnerStoryFlowProps): JSX.Element {
   const [scene, setScene] = useState<BeginnerStoryScene>('court');
   const [typedText, setTypedText] = useState('');
@@ -209,7 +215,7 @@ export function BeginnerStoryFlow({
             <img className="beginner-story__image" src={activeContent.image} alt="" />
             <img
               className={`beginner-story__image beginner-story__headlights${headlights ? ' beginner-story__headlights--visible' : ''}`}
-              src="/onboarding/story/scene-02-car-on.png"
+              src="/onboarding/story/scene-02-car-on.webp"
               alt=""
             />
           </>
@@ -233,11 +239,25 @@ export function BeginnerStoryFlow({
             className={`beginner-story__cta${typingDone ? ' beginner-story__cta--visible' : ''}`}
             type="button"
             onClick={advance}
-            disabled={!typingDone}
+            disabled={!typingDone || completing}
           >
-            <span>{scene === 'finale' ? content.action : `– ${content.action}`}</span>
+            <span>
+              {scene === 'finale' && completing
+                ? 'Завершаем…'
+                : scene === 'finale'
+                  ? content.action
+                  : `– ${content.action}`}
+            </span>
             <ArrowRight size={20} aria-hidden="true" />
           </button>
+          {scene === 'finale' && completionError ? (
+            <div className="beginner-story__completion-error" role="alert">
+              <span>{completionError}</span>
+              <button type="button" onClick={onRetry} disabled={completing}>
+                Повторить
+              </button>
+            </div>
+          ) : null}
         </>
       ) : null}
     </main>

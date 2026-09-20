@@ -162,6 +162,37 @@
   pointer-events: auto;
 }
 
+.beginner-story__completion-error {
+  position: absolute;
+  z-index: 5;
+  right: 24px;
+  bottom: calc(var(--app-safe-bottom, 20px) + 86px);
+  left: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.35;
+  background: rgba(102, 25, 31, 0.92);
+  border: 1px solid rgba(255, 185, 190, 0.45);
+  border-radius: 14px;
+  backdrop-filter: blur(14px);
+}
+
+.beginner-story__completion-error button {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 10px;
+}
+
 .beginner-story__close {
   position: absolute;
   z-index: 6;

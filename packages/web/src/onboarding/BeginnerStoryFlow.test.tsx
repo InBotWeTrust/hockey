@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BeginnerStoryFlow } from './BeginnerStoryFlow.js';
+import { beginnerStoryScenes } from './beginnerStory.js';
 
 vi.mock('./TutorialShotStep.js', () => ({
   TutorialShotStep: ({
@@ -42,6 +43,12 @@ function advanceToShot(): void {
 describe('BeginnerStoryFlow', () => {
   beforeEach(() => {
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }));
+  });
+
+  it('uses compressed WebP artwork for every narrative scene', () => {
+    for (const scene of Object.values(beginnerStoryScenes(300))) {
+      expect(scene.image).toMatch(/\.webp$/);
+    }
   });
 
   it('keeps required onboarding non-dismissible', () => {
