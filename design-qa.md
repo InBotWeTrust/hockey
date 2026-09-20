@@ -579,6 +579,36 @@ final result: passed
 
 ---
 
+# Bonus reward heading QA
+
+## Evidence
+
+- Source visual truth: `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-815e080d-4f14-419f-9d49-cf5d2a15954a.png` (380 x 135 px) — the first-clear reward heading is a distinct dark label with a trailing colon.
+- Browser-rendered implementation: live Codex in-app Browser capture at `http://127.0.0.1:5175/bonus-games` (430 x 932 CSS px, device scale 1); capture is attached to this QA turn by the browser tool, which does not export a filesystem path.
+- State: authenticated local catalogue, endurance tab selected, game 1 featured and available.
+
+## Full-view and focused comparison
+
+- The featured card renders `За первое прохождение:` exactly, with the colon retained before its reward icons.
+- The heading uses the shared primary ink token and is visibly darker than the muted qualification copy, matching the supplied visual hierarchy.
+- The same shared `BonusGameCard` component and reward-heading selector serve every bonus-game skill tab.
+
+## Required fidelity surfaces
+
+- Fonts and typography: existing heading family, weight, size, and line height are preserved.
+- Spacing and layout rhythm: the colon does not change the reward-row alignment or icon spacing.
+- Colors and visual tokens: `var(--ink)` replaces the muted description color solely for the reward heading.
+- Image quality and assets: no image asset or crop changes were made.
+- Copy and content: all qualifying bonus-game cards use the exact text `За первое прохождение:`.
+
+## Findings
+
+No actionable P0, P1, or P2 differences remain for the requested reward-heading treatment.
+
+final result: passed
+
+---
+
 # Bank package design QA
 
 ## Evidence
