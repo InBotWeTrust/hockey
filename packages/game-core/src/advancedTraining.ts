@@ -1,4 +1,5 @@
 import type { ShotResult } from './shot/types.js';
+import { SHOOTER_MAX_X, SHOOTER_MIN_X } from './shooter/types.js';
 
 export const ADVANCED_TRAINING_EXERCISE_KEYS = [
   'board-side',
@@ -44,6 +45,7 @@ export interface AdvancedTrainingEvaluationInput {
   counterDirection: boolean;
   tapOffsetMs: number;
   seriesStep: number;
+  shooterX: number;
 }
 
 export interface AdvancedTrainingEvaluation {
@@ -138,13 +140,12 @@ export function evaluateAdvancedTrainingShot(
     if (input.tapOffsetMs > scenarioDefinition.timingWindowMs) return failed('late');
   }
 
-  const openingWidth = input.goalOpening.xMax - input.goalOpening.xMin;
-  const outerSectorWidth = openingWidth * 0.34;
+  const boardZoneWidth = (SHOOTER_MAX_X - SHOOTER_MIN_X) * 0.2;
   const sideAccepted =
     scenarioDefinition.requiredSide === null ||
     (scenarioDefinition.requiredSide === 'left'
-      ? input.result.hitPoint.x <= input.goalOpening.xMin + outerSectorWidth
-      : input.result.hitPoint.x >= input.goalOpening.xMax - outerSectorWidth);
+      ? input.shooterX <= SHOOTER_MIN_X + boardZoneWidth
+      : input.shooterX >= SHOOTER_MAX_X - boardZoneWidth);
   const openWindowAccepted =
     scenarioDefinition.minOpenWindowMs === null ||
     (input.windowDurationMs !== null && input.windowDurationMs >= scenarioDefinition.minOpenWindowMs);

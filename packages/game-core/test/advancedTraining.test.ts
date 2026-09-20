@@ -17,6 +17,7 @@ function input(overrides: Partial<AdvancedTrainingEvaluationInput> = {}): Advanc
     counterDirection: false,
     tapOffsetMs: 0,
     seriesStep: 0,
+    shooterX: 60,
     ...overrides,
   };
 }
@@ -31,7 +32,7 @@ describe('advanced training technique evaluation', () => {
     expect([...counts.values()].every((count) => count >= 4)).toBe(true);
   });
 
-  it('accepts a board-side goal only in the requested outer sector', () => {
+  it('accepts a board-side goal only when the shooter is at the requested board', () => {
     const scenario = ADVANCED_TRAINING_SCENARIOS.find((item) => item.id === 'board-side-left-1')!;
     expect(evaluateAdvancedTrainingShot(scenario, input())).toMatchObject({
       situationComplete: true,
@@ -41,9 +42,15 @@ describe('advanced training technique evaluation', () => {
     expect(
       evaluateAdvancedTrainingShot(
         scenario,
-        input({ result: { type: 'goal', hitPoint: { x: 286, y: 0 } } }),
+        input({ shooterX: 286, result: { type: 'goal', hitPoint: { x: 90, y: 0 } } }),
       ),
     ).toMatchObject({ success: false, feedbackCode: 'goal_wrong_technique' });
+    expect(
+      evaluateAdvancedTrainingShot(
+        scenario,
+        input({ shooterX: 60, result: { type: 'goal', hitPoint: { x: 286, y: 0 } } }),
+      ),
+    ).toMatchObject({ success: true, feedbackCode: 'technique_success' });
   });
 
   it.each([

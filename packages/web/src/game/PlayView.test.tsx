@@ -13,6 +13,7 @@ const tickerCallbacks = vi.hoisted(() => [] as Array<() => void>);
 const tickerEvents = vi.hoisted(() => [] as Array<'add' | 'remove'>);
 const playerContainers = vi.hoisted(() => [] as Array<{ visible: boolean }>);
 const goalieContainers = vi.hoisted(() => [] as Array<{ visible: boolean }>);
+const puckShotPaths = vi.hoisted(() => [] as Array<{ start: { x: number; y: number }; end: { x: number; y: number } }>);
 
 vi.mock('pixi.js', () => ({
   Container: class Container {
@@ -83,10 +84,15 @@ vi.mock('./renderer/Puck.js', () => ({
       return false;
     }
     resetAtStart(): void {}
+    bladePoint(shooterX: number): { x: number; y: number } {
+      return { x: shooterX + 41, y: 580 };
+    }
     shotPath(): { start: { x: number; y: number }; end: { x: number; y: number } } {
       return { start: { x: 286, y: 580 }, end: { x: 286, y: 60 } };
     }
-    playShot(): void {}
+    playShot(start: { x: number; y: number }, end: { x: number; y: number }): void {
+      puckShotPaths.push({ start, end });
+    }
     holdAt(): void {}
     release(): void {}
     update(): void {}
@@ -138,6 +144,7 @@ describe('PlayView', () => {
     tickerEvents.length = 0;
     playerContainers.length = 0;
     goalieContainers.length = 0;
+    puckShotPaths.length = 0;
   });
 
   afterEach(() => {
@@ -388,6 +395,33 @@ describe('PlayView', () => {
 
     expect(optimisticAddShot).toHaveBeenCalledTimes(1);
     expect(submitShot).toHaveBeenCalledTimes(1);
+  });
+
+  it('animates a resolved goal toward its authoritative hit point', () => {
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="bonus-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotsTotal={30}
+        shotResolver={() => ({ type: 'goal', hitPoint: { x: 180, y: 60 } })}
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+
+    expect(puckShotPaths.at(-1)?.end).toEqual({ x: 180, y: 60 });
   });
 
   it('reveals the optimistic scoreboard result only when the puck reaches the goal', async () => {

@@ -8,6 +8,19 @@ import {
 } from '../../src/duel/training/advancedCourse.js';
 
 describe('advanced training catalog', () => {
+  it('describes every visible exercise as a concrete player action', () => {
+    const catalog = buildAdvancedTrainingCatalog(new Set(ADVANCED_TRAINING_EXERCISES.slice(0, 7).map(({ key }) => key)), true);
+    expect(catalog.map(({ description }) => description)).toEqual([
+      'Дождись, когда игрок подъедет к указанному борту, и брось из крайней позиции.',
+      'Дождись, когда вратарь полностью освободит створ, и брось в пустые ворота.',
+      'Брось в короткий момент, когда игрок, ворота и вратарь пересекутся по центру.',
+      'Брось сразу после того, как вратарь начнёт отъезжать от траектории шайбы.',
+      'Найди небольшой свободный участок ворот рядом с вратарём и попади в него.',
+      'Брось в сторону, противоположную движению вратаря.',
+      'Забей два или три гола подряд за один игровой момент.',
+      'Сначала намеренно промахнись, затем сразу забей два или три гола подряд.',
+    ]);
+  });
   it.each([
     [false, false, false],
     [true, false, false],

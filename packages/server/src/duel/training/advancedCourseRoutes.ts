@@ -15,6 +15,7 @@ import {
   getPerspectiveCourtGoalOpening,
   getSessionPhaseOffsets,
   resolvePerspectiveCourtShot,
+  simulateShooter,
   type AdvancedTrainingEvaluation,
   type AdvancedTrainingScenario,
   type ShotInput,
@@ -342,6 +343,10 @@ export const advancedTrainingCourseRoutes: FastifyPluginAsync<{
         counterDirection: classification.counterDirection,
         tapOffsetMs: body.input.tapTime - scenario.targetTapTimeMs,
         seriesStep: run.series_state.step ?? 0,
+        shooterX: simulateShooter(
+          (body.input.shooterTapTime ?? body.input.tapTime) + phaseOffsets.shooter,
+          preset.shooterFrequency,
+        ).x,
       });
       const totalSituations = run.stage === 'practice' ? config.practiceSituations : config.assessmentSituations;
       const nextSituationIndex = run.situation_index + (evaluation.situationComplete ? 1 : 0);

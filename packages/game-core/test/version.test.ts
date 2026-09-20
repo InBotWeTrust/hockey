@@ -8,6 +8,6 @@ describe('GAME_CORE_VERSION', () => {
   });
 
   it('is bumped for deterministic advanced-training technique evaluation', () => {
-    expect(GAME_CORE_VERSION).toBe(61);
+    expect(GAME_CORE_VERSION).toBe(62);
   });
 });

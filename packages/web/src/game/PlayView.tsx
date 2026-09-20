@@ -1659,7 +1659,15 @@ export function PlayView<TState>({
 
     loop.beginShooterPause();
     playerRef.current?.playShot();
-    const puckShotPath = puck.shotPath(sx, GOAL_OPENING.y);
+    const targetPoint = result.type === 'goal'
+      ? result.hitPoint
+      : result.type === 'save'
+        ? result.goalieContact
+        : { x: sx, y: GOAL_OPENING.y };
+    const puckShotPath = {
+      start: puck.bladePoint(sx),
+      end: targetPoint,
+    };
     puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), visualFlightMs);
 
     const scheduleShotTimeout = (fn: () => void, delay: number): void => {
@@ -1770,11 +1778,16 @@ export function PlayView<TState>({
     scheduleClockRebaseFromLatestTiming,
   ]);
 
+  const autoShotHandlerRef = useRef(handleShotTap);
+  useEffect(() => {
+    autoShotHandlerRef.current = handleShotTap;
+  }, [handleShotTap]);
+
   useEffect(() => {
     if (!active || !pixiReady || autoShotDelayMs === undefined) return;
-    const timeout = window.setTimeout(handleShotTap, Math.max(0, autoShotDelayMs));
+    const timeout = window.setTimeout(() => autoShotHandlerRef.current(), Math.max(0, autoShotDelayMs));
     return () => window.clearTimeout(timeout);
-  }, [active, autoShotDelayMs, handleShotTap, pixiReady]);
+  }, [active, autoShotDelayMs, clockRebaseKey, pixiReady]);
 
   const handleInactiveAction = useCallback(async (): Promise<void> => {
     if (!inactiveAction || isInactiveActionPending) return;
