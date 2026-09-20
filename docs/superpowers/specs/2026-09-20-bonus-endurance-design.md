@@ -99,8 +99,8 @@ Every featured and compact bonus-game card has a status pill at the card's top-r
 | Catalog state | Copy | Tone |
 | --- | --- | --- |
 | `completed` | «Пройдена» | green |
-| `available`, `in_progress`, or an active attempt | «Не пройдена» | yellow |
-| `level_locked`, `sequence_locked`, `purchase_required`, `archived` | «Закрыта» | gray |
+| `available`, `in_progress`, or any resumable active attempt | «Не пройдена» | yellow |
+| `level_locked`, `sequence_locked`, `purchase_required`, or `archived` without an active attempt | «Закрыта» | gray |
 
 Exhausting the daily attempt allowance does not change progression status: an otherwise available unfinished game remains yellow while the attempt progress block and disabled action explain the temporary restriction.
 
