@@ -3546,14 +3546,17 @@ function TrainingPlaceholder({
   const [now, setNow] = useState(Date.now());
   const [courseCatalog, setCourseCatalog] = useState<InitialTrainingCatalogResponse | null>(null);
   const [courseCatalogLoaded, setCourseCatalogLoaded] = useState(false);
+  const [courseCatalogError, setCourseCatalogError] = useState(false);
   const refreshedTrainingDayRef = useRef<string | null>(null);
 
   const refreshCourseCatalog = useCallback(async (): Promise<void> => {
     try {
       const next = await fetchInitialTrainingCourse();
       setCourseCatalog((current) => initialTrainingCatalogAfterRefresh(current, next));
+      setCourseCatalogError(false);
     } catch {
       setCourseCatalog((current) => initialTrainingCatalogAfterRefresh(current, undefined));
+      setCourseCatalogError(true);
     } finally {
       setCourseCatalogLoaded(true);
     }
@@ -3621,6 +3624,23 @@ function TrainingPlaceholder({
     return (
       <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
         <div className="training-info-copy" role="status">Загрузка раздела…</div>
+      </ModeShell>
+    );
+  }
+
+  if (courseCatalogError && !courseCatalog && !autoPlay && trainingSection !== 'open') {
+    return (
+      <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
+        <div className="arena-error-state" role="alert">
+          <div className="arena-error-state__title">Не удалось загрузить раздел тренировки.</div>
+          <button
+            type="button"
+            className="btn btn--cta"
+            onClick={() => void refreshCourseCatalog()}
+          >
+            Повторить
+          </button>
+        </div>
       </ModeShell>
     );
   }
