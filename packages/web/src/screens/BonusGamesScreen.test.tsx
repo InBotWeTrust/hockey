@@ -298,7 +298,76 @@ describe('BonusGamesScreen', () => {
     expect(gameCard).not.toHaveTextContent('голов');
   });
 
-  it('shows a readable attempt allowance and counts down to its reset', async () => {
+  it('renders endurance rules as separate readable lines in featured and compact cards', async () => {
+    localStorage.setItem('bonus-games:last-skill', 'endurance');
+    mockCatalog([
+      card({
+        id: 'endurance-featured',
+        title: 'Выносливость 2',
+        skill_code: 'endurance',
+        description:
+          'Продержитесь до конца периода, забивая хотя бы 1 шайбу в каждом временном окне.',
+        qualification_rules: {
+          type: 'survive_goal_windows',
+          activeTimeMs: 190_000,
+          goalWindowMs: 6_500,
+        },
+        period_rules: [
+          {
+            ...card({}).period_rules[0],
+            duration_ms: 190_000,
+            shots_limit: null,
+          },
+        ],
+      }),
+      card({
+        id: 'endurance-compact',
+        title: 'Выносливость 3',
+        skill_code: 'endurance',
+        sort_order: 3,
+        state: 'sequence_locked',
+        is_unlocked: false,
+        qualification_rules: {
+          type: 'survive_goal_windows',
+          activeTimeMs: 200_000,
+          goalWindowMs: 6_000,
+        },
+        period_rules: [
+          {
+            ...card({}).period_rules[0],
+            duration_ms: 200_000,
+            shots_limit: null,
+          },
+        ],
+      }),
+    ]);
+    renderCatalog();
+
+    const featuredCard = (await screen.findByRole('heading', { name: 'Выносливость 2' })).closest(
+      'article',
+    )!;
+    const compactCard = screen.getByRole('heading', { name: 'Выносливость 3' }).closest('article')!;
+
+    expect(
+      within(featuredCard).getByText(
+        'Продержитесь до конца периода, забивая хотя бы 1 шайбу в каждом временном окне.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(featuredCard).getByText('Продержаться 03:10 мин')).toHaveClass(
+      'bonus-game-card__details-primary',
+    );
+    expect(within(featuredCard).getByText('Гол не реже, чем раз в 6.5 сек')).toHaveClass(
+      'bonus-game-card__details-window',
+    );
+    expect(within(featuredCard).getByText('1 период · без лимита бросков')).toHaveClass(
+      'bonus-game-card__details-secondary',
+    );
+    expect(within(compactCard).getByText('Продержаться 03:20 мин')).toBeInTheDocument();
+    expect(within(compactCard).getByText('Гол не реже, чем раз в 6 сек')).toBeInTheDocument();
+    expect(within(compactCard).getByText('1 период · без лимита бросков')).toBeInTheDocument();
+  });
+
+  it('shows completed games progress and counts down to the attempt reset', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-24T23:59:55.000Z'));
     mockCatalog([card({ state: 'available', is_unlocked: true })], {
       speedRemaining: 1,
@@ -306,40 +375,50 @@ describe('BonusGamesScreen', () => {
     });
     renderCatalog();
 
-    const progress = await screen.findByRole('progressbar', {
-      name: 'Осталось попыток: Скорость',
-    });
+    const progress = await screen.findByRole('progressbar', { name: 'Пройдено игр: Скорость' });
     expect(progress).toHaveAttribute('aria-valuemin', '0');
-    expect(progress).toHaveAttribute('aria-valuenow', '1');
-    expect(progress).toHaveAttribute('aria-valuemax', '2');
-    expect(within(progress).queryByText('1 из 2 попыток')).toBeNull();
+    expect(progress).toHaveAttribute('aria-valuenow', '0');
+    expect(progress).toHaveAttribute('aria-valuemax', '1');
+    expect(within(progress).getByText('0/1 игр')).toHaveClass(
+      'bonus-games-attempt-progress__value',
+    );
     expect(screen.getByText('1 из 2 попыток')).toBeInTheDocument();
     expect(screen.getByText('До обновления 00:00:05')).toBeInTheDocument();
     expect(screen.getByText('До обновления 00:00:05').closest('[aria-live]')).toBeNull();
   });
 
   it.each([
-    ['speed', 'Скорость', 2, 2, '100%'],
-    ['speed', 'Скорость', 1, 2, '50%'],
-    ['speed', 'Скорость', 0, 2, '0%'],
-    ['endurance', 'Выносливость', 100, 100, '100%'],
+    ['speed', 'Скорость'],
+    ['endurance', 'Выносливость'],
   ] as const)(
-    'renders %s allowance %s/%s as a semantic progress fill',
-    async (skill, label, remaining, limit, width) => {
+    'renders completed/total %s games as a semantic progress fill',
+    async (skill, label) => {
       localStorage.setItem('bonus-games:last-skill', skill);
       mockCatalog(
-        [card({ skill_code: skill, title: label })],
-        skill === 'endurance' ? { enduranceRemaining: remaining } : { speedRemaining: remaining },
+        [
+          card({
+            id: `${skill}-1`,
+            skill_code: skill,
+            title: `${label} 1`,
+            state: 'completed',
+            is_completed: true,
+          }),
+          card({ id: `${skill}-2`, skill_code: skill, title: `${label} 2`, sort_order: 2 }),
+        ],
+        skill === 'endurance' ? { enduranceRemaining: 37 } : { speedRemaining: 1 },
       );
       renderCatalog();
 
       const progress = await screen.findByRole('progressbar', {
-        name: `Осталось попыток: ${label}`,
+        name: `Пройдено игр: ${label}`,
       });
-      expect(progress).toHaveAttribute('aria-valuenow', String(remaining));
-      expect(progress).toHaveAttribute('aria-valuemax', String(limit));
-      expect(progress.querySelector('span')).toHaveStyle({ width });
-      expect(screen.getByText(`${remaining} из ${limit} попыток`)).toBeInTheDocument();
+      expect(progress).toHaveAttribute('aria-valuenow', '1');
+      expect(progress).toHaveAttribute('aria-valuemax', '2');
+      expect(progress.querySelector('span')).toHaveStyle({ width: '50%' });
+      expect(within(progress).getByText('1/2 игр')).toBeInTheDocument();
+      expect(
+        screen.getByText(skill === 'endurance' ? '37 из 100 попыток' : '1 из 2 попыток'),
+      ).toBeInTheDocument();
     },
   );
 
@@ -957,12 +1036,30 @@ describe('BonusGamesScreen', () => {
     const paidCard = screen.getByRole('heading', { name: 'Платная игра' }).closest('article')!;
     expect(within(completedCard).getByText('Пройдена')).toHaveClass(
       'bonus-game-card__status--completed',
+      'training-exercise-card__stage--complete',
     );
     expect(within(availableCard).getByText('Не пройдена')).toHaveClass(
       'bonus-game-card__status--available',
+      'training-exercise-card__stage--available',
     );
-    expect(within(lockedCard).getByText('Закрыта')).toHaveClass('bonus-game-card__status--locked');
-    expect(within(paidCard).getByText('Закрыта')).toHaveClass('bonus-game-card__status--locked');
+    expect(within(lockedCard).getByText('Закрыта')).toHaveClass(
+      'bonus-game-card__status--locked',
+      'training-exercise-card__stage--locked',
+    );
+    expect(within(paidCard).getByText('Закрыта')).toHaveClass(
+      'bonus-game-card__status--locked',
+      'training-exercise-card__stage--locked',
+    );
+    for (const cardElement of [completedCard, availableCard, lockedCard, paidCard]) {
+      expect(
+        within(cardElement.querySelector('.bonus-game-card__content')!).getByText(
+          /Пройдена|Не пройдена|Закрыта/,
+        ),
+      ).toHaveClass('bonus-game-card__status');
+      expect(
+        cardElement.querySelector('.bonus-game-card__artwork-frame .bonus-game-card__status'),
+      ).toBeNull();
+    }
     expect(within(availableCard).getByRole('img')).not.toHaveClass(
       'bonus-game-card__artwork--locked',
     );
@@ -1098,11 +1195,9 @@ describe('BonusGamesScreen', () => {
     );
     renderCatalog();
 
-    const progress = await screen.findByRole('progressbar', {
-      name: 'Осталось попыток: Скорость',
-    });
+    const progress = await screen.findByRole('progressbar', { name: 'Пройдено игр: Скорость' });
     const activeCard = screen.getByRole('heading', { name: 'Активная игра' }).closest('article')!;
-    expect(progress).toHaveAttribute('aria-valuenow', '1');
+    expect(progress).toHaveAttribute('aria-valuenow', '0');
     expect(within(activeCard).getByText('Не пройдена')).toHaveClass(
       'bonus-game-card__status--available',
     );
@@ -1554,12 +1649,12 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     expect(
-      await screen.findByRole('progressbar', { name: 'Осталось попыток: Скорость' }),
-    ).toHaveAttribute('aria-valuenow', '1');
+      await screen.findByRole('progressbar', { name: 'Пройдено игр: Скорость' }),
+    ).toHaveAttribute('aria-valuenow', '0');
     fireEvent.click(screen.getByRole('tab', { name: 'Точность' }));
-    expect(screen.getByRole('progressbar', { name: 'Осталось попыток: Точность' })).toHaveAttribute(
+    expect(screen.getByRole('progressbar', { name: 'Пройдено игр: Точность' })).toHaveAttribute(
       'aria-valuenow',
-      '2',
+      '0',
     );
   });
 
@@ -1636,6 +1731,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     expect(await screen.findByText('0 из 2 попыток')).toBeInTheDocument();
+    expect(screen.getByText('0/1 игр')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Попытки закончились' })).toBeDisabled();
     expect(
       vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),

@@ -22,6 +22,7 @@ import type {
 import { startBonusAttempt } from '../api/bonusGames.js';
 import { fetchMyInventory, type InventoryEquipmentKind } from '../api/inventory.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import type { GameScoreboardModel } from '../components/ScoreBoard.js';
 import { PlayView, type PlayResultPresentation } from '../game/PlayView.js';
 import {
   deriveBonusGameClockBasis,
@@ -34,7 +35,11 @@ import type { GoalieOptions } from '../game/renderer/Goalie.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
 import { useOnboardingGate } from '../onboarding/OnboardingGate.js';
-import { qualificationDescription, qualificationProgress } from '../game/bonusGameQualification.js';
+import {
+  enduranceQualificationLines,
+  qualificationDescription,
+  qualificationProgress,
+} from '../game/bonusGameQualification.js';
 import { versionBonusGameArtwork, versionBonusGameGoalkeeper } from '../game/bonusGameArtwork.js';
 
 const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpriteUrl'> = {
@@ -70,69 +75,6 @@ function formatCountdown(ms: number): string {
 
 function formatTenths(ms: number): string {
   return (Math.ceil(Math.max(0, ms) / 100) / 10).toFixed(1).replace('.', ',');
-}
-
-function enduranceGameNumber(attempt: BonusGameAttempt): string {
-  return attempt.game_slug.match(/(?:^|-)endurance-(\d+)$/)?.[1] ?? attempt.game_title;
-}
-
-function EnduranceHud({
-  attempt,
-  receivedAtPerformanceMs,
-  onClock,
-  onElapsed,
-}: {
-  attempt: BonusGameAttempt;
-  receivedAtPerformanceMs: number;
-  onClock: (totalRemainingMs: number) => void;
-  onElapsed: () => void;
-}): JSX.Element {
-  const calculateClock = useCallback(
-    () => deriveEnduranceClock(attempt, receivedAtPerformanceMs, performance.now()),
-    [attempt, receivedAtPerformanceMs],
-  );
-  const [clock, setClock] = useState(calculateClock);
-  const elapsedRequestedRef = useRef(false);
-
-  useEffect(() => {
-    elapsedRequestedRef.current = false;
-    const update = (): void => {
-      const next = calculateClock();
-      setClock(next);
-      onClock(next.totalRemainingMs);
-      if (
-        !elapsedRequestedRef.current &&
-        (next.totalRemainingMs === 0 || next.goalRemainingMs === 0)
-      ) {
-        elapsedRequestedRef.current = true;
-        onElapsed();
-      }
-    };
-    update();
-    const intervalId = window.setInterval(update, 100);
-    return () => window.clearInterval(intervalId);
-  }, [attempt.goal_window_ends_at, attempt.period_ends_at, calculateClock, onClock, onElapsed]);
-
-  const warning = !clock.goalWindowPending && clock.goalRemainingMs <= 2_000;
-  return (
-    <div className="bonus-game-endurance-hud" aria-label="Выносливость">
-      <div className="bonus-game-endurance-hud__meta">
-        <span>ИГРА {enduranceGameNumber(attempt)}</span>
-        <span>ГОЛЫ {attempt.goals}</span>
-      </div>
-      <span className="bonus-game-endurance-hud__label">ДО ГОЛА</span>
-      <strong
-        role="timer"
-        aria-label="До обязательного гола"
-        className={`bonus-game-endurance-hud__goal-timer${warning ? ' bonus-game-endurance-hud__goal-timer--warning' : ''}`}
-      >
-        {formatTenths(clock.goalRemainingMs)}
-      </strong>
-      <span className="bonus-game-endurance-hud__total">
-        ОСТАЛОСЬ {formatCountdown(clock.totalRemainingMs)}
-      </span>
-    </div>
-  );
 }
 
 function formatPoints(value: number): string {
@@ -320,7 +262,15 @@ function BonusPreview({
           strokeWidth={2.4}
           aria-hidden="true"
         />
-        {qualificationDescription(attempt.rules.qualification_rules)}
+        {attempt.rules.qualification_rules.type === 'survive_goal_windows' ? (
+          <span className="bonus-game-preview-modal__condition-lines">
+            {enduranceQualificationLines(attempt.rules.qualification_rules).map((line) => (
+              <span key={line}>{line}</span>
+            ))}
+          </span>
+        ) : (
+          qualificationDescription(attempt.rules.qualification_rules)
+        )}
       </p>
       <div className="modal-actions">
         <button
@@ -783,6 +733,73 @@ export function BonusGamePlayScreen(): JSX.Element {
     },
     [activeEnduranceAttempt],
   );
+  const [enduranceClock, setEnduranceClock] = useState<ReturnType<
+    typeof deriveEnduranceClock
+  > | null>(null);
+  const [enduranceGoalTimerPaused, setEnduranceGoalTimerPaused] = useState(false);
+  const frozenEnduranceGoalMsRef = useRef<number | null>(null);
+  const enduranceElapsedRequestedRef = useRef(false);
+  useEffect(() => {
+    enduranceElapsedRequestedRef.current = false;
+  }, [
+    activeEnduranceAttempt?.id,
+    activeEnduranceAttempt?.period_ends_at,
+    activeEnduranceAttempt?.goal_window_ends_at,
+  ]);
+  useEffect(() => {
+    if (activeEnduranceAttempt === null) {
+      setEnduranceClock(null);
+      frozenEnduranceGoalMsRef.current = null;
+      return;
+    }
+    const receivedAt = receivedAtPerformanceMs ?? performance.now();
+    const update = (): void => {
+      const authoritativeClock = deriveEnduranceClock(
+        activeEnduranceAttempt,
+        receivedAt,
+        performance.now(),
+      );
+      const nextClock = enduranceGoalTimerPaused
+        ? {
+            ...authoritativeClock,
+            goalRemainingMs: frozenEnduranceGoalMsRef.current ?? authoritativeClock.goalRemainingMs,
+          }
+        : authoritativeClock;
+      setEnduranceClock(nextClock);
+      recordEnduranceClock(authoritativeClock.totalRemainingMs);
+      const deadlineElapsed =
+        authoritativeClock.totalRemainingMs === 0 ||
+        (!enduranceGoalTimerPaused && authoritativeClock.goalRemainingMs === 0);
+      if (!enduranceElapsedRequestedRef.current && deadlineElapsed) {
+        enduranceElapsedRequestedRef.current = true;
+        void refreshAttempt();
+      }
+    };
+    update();
+    const intervalId = window.setInterval(update, 100);
+    return () => window.clearInterval(intervalId);
+  }, [
+    activeEnduranceAttempt,
+    enduranceGoalTimerPaused,
+    receivedAtPerformanceMs,
+    recordEnduranceClock,
+    refreshAttempt,
+  ]);
+  const handleEnduranceResultVisibility = useCallback(
+    (visible: boolean): void => {
+      if (visible && activeEnduranceAttempt !== null) {
+        const receivedAt = receivedAtPerformanceMs ?? performance.now();
+        const currentClock =
+          enduranceClock ??
+          deriveEnduranceClock(activeEnduranceAttempt, receivedAt, performance.now());
+        frozenEnduranceGoalMsRef.current = currentClock.goalRemainingMs;
+      } else {
+        frozenEnduranceGoalMsRef.current = null;
+      }
+      setEnduranceGoalTimerPaused(visible);
+    },
+    [activeEnduranceAttempt, enduranceClock, receivedAtPerformanceMs],
+  );
   useEffect(() => {
     if (activeEnduranceAttempt === null) return;
     const reconcile = (): void => {
@@ -931,6 +948,59 @@ export function BonusGamePlayScreen(): JSX.Element {
   const isMarksmanship = marksmanshipRules !== null;
   const isEndurance = attempt.rules.qualification_rules.type === 'survive_goal_windows';
   const marksmanshipTarget = marksmanshipRules?.targetPoints ?? null;
+  const enduranceRules =
+    attempt.rules.qualification_rules.type === 'survive_goal_windows'
+      ? attempt.rules.qualification_rules
+      : null;
+  const visibleEnduranceClock =
+    activeEnduranceAttempt === null
+      ? null
+      : (enduranceClock ??
+        deriveEnduranceClock(
+          activeEnduranceAttempt,
+          receivedAtPerformanceMs ?? performance.now(),
+          performance.now(),
+        ));
+  const enduranceScoreboardModel:
+    | ((counters: { goals: number; shots: number }) => GameScoreboardModel)
+    | undefined =
+    enduranceRules === null
+      ? undefined
+      : ({ goals: visibleGoals, shots: visibleShots }) => ({
+          rows: [
+            {
+              id: 'summary',
+              metrics: [
+                { id: 'period', label: 'ПЕРИОД', value: `${periodNumber}/1` },
+                {
+                  id: 'goals-shots',
+                  label: 'ГОЛЫ / БРОСКИ',
+                  value: `${visibleGoals}/${visibleShots}`,
+                  labelEmphasis: 'small',
+                },
+                {
+                  id: 'goal-window',
+                  label: 'ДО ГОЛА',
+                  value: formatTenths(
+                    visibleEnduranceClock?.goalRemainingMs ?? enduranceRules.goalWindowMs,
+                  ),
+                  tone:
+                    (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules.goalWindowMs) <= 3_000
+                      ? 'danger'
+                      : 'warning',
+                },
+                {
+                  id: 'total-time',
+                  label: 'ВРЕМЯ',
+                  value: formatCountdown(
+                    visibleEnduranceClock?.totalRemainingMs ?? enduranceRules.activeTimeMs,
+                  ),
+                  tone: 'timer',
+                },
+              ],
+            },
+          ],
+        });
 
   return (
     <>
@@ -959,16 +1029,19 @@ export function BonusGamePlayScreen(): JSX.Element {
         shotIndexBase={attempt.current_period_shots_taken}
         shotsTotal={terminalShotsTotal > 0 ? terminalShotsTotal : undefined}
         scoreboardNotice={
-          marksmanshipTarget === null
-            ? qualificationProgress(attempt.rules.qualification_rules, {
-                goals: attempt.goals,
-                shots: attempt.shots_taken,
-                totalPoints: attempt.total_points,
-                currentStreak: attempt.current_goal_streak,
-                bestStreak: attempt.best_goal_streak,
-              })
-            : `${formatPoints(attempt.total_points)} / ${formatPoints(marksmanshipTarget)}`
+          isEndurance
+            ? undefined
+            : marksmanshipTarget === null
+              ? qualificationProgress(attempt.rules.qualification_rules, {
+                  goals: attempt.goals,
+                  shots: attempt.shots_taken,
+                  totalPoints: attempt.total_points,
+                  currentStreak: attempt.current_goal_streak,
+                  bestStreak: attempt.best_goal_streak,
+                })
+              : `${formatPoints(attempt.total_points)} / ${formatPoints(marksmanshipTarget)}`
         }
+        scoreboardModel={enduranceScoreboardModel}
         timer={isTerminal ? '00:00' : isIdle ? formatCountdown(idleTimerMs) : undefined}
         shotButtonLabel={
           needsReconcile
@@ -1081,22 +1154,14 @@ export function BonusGamePlayScreen(): JSX.Element {
             : undefined
         }
         resultCopy={isMarksmanship ? { goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' } : undefined}
+        onResultVisibilityChange={
+          isEndurance && isPeriodActive ? handleEnduranceResultVisibility : undefined
+        }
+        waitForShotResponseBeforeResultClose={isEndurance}
         applyState={() => undefined}
         applyResolvedState={(next) => applyPendingShot(next)}
         overlayControls={
-          isEndurance && isPeriodActive ? (
-            <>
-              <EnduranceHud
-                attempt={attempt}
-                receivedAtPerformanceMs={receivedAtPerformanceMs ?? performance.now()}
-                onClock={recordEnduranceClock}
-                onElapsed={refreshAttempt}
-              />
-              {needsReconcile ? (
-                <BonusReconcileOverlay loading={loading} onRetry={() => void reconcileAttempt()} />
-              ) : null}
-            </>
-          ) : needsReconcile ? (
+          needsReconcile ? (
             <BonusReconcileOverlay loading={loading} onRetry={() => void reconcileAttempt()} />
           ) : undefined
         }

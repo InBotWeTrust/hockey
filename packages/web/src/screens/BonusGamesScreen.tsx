@@ -29,7 +29,10 @@ import {
 import { useAuthStore } from '../auth/authStore.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
-import { qualificationDescription } from '../game/bonusGameQualification.js';
+import {
+  enduranceQualificationLines,
+  qualificationDescription,
+} from '../game/bonusGameQualification.js';
 import { catalogBonusGameArtwork } from '../game/bonusGameArtwork.js';
 import { bonusGameArtworkUrls, preloadArtwork } from '../app/artworkCache.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
@@ -198,13 +201,11 @@ export function BonusGamesScreen(): JSX.Element {
   };
   const games = allGames.filter((game) => game.skill_code === selectedSkill);
   const selectedAllowance = catalogQuery.data?.attempt_allowances?.[selectedSkill];
-  const attemptProgressPercent =
-    selectedAllowance === undefined || selectedAllowance.daily_limit <= 0
-      ? 0
-      : Math.min(
-          100,
-          Math.max(0, (selectedAllowance.remaining / selectedAllowance.daily_limit) * 100),
-        );
+  const completedGamesCount = games.filter(
+    (game) => game.is_completed || game.state === 'completed',
+  ).length;
+  const gamesProgressPercent =
+    games.length <= 0 ? 0 : Math.min(100, Math.max(0, (completedGamesCount / games.length) * 100));
   const allowanceCountdown =
     selectedAllowance === undefined
       ? null
@@ -299,19 +300,22 @@ export function BonusGamesScreen(): JSX.Element {
 
         <section
           className={`bonus-games-attempt-progress${selectedAllowance === undefined ? ' bonus-games-attempt-progress--loading' : ''}`}
-          aria-label={`Попытки: ${skillLabels[selectedSkill]}`}
+          aria-label={`Прогресс игр: ${skillLabels[selectedSkill]}`}
         >
           {selectedAllowance ? (
             <>
               <div
                 className="bonus-games-attempt-progress__bar"
                 role="progressbar"
-                aria-label={`Осталось попыток: ${skillLabels[selectedSkill]}`}
+                aria-label={`Пройдено игр: ${skillLabels[selectedSkill]}`}
                 aria-valuemin={0}
-                aria-valuenow={selectedAllowance.remaining}
-                aria-valuemax={selectedAllowance.daily_limit}
+                aria-valuenow={completedGamesCount}
+                aria-valuemax={games.length}
               >
-                <span style={{ width: `${attemptProgressPercent}%` }} />
+                <span style={{ width: `${gamesProgressPercent}%` }} />
+                <strong className="bonus-games-attempt-progress__value">
+                  {completedGamesCount}/{games.length} игр
+                </strong>
               </div>
               <div className="bonus-games-attempt-progress__meta">
                 <strong>
@@ -594,6 +598,10 @@ function BonusGameCard({
         ? 'center 50%'
         : 'center 43%'
       : 'center top';
+  const enduranceDetails =
+    game.qualification_rules.type === 'survive_goal_windows'
+      ? enduranceQualificationLines(game.qualification_rules)
+      : null;
 
   return (
     <article
@@ -618,9 +626,6 @@ function BonusGameCard({
             objectPosition: featuredArtworkPosition,
           }}
         />
-        <span className={`bonus-game-card__status bonus-game-card__status--${visualStatus}`}>
-          {statusText}
-        </span>
         {visualStatus === 'completed' ? (
           <span className="bonus-game-card__completion-badge" aria-label="Игра пройдена">
             <Check size={12} strokeWidth={3} aria-hidden="true" />
@@ -628,13 +633,21 @@ function BonusGameCard({
         ) : null}
       </div>
       <div className="bonus-game-card__content">
+        <span
+          className={`achievement-card__stage bonus-game-card__status bonus-game-card__status--${visualStatus} training-exercise-card__stage--${visualStatus === 'completed' ? 'complete' : visualStatus}`}
+        >
+          {statusText}
+        </span>
         <div className="bonus-game-card__eyebrow">Игра {numberText(game.sort_order)}</div>
         <h2 className="bonus-game-card__title">{game.title}</h2>
         {game.description && <p className="bonus-game-card__description">{game.description}</p>}
         <p className="bonus-game-card__details">
           <span className="bonus-game-card__details-primary">
-            {qualificationDescription(game.qualification_rules)}
+            {enduranceDetails?.[0] ?? qualificationDescription(game.qualification_rules)}
           </span>
+          {enduranceDetails !== null ? (
+            <span className="bonus-game-card__details-window">{enduranceDetails[1]}</span>
+          ) : null}
           <span className="bonus-game-card__details-secondary">
             {formatRussianCount(game.total_periods, 'период', 'периода', 'периодов')} ·{' '}
             {game.qualification_rules.type === 'goals_from_shots'

@@ -40,6 +40,7 @@ import {
   buildGameScoreboardModel,
   GameScoreboard,
   ScoreBoard,
+  type GameScoreboardModel,
   type ScoreBoardOpponent,
 } from '../components/ScoreBoard.js';
 import { ResultModal, type ResultModalKind } from '../components/ResultModal.js';
@@ -275,12 +276,17 @@ export interface PlayViewProps<TState> {
   timerLabel?: string | undefined;
   autoShotDelayMs?: number | undefined;
   scoreboardNotice?: string | undefined;
+  scoreboardModel?:
+    | GameScoreboardModel
+    | ((counters: { goals: number; shots: number }) => GameScoreboardModel)
+    | undefined;
   shotButtonLabel?: string | undefined;
   primaryActionBlocked?: boolean | undefined;
   inactiveAction?: (() => unknown | Promise<unknown>) | undefined;
   entranceBeforeInactiveAction?: boolean | undefined;
   goalsOnlyWhileInactive?: boolean | undefined;
   continuousClockDuringResult?: boolean | undefined;
+  waitForShotResponseBeforeResultClose?: boolean | undefined;
   freezeRenderingDuringResult?: boolean | undefined;
   backLabel?: string | undefined;
   bottomInset?: string | undefined;
@@ -343,9 +349,10 @@ export interface PlayViewProps<TState> {
   hideSoundAction?: boolean | undefined;
   hideRinkScoreboard?: boolean | undefined;
   onResultComplete?: (() => void) | undefined;
-  onShotResolved?: ((context: PlayShotContext & { result: ShotResult }) =>
-    | PlayResultPresentation
-    | null) | undefined;
+  onResultVisibilityChange?: ((visible: boolean) => void) | undefined;
+  onShotResolved?:
+    | ((context: PlayShotContext & { result: ShotResult }) => PlayResultPresentation | null)
+    | undefined;
   reduceMotion?: boolean | undefined;
 }
 
@@ -582,12 +589,14 @@ export function PlayView<TState>({
   timerLabel,
   autoShotDelayMs,
   scoreboardNotice,
+  scoreboardModel,
   shotButtonLabel = 'БРОСОК',
   primaryActionBlocked = false,
   inactiveAction,
   entranceBeforeInactiveAction = false,
   goalsOnlyWhileInactive = false,
   continuousClockDuringResult = false,
+  waitForShotResponseBeforeResultClose = false,
   freezeRenderingDuringResult = false,
   backLabel = 'К режимам',
   bottomInset = 'calc(8px + var(--app-dock-safe-bottom))',
@@ -635,6 +644,7 @@ export function PlayView<TState>({
   hideSoundAction = false,
   hideRinkScoreboard = false,
   onResultComplete,
+  onResultVisibilityChange,
   onShotResolved,
   reduceMotion = false,
 }: PlayViewProps<TState>): JSX.Element {
@@ -658,7 +668,10 @@ export function PlayView<TState>({
       setVisibleStatusNotice(null);
       return undefined;
     }
-    const timer = window.setTimeout(() => setVisibleStatusNotice(statusNotice), statusNoticeDelayMs);
+    const timer = window.setTimeout(
+      () => setVisibleStatusNotice(statusNotice),
+      statusNoticeDelayMs,
+    );
     return () => window.clearTimeout(timer);
   }, [statusNotice, statusNoticeDelayMs]);
   const sessionRef = useRef(session);
@@ -744,11 +757,22 @@ export function PlayView<TState>({
   const pendingClockRebaseRef = useRef(false);
   const shotAnimationInProgressRef = useRef(false);
   const shotSubmitPendingRef = useRef(false);
+  const resultVisualCompleteRef = useRef(false);
+  const pendingResultCloseRef = useRef<(() => void) | null>(null);
+  const resultVisibilityRef = useRef(false);
   const [pixiReady, setPixiReady] = useState(false);
   const [isEntrancePlaying, setIsEntrancePlaying] = useState(false);
   const routeCameraRequestedRef = useRef(playRouteTransitionOnMount && !shouldReduceMotion());
   const [routeCameraPhase, setRouteCameraPhase] = useState<RouteCameraPhase>(() =>
     routeCameraRequestedRef.current ? 'zoomed' : 'settled',
+  );
+  const reportResultVisibility = useCallback(
+    (visible: boolean): void => {
+      if (resultVisibilityRef.current === visible) return;
+      resultVisibilityRef.current = visible;
+      onResultVisibilityChange?.(visible);
+    },
+    [onResultVisibilityChange],
   );
   // Ref-mirror of suppressedByModal so handleReady (initialized once via
   // useCallback) can read the latest value when Pixi finishes loading.
@@ -1653,17 +1677,20 @@ export function PlayView<TState>({
     authoritativePresentationRef.current = undefined;
     shotSubmitPendingRef.current = true;
     shotAnimationInProgressRef.current = true;
+    resultVisualCompleteRef.current = false;
+    pendingResultCloseRef.current = null;
     setIsShotInProgress(true);
     setIsShotSubmitPending(true);
     pendingMidShotApplyRef.current = null;
 
     loop.beginShooterPause();
     playerRef.current?.playShot();
-    const targetPoint = result.type === 'goal'
-      ? result.hitPoint
-      : result.type === 'save'
-        ? result.goalieContact
-        : { x: sx, y: GOAL_OPENING.y };
+    const targetPoint =
+      result.type === 'goal'
+        ? result.hitPoint
+        : result.type === 'save'
+          ? result.goalieContact
+          : { x: sx, y: GOAL_OPENING.y };
     const puckShotPath = {
       start: puck.bladePoint(sx),
       end: targetPoint,
@@ -1694,6 +1721,7 @@ export function PlayView<TState>({
       setResultDisplayKind(authoritativeResultRef.current ?? displayKind);
       setResultPresentation(authoritativePresentationRef.current ?? localResultPresentation);
       setIsShowingResult(true);
+      reportResultVisibility(true);
     }, visualFlightMs);
 
     scheduleShotTimeout(() => {
@@ -1708,17 +1736,28 @@ export function PlayView<TState>({
       puck.release();
       if (result.type === 'save') goalie.setSavePose(false);
       if (freezeRenderingDuringResult && tickerRef.current) loop.attach(tickerRef.current);
-      setIsShowingResult(false);
-      onResultComplete?.();
-      setResultDisplayKind(null);
-      setResultPresentation(null);
-      authoritativePresentationRef.current = undefined;
       shotAnimationInProgressRef.current = false;
+      resultVisualCompleteRef.current = true;
       setIsShotInProgress(false);
       const applyPending = pendingMidShotApplyRef.current;
       if (applyPending) {
         applyPending();
         pendingMidShotApplyRef.current = null;
+      }
+      const closeResult = (): void => {
+        if (!mountedRef.current) return;
+        pendingResultCloseRef.current = null;
+        setIsShowingResult(false);
+        onResultComplete?.();
+        setResultDisplayKind(null);
+        setResultPresentation(null);
+        authoritativePresentationRef.current = undefined;
+        reportResultVisibility(false);
+      };
+      if (waitForShotResponseBeforeResultClose && shotSubmitPendingRef.current) {
+        pendingResultCloseRef.current = closeResult;
+      } else {
+        closeResult();
       }
     }, visualFlightMs + visualPauseMs);
 
@@ -1763,9 +1802,11 @@ export function PlayView<TState>({
         if (!mountedRef.current) return;
         shotSubmitPendingRef.current = false;
         setIsShotSubmitPending(false);
+        pendingResultCloseRef.current?.();
       });
   }, [
     continuousClockDuringResult,
+    waitForShotResponseBeforeResultClose,
     freezeRenderingDuringResult,
     optimisticAddShot,
     submitShot,
@@ -1773,9 +1814,11 @@ export function PlayView<TState>({
     applyResolvedState,
     resultCopy,
     onShotResolved,
+    onResultComplete,
     onSubmitError,
     reduceMotion,
     scheduleClockRebaseFromLatestTiming,
+    reportResultVisibility,
   ]);
 
   const autoShotHandlerRef = useRef(handleShotTap);
@@ -1785,7 +1828,10 @@ export function PlayView<TState>({
 
   useEffect(() => {
     if (!active || !pixiReady || autoShotDelayMs === undefined) return;
-    const timeout = window.setTimeout(() => autoShotHandlerRef.current(), Math.max(0, autoShotDelayMs));
+    const timeout = window.setTimeout(
+      () => autoShotHandlerRef.current(),
+      Math.max(0, autoShotDelayMs),
+    );
     return () => window.clearTimeout(timeout);
   }, [active, autoShotDelayMs, clockRebaseKey, pixiReady]);
 
@@ -1829,6 +1875,10 @@ export function PlayView<TState>({
   const visibleScoreboardGoals = scoreboardSnapshot?.goals ?? scoreboardGoals ?? goals;
   const visibleScoreboardShots = scoreboardSnapshot?.shots ?? shots;
   const visibleScoreboardNotice = scoreboardSnapshot?.notice ?? scoreboardNotice;
+  const visibleCustomScoreboardModel =
+    typeof scoreboardModel === 'function'
+      ? scoreboardModel({ goals: visibleScoreboardGoals, shots: visibleScoreboardShots })
+      : scoreboardModel;
   const isDuelShotBlocked = active && currentDuelCondition?.canShoot === false;
   const isDuelRestBlocked = isDuelShotBlocked && currentDuelCondition?.status === 'exhausted_stop';
   const effectiveShotButtonLabel = duelPrimaryButtonLabel(shotButtonLabel, currentDuelCondition);
@@ -1854,19 +1904,22 @@ export function PlayView<TState>({
       scoreboard={
         hideRinkScoreboard ? undefined : (
           <GameScoreboard
-            {...buildGameScoreboardModel({
-              period: scoreboardPeriodNumber ?? periodNumber,
-              periodsTotal: scoreboardPeriodsTotal ?? periodsTotal,
-              periodLabel,
-              timer: timerValue,
-              timerLabel: timerLabel ?? 'ВРЕМЯ',
-              goals: visibleScoreboardGoals,
-              ...(scoreLabel !== undefined ? { scoreLabel } : {}),
-              shots: visibleScoreboardShots,
-              ...(shotsTotal !== undefined ? { shotsTotal } : {}),
-              ...(visibleScoreboardNotice !== undefined ? { notice: visibleScoreboardNotice } : {}),
-              ...(scoreboardOpponent !== undefined ? { opponent: scoreboardOpponent } : {}),
-            })}
+            {...(visibleCustomScoreboardModel ??
+              buildGameScoreboardModel({
+                period: scoreboardPeriodNumber ?? periodNumber,
+                periodsTotal: scoreboardPeriodsTotal ?? periodsTotal,
+                periodLabel,
+                timer: timerValue,
+                timerLabel: timerLabel ?? 'ВРЕМЯ',
+                goals: visibleScoreboardGoals,
+                ...(scoreLabel !== undefined ? { scoreLabel } : {}),
+                shots: visibleScoreboardShots,
+                ...(shotsTotal !== undefined ? { shotsTotal } : {}),
+                ...(visibleScoreboardNotice !== undefined
+                  ? { notice: visibleScoreboardNotice }
+                  : {}),
+                ...(scoreboardOpponent !== undefined ? { opponent: scoreboardOpponent } : {}),
+              }))}
           />
         )
       }
@@ -1925,20 +1978,23 @@ export function PlayView<TState>({
           ...routeChromeStyle,
         }}
       >
-        {!hideScoreboard && (
-          <ScoreBoard
-            period={scoreboardPeriodNumber ?? periodNumber}
-            periodLabel={periodLabel}
-            periodsTotal={scoreboardPeriodsTotal ?? periodsTotal}
-            timer={timerValue}
-            timerLabel={timerLabel}
-            goals={visibleScoreboardGoals}
-            {...(scoreLabel !== undefined ? { scoreLabel } : {})}
-            shots={visibleScoreboardShots}
-            shotsTotal={shotsTotal}
-            opponent={scoreboardOpponent}
-          />
-        )}
+        {!hideScoreboard &&
+          (visibleCustomScoreboardModel ? (
+            <GameScoreboard {...visibleCustomScoreboardModel} />
+          ) : (
+            <ScoreBoard
+              period={scoreboardPeriodNumber ?? periodNumber}
+              periodLabel={periodLabel}
+              periodsTotal={scoreboardPeriodsTotal ?? periodsTotal}
+              timer={timerValue}
+              timerLabel={timerLabel}
+              goals={visibleScoreboardGoals}
+              {...(scoreLabel !== undefined ? { scoreLabel } : {})}
+              shots={visibleScoreboardShots}
+              shotsTotal={shotsTotal}
+              opponent={scoreboardOpponent}
+            />
+          ))}
       </div>
 
       <div

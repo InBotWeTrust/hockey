@@ -162,7 +162,6 @@ describe.skipIf(!hasIntegrationEnv)('migration 148 endurance bonus games', () =>
         goalWindowMs: 3_000,
       },
     ]);
-
     for (const game of games.rows) {
       expect(game).toMatchObject({
         skill_code: 'endurance',

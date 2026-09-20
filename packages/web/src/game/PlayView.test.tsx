@@ -2,18 +2,16 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type GoalieConfig } from '@hockey/game-core';
 import { useState } from 'react';
-import {
-  PlayView,
-  TRAINING_COURSE_GOAL_OPTIONS,
-  type PlayShotResolver,
-} from './PlayView.js';
+import { PlayView, TRAINING_COURSE_GOAL_OPTIONS, type PlayShotResolver } from './PlayView.js';
 import type * as ReactModule from 'react';
 
 const tickerCallbacks = vi.hoisted(() => [] as Array<() => void>);
 const tickerEvents = vi.hoisted(() => [] as Array<'add' | 'remove'>);
 const playerContainers = vi.hoisted(() => [] as Array<{ visible: boolean }>);
 const goalieContainers = vi.hoisted(() => [] as Array<{ visible: boolean }>);
-const puckShotPaths = vi.hoisted(() => [] as Array<{ start: { x: number; y: number }; end: { x: number; y: number } }>);
+const puckShotPaths = vi.hoisted(
+  () => [] as Array<{ start: { x: number; y: number }; end: { x: number; y: number } }>,
+);
 
 vi.mock('pixi.js', () => ({
   Container: class Container {
@@ -620,6 +618,7 @@ describe('PlayView', () => {
       serverResult: 'miss' as const,
       state: resolvedSnapshot,
     }));
+    const onResultVisibilityChange = vi.fn();
     const commonProps = {
       suppressedByModal: false,
       showIceCar: false,
@@ -637,6 +636,7 @@ describe('PlayView', () => {
       clockRebaseKey: 'period-1',
       speedOverrides: { goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 },
       continuousClockDuringResult: true,
+      onResultVisibilityChange,
       freezeRenderingDuringResult: true,
       shotResolver,
       optimisticAddShot: () => undefined,
@@ -654,11 +654,7 @@ describe('PlayView', () => {
       );
     }
     const view = render(
-      <PlayView
-        {...commonProps}
-        shots={0}
-        applyResolvedState={applyResolvedState}
-      />,
+      <PlayView {...commonProps} shots={0} applyResolvedState={applyResolvedState} />,
     );
     await act(async () => Promise.resolve());
 
@@ -670,11 +666,13 @@ describe('PlayView', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(434);
     });
+    expect(onResultVisibilityChange).toHaveBeenLastCalledWith(true);
     expect(tickerEvents.at(-1)).toBe('remove');
     now = 2_434;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_000);
     });
+    expect(onResultVisibilityChange).toHaveBeenLastCalledWith(false);
     expect(tickerEvents.at(-1)).toBe('add');
     act(() => tickerCallbacks.at(-1)?.());
 
@@ -689,6 +687,152 @@ describe('PlayView', () => {
         }),
       }),
     );
+  });
+
+  it('keeps the result visible until a delayed shot response can start the next window', async () => {
+    vi.useFakeTimers();
+    let resolveSubmit: ((value: { serverResult: 'miss'; state: { shots: number } }) => void) | null =
+      null;
+    const submitShot = vi.fn(
+      () =>
+        new Promise<{ serverResult: 'miss'; state: { shots: number } }>((resolve) => {
+          resolveSubmit = resolve;
+        }),
+    );
+    const onResultVisibilityChange = vi.fn();
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="delayed-endurance-response"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        speedOverrides={{ goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 }}
+        continuousClockDuringResult
+        freezeRenderingDuringResult
+        waitForShotResponseBeforeResultClose
+        shotResolver={() => ({ type: 'miss', reason: 'wide' })}
+        optimisticAddShot={() => undefined}
+        submitShot={submitShot}
+        applyState={() => undefined}
+        onResultVisibilityChange={onResultVisibilityChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => vi.advanceTimersByTimeAsync(1_500));
+
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(onResultVisibilityChange).toHaveBeenLastCalledWith(true);
+
+    await act(async () => {
+      resolveSubmit?.({ serverResult: 'miss', state: { shots: 1 } });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(onResultVisibilityChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('keeps the default result lifecycle independent from a delayed shot response', async () => {
+    vi.useFakeTimers();
+    const submitShot = vi.fn(() => new Promise<never>(() => undefined));
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="delayed-default-response"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        speedOverrides={{ goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 }}
+        shotResolver={() => ({ type: 'miss', reason: 'wide' })}
+        optimisticAddShot={() => undefined}
+        submitShot={submitShot}
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => vi.advanceTimersByTimeAsync(1_500));
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('reveals optimistic custom scoreboard counters only with the visual result', async () => {
+    vi.useFakeTimers();
+    const shotResolver: PlayShotResolver = vi.fn(() => ({
+      type: 'goal',
+      hitPoint: { x: 400, y: 190 },
+    }));
+
+    function Harness(): JSX.Element {
+      const [goals, setGoals] = useState(0);
+      const [shots, setShots] = useState(0);
+      return (
+        <PlayView
+          suppressedByModal={false}
+          showIceCar={false}
+          onBack={() => undefined}
+          active
+          seed="bonus-seed"
+          goalieId={null}
+          goalieConfig={beachGoalie}
+          periodNumber={1}
+          goals={goals}
+          shots={shots}
+          speedOverrides={{
+            goalFreq: 0.45,
+            goalieFreq: 0.5,
+            shooterFreq: 0.65,
+            puckSpeed: 1.2,
+          }}
+          shotResolver={shotResolver}
+          scoreboardModel={({ goals: visibleGoals, shots: visibleShots }) => ({
+            rows: [
+              {
+                id: 'summary',
+                metrics: [
+                  {
+                    id: 'goals-shots',
+                    label: 'ГОЛЫ / БРОСКИ',
+                    value: `${visibleGoals}/${visibleShots}`,
+                  },
+                ],
+              },
+            ],
+          })}
+          optimisticAddShot={() => {
+            setGoals((value) => value + 1);
+            setShots((value) => value + 1);
+          }}
+          submitShot={async () => null}
+          applyState={() => undefined}
+        />
+      );
+    }
+
+    render(<Harness />);
+    await act(async () => Promise.resolve());
+    expect(screen.getByText('0/0')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    expect(screen.getByText('0/0')).toBeInTheDocument();
+    expect(screen.queryByText('1/1')).toBeNull();
+
+    await act(async () => vi.advanceTimersByTimeAsync(434));
+    expect(screen.getByText('1/1')).toBeInTheDocument();
   });
 
   it('does not accumulate a rejected shot in the next authoritative clock relation', async () => {

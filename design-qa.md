@@ -529,6 +529,56 @@ final result: passed with rendered follow-up pending
 
 ---
 
+# Bonus endurance card copy and spacing QA
+
+## Evidence
+
+- Source visual truth:
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-029f9c17-f467-49c8-83ba-4cc588db917e.png` (410 x 274 px) — uneven space above and below the three-line rule block.
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-6f2ae980-af9d-4c6b-8f21-3c56539f36e4.png` (376 x 104 px) — exact three-line rule block and wrapping.
+  - `/var/folders/8b/pys5c4bd0xl7_cw0xhk5s3nw0000gn/T/codex-clipboard-9fab5473-859b-4c63-bb39-267ffd54c6d9.png` — description copy corrected by the user.
+- Browser-rendered implementation: `/private/tmp/bonus-games-endurance-after.png` (430 x 932 px).
+- Focused implementation crop: `/private/tmp/bonus-games-endurance-compact-after.png` (402 x 144 px).
+- Browser URL: `http://127.0.0.1:5175/bonus-games`.
+- Viewport and density: 430 x 932 CSS px at device scale 1; source images and implementation were inspected at native pixel size, with no density normalization needed for the focused comparison.
+- State: authenticated local catalogue, endurance tab selected, game 1 featured and game 2 compact/locked.
+
+## Full-view and focused comparison
+
+- The featured card shows the approved description: `Продержитесь до конца периода, забивая хотя бы 1 шайбу в каждом временном окне.`
+- Featured and compact cards show three separate rule lines: duration, goal-window interval, and period/shot limit.
+- The compact content grid now sizes rows from their content instead of reserving a fixed 29 px title row.
+- Browser geometry confirms exactly 7 px from the title to the rule block and 7 px from the rule block to the rewards.
+- The focused crop confirms that the three-line block is vertically balanced and no longer sticks to the rewards.
+
+## Required fidelity surfaces
+
+- Fonts and typography: existing card family, weights, line heights, and hierarchy remain unchanged; the three rule lines retain one consistent style.
+- Spacing and layout rhythm: title-to-rules and rules-to-rewards gaps are both 7 px; content remains vertically centered within the 144 px compact card.
+- Colors and visual tokens: existing ink, muted text, glass card, reward, and status colors are unchanged.
+- Image quality and assets: existing arena thumbnails and crop behavior are unchanged; no new asset or placeholder was introduced.
+- Copy and content: card and preview-modal story copy match; fractional windows use a point (`6.5 сек`), integer windows omit `.0`, and duration includes `мин`.
+
+## Primary interactions and console
+
+- Reloaded the catalogue and confirmed the updated local database content in the rendered featured card.
+- Endurance remains selected and all seven games remain present after reload.
+- Browser console warnings/errors: 0.
+
+## Comparison history
+
+- Initial source: a fixed title grid row left a visibly large gap above the rules while the rewards sat close below them.
+- Fix: replaced fixed compact grid row heights with content-sized rows and a uniform 7 px gap.
+- Post-fix evidence: browser geometry reports equal 7 px gaps; the final full-view and focused screenshots show balanced spacing.
+
+## Findings
+
+No actionable P0, P1, or P2 differences remain for the requested copy, three-line rule layout, or compact-card vertical rhythm.
+
+final result: passed
+
+---
+
 # Bank package design QA
 
 ## Evidence
