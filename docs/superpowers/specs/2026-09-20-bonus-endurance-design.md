@@ -1,7 +1,7 @@
 # Bonus Endurance And Catalog Progress Design
 
-**Date:** 2026-09-20  
-**Status:** Approved conversational design, pending written review  
+**Date:** 2026-09-20
+**Status:** Approved conversational design, pending written review
 **Target:** Dev only; production release is out of scope
 
 ## Goal
