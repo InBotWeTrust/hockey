@@ -2317,6 +2317,74 @@
   line-height: 1.2;
 }
 
+.bonus-game-endurance-hud {
+  width: min(154px, calc(100cqw - 28px));
+  padding: 10px 12px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 16px;
+  color: #f8fafc;
+  background: rgba(15, 23, 42, 0.72);
+  box-shadow:
+    0 10px 26px rgba(15, 23, 42, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(12px) saturate(130%);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
+  text-align: center;
+}
+
+.bonus-game-endurance-hud__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: rgba(248, 250, 252, 0.72);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.bonus-game-endurance-hud__label,
+.bonus-game-endurance-hud__total {
+  display: block;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.bonus-game-endurance-hud__label {
+  margin-top: 8px;
+  color: rgba(248, 250, 252, 0.82);
+}
+
+.bonus-game-endurance-hud__goal-timer {
+  display: block;
+  margin-top: 1px;
+  color: #ffffff;
+  font-family: var(--font-mono);
+  font-size: 34px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.bonus-game-endurance-hud__goal-timer--warning {
+  color: #fbbf24;
+  animation: bonus-game-endurance-warning 900ms ease-in-out infinite alternate;
+}
+
+.bonus-game-endurance-hud__total {
+  margin-top: 7px;
+  color: rgba(248, 250, 252, 0.84);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes bonus-game-endurance-warning {
+  to {
+    opacity: 0.72;
+    transform: scale(0.97);
+  }
+}
+
 .bonus-game-reconcile__spinner {
   width: 12px;
   height: 12px;
@@ -2345,7 +2413,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bonus-game-reconcile__spinner {
+  .bonus-game-reconcile__spinner,
+  .bonus-game-endurance-hud__goal-timer--warning {
     animation: none;
   }
 }
@@ -2386,6 +2455,10 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.bonus-game-result-metrics--endurance {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .bonus-game-result-metric {
@@ -4278,9 +4351,7 @@
   width: min(560px, calc(100vw - 32px));
   max-height: min(
     80dvh,
-    calc(
-      var(--app-viewport-height, 100dvh) - var(--app-safe-top) - var(--app-safe-bottom) - 32px
-    ),
+    calc(var(--app-viewport-height, 100dvh) - var(--app-safe-top) - var(--app-safe-bottom) - 32px),
     760px
   );
   display: grid;
@@ -4292,9 +4363,7 @@
   min-height: 0;
   max-height: min(
     calc(80dvh - 74px),
-    calc(
-      var(--app-viewport-height, 100dvh) - var(--app-safe-top) - var(--app-safe-bottom) - 106px
-    ),
+    calc(var(--app-viewport-height, 100dvh) - var(--app-safe-top) - var(--app-safe-bottom) - 106px),
     660px
   );
   overflow-y: auto;
@@ -4386,7 +4455,8 @@
   color: rgba(15, 23, 42, 0.42);
   transition: transform 160ms ease;
 }
-.profile-trophy-history__challenge-toggle[aria-expanded='true'] .profile-trophy-history__challenge-chevron {
+.profile-trophy-history__challenge-toggle[aria-expanded='true']
+  .profile-trophy-history__challenge-chevron {
   transform: rotate(-90deg);
 }
 .profile-trophy-history__challenge-toggle[aria-expanded='true'] {
@@ -7559,7 +7629,9 @@ button.profile-story-series-card {
 }
 
 .initial-training-mode-card {
-  transition: opacity 160ms ease, transform 160ms ease;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
 }
 
 .initial-training-mode-card:disabled {
@@ -7714,7 +7786,6 @@ button.profile-story-series-card {
   width: 22px;
   height: 22px;
 }
-
 
 .daily-calendar {
   display: grid;

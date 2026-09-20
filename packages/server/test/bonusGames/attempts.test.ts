@@ -583,6 +583,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     expect(failed).toMatchObject({
       status: 'failed',
       state: 'closed',
+      period_started_at: NOW,
       closed_at: new Date(NOW.getTime() + 7_000),
       goal_window_started_at: null,
       goal_window_ends_at: null,
@@ -622,8 +623,8 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     ]);
 
     expect(reconciled).toEqual([
-      expect.objectContaining({ status: 'completed', state: 'closed' }),
-      expect.objectContaining({ status: 'completed', state: 'closed' }),
+      expect.objectContaining({ status: 'completed', state: 'closed', period_started_at: NOW }),
+      expect.objectContaining({ status: 'completed', state: 'closed', period_started_at: NOW }),
     ]);
     const settlement = await pool.query<{
       completions: number;

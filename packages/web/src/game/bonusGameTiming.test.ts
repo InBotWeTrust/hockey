@@ -3,6 +3,7 @@ import type { BonusGameAttempt } from '../api/bonusGames.js';
 import {
   deriveBonusGameClockBasis,
   deriveBonusGameClockEpoch,
+  deriveEnduranceClock,
   futureBonusPeriodDurationMs,
 } from './bonusGameTiming.js';
 
@@ -19,6 +20,8 @@ function activeAttempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAtte
     period_ends_at: '2026-08-24T10:04:00.000Z',
     break_started_at: null,
     break_ends_at: null,
+    goal_window_started_at: null,
+    goal_window_ends_at: null,
     closed_at: null,
     shots_taken: 0,
     current_period_shots_taken: 0,
@@ -190,5 +193,80 @@ describe('deriveBonusGameClockEpoch', () => {
         }),
       ),
     ).not.toBe(deriveBonusGameClockEpoch(activeAttempt()));
+  });
+});
+
+describe('deriveEnduranceClock', () => {
+  function enduranceAttempt(
+    overrides: Partial<BonusGameAttempt> & {
+      goal_window_started_at?: string | null;
+      goal_window_ends_at?: string | null;
+    } = {},
+  ): BonusGameAttempt {
+    return {
+      ...activeAttempt({
+        period_ends_at: '2026-08-24T10:03:00.000Z',
+        server_now: '2026-08-24T10:00:00.000Z',
+      }),
+      goal_window_started_at: '2026-08-24T10:00:00.000Z',
+      goal_window_ends_at: '2026-08-24T10:00:07.000Z',
+      ...overrides,
+    } as BonusGameAttempt;
+  }
+
+  it('advances total and goal-window clocks from the authoritative snapshot', () => {
+    expect(deriveEnduranceClock(enduranceAttempt(), 1_000, 3_500)).toEqual({
+      totalRemainingMs: 177_500,
+      goalRemainingMs: 4_500,
+      goalWindowPending: false,
+    });
+  });
+
+  it('shows the full snapshotted window until its future start after a goal', () => {
+    expect(
+      deriveEnduranceClock(
+        enduranceAttempt({
+          goal_window_started_at: '2026-08-24T10:00:03.000Z',
+          goal_window_ends_at: '2026-08-24T10:00:10.000Z',
+        }),
+        1_000,
+        3_500,
+      ),
+    ).toEqual({
+      totalRemainingMs: 177_500,
+      goalRemainingMs: 7_000,
+      goalWindowPending: true,
+    });
+  });
+
+  it('clamps malformed deadlines independently', () => {
+    expect(
+      deriveEnduranceClock(
+        enduranceAttempt({
+          period_ends_at: 'not-a-date',
+          goal_window_ends_at: 'also-not-a-date',
+        }),
+        1_000,
+        3_500,
+      ),
+    ).toEqual({
+      totalRemainingMs: 0,
+      goalRemainingMs: 0,
+      goalWindowPending: false,
+    });
+  });
+
+  it('returns exact zero at both authoritative deadlines', () => {
+    expect(
+      deriveEnduranceClock(
+        enduranceAttempt({ period_ends_at: '2026-08-24T10:00:07.000Z' }),
+        1_000,
+        8_000,
+      ),
+    ).toEqual({
+      totalRemainingMs: 0,
+      goalRemainingMs: 0,
+      goalWindowPending: false,
+    });
   });
 });

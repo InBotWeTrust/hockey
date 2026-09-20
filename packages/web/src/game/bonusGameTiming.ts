@@ -7,6 +7,51 @@ export interface BonusGameClockBasis {
   shooterElapsedMs: number;
 }
 
+export interface EnduranceClock {
+  totalRemainingMs: number;
+  goalRemainingMs: number;
+  goalWindowPending: boolean;
+}
+
+function remainingFromDeadline(deadline: string | null, authoritativeNowMs: number): number {
+  if (deadline === null) return 0;
+  const deadlineMs = Date.parse(deadline);
+  if (!Number.isFinite(deadlineMs)) return 0;
+  return Math.max(0, deadlineMs - authoritativeNowMs);
+}
+
+export function deriveEnduranceClock(
+  attempt: BonusGameAttempt,
+  receivedAtPerformanceMs: number,
+  currentPerformanceMs: number,
+): EnduranceClock {
+  const serverNowMs = Date.parse(attempt.server_now);
+  if (!Number.isFinite(serverNowMs)) {
+    return { totalRemainingMs: 0, goalRemainingMs: 0, goalWindowPending: false };
+  }
+
+  const authoritativeNowMs =
+    serverNowMs + Math.max(0, currentPerformanceMs - receivedAtPerformanceMs);
+  const goalWindowStartedAtMs =
+    attempt.goal_window_started_at === null
+      ? Number.NaN
+      : Date.parse(attempt.goal_window_started_at);
+  const goalWindowEndsAtMs =
+    attempt.goal_window_ends_at === null ? Number.NaN : Date.parse(attempt.goal_window_ends_at);
+  const goalWindowPending =
+    Number.isFinite(goalWindowStartedAtMs) &&
+    Number.isFinite(goalWindowEndsAtMs) &&
+    authoritativeNowMs < goalWindowStartedAtMs;
+
+  return {
+    totalRemainingMs: remainingFromDeadline(attempt.period_ends_at, authoritativeNowMs),
+    goalRemainingMs: goalWindowPending
+      ? Math.max(0, goalWindowEndsAtMs - goalWindowStartedAtMs)
+      : remainingFromDeadline(attempt.goal_window_ends_at, authoritativeNowMs),
+    goalWindowPending,
+  };
+}
+
 export function deriveBonusGameClockBasis(attempt: BonusGameAttempt): BonusGameClockBasis {
   if (attempt.state !== 'period_active' || attempt.period_started_at === null) {
     return { sceneElapsedMs: 0, shooterElapsedMs: 0 };

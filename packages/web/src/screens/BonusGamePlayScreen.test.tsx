@@ -128,6 +128,8 @@ function attempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAttempt {
     period_ends_at: '2026-08-24T10:04:00.000Z',
     break_started_at: null,
     break_ends_at: null,
+    goal_window_started_at: null,
+    goal_window_ends_at: null,
     closed_at: null,
     shots_taken: 28,
     current_period_shots_taken: 3,
@@ -247,6 +249,49 @@ function marksmanshipAttempt(overrides: Partial<BonusGameAttempt> = {}): BonusGa
   };
 }
 
+function enduranceAttempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAttempt {
+  const base = attempt();
+  return {
+    ...base,
+    game_slug: 'endurance-1',
+    game_title: 'Выносливость 1',
+    current_period: 1,
+    period_started_at: '2026-08-24T10:00:00.000Z',
+    period_ends_at: '2026-08-24T10:03:00.000Z',
+    goal_window_started_at: '2026-08-24T10:00:00.000Z',
+    goal_window_ends_at: '2026-08-24T10:00:07.000Z',
+    shots_taken: 0,
+    current_period_shots_taken: 0,
+    goals: 0,
+    current_goal_streak: 0,
+    best_goal_streak: 0,
+    server_now: '2026-08-24T10:00:00.000Z',
+    rules: {
+      ...base.rules,
+      slug: 'endurance-1',
+      title: 'Выносливость 1',
+      skill_code: 'endurance',
+      target_goals: 1,
+      qualification_rules: {
+        type: 'survive_goal_windows',
+        activeTimeMs: 180_000,
+        goalWindowMs: 7_000,
+      },
+      total_periods: 1,
+      break_duration_ms: 0,
+      periods: [
+        {
+          ...base.rules.periods[0]!,
+          period_number: 1,
+          duration_ms: 180_000,
+          shots_limit: null,
+        },
+      ],
+    },
+    ...overrides,
+  } as BonusGameAttempt;
+}
+
 function LocationProbe(): JSX.Element {
   const location = useLocation();
   return <div aria-label="location">{`${location.pathname}${location.search}`}</div>;
@@ -328,6 +373,7 @@ describe('BonusGamePlayScreen', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('renders an explicit loading state', () => {
@@ -335,6 +381,175 @@ describe('BonusGamePlayScreen', () => {
     renderScreen();
 
     expect(screen.getByRole('status')).toHaveTextContent('Загружаем бонусную игру…');
+  });
+
+  it('renders the authoritative endurance HUD with tenths and total time', () => {
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    setStore({ attempt: enduranceAttempt(), receivedAtPerformanceMs: 1_000 });
+
+    renderScreen();
+
+    expect(screen.getByText('ДО ГОЛА')).toBeInTheDocument();
+    expect(screen.getByRole('timer', { name: 'До обязательного гола' })).toHaveTextContent('7,0');
+    expect(screen.getByText('ОСТАЛОСЬ 03:00')).toBeInTheDocument();
+    expect(screen.getByText('ИГРА 1')).toBeInTheDocument();
+    expect(screen.getByText('ГОЛЫ 0')).toBeInTheDocument();
+  });
+
+  it('keeps the visible warning under reduced-motion preference in the final two seconds', () => {
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockReturnValue({
+        matches: true,
+        media: '(prefers-reduced-motion: reduce)',
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }),
+    );
+    setStore({
+      attempt: enduranceAttempt({
+        goal_window_ends_at: '2026-08-24T10:00:02.000Z',
+      }),
+      receivedAtPerformanceMs: 1_000,
+    });
+
+    renderScreen();
+
+    expect(screen.getByRole('timer', { name: 'До обязательного гола' })).toHaveClass(
+      'bonus-game-endurance-hud__goal-timer--warning',
+    );
+    expect(screen.getByRole('timer', { name: 'До обязательного гола' })).toHaveTextContent('2,0');
+  });
+
+  it.each([
+    ['goal', '2026-08-24T10:03:00.000Z', '2026-08-24T10:00:00.100Z'],
+    ['total', '2026-08-24T10:00:00.100Z', '2026-08-24T10:00:07.000Z'],
+  ] as const)(
+    'requests authoritative detail when the %s deadline arrives',
+    async (_, periodEnd, goalEnd) => {
+      vi.useFakeTimers();
+      let performanceNow = 1_000;
+      vi.spyOn(performance, 'now').mockImplementation(() => performanceNow);
+      const loadAttempt = vi.fn(async () => enduranceAttempt());
+      setStore({
+        attempt: enduranceAttempt({
+          period_ends_at: periodEnd,
+          goal_window_ends_at: goalEnd,
+        }),
+        receivedAtPerformanceMs: 1_000,
+        loadAttempt,
+      });
+      renderScreen();
+      loadAttempt.mockClear();
+
+      performanceNow = 1_100;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      expect(loadAttempt).toHaveBeenCalledTimes(1);
+      expect(loadAttempt).toHaveBeenCalledWith('attempt-1');
+    },
+  );
+
+  it('reconciles an active endurance attempt when connectivity returns or the page becomes visible', () => {
+    const loadAttempt = vi.fn(async () => enduranceAttempt());
+    setStore({ attempt: enduranceAttempt(), loadAttempt });
+    renderScreen();
+    loadAttempt.mockClear();
+
+    window.dispatchEvent(new Event('online'));
+    expect(loadAttempt).toHaveBeenCalledWith('attempt-1');
+
+    loadAttempt.mockClear();
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(loadAttempt).toHaveBeenCalledWith('attempt-1');
+
+    act(() => {
+      useBonusGameStore.setState({
+        attempt: enduranceAttempt({
+          status: 'failed',
+          state: 'closed',
+          period_started_at: null,
+          period_ends_at: null,
+          goal_window_started_at: null,
+          goal_window_ends_at: null,
+          closed_at: '2026-08-24T10:00:07.000Z',
+        }),
+      });
+    });
+    loadAttempt.mockClear();
+    window.dispatchEvent(new Event('online'));
+    expect(loadAttempt).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['failed', false, 'Не успел забить', 'Продержался01:05', 'Голы4'],
+    ['completed', true, 'Награда за первое прохождение', 'Время03:00', 'Голы12'],
+  ] as const)(
+    'renders endurance %s copy and duration metrics',
+    (status, rewardGranted, copy, durationMetric, goalsMetric) => {
+      setStore({
+        attempt: enduranceAttempt({
+          status,
+          state: 'closed',
+          period_ends_at: null,
+          goal_window_started_at: null,
+          goal_window_ends_at: null,
+          closed_at: status === 'failed' ? '2026-08-24T10:01:05.000Z' : '2026-08-24T10:03:00.000Z',
+          goals: status === 'failed' ? 4 : 12,
+          shots_taken: status === 'failed' ? 7 : 18,
+          reward_granted: rewardGranted,
+        }),
+      });
+
+      renderScreen();
+
+      const dialog = screen.getByRole('dialog');
+      expect(dialog).toHaveTextContent(copy);
+      expect(dialog).toHaveTextContent(durationMetric);
+      expect(dialog).toHaveTextContent(goalsMetric);
+    },
+  );
+
+  it('keeps the last authoritative survived time when the terminal DTO clears period timestamps', async () => {
+    vi.useFakeTimers();
+    let performanceNow = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => performanceNow);
+    setStore({
+      attempt: enduranceAttempt({
+        goal_window_ends_at: '2026-08-24T10:02:00.000Z',
+      }),
+      receivedAtPerformanceMs: 1_000,
+    });
+    renderScreen();
+
+    performanceNow = 66_000;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(65_000);
+    });
+    act(() => {
+      useBonusGameStore.setState({
+        attempt: enduranceAttempt({
+          status: 'failed',
+          state: 'closed',
+          period_started_at: null,
+          period_ends_at: null,
+          goal_window_started_at: null,
+          goal_window_ends_at: null,
+          closed_at: '2026-08-24T10:01:05.000Z',
+          goals: 4,
+        }),
+      });
+    });
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('Продержался01:05');
   });
 
   it('shows the qualification preview over the mounted ice without a dismissal checkbox', async () => {
@@ -500,25 +715,25 @@ describe('BonusGamePlayScreen', () => {
       goalFrequency: 0.5,
     };
     const localPresentation = props.onShotResolved?.({
-        input,
-        goalieConfig: {
-          id: 'marksmanship-test',
-          name: 'Test',
-          pattern: 'linear',
-          hp: 1,
-          baseReward: 0,
-          firstClearBonus: 0,
-          speed: 0,
-          amplitude: 1,
-          frequency: 0.6,
-          goalAmplitude: 220,
-          goalFrequency: 0.5,
-        },
-        seed: 'marksmanship-fixture',
-        shotIndex: 1,
-        phaseOffsets: { goalie: 0, goal: 0, shooter: 0 },
-        result: { type: 'goal', hitPoint: { x: 286, y: 80 } },
-      });
+      input,
+      goalieConfig: {
+        id: 'marksmanship-test',
+        name: 'Test',
+        pattern: 'linear',
+        hp: 1,
+        baseReward: 0,
+        firstClearBonus: 0,
+        speed: 0,
+        amplitude: 1,
+        frequency: 0.6,
+        goalAmplitude: 220,
+        goalFrequency: 0.5,
+      },
+      seed: 'marksmanship-fixture',
+      shotIndex: 1,
+      phaseOffsets: { goalie: 0, goal: 0, shooter: 0 },
+      result: { type: 'goal', hitPoint: { x: 286, y: 80 } },
+    });
 
     expect(localPresentation).toEqual({
       title: 'ГОЛ',

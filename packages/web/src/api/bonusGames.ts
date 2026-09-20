@@ -1,10 +1,7 @@
 import { apiFetch } from './apiFetch.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 import { showAmateurLevelRequiredError } from '../amateur/amateurAccess.js';
-import type {
-  MarksmanshipDifficultyCode,
-  MarksmanshipScoringRules,
-} from '@hockey/game-core';
+import type { MarksmanshipDifficultyCode, MarksmanshipScoringRules } from '@hockey/game-core';
 
 export type BonusGameCardState =
   | 'level_locked'
@@ -18,7 +15,12 @@ export type BonusGameCardState =
 export type BonusAttemptStatus = 'active' | 'completed' | 'failed' | 'abandoned';
 export type BonusAttemptState = 'idle' | 'period_active' | 'break_active' | 'closed';
 export type BonusGoaliePattern = 'linear' | 'sine' | 'dash';
-export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship';
+export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship' | 'endurance';
+export type EnduranceQualificationRules = {
+  type: 'survive_goal_windows';
+  activeTimeMs: number;
+  goalWindowMs: number;
+};
 export type BonusQualificationRules =
   | {
       type: 'goals_from_shots';
@@ -37,7 +39,8 @@ export type BonusQualificationRules =
       targetPoints: number;
       activeTimeMs: number;
       scoring: MarksmanshipScoringRules;
-    };
+    }
+  | EnduranceQualificationRules;
 
 export interface BonusPeriodRule {
   period_number: number;
@@ -99,6 +102,8 @@ export interface BonusGameCardAttempt {
   current_period: number;
   period_started_at: string | null;
   break_started_at: string | null;
+  goal_window_started_at: string | null;
+  goal_window_ends_at: string | null;
   shots_taken: number;
   goals: number;
   total_points: number;
@@ -178,6 +183,8 @@ export interface BonusGameAttempt {
   period_ends_at: string | null;
   break_started_at: string | null;
   break_ends_at: string | null;
+  goal_window_started_at: string | null;
+  goal_window_ends_at: string | null;
   closed_at: string | null;
   shots_taken: number;
   current_period_shots_taken: number;

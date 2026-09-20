@@ -171,8 +171,8 @@ export async function reconcileBonusAttempt(
         const { rows } = await client.query<BonusGameAttemptRow>(
           `update bonus_game_attempt
               set status = 'completed', state = 'closed', closed_at = $1,
-                  period_started_at = null, goal_window_started_at = null,
-                  goal_window_ends_at = null, break_started_at = null, updated_at = $1
+                  goal_window_started_at = null, goal_window_ends_at = null,
+                  break_started_at = null, updated_at = $1
             where id = $2
           returning *`,
           [periodEndsAt, current.id],
@@ -184,8 +184,8 @@ export async function reconcileBonusAttempt(
         const { rows } = await client.query<BonusGameAttemptRow>(
           `update bonus_game_attempt
               set status = 'failed', state = 'closed', closed_at = $1,
-                  period_started_at = null, goal_window_started_at = null,
-                  goal_window_ends_at = null, break_started_at = null, updated_at = $1
+                  goal_window_started_at = null, goal_window_ends_at = null,
+                  break_started_at = null, updated_at = $1
             where id = $2
           returning *`,
           [failedAt, current.id],
