@@ -53,7 +53,7 @@ describe('advanced training catalog', () => {
       state: 'available',
       description: expect.any(String),
       skill: 'Ритм',
-      goal: '7 из 10 ситуаций',
+      goal: '7 из 10 моментов',
     });
   });
 

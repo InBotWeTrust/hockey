@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { resolvePerspectiveCourtShot, type ShotResult } from '@hockey/game-core';
+import { GOAL_OPENING, resolvePerspectiveCourtShot, type ShotResult } from '@hockey/game-core';
 import {
   restartAdvancedTrainingPractice,
   startAdvancedTrainingAssessment,
@@ -34,6 +34,22 @@ const EXERCISE_POSITION: Record<AdvancedTrainingExerciseKey, number> = {
   'rhythm-reset': 8,
 };
 
+type IntroPhase = 'ready' | 'demonstrating' | 'practice-ready' | 'practice';
+
+function demonstrationResult(
+  scenario: AdvancedTrainingScenario,
+  step: number,
+): ShotResult {
+  if (scenario.intentionalMissFirst && step === 0) return { type: 'miss', reason: 'wide' };
+  const inset = 8;
+  const x = scenario.requiredSide === 'left'
+    ? GOAL_OPENING.xMin + inset
+    : scenario.requiredSide === 'right'
+      ? GOAL_OPENING.xMax - inset
+      : (GOAL_OPENING.xMin + GOAL_OPENING.xMax) / 2;
+  return { type: 'goal', hitPoint: { x, y: GOAL_OPENING.y } };
+}
+
 export function AdvancedTrainingPlay({
   exerciseKey,
   onBack,
@@ -48,6 +64,8 @@ export function AdvancedTrainingPlay({
   const [run, setRun] = useState<AdvancedTrainingRunState | null>(null);
   const [demonstrationScenarios, setDemonstrationScenarios] = useState<AdvancedTrainingScenario[]>([]);
   const [demonstrationIndex, setDemonstrationIndex] = useState<number | null>(null);
+  const [demonstrationStep, setDemonstrationStep] = useState(0);
+  const [introPhase, setIntroPhase] = useState<IntroPhase>('ready');
   const [feedback, setFeedback] = useState<ReturnType<typeof advancedTrainingFeedbackCopy> | null>(null);
   const [feedbackTone, setFeedbackTone] = useState<'success' | 'error'>('success');
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +98,9 @@ export function AdvancedTrainingPlay({
         if (!active) return;
         setRun(response.state);
         setDemonstrationScenarios(response.demonstrations);
-        setDemonstrationIndex(response.demonstrations.length > 0 ? 0 : null);
+        setDemonstrationIndex(null);
+        setDemonstrationStep(0);
+        setIntroPhase(response.demonstrations.length > 0 ? 'ready' : 'practice');
       })
       .catch((cause: unknown) => {
         if (active) setError(cause instanceof Error ? cause.message : 'Не удалось начать упражнение');
@@ -107,6 +127,7 @@ export function AdvancedTrainingPlay({
     ? null
     : (demonstrationScenarios[demonstrationIndex] ?? null);
   const isDemonstrating = demonstrationScenario !== null;
+  const isPracticeReady = introPhase === 'practice-ready';
 
   const applyState = useCallback((state: AdvancedTrainingRunState) => setRun(state), []);
   const optimisticAddShot = useCallback(() => {
@@ -159,9 +180,10 @@ export function AdvancedTrainingPlay({
     );
   }
 
-  const showModal = stageFinished;
-  const shotResolver: PlayShotResolver = (context) =>
-    resolvePerspectiveCourtShot(
+  const showModal = isPracticeReady || stageFinished;
+  const shotResolver: PlayShotResolver = (context) => isDemonstrating && demonstrationScenario
+    ? demonstrationResult(demonstrationScenario, demonstrationStep)
+    : resolvePerspectiveCourtShot(
       context.input,
       context.goalieConfig,
       context.seed,
@@ -176,7 +198,7 @@ export function AdvancedTrainingPlay({
         suppressedByModal={showModal}
         showIceCar={false}
         onBack={onBack}
-        active={!showModal}
+        active={!showModal && (isDemonstrating || introPhase === 'practice')}
         seed={isDemonstrating ? `${run.seed}:demonstration:${demonstrationIndex}` : run.seed}
         goalieId={run.scene.goalie_id}
         goalieConfig={run.scene.goalie_config}
@@ -190,10 +212,19 @@ export function AdvancedTrainingPlay({
         goals={run.successes}
         scoreLabel="ПРИЁМЫ"
         shots={run.shots_taken}
-        timer={`${isDemonstrating ? 0 : Math.min(run.situation_index + 1, run.total_situations)}/${run.total_situations}`}
+        timer={`${introPhase === 'practice' ? Math.min(run.situation_index + 1, run.total_situations) : 0}/${run.total_situations}`}
         timerLabel="МОМЕНТЫ"
-        shotButtonLabel={isDemonstrating ? 'ПОКАЗ' : 'БРОСОК'}
+        shotButtonLabel={introPhase === 'ready' ? 'ДЕМОНСТРАЦИЯ' : isDemonstrating ? 'ПОКАЗ' : 'БРОСОК'}
         primaryActionBlocked={isDemonstrating}
+        {...(introPhase === 'ready'
+          ? {
+              inactiveAction: () => {
+                setDemonstrationStep(0);
+                setDemonstrationIndex(0);
+                setIntroPhase('demonstrating');
+              },
+            }
+          : {})}
         backLabel="К упражнениям"
         optimisticAddShot={isDemonstrating ? () => undefined : optimisticAddShot}
         submitShot={submitShot}
@@ -205,26 +236,60 @@ export function AdvancedTrainingPlay({
         shotResolver={shotResolver}
         resultCopy={{ goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' }}
         statusNotice={isDemonstrating
-          ? `Показ ${Number(demonstrationIndex) + 1} из ${demonstrationScenarios.length}: следи за траекторией броска у борта`
-          : (feedback ?? error)}
+          ? `Показ ${Number(demonstrationIndex) + 1} из ${demonstrationScenarios.length}: правильное выполнение приёма`
+          : (feedback ?? (
+              run.scenario.requiredSide === 'left'
+                ? 'Задание момента: левый борт'
+                : run.scenario.requiredSide === 'right'
+                  ? 'Задание момента: правый борт'
+                  : error
+            ))}
         statusNoticeTone={feedback ? feedbackTone : 'error'}
         statusNoticeDelayMs={500}
         autoShotDelayMs={demonstrationScenario?.targetTapTimeMs}
-        clockRebaseKey={isDemonstrating ? `advanced-demonstration-${demonstrationIndex}` : undefined}
+        clockRebaseKey={isDemonstrating ? `advanced-demonstration-${demonstrationIndex}-${demonstrationStep}` : undefined}
         initialSceneElapsedMs={isDemonstrating ? 0 : undefined}
         initialShooterElapsedMs={isDemonstrating ? 0 : undefined}
         onResultComplete={() => {
           if (isDemonstrating) {
-            setDemonstrationIndex((current) => {
-              if (current === null || current + 1 >= demonstrationScenarios.length) return null;
-              return current + 1;
-            });
+            const requiredSteps = demonstrationScenario.seriesGoals + (demonstrationScenario.intentionalMissFirst ? 1 : 0);
+            if (demonstrationStep + 1 < requiredSteps) {
+              setDemonstrationStep((current) => current + 1);
+              return;
+            }
+            if (demonstrationIndex !== null && demonstrationIndex + 1 < demonstrationScenarios.length) {
+              setDemonstrationStep(0);
+              setDemonstrationIndex(demonstrationIndex + 1);
+              return;
+            }
+            setDemonstrationIndex(null);
+            setDemonstrationStep(0);
+            setIntroPhase('practice-ready');
             return;
           }
           resultAnimationCompleteRef.current = true;
           if (pendingStageFinishRef.current) setStageFinished(true);
         }}
       />
+
+      <AccessibleModal
+        open={isPracticeReady}
+        title="Теперь ваша очередь"
+        onRequestClose={onCourse}
+      >
+        <p className="modal-copy">
+          Повтори показанный приём в пяти тренировочных моментах. Ошибки здесь не мешают перейти к зачёту.
+        </p>
+        <div className="modal-actions">
+          <button
+            type="button"
+            className="modal-primary btn btn--cta"
+            onClick={() => setIntroPhase('practice')}
+          >
+            Начать практику
+          </button>
+        </div>
+      </AccessibleModal>
 
       <AccessibleModal
         open={stageFinished}
@@ -261,7 +326,9 @@ export function AdvancedTrainingPlay({
                 resultAnimationCompleteRef.current = false;
                 setRun(response.state);
                 setDemonstrationScenarios(response.demonstrations);
-                setDemonstrationIndex(response.demonstrations.length > 0 ? 0 : null);
+                setDemonstrationIndex(null);
+                setDemonstrationStep(0);
+                setIntroPhase(response.demonstrations.length > 0 ? 'ready' : 'practice');
                 setStageFinished(false);
                 setResult(null);
               })}

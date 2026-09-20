@@ -209,7 +209,21 @@ export const advancedTrainingCourseRoutes: FastifyPluginAsync<{
         [req.user.id],
       );
       const active = existing.rows[0];
-      if (active?.exercise_key === exerciseKey && active.game_core_version === GAME_CORE_VERSION) {
+      const activeShotCount = active
+        ? await client.query<{ count: number }>(
+            `select count(*)::int as count from advanced_training_shot where run_id = $1`,
+            [active.id],
+          )
+        : null;
+      const canReuseFreshRun =
+        active?.exercise_key === exerciseKey &&
+        active.game_core_version === GAME_CORE_VERSION &&
+        active.stage === 'practice' &&
+        active.situation_index === 0 &&
+        active.successes === 0 &&
+        (activeShotCount?.rows[0]?.count ?? 0) === 0 &&
+        (active.series_state.step ?? 0) === 0;
+      if (canReuseFreshRun && active) {
         return {
           demonstrations: ADVANCED_TRAINING_SCENARIOS.filter((item) => item.exerciseKey === exerciseKey).slice(0, 2),
           state: await stateDto(client, active),

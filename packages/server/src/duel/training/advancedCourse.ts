@@ -4,14 +4,14 @@ import { z } from 'zod';
 type Queryable = Pool | PoolClient;
 
 export const ADVANCED_TRAINING_EXERCISES = [
-  { key: 'board-side', title: 'У борта', description: 'Забей из заданного крайнего сектора.', skill: 'Позиция', goal: '7 из 10 ситуаций' },
-  { key: 'open-net', title: 'Открытые ворота', description: 'Дождись полностью свободного створа.', skill: 'Обзор', goal: '7 из 10 ситуаций' },
-  { key: 'crossing', title: 'На пересечении', description: 'Поймай короткое центральное окно.', skill: 'Тайминг', goal: '7 из 10 ситуаций' },
-  { key: 'goalie-leaving', title: 'Вратарь отъехал', description: 'Брось в первое окно после ухода вратаря.', skill: 'Реакция', goal: '7 из 10 ситуаций' },
-  { key: 'narrow-gap', title: 'Узкий просвет', description: 'Попади в частично перекрытый створ.', skill: 'Меткость', goal: '7 из 10 ситуаций' },
-  { key: 'counter-direction', title: 'Противоход', description: 'Направь шайбу против движения вратаря.', skill: 'Противоход', goal: '7 из 10 ситуаций' },
-  { key: 'second-tempo', title: 'Второй темп', description: 'Заверши заданную серию быстрых голов.', skill: 'Серия', goal: '7 из 10 ситуаций' },
-  { key: 'rhythm-reset', title: 'Сброс ритма', description: 'Промахнись намеренно и заверши голевую серию.', skill: 'Ритм', goal: '7 из 10 ситуаций' },
+  { key: 'board-side', title: 'У борта', description: 'В каждом моменте будет указан левый или правый борт. Забей из крайней позиции у нужного борта.', skill: 'Позиция', goal: '7 из 10 моментов' },
+  { key: 'open-net', title: 'Открытые ворота', description: 'Дождись полностью свободного створа.', skill: 'Обзор', goal: '7 из 10 моментов' },
+  { key: 'crossing', title: 'На пересечении', description: 'Поймай короткое центральное окно.', skill: 'Тайминг', goal: '7 из 10 моментов' },
+  { key: 'goalie-leaving', title: 'Вратарь отъехал', description: 'Брось в первое окно после ухода вратаря.', skill: 'Реакция', goal: '7 из 10 моментов' },
+  { key: 'narrow-gap', title: 'Узкий просвет', description: 'Попади в частично перекрытый створ.', skill: 'Меткость', goal: '7 из 10 моментов' },
+  { key: 'counter-direction', title: 'Противоход', description: 'Направь шайбу против движения вратаря.', skill: 'Противоход', goal: '7 из 10 моментов' },
+  { key: 'second-tempo', title: 'Второй темп', description: 'Заверши заданную серию быстрых голов.', skill: 'Серия', goal: '7 из 10 моментов' },
+  { key: 'rhythm-reset', title: 'Сброс ритма', description: 'Промахнись намеренно и заверши голевую серию.', skill: 'Ритм', goal: '7 из 10 моментов' },
 ] as const;
 
 export type AdvancedTrainingExerciseKey = (typeof ADVANCED_TRAINING_EXERCISES)[number]['key'];

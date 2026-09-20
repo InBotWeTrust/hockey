@@ -177,5 +177,19 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/advanced/*', () => {
     });
     expect(replay.statusCode).toBe(200);
     expect(replay.json()).toEqual(shot.json());
+
+    const freshStart = await app.inject({
+      method: 'POST',
+      url: '/duel/training/advanced/board-side/start',
+      headers: headers(),
+    });
+    expect(freshStart.statusCode, freshStart.body).toBe(200);
+    expect(freshStart.json().state).toMatchObject({
+      stage: 'practice',
+      situation_index: 0,
+      successes: 0,
+      shots_taken: 0,
+    });
+    expect(freshStart.json().state.run_id).not.toBe(state.run_id);
   });
 });

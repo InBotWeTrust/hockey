@@ -1,5 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
-import { getGoalie } from '@hockey/game-core';
+import { getGoalie, type ShotResult } from '@hockey/game-core';
 import { StrictMode, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdvancedTrainingRunState } from '../api/advancedTraining.js';
@@ -10,6 +10,9 @@ type CapturedPlayViewProps = {
   periodLabel?: string;
   scoreLabel?: string;
   autoShotDelayMs?: number;
+  shotButtonLabel?: string;
+  primaryActionBlocked?: boolean;
+  inactiveAction?: () => unknown | Promise<unknown>;
   timer?: string;
   timerLabel?: string;
   statusNotice?: ReactNode;
@@ -26,6 +29,7 @@ type CapturedPlayViewProps = {
     claimedResult: 'goal' | 'save' | 'miss';
   }) => Promise<unknown>;
   onResultComplete: () => void;
+  shotResolver: () => ShotResult;
 };
 
 const testState = vi.hoisted(() => ({
@@ -103,7 +107,7 @@ describe('advanced training play', () => {
     testState.restart.mockReset();
   });
 
-  it('starts one server run under StrictMode and autoplays two demonstrations before practice', async () => {
+  it('waits for the demonstration button, shows two successful examples, then waits for practice', async () => {
     render(
       <StrictMode>
         <AdvancedTrainingPlay
@@ -121,15 +125,27 @@ describe('advanced training play', () => {
     expect(testState.playViewProps?.timer).toBe('0/5');
     expect(testState.playViewProps?.scoreLabel).toBe('ПРИЁМЫ');
     expect(testState.playViewProps?.timerLabel).toBe('МОМЕНТЫ');
+    expect(testState.playViewProps?.active).toBe(false);
+    expect(testState.playViewProps?.shotButtonLabel).toBe('ДЕМОНСТРАЦИЯ');
+    expect(testState.playViewProps?.autoShotDelayMs).toBeUndefined();
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    await act(async () => testState.playViewProps?.inactiveAction?.());
     expect(testState.playViewProps?.active).toBe(true);
     expect(testState.playViewProps?.autoShotDelayMs).toBe(scenario.targetTapTimeMs);
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(testState.playViewProps?.shotResolver()).toMatchObject({ type: 'goal' });
 
     await act(async () => testState.playViewProps?.onResultComplete());
     expect(testState.playViewProps?.autoShotDelayMs).toBe(scenario.targetTapTimeMs);
     await act(async () => testState.playViewProps?.onResultComplete());
-    await waitFor(() => expect(testState.playViewProps?.active).toBe(true));
+    await waitFor(() => expect(testState.playViewProps?.active).toBe(false));
     expect(testState.playViewProps?.autoShotDelayMs).toBeUndefined();
+    expect(screen.getByRole('dialog', { name: 'Теперь ваша очередь' })).toBeInTheDocument();
+    expect(testState.playViewProps?.timer).toBe('0/5');
+
+    await act(async () => screen.getByRole('button', { name: 'Начать практику' }).click());
+    await waitFor(() => expect(testState.playViewProps?.active).toBe(true));
+    expect(testState.playViewProps?.shotButtonLabel).toBe('БРОСОК');
     expect(testState.playViewProps?.timer).toBe('1/5');
   });
 
@@ -156,8 +172,10 @@ describe('advanced training play', () => {
       />,
     );
     await screen.findByTestId('play-view');
+    await act(async () => testState.playViewProps?.inactiveAction?.());
     await act(async () => testState.playViewProps?.onResultComplete());
     await act(async () => testState.playViewProps?.onResultComplete());
+    await act(async () => screen.getByRole('button', { name: 'Начать практику' }).click());
     await act(async () => {
       await testState.playViewProps?.submitShot({
         shotIndex: 1,
