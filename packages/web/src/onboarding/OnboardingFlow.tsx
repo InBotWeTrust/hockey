@@ -8,6 +8,7 @@ import {
 import './onboarding.css';
 import { OnboardingCopy } from './OnboardingCopy.js';
 import { TutorialShotStep } from './TutorialShotStep.js';
+import { BeginnerStoryFlow } from './BeginnerStoryFlow.js';
 
 interface OnboardingFlowProps {
   runId: string;
@@ -15,6 +16,7 @@ interface OnboardingFlowProps {
   onCompleted: (result: OnboardingRequiredResponse) => void;
   mode?: 'required' | 'preview';
   tutorialApi?: ComponentProps<typeof TutorialShotStep>['tutorialApi'];
+  unlockGoalsRequired?: number;
 }
 
 export function OnboardingFlow({
@@ -23,6 +25,7 @@ export function OnboardingFlow({
   onCompleted,
   mode = 'required',
   tutorialApi,
+  unlockGoalsRequired = 300,
 }: OnboardingFlowProps): JSX.Element {
   const [stepIndex, setStepIndex] = useState(0);
   const [brokenImage, setBrokenImage] = useState(false);
@@ -76,7 +79,10 @@ export function OnboardingFlow({
         onCompleted({ required: null });
         return;
       }
-      const reached = [...reachedSteps.current];
+      const reached =
+        required.chain === 'beginner'
+          ? required.steps.map((requiredStep) => requiredStep.id)
+          : [...reachedSteps.current];
       await Promise.allSettled(reached.map(ensureStepView));
       try {
         await Promise.all(reached.map(ensureStepView));
@@ -99,6 +105,18 @@ export function OnboardingFlow({
       return;
     }
     setStepIndex((current) => current + 1);
+  }
+
+  if (required.chain === 'beginner' && mode === 'required') {
+    return (
+      <BeginnerStoryFlow
+        mode="required"
+        runId={runId}
+        required={required}
+        unlockGoalsRequired={unlockGoalsRequired}
+        onCompleted={() => void finish()}
+      />
+    );
   }
 
   return (

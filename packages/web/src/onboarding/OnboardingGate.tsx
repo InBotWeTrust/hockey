@@ -51,6 +51,12 @@ export function OnboardingGate({
   const sessionIdRef = useRef(crypto.randomUUID());
   const startPromiseRef = useRef<Promise<OnboardingRunResponse> | null>(null);
   const [run, setRun] = useState<OnboardingRunResponse | null>(null);
+  const storyProfileQuery = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiFetch<ProfileData>('/me', { cache: 'no-store' }),
+    enabled: query.data?.required?.chain === 'beginner' || run?.required.chain === 'beginner',
+    staleTime: 0,
+  });
   const [startError, setStartError] = useState(false);
   const [playerReady, setPlayerReady] = useState(preparePlayer === undefined);
   const [playerPreparationError, setPlayerPreparationError] = useState(false);
@@ -189,9 +195,28 @@ export function OnboardingGate({
     );
   } else if (!run) {
     content = <StartupSplash />;
+  } else if (run.required.chain === 'beginner' && storyProfileQuery.isPending) {
+    content = <StartupSplash />;
+  } else if (
+    run.required.chain === 'beginner' &&
+    (storyProfileQuery.isError || storyProfileQuery.data === undefined)
+  ) {
+    content = (
+      <StartupSplash
+        message="Не удалось загрузить сюжет. Проверьте соединение."
+        retry={() => void storyProfileQuery.refetch()}
+      />
+    );
   } else {
     content = (
-      <OnboardingFlow runId={run.runId} required={run.required} onCompleted={acceptCompletion} />
+      <OnboardingFlow
+        runId={run.runId}
+        required={run.required}
+        onCompleted={acceptCompletion}
+        {...(storyProfileQuery.data
+          ? { unlockGoalsRequired: storyProfileQuery.data.amateurUnlockGoalsRequired }
+          : {})}
+      />
     );
   }
 

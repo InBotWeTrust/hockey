@@ -30,6 +30,21 @@ vi.mock('./TutorialShotStep.js', () => ({
   },
 }));
 
+vi.mock('./BeginnerStoryFlow.js', () => ({
+  BeginnerStoryFlow: ({
+    unlockGoalsRequired,
+    onCompleted,
+  }: {
+    unlockGoalsRequired: number;
+    onCompleted: () => void;
+  }) => (
+    <section aria-label="Кинематографичный онбординг">
+      <span>Порог: {unlockGoalsRequired}</span>
+      <button type="button" onClick={onCompleted}>Завершить историю</button>
+    </section>
+  ),
+}));
+
 const onboardingCss = readFileSync(resolve(process.cwd(), 'src/onboarding/onboarding.css'), 'utf8');
 const staticStartupHtml = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
 
@@ -91,6 +106,46 @@ describe('OnboardingFlow', () => {
   beforeEach(() => {
     vi.mocked(recordStepView).mockReset().mockResolvedValue({ viewed: true });
     vi.mocked(completeOnboarding).mockReset();
+  });
+
+  it('uses the cinematic flow for beginner onboarding and completes all server evidence', async () => {
+    const beginnerRequired: OnboardingRequired = {
+      chain: 'beginner',
+      versionId: 'beginner-v1',
+      steps: [
+        { ...required.steps[0]!, id: 'beginner-info' },
+        {
+          id: 'beginner-shot',
+          position: 2,
+          kind: 'tutorial_shot',
+          title: 'Бросок',
+          description: 'Бросай',
+          ctaLabel: 'Дальше',
+          tutorial: { shooterFrequency: 0.8, goalieFrequency: 0.65, goalFrequency: 0.55 },
+        },
+      ],
+    };
+    vi.mocked(completeOnboarding).mockResolvedValue({ required: null });
+    const onCompleted = vi.fn();
+
+    render(
+      <OnboardingFlow
+        runId="run-beginner"
+        required={beginnerRequired}
+        unlockGoalsRequired={475}
+        onCompleted={onCompleted}
+      />,
+    );
+
+    expect(screen.getByRole('region', { name: 'Кинематографичный онбординг' })).toBeInTheDocument();
+    expect(screen.getByText('Порог: 475')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Закрыть серию' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Завершить историю' }));
+
+    await waitFor(() => expect(recordStepView).toHaveBeenCalledWith('run-beginner', 'beginner-info'));
+    await waitFor(() => expect(recordStepView).toHaveBeenCalledWith('run-beginner', 'beginner-shot'));
+    await waitFor(() => expect(completeOnboarding).toHaveBeenCalledWith('run-beginner'));
+    expect(onCompleted).toHaveBeenCalledWith({ required: null });
   });
 
   it('shows semantic progress, navigation and records each reached step only once', async () => {
@@ -223,7 +278,7 @@ describe('OnboardingFlow', () => {
 
   it('keeps tutorial navigation forward-only', async () => {
     const tutorialRequired: OnboardingRequired = {
-      chain: 'beginner',
+      chain: 'amateur',
       versionId: 'beginner-v1',
       steps: [
         required.steps[0]!,
@@ -248,7 +303,7 @@ describe('OnboardingFlow', () => {
 
   it('does not decrement below zero when tutorial is the first published step', async () => {
     const tutorialOnly: OnboardingRequired = {
-      chain: 'beginner',
+      chain: 'amateur',
       versionId: 'beginner-v2',
       steps: [
         {
