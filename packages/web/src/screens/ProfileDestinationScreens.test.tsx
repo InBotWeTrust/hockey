@@ -15,9 +15,12 @@ const profile = {
   displayName: 'Alice',
   grip: 'right' as const,
   competitionLevel: 'beginner' as const,
+  beginnerOnboardingCompleted: false,
+  amateurUnlockGoalsRequired: 300,
   stats: { shots: 120, goals: 48, accuracy: 40, playStreakDays: 3, bestPlayStreakDays: 8 },
   achievements: [],
 };
+let storyCompleted = false;
 
 function renderDestination(path: string, element: JSX.Element): RenderResult {
   const client = new QueryClient({
@@ -39,6 +42,7 @@ function renderDestination(path: string, element: JSX.Element): RenderResult {
 let inventoryResponse: InventoryState;
 
 beforeEach(() => {
+  storyCompleted = false;
   inventoryResponse = {
     balances: { tokens: 1, stars: 2, experience: 3 },
     equipped: { stickItemId: 'stick-1', skatesItemId: null, nutritionItemId: null },
@@ -67,7 +71,12 @@ beforeEach(() => {
   vi.restoreAllMocks();
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input.toString();
-    if (url.endsWith('/api/me')) return new Response(JSON.stringify(profile), { status: 200 });
+    if (url.endsWith('/api/me')) {
+      return new Response(
+        JSON.stringify({ ...profile, beginnerOnboardingCompleted: storyCompleted }),
+        { status: 200 },
+      );
+    }
     if (url.endsWith('/api/inventory/me')) {
       return new Response(JSON.stringify(inventoryResponse), { status: 200 });
     }
@@ -101,10 +110,10 @@ beforeEach(() => {
 });
 
 describe('profile destination screens', () => {
-  it('renders the story placeholder and returns to profile', () => {
+  it('renders the story placeholder and returns to profile', async () => {
     renderDestination('/profile/story', <ProfileStoryScreen />);
 
-    expect(screen.getByRole('heading', { name: 'Сюжет' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Сюжет' })).toBeInTheDocument();
     expect(screen.getAllByRole('article', { name: /Серия \d+: закрыто/ })).toHaveLength(10);
     for (let series = 1; series <= 10; series += 1) {
       const card = screen.getByRole('article', { name: `Серия ${series}: закрыто` });
@@ -117,6 +126,21 @@ describe('profile destination screens', () => {
     expect(screen.getAllByTestId('profile-story-series-lock')).toHaveLength(10);
     fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
     expect(screen.getByText('profile screen')).toBeInTheDocument();
+  });
+
+  it('unlocks the completed first series with approved copy and navigation', async () => {
+    storyCompleted = true;
+    renderDestination('/profile/story', <ProfileStoryScreen />);
+
+    const card = await screen.findByRole('button', { name: 'Открыть серию «Путь со двора»' });
+    expect(card).toHaveTextContent('Путь со двора');
+    expect(card).toHaveTextContent('Последняя шайба и случайная встреча.');
+    expect(card).toHaveTextContent('Пройдено');
+    expect(card.querySelector('img')).toHaveAttribute(
+      'src',
+      '/onboarding/story/scene-01-court.png',
+    );
+    expect(screen.getAllByTestId('profile-story-series-lock')).toHaveLength(9);
   });
 
   it('shows aggregate statistics without inventing mode totals', async () => {

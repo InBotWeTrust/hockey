@@ -38,12 +38,35 @@ function ProfilePageStatus({ children }: { children: ReactNode }): JSX.Element {
 }
 
 export function ProfileStoryScreen(): JSX.Element {
+  const navigate = useNavigate();
+  const profileQuery = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiFetch<ProfileData>('/me'),
+  });
+
+  if (profileQuery.isLoading) {
+    return <ProfilePageStatus>Загружаем сюжет…</ProfilePageStatus>;
+  }
+  if (profileQuery.isError || profileQuery.data === undefined) {
+    return (
+      <ProfilePageStatus>
+        <section className="profile-error-state" role="alert">
+          <h1>Не удалось загрузить сюжет</h1>
+          <button type="button" className="btn btn--cta" onClick={() => void profileQuery.refetch()}>
+            Повторить
+          </button>
+        </section>
+      </ProfilePageStatus>
+    );
+  }
+
   return (
     <main className="screen profile-detail-screen profile-story-screen">
       <ProfilePageHeader title="Сюжет" />
       <div className="profile-story-series-list">
         {Array.from({ length: 10 }, (_, index) => {
           const series = index + 1;
+          const firstSeriesUnlocked = series === 1 && profileQuery.data.beginnerOnboardingCompleted;
           return (
             <section className="profile-story-series" key={series} aria-labelledby={`story-series-${series}`}>
               <h2
@@ -52,15 +75,33 @@ export function ProfileStoryScreen(): JSX.Element {
               >
                 Серия {series}
               </h2>
-              <article className="profile-story-series-card glass" aria-label={`Серия ${series}: закрыто`}>
-                <span className="profile-story-series-card__visual" aria-hidden="true">
-                  <Lock data-testid="profile-story-series-lock" />
-                </span>
-                <span className="profile-story-series-card__copy">
-                  <strong>Серия {series}</strong>
-                  <small>В разработке</small>
-                </span>
-              </article>
+              {firstSeriesUnlocked ? (
+                <button
+                  type="button"
+                  className="profile-story-series-card profile-story-series-card--unlocked glass"
+                  aria-label="Открыть серию «Путь со двора»"
+                  onClick={() => navigate('/profile/story/series-1')}
+                >
+                  <span className="profile-story-series-card__visual" aria-hidden="true">
+                    <img src="/onboarding/story/scene-01-court.png" alt="" />
+                  </span>
+                  <span className="profile-story-series-card__copy">
+                    <strong>Путь со двора</strong>
+                    <span>Последняя шайба и случайная встреча.</span>
+                    <small>Пройдено</small>
+                  </span>
+                </button>
+              ) : (
+                <article className="profile-story-series-card glass" aria-label={`Серия ${series}: закрыто`}>
+                  <span className="profile-story-series-card__visual" aria-hidden="true">
+                    <Lock data-testid="profile-story-series-lock" />
+                  </span>
+                  <span className="profile-story-series-card__copy">
+                    <strong>Серия {series}</strong>
+                    <small>В разработке</small>
+                  </span>
+                </article>
+              )}
             </section>
           );
         })}
