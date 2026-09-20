@@ -463,7 +463,7 @@ export interface AdminDuelPeriodSpeedPreset {
 
 export type AdminBonusGameStatus = 'draft' | 'active' | 'archived';
 export type AdminBonusGameAccessType = 'free' | 'paid';
-export type AdminBonusSkillCode = 'speed' | 'accuracy';
+export type AdminBonusSkillCode = 'speed' | 'accuracy' | 'endurance';
 export type AdminBonusGoaliePattern = 'linear' | 'sine' | 'dash';
 export type AdminBonusQualificationRules =
   | {
@@ -477,6 +477,11 @@ export type AdminBonusQualificationRules =
       targetGoals: number;
       activeTimeMs: number;
       requiredGoalStreak?: number;
+    }
+  | {
+      type: 'survive_goal_windows';
+      activeTimeMs: number;
+      goalWindowMs: number;
     };
 
 export interface AdminBonusPeriodRule {
