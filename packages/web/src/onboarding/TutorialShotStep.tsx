@@ -22,6 +22,8 @@ interface TutorialShotStepProps {
   goalConfirmed: boolean;
   onGoalConfirmed: () => void;
   onContinue: () => void;
+  onResult?: (result: TutorialResult) => void;
+  showResultCard?: boolean;
   tutorialApi?: {
     start: (runId: string) => Promise<OnboardingTutorialSession & { runId?: string }>;
     submit: (
@@ -58,6 +60,8 @@ export function TutorialShotStep({
   onGoalConfirmed,
   onContinue,
   tutorialApi,
+  onResult,
+  showResultCard = true,
 }: TutorialShotStepProps): JSX.Element {
   const [session, setSession] = useState<OnboardingTutorialSession | null>(null);
   const [state, setState] = useState<TutorialState | null>(null);
@@ -118,7 +122,7 @@ export function TutorialShotStep({
         </button>
       </div>
     );
-  if (showResult && state.result) {
+  if (showResultCard && showResult && state.result) {
     const content = resultContent[state.result];
     return (
       <section
@@ -196,7 +200,9 @@ export function TutorialShotStep({
           }}
           applyState={setState}
           onResultComplete={() => {
-            if (authoritativeResult.current) setShowResult(true);
+            if (!authoritativeResult.current) return;
+            onResult?.(authoritativeResult.current);
+            if (showResultCard) setShowResult(true);
           }}
           hideScoreboard
           hideRinkScoreboard
