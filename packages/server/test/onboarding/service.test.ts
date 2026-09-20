@@ -2,11 +2,19 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { PoolClient } from 'pg';
+import {
+  GAME_CORE_VERSION,
+  getGoalie,
+  getSessionPhaseOffsets,
+  resolveEmptyGoalShot,
+} from '@hockey/game-core';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getRequiredOnboarding,
   loadPublishedVersion,
   startOnboardingRun,
+  submitTutorialShot,
 } from '../../src/onboarding/service.js';
 import type { OnboardingChainKey } from '../../src/onboarding/types.js';
 import { applyMigrations } from '../../src/db/migrations.js';
@@ -15,6 +23,52 @@ import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/tes
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 const MEDIA_SECRET = 'onboarding-media-secret';
+
+describe('onboarding tutorial shot service', () => {
+  it('resolves the story shot against a goal fixed at center', async () => {
+    const seed = 'a'.repeat(64);
+    const speeds = { shooterFrequency: 0.8, goalieFrequency: 0.65, goalFrequency: 0.55 };
+    const offsets = getSessionPhaseOffsets(seed);
+    const goalie = getGoalie('rookie');
+    let input: { tapTime: number; shooterTapTime: number } | undefined;
+    for (let tapTime = 0; tapTime <= 20_000; tapTime += 5) {
+      const candidate = { tapTime, shooterTapTime: tapTime };
+      const staticResult = resolveEmptyGoalShot(
+        { ...candidate, ...speeds, goalFrequency: 0 },
+        goalie,
+        offsets,
+      ).type;
+      const movingResult = resolveEmptyGoalShot({ ...candidate, ...speeds }, goalie, offsets).type;
+      if (staticResult === 'miss' && movingResult === 'goal') {
+        input = candidate;
+        break;
+      }
+    }
+    expect(input).toBeDefined();
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+
+    const result = await submitTutorialShot(
+      { query } as unknown as PoolClient,
+      {
+        id: randomUUID(),
+        userId: randomUUID(),
+        chainKey: 'beginner',
+        versionId: randomUUID(),
+        tutorialState: {
+          seed,
+          gameCoreVersion: GAME_CORE_VERSION,
+          nextShotIndex: 1,
+          result: null,
+          stepId: randomUUID(),
+          speeds,
+        },
+      },
+      { shotIndex: 1, input: input!, claimedResult: 'miss' },
+    );
+
+    expect(result.serverResult).toBe('miss');
+  });
+});
 
 interface PublishedStep {
   position: number;
