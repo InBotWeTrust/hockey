@@ -44,6 +44,7 @@ import {
   X,
 } from 'lucide-react';
 import { ApiError } from '../api/apiFetch.js';
+import { onboardingQueryKeys } from '../api/onboarding.js';
 import { rewardColor } from '../app/rewardColors.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { ChannelPostEditorSheet } from '../chat/components/ChannelPostEditorSheet.js';
@@ -2238,6 +2239,7 @@ function UserDetailsModal({
   onClose: () => void;
 }): JSX.Element {
   const queryClient = useQueryClient();
+  const currentUserId = useAuthStore((state) => state.user?.id);
   const [authoritativeUser, setAuthoritativeUser] = useState<AdminUser | null>(null);
   const detail = useQuery({
     queryKey: ['admin', 'user', userId],
@@ -2292,6 +2294,9 @@ function UserDetailsModal({
         current === undefined ? current : { ...current, user: response.user },
       );
       void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      if (response.user.id === currentUserId) {
+        void queryClient.invalidateQueries({ queryKey: onboardingQueryKeys.required() });
+      }
       setEditMode(false);
       setConfirmAction(null);
     },
