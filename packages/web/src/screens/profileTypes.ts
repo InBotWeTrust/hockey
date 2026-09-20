@@ -46,6 +46,8 @@ export interface ProfileData {
   avatarUrl?: string | null;
   grip: 'right' | 'left';
   competitionLevel: CompetitionLevel;
+  beginnerOnboardingCompleted: boolean;
+  amateurUnlockGoalsRequired: number;
   stats: ProfileStats;
   achievements: ProfileAchievement[];
   trophySummary?: {

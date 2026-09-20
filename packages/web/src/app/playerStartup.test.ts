@@ -20,6 +20,8 @@ const profile: ProfileData = {
   displayName: 'Игрок',
   grip: 'right',
   competitionLevel: 'amateur',
+  beginnerOnboardingCompleted: true,
+  amateurUnlockGoalsRequired: 300,
   stats: { shots: 1400, goals: 920, accuracy: 65.7, playStreakDays: 4 },
   achievements: [],
 };
