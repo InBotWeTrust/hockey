@@ -78,7 +78,7 @@ import {
   type TrainingCourtDesign,
 } from './trainingNewCourt.js';
 
-export type PlayShotResolver = (context: {
+export interface PlayShotContext {
   input: ShotInput;
   goalieConfig: GoalieConfig;
   seed: string;
@@ -86,7 +86,14 @@ export type PlayShotResolver = (context: {
   stickEffects: StickEffects;
   phaseOffsets: SessionPhaseOffsets;
   shooterX: number;
-}) => ShotResult;
+}
+
+export type PlayShotResolver = (context: PlayShotContext) => ShotResult;
+
+export interface PlayResultPresentation {
+  title?: string;
+  details?: readonly string[];
+}
 
 type RouteCameraPhase = 'settled' | 'zoomed' | 'exiting';
 
@@ -251,6 +258,7 @@ export interface PlayViewProps<TState> {
   goalieId: string | null;
   goalieConfig?: GoalieConfig | undefined;
   periodNumber: number;
+  periodLabel?: string | undefined;
   scoreboardPeriodNumber?: number;
   periodSpeedPresets?: readonly DailyPeriodSpeedPreset[] | undefined;
   speedOverrides?: SpeedOverrides | undefined;
@@ -258,12 +266,14 @@ export interface PlayViewProps<TState> {
   periodsTotal?: number;
   scoreboardPeriodsTotal?: number;
   goals: number;
+  scoreLabel?: string | undefined;
   scoreboardGoals?: number | undefined;
   shots: number;
   shotIndexBase?: number | undefined;
   shotsTotal?: number | undefined;
   timer?: string | undefined;
   timerLabel?: string | undefined;
+  autoShotDelayMs?: number | undefined;
   scoreboardNotice?: string | undefined;
   shotButtonLabel?: string | undefined;
   primaryActionBlocked?: boolean | undefined;
@@ -292,6 +302,7 @@ export interface PlayViewProps<TState> {
     serverResult: ShotResult['type'];
     state: TState;
     isCurrent?: (() => boolean) | undefined;
+    resultPresentation?: PlayResultPresentation | null | undefined;
   } | null>;
   applyState: (next: TState) => void;
   applyResolvedState?: ((next: TState) => void) | undefined;
@@ -320,6 +331,9 @@ export interface PlayViewProps<TState> {
       ) => DuelPlayerCondition | null)
     | undefined;
   hudAddon?: ReactNode;
+  statusNotice?: ReactNode;
+  statusNoticeTone?: 'success' | 'error' | undefined;
+  statusNoticeDelayMs?: number | undefined;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
   readyPresence?: ReadyPresence | undefined;
   resultCopy?: Partial<Record<ResultModalKind, string>> | undefined;
@@ -329,6 +343,9 @@ export interface PlayViewProps<TState> {
   hideSoundAction?: boolean | undefined;
   hideRinkScoreboard?: boolean | undefined;
   onResultComplete?: (() => void) | undefined;
+  onShotResolved?: ((context: PlayShotContext & { result: ShotResult }) =>
+    | PlayResultPresentation
+    | null) | undefined;
   reduceMotion?: boolean | undefined;
 }
 
@@ -396,6 +413,12 @@ const PERSPECTIVE_GOAL_OPTIONS: GoalOptions = {
   visualYOffset: TRAINING_NEW_COURT_GOAL_VISUAL_Y_OFFSET,
   visualOffsetXScale: TRAINING_NEW_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
   spriteAnchorY: 1,
+};
+
+export const TRAINING_COURSE_GOAL_OPTIONS: GoalOptions = {
+  ...PERSPECTIVE_GOAL_OPTIONS,
+  spriteUrl: '/sprites/training-course-goal-transparent.png',
+  gateAspect: 1533 / 1026,
 };
 
 const PERSPECTIVE_GOALIE_OPTIONS: GoalieOptions = {
@@ -542,6 +565,7 @@ export function PlayView<TState>({
   goalieId,
   goalieConfig,
   periodNumber,
+  periodLabel,
   scoreboardPeriodNumber,
   periodSpeedPresets,
   speedOverrides,
@@ -549,12 +573,14 @@ export function PlayView<TState>({
   periodsTotal = 3,
   scoreboardPeriodsTotal,
   goals,
+  scoreLabel,
   scoreboardGoals,
   shots,
   shotIndexBase,
   shotsTotal,
   timer,
   timerLabel,
+  autoShotDelayMs,
   scoreboardNotice,
   shotButtonLabel = 'БРОСОК',
   primaryActionBlocked = false,
@@ -597,6 +623,9 @@ export function PlayView<TState>({
   shotResolver = resolveNewTrainingCourtShot,
   duelCondition,
   hudAddon,
+  statusNotice,
+  statusNoticeTone,
+  statusNoticeDelayMs = 0,
   scoreboardOpponent,
   readyPresence,
   resultCopy,
@@ -606,6 +635,7 @@ export function PlayView<TState>({
   hideSoundAction = false,
   hideRinkScoreboard = false,
   onResultComplete,
+  onShotResolved,
   reduceMotion = false,
 }: PlayViewProps<TState>): JSX.Element {
   const session: PlaySessionSnapshot = useMemo(
@@ -621,6 +651,16 @@ export function PlayView<TState>({
     }),
     [active, seed, goalieId, goalieConfig, periodNumber, shots, shotIndexBase, shotsTotal],
   );
+  const [visibleStatusNotice, setVisibleStatusNotice] = useState<ReactNode>(null);
+
+  useEffect(() => {
+    if (!statusNotice) {
+      setVisibleStatusNotice(null);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setVisibleStatusNotice(statusNotice), statusNoticeDelayMs);
+    return () => window.clearTimeout(timer);
+  }, [statusNotice, statusNoticeDelayMs]);
   const sessionRef = useRef(session);
   sessionRef.current = session;
   const sessionTimingRef = useRef<PlaySessionTiming>({
@@ -673,6 +713,8 @@ export function PlayView<TState>({
   const wasDuelStumblingRef = useRef(false);
   const [resultSubText, setResultSubText] = useState<string | null>(null);
   const [resultDisplayKind, setResultDisplayKind] = useState<ResultModalKind | null>(null);
+  const [resultPresentation, setResultPresentation] = useState<PlayResultPresentation | null>(null);
+  const authoritativePresentationRef = useRef<PlayResultPresentation | null | undefined>(undefined);
   const authoritativeResultRef = useRef<ShotResult['type'] | null>(null);
   const [lastResult, setLastResult] = useState<ShotResult | null>(null);
   const liveScoreboardRef = useRef({
@@ -714,6 +756,8 @@ export function PlayView<TState>({
   suppressedRef.current = suppressedByModal;
   const showIceCarRef = useRef(showIceCar);
   showIceCarRef.current = showIceCar;
+  const hideGoalieRef = useRef(hideGoalie);
+  hideGoalieRef.current = hideGoalie;
   const playEntranceOnMountRef = useRef(playEntranceOnMount);
   playEntranceOnMountRef.current = playEntranceOnMount;
   const goalsOnlyWhileInactiveRef = useRef(goalsOnlyWhileInactive);
@@ -1033,9 +1077,10 @@ export function PlayView<TState>({
         const goalStartOffsetY = animateGoal ? -140 : 0;
         const t0 = performance.now();
 
+        const hasVisibleGoalie = !hideGoalieRef.current;
         goal.container.visible = true;
         player.container.visible = true;
-        goalie.container.visible = true;
+        goalie.container.visible = hasVisibleGoalie;
         puck.container.visible = false;
 
         const drawAt = (
@@ -1047,14 +1092,16 @@ export function PlayView<TState>({
         ): void => {
           goal.update(scaleRef.current, 0, goalOffsetY);
           player.update(scaleRef.current, px, py);
-          goalie.update(
-            {
-              position: { x: gx, y: gy },
-              width: GOALIE_SIZE.width,
-              height: GOALIE_SIZE.height,
-            },
-            scaleRef.current,
-          );
+          if (hasVisibleGoalie) {
+            goalie.update(
+              {
+                position: { x: gx, y: gy },
+                width: GOALIE_SIZE.width,
+                height: GOALIE_SIZE.height,
+              },
+              scaleRef.current,
+            );
+          }
         };
 
         drawAt(goalieStartX, goalieStartY, playerStartX, playerStartY, goalStartOffsetY);
@@ -1247,7 +1294,7 @@ export function PlayView<TState>({
       layer.addChild(iceCar.container);
       layer.addChild(goal.container);
       layer.addChild(goalie.container);
-      goalie.container.visible = !hideGoalie;
+      goalie.container.visible = !hideGoalieRef.current;
       layer.addChild(player.container);
       layer.addChild(puck.container);
       layer.addChild(hitboxes.container);
@@ -1393,7 +1440,7 @@ export function PlayView<TState>({
       wasReadyPresenceModeRef.current = false;
       goal.container.visible = true;
       player.container.visible = true;
-      goalie.container.visible = true;
+      goalie.container.visible = !hideGoalieRef.current;
       puck.container.visible = true;
       loop.resetTime();
       loop.attach(ticker);
@@ -1403,7 +1450,7 @@ export function PlayView<TState>({
       skipNextUnsuppressedEntranceRef.current = false;
       goal.container.visible = true;
       player.container.visible = true;
-      goalie.container.visible = true;
+      goalie.container.visible = !hideGoalieRef.current;
       puck.container.visible = true;
       loop.resetTime();
       loop.attach(ticker);
@@ -1548,6 +1595,17 @@ export function PlayView<TState>({
         phaseOffsets: offsets,
         shooterX: sx,
       }) ?? resolveShot(input, activeCfg, seed, shotIndex, stickEffectsRef.current, offsets);
+    const localResultPresentation =
+      onShotResolved?.({
+        input,
+        goalieConfig: activeCfg,
+        seed,
+        shotIndex,
+        stickEffects: stickEffectsRef.current,
+        phaseOffsets: offsets,
+        shooterX: sx,
+        result,
+      }) ?? null;
 
     let subText: string | null = null;
     let displayKind: ResultModalKind = result.type;
@@ -1592,6 +1650,7 @@ export function PlayView<TState>({
     setScoreboardSnapshot(liveScoreboardRef.current);
     optimisticAddShot(result.type);
     authoritativeResultRef.current = null;
+    authoritativePresentationRef.current = undefined;
     shotSubmitPendingRef.current = true;
     shotAnimationInProgressRef.current = true;
     setIsShotInProgress(true);
@@ -1600,7 +1659,15 @@ export function PlayView<TState>({
 
     loop.beginShooterPause();
     playerRef.current?.playShot();
-    const puckShotPath = puck.shotPath(sx, GOAL_OPENING.y);
+    const targetPoint = result.type === 'goal'
+      ? result.hitPoint
+      : result.type === 'save'
+        ? result.goalieContact
+        : { x: sx, y: GOAL_OPENING.y };
+    const puckShotPath = {
+      start: puck.bladePoint(sx),
+      end: targetPoint,
+    };
     puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), visualFlightMs);
 
     const scheduleShotTimeout = (fn: () => void, delay: number): void => {
@@ -1625,6 +1692,7 @@ export function PlayView<TState>({
       setLastResult(result);
       setResultSubText(subText);
       setResultDisplayKind(authoritativeResultRef.current ?? displayKind);
+      setResultPresentation(authoritativePresentationRef.current ?? localResultPresentation);
       setIsShowingResult(true);
     }, visualFlightMs);
 
@@ -1643,6 +1711,8 @@ export function PlayView<TState>({
       setIsShowingResult(false);
       onResultComplete?.();
       setResultDisplayKind(null);
+      setResultPresentation(null);
+      authoritativePresentationRef.current = undefined;
       shotAnimationInProgressRef.current = false;
       setIsShotInProgress(false);
       const applyPending = pendingMidShotApplyRef.current;
@@ -1671,6 +1741,10 @@ export function PlayView<TState>({
           authoritativeResultRef.current = res.serverResult;
           setResultDisplayKind(res.serverResult);
         }
+        if (res.resultPresentation !== undefined) {
+          authoritativePresentationRef.current = res.resultPresentation;
+          setResultPresentation(res.resultPresentation);
+        }
         const applyNextState = () => {
           if (res.isCurrent?.() === false) return;
           (applyResolvedState ?? applyState)(res.state);
@@ -1698,10 +1772,22 @@ export function PlayView<TState>({
     applyState,
     applyResolvedState,
     resultCopy,
+    onShotResolved,
     onSubmitError,
     reduceMotion,
     scheduleClockRebaseFromLatestTiming,
   ]);
+
+  const autoShotHandlerRef = useRef(handleShotTap);
+  useEffect(() => {
+    autoShotHandlerRef.current = handleShotTap;
+  }, [handleShotTap]);
+
+  useEffect(() => {
+    if (!active || !pixiReady || autoShotDelayMs === undefined) return;
+    const timeout = window.setTimeout(() => autoShotHandlerRef.current(), Math.max(0, autoShotDelayMs));
+    return () => window.clearTimeout(timeout);
+  }, [active, autoShotDelayMs, clockRebaseKey, pixiReady]);
 
   const handleInactiveAction = useCallback(async (): Promise<void> => {
     if (!inactiveAction || isInactiveActionPending) return;
@@ -1771,9 +1857,11 @@ export function PlayView<TState>({
             {...buildGameScoreboardModel({
               period: scoreboardPeriodNumber ?? periodNumber,
               periodsTotal: scoreboardPeriodsTotal ?? periodsTotal,
+              periodLabel,
               timer: timerValue,
               timerLabel: timerLabel ?? 'ВРЕМЯ',
               goals: visibleScoreboardGoals,
+              ...(scoreLabel !== undefined ? { scoreLabel } : {}),
               shots: visibleScoreboardShots,
               ...(shotsTotal !== undefined ? { shotsTotal } : {}),
               ...(visibleScoreboardNotice !== undefined ? { notice: visibleScoreboardNotice } : {}),
@@ -1840,10 +1928,12 @@ export function PlayView<TState>({
         {!hideScoreboard && (
           <ScoreBoard
             period={scoreboardPeriodNumber ?? periodNumber}
+            periodLabel={periodLabel}
             periodsTotal={scoreboardPeriodsTotal ?? periodsTotal}
             timer={timerValue}
             timerLabel={timerLabel}
             goals={visibleScoreboardGoals}
+            {...(scoreLabel !== undefined ? { scoreLabel } : {})}
             shots={visibleScoreboardShots}
             shotsTotal={shotsTotal}
             opponent={scoreboardOpponent}
@@ -1947,6 +2037,17 @@ export function PlayView<TState>({
               style={routeGameStyle}
             >
               {duelFatigueNotice}
+            </div>
+          ) : visibleStatusNotice ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className={`initial-training-feedback-notice${
+                statusNoticeTone === 'error' ? ' initial-training-feedback-notice--error' : ''
+              }`}
+              style={routeGameStyle}
+            >
+              {visibleStatusNotice}
             </div>
           ) : null}
         </div>
@@ -2077,7 +2178,8 @@ export function PlayView<TState>({
           durationMs={reduceMotion ? 1 : SHOT_RESULT_PAUSE_MS}
           subText={resultSubText}
           displayKind={resultDisplayKind ?? undefined}
-          title={resultCopy?.[resultDisplayKind ?? lastResult.type]}
+          title={resultPresentation?.title ?? resultCopy?.[resultDisplayKind ?? lastResult.type]}
+          details={resultPresentation?.details}
         />
       )}
     </main>

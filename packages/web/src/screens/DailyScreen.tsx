@@ -86,6 +86,21 @@ import type {
   ShotResultType,
 } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
+import {
+  fetchInitialTrainingCourse,
+  type InitialTrainingCatalogResponse,
+  type InitialTrainingExerciseKey,
+} from '../api/initialTraining.js';
+import {
+  InitialTrainingCatalog,
+  InitialTrainingHub,
+} from '../components/InitialTrainingCourse.js';
+import {
+  AdvancedTrainingCatalog,
+  type AdvancedTrainingExerciseKey,
+} from '../components/AdvancedTrainingCourse.js';
+import { AdvancedTrainingPlay } from '../components/AdvancedTrainingPlay.js';
+import { InitialTrainingPlay } from '../components/InitialTrainingPlay.js';
 import { fetchBonusGames } from '../api/bonusGames.js';
 import type { ProfileData } from './profileTypes.js';
 import {
@@ -3463,6 +3478,41 @@ function ModeShell({
   );
 }
 
+export function initialTrainingCatalogAfterRefresh(
+  current: InitialTrainingCatalogResponse | null,
+  refreshed: InitialTrainingCatalogResponse | undefined,
+): InitialTrainingCatalogResponse | null {
+  if (refreshed === undefined) return current;
+  return refreshed.enabled ? refreshed : null;
+}
+
+export function initialTrainingCatalogAfterCompletion(
+  current: InitialTrainingCatalogResponse,
+  completedKey: InitialTrainingExerciseKey,
+): InitialTrainingCatalogResponse {
+  const completedExercise = current.exercises.find((exercise) => exercise.key === completedKey);
+  if (!completedExercise || completedExercise.state === 'completed') return current;
+  const completedCount = Math.min(current.total_count, current.completed_count + 1);
+  const unlocked = completedCount === current.total_count;
+  return {
+    ...current,
+    completed_count: completedCount,
+    open_training_unlocked: current.open_training_unlocked || unlocked,
+    open_training_unlock_source:
+      current.open_training_unlock_source ?? (unlocked ? 'course' : null),
+    exercises: current.exercises.map((exercise) => {
+      if (exercise.key === completedKey) return { ...exercise, state: 'completed' };
+      if (
+        exercise.position === completedExercise.position + 1 &&
+        exercise.state === 'locked'
+      ) {
+        return { ...exercise, state: 'available' };
+      }
+      return exercise;
+    }),
+  };
+}
+
 function TrainingPlaceholder({
   autoPlay = false,
   onBack,
@@ -3482,6 +3532,8 @@ function TrainingPlaceholder({
   playRouteTransitionOnStart?: boolean;
   onRouteTransitionConsumed?: (() => void) | undefined;
 }): JSX.Element {
+  const location = useLocation();
+  const navigate = useNavigate();
   const data = useTrainingSessionStore((s) => s.data);
   const loading = useTrainingSessionStore((s) => s.loading);
   const error = useTrainingSessionStore((s) => s.error);
@@ -3492,7 +3544,24 @@ function TrainingPlaceholder({
   const [playTraining, setPlayTraining] = useState(() => autoPlay);
   const [localPlayEntrance, setLocalPlayEntrance] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [courseCatalog, setCourseCatalog] = useState<InitialTrainingCatalogResponse | null>(null);
+  const [courseCatalogLoaded, setCourseCatalogLoaded] = useState(false);
   const refreshedTrainingDayRef = useRef<string | null>(null);
+
+  const refreshCourseCatalog = useCallback(async (): Promise<void> => {
+    try {
+      const next = await fetchInitialTrainingCourse();
+      setCourseCatalog((current) => initialTrainingCatalogAfterRefresh(current, next));
+    } catch {
+      setCourseCatalog((current) => initialTrainingCatalogAfterRefresh(current, undefined));
+    } finally {
+      setCourseCatalogLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshCourseCatalog();
+  }, [refreshCourseCatalog]);
 
   useEffect(() => {
     if (data === null) void refresh();
@@ -3544,6 +3613,126 @@ function TrainingPlaceholder({
     setPlayTraining(true);
     onPlayStart?.();
   };
+
+  const trainingParams = new URLSearchParams(location.search);
+  const trainingSection = trainingParams.get('section');
+
+  if (!courseCatalogLoaded && !autoPlay && trainingSection !== 'open') {
+    return (
+      <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
+        <div className="training-info-copy" role="status">Загрузка раздела…</div>
+      </ModeShell>
+    );
+  }
+
+  if (courseCatalog) {
+    const params = trainingParams;
+    const section = trainingSection;
+    const exerciseParam = params.get('exercise');
+    const fromSectionsSuffix = params.get('from') === 'sections' ? '&from=sections' : '';
+    const exercise = courseCatalog.exercises.find((item) => item.key === exerciseParam);
+    if (section === 'course' && exercise && exercise.state !== 'locked') {
+      const nextExercise = courseCatalog.exercises.find(
+        (item) => item.position === exercise.position + 1,
+      );
+      return (
+        <InitialTrainingPlay
+          exerciseKey={exercise.key}
+          onBack={() => navigate(`/?view=training&section=course${fromSectionsSuffix}`, { replace: true })}
+          onCourse={() => navigate(`/?view=training&section=course${fromSectionsSuffix}`, { replace: true })}
+          onNext={() => {
+            if (nextExercise) {
+              navigate(
+                `/?view=training&section=course&exercise=${encodeURIComponent(nextExercise.key)}&play=1${fromSectionsSuffix}`,
+                { replace: true },
+              );
+            }
+          }}
+          onOpenTraining={() => navigate(`/?view=training&section=open${fromSectionsSuffix}`, { replace: true })}
+          onCatalogRefresh={(completedKey) => {
+            setCourseCatalog((current) =>
+              current ? initialTrainingCatalogAfterCompletion(current, completedKey) : current,
+            );
+            void refreshCourseCatalog();
+          }}
+        />
+      );
+    }
+    if (section === 'course') {
+      return (
+        <ModeShell
+          title="Начальное обучение"
+          onBack={() => navigate(`/?view=training${fromSectionsSuffix}`, { replace: true })}
+          variant="section-hub"
+          className="initial-training-course-screen"
+        >
+          <InitialTrainingCatalog
+            catalog={courseCatalog}
+            onStart={(key: InitialTrainingExerciseKey) =>
+              navigate(
+                `/?view=training&section=course&exercise=${encodeURIComponent(key)}&play=1${fromSectionsSuffix}`,
+                { replace: true },
+              )
+            }
+          />
+        </ModeShell>
+      );
+    }
+    if (section === 'advanced') {
+      const advanced = courseCatalog.advanced_training;
+      const advancedExercise = advanced.exercises.find((item) => item.key === exerciseParam);
+      if (advancedExercise && advancedExercise.state !== 'locked' && params.get('play') === '1') {
+        return (
+          <AdvancedTrainingPlay
+            exerciseKey={advancedExercise.key as AdvancedTrainingExerciseKey}
+            onBack={() => navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })}
+            onCourse={() => navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })}
+            onCatalogRefresh={() => void refreshCourseCatalog()}
+          />
+        );
+      }
+      return (
+        <ModeShell
+          title="Продвинутое обучение"
+          onBack={() => navigate(`/?view=training${fromSectionsSuffix}`, { replace: true })}
+          variant="section-hub"
+          className="advanced-training-course-screen"
+        >
+          <AdvancedTrainingCatalog
+            catalog={{
+              completedCount: advanced.completed_count,
+              totalCount: advanced.total_count,
+              exercises: advanced.exercises,
+            }}
+            onStart={(key) =>
+              navigate(
+                `/?view=training&section=advanced&exercise=${encodeURIComponent(key)}&play=1${fromSectionsSuffix}`,
+                { replace: true },
+              )
+            }
+          />
+        </ModeShell>
+      );
+    }
+    if (!autoPlay && section !== 'open') {
+      return (
+        <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
+          <InitialTrainingHub
+            catalog={courseCatalog}
+            onOpenCourse={() =>
+              navigate(`/?view=training&section=course${fromSectionsSuffix}`, { replace: true })
+            }
+            onOpenTraining={() =>
+              navigate(`/?view=training&section=open${fromSectionsSuffix}`, { replace: true })
+            }
+            onOpenAdvanced={() =>
+              navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })
+            }
+          />
+        </ModeShell>
+      );
+    }
+  }
 
   if (data && playTraining) {
     const shouldPlayEntrance = playEntranceOnStart || localPlayEntrance;
