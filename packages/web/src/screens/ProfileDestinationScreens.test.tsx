@@ -135,7 +135,7 @@ describe('profile destination screens', () => {
     const card = await screen.findByRole('button', { name: 'Открыть серию «Путь со двора»' });
     expect(card).toHaveTextContent('Путь со двора');
     expect(card).toHaveTextContent('Последняя шайба и случайная встреча.');
-    expect(card).toHaveTextContent('Пройдено');
+    expect(card).toHaveTextContent('Просмотрено');
     expect(card.querySelector('img')).toHaveAttribute(
       'src',
       '/onboarding/story/scene-01-court.webp',

@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { BottomNav, ADMIN_NAV_HOME_EVENT } from './BottomNav.js';
+import { BottomNav, ADMIN_NAV_HOME_EVENT, isBottomNavVisible } from './BottomNav.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useChatStore } from '../chat/chatStore.js';
 
@@ -199,6 +199,10 @@ describe('BottomNav remembered navigation', () => {
 
     expect(screen.queryByRole('navigation', { name: 'Демо-навигация' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
+  });
+
+  it('hides the dock while replaying the profile story series', () => {
+    expect(isBottomNavVisible('/profile/story/series-1', useAuthStore.getState().user)).toBe(false);
   });
 
   it('hides the dock on the public price catalogue', () => {

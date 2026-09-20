@@ -124,6 +124,7 @@ export function isBottomNavVisible(location: string | NavLocation, user: AuthUse
     pathname !== '/privacy' &&
     pathname !== '/personal-data-consent' &&
     pathname !== '/demo' &&
+    pathname !== '/profile/story/series-1' &&
     !isInChatRoom &&
     !isOpenRinkRoute(normalizeNavLocation(location)) &&
     Boolean(user)

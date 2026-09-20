@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BeginnerStoryFlow } from './BeginnerStoryFlow.js';
 import { beginnerStoryScenes } from './beginnerStory.js';
@@ -64,6 +64,27 @@ describe('BeginnerStoryFlow', () => {
 
     expect(screen.getByTestId('beginner-story')).toHaveTextContent('Коробка давно опустела.');
     expect(screen.queryByRole('button', { name: 'Закрыть серию' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the first scene typing for roughly four seconds before revealing its action', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    render(
+      <BeginnerStoryFlow
+        mode="required"
+        runId="run-1"
+        required={beginnerRequired}
+        unlockGoalsRequired={300}
+        onCompleted={vi.fn()}
+      />,
+    );
+
+    act(() => vi.advanceTimersByTime(3_900));
+    expect(screen.getByRole('button', { name: '– Сделать бросок' })).toBeDisabled();
+
+    act(() => vi.advanceTimersByTime(1_100));
+    expect(screen.getByRole('button', { name: '– Сделать бросок' })).toBeEnabled();
+    vi.useRealTimers();
   });
 
   it('shows a close action in replay and uses a local shot adapter', () => {
