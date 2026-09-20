@@ -160,7 +160,7 @@ export function TutorialShotStep({
           speedOverrides={{
             shooterFreq: session.speeds.shooterFrequency,
             goalieFreq: session.speeds.goalieFrequency,
-            goalFreq: session.speeds.goalFrequency,
+            goalFreq: 0,
             puckSpeed: PUCK_SPEED_PER_MS,
           }}
           goals={state.goals}

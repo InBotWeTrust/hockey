@@ -413,7 +413,12 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
       goalieFrequency: 2,
       goalFrequency: 2,
     };
-    const missInput = findTutorialInput(tutorial.json().seed, speeds, 'miss', rejectedSpeeds);
+    const missInput = findTutorialInput(
+      tutorial.json().seed,
+      { ...speeds, goalFrequency: 0 },
+      'miss',
+      speeds,
+    );
     const miss = await submitTutorialShot(user.authorization, runId, {
       shotIndex: 1,
       input: {

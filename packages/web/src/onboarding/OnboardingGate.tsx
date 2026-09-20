@@ -153,6 +153,7 @@ export function OnboardingGate({
 
   function acceptCompletion(result: OnboardingRequiredResponse): void {
     queryClient.setQueryData(onboardingQueryKeys.required(), result);
+    void queryClient.invalidateQueries({ queryKey: ['profile'], refetchType: 'none' });
     setRun(null);
     startPromiseRef.current = null;
     playerPreparationRef.current = null;

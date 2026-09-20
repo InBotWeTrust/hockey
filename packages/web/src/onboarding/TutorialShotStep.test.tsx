@@ -86,6 +86,9 @@ describe('TutorialShotStep', () => {
         hideScoreboard: true,
         hideRinkScoreboard: true,
         hideSoundAction: true,
+        speedOverrides: expect.objectContaining({
+          goalFreq: 0,
+        }),
         playerOptions: expect.objectContaining({
           spriteUrls: {
             left: '/sprites/street-player-left.webp',
