@@ -98,15 +98,25 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     accessType?: 'free' | 'paid';
     price?: number;
     status?: 'draft' | 'active' | 'archived';
-    skillCode?: 'speed' | 'accuracy';
+    skillCode?: 'speed' | 'accuracy' | 'endurance';
   }): Promise<TestGame> {
     gameSequence += 1;
     const slug = `bonus-${gameSequence}`;
-    const periodRule = skillCode === 'speed' ? { ...PERIOD_RULE, shotsLimit: null } : PERIOD_RULE;
+    const periodRule =
+      skillCode === 'speed' || skillCode === 'endurance'
+        ? { ...PERIOD_RULE, shotsLimit: null }
+        : PERIOD_RULE;
     const qualificationRules =
       skillCode === 'speed'
         ? { type: 'goals_in_time', targetGoals: 18, activeTimeMs: PERIOD_RULE.durationMs }
-        : { type: 'goals_from_shots', targetGoals: 18, shotsLimit: 30 };
+        : skillCode === 'endurance'
+          ? {
+              type: 'survive_goal_windows',
+              activeTimeMs: PERIOD_RULE.durationMs,
+              goalWindowMs: 7_000,
+            }
+          : { type: 'goals_from_shots', targetGoals: 18, shotsLimit: 30 };
+    const targetGoals = skillCode === 'endurance' ? 1 : 18;
     const game = await pool.query<{ id: string }>(
       `insert into bonus_game
          (slug, title, skill_code, description, sort_order, status, access_type, unlock_price_stars,
@@ -114,7 +124,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
           reward_coins, reward_stars, reward_experience, arena_theme_id,
           goalkeeper_ready_url, goalkeeper_save_url)
        values ($1, $2, $3, $4, $5, $6, $7, $8,
-               18, $9::jsonb, 1, 0, $10::jsonb,
+               $14, $9::jsonb, 1, 0, $10::jsonb,
                100, 1, 50, $11, $12, $13)
        returning id`,
       [
@@ -131,6 +141,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
         arenaId,
         `/goalies/${slug}-ready.webp`,
         `/goalies/${slug}-save.webp`,
+        targetGoals,
       ],
     );
     return { id: game.rows[0]!.id, slug, sortOrder };
@@ -279,6 +290,29 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
       [speedFirst.id]: 'completed',
       [speedPaid.id]: 'available',
     });
+  });
+
+  it('keeps the first two endurance games beginner-visible and locks games three through seven', async () => {
+    const userId = await createUser({ level: 1 });
+    const games = await Promise.all(
+      Array.from({ length: 7 }, (_, index) =>
+        createGame({ sortOrder: index + 1, skillCode: 'endurance' }),
+      ),
+    );
+
+    const cards = (await listBonusGameCards(pool, userId)).filter(
+      (card) => card.skill_code === 'endurance',
+    );
+
+    expect(cards.map((card) => [card.id, card.state])).toEqual([
+      [games[0]!.id, 'available'],
+      [games[1]!.id, 'sequence_locked'],
+      [games[2]!.id, 'level_locked'],
+      [games[3]!.id, 'level_locked'],
+      [games[4]!.id, 'level_locked'],
+      [games[5]!.id, 'level_locked'],
+      [games[6]!.id, 'level_locked'],
+    ]);
   });
 
   it('derives paid, available, active, and completed states on the server', async () => {

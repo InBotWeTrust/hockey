@@ -291,7 +291,7 @@ async function lockUser(client: PoolClient, userId: string): Promise<LockedUserR
 }
 
 export function bonusDailyAttemptLimit(skillCode: BonusSkillCode): number {
-  return skillCode === 'marksmanship' ? 100 : 2;
+  return skillCode === 'marksmanship' || skillCode === 'endurance' ? 100 : 2;
 }
 
 async function reserveDailyAttemptSlot(
@@ -350,7 +350,7 @@ export async function fetchBonusAttemptAllowances(
          from users
         where id = $1
      ), skills(skill_code) as (
-       values ('speed'::text), ('accuracy'::text), ('marksmanship'::text)
+       values ('speed'::text), ('accuracy'::text), ('marksmanship'::text), ('endurance'::text)
      )
      select skills.skill_code,
             count(slot.attempt_id)::int as used,
@@ -366,7 +366,7 @@ export async function fetchBonusAttemptAllowances(
   );
   const fallbackReset = new Date(now.getTime() + 86_400_000).toISOString();
   const result = {} as Record<BonusSkillCode, BonusAttemptAllowanceDTO>;
-  for (const skillCode of ['speed', 'accuracy', 'marksmanship'] as const) {
+  for (const skillCode of ['speed', 'accuracy', 'marksmanship', 'endurance'] as const) {
     const row = rows.find((candidate) => candidate.skill_code === skillCode);
     const dailyLimit = bonusDailyAttemptLimit(skillCode);
     const used = Math.min(dailyLimit, Number(row?.used ?? 0));

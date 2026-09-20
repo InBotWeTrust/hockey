@@ -864,6 +864,103 @@ describe.skipIf(!hasIntegrationEnv)('/admin/bonus-games', () => {
     expect(response.json().error.code).toBe('bonus_game_incomplete');
   });
 
+  it('creates and patches endurance while rejecting incompatible active definitions', async () => {
+    const endurance = {
+      skillCode: 'endurance',
+      targetGoals: 1,
+      totalPeriods: 1,
+      breakDurationMs: 0,
+      useInventory: false,
+      periods: [{ ...PERIODS[0]!, durationMs: 180_000, shotsLimit: null }],
+      qualificationRules: {
+        type: 'survive_goal_windows',
+        activeTimeMs: 180_000,
+        goalWindowMs: 7_000,
+      },
+      ...committedMedia('beach'),
+    };
+    const active = await createGame({ ...endurance, status: 'active' });
+    expect(active).toMatchObject({
+      skillCode: 'endurance',
+      targetGoals: 1,
+      status: 'active',
+      qualificationRules: {
+        type: 'survive_goal_windows',
+        activeTimeMs: 180_000,
+        goalWindowMs: 7_000,
+      },
+    });
+
+    const patched = await patchGame(active.id, {
+      qualificationRules: {
+        type: 'survive_goal_windows',
+        activeTimeMs: 180_000,
+        goalWindowMs: 6_500,
+      },
+    });
+    expect(patched).toMatchObject({
+      revision: 2,
+      qualificationRules: { type: 'survive_goal_windows', goalWindowMs: 6_500 },
+    });
+
+    const invalidDefinitions = [
+      {
+        totalPeriods: 2,
+        periods: [endurance.periods[0], { ...endurance.periods[0], periodNumber: 2 }],
+      },
+      { periods: [{ ...endurance.periods[0], shotsLimit: 1 }] },
+      { useInventory: true },
+      { breakDurationMs: 1 },
+      {
+        qualificationRules: {
+          type: 'survive_goal_windows',
+          activeTimeMs: 179_999,
+          goalWindowMs: 7_000,
+        },
+      },
+      {
+        qualificationRules: {
+          type: 'survive_goal_windows',
+          activeTimeMs: 180_000,
+          goalWindowMs: 999,
+        },
+      },
+      {
+        qualificationRules: {
+          type: 'survive_goal_windows',
+          activeTimeMs: 180_000,
+          goalWindowMs: 60_001,
+        },
+      },
+    ];
+
+    for (const [index, override] of invalidDefinitions.entries()) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/admin/bonus-games',
+        headers: adminHeaders,
+        payload: gamePayload({
+          ...endurance,
+          ...override,
+          slug: `invalid-endurance-${index + 1}`,
+          sortOrder: 2,
+          status: 'active',
+          arena: {
+            ...committedMedia('ski-resort').arena,
+            slug: `invalid-endurance-${index + 1}-arena`,
+          },
+          goalkeeperReadyUrl: committedMedia('ski-resort').goalkeeperReadyUrl,
+          goalkeeperSaveUrl: committedMedia('ski-resort').goalkeeperSaveUrl,
+          previewTitle: committedMedia('ski-resort').previewTitle,
+          previewStory: committedMedia('ski-resort').previewStory,
+          previewArtworkUrl: committedMedia('ski-resort').previewArtworkUrl,
+        }),
+      });
+      expect(response.statusCode, response.body).toBe(409);
+      expect(response.json().error.code).toBe('bonus_game_incomplete');
+    }
+  });
+
   it('increments revision only for effective price, gameplay, reward, or media changes', async () => {
     const game = await createGame();
 
