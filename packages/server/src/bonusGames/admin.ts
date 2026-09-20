@@ -110,7 +110,7 @@ const title = z.string().trim().min(1).max(120);
 const mediaUrl = z.string().trim().max(2048);
 const statusSchema = z.enum(['draft', 'active', 'archived']);
 const accessTypeSchema = z.enum(['free', 'paid']);
-const skillCodeSchema = z.enum(['speed', 'accuracy', 'marksmanship']);
+const skillCodeSchema = z.enum(['speed', 'accuracy', 'marksmanship', 'endurance']);
 
 const arenaCreateSchema = z
   .object({
@@ -377,6 +377,18 @@ function parsePeriods(
   }
 }
 
+function parseQualificationRules(
+  value: unknown,
+  legacy: { targetGoals: number; shotsLimit: number },
+  activation: boolean,
+): BonusQualificationRules {
+  try {
+    return normalizeBonusQualificationRules(value, legacy);
+  } catch {
+    throw activation ? incompleteDefinition() : badRequest('invalid bonus qualification rules');
+  }
+}
+
 async function withCatalogMutation<T>(
   app: FastifyInstance,
   fn: (client: PoolClient) => Promise<T>,
@@ -626,7 +638,7 @@ function applyPatch(
     targetGoals,
     activation,
   );
-  const qualificationRules = normalizeBonusQualificationRules(
+  const qualificationRules = parseQualificationRules(
     input.qualificationRules ??
       (input.targetGoals === undefined
         ? current.qualificationRules
@@ -635,6 +647,7 @@ function applyPatch(
       targetGoals,
       shotsLimit: periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
     },
+    activation,
   );
   return {
     ...current,
@@ -740,7 +753,9 @@ async function assertActiveDefinitionComplete(
   if (
     arena.status !== 'active' ||
     (definition.accessType === 'free' && definition.unlockPriceStars !== 0) ||
-    (definition.accessType === 'paid' && definition.unlockPriceStars < 1)
+    (definition.accessType === 'paid' && definition.unlockPriceStars < 1) ||
+    (definition.skillCode === 'endurance' &&
+      (definition.targetGoals !== 1 || definition.breakDurationMs !== 0))
   ) {
     throw incompleteDefinition();
   }
@@ -831,10 +846,14 @@ async function createGame(
     input.targetGoals,
     input.status === 'active',
   );
-  const qualificationRules = normalizeBonusQualificationRules(input.qualificationRules, {
-    targetGoals: input.targetGoals,
-    shotsLimit: periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
-  });
+  const qualificationRules = parseQualificationRules(
+    input.qualificationRules,
+    {
+      targetGoals: input.targetGoals,
+      shotsLimit: periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
+    },
+    input.status === 'active',
+  );
   const arena =
     input.arena !== undefined
       ? await createArena(client, input.arena)

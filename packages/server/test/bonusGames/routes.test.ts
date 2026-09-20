@@ -57,6 +57,16 @@ const QUOTA_PERIOD: BonusPeriodRule = {
   goalAmplitude: 0,
 };
 
+const ENDURANCE_PERIOD: BonusPeriodRule = {
+  ...PERIODS[0]!,
+  durationMs: 180_000,
+  shotsLimit: null,
+  goalFrequency: 0.5,
+  goalieFrequency: 0.6,
+  shooterFrequency: 0.75,
+  puckSpeedPerMs: 1.25,
+};
+
 interface TestGame {
   id: string;
   slug: string;
@@ -81,11 +91,14 @@ interface AttemptDto {
   game_id: string;
   game_slug: string;
   game_title: string;
+  skill_code: 'speed' | 'accuracy' | 'marksmanship' | 'endurance';
   status: 'active' | 'completed' | 'failed' | 'abandoned';
   state: 'idle' | 'period_active' | 'break_active' | 'closed';
   current_period: number;
   period_started_at: string | null;
   period_ends_at: string | null;
+  goal_window_started_at: string | null;
+  goal_window_ends_at: string | null;
   break_started_at: string | null;
   break_ends_at: string | null;
   closed_at: string | null;
@@ -214,7 +227,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     periods?: BonusPeriodRule[];
     targetGoals?: number;
     breakDurationMs?: number;
-    skillCode?: 'speed' | 'accuracy';
+    skillCode?: 'speed' | 'accuracy' | 'endurance';
   } = {}): Promise<TestGame> {
     gameSequence += 1;
     const slug = `bonus-route-game-${gameSequence}`;
@@ -249,11 +262,25 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
         accessType,
         price,
         targetGoals,
-        JSON.stringify({
-          type: 'goals_from_shots',
-          targetGoals,
-          shotsLimit: periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
-        }),
+        JSON.stringify(
+          skillCode === 'endurance'
+            ? {
+                type: 'survive_goal_windows',
+                activeTimeMs: periods[0]!.durationMs,
+                goalWindowMs: 7_000,
+              }
+            : skillCode === 'speed'
+              ? {
+                  type: 'goals_in_time',
+                  targetGoals,
+                  activeTimeMs: periods.reduce((sum, period) => sum + period.durationMs, 0),
+                }
+              : {
+                  type: 'goals_from_shots',
+                  targetGoals,
+                  shotsLimit: periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
+                },
+        ),
         periods.length,
         breakDurationMs,
         JSON.stringify(periods),
@@ -631,6 +658,41 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     });
     expect(abandon.statusCode).toBe(200);
     expect(abandon.json().attempt).toMatchObject({ status: 'abandoned', state: 'closed' });
+  });
+
+  it('exposes endurance goal-window timestamps and keeps its active attempt resumable', async () => {
+    const game = await createGame({
+      skillCode: 'endurance',
+      targetGoals: 1,
+      periods: [ENDURANCE_PERIOD],
+      breakDurationMs: 0,
+    });
+    const attempt = await startAttempt(game.id);
+    const active = await startPeriod(attempt.id);
+
+    expect(active).toMatchObject({
+      skill_code: 'endurance',
+      state: 'period_active',
+      goal_window_started_at: expect.any(String),
+      goal_window_ends_at: expect.any(String),
+    });
+    expect(
+      new Date(active.goal_window_ends_at!).getTime() -
+        new Date(active.goal_window_started_at!).getTime(),
+    ).toBe(7_000);
+
+    const catalog = await app.inject({ method: 'GET', url: '/bonus-games', headers });
+    expect(catalog.statusCode).toBe(200);
+    expect(catalog.json()).toMatchObject({
+      active_attempt: { id: attempt.id, game_id: game.id },
+      games: [
+        {
+          id: game.id,
+          state: 'in_progress',
+          active_attempt: { id: attempt.id, game_id: game.id },
+        },
+      ],
+    });
   });
 
   it('lets a beginner play an eligible preview attempt but blocks game three without writes', async () => {
@@ -1455,6 +1517,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       accuracy: { daily_limit: 2, used: 2, remaining: 0 },
       speed: { daily_limit: 2, used: 1, remaining: 1 },
       marksmanship: { daily_limit: 100, used: 0, remaining: 100 },
+      endurance: { daily_limit: 100, used: 0, remaining: 100 },
     });
 
     await pool.query(

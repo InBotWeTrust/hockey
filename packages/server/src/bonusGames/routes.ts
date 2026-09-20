@@ -242,6 +242,8 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
     current_period: attempt.currentPeriod,
     period_started_at: attempt.periodStartedAt,
     period_ends_at: periodEndsAt,
+    goal_window_started_at: attempt.goalWindowStartedAt,
+    goal_window_ends_at: attempt.goalWindowEndsAt,
     break_started_at: attempt.breakStartedAt,
     break_ends_at: breakEndsAt,
     closed_at: attempt.closedAt,
@@ -356,6 +358,13 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
             used: attemptAllowances.marksmanship.used,
             remaining: attemptAllowances.marksmanship.remaining,
             resets_at: attemptAllowances.marksmanship.resetsAt,
+          },
+          endurance: {
+            skill_code: attemptAllowances.endurance.skillCode,
+            daily_limit: attemptAllowances.endurance.dailyLimit,
+            used: attemptAllowances.endurance.used,
+            remaining: attemptAllowances.endurance.remaining,
+            resets_at: attemptAllowances.endurance.resetsAt,
           },
         },
       };

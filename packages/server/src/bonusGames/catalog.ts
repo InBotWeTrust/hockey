@@ -76,6 +76,8 @@ export interface BonusGameCardAttemptDto {
   state: BonusGameAttemptState;
   current_period: number;
   period_started_at: string | null;
+  goal_window_started_at: string | null;
+  goal_window_ends_at: string | null;
   break_started_at: string | null;
   shots_taken: number;
   goals: number;
@@ -156,6 +158,8 @@ interface CatalogRow {
   attempt_state: BonusGameAttemptState | null;
   attempt_current_period: number | null;
   attempt_period_started_at: Date | null;
+  attempt_goal_window_started_at: Date | null;
+  attempt_goal_window_ends_at: Date | null;
   attempt_break_started_at: Date | null;
   attempt_shots_taken: number | null;
   attempt_goals: number | null;
@@ -200,6 +204,8 @@ function toActiveAttempt(row: CatalogRow): BonusGameCardAttemptDto | null {
     state: row.attempt_state,
     current_period: Number(row.attempt_current_period),
     period_started_at: toIso(row.attempt_period_started_at),
+    goal_window_started_at: toIso(row.attempt_goal_window_started_at),
+    goal_window_ends_at: toIso(row.attempt_goal_window_ends_at),
     break_started_at: toIso(row.attempt_break_started_at),
     shots_taken: Number(row.attempt_shots_taken),
     goals: Number(row.attempt_goals),
@@ -274,6 +280,8 @@ export async function listBonusGameCards(
             attempt.state as attempt_state,
             attempt.current_period as attempt_current_period,
             attempt.period_started_at as attempt_period_started_at,
+            attempt.goal_window_started_at as attempt_goal_window_started_at,
+            attempt.goal_window_ends_at as attempt_goal_window_ends_at,
             attempt.break_started_at as attempt_break_started_at,
             attempt.shots_taken as attempt_shots_taken,
             attempt.goals as attempt_goals,
