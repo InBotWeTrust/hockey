@@ -53,6 +53,7 @@ const skillLabels: Record<BonusSkillCode, string> = {
   speed: 'Скорость',
   accuracy: 'Точность',
   marksmanship: 'Меткость',
+  endurance: 'Выносливость',
 };
 
 function safeUiError(error: unknown): string {
@@ -285,9 +286,7 @@ export function BonusGamesScreen(): JSX.Element {
             <strong>
               {selectedAllowance.remaining} из {selectedAllowance.daily_limit} попыток
             </strong>
-            {allowanceCountdown !== null ? (
-              <span>До обновления {allowanceCountdown}</span>
-            ) : null}
+            {allowanceCountdown !== null ? <span>До обновления {allowanceCountdown}</span> : null}
           </div>
         ) : null}
 
@@ -547,8 +546,7 @@ function BonusGameCard({
   );
   const isUnavailableForNewAttempt = !isContinuable && isPlayable(game) && !canStartNewAttempt;
   const artworkIsLocked =
-    (compact && !isContinuable && !isPlayable(game)) ||
-    (featured && isUnavailableForNewAttempt);
+    (compact && !isContinuable && !isPlayable(game)) || (featured && isUnavailableForNewAttempt);
   const isWorldTourArtwork = game.arena.thumbnail_url.includes('/bonus-games/world-tour/');
   const featuredArtworkPosition =
     featured && isWorldTourArtwork

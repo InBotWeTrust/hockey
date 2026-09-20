@@ -37,6 +37,8 @@ const initialAttempt: BonusGameAttempt = {
   period_ends_at: '2026-08-24T10:20:00.000Z',
   break_started_at: null,
   break_ends_at: null,
+  goal_window_started_at: null,
+  goal_window_ends_at: null,
   closed_at: null,
   shots_taken: 2,
   current_period_shots_taken: 2,

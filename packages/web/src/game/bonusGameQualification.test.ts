@@ -36,6 +36,16 @@ describe('qualificationDescription', () => {
       }),
     ).toBe('21 голов из 30 бросков · серия 3');
   });
+
+  it('describes endurance as survival with a recurring goal window', () => {
+    expect(
+      qualificationDescription({
+        type: 'survive_goal_windows',
+        activeTimeMs: 180_000,
+        goalWindowMs: 7_000,
+      }),
+    ).toBe('Продержаться 03:00 · гол не реже чем раз в 7,0 сек');
+  });
 });
 
 describe('qualificationProgress', () => {

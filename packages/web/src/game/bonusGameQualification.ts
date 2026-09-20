@@ -6,12 +6,17 @@ function formatTime(ms: number): string {
 }
 
 function streakSuffix(rules: BonusQualificationRules): string {
-  return rules.type === 'points_in_time' || rules.requiredGoalStreak === undefined
+  return rules.type === 'points_in_time' ||
+    rules.type === 'survive_goal_windows' ||
+    rules.requiredGoalStreak === undefined
     ? ''
     : ` · серия ${rules.requiredGoalStreak}`;
 }
 
 export function qualificationDescription(rules: BonusQualificationRules): string {
+  if (rules.type === 'survive_goal_windows') {
+    return `Продержаться ${formatTime(rules.activeTimeMs)} · гол не реже чем раз в ${(rules.goalWindowMs / 1_000).toFixed(1).replace('.', ',')} сек`;
+  }
   if (rules.type === 'points_in_time') {
     return `${rules.targetPoints} очков за ${formatTime(rules.activeTimeMs)}`;
   }
@@ -31,6 +36,9 @@ export function qualificationProgress(
     bestStreak: number;
   },
 ): string {
+  if (rules.type === 'survive_goal_windows') {
+    return `ГОЛЫ ${state.goals}`;
+  }
   if (rules.type === 'points_in_time') {
     return `ЦЕЛЬ ${state.totalPoints ?? 0}/${rules.targetPoints}`;
   }

@@ -26,6 +26,7 @@ import { PlayView, type PlayResultPresentation } from '../game/PlayView.js';
 import {
   deriveBonusGameClockBasis,
   deriveBonusGameClockEpoch,
+  deriveEnduranceClock,
   futureBonusPeriodDurationMs,
 } from '../game/bonusGameTiming.js';
 import type { SpeedOverrides } from '../game/loop.js';
@@ -67,6 +68,73 @@ function formatCountdown(ms: number): string {
   return `${minutes}:${seconds}`;
 }
 
+function formatTenths(ms: number): string {
+  return (Math.ceil(Math.max(0, ms) / 100) / 10).toFixed(1).replace('.', ',');
+}
+
+function enduranceGameNumber(attempt: BonusGameAttempt): string {
+  return attempt.game_slug.match(/(?:^|-)endurance-(\d+)$/)?.[1] ?? attempt.game_title;
+}
+
+function EnduranceHud({
+  attempt,
+  receivedAtPerformanceMs,
+  onClock,
+  onElapsed,
+}: {
+  attempt: BonusGameAttempt;
+  receivedAtPerformanceMs: number;
+  onClock: (totalRemainingMs: number) => void;
+  onElapsed: () => void;
+}): JSX.Element {
+  const calculateClock = useCallback(
+    () => deriveEnduranceClock(attempt, receivedAtPerformanceMs, performance.now()),
+    [attempt, receivedAtPerformanceMs],
+  );
+  const [clock, setClock] = useState(calculateClock);
+  const elapsedRequestedRef = useRef(false);
+
+  useEffect(() => {
+    elapsedRequestedRef.current = false;
+    const update = (): void => {
+      const next = calculateClock();
+      setClock(next);
+      onClock(next.totalRemainingMs);
+      if (
+        !elapsedRequestedRef.current &&
+        (next.totalRemainingMs === 0 || next.goalRemainingMs === 0)
+      ) {
+        elapsedRequestedRef.current = true;
+        onElapsed();
+      }
+    };
+    update();
+    const intervalId = window.setInterval(update, 100);
+    return () => window.clearInterval(intervalId);
+  }, [attempt.goal_window_ends_at, attempt.period_ends_at, calculateClock, onClock, onElapsed]);
+
+  const warning = !clock.goalWindowPending && clock.goalRemainingMs <= 2_000;
+  return (
+    <div className="bonus-game-endurance-hud" aria-label="Выносливость">
+      <div className="bonus-game-endurance-hud__meta">
+        <span>ИГРА {enduranceGameNumber(attempt)}</span>
+        <span>ГОЛЫ {attempt.goals}</span>
+      </div>
+      <span className="bonus-game-endurance-hud__label">ДО ГОЛА</span>
+      <strong
+        role="timer"
+        aria-label="До обязательного гола"
+        className={`bonus-game-endurance-hud__goal-timer${warning ? ' bonus-game-endurance-hud__goal-timer--warning' : ''}`}
+      >
+        {formatTenths(clock.goalRemainingMs)}
+      </strong>
+      <span className="bonus-game-endurance-hud__total">
+        ОСТАЛОСЬ {formatCountdown(clock.totalRemainingMs)}
+      </span>
+    </div>
+  );
+}
+
 function formatPoints(value: number): string {
   return new Intl.NumberFormat('ru-RU').format(value).replaceAll('\u00a0', ' ');
 }
@@ -94,11 +162,7 @@ function marksmanshipResultPresentation(input: {
   difficultyCode: MarksmanshipDifficultyCode | null;
   counterDirection: boolean;
 }): PlayResultPresentation | null {
-  if (
-    input.serverResult !== 'goal' ||
-    input.awardedPoints <= 0 ||
-    input.difficultyCode === null
-  ) {
+  if (input.serverResult !== 'goal' || input.awardedPoints <= 0 || input.difficultyCode === null) {
     return null;
   }
   return {
@@ -317,16 +381,22 @@ function BonusResult({
   onCatalog,
   onRetry,
   retrying,
+  survivedTimeMs,
 }: {
   kind: 'failed' | 'completed' | 'abandoned';
   attempt: BonusGameAttempt;
   onCatalog: () => void;
   onRetry: () => void;
   retrying: boolean;
+  survivedTimeMs?: number;
 }): JSX.Element {
   const title = kind === 'completed' ? 'Игра пройдена' : 'Попытка завершена';
+  const enduranceRules =
+    attempt.rules.qualification_rules.type === 'survive_goal_windows'
+      ? attempt.rules.qualification_rules
+      : null;
   let copy: string;
-  if (kind === 'failed') copy = 'Цель не достигнута';
+  if (kind === 'failed') copy = enduranceRules ? 'Не успел забить' : 'Цель не достигнута';
   else if (kind === 'abandoned') copy = 'Прогресс попытки потерян';
   else if (attempt.reward_granted) copy = 'Награда за первое прохождение';
   else copy = 'Повтор завершён без награды';
@@ -336,6 +406,18 @@ function BonusResult({
     attempt.rules.qualification_rules.type === 'points_in_time'
       ? attempt.rules.qualification_rules
       : null;
+  const periodStartedAtMs = Date.parse(attempt.period_started_at ?? '');
+  const closedAtMs = Date.parse(attempt.closed_at ?? '');
+  const derivedSurvivedTimeMs =
+    Number.isFinite(periodStartedAtMs) && Number.isFinite(closedAtMs)
+      ? Math.max(0, closedAtMs - periodStartedAtMs)
+      : survivedTimeMs;
+  const enduranceDurationMs =
+    enduranceRules === null
+      ? null
+      : kind === 'completed'
+        ? enduranceRules.activeTimeMs
+        : Math.min(enduranceRules.activeTimeMs, derivedSurvivedTimeMs ?? 0);
   const rewardParts = [
     attempt.reward.coins > 0
       ? {
@@ -384,7 +466,18 @@ function BonusResult({
         WebkitBackdropFilter: 'blur(8px)',
       }}
     >
-      {marksmanshipRules ? (
+      {enduranceRules && enduranceDurationMs !== null ? (
+        <div
+          className="bonus-game-result-metrics bonus-game-result-metrics--endurance"
+          aria-label={`Время ${formatCountdown(enduranceDurationMs)}, голов ${attempt.goals}`}
+        >
+          <BonusResultMetric
+            label={kind === 'completed' ? 'Время' : 'Продержался'}
+            value={formatCountdown(enduranceDurationMs)}
+          />
+          <BonusResultMetric label="Голы" value={String(attempt.goals)} />
+        </div>
+      ) : marksmanshipRules ? (
         <div
           className="bonus-game-result-metrics"
           aria-label={`Итого: ${attempt.total_points} очков, цель ${marksmanshipRules.targetPoints}`}
@@ -591,6 +684,7 @@ export function BonusGamePlayScreen(): JSX.Element {
     classification: MarksmanshipShotClassification;
   } | null>(null);
   const earliestMarksmanshipTapRef = useRef(0);
+  const lastEnduranceElapsedMsRef = useRef<number | undefined>(undefined);
   const isAuthoritativeBreak = attempt?.status === 'active' && attempt.state === 'break_active';
 
   useEffect(() => {
@@ -671,6 +765,39 @@ export function BonusGamePlayScreen(): JSX.Element {
   const refreshAttempt = useCallback(async (): Promise<void> => {
     if (attempt) await loadAttempt(attempt.id);
   }, [attempt, loadAttempt]);
+  const activeEnduranceAttempt =
+    attempt?.status === 'active' &&
+    attempt.state === 'period_active' &&
+    attempt.rules.qualification_rules.type === 'survive_goal_windows'
+      ? attempt
+      : null;
+  const recordEnduranceClock = useCallback(
+    (totalRemainingMs: number): void => {
+      if (activeEnduranceAttempt === null) return;
+      const enduranceRules = activeEnduranceAttempt.rules.qualification_rules;
+      if (enduranceRules.type !== 'survive_goal_windows') return;
+      lastEnduranceElapsedMsRef.current = Math.max(
+        0,
+        enduranceRules.activeTimeMs - totalRemainingMs,
+      );
+    },
+    [activeEnduranceAttempt],
+  );
+  useEffect(() => {
+    if (activeEnduranceAttempt === null) return;
+    const reconcile = (): void => {
+      void loadAttempt(activeEnduranceAttempt.id);
+    };
+    const reconcileWhenVisible = (): void => {
+      if (document.visibilityState === 'visible') reconcile();
+    };
+    window.addEventListener('online', reconcile);
+    document.addEventListener('visibilitychange', reconcileWhenVisible);
+    return () => {
+      window.removeEventListener('online', reconcile);
+      document.removeEventListener('visibilitychange', reconcileWhenVisible);
+    };
+  }, [activeEnduranceAttempt, loadAttempt]);
   const handleStartPeriod = useCallback(async (): Promise<BonusGameAttempt | null> => {
     if (inFlight) return null;
     const result = await startPeriod(attempt?.rules.use_inventory ? inventorySelection : undefined);
@@ -802,6 +929,7 @@ export function BonusGamePlayScreen(): JSX.Element {
       ? attempt.rules.qualification_rules
       : null;
   const isMarksmanship = marksmanshipRules !== null;
+  const isEndurance = attempt.rules.qualification_rules.type === 'survive_goal_windows';
   const marksmanshipTarget = marksmanshipRules?.targetPoints ?? null;
 
   return (
@@ -869,7 +997,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         clockRebaseKey={clockRebaseKey}
         periodEndsAt={localPeriodEndsAt}
         scoreboardEndsAt={scoreboardEndsAt}
-        onTimerExpired={isPeriodActive ? refreshAttempt : undefined}
+        onTimerExpired={isPeriodActive && !isEndurance ? refreshAttempt : undefined}
         optimisticAddShot={optimisticAddShot}
         submitShot={async ({ shotIndex, input, claimedResult }) => {
           if (input.shooterTapTime === undefined) return null;
@@ -956,7 +1084,19 @@ export function BonusGamePlayScreen(): JSX.Element {
         applyState={() => undefined}
         applyResolvedState={(next) => applyPendingShot(next)}
         overlayControls={
-          needsReconcile ? (
+          isEndurance && isPeriodActive ? (
+            <>
+              <EnduranceHud
+                attempt={attempt}
+                receivedAtPerformanceMs={receivedAtPerformanceMs ?? performance.now()}
+                onClock={recordEnduranceClock}
+                onElapsed={refreshAttempt}
+              />
+              {needsReconcile ? (
+                <BonusReconcileOverlay loading={loading} onRetry={() => void reconcileAttempt()} />
+              ) : null}
+            </>
+          ) : needsReconcile ? (
             <BonusReconcileOverlay loading={loading} onRetry={() => void reconcileAttempt()} />
           ) : undefined
         }
@@ -971,6 +1111,9 @@ export function BonusGamePlayScreen(): JSX.Element {
           onCatalog={leavePlaySurface}
           onRetry={() => void retryAttempt()}
           retrying={isRetrying}
+          {...(lastEnduranceElapsedMsRef.current === undefined
+            ? {}
+            : { survivedTimeMs: lastEnduranceElapsedMsRef.current })}
         />
       ) : null}
 
