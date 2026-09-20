@@ -26,6 +26,7 @@ import {
   type BalanceSnapshot,
 } from './economy.js';
 import { assertBonusGameAccessibleToUser, lockBonusGameCatalogForRead } from './catalog.js';
+import { BONUS_SHOT_RESULT_PAUSE_MS } from './endurance.js';
 import { closeBonusPeriod, reconcileBonusAttempt } from './reconcile.js';
 import {
   advanceGoalStreak,
@@ -894,8 +895,6 @@ const BONUS_SHOT_STALE_TOLERANCE_MS = 12_000;
 const BONUS_SHOT_FUTURE_TOLERANCE_MS = 2_500;
 const BONUS_SHOT_CLOCK_RELATION_TOLERANCE_MS = 100;
 const BONUS_SHOT_TIMER_DRIFT_ALLOWANCE_PER_SHOT_MS = 2_000;
-const BONUS_SHOT_RESULT_PAUSE_MS = 1_000;
-
 function invalidBonusShotTime(): AppError {
   return new AppError(BONUS_SHOT_TIME_INVALID_CODE, 'bonus shot timing is invalid', 400);
 }

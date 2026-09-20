@@ -4,7 +4,7 @@ import type { BonusQualificationRules } from './qualification.js';
 import type { PeriodLoadoutSnapshot } from '../inventory/periodLoadout.js';
 
 export type BonusGameStatus = 'draft' | 'active' | 'archived';
-export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship';
+export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship' | 'endurance';
 export type BonusGameAccessType = 'free' | 'paid';
 export type BonusGameAttemptStatus = 'active' | 'completed' | 'failed' | 'abandoned';
 export type BonusGameAttemptState = 'idle' | 'period_active' | 'break_active' | 'closed';
