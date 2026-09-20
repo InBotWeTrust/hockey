@@ -13,6 +13,7 @@ export interface GoalieConfig {
   speed: number; // усл.ед/сек для linear и амплитуды для других
   amplitude: number; // в долях ширины створа (0..1)
   frequency: number; // Гц (для sine) или частота событий (для dash/feint)
+  goalOffsetX?: number; // rink units — статическое смещение центра ворот
   goalAmplitude: number; // rink units — горизонтальный ход ворот, 0 = статично
   goalFrequency: number; // Hz — частота движения ворот, 0 = статично
 }

@@ -14,6 +14,7 @@ const attempt: BonusGameAttemptRow = {
   closed_at: new Date('2026-08-24T10:05:00.000Z'),
   shots_taken: 28,
   goals: 20,
+  total_points: 2_450,
   attempt_seed: 'seed',
   game_core_version: 1,
   definition_revision: 3,
@@ -86,6 +87,7 @@ describe('bonus attempt service DTO', () => {
     expect(dto).toMatchObject({
       shotsTaken: 28,
       currentPeriodShotsTaken: 3,
+      totalPoints: 2_450,
       rewardGranted: true,
     });
   });

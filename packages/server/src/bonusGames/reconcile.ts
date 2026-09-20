@@ -11,6 +11,7 @@ import {
 interface PeriodAggregate {
   shotsTaken: number;
   goals: number;
+  totalPoints: number;
 }
 
 async function lockAttempt(client: PoolClient, attemptId: string): Promise<BonusGameAttemptRow> {
@@ -30,9 +31,14 @@ async function aggregatePeriod(
   attemptId: string,
   periodNumber: number,
 ): Promise<PeriodAggregate> {
-  const { rows } = await client.query<{ shots_taken: number; goals: number }>(
+  const { rows } = await client.query<{
+    shots_taken: number;
+    goals: number;
+    total_points: number;
+  }>(
     `select count(*)::int as shots_taken,
-            count(*) filter (where server_result = 'goal')::int as goals
+            count(*) filter (where server_result = 'goal')::int as goals,
+            coalesce(sum(awarded_points), 0)::int as total_points
        from shot_session
       where mode = 'bonus'
         and bonus_game_attempt_id = $1
@@ -43,6 +49,7 @@ async function aggregatePeriod(
   return {
     shotsTaken: Number(aggregate.shots_taken),
     goals: Number(aggregate.goals),
+    totalPoints: Number(aggregate.total_points),
   };
 }
 
@@ -72,8 +79,8 @@ export async function closeBonusPeriod(
   const { rows } = await client.query<BonusGamePeriodLogRow>(
     `insert into bonus_game_period_log
        (attempt_id, period_number, started_at, ended_at, shots_taken, goals,
-        duration_ms, closed_reason, created_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $4)
+        total_points, duration_ms, closed_reason, created_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $4)
      on conflict (attempt_id, period_number) do nothing
      returning *`,
     [
@@ -83,6 +90,7 @@ export async function closeBonusPeriod(
       endedAt,
       aggregate.shotsTaken,
       aggregate.goals,
+      aggregate.totalPoints,
       durationMs,
       closedReason,
     ],

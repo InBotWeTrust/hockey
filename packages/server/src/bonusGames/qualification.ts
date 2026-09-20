@@ -1,3 +1,7 @@
+import {
+  parseMarksmanshipScoringRules,
+  type MarksmanshipScoringRules,
+} from '@hockey/game-core';
 import { z } from 'zod';
 
 const requiredGoalStreakSchema = z.number().int().min(1).max(1_000).optional();
@@ -19,15 +23,36 @@ const qualificationRulesSchema = z.discriminatedUnion('type', [
       requiredGoalStreak: requiredGoalStreakSchema,
     })
     .strict(),
+  z
+    .object({
+      type: z.literal('points_in_time'),
+      targetPoints: z.number().int().min(1).max(1_000_000_000),
+      activeTimeMs: z.number().int().min(1_000).max(86_400_000),
+      scoring: z.unknown(),
+    })
+    .strict(),
 ]);
 
-export type BonusQualificationRules = z.infer<typeof qualificationRulesSchema>;
+type GoalQualificationRules = Exclude<
+  z.infer<typeof qualificationRulesSchema>,
+  { type: 'points_in_time' }
+>;
+
+export type BonusQualificationRules =
+  | GoalQualificationRules
+  | {
+      type: 'points_in_time';
+      targetPoints: number;
+      activeTimeMs: number;
+      scoring: MarksmanshipScoringRules;
+    };
 
 export interface BonusQualificationState {
   goals: number;
   shotsTaken: number;
   bestGoalStreak: number;
   activeElapsedMs: number;
+  totalPoints: number;
 }
 
 export interface BonusQualificationEvaluation {
@@ -43,9 +68,10 @@ interface BonusSkillPeriodRule {
 }
 
 export function validateBonusSkillRules(
-  skillCode: 'speed' | 'accuracy',
+  skillCode: 'speed' | 'accuracy' | 'marksmanship',
   rules: BonusQualificationRules,
   periods: BonusSkillPeriodRule[],
+  useInventory = false,
 ): void {
   if (skillCode === 'speed') {
     if (rules.type !== 'goals_in_time') {
@@ -57,6 +83,27 @@ export function validateBonusSkillRules(
     const totalDurationMs = periods.reduce((sum, period) => sum + period.durationMs, 0);
     if (rules.activeTimeMs !== totalDurationMs) {
       throw new Error('speed active time must equal the total period duration');
+    }
+    return;
+  }
+
+  if (skillCode === 'marksmanship') {
+    if (rules.type !== 'points_in_time') {
+      throw new Error('marksmanship requires points in time rules');
+    }
+    parseMarksmanshipScoringRules(rules.scoring);
+    if (periods.length !== 1) {
+      throw new Error('marksmanship requires exactly one period');
+    }
+    const period = periods[0]!;
+    if (period.shotsLimit !== null) {
+      throw new Error('marksmanship period cannot have a shots limit');
+    }
+    if (period.durationMs !== rules.activeTimeMs) {
+      throw new Error('marksmanship active time must equal the period duration');
+    }
+    if (useInventory) {
+      throw new Error('marksmanship inventory must be disabled');
     }
     return;
   }
@@ -90,6 +137,16 @@ export function normalizeBonusQualificationRules(
   if (parsed.data.type === 'goals_from_shots' && parsed.data.targetGoals > parsed.data.shotsLimit) {
     throw new Error('target goals cannot exceed shots limit');
   }
+  if (parsed.data.type === 'points_in_time') {
+    try {
+      return {
+        ...parsed.data,
+        scoring: parseMarksmanshipScoringRules(parsed.data.scoring),
+      };
+    } catch {
+      throw new Error('invalid bonus qualification rules');
+    }
+  }
   return parsed.data;
 }
 
@@ -99,10 +156,14 @@ export function evaluateBonusQualification(
 ): BonusQualificationEvaluation {
   const accuracyPercent = state.shotsTaken === 0 ? 0 : (state.goals / state.shotsTaken) * 100;
   const primaryMet =
-    state.goals >= rules.targetGoals &&
-    (rules.type !== 'goals_in_time' || state.activeElapsedMs <= rules.activeTimeMs);
+    rules.type === 'points_in_time'
+      ? state.totalPoints >= rules.targetPoints && state.activeElapsedMs <= rules.activeTimeMs
+      : state.goals >= rules.targetGoals &&
+        (rules.type !== 'goals_in_time' || state.activeElapsedMs <= rules.activeTimeMs);
+  const requiredGoalStreak =
+    rules.type === 'points_in_time' ? undefined : rules.requiredGoalStreak;
   const streakMet =
-    rules.requiredGoalStreak === undefined || state.bestGoalStreak >= rules.requiredGoalStreak;
+    requiredGoalStreak === undefined || state.bestGoalStreak >= requiredGoalStreak;
 
   return { passed: primaryMet && streakMet, primaryMet, streakMet, accuracyPercent };
 }

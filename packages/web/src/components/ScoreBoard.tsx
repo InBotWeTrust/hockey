@@ -7,6 +7,7 @@ export interface GameScoreboardMetric {
   value: string;
   tone?: GameScoreboardMetricTone;
   emphasis?: GameScoreboardMetricEmphasis;
+  labelEmphasis?: 'default' | 'small';
 }
 
 export interface GameScoreboardRow {
@@ -36,9 +37,11 @@ export interface GameScoreboardProps extends GameScoreboardModel {
 export interface ScoreBoardProps {
   period: number;
   periodsTotal?: number;
+  periodLabel?: string | undefined;
   timer: string;
   timerLabel?: string | undefined;
   goals: number;
+  scoreLabel?: string | undefined;
   shots: number;
   shotsTotal?: number | undefined;
   notice?: string | undefined;
@@ -66,6 +69,7 @@ function padded(value: number): string {
 export function buildGameScoreboardModel({
   period,
   periodsTotal = 3,
+  periodLabel = 'ПЕРИОД',
   timer,
   timerLabel = 'ВРЕМЯ',
   goals,
@@ -77,8 +81,9 @@ export function buildGameScoreboardModel({
 }: BuildGameScoreboardModelArgs): GameScoreboardModel {
   const periodMetric: GameScoreboardMetric = {
     id: 'period',
-    label: 'ПЕРИОД',
+    label: periodLabel,
     value: `${period}/${periodsTotal}`,
+    ...(periodLabel.length >= 9 ? { labelEmphasis: 'small' as const } : {}),
   };
   const timerMetric: GameScoreboardMetric = {
     id: 'timer',
@@ -151,7 +156,7 @@ export function GameScoreboard({
                   className={`game-scoreboard__metric game-scoreboard__metric--${tone} game-scoreboard__metric--${emphasis}`}
                 >
                   <span
-                    className="game-scoreboard__label"
+                    className={`game-scoreboard__label game-scoreboard__label--${metric.labelEmphasis ?? 'default'}`}
                     style={
                       tone === 'timer'
                         ? {
@@ -198,7 +203,7 @@ export function GameScoreboard({
 export function ScoreBoard(props: ScoreBoardProps): JSX.Element {
   const model = buildGameScoreboardModel({
     ...props,
-    scoreLabel: props.opponent ? 'СЧЁТ' : 'ШАЙБЫ',
+    scoreLabel: props.opponent ? 'СЧЁТ' : (props.scoreLabel ?? 'ШАЙБЫ'),
   });
   return <GameScoreboard {...model} />;
 }

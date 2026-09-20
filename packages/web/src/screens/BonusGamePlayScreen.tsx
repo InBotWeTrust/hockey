@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  classifyMarksmanshipShot,
   GOAL_OPENING,
   PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
   PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET,
@@ -7,6 +8,8 @@ import {
   PUCK_START,
   STICK_NEUTRAL,
   type GoalieConfig,
+  type MarksmanshipDifficultyCode,
+  type MarksmanshipShotClassification,
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -16,9 +19,10 @@ import type {
   BonusPeriodLoadoutSelection,
   BonusPeriodRule,
 } from '../api/bonusGames.js';
+import { startBonusAttempt } from '../api/bonusGames.js';
 import { fetchMyInventory, type InventoryEquipmentKind } from '../api/inventory.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
-import { PlayView } from '../game/PlayView.js';
+import { PlayView, type PlayResultPresentation } from '../game/PlayView.js';
 import {
   deriveBonusGameClockBasis,
   deriveBonusGameClockEpoch,
@@ -61,6 +65,51 @@ function formatCountdown(ms: number): string {
   const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
   const seconds = String(totalSeconds % 60).padStart(2, '0');
   return `${minutes}:${seconds}`;
+}
+
+function formatPoints(value: number): string {
+  return new Intl.NumberFormat('ru-RU').format(value).replaceAll('\u00a0', ' ');
+}
+
+function marksmanshipDifficultyLabel(code: MarksmanshipDifficultyCode): string {
+  switch (code) {
+    case 'open':
+      return 'Открытое окно';
+    case 'timed':
+      return 'Точный момент';
+    case 'precise':
+      return 'Точное окно';
+    case 'narrow':
+      return 'Сложное окно';
+    case 'very_narrow':
+      return 'Узкое окно';
+    case 'instant':
+      return 'Мгновенное окно';
+  }
+}
+
+function marksmanshipResultPresentation(input: {
+  serverResult: 'goal' | 'save' | 'miss';
+  awardedPoints: number;
+  difficultyCode: MarksmanshipDifficultyCode | null;
+  counterDirection: boolean;
+}): PlayResultPresentation | null {
+  if (
+    input.serverResult !== 'goal' ||
+    input.awardedPoints <= 0 ||
+    input.difficultyCode === null
+  ) {
+    return null;
+  }
+  return {
+    title: 'ГОЛ',
+    details: [
+      `+${input.awardedPoints}`,
+      input.counterDirection
+        ? 'Точный момент · противоход'
+        : marksmanshipDifficultyLabel(input.difficultyCode),
+    ],
+  };
 }
 
 function authoritativeRemainingMs(
@@ -266,10 +315,14 @@ function BonusResult({
   kind,
   attempt,
   onCatalog,
+  onRetry,
+  retrying,
 }: {
   kind: 'failed' | 'completed' | 'abandoned';
   attempt: BonusGameAttempt;
   onCatalog: () => void;
+  onRetry: () => void;
+  retrying: boolean;
 }): JSX.Element {
   const title = kind === 'completed' ? 'Игра пройдена' : 'Попытка завершена';
   let copy: string;
@@ -279,6 +332,10 @@ function BonusResult({
   else copy = 'Повтор завершён без награды';
   const accuracy =
     attempt.shots_taken > 0 ? Math.round((attempt.goals / attempt.shots_taken) * 100) : 0;
+  const marksmanshipRules =
+    attempt.rules.qualification_rules.type === 'points_in_time'
+      ? attempt.rules.qualification_rules
+      : null;
   const rewardParts = [
     attempt.reward.coins > 0
       ? {
@@ -327,14 +384,28 @@ function BonusResult({
         WebkitBackdropFilter: 'blur(8px)',
       }}
     >
-      <div
-        className="bonus-game-result-metrics"
-        aria-label={`Итого: ${attempt.goals} голов из ${attempt.shots_taken} бросков, точность ${accuracy}%`}
-      >
-        <BonusResultMetric label="Голы" value={String(attempt.goals)} />
-        <BonusResultMetric label="Броски" value={String(attempt.shots_taken)} />
-        <BonusResultMetric label="Точность" value={`${accuracy}%`} />
-      </div>
+      {marksmanshipRules ? (
+        <div
+          className="bonus-game-result-metrics"
+          aria-label={`Итого: ${attempt.total_points} очков, цель ${marksmanshipRules.targetPoints}`}
+        >
+          <BonusResultMetric label="Набрано" value={formatPoints(attempt.total_points)} />
+          <BonusResultMetric label="Цель" value={formatPoints(marksmanshipRules.targetPoints)} />
+          <BonusResultMetric
+            label="Не хватило"
+            value={formatPoints(Math.max(0, marksmanshipRules.targetPoints - attempt.total_points))}
+          />
+        </div>
+      ) : (
+        <div
+          className="bonus-game-result-metrics"
+          aria-label={`Итого: ${attempt.goals} голов из ${attempt.shots_taken} бросков, точность ${accuracy}%`}
+        >
+          <BonusResultMetric label="Голы" value={String(attempt.goals)} />
+          <BonusResultMetric label="Броски" value={String(attempt.shots_taken)} />
+          <BonusResultMetric label="Точность" value={`${accuracy}%`} />
+        </div>
+      )}
       {kind === 'completed' && attempt.reward_granted && rewardParts.length > 0 ? (
         <div className="bonus-game-result-reward">
           <span className="bonus-game-result-reward-label">Награда</span>
@@ -354,6 +425,11 @@ function BonusResult({
         </div>
       ) : null}
       <div className="modal-actions bonus-game-result-actions">
+        {kind === 'failed' && marksmanshipRules ? (
+          <button type="button" className="btn btn--ghost" disabled={retrying} onClick={onRetry}>
+            {retrying ? 'Начинаем…' : 'Повторить'}
+          </button>
+        ) : null}
         <button type="button" className="modal-primary btn btn--cta" onClick={onCatalog}>
           К бонусным играм
         </button>
@@ -506,10 +582,21 @@ export function BonusGamePlayScreen(): JSX.Element {
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [inventorySelection, setInventorySelection] = useState<BonusPeriodLoadoutSelection>({});
   const [isConfirmingAbandon, setIsConfirmingAbandon] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const abandonRequestRef = useRef(false);
   const loadedRouteRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const predictedMarksmanshipRef = useRef<{
+    shotIndex: number;
+    classification: MarksmanshipShotClassification;
+  } | null>(null);
+  const earliestMarksmanshipTapRef = useRef(0);
   const isAuthoritativeBreak = attempt?.status === 'active' && attempt.state === 'break_active';
+
+  useEffect(() => {
+    predictedMarksmanshipRef.current = null;
+    earliestMarksmanshipTapRef.current = 0;
+  }, [attempt?.current_period, attempt?.id]);
 
   useEffect(() => {
     if (pendingShot === null) return;
@@ -612,6 +699,21 @@ export function BonusGamePlayScreen(): JSX.Element {
     setIsConfirmingAbandon(false);
   }, [abandon, leavePlaySurface, queryClient]);
 
+  const retryAttempt = useCallback(async (): Promise<void> => {
+    if (isRetrying || attempt === null) return;
+    setIsRetrying(true);
+    try {
+      const response = await startBonusAttempt(attempt.game_id);
+      useBonusGameStore.getState().applyState(response.attempt);
+      navigate(
+        `/bonus-games/${response.attempt.game_id}/play?attempt=${encodeURIComponent(response.attempt.id)}`,
+        { replace: true },
+      );
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [attempt, isRetrying, navigate]);
+
   if (needsReconcile && attempt === null) {
     return (
       <ModeState
@@ -695,6 +797,12 @@ export function BonusGamePlayScreen(): JSX.Element {
     (total, period) => total + (period.shots_limit ?? 0),
     0,
   );
+  const marksmanshipRules =
+    attempt.rules.qualification_rules.type === 'points_in_time'
+      ? attempt.rules.qualification_rules
+      : null;
+  const isMarksmanship = marksmanshipRules !== null;
+  const marksmanshipTarget = marksmanshipRules?.targetPoints ?? null;
 
   return (
     <>
@@ -722,12 +830,17 @@ export function BonusGamePlayScreen(): JSX.Element {
         shots={attempt.shots_taken}
         shotIndexBase={attempt.current_period_shots_taken}
         shotsTotal={terminalShotsTotal > 0 ? terminalShotsTotal : undefined}
-        scoreboardNotice={qualificationProgress(attempt.rules.qualification_rules, {
-          goals: attempt.goals,
-          shots: attempt.shots_taken,
-          currentStreak: attempt.current_goal_streak,
-          bestStreak: attempt.best_goal_streak,
-        })}
+        scoreboardNotice={
+          marksmanshipTarget === null
+            ? qualificationProgress(attempt.rules.qualification_rules, {
+                goals: attempt.goals,
+                shots: attempt.shots_taken,
+                totalPoints: attempt.total_points,
+                currentStreak: attempt.current_goal_streak,
+                bestStreak: attempt.best_goal_streak,
+              })
+            : `${formatPoints(attempt.total_points)} / ${formatPoints(marksmanshipTarget)}`
+        }
         timer={isTerminal ? '00:00' : isIdle ? formatCountdown(idleTimerMs) : undefined}
         shotButtonLabel={
           needsReconcile
@@ -781,17 +894,65 @@ export function BonusGamePlayScreen(): JSX.Element {
               },
               claimed_result: claimedResult,
             },
-            { deferApply: true },
+            {
+              deferApply: true,
+              ...(isMarksmanship
+                ? {
+                    predictedMarksmanship:
+                      predictedMarksmanshipRef.current?.shotIndex === shotIndex
+                        ? predictedMarksmanshipRef.current.classification
+                        : null,
+                  }
+                : {}),
+            },
           );
           if (!mountedRef.current) applyPendingShot();
           return result
             ? {
                 serverResult: result.serverResult,
                 state: result.attempt,
+                resultPresentation: isMarksmanship
+                  ? marksmanshipResultPresentation({
+                      serverResult: result.serverResult,
+                      awardedPoints: result.awardedPoints,
+                      difficultyCode: result.difficultyCode,
+                      counterDirection: result.counterDirection,
+                    })
+                  : undefined,
                 ...(result.isCurrent === undefined ? {} : { isCurrent: result.isCurrent }),
               }
             : null;
         }}
+        onShotResolved={
+          isMarksmanship
+            ? (context) => {
+                const classification = classifyMarksmanshipShot({
+                  shotInput: context.input,
+                  goalie: context.goalieConfig,
+                  seed: context.seed,
+                  shotIndex: context.shotIndex,
+                  phaseOffsets: context.phaseOffsets,
+                  earliestTapTime: earliestMarksmanshipTapRef.current,
+                  scoring: marksmanshipRules!.scoring,
+                });
+                predictedMarksmanshipRef.current = {
+                  shotIndex: context.shotIndex,
+                  classification,
+                };
+                earliestMarksmanshipTapRef.current =
+                  context.input.tapTime +
+                  (PUCK_START.y - GOAL_OPENING.y) /
+                    (context.input.puckSpeedPerMs ?? speedOverrides.puckSpeed);
+                return marksmanshipResultPresentation({
+                  serverResult: classification.result.type,
+                  awardedPoints: classification.awardedPoints,
+                  difficultyCode: classification.difficultyCode,
+                  counterDirection: classification.counterDirection,
+                });
+              }
+            : undefined
+        }
+        resultCopy={isMarksmanship ? { goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' } : undefined}
         applyState={() => undefined}
         applyResolvedState={(next) => applyPendingShot(next)}
         overlayControls={
@@ -804,7 +965,13 @@ export function BonusGamePlayScreen(): JSX.Element {
       />
 
       {terminalKind ? (
-        <BonusResult kind={terminalKind} attempt={attempt} onCatalog={leavePlaySurface} />
+        <BonusResult
+          kind={terminalKind}
+          attempt={attempt}
+          onCatalog={leavePlaySurface}
+          onRetry={() => void retryAttempt()}
+          retrying={isRetrying}
+        />
       ) : null}
 
       {previewRequired ? (

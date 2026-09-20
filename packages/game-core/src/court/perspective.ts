@@ -30,6 +30,50 @@ export const PERSPECTIVE_COURT_HITBOX_GOALIE_WIDTH_SCALE = 1.215;
 export const PERSPECTIVE_COURT_HITBOX_GOALIE_HEIGHT_SCALE = 1.152;
 export const PERSPECTIVE_COURT_HITBOX_GOALIE_INSET = 2;
 
+export function getPerspectiveCourtGoalOpening(
+  input: ShotInput,
+  cfg: GoalieConfig,
+  phaseOffsets?: SessionPhaseOffsets,
+): { xMin: number; xMax: number } {
+  const speed = input.puckSpeedPerMs ?? PUCK_SPEED_PER_MS;
+  const effectiveCfg = {
+    ...cfg,
+    goalFrequency: input.goalFrequency ?? cfg.goalFrequency,
+  };
+  const tGoalCross = input.tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed;
+  const goalOffsetAtCross =
+    simulateGoal(effectiveCfg, tGoalCross, phaseOffsets?.goal ?? 0).offsetX *
+    PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE;
+  const openingCenterX = (GOAL_OPENING.xMin + GOAL_OPENING.xMax) / 2 + goalOffsetAtCross;
+  const openingWidth = Math.max(
+    0,
+    (GOAL_OPENING.xMax - GOAL_HITBOX_MARGIN - (GOAL_OPENING.xMin + GOAL_HITBOX_MARGIN)) *
+      PERSPECTIVE_COURT_HITBOX_GOAL_WIDTH_SCALE -
+      PERSPECTIVE_COURT_HITBOX_GOAL_INSET * 2,
+  );
+  return {
+    xMin: openingCenterX - openingWidth / 2,
+    xMax: openingCenterX + openingWidth / 2,
+  };
+}
+
+export function resolvePerspectiveCourtEmptyGoalShot(
+  input: ShotInput,
+  cfg: GoalieConfig,
+  phaseOffsets?: SessionPhaseOffsets,
+): Extract<ShotResult, { type: 'goal' | 'miss' }> {
+  const shooterTime = input.shooterTapTime ?? input.tapTime;
+  const shooterX = simulateShooter(
+    shooterTime + (phaseOffsets?.shooter ?? 0),
+    input.shooterFrequency,
+  ).x;
+  const opening = getPerspectiveCourtGoalOpening(input, cfg, phaseOffsets);
+  if (shooterX < opening.xMin || shooterX > opening.xMax) {
+    return { type: 'miss', reason: 'wide' };
+  }
+  return { type: 'goal', hitPoint: { x: shooterX, y: GOAL_OPENING.y } };
+}
+
 export function resolvePerspectiveCourtShot(
   input: ShotInput,
   cfg: GoalieConfig,
@@ -74,22 +118,8 @@ export function resolvePerspectiveCourtShot(
     return { type: 'save', goalieContact: { x: shooterX, y: GOALIE_Y } };
   }
 
-  const tGoalCross = input.tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed;
-  const goalOffsetAtCross =
-    simulateGoal(effectiveCfg, tGoalCross, phaseOffsets?.goal ?? 0).offsetX *
-    PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE;
-  const openingCenterX = (GOAL_OPENING.xMin + GOAL_OPENING.xMax) / 2 + goalOffsetAtCross;
-  const openingWidth = Math.max(
-    0,
-    (GOAL_OPENING.xMax - GOAL_HITBOX_MARGIN - (GOAL_OPENING.xMin + GOAL_HITBOX_MARGIN)) *
-      PERSPECTIVE_COURT_HITBOX_GOAL_WIDTH_SCALE -
-      PERSPECTIVE_COURT_HITBOX_GOAL_INSET * 2,
-  );
-
-  if (
-    shooterX < openingCenterX - openingWidth / 2 ||
-    shooterX > openingCenterX + openingWidth / 2
-  ) {
+  const opening = getPerspectiveCourtGoalOpening(input, effectiveCfg, phaseOffsets);
+  if (shooterX < opening.xMin || shooterX > opening.xMax) {
     return { type: 'miss', reason: 'wide' };
   }
 

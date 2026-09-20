@@ -4,7 +4,7 @@ import type { BonusQualificationRules } from './qualification.js';
 import type { PeriodLoadoutSnapshot } from '../inventory/periodLoadout.js';
 
 export type BonusGameStatus = 'draft' | 'active' | 'archived';
-export type BonusSkillCode = 'speed' | 'accuracy';
+export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship';
 export type BonusGameAccessType = 'free' | 'paid';
 export type BonusGameAttemptStatus = 'active' | 'completed' | 'failed' | 'abandoned';
 export type BonusGameAttemptState = 'idle' | 'period_active' | 'break_active' | 'closed';
@@ -14,7 +14,7 @@ export type BonusGoaliePattern = Extract<GoaliePatternId, 'linear' | 'sine' | 'd
 
 export interface BonusAttemptAllowanceDTO {
   skillCode: BonusSkillCode;
-  dailyLimit: 2;
+  dailyLimit: number;
   used: number;
   remaining: number;
   resetsAt: string;
@@ -126,6 +126,7 @@ export interface BonusGameAttemptRow {
   closed_at: Date | null;
   shots_taken: number;
   goals: number;
+  total_points: number;
   current_goal_streak: number;
   best_goal_streak: number;
   preview_acknowledged_at: Date | null;
@@ -150,6 +151,7 @@ export interface BonusGamePeriodLogRow {
   ended_at: Date;
   shots_taken: number;
   goals: number;
+  total_points: number;
   duration_ms: number;
   closed_reason: BonusPeriodClosedReason;
   created_at: Date;
@@ -239,6 +241,7 @@ export interface BonusGameAttemptDTO {
   shotsTaken: number;
   currentPeriodShotsTaken: number;
   goals: number;
+  totalPoints: number;
   currentGoalStreak: number;
   bestGoalStreak: number;
   previewRequired: boolean;

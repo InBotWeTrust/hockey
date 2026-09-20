@@ -26,6 +26,24 @@ describe('simulateGoal', () => {
     expect(simulateGoal({ ...base, goalFrequency: 0 }, 1500).offsetX).toBe(0);
   });
 
+  it('places a static goal at an explicit horizontal offset', () => {
+    expect(
+      simulateGoal(
+        { ...base, goalAmplitude: 0, goalOffsetX: -120 },
+        1500,
+      ).offsetX,
+    ).toBe(-120);
+  });
+
+  it('clamps an explicit horizontal offset to the safe rink bounds', () => {
+    expect(
+      simulateGoal(
+        { ...base, goalAmplitude: 0, goalOffsetX: 10_000 },
+        1500,
+      ).offsetX,
+    ).toBe(220);
+  });
+
   it('starts at -amplitude at t=0 (triangle wave phase 0)', () => {
     // With triangle wave implementation, phase 0 → tri = -1, offset = -amp.
     expect(simulateGoal(base, 0).offsetX).toBeCloseTo(-base.goalAmplitude, 5);

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_MARKSMANSHIP_SCORING_RULES } from '@hockey/game-core';
 import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { ApiError } from '../api/apiFetch.js';
@@ -246,6 +247,37 @@ describe('BonusGamesScreen', () => {
     });
     useDailyStore.setState({ data: null });
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
+  });
+
+  it('shows the marksmanship tab with a point target and timed unlimited attempt', async () => {
+    mockCatalog([
+      card({
+        id: 'marksmanship-1',
+        title: 'Первый момент',
+        skill_code: 'marksmanship',
+        qualification_rules: {
+          type: 'points_in_time',
+          targetPoints: 1_100,
+          activeTimeMs: 30_000,
+          scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
+        },
+        period_rules: [
+          {
+            ...card({}).period_rules[0],
+            duration_ms: 30_000,
+            shots_limit: null,
+          },
+        ],
+      }),
+    ]);
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Меткость' }));
+
+    const gameCard = screen.getByRole('heading', { name: 'Первый момент' }).closest('article')!;
+    expect(within(gameCard).getByText('1100 очков за 00:30')).toBeInTheDocument();
+    expect(within(gameCard).getByText('1 период · без лимита бросков')).toBeInTheDocument();
+    expect(gameCard).not.toHaveTextContent('голов');
   });
 
   it('shows a readable attempt allowance and counts down to its reset', async () => {

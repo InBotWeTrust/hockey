@@ -2,7 +2,15 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { STICK_NEUTRAL } from '@hockey/game-core';
+import {
+  DEFAULT_MARKSMANSHIP_SCORING_RULES,
+  STICK_NEUTRAL,
+  type GoalieConfig,
+  type MarksmanshipShotClassification,
+  type SessionPhaseOffsets,
+  type ShotInput,
+  type ShotResult,
+} from '@hockey/game-core';
 import {
   abandonBonusAttempt,
   acknowledgeBonusPreview,
@@ -33,6 +41,7 @@ vi.mock('../game/PlayView.js', () => ({
     timer?: string;
     shotButtonLabel?: string;
     primaryActionBlocked?: boolean;
+    scoreboardNotice?: string;
     overlayControls?: JSX.Element;
     inactiveAction?: () => unknown | Promise<unknown>;
     entranceBeforeInactiveAction?: boolean;
@@ -56,6 +65,14 @@ vi.mock('../game/PlayView.js', () => ({
     }) => Promise<unknown>;
     applyState: (next: BonusGameAttempt) => void;
     applyResolvedState?: (next: BonusGameAttempt) => void;
+    onShotResolved?: (context: {
+      input: ShotInput;
+      goalieConfig: GoalieConfig;
+      seed: string;
+      shotIndex: number;
+      phaseOffsets: SessionPhaseOffsets;
+      result: ShotResult;
+    }) => MarksmanshipShotClassification | null;
   }) {
     playViewProbe(props);
     return (
@@ -115,6 +132,7 @@ function attempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAttempt {
     shots_taken: 28,
     current_period_shots_taken: 3,
     goals: 18,
+    total_points: 0,
     current_goal_streak: 2,
     best_goal_streak: 4,
     preview_required: false,
@@ -176,6 +194,55 @@ function attempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAttempt {
     },
     goalkeeper_ready_url: '/bonus-games/goalkeepers/beach-ready.webp',
     goalkeeper_save_url: '/bonus-games/goalkeepers/beach-save.webp',
+    ...overrides,
+  };
+}
+
+function pendingShot(attemptValue: BonusGameAttempt, receivedAtPerformanceMs = 1_000) {
+  return {
+    attempt: attemptValue,
+    awardedPoints: 0,
+    totalPoints: attemptValue.total_points,
+    difficultyCode: null,
+    counterDirection: false,
+    predictedMarksmanship: null,
+    receivedAtPerformanceMs,
+  };
+}
+
+function marksmanshipAttempt(overrides: Partial<BonusGameAttempt> = {}): BonusGameAttempt {
+  const base = attempt();
+  return {
+    ...base,
+    game_slug: 'marksmanship-1',
+    game_title: 'Первый момент',
+    current_period: 1,
+    shots_taken: 12,
+    current_period_shots_taken: 12,
+    goals: 7,
+    total_points: 2_450,
+    rules: {
+      ...base.rules,
+      slug: 'marksmanship-1',
+      title: 'Первый момент',
+      skill_code: 'marksmanship',
+      target_goals: 0,
+      qualification_rules: {
+        type: 'points_in_time',
+        targetPoints: 4_000,
+        activeTimeMs: 90_000,
+        scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
+      },
+      total_periods: 1,
+      periods: [
+        {
+          ...base.rules.periods[0]!,
+          period_number: 1,
+          duration_ms: 90_000,
+          shots_limit: null,
+        },
+      ],
+    },
     ...overrides,
   };
 }
@@ -391,6 +458,163 @@ describe('BonusGamePlayScreen', () => {
     expect(props).not.toHaveProperty('gameLayerStyle');
   });
 
+  it('renders marksmanship points and replaces the local goal preview with server scoring', async () => {
+    const authoritative = marksmanshipAttempt({ total_points: 2_605 });
+    const submitShot = vi.fn(async () => ({
+      serverResult: 'goal' as const,
+      awardedPoints: 155,
+      totalPoints: 2_605,
+      difficultyCode: 'very_narrow' as const,
+      counterDirection: false,
+      predictedMarksmanship: null,
+      attempt: authoritative,
+      rewardGranted: false,
+    }));
+    setStore({ attempt: marksmanshipAttempt(), submitShot });
+    renderScreen();
+
+    const props = playViewProbe.mock.calls.at(-1)?.[0] as {
+      scoreboardNotice?: string;
+      onShotResolved?: (context: {
+        input: ShotInput;
+        goalieConfig: GoalieConfig;
+        seed: string;
+        shotIndex: number;
+        phaseOffsets: SessionPhaseOffsets;
+        result: ShotResult;
+      }) => unknown;
+      submitShot: (args: {
+        shotIndex: number;
+        input: ShotInput;
+        claimedResult: 'goal';
+      }) => Promise<unknown>;
+    };
+    expect(props.scoreboardNotice).toBe('2 450 / 4 000');
+
+    const input = {
+      tapTime: 590,
+      shooterTapTime: 590,
+      puckSpeedPerMs: 1.25,
+      shooterFrequency: 0.75,
+      goalieFrequency: 0.6,
+      goalFrequency: 0.5,
+    };
+    const localPresentation = props.onShotResolved?.({
+        input,
+        goalieConfig: {
+          id: 'marksmanship-test',
+          name: 'Test',
+          pattern: 'linear',
+          hp: 1,
+          baseReward: 0,
+          firstClearBonus: 0,
+          speed: 0,
+          amplitude: 1,
+          frequency: 0.6,
+          goalAmplitude: 220,
+          goalFrequency: 0.5,
+        },
+        seed: 'marksmanship-fixture',
+        shotIndex: 1,
+        phaseOffsets: { goalie: 0, goal: 0, shooter: 0 },
+        result: { type: 'goal', hitPoint: { x: 286, y: 80 } },
+      });
+
+    expect(localPresentation).toEqual({
+      title: 'ГОЛ',
+      details: ['+170', 'Точный момент · противоход'],
+    });
+
+    const authoritativePresentation = await props.submitShot({
+      shotIndex: 1,
+      input,
+      claimedResult: 'goal',
+    });
+
+    expect(submitShot).toHaveBeenCalledWith(
+      expect.objectContaining({ claimed_shot_index: 1 }),
+      expect.objectContaining({
+        deferApply: true,
+        predictedMarksmanship: expect.objectContaining({
+          awardedPoints: 170,
+          difficultyCode: 'very_narrow',
+          counterDirection: true,
+        }),
+      }),
+    );
+    expect(authoritativePresentation).toMatchObject({
+      resultPresentation: { title: 'ГОЛ', details: ['+155', 'Узкое окно'] },
+    });
+  });
+
+  it.each(['save', 'miss'] as const)('does not show zero points for a %s', async (result) => {
+    const submitShot = vi.fn(async () => ({
+      serverResult: result,
+      awardedPoints: 0,
+      totalPoints: 2_450,
+      difficultyCode: null,
+      counterDirection: false,
+      predictedMarksmanship: null,
+      attempt: marksmanshipAttempt(),
+      rewardGranted: false,
+    }));
+    setStore({ attempt: marksmanshipAttempt(), submitShot });
+    renderScreen();
+
+    const props = playViewProbe.mock.calls.at(-1)?.[0] as {
+      submitShot: (args: {
+        shotIndex: number;
+        input: ShotInput;
+        claimedResult: typeof result;
+      }) => Promise<unknown>;
+    };
+    await act(async () => {
+      await props.submitShot({
+        shotIndex: 13,
+        input: { tapTime: 590, shooterTapTime: 590 },
+        claimedResult: result,
+      });
+    });
+
+    expect(screen.queryByText(/0 очков/i)).toBeNull();
+  });
+
+  it('shows marksmanship completion immediately when the authoritative target is reached', () => {
+    setStore({
+      attempt: marksmanshipAttempt({
+        status: 'completed',
+        state: 'closed',
+        period_started_at: null,
+        period_ends_at: null,
+        closed_at: '2026-09-19T10:00:30.000Z',
+        total_points: 4_000,
+      }),
+    });
+    renderScreen();
+
+    expect(screen.getByRole('dialog', { name: 'Игра пройдена' })).toBeInTheDocument();
+  });
+
+  it('shows marksmanship failure score, target, shortfall and both next actions', () => {
+    setStore({
+      attempt: marksmanshipAttempt({
+        status: 'failed',
+        state: 'closed',
+        period_started_at: null,
+        period_ends_at: null,
+        closed_at: '2026-09-19T10:01:30.000Z',
+      }),
+    });
+    renderScreen();
+
+    const dialog = screen.getByRole('dialog', { name: 'Попытка завершена' });
+    expect(dialog).toHaveTextContent('Набрано2 450');
+    expect(dialog).toHaveTextContent('Цель4 000');
+    expect(dialog).toHaveTextContent('Не хватило1 550');
+    expect(within(dialog).getByRole('button', { name: 'Повторить' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'К бонусным играм' })).toBeInTheDocument();
+  });
+
   it('matches World Tour save-pose framing to the training goalkeeper', () => {
     setStore({
       attempt: attempt({
@@ -453,6 +677,11 @@ describe('BonusGamePlayScreen', () => {
     });
     const submitShot = vi.fn(async () => ({
       serverResult: 'goal' as const,
+      awardedPoints: 0,
+      totalPoints: completedAttempt.total_points,
+      difficultyCode: null,
+      counterDirection: false,
+      predictedMarksmanship: null,
       attempt: completedAttempt,
       rewardGranted: true,
     }));
@@ -467,7 +696,7 @@ describe('BonusGamePlayScreen', () => {
     setStore({
       submitShot,
       applyPendingShot,
-      pendingShot: { attempt: completedAttempt, receivedAtPerformanceMs: 1_000 },
+      pendingShot: pendingShot(completedAttempt),
       inFlight: true,
     });
     renderScreen();
@@ -519,6 +748,11 @@ describe('BonusGamePlayScreen', () => {
     });
     const submitShot = vi.fn(async () => ({
       serverResult: 'goal' as const,
+      awardedPoints: 0,
+      totalPoints: completedAttempt.total_points,
+      difficultyCode: null,
+      counterDirection: false,
+      predictedMarksmanship: null,
       attempt: completedAttempt,
       rewardGranted: true,
     }));
@@ -544,6 +778,11 @@ describe('BonusGamePlayScreen', () => {
     // This catches a late successful response leaving the store permanently locked with no reward view.
     const responsePending = deferred<{
       serverResult: 'goal';
+      awardedPoints: number;
+      totalPoints: number;
+      difficultyCode: null;
+      counterDirection: boolean;
+      predictedMarksmanship: null;
       attempt: BonusGameAttempt;
       rewardGranted: true;
     }>();
@@ -560,10 +799,7 @@ describe('BonusGamePlayScreen', () => {
     const submitShot = vi.fn(async () => {
       const result = await responsePending.promise;
       useBonusGameStore.setState({
-        pendingShot: {
-          attempt: result.attempt,
-          receivedAtPerformanceMs: performance.now(),
-        },
+        pendingShot: pendingShot(result.attempt, performance.now()),
         inFlight: true,
       });
       return result;
@@ -587,6 +823,11 @@ describe('BonusGamePlayScreen', () => {
     await act(async () => {
       responsePending.resolve({
         serverResult: 'goal',
+        awardedPoints: 0,
+        totalPoints: completedAttempt.total_points,
+        difficultyCode: null,
+        counterDirection: false,
+        predictedMarksmanship: null,
         attempt: completedAttempt,
         rewardGranted: true,
       });
@@ -641,7 +882,7 @@ describe('BonusGamePlayScreen', () => {
     });
     setStore({
       attempt: acceptedAttempt,
-      pendingShot: { attempt: acceptedAttempt, receivedAtPerformanceMs: 1_000 },
+      pendingShot: pendingShot(acceptedAttempt),
       inFlight: true,
       applyPendingShot,
     });

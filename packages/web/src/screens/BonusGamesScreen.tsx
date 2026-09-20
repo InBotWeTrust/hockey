@@ -52,6 +52,7 @@ function formatAttemptResetCountdown(resetsAt: string, nowMs: number): string | 
 const skillLabels: Record<BonusSkillCode, string> = {
   speed: 'Скорость',
   accuracy: 'Точность',
+  marksmanship: 'Меткость',
 };
 
 function safeUiError(error: unknown): string {
@@ -99,9 +100,10 @@ export function BonusGamesScreen(): JSX.Element {
   const [purchaseGame, setPurchaseGame] = useState<BonusGameCard | null>(null);
   const switchAttemptRequestRef = useRef(false);
   const [rulesOpen, setRulesOpen] = useState(false);
-  const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() =>
-    localStorage.getItem(LAST_SKILL_STORAGE_KEY) === 'accuracy' ? 'accuracy' : 'speed',
-  );
+  const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() => {
+    const stored = localStorage.getItem(LAST_SKILL_STORAGE_KEY);
+    return stored === 'accuracy' || stored === 'marksmanship' ? stored : 'speed';
+  });
   const [allowanceNowMs, setAllowanceNowMs] = useState(() => Date.now());
   const refreshedAllowanceResetRef = useRef<string | null>(null);
   const catalogQuery = useQuery({ queryKey: ['bonus-games'], queryFn: fetchBonusGames });
@@ -480,7 +482,7 @@ function BonusGamesRulesModal({ onClose }: { onClose: () => void }): JSX.Element
     <AccessibleModal title="Правила бонусных игр" onClose={onClose}>
       <ol className="bonus-games-rules">
         <li>Игры открываются последовательно: сначала нужно пройти предыдущую.</li>
-        <li>Каждый день доступны две попытки на скорость и две попытки на точность.</li>
+        <li>Число ежедневных попыток указано над списком выбранного навыка.</li>
         <li>Для прохождения выполните указанную цель за доступные периоды и броски.</li>
         <li>Монеты, звёзды и опыт начисляются только за первое прохождение.</li>
         <li>Пройденные игры можно повторять, но без повторной награды.</li>

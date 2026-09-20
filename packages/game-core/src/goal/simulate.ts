@@ -13,15 +13,21 @@ const MARGIN = 14;
  * Time is absolute ms since session start — same contract as `simulateGoalie`.
  */
 export function simulateGoal(cfg: GoalieConfig, t: number, phaseOffsetMs = 0): GoalState {
+  const safeOffset = maxSafeOffset();
+  const baseOffset = clampOffset(cfg.goalOffsetX ?? 0, safeOffset);
   if (cfg.goalAmplitude <= 0 || cfg.goalFrequency <= 0) {
-    return { offsetX: 0 };
+    return { offsetX: baseOffset };
   }
-  const maxOffset = Math.max(0, Math.min(cfg.goalAmplitude, maxSafeOffset()));
+  const maxOffset = Math.max(0, Math.min(cfg.goalAmplitude, safeOffset));
   const period = 1000 / cfg.goalFrequency;
   const et = t + phaseOffsetMs;
   const phase = (((et % period) + period) % period) / period; // 0..1
   const tri = phase < 0.5 ? phase * 4 - 1 : 3 - phase * 4; // -1..1..-1
-  return { offsetX: maxOffset * tri };
+  return { offsetX: clampOffset(baseOffset + maxOffset * tri, safeOffset) };
+}
+
+function clampOffset(value: number, safeOffset: number): number {
+  return Math.max(-safeOffset, Math.min(safeOffset, value));
 }
 
 function maxSafeOffset(): number {

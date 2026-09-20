@@ -1,6 +1,10 @@
 import { apiFetch } from './apiFetch.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 import { showAmateurLevelRequiredError } from '../amateur/amateurAccess.js';
+import type {
+  MarksmanshipDifficultyCode,
+  MarksmanshipScoringRules,
+} from '@hockey/game-core';
 
 export type BonusGameCardState =
   | 'level_locked'
@@ -14,7 +18,7 @@ export type BonusGameCardState =
 export type BonusAttemptStatus = 'active' | 'completed' | 'failed' | 'abandoned';
 export type BonusAttemptState = 'idle' | 'period_active' | 'break_active' | 'closed';
 export type BonusGoaliePattern = 'linear' | 'sine' | 'dash';
-export type BonusSkillCode = 'speed' | 'accuracy';
+export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship';
 export type BonusQualificationRules =
   | {
       type: 'goals_from_shots';
@@ -27,6 +31,12 @@ export type BonusQualificationRules =
       targetGoals: number;
       activeTimeMs: number;
       requiredGoalStreak?: number;
+    }
+  | {
+      type: 'points_in_time';
+      targetPoints: number;
+      activeTimeMs: number;
+      scoring: MarksmanshipScoringRules;
     };
 
 export interface BonusPeriodRule {
@@ -91,6 +101,7 @@ export interface BonusGameCardAttempt {
   break_started_at: string | null;
   shots_taken: number;
   goals: number;
+  total_points: number;
 }
 
 export interface BonusGameCard {
@@ -171,6 +182,7 @@ export interface BonusGameAttempt {
   shots_taken: number;
   current_period_shots_taken: number;
   goals: number;
+  total_points: number;
   current_goal_streak: number;
   best_goal_streak: number;
   preview_required: boolean;
@@ -208,6 +220,10 @@ export interface BonusShotRequest {
 
 export interface BonusShotResponse {
   server_result: ShotResultType;
+  awarded_points: number;
+  total_points: number;
+  difficulty_code: MarksmanshipDifficultyCode | null;
+  counter_direction: boolean;
   attempt: BonusGameAttempt;
   reward_granted: boolean;
   balances: BonusReward;
@@ -239,6 +255,7 @@ function legacyQualificationRules(input: {
 
 function normalizeBonusAttempt(attempt: BonusGameAttempt): BonusGameAttempt {
   const legacyAttempt = attempt as BonusGameAttempt & {
+    total_points?: number;
     current_goal_streak?: number;
     best_goal_streak?: number;
     preview_required?: boolean;
@@ -254,6 +271,7 @@ function normalizeBonusAttempt(attempt: BonusGameAttempt): BonusGameAttempt {
   };
   return {
     ...attempt,
+    total_points: legacyAttempt.total_points ?? 0,
     current_goal_streak: legacyAttempt.current_goal_streak ?? 0,
     best_goal_streak: legacyAttempt.best_goal_streak ?? 0,
     preview_required: legacyAttempt.preview_required ?? false,
@@ -277,10 +295,16 @@ function normalizeAttemptResponse(response: BonusAttemptResponse): BonusAttemptR
 }
 
 function normalizeCatalog(response: BonusCatalogResponse): BonusCatalogResponse {
+  const normalizeCardAttempt = (
+    attempt: BonusGameCardAttempt | null,
+  ): BonusGameCardAttempt | null =>
+    attempt === null ? null : { ...attempt, total_points: attempt.total_points ?? 0 };
   return {
     ...response,
+    active_attempt: normalizeCardAttempt(response.active_attempt),
     games: response.games.map((game) => ({
       ...game,
+      active_attempt: normalizeCardAttempt(game.active_attempt),
       skill_code: game.skill_code ?? 'accuracy',
       qualification_rules:
         game.qualification_rules ??

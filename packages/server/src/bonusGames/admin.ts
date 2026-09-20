@@ -110,7 +110,7 @@ const title = z.string().trim().min(1).max(120);
 const mediaUrl = z.string().trim().max(2048);
 const statusSchema = z.enum(['draft', 'active', 'archived']);
 const accessTypeSchema = z.enum(['free', 'paid']);
-const skillCodeSchema = z.enum(['speed', 'accuracy']);
+const skillCodeSchema = z.enum(['speed', 'accuracy', 'marksmanship']);
 
 const arenaCreateSchema = z
   .object({
@@ -751,6 +751,7 @@ async function assertActiveDefinitionComplete(
       definition.skillCode,
       definition.qualificationRules,
       definition.periods,
+      definition.useInventory,
     );
   } catch {
     throw incompleteDefinition();

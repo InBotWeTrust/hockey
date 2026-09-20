@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { resolveShot } from '../../src/shot/resolve.js';
+import { resolveEmptyGoalShot, resolveShot } from '../../src/shot/resolve.js';
+import { resolvePerspectiveCourtEmptyGoalShot } from '../../src/court/perspective.js';
 import { simulateShooter } from '../../src/shooter/simulate.js';
 import { simulateGoalie } from '../../src/goalie/simulate.js';
 import { STICK_NEUTRAL, PUCK_SPEED_PER_MS } from '../../src/shot/types.js';
@@ -102,5 +103,75 @@ describe('resolveShot', () => {
     );
     expect(saveRes.type).toBe('save');
     expect(goalRes.type).toBe('goal');
+  });
+});
+
+describe('resolveEmptyGoalShot', () => {
+  it('uses the configured static goal offset', () => {
+    const tapTime = findTapTimeForShooter(PUCK_START.x);
+    const centered = resolveEmptyGoalShot({ tapTime }, baseCfg);
+    const shifted = resolveEmptyGoalShot(
+      { tapTime },
+      { ...baseCfg, goalOffsetX: 100 },
+    );
+
+    expect(centered.type).toBe('goal');
+    expect(shifted).toEqual({ type: 'miss', reason: 'wide' });
+  });
+});
+
+describe('resolvePerspectiveCourtEmptyGoalShot', () => {
+  it('scores against the displayed opening of a shifted perspective goal', () => {
+    const shiftedGoal = {
+      ...baseCfg,
+      goalOffsetX: -160,
+      goalAmplitude: 0,
+      goalFrequency: 0,
+    };
+    const visuallyOutside = resolvePerspectiveCourtEmptyGoalShot(
+      { tapTime: 35, shooterTapTime: 35, shooterFrequency: 1 },
+      shiftedGoal,
+    );
+    const visuallyInside = resolvePerspectiveCourtEmptyGoalShot(
+      { tapTime: 120, shooterTapTime: 120, shooterFrequency: 1 },
+      shiftedGoal,
+    );
+
+    expect(visuallyOutside).toEqual({ type: 'miss', reason: 'wide' });
+    expect(visuallyInside.type).toBe('goal');
+  });
+
+  it('scores against the displayed opening while the perspective goal moves', () => {
+    const movingGoal = {
+      ...baseCfg,
+      goalOffsetX: 0,
+      goalAmplitude: 160,
+      goalFrequency: 0.2,
+    };
+
+    expect(
+      resolvePerspectiveCourtEmptyGoalShot(
+        {
+          tapTime: 110,
+          shooterTapTime: 110,
+          shooterFrequency: 1,
+          goalFrequency: 0.2,
+          puckSpeedPerMs: 1.2,
+        },
+        movingGoal,
+      ),
+    ).toEqual({ type: 'miss', reason: 'wide' });
+    expect(
+      resolvePerspectiveCourtEmptyGoalShot(
+        {
+          tapTime: 210,
+          shooterTapTime: 210,
+          shooterFrequency: 1,
+          goalFrequency: 0.2,
+          puckSpeedPerMs: 1.2,
+        },
+        movingGoal,
+      ).type,
+    ).toBe('goal');
   });
 });

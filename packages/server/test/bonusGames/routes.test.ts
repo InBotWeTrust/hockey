@@ -590,12 +590,17 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     expect(shot.statusCode).toBe(200);
     expect(shot.json()).toMatchObject({
       server_result: serverResult,
+      awarded_points: 0,
+      total_points: 0,
+      difficulty_code: null,
+      counter_direction: false,
       reward_granted: false,
       balances: { coins: 0, stars: 0, experience: 0 },
       attempt: {
         id: attempt.id,
         shots_taken: 1,
         current_period_shots_taken: 1,
+        total_points: 0,
         reward_granted: false,
       },
     });
@@ -1449,6 +1454,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     expect(catalog.json().attempt_allowances).toMatchObject({
       accuracy: { daily_limit: 2, used: 2, remaining: 0 },
       speed: { daily_limit: 2, used: 1, remaining: 1 },
+      marksmanship: { daily_limit: 100, used: 0, remaining: 100 },
     });
 
     await pool.query(

@@ -157,13 +157,14 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     const seededBonusGames = await pool.query<{
       slug: string;
       title: string;
-      skill_code: 'speed' | 'accuracy';
+      skill_code: 'speed' | 'accuracy' | 'marksmanship';
       sort_order: number;
       unlock_price_stars: number;
       reward_stars: number;
       qualification_rules: {
         type: string;
         targetGoals?: number;
+        targetPoints?: number;
         shotsLimit?: number;
         activeTimeMs?: number;
         requiredGoalStreak?: number;
@@ -187,15 +188,20 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         where game.status = 'active'
         order by game.skill_code, game.sort_order`,
     );
-    expect(seededBonusGames.rows).toHaveLength(23);
+    expect(seededBonusGames.rows).toHaveLength(30);
     const speedTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'speed');
     const accuracyTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'accuracy');
+    const marksmanshipTrack = seededBonusGames.rows.filter(
+      (game) => game.skill_code === 'marksmanship',
+    );
     expect(speedTrack).toHaveLength(10);
     expect(accuracyTrack).toHaveLength(13);
+    expect(marksmanshipTrack).toHaveLength(7);
     expect(speedTrack.map((game) => game.sort_order)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(accuracyTrack.map((game) => game.sort_order)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
     ]);
+    expect(marksmanshipTrack.map((game) => game.sort_order)).toEqual([1, 2, 3, 4, 5, 6, 7]);
     expect(speedTrack.map((game) => game.slug)).toEqual([
       'speed-beach',
       'speed-ski-resort',
@@ -223,12 +229,27 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       'accuracy-beijing',
       'accuracy-tokyo',
     ]);
+    expect(marksmanshipTrack.map((game) => game.slug)).toEqual([
+      'marksmanship-1',
+      'marksmanship-2',
+      'marksmanship-3',
+      'marksmanship-4',
+      'marksmanship-5',
+      'marksmanship-6',
+      'marksmanship-7',
+    ]);
     expect(speedTrack.every((game) => game.qualification_rules.type === 'goals_in_time')).toBe(
       true,
     );
     expect(
       accuracyTrack.every((game) => game.qualification_rules.type === 'goals_from_shots'),
     ).toBe(true);
+    expect(
+      marksmanshipTrack.every((game) => game.qualification_rules.type === 'points_in_time'),
+    ).toBe(true);
+    expect(marksmanshipTrack.map((game) => game.qualification_rules.targetPoints)).toEqual([
+      1100, 2450, 4000, 5750, 7750, 9950, 12450,
+    ]);
     expect(
       accuracyTrack.map((game) => ({
         title: game.title,
@@ -292,7 +313,16 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         'current_goal_streak',
         'best_goal_streak',
         'preview_acknowledged_at',
+        'total_points',
       ]),
+    );
+
+    const shotColumns = await pool.query<{ column_name: string }>(
+      `select column_name from information_schema.columns
+        where table_schema = 'public' and table_name = 'shot_session'`,
+    );
+    expect(shotColumns.rows.map((row) => row.column_name)).toEqual(
+      expect.arrayContaining(['awarded_points', 'score_details']),
     );
 
     const activeDuelTemplateKinds = await pool.query<{ duel_kind: string; count: string }>(

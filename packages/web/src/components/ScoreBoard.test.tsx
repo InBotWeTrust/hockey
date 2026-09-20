@@ -103,6 +103,22 @@ describe('ScoreBoard', () => {
     expect(model.notice).toBeUndefined();
   });
 
+  it('uses compact typography for a custom exercise label', () => {
+    const model = buildGameScoreboardModel({
+      period: 1,
+      periodsTotal: 5,
+      periodLabel: 'УПРАЖНЕНИЕ',
+      timer: '2/5',
+      goals: 2,
+      shots: 4,
+    });
+
+    expect(model.rows[0]?.metrics[0]).toMatchObject({
+      label: 'УПРАЖНЕНИЕ',
+      labelEmphasis: 'small',
+    });
+  });
+
   it('uses compact typography for a long countdown in every game mode', () => {
     render(
       <ScoreBoard
