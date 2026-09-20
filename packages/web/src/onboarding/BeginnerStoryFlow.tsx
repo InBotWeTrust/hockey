@@ -34,6 +34,11 @@ const replayTutorialStep: Extract<OnboardingStep, { kind: 'tutorial_shot' }> = {
   tutorial: { shooterFrequency: 0.8, goalieFrequency: 0.65, goalFrequency: 0.55 },
 };
 
+const STORY_TYPING_DELAY_MS = 34;
+const STORY_COMMA_PAUSE_MS = 170;
+const STORY_PUNCTUATION_PAUSE_MS = 580;
+const STORY_RESULT_PAUSE_MS = 1_100;
+
 const replayTutorialApi = {
   start: async () => ({
     seed: 'story-series-one-replay',
@@ -128,12 +133,12 @@ export function BeginnerStoryFlow({
         (scene === 'goal' && nextText.endsWith('Незнакомец едва заметно кивает.')) ||
         (scene === 'miss' && nextText.endsWith('Незнакомец даже не меняется в лице.'));
       const delay = resultPause
-        ? 780
+        ? STORY_RESULT_PAUSE_MS
         : printed === ','
-          ? 120
+          ? STORY_COMMA_PAUSE_MS
           : '.:!?'.includes(printed)
-            ? 360
-            : 22;
+            ? STORY_PUNCTUATION_PAUSE_MS
+            : STORY_TYPING_DELAY_MS;
       typingTimer = window.setTimeout(typeNext, delay);
     }, startDelay);
 

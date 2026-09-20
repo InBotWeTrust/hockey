@@ -88,7 +88,7 @@ export function ProfileStoryScreen(): JSX.Element {
                   <span className="profile-story-series-card__copy">
                     <strong>Путь со двора</strong>
                     <span>Последняя шайба и случайная встреча.</span>
-                    <small>Пройдено</small>
+                    <small>Просмотрено</small>
                   </span>
                 </button>
               ) : (
