@@ -26,6 +26,17 @@ export function deriveInitialTrainingSeed(
     .digest('hex');
 }
 
+export function deriveAdvancedTrainingSeed(
+  runId: string,
+  userId: string,
+  exerciseKey: string,
+  secret: string,
+): string {
+  return createHash('sha256')
+    .update(`${runId}:${userId}:advanced_training:${exerciseKey}:${secret}`)
+    .digest('hex');
+}
+
 export function deriveAmateurDuelSeed(
   matchId: string,
   challengerUserId: string,

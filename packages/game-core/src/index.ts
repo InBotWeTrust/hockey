@@ -58,6 +58,16 @@ export {
   type MarksmanshipShotInput,
   type StrictCounterDirectionInput,
 } from './marksmanship.js';
+export {
+  ADVANCED_TRAINING_EXERCISE_KEYS,
+  ADVANCED_TRAINING_SCENARIOS,
+  evaluateAdvancedTrainingShot,
+  type AdvancedTrainingEvaluation,
+  type AdvancedTrainingEvaluationInput,
+  type AdvancedTrainingExerciseKey,
+  type AdvancedTrainingFeedbackCode,
+  type AdvancedTrainingScenario,
+} from './advancedTraining.js';
 export { GOALIES, getGoalie } from './balance/goalies.js';
 export {
   STICKS,

@@ -41,6 +41,7 @@ export interface ScoreBoardProps {
   timer: string;
   timerLabel?: string | undefined;
   goals: number;
+  scoreLabel?: string | undefined;
   shots: number;
   shotsTotal?: number | undefined;
   notice?: string | undefined;
@@ -202,7 +203,7 @@ export function GameScoreboard({
 export function ScoreBoard(props: ScoreBoardProps): JSX.Element {
   const model = buildGameScoreboardModel({
     ...props,
-    scoreLabel: props.opponent ? 'СЧЁТ' : 'ШАЙБЫ',
+    scoreLabel: props.opponent ? 'СЧЁТ' : (props.scoreLabel ?? 'ШАЙБЫ'),
   });
   return <GameScoreboard {...model} />;
 }

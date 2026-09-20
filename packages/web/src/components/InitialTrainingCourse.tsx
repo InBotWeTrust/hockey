@@ -1,7 +1,6 @@
 import { Check, ChevronRight, Star, TrendingUp } from 'lucide-react';
 import { rewardColor } from '../app/rewardColors.js';
 import type {
-  AdvancedTrainingCatalogResponse,
   InitialTrainingCatalogResponse,
   InitialTrainingExercise,
   InitialTrainingExerciseKey,

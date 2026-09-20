@@ -266,12 +266,14 @@ export interface PlayViewProps<TState> {
   periodsTotal?: number;
   scoreboardPeriodsTotal?: number;
   goals: number;
+  scoreLabel?: string | undefined;
   scoreboardGoals?: number | undefined;
   shots: number;
   shotIndexBase?: number | undefined;
   shotsTotal?: number | undefined;
   timer?: string | undefined;
   timerLabel?: string | undefined;
+  autoShotDelayMs?: number | undefined;
   scoreboardNotice?: string | undefined;
   shotButtonLabel?: string | undefined;
   primaryActionBlocked?: boolean | undefined;
@@ -571,12 +573,14 @@ export function PlayView<TState>({
   periodsTotal = 3,
   scoreboardPeriodsTotal,
   goals,
+  scoreLabel,
   scoreboardGoals,
   shots,
   shotIndexBase,
   shotsTotal,
   timer,
   timerLabel,
+  autoShotDelayMs,
   scoreboardNotice,
   shotButtonLabel = 'БРОСОК',
   primaryActionBlocked = false,
@@ -1766,6 +1770,12 @@ export function PlayView<TState>({
     scheduleClockRebaseFromLatestTiming,
   ]);
 
+  useEffect(() => {
+    if (!active || !pixiReady || autoShotDelayMs === undefined) return;
+    const timeout = window.setTimeout(handleShotTap, Math.max(0, autoShotDelayMs));
+    return () => window.clearTimeout(timeout);
+  }, [active, autoShotDelayMs, handleShotTap, pixiReady]);
+
   const handleInactiveAction = useCallback(async (): Promise<void> => {
     if (!inactiveAction || isInactiveActionPending) return;
     setIsInactiveActionPending(true);
@@ -1838,6 +1848,7 @@ export function PlayView<TState>({
               timer: timerValue,
               timerLabel: timerLabel ?? 'ВРЕМЯ',
               goals: visibleScoreboardGoals,
+              ...(scoreLabel !== undefined ? { scoreLabel } : {}),
               shots: visibleScoreboardShots,
               ...(shotsTotal !== undefined ? { shotsTotal } : {}),
               ...(visibleScoreboardNotice !== undefined ? { notice: visibleScoreboardNotice } : {}),
@@ -1909,6 +1920,7 @@ export function PlayView<TState>({
             timer={timerValue}
             timerLabel={timerLabel}
             goals={visibleScoreboardGoals}
+            {...(scoreLabel !== undefined ? { scoreLabel } : {})}
             shots={visibleScoreboardShots}
             shotsTotal={shotsTotal}
             opponent={scoreboardOpponent}

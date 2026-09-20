@@ -95,7 +95,11 @@ import {
   InitialTrainingCatalog,
   InitialTrainingHub,
 } from '../components/InitialTrainingCourse.js';
-import { AdvancedTrainingCatalog } from '../components/AdvancedTrainingCourse.js';
+import {
+  AdvancedTrainingCatalog,
+  type AdvancedTrainingExerciseKey,
+} from '../components/AdvancedTrainingCourse.js';
+import { AdvancedTrainingPlay } from '../components/AdvancedTrainingPlay.js';
 import { InitialTrainingPlay } from '../components/InitialTrainingPlay.js';
 import { fetchBonusGames } from '../api/bonusGames.js';
 import type { ProfileData } from './profileTypes.js';
@@ -3676,6 +3680,17 @@ function TrainingPlaceholder({
     }
     if (section === 'advanced') {
       const advanced = courseCatalog.advanced_training;
+      const advancedExercise = advanced.exercises.find((item) => item.key === exerciseParam);
+      if (advancedExercise && advancedExercise.state !== 'locked' && params.get('play') === '1') {
+        return (
+          <AdvancedTrainingPlay
+            exerciseKey={advancedExercise.key as AdvancedTrainingExerciseKey}
+            onBack={() => navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })}
+            onCourse={() => navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })}
+            onCatalogRefresh={() => void refreshCourseCatalog()}
+          />
+        );
+      }
       return (
         <ModeShell
           title="Продвинутое обучение"
