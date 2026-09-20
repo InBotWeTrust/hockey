@@ -21,6 +21,8 @@ const profile = {
   role: 'player',
   grip: 'right' as const,
   competitionLevel: 'beginner' as const,
+  beginnerOnboardingCompleted: true,
+  amateurUnlockGoalsRequired: 300,
   stats: { shots: 128, goals: 64, accuracy: 50, playStreakDays: 7, bestPlayStreakDays: 12 },
   achievements: [
     {

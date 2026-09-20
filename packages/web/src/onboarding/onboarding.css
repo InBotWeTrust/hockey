@@ -24,6 +24,208 @@
   overscroll-behavior-y: contain;
 }
 
+.beginner-story {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  width: 100%;
+  height: var(--app-viewport-height, 100dvh);
+  overflow: hidden;
+  color: #f7f8fb;
+  background: #081426;
+}
+
+.beginner-story__media,
+.beginner-story__image,
+.beginner-story__shade {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.beginner-story__image {
+  object-fit: cover;
+  object-position: center;
+  user-select: none;
+}
+
+.beginner-story--car .beginner-story__media {
+  filter: brightness(0.78);
+  transition: filter 320ms ease-out;
+}
+
+.beginner-story--car.beginner-story--headlights .beginner-story__media {
+  filter: brightness(1);
+}
+
+.beginner-story__headlights {
+  opacity: 0;
+  transition: opacity 280ms ease-out;
+}
+
+.beginner-story__headlights--visible {
+  opacity: 1;
+}
+
+.beginner-story__shade {
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent 42%, rgba(3, 9, 18, 0.38) 58%, rgba(3, 9, 18, 0.86) 74%, rgba(3, 9, 18, 0.97));
+}
+
+.beginner-story__copy {
+  position: absolute;
+  z-index: 2;
+  right: 24px;
+  bottom: calc(var(--app-safe-bottom, 20px) + 92px);
+  left: 24px;
+  display: grid;
+}
+
+.beginner-story__copy p {
+  grid-area: 1 / 1;
+  max-width: 336px;
+  margin: 0;
+  color: rgba(248, 250, 253, 0.94);
+  font-size: 20px;
+  font-weight: 540;
+  line-height: 1.48;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.62);
+  white-space: pre-line;
+}
+
+.beginner-story__copy-reserve {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.beginner-story__dialogue {
+  color: #86aeda;
+  font-weight: 650;
+}
+
+.beginner-story__dialogue--player {
+  color: rgba(248, 250, 253, 0.94);
+}
+
+.beginner-story__threshold {
+  display: inline-block;
+  color: #f6f8fc;
+  font-size: 42px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  line-height: 1;
+}
+
+.beginner-story__copy p.is-typing::after {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: -0.12em;
+  content: '';
+  background: rgba(255, 255, 255, 0.78);
+  animation: beginner-story-caret 620ms steps(1, end) infinite;
+}
+
+.beginner-story__cta {
+  position: absolute;
+  z-index: 3;
+  right: 24px;
+  bottom: calc(var(--app-safe-bottom, 20px) + 18px);
+  left: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 54px;
+  padding: 0 19px;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 650;
+  background: rgba(9, 20, 37, 0.76);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 16px;
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition: 220ms ease;
+}
+
+.beginner-story__cta--visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.beginner-story__completion-error {
+  position: absolute;
+  z-index: 5;
+  right: 24px;
+  bottom: calc(var(--app-safe-bottom, 20px) + 86px);
+  left: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.35;
+  background: rgba(102, 25, 31, 0.92);
+  border: 1px solid rgba(255, 185, 190, 0.45);
+  border-radius: 14px;
+  backdrop-filter: blur(14px);
+}
+
+.beginner-story__completion-error button {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 10px;
+}
+
+.beginner-story__close {
+  position: absolute;
+  z-index: 6;
+  top: calc(var(--app-safe-top, 0px) + 14px);
+  right: 16px;
+  color: #fff;
+  background: rgba(9, 20, 37, 0.72);
+  border-color: rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(12px);
+}
+
+.beginner-story--shot .onboarding-tutorial,
+.beginner-story--shot .onboarding-tutorial__rink,
+.beginner-story--shot .play-screen {
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes beginner-story-caret {
+  0%, 52% { opacity: 1; }
+  53%, 100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story__headlights,
+  .beginner-story__cta {
+    transition-duration: 1ms;
+  }
+  .beginner-story__copy p.is-typing::after {
+    animation: none;
+  }
+}
+
 .onboarding-flow__progress {
   align-self: center;
   color: rgba(218, 231, 247, 0.72);
