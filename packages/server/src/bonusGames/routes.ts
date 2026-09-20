@@ -1,22 +1,21 @@
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from 'fastify';
-import type { PoolClient } from 'pg';
 import { z, type ZodType } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import { listBonusGameCards, type BonusGameCardDto } from './catalog.js';
 import { purchaseBonusGame } from './economy.js';
-import { reconcileBonusAttempt } from './reconcile.js';
 import {
   abandonBonusAttempt,
   acknowledgeBonusPreview,
   BonusAttemptAlreadyActiveError,
   fetchBonusAttemptAllowances,
-  loadBonusAttemptDto,
+  reconcileCurrentBonusAttempt,
+  reconcileOwnedBonusAttempt,
   startBonusPeriod,
   startOrResumeBonusAttempt,
   submitBonusShot,
   type SubmitBonusShotInput,
 } from './service.js';
-import type { BonusGameAttemptDTO, BonusGameAttemptRow, BonusPeriodRule } from './types.js';
+import type { BonusGameAttemptDTO, BonusPeriodRule } from './types.js';
 
 export interface BonusGameRouteOptions {
   bonusSeedSecret: string;
@@ -188,24 +187,6 @@ async function runBonusRoute<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function withTransaction<T>(
-  app: FastifyInstance,
-  fn: (client: PoolClient) => Promise<T>,
-): Promise<T> {
-  const client = await app.pg.connect();
-  try {
-    await client.query('begin');
-    const result = await fn(client);
-    await client.query('commit');
-    return result;
-  } catch (error) {
-    await client.query('rollback').catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
 function toPeriodRuleDto(rule: BonusPeriodRule) {
   return {
     period_number: rule.periodNumber,
@@ -319,18 +300,7 @@ async function reconcileCurrentAttempt(
   userId: string,
   now: Date,
 ): Promise<BonusGameAttemptDTO | null> {
-  return withTransaction(app, async (client) => {
-    const { rows } = await client.query<BonusGameAttemptRow>(
-      `select * from bonus_game_attempt
-        where user_id = $1 and status = 'active'
-        for update`,
-      [userId],
-    );
-    const attempt = rows[0];
-    if (attempt === undefined) return null;
-    const reconciled = await reconcileBonusAttempt(client, attempt, now);
-    return reconciled.status === 'active' ? loadBonusAttemptDto(client, reconciled) : null;
-  });
+  return reconcileCurrentBonusAttempt(app.pg, { userId, now });
 }
 
 async function reconcileOwnedAttempt(
@@ -339,21 +309,7 @@ async function reconcileOwnedAttempt(
   attemptId: string,
   now: Date,
 ): Promise<BonusGameAttemptDTO> {
-  return withTransaction(app, async (client) => {
-    const { rows } = await client.query<BonusGameAttemptRow>(
-      `select * from bonus_game_attempt
-        where id = $1 and user_id = $2
-        for update`,
-      [attemptId, userId],
-    );
-    const attempt = rows[0];
-    if (attempt === undefined) {
-      throw new AppError('bonus_attempt_not_active', 'bonus attempt is not active', 409);
-    }
-    const reconciled =
-      attempt.status === 'active' ? await reconcileBonusAttempt(client, attempt, now) : attempt;
-    return loadBonusAttemptDto(client, reconciled);
-  });
+  return reconcileOwnedBonusAttempt(app.pg, { userId, attemptId, now });
 }
 
 function activeAttemptConflict(reply: FastifyReply, error: BonusAttemptAlreadyActiveError) {

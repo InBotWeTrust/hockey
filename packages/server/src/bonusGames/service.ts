@@ -26,7 +26,7 @@ import {
   type BalanceSnapshot,
 } from './economy.js';
 import { assertBonusGameAccessibleToUser, lockBonusGameCatalogForRead } from './catalog.js';
-import { BONUS_SHOT_RESULT_PAUSE_MS } from './endurance.js';
+import { BONUS_SHOT_RESULT_PAUSE_MS, nextEnduranceGoalWindow } from './endurance.js';
 import { closeBonusPeriod, reconcileBonusAttempt } from './reconcile.js';
 import {
   advanceGoalStreak,
@@ -175,6 +175,8 @@ export function toBonusAttemptDto(
     state: attempt.state,
     currentPeriod: Number(attempt.current_period),
     periodStartedAt: toIso(attempt.period_started_at),
+    goalWindowStartedAt: toIso(attempt.goal_window_started_at),
+    goalWindowEndsAt: toIso(attempt.goal_window_ends_at),
     breakStartedAt: toIso(attempt.break_started_at),
     closedAt: toIso(attempt.closed_at),
     shotsTaken: Number(attempt.shots_taken),
@@ -225,6 +227,54 @@ export async function loadBonusAttemptDto(
     rewardGranted: derived.reward_granted,
     currentLoadout: derived.current_loadout,
   });
+}
+
+export async function reconcileCurrentBonusAttempt(
+  pool: Pool,
+  input: { userId: string; now: Date },
+): Promise<BonusGameAttemptDTO | null> {
+  const client = await begin(pool);
+  try {
+    await lockBonusEconomyBalances(client, input.userId, input.now);
+    const attempt = await fetchActiveAttempt(client, input.userId);
+    if (attempt === null) {
+      await client.query('commit');
+      return null;
+    }
+    const reconciled = await reconcileBonusAttempt(client, attempt, input.now);
+    const result =
+      reconciled.status === 'active' ? await loadBonusAttemptDto(client, reconciled) : null;
+    await client.query('commit');
+    return result;
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function reconcileOwnedBonusAttempt(
+  pool: Pool,
+  input: { userId: string; attemptId: string; now: Date },
+): Promise<BonusGameAttemptDTO> {
+  const client = await begin(pool);
+  try {
+    await lockBonusEconomyBalances(client, input.userId, input.now);
+    const attempt = await fetchOwnedAttempt(client, input.userId, input.attemptId);
+    const reconciled =
+      attempt.status === 'active'
+        ? await reconcileBonusAttempt(client, attempt, input.now)
+        : attempt;
+    const result = await loadBonusAttemptDto(client, reconciled);
+    await client.query('commit');
+    return result;
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function lockUser(client: PoolClient, userId: string): Promise<LockedUserRow> {
@@ -342,6 +392,17 @@ async function fetchActiveAttempt(
     [userId],
   );
   return rows[0] ?? null;
+}
+
+async function hasActiveAttempt(client: PoolClient, userId: string): Promise<boolean> {
+  const { rows } = await client.query<{ active: boolean }>(
+    `select exists(
+       select 1 from bonus_game_attempt
+        where user_id = $1 and status = 'active'
+     ) as active`,
+    [userId],
+  );
+  return rows[0]?.active === true;
 }
 
 async function fetchOwnedAttempt(
@@ -475,6 +536,9 @@ export async function startOrResumeBonusAttempt(
     const user = await lockUser(client, input.userId);
     await lockBonusGameCatalogForRead(client);
     await assertBonusGameAccessibleToUser(client, input.userId, input.gameId);
+    if (await hasActiveAttempt(client, input.userId)) {
+      await lockBonusEconomyBalances(client, input.userId, input.now);
+    }
     const active = await fetchActiveAttempt(client, input.userId);
     if (active !== null) {
       await assertBonusGameAccessibleToUser(client, input.userId, active.bonus_game_id);
@@ -628,6 +692,7 @@ export async function startBonusPeriod(
   let result: BonusGameAttemptDTO | null = null;
   try {
     await lockUser(client, input.userId);
+    await lockBonusEconomyBalances(client, input.userId, input.now);
     const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
     await lockBonusGameCatalogForRead(client);
     await assertBonusGameAccessibleToUser(client, input.userId, owned.bonus_game_id);
@@ -653,6 +718,11 @@ export async function startBonusPeriod(
       deferredError = new AppError('bonus_period_not_ready', 'bonus period is not ready', 409);
     } else {
       const nextPeriod = Number(attempt.current_period) + 1;
+      const qualificationRules = qualificationForAttempt(attempt);
+      const goalWindowEndsAt =
+        qualificationRules.type === 'survive_goal_windows'
+          ? new Date(input.now.getTime() + qualificationRules.goalWindowMs)
+          : null;
       if (attempt.rules_snapshot.useInventory) {
         await consumePeriodLoadout(client, {
           userId: input.userId,
@@ -665,10 +735,18 @@ export async function startBonusPeriod(
       const { rows } = await client.query<BonusGameAttemptRow>(
         `update bonus_game_attempt
             set state = 'period_active', current_period = current_period + 1,
-                period_started_at = $1, break_started_at = null, updated_at = $1
-          where id = $2
+                period_started_at = $1,
+                goal_window_started_at = $2,
+                goal_window_ends_at = $3,
+                break_started_at = null, updated_at = $1
+          where id = $4
         returning *`,
-        [input.now, attempt.id],
+        [
+          input.now,
+          qualificationRules.type === 'survive_goal_windows' ? input.now : null,
+          goalWindowEndsAt,
+          attempt.id,
+        ],
       );
       result = await loadBonusAttemptDto(client, rows[0]!);
     }
@@ -737,6 +815,7 @@ export async function abandonBonusAttempt(
   let result: BonusGameAttemptDTO | null = null;
   try {
     await lockUser(client, input.userId);
+    await lockBonusEconomyBalances(client, input.userId, input.now);
     const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
     await lockBonusGameCatalogForRead(client);
     await assertBonusGameAccessibleToUser(client, input.userId, owned.bonus_game_id);
@@ -750,7 +829,8 @@ export async function abandonBonusAttempt(
       const { rows } = await client.query<BonusGameAttemptRow>(
         `update bonus_game_attempt
             set status = 'abandoned', state = 'closed', closed_at = $1,
-                period_started_at = null, break_started_at = null, updated_at = $1
+                period_started_at = null, goal_window_started_at = null,
+                goal_window_ends_at = null, break_started_at = null, updated_at = $1
           where id = $2
         returning *`,
         [input.now, attempt.id],
@@ -989,7 +1069,9 @@ export async function submitBonusShot(
     }
     let attempt = owned;
     const isMarksmanship = attempt.rules_snapshot.skillCode === 'marksmanship';
-    const acceptedBeforeReconcile = isMarksmanship
+    const isEndurance = attempt.rules_snapshot.skillCode === 'endurance';
+    const acceptsLateSettlement = isMarksmanship || isEndurance;
+    const acceptedBeforeReconcile = acceptsLateSettlement
       ? await fetchAcceptedBonusShot(
           client,
           attempt.id,
@@ -1009,12 +1091,12 @@ export async function submitBonusShot(
         balances,
       };
     } else {
-      if (!isMarksmanship) {
+      if (!acceptsLateSettlement) {
         attempt = await reconcileBonusAttempt(client, attempt, input.now);
       }
 
       if (attempt.status !== 'active' || attempt.state !== 'period_active') {
-        const acceptedAfterReconcile = !isMarksmanship
+        const acceptedAfterReconcile = !acceptsLateSettlement
           ? await fetchAcceptedBonusShot(
               client,
               attempt.id,
@@ -1060,7 +1142,15 @@ export async function submitBonusShot(
             acceptedShotCount * BONUS_SHOT_RESULT_PAUSE_MS,
         );
         const periodEndsAt = new Date(attempt.period_started_at.getTime() + rule.durationMs);
-        if (isMarksmanship && authoritativeShotStartedAt > periodEndsAt) {
+        const enduranceDeadlineExceeded =
+          isEndurance &&
+          (attempt.goal_window_ends_at === null ||
+            authoritativeShotStartedAt > attempt.goal_window_ends_at ||
+            authoritativeShotStartedAt > periodEndsAt);
+        if (
+          (isMarksmanship && authoritativeShotStartedAt > periodEndsAt) ||
+          enduranceDeadlineExceeded
+        ) {
           attempt = await reconcileBonusAttempt(client, attempt, input.now);
           deferredError = new AppError('bonus_period_not_ready', 'bonus period is not active', 409);
         } else if (input.claimedShotIndex !== expectedShotIndex) {
@@ -1211,42 +1301,69 @@ export async function submitBonusShot(
             attempt = updated.rows[0]!;
 
             let rewardGranted: BonusRewardSnapshot | null = null;
-            const qualification = evaluateBonusQualification(qualificationRules, {
-              goals: Number(attempt.goals),
-              shotsTaken: Number(attempt.shots_taken),
-              bestGoalStreak: Number(attempt.best_goal_streak),
-              activeElapsedMs: await activeElapsedMs(
-                client,
-                attempt,
-                isMarksmanship ? authoritativeShotStartedAt : input.now,
-              ),
-              totalPoints: Number(attempt.total_points),
-            });
-            if (qualification.passed) {
-              await closeBonusPeriod(client, attempt, input.now, 'target_reached');
-              const reward = await grantFirstClearReward(client, {
-                userId: input.userId,
-                gameId: attempt.bonus_game_id,
-                attemptId: attempt.id,
-                reward: attempt.reward_snapshot,
-                now: input.now,
+            if (isEndurance) {
+              if (serverResult === 'goal') {
+                if (qualificationRules.type !== 'survive_goal_windows') {
+                  throw new AppError('internal_error', 'invalid endurance rules snapshot', 500);
+                }
+                const flightMs = (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs;
+                const nextWindow = nextEnduranceGoalWindow({
+                  shotStartedAt: authoritativeShotStartedAt,
+                  flightMs,
+                  goalWindowMs: qualificationRules.goalWindowMs,
+                });
+                const windowUpdate = await client.query<BonusGameAttemptRow>(
+                  `update bonus_game_attempt
+                      set goal_window_started_at = $2,
+                          goal_window_ends_at = $3,
+                          updated_at = $4
+                    where id = $1
+                    returning *`,
+                  [attempt.id, nextWindow.startsAt, nextWindow.endsAt, input.now],
+                );
+                attempt = windowUpdate.rows[0]!;
+              }
+              attempt = await reconcileBonusAttempt(client, attempt, input.now);
+              balances = await lockBonusEconomyBalances(client, input.userId, input.now);
+            } else {
+              const qualification = evaluateBonusQualification(qualificationRules, {
+                goals: Number(attempt.goals),
+                shotsTaken: Number(attempt.shots_taken),
+                bestGoalStreak: Number(attempt.best_goal_streak),
+                activeElapsedMs: await activeElapsedMs(
+                  client,
+                  attempt,
+                  isMarksmanship ? authoritativeShotStartedAt : input.now,
+                ),
+                totalPoints: Number(attempt.total_points),
               });
-              balances = reward.balances;
-              rewardGranted = reward.granted ? attempt.reward_snapshot : null;
-              const completed = await client.query<BonusGameAttemptRow>(
-                `update bonus_game_attempt
+              if (qualification.passed) {
+                await closeBonusPeriod(client, attempt, input.now, 'target_reached');
+                const reward = await grantFirstClearReward(client, {
+                  userId: input.userId,
+                  gameId: attempt.bonus_game_id,
+                  attemptId: attempt.id,
+                  reward: attempt.reward_snapshot,
+                  now: input.now,
+                });
+                balances = reward.balances;
+                rewardGranted = reward.granted ? attempt.reward_snapshot : null;
+                const completed = await client.query<BonusGameAttemptRow>(
+                  `update bonus_game_attempt
                     set status = 'completed', state = 'closed', closed_at = $1,
-                        period_started_at = null, break_started_at = null, updated_at = $1
+                        period_started_at = null, goal_window_started_at = null,
+                        goal_window_ends_at = null, break_started_at = null, updated_at = $1
                   where id = $2
                   returning *`,
-                [input.now, attempt.id],
-              );
-              attempt = completed.rows[0]!;
-            } else if (
-              isMarksmanship ||
-              (rule.shotsLimit !== null && expectedShotIndex >= rule.shotsLimit)
-            ) {
-              attempt = await reconcileBonusAttempt(client, attempt, input.now);
+                  [input.now, attempt.id],
+                );
+                attempt = completed.rows[0]!;
+              } else if (
+                isMarksmanship ||
+                (rule.shotsLimit !== null && expectedShotIndex >= rule.shotsLimit)
+              ) {
+                attempt = await reconcileBonusAttempt(client, attempt, input.now);
+              }
             }
 
             response = {
