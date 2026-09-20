@@ -1,4 +1,4 @@
-export type GameScoreboardMetricTone = 'default' | 'timer' | 'muted' | 'danger';
+export type GameScoreboardMetricTone = 'default' | 'timer' | 'muted' | 'warning' | 'danger';
 export type GameScoreboardMetricEmphasis = 'default' | 'large' | 'small';
 
 export interface GameScoreboardMetric {

@@ -44,7 +44,7 @@ describe('qualificationDescription', () => {
         activeTimeMs: 180_000,
         goalWindowMs: 7_000,
       }),
-    ).toBe('Продержаться 03:00 · гол не реже чем раз в 7,0 сек');
+    ).toBe('Продержаться 03:00 мин · Гол не реже, чем раз в 7 сек');
   });
 });
 

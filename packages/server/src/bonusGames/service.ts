@@ -1302,27 +1302,25 @@ export async function submitBonusShot(
 
             let rewardGranted: BonusRewardSnapshot | null = null;
             if (isEndurance) {
-              if (serverResult === 'goal') {
-                if (qualificationRules.type !== 'survive_goal_windows') {
-                  throw new AppError('internal_error', 'invalid endurance rules snapshot', 500);
-                }
-                const flightMs = (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs;
-                const nextWindow = nextEnduranceGoalWindow({
-                  shotStartedAt: authoritativeShotStartedAt,
-                  flightMs,
-                  goalWindowMs: qualificationRules.goalWindowMs,
-                });
-                const windowUpdate = await client.query<BonusGameAttemptRow>(
-                  `update bonus_game_attempt
-                      set goal_window_started_at = $2,
-                          goal_window_ends_at = $3,
-                          updated_at = $4
-                    where id = $1
-                    returning *`,
-                  [attempt.id, nextWindow.startsAt, nextWindow.endsAt, input.now],
-                );
-                attempt = windowUpdate.rows[0]!;
+              if (qualificationRules.type !== 'survive_goal_windows') {
+                throw new AppError('internal_error', 'invalid endurance rules snapshot', 500);
               }
+              const flightMs = (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs;
+              const nextWindow = nextEnduranceGoalWindow({
+                shotStartedAt: authoritativeShotStartedAt,
+                flightMs,
+                goalWindowMs: qualificationRules.goalWindowMs,
+              });
+              const windowUpdate = await client.query<BonusGameAttemptRow>(
+                `update bonus_game_attempt
+                    set goal_window_started_at = $2,
+                        goal_window_ends_at = $3,
+                        updated_at = $4
+                  where id = $1
+                  returning *`,
+                [attempt.id, nextWindow.startsAt, nextWindow.endsAt, input.now],
+              );
+              attempt = windowUpdate.rows[0]!;
               attempt = await reconcileBonusAttempt(client, attempt, input.now);
               balances = await lockBonusEconomyBalances(client, input.userId, input.now);
             } else {

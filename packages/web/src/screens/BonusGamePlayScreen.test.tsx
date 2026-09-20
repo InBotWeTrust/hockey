@@ -23,6 +23,7 @@ import {
 import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
+import type { GameScoreboardModel } from '../components/ScoreBoard.js';
 
 const playViewProbe = vi.hoisted(() => vi.fn());
 const refreshAfterGameExit = vi.hoisted(() => vi.fn(async () => undefined));
@@ -42,7 +43,11 @@ vi.mock('../game/PlayView.js', () => ({
     shotButtonLabel?: string;
     primaryActionBlocked?: boolean;
     scoreboardNotice?: string;
+    scoreboardModel?:
+      | GameScoreboardModel
+      | ((counters: { goals: number; shots: number }) => GameScoreboardModel);
     overlayControls?: JSX.Element;
+    onResultVisibilityChange?: (visible: boolean) => void;
     inactiveAction?: () => unknown | Promise<unknown>;
     entranceBeforeInactiveAction?: boolean;
     goalsOnlyWhileInactive?: boolean;
@@ -383,20 +388,29 @@ describe('BonusGamePlayScreen', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Загружаем бонусную игру…');
   });
 
-  it('renders the authoritative endurance HUD with tenths and total time', () => {
+  it('renders endurance in the four-cell scoreboard without the legacy HUD or notice', () => {
     vi.spyOn(performance, 'now').mockReturnValue(1_000);
     setStore({ attempt: enduranceAttempt(), receivedAtPerformanceMs: 1_000 });
 
     renderScreen();
 
-    expect(screen.getByText('ДО ГОЛА')).toBeInTheDocument();
-    expect(screen.getByRole('timer', { name: 'До обязательного гола' })).toHaveTextContent('7,0');
-    expect(screen.getByText('ОСТАЛОСЬ 03:00')).toBeInTheDocument();
-    expect(screen.getByText('ИГРА 1')).toBeInTheDocument();
-    expect(screen.getByText('ГОЛЫ 0')).toBeInTheDocument();
+    const props = playViewProbe.mock.lastCall?.[0] as {
+      scoreboardModel: (counters: { goals: number; shots: number }) => GameScoreboardModel;
+      scoreboardNotice?: string;
+      overlayControls?: JSX.Element;
+    };
+    expect(props.scoreboardModel({ goals: 0, shots: 0 }).rows[0]?.metrics).toEqual([
+      expect.objectContaining({ label: 'ПЕРИОД', value: '1/1' }),
+      expect.objectContaining({ label: 'ГОЛЫ / БРОСКИ', value: '0/0' }),
+      expect.objectContaining({ label: 'ДО ГОЛА', value: '7,0', tone: 'warning' }),
+      expect.objectContaining({ label: 'ВРЕМЯ', value: '03:00' }),
+    ]);
+    expect(props.scoreboardNotice).toBeUndefined();
+    expect(props.overlayControls).toBeUndefined();
+    expect(document.querySelector('.bonus-game-endurance-hud')).toBeNull();
   });
 
-  it('keeps the visible warning under reduced-motion preference in the final two seconds', () => {
+  it('turns the goal deadline red for the final three seconds', () => {
     vi.spyOn(performance, 'now').mockReturnValue(1_000);
     vi.stubGlobal(
       'matchMedia',
@@ -420,10 +434,46 @@ describe('BonusGamePlayScreen', () => {
 
     renderScreen();
 
-    expect(screen.getByRole('timer', { name: 'До обязательного гола' })).toHaveClass(
-      'bonus-game-endurance-hud__goal-timer--warning',
+    const props = playViewProbe.mock.lastCall?.[0] as {
+      scoreboardModel: (counters: { goals: number; shots: number }) => GameScoreboardModel;
+    };
+    expect(props.scoreboardModel({ goals: 0, shots: 0 }).rows[0]?.metrics[2]).toEqual(
+      expect.objectContaining({ label: 'ДО ГОЛА', value: '2,0', tone: 'danger' }),
     );
-    expect(screen.getByRole('timer', { name: 'До обязательного гола' })).toHaveTextContent('2,0');
+  });
+
+  it('splits the endurance preview condition into two readable lines', () => {
+    setStore({
+      attempt: enduranceAttempt({ preview_required: true }),
+    });
+
+    renderScreen();
+
+    expect(screen.getByText('Продержаться 03:00 мин')).toBeInTheDocument();
+    expect(screen.getByText('Гол не реже, чем раз в 7 сек')).toBeInTheDocument();
+  });
+
+  it('freezes only the goal timer while the shot-result modal is visible', async () => {
+    vi.useFakeTimers();
+    let performanceNow = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => performanceNow);
+    setStore({ attempt: enduranceAttempt(), receivedAtPerformanceMs: 1_000 });
+
+    renderScreen();
+    const initialProps = playViewProbe.mock.lastCall?.[0] as {
+      onResultVisibilityChange: (visible: boolean) => void;
+    };
+    act(() => initialProps.onResultVisibilityChange(true));
+
+    performanceNow = 2_000;
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+
+    const pausedProps = playViewProbe.mock.lastCall?.[0] as {
+      scoreboardModel: (counters: { goals: number; shots: number }) => GameScoreboardModel;
+    };
+    const pausedModel = pausedProps.scoreboardModel({ goals: 0, shots: 0 });
+    expect(pausedModel.rows[0]?.metrics[2]?.value).toBe('7,0');
+    expect(pausedModel.rows[0]?.metrics[3]?.value).toBe('02:59');
   });
 
   it.each([

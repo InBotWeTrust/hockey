@@ -567,7 +567,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     });
   });
 
-  it('stores an eligible non-goal arriving after expiry before failing endurance', async () => {
+  it('stores an eligible non-goal arriving after the previous expiry and starts a fresh window', async () => {
     const userId = await createUser();
     const game = await createEnduranceGame();
     const attemptId = await createActiveAttempt(userId, game.id);
@@ -581,7 +581,11 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       now: new Date(NOW.getTime() + 8_000),
     });
 
-    expect(response.attempt).toMatchObject({ status: 'failed', state: 'closed', shotsTaken: 1 });
+    expect(response.attempt).toMatchObject({
+      status: 'active',
+      state: 'period_active',
+      shotsTaken: 1,
+    });
     expect(await countRows('shot_session', 'bonus_game_attempt_id = $1', [attemptId])).toBe(1);
   });
 
@@ -746,26 +750,31 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
   it.each([
     ['save', 500],
     ['miss', 0],
-  ] as const)('keeps the endurance deadline after a %s', async (claimedResult, tapTime) => {
-    const userId = await createUser();
-    const game = await createEnduranceGame();
-    const attemptId = await createActiveAttempt(userId, game.id);
+  ] as const)(
+    'starts a fresh endurance goal window after a %s result pause',
+    async (claimedResult, tapTime) => {
+      const userId = await createUser();
+      const game = await createEnduranceGame();
+      const attemptId = await createActiveAttempt(userId, game.id);
 
-    const response = await submitBonusShot(pool, {
-      userId,
-      attemptId,
-      claimedShotIndex: 1,
-      input: { ...GOAL_INPUT, tapTime, shooterTapTime: tapTime },
-      claimedResult,
-      now: new Date(NOW.getTime() + 1_000),
-    });
+      const response = await submitBonusShot(pool, {
+        userId,
+        attemptId,
+        claimedShotIndex: 1,
+        input: { ...GOAL_INPUT, tapTime, shooterTapTime: tapTime },
+        claimedResult,
+        now: new Date(NOW.getTime() + 1_000),
+      });
 
-    expect(response.attempt).toMatchObject({
-      status: 'active',
-      goalWindowStartedAt: NOW.toISOString(),
-      goalWindowEndsAt: new Date(NOW.getTime() + 7_000).toISOString(),
-    });
-  });
+      const flightMs = (PUCK_START.y - GOAL_OPENING.y) / ENDURANCE_PERIOD.puckSpeedPerMs;
+      const expectedReadyAt = new Date(NOW.getTime() + tapTime + flightMs + 1_000);
+      expect(response.attempt).toMatchObject({
+        status: 'active',
+        goalWindowStartedAt: expectedReadyAt.toISOString(),
+        goalWindowEndsAt: new Date(expectedReadyAt.getTime() + 7_000).toISOString(),
+      });
+    },
+  );
 
   it('rejects a marksmanship tap after the deadline without storing it', async () => {
     const userId = await createUser();

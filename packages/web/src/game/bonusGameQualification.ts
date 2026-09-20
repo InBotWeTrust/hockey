@@ -5,6 +5,15 @@ function formatTime(ms: number): string {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
+export function enduranceQualificationLines(
+  rules: Extract<BonusQualificationRules, { type: 'survive_goal_windows' }>,
+): readonly [string, string] {
+  return [
+    `Продержаться ${formatTime(rules.activeTimeMs)} мин`,
+    `Гол не реже, чем раз в ${rules.goalWindowMs / 1_000} сек`,
+  ];
+}
+
 function streakSuffix(rules: BonusQualificationRules): string {
   return rules.type === 'points_in_time' ||
     rules.type === 'survive_goal_windows' ||
@@ -15,7 +24,7 @@ function streakSuffix(rules: BonusQualificationRules): string {
 
 export function qualificationDescription(rules: BonusQualificationRules): string {
   if (rules.type === 'survive_goal_windows') {
-    return `Продержаться ${formatTime(rules.activeTimeMs)} · гол не реже чем раз в ${(rules.goalWindowMs / 1_000).toFixed(1).replace('.', ',')} сек`;
+    return enduranceQualificationLines(rules).join(' · ');
   }
   if (rules.type === 'points_in_time') {
     return `${rules.targetPoints} очков за ${formatTime(rules.activeTimeMs)}`;
