@@ -6,7 +6,6 @@ import {
   ChevronRight,
   CircleDollarSign,
   Info,
-  LockKeyhole,
   Star,
   TrendingUp,
   X,
@@ -78,6 +77,14 @@ function isPlayable(game: BonusGameCard): boolean {
   return game.state === 'available' || game.state === 'completed';
 }
 
+export function bonusGameVisualStatus(game: BonusGameCard): 'completed' | 'available' | 'locked' {
+  if (game.state === 'completed') return 'completed';
+  if (game.active_attempt !== null || game.state === 'in_progress' || game.state === 'available') {
+    return 'available';
+  }
+  return 'locked';
+}
+
 export function BonusGamesScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -103,7 +110,9 @@ export function BonusGamesScreen(): JSX.Element {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() => {
     const stored = localStorage.getItem(LAST_SKILL_STORAGE_KEY);
-    return stored === 'accuracy' || stored === 'marksmanship' ? stored : 'speed';
+    return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance'
+      ? stored
+      : 'speed';
   });
   const [allowanceNowMs, setAllowanceNowMs] = useState(() => Date.now());
   const refreshedAllowanceResetRef = useRef<string | null>(null);
@@ -189,6 +198,13 @@ export function BonusGamesScreen(): JSX.Element {
   };
   const games = allGames.filter((game) => game.skill_code === selectedSkill);
   const selectedAllowance = catalogQuery.data?.attempt_allowances?.[selectedSkill];
+  const attemptProgressPercent =
+    selectedAllowance === undefined || selectedAllowance.daily_limit <= 0
+      ? 0
+      : Math.min(
+          100,
+          Math.max(0, (selectedAllowance.remaining / selectedAllowance.daily_limit) * 100),
+        );
   const allowanceCountdown =
     selectedAllowance === undefined
       ? null
@@ -281,14 +297,33 @@ export function BonusGamesScreen(): JSX.Element {
           />
         </div>
 
-        {selectedAllowance ? (
-          <div className="bonus-games-attempt-allowance" role="status" aria-live="polite">
-            <strong>
-              {selectedAllowance.remaining} из {selectedAllowance.daily_limit} попыток
-            </strong>
-            {allowanceCountdown !== null ? <span>До обновления {allowanceCountdown}</span> : null}
-          </div>
-        ) : null}
+        <section
+          className={`bonus-games-attempt-progress${selectedAllowance === undefined ? ' bonus-games-attempt-progress--loading' : ''}`}
+          aria-label={`Попытки: ${skillLabels[selectedSkill]}`}
+        >
+          {selectedAllowance ? (
+            <>
+              <div
+                className="bonus-games-attempt-progress__bar"
+                role="progressbar"
+                aria-label={`Осталось попыток: ${skillLabels[selectedSkill]}`}
+                aria-valuemin={0}
+                aria-valuenow={selectedAllowance.remaining}
+                aria-valuemax={selectedAllowance.daily_limit}
+              >
+                <span style={{ width: `${attemptProgressPercent}%` }} />
+              </div>
+              <div className="bonus-games-attempt-progress__meta">
+                <strong>
+                  {selectedAllowance.remaining} из {selectedAllowance.daily_limit} попыток
+                </strong>
+                {allowanceCountdown !== null ? (
+                  <span>До обновления {allowanceCountdown}</span>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+        </section>
 
         {catalogQuery.isLoading ? (
           <div className="bonus-games-catalog__notice" role="status">
@@ -544,9 +579,14 @@ function BonusGameCard({
     (total, period) => total + (period.shots_limit ?? 0),
     0,
   );
-  const isUnavailableForNewAttempt = !isContinuable && isPlayable(game) && !canStartNewAttempt;
-  const artworkIsLocked =
-    (compact && !isContinuable && !isPlayable(game)) || (featured && isUnavailableForNewAttempt);
+  const visualStatus = bonusGameVisualStatus(game);
+  const artworkIsLocked = visualStatus === 'locked';
+  const statusText =
+    visualStatus === 'completed'
+      ? 'Пройдена'
+      : visualStatus === 'available'
+        ? 'Не пройдена'
+        : 'Закрыта';
   const isWorldTourArtwork = game.arena.thumbnail_url.includes('/bonus-games/world-tour/');
   const featuredArtworkPosition =
     featured && isWorldTourArtwork
@@ -578,17 +618,15 @@ function BonusGameCard({
             objectPosition: featuredArtworkPosition,
           }}
         />
+        <span className={`bonus-game-card__status bonus-game-card__status--${visualStatus}`}>
+          {statusText}
+        </span>
+        {visualStatus === 'completed' ? (
+          <span className="bonus-game-card__completion-badge" aria-label="Игра пройдена">
+            <Check size={12} strokeWidth={3} aria-hidden="true" />
+          </span>
+        ) : null}
       </div>
-      {compact && game.state === 'completed' && (
-        <span className="bonus-game-card__completed-pill" aria-label="Игра пройдена">
-          <Check size={13} strokeWidth={3} aria-hidden="true" />
-        </span>
-      )}
-      {compact && !isContinuable && !isPlayable(game) && (
-        <span className="bonus-game-card__completed-pill" aria-label="Игра закрыта">
-          <LockKeyhole size={13} strokeWidth={2.6} aria-hidden="true" />
-        </span>
-      )}
       <div className="bonus-game-card__content">
         <div className="bonus-game-card__eyebrow">Игра {numberText(game.sort_order)}</div>
         <h2 className="bonus-game-card__title">{game.title}</h2>
