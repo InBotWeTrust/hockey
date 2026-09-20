@@ -2157,7 +2157,7 @@
 }
 
 .bonus-game-card__reward-title {
-  color: rgba(15, 23, 42, 0.72);
+  color: var(--ink);
 }
 
 .bonus-game-card__reward-list {

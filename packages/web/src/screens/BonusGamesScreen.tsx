@@ -662,7 +662,7 @@ function BonusGameCard({
             className={`bonus-game-card__reward${game.state === 'completed' ? ' bonus-game-card__reward--muted' : ''}`}
           >
             {!compact && (
-              <span className="bonus-game-card__reward-title">За первое прохождение</span>
+              <span className="bonus-game-card__reward-title">За первое прохождение:</span>
             )}
             <div className="bonus-game-card__reward-list">
               {firstClearRewards.map((reward) => (

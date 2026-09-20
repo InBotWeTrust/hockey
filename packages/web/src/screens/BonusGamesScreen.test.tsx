@@ -1601,7 +1601,7 @@ describe('BonusGamesScreen', () => {
     expect(screen.getByText('2 периода · 21 бросок')).toHaveClass(
       'bonus-game-card__details-secondary',
     );
-    expect(screen.getByText('За первое прохождение')).toBeInTheDocument();
+    expect(screen.getByText('За первое прохождение:')).toBeInTheDocument();
     expect(screen.getByLabelText('Монеты: 21')).toHaveTextContent('21');
     expect(screen.getByLabelText('Звёзды: 22')).toHaveTextContent('22');
     expect(screen.getByLabelText('Опыт: 25')).toHaveTextContent('25');
@@ -1622,7 +1622,7 @@ describe('BonusGamesScreen', () => {
     expect(await screen.findByLabelText('Звёзды: 3')).toHaveTextContent('3');
     expect(screen.queryByLabelText('Монеты: 0')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Опыт: 0')).not.toBeInTheDocument();
-    expect(screen.getAllByText('За первое прохождение')).toHaveLength(1);
+    expect(screen.getAllByText('За первое прохождение:')).toHaveLength(1);
   });
 
   it('keeps the created attempt id in the play URL for durable reload', async () => {
