@@ -10,6 +10,8 @@ const attempt: BonusGameAttemptRow = {
   state: 'closed',
   current_period: 2,
   period_started_at: null,
+  goal_window_started_at: null,
+  goal_window_ends_at: null,
   break_started_at: null,
   closed_at: new Date('2026-08-24T10:05:00.000Z'),
   shots_taken: 28,
@@ -88,7 +90,29 @@ describe('bonus attempt service DTO', () => {
       shotsTaken: 28,
       currentPeriodShotsTaken: 3,
       totalPoints: 2_450,
+      goalWindowStartedAt: null,
+      goalWindowEndsAt: null,
       rewardGranted: true,
+    });
+  });
+
+  it('serializes the authoritative endurance goal window', () => {
+    const dto = toBonusAttemptDto(
+      {
+        ...attempt,
+        status: 'active',
+        state: 'period_active',
+        period_started_at: new Date('2026-09-20T10:00:00.000Z'),
+        goal_window_started_at: new Date('2026-09-20T10:00:00.000Z'),
+        goal_window_ends_at: new Date('2026-09-20T10:00:07.000Z'),
+      },
+      { currentPeriodShotsTaken: 0, rewardGranted: false, currentLoadout: null },
+    );
+
+    expect(dto).toMatchObject({
+      periodStartedAt: '2026-09-20T10:00:00.000Z',
+      goalWindowStartedAt: '2026-09-20T10:00:00.000Z',
+      goalWindowEndsAt: '2026-09-20T10:00:07.000Z',
     });
   });
 

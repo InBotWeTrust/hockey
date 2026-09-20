@@ -1,5 +1,7 @@
 import type { PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
+import { evaluateEnduranceDeadlines } from './endurance.js';
+import { grantFirstClearReward, lockBonusEconomyBalances } from './economy.js';
 import {
   parseBonusPeriodRules,
   type BonusGameAttemptRow,
@@ -108,7 +110,8 @@ async function finishPeriod(
     ? await client.query<BonusGameAttemptRow>(
         `update bonus_game_attempt
             set status = 'failed', state = 'closed', closed_at = $1,
-                period_started_at = null, break_started_at = null, updated_at = $1
+                period_started_at = null, goal_window_started_at = null,
+                goal_window_ends_at = null, break_started_at = null, updated_at = $1
           where id = $2
         returning *`,
         [endedAt, attempt.id],
@@ -116,7 +119,8 @@ async function finishPeriod(
     : await client.query<BonusGameAttemptRow>(
         `update bonus_game_attempt
             set state = 'break_active', break_started_at = $1,
-                period_started_at = null, updated_at = $1
+                period_started_at = null, goal_window_started_at = null,
+                goal_window_ends_at = null, updated_at = $1
           where id = $2
         returning *`,
         [endedAt, attempt.id],
@@ -129,6 +133,7 @@ export async function reconcileBonusAttempt(
   attempt: BonusGameAttemptRow,
   now: Date,
 ): Promise<BonusGameAttemptRow> {
+  await lockBonusEconomyBalances(client, attempt.user_id, now);
   let current = await lockAttempt(client, attempt.id);
   if (current.status !== 'active' || current.state === 'closed') return current;
 
@@ -141,15 +146,63 @@ export async function reconcileBonusAttempt(
     if (periodRule === undefined) {
       throw new AppError('internal_error', 'active bonus period is outside its snapshot', 500);
     }
-    const aggregate = await aggregatePeriod(client, current.id, current.current_period);
-    if (periodRule.shotsLimit !== null && aggregate.shotsTaken >= periodRule.shotsLimit) {
-      await closeBonusPeriod(client, current, now, 'quota');
-      current = await finishPeriod(client, current, now);
+    const qualificationRules = current.rules_snapshot.qualificationRules;
+    if (qualificationRules.type === 'survive_goal_windows') {
+      if (current.goal_window_ends_at === null) {
+        throw new AppError('internal_error', 'active endurance attempt has no goal deadline', 500);
+      }
+      const periodEndsAt = new Date(
+        current.period_started_at.getTime() + qualificationRules.activeTimeMs,
+      );
+      const outcome = evaluateEnduranceDeadlines({
+        periodEndsAt,
+        goalWindowEndsAt: current.goal_window_ends_at,
+        now,
+      });
+      if (outcome === 'completed') {
+        await closeBonusPeriod(client, current, periodEndsAt, 'target_reached');
+        await grantFirstClearReward(client, {
+          userId: current.user_id,
+          gameId: current.bonus_game_id,
+          attemptId: current.id,
+          reward: current.reward_snapshot,
+          now: periodEndsAt,
+        });
+        const { rows } = await client.query<BonusGameAttemptRow>(
+          `update bonus_game_attempt
+              set status = 'completed', state = 'closed', closed_at = $1,
+                  period_started_at = null, goal_window_started_at = null,
+                  goal_window_ends_at = null, break_started_at = null, updated_at = $1
+            where id = $2
+          returning *`,
+          [periodEndsAt, current.id],
+        );
+        current = rows[0]!;
+      } else if (outcome === 'failed') {
+        const failedAt = current.goal_window_ends_at;
+        await closeBonusPeriod(client, current, failedAt, 'goal_window_timeout');
+        const { rows } = await client.query<BonusGameAttemptRow>(
+          `update bonus_game_attempt
+              set status = 'failed', state = 'closed', closed_at = $1,
+                  period_started_at = null, goal_window_started_at = null,
+                  goal_window_ends_at = null, break_started_at = null, updated_at = $1
+            where id = $2
+          returning *`,
+          [failedAt, current.id],
+        );
+        current = rows[0]!;
+      }
     } else {
-      const periodEnd = new Date(current.period_started_at.getTime() + periodRule.durationMs);
-      if (now >= periodEnd) {
-        await closeBonusPeriod(client, current, periodEnd, 'timeout');
-        current = await finishPeriod(client, current, periodEnd);
+      const aggregate = await aggregatePeriod(client, current.id, current.current_period);
+      if (periodRule.shotsLimit !== null && aggregate.shotsTaken >= periodRule.shotsLimit) {
+        await closeBonusPeriod(client, current, now, 'quota');
+        current = await finishPeriod(client, current, now);
+      } else {
+        const periodEnd = new Date(current.period_started_at.getTime() + periodRule.durationMs);
+        if (now >= periodEnd) {
+          await closeBonusPeriod(client, current, periodEnd, 'timeout');
+          current = await finishPeriod(client, current, periodEnd);
+        }
       }
     }
   }

@@ -56,6 +56,19 @@ const PERIODS: BonusPeriodRule[] = [
   },
 ];
 
+const ENDURANCE_PERIOD: BonusPeriodRule = {
+  periodNumber: 1,
+  durationMs: 180_000,
+  shotsLimit: null,
+  goalFrequency: 0.5,
+  goalieFrequency: 0.6,
+  shooterFrequency: 0.75,
+  puckSpeedPerMs: 1.25,
+  goaliePattern: 'linear',
+  goalieAmplitude: 1,
+  goalAmplitude: 220,
+};
+
 interface TestGame {
   id: string;
   slug: string;
@@ -126,7 +139,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     arenaId?: string;
     useInventory?: boolean;
     previewRevision?: number;
-    skillCode?: 'speed' | 'accuracy';
+    skillCode?: 'speed' | 'accuracy' | 'endurance';
   }): Promise<TestGame> {
     gameSequence += 1;
     const slug = `attempt-game-${gameSequence}`;
@@ -159,14 +172,17 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
                 targetGoals,
                 activeTimeMs: periods.reduce((sum, period) => sum + period.durationMs, 0),
               }
-            : {
-                type: 'goals_from_shots',
-                targetGoals,
-                shotsLimit: periods.reduce(
-                  (sum, period) => sum + (period.shotsLimit ?? 0),
-                  0,
-                ),
-              },
+            : skillCode === 'endurance'
+              ? {
+                  type: 'survive_goal_windows',
+                  activeTimeMs: periods[0]!.durationMs,
+                  goalWindowMs: 7_000,
+                }
+              : {
+                  type: 'goals_from_shots',
+                  targetGoals,
+                  shotsLimit: periods.reduce((sum, period) => sum + (period.shotsLimit ?? 0), 0),
+                },
         ),
         periods.length,
         breakDurationMs,
@@ -230,11 +246,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     }
   }
 
-  async function startAcknowledgedPeriod(
-    userId: string,
-    attemptId: string,
-    now: Date,
-  ) {
+  async function startAcknowledgedPeriod(userId: string, attemptId: string, now: Date) {
     await acknowledgeBonusPreview(pool, {
       userId,
       attemptId,
@@ -499,6 +511,133 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
         closed_reason: 'timeout',
       },
     ]);
+  });
+
+  it('starts endurance with an authoritative goal window and leaves other skills null', async () => {
+    const enduranceUserId = await createUser();
+    const accuracyUserId = await createUser();
+    const endurance = await createGame({
+      sortOrder: 1,
+      skillCode: 'endurance',
+      targetGoals: 1,
+      periods: [ENDURANCE_PERIOD],
+      breakDurationMs: 0,
+    });
+    const accuracy = await createGame({ sortOrder: 1 });
+
+    const enduranceAttempt = await startOrResumeBonusAttempt(pool, {
+      userId: enduranceUserId,
+      gameId: endurance.id,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    const accuracyAttempt = await startOrResumeBonusAttempt(pool, {
+      userId: accuracyUserId,
+      gameId: accuracy.id,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+
+    const startedEndurance = await startAcknowledgedPeriod(
+      enduranceUserId,
+      enduranceAttempt.attempt.id,
+      NOW,
+    );
+    const startedAccuracy = await startAcknowledgedPeriod(
+      accuracyUserId,
+      accuracyAttempt.attempt.id,
+      NOW,
+    );
+
+    expect(startedEndurance).toMatchObject({
+      state: 'period_active',
+      periodStartedAt: NOW.toISOString(),
+      goalWindowStartedAt: NOW.toISOString(),
+      goalWindowEndsAt: new Date(NOW.getTime() + 7_000).toISOString(),
+    });
+    expect(startedAccuracy).toMatchObject({
+      goalWindowStartedAt: null,
+      goalWindowEndsAt: null,
+    });
+  });
+
+  it('fails endurance at the earlier goal deadline and clears its window', async () => {
+    const userId = await createUser();
+    const game = await createGame({
+      sortOrder: 1,
+      skillCode: 'endurance',
+      targetGoals: 1,
+      periods: [ENDURANCE_PERIOD],
+      breakDurationMs: 0,
+    });
+    const created = await startOrResumeBonusAttempt(pool, {
+      userId,
+      gameId: game.id,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    await startAcknowledgedPeriod(userId, created.attempt.id, NOW);
+
+    const failed = await reconcile(created.attempt.id, new Date(NOW.getTime() + 7_000));
+
+    expect(failed).toMatchObject({
+      status: 'failed',
+      state: 'closed',
+      closed_at: new Date(NOW.getTime() + 7_000),
+      goal_window_started_at: null,
+      goal_window_ends_at: null,
+    });
+    expect(await periodLogs(created.attempt.id)).toMatchObject([
+      { closed_reason: 'goal_window_timeout', duration_ms: 7_000 },
+    ]);
+  });
+
+  it('completes endurance on an exact total/window tie and grants one reward concurrently', async () => {
+    const userId = await createUser();
+    const game = await createGame({
+      sortOrder: 1,
+      skillCode: 'endurance',
+      targetGoals: 1,
+      periods: [ENDURANCE_PERIOD],
+      breakDurationMs: 0,
+    });
+    const created = await startOrResumeBonusAttempt(pool, {
+      userId,
+      gameId: game.id,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    await startAcknowledgedPeriod(userId, created.attempt.id, NOW);
+    const totalDeadline = new Date(NOW.getTime() + ENDURANCE_PERIOD.durationMs);
+    await pool.query(
+      `update bonus_game_attempt
+          set goal_window_ends_at = $2
+        where id = $1`,
+      [created.attempt.id, totalDeadline],
+    );
+
+    const reconciled = await Promise.all([
+      reconcile(created.attempt.id, totalDeadline),
+      reconcile(created.attempt.id, totalDeadline),
+    ]);
+
+    expect(reconciled).toEqual([
+      expect.objectContaining({ status: 'completed', state: 'closed' }),
+      expect.objectContaining({ status: 'completed', state: 'closed' }),
+    ]);
+    const settlement = await pool.query<{
+      completions: number;
+      rewards: number;
+      period_logs: number;
+    }>(
+      `select
+         (select count(*)::int from user_bonus_game_completion where attempt_id = $1) as completions,
+         (select count(*)::int from bonus_game_economy_event
+           where attempt_id = $1 and kind = 'first_clear_reward') as rewards,
+         (select count(*)::int from bonus_game_period_log where attempt_id = $1) as period_logs`,
+      [created.attempt.id],
+    );
+    expect(settlement.rows[0]).toEqual({ completions: 1, rewards: 1, period_logs: 1 });
   });
 
   it('serializes concurrent same-game starts into one active attempt', async () => {
@@ -1049,10 +1188,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
       });
     }
 
-    const beforeTimeout = await reconcile(
-      created.attempt.id,
-      new Date('2026-08-23T12:01:00Z'),
-    );
+    const beforeTimeout = await reconcile(created.attempt.id, new Date('2026-08-23T12:01:00Z'));
     expect(beforeTimeout).toMatchObject({
       status: 'active',
       state: 'period_active',
@@ -1113,11 +1249,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     await startAcknowledgedPeriod(userId, created.attempt.id, NOW);
     await reconcile(created.attempt.id, new Date('2026-08-23T12:05:00Z'));
     await reconcile(created.attempt.id, new Date('2026-08-23T12:05:31Z'));
-    await startAcknowledgedPeriod(
-      userId,
-      created.attempt.id,
-      new Date('2026-08-23T12:06:00Z'),
-    );
+    await startAcknowledgedPeriod(userId, created.attempt.id, new Date('2026-08-23T12:06:00Z'));
 
     const failed = await reconcile(created.attempt.id, new Date('2026-08-23T12:11:00Z'));
 

@@ -105,6 +105,15 @@ const MARKSMANSHIP_PERIOD: BonusPeriodRule = {
   goalAmplitude: 220,
 };
 
+const ENDURANCE_PERIOD: BonusPeriodRule = {
+  ...MARKSMANSHIP_PERIOD,
+  durationMs: 180_000,
+  goalFrequency: 0.45,
+  goalieFrequency: 0.5,
+  shooterFrequency: 0.65,
+  puckSpeedPerMs: 1.2,
+};
+
 function marksmanshipInput(tapTime: number): SubmitBonusShotInput['input'] {
   return {
     tapTime,
@@ -265,6 +274,37 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
           scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
         }),
         JSON.stringify([MARKSMANSHIP_PERIOD]),
+        defaultArenaId,
+        `/goalies/${slug}-ready.webp`,
+        `/goalies/${slug}-save.webp`,
+      ],
+    );
+    return { id: game.rows[0]!.id, arenaId: defaultArenaId };
+  }
+
+  async function createEnduranceGame(): Promise<TestGame> {
+    gameSequence += 1;
+    const slug = `shot-game-${gameSequence}`;
+    const game = await pool.query<{ id: string }>(
+      `insert into bonus_game
+         (slug, title, skill_code, description, sort_order, status, access_type, unlock_price_stars,
+          target_goals, qualification_rules, total_periods, break_duration_ms, period_rules,
+          use_inventory, reward_coins, reward_stars, reward_experience, arena_theme_id,
+          goalkeeper_ready_url, goalkeeper_save_url, revision)
+       values ($1, $2, 'endurance', '', $3, 'active', 'free', 0,
+               1, $4::jsonb, 1, 0, $5::jsonb,
+               false, 100, 1, 50, $6, $7, $8, 3)
+       returning id`,
+      [
+        slug,
+        `Игра ${gameSequence}`,
+        gameSequence,
+        JSON.stringify({
+          type: 'survive_goal_windows',
+          activeTimeMs: ENDURANCE_PERIOD.durationMs,
+          goalWindowMs: 7_000,
+        }),
+        JSON.stringify([ENDURANCE_PERIOD]),
         defaultArenaId,
         `/goalies/${slug}-ready.webp`,
         `/goalies/${slug}-save.webp`,
@@ -527,6 +567,64 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     });
   });
 
+  it('stores an eligible non-goal arriving after expiry before failing endurance', async () => {
+    const userId = await createUser();
+    const game = await createEnduranceGame();
+    const attemptId = await createActiveAttempt(userId, game.id);
+
+    const response = await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: { ...GOAL_INPUT, tapTime: 0, shooterTapTime: 0 },
+      claimedResult: 'miss',
+      now: new Date(NOW.getTime() + 8_000),
+    });
+
+    expect(response.attempt).toMatchObject({ status: 'failed', state: 'closed', shotsTaken: 1 });
+    expect(await countRows('shot_session', 'bonus_game_attempt_id = $1', [attemptId])).toBe(1);
+  });
+
+  it('returns one stored final endurance shot and one reward on duplicate retry', async () => {
+    const userId = await createUser();
+    const game = await createEnduranceGame();
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const totalDeadline = new Date(NOW.getTime() + ENDURANCE_PERIOD.durationMs);
+    await pool.query(
+      `update bonus_game_attempt
+          set goal_window_ends_at = $2
+        where id = $1`,
+      [attemptId, totalDeadline],
+    );
+    const input = {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: {
+        ...GOAL_INPUT,
+        tapTime: ENDURANCE_PERIOD.durationMs,
+        shooterTapTime: ENDURANCE_PERIOD.durationMs,
+      },
+      claimedResult: 'miss' as const,
+      now: new Date(totalDeadline.getTime() + 1_000),
+    };
+
+    const first = await submitBonusShot(pool, input);
+    const retry = await submitBonusShot(pool, input);
+
+    expect(first.attempt).toMatchObject({ status: 'completed', rewardGranted: true });
+    expect(retry).toEqual(first);
+    expect(await countRows('shot_session', 'bonus_game_attempt_id = $1', [attemptId])).toBe(1);
+    expect(await countRows('user_bonus_game_completion', 'attempt_id = $1', [attemptId])).toBe(1);
+    expect(
+      await countRows(
+        'bonus_game_economy_event',
+        "attempt_id = $1 and kind = 'first_clear_reward'",
+        [attemptId],
+      ),
+    ).toBe(1);
+  });
+
   it('adds the strict counter-direction bonus to the authoritative shot score', async () => {
     const userId = await createUser();
     const game = await createMarksmanshipGame(1_000);
@@ -599,6 +697,74 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       attempt: { status: 'failed', state: 'closed', shotsTaken: 1 },
     });
     expect((await storedMarksmanshipState(attemptId)).shots).toBe(1);
+  });
+
+  it('accepts an endurance goal started at the exact window deadline after it expires', async () => {
+    const userId = await createUser();
+    const game = await createEnduranceGame();
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / ENDURANCE_PERIOD.puckSpeedPerMs;
+    const expectedReadyAt = new Date(NOW.getTime() + 7_000 + flightMs + 1_000);
+
+    const response = await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: { ...GOAL_INPUT, tapTime: 7_000, shooterTapTime: 7_000 },
+      claimedResult: 'goal',
+      now: new Date(NOW.getTime() + 8_000),
+    });
+
+    expect(response).toMatchObject({
+      serverResult: 'goal',
+      attempt: {
+        status: 'active',
+        goalWindowStartedAt: expectedReadyAt.toISOString(),
+        goalWindowEndsAt: new Date(expectedReadyAt.getTime() + 7_000).toISOString(),
+      },
+    });
+  });
+
+  it('rejects an endurance shot started one millisecond after the goal deadline', async () => {
+    const userId = await createUser();
+    const game = await createEnduranceGame();
+    const attemptId = await createActiveAttempt(userId, game.id);
+
+    await expect(
+      submitBonusShot(pool, {
+        userId,
+        attemptId,
+        claimedShotIndex: 1,
+        input: { ...GOAL_INPUT, tapTime: 7_001, shooterTapTime: 7_001 },
+        claimedResult: 'goal',
+        now: new Date(NOW.getTime() + 8_001),
+      }),
+    ).rejects.toMatchObject({ code: 'bonus_period_not_ready', statusCode: 409 });
+    expect(await countRows('shot_session', 'bonus_game_attempt_id = $1', [attemptId])).toBe(0);
+  });
+
+  it.each([
+    ['save', 500],
+    ['miss', 0],
+  ] as const)('keeps the endurance deadline after a %s', async (claimedResult, tapTime) => {
+    const userId = await createUser();
+    const game = await createEnduranceGame();
+    const attemptId = await createActiveAttempt(userId, game.id);
+
+    const response = await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: { ...GOAL_INPUT, tapTime, shooterTapTime: tapTime },
+      claimedResult,
+      now: new Date(NOW.getTime() + 1_000),
+    });
+
+    expect(response.attempt).toMatchObject({
+      status: 'active',
+      goalWindowStartedAt: NOW.toISOString(),
+      goalWindowEndsAt: new Date(NOW.getTime() + 7_000).toISOString(),
+    });
   });
 
   it('rejects a marksmanship tap after the deadline without storing it', async () => {
