@@ -31,6 +31,13 @@ const qualificationRulesSchema = z.discriminatedUnion('type', [
       scoring: z.unknown(),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal('survive_goal_windows'),
+      activeTimeMs: z.number().int().min(1_000).max(86_400_000),
+      goalWindowMs: z.number().int().min(1_000).max(60_000),
+    })
+    .strict(),
 ]);
 
 type GoalQualificationRules = Exclude<
@@ -45,6 +52,11 @@ export type BonusQualificationRules =
       targetPoints: number;
       activeTimeMs: number;
       scoring: MarksmanshipScoringRules;
+    }
+  | {
+      type: 'survive_goal_windows';
+      activeTimeMs: number;
+      goalWindowMs: number;
     };
 
 export interface BonusQualificationState {
@@ -68,11 +80,31 @@ interface BonusSkillPeriodRule {
 }
 
 export function validateBonusSkillRules(
-  skillCode: 'speed' | 'accuracy' | 'marksmanship',
+  skillCode: 'speed' | 'accuracy' | 'marksmanship' | 'endurance',
   rules: BonusQualificationRules,
   periods: BonusSkillPeriodRule[],
   useInventory = false,
 ): void {
+  if (skillCode === 'endurance') {
+    if (rules.type !== 'survive_goal_windows') {
+      throw new Error('endurance requires survive goal windows rules');
+    }
+    if (periods.length !== 1) {
+      throw new Error('endurance requires exactly one period');
+    }
+    const period = periods[0]!;
+    if (period.shotsLimit !== null) {
+      throw new Error('endurance period cannot have a shots limit');
+    }
+    if (period.durationMs !== rules.activeTimeMs) {
+      throw new Error('endurance active time must equal the period duration');
+    }
+    if (useInventory) {
+      throw new Error('endurance inventory must be disabled');
+    }
+    return;
+  }
+
   if (skillCode === 'speed') {
     if (rules.type !== 'goals_in_time') {
       throw new Error('speed requires goals in time rules');
@@ -154,6 +186,9 @@ export function evaluateBonusQualification(
   rules: BonusQualificationRules,
   state: BonusQualificationState,
 ): BonusQualificationEvaluation {
+  if (rules.type === 'survive_goal_windows') {
+    throw new Error('endurance qualification is deadline-based');
+  }
   const accuracyPercent = state.shotsTaken === 0 ? 0 : (state.goals / state.shotsTaken) * 100;
   const primaryMet =
     rules.type === 'points_in_time'

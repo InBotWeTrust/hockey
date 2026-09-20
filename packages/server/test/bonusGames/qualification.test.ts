@@ -31,6 +31,10 @@ describe('normalizeBonusQualificationRules', () => {
         scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
       },
     ],
+    [
+      { type: 'survive_goal_windows', activeTimeMs: 180_000, goalWindowMs: 7_000 },
+      { type: 'survive_goal_windows', activeTimeMs: 180_000, goalWindowMs: 7_000 },
+    ],
   ])('parses supported qualification rule %#', (input, expected) => {
     expect(normalizeBonusQualificationRules(input, { targetGoals: 1, shotsLimit: 1 })).toEqual(
       expected,
@@ -47,6 +51,21 @@ describe('normalizeBonusQualificationRules', () => {
 });
 
 describe('evaluateBonusQualification', () => {
+  it('keeps endurance terminal evaluation in the deadline helper', () => {
+    expect(() =>
+      evaluateBonusQualification(
+        { type: 'survive_goal_windows', activeTimeMs: 180_000, goalWindowMs: 7_000 },
+        {
+          goals: 1,
+          shotsTaken: 1,
+          bestGoalStreak: 1,
+          activeElapsedMs: 180_000,
+          totalPoints: 0,
+        },
+      ),
+    ).toThrow('endurance qualification is deadline-based');
+  });
+
   it('passes goals from shots when the target is reached', () => {
     expect(
       evaluateBonusQualification(
@@ -201,6 +220,35 @@ describe('validateBonusSkillRules', () => {
     expect(() =>
       validateBonusSkillRules('marksmanship', rules, [period(1, 30_000, null)], true),
     ).toThrow('marksmanship inventory must be disabled');
+  });
+
+  it('accepts endurance only with one matching no-quota period and disabled inventory', () => {
+    const rules = {
+      type: 'survive_goal_windows',
+      activeTimeMs: 180_000,
+      goalWindowMs: 7_000,
+    } as const;
+
+    expect(() =>
+      validateBonusSkillRules('endurance', rules, [period(1, 180_000, null)], false),
+    ).not.toThrow();
+    expect(() =>
+      validateBonusSkillRules(
+        'endurance',
+        rules,
+        [period(1, 90_000, null), period(2, 90_000, null)],
+        false,
+      ),
+    ).toThrow('endurance requires exactly one period');
+    expect(() =>
+      validateBonusSkillRules('endurance', rules, [period(1, 180_000, 1)], false),
+    ).toThrow('endurance period cannot have a shots limit');
+    expect(() =>
+      validateBonusSkillRules('endurance', rules, [period(1, 179_999, null)], false),
+    ).toThrow('endurance active time must equal the period duration');
+    expect(() =>
+      validateBonusSkillRules('endurance', rules, [period(1, 180_000, null)], true),
+    ).toThrow('endurance inventory must be disabled');
   });
 
   it('rejects malformed marksmanship scoring snapshots', () => {

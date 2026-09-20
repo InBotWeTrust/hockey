@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildBonusGoalieConfig,
   parseBonusPeriodRules,
+  type BonusSkillCode,
   type BonusPeriodRule,
 } from '../../src/bonusGames/types.js';
 import { deriveBonusAttemptSeed } from '../../src/duel/seed.js';
@@ -22,6 +23,12 @@ function validRule(periodNumber: number): BonusPeriodRule {
 }
 
 describe('bonus game rule contracts', () => {
+  it('includes endurance in the bonus skill contract', () => {
+    const skill: BonusSkillCode = 'endurance';
+
+    expect(skill).toBe('endurance');
+  });
+
   it('rejects gaps in period numbering', () => {
     expect(() => parseBonusPeriodRules([validRule(1), validRule(3)], 2)).toThrow(
       'bonus periods must be contiguous',
