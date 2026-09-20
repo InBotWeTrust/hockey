@@ -19,6 +19,12 @@ describe('design system toast positioning', () => {
   });
 });
 
+describe('bonus game first-clear reward heading', () => {
+  it('uses the primary dark ink color to separate it from descriptive copy', () => {
+    expect(css).toMatch(/\.bonus-game-card__reward-title\s*\{\s*color: var\(--ink\);\s*\}/);
+  });
+});
+
 describe('experience rating scroll containment', () => {
   it('disables scroll chaining and gives the sticky header an opaque surface', () => {
     const viewport = rule('.experience-rating__viewport');
