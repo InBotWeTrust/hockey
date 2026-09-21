@@ -2414,6 +2414,64 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     );
   });
 
+  it('hides withdrawn participants from public standings and closes rank gaps', async () => {
+    await seedUsers(pool, 0);
+    const tournament = await createPublishedTournament(
+      pool,
+      'approved-only-public-standings',
+      0,
+      classicPlayoffTournamentRules(),
+    );
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[0]);
+    await applyToTournament(pool, tournament.id, PLAYER_IDS[1]);
+    await generateRegularSchedule(pool, tournament.id, tournament.revision);
+    await publishRegularSchedule(pool, tournament.id);
+    const { rows: ranked } = await pool.query<{
+      participant_id: string;
+      user_id: string;
+      rank: number;
+    }>(
+      `select standing.participant_id, participant.user_id, standing.rank
+         from tournament_standing standing
+         join tournament_participant participant on participant.id = standing.participant_id
+        where standing.tournament_id = $1
+        order by standing.rank`,
+      [tournament.id],
+    );
+    const withdrawn = ranked[0]!;
+    const remaining = ranked[1]!;
+    await pool.query(
+      `update tournament_participant
+          set state = 'withdrawn', withdrawn_at = now()
+        where id = $1`,
+      [withdrawn.participant_id],
+    );
+
+    const standings = await getTournamentStandings(pool, tournament.id);
+
+    expect(
+      standings.map((standing) => ({
+        userId: standing.user_id,
+        rank: Number(standing.rank),
+      })),
+    ).toEqual([{ userId: remaining.user_id, rank: 1 }]);
+
+    const historicalStandings = await getTournamentStandings(pool, tournament.id, {
+      includeInactive: true,
+    });
+    expect(
+      historicalStandings.map((standing) => ({
+        userId: standing.user_id,
+        rank: Number(standing.rank),
+      })),
+    ).toEqual(
+      ranked.map((standing) => ({
+        userId: standing.user_id,
+        rank: Number(standing.rank),
+      })),
+    );
+  });
+
   it('rolls back playoff materialization when its audience outbox insert fails', async () => {
     await seedUsers(pool, 0);
     await subscribeTournamentUsers(pool, PLAYER_IDS);
