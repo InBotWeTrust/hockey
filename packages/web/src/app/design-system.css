@@ -3827,6 +3827,10 @@
   background: #34d399;
 }
 
+.initial-training-feedback-notice--warning::before {
+  background: #facc15;
+}
+
 .initial-training-feedback-notice--error::before {
   background: #fb7185;
 }

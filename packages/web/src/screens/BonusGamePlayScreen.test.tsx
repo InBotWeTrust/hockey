@@ -43,6 +43,8 @@ vi.mock('../game/PlayView.js', () => ({
     shotButtonLabel?: string;
     primaryActionBlocked?: boolean;
     scoreboardNotice?: string;
+    statusNotice?: string;
+    statusNoticeTone?: 'warning' | 'error';
     scoreboardModel?:
       | GameScoreboardModel
       | ((counters: { goals: number; shots: number }) => GameScoreboardModel);
@@ -398,6 +400,7 @@ describe('BonusGamePlayScreen', () => {
       scoreboardModel: (counters: { goals: number; shots: number }) => GameScoreboardModel;
       scoreboardNotice?: string;
       overlayControls?: JSX.Element;
+      statusNotice?: string;
     };
     expect(props.scoreboardModel({ goals: 0, shots: 0 }).rows[0]?.metrics).toEqual([
       expect.objectContaining({ label: 'ПЕРИОД', value: '1/1' }),
@@ -407,6 +410,7 @@ describe('BonusGamePlayScreen', () => {
     ]);
     expect(props.scoreboardNotice).toBeUndefined();
     expect(props.overlayControls).toBeUndefined();
+    expect(props.statusNotice).toBe('До гола: 7,0 сек');
     expect(document.querySelector('.bonus-game-endurance-hud')).toBeNull();
   });
 
@@ -436,10 +440,14 @@ describe('BonusGamePlayScreen', () => {
 
     const props = playViewProbe.mock.lastCall?.[0] as {
       scoreboardModel: (counters: { goals: number; shots: number }) => GameScoreboardModel;
+      statusNotice: string;
+      statusNoticeTone: 'warning' | 'error';
     };
     expect(props.scoreboardModel({ goals: 0, shots: 0 }).rows[0]?.metrics[2]).toEqual(
       expect.objectContaining({ label: 'ДО ГОЛА', value: '2,0', tone: 'danger' }),
     );
+    expect(props.statusNotice).toBe('До гола: 2,0 сек');
+    expect(props.statusNoticeTone).toBe('error');
   });
 
   it('splits the endurance preview condition into two readable lines', () => {

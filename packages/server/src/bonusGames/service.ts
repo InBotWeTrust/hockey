@@ -1301,7 +1301,7 @@ export async function submitBonusShot(
             attempt = updated.rows[0]!;
 
             let rewardGranted: BonusRewardSnapshot | null = null;
-            if (isEndurance) {
+            if (isEndurance && serverResult === 'goal') {
               if (qualificationRules.type !== 'survive_goal_windows') {
                 throw new AppError('internal_error', 'invalid endurance rules snapshot', 500);
               }
@@ -1323,7 +1323,10 @@ export async function submitBonusShot(
               attempt = windowUpdate.rows[0]!;
               attempt = await reconcileBonusAttempt(client, attempt, input.now);
               balances = await lockBonusEconomyBalances(client, input.userId, input.now);
-            } else {
+            } else if (isEndurance) {
+              attempt = await reconcileBonusAttempt(client, attempt, input.now);
+              balances = await lockBonusEconomyBalances(client, input.userId, input.now);
+            } else if (!isEndurance) {
               const qualification = evaluateBonusQualification(qualificationRules, {
                 goals: Number(attempt.goals),
                 shotsTaken: Number(attempt.shots_taken),
