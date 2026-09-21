@@ -28,7 +28,6 @@ import { summarizeAchievementProgress } from '../achievements/progressSummary.js
 import { fetchBonusGames } from '../api/bonusGames.js';
 
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
-const TASK_LEVELS_TOTAL = 200;
 const SECTION_ARTWORK_SIZE = 86;
 const MONTHLY_RATING_CONGRATULATIONS_KEY = [
   'amateur-duel',
@@ -41,10 +40,10 @@ const SECTION_ARTWORK = {
   achievements: '/achievements/first-goal.webp',
   daily: '/daily-game/start.webp',
   training: '/modes/training-evening.webp',
-  amateur: '/modes/amateur-game.webp',
+  amateur: '/modes/amateur-game-v3.webp',
   pro: '/modes/pro-game.webp',
   shop: '/modes/shop-retail-v2.webp',
-  bonusGames: '/bonus-games/section-card-v2.webp',
+  bonusGames: '/bonus-games/section-card-v5.webp',
 } as const;
 
 type SectionTone = 'active' | 'default' | 'muted';
@@ -203,9 +202,10 @@ export function SectionsScreen(): JSX.Element {
     (achievement) =>
       achievement.status === 'claimed' || achievement.status === 'completed_unclaimed',
   ).length;
-  const achievementLevelsCompleted = summarizeAchievementProgress(
-    achievements.filter((achievement) => achievement.availability === 'active'),
-  ).levels.completed;
+  const activeAchievements = achievements.filter(
+    (achievement) => achievement.availability === 'active',
+  );
+  const achievementProgress = summarizeAchievementProgress(activeAchievements);
   const achievementsUnclaimedCount = achievementsQuery.data?.unclaimedCount ?? 0;
   const weeklyChallengesAvailable =
     profileQuery.data?.competitionLevel === 'amateur' ||
@@ -219,7 +219,7 @@ export function SectionsScreen(): JSX.Element {
   const sectionTasksActionCount = achievementsUnclaimedCount + weeklyChallengeActionCount;
   const achievementsMeta = [
     `Награды: ${numberText(achievementsCompletedCount)}/${numberText(achievements.length)}`,
-    `Уровни: ${numberText(achievementLevelsCompleted)}/${numberText(TASK_LEVELS_TOTAL)}`,
+    `Уровни: ${numberText(achievementProgress.levels.completed)}/${numberText(achievementProgress.levels.total)}`,
   ] as const;
 
   const openAmateurs = (): void => {
