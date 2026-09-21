@@ -2507,6 +2507,48 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(ready.json().match.me.loadout.powerScore).toBe(30);
   });
 
+  it('uses the equipped inventory instance as the default duel loadout', async () => {
+    const skatesItemId = await createInventoryItem('skates', 'Instance skates');
+    const firstInstanceId = await createInventoryInstance(userA, skatesItemId, 3);
+    const equippedInstanceId = await createInventoryInstance(userA, skatesItemId, 9);
+    await pool.query(
+      `insert into user_equipment
+         (user_id, equipped_skates_item_id, equipped_skates_instance_id)
+       values ($1, $2, $3)
+       on conflict (user_id) do update
+          set equipped_skates_item_id = excluded.equipped_skates_item_id,
+              equipped_skates_instance_id = excluded.equipped_skates_instance_id`,
+      [userA, skatesItemId, equippedInstanceId],
+    );
+    const templateId = await createTemplate({ totalPeriods: 2 });
+    const created = await challenge(templateId);
+    const matchId = created.json().match.id;
+    await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+
+    const ready = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/ready`,
+      headers: auth(tokenA),
+      payload: { loadout: {} },
+    });
+
+    expect(ready.statusCode).toBe(200);
+    expect(ready.json().match.me.loadout.items).toEqual([
+      expect.objectContaining({
+        id: equippedInstanceId,
+        instanceId: equippedInstanceId,
+        itemId: skatesItemId,
+      }),
+    ]);
+    expect(ready.json().match.me.loadout.items).not.toEqual([
+      expect.objectContaining({ id: firstInstanceId }),
+    ]);
+  });
+
   it('snapshots duel inventory resource units and timing', async () => {
     const stickId = await createInventoryItem('stick', 'Ультимейт Ван 1');
     await pool.query(

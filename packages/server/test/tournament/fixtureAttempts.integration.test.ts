@@ -1619,6 +1619,58 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     ]);
   });
 
+  it('uses the equipped inventory instance as the default tournament loadout', async () => {
+    const { fixture, opened } = await openFirstPlayoffAttempt(
+      pool,
+      'attempt-equipped-instance-default',
+    );
+    const { rows: items } = await pool.query<{ id: string }>(
+      `insert into admin_inventory_items
+         (photo_url, title, description, price_rub, item_kind, charges_per_purchase,
+          duel_period_cost, power_score, rarity)
+       values ('', 'Tournament instance skates', '', 0, 'skates', 10, 1, 10, 'epic')
+       returning id`,
+    );
+    const itemId = items[0]!.id;
+    const { rows: instances } = await pool.query<{ id: string; charges_available: number }>(
+      `insert into user_inventory_instance (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 3), ($1, $2, 9)
+       returning id, charges_available`,
+      [fixture.home_user_id, itemId],
+    );
+    const equipped = instances.find((instance) => Number(instance.charges_available) === 9)!;
+    await pool.query(
+      `insert into user_equipment
+         (user_id, equipped_skates_item_id, equipped_skates_instance_id)
+       values ($1, $2, $3)`,
+      [fixture.home_user_id, itemId, equipped.id],
+    );
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const homeToken = await jwt.issueAccessToken({ sub: fixture.home_user_id });
+    for (const userId of [fixture.home_user_id, fixture.away_user_id]) {
+      const token = await jwt.issueAccessToken({ sub: userId });
+      const ready = await app.inject({
+        method: 'POST',
+        url: `/duel/amateur/matches/${opened.duelMatchId}/ready`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {},
+      });
+      expect(ready.statusCode).toBe(200);
+    }
+
+    const confirmed = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${opened.duelMatchId}/tournament-loadout`,
+      headers: { authorization: `Bearer ${homeToken}` },
+      payload: { loadout: {} },
+    });
+
+    expect(confirmed.statusCode).toBe(200);
+    expect(confirmed.json().match.me.loadout.items).toEqual([
+      expect.objectContaining({ id: equipped.id, instanceId: equipped.id, itemId }),
+    ]);
+  });
+
   it('versions tournament loadout at each period boundary without releasing consumed charges', async () => {
     await pool.query(
       `update amateur_duel_template
