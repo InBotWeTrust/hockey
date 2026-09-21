@@ -430,8 +430,12 @@ describe('BonusGamePlayScreen', () => {
     expect(props.statusNotice).toBeUndefined();
     expect(props.statusNoticeTone).toBeUndefined();
     expect(props.scoreboardAccessory).toBeDefined();
-    expect(screen.getByLabelText('До обязательного гола')).toHaveTextContent('7,0');
-    expect(screen.getByLabelText('До обязательного гола')).toHaveClass(
+    const goalTimer = screen.getByLabelText('До обязательного гола');
+    expect(goalTimer).toHaveTextContent('ТАЙМЕР7,0');
+    expect(goalTimer).toHaveClass('game-scoreboard', 'game-scoreboard--stable-surface');
+    expect(screen.getByText('ТАЙМЕР')).toHaveClass('game-scoreboard__label');
+    expect(screen.getByText('7,0')).toHaveClass('bonus-game-endurance-timer__value');
+    expect(goalTimer).toHaveClass(
       'bonus-game-endurance-timer--warning',
     );
     expect(props.waitForShotResponseBeforeResultClose).toBeUndefined();
