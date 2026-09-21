@@ -565,6 +565,65 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     );
   });
 
+  it('keeps the equipped inventory instance as the default after a classic period', async () => {
+    const { rows: items } = await pool.query<{ id: string }>(
+      `update admin_inventory_items
+          set resource_unit = 'distance', duel_period_cost = 0
+        where id = (
+          select id from admin_inventory_items
+           where item_kind = 'skates' and deleted_at is null
+           order by id limit 1
+        )
+        returning id`,
+    );
+    const itemId = items[0]!.id;
+    const { rows: instances } = await pool.query<{ id: string; charges_available: number }>(
+      `insert into user_inventory_instance (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 25), ($1, $2, 100)
+       returning id, charges_available`,
+      [PLAYER_ID, itemId],
+    );
+    const equipped = instances.find((instance) => Number(instance.charges_available) === 100)!;
+    await pool.query(
+      `insert into user_equipment
+         (user_id, equipped_skates_item_id, equipped_skates_instance_id)
+       values ($1, $2, $3)
+       on conflict (user_id) do update
+          set equipped_skates_item_id = excluded.equipped_skates_item_id,
+              equipped_skates_instance_id = excluded.equipped_skates_instance_id`,
+      [PLAYER_ID, itemId, equipped.id],
+    );
+
+    await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      loadout: { skates: equipped.id },
+    });
+    await submitClassicGameShot(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      shotIndex: 1,
+      input: { tapTime: 0 },
+      claimedResult: 'miss',
+    });
+
+    const secondPeriod = await getClassicGameState(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: new Date(NOW.getTime() + 1),
+      seedSecret: SEED_SECRET,
+    });
+
+    expect(secondPeriod.current_period).toBe(1);
+    expect(secondPeriod.loadout.items).toEqual([
+      expect.objectContaining({ id: equipped.id, instanceId: equipped.id, itemId }),
+    ]);
+  });
+
   it('snapshots the selected inventory timing configured in the admin catalog', async () => {
     const stickId = await seedClassicShotStick(pool, 1);
     await pool.query(
