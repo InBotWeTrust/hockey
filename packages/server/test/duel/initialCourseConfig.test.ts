@@ -34,6 +34,41 @@ describe('initial training course configuration', () => {
       'follow-the-goal': 10,
       'moving-goal': 10,
       'find-the-gap': 10,
+      'pressure-window': 8,
+      'game-pace': 8,
+    });
+  });
+
+  it('keeps the existing seven-exercise setting active while adding default goal speeds', () => {
+    const migrated = parseInitialTrainingConfig({
+      enabled: true,
+      targetGoals: {
+        'first-shot': 10,
+        'three-positions': 9,
+        'follow-the-goal': 10,
+        'moving-goal': 10,
+        'find-the-gap': 10,
+        'pressure-window': 8,
+        'game-pace': 8,
+      },
+      positionOffsetX: 160,
+      goalieFrequencyMultipliers: {
+        'find-the-gap': 0.35,
+        'pressure-window': 0.65,
+        'game-pace': 1,
+      },
+      rewardStars: 1,
+      rewardExperience: 1,
+    });
+
+    expect(migrated).toMatchObject({
+      enabled: true,
+      goalFrequencyMultipliers: {
+        'moving-goal': 0.35,
+        'find-the-gap': 0.35,
+        'pressure-window': 1,
+        'game-pace': 1,
+      },
     });
   });
 
@@ -49,6 +84,8 @@ describe('initial training course configuration', () => {
       ['follow-the-goal', 'available'],
       ['moving-goal', 'locked'],
       ['find-the-gap', 'locked'],
+      ['pressure-window', 'locked'],
+      ['game-pace', 'locked'],
     ]);
   });
 
@@ -90,23 +127,50 @@ describe('initial training course configuration', () => {
     }
   });
 
-  it('adds honest motion and a slowed goalie only in the final exercises', () => {
+  it('ramps moving goals before bringing the rookie goalie up to game pace', () => {
     const moving = exerciseSceneForProgress(
       'moving-goal',
       { shotIndex: 1, goals: 0 },
       DEFAULT_INITIAL_TRAINING_CONFIG,
     );
-    const final = exerciseSceneForProgress(
+    const slowWindow = exerciseSceneForProgress(
       'find-the-gap',
       { shotIndex: 1, goals: 0 },
       DEFAULT_INITIAL_TRAINING_CONFIG,
     );
+    const pressureWindow = exerciseSceneForProgress(
+      'pressure-window',
+      { shotIndex: 1, goals: 0 },
+      DEFAULT_INITIAL_TRAINING_CONFIG,
+    );
+    const gamePace = exerciseSceneForProgress(
+      'game-pace',
+      { shotIndex: 1, goals: 0 },
+      DEFAULT_INITIAL_TRAINING_CONFIG,
+    );
 
-    expect(moving).toMatchObject({ hasGoalie: false, movingGoal: true });
-    expect(final).toMatchObject({
+    expect(moving).toMatchObject({
+      hasGoalie: false,
+      movingGoal: true,
+      goalFrequencyMultiplier: 0.35,
+    });
+    expect(slowWindow).toMatchObject({
       hasGoalie: true,
       movingGoal: true,
-      goalieFrequencyMultiplier: 0.5,
+      goalFrequencyMultiplier: 0.35,
+      goalieFrequencyMultiplier: 0.35,
+    });
+    expect(pressureWindow).toMatchObject({
+      hasGoalie: true,
+      movingGoal: true,
+      goalFrequencyMultiplier: 1,
+      goalieFrequencyMultiplier: 0.65,
+    });
+    expect(gamePace).toMatchObject({
+      hasGoalie: true,
+      movingGoal: true,
+      goalFrequencyMultiplier: 1,
+      goalieFrequencyMultiplier: 1,
     });
   });
 });

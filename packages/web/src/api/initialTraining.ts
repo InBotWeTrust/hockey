@@ -8,7 +8,9 @@ export type InitialTrainingExerciseKey =
   | 'three-positions'
   | 'follow-the-goal'
   | 'moving-goal'
-  | 'find-the-gap';
+  | 'find-the-gap'
+  | 'pressure-window'
+  | 'game-pace';
 
 export type InitialTrainingExerciseState = 'completed' | 'available' | 'locked';
 export type InitialTrainingFeedbackCode =

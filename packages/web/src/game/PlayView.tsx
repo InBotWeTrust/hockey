@@ -280,6 +280,7 @@ export interface PlayViewProps<TState> {
     | GameScoreboardModel
     | ((counters: { goals: number; shots: number }) => GameScoreboardModel)
     | undefined;
+  scoreboardAccessory?: ReactNode;
   shotButtonLabel?: string | undefined;
   primaryActionBlocked?: boolean | undefined;
   inactiveAction?: (() => unknown | Promise<unknown>) | undefined;
@@ -593,6 +594,7 @@ export function PlayView<TState>({
   autoShotDelayMs,
   scoreboardNotice,
   scoreboardModel,
+  scoreboardAccessory,
   shotButtonLabel = 'БРОСОК',
   primaryActionBlocked = false,
   inactiveAction,
@@ -1933,24 +1935,27 @@ export function PlayView<TState>({
       longBackground={longCourtBackground}
       scoreboard={
         hideRinkScoreboard ? undefined : (
-          <GameScoreboard
-            {...(visibleCustomScoreboardModel ??
-              buildGameScoreboardModel({
-                period: scoreboardPeriodNumber ?? periodNumber,
-                periodsTotal: scoreboardPeriodsTotal ?? periodsTotal,
-                periodLabel,
-                timer: timerValue,
-                timerLabel: timerLabel ?? 'ВРЕМЯ',
-                goals: visibleScoreboardGoals,
-                ...(scoreLabel !== undefined ? { scoreLabel } : {}),
-                shots: visibleScoreboardShots,
-                ...(shotsTotal !== undefined ? { shotsTotal } : {}),
-                ...(visibleScoreboardNotice !== undefined
-                  ? { notice: visibleScoreboardNotice }
-                  : {}),
-                ...(scoreboardOpponent !== undefined ? { opponent: scoreboardOpponent } : {}),
-              }))}
-          />
+          <div className="game-scoreboard-stack">
+            <GameScoreboard
+              {...(visibleCustomScoreboardModel ??
+                buildGameScoreboardModel({
+                  period: scoreboardPeriodNumber ?? periodNumber,
+                  periodsTotal: scoreboardPeriodsTotal ?? periodsTotal,
+                  periodLabel,
+                  timer: timerValue,
+                  timerLabel: timerLabel ?? 'ВРЕМЯ',
+                  goals: visibleScoreboardGoals,
+                  ...(scoreLabel !== undefined ? { scoreLabel } : {}),
+                  shots: visibleScoreboardShots,
+                  ...(shotsTotal !== undefined ? { shotsTotal } : {}),
+                  ...(visibleScoreboardNotice !== undefined
+                    ? { notice: visibleScoreboardNotice }
+                    : {}),
+                  ...(scoreboardOpponent !== undefined ? { opponent: scoreboardOpponent } : {}),
+                }))}
+            />
+            {scoreboardAccessory}
+          </div>
         )
       }
     />
@@ -2025,6 +2030,7 @@ export function PlayView<TState>({
               opponent={scoreboardOpponent}
             />
           ))}
+        {!hideScoreboard && scoreboardAccessory}
       </div>
 
       <div

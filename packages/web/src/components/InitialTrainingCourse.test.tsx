@@ -11,7 +11,7 @@ const catalog: InitialTrainingCatalogResponse = {
   enabled: true,
   completed_count: 1,
   beginner_training_completed: false,
-  total_count: 5,
+  total_count: 7,
   open_training_unlocked: false,
   open_training_unlock_source: null,
   gameplay_lock: null,
@@ -71,8 +71,28 @@ const catalog: InitialTrainingCatalogResponse = {
       key: 'find-the-gap',
       position: 5,
       title: 'Найди свободный угол',
-      description: 'Обыграй дворового вратаря.',
+      description: 'Обыграй медленного дворового вратаря.',
       targetGoals: 10,
+      rewardStars: 1,
+      rewardExperience: 1,
+      state: 'locked',
+    },
+    {
+      key: 'pressure-window',
+      position: 6,
+      title: 'Вратарь ускоряется',
+      description: 'Читай движение вратаря и забивай в свободный угол.',
+      targetGoals: 8,
+      rewardStars: 1,
+      rewardExperience: 1,
+      state: 'locked',
+    },
+    {
+      key: 'game-pace',
+      position: 7,
+      title: 'Игровой темп',
+      description: 'Забивай в движущиеся ворота на скорости настоящей игры.',
+      targetGoals: 8,
       rewardStars: 1,
       rewardExperience: 1,
       state: 'locked',
@@ -95,8 +115,8 @@ describe('initial training course UI', () => {
     expect(screen.getByText('Продвинутый уровень')).toBeInTheDocument();
     expect(document.querySelector('img[src="/sprites/initial-training-course-cover.webp"]')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Открытая тренировка/ })).toBeDisabled();
-    expect(screen.getByText('1 из 5 упражнений')).toBeInTheDocument();
-    expect(screen.getByText('Откроется после 5 упражнений')).toBeInTheDocument();
+    expect(screen.getByText('1 из 7 упражнений')).toBeInTheDocument();
+    expect(screen.getByText('Откроется после 7 упражнений')).toBeInTheDocument();
     const modeCards = screen.getAllByRole('button');
     expect(modeCards.map((card) => card.textContent)).toEqual([
       expect.stringContaining('Начальный уровень'),
@@ -113,10 +133,10 @@ describe('initial training course UI', () => {
     expect(screen.getByRole('heading', { name: 'Прогресс' })).toBeInTheDocument();
     const progress = screen.getByRole('progressbar', { name: 'Прогресс начального обучения' });
     expect(progress).toHaveAttribute('aria-valuenow', '1');
-    expect(progress).toHaveAttribute('aria-valuemax', '5');
-    expect(within(progress).getByText('1 / 5')).toBeInTheDocument();
+    expect(progress).toHaveAttribute('aria-valuemax', '7');
+    expect(within(progress).getByText('1 / 7')).toBeInTheDocument();
 
-    expect(screen.getAllByRole('article')).toHaveLength(5);
+    expect(screen.getAllByRole('article')).toHaveLength(7);
     expect(screen.queryByRole('heading', { name: 'Текущее упражнение' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /Пройденные/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /Следующие/ })).not.toBeInTheDocument();
@@ -136,10 +156,12 @@ describe('initial training course UI', () => {
     expect(screen.getByText('Первый бросок')).toHaveClass('achievement-card__title');
     expect(screen.getByText('Точность')).toHaveClass('initial-training-exercise-card__skill');
     expect(screen.getByText('Тайминг')).toHaveClass('initial-training-exercise-card__skill');
+    expect(screen.getByText('Реакция')).toHaveClass('initial-training-exercise-card__skill');
+    expect(screen.getByText('Игра')).toHaveClass('initial-training-exercise-card__skill');
     expect(screen.getByText('Не пройдено')).toHaveClass(
       'training-exercise-card__stage--available',
     );
-    expect(screen.getAllByText('Закрыто')).toHaveLength(3);
+    expect(screen.getAllByText('Закрыто')).toHaveLength(5);
     screen.getAllByText('Закрыто').forEach((status) => {
       expect(status).toHaveClass('training-exercise-card__stage--locked');
     });
@@ -148,9 +170,9 @@ describe('initial training course UI', () => {
       'initial-training-exercise-card__completion',
     );
     expect(screen.queryByText('Повтор без награды')).not.toBeInTheDocument();
-    expect(screen.getAllByTestId('initial-training-reward-slot')).toHaveLength(5);
-    expect(screen.getAllByTestId('initial-training-reward-star')).toHaveLength(5);
-    expect(screen.getAllByTestId('initial-training-reward-experience')).toHaveLength(5);
+    expect(screen.getAllByTestId('initial-training-reward-slot')).toHaveLength(7);
+    expect(screen.getAllByTestId('initial-training-reward-star')).toHaveLength(7);
+    expect(screen.getAllByTestId('initial-training-reward-experience')).toHaveLength(7);
     expect(screen.getByLabelText('Награда получена')).toHaveClass(
       'initial-training-exercise-card__rewards--claimed',
     );
@@ -162,7 +184,7 @@ describe('initial training course UI', () => {
     expect(within(metaRow as HTMLElement).queryByTestId('initial-training-reward-slot')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Начать: Три позиции' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Недоступно: Следи за воротами' })).toBeDisabled();
-    const finalCard = screen.getByRole('article', { name: 'Упражнение 5: Найди свободный угол' });
+    const finalCard = screen.getByRole('article', { name: 'Упражнение 7: Игровой темп' });
     expect(within(finalCard).getByAltText('Дворовая сцена упражнения')).toHaveAttribute(
       'src',
       '/sprites/initial-training-course-cover.webp',
@@ -172,7 +194,7 @@ describe('initial training course UI', () => {
     expect(onStart).toHaveBeenCalledWith('three-positions');
   });
 
-  it('keeps all five task cards equal when progress changes', () => {
+  it('keeps all seven task cards equal when progress changes', () => {
     const { rerender } = render(<InitialTrainingCatalog catalog={catalog} onStart={vi.fn()} />);
 
     const progressedCatalog: InitialTrainingCatalogResponse = {
@@ -188,18 +210,18 @@ describe('initial training course UI', () => {
     };
     rerender(<InitialTrainingCatalog catalog={progressedCatalog} onStart={vi.fn()} />);
 
-    expect(screen.getAllByRole('article')).toHaveLength(5);
+    expect(screen.getAllByRole('article')).toHaveLength(7);
     expect(screen.getAllByLabelText('Упражнение пройдено')).toHaveLength(2);
-    expect(screen.getAllByTestId('initial-training-reward-slot')).toHaveLength(5);
+    expect(screen.getAllByTestId('initial-training-reward-slot')).toHaveLength(7);
     expect(screen.getAllByText('Не пройдено')).toHaveLength(1);
-    expect(screen.getAllByText('Закрыто')).toHaveLength(2);
+    expect(screen.getAllByText('Закрыто')).toHaveLength(4);
     expect(screen.queryByRole('heading', { name: /Текущее упражнение|Пройденные|Следующие/ })).not.toBeInTheDocument();
   });
 
   it('keeps the exercise heading when the whole course is completed', () => {
     const completedCatalog: InitialTrainingCatalogResponse = {
       ...catalog,
-      completed_count: 5,
+      completed_count: 7,
       open_training_unlocked: true,
       open_training_unlock_source: 'course',
       exercises: catalog.exercises.map((exercise) => ({
@@ -211,8 +233,8 @@ describe('initial training course UI', () => {
     render(<InitialTrainingCatalog catalog={completedCatalog} onStart={vi.fn()} />);
 
     expect(screen.getByText('Упражнения')).toBeInTheDocument();
-    expect(screen.getAllByRole('article')).toHaveLength(5);
-    expect(screen.getAllByLabelText('Упражнение пройдено')).toHaveLength(5);
+    expect(screen.getAllByRole('article')).toHaveLength(7);
+    expect(screen.getAllByLabelText('Упражнение пройдено')).toHaveLength(7);
   });
 
   it('maps verified shot feedback to useful Russian hints', () => {

@@ -130,7 +130,7 @@ const initialTrainingCatalog: InitialTrainingCatalogResponse = {
   enabled: true,
   completed_count: 0,
   beginner_training_completed: false,
-  total_count: 5,
+  total_count: 7,
   open_training_unlocked: false,
   open_training_unlock_source: null,
   gameplay_lock: null,
@@ -151,6 +151,8 @@ const initialTrainingCatalog: InitialTrainingCatalogResponse = {
     ['follow-the-goal', 'Следи за воротами', 'locked', 10],
     ['moving-goal', 'Ворота в движении', 'locked', 10],
     ['find-the-gap', 'Найди свободный угол', 'locked', 10],
+    ['pressure-window', 'Вратарь ускоряется', 'locked', 8],
+    ['game-pace', 'Игровой темп', 'locked', 8],
   ].map(([key, title, state, targetGoals], index) => ({
     key,
     position: index + 1,
@@ -4106,7 +4108,7 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ' })).not.toBeInTheDocument();
   });
 
-  it('shows the initial-course hub and opens its five-card catalog when enabled', async () => {
+  it('shows the initial-course hub and opens its seven-card catalog when enabled', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       const body = url.includes('/duel/training/course')
@@ -4124,7 +4126,7 @@ describe('DailyScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Начальный уровень/ }));
     expect(screen.getByLabelText('location')).toHaveTextContent('/?view=training&section=course');
-    expect(await screen.findAllByRole('article')).toHaveLength(5);
+    expect(await screen.findAllByRole('article')).toHaveLength(7);
     expect(screen.getByRole('button', { name: 'Начать: Первый бросок' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Недоступно: Три позиции' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Начать: Первый бросок' }));
@@ -4229,7 +4231,7 @@ describe('DailyScreen', () => {
     ).toBe(false);
   });
 
-  it('does not flash the open-training screen while the course catalog is loading', async () => {
+  it('keeps all three training cards visible while the course catalog is loading', async () => {
     let resolveCourse!: (response: Response) => void;
     const courseResponse = new Promise<Response>((resolve) => {
       resolveCourse = resolve;
@@ -4245,7 +4247,11 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=training&from=sections']);
 
-    expect(await screen.findByText('Загрузка раздела…')).toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'Тренировка' });
+    expect(screen.getByRole('button', { name: /Начальный уровень/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).toBeDisabled();
+    expect(screen.queryByText('Загрузка раздела…')).not.toBeInTheDocument();
     expect(screen.queryByText(/Выбери модель периода/)).not.toBeInTheDocument();
 
     resolveCourse(
@@ -4383,16 +4389,16 @@ describe('DailyScreen', () => {
     ]);
     const finalCatalog = {
       ...initialTrainingCatalog,
-      completed_count: 4,
+      completed_count: 6,
       exercises: initialTrainingCatalog.exercises.map((exercise) => ({
         ...exercise,
-        state: exercise.key === 'find-the-gap' ? 'available' : 'completed',
+        state: exercise.key === 'game-pace' ? 'available' : 'completed',
       })) as InitialTrainingCatalogResponse['exercises'],
     };
     expect(
-      initialTrainingCatalogAfterCompletion(finalCatalog, 'find-the-gap'),
+      initialTrainingCatalogAfterCompletion(finalCatalog, 'game-pace'),
     ).toMatchObject({
-      completed_count: 5,
+      completed_count: 7,
       open_training_unlocked: true,
       open_training_unlock_source: 'course',
     });

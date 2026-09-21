@@ -14,6 +14,44 @@ const exerciseSkill: Record<InitialTrainingExerciseKey, string> = {
   'follow-the-goal': 'Фокус',
   'moving-goal': 'Тайминг',
   'find-the-gap': 'Угол',
+  'pressure-window': 'Реакция',
+  'game-pace': 'Игра',
+};
+
+export const INITIAL_TRAINING_HUB_ARTWORK = [
+  '/sprites/initial-training-course-cover.webp',
+  '/sprites/advanced-training-course-cover.webp',
+  '/modes/training-evening.webp',
+] as const;
+
+export function preloadInitialTrainingHubArtwork(): void {
+  if (typeof Image === 'undefined') return;
+  for (const src of INITIAL_TRAINING_HUB_ARTWORK) {
+    const image = new Image();
+    image.src = src;
+  }
+}
+
+export const INITIAL_TRAINING_HUB_LOADING_CATALOG: InitialTrainingCatalogResponse = {
+  enabled: true,
+  completed_count: 0,
+  beginner_training_completed: false,
+  total_count: 7,
+  open_training_unlocked: false,
+  open_training_unlock_source: null,
+  gameplay_lock: null,
+  exercises: [],
+  advanced_training: {
+    enabled: true,
+    access: {
+      amateur_completed: false,
+      beginner_training_completed: false,
+      unlocked: false,
+    },
+    completed_count: 0,
+    total_count: 8,
+    exercises: [],
+  },
 };
 
 export function initialTrainingFeedbackCopy(code: InitialTrainingFeedbackCode): string {
@@ -28,11 +66,13 @@ export function InitialTrainingHub({
   onOpenCourse,
   onOpenTraining,
   onOpenAdvanced,
+  loading = false,
 }: {
   catalog: InitialTrainingCatalogResponse;
   onOpenCourse: () => void;
   onOpenTraining: () => void;
   onOpenAdvanced: () => void;
+  loading?: boolean;
 }): JSX.Element {
   const advanced = catalog.advanced_training;
   return (
@@ -40,6 +80,7 @@ export function InitialTrainingHub({
       <button
         type="button"
         className="section-card-surface amateur-hub-card initial-training-mode-card"
+        disabled={loading}
         onClick={onOpenCourse}
         aria-label={`Начальный уровень, пройдено ${catalog.completed_count} из ${catalog.total_count} упражнений`}
       >
@@ -48,7 +89,11 @@ export function InitialTrainingHub({
         </span>
         <span className="amateur-hub-card__copy">
           <strong>Начальный уровень</strong>
-          <span>{catalog.completed_count} из {catalog.total_count} упражнений</span>
+          <span>
+            {loading
+              ? 'Загрузка прогресса…'
+              : `${catalog.completed_count} из ${catalog.total_count} упражнений`}
+          </span>
         </span>
         <ChevronRight className="card-chevron" size={20} strokeWidth={2.7} aria-hidden="true" />
       </button>
@@ -56,7 +101,7 @@ export function InitialTrainingHub({
       <AdvancedTrainingHubCard
         completedCount={advanced.completed_count}
         totalCount={advanced.total_count}
-        unlocked={advanced.enabled && advanced.access.unlocked}
+        unlocked={!loading && advanced.enabled && advanced.access.unlocked}
         access={advanced.access}
         onOpen={onOpenAdvanced}
       />
@@ -64,7 +109,7 @@ export function InitialTrainingHub({
       <button
         type="button"
         className="section-card-surface amateur-hub-card initial-training-mode-card initial-training-mode-card--open"
-        disabled={!catalog.open_training_unlocked}
+        disabled={loading || !catalog.open_training_unlocked}
         onClick={onOpenTraining}
         aria-label="Открытая тренировка"
       >
@@ -74,7 +119,9 @@ export function InitialTrainingHub({
         <span className="amateur-hub-card__copy">
           <strong>Открытая тренировка</strong>
           <span>
-            {catalog.open_training_unlocked
+            {loading
+              ? 'Загрузка доступа…'
+              : catalog.open_training_unlocked
               ? 'Свободный режим и история тренировок'
               : `Откроется после ${catalog.total_count} упражнений`}
           </span>

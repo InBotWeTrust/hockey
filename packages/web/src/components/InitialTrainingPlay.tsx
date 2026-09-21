@@ -59,7 +59,7 @@ export function InitialTrainingResult({
   onCourse: () => void;
   onOpenTraining: () => void;
 }): JSX.Element {
-  const isFinal = exercisePosition === 5;
+  const isFinal = exercisePosition === 7;
   return (
     <div className="modal-backdrop initial-training-result-backdrop">
       <section
@@ -291,7 +291,7 @@ export function InitialTrainingPlay({
         periodNumber={1}
         periodLabel="УПРАЖНЕНИЕ"
         scoreboardPeriodNumber={run.exercise.position}
-        scoreboardPeriodsTotal={5}
+        scoreboardPeriodsTotal={7}
         speedOverrides={speedOverrides}
         sessionStartedAt={run.started_at}
         serverNow={run.server_now}
