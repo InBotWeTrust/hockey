@@ -25,6 +25,47 @@ describe('bonus game first-clear reward heading', () => {
   });
 });
 
+describe('bonus game modal depth', () => {
+  it('avoids composited card-shaped ghosts while retaining the shared modal geometry', () => {
+    const preview = rule('.modal-card.bonus-game-preview-modal');
+    const result = rule('.modal-card.bonus-game-result-modal');
+
+    for (const bonusModal of [preview, result]) {
+      expect(bonusModal).toContain('background: rgba(226, 233, 241, 0.94)');
+      expect(bonusModal).toContain('box-shadow: none');
+      expect(bonusModal).toContain('backdrop-filter: none');
+    }
+  });
+});
+
+describe('endurance inline shot result typography', () => {
+  it('keeps timer digits mono but switches shot-result words to the former modal typeface', () => {
+    const timer = rule('.initial-training-feedback-notice.bonus-game-endurance-notice');
+    const result = rule(
+      '.initial-training-feedback-notice.bonus-game-endurance-notice.game-inline-result-notice',
+    );
+
+    expect(timer).toContain('font-family: var(--font-mono)');
+    expect(result).toContain('font-family: var(--font-sans)');
+    expect(result).toContain('font-size: clamp(30px, 5.2vmin, 42px)');
+    expect(result).toContain('letter-spacing: 0.06em');
+    expect(result).toContain('color: #111827');
+    expect(result).toContain('text-shadow: none');
+    expect(result).toContain('animation: bonus-game-endurance-result-pulse 220ms ease-out');
+    expect(result).not.toContain('background:');
+
+    const save = rule(
+      '.initial-training-feedback-notice.bonus-game-endurance-notice.game-inline-result-notice--save',
+    );
+    expect(save).toContain('rgba(14, 165, 233, 0.42)');
+
+    const miss = rule(
+      '.initial-training-feedback-notice.bonus-game-endurance-notice.game-inline-result-notice--miss',
+    );
+    expect(miss).toContain('rgba(223, 107, 107, 0.42)');
+  });
+});
+
 describe('experience rating scroll containment', () => {
   it('disables scroll chaining and gives the sticky header an opaque surface', () => {
     const viewport = rule('.experience-rating__viewport');

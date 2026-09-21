@@ -46,6 +46,8 @@ vi.mock('../game/PlayView.js', () => ({
     statusNotice?: string;
     statusNoticeTone?: 'success' | 'warning' | 'error';
     statusNoticeClassName?: string;
+    inlineResultNotice?: boolean;
+    resultCopy?: Partial<Record<'goal' | 'save' | 'miss', string>>;
     scoreboardModel?:
       | GameScoreboardModel
       | ((counters: { goals: number; shots: number }) => GameScoreboardModel);
@@ -410,6 +412,8 @@ describe('BonusGamePlayScreen', () => {
       overlayControls?: JSX.Element;
       statusNotice?: string;
       statusNoticeTone?: 'success' | 'warning' | 'error';
+      inlineResultNotice?: boolean;
+      resultCopy?: Partial<Record<'goal' | 'save' | 'miss', string>>;
     };
     expect(props.scoreboardModel({ goals: 0, shots: 0 }).rows[0]?.metrics).toEqual([
       expect.objectContaining({ label: 'ПЕРИОД', value: '1/1' }),
@@ -422,6 +426,8 @@ describe('BonusGamePlayScreen', () => {
     expect(props.statusNotice).toBe('7,0');
     expect(props.statusNoticeTone).toBe('warning');
     expect(document.querySelector('.bonus-game-endurance-hud')).toBeNull();
+    expect(props.inlineResultNotice).toBe(true);
+    expect(props.resultCopy).toEqual({ goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' });
   });
 
   it('keeps the endurance timer hidden until the player starts the period', () => {

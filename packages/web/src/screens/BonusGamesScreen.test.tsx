@@ -8,6 +8,7 @@ import { useAuthStore } from '../auth/authStore.js';
 import { ApiError } from '../api/apiFetch.js';
 import type { DailyStateResponse } from '../api/duel.js';
 import { useDailyStore } from '../stores/dailyStore.js';
+import { useBonusGameStore } from '../stores/bonusGameStore.js';
 import { BonusGamesScreen } from './BonusGamesScreen.js';
 
 const { preloadArtwork } = vi.hoisted(() => ({ preloadArtwork: vi.fn() }));
@@ -264,6 +265,7 @@ describe('BonusGamesScreen', () => {
       user: null,
     });
     useDailyStore.setState({ data: null });
+    useBonusGameStore.getState().applyState(null);
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
   });
 
@@ -1636,6 +1638,7 @@ describe('BonusGamesScreen', () => {
         '/bonus-games/00000000-0000-4000-8000-000000000601/play?attempt=attempt-new',
       ),
     );
+    expect(useBonusGameStore.getState().attempt?.id).toBe('attempt-new');
   });
 
   it('shows two independent daily attempt allowances', async () => {
