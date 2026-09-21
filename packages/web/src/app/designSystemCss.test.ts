@@ -25,6 +25,39 @@ describe('bonus game first-clear reward heading', () => {
   });
 });
 
+describe('bonus game progress and endurance timer surfaces', () => {
+  it('uses the featured bonus card surface for the progress container', () => {
+    const progress = rule('.bonus-games-attempt-progress');
+
+    expect(progress).toContain('border: 1px solid rgba(255, 255, 255, 0.94)');
+    expect(progress).toContain('border-radius: 22px');
+    expect(progress).toContain('background: rgba(237, 244, 250, 0.84)');
+    expect(progress).toContain('0 18px 42px rgba(15, 23, 42, 0.18)');
+    expect(progress).toContain('0 0 0 2px rgba(74, 144, 226, 0.12)');
+    expect(progress).toContain('inset 0 1px 0 rgba(255, 255, 255, 0.9)');
+  });
+
+  it('leaves the endurance timer surface to the shared scoreboard class', () => {
+    const timer = rule('.bonus-game-endurance-timer');
+    const warning = rule('.bonus-game-endurance-timer--warning');
+    const danger = rule('.bonus-game-endurance-timer--danger');
+
+    expect(timer).toContain('width: auto');
+    expect(timer).toContain('min-width: clamp(120px, 34%, 180px)');
+    expect(timer).not.toContain('background:');
+    expect(timer).not.toContain('background-color:');
+    expect(timer).not.toContain('box-shadow:');
+    expect(timer).not.toContain('backdrop-filter:');
+    expect(timer).not.toContain('border:');
+    expect(warning).toContain('color: #d9ae3d');
+    expect(warning).not.toContain('background:');
+    expect(warning).not.toContain('box-shadow:');
+    expect(danger).toContain('color: #df6b6b');
+    expect(danger).not.toContain('background:');
+    expect(danger).not.toContain('box-shadow:');
+  });
+});
+
 describe('bonus game modal depth', () => {
   it('avoids composited card-shaped ghosts while retaining the shared modal geometry', () => {
     const preview = rule('.modal-card.bonus-game-preview-modal');

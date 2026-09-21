@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   preloadArtwork,
+  preloadCriticalArtwork,
   preloadStartupArtwork,
   profileArtworkUrls,
   shopArtworkUrls,
@@ -87,6 +88,36 @@ function inventoryWithSelectedEquipment(): InventoryState {
 }
 
 describe('preloadArtwork', () => {
+  it('retains the current section artwork used by shop, bonus games, and amateurs', () => {
+    const created: Array<{ decoding: string; fetchPriority: string; src: string }> = [];
+    vi.stubGlobal(
+      'Image',
+      vi.fn(() => {
+        const image = { decoding: '', fetchPriority: '', src: '' };
+        created.push(image);
+        return image;
+      }),
+    );
+
+    preloadCriticalArtwork();
+
+    expect(created.map((image) => image.src)).toEqual(
+      expect.arrayContaining([
+        '/modes/shop-retail-v2.webp',
+        '/bonus-games/section-card-v5.webp',
+        '/modes/amateur-game-v3.webp',
+      ]),
+    );
+    expect(created.map((image) => image.src)).not.toEqual(
+      expect.arrayContaining([
+        '/modes/shop-retail.webp',
+        '/bonus-games/section-card.webp',
+        '/modes/amateur-game.webp',
+      ]),
+    );
+    vi.unstubAllGlobals();
+  });
+
   it('collects the shop overview and only the open category artwork', () => {
     expect(shopArtworkUrls(inventoryWithSelectedEquipment(), 'recovery')).toEqual([
       '/shop/shop-background.webp',
