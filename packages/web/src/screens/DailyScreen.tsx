@@ -86,7 +86,6 @@ import type {
   ShotResultType,
 } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
-import { fetchBonusGames } from '../api/bonusGames.js';
 import type { ProfileData } from './profileTypes.js';
 import {
   arenaCourtImage,
@@ -4005,27 +4004,12 @@ function AmateurHubPage({
   onBack: () => void;
   onOpenSection: (section: 'duels' | 'bonus-games' | 'tournaments') => void;
 }): JSX.Element {
-  const bonusCatalog = useQuery({
-    queryKey: ['bonus-games'],
-    queryFn: fetchBonusGames,
-  });
-  const bonusProgress = bonusCatalog.isError
-    ? 'Прогресс недоступен'
-    : bonusCatalog.data
-      ? `${bonusCatalog.data.games.filter((game) => game.is_completed).length}/${bonusCatalog.data.games.length} пройдено`
-      : '—/— пройдено';
   const sections = [
     {
       id: 'duels' as const,
       title: 'Дуэли',
       description: 'Матчи один на один',
       artwork: '/modes/amateur-duel-card.webp',
-    },
-    {
-      id: 'bonus-games' as const,
-      title: 'Бонусные игры',
-      description: bonusProgress,
-      artwork: '/bonus-games/section-card.webp',
     },
     {
       id: 'tournaments' as const,
