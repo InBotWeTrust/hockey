@@ -59,11 +59,28 @@ describe('initial training play', () => {
     expect(onCourse).toHaveBeenCalledOnce();
   });
 
-  it('opens the free training after the fifth exercise', () => {
-    const onOpenTraining = vi.fn();
+  it('continues from the fifth exercise to the next level', () => {
+    const onNext = vi.fn();
     render(
       <InitialTrainingResult
         exercisePosition={5}
+        reward={null}
+        onNext={onNext}
+        onCourse={vi.fn()}
+        onOpenTraining={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Следующий уровень' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Следующий уровень' }));
+    expect(onNext).toHaveBeenCalledOnce();
+  });
+
+  it('opens free training after the seventh exercise', () => {
+    const onOpenTraining = vi.fn();
+    render(
+      <InitialTrainingResult
+        exercisePosition={7}
         reward={null}
         onNext={vi.fn()}
         onCourse={vi.fn()}

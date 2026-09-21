@@ -9,6 +9,8 @@ export const INITIAL_TRAINING_EXERCISE_KEYS = [
   'follow-the-goal',
   'moving-goal',
   'find-the-gap',
+  'pressure-window',
+  'game-pace',
 ] as const;
 
 export const INITIAL_TRAINING_GOALIE_ID = 'rookie' as const;
@@ -21,6 +23,45 @@ export type InitialTrainingExerciseKey = (typeof INITIAL_TRAINING_EXERCISE_KEYS)
 export type InitialTrainingExerciseState = 'completed' | 'available' | 'locked';
 
 const initialTrainingConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    targetGoals: z
+      .object({
+        'first-shot': z.number().int().min(1).max(100),
+        'three-positions': z.number().int().min(3).max(100),
+        'follow-the-goal': z.number().int().min(1).max(100),
+        'moving-goal': z.number().int().min(1).max(100),
+        'find-the-gap': z.number().int().min(1).max(100),
+        'pressure-window': z.number().int().min(1).max(100),
+        'game-pace': z.number().int().min(1).max(100),
+      })
+      .strict(),
+    positionOffsetX: z.number().min(1).max(220),
+    goalieFrequencyMultipliers: z
+      .object({
+        'find-the-gap': z.number().min(0.1).max(1),
+        'pressure-window': z.number().min(0.1).max(1),
+        'game-pace': z.number().min(0.1).max(1),
+      })
+      .strict(),
+    goalFrequencyMultipliers: z
+      .object({
+        'moving-goal': z.number().min(0.1).max(1),
+        'find-the-gap': z.number().min(0.1).max(1),
+        'pressure-window': z.number().min(0.1).max(1),
+        'game-pace': z.number().min(0.1).max(1),
+      })
+      .strict(),
+    rewardStars: z.number().int().min(0).max(100),
+    rewardExperience: z.number().int().min(0).max(100),
+  })
+  .strict();
+
+const previousProgressionInitialTrainingConfigSchema = initialTrainingConfigSchema.omit({
+  goalFrequencyMultipliers: true,
+});
+
+const legacyInitialTrainingConfigSchema = z
   .object({
     enabled: z.boolean(),
     targetGoals: z
@@ -49,9 +90,21 @@ export const DEFAULT_INITIAL_TRAINING_CONFIG: InitialTrainingConfig = {
     'follow-the-goal': 10,
     'moving-goal': 10,
     'find-the-gap': 10,
+    'pressure-window': 8,
+    'game-pace': 8,
   },
   positionOffsetX: 160,
-  goalieFrequencyMultiplier: 0.5,
+  goalieFrequencyMultipliers: {
+    'find-the-gap': 0.35,
+    'pressure-window': 0.65,
+    'game-pace': 1,
+  },
+  goalFrequencyMultipliers: {
+    'moving-goal': 0.35,
+    'find-the-gap': 0.35,
+    'pressure-window': 1,
+    'game-pace': 1,
+  },
   rewardStars: 1,
   rewardExperience: 1,
 };
@@ -78,7 +131,15 @@ const exerciseCopy: Record<
   },
   'find-the-gap': {
     title: 'Найди свободный угол',
-    description: 'Дождись свободного угла и обыграй вратаря.',
+    description: 'Дождись свободного угла у медленного вратаря.',
+  },
+  'pressure-window': {
+    title: 'Вратарь ускоряется',
+    description: 'Читай движение вратаря и забивай в свободный угол.',
+  },
+  'game-pace': {
+    title: 'Игровой темп',
+    description: 'Забивай в движущиеся ворота на скорости настоящей игры.',
   },
 };
 
@@ -98,11 +159,38 @@ export interface InitialTrainingExerciseScene {
   movingGoal: boolean;
   hasGoalie: boolean;
   goalieFrequencyMultiplier: number;
+  goalFrequencyMultiplier: number;
 }
 
 export function parseInitialTrainingConfig(value: unknown): InitialTrainingConfig {
   const parsed = initialTrainingConfigSchema.safeParse(value);
-  return parsed.success ? parsed.data : DEFAULT_INITIAL_TRAINING_CONFIG;
+  if (parsed.success) return parsed.data;
+
+  const previousProgression = previousProgressionInitialTrainingConfigSchema.safeParse(value);
+  if (previousProgression.success) {
+    return {
+      ...previousProgression.data,
+      goalFrequencyMultipliers: DEFAULT_INITIAL_TRAINING_CONFIG.goalFrequencyMultipliers,
+    };
+  }
+
+  const legacy = legacyInitialTrainingConfigSchema.safeParse(value);
+  if (!legacy.success) return DEFAULT_INITIAL_TRAINING_CONFIG;
+  return {
+    ...DEFAULT_INITIAL_TRAINING_CONFIG,
+    enabled: legacy.data.enabled,
+    targetGoals: {
+      ...DEFAULT_INITIAL_TRAINING_CONFIG.targetGoals,
+      ...legacy.data.targetGoals,
+    },
+    positionOffsetX: legacy.data.positionOffsetX,
+    goalieFrequencyMultipliers: {
+      ...DEFAULT_INITIAL_TRAINING_CONFIG.goalieFrequencyMultipliers,
+      'find-the-gap': legacy.data.goalieFrequencyMultiplier,
+    },
+    rewardStars: legacy.data.rewardStars,
+    rewardExperience: legacy.data.rewardExperience,
+  };
 }
 
 export function buildInitialTrainingCatalog(
@@ -139,7 +227,8 @@ export function exerciseSceneForProgress(
       goalOffsetX: positionOffsets[position]!,
       movingGoal: false,
       hasGoalie: false,
-      goalieFrequencyMultiplier: config.goalieFrequencyMultiplier,
+      goalieFrequencyMultiplier: 1,
+      goalFrequencyMultiplier: 0,
     };
   }
   if (key === 'follow-the-goal') {
@@ -148,14 +237,30 @@ export function exerciseSceneForProgress(
       goalOffsetX: positionOffsets[position]!,
       movingGoal: false,
       hasGoalie: false,
-      goalieFrequencyMultiplier: config.goalieFrequencyMultiplier,
+      goalieFrequencyMultiplier: 1,
+      goalFrequencyMultiplier: 0,
     };
   }
   return {
     goalOffsetX: 0,
-    movingGoal: key === 'moving-goal' || key === 'find-the-gap',
-    hasGoalie: key === 'find-the-gap',
-    goalieFrequencyMultiplier: config.goalieFrequencyMultiplier,
+    movingGoal:
+      key === 'moving-goal' ||
+      key === 'find-the-gap' ||
+      key === 'pressure-window' ||
+      key === 'game-pace',
+    hasGoalie:
+      key === 'find-the-gap' || key === 'pressure-window' || key === 'game-pace',
+    goalieFrequencyMultiplier:
+      key === 'find-the-gap' || key === 'pressure-window' || key === 'game-pace'
+        ? config.goalieFrequencyMultipliers[key]
+        : 1,
+    goalFrequencyMultiplier:
+      key === 'moving-goal' ||
+      key === 'find-the-gap' ||
+      key === 'pressure-window' ||
+      key === 'game-pace'
+        ? config.goalFrequencyMultipliers[key]
+        : 0,
   };
 }
 

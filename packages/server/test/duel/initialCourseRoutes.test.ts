@@ -95,7 +95,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
 
   const headers = () => ({ authorization: `Bearer ${accessToken}` });
 
-  it('returns five sequential cards and locks open training', async () => {
+  it('returns seven sequential cards and locks open training', async () => {
     const catalog = await app.inject({
       method: 'GET',
       url: '/duel/training/course',
@@ -113,6 +113,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
         { key: 'follow-the-goal', state: 'locked' },
         { key: 'moving-goal', state: 'locked' },
         { key: 'find-the-gap', state: 'locked' },
+        { key: 'pressure-window', state: 'locked' },
+        { key: 'game-pace', state: 'locked' },
       ],
     });
 
@@ -154,6 +156,33 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
     });
     expect(response.statusCode).toBe(409);
     expect(response.json().error.code).toBe('initial_training_exercise_locked');
+  });
+
+  it('unlocks game pace after both slower goalie exercises and uses first-period speed', async () => {
+    for (const exerciseKey of INITIAL_TRAINING_EXERCISE_KEYS.slice(0, 6)) {
+      await pool.query(
+        `insert into initial_training_completion
+           (user_id, exercise_key, reward_stars, reward_experience)
+         values ($1, $2, 1, 1)`,
+        [userId, exerciseKey],
+      );
+    }
+
+    const started = await app.inject({
+      method: 'POST',
+      url: '/duel/training/course/game-pace/start',
+      headers: headers(),
+    });
+
+    expect(started.statusCode).toBe(200);
+    expect(started.json().scene).toMatchObject({
+      has_goalie: true,
+      speeds: {
+        shooter_frequency: getDailyPeriodSpeedPreset(1).shooterFrequency,
+        goalie_frequency: getDailyPeriodSpeedPreset(1).goalieFrequency,
+        goal_frequency: getDailyPeriodSpeedPreset(1).goalFrequency,
+      },
+    });
   });
 
   it('grants the first-clear reward once and unlocks the next exercise', async () => {

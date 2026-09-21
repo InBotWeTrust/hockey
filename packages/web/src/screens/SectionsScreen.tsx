@@ -26,6 +26,7 @@ import {
 import { MonthlyRatingRewardModal } from '../components/duel/MonthlyRatingRewardModal.js';
 import { summarizeAchievementProgress } from '../achievements/progressSummary.js';
 import { fetchBonusGames } from '../api/bonusGames.js';
+import { preloadInitialTrainingHubArtwork } from '../components/InitialTrainingCourse.js';
 
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
 const SECTION_ARTWORK_SIZE = 86;
@@ -177,6 +178,10 @@ export function SectionsScreen(): JSX.Element {
     },
     onError: () => setMonthlyRatingAckError('Не удалось закрыть. Попробуйте ещё раз.'),
   });
+
+  useEffect(() => {
+    preloadInitialTrainingHubArtwork();
+  }, []);
 
   useEffect(() => {
     if (dailyData === null) void refreshDaily();

@@ -144,7 +144,9 @@ function resolvedGoalieConfig(
     ...base,
     goalOffsetX: scene.goalOffsetX,
     goalAmplitude: scene.movingGoal ? base.goalAmplitude : 0,
-    goalFrequency: scene.movingGoal ? preset.goalFrequency : 0,
+    goalFrequency: scene.movingGoal
+      ? preset.goalFrequency * scene.goalFrequencyMultiplier
+      : 0,
     frequency: scene.hasGoalie
       ? preset.goalieFrequency * scene.goalieFrequencyMultiplier
       : preset.goalieFrequency,
