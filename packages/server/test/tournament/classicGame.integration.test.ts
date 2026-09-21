@@ -489,6 +489,82 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     expect(stored.rows[0]!.puck_speed).toBeCloseTo(1.3, 8);
   });
 
+  it('offers every available instance of the same inventory item', async () => {
+    const { rows: items } = await pool.query<{ id: string }>(
+      `update admin_inventory_items
+          set resource_unit = 'shot', duel_period_cost = 0
+        where id = (
+          select id from admin_inventory_items
+           where item_kind = 'stick' and deleted_at is null
+           order by id limit 1
+        )
+        returning id`,
+    );
+    const itemId = items[0]!.id;
+    const { rows: instances } = await pool.query<{ id: string; charges_available: number }>(
+      `insert into user_inventory_instance (user_id, inventory_item_id, charges_available)
+       values ($1, $2, 514), ($1, $2, 6624)
+       returning id, charges_available`,
+      [PLAYER_ID, itemId],
+    );
+    const selected = instances.find((instance) => Number(instance.charges_available) === 6624)!;
+
+    const state = await getClassicGameState(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+
+    expect(
+      state.inventory_available
+        .filter((item) => item.itemId === itemId)
+        .map((item) => ({ id: item.id, resourceAvailable: item.resourceAvailable }))
+        .sort((left, right) => left.resourceAvailable - right.resourceAvailable),
+    ).toEqual(
+      instances
+        .map((instance) => ({
+          id: instance.id,
+          resourceAvailable: Number(instance.charges_available),
+        }))
+        .sort((left, right) => left.resourceAvailable - right.resourceAvailable),
+    );
+
+    const started = await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      loadout: { stick: selected.id },
+    });
+    expect(started.loadout.items).toEqual([
+      expect.objectContaining({ id: selected.id, instanceId: selected.id, itemId }),
+    ]);
+
+    await submitClassicGameShot(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      shotIndex: 1,
+      input: { tapTime: 0 },
+      claimedResult: 'miss',
+    });
+    const balances = await pool.query<{ id: string; charges_available: number }>(
+      `select id, charges_available from user_inventory_instance
+        where id = any($1::uuid[])
+        order by id`,
+      [instances.map((instance) => instance.id)],
+    );
+    expect(
+      new Map(balances.rows.map((row) => [row.id, Number(row.charges_available)])),
+    ).toEqual(
+      new Map(
+        instances.map((instance) => [instance.id, instance.id === selected.id ? 6623 : 514]),
+      ),
+    );
+  });
+
   it('snapshots the selected inventory timing configured in the admin catalog', async () => {
     const stickId = await seedClassicShotStick(pool, 1);
     await pool.query(

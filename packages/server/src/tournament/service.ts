@@ -3541,10 +3541,22 @@ async function refreshLegacyClassicStandings(pool: Pool, tournamentId: string): 
   }
 }
 
-export async function getTournamentStandings(pool: Pool, tournamentId: string) {
+export async function getTournamentStandings(
+  pool: Pool,
+  tournamentId: string,
+  options: { includeInactive?: boolean } = {},
+) {
   await refreshLegacyClassicStandings(pool, tournamentId);
+  const includeInactive = options.includeInactive === true;
   const { rows } = await pool.query(
-    `select s.rank, p.user_id, u.display_name,
+    `select ${
+      includeInactive
+        ? 's.rank'
+        : `row_number() over (
+              order by s.rank nulls last, u.display_name, p.id
+            )::int`
+    } as rank,
+            p.user_id, u.display_name,
             coalesce(
               case
                 when u.display_source = 'custom' then u.custom_avatar_url
@@ -3558,8 +3570,9 @@ export async function getTournamentStandings(pool: Pool, tournamentId: string) {
             s.goals_for, s.goals_against, s.points, s.metrics
        from tournament_standing s
        join tournament_participant p on p.id = s.participant_id
-       join users u on u.id = p.user_id
+      join users u on u.id = p.user_id
       where s.tournament_id = $1
+        ${includeInactive ? '' : "and p.state = 'approved'"}
       order by s.rank nulls last, u.display_name`,
     [tournamentId],
   );
@@ -3584,7 +3597,11 @@ export async function getTournamentStandings(pool: Pool, tournamentId: string) {
        join tournament t on t.id = p.tournament_id
        join users u on u.id = p.user_id
       where p.tournament_id = $1
-        and p.state = 'approved'
+        and p.state ${
+          includeInactive
+            ? "in ('approved', 'withdrawn', 'removed', 'disqualified')"
+            : "= 'approved'"
+        }
         and t.status in ('scheduling', 'regular')
       order by u.display_name, p.id`,
     [tournamentId],

@@ -683,7 +683,11 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId);
-    return { standings: await getTournamentStandings(app.pg, params.tournamentId) };
+    return {
+      standings: await getTournamentStandings(app.pg, params.tournamentId, {
+        includeInactive: true,
+      }),
+    };
   });
 
   app.get('/admin/tournaments/:tournamentId/bracket', admin, async (req) => {
