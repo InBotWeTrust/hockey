@@ -8280,7 +8280,27 @@ button.daily-calendar__day:active {
 .sections-quick-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    'daily daily'
+    'training shop'
+    'tasks shop';
   gap: 10px;
+}
+
+.sections-quick-grid > :nth-child(1) {
+  grid-area: daily;
+}
+
+.sections-quick-grid > :nth-child(2) {
+  grid-area: training;
+}
+
+.sections-quick-grid > :nth-child(3) {
+  grid-area: tasks;
+}
+
+.sections-quick-grid > :nth-child(4) {
+  grid-area: shop;
 }
 
 .sections-quick-card {
@@ -8351,6 +8371,12 @@ button.daily-calendar__day:active {
   gap: 5px;
 }
 
+.sections-quick-card__title-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
 .sections-quick-card__title {
   color: var(--ink);
   font-size: clamp(14px, 3.5vw, 16px);
@@ -8372,6 +8398,12 @@ button.daily-calendar__day:active {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.sections-quick-card__meta--multiline {
+  display: grid;
+  gap: 1px;
+  -webkit-line-clamp: unset;
 }
 
 .sections-quick-card--wide {
@@ -8399,7 +8431,7 @@ button.daily-calendar__day:active {
 .sections-quick-card__attention {
   width: 7px;
   height: 7px;
-  margin: 0 6px 1px 0;
+  margin: 0 0 1px 6px;
   border-radius: 999px;
   display: inline-block;
   background: rgba(220, 38, 38, 0.92);
@@ -8611,6 +8643,42 @@ button.daily-calendar__day:active {
     font-size: 18px;
     overflow-wrap: normal;
   }
+}
+
+.sections-quick-card--tall {
+  height: 186px;
+  min-height: 0;
+  padding: 8px;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-items: stretch;
+  row-gap: 8px;
+}
+
+.sections-quick-card--tall .sections-quick-card__art {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  width: 100%;
+  height: 120px;
+  min-height: 0;
+  border-radius: 18px;
+  align-self: stretch;
+}
+
+.sections-quick-card--tall .sections-quick-card__content {
+  align-self: end;
+  padding: 0 4px 4px;
+}
+
+.sections-quick-card--tall .sections-quick-card__title {
+  font-size: 16px;
+}
+
+.sections-quick-card--tall .card-chevron {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: center;
+  justify-self: end;
 }
 
 @media (prefers-reduced-motion: reduce) {
