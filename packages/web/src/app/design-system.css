@@ -2302,6 +2302,10 @@
   );
   overflow-y: auto;
   padding: 18px 16px 16px;
+  background: rgba(226, 233, 241, 0.94);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .bonus-game-preview-modal__artwork {
@@ -2445,11 +2449,10 @@
 .modal-card.bonus-game-result-modal {
   width: min(100%, 360px);
   padding: 20px 18px 18px;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-glass);
-  backdrop-filter: var(--blur-md);
-  -webkit-backdrop-filter: var(--blur-md);
+  background: rgba(226, 233, 241, 0.94);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .bonus-game-result-modal .modal-title {
@@ -3846,6 +3849,56 @@
   text-shadow:
     0 0 12px rgba(223, 107, 107, 0.54),
     0 1px 2px rgba(24, 34, 54, 0.7);
+}
+
+.initial-training-feedback-notice.bonus-game-endurance-notice.game-inline-result-notice {
+  padding-inline: 10px;
+  color: #111827;
+  font-family: var(--font-sans);
+  font-size: clamp(30px, 5.2vmin, 42px);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-shadow: none;
+  animation: bonus-game-endurance-result-pulse 220ms ease-out;
+  box-shadow:
+    0 0 18px rgba(111, 172, 120, 0.42),
+    0 0 38px rgba(111, 172, 120, 0.22);
+}
+
+.initial-training-feedback-notice.bonus-game-endurance-notice.game-inline-result-notice--save {
+  box-shadow:
+    0 0 18px rgba(14, 165, 233, 0.42),
+    0 0 38px rgba(14, 165, 233, 0.22);
+}
+
+.initial-training-feedback-notice.bonus-game-endurance-notice.game-inline-result-notice--miss {
+  box-shadow:
+    0 0 18px rgba(223, 107, 107, 0.42),
+    0 0 38px rgba(223, 107, 107, 0.22);
+}
+
+.initial-training-feedback-notice.bonus-game-endurance-notice.game-inline-result-notice--post {
+  box-shadow:
+    0 0 18px rgba(223, 107, 107, 0.42),
+    0 0 38px rgba(223, 107, 107, 0.22);
+}
+
+@keyframes bonus-game-endurance-result-pulse {
+  0%,
+  100% {
+    transform: translateX(-50%) scale(1);
+  }
+
+  50% {
+    transform: translateX(-50%) scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .initial-training-feedback-notice.bonus-game-endurance-notice.game-inline-result-notice {
+    animation: none;
+  }
 }
 
 .duel-fatigue-notice::before {
