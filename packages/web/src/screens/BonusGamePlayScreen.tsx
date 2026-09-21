@@ -1052,7 +1052,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         scoreboardAccessory={
           showEnduranceTimer ? (
             <div
-              className={`bonus-game-endurance-timer bonus-game-endurance-timer--${
+              className={`game-scoreboard game-scoreboard--stable-surface bonus-game-endurance-timer bonus-game-endurance-timer--${
                 (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 4_000
                   ? 'danger'
                   : (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <=
@@ -1063,9 +1063,12 @@ export function BonusGamePlayScreen(): JSX.Element {
               role="timer"
               aria-label="До обязательного гола"
             >
-              {formatTenths(
-                visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs,
-              )}
+              <span className="game-scoreboard__label">ТАЙМЕР</span>
+              <span className="bonus-game-endurance-timer__value">
+                {formatTenths(
+                  visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs,
+                )}
+              </span>
             </div>
           ) : undefined
         }
