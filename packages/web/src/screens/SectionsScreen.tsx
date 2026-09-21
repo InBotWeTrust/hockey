@@ -24,8 +24,11 @@ import {
   type PendingMonthlyRatingCongratulationsResponse,
 } from '../api/amateurDuel.js';
 import { MonthlyRatingRewardModal } from '../components/duel/MonthlyRatingRewardModal.js';
+import { summarizeAchievementProgress } from '../achievements/progressSummary.js';
+import { fetchBonusGames } from '../api/bonusGames.js';
 
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
+const TASK_LEVELS_TOTAL = 200;
 const SECTION_ARTWORK_SIZE = 86;
 const MONTHLY_RATING_CONGRATULATIONS_KEY = [
   'amateur-duel',
@@ -40,7 +43,8 @@ const SECTION_ARTWORK = {
   training: '/modes/training-evening.webp',
   amateur: '/modes/amateur-game.webp',
   pro: '/modes/pro-game.webp',
-  shop: '/modes/shop-retail.webp',
+  shop: '/modes/shop-retail-v2.webp',
+  bonusGames: '/bonus-games/section-card-v2.webp',
 } as const;
 
 type SectionTone = 'active' | 'default' | 'muted';
@@ -67,6 +71,10 @@ export function SectionsScreen(): JSX.Element {
     queryKey: achievementKeys.all,
     queryFn: fetchAchievements,
   });
+  const bonusGamesQuery = useQuery({
+    queryKey: ['bonus-games'],
+    queryFn: fetchBonusGames,
+  });
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile', 'sections'],
     queryFn: () => apiFetch<ProfileData>('/me?includeTournamentCongratulations=true'),
@@ -81,6 +89,11 @@ export function SectionsScreen(): JSX.Element {
   });
 
   const pendingCongratulations = profileQuery.data?.pendingTournamentCongratulations ?? [];
+  const bonusGamesMeta = bonusGamesQuery.isError
+    ? 'Прогресс недоступен'
+    : bonusGamesQuery.data
+      ? `Пройдено: ${bonusGamesQuery.data.games.filter((game) => game.is_completed).length}/${bonusGamesQuery.data.games.length}`
+      : 'Пройдено: —/—';
   const profileQueueReady = profileQuery.isSuccess;
   const activeCongratulation = profileQueueReady ? (pendingCongratulations[0] ?? null) : null;
   const pendingMonthlyRatingCongratulations = (monthlyRatingQuery.data?.congratulations ?? [])
@@ -190,6 +203,9 @@ export function SectionsScreen(): JSX.Element {
     (achievement) =>
       achievement.status === 'claimed' || achievement.status === 'completed_unclaimed',
   ).length;
+  const achievementLevelsCompleted = summarizeAchievementProgress(
+    achievements.filter((achievement) => achievement.availability === 'active'),
+  ).levels.completed;
   const achievementsUnclaimedCount = achievementsQuery.data?.unclaimedCount ?? 0;
   const weeklyChallengesAvailable =
     profileQuery.data?.competitionLevel === 'amateur' ||
@@ -201,7 +217,10 @@ export function SectionsScreen(): JSX.Element {
       ])
     : 0;
   const sectionTasksActionCount = achievementsUnclaimedCount + weeklyChallengeActionCount;
-  const achievementsMeta = `${numberText(achievementsCompletedCount)}/${numberText(achievements.length)} наград`;
+  const achievementsMeta = [
+    `Награды: ${numberText(achievementsCompletedCount)}/${numberText(achievements.length)}`,
+    `Уровни: ${numberText(achievementLevelsCompleted)}/${numberText(TASK_LEVELS_TOTAL)}`,
+  ] as const;
 
   const openAmateurs = (): void => {
     navigate('/?view=amateur&from=sections');
@@ -255,9 +274,9 @@ export function SectionsScreen(): JSX.Element {
             />
             <QuickSectionCard
               title="Магазин"
-              meta="Инвентарь и предметы"
+              meta="Инвентарь и валюта"
               tone="default"
-              size="wide"
+              size="tall"
               artworkSrc={SECTION_ARTWORK.shop}
               onClick={() => navigate('/inventory')}
             />
@@ -270,10 +289,17 @@ export function SectionsScreen(): JSX.Element {
           </h2>
           <div className="sections-mode-list">
             <SectionCard
+              title="Бонусные игры"
+              supportingText={bonusGamesMeta}
+              tone="default"
+              artworkSrc={SECTION_ARTWORK.bonusGames}
+              onClick={() => navigate('/bonus-games')}
+            />
+            <SectionCard
               title="Любители"
               supportingText={
                 isAmateurUnlocked
-                  ? 'Дуэли, бонусные игры и турниры'
+                  ? 'Дуэли и турниры'
                   : `Осталось ${numberText(amateurGoalsRemaining)} шайб до статуса «Любитель»`
               }
               tone="default"
@@ -373,17 +399,18 @@ function QuickSectionCard({
   onClick,
 }: {
   title: string;
-  meta: string;
+  meta: string | readonly string[];
   tone: Exclude<SectionTone, 'muted'>;
-  size?: 'compact' | 'wide' | undefined;
+  size?: 'compact' | 'wide' | 'tall' | undefined;
   artworkSrc: string;
   attention?: boolean | undefined;
   onClick: () => void;
 }): JSX.Element {
+  const metaLines = typeof meta === 'string' ? [meta] : meta;
   return (
     <button
       type="button"
-      className={`section-card-surface sections-quick-card sections-quick-card--${tone}${size === 'wide' ? ' sections-quick-card--wide' : ''}`}
+      className={`section-card-surface sections-quick-card sections-quick-card--${tone}${size === 'wide' ? ' sections-quick-card--wide' : ''}${size === 'tall' ? ' sections-quick-card--tall' : ''}`}
       aria-label={title}
       onClick={onClick}
     >
@@ -391,15 +418,21 @@ function QuickSectionCard({
         <img src={artworkSrc} alt="" draggable={false} />
       </span>
       <span className="sections-quick-card__content">
-        <span className="sections-quick-card__title">{title}</span>
-        <span className="sections-quick-card__meta">
+        <span className="sections-quick-card__title-row">
+          <span className="sections-quick-card__title">{title}</span>
           {attention && (
             <span className="sections-quick-card__attention" aria-label="Требуется действие" />
           )}
-          {meta}
+        </span>
+        <span
+          className={`sections-quick-card__meta${metaLines.length > 1 ? ' sections-quick-card__meta--multiline' : ''}`}
+        >
+          {metaLines.map((line) => (
+            <span key={line}>{line}</span>
+          ))}
         </span>
       </span>
-      {size === 'wide' && (
+      {size !== 'compact' && (
         <ChevronRight className="card-chevron" aria-hidden="true" size={19} strokeWidth={2.7} />
       )}
     </button>
