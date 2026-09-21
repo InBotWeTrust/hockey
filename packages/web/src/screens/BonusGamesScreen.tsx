@@ -36,6 +36,7 @@ import {
 import { catalogBonusGameArtwork } from '../game/bonusGameArtwork.js';
 import { bonusGameArtworkUrls, preloadArtwork } from '../app/artworkCache.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
+import { useBonusGameStore } from '../stores/bonusGameStore.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 
 const SAFE_UI_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
@@ -122,11 +123,12 @@ export function BonusGamesScreen(): JSX.Element {
   const catalogQuery = useQuery({ queryKey: ['bonus-games'], queryFn: fetchBonusGames });
   const startMutation = useMutation({
     mutationFn: startBonusAttempt,
-    onSuccess: async (response) => {
-      await queryClient.invalidateQueries({ queryKey: ['bonus-games'] });
+    onSuccess: (response) => {
+      useBonusGameStore.getState().applyState(response.attempt);
       navigate(
         `/bonus-games/${response.attempt.game_id}/play?attempt=${encodeURIComponent(response.attempt.id)}`,
       );
+      void queryClient.invalidateQueries({ queryKey: ['bonus-games'], refetchType: 'none' });
     },
   });
   const purchaseMutation = useMutation({

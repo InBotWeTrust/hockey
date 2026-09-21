@@ -1155,7 +1155,12 @@ export function BonusGamePlayScreen(): JSX.Element {
               }
             : undefined
         }
-        resultCopy={isMarksmanship ? { goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' } : undefined}
+        resultCopy={
+          isMarksmanship || isEndurance
+            ? { goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' }
+            : undefined
+        }
+        inlineResultNotice={isEndurance}
         statusNotice={
           showEnduranceTimer
             ? formatTenths(visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs)

@@ -1114,6 +1114,49 @@ describe('PlayView', () => {
     expect(screen.getByRole('status')).not.toHaveTextContent('СЭЙВ');
   });
 
+  it('replaces the endurance timer with an inline shot result and then restores it', async () => {
+    vi.useFakeTimers();
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="endurance-inline-result"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        statusNotice="6,2"
+        statusNoticeClassName="bonus-game-endurance-notice"
+        inlineResultNotice
+        resultCopy={{ goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' }}
+        shotResolver={() => ({ type: 'save', goalieContact: { x: 286, y: 80 } })}
+        optimisticAddShot={() => undefined}
+        submitShot={async () => ({ serverResult: 'save', state: {} })}
+        applyState={() => undefined}
+      />,
+    );
+
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByRole('status')).toHaveTextContent('6,2');
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => vi.advanceTimersByTimeAsync(500));
+
+    expect(screen.getByRole('status')).toHaveTextContent('СЭЙВ');
+    expect(screen.getByRole('status')).toHaveClass(
+      'bonus-game-endurance-notice',
+      'game-inline-result-notice',
+      'game-inline-result-notice--save',
+      'initial-training-feedback-notice--warning',
+    );
+
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(screen.getByRole('status')).toHaveTextContent('6,2');
+  });
+
   it('reconciles visible result copy with a fast authoritative server result', async () => {
     vi.useFakeTimers();
     render(

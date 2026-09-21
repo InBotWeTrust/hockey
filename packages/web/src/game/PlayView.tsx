@@ -342,6 +342,7 @@ export interface PlayViewProps<TState> {
   statusNoticeTone?: 'success' | 'warning' | 'error' | undefined;
   statusNoticeClassName?: string | undefined;
   statusNoticeDelayMs?: number | undefined;
+  inlineResultNotice?: boolean | undefined;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
   readyPresence?: ReadyPresence | undefined;
   resultCopy?: Partial<Record<ResultModalKind, string>> | undefined;
@@ -639,6 +640,7 @@ export function PlayView<TState>({
   statusNoticeTone,
   statusNoticeClassName,
   statusNoticeDelayMs = 0,
+  inlineResultNotice = false,
   scoreboardOpponent,
   readyPresence,
   resultCopy,
@@ -734,6 +736,28 @@ export function PlayView<TState>({
   const authoritativePresentationRef = useRef<PlayResultPresentation | null | undefined>(undefined);
   const authoritativeResultRef = useRef<ShotResult['type'] | null>(null);
   const [lastResult, setLastResult] = useState<ShotResult | null>(null);
+  const inlineResultKind = resultDisplayKind ?? lastResult?.type ?? null;
+  const inlineResultContent =
+    inlineResultNotice && isShowingResult && inlineResultKind !== null
+      ? (resultPresentation?.title ??
+        resultCopy?.[inlineResultKind] ??
+        (inlineResultKind === 'goal'
+          ? 'ГОЛ'
+          : inlineResultKind === 'save'
+            ? 'СЭЙВ'
+            : inlineResultKind === 'post'
+              ? 'ШТАНГА'
+              : 'МИМО'))
+      : null;
+  const effectiveStatusNotice = inlineResultContent ?? visibleStatusNotice;
+  const effectiveStatusNoticeTone =
+    inlineResultContent === null
+      ? statusNoticeTone
+      : inlineResultKind === 'goal'
+        ? 'success'
+        : inlineResultKind === 'save'
+          ? 'warning'
+          : 'error';
   const liveScoreboardRef = useRef({
     goals: scoreboardGoals ?? goals,
     shots,
@@ -2100,20 +2124,24 @@ export function PlayView<TState>({
             >
               {duelFatigueNotice}
             </div>
-          ) : visibleStatusNotice ? (
+          ) : effectiveStatusNotice ? (
             <div
               role="status"
               aria-live="polite"
               className={`initial-training-feedback-notice${
-                statusNoticeTone === 'warning'
+                effectiveStatusNoticeTone === 'warning'
                   ? ' initial-training-feedback-notice--warning'
-                  : statusNoticeTone === 'error'
+                  : effectiveStatusNoticeTone === 'error'
                     ? ' initial-training-feedback-notice--error'
                     : ''
-              }${statusNoticeClassName ? ` ${statusNoticeClassName}` : ''}`}
+              }${statusNoticeClassName ? ` ${statusNoticeClassName}` : ''}${
+                inlineResultContent !== null && inlineResultKind !== null
+                  ? ` game-inline-result-notice game-inline-result-notice--${inlineResultKind}`
+                  : ''
+              }`}
               style={routeGameStyle}
             >
-              {visibleStatusNotice}
+              {effectiveStatusNotice}
             </div>
           ) : null}
         </div>
@@ -2238,7 +2266,7 @@ export function PlayView<TState>({
         </>
       )}
 
-      {isShowingResult && lastResult && (
+      {isShowingResult && lastResult && !inlineResultNotice && (
         <ResultModal
           result={lastResult}
           durationMs={reduceMotion ? 1 : SHOT_RESULT_PAUSE_MS}
