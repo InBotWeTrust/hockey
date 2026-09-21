@@ -283,6 +283,7 @@ export interface PlayViewProps<TState> {
   shotButtonLabel?: string | undefined;
   primaryActionBlocked?: boolean | undefined;
   inactiveAction?: (() => unknown | Promise<unknown>) | undefined;
+  onInactiveActionStart?: (() => void) | undefined;
   entranceBeforeInactiveAction?: boolean | undefined;
   goalsOnlyWhileInactive?: boolean | undefined;
   continuousClockDuringResult?: boolean | undefined;
@@ -338,7 +339,8 @@ export interface PlayViewProps<TState> {
     | undefined;
   hudAddon?: ReactNode;
   statusNotice?: ReactNode;
-  statusNoticeTone?: 'success' | 'error' | undefined;
+  statusNoticeTone?: 'success' | 'warning' | 'error' | undefined;
+  statusNoticeClassName?: string | undefined;
   statusNoticeDelayMs?: number | undefined;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
   readyPresence?: ReadyPresence | undefined;
@@ -593,6 +595,7 @@ export function PlayView<TState>({
   shotButtonLabel = 'БРОСОК',
   primaryActionBlocked = false,
   inactiveAction,
+  onInactiveActionStart,
   entranceBeforeInactiveAction = false,
   goalsOnlyWhileInactive = false,
   continuousClockDuringResult = false,
@@ -634,6 +637,7 @@ export function PlayView<TState>({
   hudAddon,
   statusNotice,
   statusNoticeTone,
+  statusNoticeClassName,
   statusNoticeDelayMs = 0,
   scoreboardOpponent,
   readyPresence,
@@ -1839,6 +1843,7 @@ export function PlayView<TState>({
     if (!inactiveAction || isInactiveActionPending) return;
     setIsInactiveActionPending(true);
     try {
+      onInactiveActionStart?.();
       const loop = loopRef.current;
       const ticker = tickerRef.current;
       if (
@@ -1858,6 +1863,7 @@ export function PlayView<TState>({
     entranceBeforeInactiveAction,
     inactiveAction,
     isInactiveActionPending,
+    onInactiveActionStart,
     startEntranceAnimation,
   ]);
 
@@ -2099,8 +2105,12 @@ export function PlayView<TState>({
               role="status"
               aria-live="polite"
               className={`initial-training-feedback-notice${
-                statusNoticeTone === 'error' ? ' initial-training-feedback-notice--error' : ''
-              }`}
+                statusNoticeTone === 'warning'
+                  ? ' initial-training-feedback-notice--warning'
+                  : statusNoticeTone === 'error'
+                    ? ' initial-training-feedback-notice--error'
+                    : ''
+              }${statusNoticeClassName ? ` ${statusNoticeClassName}` : ''}`}
               style={routeGameStyle}
             >
               {visibleStatusNotice}

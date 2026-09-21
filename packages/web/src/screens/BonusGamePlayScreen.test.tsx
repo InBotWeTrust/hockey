@@ -43,11 +43,15 @@ vi.mock('../game/PlayView.js', () => ({
     shotButtonLabel?: string;
     primaryActionBlocked?: boolean;
     scoreboardNotice?: string;
+    statusNotice?: string;
+    statusNoticeTone?: 'success' | 'warning' | 'error';
+    statusNoticeClassName?: string;
     scoreboardModel?:
       | GameScoreboardModel
       | ((counters: { goals: number; shots: number }) => GameScoreboardModel);
     overlayControls?: JSX.Element;
     onResultVisibilityChange?: (visible: boolean) => void;
+    onInactiveActionStart?: () => void;
     inactiveAction?: () => unknown | Promise<unknown>;
     entranceBeforeInactiveAction?: boolean;
     goalsOnlyWhileInactive?: boolean;
@@ -109,7 +113,13 @@ vi.mock('../game/PlayView.js', () => ({
         </button>
         {props.overlayControls}
         {!props.active && props.inactiveAction ? (
-          <button type="button" onClick={() => void props.inactiveAction?.()}>
+          <button
+            type="button"
+            onClick={() => {
+              props.onInactiveActionStart?.();
+              void props.inactiveAction?.();
+            }}
+          >
             {props.shotButtonLabel}
           </button>
         ) : null}
@@ -388,7 +398,7 @@ describe('BonusGamePlayScreen', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Загружаем бонусную игру…');
   });
 
-  it('renders endurance in the four-cell scoreboard without the legacy HUD or notice', () => {
+  it('renders endurance with period, goals, and shots only in the scoreboard after the period starts', () => {
     vi.spyOn(performance, 'now').mockReturnValue(1_000);
     setStore({ attempt: enduranceAttempt(), receivedAtPerformanceMs: 1_000 });
 
@@ -398,16 +408,64 @@ describe('BonusGamePlayScreen', () => {
       scoreboardModel: (counters: { goals: number; shots: number }) => GameScoreboardModel;
       scoreboardNotice?: string;
       overlayControls?: JSX.Element;
+      statusNotice?: string;
+      statusNoticeTone?: 'success' | 'warning' | 'error';
     };
     expect(props.scoreboardModel({ goals: 0, shots: 0 }).rows[0]?.metrics).toEqual([
       expect.objectContaining({ label: 'ПЕРИОД', value: '1/1' }),
-      expect.objectContaining({ label: 'ГОЛЫ / БРОСКИ', value: '0/0' }),
-      expect.objectContaining({ label: 'ДО ГОЛА', value: '7,0', tone: 'warning' }),
-      expect.objectContaining({ label: 'ВРЕМЯ', value: '03:00' }),
+      expect.objectContaining({ label: 'ГОЛЫ', value: '0' }),
+      expect.objectContaining({ label: 'БРОСКИ', value: '0' }),
+      expect.objectContaining({ label: 'ВРЕМЯ', value: '03:00', tone: 'timer' }),
     ]);
     expect(props.scoreboardNotice).toBeUndefined();
     expect(props.overlayControls).toBeUndefined();
+    expect(props.statusNotice).toBe('7,0');
+    expect(props.statusNoticeTone).toBe('warning');
     expect(document.querySelector('.bonus-game-endurance-hud')).toBeNull();
+  });
+
+  it('keeps the endurance timer hidden until the player starts the period', () => {
+    const startPeriod = vi.fn(() => new Promise<BonusGameAttempt | null>(() => undefined));
+    setStore({
+      attempt: enduranceAttempt({
+        state: 'idle',
+        current_period: 0,
+        period_started_at: null,
+        period_ends_at: null,
+        goal_window_started_at: null,
+        goal_window_ends_at: null,
+      }),
+      startPeriod,
+    });
+
+    renderScreen();
+
+    const props = playViewProbe.mock.lastCall?.[0] as { statusNotice?: string };
+    expect(props.statusNotice).toBeUndefined();
+
+    fireEvent.click(screen.getByRole('button', { name: 'НАЧАТЬ' }));
+
+    const entranceProps = playViewProbe.mock.lastCall?.[0] as { statusNotice?: string };
+    expect(entranceProps.statusNotice).toBe('7,0');
+  });
+
+  it.each([
+    ['green above ten seconds', '2026-08-24T10:00:12.000Z', 'success'],
+    ['yellow from ten to over four seconds', '2026-08-24T10:00:04.100Z', 'warning'],
+    ['red for the final four seconds', '2026-08-24T10:00:04.000Z', 'error'],
+  ] as const)('sets the endurance timer %s', (_, goalWindowEndsAt, expectedTone) => {
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    setStore({
+      attempt: enduranceAttempt({ goal_window_ends_at: goalWindowEndsAt }),
+      receivedAtPerformanceMs: 1_000,
+    });
+
+    renderScreen();
+
+    const props = playViewProbe.mock.lastCall?.[0] as {
+      statusNoticeTone: 'success' | 'warning' | 'error';
+    };
+    expect(props.statusNoticeTone).toBe(expectedTone);
   });
 
   it('turns the goal deadline red for the final three seconds', () => {
@@ -435,11 +493,11 @@ describe('BonusGamePlayScreen', () => {
     renderScreen();
 
     const props = playViewProbe.mock.lastCall?.[0] as {
-      scoreboardModel: (counters: { goals: number; shots: number }) => GameScoreboardModel;
+      statusNotice: string;
+      statusNoticeTone: 'warning' | 'error';
     };
-    expect(props.scoreboardModel({ goals: 0, shots: 0 }).rows[0]?.metrics[2]).toEqual(
-      expect.objectContaining({ label: 'ДО ГОЛА', value: '2,0', tone: 'danger' }),
-    );
+    expect(props.statusNotice).toBe('2,0');
+    expect(props.statusNoticeTone).toBe('error');
   });
 
   it('splits the endurance preview condition into two readable lines', () => {
@@ -469,11 +527,9 @@ describe('BonusGamePlayScreen', () => {
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
 
     const pausedProps = playViewProbe.mock.lastCall?.[0] as {
-      scoreboardModel: (counters: { goals: number; shots: number }) => GameScoreboardModel;
+      statusNotice: string;
     };
-    const pausedModel = pausedProps.scoreboardModel({ goals: 0, shots: 0 });
-    expect(pausedModel.rows[0]?.metrics[2]?.value).toBe('7,0');
-    expect(pausedModel.rows[0]?.metrics[3]?.value).toBe('02:59');
+    expect(pausedProps.statusNotice).toBe('7,0');
   });
 
   it.each([
