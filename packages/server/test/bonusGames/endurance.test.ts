@@ -41,17 +41,15 @@ describe('evaluateEnduranceDeadlines', () => {
 });
 
 describe('nextEnduranceGoalWindow', () => {
-  it('starts after deterministic flight and the shared result pause', () => {
+  it('starts at the acknowledged result time', () => {
     const window = nextEnduranceGoalWindow({
-      shotStartedAt: new Date('2026-09-20T10:00:05.000Z'),
-      flightMs: 640,
+      resultAcknowledgedAt: new Date('2026-09-20T10:00:05.000Z'),
       goalWindowMs: 7_000,
     });
 
-    expect(BONUS_SHOT_RESULT_PAUSE_MS).toBe(1_000);
     expect(window).toEqual({
-      startsAt: new Date('2026-09-20T10:00:06.640Z'),
-      endsAt: new Date('2026-09-20T10:00:13.640Z'),
+      startsAt: new Date('2026-09-20T10:00:05.000Z'),
+      endsAt: new Date('2026-09-20T10:00:12.000Z'),
     });
   });
 });

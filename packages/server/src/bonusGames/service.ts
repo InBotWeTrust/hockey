@@ -1305,10 +1305,8 @@ export async function submitBonusShot(
               if (qualificationRules.type !== 'survive_goal_windows') {
                 throw new AppError('internal_error', 'invalid endurance rules snapshot', 500);
               }
-              const flightMs = (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs;
               const nextWindow = nextEnduranceGoalWindow({
-                shotStartedAt: authoritativeShotStartedAt,
-                flightMs,
+                resultAcknowledgedAt: input.now,
                 goalWindowMs: qualificationRules.goalWindowMs,
               });
               const windowUpdate = await client.query<BonusGameAttemptRow>(

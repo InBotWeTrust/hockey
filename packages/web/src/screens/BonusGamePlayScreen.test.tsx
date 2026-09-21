@@ -407,6 +407,7 @@ describe('BonusGamePlayScreen', () => {
       expect.objectContaining({ label: 'ПЕРИОД', value: '1/1' }),
       expect.objectContaining({ label: 'ГОЛЫ', value: '0' }),
       expect.objectContaining({ label: 'БРОСКИ', value: '0' }),
+      expect.objectContaining({ label: 'ВРЕМЯ', value: '03:00', tone: 'timer' }),
     ]);
     expect(props.scoreboardNotice).toBeUndefined();
     expect(props.overlayControls).toBeUndefined();

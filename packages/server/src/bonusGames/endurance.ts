@@ -14,13 +14,10 @@ export function evaluateEnduranceDeadlines(input: {
 }
 
 export function nextEnduranceGoalWindow(input: {
-  shotStartedAt: Date;
-  flightMs: number;
+  resultAcknowledgedAt: Date;
   goalWindowMs: number;
 }): { startsAt: Date; endsAt: Date } {
-  const startsAt = new Date(
-    input.shotStartedAt.getTime() + input.flightMs + BONUS_SHOT_RESULT_PAUSE_MS,
-  );
+  const startsAt = new Date(input.resultAcknowledgedAt.getTime());
   return {
     startsAt,
     endsAt: new Date(startsAt.getTime() + input.goalWindowMs),

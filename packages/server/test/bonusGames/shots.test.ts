@@ -703,12 +703,11 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     expect((await storedMarksmanshipState(attemptId)).shots).toBe(1);
   });
 
-  it('accepts an endurance goal started at the exact window deadline after it expires', async () => {
+  it('starts a full endurance window when the goal result is acknowledged', async () => {
     const userId = await createUser();
     const game = await createEnduranceGame();
     const attemptId = await createActiveAttempt(userId, game.id);
-    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / ENDURANCE_PERIOD.puckSpeedPerMs;
-    const expectedReadyAt = new Date(NOW.getTime() + 7_000 + flightMs + 1_000);
+    const expectedReadyAt = new Date(NOW.getTime() + 8_000);
 
     const response = await submitBonusShot(pool, {
       userId,

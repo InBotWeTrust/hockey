@@ -982,6 +982,14 @@ export function BonusGamePlayScreen(): JSX.Element {
                   label: 'БРОСКИ',
                   value: String(visibleShots),
                 },
+                {
+                  id: 'total-time',
+                  label: 'ВРЕМЯ',
+                  value: formatCountdown(
+                    visibleEnduranceClock?.totalRemainingMs ?? enduranceRules.activeTimeMs,
+                  ),
+                  tone: 'timer',
+                },
               ],
             },
           ],
