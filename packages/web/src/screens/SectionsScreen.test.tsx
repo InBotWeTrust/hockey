@@ -954,7 +954,7 @@ describe('SectionsScreen', () => {
 
     const expectedArtwork = [
       ['Тренировка', '/modes/training-evening.webp'],
-      ['Магазин', '/modes/shop-retail.webp'],
+      ['Магазин', '/modes/shop-retail-v2.webp'],
       ['Бонусные игры', '/bonus-games/section-card.webp'],
       ['Любители', '/modes/amateur-game.webp'],
       ['Профессионалы', '/modes/pro-game.webp'],

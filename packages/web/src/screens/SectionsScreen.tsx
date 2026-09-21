@@ -42,7 +42,7 @@ const SECTION_ARTWORK = {
   training: '/modes/training-evening.webp',
   amateur: '/modes/amateur-game.webp',
   pro: '/modes/pro-game.webp',
-  shop: '/modes/shop-retail.webp',
+  shop: '/modes/shop-retail-v2.webp',
   bonusGames: '/bonus-games/section-card.webp',
 } as const;
 
