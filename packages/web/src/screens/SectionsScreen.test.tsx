@@ -881,7 +881,7 @@ describe('SectionsScreen', () => {
           ...sectionAchievement('waiting', 'completed_unclaimed'),
           stage: {
             current: 4,
-            total: 100,
+            total: 101,
             requirement: 'Условие',
             progressValue: 1,
             targetValue: 1,
@@ -916,7 +916,7 @@ describe('SectionsScreen', () => {
 
     const tasks = await screen.findByRole('button', { name: 'Задания' });
     expect(within(tasks).getByText('Награды: 3/4')).toBeInTheDocument();
-    expect(within(tasks).getByText('Уровни: 8/200')).toBeInTheDocument();
+    expect(within(tasks).getByText('Уровни: 8/201')).toBeInTheDocument();
     expect(
       within(tasks)
         .getByText('Задания')
@@ -976,8 +976,8 @@ describe('SectionsScreen', () => {
     const expectedArtwork = [
       ['Тренировка', '/modes/training-evening.webp'],
       ['Магазин', '/modes/shop-retail-v2.webp'],
-      ['Бонусные игры', '/bonus-games/section-card-v2.webp'],
-      ['Любители', '/modes/amateur-game.webp'],
+      ['Бонусные игры', '/bonus-games/section-card-v5.webp'],
+      ['Любители', '/modes/amateur-game-v3.webp'],
       ['Профессионалы', '/modes/pro-game.webp'],
     ] as const;
 
@@ -1142,7 +1142,7 @@ describe('SectionsScreen', () => {
     renderSections();
 
     expect(await screen.findByText('Награды: 0/0')).toBeInTheDocument();
-    expect(screen.getByText('Уровни: 0/200')).toBeInTheDocument();
+    expect(screen.getByText('Уровни: 0/0')).toBeInTheDocument();
     expect(screen.queryByLabelText('Требуется действие')).toBeNull();
   });
 
@@ -1163,7 +1163,7 @@ describe('SectionsScreen', () => {
     renderSections();
 
     expect(await screen.findByText('Награды: 0/0')).toBeInTheDocument();
-    expect(screen.getByText('Уровни: 0/200')).toBeInTheDocument();
+    expect(screen.getByText('Уровни: 0/0')).toBeInTheDocument();
     expect(screen.getByLabelText('Требуется действие')).toBeInTheDocument();
   });
 
@@ -1183,7 +1183,7 @@ describe('SectionsScreen', () => {
     renderSections();
 
     expect(await screen.findByText('Награды: 0/0')).toBeInTheDocument();
-    expect(screen.getByText('Уровни: 0/200')).toBeInTheDocument();
+    expect(screen.getByText('Уровни: 0/0')).toBeInTheDocument();
     expect(screen.queryByLabelText('Требуется действие')).toBeNull();
   });
 });
