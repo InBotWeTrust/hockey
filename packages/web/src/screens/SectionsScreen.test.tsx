@@ -14,6 +14,7 @@ import { SectionsScreen } from './SectionsScreen.js';
 const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 
 interface MockSectionsData {
+  bonusGamesCompleted?: boolean[];
   achievements?: AchievementDto[];
   achievementsUnclaimedCount?: number;
   weeklyChallenge?: Record<string, unknown> | null;
@@ -65,6 +66,7 @@ function LocationProbe(): JSX.Element {
 }
 
 function mockSectionsApi({
+  bonusGamesCompleted = [true, true, ...Array<boolean>(25).fill(false)],
   achievements = [],
   achievementsUnclaimedCount = 1,
   weeklyChallenge = null,
@@ -87,6 +89,25 @@ function mockSectionsApi({
   let monthlyAcknowledgementAttempted = false;
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
     const url = String(input);
+    if (url.endsWith('/api/bonus-games')) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            games: bonusGamesCompleted.map((isCompleted, index) => ({
+              id: `bonus-${index}`,
+              title: `Бонусная игра ${index + 1}`,
+              target_goals: 1,
+              period_rules: [],
+              arena: { artwork_url: '/bonus-games/arenas/test.webp' },
+              active_attempt: null,
+              is_completed: isCompleted,
+            })),
+            active_attempt: null,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    }
     if (url.endsWith('/api/achievements')) {
       return Promise.resolve(
         new Response(JSON.stringify({ achievements, unclaimedCount: achievementsUnclaimedCount }), {
@@ -955,7 +976,7 @@ describe('SectionsScreen', () => {
     const expectedArtwork = [
       ['Тренировка', '/modes/training-evening.webp'],
       ['Магазин', '/modes/shop-retail-v2.webp'],
-      ['Бонусные игры', '/bonus-games/section-card.webp'],
+      ['Бонусные игры', '/bonus-games/section-card-v2.webp'],
       ['Любители', '/modes/amateur-game.webp'],
       ['Профессионалы', '/modes/pro-game.webp'],
     ] as const;
@@ -1014,7 +1035,7 @@ describe('SectionsScreen', () => {
     const bonusGames = await screen.findByRole('button', { name: 'Бонусные игры' });
     const amateur = await screen.findByRole('button', { name: 'Любители' });
     expect(screen.getByRole('button', { name: 'Магазин' })).toHaveTextContent('Инвентарь и валюта');
-    expect(bonusGames).toHaveTextContent('Проверка навыков игрока');
+    expect(bonusGames).toHaveTextContent('Пройдено: 2/27');
     expect(amateur).toHaveTextContent('Дуэли и турниры');
     expect(amateur).not.toHaveTextContent('Раздел открыт');
     expect(screen.queryByRole('button', { name: 'Турниры' })).toBeNull();

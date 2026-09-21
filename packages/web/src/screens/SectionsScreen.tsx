@@ -25,6 +25,7 @@ import {
 } from '../api/amateurDuel.js';
 import { MonthlyRatingRewardModal } from '../components/duel/MonthlyRatingRewardModal.js';
 import { summarizeAchievementProgress } from '../achievements/progressSummary.js';
+import { fetchBonusGames } from '../api/bonusGames.js';
 
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
 const TASK_LEVELS_TOTAL = 200;
@@ -43,7 +44,7 @@ const SECTION_ARTWORK = {
   amateur: '/modes/amateur-game.webp',
   pro: '/modes/pro-game.webp',
   shop: '/modes/shop-retail-v2.webp',
-  bonusGames: '/bonus-games/section-card.webp',
+  bonusGames: '/bonus-games/section-card-v2.webp',
 } as const;
 
 type SectionTone = 'active' | 'default' | 'muted';
@@ -70,6 +71,10 @@ export function SectionsScreen(): JSX.Element {
     queryKey: achievementKeys.all,
     queryFn: fetchAchievements,
   });
+  const bonusGamesQuery = useQuery({
+    queryKey: ['bonus-games'],
+    queryFn: fetchBonusGames,
+  });
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile', 'sections'],
     queryFn: () => apiFetch<ProfileData>('/me?includeTournamentCongratulations=true'),
@@ -84,6 +89,11 @@ export function SectionsScreen(): JSX.Element {
   });
 
   const pendingCongratulations = profileQuery.data?.pendingTournamentCongratulations ?? [];
+  const bonusGamesMeta = bonusGamesQuery.isError
+    ? 'Прогресс недоступен'
+    : bonusGamesQuery.data
+      ? `Пройдено: ${bonusGamesQuery.data.games.filter((game) => game.is_completed).length}/${bonusGamesQuery.data.games.length}`
+      : 'Пройдено: —/—';
   const profileQueueReady = profileQuery.isSuccess;
   const activeCongratulation = profileQueueReady ? (pendingCongratulations[0] ?? null) : null;
   const pendingMonthlyRatingCongratulations = (monthlyRatingQuery.data?.congratulations ?? [])
@@ -280,7 +290,7 @@ export function SectionsScreen(): JSX.Element {
           <div className="sections-mode-list">
             <SectionCard
               title="Бонусные игры"
-              supportingText="Проверка навыков игрока"
+              supportingText={bonusGamesMeta}
               tone="default"
               artworkSrc={SECTION_ARTWORK.bonusGames}
               onClick={() => navigate('/bonus-games')}

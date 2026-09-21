@@ -4726,7 +4726,7 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'Профессионалы' })).not.toBeInTheDocument();
   });
 
-  it('opens an amateur chooser with duels, bonus games and tournaments', async () => {
+  it('opens an amateur chooser with duels and tournaments', async () => {
     const bonusGame = (id: string, isCompleted: boolean): BonusGameCard => ({
       id,
       slug: id,
@@ -4806,11 +4806,10 @@ describe('DailyScreen', () => {
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label'))
         .filter(Boolean),
-    ).toEqual(['Назад', 'Дуэли', 'Бонусные игры', 'Турниры']);
-    ['Дуэли', 'Бонусные игры', 'Турниры'].forEach((name) => {
+    ).toEqual(['Назад', 'Дуэли', 'Турниры']);
+    ['Дуэли', 'Турниры'].forEach((name) => {
       expect(screen.getByRole('button', { name }).querySelector('svg')).toHaveClass('card-chevron');
     });
-    expect(await screen.findByText('2/3 пройдено')).toBeInTheDocument();
   });
 
   it('uses the catalog-width shell and standard header controls for the amateur chooser', async () => {
@@ -4823,7 +4822,7 @@ describe('DailyScreen', () => {
       'icon-btn',
       'icon-btn--page-back',
     );
-    screen.getAllByRole('button', { name: /Дуэли|Бонусные игры|Турниры/ }).forEach((card) => {
+    screen.getAllByRole('button', { name: /Дуэли|Турниры/ }).forEach((card) => {
       expect(card).toHaveClass('amateur-hub-card');
       expect(card.parentElement).toHaveClass('amateur-hub-grid');
     });
