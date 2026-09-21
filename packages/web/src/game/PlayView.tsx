@@ -283,6 +283,7 @@ export interface PlayViewProps<TState> {
   shotButtonLabel?: string | undefined;
   primaryActionBlocked?: boolean | undefined;
   inactiveAction?: (() => unknown | Promise<unknown>) | undefined;
+  onInactiveActionStart?: (() => void) | undefined;
   entranceBeforeInactiveAction?: boolean | undefined;
   goalsOnlyWhileInactive?: boolean | undefined;
   continuousClockDuringResult?: boolean | undefined;
@@ -594,6 +595,7 @@ export function PlayView<TState>({
   shotButtonLabel = 'БРОСОК',
   primaryActionBlocked = false,
   inactiveAction,
+  onInactiveActionStart,
   entranceBeforeInactiveAction = false,
   goalsOnlyWhileInactive = false,
   continuousClockDuringResult = false,
@@ -1841,6 +1843,7 @@ export function PlayView<TState>({
     if (!inactiveAction || isInactiveActionPending) return;
     setIsInactiveActionPending(true);
     try {
+      onInactiveActionStart?.();
       const loop = loopRef.current;
       const ticker = tickerRef.current;
       if (
@@ -1860,6 +1863,7 @@ export function PlayView<TState>({
     entranceBeforeInactiveAction,
     inactiveAction,
     isInactiveActionPending,
+    onInactiveActionStart,
     startEntranceAnimation,
   ]);
 

@@ -580,6 +580,39 @@ describe('PlayView', () => {
     expect(goalieContainers.at(-1)?.visible).toBe(true);
   });
 
+  it('announces an inactive action before its entrance animation starts', async () => {
+    const onInactiveActionStart = vi.fn();
+    const inactiveAction = vi.fn(async () => null);
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active={false}
+        seed="daily-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotsTotal={30}
+        shotButtonLabel="НАЧАТЬ"
+        inactiveAction={inactiveAction}
+        onInactiveActionStart={onInactiveActionStart}
+        entranceBeforeInactiveAction
+        optimisticAddShot={() => undefined}
+        submitShot={async () => null}
+        applyState={() => undefined}
+      />,
+    );
+    await act(async () => Promise.resolve());
+
+    fireEvent.click(screen.getByRole('button', { name: 'НАЧАТЬ' }));
+
+    expect(onInactiveActionStart).toHaveBeenCalledTimes(1);
+    expect(inactiveAction).not.toHaveBeenCalled();
+  });
+
   it('keeps a hidden goalkeeper out of the entrance animation', async () => {
     const commonProps = {
       showIceCar: false,

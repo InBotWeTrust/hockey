@@ -51,6 +51,7 @@ vi.mock('../game/PlayView.js', () => ({
       | ((counters: { goals: number; shots: number }) => GameScoreboardModel);
     overlayControls?: JSX.Element;
     onResultVisibilityChange?: (visible: boolean) => void;
+    onInactiveActionStart?: () => void;
     inactiveAction?: () => unknown | Promise<unknown>;
     entranceBeforeInactiveAction?: boolean;
     goalsOnlyWhileInactive?: boolean;
@@ -112,7 +113,13 @@ vi.mock('../game/PlayView.js', () => ({
         </button>
         {props.overlayControls}
         {!props.active && props.inactiveAction ? (
-          <button type="button" onClick={() => void props.inactiveAction?.()}>
+          <button
+            type="button"
+            onClick={() => {
+              props.onInactiveActionStart?.();
+              void props.inactiveAction?.();
+            }}
+          >
             {props.shotButtonLabel}
           </button>
         ) : null}
@@ -418,6 +425,7 @@ describe('BonusGamePlayScreen', () => {
   });
 
   it('keeps the endurance timer hidden until the player starts the period', () => {
+    const startPeriod = vi.fn(() => new Promise<BonusGameAttempt | null>(() => undefined));
     setStore({
       attempt: enduranceAttempt({
         state: 'idle',
@@ -427,12 +435,18 @@ describe('BonusGamePlayScreen', () => {
         goal_window_started_at: null,
         goal_window_ends_at: null,
       }),
+      startPeriod,
     });
 
     renderScreen();
 
     const props = playViewProbe.mock.lastCall?.[0] as { statusNotice?: string };
     expect(props.statusNotice).toBeUndefined();
+
+    fireEvent.click(screen.getByRole('button', { name: 'НАЧАТЬ' }));
+
+    const entranceProps = playViewProbe.mock.lastCall?.[0] as { statusNotice?: string };
+    expect(entranceProps.statusNotice).toBe('7,0');
   });
 
   it.each([
