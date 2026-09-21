@@ -1291,7 +1291,7 @@ describe('PlayView', () => {
         periodNumber={1}
         goals={0}
         shots={0}
-        statusNotice="До гола: 7,0 сек"
+        statusNotice="7,0"
         statusNoticeClassName="bonus-game-endurance-notice"
         optimisticAddShot={() => undefined}
         submitShot={() => new Promise(() => undefined)}
@@ -1300,7 +1300,7 @@ describe('PlayView', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('До гола: 7,0 сек')).toHaveClass(
+      expect(screen.getByText('7,0')).toHaveClass(
         'bonus-game-endurance-notice',
       );
     });

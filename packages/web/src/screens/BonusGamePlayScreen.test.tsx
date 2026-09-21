@@ -410,7 +410,7 @@ describe('BonusGamePlayScreen', () => {
     ]);
     expect(props.scoreboardNotice).toBeUndefined();
     expect(props.overlayControls).toBeUndefined();
-    expect(props.statusNotice).toBe('До гола: 7,0 сек');
+    expect(props.statusNotice).toBe('7,0');
     expect(document.querySelector('.bonus-game-endurance-hud')).toBeNull();
   });
 
@@ -442,7 +442,7 @@ describe('BonusGamePlayScreen', () => {
       statusNotice: string;
       statusNoticeTone: 'warning' | 'error';
     };
-    expect(props.statusNotice).toBe('До гола: 2,0 сек');
+    expect(props.statusNotice).toBe('2,0');
     expect(props.statusNoticeTone).toBe('error');
   });
 
@@ -475,7 +475,7 @@ describe('BonusGamePlayScreen', () => {
     const pausedProps = playViewProbe.mock.lastCall?.[0] as {
       statusNotice: string;
     };
-    expect(pausedProps.statusNotice).toBe('До гола: 7,0 сек');
+    expect(pausedProps.statusNotice).toBe('7,0');
   });
 
   it.each([

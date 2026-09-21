@@ -1141,9 +1141,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         resultCopy={isMarksmanship ? { goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' } : undefined}
         statusNotice={
           isEndurance
-            ? `До гола: ${formatTenths(
-                visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs,
-              )} сек`
+            ? formatTenths(visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs)
             : undefined
         }
         statusNoticeClassName={isEndurance ? 'bonus-game-endurance-notice' : undefined}
