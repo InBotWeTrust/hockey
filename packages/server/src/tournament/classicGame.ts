@@ -541,18 +541,21 @@ async function resolveClassicLoadout(
   let resolved = selection;
   if (resolved === undefined) {
     const { rows } = await client.query<{
-      equipped_stick_item_id: string | null;
-      equipped_skates_item_id: string | null;
-      equipped_nutrition_item_id: string | null;
+      equipped_stick_id: string | null;
+      equipped_skates_id: string | null;
+      equipped_nutrition_id: string | null;
     }>(
-      `select equipped_stick_item_id, equipped_skates_item_id, equipped_nutrition_item_id
+      `select coalesce(equipped_stick_instance_id, equipped_stick_item_id) as equipped_stick_id,
+              coalesce(equipped_skates_instance_id, equipped_skates_item_id) as equipped_skates_id,
+              coalesce(equipped_nutrition_instance_id, equipped_nutrition_item_id)
+                as equipped_nutrition_id
          from user_equipment where user_id = $1`,
       [userId],
     );
     resolved = {
-      stick: rows[0]?.equipped_stick_item_id ?? null,
-      skates: rows[0]?.equipped_skates_item_id ?? null,
-      nutrition: rows[0]?.equipped_nutrition_item_id ?? null,
+      stick: rows[0]?.equipped_stick_id ?? null,
+      skates: rows[0]?.equipped_skates_id ?? null,
+      nutrition: rows[0]?.equipped_nutrition_id ?? null,
     };
   }
   const requested = [

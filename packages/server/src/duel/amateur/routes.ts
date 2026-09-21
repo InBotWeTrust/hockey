@@ -1687,11 +1687,14 @@ async function buildLoadoutSnapshot(
   let resolvedSelection = selection;
   if (!selectionProvided) {
     const { rows } = await client.query<{
-      equipped_stick_item_id: string | null;
-      equipped_skates_item_id: string | null;
-      equipped_nutrition_item_id: string | null;
+      equipped_stick_id: string | null;
+      equipped_skates_id: string | null;
+      equipped_nutrition_id: string | null;
     }>(
-      `select equipped_stick_item_id, equipped_skates_item_id, equipped_nutrition_item_id
+      `select coalesce(equipped_stick_instance_id, equipped_stick_item_id) as equipped_stick_id,
+              coalesce(equipped_skates_instance_id, equipped_skates_item_id) as equipped_skates_id,
+              coalesce(equipped_nutrition_instance_id, equipped_nutrition_item_id)
+                as equipped_nutrition_id
          from user_equipment
         where user_id = $1`,
       [userId],
@@ -1699,9 +1702,9 @@ async function buildLoadoutSnapshot(
     const equipment = rows[0];
     if (equipment) {
       resolvedSelection = {
-        stick: equipment.equipped_stick_item_id,
-        skates: equipment.equipped_skates_item_id,
-        nutrition: equipment.equipped_nutrition_item_id,
+        stick: equipment.equipped_stick_id,
+        skates: equipment.equipped_skates_id,
+        nutrition: equipment.equipped_nutrition_id,
       };
     }
   }
