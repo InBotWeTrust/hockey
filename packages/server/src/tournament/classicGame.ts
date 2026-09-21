@@ -633,17 +633,14 @@ async function fetchClassicInventoryAvailability(
             item.effect_goalie_frequency_delta, item.effect_goal_frequency_delta,
             ${CLASSIC_INVENTORY_TIMING_COLUMNS}
        from admin_inventory_items item
-       left join lateral (
-         select owned.id, owned.charges_available from user_inventory_instance owned
-          where owned.user_id = $1 and owned.inventory_item_id = item.id
-          order by case when owned.charges_available > 0 then 0 else 1 end,
-                   owned.created_at, owned.id limit 1
-       ) instance on true
+       left join user_inventory_instance instance
+         on instance.user_id = $1 and instance.inventory_item_id = item.id
        left join user_inventory_item legacy
          on legacy.user_id = $1 and legacy.inventory_item_id = item.id and instance.id is null
       where item.deleted_at is null
         and coalesce(instance.charges_available, legacy.charges_available, 0) > 0
-      order by item.item_kind, item.title, item.id`,
+      order by item.item_kind, item.title, item.id,
+               instance.created_at nulls first, instance.id`,
     [userId],
   );
   return rows.map((row) => ({
