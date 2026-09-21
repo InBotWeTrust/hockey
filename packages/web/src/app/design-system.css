@@ -3809,6 +3809,25 @@
   animation: duel-fatigue-notice-in 180ms ease-out both;
 }
 
+.bonus-game-endurance-notice {
+  width: 50%;
+  max-width: 50%;
+  min-height: 52px;
+  justify-content: center;
+  padding: 13px 36px;
+  transform: translateX(-50%);
+  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.bonus-game-endurance-notice::before {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
 .duel-fatigue-notice::before {
   background: #fb923c;
 }

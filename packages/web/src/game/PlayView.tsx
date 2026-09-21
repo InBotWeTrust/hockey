@@ -339,6 +339,7 @@ export interface PlayViewProps<TState> {
   hudAddon?: ReactNode;
   statusNotice?: ReactNode;
   statusNoticeTone?: 'success' | 'warning' | 'error' | undefined;
+  statusNoticeClassName?: string | undefined;
   statusNoticeDelayMs?: number | undefined;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
   readyPresence?: ReadyPresence | undefined;
@@ -634,6 +635,7 @@ export function PlayView<TState>({
   hudAddon,
   statusNotice,
   statusNoticeTone,
+  statusNoticeClassName,
   statusNoticeDelayMs = 0,
   scoreboardOpponent,
   readyPresence,
@@ -2104,7 +2106,7 @@ export function PlayView<TState>({
                   : statusNoticeTone === 'error'
                     ? ' initial-training-feedback-notice--error'
                     : ''
-              }`}
+              }${statusNoticeClassName ? ` ${statusNoticeClassName}` : ''}`}
               style={routeGameStyle}
             >
               {visibleStatusNotice}

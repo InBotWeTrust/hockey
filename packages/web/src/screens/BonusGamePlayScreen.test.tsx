@@ -45,6 +45,7 @@ vi.mock('../game/PlayView.js', () => ({
     scoreboardNotice?: string;
     statusNotice?: string;
     statusNoticeTone?: 'warning' | 'error';
+    statusNoticeClassName?: string;
     scoreboardModel?:
       | GameScoreboardModel
       | ((counters: { goals: number; shots: number }) => GameScoreboardModel);

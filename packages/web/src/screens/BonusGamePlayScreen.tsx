@@ -1161,6 +1161,7 @@ export function BonusGamePlayScreen(): JSX.Element {
               )} сек`
             : undefined
         }
+        statusNoticeClassName={isEndurance ? 'bonus-game-endurance-notice' : undefined}
         statusNoticeTone={
           isEndurance &&
           (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 3_000

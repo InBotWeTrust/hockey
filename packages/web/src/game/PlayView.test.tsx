@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type GoalieConfig } from '@hockey/game-core';
 import { useState } from 'react';
@@ -1276,6 +1276,34 @@ describe('PlayView', () => {
     });
 
     expect(screen.getByRole('status')).toHaveTextContent('ГОЛ+155Узкое окно');
+  });
+
+  it('applies the centered endurance notice variant to its in-rink timer', async () => {
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="endurance-notice-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        statusNotice="До гола: 7,0 сек"
+        statusNoticeClassName="bonus-game-endurance-notice"
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('До гола: 7,0 сек')).toHaveClass(
+        'bonus-game-endurance-notice',
+      );
+    });
   });
 
   it('does not apply a resolved shot after its game session is no longer current', async () => {
