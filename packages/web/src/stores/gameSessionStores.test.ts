@@ -951,6 +951,85 @@ describe('game session stores', () => {
     });
   });
 
+  it('keeps a successful duel shot response when polling updates the same match first', async () => {
+    const optimistic = {
+      ...amateurDuelState,
+      current_period_shots: 16,
+      current_period_goals: 13,
+      me: {
+        state: 'period_active',
+        current_period: 1,
+        current_period_shots: 16,
+        current_period_goals: 13,
+        shots_taken: 16,
+        goals: 13,
+        inventory_report: [],
+      },
+      opponent: {
+        state: 'period_active',
+        current_period: 1,
+        current_period_shots: 14,
+        current_period_goals: 10,
+        shots_taken: 14,
+        goals: 10,
+      },
+    } as unknown as AmateurDuelMatchState;
+    const polled = {
+      ...optimistic,
+      server_now: '2026-09-21T12:29:05.190Z',
+      opponent: {
+        ...optimistic.opponent,
+        current_period_shots: 15,
+        current_period_goals: 11,
+        shots_taken: 15,
+        goals: 11,
+      },
+    } as AmateurDuelMatchState;
+    let resolveShot:
+      | ((value: Awaited<ReturnType<typeof submitAmateurDuelShot>>) => void)
+      | undefined;
+    vi.mocked(submitAmateurDuelShot).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveShot = resolve;
+        }),
+    );
+    vi.mocked(fetchAmateurMatch).mockResolvedValueOnce({ match: polled });
+    useAmateurDuelStore.setState({ match: optimistic });
+
+    const submit = useAmateurDuelStore.getState().submitShot({
+      shotIndex: 16,
+      input: { tapTime: 34_800 },
+      claimedResult: 'miss',
+    });
+    await useAmateurDuelStore.getState().refresh();
+    resolveShot?.({
+      match_id: optimistic.id,
+      server_result: 'miss',
+      confirmed_shot_index: 16,
+      participant: {
+        state: 'period_active',
+        current_period: 1,
+        current_period_shots: 16,
+        current_period_goals: 13,
+        shots_taken: 16,
+        goals: 13,
+      },
+      current_period_inventory: { periodNumber: 1, consumed: [] },
+      settled: false,
+    });
+    const result = await submit;
+
+    expect(result).not.toBeNull();
+    expect(result?.state).toMatchObject({
+      current_period_shots: 16,
+      current_period_goals: 13,
+      me: { current_period_shots: 16, shots_taken: 16, goals: 13 },
+      opponent: { current_period_shots: 15, shots_taken: 15, goals: 11 },
+    });
+    expect(result?.isCurrent()).toBe(true);
+  });
+
   it('fetches the full duel once when a compact acknowledgement closes the period', async () => {
     const active = {
       ...amateurDuelState,

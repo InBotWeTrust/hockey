@@ -352,31 +352,36 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
         }
         return null;
       }
-      if (get().match !== current) return null;
+      const latest = get().match;
+      if (!latest || latest.id !== current.id) return null;
       if (outcome.kind === 'reconciled') {
         set({ error: null });
         return {
           serverResult: claimedResult,
-          state: outcome.value,
-          isCurrent: () => get().match === current,
+          state: reconcilePolledMatch(latest, outcome.value),
+          isCurrent: () => get().match === latest,
         };
       }
       const acknowledgement = outcome.value;
-      let next = applyShotAcknowledgement(current, acknowledgement);
+      let next = applyShotAcknowledgement(latest, acknowledgement);
+      let resolvedAgainst = latest;
       if (acknowledgement.settled || acknowledgement.participant.state !== 'period_active') {
         try {
-          next = (await fetchAmateurMatch(current.id)).match;
+          const refreshed = (await fetchAmateurMatch(current.id)).match;
+          const live = get().match;
+          if (!live || live.id !== current.id) return null;
+          resolvedAgainst = live;
+          next = reconcilePolledMatch(live, refreshed);
         } catch {
           // The shot is already authoritative. Keep the compact transition state
           // and let normal polling reconcile the richer break/result DTO.
         }
-        if (get().match !== current) return null;
       }
       set({ error: null });
       return {
         serverResult: acknowledgement.server_result,
         state: next,
-        isCurrent: () => get().match === current,
+        isCurrent: () => get().match === resolvedAgainst,
       };
     } catch (err) {
       if (
