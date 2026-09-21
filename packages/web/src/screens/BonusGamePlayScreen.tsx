@@ -52,6 +52,9 @@ const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpri
   saveVisualYOffset: 10,
 };
 
+const AMATEUR_GOALKEEPER_READY_URL = '/sprites/test-goalie-black.webp';
+const AMATEUR_GOALKEEPER_SAVE_URL = '/sprites/test-goalie-black-save.webp';
+
 // PlayView normally applies the deferred server DTO at the end of the puck animation.
 // Keep a screen-level fallback so a throttled/lost animation callback cannot leave the
 // accepted shot locked forever and prevent the next (possibly qualifying) shot.
@@ -59,10 +62,15 @@ const BONUS_PENDING_SHOT_FALLBACK_PADDING_MS = 1_250;
 const BONUS_PENDING_SHOT_FALLBACK_MIN_DELAY_MS = 250;
 
 function bonusGoalieOptions(attempt: BonusGameAttempt): GoalieOptions {
+  const usesEnduranceAmateurGoalkeeper = attempt.rules.skill_code === 'endurance';
   return {
     ...BONUS_GAME_GOALIE_OPTIONS,
-    idleSpriteUrl: versionBonusGameGoalkeeper(attempt.goalkeeper_ready_url),
-    saveSpriteUrl: versionBonusGameGoalkeeper(attempt.goalkeeper_save_url),
+    idleSpriteUrl: usesEnduranceAmateurGoalkeeper
+      ? AMATEUR_GOALKEEPER_READY_URL
+      : versionBonusGameGoalkeeper(attempt.goalkeeper_ready_url),
+    saveSpriteUrl: usesEnduranceAmateurGoalkeeper
+      ? AMATEUR_GOALKEEPER_SAVE_URL
+      : versionBonusGameGoalkeeper(attempt.goalkeeper_save_url),
   };
 }
 
@@ -1041,6 +1049,26 @@ export function BonusGamePlayScreen(): JSX.Element {
               : `${formatPoints(attempt.total_points)} / ${formatPoints(marksmanshipTarget)}`
         }
         scoreboardModel={enduranceScoreboardModel}
+        scoreboardAccessory={
+          showEnduranceTimer ? (
+            <div
+              className={`bonus-game-endurance-timer bonus-game-endurance-timer--${
+                (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 4_000
+                  ? 'danger'
+                  : (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <=
+                      10_000
+                    ? 'warning'
+                    : 'success'
+              }`}
+              role="timer"
+              aria-label="До обязательного гола"
+            >
+              {formatTenths(
+                visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs,
+              )}
+            </div>
+          ) : undefined
+        }
         timer={isTerminal ? '00:00' : isIdle ? formatCountdown(idleTimerMs) : undefined}
         shotButtonLabel={
           needsReconcile
@@ -1155,31 +1183,10 @@ export function BonusGamePlayScreen(): JSX.Element {
               }
             : undefined
         }
-        resultCopy={
-          isMarksmanship || isEndurance
-            ? { goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' }
-            : undefined
-        }
-        inlineResultNotice={isEndurance}
-        statusNotice={
-          showEnduranceTimer
-            ? formatTenths(visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs)
-            : undefined
-        }
-        statusNoticeClassName={isEndurance ? 'bonus-game-endurance-notice' : undefined}
-        statusNoticeTone={
-          !showEnduranceTimer
-            ? undefined
-            : (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 4_000
-              ? 'error'
-              : (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 10_000
-                ? 'warning'
-                : 'success'
-        }
+        resultCopy={isMarksmanship ? { goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' } : undefined}
         onResultVisibilityChange={
           isEndurance && isPeriodActive ? handleEnduranceResultVisibility : undefined
         }
-        waitForShotResponseBeforeResultClose={isEndurance}
         applyState={() => undefined}
         applyResolvedState={(next) => applyPendingShot(next)}
         overlayControls={

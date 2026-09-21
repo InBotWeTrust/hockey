@@ -1382,6 +1382,31 @@ describe('PlayView', () => {
     });
   });
 
+  it('renders a scoreboard accessory directly below the in-rink scoreboard', () => {
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="scoreboard-accessory-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        scoreboardAccessory={<div aria-label="До обязательного гола">7,0</div>}
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    const accessory = screen.getByLabelText('До обязательного гола');
+    expect(accessory.closest('.game-scoreboard-overlay')).toBeInTheDocument();
+    expect(accessory.previousElementSibling).toHaveAttribute('aria-label', 'Игровое табло');
+  });
+
   it('does not apply a resolved shot after its game session is no longer current', async () => {
     vi.useFakeTimers();
     vi.spyOn(performance, 'now').mockReturnValue(1_000);
