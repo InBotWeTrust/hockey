@@ -109,7 +109,7 @@ describe('initial training course UI', () => {
     const onStart = vi.fn();
     render(<InitialTrainingCatalog catalog={catalog} onStart={onStart} />);
 
-    expect(screen.getByText('Упражнения (5)')).toBeInTheDocument();
+    expect(screen.getByText('Упражнения')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Прогресс' })).toBeInTheDocument();
     const progress = screen.getByRole('progressbar', { name: 'Прогресс начального обучения' });
     expect(progress).toHaveAttribute('aria-valuenow', '1');
@@ -196,7 +196,7 @@ describe('initial training course UI', () => {
     expect(screen.queryByRole('heading', { name: /Текущее упражнение|Пройденные|Следующие/ })).not.toBeInTheDocument();
   });
 
-  it('collapses the exercise headings when the whole course is completed', () => {
+  it('keeps the exercise heading when the whole course is completed', () => {
     const completedCatalog: InitialTrainingCatalogResponse = {
       ...catalog,
       completed_count: 5,
@@ -210,7 +210,7 @@ describe('initial training course UI', () => {
 
     render(<InitialTrainingCatalog catalog={completedCatalog} onStart={vi.fn()} />);
 
-    expect(screen.queryByText('Упражнения (5)')).not.toBeInTheDocument();
+    expect(screen.getByText('Упражнения')).toBeInTheDocument();
     expect(screen.getAllByRole('article')).toHaveLength(5);
     expect(screen.getAllByLabelText('Упражнение пройдено')).toHaveLength(5);
   });
