@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
@@ -43,6 +44,7 @@ vi.mock('../game/PlayView.js', () => ({
     shotButtonLabel?: string;
     primaryActionBlocked?: boolean;
     scoreboardNotice?: string;
+    scoreboardAccessory?: ReactNode;
     statusNotice?: string;
     statusNoticeTone?: 'success' | 'warning' | 'error';
     statusNoticeClassName?: string;
@@ -114,6 +116,7 @@ vi.mock('../game/PlayView.js', () => ({
           Тестовый бросок
         </button>
         {props.overlayControls}
+        {props.scoreboardAccessory}
         {!props.active && props.inactiveAction ? (
           <button
             type="button"
@@ -400,7 +403,7 @@ describe('BonusGamePlayScreen', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Загружаем бонусную игру…');
   });
 
-  it('renders endurance with period, goals, and shots only in the scoreboard after the period starts', () => {
+  it('renders the endurance timer below the scoreboard and removes the in-rink notice', () => {
     vi.spyOn(performance, 'now').mockReturnValue(1_000);
     setStore({ attempt: enduranceAttempt(), receivedAtPerformanceMs: 1_000 });
 
@@ -409,11 +412,12 @@ describe('BonusGamePlayScreen', () => {
     const props = playViewProbe.mock.lastCall?.[0] as {
       scoreboardModel: (counters: { goals: number; shots: number }) => GameScoreboardModel;
       scoreboardNotice?: string;
+      scoreboardAccessory?: ReactNode;
       overlayControls?: JSX.Element;
       statusNotice?: string;
       statusNoticeTone?: 'success' | 'warning' | 'error';
       inlineResultNotice?: boolean;
-      resultCopy?: Partial<Record<'goal' | 'save' | 'miss', string>>;
+      waitForShotResponseBeforeResultClose?: boolean;
     };
     expect(props.scoreboardModel({ goals: 0, shots: 0 }).rows[0]?.metrics).toEqual([
       expect.objectContaining({ label: 'ПЕРИОД', value: '1/1' }),
@@ -423,11 +427,43 @@ describe('BonusGamePlayScreen', () => {
     ]);
     expect(props.scoreboardNotice).toBeUndefined();
     expect(props.overlayControls).toBeUndefined();
-    expect(props.statusNotice).toBe('7,0');
-    expect(props.statusNoticeTone).toBe('warning');
+    expect(props.statusNotice).toBeUndefined();
+    expect(props.statusNoticeTone).toBeUndefined();
+    expect(props.scoreboardAccessory).toBeDefined();
+    expect(screen.getByLabelText('До обязательного гола')).toHaveTextContent('7,0');
+    expect(screen.getByLabelText('До обязательного гола')).toHaveClass(
+      'bonus-game-endurance-timer--warning',
+    );
+    expect(props.waitForShotResponseBeforeResultClose).toBeUndefined();
+    expect(props.inlineResultNotice).toBeUndefined();
     expect(document.querySelector('.bonus-game-endurance-hud')).toBeNull();
-    expect(props.inlineResultNotice).toBe(true);
-    expect(props.resultCopy).toEqual({ goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' });
+  });
+
+  it('uses the standard amateur goalkeeper visuals for endurance', () => {
+    setStore({
+      attempt: enduranceAttempt({
+        goalkeeper_ready_url: '/sprites/training-goalie-amateur.webp',
+        goalkeeper_save_url: '/sprites/training-goalie-amateur-save.webp',
+      }),
+      receivedAtPerformanceMs: 1_000,
+    });
+
+    renderScreen();
+
+    const props = playViewProbe.mock.lastCall?.[0] as Record<string, unknown>;
+    expect(props).toMatchObject({
+      goalieOptions: {
+        idleSpriteUrl: '/sprites/test-goalie-black.webp',
+        saveSpriteUrl: '/sprites/test-goalie-black-save.webp',
+        idleSizeScale: 1.22,
+        saveSizeScale: 0.96,
+      },
+      preloadAssets: [
+        '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
+        '/sprites/test-goalie-black.webp',
+        '/sprites/test-goalie-black-save.webp',
+      ],
+    });
   });
 
   it('keeps the endurance timer hidden until the player starts the period', () => {
@@ -446,19 +482,17 @@ describe('BonusGamePlayScreen', () => {
 
     renderScreen();
 
-    const props = playViewProbe.mock.lastCall?.[0] as { statusNotice?: string };
-    expect(props.statusNotice).toBeUndefined();
+    expect(screen.queryByLabelText('До обязательного гола')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'НАЧАТЬ' }));
 
-    const entranceProps = playViewProbe.mock.lastCall?.[0] as { statusNotice?: string };
-    expect(entranceProps.statusNotice).toBe('7,0');
+    expect(screen.getByLabelText('До обязательного гола')).toHaveTextContent('7,0');
   });
 
   it.each([
     ['green above ten seconds', '2026-08-24T10:00:12.000Z', 'success'],
     ['yellow from ten to over four seconds', '2026-08-24T10:00:04.100Z', 'warning'],
-    ['red for the final four seconds', '2026-08-24T10:00:04.000Z', 'error'],
+    ['red for the final four seconds', '2026-08-24T10:00:04.000Z', 'danger'],
   ] as const)('sets the endurance timer %s', (_, goalWindowEndsAt, expectedTone) => {
     vi.spyOn(performance, 'now').mockReturnValue(1_000);
     setStore({
@@ -468,10 +502,9 @@ describe('BonusGamePlayScreen', () => {
 
     renderScreen();
 
-    const props = playViewProbe.mock.lastCall?.[0] as {
-      statusNoticeTone: 'success' | 'warning' | 'error';
-    };
-    expect(props.statusNoticeTone).toBe(expectedTone);
+    expect(screen.getByLabelText('До обязательного гола')).toHaveClass(
+      `bonus-game-endurance-timer--${expectedTone}`,
+    );
   });
 
   it('turns the goal deadline red for the final three seconds', () => {
@@ -498,12 +531,10 @@ describe('BonusGamePlayScreen', () => {
 
     renderScreen();
 
-    const props = playViewProbe.mock.lastCall?.[0] as {
-      statusNotice: string;
-      statusNoticeTone: 'warning' | 'error';
-    };
-    expect(props.statusNotice).toBe('2,0');
-    expect(props.statusNoticeTone).toBe('error');
+    expect(screen.getByLabelText('До обязательного гола')).toHaveTextContent('2,0');
+    expect(screen.getByLabelText('До обязательного гола')).toHaveClass(
+      'bonus-game-endurance-timer--danger',
+    );
   });
 
   it('splits the endurance preview condition into two readable lines', () => {
@@ -532,10 +563,7 @@ describe('BonusGamePlayScreen', () => {
     performanceNow = 2_000;
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
 
-    const pausedProps = playViewProbe.mock.lastCall?.[0] as {
-      statusNotice: string;
-    };
-    expect(pausedProps.statusNotice).toBe('7,0');
+    expect(screen.getByLabelText('До обязательного гола')).toHaveTextContent('7,0');
   });
 
   it.each([

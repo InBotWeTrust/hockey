@@ -92,6 +92,7 @@ import {
   type InitialTrainingExerciseKey,
 } from '../api/initialTraining.js';
 import {
+  INITIAL_TRAINING_HUB_LOADING_CATALOG,
   InitialTrainingCatalog,
   InitialTrainingHub,
 } from '../components/InitialTrainingCourse.js';
@@ -3671,10 +3672,22 @@ function TrainingPlaceholder({
     </AccessibleModal>
   ) : null;
 
-  if (!courseCatalogLoaded && !autoPlay && trainingSection !== 'open') {
+  if (
+    !courseCatalogLoaded &&
+    !autoPlay &&
+    trainingSection !== 'open' &&
+    trainingSection !== 'course' &&
+    trainingSection !== 'advanced'
+  ) {
     return (
       <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
-        <div className="training-info-copy" role="status">Загрузка раздела…</div>
+        <InitialTrainingHub
+          catalog={INITIAL_TRAINING_HUB_LOADING_CATALOG}
+          loading
+          onOpenCourse={() => undefined}
+          onOpenTraining={() => undefined}
+          onOpenAdvanced={() => undefined}
+        />
       </ModeShell>
     );
   }

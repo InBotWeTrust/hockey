@@ -7,6 +7,7 @@ import type { InitialTrainingRun } from '../api/initialTraining.js';
 type CapturedPlayViewProps = {
   active: boolean;
   periodLabel?: string;
+  scoreboardPeriodsTotal?: number;
   suppressedByModal: boolean;
   statusNotice?: ReactNode;
   statusNoticeTone?: 'success' | 'error';
@@ -132,6 +133,7 @@ describe('initial training completion lifecycle', () => {
     expect(screen.getByRole('button', { name: 'Начать' })).toBeInTheDocument();
     expect(testState.playViewProps?.active).toBe(false);
     expect(testState.playViewProps?.periodLabel).toBe('УПРАЖНЕНИЕ');
+    expect(testState.playViewProps?.scoreboardPeriodsTotal).toBe(7);
     expect(testState.playViewProps?.suppressedByModal).toBe(true);
   });
 
