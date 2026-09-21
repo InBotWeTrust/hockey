@@ -89,7 +89,7 @@ describe('advanced training course UI', () => {
     render(<AdvancedTrainingCatalog catalog={catalog} onStart={vi.fn()} />);
 
     expect(screen.getByRole('heading', { name: 'Прогресс' })).toBeInTheDocument();
-    expect(screen.getByText('Упражнения (8)')).toBeInTheDocument();
+    expect(screen.getByText('Упражнения')).toBeInTheDocument();
     expect(within(screen.getByRole('progressbar')).getByText('1 / 8')).toBeInTheDocument();
     const cards = screen.getAllByRole('article');
     expect(cards).toHaveLength(8);

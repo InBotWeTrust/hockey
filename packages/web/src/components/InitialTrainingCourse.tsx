@@ -108,8 +108,6 @@ export function InitialTrainingCatalog({
   catalog: InitialTrainingCatalogResponse;
   onStart: (key: InitialTrainingExerciseKey) => void;
 }): JSX.Element {
-  const courseCompleted =
-    catalog.total_count > 0 && catalog.completed_count >= catalog.total_count;
   const progressPercent =
     catalog.total_count > 0 ? (catalog.completed_count / catalog.total_count) * 100 : 0;
 
@@ -206,9 +204,7 @@ export function InitialTrainingCatalog({
           <strong>{catalog.completed_count} / {catalog.total_count}</strong>
         </div>
       </section>
-      {!courseCompleted ? (
-        <div className="section-label section-label--page">Упражнения ({catalog.total_count})</div>
-      ) : null}
+      <div className="section-label section-label--page">Упражнения</div>
       <div className="initial-training-exercise-list">
         {catalog.exercises.map(renderExercise)}
       </div>

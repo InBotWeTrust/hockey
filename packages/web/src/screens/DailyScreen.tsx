@@ -3547,6 +3547,7 @@ function TrainingPlaceholder({
   const [courseCatalog, setCourseCatalog] = useState<InitialTrainingCatalogResponse | null>(null);
   const [courseCatalogLoaded, setCourseCatalogLoaded] = useState(false);
   const [courseCatalogError, setCourseCatalogError] = useState(false);
+  const [trainingLockModalOpen, setTrainingLockModalOpen] = useState(false);
   const refreshedTrainingDayRef = useRef<string | null>(null);
 
   const refreshCourseCatalog = useCallback(async (): Promise<void> => {
@@ -3620,6 +3621,57 @@ function TrainingPlaceholder({
   const trainingParams = new URLSearchParams(location.search);
   const trainingSection = trainingParams.get('section');
 
+  const openTrainingExercise = (path: string): void => {
+    if (courseCatalog?.gameplay_lock?.blocked) {
+      setTrainingLockModalOpen(true);
+      return;
+    }
+    navigate(path, { replace: true });
+  };
+
+  const trainingLock = courseCatalog?.gameplay_lock ?? null;
+  const trainingLockModal = trainingLockModalOpen && trainingLock ? (
+    <AccessibleModal
+      title="Тренировка недоступна"
+      copy={
+        trainingLock.reason === 'active_daily'
+          ? 'Сначала завершите ежедневную игру.'
+          : `${gameplayLockCopy(trainingLock)}.`
+      }
+      onClose={() => setTrainingLockModalOpen(false)}
+      headerAction={
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Закрыть"
+          onClick={() => setTrainingLockModalOpen(false)}
+        >
+          <X size={16} aria-hidden="true" />
+        </button>
+      }
+    >
+      <div className="modal-actions">
+        {trainingLock.reason === 'active_daily' ? (
+          <button
+            type="button"
+            className="modal-primary btn btn--cta"
+            onClick={() => navigate('/?view=daily', { replace: true })}
+          >
+            К ежедневной игре
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="modal-primary btn btn--cta"
+            onClick={() => setTrainingLockModalOpen(false)}
+          >
+            Понятно
+          </button>
+        )}
+      </div>
+    </AccessibleModal>
+  ) : null;
+
   if (!courseCatalogLoaded && !autoPlay && trainingSection !== 'open') {
     return (
       <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
@@ -3651,7 +3703,12 @@ function TrainingPlaceholder({
     const exerciseParam = params.get('exercise');
     const fromSectionsSuffix = params.get('from') === 'sections' ? '&from=sections' : '';
     const exercise = courseCatalog.exercises.find((item) => item.key === exerciseParam);
-    if (section === 'course' && exercise && exercise.state !== 'locked') {
+    if (
+      section === 'course' &&
+      exercise &&
+      exercise.state !== 'locked' &&
+      !courseCatalog.gameplay_lock?.blocked
+    ) {
       const nextExercise = courseCatalog.exercises.find(
         (item) => item.position === exercise.position + 1,
       );
@@ -3680,28 +3737,35 @@ function TrainingPlaceholder({
     }
     if (section === 'course') {
       return (
-        <ModeShell
-          title="Начальное обучение"
-          onBack={() => navigate(`/?view=training${fromSectionsSuffix}`, { replace: true })}
-          variant="section-hub"
-          className="initial-training-course-screen"
-        >
-          <InitialTrainingCatalog
-            catalog={courseCatalog}
-            onStart={(key: InitialTrainingExerciseKey) =>
-              navigate(
-                `/?view=training&section=course&exercise=${encodeURIComponent(key)}&play=1${fromSectionsSuffix}`,
-                { replace: true },
-              )
-            }
-          />
-        </ModeShell>
+        <>
+          <ModeShell
+            title="Начальное обучение"
+            onBack={() => navigate(`/?view=training${fromSectionsSuffix}`, { replace: true })}
+            variant="section-hub"
+            className="initial-training-course-screen"
+          >
+            <InitialTrainingCatalog
+              catalog={courseCatalog}
+              onStart={(key: InitialTrainingExerciseKey) =>
+                openTrainingExercise(
+                  `/?view=training&section=course&exercise=${encodeURIComponent(key)}&play=1${fromSectionsSuffix}`,
+                )
+              }
+            />
+          </ModeShell>
+          {trainingLockModal}
+        </>
       );
     }
     if (section === 'advanced') {
       const advanced = courseCatalog.advanced_training;
       const advancedExercise = advanced.exercises.find((item) => item.key === exerciseParam);
-      if (advancedExercise && advancedExercise.state !== 'locked' && params.get('play') === '1') {
+      if (
+        advancedExercise &&
+        advancedExercise.state !== 'locked' &&
+        params.get('play') === '1' &&
+        !courseCatalog.gameplay_lock?.blocked
+      ) {
         return (
           <AdvancedTrainingPlay
             exerciseKey={advancedExercise.key as AdvancedTrainingExerciseKey}
@@ -3712,26 +3776,28 @@ function TrainingPlaceholder({
         );
       }
       return (
-        <ModeShell
-          title="Продвинутое обучение"
-          onBack={() => navigate(`/?view=training${fromSectionsSuffix}`, { replace: true })}
-          variant="section-hub"
-          className="advanced-training-course-screen"
-        >
-          <AdvancedTrainingCatalog
-            catalog={{
-              completedCount: advanced.completed_count,
-              totalCount: advanced.total_count,
-              exercises: advanced.exercises,
-            }}
-            onStart={(key) =>
-              navigate(
-                `/?view=training&section=advanced&exercise=${encodeURIComponent(key)}&play=1${fromSectionsSuffix}`,
-                { replace: true },
-              )
-            }
-          />
-        </ModeShell>
+        <>
+          <ModeShell
+            title="Продвинутое обучение"
+            onBack={() => navigate(`/?view=training${fromSectionsSuffix}`, { replace: true })}
+            variant="section-hub"
+            className="advanced-training-course-screen"
+          >
+            <AdvancedTrainingCatalog
+              catalog={{
+                completedCount: advanced.completed_count,
+                totalCount: advanced.total_count,
+                exercises: advanced.exercises,
+              }}
+              onStart={(key) =>
+                openTrainingExercise(
+                  `/?view=training&section=advanced&exercise=${encodeURIComponent(key)}&play=1${fromSectionsSuffix}`,
+                )
+              }
+            />
+          </ModeShell>
+          {trainingLockModal}
+        </>
       );
     }
     if (!autoPlay && section !== 'open') {
