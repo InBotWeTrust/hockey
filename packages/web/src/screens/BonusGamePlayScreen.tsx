@@ -973,29 +973,14 @@ export function BonusGamePlayScreen(): JSX.Element {
               metrics: [
                 { id: 'period', label: 'ПЕРИОД', value: `${periodNumber}/1` },
                 {
-                  id: 'goals-shots',
-                  label: 'ГОЛЫ / БРОСКИ',
-                  value: `${visibleGoals}/${visibleShots}`,
-                  labelEmphasis: 'small',
+                  id: 'goals',
+                  label: 'ГОЛЫ',
+                  value: String(visibleGoals),
                 },
                 {
-                  id: 'goal-window',
-                  label: 'ДО ГОЛА',
-                  value: formatTenths(
-                    visibleEnduranceClock?.goalRemainingMs ?? enduranceRules.goalWindowMs,
-                  ),
-                  tone:
-                    (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules.goalWindowMs) <= 3_000
-                      ? 'danger'
-                      : 'warning',
-                },
-                {
-                  id: 'total-time',
-                  label: 'ВРЕМЯ',
-                  value: formatCountdown(
-                    visibleEnduranceClock?.totalRemainingMs ?? enduranceRules.activeTimeMs,
-                  ),
-                  tone: 'timer',
+                  id: 'shots',
+                  label: 'БРОСКИ',
+                  value: String(visibleShots),
                 },
               ],
             },

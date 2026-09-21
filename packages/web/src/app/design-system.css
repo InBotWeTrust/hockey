@@ -3809,23 +3809,32 @@
   animation: duel-fatigue-notice-in 180ms ease-out both;
 }
 
-.bonus-game-endurance-notice {
+.initial-training-feedback-notice.bonus-game-endurance-notice {
   width: 50%;
   max-width: 50%;
-  min-height: 52px;
+  bottom: 36%;
+  min-height: 60px;
   justify-content: center;
-  padding: 13px 36px;
+  padding: 14px 20px;
   transform: translateX(-50%);
   text-align: center;
-  font-size: 16px;
-  font-weight: 600;
+  color: #f4c542;
+  font-family: var(--font-mono);
+  font-size: clamp(19px, 2.5vw, 22px);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+  line-height: 0.96;
+  text-shadow: 0 0 10px rgba(244, 197, 66, 0.38);
 }
 
-.bonus-game-endurance-notice::before {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
+.initial-training-feedback-notice.bonus-game-endurance-notice::before {
+  content: none;
+}
+
+.initial-training-feedback-notice--error.bonus-game-endurance-notice {
+  color: #ffbdc8;
+  text-shadow: 0 0 10px rgba(251, 113, 133, 0.42);
 }
 
 .duel-fatigue-notice::before {

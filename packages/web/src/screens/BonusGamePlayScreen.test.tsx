@@ -391,7 +391,7 @@ describe('BonusGamePlayScreen', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Загружаем бонусную игру…');
   });
 
-  it('renders endurance in the four-cell scoreboard without the legacy HUD or notice', () => {
+  it('renders endurance with period, goals, and shots only in the scoreboard', () => {
     vi.spyOn(performance, 'now').mockReturnValue(1_000);
     setStore({ attempt: enduranceAttempt(), receivedAtPerformanceMs: 1_000 });
 
@@ -405,9 +405,8 @@ describe('BonusGamePlayScreen', () => {
     };
     expect(props.scoreboardModel({ goals: 0, shots: 0 }).rows[0]?.metrics).toEqual([
       expect.objectContaining({ label: 'ПЕРИОД', value: '1/1' }),
-      expect.objectContaining({ label: 'ГОЛЫ / БРОСКИ', value: '0/0' }),
-      expect.objectContaining({ label: 'ДО ГОЛА', value: '7,0', tone: 'warning' }),
-      expect.objectContaining({ label: 'ВРЕМЯ', value: '03:00' }),
+      expect.objectContaining({ label: 'ГОЛЫ', value: '0' }),
+      expect.objectContaining({ label: 'БРОСКИ', value: '0' }),
     ]);
     expect(props.scoreboardNotice).toBeUndefined();
     expect(props.overlayControls).toBeUndefined();
@@ -440,13 +439,9 @@ describe('BonusGamePlayScreen', () => {
     renderScreen();
 
     const props = playViewProbe.mock.lastCall?.[0] as {
-      scoreboardModel: (counters: { goals: number; shots: number }) => GameScoreboardModel;
       statusNotice: string;
       statusNoticeTone: 'warning' | 'error';
     };
-    expect(props.scoreboardModel({ goals: 0, shots: 0 }).rows[0]?.metrics[2]).toEqual(
-      expect.objectContaining({ label: 'ДО ГОЛА', value: '2,0', tone: 'danger' }),
-    );
     expect(props.statusNotice).toBe('До гола: 2,0 сек');
     expect(props.statusNoticeTone).toBe('error');
   });
@@ -478,11 +473,9 @@ describe('BonusGamePlayScreen', () => {
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
 
     const pausedProps = playViewProbe.mock.lastCall?.[0] as {
-      scoreboardModel: (counters: { goals: number; shots: number }) => GameScoreboardModel;
+      statusNotice: string;
     };
-    const pausedModel = pausedProps.scoreboardModel({ goals: 0, shots: 0 });
-    expect(pausedModel.rows[0]?.metrics[2]?.value).toBe('7,0');
-    expect(pausedModel.rows[0]?.metrics[3]?.value).toBe('02:59');
+    expect(pausedProps.statusNotice).toBe('До гола: 7,0 сек');
   });
 
   it.each([
