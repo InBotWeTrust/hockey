@@ -1148,16 +1148,19 @@ export function BonusGamePlayScreen(): JSX.Element {
         }
         resultCopy={isMarksmanship ? { goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' } : undefined}
         statusNotice={
-          isEndurance
+          isEndurance && isPeriodActive
             ? formatTenths(visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs)
             : undefined
         }
         statusNoticeClassName={isEndurance ? 'bonus-game-endurance-notice' : undefined}
         statusNoticeTone={
-          isEndurance &&
-          (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 3_000
-            ? 'error'
-            : 'warning'
+          !isEndurance || !isPeriodActive
+            ? undefined
+            : (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 4_000
+              ? 'error'
+              : (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 10_000
+                ? 'warning'
+                : 'success'
         }
         onResultVisibilityChange={
           isEndurance && isPeriodActive ? handleEnduranceResultVisibility : undefined

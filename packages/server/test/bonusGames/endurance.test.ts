@@ -41,15 +41,14 @@ describe('evaluateEnduranceDeadlines', () => {
 });
 
 describe('nextEnduranceGoalWindow', () => {
-  it('starts at the acknowledged result time', () => {
+  it('starts after the goal visual finishes so the player receives a full new window', () => {
     const window = nextEnduranceGoalWindow({
-      resultAcknowledgedAt: new Date('2026-09-20T10:00:05.000Z'),
+      shotStartedAt: new Date('2026-09-20T10:00:05.000Z'),
+      flightMs: 750,
       goalWindowMs: 7_000,
     });
 
-    expect(window).toEqual({
-      startsAt: new Date('2026-09-20T10:00:05.000Z'),
-      endsAt: new Date('2026-09-20T10:00:12.000Z'),
-    });
+    expect(window.startsAt.getTime()).toBe(Date.parse('2026-09-20T10:00:06.750Z'));
+    expect(window.endsAt.getTime()).toBe(Date.parse('2026-09-20T10:00:13.750Z'));
   });
 });

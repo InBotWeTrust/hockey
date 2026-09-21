@@ -44,7 +44,7 @@ vi.mock('../game/PlayView.js', () => ({
     primaryActionBlocked?: boolean;
     scoreboardNotice?: string;
     statusNotice?: string;
-    statusNoticeTone?: 'warning' | 'error';
+    statusNoticeTone?: 'success' | 'warning' | 'error';
     statusNoticeClassName?: string;
     scoreboardModel?:
       | GameScoreboardModel
@@ -391,7 +391,7 @@ describe('BonusGamePlayScreen', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Загружаем бонусную игру…');
   });
 
-  it('renders endurance with period, goals, and shots only in the scoreboard', () => {
+  it('renders endurance with period, goals, and shots only in the scoreboard after the period starts', () => {
     vi.spyOn(performance, 'now').mockReturnValue(1_000);
     setStore({ attempt: enduranceAttempt(), receivedAtPerformanceMs: 1_000 });
 
@@ -402,6 +402,7 @@ describe('BonusGamePlayScreen', () => {
       scoreboardNotice?: string;
       overlayControls?: JSX.Element;
       statusNotice?: string;
+      statusNoticeTone?: 'success' | 'warning' | 'error';
     };
     expect(props.scoreboardModel({ goals: 0, shots: 0 }).rows[0]?.metrics).toEqual([
       expect.objectContaining({ label: 'ПЕРИОД', value: '1/1' }),
@@ -412,7 +413,45 @@ describe('BonusGamePlayScreen', () => {
     expect(props.scoreboardNotice).toBeUndefined();
     expect(props.overlayControls).toBeUndefined();
     expect(props.statusNotice).toBe('7,0');
+    expect(props.statusNoticeTone).toBe('warning');
     expect(document.querySelector('.bonus-game-endurance-hud')).toBeNull();
+  });
+
+  it('keeps the endurance timer hidden until the player starts the period', () => {
+    setStore({
+      attempt: enduranceAttempt({
+        state: 'idle',
+        current_period: 0,
+        period_started_at: null,
+        period_ends_at: null,
+        goal_window_started_at: null,
+        goal_window_ends_at: null,
+      }),
+    });
+
+    renderScreen();
+
+    const props = playViewProbe.mock.lastCall?.[0] as { statusNotice?: string };
+    expect(props.statusNotice).toBeUndefined();
+  });
+
+  it.each([
+    ['green above ten seconds', '2026-08-24T10:00:12.000Z', 'success'],
+    ['yellow from ten to over four seconds', '2026-08-24T10:00:04.100Z', 'warning'],
+    ['red for the final four seconds', '2026-08-24T10:00:04.000Z', 'error'],
+  ] as const)('sets the endurance timer %s', (_, goalWindowEndsAt, expectedTone) => {
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    setStore({
+      attempt: enduranceAttempt({ goal_window_ends_at: goalWindowEndsAt }),
+      receivedAtPerformanceMs: 1_000,
+    });
+
+    renderScreen();
+
+    const props = playViewProbe.mock.lastCall?.[0] as {
+      statusNoticeTone: 'success' | 'warning' | 'error';
+    };
+    expect(props.statusNoticeTone).toBe(expectedTone);
   });
 
   it('turns the goal deadline red for the final three seconds', () => {
