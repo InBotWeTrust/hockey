@@ -626,6 +626,7 @@ export function BonusGamePlayScreen(): JSX.Element {
   const [inventorySelection, setInventorySelection] = useState<BonusPeriodLoadoutSelection>({});
   const [isConfirmingAbandon, setIsConfirmingAbandon] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [enduranceEntranceAttemptId, setEnduranceEntranceAttemptId] = useState<string | null>(null);
   const abandonRequestRef = useRef(false);
   const loadedRouteRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
@@ -826,7 +827,9 @@ export function BonusGamePlayScreen(): JSX.Element {
       setInventoryOpen(true);
       return null;
     }
-    return await handleStartPeriod();
+    const result = await handleStartPeriod();
+    if (result === null) setEnduranceEntranceAttemptId(null);
+    return result;
   }, [attempt?.rules.use_inventory, handleStartPeriod]);
 
   const confirmAndAbandon = useCallback(async (): Promise<void> => {
@@ -952,6 +955,9 @@ export function BonusGamePlayScreen(): JSX.Element {
     attempt.rules.qualification_rules.type === 'survive_goal_windows'
       ? attempt.rules.qualification_rules
       : null;
+  const showEnduranceTimer =
+    isEndurance &&
+    (isPeriodActive || (isIdle && enduranceEntranceAttemptId === attempt.id));
   const visibleEnduranceClock =
     activeEnduranceAttempt === null
       ? null
@@ -973,21 +979,14 @@ export function BonusGamePlayScreen(): JSX.Element {
               metrics: [
                 { id: 'period', label: 'ПЕРИОД', value: `${periodNumber}/1` },
                 {
-                  id: 'goals-shots',
-                  label: 'ГОЛЫ / БРОСКИ',
-                  value: `${visibleGoals}/${visibleShots}`,
-                  labelEmphasis: 'small',
+                  id: 'goals',
+                  label: 'ГОЛЫ',
+                  value: String(visibleGoals),
                 },
                 {
-                  id: 'goal-window',
-                  label: 'ДО ГОЛА',
-                  value: formatTenths(
-                    visibleEnduranceClock?.goalRemainingMs ?? enduranceRules.goalWindowMs,
-                  ),
-                  tone:
-                    (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules.goalWindowMs) <= 3_000
-                      ? 'danger'
-                      : 'warning',
+                  id: 'shots',
+                  label: 'БРОСКИ',
+                  value: String(visibleShots),
                 },
                 {
                   id: 'total-time',
@@ -1059,6 +1058,9 @@ export function BonusGamePlayScreen(): JSX.Element {
         primaryActionBlocked={needsReconcile}
         inactiveAction={
           isIdle && !isBetweenPeriods && !previewRequired ? requestStartPeriod : undefined
+        }
+        onInactiveActionStart={
+          isEndurance ? () => setEnduranceEntranceAttemptId(attempt.id) : undefined
         }
         entranceBeforeInactiveAction={true}
         goalsOnlyWhileInactive={true}
@@ -1154,6 +1156,21 @@ export function BonusGamePlayScreen(): JSX.Element {
             : undefined
         }
         resultCopy={isMarksmanship ? { goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' } : undefined}
+        statusNotice={
+          showEnduranceTimer
+            ? formatTenths(visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs)
+            : undefined
+        }
+        statusNoticeClassName={isEndurance ? 'bonus-game-endurance-notice' : undefined}
+        statusNoticeTone={
+          !showEnduranceTimer
+            ? undefined
+            : (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 4_000
+              ? 'error'
+              : (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 10_000
+                ? 'warning'
+                : 'success'
+        }
         onResultVisibilityChange={
           isEndurance && isPeriodActive ? handleEnduranceResultVisibility : undefined
         }

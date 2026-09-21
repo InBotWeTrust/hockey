@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type GoalieConfig } from '@hockey/game-core';
 import { useState } from 'react';
@@ -578,6 +578,39 @@ describe('PlayView', () => {
 
     expect(playerContainers.at(-1)?.visible).toBe(true);
     expect(goalieContainers.at(-1)?.visible).toBe(true);
+  });
+
+  it('announces an inactive action before its entrance animation starts', async () => {
+    const onInactiveActionStart = vi.fn();
+    const inactiveAction = vi.fn(async () => null);
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active={false}
+        seed="daily-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotsTotal={30}
+        shotButtonLabel="НАЧАТЬ"
+        inactiveAction={inactiveAction}
+        onInactiveActionStart={onInactiveActionStart}
+        entranceBeforeInactiveAction
+        optimisticAddShot={() => undefined}
+        submitShot={async () => null}
+        applyState={() => undefined}
+      />,
+    );
+    await act(async () => Promise.resolve());
+
+    fireEvent.click(screen.getByRole('button', { name: 'НАЧАТЬ' }));
+
+    expect(onInactiveActionStart).toHaveBeenCalledTimes(1);
+    expect(inactiveAction).not.toHaveBeenCalled();
   });
 
   it('keeps a hidden goalkeeper out of the entrance animation', async () => {
@@ -1276,6 +1309,34 @@ describe('PlayView', () => {
     });
 
     expect(screen.getByRole('status')).toHaveTextContent('ГОЛ+155Узкое окно');
+  });
+
+  it('applies the centered endurance notice variant to its in-rink timer', async () => {
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="endurance-notice-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        statusNotice="7,0"
+        statusNoticeClassName="bonus-game-endurance-notice"
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('7,0')).toHaveClass(
+        'bonus-game-endurance-notice',
+      );
+    });
   });
 
   it('does not apply a resolved shot after its game session is no longer current', async () => {
