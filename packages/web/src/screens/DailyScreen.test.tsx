@@ -4133,6 +4133,102 @@ describe('DailyScreen', () => {
     );
   });
 
+  it('explains an active daily-game lock before starting a beginner exercise', async () => {
+    const lockedCatalog: InitialTrainingCatalogResponse = {
+      ...initialTrainingCatalog,
+      gameplay_lock: {
+        blocked: true,
+        reason: 'active_daily',
+        ends_at: null,
+        tournament_starts_at: null,
+      },
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/duel/training/course')
+        ? lockedCatalog
+        : url.includes('/duel/training/state')
+          ? trainingIdleState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=training&section=course']);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Начать: Первый бросок' }));
+    expect(screen.getByRole('dialog', { name: 'Тренировка недоступна' })).toBeInTheDocument();
+    expect(screen.getByText('Сначала завершите ежедневную игру.')).toBeInTheDocument();
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=training&section=course');
+    expect(
+      fetchSpy.mock.calls.some(([url]) => String(url).includes('/first-shot/start')),
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'К ежедневной игре' }));
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=daily');
+  });
+
+  it('uses the same gameplay-lock modal before starting an advanced exercise', async () => {
+    const lockedCatalog: InitialTrainingCatalogResponse = {
+      ...initialTrainingCatalog,
+      beginner_training_completed: true,
+      gameplay_lock: {
+        blocked: true,
+        reason: 'active_daily',
+        ends_at: null,
+        tournament_starts_at: null,
+      },
+      advanced_training: {
+        enabled: true,
+        access: {
+          amateur_completed: true,
+          beginner_training_completed: true,
+          unlocked: true,
+        },
+        completed_count: 0,
+        total_count: 1,
+        exercises: [
+          {
+            key: 'board-side',
+            position: 1,
+            title: 'У борта',
+            description: 'Дождитесь нужной позиции игрока.',
+            skill: 'Позиция',
+            goal: 'Завершить ситуацию',
+            rewardStars: 1,
+            rewardExperience: 1,
+            state: 'available',
+          },
+        ],
+      },
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/duel/training/course')
+        ? lockedCatalog
+        : url.includes('/duel/training/state')
+          ? trainingIdleState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=training&section=advanced']);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Начать: У борта' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Начать' }));
+    expect(screen.getByRole('dialog', { name: 'Тренировка недоступна' })).toBeInTheDocument();
+    expect(screen.getByText('Сначала завершите ежедневную игру.')).toBeInTheDocument();
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=training&section=advanced');
+    expect(
+      fetchSpy.mock.calls.some(([url]) => String(url).includes('/advanced/board-side/start')),
+    ).toBe(false);
+  });
+
   it('does not flash the open-training screen while the course catalog is loading', async () => {
     let resolveCourse!: (response: Response) => void;
     const courseResponse = new Promise<Response>((resolve) => {

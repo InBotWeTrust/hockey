@@ -197,7 +197,7 @@ export function AdvancedTrainingCatalog({
         </div>
       </section>
 
-      <div className="section-label section-label--page">Упражнения ({catalog.totalCount})</div>
+      <div className="section-label section-label--page">Упражнения</div>
       <div className="advanced-training-exercise-list">
         {catalog.exercises.map((exercise) => {
           const locked = exercise.state === 'locked';
