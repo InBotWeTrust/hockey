@@ -470,18 +470,24 @@ describe('InventoryScreen', () => {
     }
   });
 
-  it('keeps one column and the shared 116px wide-card / 86px artwork contract', () => {
+  it('lays out category cards in two columns with square artwork above the copy', () => {
     const grid = designSystemCss.match(/\.inventory-category-grid\s*\{([^}]+)\}/)?.[1];
-    const card = designSystemCss.match(/\.amateur-hub-card\s*\{([^}]+)\}/)?.[1];
-    const artwork = designSystemCss.match(/\.amateur-hub-card__art\s*\{([^}]+)\}/)?.[1];
-    expect(grid).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\)/);
-    expect(card).toMatch(/min-height:\s*116px/);
-    expect(card).toMatch(/grid-template-columns:\s*86px minmax\(0, 1fr\) 20px/);
-    expect(card).not.toMatch(/aspect-ratio/);
-    expect(artwork).toMatch(/width:\s*86px/);
-    expect(artwork).toMatch(/height:\s*86px/);
-    expect(designSystemCss).not.toContain('.inventory-category-card::after');
-    expect(/\.inventory-category-card\s*\{/.test(designSystemCss)).toBe(false);
+    const card = designSystemCss.match(
+      /\.amateur-hub-card\.inventory-category-card\s*\{([^}]+)\}/,
+    )?.[1];
+    const artwork = designSystemCss.match(
+      /\.inventory-category-card \.amateur-hub-card__art\s*\{([^}]+)\}/,
+    )?.[1];
+    const title = designSystemCss.match(
+      /\.inventory-category-card \.amateur-hub-card__copy strong\s*\{([^}]+)\}/,
+    )?.[1];
+    expect(grid).toMatch(/grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+    expect(card).toMatch(/grid-template-rows:\s*auto auto/);
+    expect(card).toMatch(/column-gap:\s*0/);
+    expect(artwork).toMatch(/width:\s*100%/);
+    expect(artwork).toMatch(/height:\s*auto/);
+    expect(artwork).toMatch(/aspect-ratio:\s*1/);
+    expect(title).toMatch(/white-space:\s*nowrap/);
   });
 
   it('shows the goods section heading with the same style as Bank and History', async () => {
@@ -809,9 +815,9 @@ describe('InventoryScreen', () => {
     expect(within(summary).getByText('·')).toBeInTheDocument();
     expect(within(summary).getByText('699 ₽')).toBeInTheDocument();
     expect(within(summary).queryByText('за')).not.toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Перейти к оплате' }).parentElement).toHaveClass(
-      'receipt-payment-actions',
-    );
+    expect(
+      within(dialog).getByRole('button', { name: 'Перейти к оплате' }).parentElement,
+    ).toHaveClass('receipt-payment-actions');
     expect(within(dialog).getByRole('button', { name: 'Перейти к оплате' })).toHaveClass(
       'btn',
       'btn--cta',

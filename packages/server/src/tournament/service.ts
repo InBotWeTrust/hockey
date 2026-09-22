@@ -3263,7 +3263,9 @@ export async function getTournamentMatchdayResults(
       where result.tournament_id = $1
         and result.tournament_day = $2
         and participant.user_id <> $3
+        and participant.state = 'approved'
         and result.completed = true
+        and result.shots > 0
         and (
           $4::timestamptz is null
           or (result.finalized_at, result.id) < ($4::timestamptz, $5::uuid)

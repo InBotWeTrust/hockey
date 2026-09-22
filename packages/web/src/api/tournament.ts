@@ -199,6 +199,12 @@ export interface TournamentMatchdayResultCursor {
   id: string;
 }
 
+export interface TournamentStandingsPage {
+  standings: Array<Record<string, unknown>>;
+  nextCursor?: string | null;
+  currentUser?: Record<string, unknown> | null;
+}
+
 export type TournamentGameContextAction =
   | 'play_classic'
   | 'round_completed'
@@ -450,9 +456,11 @@ export function fetchTournamentParticipants(tournamentId: string) {
   );
 }
 
-export function fetchTournamentStandings(tournamentId: string) {
-  return apiFetch<{ standings: Array<Record<string, unknown>> }>(
-    `/tournaments/${tournamentId}/standings`,
+export function fetchTournamentStandings(tournamentId: string, cursor: string | null = null) {
+  const query = new URLSearchParams({ limit: '30' });
+  if (cursor !== null) query.set('cursor', cursor);
+  return apiFetch<TournamentStandingsPage>(
+    `/tournaments/${tournamentId}/standings?${query.toString()}`,
   );
 }
 

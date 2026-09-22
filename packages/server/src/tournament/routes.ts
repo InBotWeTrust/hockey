@@ -491,9 +491,22 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.get('/tournaments/:tournamentId/standings', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
+    const query = z
+      .object({
+        cursor: z.coerce.number().int().nonnegative().default(0),
+        limit: z.coerce.number().int().min(1).max(50).default(30),
+      })
+      .parse(req.query);
     await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId, req.user.id);
-    return { standings: await getTournamentStandings(app.pg, params.tournamentId) };
+    const standings = await getTournamentStandings(app.pg, params.tournamentId);
+    const visible = standings.slice(query.cursor, query.cursor + query.limit);
+    const nextOffset = query.cursor + visible.length;
+    return {
+      standings: visible,
+      nextCursor: nextOffset < standings.length ? String(nextOffset) : null,
+      currentUser: standings.find((row) => row.user_id === req.user.id) ?? null,
+    };
   });
 
   app.get('/tournaments/:tournamentId/bracket', authenticated, async (req) => {
