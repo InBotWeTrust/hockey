@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, X } from 'lucide-react';
 import {
   challengeAmateurDuel,
+  checkAmateurDuelChallengeAvailability,
   fetchAmateurTemplates,
   type AmateurDuelKind,
   type AmateurDuelMatch,
@@ -91,12 +92,41 @@ function periodRuleText(rule: AmateurDuelTemplate['period_rules'][number]): stri
 
 function challengeErrorText(error: unknown): string {
   if (error instanceof ApiError && error.status === 409) {
+    const limit = error.details?.duelLimit as { reason?: string; retryAt?: string } | undefined;
+    if (limit?.reason) {
+      return limitMessage({
+        reason: ['daily', 'weekly', 'monthly', 'format', 'outgoing'].includes(limit.reason)
+          ? limit.reason as 'daily' | 'weekly' | 'monthly' | 'format' | 'outgoing' : null,
+        retryAt: limit.retryAt ?? null,
+        player: null,
+      });
+    }
     if (error.message.includes('already exists')) {
       return 'С этим игроком уже есть открытая дуэль.';
     }
     return error.message;
   }
   return error instanceof Error ? error.message : 'Не удалось отправить вызов';
+}
+
+function limitMessage(format: {
+  reason: 'daily' | 'weekly' | 'monthly' | 'format' | 'outgoing' | null;
+  retryAt: string | null;
+  player: 'self' | 'opponent' | null;
+}): string {
+  const who = format.player === 'opponent' ? 'У соперника'
+    : format.player === 'self' ? 'У вас' : 'Достигнут';
+  const reason = format.reason === 'daily' ? 'исчерпан дневной лимит дуэлей'
+    : format.reason === 'weekly' ? 'исчерпан недельный лимит дуэлей'
+      : format.reason === 'monthly' ? 'исчерпан месячный лимит дуэлей'
+        : format.reason === 'format' ? 'исчерпан месячный лимит этого формата'
+          : 'слишком много ожидающих приглашений';
+  const reset = format.retryAt ? ` Сброс: ${new Date(format.retryAt).toLocaleString('ru-RU', {
+    day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+  })}.` : '';
+  return format.player === null
+    ? `Лимит дуэлей достигнут. ${reason}.${reset}`
+    : `${who} ${reason}.${reset}`;
 }
 
 export function DuelChallengeModal({
@@ -121,6 +151,11 @@ export function DuelChallengeModal({
     queryKey: ['amateur-duel', 'templates'],
     queryFn: fetchAmateurTemplates,
     staleTime: 60_000,
+  });
+  const availabilityQuery = useQuery({
+    queryKey: ['amateur-duel', 'challenge-availability', opponentUserId],
+    queryFn: () => checkAmateurDuelChallengeAvailability(opponentUserId),
+    staleTime: 0,
   });
   const templates = useMemo(
     () => sortTemplates(templatesQuery.data?.templates ?? []),
@@ -149,6 +184,9 @@ export function DuelChallengeModal({
       onCreated();
     },
     onError: (err) => {
+      if (err instanceof ApiError && err.status === 409) {
+        void availabilityQuery.refetch();
+      }
       if (amateurAccessDetailsFromError(err) !== null) {
         setError(null);
         return;
@@ -208,11 +246,15 @@ export function DuelChallengeModal({
             !templatesQuery.isError &&
             templates.map((template) => {
               const selected = template.id === selectedTemplateId;
+              const availability = availabilityQuery.data?.formats?.[template.duel_kind];
+              const blocked = availability?.available === false;
               return (
                 <button
                   key={template.id}
                   type="button"
                   aria-pressed={selected}
+                  disabled={blocked}
+                  title={blocked ? limitMessage(availability) : undefined}
                   className={selected ? 'glass-dark' : 'glass'}
                   onClick={() => {
                     setSelectedTemplateId(template.id);
@@ -239,6 +281,7 @@ export function DuelChallengeModal({
                   <span style={{ fontSize: 15, fontWeight: 900 }}>
                     {duelKindText(template.duel_kind)}
                   </span>
+                  {blocked && <span style={{ fontSize: 12 }}>{limitMessage(availability)}</span>}
                   <span
                     style={{
                       fontSize: 12,
@@ -265,7 +308,11 @@ export function DuelChallengeModal({
         <button
           type="button"
           className="modal-primary btn--cta"
-          disabled={selectedTemplateId === null || challengeMutation.isPending}
+          disabled={selectedTemplateId === null || challengeMutation.isPending ||
+            (templates.find((item) => item.id === selectedTemplateId) !== undefined &&
+              availabilityQuery.data?.formats?.[
+                templates.find((item) => item.id === selectedTemplateId)!.duel_kind
+              ]?.available === false)}
           onClick={() => {
             if (selectedTemplateId !== null) {
               guardAmateurMutation(amateurAccess, () =>

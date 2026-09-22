@@ -28,6 +28,7 @@ import {
   createClassicTournamentCondition,
   dailyCharacterVisuals,
   duelBackLabel,
+  duelAdmissionErrorCopy,
   duelEquipmentEffectLabel,
   duelEventTiming,
   duelInventoryBadgeLabel,
@@ -59,6 +60,21 @@ import type { AmateurDuelMatchState } from '../api/amateurDuel.js';
 import type { BonusGameCard } from '../api/bonusGames.js';
 import type { ClassicTournamentState } from '../api/tournamentClassic.js';
 import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
+import { ApiError } from '../api/apiFetch.js';
+
+describe('duel admission conflict copy', () => {
+  it('shows the structured limit and Moscow retry time', () => {
+    expect(duelAdmissionErrorCopy(new ApiError(409, 'conflict', 'Ошибка', {
+      duelLimit: { reason: 'daily', retryAt: '2026-09-22T21:00:00Z' },
+    }))).toContain('Дневной лимит дуэлей исчерпан. Снова доступно 23.09.2026, 00:00:00 (МСК).');
+  });
+
+  it('explains the outgoing invitation limit without a retry time', () => {
+    expect(duelAdmissionErrorCopy(new ApiError(409, 'conflict', 'Ошибка', {
+      duelLimit: { reason: 'outgoing' },
+    }))).toBe('Достигнут лимит исходящих вызовов.');
+  });
+});
 
 vi.mock('../game/PixiStage.js', () => ({
   PixiStage: () => <div data-testid="pixi-stage-stub" />,
@@ -6289,6 +6305,40 @@ describe('DailyScreen', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Классика' })).toBeDisabled());
     expect(screen.getByRole('button', { name: 'Начать поиск' })).toBeDisabled();
     expect(screen.getByText(/Некоторые форматы недоступны/)).toBeInTheDocument();
+  });
+
+  it('excludes a monthly-limit-exhausted format from matchmaking while keeping another playable', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/duel/amateur/matches')
+        ? { matches: [], duel_lock: null, format_locks: {}, format_limits: {
+            express: { available: false, reason: 'format', retryAt: '2026-10-01T00:00:00Z' },
+            express_plus: { available: true, reason: null, retryAt: null },
+            classic: { available: true, reason: null, retryAt: null },
+          } }
+        : url.includes('/duel/amateur/templates')
+          ? { templates: challengeTemplates }
+          : url.includes('/duel/amateur/rating')
+            ? { season_key: '2026-09', rating: [] }
+            : url.includes('/duel/training/state')
+              ? trainingIdleState
+              : url.includes('/matchmaking/join')
+                ? { ticket: { id: 'queued', status: 'queued', expires_at: new Date(Date.now() + 120_000).toISOString(), duel_kinds: ['express_plus', 'classic'] } }
+                : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Экспресс' })).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Классика' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([input]) => String(input).includes('/matchmaking/join'));
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ duel_kinds: ['express_plus', 'classic'] });
+    });
   });
 
   it('lets a challenger cancel an unanswered duel invite from the current duels list', async () => {

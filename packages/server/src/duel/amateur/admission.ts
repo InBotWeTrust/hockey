@@ -11,6 +11,57 @@ interface Capacity {
   retryAt: Date | null;
 }
 
+export async function duelCapacities(
+  client: PoolClient,
+  userIds: string[],
+  limits: DuelLimitSettings,
+  now: Date,
+): Promise<Map<string, Record<DuelKind, Capacity>>> {
+  const result = new Map<string, Record<DuelKind, Capacity>>();
+  if (userIds.length === 0) return result;
+  const windows = limitWindows(now);
+  const { rows } = await client.query<{
+    user_id: string; daily: number; weekly: number; monthly: number;
+    express: number; express_plus: number; classic: number;
+  }>(
+    `select user_id,
+       count(*) filter (where accepted_at >= $2)::int as daily,
+       count(*) filter (where accepted_at >= $3)::int as weekly,
+       count(*) filter (where accepted_at >= $4)::int as monthly,
+       count(*) filter (where accepted_at >= $4 and duel_kind = 'express')::int as express,
+       count(*) filter (where accepted_at >= $4 and duel_kind = 'express_plus')::int as express_plus,
+       count(*) filter (where accepted_at >= $4 and duel_kind = 'classic')::int as classic
+       from amateur_duel_limit_reservation
+      where user_id = any($1::uuid[]) and released_at is null
+      group by user_id`,
+    [userIds, windows.dayStart, windows.weekStart, windows.monthStart],
+  );
+  const counts = new Map(rows.map((row) => [row.user_id, row]));
+  for (const userId of userIds) {
+    const row = counts.get(userId);
+    const daily = row?.daily ?? 0;
+    const weekly = row?.weekly ?? 0;
+    const monthly = row?.monthly ?? 0;
+    const formats = {} as Record<DuelKind, Capacity>;
+    for (const kind of ['express', 'express_plus', 'classic'] as const) {
+      const remaining = [
+        { reason: 'daily' as const, count: limits.daily - daily, retryAt: windows.nextDay },
+        { reason: 'weekly' as const, count: limits.weekly - weekly, retryAt: windows.nextWeek },
+        { reason: 'monthly' as const, count: limits.monthly - monthly, retryAt: windows.nextMonth },
+        { reason: 'format' as const, count: limits.perFormatMonthly - (row?.[kind] ?? 0), retryAt: windows.nextMonth },
+      ];
+      const blocking = remaining.find((item) => item.count <= 0);
+      formats[kind] = {
+        available: Math.max(0, Math.min(...remaining.map((item) => item.count))),
+        reason: blocking?.reason ?? null,
+        retryAt: blocking?.retryAt ?? null,
+      };
+    }
+    result.set(userId, formats);
+  }
+  return result;
+}
+
 export async function duelCapacity(
   client: PoolClient,
   userId: string,
@@ -18,35 +69,7 @@ export async function duelCapacity(
   limits: DuelLimitSettings,
   now: Date,
 ): Promise<Capacity> {
-  const windows = limitWindows(now);
-  const { rows } = await client.query<{
-    daily: number;
-    weekly: number;
-    monthly: number;
-    per_format_monthly: number;
-  }>(
-    `select
-       count(*) filter (where accepted_at >= $2)::int as daily,
-       count(*) filter (where accepted_at >= $3)::int as weekly,
-       count(*) filter (where accepted_at >= $4)::int as monthly,
-       count(*) filter (where accepted_at >= $4 and duel_kind = $5)::int as per_format_monthly
-       from amateur_duel_limit_reservation
-      where user_id = $1 and released_at is null`,
-    [userId, windows.dayStart, windows.weekStart, windows.monthStart, kind],
-  );
-  const counts = rows[0]!;
-  const remaining = [
-    { reason: 'daily' as const, count: limits.daily - counts.daily, retryAt: windows.nextDay },
-    { reason: 'weekly' as const, count: limits.weekly - counts.weekly, retryAt: windows.nextWeek },
-    { reason: 'monthly' as const, count: limits.monthly - counts.monthly, retryAt: windows.nextMonth },
-    { reason: 'format' as const, count: limits.perFormatMonthly - counts.per_format_monthly, retryAt: windows.nextMonth },
-  ];
-  const blocking = remaining.find((item) => item.count <= 0);
-  return {
-    available: Math.max(0, Math.min(...remaining.map((item) => item.count))),
-    reason: blocking?.reason ?? null,
-    retryAt: blocking?.retryAt ?? null,
-  };
+  return (await duelCapacities(client, [userId], limits, now)).get(userId)![kind];
 }
 
 export async function assertDuelCapacity(

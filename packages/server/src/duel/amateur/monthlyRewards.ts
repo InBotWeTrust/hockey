@@ -67,7 +67,11 @@ export async function reconcileCompletedMonthlyRating(pool: Pool, now: Date): Pr
         ) order by id for update`,
             [seasonKey],
           );
-          await reconcileRatingSeasonMatches(client, seasonKey);
+          const readyToClose = await reconcileRatingSeasonMatches(client, seasonKey, now);
+          if (!readyToClose) {
+            await client.query('commit');
+            return;
+          }
           await settleSeason(client, seasonKey, now);
         }
         await client.query('commit');
@@ -336,8 +340,10 @@ export async function acknowledgeMonthlyRatingCongratulations(
     await client.query('begin');
     const found = await client.query<{ season_key: string }>(
       `select season_key from monthly_duel_rating_placement where id = $1 and user_id = $2
+          and (coins > 0 or stars > 0 or experience > 0 or tokens > 0)
        union all
        select season_key from monthly_duel_format_placement where id = $1 and user_id = $2
+          and (coins > 0 or stars > 0 or experience > 0 or tokens > 0)
        limit 1`,
       [id, userId],
     );

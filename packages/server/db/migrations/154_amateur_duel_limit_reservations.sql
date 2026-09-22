@@ -12,9 +12,8 @@ create index amateur_duel_limit_reservation_user_active_idx
   where released_at is null;
 
 insert into amateur_duel_limit_reservation (match_id, user_id, duel_kind, accepted_at)
-select m.id, participant.user_id, m.duel_kind, m.accepted_at
+select m.id, participant.user_id, m.duel_kind, coalesce(m.accepted_at, m.updated_at)
   from amateur_duel_match m
   join amateur_duel_participant participant on participant.match_id = m.id
  where m.source <> 'tournament'
-   and m.accepted_at is not null
-   and m.status in ('active', 'settled');
+   and (m.accepted_at is not null or m.status = 'ready_check');

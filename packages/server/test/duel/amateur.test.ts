@@ -727,7 +727,14 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     });
 
     expect(available.statusCode).toBe(200);
-    expect(available.json()).toEqual({ available: true });
+    expect(available.json()).toMatchObject({
+      available: true,
+      formats: {
+        express: { available: true },
+        express_plus: { available: true },
+        classic: { available: true },
+      },
+    });
   });
 
   it('rechecks the playoff pairing when an older ordinary invitation is accepted', async () => {
@@ -4607,6 +4614,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         rating: (await pool.query('select * from amateur_duel_rating_live order by user_id')).rows,
       });
       const frozen = await ratingState();
+      const starsAfterMonthlyClose = Number((await pool.query(
+        'select xp from users where id = $1', [userA],
+      )).rows[0].xp);
       for (let retry = 0; retry < 2; retry += 1) {
         const response = await app.inject({
           method: 'POST',
@@ -4652,7 +4662,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
             [userA],
           )
         ).rows,
-      ).toEqual([{ xp: 3, balance: 105 }]);
+      ).toEqual([{ xp: starsAfterMonthlyClose + 3, balance: 105 }]);
       expect(
         (
           await pool.query(
@@ -4693,8 +4703,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     { first: 'settle', activeCount: 2, timeout: '2026-08-31T20:59:00Z', month: '2026-08' },
     { first: 'close', activeCount: 1, timeout: '2026-08-31T20:59:00Z', month: '2026-08' },
     { first: 'settle', activeCount: 1, timeout: '2026-08-31T20:59:00Z', month: '2026-08' },
-    { first: 'close', activeCount: 2, timeout: '2026-08-31T21:00:00Z', month: '2026-09' },
-    { first: 'settle', activeCount: 2, timeout: '2026-08-31T21:00:00Z', month: '2026-09' },
+    { first: 'close', activeCount: 2, timeout: '2026-08-31T21:00:00Z', month: '2026-08' },
+    { first: 'settle', activeCount: 2, timeout: '2026-08-31T21:00:00Z', month: '2026-08' },
   ])('materializes final timers before $first ($activeCount active, $month)', async (fixture) => {
     const matchId = await oldSeasonMatch('2026-09-01T01:00:00Z');
     await pool.query(
@@ -4795,7 +4805,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   });
 
   it.each(['accepted', 'completed'] as const)(
-    'carries an active boundary-spanning %s match forward without changing the closed season',
+    'keeps a boundary-spanning %s match in its acceptance month',
     async (state) => {
       const matchId = await oldSeasonMatch('2026-09-01T01:00:00Z');
       await pool.query(
@@ -4809,8 +4819,11 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
             matchId,
           ])
         ).rows[0],
-      ).toEqual({ status: 'active', season_key: '2026-09' });
+      ).toEqual({ status: state === 'accepted' ? 'active' : 'settled', season_key: '2026-08' });
       const before = (await pool.query('select * from monthly_duel_rating_season')).rows;
+      if (state === 'accepted') {
+        expect(before).toEqual([]);
+      }
       expect(
         (
           await app.inject({
@@ -4827,12 +4840,15 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
             [matchId],
           )
         ).rows,
-      ).toEqual([{ season_key: '2026-09' }]);
-      expect((await pool.query('select * from monthly_duel_rating_season')).rows).toEqual(before);
+      ).toEqual([{ season_key: '2026-08' }]);
+      await reconcileCompletedMonthlyRating(pool, new Date('2026-09-01T01:00:00Z'));
+      expect(
+        (await pool.query("select season_key from monthly_duel_rating_season where season_key='2026-08'")).rows,
+      ).toEqual([{ season_key: '2026-08' }]);
     },
   );
 
-  it('assigns a late-reconciled completed match to its completion month, independent of request month', async () => {
+  it('keeps a late-reconciled completed match in its acceptance month', async () => {
     const matchId = await oldSeasonMatch('2026-10-01T01:00:00Z');
     await pool.query(
       "update amateur_duel_match set season_key='2026-06',starts_at='2026-06-30T19:00:00Z' where id=$1",
@@ -4858,7 +4874,26 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
           [matchId],
         )
       ).rows,
-    ).toEqual([{ season_key: '2026-07' }]);
+    ).toEqual([{ season_key: '2026-06' }]);
+  });
+
+  it('keeps the acceptance month when the first shot is after the month boundary', async () => {
+    const matchId = await createActiveMatch(true);
+    await pool.query("update amateur_duel_match set season_key='2026-08' where id=$1", [matchId]);
+    await pool.query(
+      "update amateur_duel_limit_reservation set accepted_at='2026-08-31T20:59:00Z' where match_id=$1",
+      [matchId],
+    );
+    const shot = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/shot`,
+      headers: auth(tokenA),
+      payload: { shot_index: 1, input: { tapTime: 1000 }, claimed_result: 'goal' },
+    });
+    expect(shot.statusCode).toBe(200);
+    expect(
+      (await pool.query('select season_key from amateur_duel_match where id=$1', [matchId])).rows,
+    ).toEqual([{ season_key: '2026-08' }]);
   });
 
   it('locks the complete match-list recipient set before processing recent matches', async () => {

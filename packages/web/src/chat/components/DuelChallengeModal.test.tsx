@@ -99,6 +99,26 @@ describe('DuelChallengeModal Amateur preview access', () => {
     expect(option.querySelector('.duel-challenge-option__indicator svg')).toBeInTheDocument();
   });
 
+  it('blocks a format when the opponent has reached its monthly limit', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'amateur' });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const body = url.includes('/templates')
+        ? { templates: [template, { ...template, id: 'template-classic', duel_kind: 'classic', title: 'Классика' }] }
+        : { available: true, formats: {
+          express: { available: false, reason: 'format', retryAt: '2026-10-01T00:00:00.000Z', player: 'opponent' },
+          classic: { available: true, reason: null, retryAt: null, player: null },
+        } };
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    renderModal();
+    const express = await screen.findByRole('button', { name: /Экспресс/ });
+    await waitFor(() => expect(express).toBeDisabled());
+    expect(screen.getByText(/У соперника исчерпан месячный лимит этого формата/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Классика/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Вызвать' })).toBeDisabled();
+  });
+
   it('guards profile challenge submission locally for a known beginner', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = input instanceof Request ? input.url : String(input);

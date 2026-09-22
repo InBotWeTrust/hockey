@@ -29,3 +29,25 @@ it('switches between four duel rating scopes while retaining the selected month'
     expect(screen.getByRole('tab', { name: label })).toBeInTheDocument();
   }
 });
+
+it('opens rules for the selected scope and shows configured reward and threshold', async () => {
+  vi.mocked(fetchAmateurRating).mockResolvedValue({
+    season_key: '2026-09', scope: 'overall', rating_visible: true,
+    available_seasons: ['2026-09'], prize_threshold: 30, rating: [], me_rank: null,
+    reward_rules: {
+      enabled: true, minimumMatches: 30,
+      first: { coins: 15000, stars: 300, experience: 0, tokens: 10 },
+    },
+  });
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <AmateurDuelRatingTab currentUserId={null} initialSeasonKey="2026-09" onOpenProfile={() => undefined} />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(await screen.findByRole('button', { name: 'Правила рейтинга дуэлей' }));
+  const dialog = screen.getByRole('dialog', { name: 'Рейтинг: Общий' });
+  expect(dialog).toHaveTextContent('30 дуэлей');
+  expect(dialog).toHaveTextContent('300 звёзд');
+  fireEvent.click(screen.getByRole('button', { name: 'Закрыть правила' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+});

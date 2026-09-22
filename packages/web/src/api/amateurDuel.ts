@@ -272,6 +272,7 @@ export interface AmateurDuelMatchState extends AmateurDuelMatch {
 
 export interface AmateurOpponent {
   format_locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
+  format_limits?: AmateurDuelOverview['format_limits'];
   userId: string;
   displayName: string;
   avatarUrl: string | null;
@@ -313,6 +314,15 @@ export interface AmateurDuelRatingResponse {
   season_key: string;
   scope?: 'overall' | AmateurDuelKind;
   prize_threshold?: number;
+  reward_rules?: {
+    enabled: boolean;
+    minimumMatches: number;
+    first: { coins: number; stars: number; experience: number; tokens: number };
+    second?: { coins: number; stars: number; experience: number; tokens: number };
+    third?: { coins: number; stars: number; experience: number; tokens: number };
+    fourToTen?: { coins: number; stars: number; experience: number; tokens: number };
+    elevenToFifty?: { coins: number; stars: number; experience: number; tokens: number };
+  };
   rating_visible: boolean;
   available_seasons: string[];
   rating: AmateurRatingRow[];
@@ -430,6 +440,11 @@ export function searchAmateurOpponents(q = '', limit = 20): Promise<{ users: Ama
 
 export interface AmateurDuelOverview {
   format_locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
+  format_limits?: Partial<Record<AmateurDuelKind, {
+    available: boolean;
+    reason: 'daily' | 'weekly' | 'monthly' | 'format' | null;
+    retryAt: string | null;
+  }>>;
   matches: AmateurDuelMatch[];
   duel_lock?: GameplayLockDTO | null;
   gameplay_lock?: GameplayLockDTO | null;
@@ -482,9 +497,14 @@ export function challengeAmateurDuel(body: {
 
 export function checkAmateurDuelChallengeAvailability(
   opponentUserId: string,
-): Promise<{ available: true }> {
+): Promise<{ available: true; formats?: Record<AmateurDuelKind, {
+  available: boolean;
+  reason: 'daily' | 'weekly' | 'monthly' | 'format' | 'outgoing' | null;
+  retryAt: string | null;
+  player: 'self' | 'opponent' | null;
+}> }> {
   const query = new URLSearchParams({ opponent_user_id: opponentUserId });
-  return apiFetch<{ available: true }>(`/duel/amateur/challenge/availability?${query.toString()}`);
+  return apiFetch(`/duel/amateur/challenge/availability?${query.toString()}`);
 }
 
 export function acceptAmateurDuel(matchId: string): Promise<{ match: AmateurDuelMatchState }> {

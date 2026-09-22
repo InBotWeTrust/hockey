@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Info, X } from 'lucide-react';
 import { fetchAmateurRating } from '../../api/amateurDuel.js';
 import type { UserPickerItem } from '../../chat/api.js';
 import { TournamentStandingsTable } from '../../tournament/TournamentStandingsTable.js';
 import { SegmentedTabs } from '../SegmentedTabs.js';
 import type { AmateurDuelKind } from '../../api/amateurDuel.js';
+import { AccessibleModal } from '../AccessibleModal.js';
 
 type RatingScope = 'overall' | AmateurDuelKind;
 const RATING_SCOPES: Array<{ id: RatingScope; label: string }> = [
@@ -35,6 +36,7 @@ export function AmateurDuelRatingTab({
 }): JSX.Element {
   const [seasonKey, setSeasonKey] = useState(initialSeasonKey);
   const [scope, setScope] = useState<RatingScope>('overall');
+  const [rulesOpen, setRulesOpen] = useState(false);
   const rating = useQuery({
     queryKey: ['amateur-duel', 'rating', seasonKey, scope],
     queryFn: () => fetchAmateurRating(seasonKey, scope),
@@ -53,7 +55,12 @@ export function AmateurDuelRatingTab({
 
   return (
     <section className="duel-section" aria-label="Рейтинг дуэлей">
-      <div className="section-label duel-section-title">Рейтинг</div>
+      <div className="section-label duel-section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        Рейтинг
+        <button type="button" className="icon-btn" aria-label="Правила рейтинга дуэлей" onClick={() => setRulesOpen(true)}>
+          <Info size={16} />
+        </button>
+      </div>
       <SegmentedTabs
         items={RATING_SCOPES}
         activeTab={scope}
@@ -121,6 +128,38 @@ export function AmateurDuelRatingTab({
           </section>
         )}
       </section>
+      {rulesOpen && (
+        <AccessibleModal
+          title={`Рейтинг: ${RATING_SCOPES.find((item) => item.id === scope)?.label ?? scope}`}
+          onRequestClose={() => setRulesOpen(false)}
+          headerAction={<button type="button" className="icon-btn" aria-label="Закрыть правила" onClick={() => setRulesOpen(false)}><X size={16} /></button>}
+        >
+          <p>В зачёт входят только обычные завершённые дуэли. Турнирные игры не учитываются.</p>
+          <p>Для попадания в таблицу нужно сыграть не менее {data?.reward_rules?.minimumMatches ?? data?.prize_threshold ?? (scope === 'overall' ? 30 : 10)} дуэлей {scope === 'overall' ? 'за месяц' : 'в этом формате за месяц'}.</p>
+          <p>Места определяются по очкам, затем по очным встречам, числу матчей и победам.</p>
+          {data?.reward_rules?.enabled === false ? (
+            <p>Награды за этот зачёт сейчас выключены.</p>
+          ) : data?.reward_rules && Object.values(data.reward_rules).every((value) =>
+            typeof value !== 'object' || value === null ||
+            Object.values(value).every((amount) => amount === 0)) ? (
+            <p>Награды за этот зачёт не назначены.</p>
+          ) : data?.reward_rules ? (
+            <div>
+              {Object.entries({
+                '1-е место': data.reward_rules.first,
+                ...(scope === 'overall' ? {
+                  '2-е место': data.reward_rules.second,
+                  '3-е место': data.reward_rules.third,
+                  '4–10-е места': data.reward_rules.fourToTen,
+                  '11–50-е места': data.reward_rules.elevenToFifty,
+                } : {}),
+              }).map(([place, reward]) => reward && (
+                <p key={place}>{place}: {reward.coins} монет, {reward.stars} звёзд, {reward.experience} опыта, {reward.tokens} токенов</p>
+              ))}
+            </div>
+          ) : <p>Загрузка наград…</p>}
+        </AccessibleModal>
+      )}
     </section>
   );
 }
