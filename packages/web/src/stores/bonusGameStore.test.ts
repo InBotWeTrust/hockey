@@ -586,10 +586,38 @@ describe('bonusGameStore', () => {
     const predictedMarksmanship = {
       result: { type: 'goal' as const, hitPoint: { x: 286, y: 44 } },
       windowDurationMs: 180,
+      opportunity: 'scored' as const,
+      timingErrorMs: 0,
       basePoints: 115,
       counterDirection: true,
+      geometry: {
+        boardSide: false,
+        closeToGoalie: false,
+        counterDirection: true,
+        behindGoalie: false,
+      },
+      series: { type: 'single' as const, index: 1 as const, multiplier: 1, passId: 1 },
+      situationBonus: 15,
+      seriesBonus: 0,
       awardedPoints: 130,
       difficultyCode: 'timed' as const,
+    };
+    const scoreDetails = {
+      version: 2 as const,
+      windowDurationMs: 60,
+      difficultyCode: 'very_narrow' as const,
+      counterDirection: false,
+      opportunity: 'scored' as const,
+      timingErrorMs: 0,
+      geometry: {
+        boardSide: true,
+        closeToGoalie: false,
+        counterDirection: false,
+        behindGoalie: false,
+      },
+      series: { type: 'single' as const, index: 1 as const, multiplier: 1, passId: 2 },
+      situationBonus: 0,
+      seriesBonus: 0,
     };
     vi.mocked(submitBonusShot).mockResolvedValueOnce({
       server_result: 'goal',
@@ -597,6 +625,7 @@ describe('bonusGameStore', () => {
       total_points: 455,
       difficulty_code: 'very_narrow',
       counter_direction: false,
+      score_details: scoreDetails,
       attempt: authoritativeAttempt,
       reward_granted: false,
       balances: { coins: 10, stars: 2, experience: 7 },
@@ -616,6 +645,7 @@ describe('bonusGameStore', () => {
       totalPoints: 455,
       difficultyCode: 'very_narrow',
       counterDirection: false,
+      scoreDetails,
       predictedMarksmanship,
     });
     expect(useBonusGameStore.getState().pendingShot).toMatchObject({
@@ -624,6 +654,7 @@ describe('bonusGameStore', () => {
       totalPoints: 455,
       difficultyCode: 'very_narrow',
       counterDirection: false,
+      scoreDetails,
       predictedMarksmanship,
     });
 
@@ -778,6 +809,7 @@ describe('bonusGameStore', () => {
       difficultyCode: null,
       counterDirection: false,
       predictedMarksmanship: null,
+      scoreDetails: null,
       receivedAtPerformanceMs: 1_000,
     });
 
@@ -927,6 +959,7 @@ describe('bonusGameStore', () => {
         difficultyCode: null,
         counterDirection: false,
         predictedMarksmanship: null,
+        scoreDetails: null,
         receivedAtPerformanceMs: 1_000,
       },
       inFlight: true,

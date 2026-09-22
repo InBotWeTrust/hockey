@@ -8,6 +8,9 @@ import {
   resolvePerspectiveCourtShot,
   STICK_NEUTRAL,
   type MarksmanshipDifficultyCode,
+  type MarksmanshipGeometry,
+  type MarksmanshipSeriesClassification,
+  type MarksmanshipSeriesGoal,
   type ShotInput,
 } from '@hockey/game-core';
 import type { Pool, PoolClient } from 'pg';
@@ -69,22 +72,38 @@ export interface SubmitBonusShotResult {
   totalPoints: number;
   difficultyCode: MarksmanshipDifficultyCode | null;
   counterDirection: boolean;
+  scoreDetails: MarksmanshipScoreDetails | null;
   attempt: BonusGameAttemptDTO;
   rewardGranted: BonusRewardSnapshot | null;
   balances: BalanceSnapshot;
 }
+
+export type MarksmanshipScoreDetails =
+  | {
+      version: 1;
+      windowDurationMs: number | null;
+      difficultyCode: MarksmanshipDifficultyCode | null;
+      counterDirection: boolean;
+    }
+  | {
+      version: 2;
+      windowDurationMs: number | null;
+      difficultyCode: MarksmanshipDifficultyCode | null;
+      counterDirection: boolean;
+      opportunity: 'scored' | 'human_error' | 'closed';
+      timingErrorMs: number | null;
+      geometry: MarksmanshipGeometry;
+      series: MarksmanshipSeriesClassification;
+      situationBonus: number;
+      seriesBonus: number;
+    };
 
 interface BonusShotRow {
   period_number: number;
   shot_index: number;
   server_result: BonusShotResult;
   awarded_points: number;
-  score_details: {
-    version: 1;
-    windowDurationMs: number | null;
-    difficultyCode: MarksmanshipDifficultyCode | null;
-    counterDirection: boolean;
-  } | null;
+  score_details: MarksmanshipScoreDetails | null;
 }
 
 interface BonusAttemptVersionRow {
@@ -95,6 +114,11 @@ interface BonusAttemptVersionRow {
 export const BONUS_GAME_CORE_VERSION_MISMATCH_CODE = 'bonus_game_core_version_mismatch';
 export const BONUS_SHOT_TIME_INVALID_CODE = 'bonus_shot_time_invalid';
 export const BONUS_SHOT_TIME_STALE_CODE = 'bonus_shot_time_stale';
+const LEGACY_BONUS_GAME_CORE_VERSION = 62;
+
+function supportsBonusGameCoreVersion(version: number): boolean {
+  return version === GAME_CORE_VERSION || version === LEGACY_BONUS_GAME_CORE_VERSION;
+}
 
 export class BonusAttemptAlreadyActiveError extends AppError {
   constructor(public readonly activeAttempt: { id: string; gameId: string }) {
@@ -871,6 +895,7 @@ interface BonusPeriodShotState {
   count: number;
   lastTapTime: number | null;
   lastShooterTapTime: number | null;
+  goalInputs: MarksmanshipSeriesGoal[];
 }
 
 async function fetchBonusPeriodShotState(
@@ -882,6 +907,7 @@ async function fetchBonusPeriodShotState(
     count: number;
     last_tap_time: number | null;
     last_shooter_tap_time: number | null;
+    goal_inputs: MarksmanshipSeriesGoal[];
   }>(
     `select count(*)::int as count,
             (array_agg(
@@ -891,7 +917,16 @@ async function fetchBonusPeriodShotState(
             (array_agg(
               (input_payload->>'shooterTapTime')::double precision
               order by shot_index desc
-            ))[1] as last_shooter_tap_time
+            ))[1] as last_shooter_tap_time,
+            coalesce(
+              jsonb_agg(
+                jsonb_build_object(
+                  'tapTime', (input_payload->>'tapTime')::double precision,
+                  'shooterTapTime', (input_payload->>'shooterTapTime')::double precision
+                ) order by shot_index
+              ) filter (where server_result = 'goal'),
+              '[]'::jsonb
+            ) as goal_inputs
        from shot_session
       where mode = 'bonus'
         and bonus_game_attempt_id = $1
@@ -904,6 +939,10 @@ async function fetchBonusPeriodShotState(
     lastTapTime: row.last_tap_time === null ? null : Number(row.last_tap_time),
     lastShooterTapTime:
       row.last_shooter_tap_time === null ? null : Number(row.last_shooter_tap_time),
+    goalInputs: row.goal_inputs.map((goal) => ({
+      tapTime: Number(goal.tapTime),
+      shooterTapTime: Number(goal.shooterTapTime),
+    })),
   };
 }
 
@@ -1054,7 +1093,9 @@ export async function submitBonusShot(
   try {
     // Read-only preflight keeps unsupported attempts free of account, shot, reward, and audit writes.
     if (
-      (await fetchOwnedAttemptVersion(client, input.userId, input.attemptId)) !== GAME_CORE_VERSION
+      !supportsBonusGameCoreVersion(
+        await fetchOwnedAttemptVersion(client, input.userId, input.attemptId),
+      )
     ) {
       throw unsupportedBonusGameCoreVersion();
     }
@@ -1064,7 +1105,7 @@ export async function submitBonusShot(
     const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
     await lockBonusGameCatalogForRead(client);
     await assertBonusGameAccessibleToUser(client, input.userId, owned.bonus_game_id);
-    if (Number(owned.game_core_version) !== GAME_CORE_VERSION) {
+    if (!supportsBonusGameCoreVersion(Number(owned.game_core_version))) {
       throw unsupportedBonusGameCoreVersion();
     }
     let attempt = owned;
@@ -1086,6 +1127,7 @@ export async function submitBonusShot(
         totalPoints: Number(attempt.total_points),
         difficultyCode: acceptedBeforeReconcile.score_details?.difficultyCode ?? null,
         counterDirection: acceptedBeforeReconcile.score_details?.counterDirection ?? false,
+        scoreDetails: acceptedBeforeReconcile.score_details,
         attempt: await loadBonusAttemptDto(client, attempt),
         rewardGranted: null,
         balances,
@@ -1111,6 +1153,7 @@ export async function submitBonusShot(
             totalPoints: Number(attempt.total_points),
             difficultyCode: acceptedAfterReconcile.score_details?.difficultyCode ?? null,
             counterDirection: acceptedAfterReconcile.score_details?.counterDirection ?? false,
+            scoreDetails: acceptedAfterReconcile.score_details,
             attempt: await loadBonusAttemptDto(client, attempt),
             rewardGranted: null,
             balances,
@@ -1207,6 +1250,7 @@ export async function submitBonusShot(
                       : previousInput.tapTime +
                         (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs,
                   scoring: qualificationRules.scoring,
+                  previousGoals: periodShotState.goalInputs,
                 })
               : null;
           const serverResult =
@@ -1224,10 +1268,16 @@ export async function submitBonusShot(
             classification === null
               ? null
               : {
-                  version: 1 as const,
+                  version: 2 as const,
                   windowDurationMs: classification.windowDurationMs,
                   difficultyCode: classification.difficultyCode,
                   counterDirection: classification.counterDirection,
+                  opportunity: classification.opportunity,
+                  timingErrorMs: classification.timingErrorMs,
+                  geometry: classification.geometry,
+                  series: classification.series,
+                  situationBonus: classification.situationBonus,
+                  seriesBonus: classification.seriesBonus,
                 };
 
           if (input.claimedResult !== serverResult) {
@@ -1373,6 +1423,7 @@ export async function submitBonusShot(
               totalPoints: Number(attempt.total_points),
               difficultyCode: scoreDetails?.difficultyCode ?? null,
               counterDirection: scoreDetails?.counterDirection ?? false,
+              scoreDetails,
               attempt: await loadBonusAttemptDto(client, attempt),
               rewardGranted,
               balances,

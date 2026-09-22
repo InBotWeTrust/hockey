@@ -9,6 +9,7 @@ import {
   type BonusGameAttempt,
   type BonusPeriodLoadoutSelection,
   type BonusShotRequest,
+  type MarksmanshipScoreDetails,
 } from '../api/bonusGames.js';
 import type {
   MarksmanshipDifficultyCode,
@@ -28,6 +29,7 @@ interface PendingBonusShot {
   totalPoints: number;
   difficultyCode: MarksmanshipDifficultyCode | null;
   counterDirection: boolean;
+  scoreDetails: MarksmanshipScoreDetails | null;
   predictedMarksmanship: MarksmanshipShotClassification | null;
   receivedAtPerformanceMs: number;
 }
@@ -63,6 +65,7 @@ interface BonusGameStoreState {
     totalPoints: number;
     difficultyCode: MarksmanshipDifficultyCode | null;
     counterDirection: boolean;
+    scoreDetails: MarksmanshipScoreDetails | null;
     predictedMarksmanship: MarksmanshipShotClassification | null;
     attempt: BonusGameAttempt;
     rewardGranted: boolean;
@@ -322,6 +325,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
               total_points: outcome.value.total_points,
               difficulty_code: null,
               counter_direction: false,
+              score_details: null,
               attempt: outcome.value,
               reward_granted: outcome.value.reward_granted,
               balances: { coins: 0, stars: 0, experience: 0 },
@@ -335,6 +339,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
             totalPoints: response.total_points,
             difficultyCode: response.difficulty_code,
             counterDirection: response.counter_direction,
+            scoreDetails: response.score_details ?? null,
             predictedMarksmanship: options.predictedMarksmanship ?? null,
             receivedAtPerformanceMs,
           },
@@ -356,6 +361,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
         totalPoints: response.total_points,
         difficultyCode: response.difficulty_code,
         counterDirection: response.counter_direction,
+        scoreDetails: response.score_details ?? null,
         predictedMarksmanship: options?.predictedMarksmanship ?? null,
         attempt: response.attempt,
         rewardGranted: response.reward_granted,

@@ -513,6 +513,20 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       totalPoints: 155,
       difficultyCode: 'very_narrow',
       counterDirection: false,
+      scoreDetails: {
+        version: 2,
+        opportunity: 'scored',
+        timingErrorMs: 0,
+        geometry: {
+          boardSide: false,
+          closeToGoalie: false,
+          counterDirection: false,
+          behindGoalie: false,
+        },
+        series: { type: 'single', index: 1, multiplier: 1, passId: 25 },
+        situationBonus: 0,
+        seriesBonus: 0,
+      },
       attempt: { totalPoints: 155 },
     });
     expect(retry).toEqual(first);
@@ -532,10 +546,21 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     expect(storedShot.rows[0]).toEqual({
       awarded_points: 155,
       score_details: {
-        version: 1,
+        version: 2,
         windowDurationMs: 60,
         difficultyCode: 'very_narrow',
         counterDirection: false,
+        opportunity: 'scored',
+        timingErrorMs: 0,
+        geometry: {
+          boardSide: false,
+          closeToGoalie: false,
+          counterDirection: false,
+          behindGoalie: false,
+        },
+        series: { type: 'single', index: 1, multiplier: 1, passId: 25 },
+        situationBonus: 0,
+        seriesBonus: 0,
       },
     });
   });
@@ -564,6 +589,44 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       difficultyCode: null,
       counterDirection: false,
       attempt: { totalPoints: 0 },
+    });
+  });
+
+  it('scores a double and triple only inside one uninterrupted shooter pass', async () => {
+    const userId = await createUser();
+    const game = await createMarksmanshipGame(5_000);
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const shots = [
+      { tapTime: 1_480, shooterTapTime: 1_480, points: 180, type: 'single', index: 1 },
+      { tapTime: 2_370, shooterTapTime: 1_954, points: 258, type: 'double', index: 2 },
+      { tapTime: 2_790, shooterTapTime: 1_958, points: 326, type: 'triple', index: 3 },
+    ] as const;
+
+    for (const [index, shot] of shots.entries()) {
+      const response = await submitBonusShot(pool, {
+        userId,
+        attemptId,
+        claimedShotIndex: index + 1,
+        input: {
+          ...marksmanshipInput(shot.tapTime),
+          shooterTapTime: shot.shooterTapTime,
+        },
+        claimedResult: 'goal',
+        now: new Date(NOW.getTime() + shot.tapTime + index * 1_000),
+      });
+
+      expect(response).toMatchObject({
+        awardedPoints: shot.points,
+        scoreDetails: {
+          version: 2,
+          series: { type: shot.type, index: shot.index, passId: 11 },
+        },
+      });
+    }
+
+    expect(await storedMarksmanshipState(attemptId)).toMatchObject({
+      total_points: 764,
+      shots: 3,
     });
   });
 
@@ -629,7 +692,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     ).toBe(1);
   });
 
-  it('adds the strict counter-direction bonus to the authoritative shot score', async () => {
+  it('adds all detected situation bonuses to the authoritative shot score', async () => {
     const userId = await createUser();
     const game = await createMarksmanshipGame(1_000);
     const attemptId = await createActiveAttempt(userId, game.id);
@@ -644,10 +707,18 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     });
 
     expect(response).toMatchObject({
-      awardedPoints: 185,
-      totalPoints: 185,
+      awardedPoints: 235,
+      totalPoints: 235,
       difficultyCode: 'instant',
       counterDirection: true,
+      scoreDetails: {
+        geometry: {
+          closeToGoalie: true,
+          counterDirection: true,
+          behindGoalie: true,
+        },
+        situationBonus: 65,
+      },
     });
   });
 
@@ -1618,6 +1689,71 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     expect(submission).toMatchObject({
       status: 'rejected',
       reason: { code: 'bonus_game_core_version_mismatch', statusCode: 409 },
+    });
+  });
+
+  it('settles and retries a legacy marksmanship attempt after the scoring-v2 release', async () => {
+    const userId = await createUser();
+    const game = await createMarksmanshipGame(155);
+    const legacyScoring = {
+      scanStepMs: 10,
+      counterDirectionBonus: 15,
+      counterDirectionGoalDistance: 24,
+      brackets: DEFAULT_MARKSMANSHIP_SCORING_RULES.brackets,
+    };
+    await pool.query(
+      `update bonus_game
+          set qualification_rules = jsonb_set(qualification_rules, '{scoring}', $2::jsonb)
+        where id = $1`,
+      [game.id, JSON.stringify(legacyScoring)],
+    );
+    const attemptId = await createActiveAttempt(userId, game.id);
+    await pool.query(
+      `update bonus_game_attempt
+          set game_core_version = 62
+        where id = $1`,
+      [attemptId],
+    );
+
+    const miss = await submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: marksmanshipInput(500),
+      claimedResult: 'miss',
+      now: new Date(NOW.getTime() + 500),
+    });
+    expect(miss).toMatchObject({
+      serverResult: 'miss',
+      awardedPoints: 0,
+      attempt: { status: 'active', gameCoreVersion: 62 },
+    });
+
+    const goalInput = { ...marksmanshipInput(916), shooterTapTime: 500 };
+    const goalRequest = {
+      userId,
+      attemptId,
+      claimedShotIndex: 2,
+      input: goalInput,
+      claimedResult: 'goal' as const,
+      now: new Date(NOW.getTime() + 1_916),
+    };
+    const response = await submitBonusShot(pool, goalRequest);
+    const retry = await submitBonusShot(pool, goalRequest);
+
+    expect(response).toMatchObject({
+      serverResult: 'goal',
+      awardedPoints: 155,
+      scoreDetails: { situationBonus: 0, seriesBonus: 0 },
+      attempt: { status: 'completed', gameCoreVersion: 62 },
+    });
+    expect(retry).toMatchObject({
+      serverResult: response.serverResult,
+      awardedPoints: response.awardedPoints,
+      totalPoints: response.totalPoints,
+      scoreDetails: response.scoreDetails,
+      rewardGranted: null,
+      attempt: { status: 'completed', gameCoreVersion: 62 },
     });
   });
 

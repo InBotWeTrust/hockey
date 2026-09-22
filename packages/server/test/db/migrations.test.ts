@@ -189,7 +189,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         where game.status = 'active'
         order by game.skill_code, game.sort_order`,
     );
-    expect(seededBonusGames.rows).toHaveLength(37);
+    expect(seededBonusGames.rows).toHaveLength(40);
     const speedTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'speed');
     const accuracyTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'accuracy');
     const marksmanshipTrack = seededBonusGames.rows.filter(
@@ -198,13 +198,15 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     const enduranceTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'endurance');
     expect(speedTrack).toHaveLength(10);
     expect(accuracyTrack).toHaveLength(13);
-    expect(marksmanshipTrack).toHaveLength(7);
+    expect(marksmanshipTrack).toHaveLength(10);
     expect(enduranceTrack).toHaveLength(7);
     expect(speedTrack.map((game) => game.sort_order)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(accuracyTrack.map((game) => game.sort_order)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
     ]);
-    expect(marksmanshipTrack.map((game) => game.sort_order)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(marksmanshipTrack.map((game) => game.sort_order)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    ]);
     expect(enduranceTrack.map((game) => game.sort_order)).toEqual([1, 2, 3, 4, 5, 6, 7]);
     expect(speedTrack.map((game) => game.slug)).toEqual([
       'speed-beach',
@@ -241,6 +243,9 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       'marksmanship-5',
       'marksmanship-6',
       'marksmanship-7',
+      'marksmanship-8',
+      'marksmanship-9',
+      'marksmanship-10',
     ]);
     expect(enduranceTrack.map((game) => game.slug)).toEqual([
       'endurance-1',
@@ -264,7 +269,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       enduranceTrack.every((game) => game.qualification_rules.type === 'survive_goal_windows'),
     ).toBe(true);
     expect(marksmanshipTrack.map((game) => game.qualification_rules.targetPoints)).toEqual([
-      1100, 2450, 4000, 5750, 7750, 9950, 12450,
+      1250, 2200, 3300, 4500, 5800, 7350, 8850, 10500, 12350, 14150,
     ]);
     expect(
       enduranceTrack.map((game) => ({

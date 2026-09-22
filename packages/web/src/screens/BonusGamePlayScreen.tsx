@@ -10,6 +10,7 @@ import {
   type GoalieConfig,
   type MarksmanshipDifficultyCode,
   type MarksmanshipShotClassification,
+  type MarksmanshipSeriesGoal,
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -18,6 +19,7 @@ import type {
   BonusGameAttempt,
   BonusPeriodLoadoutSelection,
   BonusPeriodRule,
+  MarksmanshipScoreDetails,
 } from '../api/bonusGames.js';
 import { startBonusAttempt } from '../api/bonusGames.js';
 import { fetchMyInventory, type InventoryEquipmentKind } from '../api/inventory.js';
@@ -111,17 +113,51 @@ function marksmanshipResultPresentation(input: {
   awardedPoints: number;
   difficultyCode: MarksmanshipDifficultyCode | null;
   counterDirection: boolean;
+  scoreDetails?: MarksmanshipScoreDetails | null;
 }): PlayResultPresentation | null {
-  if (input.serverResult !== 'goal' || input.awardedPoints <= 0 || input.difficultyCode === null) {
+  const details = input.scoreDetails;
+  if (input.serverResult !== 'goal') {
+    if (details?.version !== 2) return null;
+    if (details.opportunity === 'human_error' && details.timingErrorMs !== null) {
+      const direction = details.timingErrorMs > 0 ? 'раньше' : 'позже';
+      return {
+        title: input.serverResult === 'save' ? 'СЭЙВ' : 'МИМО',
+        details: ['Момент был', `Бросок на ${Math.abs(details.timingErrorMs)} мс ${direction}`],
+      };
+    }
+    if (details.opportunity === 'closed') {
+      return {
+        title: input.serverResult === 'save' ? 'СЭЙВ' : 'МИМО',
+        details: ['Закрытая ситуация', 'Голевого окна не было'],
+      };
+    }
     return null;
   }
+  if (input.awardedPoints <= 0 || input.difficultyCode === null) return null;
+  const technique =
+    details?.version === 2 && details.series.type === 'triple'
+      ? 'Тройка · 3 гола за один прокат'
+      : details?.version === 2 && details.series.type === 'double'
+        ? 'Двойка · 2 гола за один прокат'
+        : details?.version === 2 && details.geometry.behindGoalie
+          ? `За вратаря${details.counterDirection ? ' · противоход' : ''}`
+          : input.counterDirection
+            ? 'Точный момент · противоход'
+            : marksmanshipDifficultyLabel(input.difficultyCode);
+  const breakdown =
+    details?.version === 2
+      ? [
+          `${input.awardedPoints - details.seriesBonus - details.situationBonus} за точность`,
+          ...(details.seriesBonus > 0 ? [`+${details.seriesBonus} серия`] : []),
+          ...(details.situationBonus > 0 ? [`+${details.situationBonus} ситуация`] : []),
+        ].join(' · ')
+      : null;
   return {
     title: 'ГОЛ',
     details: [
       `+${input.awardedPoints}`,
-      input.counterDirection
-        ? 'Точный момент · противоход'
-        : marksmanshipDifficultyLabel(input.difficultyCode),
+      technique,
+      ...(breakdown === null ? [] : [breakdown]),
     ],
   };
 }
@@ -643,12 +679,14 @@ export function BonusGamePlayScreen(): JSX.Element {
     classification: MarksmanshipShotClassification;
   } | null>(null);
   const earliestMarksmanshipTapRef = useRef(0);
+  const marksmanshipGoalInputsRef = useRef<MarksmanshipSeriesGoal[]>([]);
   const lastEnduranceElapsedMsRef = useRef<number | undefined>(undefined);
   const isAuthoritativeBreak = attempt?.status === 'active' && attempt.state === 'break_active';
 
   useEffect(() => {
     predictedMarksmanshipRef.current = null;
     earliestMarksmanshipTapRef.current = 0;
+    marksmanshipGoalInputsRef.current = [];
   }, [attempt?.current_period, attempt?.id]);
 
   useEffect(() => {
@@ -1151,6 +1189,7 @@ export function BonusGamePlayScreen(): JSX.Element {
                       awardedPoints: result.awardedPoints,
                       difficultyCode: result.difficultyCode,
                       counterDirection: result.counterDirection,
+                      scoreDetails: result.scoreDetails,
                     })
                   : undefined,
                 ...(result.isCurrent === undefined ? {} : { isCurrent: result.isCurrent }),
@@ -1168,6 +1207,7 @@ export function BonusGamePlayScreen(): JSX.Element {
                   phaseOffsets: context.phaseOffsets,
                   earliestTapTime: earliestMarksmanshipTapRef.current,
                   scoring: marksmanshipRules!.scoring,
+                  previousGoals: marksmanshipGoalInputsRef.current,
                 });
                 predictedMarksmanshipRef.current = {
                   shotIndex: context.shotIndex,
@@ -1177,11 +1217,32 @@ export function BonusGamePlayScreen(): JSX.Element {
                   context.input.tapTime +
                   (PUCK_START.y - GOAL_OPENING.y) /
                     (context.input.puckSpeedPerMs ?? speedOverrides.puckSpeed);
+                if (classification.result.type === 'goal') {
+                  marksmanshipGoalInputsRef.current = [
+                    ...marksmanshipGoalInputsRef.current,
+                    {
+                      tapTime: context.input.tapTime,
+                      shooterTapTime: context.input.shooterTapTime ?? context.input.tapTime,
+                    },
+                  ];
+                }
                 return marksmanshipResultPresentation({
                   serverResult: classification.result.type,
                   awardedPoints: classification.awardedPoints,
                   difficultyCode: classification.difficultyCode,
                   counterDirection: classification.counterDirection,
+                  scoreDetails: {
+                    version: 2,
+                    windowDurationMs: classification.windowDurationMs,
+                    difficultyCode: classification.difficultyCode,
+                    counterDirection: classification.counterDirection,
+                    opportunity: classification.opportunity,
+                    timingErrorMs: classification.timingErrorMs,
+                    geometry: classification.geometry,
+                    series: classification.series,
+                    situationBonus: classification.situationBonus,
+                    seriesBonus: classification.seriesBonus,
+                  },
                 });
               }
             : undefined

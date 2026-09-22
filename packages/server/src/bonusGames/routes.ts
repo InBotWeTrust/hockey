@@ -495,6 +495,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
           total_points: result.totalPoints,
           difficulty_code: result.difficultyCode,
           counter_direction: result.counterDirection,
+          score_details: result.scoreDetails,
           attempt: toAttemptHttpDto(result.attempt, now),
           reward_granted: result.attempt.rewardGranted,
           balances: result.balances,

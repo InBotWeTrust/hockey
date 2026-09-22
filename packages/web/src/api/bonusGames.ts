@@ -1,7 +1,12 @@
 import { apiFetch } from './apiFetch.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 import { showAmateurLevelRequiredError } from '../amateur/amateurAccess.js';
-import type { MarksmanshipDifficultyCode, MarksmanshipScoringRules } from '@hockey/game-core';
+import type {
+  MarksmanshipDifficultyCode,
+  MarksmanshipGeometry,
+  MarksmanshipScoringRules,
+  MarksmanshipSeriesClassification,
+} from '@hockey/game-core';
 
 export type BonusGameCardState =
   | 'level_locked'
@@ -225,12 +230,33 @@ export interface BonusShotRequest {
   claimed_result: ShotResultType;
 }
 
+export type MarksmanshipScoreDetails =
+  | {
+      version: 1;
+      windowDurationMs: number | null;
+      difficultyCode: MarksmanshipDifficultyCode | null;
+      counterDirection: boolean;
+    }
+  | {
+      version: 2;
+      windowDurationMs: number | null;
+      difficultyCode: MarksmanshipDifficultyCode | null;
+      counterDirection: boolean;
+      opportunity: 'scored' | 'human_error' | 'closed';
+      timingErrorMs: number | null;
+      geometry: MarksmanshipGeometry;
+      series: MarksmanshipSeriesClassification;
+      situationBonus: number;
+      seriesBonus: number;
+    };
+
 export interface BonusShotResponse {
   server_result: ShotResultType;
   awarded_points: number;
   total_points: number;
   difficulty_code: MarksmanshipDifficultyCode | null;
   counter_direction: boolean;
+  score_details?: MarksmanshipScoreDetails | null;
   attempt: BonusGameAttempt;
   reward_granted: boolean;
   balances: BonusReward;
