@@ -2,15 +2,20 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { getGoalie } from '@hockey/game-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StrictMode, type ReactNode } from 'react';
-import type { InitialTrainingRun } from '../api/initialTraining.js';
+import type { InitialTrainingRun, InitialTrainingShotState } from '../api/initialTraining.js';
 
 type CapturedPlayViewProps = {
   active: boolean;
   periodLabel?: string;
   scoreboardPeriodsTotal?: number;
+  timer?: string;
+  timerLabel?: string;
+  goals: number;
+  applyState: (state: InitialTrainingShotState) => void;
   suppressedByModal: boolean;
   statusNotice?: ReactNode;
   statusNoticeTone?: 'success' | 'error';
+  statusNoticeUnderScoreboard?: boolean;
   hudAddon?: ReactNode;
   goalOptions?: { spriteUrl?: string };
   resultCopy?: Partial<Record<'goal' | 'save' | 'miss', string>>;
@@ -69,6 +74,7 @@ const run: InitialTrainingRun = {
   shots_taken: 9,
   goals: 9,
   target_goals: 10,
+  required_zone: null,
   started_at: '2026-09-19T20:00:00.000Z',
   server_now: '2026-09-19T20:00:00.000Z',
   scene: {
@@ -103,6 +109,7 @@ describe('initial training completion lifecycle', () => {
         shots_taken: 10,
         goals: 10,
         target_goals: 10,
+        required_zone: null,
         scene: run.scene,
       },
     });
@@ -135,6 +142,138 @@ describe('initial training completion lifecycle', () => {
     expect(testState.playViewProps?.periodLabel).toBe('УПРАЖНЕНИЕ');
     expect(testState.playViewProps?.scoreboardPeriodsTotal).toBe(7);
     expect(testState.playViewProps?.suppressedByModal).toBe(true);
+    expect(testState.playViewProps?.statusNotice).toBeNull();
+  });
+
+  it('shows the required zone and keeps a wrong-zone goal out of exercise progress', async () => {
+    const zonedRun = {
+      ...run,
+      exercise: { ...run.exercise, key: 'moving-goal' as const, position: 4, title: 'Три зоны', targetGoals: 9 },
+      goals: 0,
+      shots_taken: 0,
+      target_goals: 9,
+      required_zone: 'right' as const,
+    };
+    testState.startExercise.mockResolvedValue(zonedRun);
+    testState.submitShot.mockResolvedValue({
+      server_result: 'goal',
+      feedback_code: 'goal_wrong_zone',
+      credited_goal: false,
+      completed: false,
+      reward_granted: null,
+      state: {
+        run_id: zonedRun.run_id,
+        exercise_key: 'moving-goal',
+        shots_taken: 1,
+        goals: 0,
+        target_goals: 9,
+        required_zone: 'right',
+        scene: zonedRun.scene,
+      },
+    });
+    render(
+      <InitialTrainingPlay
+        exerciseKey="moving-goal"
+        onBack={vi.fn()}
+        onNext={vi.fn()}
+        onCourse={vi.fn()}
+        onOpenTraining={vi.fn()}
+        onCatalogRefresh={vi.fn()}
+      />,
+    );
+
+    await screen.findByRole('dialog', { name: 'Три зоны' });
+    expect(testState.playViewProps?.timerLabel).toBe('СПРАВА');
+    expect(testState.playViewProps?.timer).toBe('0/3');
+    expect(testState.playViewProps?.statusNotice).toBeNull();
+    expect(testState.playViewProps).not.toHaveProperty('sceneOverlay');
+    await act(async () => screen.getByRole('button', { name: 'Начать' }).click());
+    await act(async () => {
+      const response = await testState.playViewProps!.submitShot({
+        shotIndex: 1,
+        input: {
+          tapTime: 1,
+          shooterTapTime: 1,
+          puckSpeedPerMs: 1,
+          shooterFrequency: 1,
+          goalieFrequency: 1,
+          goalFrequency: 1,
+        },
+        claimedResult: 'goal',
+      });
+      testState.playViewProps!.applyState((response as { state: InitialTrainingShotState }).state);
+    });
+    expect(testState.playViewProps?.goals).toBe(0);
+    expect(testState.playViewProps?.timerLabel).toBe('СПРАВА');
+    expect(testState.playViewProps?.statusNoticeTone).toBe('error');
+    expect(testState.playViewProps?.statusNoticeUnderScoreboard).toBe(true);
+    expect(testState.playViewProps?.statusNotice).toMatch(/справа/i);
+    expect(testState.playViewProps).not.toHaveProperty('sceneOverlay');
+    await waitFor(() => expect(testState.playViewProps?.statusNotice).toBeNull(), { timeout: 5_000 });
+  });
+
+  it('updates the scoreboard zone after the third credited goal without showing a standing notice', async () => {
+    const zonedRun = {
+      ...run,
+      exercise: { ...run.exercise, key: 'moving-goal' as const, position: 4, title: 'Три зоны', targetGoals: 9 },
+      goals: 2,
+      target_goals: 9,
+      required_zone: 'right' as const,
+    };
+    testState.startExercise.mockResolvedValue(zonedRun);
+    render(
+      <InitialTrainingPlay
+        exerciseKey="moving-goal"
+        onBack={vi.fn()}
+        onNext={vi.fn()}
+        onCourse={vi.fn()}
+        onOpenTraining={vi.fn()}
+        onCatalogRefresh={vi.fn()}
+      />,
+    );
+
+    await screen.findByRole('dialog', { name: 'Три зоны' });
+    await act(async () => {
+      testState.playViewProps!.applyState({
+        run_id: zonedRun.run_id,
+        exercise_key: 'moving-goal',
+        shots_taken: 3,
+        goals: 3,
+        target_goals: 9,
+        required_zone: 'left',
+        scene: zonedRun.scene,
+      });
+    });
+
+    expect(testState.playViewProps?.timerLabel).toBe('СЛЕВА');
+    expect(testState.playViewProps?.statusNotice).toBeNull();
+    expect(testState.playViewProps?.timer).toBe('0/3');
+  });
+
+  it.each([
+    ['find-the-gap', 'center'],
+    ['pressure-window', 'left'],
+    ['game-pace', 'right'],
+  ] as const)('does not show a standing notice or rink highlight in %s for the required %s zone', async (key, zone) => {
+    testState.startExercise.mockResolvedValue({
+      ...run,
+      exercise: { ...run.exercise, key, position: 5, title: key },
+      required_zone: zone,
+    });
+    render(
+      <InitialTrainingPlay
+        exerciseKey={key}
+        onBack={vi.fn()}
+        onNext={vi.fn()}
+        onCourse={vi.fn()}
+        onOpenTraining={vi.fn()}
+        onCatalogRefresh={vi.fn()}
+      />,
+    );
+
+    await screen.findByRole('dialog', { name: key });
+    expect(testState.playViewProps).not.toHaveProperty('sceneOverlay');
+    expect(testState.playViewProps?.statusNotice).toBeNull();
   });
 
   it('starts only one server run under StrictMode', async () => {
@@ -226,7 +365,7 @@ describe('initial training completion lifecycle', () => {
     });
 
     expect(testState.playViewProps?.statusNotice).toBe(
-      'Возьми чуть правее — бросок прошёл левее ворот.',
+      'Возьми чуть правее',
     );
     expect(testState.playViewProps?.statusNoticeTone).toBe('error');
     expect(testState.playViewProps?.hudAddon).toBeUndefined();

@@ -3,6 +3,8 @@ import {
   DEFAULT_INITIAL_TRAINING_CONFIG,
   buildInitialTrainingCatalog,
   exerciseSceneForProgress,
+  evaluateInitialTrainingGoal,
+  requiredInitialTrainingZone,
   isInitialTrainingCompleted,
   parseInitialTrainingConfig,
   resolveInitialTrainingGoalieId,
@@ -25,6 +27,11 @@ describe('initial training course configuration', () => {
     expect(parseInitialTrainingConfig({ targetGoals: [0] })).toEqual(
       DEFAULT_INITIAL_TRAINING_CONFIG,
     );
+    expect(parseInitialTrainingConfig({
+      ...DEFAULT_INITIAL_TRAINING_CONFIG,
+      enabled: true,
+      targetGoals: { ...DEFAULT_INITIAL_TRAINING_CONFIG.targetGoals, 'moving-goal': 10 },
+    })).toEqual(DEFAULT_INITIAL_TRAINING_CONFIG);
   });
 
   it('uses the current exercise goal balance', () => {
@@ -32,10 +39,49 @@ describe('initial training course configuration', () => {
       'first-shot': 10,
       'three-positions': 9,
       'follow-the-goal': 10,
-      'moving-goal': 10,
-      'find-the-gap': 10,
-      'pressure-window': 8,
-      'game-pace': 8,
+      'moving-goal': 9,
+      'find-the-gap': 9,
+      'pressure-window': 6,
+      'game-pace': 6,
+    });
+  });
+
+  it('requires right, left and center in three-goal stages', () => {
+    expect([0, 2, 3, 5, 6, 8, 9].map((goals) =>
+      requiredInitialTrainingZone('moving-goal', goals, 9),
+    )).toEqual(['right', 'right', 'left', 'left', 'center', 'center', null]);
+  });
+
+  it('alternates right and left after each credited goal', () => {
+    expect([0, 1, 2, 3, 4, 5, 6].map((goals) =>
+      requiredInitialTrainingZone('game-pace', goals, 6),
+    )).toEqual(['right', 'left', 'right', 'left', 'right', 'left', null]);
+  });
+
+  it('credits only a goal from the required third of the player path', () => {
+    expect(evaluateInitialTrainingGoal('moving-goal', 0, 9, 'goal', 500)).toEqual({
+      credited: true,
+      wrongZone: false,
+    });
+    expect(evaluateInitialTrainingGoal('moving-goal', 0, 9, 'goal', 286)).toEqual({
+      credited: false,
+      wrongZone: true,
+    });
+    expect(evaluateInitialTrainingGoal('moving-goal', 0, 9, 'save', 500)).toEqual({
+      credited: false,
+      wrongZone: false,
+    });
+    expect(evaluateInitialTrainingGoal('moving-goal', 0, 9, 'miss', 286)).toEqual({
+      credited: false,
+      wrongZone: true,
+    });
+    expect(evaluateInitialTrainingGoal('game-pace', 1, 6, 'save', 500)).toEqual({
+      credited: false,
+      wrongZone: true,
+    });
+    expect(evaluateInitialTrainingGoal('first-shot', 0, 10, 'goal', 286)).toEqual({
+      credited: true,
+      wrongZone: false,
     });
   });
 
@@ -46,10 +92,10 @@ describe('initial training course configuration', () => {
         'first-shot': 10,
         'three-positions': 9,
         'follow-the-goal': 10,
-        'moving-goal': 10,
-        'find-the-gap': 10,
-        'pressure-window': 8,
-        'game-pace': 8,
+        'moving-goal': 9,
+        'find-the-gap': 9,
+        'pressure-window': 6,
+        'game-pace': 6,
       },
       positionOffsetX: 160,
       goalieFrequencyMultipliers: {
@@ -64,8 +110,8 @@ describe('initial training course configuration', () => {
     expect(migrated).toMatchObject({
       enabled: true,
       goalFrequencyMultipliers: {
-        'moving-goal': 0.35,
-        'find-the-gap': 0.35,
+        'moving-goal': 1,
+        'find-the-gap': 1,
         'pressure-window': 1,
         'game-pace': 1,
       },
@@ -115,8 +161,8 @@ describe('initial training course configuration', () => {
     expect(offsets).toEqual([-160, 0, 160, -160]);
   });
 
-  it('uses empty goals through the first four exercises', () => {
-    for (const key of ['first-shot', 'three-positions', 'follow-the-goal', 'moving-goal'] as const) {
+  it('uses empty goals in the first four exercises and in the side-switching exercise', () => {
+    for (const key of ['first-shot', 'three-positions', 'follow-the-goal', 'moving-goal', 'pressure-window'] as const) {
       expect(
         exerciseSceneForProgress(
           key,
@@ -127,7 +173,7 @@ describe('initial training course configuration', () => {
     }
   });
 
-  it('ramps moving goals before bringing the rookie goalie up to game pace', () => {
+  it('uses game-speed goals and goalie in the positional exercises', () => {
     const moving = exerciseSceneForProgress(
       'moving-goal',
       { shotIndex: 1, goals: 0 },
@@ -152,19 +198,19 @@ describe('initial training course configuration', () => {
     expect(moving).toMatchObject({
       hasGoalie: false,
       movingGoal: true,
-      goalFrequencyMultiplier: 0.35,
+      goalFrequencyMultiplier: 1,
     });
     expect(slowWindow).toMatchObject({
       hasGoalie: true,
       movingGoal: true,
-      goalFrequencyMultiplier: 0.35,
-      goalieFrequencyMultiplier: 0.35,
+      goalFrequencyMultiplier: 1,
+      goalieFrequencyMultiplier: 1,
     });
     expect(pressureWindow).toMatchObject({
-      hasGoalie: true,
+      hasGoalie: false,
       movingGoal: true,
       goalFrequencyMultiplier: 1,
-      goalieFrequencyMultiplier: 0.65,
+      goalieFrequencyMultiplier: 1,
     });
     expect(gamePace).toMatchObject({
       hasGoalie: true,
