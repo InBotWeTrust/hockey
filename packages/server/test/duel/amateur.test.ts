@@ -2231,6 +2231,30 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       .toEqual(new Map([[userA, [5, 1005]], [userB, [0, 1001]]]));
   });
 
+  it('buys inventory wholly with stars at the quoted price exactly once', async () => {
+    const itemId = await createInventoryItem('stick', 'Star-priced stick');
+    await pool.query('update admin_inventory_items set currency_price = 6490 where id = $1', [itemId]);
+    await pool.query('update users set xp = 260 where id = $1', [userA]);
+    const request = (idempotencyKey: string, expectedPriceStars: number) => app.inject({
+      method: 'POST',
+      url: `/inventory/items/${itemId}/purchase`,
+      headers: auth(tokenA),
+      payload: { currency: 'stars', expected_price_stars: expectedPriceStars, idempotency_key: idempotencyKey },
+    });
+    const key = '00000000-0000-4000-8000-000000000001';
+    expect((await request(key, 260)).statusCode).toBe(200);
+    expect((await request(key, 260)).statusCode).toBe(200);
+    const state = await pool.query<{ xp: number; coin_balance: number; instances: number }>(
+      `select u.xp, c.balance as coin_balance,
+              (select count(*)::int from user_inventory_instance where user_id = u.id and inventory_item_id = $2) as instances
+         from users u join user_currency_account c on c.user_id = u.id where u.id = $1`,
+      [userA, itemId],
+    );
+    expect(state.rows[0]).toEqual({ xp: 0, coin_balance: 100, instances: 1 });
+    expect((await request('00000000-0000-4000-8000-000000000002', 260)).statusCode).toBe(409);
+    expect((await request('00000000-0000-4000-8000-000000000003', 259)).statusCode).toBe(409);
+  });
+
   it('stores configured no-inventory skates and nutrition timings in duel rules snapshot', async () => {
     await pool.query(
       `insert into game_settings (key, value, label, description)

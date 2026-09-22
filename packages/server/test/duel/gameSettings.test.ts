@@ -55,6 +55,15 @@ describe('ordinary duel rewards', () => {
   });
 });
 
+describe('inventory star price', () => {
+  it('exposes the admin divisor and uses 25 by default', async () => {
+    const settings = await getGameSettings({ query: async () => ({ rows: [] }) } as never);
+    expect(settings.amateur.starInventoryPriceDivisor).toBe(25);
+    expect(GAME_SETTING_DEFINITIONS.map((setting) => setting.key))
+      .toContain('amateur.star_inventory_price_divisor');
+  });
+});
+
 describe('global duel inventory penalties', () => {
   it('exposes every approved fatigue stage as a global admin setting', () => {
     const definitions = new Map(
