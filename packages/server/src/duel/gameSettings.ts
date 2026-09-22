@@ -78,6 +78,14 @@ const goalieOptions = GOALIES.map((goalie) => ({ value: goalie.id, label: goalie
 const monthlyRatingScopes = ['overall', 'express', 'express_plus', 'classic'] as const;
 const overallRatingBands = ['first', 'second', 'third', 'fourToTen', 'elevenToFifty'] as const;
 const monthlyRatingCurrencies = ['coins', 'stars', 'experience', 'tokens'] as const;
+const monthlyScopeLabels = {
+  overall: 'Общий зачёт', express: 'Экспресс', express_plus: 'Микс', classic: 'Классика',
+};
+const monthlyBandLabels = {
+  first: '1-е место', second: '2-е место', third: '3-е место',
+  fourToTen: '4–10-е места', elevenToFifty: '11–50-е места',
+};
+const monthlyCurrencyLabels = { coins: 'монеты', stars: 'звёзды', experience: 'опыт', tokens: 'токены' };
 
 const monthlyRatingDefinitions: GameSettingDefinition[] = monthlyRatingScopes.flatMap((scope) => {
   const prefix = `amateur.monthly_rating.${scope}`;
@@ -86,7 +94,7 @@ const monthlyRatingDefinitions: GameSettingDefinition[] = monthlyRatingScopes.fl
   return [
     {
       key: `${prefix}.enabled`,
-      label: `${scope}: начислять награды`,
+      label: `${monthlyScopeLabels[scope]}: начислять награды`,
       description: 'Выключение оставляет таблицу видимой и сохраняет суммы. Нулевые выплаты не показываются в поздравлении.',
       type: 'select' as const,
       defaultValue: 'enabled',
@@ -94,7 +102,7 @@ const monthlyRatingDefinitions: GameSettingDefinition[] = monthlyRatingScopes.fl
     },
     {
       key: `${prefix}.minimum_matches`,
-      label: `${scope}: личный порог матчей`,
+      label: `${monthlyScopeLabels[scope]}: личный порог матчей`,
       description: 'Применяется к ещё не закрытому месяцу; в закрытом сохраняется снимок.',
       type: 'number' as const,
       defaultValue: config.minimumMatches,
@@ -104,7 +112,7 @@ const monthlyRatingDefinitions: GameSettingDefinition[] = monthlyRatingScopes.fl
     },
     ...bands.flatMap((band) => monthlyRatingCurrencies.map((currency) => ({
       key: `${prefix}.${band}.${currency}`,
-      label: `${scope}: ${band} — ${currency}`,
+      label: `${monthlyScopeLabels[scope]}: ${monthlyBandLabels[band]} — ${monthlyCurrencyLabels[currency]}`,
       description: 'Если все четыре суммы места равны нулю, награды и поздравления нет. Несколько побед объединяются в одну модалку за месяц.',
       type: 'number' as const,
       defaultValue: (config as unknown as Record<string, MonthlyRatingReward>)[band]![currency],

@@ -8492,6 +8492,14 @@ function SettingsPanel({
         <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
           {activeSection.number}. {activeSection.title}
         </div>
+        {activeSection.id === 'amateur' && (
+          <p className="glass" style={{ padding: 14, margin: 0, borderRadius: 14 }}>
+            Месячный рейтинг: общий зачёт и форматы Экспресс, Микс, Классика настраиваются отдельно.
+            Выключенный зачёт остаётся в таблице, но наград и поздравления не даёт.
+            Если все суммы места равны нулю, поздравления тоже не будет.
+            Изменения действуют только для ещё не закрытого месяца; после закрытия настройки и выплаты фиксируются.
+          </p>
+        )}
         <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {loading && <AdminPlainState>Загрузка...</AdminPlainState>}
           {!loading && sectionSettings.length === 0 && (

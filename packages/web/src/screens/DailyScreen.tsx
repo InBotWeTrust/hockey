@@ -143,6 +143,7 @@ import {
   searchAmateurOpponents,
   settleAmateurDuel,
   type AmateurDuelKind,
+  type AmateurDuelOverview,
   type AmateurDuelInventoryAvailabilityItem,
   type AmateurDuelLoadoutItem,
   type AmateurDuelLoadoutSelection,
@@ -4340,11 +4341,13 @@ function DuelKindPreferencePicker({
   onChange,
   onInfo,
   locks,
+  limits,
 }: {
   selected: AmateurDuelKind[];
   onChange: (next: AmateurDuelKind[]) => void;
   onInfo: () => void;
   locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
+  limits?: AmateurDuelOverview['format_limits'];
 }): JSX.Element {
   const selectedSet = new Set(selected);
   const toggleKind = (kind: AmateurDuelKind) => {
@@ -4390,8 +4393,9 @@ function DuelKindPreferencePicker({
             label={duelKindText(kind)}
             checked={selectedSet.has(kind)}
             active={selectedSet.has(kind)}
-            disabled={locks?.[kind]?.blocked === true}
-            title={locks?.[kind] ? ordinaryDuelLockCopy(locks[kind]!) : undefined}
+            disabled={locks?.[kind]?.blocked === true || limits?.[kind]?.available === false}
+            title={locks?.[kind] ? ordinaryDuelLockCopy(locks[kind]!)
+              : limits?.[kind]?.available === false ? 'Лимит дуэлей этого формата исчерпан' : undefined}
             onClick={() => toggleKind(kind)}
           />
         ))}
@@ -4502,6 +4506,26 @@ function MatchmakingRulesContent(): JSX.Element {
       </div>
     </div>
   );
+}
+
+export function duelAdmissionErrorCopy(error: unknown): string {
+  if (!(error instanceof ApiError) || error.status !== 409) {
+    return error instanceof Error ? error.message : 'Не удалось начать дуэль. Попробуйте ещё раз.';
+  }
+  const limit = error.details?.duelLimit;
+  if (!limit || typeof limit !== 'object') return error.message;
+  const details = limit as { reason?: unknown; retryAt?: unknown };
+  const reason = {
+    daily: 'Дневной лимит дуэлей исчерпан.',
+    weekly: 'Недельный лимит дуэлей исчерпан.',
+    monthly: 'Месячный лимит дуэлей исчерпан.',
+    format: 'Месячный лимит этого формата исчерпан.',
+    outgoing: 'Достигнут лимит исходящих вызовов.',
+  }[String(details.reason)] ?? error.message;
+  const retry = typeof details.retryAt === 'string' ? new Date(details.retryAt) : null;
+  return retry && !Number.isNaN(retry.getTime())
+    ? `${reason} Снова доступно ${retry.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} (МСК).`
+    : reason;
 }
 
 function AmateurDuelsPage({
@@ -4661,7 +4685,12 @@ function AmateurDuelsPage({
     ? selectedOpponent?.format_locks?.[selectedTemplate.duel_kind]
     : null;
   const challengeLock = duelLock ?? selectedFormatLock ?? selectedOpponentLock;
-  const eligibleMatchmakingKinds = matchmakingKinds.filter((kind) => !formatLocks?.[kind]?.blocked);
+  const formatLimits = matches.data?.format_limits;
+  const selectedSelfLimit = selectedTemplate ? formatLimits?.[selectedTemplate.duel_kind] : null;
+  const selectedOpponentLimit = selectedTemplate
+    ? selectedOpponent?.format_limits?.[selectedTemplate.duel_kind] : null;
+  const eligibleMatchmakingKinds = matchmakingKinds.filter((kind) =>
+    !formatLocks?.[kind]?.blocked && formatLimits?.[kind]?.available !== false);
   const unavailableFormat = DUEL_KIND_OPTIONS.find((kind) => formatLocks?.[kind]?.blocked);
   const matchmakingFormatLock = unavailableFormat ? formatLocks?.[unavailableFormat] : null;
   const opponentOptions = opponentQuery.trim().length > 0 ? (opponents.data?.users ?? []) : [];
@@ -4701,6 +4730,8 @@ function AmateurDuelsPage({
 
   const canChallenge =
     !challengeLock?.blocked &&
+    selectedSelfLimit?.available !== false &&
+    selectedOpponentLimit?.available !== false &&
     hasOpenDuelSlot &&
     selectedTemplate !== null &&
     selectedOpponent !== null &&
@@ -4813,6 +4844,7 @@ function AmateurDuelsPage({
                   <DuelKindPreferencePicker
                     selected={eligibleMatchmakingKinds}
                     {...(formatLocks === undefined ? {} : { locks: formatLocks })}
+                    {...(formatLimits === undefined ? {} : { limits: formatLimits })}
                     onChange={setMatchmakingKinds}
                     onInfo={() => setMatchmakingRulesOpen(true)}
                   />
@@ -4838,6 +4870,11 @@ function AmateurDuelsPage({
                   {!duelBlocked && matchmakingFormatLock && (
                     <p role="status" className="modal-copy">
                       Некоторые форматы недоступны. {ordinaryDuelLockCopy(matchmakingFormatLock)}
+                    </p>
+                  )}
+                  {matchmakingMut.error && (
+                    <p role="alert" className="modal-copy">
+                      {duelAdmissionErrorCopy(matchmakingMut.error)}
                     </p>
                   )}
                   {matchmakingTicket && (
@@ -4887,6 +4924,11 @@ function AmateurDuelsPage({
                       {ordinaryDuelLockCopy(challengeLock)}
                     </p>
                   )}
+                  {(selectedSelfLimit?.available === false || selectedOpponentLimit?.available === false) && (
+                    <p role="status" className="modal-copy">
+                      {selectedSelfLimit?.available === false ? 'У вас' : 'У соперника'} исчерпан лимит дуэлей для выбранного формата.
+                    </p>
+                  )}
                   {templateItems.length > 0 && selectedTemplate ? (
                     <>
                       <GlassSelect
@@ -4895,7 +4937,7 @@ function AmateurDuelsPage({
                         value={selectedTemplate.id}
                         options={templateItems.map((template) => ({
                           value: template.id,
-                          label: duelTemplateOptionLabel(template),
+                          label: `${duelTemplateOptionLabel(template)}${formatLimits?.[template.duel_kind]?.available === false || selectedOpponent?.format_limits?.[template.duel_kind]?.available === false ? ' — лимит исчерпан' : ''}`,
                         }))}
                         onChange={setSelectedTemplateId}
                       />
@@ -5186,7 +5228,7 @@ function AmateurDuelsPage({
                   </button>
                   {challengeMut.error && (
                     <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>
-                      {challengeMut.error.message}
+                      {duelAdmissionErrorCopy(challengeMut.error)}
                     </div>
                   )}
                 </>

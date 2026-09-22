@@ -53,6 +53,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
   });
   beforeEach(async () => {
     await pool.query('truncate monthly_duel_rating_season, users cascade');
+    await pool.query("delete from game_settings where key like 'amateur.monthly_rating.%'");
   });
   afterAll(async () => {
     await app?.close();
@@ -127,6 +128,15 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
       'select xp, experience from users where id = $1', [users[0]],
     );
     expect(winner.rows[0]).toEqual({ xp: 330, experience: 30 });
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('amateur.monthly_rating.classic.first.stars', '999'::jsonb, 'stars', 'test')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    expect((await pool.query(
+      `select settings_snapshot #>> '{classic,first,stars}' as stars
+         from monthly_duel_rating_season where season_key = '2026-08'`,
+    )).rows[0]).toEqual({ stars: '30' });
     const pending = await getPendingMonthlyRatingCongratulations(pool, users[0]!, september);
     expect(pending).toHaveLength(1);
     expect(pending[0]).toMatchObject({
@@ -155,6 +165,36 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     expect(format.rows.every((row) => row.stars === 0 && row.experience === 0)).toBe(true);
     expect((await pool.query('select * from monthly_duel_format_economy_event')).rows).toEqual([]);
     expect((await getPendingMonthlyRatingCongratulations(pool, users[0]!, september))).toHaveLength(1);
+  });
+
+  it('shows a format-only award when the overall section is disabled', async () => {
+    const users = await seedSeason('2026-08', 2);
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('amateur.monthly_rating.overall.enabled', '"disabled"'::jsonb, 'enabled', 'test')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    await reconcileCompletedMonthlyRating(pool, september);
+    const pending = await getPendingMonthlyRatingCongratulations(pool, users[0]!, september);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({
+      stars: 30, experience: 30,
+      awards: [{ scope: 'classic', place: 1, stars: 30, experience: 30 }],
+    });
+    expect((await pool.query('select * from monthly_duel_rating_economy_event')).rows).toEqual([]);
+  });
+
+  it('shows no congratulations when every winning section has zero payout', async () => {
+    const users = await seedSeason('2026-08', 2);
+    await pool.query(
+      `insert into game_settings (key, value, label, description) values
+       ('amateur.monthly_rating.overall.enabled', '"disabled"'::jsonb, 'enabled', 'test'),
+       ('amateur.monthly_rating.classic.first.stars', '0'::jsonb, 'stars', 'test'),
+       ('amateur.monthly_rating.classic.first.experience', '0'::jsonb, 'experience', 'test')`,
+    );
+    await reconcileCompletedMonthlyRating(pool, september);
+    expect(await getPendingMonthlyRatingCongratulations(pool, users[0]!, september)).toEqual([]);
+    expect((await pool.query('select * from monthly_duel_format_economy_event')).rows).toEqual([]);
   });
 
   it('uses the all-player final table for prizes and top-three achievements', async () => {
@@ -426,6 +466,38 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     expect(
       (await app.inject({ method: 'GET', url: `${url}/pending`, headers: owner })).json(),
     ).toEqual({ congratulations: [] });
+  });
+
+  it('reports both players format capacity before creating an invitation', async () => {
+    const [self, opponent] = [randomUUID(), randomUUID()];
+    await pool.query(
+      `insert into users (id, display_name, timezone)
+       values ($1, 'Self', 'UTC'), ($2, 'Opponent', 'UTC')`, [self, opponent],
+    );
+    const matches = await pool.query<{ id: string }>(
+      `insert into amateur_duel_match
+       (challenger_user_id, opponent_user_id, status, season_key, rules_snapshot,
+        match_seed, starts_at, ends_at, game_core_version, duel_kind)
+       select $1, $2, 'settled', to_char(now() at time zone 'Europe/Moscow', 'YYYY-MM'),
+              '{}', 'seed', now(), now() + interval '1 hour', 1, 'express'
+         from generate_series(1, 43) returning id`, [self, opponent],
+    );
+    await pool.query(
+      `insert into amateur_duel_limit_reservation (match_id, user_id, duel_kind, accepted_at)
+       select item.id, $2, 'express',
+              date_trunc('month', now() at time zone 'Europe/Moscow') at time zone 'Europe/Moscow'
+                + ((item.ordinal - 1) / 2) * interval '1 day'
+         from unnest($1::uuid[]) with ordinality as item(id, ordinal)`, [matches.rows.map((row) => row.id), opponent],
+    );
+    const jwt = createJwt({ accessSecret: jwtSecret, refreshSecret: 'monthly-test-refresh-at-least-16' });
+    const auth = { authorization: `Bearer ${await jwt.issueAccessToken({ sub: self })}` };
+    const response = await app.inject({ method: 'GET',
+      url: `/duel/amateur/challenge/availability?opponent_user_id=${opponent}`, headers: auth });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().formats.express).toMatchObject({
+      available: false, reason: 'format', player: 'opponent',
+    });
+    expect(response.json().formats.classic).toMatchObject({ available: true });
   });
 });
 
