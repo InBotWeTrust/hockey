@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import {
@@ -804,6 +805,13 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
   const [scheduleDate, setScheduleDate] = useState(() => initialScheduleDate(tournament));
   const scheduleDateManuallySelected = useRef(false);
   const activeFixtureId = useRef<string | null>(null);
+  const standingsSentinelRef = useRef<HTMLDivElement | null>(null);
+  const [currentStandingRow, setCurrentStandingRow] = useState<HTMLTableRowElement | null>(null);
+  const [currentStandingVisible, setCurrentStandingVisible] = useState(false);
+  const currentStandingRowRef = useCallback((node: HTMLTableRowElement | null) => {
+    setCurrentStandingRow(node);
+    if (node === null) setCurrentStandingVisible(false);
+  }, []);
   const fixtureOpeningRef = useRef(false);
   const openFixtureGeneration = useRef(0);
   const queryClient = useQueryClient();
@@ -826,11 +834,21 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     enabled: false,
   });
-  const standings = useQuery({
+  const standings = useInfiniteQuery({
     queryKey: ['tournaments', tournament.id, 'standings'],
-    queryFn: () => fetchTournamentStandings(tournament.id),
+    queryFn: ({ pageParam }) => fetchTournamentStandings(tournament.id, pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
     enabled: tab === 'standings',
   });
+  const standingRows = useMemo(
+    () => standings.data?.pages.flatMap((page) => page.standings) ?? [],
+    [standings.data?.pages],
+  );
+  const currentStanding =
+    standings.data?.pages[0]?.currentUser ??
+    standingRows.find((row) => row.user_id === currentUserId) ??
+    null;
   const bracket = useQuery({
     queryKey: ['tournaments', tournament.id, 'bracket'],
     queryFn: () => fetchTournamentBracket(tournament.id),
@@ -864,6 +882,43 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
       ),
     );
   }, [schedule.data?.days, tab, tournament.id, tournament.rules.config.timezone]);
+  useEffect(() => {
+    const target = standingsSentinelRef.current;
+    if (
+      tab !== 'standings' ||
+      target === null ||
+      !standings.hasNextPage ||
+      typeof IntersectionObserver === 'undefined'
+    )
+      return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting) && !standings.isFetchingNextPage) {
+          void standings.fetchNextPage();
+        }
+      },
+      { rootMargin: '240px 0px' },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [standings.fetchNextPage, standings.hasNextPage, standings.isFetchingNextPage, tab]);
+  useEffect(() => {
+    if (currentStandingRow === null || typeof IntersectionObserver === 'undefined') {
+      setCurrentStandingVisible(false);
+      return undefined;
+    }
+    const scrollRoot = currentStandingRow.closest('.screen');
+    const observer = new IntersectionObserver(
+      ([entry]) => setCurrentStandingVisible(entry?.isIntersecting === true),
+      {
+        root: scrollRoot,
+        rootMargin: '0px 0px -96px 0px',
+        threshold: 0,
+      },
+    );
+    observer.observe(currentStandingRow);
+    return () => observer.disconnect();
+  }, [currentStandingRow]);
   const openFixture = useMutation({
     mutationFn: async ({ fixtureId, generation }: { fixtureId: string; generation: number }) => ({
       fixtureId,
@@ -1045,30 +1100,73 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
         {tab === 'standings' &&
           (standings.isLoading ? (
             <div role="status">Загрузка таблицы…</div>
-          ) : standings.isError ? (
+          ) : standings.isError && standingRows.length === 0 ? (
             <div role="status">Не удалось загрузить таблицу.</div>
-          ) : standings.data?.standings.length ? (
-            <TournamentStandingsTable
-              rows={standings.data.standings}
-              regularSource={tournament.regularSource}
-              playoffSize={Number(tournament.rules.config.playoffSize ?? 0)}
-              currentUserId={currentUserId}
-              onPlayerClick={(row) => {
-                const userId = typeof row.user_id === 'string' ? row.user_id : '';
-                if (userId.length === 0) return;
-                setProfilePlayer({
-                  userId,
-                  displayName:
-                    typeof row.display_name === 'string' ? row.display_name : 'Участник турнира',
-                  avatarUrl: typeof row.avatar_url === 'string' ? row.avatar_url : null,
-                });
-              }}
-              dailyMetric={
-                typeof tournament.rules.config.dailyMetric === 'string'
-                  ? tournament.rules.config.dailyMetric
-                  : null
-              }
-            />
+          ) : standingRows.length ? (
+            <div className="tournament-standings-progressive">
+              <TournamentStandingsTable
+                rows={standingRows}
+                regularSource={tournament.regularSource}
+                playoffSize={Number(tournament.rules.config.playoffSize ?? 0)}
+                currentUserId={currentUserId}
+                currentUserRowRef={currentStandingRowRef}
+                currentUserRowTestId="tournament-standings-current-row"
+                onPlayerClick={(row) => {
+                  const userId = typeof row.user_id === 'string' ? row.user_id : '';
+                  if (userId.length === 0) return;
+                  setProfilePlayer({
+                    userId,
+                    displayName:
+                      typeof row.display_name === 'string' ? row.display_name : 'Участник турнира',
+                    avatarUrl: typeof row.avatar_url === 'string' ? row.avatar_url : null,
+                  });
+                }}
+                dailyMetric={
+                  typeof tournament.rules.config.dailyMetric === 'string'
+                    ? tournament.rules.config.dailyMetric
+                    : null
+                }
+              />
+              <div
+                ref={standingsSentinelRef}
+                data-testid="tournament-standings-sentinel"
+                aria-hidden="true"
+              />
+              {standings.isFetchingNextPage ? (
+                <p className="tournament-standings-progressive__more">Загружаем ещё…</p>
+              ) : null}
+              {standings.isFetchNextPageError ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => void standings.fetchNextPage()}
+                >
+                  Повторить загрузку
+                </button>
+              ) : null}
+              {currentStanding !== null && !currentStandingVisible
+                ? createPortal(
+                    <div
+                      className="tournament-standings-progressive__pinned"
+                      data-testid="tournament-standings-pinned-current"
+                    >
+                      <TournamentStandingsTable
+                        rows={[currentStanding]}
+                        regularSource={tournament.regularSource}
+                        playoffSize={Number(tournament.rules.config.playoffSize ?? 0)}
+                        currentUserId={currentUserId}
+                        hideHeader
+                        dailyMetric={
+                          typeof tournament.rules.config.dailyMetric === 'string'
+                            ? tournament.rules.config.dailyMetric
+                            : null
+                        }
+                      />
+                    </div>,
+                    document.body,
+                  )
+                : null}
+            </div>
           ) : (
             <div>Таблица появится после первых результатов.</div>
           ))}

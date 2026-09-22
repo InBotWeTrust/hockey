@@ -238,17 +238,19 @@ export function WeeklyChallengeScreen({
   return (
     <main className="screen weekly-challenge-screen">
       <section className="weekly-challenge-screen__content">
-        <div className="weekly-challenge-screen__header">
+        <div className="weekly-challenge-screen__header page-header-standard">
           <button
             type="button"
-            className="icon-btn weekly-challenge-screen__back"
+            className="icon-btn weekly-challenge-screen__back page-header-standard__back"
             onClick={() => navigate(backRoute)}
             aria-label="Назад"
             title="Назад"
           >
             <ArrowLeft size={16} />
           </button>
-          <h1 className="screen-title-on-arena weekly-challenge-screen__title">Задания</h1>
+          <h1 className="screen-title-on-arena weekly-challenge-screen__title page-header-standard__title">
+            Задания
+          </h1>
         </div>
 
         <SegmentedTabs
