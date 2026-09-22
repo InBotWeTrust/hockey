@@ -1792,21 +1792,21 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     }
   });
 
-  it('limits one player to five open duel slots', async () => {
+  it('limits one player to two unanswered outgoing invitations', async () => {
     const templateId = await createTemplate();
     const opponentIds = await Promise.all(
       Array.from({ length: 6 }, (_, index) => createOpponent(index)),
     );
 
-    for (const opponentId of opponentIds.slice(0, 5)) {
+    for (const opponentId of opponentIds.slice(0, 2)) {
       const created = await challenge(templateId, opponentId);
       expect(created.statusCode).toBe(200);
       expect(created.json().match.status).toBe('invited');
     }
 
-    const blocked = await challenge(templateId, opponentIds[5]);
+    const blocked = await challenge(templateId, opponentIds[2]);
     expect(blocked.statusCode).toBe(409);
-    expect(blocked.json().error.message).toBe('open duel slot limit reached');
+    expect(blocked.json().error.message).toBe('outgoing duel invitation limit reached');
   });
 
   it('rejects duel challenges from beginners and against beginners', async () => {
@@ -2083,6 +2083,96 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       .templates.find((item: { id: string }) => item.id === templateId);
     expect(template.ranked_daily_limit).toBe(100);
     expect(template.ranked_same_opponent_limit).toBe(100);
+  });
+
+  it('blocks a new ordinary invitation when either player has used the monthly format place', async () => {
+    const templateId = await createTemplate();
+    const thirdUserId = await createOpponent(8001);
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('amateur.limits.per_format_monthly', '1'::jsonb, '', '')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    const existing = await challenge(templateId);
+    expect(existing.statusCode).toBe(200);
+    const accepted = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${existing.json().match.id}/accept`,
+      headers: auth(tokenB),
+    });
+    expect(accepted.statusCode).toBe(200);
+    const next = await challenge(templateId, thirdUserId);
+    expect(next.statusCode).toBe(409);
+  });
+
+  it('releases both duel places and invitation progress when a ready-check duel is cancelled', async () => {
+    const matchId = (await challenge(await createTemplate())).json().match.id;
+    const accepted = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+    expect(accepted.statusCode).toBe(200);
+    const cancelled = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/cancel`,
+      headers: auth(tokenA),
+    });
+    expect(cancelled.statusCode).toBe(200);
+    const reservations = await pool.query<{ released_at: Date | null }>(
+      'select released_at from amateur_duel_limit_reservation where match_id = $1',
+      [matchId],
+    );
+    expect(reservations.rows).toHaveLength(2);
+    expect(reservations.rows.every((row) => row.released_at !== null)).toBe(true);
+    const events = await pool.query(
+      `select 1 from event_log where type = 'amateur_duel_challenge_accepted'
+        and payload->>'match_id' = $1`,
+      [matchId],
+    );
+    expect(events.rowCount).toBe(0);
+  });
+
+  it('releases an active duel before either player has taken a shot', async () => {
+    const matchId = (await challenge(await createTemplate())).json().match.id;
+    expect((await app.inject({ method: 'POST', url: `/duel/amateur/matches/${matchId}/accept`, headers: auth(tokenB) })).statusCode).toBe(200);
+    for (const token of [tokenA, tokenB]) {
+      expect((await app.inject({
+        method: 'POST', url: `/duel/amateur/matches/${matchId}/ready`, headers: auth(token), payload: { loadout: {} },
+      })).statusCode).toBe(200);
+    }
+    const cancelled = await app.inject({
+      method: 'POST', url: `/duel/amateur/matches/${matchId}/cancel`, headers: auth(tokenB),
+    });
+    expect(cancelled.statusCode).toBe(200);
+    const reservations = await pool.query<{ released_at: Date | null }>(
+      'select released_at from amateur_duel_limit_reservation where match_id = $1', [matchId],
+    );
+    expect(reservations.rows.every((row) => row.released_at !== null)).toBe(true);
+  });
+
+  it('accepts only one of two concurrent invitations for a player with one remaining place', async () => {
+    const templateId = await createTemplate();
+    const thirdUserId = await createOpponent(8002);
+    const tokenC = await createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET })
+      .issueAccessToken({ sub: thirdUserId });
+    const firstId = (await challenge(templateId, userB)).json().match.id;
+    const secondId = (await challenge(templateId, thirdUserId)).json().match.id;
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('amateur.limits.daily', '1'::jsonb, '', '')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    const responses = await Promise.all([
+      app.inject({ method: 'POST', url: `/duel/amateur/matches/${firstId}/accept`, headers: auth(tokenB) }),
+      app.inject({ method: 'POST', url: `/duel/amateur/matches/${secondId}/accept`, headers: auth(tokenC) }),
+    ]);
+    expect(responses.map((response) => response.statusCode).sort()).toEqual([200, 409]);
+    const places = await pool.query<{ total: number }>(
+      'select count(*)::int as total from amateur_duel_limit_reservation where user_id = $1 and released_at is null',
+      [userA],
+    );
+    expect(places.rows[0]?.total).toBe(1);
   });
 
   it('stores configured no-inventory skates and nutrition timings in duel rules snapshot', async () => {
