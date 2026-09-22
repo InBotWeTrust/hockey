@@ -94,7 +94,6 @@ export type PlayShotResolver = (context: PlayShotContext) => ShotResult;
 export interface PlayResultPresentation {
   title?: string;
   details?: readonly string[];
-  points?: number;
   breakdown?: readonly { points: number; label: string }[];
   divider?: boolean;
 }
@@ -281,7 +280,7 @@ export interface PlayViewProps<TState> {
   scoreboardNotice?: string | undefined;
   scoreboardModel?:
     | GameScoreboardModel
-    | ((counters: { goals: number; shots: number }) => GameScoreboardModel)
+    | ((counters: { goals: number; shots: number; timer: string }) => GameScoreboardModel)
     | undefined;
   scoreboardAccessory?: ReactNode;
   shotButtonLabel?: string | undefined;
@@ -1912,7 +1911,7 @@ export function PlayView<TState>({
   const visibleScoreboardNotice = scoreboardSnapshot?.notice ?? scoreboardNotice;
   const visibleCustomScoreboardModel =
     typeof scoreboardModel === 'function'
-      ? scoreboardModel({ goals: visibleScoreboardGoals, shots: visibleScoreboardShots })
+      ? scoreboardModel({ goals: visibleScoreboardGoals, shots: visibleScoreboardShots, timer: timerValue })
       : scoreboardModel;
   const isDuelShotBlocked = active && currentDuelCondition?.canShoot === false;
   const isDuelRestBlocked = isDuelShotBlocked && currentDuelCondition?.status === 'exhausted_stop';
@@ -2283,9 +2282,6 @@ export function PlayView<TState>({
           displayKind={resultDisplayKind ?? undefined}
           title={resultPresentation?.title ?? resultCopy?.[resultDisplayKind ?? lastResult.type]}
           details={resultPresentation?.details}
-          points={resultPresentation?.points}
-          breakdown={resultPresentation?.breakdown}
-          divider={resultPresentation?.divider}
         />
       )}
     </main>

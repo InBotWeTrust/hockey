@@ -888,7 +888,17 @@ describe('BonusGamePlayScreen', () => {
         claimedResult: 'goal';
       }) => Promise<unknown>;
     };
-    expect(props.scoreboardNotice).toBe('2 450 / 4 000');
+    expect(props.scoreboardNotice).toBeUndefined();
+    const marksmanshipBoard = (playViewProbe.mock.calls.at(-1)?.[0] as {
+      scoreboardModel: (counters: { goals: number; shots: number; timer: string }) => GameScoreboardModel;
+    }).scoreboardModel({ goals: 2, shots: 5, timer: '00:13' });
+    expect(marksmanshipBoard.notice).toBeUndefined();
+    expect(marksmanshipBoard.rows[0]?.metrics).toEqual([
+      { id: 'period', label: 'ПЕРИОД', value: '1/1' },
+      { id: 'points', label: 'ОЧКИ', value: '2 450' },
+      { id: 'target', label: 'НУЖНО', value: '4 000' },
+      { id: 'time', label: 'ВРЕМЯ', value: '00:13', tone: 'timer' },
+    ]);
 
     const input = {
       tapTime: 590,
@@ -919,21 +929,15 @@ describe('BonusGamePlayScreen', () => {
       result: { type: 'goal', hitPoint: { x: 286, y: 80 } },
     });
 
-    expect(localPresentation).toEqual({
-      title: 'ГОЛ',
-      points: 220,
-      breakdown: [
-        { points: 155, label: 'Очень узкое окно' },
-        { points: 20, label: 'Противоход' },
-        { points: 15, label: 'Рядом с вратарём' },
-        { points: 30, label: 'За вратаря' },
-      ],
-    });
+    expect(localPresentation).toBeNull();
 
-    const authoritativePresentation = await props.submitShot({
-      shotIndex: 1,
-      input,
-      claimedResult: 'goal',
+    let authoritativePresentation: unknown;
+    await act(async () => {
+      authoritativePresentation = await props.submitShot({
+        shotIndex: 1,
+        input,
+        claimedResult: 'goal',
+      });
     });
 
     expect(submitShot).toHaveBeenCalledWith(
@@ -949,26 +953,40 @@ describe('BonusGamePlayScreen', () => {
       }),
     );
     expect(authoritativePresentation).toMatchObject({
-      resultPresentation: {
-        title: 'ГОЛ',
-        points: 258,
-        breakdown: [
-          { points: 140, label: 'Узкое окно' },
-          { points: 98, label: 'Два за секунду' },
-          { points: 20, label: 'Противоход' },
-        ],
-      },
+      resultPresentation: null,
     });
+    expect(screen.queryByRole('status', { name: 'Очки за бросок' })).not.toBeInTheDocument();
+    const resultVisibility = (playViewProbe.mock.calls.at(-1)?.[0] as {
+      onResultVisibilityChange: (visible: boolean) => void;
+    }).onResultVisibilityChange;
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(240);
+    vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockReturnValue(480);
+    vi.useFakeTimers();
+    act(() => resultVisibility(true));
+    const scoreNotice = screen.getByRole('status', { name: 'Очки за бросок' });
+    expect(within(scoreNotice).getByText('+140')).toBeInTheDocument();
+    expect(within(scoreNotice).getByText('Узкое окно')).toBeInTheDocument();
+    expect(within(scoreNotice).getByText('+98')).toBeInTheDocument();
+    expect(within(scoreNotice).getByText('Два за секунду')).toBeInTheDocument();
+    const breakdown = scoreNotice.querySelector('.bonus-game-marksmanship-score__inner');
+    expect(breakdown).toHaveStyle({
+      '--marksmanship-label-size': `${8 * (235 / 480)}px`,
+      '--marksmanship-value-size': `${18 * (235 / 480)}px`,
+    });
+    act(() => vi.advanceTimersByTime(1_999));
+    expect(screen.getByRole('status', { name: 'Очки за бросок' })).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByRole('status', { name: 'Очки за бросок' })).not.toBeInTheDocument();
   });
 
   it.each([
-    { result: 'miss', opportunity: 'human_error', timingErrorMs: -90, hint: 'Брось раньше' },
-    { result: 'save', opportunity: 'human_error', timingErrorMs: 120, hint: 'Брось позже' },
-    { result: 'miss', opportunity: 'closed', timingErrorMs: null, hint: 'Жди другого момента' },
-    { result: 'save', opportunity: 'closed', timingErrorMs: null, hint: 'Вратарь на месте' },
+    { result: 'miss', opportunity: 'human_error', timingErrorMs: -90 },
+    { result: 'save', opportunity: 'human_error', timingErrorMs: 120 },
+    { result: 'miss', opportunity: 'closed', timingErrorMs: null },
+    { result: 'save', opportunity: 'closed', timingErrorMs: null },
   ] as const)(
-    'gives actionable $result feedback for $opportunity at $timingErrorMs',
-    async ({ result, opportunity, timingErrorMs, hint }) => {
+    'keeps standard $result result for $opportunity at $timingErrorMs',
+    async ({ result, opportunity, timingErrorMs }) => {
       const submitShot = vi.fn(async () => ({
         serverResult: result,
         awardedPoints: 0,
@@ -1012,11 +1030,7 @@ describe('BonusGamePlayScreen', () => {
         claimedResult: result,
       });
 
-      expect(resolved.resultPresentation).toEqual({
-        title: result === 'save' ? 'СЭЙВ' : 'МИМО',
-        divider: true,
-        details: [hint],
-      });
+      expect(resolved.resultPresentation).toBeNull();
     },
   );
 

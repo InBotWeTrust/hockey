@@ -1074,6 +1074,40 @@
   gap: 7px;
 }
 
+.game-scoreboard.bonus-game-marksmanship-score {
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
+  overflow: hidden;
+  padding-inline: 0;
+}
+
+.bonus-game-marksmanship-score__inner {
+  display: flex;
+  width: max-content;
+}
+
+.bonus-game-marksmanship-score__part {
+  display: grid;
+  flex: 0 0 auto;
+  gap: var(--marksmanship-part-gap, 4px);
+  min-width: 0;
+  padding: 8px var(--marksmanship-part-padding, 10px);
+  text-align: center;
+}
+
+.bonus-game-marksmanship-score__part + .bonus-game-marksmanship-score__part {
+  border-left: 1px solid rgba(205, 232, 255, 0.28);
+}
+
+.bonus-game-marksmanship-score .game-scoreboard__label {
+  font-size: var(--marksmanship-label-size, 8px);
+}
+
+.bonus-game-marksmanship-score .game-scoreboard__value {
+  font-size: var(--marksmanship-value-size, 18px);
+}
+
 .game-scoreboard {
   width: 100%;
   min-width: 0;
@@ -2526,66 +2560,6 @@
   font-size: 14px;
   font-weight: 850;
   line-height: 1.15;
-}
-
-.result-modal__headline {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 16px;
-  white-space: nowrap;
-}
-
-.result-modal__total {
-  color: #111827;
-  font-family: var(--font-mono);
-  font-size: clamp(26px, 4.5vmin, 39px);
-  font-variant-numeric: tabular-nums;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.result-modal__breakdown {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
-  margin-top: 14px;
-  color: #111827;
-}
-
-.result-modal__breakdown-item {
-  min-width: 0;
-  padding: 7px 3px 3px;
-  border-top: 1px solid rgba(17, 24, 39, 0.25);
-}
-
-.result-modal__breakdown-item strong,
-.result-modal__breakdown-item span {
-  display: block;
-}
-
-.result-modal__breakdown-item strong {
-  font-family: var(--font-mono);
-  font-size: 18px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.result-modal__breakdown-item span {
-  margin-top: 5px;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.1;
-}
-
-.result-modal__details--divider {
-  padding-top: 9px;
-  border-top: 1px solid rgba(17, 24, 39, 0.25);
-}
-
-.result-modal__details--divider .result-modal__detail:first-child {
-  font-size: clamp(15px, 4vmin, 20px);
 }
 
 .result-modal__detail:first-child {

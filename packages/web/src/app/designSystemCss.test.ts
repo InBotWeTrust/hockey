@@ -26,6 +26,16 @@ describe('bonus game first-clear reward heading', () => {
 });
 
 describe('bonus game progress and endurance timer surfaces', () => {
+  it('caps the marksmanship breakdown at scoreboard width without horizontal scrolling', () => {
+    const notice = rule('.game-scoreboard.bonus-game-marksmanship-score');
+    const part = rule('.bonus-game-marksmanship-score__part');
+    expect(notice).toContain('max-width: 100%');
+    expect(notice).toContain('overflow: hidden');
+    expect(notice).not.toContain('overflow-x: auto');
+    expect(part).not.toContain('min-width: max-content');
+    expect(css).toContain('.bonus-game-marksmanship-score__inner {');
+  });
+
   it('uses the featured bonus card surface for the progress container', () => {
     const progress = rule('.bonus-games-attempt-progress');
 
