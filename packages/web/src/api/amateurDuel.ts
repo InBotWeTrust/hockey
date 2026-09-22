@@ -290,6 +290,9 @@ export interface AmateurRatingRow {
   goals_against: number;
   matches_played: number;
   active_duration_seconds: number;
+  eligible?: boolean;
+  matches_to_qualify?: number;
+  place?: number | null;
 }
 
 export interface AmateurDuelHistoryStats {
@@ -308,6 +311,8 @@ export interface AmateurDuelHistoryResponse {
 
 export interface AmateurDuelRatingResponse {
   season_key: string;
+  scope?: 'overall' | AmateurDuelKind;
+  prize_threshold?: number;
   rating_visible: boolean;
   available_seasons: string[];
   rating: AmateurRatingRow[];
@@ -592,9 +597,13 @@ export function settleAmateurDuel(matchId: string): Promise<{ match: AmateurDuel
   );
 }
 
-export function fetchAmateurRating(seasonKey?: string): Promise<AmateurDuelRatingResponse> {
+export function fetchAmateurRating(
+  seasonKey?: string,
+  scope?: 'overall' | AmateurDuelKind,
+): Promise<AmateurDuelRatingResponse> {
   const params = new URLSearchParams();
   if (seasonKey) params.set('season_key', seasonKey);
+  if (scope) params.set('scope', scope);
   const query = params.toString();
   return apiFetch<AmateurDuelRatingResponse>(`/duel/amateur/rating${query ? `?${query}` : ''}`);
 }

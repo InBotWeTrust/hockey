@@ -3554,6 +3554,37 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     });
   });
 
+  it('separates the three monthly duel formats while keeping their total in the overall rating', async () => {
+    const opponents = [userB, await createOpponent(8101), await createOpponent(8102)];
+    for (const [index, kind] of (['express', 'express_plus', 'classic'] as const).entries()) {
+      const templateId = await createTemplate({ duelKind: kind });
+      const matchId = (await challenge(templateId, opponents[index]!)).json().match.id;
+      await pool.query(
+        `update amateur_duel_match set status='settled', ranked=true,
+                season_key='2026-09', settled_at=now(), settled_reason='completed'
+          where id=$1`,
+        [matchId],
+      );
+      await pool.query(
+        `insert into amateur_duel_rating_match
+           (match_id,user_id,season_key,points,wins,active_duration_seconds)
+         values ($1,$2,'2026-09',$3,1,60)`,
+        [matchId, userA, index + 1],
+      );
+    }
+    for (const [scope, points, matches] of [
+      ['overall', 6, 3], ['express', 1, 1], ['express_plus', 2, 1], ['classic', 3, 1],
+    ] as const) {
+      const response = await app.inject({
+        method: 'GET', url: `/duel/amateur/rating?season_key=2026-09&scope=${scope}`,
+        headers: auth(tokenA),
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().scope).toBe(scope);
+      expect(response.json().rating[0]).toMatchObject({ points, matches_played: matches });
+    }
+  });
+
   it('returns rating visibility and available Moscow seasons', async () => {
     const templateId = await createTemplate();
     for (const [seasonKey, points, wins, draws] of [
