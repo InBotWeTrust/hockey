@@ -19,6 +19,16 @@ describe('design system toast positioning', () => {
   });
 });
 
+describe('initial training scoreboard hint', () => {
+  it('centers a content-width notice without exceeding the scoreboard or leaving an orphan word', () => {
+    const notice = rule('.initial-training-feedback-notice--scoreboard');
+    expect(notice).toContain('width: max-content');
+    expect(notice).toContain('max-width: min(86%, 404px)');
+    expect(notice).toContain('text-wrap: pretty');
+    expect(notice).toContain('white-space: pre-line');
+  });
+});
+
 describe('bonus game first-clear reward heading', () => {
   it('uses the primary dark ink color to separate it from descriptive copy', () => {
     expect(css).toMatch(/\.bonus-game-card__reward-title\s*\{\s*color: var\(--ink\);\s*\}/);

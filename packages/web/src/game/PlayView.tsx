@@ -345,6 +345,7 @@ export interface PlayViewProps<TState> {
   statusNoticeTone?: 'success' | 'warning' | 'error' | undefined;
   statusNoticeClassName?: string | undefined;
   statusNoticeDelayMs?: number | undefined;
+  statusNoticeUnderScoreboard?: boolean | undefined;
   inlineResultNotice?: boolean | undefined;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
   readyPresence?: ReadyPresence | undefined;
@@ -644,6 +645,7 @@ export function PlayView<TState>({
   statusNoticeTone,
   statusNoticeClassName,
   statusNoticeDelayMs = 0,
+  statusNoticeUnderScoreboard = false,
   inlineResultNotice = false,
   scoreboardOpponent,
   readyPresence,
@@ -2136,7 +2138,7 @@ export function PlayView<TState>({
             <div
               role="status"
               aria-live="polite"
-              className={`initial-training-feedback-notice${
+              className={`initial-training-feedback-notice${statusNoticeUnderScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
                 effectiveStatusNoticeTone === 'warning'
                   ? ' initial-training-feedback-notice--warning'
                   : effectiveStatusNoticeTone === 'error'

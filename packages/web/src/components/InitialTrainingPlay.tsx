@@ -25,6 +25,27 @@ import { rewardColor } from '../app/rewardColors.js';
 import { AccessibleModal } from './AccessibleModal.js';
 import { initialTrainingFeedbackCopy } from './InitialTrainingCourse.js';
 
+function exerciseGoalDisplay(run: InitialTrainingRun): { label: string; value: string } {
+  const zone = run.required_zone;
+  if (zone === null) return { label: 'ЦЕЛЬ', value: `${run.goals}/${run.target_goals}` };
+  const label = zone === 'right' ? 'СПРАВА' : zone === 'left' ? 'СЛЕВА' : 'ЦЕНТР';
+  if (run.exercise.key === 'moving-goal' || run.exercise.key === 'find-the-gap') {
+    const goalsPerZone = run.target_goals / 3;
+    return { label, value: `${run.goals % goalsPerZone}/${goalsPerZone}` };
+  }
+  return { label, value: `${run.goals}/${run.target_goals}` };
+}
+
+function exerciseBriefingGoal(key: InitialTrainingExerciseKey, targetGoals: number): string {
+  if (key === 'moving-goal' || key === 'find-the-gap') {
+    return `Цель: по ${targetGoals / 3} гола справа, слева и по центру — в этом порядке`;
+  }
+  if (key === 'pressure-window' || key === 'game-pace') {
+    return `Цель: ${targetGoals / 2} пары голов справа и слева, чередуя стороны`;
+  }
+  return `Цель: забить ${targetGoals} голов`;
+}
+
 export function resolveInitialTrainingClientShot(
   hasGoalie: boolean,
   context: Parameters<PlayShotResolver>[0],
@@ -189,7 +210,7 @@ export function InitialTrainingPlay({
         ? {
             ...current,
             shots_taken: current.shots_taken + 1,
-            goals: current.goals + (claimed === 'goal' ? 1 : 0),
+            goals: current.goals + (claimed === 'goal' && current.required_zone === null ? 1 : 0),
           }
         : current,
     );
@@ -203,6 +224,7 @@ export function InitialTrainingPlay({
             shots_taken: next.shots_taken,
             goals: next.goals,
             target_goals: next.target_goals,
+            required_zone: next.required_zone,
             scene: next.scene,
           }
         : current,
@@ -251,7 +273,7 @@ export function InitialTrainingPlay({
             ? {
                 ...current,
                 shots_taken: Math.max(0, current.shots_taken - 1),
-                goals: Math.max(0, current.goals - (claimedResult === 'goal' ? 1 : 0)),
+                goals: Math.max(0, current.goals - (claimedResult === 'goal' && current.required_zone === null ? 1 : 0)),
               }
             : current,
         );
@@ -277,6 +299,7 @@ export function InitialTrainingPlay({
 
   const shotResolver: PlayShotResolver = (context) =>
     resolveInitialTrainingClientShot(run.scene.has_goalie, context);
+  const goalDisplay = exerciseGoalDisplay(run);
 
   return (
     <>
@@ -297,8 +320,8 @@ export function InitialTrainingPlay({
         serverNow={run.server_now}
         goals={run.goals}
         shots={run.shots_taken}
-        timer={`${run.goals}/${run.target_goals}`}
-        timerLabel="ЦЕЛЬ"
+        timer={goalDisplay.value}
+        timerLabel={goalDisplay.label}
         backLabel="К упражнениям"
         optimisticAddShot={optimisticAddShot}
         submitShot={submitShot}
@@ -314,9 +337,10 @@ export function InitialTrainingPlay({
           save: 'СЭЙВ',
           miss: 'МИМО',
         }}
-        statusNotice={feedback ? initialTrainingFeedbackCopy(feedback) : error}
+        statusNotice={feedback ? initialTrainingFeedbackCopy(feedback, run.required_zone) : error}
         statusNoticeTone={feedback && feedback !== 'goal_timing' ? 'error' : error ? 'error' : 'success'}
         statusNoticeDelayMs={500}
+        statusNoticeUnderScoreboard
         onResultComplete={() => {
           resultAnimationCompleteRef.current = true;
           if (completionRef.current) setShowResult(true);
@@ -330,7 +354,7 @@ export function InitialTrainingPlay({
       >
         <p className="modal-copy bonus-game-preview-modal__story">{run.exercise.description}</p>
         <p className="bonus-game-preview-modal__condition">
-          Цель: забить {run.target_goals} голов
+          {exerciseBriefingGoal(run.exercise.key, run.target_goals)}
         </p>
         <div className="modal-actions">
           <button type="button" className="modal-primary btn btn--cta" onClick={() => setShowBriefing(false)}>
