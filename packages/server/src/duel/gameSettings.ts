@@ -1,5 +1,9 @@
 import type { Pool, PoolClient } from 'pg';
 import type { DuelLimitSettings } from './amateur/limitRules.js';
+import {
+  DEFAULT_ORDINARY_REWARD_SETTINGS,
+  type OrdinaryRewardSettings,
+} from './amateur/ordinaryReward.js';
 import { GAMEPLAY_RECOVERY_MINUTES } from './gameplayLocks.js';
 import {
   DAILY_PERIOD_SPEED_PRESETS,
@@ -53,6 +57,7 @@ export interface GameSettings {
   };
   amateur: {
     limits: DuelLimitSettings;
+    duelRewards: OrdinaryRewardSettings;
     unlockGoalsRequired: number;
     ratingVisibility: 'enabled' | 'disabled';
     noInventoryTiming: {
@@ -455,6 +460,31 @@ export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
     max: 100_000,
     step: 1,
   })),
+  ...([
+    ['equal_experience_tolerance_percent', 'Допуск опыта, %', 10],
+    ['equal_experience_minimum_gap', 'Минимальная разница опыта', 20],
+  ] as const).map(([key, label, defaultValue]) => ({
+    key: `amateur.reward.${key}`,
+    label,
+    description: 'Сравнение опыта соперников при принятии обычной дуэли.',
+    type: 'number' as const,
+    defaultValue,
+    min: 0,
+    max: key === 'equal_experience_tolerance_percent' ? 100 : 2_147_483_647,
+    step: 1,
+  })),
+  ...(['stronger', 'equal', 'weaker', 'draw', 'loss'] as const).flatMap((category) =>
+    (['stars', 'experience'] as const).map((currency) => ({
+      key: `amateur.reward.${category}.${currency}`,
+      label: `${category}: ${currency === 'stars' ? 'звёзды' : 'опыт'}`,
+      description: 'Награда обычной дуэли; снимок суммы сохраняется при принятии.',
+      type: 'number' as const,
+      defaultValue: DEFAULT_ORDINARY_REWARD_SETTINGS[category][currency],
+      min: 0,
+      max: 2_147_483_647,
+      step: 1,
+    })),
+  ),
   ...noInventorySkatesDefinitions,
   ...noInventoryNutritionDefinitions,
 ];
@@ -613,6 +643,19 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
         monthly: Number(values.get('amateur.limits.monthly')),
         perFormatMonthly: Number(values.get('amateur.limits.per_format_monthly')),
         outgoingInvites: Number(values.get('amateur.limits.outgoing_invites')),
+      },
+      duelRewards: {
+        equalExperienceTolerancePercent: Number(values.get('amateur.reward.equal_experience_tolerance_percent')),
+        equalExperienceMinimumGap: Number(values.get('amateur.reward.equal_experience_minimum_gap')),
+        ...Object.fromEntries(
+          (['stronger', 'equal', 'weaker', 'draw', 'loss'] as const).map((category) => [
+            category,
+            {
+              stars: Number(values.get(`amateur.reward.${category}.stars`)),
+              experience: Number(values.get(`amateur.reward.${category}.experience`)),
+            },
+          ]),
+        ) as Pick<OrdinaryRewardSettings, 'stronger' | 'equal' | 'weaker' | 'draw' | 'loss'>,
       },
       unlockGoalsRequired: Number.isFinite(amateurUnlockGoalsRequired)
         ? Math.max(0, Math.trunc(amateurUnlockGoalsRequired))

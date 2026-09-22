@@ -38,6 +38,23 @@ describe('amateur duel limits', () => {
   });
 });
 
+describe('ordinary duel rewards', () => {
+  it('loads one centrally configurable reward matrix', async () => {
+    const settings = await getGameSettings({ query: async () => ({ rows: [] }) } as never);
+    expect(settings.amateur.duelRewards).toEqual({
+      equalExperienceTolerancePercent: 10,
+      equalExperienceMinimumGap: 20,
+      stronger: { stars: 5, experience: 5 },
+      equal: { stars: 3, experience: 3 },
+      weaker: { stars: 2, experience: 2 },
+      draw: { stars: 0, experience: 2 },
+      loss: { stars: 0, experience: 1 },
+    });
+    expect(GAME_SETTING_DEFINITIONS.map((setting) => setting.key))
+      .toContain('amateur.reward.stronger.experience');
+  });
+});
+
 describe('global duel inventory penalties', () => {
   it('exposes every approved fatigue stage as a global admin setting', () => {
     const definitions = new Map(

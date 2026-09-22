@@ -4,6 +4,11 @@ import { z } from 'zod';
 import { lockRatingLifecycle, nextRatingMonthBoundary } from './ratingLock.js';
 import { REWARD_AMOUNT_LIMIT } from './rewardRules.js';
 import {
+  ordinaryDuelReward,
+  ordinaryRewardSettingsSchema,
+  type OrdinaryRewardSettings,
+} from './ordinaryReward.js';
+import {
   assertDuelCapacity,
   assertOutgoingInviteCapacity,
   duelCapacity,
@@ -497,6 +502,7 @@ interface DuelMatchRow {
   duel_kind: DuelKind;
   rules_snapshot: unknown;
   reward_rules: unknown;
+  ordinary_reward_snapshot: unknown | null;
   match_seed: string;
   home_user_id: string | null;
   arena_theme_id: string | null;
@@ -2939,6 +2945,9 @@ async function settleMatchIfReady(
   }
 
   const stake = settlementPolicy.settleStake ? Number(match.stake_amount) : 0;
+  const ordinaryRewardSettings = match.ordinary_reward_snapshot === null
+    ? null
+    : ordinaryRewardSettingsSchema.parse(match.ordinary_reward_snapshot);
   if (settlementPolicy.grantTemplateRewards) {
     // Full rewards are retryable when an account has no room. Never truncate a
     // promised amount or let PostgreSQL overflow after a partial payout.
@@ -2964,9 +2973,17 @@ async function settleMatchIfReady(
           : participantOutcome === 'draw'
             ? rules.drawCurrencyReward + stake
             : 0);
-      const stars = reward.stars + (participantOutcome === 'win' ? rules.winStarReward : 0);
-      const account = await client.query<{ xp: number; coins: number; tokens: number }>(
-        `select u.xp,coalesce(c.balance,0) as coins,coalesce(t.balance,0) as tokens from users u
+      const ordinaryReward = ordinaryRewardSettings === null ? null : ordinaryDuelReward(
+        ordinaryRewardSettings,
+        participantOutcome,
+        Number(participant.experience_snapshot),
+        Number(other.experience_snapshot),
+        participant.state === 'completed',
+      );
+      const stars = ordinaryReward?.stars ??
+        reward.stars + (participantOutcome === 'win' ? rules.winStarReward : 0);
+      const account = await client.query<{ xp: number; experience: number; coins: number; tokens: number }>(
+        `select u.xp,u.experience,coalesce(c.balance,0) as coins,coalesce(t.balance,0) as tokens from users u
           left join user_currency_account c on c.user_id=u.id
           left join user_reward_token_account t on t.user_id=u.id where u.id=$1`,
         [participant.user_id],
@@ -2974,6 +2991,7 @@ async function settleMatchIfReady(
       const current = account.rows[0]!;
       if (
         current.xp + stars > REWARD_AMOUNT_LIMIT ||
+        current.experience + (ordinaryReward?.experience ?? 0) > REWARD_AMOUNT_LIMIT ||
         current.coins + coins > REWARD_AMOUNT_LIMIT ||
         current.tokens + reward.tokens > REWARD_AMOUNT_LIMIT
       ) {
@@ -3064,11 +3082,25 @@ async function settleMatchIfReady(
           : participantOutcome === 'draw'
             ? rules.drawCurrencyReward
             : 0);
-      const stars = reward.stars + (participantOutcome === 'win' ? rules.winStarReward : 0);
+      const ordinaryReward = ordinaryRewardSettings === null ? null : ordinaryDuelReward(
+        ordinaryRewardSettings,
+        participantOutcome,
+        experience,
+        opponentExperience,
+        participant.state === 'completed',
+      );
+      const stars = ordinaryReward?.stars ??
+        reward.stars + (participantOutcome === 'win' ? rules.winStarReward : 0);
       if (stars > 0) {
         await client.query('update users set xp = xp + $2 where id = $1', [
           participant.user_id,
           stars,
+        ]);
+      }
+      if (ordinaryReward !== null && ordinaryReward.experience > 0) {
+        await client.query('update users set experience = experience + $2 where id = $1', [
+          participant.user_id,
+          ordinaryReward.experience,
         ]);
       }
       await applyCurrencyDelta(client, {
@@ -3085,6 +3117,7 @@ async function settleMatchIfReady(
           tolerance_percent: rules.rewardRules.equalExperienceTolerancePercent,
           coins,
           stars,
+          ...(ordinaryReward === null ? {} : { experience: ordinaryReward.experience }),
           tokens: reward.tokens,
         },
       });
@@ -3098,7 +3131,7 @@ async function settleMatchIfReady(
       }
     }
   }
-  if (settlementPolicy.grantTemplateRewards && winnerUserId !== null && rules.winStarReward > 0) {
+  if (settlementPolicy.grantTemplateRewards && ordinaryRewardSettings === null && winnerUserId !== null && rules.winStarReward > 0) {
     await appendEvent(client, winnerUserId, 'amateur_duel_star_reward', {
       match_id: match.id,
       outcome,
@@ -4012,6 +4045,25 @@ async function assertOpenDuelSlots(client: PoolClient, userIds: string[]): Promi
   }
 }
 
+async function snapshotOrdinaryReward(
+  client: PoolClient,
+  matchId: string,
+  userIds: [string, string],
+  settings: OrdinaryRewardSettings,
+): Promise<void> {
+  await client.query(
+    `update amateur_duel_participant p
+        set experience_snapshot = u.experience
+       from users u
+      where p.match_id = $1 and p.user_id = u.id and p.user_id = any($2::uuid[])`,
+    [matchId, userIds],
+  );
+  await client.query(
+    'update amateur_duel_match set ordinary_reward_snapshot = $2::jsonb where id = $1',
+    [matchId, JSON.stringify(settings)],
+  );
+}
+
 async function createOpenMatch(
   client: PoolClient,
   opts: {
@@ -4145,6 +4197,12 @@ async function createOpenMatch(
       rules.duelKind,
       settings.amateur.limits,
       opts.now,
+    );
+    await snapshotOrdinaryReward(
+      client,
+      match.id,
+      [opts.challengerUserId, opts.opponentUserId],
+      settings.amateur.duelRewards,
     );
     const { rows: acceptedRows } = await client.query<DuelMatchRow>(
       `update amateur_duel_match
@@ -4287,7 +4345,9 @@ async function activateReadyMatch(
               entry_fee_paid = $4,
               reserved_inventory_charges = $5,
               inventory_effects_snapshot = $6,
-              experience_snapshot = coalesce((select experience from users where id = $2), 0),
+              experience_snapshot = case when $7::boolean
+                then coalesce((select experience from users where id = $2), 0)
+                else experience_snapshot end,
               updated_at = now()
         where match_id = $1 and user_id = $2`,
       [
@@ -4297,6 +4357,7 @@ async function activateReadyMatch(
         rules.entryFeeAmount,
         totalReserved,
         usesPeriodLoadout ? null : JSON.stringify(combineEffects(loadout.items)),
+        match.source === 'tournament',
       ],
     );
   }
@@ -5090,6 +5151,12 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           rules.duelKind,
           settings.amateur.limits,
           now,
+        );
+        await snapshotOrdinaryReward(
+          client,
+          match.id,
+          [match.challenger_user_id, match.opponent_user_id],
+          settings.amateur.duelRewards,
         );
         if (match.source !== 'tournament')
           await assertOrdinaryDuelStart(
