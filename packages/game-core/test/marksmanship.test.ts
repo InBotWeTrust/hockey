@@ -258,7 +258,7 @@ describe('classifyMarksmanshipGeometry', () => {
 });
 
 describe('classifyMarksmanshipSeries', () => {
-  it('marks two goals less than a second apart in the same pass as a double', () => {
+  it('marks two goals less than a second apart as a double', () => {
     expect(
       classifyMarksmanshipSeries({
         tapTime: 600,
@@ -268,6 +268,30 @@ describe('classifyMarksmanshipSeries', () => {
         previousGoals: [{ tapTime: 150, shooterTapTime: 150 }],
       }),
     ).toMatchObject({ type: 'double', index: 2, multiplier: 1.7 });
+  });
+
+  it('marks two rapid goals across a board reversal as a double', () => {
+    expect(
+      classifyMarksmanshipSeries({
+        tapTime: 750,
+        shooterTapTime: 750,
+        shooterFrequency: 0.75,
+        shooterPhaseOffset: 0,
+        previousGoals: [{ tapTime: 600, shooterTapTime: 600 }],
+      }),
+    ).toMatchObject({ type: 'double', index: 2, multiplier: 1.7 });
+  });
+
+  it('does not mark goals exactly a second apart as a double', () => {
+    expect(
+      classifyMarksmanshipSeries({
+        tapTime: 1_100,
+        shooterTapTime: 1_100,
+        shooterFrequency: 0.75,
+        shooterPhaseOffset: 0,
+        previousGoals: [{ tapTime: 100, shooterTapTime: 100 }],
+      }),
+    ).toMatchObject({ type: 'single', index: 1, multiplier: 1 });
   });
 
   it('does not mark an out-of-order goal timestamp as a double', () => {
@@ -328,7 +352,22 @@ describe('classifyMarksmanshipSeries', () => {
     ).toMatchObject({ type: 'triple', index: 3, multiplier: 1.8 });
   });
 
-  it('starts a new single after the shooter reverses at the board', () => {
+  it('counts three goals in one pass even when they span more than a second', () => {
+    expect(
+      classifyMarksmanshipSeries({
+        tapTime: 1_200,
+        shooterTapTime: 1_200,
+        shooterFrequency: 0.25,
+        shooterPhaseOffset: 0,
+        previousGoals: [
+          { tapTime: 100, shooterTapTime: 100 },
+          { tapTime: 700, shooterTapTime: 700 },
+        ],
+      }),
+    ).toMatchObject({ type: 'triple', index: 3, multiplier: 1.8 });
+  });
+
+  it('keeps the rapid pair bonus after a board reversal', () => {
     expect(
       classifyMarksmanshipSeries({
         tapTime: 800,
@@ -340,7 +379,7 @@ describe('classifyMarksmanshipSeries', () => {
           { tapTime: 600, shooterTapTime: 600 },
         ],
       }),
-    ).toMatchObject({ type: 'single', index: 1, multiplier: 1 });
+    ).toMatchObject({ type: 'double', index: 2, multiplier: 1.7 });
   });
 });
 

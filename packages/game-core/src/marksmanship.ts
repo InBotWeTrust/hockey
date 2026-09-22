@@ -299,17 +299,20 @@ export function classifyMarksmanshipSeries(
     input.shooterFrequency,
     input.shooterPhaseOffset,
   );
-  const goalsInPass = input.previousGoals.filter(
+  const precedingGoals = input.previousGoals.filter((goal) => goal.tapTime <= input.tapTime);
+  const goalsInPass = precedingGoals.filter(
     (goal) =>
-      goal.tapTime <= input.tapTime &&
       shooterPassId(goal.shooterTapTime, input.shooterFrequency, input.shooterPhaseOffset) ===
       passId,
   );
   if (goalsInPass.length >= 2) {
     return { type: 'triple', index: 3, multiplier: scoring.tripleMultiplier, passId };
   }
-  const previous = goalsInPass.at(-1);
-  const previousDeltaMs = previous === undefined ? null : input.tapTime - previous.tapTime;
+  const previous = precedingGoals.reduce<MarksmanshipSeriesGoal | null>(
+    (latest, goal) => latest === null || goal.tapTime > latest.tapTime ? goal : latest,
+    null,
+  );
+  const previousDeltaMs = previous === null ? null : input.tapTime - previous.tapTime;
   if (previousDeltaMs !== null && previousDeltaMs >= 0 && previousDeltaMs < 1_000) {
     return { type: 'double', index: 2, multiplier: scoring.doubleMultiplier, passId };
   }
