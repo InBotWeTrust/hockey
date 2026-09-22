@@ -4,6 +4,16 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { fetchAmateurRating } from '../../api/amateurDuel.js';
 import type { UserPickerItem } from '../../chat/api.js';
 import { TournamentStandingsTable } from '../../tournament/TournamentStandingsTable.js';
+import { SegmentedTabs } from '../SegmentedTabs.js';
+import type { AmateurDuelKind } from '../../api/amateurDuel.js';
+
+type RatingScope = 'overall' | AmateurDuelKind;
+const RATING_SCOPES: Array<{ id: RatingScope; label: string }> = [
+  { id: 'overall', label: 'Общий' },
+  { id: 'express', label: 'Экспресс' },
+  { id: 'express_plus', label: 'Микс' },
+  { id: 'classic', label: 'Классика' },
+];
 
 function monthLabel(key: string): string {
   const [year, month] = key.split('-').map(Number);
@@ -24,24 +34,32 @@ export function AmateurDuelRatingTab({
   onOpenProfile: (profile: UserPickerItem) => void;
 }): JSX.Element {
   const [seasonKey, setSeasonKey] = useState(initialSeasonKey);
+  const [scope, setScope] = useState<RatingScope>('overall');
   const rating = useQuery({
-    queryKey: ['amateur-duel', 'rating', seasonKey],
-    queryFn: () => fetchAmateurRating(seasonKey),
+    queryKey: ['amateur-duel', 'rating', seasonKey, scope],
+    queryFn: () => fetchAmateurRating(seasonKey, scope),
   });
   const data = rating.data;
   const seasons = Array.from(new Set([seasonKey, ...(data?.available_seasons ?? [])])).sort();
   const seasonIndex = seasons.indexOf(seasonKey);
   const previousSeason = seasonIndex > 0 ? seasons[seasonIndex - 1] : undefined;
   const nextSeason = seasonIndex >= 0 ? seasons[seasonIndex + 1] : undefined;
-  const rows = (data?.rating ?? []).map((row, index) => ({
+  const rows = (data?.rating ?? []).filter((row) => row.eligible !== false).map((row, index) => ({
     ...row,
-    rank: index + 1,
+    rank: row.place ?? index + 1,
     played: row.matches_played,
   }));
+  const unqualified = (data?.rating ?? []).filter((row) => row.eligible === false);
 
   return (
     <section className="duel-section" aria-label="Рейтинг дуэлей">
       <div className="section-label duel-section-title">Рейтинг</div>
+      <SegmentedTabs
+        items={RATING_SCOPES}
+        activeTab={scope}
+        ariaLabel="Зачёт рейтинга дуэлей"
+        onChange={setScope}
+      />
       <section
         className="glass tournament-details__content duel-rating-table-card"
         aria-label="Таблица рейтинга дуэлей"
@@ -73,9 +91,9 @@ export function AmateurDuelRatingTab({
           <div className="duel-state-card duel-state-card--error">
             Не удалось загрузить рейтинг.
           </div>
-        ) : rows.length === 0 ? (
+        ) : rows.length === 0 && unqualified.length === 0 ? (
           <p className="duel-rating-empty">Рейтинг появится после первых завершённых дуэлей.</p>
-        ) : (
+        ) : rows.length > 0 ? (
           <TournamentStandingsTable
             rows={rows}
             regularSource="head_to_head"
@@ -91,6 +109,16 @@ export function AmateurDuelRatingTab({
               })
             }
           />
+        ) : null}
+        {unqualified.length > 0 && (
+          <section aria-label="Пока вне зачёта" style={{ display: 'grid', gap: 6, marginTop: 14 }}>
+            <h3 style={{ margin: 0 }}>Пока вне зачёта</h3>
+            {unqualified.map((row) => (
+              <div key={row.user_id}>
+                {row.display_name} — ещё {row.matches_to_qualify ?? 0} матчей до зачёта
+              </div>
+            ))}
+          </section>
         )}
       </section>
     </section>

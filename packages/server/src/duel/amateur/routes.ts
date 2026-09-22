@@ -359,6 +359,7 @@ const duelHistoryQuerySchema = z.object({
 
 const duelRatingQuerySchema = z.object({
   season_key: seasonKeySchema.optional(),
+  scope: z.enum(['overall', 'express', 'express_plus', 'classic']).default('overall'),
 });
 
 const duelHistoryCalendarQuerySchema = z.object({
@@ -856,6 +857,7 @@ interface RatingRow {
   goals_against: number;
   matches_played: number;
   active_duration_seconds: number;
+  head_to_head_points?: number;
 }
 
 interface AmateurDuelInviteMessageMetadata extends Record<string, unknown> {
@@ -6382,52 +6384,51 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     const query = duelRatingQuerySchema.parse(req.query);
     const seasonKey = query.season_key ?? seasonKeyMoscow(new Date());
     const settings = await getGameSettings(app.pg);
-    const closedSeason = await app.pg.query(
-      'select 1 from monthly_duel_rating_season where season_key = $1',
-      [seasonKey],
+    const threshold = query.scope === 'overall' ? 30 : 10;
+    const { rows } = await app.pg.query<RatingRow>(
+      `with entries as (
+         select entry.* from amateur_duel_rating_match entry
+           join amateur_duel_match match on match.id = entry.match_id
+          where entry.season_key = $1 and match.status = 'settled' and match.ranked
+            and match.source <> 'tournament'
+            and ($2::text = 'overall' or match.duel_kind = $2)
+       ), live as (
+         select user_id, sum(points)::int as points, sum(wins)::int as wins,
+                sum(draws)::int as draws, sum(losses)::int as losses,
+                sum(goals_for)::int as goals_for, sum(goals_against)::int as goals_against,
+                count(*)::int as matches_played,
+                sum(active_duration_seconds)::int as active_duration_seconds
+           from entries group by user_id
+       ), ranked as (
+         select live.*,
+                coalesce(sum(case when opponent_live.points = live.points
+                  then own_entry.points else 0 end), 0)::int as head_to_head_points
+           from live
+           left join entries own_entry on own_entry.user_id = live.user_id
+           left join entries opponent_entry on opponent_entry.match_id = own_entry.match_id
+             and opponent_entry.user_id <> live.user_id
+           left join live opponent_live on opponent_live.user_id = opponent_entry.user_id
+          group by live.user_id, live.points, live.wins, live.draws, live.losses,
+                   live.goals_for, live.goals_against, live.matches_played,
+                   live.active_duration_seconds
+       )
+       select ranked.*, u.display_name, u.avatar_url
+         from ranked join users u on u.id = ranked.user_id
+        order by ranked.points desc, ranked.head_to_head_points desc,
+                 ranked.matches_played desc, ranked.wins desc, u.display_name asc,
+                 ranked.user_id asc`,
+      [seasonKey, query.scope],
     );
-    const isClosedSeason = closedSeason.rowCount === 1;
-    const { rows } = isClosedSeason
-      ? await app.pg.query<RatingRow>(
-          `select p.user_id, u.display_name, u.avatar_url, p.points, p.wins, p.draws, p.losses,
-                  p.goals_for, p.goals_against, p.matches_played, p.active_duration_seconds
-             from monthly_duel_rating_placement p
-             join users u on u.id = p.user_id
-            where p.season_key = $1
-            order by p.place asc
-            limit 100`,
-          [seasonKey],
-        )
-      : await app.pg.query<RatingRow>(
-          `select r.user_id, u.display_name, u.avatar_url, r.points, r.wins, r.draws, r.losses,
-                  r.goals_for, r.goals_against, r.matches_played, r.active_duration_seconds
-             from amateur_duel_rating_live r
-             join users u on u.id = r.user_id
-            where r.season_key = $1
-            order by r.points desc, r.wins desc, r.active_duration_seconds asc, u.display_name asc
-            limit 100`,
-          [seasonKey],
-        );
-    const { rows: rankRows } = isClosedSeason
-      ? await app.pg.query<{ rank: number }>(
-          `select place as rank from monthly_duel_rating_placement
-            where season_key = $1 and user_id = $2`,
-          [seasonKey, req.user.id],
-        )
-      : await app.pg.query<{ rank: number }>(
-          `select ranked.rank::int as rank
-             from (
-               select r.user_id,
-                      row_number() over (
-                        order by r.points desc, r.wins desc, r.active_duration_seconds asc, u.display_name asc
-                      ) as rank
-                 from amateur_duel_rating_live r
-                 join users u on u.id = r.user_id
-                where r.season_key = $1
-             ) ranked
-            where ranked.user_id = $2`,
-          [seasonKey, req.user.id],
-        );
+    let eligiblePlace = 0;
+    const rating = rows.map((row) => {
+      const eligible = row.matches_played >= threshold;
+      return {
+        ...row,
+        eligible,
+        matches_to_qualify: Math.max(0, threshold - row.matches_played),
+        place: eligible ? ++eligiblePlace : null,
+      };
+    });
     const { rows: seasonRows } = await app.pg.query<{ season_key: string }>(
       `select distinct season_key
          from (
@@ -6439,10 +6440,12 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     );
     return {
       season_key: seasonKey,
+      scope: query.scope,
+      prize_threshold: threshold,
       rating_visible: settings.amateur.ratingVisibility === 'enabled',
       available_seasons: seasonRows.map((row) => row.season_key),
-      rating: rows,
-      me_rank: rankRows[0]?.rank ?? null,
+      rating,
+      me_rank: rating.find((row) => row.user_id === req.user.id)?.place ?? null,
     };
   });
 
