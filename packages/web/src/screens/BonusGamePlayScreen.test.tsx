@@ -228,6 +228,7 @@ function pendingShot(attemptValue: BonusGameAttempt, receivedAtPerformanceMs = 1
     difficultyCode: null,
     counterDirection: false,
     predictedMarksmanship: null,
+    scoreDetails: null,
     receivedAtPerformanceMs,
   };
 }
@@ -821,10 +822,27 @@ describe('BonusGamePlayScreen', () => {
     const authoritative = marksmanshipAttempt({ total_points: 2_605 });
     const submitShot = vi.fn(async () => ({
       serverResult: 'goal' as const,
-      awardedPoints: 155,
+      awardedPoints: 258,
       totalPoints: 2_605,
       difficultyCode: 'very_narrow' as const,
       counterDirection: false,
+      scoreDetails: {
+        version: 2 as const,
+        windowDurationMs: 80,
+        difficultyCode: 'narrow' as const,
+        counterDirection: true,
+        opportunity: 'scored' as const,
+        timingErrorMs: 0,
+        geometry: {
+          boardSide: false,
+          closeToGoalie: false,
+          counterDirection: true,
+          behindGoalie: false,
+        },
+        series: { type: 'double' as const, index: 2 as const, multiplier: 1.7, passId: 4 },
+        situationBonus: 20,
+        seriesBonus: 98,
+      },
       predictedMarksmanship: null,
       attempt: authoritative,
       rewardGranted: false,
@@ -881,7 +899,7 @@ describe('BonusGamePlayScreen', () => {
 
     expect(localPresentation).toEqual({
       title: 'ГОЛ',
-      details: ['+170', 'Точный момент · противоход'],
+      details: ['+220', 'За вратаря · противоход', '155 за точность · +65 ситуация'],
     });
 
     const authoritativePresentation = await props.submitShot({
@@ -895,14 +913,72 @@ describe('BonusGamePlayScreen', () => {
       expect.objectContaining({
         deferApply: true,
         predictedMarksmanship: expect.objectContaining({
-          awardedPoints: 170,
+          awardedPoints: 220,
+          opportunity: 'scored',
           difficultyCode: 'very_narrow',
           counterDirection: true,
         }),
       }),
     );
     expect(authoritativePresentation).toMatchObject({
-      resultPresentation: { title: 'ГОЛ', details: ['+155', 'Узкое окно'] },
+      resultPresentation: {
+        title: 'ГОЛ',
+        details: [
+          '+258',
+          'Двойка · 2 гола за один прокат',
+          '140 за точность · +98 серия · +20 ситуация',
+        ],
+      },
+    });
+  });
+
+  it('explains a human timing error without awarding points', async () => {
+    const submitShot = vi.fn(async () => ({
+      serverResult: 'miss' as const,
+      awardedPoints: 0,
+      totalPoints: 2_450,
+      difficultyCode: null,
+      counterDirection: false,
+      scoreDetails: {
+        version: 2 as const,
+        windowDurationMs: null,
+        difficultyCode: null,
+        counterDirection: false,
+        opportunity: 'human_error' as const,
+        timingErrorMs: -90,
+        geometry: {
+          boardSide: false,
+          closeToGoalie: false,
+          counterDirection: false,
+          behindGoalie: false,
+        },
+        series: { type: 'single' as const, index: 1 as const, multiplier: 1, passId: 4 },
+        situationBonus: 0,
+        seriesBonus: 0,
+      },
+      predictedMarksmanship: null,
+      attempt: marksmanshipAttempt(),
+      rewardGranted: false,
+    }));
+    setStore({ attempt: marksmanshipAttempt(), submitShot });
+    renderScreen();
+
+    const props = playViewProbe.mock.calls.at(-1)?.[0] as {
+      submitShot: (args: {
+        shotIndex: number;
+        input: ShotInput;
+        claimedResult: 'miss';
+      }) => Promise<{ resultPresentation: { title: string; details: string[] } }>;
+    };
+    const resolved = await props.submitShot({
+      shotIndex: 2,
+      input: { tapTime: 590, shooterTapTime: 590 },
+      claimedResult: 'miss',
+    });
+
+    expect(resolved.resultPresentation).toEqual({
+      title: 'МИМО',
+      details: ['Момент был', 'Бросок на 90 мс позже'],
     });
   });
 
@@ -914,6 +990,7 @@ describe('BonusGamePlayScreen', () => {
       difficultyCode: null,
       counterDirection: false,
       predictedMarksmanship: null,
+      scoreDetails: null,
       attempt: marksmanshipAttempt(),
       rewardGranted: false,
     }));
@@ -1041,6 +1118,7 @@ describe('BonusGamePlayScreen', () => {
       difficultyCode: null,
       counterDirection: false,
       predictedMarksmanship: null,
+      scoreDetails: null,
       attempt: completedAttempt,
       rewardGranted: true,
     }));
@@ -1112,6 +1190,7 @@ describe('BonusGamePlayScreen', () => {
       difficultyCode: null,
       counterDirection: false,
       predictedMarksmanship: null,
+      scoreDetails: null,
       attempt: completedAttempt,
       rewardGranted: true,
     }));
@@ -1142,6 +1221,7 @@ describe('BonusGamePlayScreen', () => {
       difficultyCode: null;
       counterDirection: boolean;
       predictedMarksmanship: null;
+      scoreDetails: null;
       attempt: BonusGameAttempt;
       rewardGranted: true;
     }>();
@@ -1187,6 +1267,7 @@ describe('BonusGamePlayScreen', () => {
         difficultyCode: null,
         counterDirection: false,
         predictedMarksmanship: null,
+        scoreDetails: null,
         attempt: completedAttempt,
         rewardGranted: true,
       });

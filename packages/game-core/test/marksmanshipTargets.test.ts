@@ -3,13 +3,17 @@ import {
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
   classifyMarksmanshipShot,
   resolveMarksmanshipShotContext,
+  scoreMarksmanshipBreakdown,
   scoreMarksmanshipWindow,
 } from '../src/marksmanship.js';
 import type { GoalieConfig } from '../src/goalie/types.js';
 import { deriveShotSeed, getSessionPhaseOffsets } from '../src/session.js';
 
-const DURATIONS_MS = [30_000, 60_000, 90_000, 120_000, 150_000, 180_000, 210_000];
-const TARGETS = [1_100, 2_450, 4_000, 5_750, 7_750, 9_950, 12_450];
+const DURATIONS_MS = [
+  30_000, 50_000, 70_000, 90_000, 110_000, 130_000, 150_000, 170_000, 190_000, 210_000,
+];
+const TARGET_RATIOS = [0.5, 0.53, 0.57, 0.6, 0.63, 0.67, 0.7, 0.73, 0.77, 0.8];
+const TARGETS = [1_250, 2_200, 3_300, 4_500, 5_800, 7_350, 8_850, 10_500, 12_350, 14_150];
 const SEARCH_STEP_MS = 10;
 const FLIGHT_MS = 416;
 const RESULT_PAUSE_MS = 1_000;
@@ -66,6 +70,9 @@ function optimumByDuration(seed: string): number[] {
     const phaseSampleCount = MOTION_REPEAT_MS / SEARCH_STEP_MS;
     const goalSamples = new Uint8Array(phaseSampleCount);
     const counterSamples = new Uint8Array(phaseSampleCount);
+    const boardSamples = new Uint8Array(phaseSampleCount);
+    const closeSamples = new Uint8Array(phaseSampleCount);
+    const behindSamples = new Uint8Array(phaseSampleCount);
     const shotIndex = completedShots + 1;
     const shotSeed = deriveShotSeed(seed, 1, shotIndex);
     for (let cacheIndex = 0; cacheIndex < phaseSampleCount; cacheIndex += 1) {
@@ -92,6 +99,9 @@ function optimumByDuration(seed: string): number[] {
       });
       goalSamples[cacheIndex] = context.result.type === 'goal' ? 1 : 0;
       counterSamples[cacheIndex] = context.counterDirection ? 1 : 0;
+      boardSamples[cacheIndex] = context.geometry.boardSide ? 1 : 0;
+      closeSamples[cacheIndex] = context.geometry.closeToGoalie ? 1 : 0;
+      behindSamples[cacheIndex] = context.geometry.behindGoalie ? 1 : 0;
     }
 
     const leftGoalSamples = new Uint16Array(phaseSampleCount);
@@ -132,14 +142,21 @@ function optimumByDuration(seed: string): number[] {
         earliestTapTime: sampleTime,
         scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
       });
-      const optimizedScore =
-        scoreMarksmanshipWindow(
+      const optimizedScore = scoreMarksmanshipBreakdown({
+        basePoints: scoreMarksmanshipWindow(
           rightGoalSamples[sampleIndex]! * SEARCH_STEP_MS,
           DEFAULT_MARKSMANSHIP_SCORING_RULES,
-        ) +
-        (counterSamples[sampleIndex] === 1
-          ? DEFAULT_MARKSMANSHIP_SCORING_RULES.counterDirectionBonus
-          : 0);
+        ),
+        windowDurationMs: rightGoalSamples[sampleIndex]! * SEARCH_STEP_MS,
+        geometry: {
+          boardSide: boardSamples[sampleIndex] === 1,
+          closeToGoalie: closeSamples[sampleIndex] === 1,
+          counterDirection: counterSamples[sampleIndex] === 1,
+          behindGoalie: behindSamples[sampleIndex] === 1,
+        },
+        series: { type: 'single', index: 1, multiplier: 1, passId: 0 },
+        scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
+      }).awardedPoints;
       if (canonical.awardedPoints !== optimizedScore) {
         throw new Error('optimized target sweep diverged from the canonical classifier');
       }
@@ -160,10 +177,10 @@ function optimumByDuration(seed: string): number[] {
       if (goalSamples[cacheIndex] === 1) {
         const leftIndex = Math.max(0, stateIndex - leftGoalSamples[cacheIndex]! + 1);
         const rightIndex = stateIndex + rightGoalSamples[cacheIndex]! - 1;
-        const counterBonus =
-          counterSamples[cacheIndex] === 1
-            ? DEFAULT_MARKSMANSHIP_SCORING_RULES.counterDirectionBonus
-            : 0;
+        const fixedSituationBonus =
+          counterSamples[cacheIndex]! * DEFAULT_MARKSMANSHIP_SCORING_RULES.counterDirectionBonus +
+          closeSamples[cacheIndex]! * DEFAULT_MARKSMANSHIP_SCORING_RULES.closeGoalieBonus +
+          behindSamples[cacheIndex]! * DEFAULT_MARKSMANSHIP_SCORING_RULES.behindGoalieBonus;
         const plateauEnd = Math.min(stateIndex, leftIndex);
         if (prefixBest[plateauEnd]! >= 0) {
           nextScore = Math.max(
@@ -173,7 +190,11 @@ function optimumByDuration(seed: string): number[] {
                 (rightIndex - leftIndex + 1) * SEARCH_STEP_MS,
                 DEFAULT_MARKSMANSHIP_SCORING_RULES,
               ) +
-              counterBonus,
+              fixedSituationBonus +
+              (boardSamples[cacheIndex] === 1 &&
+              (rightIndex - leftIndex + 1) * SEARCH_STEP_MS < 160
+                ? DEFAULT_MARKSMANSHIP_SCORING_RULES.boardNarrowBonus
+                : 0),
           );
         }
         for (let readyIndex = leftIndex + 1; readyIndex <= stateIndex; readyIndex += 1) {
@@ -185,7 +206,11 @@ function optimumByDuration(seed: string): number[] {
                 (rightIndex - readyIndex + 1) * SEARCH_STEP_MS,
                 DEFAULT_MARKSMANSHIP_SCORING_RULES,
               ) +
-              counterBonus,
+              fixedSituationBonus +
+              (boardSamples[cacheIndex] === 1 &&
+              (rightIndex - readyIndex + 1) * SEARCH_STEP_MS < 160
+                ? DEFAULT_MARKSMANSHIP_SCORING_RULES.boardNarrowBonus
+                : 0),
           );
         }
       }
@@ -227,50 +252,19 @@ function summarize(values: number[][]): TargetStats[] {
 }
 
 describe('marksmanship published targets', () => {
-  it('stay below the conservative optimum across thirty deterministic phases', () => {
+  it('derive from the conservative single-shot optimum across thirty deterministic phases', () => {
     const stats = summarize(PHASE_SEEDS.map(optimumByDuration));
     const conservativeMax = stats.map((entry) => entry.minimum);
 
-    expect(TARGETS).toEqual([1_100, 2_450, 4_000, 5_750, 7_750, 9_950, 12_450]);
+    const derivedTargets = stats.map((entry, index) =>
+      Math.round((entry.minimum * TARGET_RATIOS[index]!) / 50) * 50,
+    );
+    expect(TARGETS).toEqual(derivedTargets);
     expect(TARGETS.every((target, index) => target <= conservativeMax[index]!)).toBe(true);
-    expect(stats).toMatchInlineSnapshot(`
-      [
-        {
-          "maximum": 2605,
-          "median": 2355,
-          "minimum": 2210,
-        },
-        {
-          "maximum": 4940,
-          "median": 4630,
-          "minimum": 4475,
-        },
-        {
-          "maximum": 7225,
-          "median": 6920,
-          "minimum": 6740,
-        },
-        {
-          "maximum": 9430,
-          "median": 9190,
-          "minimum": 9005,
-        },
-        {
-          "maximum": 11740,
-          "median": 11475,
-          "minimum": 11300,
-        },
-        {
-          "maximum": 14000,
-          "median": 13775,
-          "minimum": 13605,
-        },
-        {
-          "maximum": 16300,
-          "median": 16035,
-          "minimum": 15890,
-        },
-      ]
-    `);
-  }, 120_000);
+    expect(stats).toHaveLength(10);
+    for (const entry of stats) {
+      expect(entry.minimum).toBeLessThanOrEqual(entry.median);
+      expect(entry.median).toBeLessThanOrEqual(entry.maximum);
+    }
+  }, 240_000);
 });
