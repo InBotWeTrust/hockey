@@ -111,6 +111,39 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     expect((await pool.query('select * from monthly_duel_rating_season')).rows).toHaveLength(1);
   });
 
+  it('pays a qualified solo-format winner even with fewer than ten eligible players', async () => {
+    const users = await seedSeason('2026-08', 2);
+    await reconcileCompletedMonthlyRating(pool, september);
+    expect((await placements()).map((row) => row.stars)).toEqual([300, 200]);
+    const format = await pool.query<{ user_id: string; scope: string; stars: number; experience: number }>(
+      `select user_id, scope, stars, experience from monthly_duel_format_placement
+        where season_key = '2026-08' order by place`,
+    );
+    expect(format.rows).toEqual([
+      { user_id: users[0], scope: 'classic', stars: 30, experience: 30 },
+      { user_id: users[1], scope: 'classic', stars: 0, experience: 0 },
+    ]);
+    const winner = await pool.query<{ xp: number; experience: number }>(
+      'select xp, experience from users where id = $1', [users[0]],
+    );
+    expect(winner.rows[0]).toEqual({ xp: 330, experience: 30 });
+  });
+
+  it('keeps disabled format standings without paying or congratulating the winner', async () => {
+    const users = await seedSeason('2026-08', 2);
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('amateur.monthly_rating.classic.enabled', '"disabled"'::jsonb, 'enabled', 'test')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    await reconcileCompletedMonthlyRating(pool, september);
+    const format = await pool.query('select * from monthly_duel_format_placement');
+    expect(format.rows).toHaveLength(2);
+    expect(format.rows.every((row) => row.stars === 0 && row.experience === 0)).toBe(true);
+    expect((await pool.query('select * from monthly_duel_format_economy_event')).rows).toEqual([]);
+    expect((await getPendingMonthlyRatingCongratulations(pool, users[0]!, september))).toHaveLength(1);
+  });
+
   it('uses the all-player final table for prizes and top-three achievements', async () => {
     const users = await seedSeason('2026-08', 10);
     await pool.query('update amateur_duel_rating_match set points = 0, wins = 0');
@@ -143,23 +176,18 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     expect(rows.map((row) => row.user_id)).toEqual([
       users[1],
       users[2],
-      users[3],
-      users[4],
-      users[5],
-      users[6],
-      users[7],
       users[0],
       users[8],
       users[9],
     ]);
     expect(rows.slice(0, 3).map((row) => row.coins)).toEqual([15000, 10000, 7500]);
-    expect(rows[7]).toMatchObject({ user_id: users[0], place: 8, coins: 0 });
-    await expect(completedMonthlyAchievementIds(pool, users[0]!)).resolves.toEqual([]);
-    await expect(completedMonthlyAchievementIds(pool, users[3]!)).resolves.toEqual(['monthly-top-3']);
+    expect(rows[2]).toMatchObject({ user_id: users[0], place: 3, coins: 7500 });
+    await expect(completedMonthlyAchievementIds(pool, users[0]!)).resolves.toEqual(['monthly-top-3']);
+    await expect(completedMonthlyAchievementIds(pool, users[3]!)).resolves.toEqual([]);
   });
 
   it.each([
-    [9, 0],
+    [9, 3],
     [10, 3],
     [16, 3],
     [19, 3],
@@ -208,7 +236,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
           [users[0]],
         )
       ).rows[0],
-    ).toEqual({ xp: 300, balance: 15000, tokens: 10 });
+    ).toEqual({ xp: 330, balance: 15000, tokens: 10 });
     expect(
       (
         await pool.query(
@@ -255,6 +283,11 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
       [headToHeadWinner],
     );
 
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('amateur.monthly_rating.overall.minimum_matches', '1'::jsonb, 'threshold', 'test')
+       on conflict (key) do update set value = excluded.value`,
+    );
     await reconcileCompletedMonthlyRating(pool, september);
 
     expect((await placements()).slice(0, 2).map((row) => row.user_id)).toEqual([
@@ -297,7 +330,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
           [users[0]],
         )
       ).rows[0],
-    ).toEqual({ xp: 900, balance: 45000, tokens: 30 });
+    ).toEqual({ xp: 990, balance: 45000, tokens: 30 });
     expect(await getPendingMonthlyRatingCongratulations(pool, users[9]!, september)).toEqual([]);
     const id = pending[0]!.id;
     await expect(

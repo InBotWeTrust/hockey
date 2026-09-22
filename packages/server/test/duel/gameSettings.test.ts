@@ -64,6 +64,17 @@ describe('inventory star price', () => {
   });
 });
 
+describe('monthly rating admin settings', () => {
+  it('exposes independent payout switches and the approved scope defaults', async () => {
+    const settings = await getGameSettings({ query: async () => ({ rows: [] }) } as never);
+    expect(settings.amateur.monthlyRating.overall.minimumMatches).toBe(30);
+    expect(settings.amateur.monthlyRating.express.minimumMatches).toBe(10);
+    expect(settings.amateur.monthlyRating.express.first).toMatchObject({ stars: 30, experience: 30 });
+    expect(GAME_SETTING_DEFINITIONS.map((setting) => setting.key)).toContain('amateur.monthly_rating.classic.enabled');
+    expect(GAME_SETTING_DEFINITIONS.map((setting) => setting.key)).toContain('amateur.monthly_rating.overall.first.experience');
+  });
+});
+
 describe('global duel inventory penalties', () => {
   it('exposes every approved fatigue stage as a global admin setting', () => {
     const definitions = new Map(
