@@ -376,6 +376,16 @@
   isolation: isolate;
   color: #ffffff;
 }
+.mobile-telegram-auth-screen {
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: max(24px, var(--app-safe-top)) 16px max(24px, var(--app-safe-bottom));
+}
+.mobile-telegram-auth-screen .login-screen__title {
+  margin: 0;
+  text-align: center;
+}
 .login-screen__brand {
   padding: clamp(12px, 2.4dvh, 24px) 16px 0;
 }
