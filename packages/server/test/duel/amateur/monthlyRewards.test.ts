@@ -127,6 +127,19 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
       'select xp, experience from users where id = $1', [users[0]],
     );
     expect(winner.rows[0]).toEqual({ xp: 330, experience: 30 });
+    const pending = await getPendingMonthlyRatingCongratulations(pool, users[0]!, september);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({
+      season_key: '2026-08', stars: 330, experience: 30,
+      awards: [
+        { scope: 'overall', place: 1, stars: 300 },
+        { scope: 'classic', place: 1, stars: 30, experience: 30 },
+      ],
+    });
+    await acknowledgeMonthlyRatingCongratulations(pool, users[0]!, pending[0]!.id, september);
+    expect(await getPendingMonthlyRatingCongratulations(pool, users[0]!, september)).toEqual([]);
+    await acknowledgeMonthlyRatingCongratulations(pool, users[0]!, pending[0]!.id, september);
+    expect((await pool.query('select xp from users where id = $1', [users[0]])).rows[0]).toEqual({ xp: 330 });
   });
 
   it('keeps disabled format standings without paying or congratulating the winner', async () => {
@@ -387,7 +400,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
       season_key: '2020-01',
       place: 1,
       coins: 15000,
-      stars: 300,
+      stars: 330,
       tokens: 10,
     });
     expect(

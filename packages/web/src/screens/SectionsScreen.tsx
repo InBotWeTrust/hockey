@@ -98,7 +98,7 @@ export function SectionsScreen(): JSX.Element {
   const activeCongratulation = profileQueueReady ? (pendingCongratulations[0] ?? null) : null;
   const pendingMonthlyRatingCongratulations = (monthlyRatingQuery.data?.congratulations ?? [])
     .filter((congratulation) =>
-      [congratulation.coins, congratulation.stars, congratulation.tokens].some(
+      [congratulation.coins, congratulation.stars, congratulation.experience ?? 0, congratulation.tokens].some(
         (value) => value > 0,
       ),
     )

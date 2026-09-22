@@ -28,6 +28,7 @@ export interface MonthlyRatingCongratulations extends Reward {
   eligible_count: number;
   rewarded_count: number;
   created_at: Date;
+  awards: Array<Reward & { scope: RatingScope; place: number }>;
 }
 
 /** Each completed month is a single atomic, immutable payout for every eligible player. */
@@ -292,13 +293,33 @@ export async function getPendingMonthlyRatingCongratulations(
 ): Promise<MonthlyRatingCongratulations[]> {
   await reconcileCompletedMonthlyRating(pool, now);
   const { rows } = await pool.query<MonthlyRatingCongratulations>(
-    `select p.id, p.season_key, p.place, p.matches_played, s.eligible_count, s.rewarded_count,
-            p.coins, p.stars, p.tokens, p.created_at
-       from monthly_duel_rating_placement p
-       join monthly_duel_rating_season s using (season_key)
-      where p.user_id = $1 and p.viewed_at is null
-        and (p.coins > 0 or p.stars > 0 or p.tokens > 0)
-      order by p.season_key asc, p.id asc`,
+    `with pending as (
+       select p.id, p.season_key, 'overall'::text as scope, p.place, p.matches_played,
+              p.coins, p.stars, p.experience, p.tokens, p.created_at
+         from monthly_duel_rating_placement p
+        where p.user_id = $1 and p.viewed_at is null
+          and (p.coins > 0 or p.stars > 0 or p.experience > 0 or p.tokens > 0)
+       union all
+       select p.id, p.season_key, p.scope, p.place, p.matches_played,
+              p.coins, p.stars, p.experience, p.tokens, p.created_at
+         from monthly_duel_format_placement p
+        where p.user_id = $1 and p.viewed_at is null
+          and (p.coins > 0 or p.stars > 0 or p.experience > 0 or p.tokens > 0)
+     )
+     select (array_agg(p.id order by case when p.scope = 'overall' then 0 else 1 end, p.scope))[1] as id,
+            p.season_key,
+            (array_agg(p.place order by case when p.scope = 'overall' then 0 else 1 end, p.scope))[1] as place,
+            (array_agg(p.matches_played order by case when p.scope = 'overall' then 0 else 1 end, p.scope))[1] as matches_played,
+            s.eligible_count, s.rewarded_count,
+            sum(p.coins)::int as coins, sum(p.stars)::int as stars,
+            sum(p.experience)::int as experience, sum(p.tokens)::int as tokens,
+            min(p.created_at) as created_at,
+            jsonb_agg(jsonb_build_object('scope', p.scope, 'place', p.place,
+              'coins', p.coins, 'stars', p.stars, 'experience', p.experience,
+              'tokens', p.tokens) order by case when p.scope = 'overall' then 0 else 1 end, p.scope) as awards
+       from pending p join monthly_duel_rating_season s using (season_key)
+      group by p.season_key, s.eligible_count, s.rewarded_count
+      order by p.season_key asc`,
     [userId],
   );
   return rows;
@@ -310,10 +331,33 @@ export async function acknowledgeMonthlyRatingCongratulations(
   id: string,
   now: Date = new Date(),
 ): Promise<void> {
-  const result = await pool.query(
-    `update monthly_duel_rating_placement set viewed_at = coalesce(viewed_at, $3)
-      where id = $1 and user_id = $2 and (coins > 0 or stars > 0 or tokens > 0)`,
-    [id, userId, now],
-  );
-  if (result.rowCount === 0) throw new AppError('not_found', 'congratulation not found', 404);
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const found = await client.query<{ season_key: string }>(
+      `select season_key from monthly_duel_rating_placement where id = $1 and user_id = $2
+       union all
+       select season_key from monthly_duel_format_placement where id = $1 and user_id = $2
+       limit 1`,
+      [id, userId],
+    );
+    const seasonKey = found.rows[0]?.season_key;
+    if (!seasonKey) throw new AppError('not_found', 'congratulation not found', 404);
+    await client.query(
+      `update monthly_duel_rating_placement set viewed_at = coalesce(viewed_at, $3)
+        where season_key = $1 and user_id = $2 and viewed_at is null`,
+      [seasonKey, userId, now],
+    );
+    await client.query(
+      `update monthly_duel_format_placement set viewed_at = coalesce(viewed_at, $3)
+        where season_key = $1 and user_id = $2 and viewed_at is null`,
+      [seasonKey, userId, now],
+    );
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
 }

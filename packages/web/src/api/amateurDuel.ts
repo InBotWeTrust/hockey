@@ -328,8 +328,17 @@ export interface MonthlyRatingCongratulation {
   rewarded_count: number;
   coins: number;
   stars: number;
+  experience?: number;
   tokens: number;
   created_at: string;
+  awards?: Array<{
+    scope: 'overall' | 'express' | 'express_plus' | 'classic';
+    place: number;
+    coins: number;
+    stars: number;
+    experience: number;
+    tokens: number;
+  }>;
 }
 
 export interface PendingMonthlyRatingCongratulationsResponse {
