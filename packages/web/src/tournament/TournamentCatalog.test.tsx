@@ -20,6 +20,35 @@ import {
 } from './TournamentCatalog.js';
 
 const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
+type ObserverRecord = { callback: IntersectionObserverCallback; targets: Set<Element> };
+const observerRecords: ObserverRecord[] = [];
+class TestIntersectionObserver {
+  readonly root = null;
+  readonly rootMargin = '';
+  readonly thresholds = [0];
+  private readonly record: ObserverRecord;
+  constructor(callback: IntersectionObserverCallback) {
+    this.record = { callback, targets: new Set() };
+    observerRecords.push(this.record);
+  }
+  observe = (target: Element) => this.record.targets.add(target);
+  unobserve = (target: Element) => this.record.targets.delete(target);
+  disconnect = () => this.record.targets.clear();
+  takeRecords = () => [];
+}
+function intersect(testId: string, isIntersecting: boolean): void {
+  for (const record of observerRecords) {
+    for (const target of record.targets) {
+      if (target.getAttribute('data-testid') !== testId) continue;
+      act(() => {
+        record.callback(
+          [{ target, isIntersecting } as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      });
+    }
+  }
+}
 const TEST_LIFECYCLE: api.TournamentLifecycleDTO = {
   action: 'unchanged',
   dueAt: null,
@@ -31,6 +60,8 @@ const TEST_LIFECYCLE: api.TournamentLifecycleDTO = {
 describe('TournamentCatalog', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    observerRecords.length = 0;
+    vi.stubGlobal('IntersectionObserver', TestIntersectionObserver);
     useAuthStore.setState({
       user: { id: 'u1', displayName: 'Первый', competitionLevel: 'amateur' },
     });
@@ -41,6 +72,22 @@ describe('TournamentCatalog', () => {
       } as DailyStateResponse,
     });
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
+  });
+
+  it('uses a muted sage tint for playoff places', () => {
+    expect(designSystemCss).toMatch(
+      /\.tournament-standing-table tbody tr\.tournament-standing-table__playoff-place\s*\{[^}]*background:\s*rgba\(111, 151, 132, 0\.14\);/s,
+    );
+  });
+
+  it('gives the pinned current-player row an opaque surface', () => {
+    expect(designSystemCss).toMatch(
+      /\.tournament-standings-progressive__pinned\s*\{[^}]*border-radius:\s*0;[^}]*background:\s*#c4d5e6;/s,
+    );
+  });
+
+  it('does not draw a hover outline around clickable standings rows', () => {
+    expect(designSystemCss).not.toMatch(/tr\.tournament-standing-table__clickable-row:hover\s*\{/);
   });
 
   it('keeps tournament details browsable for a beginner but guards registration locally', async () => {
@@ -467,11 +514,90 @@ describe('TournamentCatalog', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть Кубок таблицы' }));
-    const playerName = await screen.findByRole('button', { name: 'Открыть профиль Первый' });
+    const playerName = (
+      await screen.findAllByRole('button', {
+        name: 'Открыть профиль Первый',
+      })
+    ).find((button) => !button.hasAttribute('disabled'))!;
     fireEvent.click(playerName.closest('tr')!.querySelector('td')!);
 
     expect(await screen.findByRole('dialog', { name: 'Профиль игрока' })).toBeInTheDocument();
     expect(screen.getByText('Это ваш профиль')).toBeInTheDocument();
+  });
+
+  it('loads standings progressively and pins the viewer until their row is visible', async () => {
+    vi.spyOn(api, 'fetchTournaments').mockResolvedValue({
+      tournaments: [
+        {
+          id: 'large-standings',
+          slug: 'large-standings',
+          title: 'Большой турнир',
+          description: '',
+          status: 'regular',
+          regularSource: 'classic',
+          visibility: 'public',
+          revision: 1,
+          participantCount: 60,
+          lifecycle: TEST_LIFECYCLE,
+          myParticipantState: 'approved',
+          registrationOpensAt: null,
+          registrationClosesAt: null,
+          startsAt: '2026-09-01T07:00:00.000Z',
+          rules: { config: { participantLimit: 64, entryFeeCoins: 0, playoffSize: 8 } },
+        },
+      ],
+    });
+    const fetchStandings = vi
+      .spyOn(api, 'fetchTournamentStandings')
+      .mockImplementation(async (_tournamentId, cursor) =>
+        cursor === null
+          ? {
+              standings: [{ user_id: 'u2', display_name: 'Лидер', rank: 1, played: 2, points: 20 }],
+              nextCursor: 'next-page',
+              currentUser: {
+                user_id: 'u1',
+                display_name: 'Первый',
+                rank: 31,
+                played: 1,
+                points: 8,
+              },
+            }
+          : {
+              standings: [
+                { user_id: 'u1', display_name: 'Первый', rank: 31, played: 1, points: 8 },
+              ],
+              nextCursor: null,
+              currentUser: {
+                user_id: 'u1',
+                display_name: 'Первый',
+                rank: 31,
+                played: 1,
+                points: 8,
+              },
+            },
+      );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TournamentCatalog />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть Большой турнир' }));
+    expect(await screen.findByText('Лидер')).toBeInTheDocument();
+    const pinnedCurrent = screen.getByTestId('tournament-standings-pinned-current');
+    expect(pinnedCurrent).toHaveTextContent('31Первый');
+    expect(pinnedCurrent.parentElement).toBe(document.body);
+
+    intersect('tournament-standings-sentinel', true);
+    await waitFor(() => expect(fetchStandings).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId('tournament-standings-current-row')).toBeInTheDocument();
+    intersect('tournament-standings-current-row', true);
+    await waitFor(() =>
+      expect(screen.queryByTestId('tournament-standings-pinned-current')).not.toBeInTheDocument(),
+    );
   });
 
   it('shows registration opening and closing dates as separate readable rows', async () => {

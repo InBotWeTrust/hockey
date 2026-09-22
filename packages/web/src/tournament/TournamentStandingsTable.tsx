@@ -127,7 +127,7 @@ export function TournamentStandingsTable(props: {
           const allowsMedals = isDuelRating || (!isExperienceRating && !isProfileStatRating);
           const medalClass =
             !isCurrentUser && allowsMedals
-              ? rank === 2
+              ? isDuelRating && rank === 2
                 ? 'tournament-standing-table__medal-place--silver'
                 : isDuelRating
                   ? rank === 1
@@ -148,7 +148,9 @@ export function TournamentStandingsTable(props: {
                 : {})}
               className={
                 [
-                  isPlayoffPlace ? 'tournament-standing-table__playoff-place' : '',
+                  isPlayoffPlace && !isCurrentUser
+                    ? 'tournament-standing-table__playoff-place'
+                    : '',
                   isCurrentUser ? 'tournament-standing-table__current-user' : '',
                   medalClass,
                   isClickable ? 'tournament-standing-table__clickable-row' : '',
