@@ -39,8 +39,17 @@ interface MockSectionsData {
     rewarded_count: number;
     coins: number;
     stars: number;
+    experience?: number;
     tokens: number;
     created_at: string;
+    awards?: Array<{
+      scope: 'overall' | 'express' | 'express_plus' | 'classic';
+      place: number;
+      coins: number;
+      stars: number;
+      experience: number;
+      tokens: number;
+    }>;
   }>;
   pendingChallengeFailure?: WeeklyChallenge | null;
 }
@@ -440,6 +449,28 @@ describe('SectionsScreen', () => {
       );
     },
   );
+
+  it('shows two scope awards in one monthly dialog with one duel illustration', async () => {
+    mockSectionsApi({
+      pendingMonthlyRatingCongratulations: [{
+        id: '00000000-0000-4000-8000-000000000972',
+        season_key: '2026-08', place: 1, matches_played: 30,
+        eligible_count: 2, rewarded_count: 2,
+        coins: 15000, stars: 330, experience: 30, tokens: 10,
+        awards: [
+          { scope: 'overall', place: 1, coins: 15000, stars: 300, experience: 0, tokens: 10 },
+          { scope: 'classic', place: 1, coins: 0, stars: 30, experience: 30, tokens: 0 },
+        ],
+        created_at: '2026-09-01T00:00:00.000Z',
+      }],
+    });
+    renderSections();
+    const dialog = await screen.findByRole('dialog', { name: /Ваши награды в зачётах дуэлей/ });
+    expect(dialog).toHaveTextContent('Общий зачёт: победа');
+    expect(dialog).toHaveTextContent('Классика: победа');
+    expect(dialog).toHaveTextContent('330');
+    expect(dialog.querySelectorAll('img[src="/modes/amateur-duel.webp"]')).toHaveLength(1);
+  });
 
   it('does not show monthly rewards before the higher-priority tournament queue is known', async () => {
     const profile = deferredResponse();
