@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import type { DuelLimitSettings } from './amateur/limitRules.js';
 import { GAMEPLAY_RECOVERY_MINUTES } from './gameplayLocks.js';
 import {
   DAILY_PERIOD_SPEED_PRESETS,
@@ -51,6 +52,7 @@ export interface GameSettings {
     dailyCooldownMinutes: number;
   };
   amateur: {
+    limits: DuelLimitSettings;
     unlockGoalsRequired: number;
     ratingVisibility: 'enabled' | 'disabled';
     noInventoryTiming: {
@@ -437,6 +439,22 @@ export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
       { value: 'disabled', label: 'Выключен' },
     ],
   },
+  ...([
+    ['daily', 'Новых дуэлей в день', 8],
+    ['weekly', 'Новых дуэлей в неделю', 40],
+    ['monthly', 'Новых дуэлей в месяц', 129],
+    ['per_format_monthly', 'Новых дуэлей формата в месяц', 43],
+    ['outgoing_invites', 'Ожидающих исходящих вызовов', 2],
+  ] as const).map(([key, label, defaultValue]) => ({
+    key: `amateur.limits.${key}`,
+    label,
+    description: 'Общий лимит обычных дуэлей по календарю Москвы.',
+    type: 'number' as const,
+    defaultValue,
+    min: 1,
+    max: 100_000,
+    step: 1,
+  })),
   ...noInventorySkatesDefinitions,
   ...noInventoryNutritionDefinitions,
 ];
@@ -589,6 +607,13 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
       dailyCooldownMinutes: GAMEPLAY_RECOVERY_MINUTES,
     },
     amateur: {
+      limits: {
+        daily: Number(values.get('amateur.limits.daily')),
+        weekly: Number(values.get('amateur.limits.weekly')),
+        monthly: Number(values.get('amateur.limits.monthly')),
+        perFormatMonthly: Number(values.get('amateur.limits.per_format_monthly')),
+        outgoingInvites: Number(values.get('amateur.limits.outgoing_invites')),
+      },
       unlockGoalsRequired: Number.isFinite(amateurUnlockGoalsRequired)
         ? Math.max(0, Math.trunc(amateurUnlockGoalsRequired))
         : 300,
