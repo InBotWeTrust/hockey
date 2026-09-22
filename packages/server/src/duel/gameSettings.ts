@@ -58,6 +58,7 @@ export interface GameSettings {
   amateur: {
     limits: DuelLimitSettings;
     duelRewards: OrdinaryRewardSettings;
+    starInventoryPriceDivisor: number;
     unlockGoalsRequired: number;
     ratingVisibility: 'enabled' | 'disabled';
     noInventoryTiming: {
@@ -444,6 +445,16 @@ export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
       { value: 'disabled', label: 'Выключен' },
     ],
   },
+  {
+    key: 'amateur.star_inventory_price_divisor',
+    label: 'Монет цены за одну звезду инвентаря',
+    description: 'Цена за звёзды = монетная цена, делённая на это число с округлением вверх.',
+    type: 'number',
+    defaultValue: 25,
+    min: 1,
+    max: 100_000,
+    step: 1,
+  },
   ...([
     ['daily', 'Новых дуэлей в день', 8],
     ['weekly', 'Новых дуэлей в неделю', 40],
@@ -637,6 +648,7 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
       dailyCooldownMinutes: GAMEPLAY_RECOVERY_MINUTES,
     },
     amateur: {
+      starInventoryPriceDivisor: Number(values.get('amateur.star_inventory_price_divisor')),
       limits: {
         daily: Number(values.get('amateur.limits.daily')),
         weekly: Number(values.get('amateur.limits.weekly')),

@@ -1345,6 +1345,33 @@ describe('InventoryScreen', () => {
     );
     expect(vibrate).toHaveBeenCalledWith([10, 35, 15]);
   });
+
+  it('offers a full star purchase when coins are insufficient and sends the server quote', async () => {
+    const inventory: InventoryState = {
+      ...inventoryWithItems,
+      balances: { ...inventoryWithItems.balances, tokens: 0, stars: 5 },
+      items: {
+        ...inventoryWithItems.items,
+        stick: [{ ...inventoryWithItems.items.stick[0]!, starPrice: 5 }],
+      },
+    };
+    mockInventoryFetch(inventory, {
+      ...inventory,
+      balances: { ...inventory.balances, stars: 0 },
+    });
+    renderInventory('/inventory?category=stick');
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать способ покупки Бронзовая клюшка' }));
+    const dialog = screen.getByRole('dialog', { name: 'Купить Бронзовая клюшка?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Купить за 5 звёзд' }));
+    await waitFor(() => {
+      const call = vi.mocked(globalThis.fetch).mock.calls.find(([url, init]) =>
+        String(url).endsWith('/api/inventory/items/stick-bronze/purchase') && init?.method === 'POST');
+      expect(call).toBeDefined();
+      expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({
+        currency: 'stars', expected_price_stars: 5, idempotency_key: expect.any(String),
+      });
+    });
+  });
 });
 
 describe('parseShopCategory', () => {

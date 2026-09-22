@@ -60,6 +60,8 @@ import {
 } from '../api/payments.js';
 
 type ShopTab = 'goods' | 'bank' | 'history';
+type InventoryPurchaseInput = { item: InventoryItem; currency: 'coins' | 'stars' };
+const inventoryStarPrice = (item: InventoryItem) => item.starPrice ?? Math.ceil(item.currencyPrice / 25);
 type HistoryFilter = InventoryTransactionFilter;
 
 const SHOP_TABS: Array<{ id: ShopTab; label: string }> = [
@@ -163,6 +165,7 @@ export function InventoryScreen(): JSX.Element {
   const [activeTab, setActiveTab] = useState<ShopTab>(isPaymentReturn ? 'bank' : 'goods');
   const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
   const [purchaseItem, setPurchaseItem] = useState<InventoryItem | null>(null);
+  const purchaseRequestIds = useRef<{ coins: string | null; stars: string | null }>({ coins: null, stars: null });
   const [purchaseNotice, setPurchaseNotice] = useState<{
     title: string;
     amount: string;
@@ -184,9 +187,17 @@ export function InventoryScreen(): JSX.Element {
     queryFn: fetchReceiptEmail,
     enabled: ownerId !== undefined,
   });
-  const purchaseMutation = useMutation<InventoryState, Error, InventoryItem>({
-    mutationFn: (item) => purchaseInventoryItem(item.itemId ?? item.id),
-    onSuccess: (inventory, item) => {
+  const purchaseMutation = useMutation<InventoryState, Error, InventoryPurchaseInput>({
+    mutationFn: ({ item, currency }) => {
+      const key = purchaseRequestIds.current[currency] ?? crypto.randomUUID();
+      purchaseRequestIds.current[currency] = key;
+      return purchaseInventoryItem(item.itemId ?? item.id, {
+        currency,
+        idempotencyKey: key,
+        ...(currency === 'stars' ? { expectedPriceStars: inventoryStarPrice(item) } : {}),
+      });
+    },
+    onSuccess: (inventory, { item }) => {
       triggerHaptic('success');
       queryClient.setQueryData(['inventory', 'me'], inventory);
       void queryClient.invalidateQueries({ queryKey: ['inventory', 'transactions'] });
@@ -327,6 +338,7 @@ export function InventoryScreen(): JSX.Element {
 
   const openPurchase = (item: InventoryItem): void => {
     purchaseMutation.reset();
+    purchaseRequestIds.current = { coins: null, stars: null };
     setDetailsItem(null);
     setPurchaseItem(item);
   };
@@ -447,7 +459,8 @@ export function InventoryScreen(): JSX.Element {
           <GoodsCategoryCatalog
             category={selectedCategory}
             inventory={inventory}
-            tokens={tokens}
+          tokens={tokens}
+          stars={inventory?.balances.stars ?? 0}
             purchaseMutation={purchaseMutation}
             onDetails={setDetailsItem}
             onBuy={openPurchase}
@@ -482,8 +495,8 @@ export function InventoryScreen(): JSX.Element {
       {detailsItem !== null && (
         <InventoryItemModal
           item={detailsItem}
-          canBuy={tokens >= detailsItem.currencyPrice}
-          isBuying={purchaseMutation.isPending && purchaseMutation.variables?.id === detailsItem.id}
+          canBuy={tokens >= detailsItem.currencyPrice || (inventory?.balances.stars ?? 0) >= inventoryStarPrice(detailsItem)}
+          isBuying={purchaseMutation.isPending && purchaseMutation.variables?.item.id === detailsItem.id}
           error={purchaseMutation.isError ? purchaseMutation.error.message : null}
           onClose={() => {
             purchaseMutation.reset();
@@ -496,13 +509,15 @@ export function InventoryScreen(): JSX.Element {
       {purchaseItem !== null && (
         <PurchaseConfirmModal
           item={purchaseItem}
+          canBuyCoins={tokens >= purchaseItem.currencyPrice}
+          canBuyStars={(inventory?.balances.stars ?? 0) >= inventoryStarPrice(purchaseItem)}
           isSaving={purchaseMutation.isPending}
           error={purchaseMutation.isError ? purchaseMutation.error.message : null}
           onClose={() => {
             purchaseMutation.reset();
             setPurchaseItem(null);
           }}
-          onConfirm={() => purchaseMutation.mutate(purchaseItem)}
+          onConfirm={(currency) => purchaseMutation.mutate({ item: purchaseItem, currency })}
         />
       )}
 
@@ -572,6 +587,7 @@ function GoodsCategoryCatalog({
   category,
   inventory,
   tokens,
+  stars,
   purchaseMutation,
   onDetails,
   onBuy,
@@ -579,7 +595,8 @@ function GoodsCategoryCatalog({
   category: ShopCategory;
   inventory: InventoryState | undefined;
   tokens: number;
-  purchaseMutation: UseMutationResult<InventoryState, Error, InventoryItem>;
+  stars: number;
+  purchaseMutation: UseMutationResult<InventoryState, Error, InventoryPurchaseInput>;
   onDetails: (item: InventoryItem) => void;
   onBuy: (item: InventoryItem) => void;
 }): JSX.Element {
@@ -597,13 +614,14 @@ function GoodsCategoryCatalog({
         }}
       >
         {items.map((item) => {
-          const canBuy = tokens >= item.currencyPrice;
+          const canBuy = tokens >= item.currencyPrice || stars >= inventoryStarPrice(item);
           return (
             <InventoryProductCard
               key={item.id}
               item={item}
               canBuy={canBuy}
-              isBuying={purchaseMutation.isPending && purchaseMutation.variables?.id === item.id}
+              coinAffordable={tokens >= item.currencyPrice}
+              isBuying={purchaseMutation.isPending && purchaseMutation.variables?.item.id === item.id}
               onDetails={() => onDetails(item)}
               onBuy={() => onBuy(item)}
             />
@@ -866,12 +884,14 @@ function BalanceChip({
 function InventoryProductCard({
   item,
   canBuy,
+  coinAffordable,
   isBuying,
   onDetails,
   onBuy,
 }: {
   item: InventoryItem;
   canBuy: boolean;
+  coinAffordable: boolean;
   isBuying: boolean;
   onDetails: () => void;
   onBuy: () => void;
@@ -971,6 +991,9 @@ function InventoryProductCard({
           <CircleDollarSign size={14} strokeWidth={2.55} aria-hidden="true" />
           <span>{numberText(item.currencyPrice)}</span>
         </div>
+        <div aria-label={`${numberText(inventoryStarPrice(item))} звёзд`} style={{ color: rewardColor('star'), fontSize: 12, fontWeight: 850 }}>
+          <Star size={13} aria-hidden="true" /> {numberText(inventoryStarPrice(item))}
+        </div>
       </button>
       <button
         type="button"
@@ -978,7 +1001,9 @@ function InventoryProductCard({
         disabled={!canBuy || isBuying}
         onClick={onBuy}
         aria-label={
-          canBuy
+          !coinAffordable && canBuy
+            ? `Выбрать способ покупки ${item.title}`
+            : canBuy
             ? `Купить ${item.title} за ${numberText(item.currencyPrice)} монет`
             : `Не хватает монет на ${item.title}`
         }
@@ -1088,6 +1113,7 @@ function InventoryItemModal({
 
         <div className="glass" style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 9 }}>
           <DetailRow label="Цена" value={`${numberText(item.currencyPrice)} монет`} tone="coin" />
+          <DetailRow label="Бонусная цена" value={`${numberText(inventoryStarPrice(item))} звёзд`} tone="star" />
           <DetailRow label="Ресурс" value={purchaseBundleLabel(item)} />
         </div>
 
@@ -1124,16 +1150,20 @@ function InventoryItemModal({
 
 function PurchaseConfirmModal({
   item,
+  canBuyCoins,
+  canBuyStars,
   isSaving,
   error,
   onClose,
   onConfirm,
 }: {
   item: InventoryItem;
+  canBuyCoins: boolean;
+  canBuyStars: boolean;
   isSaving: boolean;
   error: string | null;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (currency: 'coins' | 'stars') => void;
 }): JSX.Element {
   return (
     <AccessibleModal
@@ -1162,12 +1192,20 @@ function PurchaseConfirmModal({
           <button
             type="button"
             className="modal-primary btn--cta"
-            onClick={onConfirm}
-            disabled={isSaving}
+            onClick={() => onConfirm('coins')}
+            disabled={isSaving || !canBuyCoins}
           >
             {isSaving ? 'Покупка...' : 'Купить'}
           </button>
         </div>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          onClick={() => onConfirm('stars')}
+          disabled={isSaving || !canBuyStars}
+        >
+          Купить за {numberText(inventoryStarPrice(item))} звёзд
+        </button>
       </div>
     </AccessibleModal>
   );
