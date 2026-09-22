@@ -4,6 +4,12 @@ import { z } from 'zod';
 import { lockRatingLifecycle, nextRatingMonthBoundary } from './ratingLock.js';
 import { REWARD_AMOUNT_LIMIT } from './rewardRules.js';
 import {
+  assertDuelCapacity,
+  assertOutgoingInviteCapacity,
+  duelCapacity,
+  reserveDuelCapacity,
+} from './admission.js';
+import {
   DEFAULT_DUEL_INVENTORY_TIMING,
   GAME_CORE_VERSION,
   SHOOTER_AMPLITUDE,
@@ -2738,6 +2744,12 @@ async function cancelReadyNoShow(
       where id = $1 and status = 'ready_check'`,
     [match.id, now, cooldownUserId, cooldownUntil],
   );
+  if (match.source !== 'tournament') {
+    await client.query(
+      'update amateur_duel_limit_reservation set released_at = $2 where match_id = $1 and released_at is null',
+      [match.id, now],
+    );
+  }
   await client.query(
     `update amateur_duel_participant
         set state = case when state = 'ready' then state else 'forfeit' end,
@@ -2781,15 +2793,16 @@ async function settleMatchIfReady(
 
   const windowEnded = now >= match.ends_at;
   if (windowEnded) {
-    const noParticipantStarted = participants.every(
-      (participant) =>
-        participant.state === 'accepted' &&
-        participant.current_period === 0 &&
-        Number(participant.shots_taken) === 0 &&
-        Number(participant.goals) === 0 &&
-        Number(participant.active_duration_ms) === 0 &&
-        participant.period_started_at === null,
+    const shotCount = await client.query<{ total: number }>(
+      `select count(*)::int as total from shot_session where amateur_duel_match_id = $1`,
+      [match.id],
     );
+    const noParticipantStarted =
+      shotCount.rows[0]?.total === 0 &&
+      participants.every(
+        (participant) =>
+          Number(participant.shots_taken) === 0 && Number(participant.goals) === 0,
+      );
     if (noParticipantStarted) {
       const stake = settlementPolicy.settleStake ? Number(match.stake_amount) : 0;
       const entryFee = settlementPolicy.settleStake ? Number(match.entry_fee_amount) : 0;
@@ -2835,6 +2848,12 @@ async function settleMatchIfReady(
           where id = $1 and status = 'active'`,
         [match.id, now],
       );
+      if (match.source !== 'tournament') {
+        await client.query(
+          'update amateur_duel_limit_reservation set released_at = $2 where match_id = $1 and released_at is null',
+          [match.id, now],
+        );
+      }
       return { match: await fetchMatchForUpdate(client, match.id), changed: true };
     }
     for (const participant of participants) {
@@ -3978,43 +3997,6 @@ function seasonKeyMoscow(date: Date): string {
   return `${year}-${month}`;
 }
 
-async function assertRankedLimits(
-  client: PoolClient,
-  userIds: [string, string],
-  rules: DuelRulesSnapshot,
-  now: Date,
-): Promise<void> {
-  if (!rules.rankedEnabled) return;
-  const since = new Date(now.getTime() - 86_400_000);
-  for (const userId of userIds) {
-    const { rows } = await client.query<{ total: number }>(
-      `select count(*)::int as total
-         from amateur_duel_match
-        where ranked
-          and status in ('active', 'settled')
-          and accepted_at >= $2
-          and (challenger_user_id = $1 or opponent_user_id = $1)`,
-      [userId, since],
-    );
-    if (Number(rows[0]?.total ?? 0) >= rules.rankedDailyLimit) {
-      throw new AppError('conflict', 'ranked duel daily limit reached', 409);
-    }
-  }
-  const { rows } = await client.query<{ total: number }>(
-    `select count(*)::int as total
-       from amateur_duel_match
-      where ranked
-        and status in ('active', 'settled')
-        and accepted_at >= $3
-        and least(challenger_user_id, opponent_user_id) = least($1::uuid, $2::uuid)
-        and greatest(challenger_user_id, opponent_user_id) = greatest($1::uuid, $2::uuid)`,
-    [userIds[0], userIds[1], since],
-  );
-  if (Number(rows[0]?.total ?? 0) >= rules.rankedSameOpponentLimit) {
-    throw new AppError('conflict', 'ranked duel opponent limit reached', 409);
-  }
-}
-
 async function assertOpenDuelSlots(client: PoolClient, userIds: string[]): Promise<void> {
   for (const userId of userIds) {
     const { rows } = await client.query<{ total: string }>(
@@ -4155,6 +4137,23 @@ async function createOpenMatch(
      values ($1, $2, 'challenger', $4), ($1, $3, 'opponent', $5)`,
     [match.id, opts.challengerUserId, opts.opponentUserId, challengerState, opponentState],
   );
+  if (opts.source === 'matchmaking') {
+    await reserveDuelCapacity(
+      client,
+      match.id,
+      [opts.challengerUserId, opts.opponentUserId],
+      rules.duelKind,
+      settings.amateur.limits,
+      opts.now,
+    );
+    const { rows: acceptedRows } = await client.query<DuelMatchRow>(
+      `update amateur_duel_match
+          set season_key = $2, updated_at = now()
+        where id = $1 returning *`,
+      [match.id, seasonKeyMoscow(opts.now)],
+    );
+    return { match: acceptedRows[0]!, rules };
+  }
   return { match, rules };
 }
 
@@ -4241,7 +4240,6 @@ async function activateReadyMatch(
 ): Promise<DuelMatchRow> {
   const participants = await fetchParticipants(client, match.id);
   if (participants.some((participant) => participant.state !== 'ready')) return match;
-  await assertRankedLimits(client, [match.challenger_user_id, match.opponent_user_id], rules, now);
   const acceptedAtIso = now.toISOString();
   const matchSeed = deriveAmateurDuelSeed(
     match.id,
@@ -4984,10 +4982,21 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       if (!template.is_active) throw new AppError('conflict', 'duel template is inactive', 409);
       if (now >= template.ends_at)
         throw new AppError('conflict', 'duel template window is closed', 409);
+      const settings = await getGameSettings(client);
+      await assertDuelCapacity(
+        client,
+        [req.user.id, opponentUserId],
+        template.duel_kind,
+        settings.amateur.limits,
+        now,
+      );
+      await assertOutgoingInviteCapacity(
+        client, req.user.id, template.duel_kind, settings.amateur.limits, now,
+      );
       await assertOrdinaryDuelStart(
         client,
         [req.user.id, opponentUserId],
-        makeRulesSnapshot(template, await getGameSettings(client)),
+        makeRulesSnapshot(template, settings),
         now,
       );
       const { match, rules } = await createOpenMatch(client, {
@@ -5074,6 +5083,14 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         if (now >= template.ends_at) throw new AppError('conflict', 'duel window is closed', 409);
         const settings = await getGameSettings(client);
         const rules = makeRulesSnapshot(template, settings, match.reward_rules);
+        await reserveDuelCapacity(
+          client,
+          match.id,
+          [match.challenger_user_id, match.opponent_user_id],
+          rules.duelKind,
+          settings.amateur.limits,
+          now,
+        );
         if (match.source !== 'tournament')
           await assertOrdinaryDuelStart(
             client,
@@ -5093,6 +5110,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
                 stake_amount = $7,
                 entry_fee_amount = $8,
                 game_core_version = $9,
+                season_key = $11,
                 updated_at = now()
           where id = $1
           returning *`,
@@ -5107,6 +5125,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             rules.entryFeeAmount,
             GAME_CORE_VERSION,
             rules.duelKind,
+            seasonKeyMoscow(now),
           ],
         );
         match = rows[0]!;
@@ -5117,10 +5136,6 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             where match_id = $1`,
           [match.id],
         );
-        await appendEvent(client, req.user.id, 'amateur_duel_challenge_accepted', {
-          match_id: match.id,
-          challenger_user_id: match.challenger_user_id,
-        });
         return {
           matchId: match.id,
           challengerUserId: match.challenger_user_id,
@@ -5214,26 +5229,56 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     async (req) => {
       const params = z.object({ matchId: uuid }).parse(req.params);
       const cancelled = await withTransaction(app, async (client) => {
+        await lockMatchGameplay(client, params.matchId);
         const now = new Date();
         let match = await fetchPlayableMatchForUpdate(client, params.matchId);
-        if (match.challenger_user_id !== req.user.id) {
-          throw new AppError('forbidden', 'only challenger can cancel duel', 403);
+        if (
+          match.challenger_user_id !== req.user.id &&
+          (match.status === 'invited' || match.opponent_user_id !== req.user.id)
+        ) {
+          throw new AppError('forbidden', 'duel cannot be cancelled by this player', 403);
         }
         await assertFullAmateurAccess(client, req.user.id);
         match = (await reconcileMatch(client, match, now)).match;
-        if (match.status !== 'invited') {
-          throw new AppError('conflict', 'only unanswered duel can be cancelled', 409);
+        if (match.status !== 'invited' && match.status !== 'ready_check' && match.status !== 'active') {
+          throw new AppError('conflict', 'duel has already started', 409);
         }
         const rules = parseRulesSnapshot(match.rules_snapshot);
+        if (match.status === 'active') {
+          const shots = await client.query<{ total: number }>(
+            'select count(*)::int as total from shot_session where amateur_duel_match_id = $1',
+            [match.id],
+          );
+          if (shots.rows[0]?.total !== 0) {
+            throw new AppError('conflict', 'duel has already started', 409);
+          }
+          await client.query(
+            'update amateur_duel_match set ends_at = $2 where id = $1',
+            [match.id, now],
+          );
+          match = (await settleMatchIfReady(client, await fetchMatchForUpdate(client, match.id), now)).match;
+          return {
+            matchId: match.id,
+            opponentUserId: match.opponent_user_id === req.user.id ? match.challenger_user_id : match.opponent_user_id,
+            title: rules.title,
+            match: await buildMatchStateDto(client, match, req.user.id, now),
+          };
+        }
         await client.query(
           `update amateur_duel_match
               set status = 'cancelled',
                   settled_reason = 'cancelled_by_challenger',
                   settled_at = $2,
                   updated_at = now()
-            where id = $1 and status = 'invited'`,
+            where id = $1 and status in ('invited', 'ready_check')`,
           [match.id, now],
         );
+        if (match.source !== 'tournament') {
+          await client.query(
+            'update amateur_duel_limit_reservation set released_at = $2 where match_id = $1 and released_at is null',
+            [match.id, now],
+          );
+        }
         match = await fetchMatchForUpdate(client, match.id);
         await appendEvent(client, req.user.id, 'amateur_duel_challenge_cancelled', {
           match_id: match.id,
@@ -5536,9 +5581,16 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         };
       }
       templates = safeTemplates;
-      const eligibleKinds = requestedKinds.filter((kind) =>
-        templates.some((template) => template.duel_kind === kind),
-      );
+      const eligibleKinds: DuelKind[] = [];
+      for (const kind of requestedKinds) {
+        if (!templates.some((template) => template.duel_kind === kind)) continue;
+        if (!(await duelCapacity(client, req.user.id, kind, settings.amateur.limits, now)).reason) {
+          eligibleKinds.push(kind);
+        }
+      }
+      if (eligibleKinds.length === 0) {
+        throw new AppError('conflict', 'duel limit reached', 409);
+      }
       await assertOpenDuelSlots(client, [req.user.id]);
       const templatesByKind = new Map(templates.map((template) => [template.duel_kind, template]));
       await client.query(
@@ -5608,6 +5660,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         }
         for (const kind of eligibleKinds) {
           if (!opponentKinds.includes(kind)) continue;
+          if ((await duelCapacity(client, ticket.user_id, kind, settings.amateur.limits, now)).reason)
+            continue;
           const template = templatesByKind.get(kind)!;
           const duration = duelAdmissionDurationMs(makeRulesSnapshot(template, settings));
           if (await duelLockDto(client, req.user.id, now, duration)) continue;
@@ -6064,6 +6118,19 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             now,
           ],
         );
+        if (match.source === 'challenge') {
+          const firstShot = await client.query<{ total: number }>(
+            `select count(*)::int as total from shot_session
+              where amateur_duel_match_id = $1`,
+            [match.id],
+          );
+          if (firstShot.rows[0]?.total === 1) {
+            await appendEvent(client, req.user.id, 'amateur_duel_challenge_accepted', {
+              match_id: match.id,
+              challenger_user_id: match.challenger_user_id,
+            });
+          }
+        }
 
         const updatedUser = await client.query<{
           lifetime_shots_total: number;
