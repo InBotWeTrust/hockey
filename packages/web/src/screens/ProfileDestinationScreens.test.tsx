@@ -101,7 +101,15 @@ beforeEach(() => {
 });
 
 describe('profile destination screens', () => {
-  it('renders the story placeholder and returns to profile', () => {
+  it('uses the standard page header for the story catalog', async () => {
+    renderDestination('/profile/story', <ProfileStoryScreen />);
+
+    const title = await screen.findByRole('heading', { name: 'Сюжет' });
+    expect(title).toHaveClass('page-header-standard__title');
+    expect(screen.getByRole('button', { name: 'Назад' })).toHaveClass('page-header-standard__back');
+  });
+
+  it('renders the story placeholder and returns to profile', async () => {
     renderDestination('/profile/story', <ProfileStoryScreen />);
 
     expect(screen.getByRole('heading', { name: 'Сюжет' })).toBeInTheDocument();

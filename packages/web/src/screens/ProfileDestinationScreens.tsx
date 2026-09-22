@@ -4,29 +4,32 @@ import { ArrowLeft, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/apiFetch.js';
 import { fetchHomeArenas, type HomeArenasResponse } from '../api/arenas.js';
-import {
-  fetchMyInventory,
-  type InventoryState,
-} from '../api/inventory.js';
+import { fetchMyInventory, type InventoryState } from '../api/inventory.js';
 import { HomeArenaModal } from '../components/HomeArenaModal.js';
 import { DuelLockerTab } from '../components/duel/DuelLockerTab.js';
 import { ProfileStatsGrid } from './profileSections.js';
 import type { ProfileData } from './profileTypes.js';
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 
-function ProfilePageHeader({ title }: { title: string }): JSX.Element {
+function ProfilePageHeader({
+  title,
+  standard = false,
+}: {
+  title: string;
+  standard?: boolean;
+}): JSX.Element {
   const navigate = useNavigate();
   return (
-    <header className="profile-page-header">
+    <header className={`profile-page-header${standard ? ' page-header-standard' : ''}`}>
       <button
         type="button"
-        className="icon-btn"
+        className={`icon-btn${standard ? ' page-header-standard__back' : ''}`}
         aria-label="Назад"
         onClick={() => navigate('/profile')}
       >
         <ArrowLeft size={18} />
       </button>
-      <h1>{title}</h1>
+      <h1 className={standard ? 'page-header-standard__title' : undefined}>{title}</h1>
     </header>
   );
 }
@@ -40,19 +43,26 @@ function ProfilePageStatus({ children }: { children: ReactNode }): JSX.Element {
 export function ProfileStoryScreen(): JSX.Element {
   return (
     <main className="screen profile-detail-screen profile-story-screen">
-      <ProfilePageHeader title="Сюжет" />
+      <ProfilePageHeader title="Сюжет" standard />
       <div className="profile-story-series-list">
         {Array.from({ length: 10 }, (_, index) => {
           const series = index + 1;
           return (
-            <section className="profile-story-series" key={series} aria-labelledby={`story-series-${series}`}>
+            <section
+              className="profile-story-series"
+              key={series}
+              aria-labelledby={`story-series-${series}`}
+            >
               <h2
                 className="section-label section-label--page profile-section-label"
                 id={`story-series-${series}`}
               >
                 Серия {series}
               </h2>
-              <article className="profile-story-series-card glass" aria-label={`Серия ${series}: закрыто`}>
+              <article
+                className="profile-story-series-card glass"
+                aria-label={`Серия ${series}: закрыто`}
+              >
                 <span className="profile-story-series-card__visual" aria-hidden="true">
                   <Lock data-testid="profile-story-series-lock" />
                 </span>
@@ -173,8 +183,8 @@ export function ProfileEquipmentScreen(): JSX.Element {
               </button>
             </div>
             <p className="modal-copy">
-              Здесь выбирается купленный инвентарь для дуэлей: одна клюшка, одна пара коньков и
-              одно питание. Если предметов нет, их можно купить в магазине.
+              Здесь выбирается купленный инвентарь для дуэлей: одна клюшка, одна пара коньков и одно
+              питание. Если предметов нет, их можно купить в магазине.
             </p>
           </section>
         </div>

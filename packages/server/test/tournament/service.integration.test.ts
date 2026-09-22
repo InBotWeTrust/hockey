@@ -1985,6 +1985,34 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       expect(secondPage.results).toHaveLength(1);
       expect(secondPage.results[0]!.id).not.toBe(firstPage.results[0]!.id);
       expect(secondPage.results[0]!.userId).not.toBe(PLAYER_IDS[0]);
+
+      await pool.query(
+        `update tournament_daily_result result
+            set shots = 0, goals = 0, accuracy = 0
+           from tournament_participant participant
+          where result.participant_id = participant.id
+            and result.tournament_id = $1
+            and participant.user_id = $2`,
+        [tournament.id, PLAYER_IDS[1]],
+      );
+      await pool.query(
+        `update tournament_participant
+            set state = 'withdrawn', withdrawn_at = now()
+          where tournament_id = $1 and user_id = $2`,
+        [tournament.id, PLAYER_IDS[2]],
+      );
+
+      const filteredResults = await app.inject({
+        method: 'GET',
+        url: `/tournaments/${tournament.id}/matchdays/1/results?limit=20`,
+        headers: authorization,
+      });
+      expect(filteredResults.statusCode).toBe(200);
+      expect(
+        filteredResults
+          .json<{ results: Array<{ userId: string }> }>()
+          .results.map((result) => result.userId),
+      ).toEqual([PLAYER_IDS[3]]);
     } finally {
       await app.close();
     }

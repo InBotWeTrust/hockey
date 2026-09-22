@@ -2,10 +2,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import * as api from '../api/weeklyChallenge.js';
 import type { WeeklyChallenge } from '../api/weeklyChallenge.js';
 import { createAppQueryClient } from '../app/queryClient.js';
 import { WeeklyChallengeScreen } from './WeeklyChallengeScreen.js';
+
+const designSystemCss = readFileSync('src/app/design-system.css', 'utf8');
 
 vi.mock('../api/weeklyChallenge.js', async (importOriginal) => ({
   ...(await importOriginal<typeof api>()),
@@ -36,6 +39,20 @@ describe('WeeklyChallengeScreen', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('uses the standard page header size', () => {
+    const header = designSystemCss.match(/\.page-header-standard\s*\{([^}]+)\}/)?.[1];
+    const back = designSystemCss.match(
+      /\.app-shell--arena \.page-header-standard__back\.icon-btn\s*\{([^}]+)\}/,
+    )?.[1];
+    const title = designSystemCss.match(
+      /\.page-header-standard \.page-header-standard__title\s*\{([^}]+)\}/,
+    )?.[1];
+    expect(header).toMatch(/gap:\s*10px/);
+    expect(back).toMatch(/width:\s*40px/);
+    expect(back).toMatch(/height:\s*40px/);
+    expect(title).toMatch(/font-size:\s*24px/);
   });
 
   function challenge(overrides: Partial<WeeklyChallenge> = {}): WeeklyChallenge {

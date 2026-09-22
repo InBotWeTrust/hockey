@@ -33,7 +33,7 @@ describe('TournamentStandingsTable', () => {
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows[0]).toHaveClass('tournament-standing-table__playoff-place');
     expect(rows[1]).toHaveClass('tournament-standing-table__playoff-place');
-    expect(rows[1]).toHaveClass('tournament-standing-table__medal-place--silver');
+    expect(rows[1]).not.toHaveClass('tournament-standing-table__medal-place--silver');
     expect(rows[2]).not.toHaveClass('tournament-standing-table__playoff-place');
     expect(
       within(rows[0]!)
@@ -51,6 +51,25 @@ describe('TournamentStandingsTable', () => {
     expect(lastRowCells[2]).toHaveTextContent('0');
     expect(lastRowCells[3]).toHaveTextContent('0');
     expect(document.querySelector('.tournament-standing-table-wrap')).not.toBeInTheDocument();
+  });
+
+  it('uses the current-user highlight instead of the playoff highlight for the viewer row', () => {
+    render(
+      <TournamentStandingsTable
+        regularSource="classic"
+        dailyMetric="goals_sum"
+        playoffSize={2}
+        currentUserId="user-2"
+        rows={[
+          { user_id: 'user-1', rank: 1, display_name: 'Первый', played: 2, points: 20 },
+          { user_id: 'user-2', rank: 2, display_name: 'Вы', played: 2, points: 18 },
+        ]}
+      />,
+    );
+
+    const viewerRow = screen.getAllByRole('row')[2];
+    expect(viewerRow).toHaveClass('tournament-standing-table__current-user');
+    expect(viewerRow).not.toHaveClass('tournament-standing-table__playoff-place');
   });
 
   it('renders Classic average accuracy as a percentage', () => {
