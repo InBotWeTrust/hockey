@@ -136,9 +136,9 @@ function marksmanshipResultPresentation(input: {
   if (input.awardedPoints <= 0 || input.difficultyCode === null) return null;
   const technique =
     details?.version === 2 && details.series.type === 'triple'
-      ? 'Тройка · 3 гола за один прокат'
+      ? 'Три за прокат'
       : details?.version === 2 && details.series.type === 'double'
-        ? 'Двойка · 2 гола за один прокат'
+        ? 'Два за секунду'
         : details?.version === 2 && details.geometry.behindGoalie
           ? `За вратаря${details.counterDirection ? ' · противоход' : ''}`
           : input.counterDirection

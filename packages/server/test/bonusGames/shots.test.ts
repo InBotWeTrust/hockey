@@ -592,7 +592,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     });
   });
 
-  it('scores a double and triple only inside one uninterrupted shooter pass', async () => {
+  it('scores rapid pairs and three goals in one uninterrupted shooter pass', async () => {
     const userId = await createUser();
     const game = await createMarksmanshipGame(5_000);
     const attemptId = await createActiveAttempt(userId, game.id);
