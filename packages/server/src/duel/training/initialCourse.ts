@@ -305,11 +305,12 @@ export function isInitialTrainingExerciseKey(
 
 export async function loadInitialTrainingConfig(
   db: Queryable,
+  options: { lockRow?: boolean } = {},
 ): Promise<InitialTrainingConfig> {
   const { rows } = await db.query<{ value: unknown }>(
     `select value
        from game_settings
-      where key = 'training.initial_course.config'`,
+      where key = 'training.initial_course.config'${options.lockRow ? ' for share' : ''}`,
   );
   return parseInitialTrainingConfig(rows[0]?.value);
 }

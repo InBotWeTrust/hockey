@@ -273,7 +273,7 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
           action: 'start_training',
           now,
         });
-        const config = await loadInitialTrainingConfig(client);
+        const config = await loadInitialTrainingConfig(client, { lockRow: true });
         if (!config.enabled) {
           throw new AppError(
             'initial_training_disabled',

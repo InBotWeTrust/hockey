@@ -4,6 +4,7 @@ import {
   buildInitialTrainingCatalog,
   exerciseSceneForProgress,
   evaluateInitialTrainingGoal,
+  loadInitialTrainingConfig,
   requiredInitialTrainingZone,
   isInitialTrainingCompleted,
   parseInitialTrainingConfig,
@@ -11,6 +12,21 @@ import {
 } from '../../src/duel/training/initialCourse.js';
 
 describe('initial training course configuration', () => {
+  it('can hold the course config row through a new exercise run transaction', async () => {
+    const queries: string[] = [];
+    const db = {
+      query: async (sql: string) => {
+        queries.push(sql);
+        return { rows: [{ value: DEFAULT_INITIAL_TRAINING_CONFIG }] };
+      },
+    };
+
+    expect(await loadInitialTrainingConfig(db as never, { lockRow: true })).toEqual(
+      DEFAULT_INITIAL_TRAINING_CONFIG,
+    );
+    expect(queries[0]).toMatch(/for share/i);
+  });
+
   it('maps the durable completion count to one authoritative boolean', async () => {
     const db = {
       query: async () => ({ rows: [{ completed: true }] }),
