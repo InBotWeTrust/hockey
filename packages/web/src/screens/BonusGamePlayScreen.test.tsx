@@ -436,9 +436,7 @@ describe('BonusGamePlayScreen', () => {
     expect(goalTimer).toHaveClass('game-scoreboard', 'game-scoreboard--stable-surface');
     expect(screen.getByText('ТАЙМЕР')).toHaveClass('game-scoreboard__label');
     expect(screen.getByText('7,0')).toHaveClass('bonus-game-endurance-timer__value');
-    expect(goalTimer).toHaveClass(
-      'bonus-game-endurance-timer--warning',
-    );
+    expect(goalTimer).toHaveClass('bonus-game-endurance-timer--warning');
     expect(props.waitForShotResponseBeforeResultClose).toBeUndefined();
     expect(props.inlineResultNotice).toBeUndefined();
     expect(document.querySelector('.bonus-game-endurance-hud')).toBeNull();
@@ -462,6 +460,30 @@ describe('BonusGamePlayScreen', () => {
         saveSpriteUrl: '/sprites/test-goalie-black-save.webp',
         idleSizeScale: 1.22,
         saveSizeScale: 0.96,
+      },
+      preloadAssets: [
+        '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
+        '/sprites/test-goalie-black.webp',
+        '/sprites/test-goalie-black-save.webp',
+      ],
+    });
+  });
+
+  it('uses the blue amateur goalkeeper for an existing marksmanship attempt', () => {
+    setStore({
+      attempt: marksmanshipAttempt({
+        goalkeeper_ready_url: '/sprites/training-goalie-amateur.webp',
+        goalkeeper_save_url: '/sprites/training-goalie-amateur-save.webp',
+      }),
+    });
+
+    renderScreen();
+
+    const props = playViewProbe.mock.lastCall?.[0] as Record<string, unknown>;
+    expect(props).toMatchObject({
+      goalieOptions: {
+        idleSpriteUrl: '/sprites/test-goalie-black.webp',
+        saveSpriteUrl: '/sprites/test-goalie-black-save.webp',
       },
       preloadAssets: [
         '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
@@ -899,7 +921,13 @@ describe('BonusGamePlayScreen', () => {
 
     expect(localPresentation).toEqual({
       title: 'ГОЛ',
-      details: ['+220', 'За вратаря · противоход', '155 за точность · +65 ситуация'],
+      points: 220,
+      breakdown: [
+        { points: 155, label: 'Очень узкое окно' },
+        { points: 20, label: 'Противоход' },
+        { points: 15, label: 'Рядом с вратарём' },
+        { points: 30, label: 'За вратаря' },
+      ],
     });
 
     const authoritativePresentation = await props.submitShot({
@@ -923,64 +951,74 @@ describe('BonusGamePlayScreen', () => {
     expect(authoritativePresentation).toMatchObject({
       resultPresentation: {
         title: 'ГОЛ',
-        details: [
-          '+258',
-          'Два за секунду',
-          '140 за точность · +98 серия · +20 ситуация',
+        points: 258,
+        breakdown: [
+          { points: 140, label: 'Узкое окно' },
+          { points: 98, label: 'Два за секунду' },
+          { points: 20, label: 'Противоход' },
         ],
       },
     });
   });
 
-  it('explains a human timing error without awarding points', async () => {
-    const submitShot = vi.fn(async () => ({
-      serverResult: 'miss' as const,
-      awardedPoints: 0,
-      totalPoints: 2_450,
-      difficultyCode: null,
-      counterDirection: false,
-      scoreDetails: {
-        version: 2 as const,
-        windowDurationMs: null,
+  it.each([
+    { result: 'miss', opportunity: 'human_error', timingErrorMs: -90, hint: 'Брось раньше' },
+    { result: 'save', opportunity: 'human_error', timingErrorMs: 120, hint: 'Брось позже' },
+    { result: 'miss', opportunity: 'closed', timingErrorMs: null, hint: 'Жди другого момента' },
+    { result: 'save', opportunity: 'closed', timingErrorMs: null, hint: 'Вратарь на месте' },
+  ] as const)(
+    'gives actionable $result feedback for $opportunity at $timingErrorMs',
+    async ({ result, opportunity, timingErrorMs, hint }) => {
+      const submitShot = vi.fn(async () => ({
+        serverResult: result,
+        awardedPoints: 0,
+        totalPoints: 2_450,
         difficultyCode: null,
         counterDirection: false,
-        opportunity: 'human_error' as const,
-        timingErrorMs: -90,
-        geometry: {
-          boardSide: false,
-          closeToGoalie: false,
+        scoreDetails: {
+          version: 2 as const,
+          windowDurationMs: null,
+          difficultyCode: null,
           counterDirection: false,
-          behindGoalie: false,
+          opportunity,
+          timingErrorMs,
+          geometry: {
+            boardSide: false,
+            closeToGoalie: false,
+            counterDirection: false,
+            behindGoalie: false,
+          },
+          series: { type: 'single' as const, index: 1 as const, multiplier: 1, passId: 4 },
+          situationBonus: 0,
+          seriesBonus: 0,
         },
-        series: { type: 'single' as const, index: 1 as const, multiplier: 1, passId: 4 },
-        situationBonus: 0,
-        seriesBonus: 0,
-      },
-      predictedMarksmanship: null,
-      attempt: marksmanshipAttempt(),
-      rewardGranted: false,
-    }));
-    setStore({ attempt: marksmanshipAttempt(), submitShot });
-    renderScreen();
+        predictedMarksmanship: null,
+        attempt: marksmanshipAttempt(),
+        rewardGranted: false,
+      }));
+      setStore({ attempt: marksmanshipAttempt(), submitShot });
+      renderScreen();
 
-    const props = playViewProbe.mock.calls.at(-1)?.[0] as {
-      submitShot: (args: {
-        shotIndex: number;
-        input: ShotInput;
-        claimedResult: 'miss';
-      }) => Promise<{ resultPresentation: { title: string; details: string[] } }>;
-    };
-    const resolved = await props.submitShot({
-      shotIndex: 2,
-      input: { tapTime: 590, shooterTapTime: 590 },
-      claimedResult: 'miss',
-    });
+      const props = playViewProbe.mock.calls.at(-1)?.[0] as {
+        submitShot: (args: {
+          shotIndex: number;
+          input: ShotInput;
+          claimedResult: 'miss' | 'save';
+        }) => Promise<{ resultPresentation: { title: string; details: string[] } }>;
+      };
+      const resolved = await props.submitShot({
+        shotIndex: 2,
+        input: { tapTime: 590, shooterTapTime: 590 },
+        claimedResult: result,
+      });
 
-    expect(resolved.resultPresentation).toEqual({
-      title: 'МИМО',
-      details: ['Момент был', 'Бросок на 90 мс позже'],
-    });
-  });
+      expect(resolved.resultPresentation).toEqual({
+        title: result === 'save' ? 'СЭЙВ' : 'МИМО',
+        divider: true,
+        details: [hint],
+      });
+    },
+  );
 
   it.each(['save', 'miss'] as const)('does not show zero points for a %s', async (result) => {
     const submitShot = vi.fn(async () => ({

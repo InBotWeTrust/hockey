@@ -7,6 +7,9 @@ export interface ResultModalProps {
   displayKind?: ResultModalKind | undefined;
   title?: string | undefined;
   details?: readonly string[] | undefined;
+  points?: number | undefined;
+  breakdown?: readonly { points: number; label: string }[] | undefined;
+  divider?: boolean | undefined;
 }
 
 export type ResultModalKind = ShotResult['type'] | 'post';
@@ -50,6 +53,9 @@ export function ResultModal({
   displayKind,
   title,
   details,
+  points,
+  breakdown,
+  divider,
 }: ResultModalProps): JSX.Element {
   const theme = THEMES[displayKind ?? result.type];
 
@@ -84,6 +90,11 @@ export function ResultModal({
           textAlign: 'center',
           pointerEvents: 'none',
           maxWidth: 'min(420px, calc(100vw - 40px))',
+          ...(breakdown?.length
+            ? { width: 'min(420px, calc(100vw - 40px))' }
+            : divider
+              ? { width: 'min(340px, calc(100vw - 40px))' }
+              : {}),
           boxShadow: [
             `0 0 0 2px ${theme.glowSoft}`,
             `0 0 34px ${theme.glow}`,
@@ -94,21 +105,41 @@ export function ResultModal({
           animation: `result-card ${durationMs}ms cubic-bezier(0.22, 0.68, 0, 1.4) forwards`,
         }}
       >
-        <div
-          style={{
-            fontFamily: 'var(--font-sans)',
-            fontWeight: 900,
-            fontSize: theme.titleSize ?? 'clamp(38px, 6vmin, 58px)',
-            lineHeight: 1,
-            letterSpacing: theme.letterSpacing ?? '0.06em',
-            color: '#111827',
-            textShadow: '0 1px 0 rgba(255, 255, 255, 0.42)',
-          }}
-        >
-          {title ?? theme.title}
+        <div className={points === undefined ? undefined : 'result-modal__headline'}>
+          <div
+            style={{
+              fontFamily: 'var(--font-sans)',
+              fontWeight: 900,
+              fontSize: theme.titleSize ?? 'clamp(38px, 6vmin, 58px)',
+              lineHeight: 1,
+              letterSpacing: theme.letterSpacing ?? '0.06em',
+              color: '#111827',
+              textShadow: '0 1px 0 rgba(255, 255, 255, 0.42)',
+            }}
+          >
+            {title ?? theme.title}
+          </div>
+          {points === undefined ? null : <strong className="result-modal__total">+{points}</strong>}
         </div>
+        {breakdown?.length ? (
+          <div
+            className="result-modal__breakdown"
+            style={{
+              gridTemplateColumns: `repeat(${Math.min(3, breakdown.length)}, minmax(0, 1fr))`,
+            }}
+          >
+            {breakdown.map((part) => (
+              <div className="result-modal__breakdown-item" key={part.label}>
+                <strong>+{part.points}</strong>
+                <span>{part.label}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
         {details && details.length > 0 ? (
-          <div className="result-modal__details">
+          <div
+            className={`result-modal__details${divider ? ' result-modal__details--divider' : ''}`}
+          >
             {details.map((detail) => (
               <div key={detail} className="result-modal__detail">
                 {detail}

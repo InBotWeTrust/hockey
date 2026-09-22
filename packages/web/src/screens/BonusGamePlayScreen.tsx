@@ -9,6 +9,7 @@ import {
   STICK_NEUTRAL,
   type GoalieConfig,
   type MarksmanshipDifficultyCode,
+  type MarksmanshipScoringRules,
   type MarksmanshipShotClassification,
   type MarksmanshipSeriesGoal,
 } from '@hockey/game-core';
@@ -64,13 +65,14 @@ const BONUS_PENDING_SHOT_FALLBACK_PADDING_MS = 1_250;
 const BONUS_PENDING_SHOT_FALLBACK_MIN_DELAY_MS = 250;
 
 function bonusGoalieOptions(attempt: BonusGameAttempt): GoalieOptions {
-  const usesEnduranceAmateurGoalkeeper = attempt.rules.skill_code === 'endurance';
+  const usesAmateurGoalkeeper =
+    attempt.rules.skill_code === 'endurance' || attempt.rules.skill_code === 'marksmanship';
   return {
     ...BONUS_GAME_GOALIE_OPTIONS,
-    idleSpriteUrl: usesEnduranceAmateurGoalkeeper
+    idleSpriteUrl: usesAmateurGoalkeeper
       ? AMATEUR_GOALKEEPER_READY_URL
       : versionBonusGameGoalkeeper(attempt.goalkeeper_ready_url),
-    saveSpriteUrl: usesEnduranceAmateurGoalkeeper
+    saveSpriteUrl: usesAmateurGoalkeeper
       ? AMATEUR_GOALKEEPER_SAVE_URL
       : versionBonusGameGoalkeeper(attempt.goalkeeper_save_url),
   };
@@ -100,9 +102,9 @@ function marksmanshipDifficultyLabel(code: MarksmanshipDifficultyCode): string {
     case 'precise':
       return 'Точное окно';
     case 'narrow':
-      return 'Сложное окно';
-    case 'very_narrow':
       return 'Узкое окно';
+    case 'very_narrow':
+      return 'Очень узкое окно';
     case 'instant':
       return 'Мгновенное окно';
   }
@@ -114,51 +116,61 @@ function marksmanshipResultPresentation(input: {
   difficultyCode: MarksmanshipDifficultyCode | null;
   counterDirection: boolean;
   scoreDetails?: MarksmanshipScoreDetails | null;
+  scoring: MarksmanshipScoringRules;
 }): PlayResultPresentation | null {
   const details = input.scoreDetails;
   if (input.serverResult !== 'goal') {
     if (details?.version !== 2) return null;
     if (details.opportunity === 'human_error' && details.timingErrorMs !== null) {
-      const direction = details.timingErrorMs > 0 ? 'раньше' : 'позже';
       return {
         title: input.serverResult === 'save' ? 'СЭЙВ' : 'МИМО',
-        details: ['Момент был', `Бросок на ${Math.abs(details.timingErrorMs)} мс ${direction}`],
+        divider: true,
+        details: [details.timingErrorMs > 0 ? 'Брось позже' : 'Брось раньше'],
       };
     }
     if (details.opportunity === 'closed') {
       return {
         title: input.serverResult === 'save' ? 'СЭЙВ' : 'МИМО',
-        details: ['Закрытая ситуация', 'Голевого окна не было'],
+        divider: true,
+        details: [input.serverResult === 'save' ? 'Вратарь на месте' : 'Жди другого момента'],
       };
     }
     return null;
   }
   if (input.awardedPoints <= 0 || input.difficultyCode === null) return null;
-  const technique =
-    details?.version === 2 && details.series.type === 'triple'
-      ? 'Три за прокат'
-      : details?.version === 2 && details.series.type === 'double'
-        ? 'Два за секунду'
-        : details?.version === 2 && details.geometry.behindGoalie
-          ? `За вратаря${details.counterDirection ? ' · противоход' : ''}`
-          : input.counterDirection
-            ? 'Точный момент · противоход'
-            : marksmanshipDifficultyLabel(input.difficultyCode);
-  const breakdown =
-    details?.version === 2
-      ? [
-          `${input.awardedPoints - details.seriesBonus - details.situationBonus} за точность`,
-          ...(details.seriesBonus > 0 ? [`+${details.seriesBonus} серия`] : []),
-          ...(details.situationBonus > 0 ? [`+${details.situationBonus} ситуация`] : []),
-        ].join(' · ')
-      : null;
+  if (details?.version === 2) {
+    const geometry = details.geometry;
+    const breakdown = [
+      {
+        points: input.awardedPoints - details.seriesBonus - details.situationBonus,
+        label: marksmanshipDifficultyLabel(details.difficultyCode ?? input.difficultyCode),
+      },
+      ...(details.series.type === 'double'
+        ? [{ points: details.seriesBonus, label: 'Два за секунду' }]
+        : details.series.type === 'triple'
+          ? [{ points: details.seriesBonus, label: 'Три за прокат' }]
+          : []),
+      ...(geometry.counterDirection
+        ? [{ points: input.scoring.counterDirectionBonus, label: 'Противоход' }]
+        : []),
+      ...(geometry.closeToGoalie
+        ? [{ points: input.scoring.closeGoalieBonus, label: 'Рядом с вратарём' }]
+        : []),
+      ...(geometry.behindGoalie
+        ? [{ points: input.scoring.behindGoalieBonus, label: 'За вратаря' }]
+        : []),
+      ...(geometry.boardSide && details.windowDurationMs !== null && details.windowDurationMs < 160
+        ? [{ points: input.scoring.boardNarrowBonus, label: 'У борта · узкое окно' }]
+        : []),
+    ].filter((part) => part.points > 0);
+    return { title: 'ГОЛ', points: input.awardedPoints, breakdown };
+  }
+  const technique = input.counterDirection
+    ? 'Точный момент · противоход'
+    : marksmanshipDifficultyLabel(input.difficultyCode);
   return {
     title: 'ГОЛ',
-    details: [
-      `+${input.awardedPoints}`,
-      technique,
-      ...(breakdown === null ? [] : [breakdown]),
-    ],
+    details: [`+${input.awardedPoints}`, technique],
   };
 }
 
@@ -1190,6 +1202,7 @@ export function BonusGamePlayScreen(): JSX.Element {
                       difficultyCode: result.difficultyCode,
                       counterDirection: result.counterDirection,
                       scoreDetails: result.scoreDetails,
+                      scoring: marksmanshipRules!.scoring,
                     })
                   : undefined,
                 ...(result.isCurrent === undefined ? {} : { isCurrent: result.isCurrent }),
@@ -1231,6 +1244,7 @@ export function BonusGamePlayScreen(): JSX.Element {
                   awardedPoints: classification.awardedPoints,
                   difficultyCode: classification.difficultyCode,
                   counterDirection: classification.counterDirection,
+                  scoring: marksmanshipRules!.scoring,
                   scoreDetails: {
                     version: 2,
                     windowDurationMs: classification.windowDurationMs,

@@ -94,6 +94,9 @@ export type PlayShotResolver = (context: PlayShotContext) => ShotResult;
 export interface PlayResultPresentation {
   title?: string;
   details?: readonly string[];
+  points?: number;
+  breakdown?: readonly { points: number; label: string }[];
+  divider?: boolean;
 }
 
 type RouteCameraPhase = 'settled' | 'zoomed' | 'exiting';
@@ -2280,6 +2283,9 @@ export function PlayView<TState>({
           displayKind={resultDisplayKind ?? undefined}
           title={resultPresentation?.title ?? resultCopy?.[resultDisplayKind ?? lastResult.type]}
           details={resultPresentation?.details}
+          points={resultPresentation?.points}
+          breakdown={resultPresentation?.breakdown}
+          divider={resultPresentation?.divider}
         />
       )}
     </main>
