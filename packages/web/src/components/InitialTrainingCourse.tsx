@@ -12,9 +12,9 @@ const exerciseSkill: Record<InitialTrainingExerciseKey, string> = {
   'first-shot': 'Точность',
   'three-positions': 'Позиция',
   'follow-the-goal': 'Фокус',
-  'moving-goal': 'Тайминг',
-  'find-the-gap': 'Угол',
-  'pressure-window': 'Реакция',
+  'moving-goal': 'Позиция',
+  'find-the-gap': 'Вратарь',
+  'pressure-window': 'Чередование',
   'game-pace': 'Игра',
 };
 
@@ -54,11 +54,20 @@ export const INITIAL_TRAINING_HUB_LOADING_CATALOG: InitialTrainingCatalogRespons
   },
 };
 
-export function initialTrainingFeedbackCopy(code: InitialTrainingFeedbackCode): string {
-  if (code === 'miss_left') return 'Возьми чуть правее — бросок прошёл левее ворот.';
-  if (code === 'miss_right') return 'Возьми чуть левее — бросок прошёл правее ворот.';
-  if (code === 'goalie_blocked') return 'Этот угол перекрыл вратарь. Дождись свободной стороны.';
-  return 'Точный тайминг — продолжай в том же ритме!';
+export function initialTrainingFeedbackCopy(
+  code: InitialTrainingFeedbackCode,
+  requiredZone?: 'right' | 'left' | 'center' | null,
+): string {
+  if (code === 'goal_wrong_zone' || code === 'shot_wrong_zone') {
+    const side = requiredZone === 'left' ? 'слева' : requiredZone === 'center' ? 'по центру' : 'справа';
+    return code === 'goal_wrong_zone'
+      ? `Гол не засчитан: сейчас нужно бросать ${side}.`
+      : `Бросок не в нужной зоне – бросай ${side}.`;
+  }
+  if (code === 'miss_left') return 'Возьми чуть правее';
+  if (code === 'miss_right') return 'Возьми чуть левее';
+  if (code === 'goalie_blocked') return 'Этот угол перекрыл вратарь.\nДождись свободной стороны.';
+  return 'Точный тайминг – продолжай в том же ритме!';
 }
 
 export function InitialTrainingHub({

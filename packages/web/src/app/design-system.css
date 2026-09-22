@@ -3934,6 +3934,30 @@
   background: #fb7185;
 }
 
+.initial-training-feedback-notice--scoreboard {
+  top: 13%;
+  bottom: auto;
+  width: max-content;
+  max-width: min(86%, 404px);
+  box-sizing: border-box;
+  border-radius: clamp(14px, 4vw, 22px);
+  justify-content: center;
+  text-wrap: pretty;
+  white-space: pre-line;
+  animation: initial-training-feedback-notice-drop 180ms ease-out both;
+}
+
+@keyframes initial-training-feedback-notice-drop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
 .duel-heavy-fatigue-notice::before {
   background: #f97316;
 }
