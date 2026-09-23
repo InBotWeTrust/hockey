@@ -152,6 +152,30 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     expect((await pool.query('select xp from users where id = $1', [users[0]])).rows[0]).toEqual({ xp: 330 });
   });
 
+  it('places and rewards players after only one completed ordinary duel', async () => {
+    const users = [randomUUID(), randomUUID()];
+    await pool.query(
+      `insert into users (id, display_name, timezone)
+       values ($1, 'Winner', 'UTC'), ($2, 'Runner-up', 'UTC')`,
+      users,
+    );
+    await seedRatedMatch(pool, '2026-08', users[0]!, users[1]!, 3, 0);
+
+    await reconcileCompletedMonthlyRating(pool, september);
+
+    expect((await placements()).map((row) => ({ user_id: row.user_id, place: row.place, stars: row.stars })))
+      .toEqual([
+        { user_id: users[0], place: 1, stars: 300 },
+        { user_id: users[1], place: 2, stars: 200 },
+      ]);
+    expect((await pool.query(
+      `select scope, user_id, place, stars from monthly_duel_format_placement order by place`,
+    )).rows).toEqual([
+      { scope: 'classic', user_id: users[0], place: 1, stars: 30 },
+      { scope: 'classic', user_id: users[1], place: 2, stars: 0 },
+    ]);
+  });
+
   it('keeps disabled format standings without paying or congratulating the winner', async () => {
     const users = await seedSeason('2026-08', 2);
     await pool.query(
@@ -229,14 +253,19 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     expect(rows.map((row) => row.user_id)).toEqual([
       users[1],
       users[2],
+      users[3],
+      users[4],
+      users[5],
+      users[6],
+      users[7],
       users[0],
       users[8],
       users[9],
     ]);
     expect(rows.slice(0, 3).map((row) => row.coins)).toEqual([15000, 10000, 7500]);
-    expect(rows[2]).toMatchObject({ user_id: users[0], place: 3, coins: 7500 });
-    await expect(completedMonthlyAchievementIds(pool, users[0]!)).resolves.toEqual(['monthly-top-3']);
-    await expect(completedMonthlyAchievementIds(pool, users[3]!)).resolves.toEqual([]);
+    expect(rows[2]).toMatchObject({ user_id: users[3], place: 3, coins: 7500 });
+    await expect(completedMonthlyAchievementIds(pool, users[0]!)).resolves.toEqual([]);
+    await expect(completedMonthlyAchievementIds(pool, users[3]!)).resolves.toEqual(['monthly-top-3']);
   });
 
   it.each([
@@ -336,11 +365,6 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
       [headToHeadWinner],
     );
 
-    await pool.query(
-      `insert into game_settings (key, value, label, description)
-       values ('amateur.monthly_rating.overall.minimum_matches', '1'::jsonb, 'threshold', 'test')
-       on conflict (key) do update set value = excluded.value`,
-    );
     await reconcileCompletedMonthlyRating(pool, september);
 
     expect((await placements()).slice(0, 2).map((row) => row.user_id)).toEqual([

@@ -10,7 +10,7 @@ beforeEach(() => {
   vi.mocked(fetchAmateurRating).mockReset();
   vi.mocked(fetchAmateurRating).mockResolvedValue({
     season_key: '2026-09', scope: 'overall', rating_visible: true,
-    available_seasons: ['2026-09'], prize_threshold: 30,
+    available_seasons: ['2026-09'],
     rating: [], me_rank: null,
   } as never);
 });
@@ -34,12 +34,12 @@ it('switches between four duel rating scopes while retaining the selected month'
   }
 });
 
-it('opens rules for the selected scope and shows configured reward and threshold', async () => {
+it('opens rules with rewards but no match threshold', async () => {
   vi.mocked(fetchAmateurRating).mockResolvedValue({
     season_key: '2026-09', scope: 'overall', rating_visible: true,
-    available_seasons: ['2026-09'], prize_threshold: 30, rating: [], me_rank: null,
+    available_seasons: ['2026-09'], rating: [], me_rank: null,
     reward_rules: {
-      enabled: true, minimumMatches: 30,
+      enabled: true,
       first: { coins: 15000, stars: 300, experience: 0, tokens: 10 },
     },
   });
@@ -51,9 +51,28 @@ it('opens rules for the selected scope and shows configured reward and threshold
   fireEvent.click(await screen.findByRole('button', { name: 'Правила рейтинга дуэлей' }));
   const dialog = screen.getByRole('dialog', { name: 'Рейтинг: Общий' });
   expect(dialog).toHaveClass('duel-rating-info-modal');
-  expect(dialog).toHaveTextContent('30 дуэлей');
+  expect(dialog).not.toHaveTextContent('30 дуэлей');
   expect(dialog).toHaveTextContent('300 звёзд');
   expect(screen.queryByRole('button', { name: 'Закрыть правила' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+});
+
+it('shows a player with one completed match directly in the standings', async () => {
+  vi.mocked(fetchAmateurRating).mockResolvedValue({
+    season_key: '2026-09', scope: 'overall', rating_visible: true,
+    available_seasons: ['2026-09'], rating: [{
+      user_id: 'player-1', display_name: 'Новичок рейтинга', avatar_url: null,
+      points: 3, wins: 1, draws: 0, losses: 0, goals_for: 2, goals_against: 1,
+      matches_played: 1, active_duration_seconds: 180, eligible: false,
+      matches_to_qualify: 29, place: 1,
+    }], me_rank: 1,
+  } as never);
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <AmateurDuelRatingTab currentUserId={null} initialSeasonKey="2026-09" onOpenProfile={() => undefined} />
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByRole('table')).toHaveTextContent('Новичок рейтинга');
+  expect(screen.queryByText('Пока вне зачёта')).not.toBeInTheDocument();
 });

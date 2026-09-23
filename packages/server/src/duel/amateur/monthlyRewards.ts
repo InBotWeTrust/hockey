@@ -116,10 +116,9 @@ async function settleSeason(client: PoolClient, seasonKey: string, now: Date): P
             ranked.active_duration_seconds
        from ranked
        join users u on u.id = ranked.user_id
-        and ranked.matches_played >= $2
       order by ranked.points desc, ranked.head_to_head_points desc,
                ranked.matches_played desc, ranked.wins desc, u.display_name asc, ranked.user_id asc`,
-      [seasonKey, settings.overall.minimumMatches],
+      [seasonKey],
   );
   const eligibleCount = rows.length;
   const rewardedCount = Math.min(eligibleCount, 50, Math.max(3, Math.floor(eligibleCount * 0.2)));
@@ -151,10 +150,9 @@ async function settleSeason(client: PoolClient, seasonKey: string, now: Date): P
        select ranked.user_id, ranked.points, ranked.wins, ranked.draws, ranked.losses,
               ranked.goals_for, ranked.goals_against, ranked.matches_played, ranked.active_duration_seconds
          from ranked join users u on u.id = ranked.user_id
-        where ranked.matches_played >= $3
         order by ranked.points desc, ranked.head_to_head_points desc,
                  ranked.matches_played desc, ranked.wins desc, u.display_name asc, ranked.user_id asc`,
-      [seasonKey, scope, settings[scope].minimumMatches],
+      [seasonKey, scope],
     );
     formatRows.set(scope, result.rows);
   }
