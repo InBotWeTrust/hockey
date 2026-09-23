@@ -82,7 +82,10 @@ export {
 } from './marksmanship.js';
 export {
   buildMarksmanshipReplaySnapshot,
+  projectManualMarksmanship,
   type ConstructorHitbox,
+  type ManualMarksmanshipInput,
+  type ManualProjection,
   type MarksmanshipReplaySnapshot,
 } from './marksmanshipConstructor.js';
 export {
