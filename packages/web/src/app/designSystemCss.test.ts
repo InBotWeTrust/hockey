@@ -19,6 +19,16 @@ describe('design system toast positioning', () => {
   });
 });
 
+describe('initial training scoreboard hint', () => {
+  it('centers a content-width notice without exceeding the scoreboard or leaving an orphan word', () => {
+    const notice = rule('.initial-training-feedback-notice--scoreboard');
+    expect(notice).toContain('width: max-content');
+    expect(notice).toContain('max-width: min(86%, 404px)');
+    expect(notice).toContain('text-wrap: pretty');
+    expect(notice).toContain('white-space: pre-line');
+  });
+});
+
 describe('bonus game first-clear reward heading', () => {
   it('uses the primary dark ink color to separate it from descriptive copy', () => {
     expect(css).toMatch(/\.bonus-game-card__reward-title\s*\{\s*color: var\(--ink\);\s*\}/);
@@ -26,6 +36,16 @@ describe('bonus game first-clear reward heading', () => {
 });
 
 describe('bonus game progress and endurance timer surfaces', () => {
+  it('caps the marksmanship breakdown at scoreboard width without horizontal scrolling', () => {
+    const notice = rule('.game-scoreboard.bonus-game-marksmanship-score');
+    const part = rule('.bonus-game-marksmanship-score__part');
+    expect(notice).toContain('max-width: 100%');
+    expect(notice).toContain('overflow: hidden');
+    expect(notice).not.toContain('overflow-x: auto');
+    expect(part).not.toContain('min-width: max-content');
+    expect(css).toContain('.bonus-game-marksmanship-score__inner {');
+  });
+
   it('uses the featured bonus card surface for the progress container', () => {
     const progress = rule('.bonus-games-attempt-progress');
 

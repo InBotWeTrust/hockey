@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Pool, PoolClient } from 'pg';
+import { SHOOTER_AMPLITUDE, SHOOTER_CENTER_X, type ShotResult } from '@hockey/game-core';
 
 type Queryable = Pool | PoolClient;
 
@@ -21,6 +22,39 @@ export function resolveInitialTrainingGoalieId(_openTrainingGoalieId: string): '
 
 export type InitialTrainingExerciseKey = (typeof INITIAL_TRAINING_EXERCISE_KEYS)[number];
 export type InitialTrainingExerciseState = 'completed' | 'available' | 'locked';
+export type InitialTrainingZone = 'right' | 'left' | 'center';
+
+export function requiredInitialTrainingZone(
+  key: InitialTrainingExerciseKey,
+  creditedGoals: number,
+  targetGoals: number,
+): InitialTrainingZone | null {
+  if (creditedGoals >= targetGoals) return null;
+  if (key === 'moving-goal' || key === 'find-the-gap') {
+    const goalsPerZone = targetGoals / 3;
+    return (['right', 'left', 'center'] as const)[Math.floor(creditedGoals / goalsPerZone)] ?? null;
+  }
+  if (key === 'pressure-window' || key === 'game-pace') {
+    return creditedGoals % 2 === 0 ? 'right' : 'left';
+  }
+  return null;
+}
+
+export function evaluateInitialTrainingGoal(
+  key: InitialTrainingExerciseKey,
+  creditedGoals: number,
+  targetGoals: number,
+  result: ShotResult['type'],
+  shooterX: number,
+): { credited: boolean; wrongZone: boolean } {
+  const requiredZone = requiredInitialTrainingZone(key, creditedGoals, targetGoals);
+  if (requiredZone === null) return { credited: result === 'goal', wrongZone: false };
+  const leftBoundary = SHOOTER_CENTER_X - SHOOTER_AMPLITUDE / 3;
+  const rightBoundary = SHOOTER_CENTER_X + SHOOTER_AMPLITUDE / 3;
+  const shotZone = shooterX < leftBoundary ? 'left' : shooterX >= rightBoundary ? 'right' : 'center';
+  const wrongZone = shotZone !== requiredZone;
+  return { credited: result === 'goal' && !wrongZone, wrongZone };
+}
 
 const initialTrainingConfigSchema = z
   .object({
@@ -30,10 +64,10 @@ const initialTrainingConfigSchema = z
         'first-shot': z.number().int().min(1).max(100),
         'three-positions': z.number().int().min(3).max(100),
         'follow-the-goal': z.number().int().min(1).max(100),
-        'moving-goal': z.number().int().min(1).max(100),
-        'find-the-gap': z.number().int().min(1).max(100),
-        'pressure-window': z.number().int().min(1).max(100),
-        'game-pace': z.number().int().min(1).max(100),
+        'moving-goal': z.number().int().min(3).max(99).multipleOf(3),
+        'find-the-gap': z.number().int().min(3).max(99).multipleOf(3),
+        'pressure-window': z.number().int().min(2).max(100).multipleOf(2),
+        'game-pace': z.number().int().min(2).max(100).multipleOf(2),
       })
       .strict(),
     positionOffsetX: z.number().min(1).max(220),
@@ -88,20 +122,20 @@ export const DEFAULT_INITIAL_TRAINING_CONFIG: InitialTrainingConfig = {
     'first-shot': 10,
     'three-positions': 9,
     'follow-the-goal': 10,
-    'moving-goal': 10,
-    'find-the-gap': 10,
-    'pressure-window': 8,
-    'game-pace': 8,
+    'moving-goal': 9,
+    'find-the-gap': 9,
+    'pressure-window': 6,
+    'game-pace': 6,
   },
   positionOffsetX: 160,
   goalieFrequencyMultipliers: {
-    'find-the-gap': 0.35,
+    'find-the-gap': 1,
     'pressure-window': 0.65,
     'game-pace': 1,
   },
   goalFrequencyMultipliers: {
-    'moving-goal': 0.35,
-    'find-the-gap': 0.35,
+    'moving-goal': 1,
+    'find-the-gap': 1,
     'pressure-window': 1,
     'game-pace': 1,
   },
@@ -126,20 +160,20 @@ const exerciseCopy: Record<
     description: 'После каждого броска ворота меняют позицию.',
   },
   'moving-goal': {
-    title: 'Ворота в движении',
-    description: 'Выбери момент для броска по движущимся воротам.',
+    title: 'Три зоны',
+    description: 'Забей по 3 гола справа, слева и по центру в указанном порядке. Ворота движутся в игровом темпе.',
   },
   'find-the-gap': {
-    title: 'Найди свободный угол',
-    description: 'Дождись свободного угла у медленного вратаря.',
+    title: 'Три зоны с вратарём',
+    description: 'Снова забей по 3 гола справа, слева и по центру. Теперь ворота защищает вратарь.',
   },
   'pressure-window': {
-    title: 'Вратарь ускоряется',
-    description: 'Читай движение вратаря и забивай в свободный угол.',
+    title: 'Меняй стороны',
+    description: 'Забивай по очереди справа и слева: 3 пары голов в пустые движущиеся ворота.',
   },
   'game-pace': {
     title: 'Игровой темп',
-    description: 'Забивай в движущиеся ворота на скорости настоящей игры.',
+    description: 'Повтори чередование сторон с вратарём на игровой скорости.',
   },
 };
 
@@ -248,10 +282,9 @@ export function exerciseSceneForProgress(
       key === 'find-the-gap' ||
       key === 'pressure-window' ||
       key === 'game-pace',
-    hasGoalie:
-      key === 'find-the-gap' || key === 'pressure-window' || key === 'game-pace',
+    hasGoalie: key === 'find-the-gap' || key === 'game-pace',
     goalieFrequencyMultiplier:
-      key === 'find-the-gap' || key === 'pressure-window' || key === 'game-pace'
+      key === 'find-the-gap' || key === 'game-pace'
         ? config.goalieFrequencyMultipliers[key]
         : 1,
     goalFrequencyMultiplier:
@@ -272,11 +305,12 @@ export function isInitialTrainingExerciseKey(
 
 export async function loadInitialTrainingConfig(
   db: Queryable,
+  options: { lockRow?: boolean } = {},
 ): Promise<InitialTrainingConfig> {
   const { rows } = await db.query<{ value: unknown }>(
     `select value
        from game_settings
-      where key = 'training.initial_course.config'`,
+      where key = 'training.initial_course.config'${options.lockRow ? ' for share' : ''}`,
   );
   return parseInitialTrainingConfig(rows[0]?.value);
 }

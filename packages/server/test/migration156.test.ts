@@ -7,7 +7,7 @@ import { applyMigrationsThrough } from './helpers/migrations.js';
 
 const migrationsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../db/migrations');
 
-describe.skipIf(!hasIntegrationEnv)('migration 154 existing accepted duels', () => {
+describe.skipIf(!hasIntegrationEnv)('migration 156 existing accepted duels', () => {
   let pool: Pool;
 
   beforeAll(async () => {
@@ -72,7 +72,7 @@ describe.skipIf(!hasIntegrationEnv)('migration 154 existing accepted duels', () 
       );
     }
 
-    await applyMigrationsThrough(pool, migrationsDir, '154_amateur_duel_limit_reservations.sql');
+    await applyMigrationsThrough(pool, migrationsDir, '156_amateur_duel_limit_reservations.sql');
     const { rows } = await pool.query(
       'select match_id, user_id, accepted_at from amateur_duel_limit_reservation order by accepted_at, user_id',
     );

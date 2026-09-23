@@ -1141,7 +1141,6 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       payload: { shot_index: 1, input: { tapTime: 1000 }, claimed_result: 'goal' },
     });
     expect(shot.statusCode).toBe(200);
-    expect((await challenge(templateId, await createOpponent(99))).statusCode).toBe(200);
     expect(
       (
         await app.inject({
@@ -1152,6 +1151,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         })
       ).statusCode,
     ).toBe(200);
+    expect((await challenge(templateId, await createOpponent(99))).statusCode).toBe(200);
   });
 
   it('returns a bounded acknowledgement instead of the full match after an accepted shot', async () => {

@@ -32,6 +32,7 @@ import { deriveInitialTrainingSeed, deriveShotSeed } from '../seed.js';
 import {
   INITIAL_TRAINING_EXERCISE_KEYS,
   buildInitialTrainingCatalog,
+  evaluateInitialTrainingGoal,
   exerciseSceneForProgress,
   fetchInitialTrainingCompletions,
   fetchInitialTrainingOpenAccess,
@@ -39,6 +40,7 @@ import {
   isInitialTrainingCompleted,
   isInitialTrainingExerciseKey,
   loadInitialTrainingConfig,
+  requiredInitialTrainingZone,
   resolveInitialTrainingGoalieId,
   type InitialTrainingConfig,
   type InitialTrainingExerciseKey,
@@ -81,6 +83,7 @@ interface InitialTrainingStats {
 interface InitialTrainingShotResponse {
   server_result: ShotResult['type'];
   feedback_code: ReturnType<typeof feedbackCode>;
+  credited_goal: boolean;
   completed: boolean;
   reward_granted: { stars: number; experience: number } | null;
   state: {
@@ -89,6 +92,7 @@ interface InitialTrainingShotResponse {
     shots_taken: number;
     goals: number;
     target_goals: number;
+    required_zone: ReturnType<typeof requiredInitialTrainingZone>;
     scene: ReturnType<typeof sceneDto>;
   };
 }
@@ -124,7 +128,9 @@ async function fetchRunStats(
 ): Promise<InitialTrainingStats> {
   const { rows } = await client.query<{ shots: number | string; goals: number | string }>(
     `select count(*)::int as shots,
-            count(*) filter (where server_result = 'goal')::int as goals
+            count(*) filter (
+              where coalesce((response_payload->>'credited_goal')::boolean, server_result = 'goal')
+            )::int as goals
        from initial_training_shot
       where run_id = $1`,
     [runId],
@@ -184,7 +190,9 @@ function feedbackCode(
   input: ShotInput,
   goalieConfig: GoalieConfig,
   offsets: SessionPhaseOffsets,
-): 'goal_timing' | 'goalie_blocked' | 'miss_left' | 'miss_right' {
+  wrongZone = false,
+): 'goal_timing' | 'goal_wrong_zone' | 'shot_wrong_zone' | 'goalie_blocked' | 'miss_left' | 'miss_right' {
+  if (wrongZone) return result.type === 'goal' ? 'goal_wrong_zone' : 'shot_wrong_zone';
   if (result.type === 'goal') return 'goal_timing';
   if (result.type === 'save') return 'goalie_blocked';
   const shooterTime = input.shooterTapTime ?? input.tapTime;
@@ -265,7 +273,7 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
           action: 'start_training',
           now,
         });
-        const config = await loadInitialTrainingConfig(client);
+        const config = await loadInitialTrainingConfig(client, { lockRow: true });
         if (!config.enabled) {
           throw new AppError(
             'initial_training_disabled',
@@ -318,6 +326,7 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
           shots_taken: 0,
           goals: 0,
           target_goals: exercise.targetGoals,
+          required_zone: requiredInitialTrainingZone(exerciseKey, 0, exercise.targetGoals),
           started_at: rows[0]!.started_at.toISOString(),
           server_now: now.toISOString(),
           scene: sceneDto(
@@ -437,11 +446,22 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
             server_result: result.type,
           });
         }
+        const targetGoals = config.targetGoals[exerciseKey];
+        const shooterX = simulateShooter(
+          (shotInput.shooterTapTime ?? shotInput.tapTime) + offsets.shooter,
+          preset.shooterFrequency,
+        ).x;
+        const assessment = evaluateInitialTrainingGoal(
+          exerciseKey,
+          stats.goals,
+          targetGoals,
+          result.type,
+          shooterX,
+        );
         const nextStats = {
           shots: expectedShotIndex,
-          goals: stats.goals + (result.type === 'goal' ? 1 : 0),
+          goals: stats.goals + (assessment.credited ? 1 : 0),
         };
-        const targetGoals = config.targetGoals[exerciseKey];
         const completed = nextStats.goals >= targetGoals;
         let rewardGranted: { stars: number; experience: number } | null = null;
         if (completed) {
@@ -496,7 +516,8 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
         }
         const response: InitialTrainingShotResponse = {
           server_result: result.type,
-          feedback_code: feedbackCode(result, shotInput, goalieConfig, offsets),
+          feedback_code: feedbackCode(result, shotInput, goalieConfig, offsets, assessment.wrongZone),
+          credited_goal: assessment.credited,
           completed,
           reward_granted: rewardGranted,
           state: {
@@ -505,6 +526,7 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
             shots_taken: nextStats.shots,
             goals: nextStats.goals,
             target_goals: targetGoals,
+            required_zone: requiredInitialTrainingZone(exerciseKey, nextStats.goals, targetGoals),
             scene: sceneDto(
               exerciseKey,
               nextStats,

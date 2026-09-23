@@ -8,8 +8,6 @@ import {
   resolvePerspectiveCourtShot,
   STICK_NEUTRAL,
   type MarksmanshipDifficultyCode,
-  type MarksmanshipGeometry,
-  type MarksmanshipSeriesClassification,
   type MarksmanshipSeriesGoal,
   type ShotInput,
 } from '@hockey/game-core';
@@ -30,6 +28,10 @@ import {
 } from './economy.js';
 import { assertBonusGameAccessibleToUser, lockBonusGameCatalogForRead } from './catalog.js';
 import { BONUS_SHOT_RESULT_PAUSE_MS, nextEnduranceGoalWindow } from './endurance.js';
+import {
+  toMarksmanshipScoreDetails,
+  type MarksmanshipScoreDetails,
+} from './marksmanshipScoreDetails.js';
 import { closeBonusPeriod, reconcileBonusAttempt } from './reconcile.js';
 import {
   advanceGoalStreak,
@@ -78,25 +80,7 @@ export interface SubmitBonusShotResult {
   balances: BalanceSnapshot;
 }
 
-export type MarksmanshipScoreDetails =
-  | {
-      version: 1;
-      windowDurationMs: number | null;
-      difficultyCode: MarksmanshipDifficultyCode | null;
-      counterDirection: boolean;
-    }
-  | {
-      version: 2;
-      windowDurationMs: number | null;
-      difficultyCode: MarksmanshipDifficultyCode | null;
-      counterDirection: boolean;
-      opportunity: 'scored' | 'human_error' | 'closed';
-      timingErrorMs: number | null;
-      geometry: MarksmanshipGeometry;
-      series: MarksmanshipSeriesClassification;
-      situationBonus: number;
-      seriesBonus: number;
-    };
+export type { MarksmanshipScoreDetails } from './marksmanshipScoreDetails.js';
 
 interface BonusShotRow {
   period_number: number;
@@ -1264,21 +1248,9 @@ export async function submitBonusShot(
               getSessionPhaseOffsets(attempt.attempt_seed),
             ).type;
           const awardedPoints = classification?.awardedPoints ?? 0;
-          const scoreDetails =
-            classification === null
-              ? null
-              : {
-                  version: 2 as const,
-                  windowDurationMs: classification.windowDurationMs,
-                  difficultyCode: classification.difficultyCode,
-                  counterDirection: classification.counterDirection,
-                  opportunity: classification.opportunity,
-                  timingErrorMs: classification.timingErrorMs,
-                  geometry: classification.geometry,
-                  series: classification.series,
-                  situationBonus: classification.situationBonus,
-                  seriesBonus: classification.seriesBonus,
-                };
+          const scoreDetails = classification !== null && qualificationRules.type === 'points_in_time'
+            ? toMarksmanshipScoreDetails(classification, qualificationRules.scoring)
+            : null;
 
           if (input.claimedResult !== serverResult) {
             await appendEvent(

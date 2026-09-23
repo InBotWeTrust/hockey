@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   classifyMarksmanshipShot,
   GOAL_OPENING,
@@ -9,8 +9,11 @@ import {
   STICK_NEUTRAL,
   type GoalieConfig,
   type MarksmanshipDifficultyCode,
+  type MarksmanshipScoringRules,
   type MarksmanshipShotClassification,
   type MarksmanshipSeriesGoal,
+  type MarksmanshipV3Reason,
+  type MarksmanshipV4Technique,
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -64,13 +67,14 @@ const BONUS_PENDING_SHOT_FALLBACK_PADDING_MS = 1_250;
 const BONUS_PENDING_SHOT_FALLBACK_MIN_DELAY_MS = 250;
 
 function bonusGoalieOptions(attempt: BonusGameAttempt): GoalieOptions {
-  const usesEnduranceAmateurGoalkeeper = attempt.rules.skill_code === 'endurance';
+  const usesAmateurGoalkeeper =
+    attempt.rules.skill_code === 'endurance' || attempt.rules.skill_code === 'marksmanship';
   return {
     ...BONUS_GAME_GOALIE_OPTIONS,
-    idleSpriteUrl: usesEnduranceAmateurGoalkeeper
+    idleSpriteUrl: usesAmateurGoalkeeper
       ? AMATEUR_GOALKEEPER_READY_URL
       : versionBonusGameGoalkeeper(attempt.goalkeeper_ready_url),
-    saveSpriteUrl: usesEnduranceAmateurGoalkeeper
+    saveSpriteUrl: usesAmateurGoalkeeper
       ? AMATEUR_GOALKEEPER_SAVE_URL
       : versionBonusGameGoalkeeper(attempt.goalkeeper_save_url),
   };
@@ -91,6 +95,24 @@ function formatPoints(value: number): string {
   return new Intl.NumberFormat('ru-RU').format(value).replaceAll('\u00a0', ' ');
 }
 
+function formatMarksmanshipPoints(value: number, scoring: MarksmanshipScoringRules): string {
+  if (scoring.version !== 4) return formatPoints(value);
+  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(value / 10)
+    .replaceAll('\u00a0', ' ');
+}
+
+function marksmanshipV4TechniqueLabel(technique: MarksmanshipV4Technique): string {
+  switch (technique) {
+    case 'ordinary': return 'Простой';
+    case 'near_goalie': return 'Рядом с вратарём';
+    case 'board_side': return 'У борта';
+    case 'counter_direction': return 'Противоход';
+    case 'precise': return 'Меткий';
+    case 'behind_goalie': return 'За вратаря';
+    case 'super_precise': return 'Суперметкий';
+  }
+}
+
 function marksmanshipDifficultyLabel(code: MarksmanshipDifficultyCode): string {
   switch (code) {
     case 'open':
@@ -100,11 +122,26 @@ function marksmanshipDifficultyLabel(code: MarksmanshipDifficultyCode): string {
     case 'precise':
       return 'Точное окно';
     case 'narrow':
-      return 'Сложное окно';
-    case 'very_narrow':
       return 'Узкое окно';
+    case 'very_narrow':
+      return 'Очень узкое окно';
     case 'instant':
       return 'Мгновенное окно';
+  }
+}
+
+function marksmanshipV3ReasonLabel(reason: MarksmanshipV3Reason): string {
+  switch (reason) {
+    case 'ordinary': return 'Обычный гол';
+    case 'timed': return 'Точный момент';
+    case 'narrow': return 'Узкий момент';
+    case 'instant': return 'Мгновенный момент';
+    case 'goalie_covers_goal': return 'Вратарь прикрывает ворота';
+    case 'near_goalie': return 'Рядом с вратарём';
+    case 'left_board': return 'От левого борта';
+    case 'right_board': return 'От правого борта';
+    case 'counter_direction': return 'Противоход';
+    case 'close_counter_direction': return 'Рядом с уходящим вратарём';
   }
 }
 
@@ -114,52 +151,117 @@ function marksmanshipResultPresentation(input: {
   difficultyCode: MarksmanshipDifficultyCode | null;
   counterDirection: boolean;
   scoreDetails?: MarksmanshipScoreDetails | null;
+  scoring: MarksmanshipScoringRules;
 }): PlayResultPresentation | null {
   const details = input.scoreDetails;
-  if (input.serverResult !== 'goal') {
-    if (details?.version !== 2) return null;
-    if (details.opportunity === 'human_error' && details.timingErrorMs !== null) {
-      const direction = details.timingErrorMs > 0 ? 'раньше' : 'позже';
-      return {
-        title: input.serverResult === 'save' ? 'СЭЙВ' : 'МИМО',
-        details: ['Момент был', `Бросок на ${Math.abs(details.timingErrorMs)} мс ${direction}`],
-      };
-    }
-    if (details.opportunity === 'closed') {
-      return {
-        title: input.serverResult === 'save' ? 'СЭЙВ' : 'МИМО',
-        details: ['Закрытая ситуация', 'Голевого окна не было'],
-      };
-    }
-    return null;
+  if (input.serverResult !== 'goal') return null;
+  if (input.awardedPoints <= 0) return null;
+  if (details?.version === 4) {
+    if (details.result !== 'goal' || details.technique === null ||
+      details.pointsTenths !== input.awardedPoints) return null;
+    return {
+      breakdown: [{ points: details.pointsTenths, label: marksmanshipV4TechniqueLabel(details.technique) }],
+    };
   }
-  if (input.awardedPoints <= 0 || input.difficultyCode === null) return null;
-  const technique =
-    details?.version === 2 && details.series.type === 'triple'
-      ? 'Три за прокат'
-      : details?.version === 2 && details.series.type === 'double'
-        ? 'Два за секунду'
-        : details?.version === 2 && details.geometry.behindGoalie
-          ? `За вратаря${details.counterDirection ? ' · противоход' : ''}`
-          : input.counterDirection
-            ? 'Точный момент · противоход'
-            : marksmanshipDifficultyLabel(input.difficultyCode);
-  const breakdown =
-    details?.version === 2
-      ? [
-          `${input.awardedPoints - details.seriesBonus - details.situationBonus} за точность`,
-          ...(details.seriesBonus > 0 ? [`+${details.seriesBonus} серия`] : []),
-          ...(details.situationBonus > 0 ? [`+${details.situationBonus} ситуация`] : []),
-        ].join(' · ')
-      : null;
-  return {
-    title: 'ГОЛ',
-    details: [
-      `+${input.awardedPoints}`,
-      technique,
-      ...(breakdown === null ? [] : [breakdown]),
-    ],
-  };
+  if (input.difficultyCode === null) return null;
+  if (details?.version === 3) {
+    if (details.reason === null || details.category !== input.awardedPoints) return null;
+    return {
+      breakdown: [{ points: input.awardedPoints, label: marksmanshipV3ReasonLabel(details.reason) }],
+    };
+  }
+  if (details?.version === 2) {
+    const geometry = details.geometry;
+    const breakdown = [
+      {
+        points: input.awardedPoints - details.seriesBonus - details.situationBonus,
+        label: marksmanshipDifficultyLabel(details.difficultyCode ?? input.difficultyCode),
+      },
+      ...(details.series.type === 'double'
+        ? [{ points: details.seriesBonus, label: 'Два за секунду' }]
+        : details.series.type === 'triple'
+          ? [{ points: details.seriesBonus, label: 'Три за прокат' }]
+          : []),
+      ...(geometry.counterDirection
+        ? [{ points: input.scoring.counterDirectionBonus, label: 'Противоход' }]
+        : []),
+      ...(geometry.closeToGoalie
+        ? [{ points: input.scoring.closeGoalieBonus, label: 'Рядом с вратарём' }]
+        : []),
+      ...(geometry.behindGoalie
+        ? [{ points: input.scoring.behindGoalieBonus, label: 'За вратаря' }]
+        : []),
+      ...(geometry.boardSide && details.windowDurationMs !== null && details.windowDurationMs < 160
+        ? [{ points: input.scoring.boardNarrowBonus, label: 'У борта · узкое окно' }]
+        : []),
+    ].filter((part) => part.points > 0);
+    return { breakdown };
+  }
+  const technique = input.counterDirection
+    ? 'Точный момент · противоход'
+    : marksmanshipDifficultyLabel(input.difficultyCode);
+  return { breakdown: [{ points: input.awardedPoints, label: technique }] };
+}
+
+function MarksmanshipScoreNotice({
+  parts,
+  scoring,
+}: {
+  parts: readonly { points: number; label: string }[];
+  scoring: MarksmanshipScoringRules;
+}): JSX.Element {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    const scoreboard = outer?.parentElement;
+    if (!outer || !inner || !scoreboard) return;
+
+    const fit = () => {
+      inner.style.setProperty('--marksmanship-label-size', '8px');
+      inner.style.setProperty('--marksmanship-value-size', '18px');
+      inner.style.setProperty('--marksmanship-part-padding', '10px');
+      inner.style.setProperty('--marksmanship-part-gap', '4px');
+      const availableWidth = scoreboard.clientWidth - parts.length - 2;
+      const naturalWidth = inner.scrollWidth;
+      if (availableWidth <= 0 || naturalWidth <= 0) return;
+      const scale = Math.min(1, availableWidth / naturalWidth);
+      inner.style.setProperty('--marksmanship-label-size', `${8 * scale}px`);
+      inner.style.setProperty('--marksmanship-value-size', `${18 * scale}px`);
+      inner.style.setProperty('--marksmanship-part-padding', `${10 * scale}px`);
+      inner.style.setProperty('--marksmanship-part-gap', `${4 * scale}px`);
+    };
+
+    fit();
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(fit);
+    resizeObserver?.observe(scoreboard);
+    window.addEventListener('resize', fit);
+    void document.fonts?.ready.then(fit);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', fit);
+    };
+  }, [parts]);
+
+  return (
+    <div
+      ref={outerRef}
+      className="game-scoreboard game-scoreboard--stable-surface bonus-game-marksmanship-score"
+      role="status"
+      aria-label="Очки за бросок"
+    >
+      <div ref={innerRef} className="bonus-game-marksmanship-score__inner">
+        {parts.map((part) => (
+          <div className="bonus-game-marksmanship-score__part" key={part.label}>
+            <span className="game-scoreboard__label">{part.label}</span>
+            <strong className="game-scoreboard__value">+{formatMarksmanshipPoints(part.points, scoring)}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function authoritativeRemainingMs(
@@ -474,13 +576,13 @@ function BonusResult({
       ) : marksmanshipRules ? (
         <div
           className="bonus-game-result-metrics"
-          aria-label={`Итого: ${attempt.total_points} очков, цель ${marksmanshipRules.targetPoints}`}
+          aria-label={`Итого: ${formatMarksmanshipPoints(attempt.total_points, marksmanshipRules.scoring)} очков, цель ${formatMarksmanshipPoints(marksmanshipRules.targetPoints, marksmanshipRules.scoring)}`}
         >
-          <BonusResultMetric label="Набрано" value={formatPoints(attempt.total_points)} />
-          <BonusResultMetric label="Цель" value={formatPoints(marksmanshipRules.targetPoints)} />
+          <BonusResultMetric label="Набрано" value={formatMarksmanshipPoints(attempt.total_points, marksmanshipRules.scoring)} />
+          <BonusResultMetric label="Цель" value={formatMarksmanshipPoints(marksmanshipRules.targetPoints, marksmanshipRules.scoring)} />
           <BonusResultMetric
             label="Не хватило"
-            value={formatPoints(Math.max(0, marksmanshipRules.targetPoints - attempt.total_points))}
+            value={formatMarksmanshipPoints(Math.max(0, marksmanshipRules.targetPoints - attempt.total_points), marksmanshipRules.scoring)}
           />
         </div>
       ) : (
@@ -671,6 +773,12 @@ export function BonusGamePlayScreen(): JSX.Element {
   const [isConfirmingAbandon, setIsConfirmingAbandon] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [enduranceEntranceAttemptId, setEnduranceEntranceAttemptId] = useState<string | null>(null);
+  const [marksmanshipScoreParts, setMarksmanshipScoreParts] = useState<
+    readonly { points: number; label: string }[] | null
+  >(null);
+  const marksmanshipScoreTimeoutRef = useRef<number | null>(null);
+  const marksmanshipResultVisibleRef = useRef(false);
+  const pendingMarksmanshipScoreRef = useRef<readonly { points: number; label: string }[] | null>(null);
   const abandonRequestRef = useRef(false);
   const loadedRouteRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
@@ -688,6 +796,33 @@ export function BonusGamePlayScreen(): JSX.Element {
     earliestMarksmanshipTapRef.current = 0;
     marksmanshipGoalInputsRef.current = [];
   }, [attempt?.current_period, attempt?.id]);
+
+  useEffect(() => {
+    setMarksmanshipScoreParts(null);
+    marksmanshipResultVisibleRef.current = false;
+    pendingMarksmanshipScoreRef.current = null;
+    if (marksmanshipScoreTimeoutRef.current !== null) {
+      window.clearTimeout(marksmanshipScoreTimeoutRef.current);
+      marksmanshipScoreTimeoutRef.current = null;
+    }
+    return () => {
+      if (marksmanshipScoreTimeoutRef.current !== null) {
+        window.clearTimeout(marksmanshipScoreTimeoutRef.current);
+        marksmanshipScoreTimeoutRef.current = null;
+      }
+    };
+  }, [attempt?.id]);
+
+  const showMarksmanshipScore = useCallback((parts: readonly { points: number; label: string }[]) => {
+    if (marksmanshipScoreTimeoutRef.current !== null) {
+      window.clearTimeout(marksmanshipScoreTimeoutRef.current);
+    }
+    setMarksmanshipScoreParts(parts);
+    marksmanshipScoreTimeoutRef.current = window.setTimeout(() => {
+      setMarksmanshipScoreParts(null);
+      marksmanshipScoreTimeoutRef.current = null;
+    }, 2_000);
+  }, []);
 
   useEffect(() => {
     if (pendingShot === null) return;
@@ -1046,6 +1181,28 @@ export function BonusGamePlayScreen(): JSX.Element {
             },
           ],
         });
+  const marksmanshipScoreboardModel:
+    | ((counters: { goals: number; shots: number; timer: string }) => GameScoreboardModel)
+    | undefined =
+    marksmanshipTarget === null
+      ? undefined
+      : ({ timer: visibleTimer }) => ({
+          rows: [
+            {
+              id: 'summary',
+              metrics: [
+                {
+                  id: 'period',
+                  label: 'ПЕРИОД',
+                  value: `${periodNumber}/${attempt.rules.total_periods}`,
+                },
+                { id: 'points', label: 'ОЧКИ', value: formatMarksmanshipPoints(attempt.total_points, marksmanshipRules!.scoring) },
+                { id: 'target', label: 'НУЖНО', value: formatMarksmanshipPoints(marksmanshipTarget, marksmanshipRules!.scoring) },
+                { id: 'time', label: 'ВРЕМЯ', value: visibleTimer, tone: 'timer' },
+              ],
+            },
+          ],
+        });
 
   return (
     <>
@@ -1074,19 +1231,17 @@ export function BonusGamePlayScreen(): JSX.Element {
         shotIndexBase={attempt.current_period_shots_taken}
         shotsTotal={terminalShotsTotal > 0 ? terminalShotsTotal : undefined}
         scoreboardNotice={
-          isEndurance
+          isEndurance || isMarksmanship
             ? undefined
-            : marksmanshipTarget === null
-              ? qualificationProgress(attempt.rules.qualification_rules, {
+            : qualificationProgress(attempt.rules.qualification_rules, {
                   goals: attempt.goals,
                   shots: attempt.shots_taken,
                   totalPoints: attempt.total_points,
                   currentStreak: attempt.current_goal_streak,
                   bestStreak: attempt.best_goal_streak,
-                })
-              : `${formatPoints(attempt.total_points)} / ${formatPoints(marksmanshipTarget)}`
+              })
         }
-        scoreboardModel={enduranceScoreboardModel}
+        scoreboardModel={enduranceScoreboardModel ?? marksmanshipScoreboardModel}
         scoreboardAccessory={
           showEnduranceTimer ? (
             <div
@@ -1108,6 +1263,8 @@ export function BonusGamePlayScreen(): JSX.Element {
                 )}
               </span>
             </div>
+          ) : marksmanshipScoreParts?.length ? (
+            <MarksmanshipScoreNotice parts={marksmanshipScoreParts} scoring={marksmanshipRules!.scoring} />
           ) : undefined
         }
         timer={isTerminal ? '00:00' : isIdle ? formatCountdown(idleTimerMs) : undefined}
@@ -1179,19 +1336,30 @@ export function BonusGamePlayScreen(): JSX.Element {
             },
           );
           if (!mountedRef.current) applyPendingShot();
+          const resultPresentation =
+            result && isMarksmanship
+              ? marksmanshipResultPresentation({
+                  serverResult: result.serverResult,
+                  awardedPoints: result.awardedPoints,
+                  difficultyCode: result.difficultyCode,
+                  counterDirection: result.counterDirection,
+                  scoreDetails: result.scoreDetails,
+                  scoring: marksmanshipRules!.scoring,
+                })
+              : null;
+          if (result && isMarksmanship && mountedRef.current && result.isCurrent?.() !== false) {
+            const parts =
+              result.serverResult === 'goal' && result.awardedPoints > 0
+                ? resultPresentation?.breakdown ?? null
+                : null;
+            pendingMarksmanshipScoreRef.current = parts;
+            if (parts?.length && marksmanshipResultVisibleRef.current) showMarksmanshipScore(parts);
+          }
           return result
             ? {
                 serverResult: result.serverResult,
                 state: result.attempt,
-                resultPresentation: isMarksmanship
-                  ? marksmanshipResultPresentation({
-                      serverResult: result.serverResult,
-                      awardedPoints: result.awardedPoints,
-                      difficultyCode: result.difficultyCode,
-                      counterDirection: result.counterDirection,
-                      scoreDetails: result.scoreDetails,
-                    })
-                  : undefined,
+                resultPresentation: isMarksmanship ? null : undefined,
                 ...(result.isCurrent === undefined ? {} : { isCurrent: result.isCurrent }),
               }
             : null;
@@ -1226,31 +1394,20 @@ export function BonusGamePlayScreen(): JSX.Element {
                     },
                   ];
                 }
-                return marksmanshipResultPresentation({
-                  serverResult: classification.result.type,
-                  awardedPoints: classification.awardedPoints,
-                  difficultyCode: classification.difficultyCode,
-                  counterDirection: classification.counterDirection,
-                  scoreDetails: {
-                    version: 2,
-                    windowDurationMs: classification.windowDurationMs,
-                    difficultyCode: classification.difficultyCode,
-                    counterDirection: classification.counterDirection,
-                    opportunity: classification.opportunity,
-                    timingErrorMs: classification.timingErrorMs,
-                    geometry: classification.geometry,
-                    series: classification.series,
-                    situationBonus: classification.situationBonus,
-                    seriesBonus: classification.seriesBonus,
-                  },
-                });
+                return null;
               }
             : undefined
         }
         resultCopy={isMarksmanship ? { goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' } : undefined}
-        onResultVisibilityChange={
-          isEndurance && isPeriodActive ? handleEnduranceResultVisibility : undefined
-        }
+        onResultVisibilityChange={(visible) => {
+          if (isEndurance && isPeriodActive) handleEnduranceResultVisibility(visible);
+          if (!isMarksmanship) return;
+          marksmanshipResultVisibleRef.current = visible;
+          if (visible && pendingMarksmanshipScoreRef.current?.length) {
+            showMarksmanshipScore(pendingMarksmanshipScoreRef.current);
+          }
+          if (!visible) pendingMarksmanshipScoreRef.current = null;
+        }}
         applyState={() => undefined}
         applyResolvedState={(next) => applyPendingShot(next)}
         overlayControls={

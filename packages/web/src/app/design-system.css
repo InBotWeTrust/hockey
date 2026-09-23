@@ -1074,6 +1074,40 @@
   gap: 7px;
 }
 
+.game-scoreboard.bonus-game-marksmanship-score {
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
+  overflow: hidden;
+  padding-inline: 0;
+}
+
+.bonus-game-marksmanship-score__inner {
+  display: flex;
+  width: max-content;
+}
+
+.bonus-game-marksmanship-score__part {
+  display: grid;
+  flex: 0 0 auto;
+  gap: var(--marksmanship-part-gap, 4px);
+  min-width: 0;
+  padding: 8px var(--marksmanship-part-padding, 10px);
+  text-align: center;
+}
+
+.bonus-game-marksmanship-score__part + .bonus-game-marksmanship-score__part {
+  border-left: 1px solid rgba(205, 232, 255, 0.28);
+}
+
+.bonus-game-marksmanship-score .game-scoreboard__label {
+  font-size: var(--marksmanship-label-size, 8px);
+}
+
+.bonus-game-marksmanship-score .game-scoreboard__value {
+  font-size: var(--marksmanship-value-size, 18px);
+}
+
 .game-scoreboard {
   width: 100%;
   min-width: 0;
@@ -3872,6 +3906,30 @@
 
 .initial-training-feedback-notice--error::before {
   background: #fb7185;
+}
+
+.initial-training-feedback-notice--scoreboard {
+  top: 13%;
+  bottom: auto;
+  width: max-content;
+  max-width: min(86%, 404px);
+  box-sizing: border-box;
+  border-radius: clamp(14px, 4vw, 22px);
+  justify-content: center;
+  text-wrap: pretty;
+  white-space: pre-line;
+  animation: initial-training-feedback-notice-drop 180ms ease-out both;
+}
+
+@keyframes initial-training-feedback-notice-drop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
 
 .duel-heavy-fatigue-notice::before {

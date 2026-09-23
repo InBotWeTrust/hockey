@@ -157,6 +157,54 @@ describe('PlayView', () => {
     });
   });
 
+  it('shows a temporary training hint only below the rink scoreboard', async () => {
+    const view = render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="course-hint"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        statusNotice="Возьми чуть правее"
+        statusNoticeUnderScoreboard
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    const notices = await screen.findAllByText('Возьми чуть правее');
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toHaveClass('initial-training-feedback-notice--scoreboard');
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+
+    view.rerender(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="course-hint"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        statusNotice={null}
+        statusNoticeUnderScoreboard
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+    await waitFor(() => expect(screen.queryByText('Возьми чуть правее')).toBeNull());
+  });
+
   it('passes the exact supplied goalie configuration to local shot resolution', () => {
     const resolvedContexts: Parameters<PlayShotResolver>[0][] = [];
     const shotResolver: PlayShotResolver = (context) => {

@@ -15,6 +15,8 @@ export type InitialTrainingExerciseKey =
 export type InitialTrainingExerciseState = 'completed' | 'available' | 'locked';
 export type InitialTrainingFeedbackCode =
   | 'goal_timing'
+  | 'goal_wrong_zone'
+  | 'shot_wrong_zone'
   | 'goalie_blocked'
   | 'miss_left'
   | 'miss_right';
@@ -92,6 +94,7 @@ export interface InitialTrainingRun {
   shots_taken: number;
   goals: number;
   target_goals: number;
+  required_zone: 'right' | 'left' | 'center' | null;
   started_at: string;
   server_now: string;
   scene: InitialTrainingScene;
@@ -103,6 +106,7 @@ export interface InitialTrainingShotState {
   shots_taken: number;
   goals: number;
   target_goals: number;
+  required_zone: 'right' | 'left' | 'center' | null;
   scene: InitialTrainingScene;
 }
 
@@ -116,6 +120,7 @@ export interface SubmitInitialTrainingShotRequest {
 export interface SubmitInitialTrainingShotResponse {
   server_result: ShotResultType;
   feedback_code: InitialTrainingFeedbackCode;
+  credited_goal: boolean;
   completed: boolean;
   reward_granted: { stars: number; experience: number } | null;
   state: InitialTrainingShotState;

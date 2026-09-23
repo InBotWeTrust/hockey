@@ -94,6 +94,8 @@ export type PlayShotResolver = (context: PlayShotContext) => ShotResult;
 export interface PlayResultPresentation {
   title?: string;
   details?: readonly string[];
+  breakdown?: readonly { points: number; label: string }[];
+  divider?: boolean;
 }
 
 type RouteCameraPhase = 'settled' | 'zoomed' | 'exiting';
@@ -278,7 +280,7 @@ export interface PlayViewProps<TState> {
   scoreboardNotice?: string | undefined;
   scoreboardModel?:
     | GameScoreboardModel
-    | ((counters: { goals: number; shots: number }) => GameScoreboardModel)
+    | ((counters: { goals: number; shots: number; timer: string }) => GameScoreboardModel)
     | undefined;
   scoreboardAccessory?: ReactNode;
   shotButtonLabel?: string | undefined;
@@ -343,6 +345,7 @@ export interface PlayViewProps<TState> {
   statusNoticeTone?: 'success' | 'warning' | 'error' | undefined;
   statusNoticeClassName?: string | undefined;
   statusNoticeDelayMs?: number | undefined;
+  statusNoticeUnderScoreboard?: boolean | undefined;
   inlineResultNotice?: boolean | undefined;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
   readyPresence?: ReadyPresence | undefined;
@@ -642,6 +645,7 @@ export function PlayView<TState>({
   statusNoticeTone,
   statusNoticeClassName,
   statusNoticeDelayMs = 0,
+  statusNoticeUnderScoreboard = false,
   inlineResultNotice = false,
   scoreboardOpponent,
   readyPresence,
@@ -1909,7 +1913,7 @@ export function PlayView<TState>({
   const visibleScoreboardNotice = scoreboardSnapshot?.notice ?? scoreboardNotice;
   const visibleCustomScoreboardModel =
     typeof scoreboardModel === 'function'
-      ? scoreboardModel({ goals: visibleScoreboardGoals, shots: visibleScoreboardShots })
+      ? scoreboardModel({ goals: visibleScoreboardGoals, shots: visibleScoreboardShots, timer: timerValue })
       : scoreboardModel;
   const isDuelShotBlocked = active && currentDuelCondition?.canShoot === false;
   const isDuelRestBlocked = isDuelShotBlocked && currentDuelCondition?.status === 'exhausted_stop';
@@ -2134,7 +2138,7 @@ export function PlayView<TState>({
             <div
               role="status"
               aria-live="polite"
-              className={`initial-training-feedback-notice${
+              className={`initial-training-feedback-notice${statusNoticeUnderScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
                 effectiveStatusNoticeTone === 'warning'
                   ? ' initial-training-feedback-notice--warning'
                   : effectiveStatusNoticeTone === 'error'
