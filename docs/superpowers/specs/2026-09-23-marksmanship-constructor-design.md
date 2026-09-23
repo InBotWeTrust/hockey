@@ -14,7 +14,7 @@ The gate is **disabled by default** and enabled explicitly by the dev build conf
 
 ## Interaction model
 
-The screen has a court and a compact explanation panel, with phone layout stacking the panel beneath the court. The court keeps the game's aspect ratio and transforms so that visible positions, puck flight and hitboxes line up with gameplay at any viewport size. Controls and numeric input remain usable on touch screens.
+The screen uses a single viewport-height composition: the game court is the main surface, compact controls sit in its safe edge areas, and the result card (`ГОЛ`/`МИМО`/`СЕЙВ`, points, decisive traits and a short explanation) sits over the middle ice, as requested in the reference screenshots. The result must be visible while settings and the court are visible; the user should not have to scroll between controls and result on a normal phone viewport. A collapsible details drawer may contain longer diagnostics, numeric hitbox bounds and less frequently used fields. The card and controls must not obscure the player, goal, goalie or puck at the selected time; when objects occupy the middle-ice zone, the card moves to another safe zone or becomes compact. The court keeps the game's aspect ratio and transforms so visible positions, puck flight and hitboxes line up with gameplay at any viewport size. Touch targets and numeric input remain usable on phones. On unusually short viewports, preserving readable controls and exact court geometry takes priority over forcing an unusably small one-screen fit.
 
 Two clearly labelled modes share the court and measurement display:
 
@@ -39,7 +39,7 @@ The screen stores only transient client state. Invalid or out-of-range numbers a
 - Regression tests verify that live `PlayView` behaviour and bonus-game scoring remain unchanged.
 - Route tests cover avatar entry, Back navigation, direct URL denial with the feature gate off, and keyboard/touch accessibility.
 - Production-build verification proves constructor route and constructor-only assets are excluded; dev-build verification proves they are present.
-- Browser acceptance on dev-sized desktop and phone viewports confirms the rendered court, hitbox overlay and output at the same time/seed as a known attempt. These checks are distinct from unit tests and from deployment provenance.
+- Browser acceptance on dev-sized desktop and phone viewports confirms the rendered court, hitbox overlay and output at the same time/seed as a known attempt. On typical phone heights, controls, court and result fit without vertical scrolling, and result placement does not cover gameplay objects. These checks are distinct from unit tests and from deployment provenance.
 
 ## Out of scope
 
