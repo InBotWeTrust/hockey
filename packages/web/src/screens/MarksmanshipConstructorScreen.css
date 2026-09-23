@@ -1,0 +1,118 @@
+.marksmanship-constructor-screen {
+  box-sizing: border-box;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: max(8px, env(safe-area-inset-top)) 10px max(8px, env(safe-area-inset-bottom));
+  overflow-y: auto;
+}
+
+.marksmanship-constructor-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.marksmanship-constructor-header h1 {
+  margin: 0;
+  font-size: clamp(16px, 4vw, 22px);
+}
+
+.marksmanship-constructor-stage {
+  flex: 1 1 auto;
+  min-height: 320px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.marksmanship-constructor-court-wrap {
+  position: relative;
+  height: 100%;
+  max-width: 100%;
+  aspect-ratio: 1212 / 2000;
+  margin-inline: auto;
+}
+
+.marksmanship-constructor-result {
+  position: absolute;
+  z-index: 2;
+  top: 47%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 65%;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: rgb(8 27 44 / 83%);
+  color: white;
+  text-align: center;
+  pointer-events: none;
+  font-size: clamp(10px, 2.5vw, 13px);
+}
+
+.marksmanship-constructor-result__top {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.marksmanship-constructor-result p { margin: 2px 0 0; }
+
+.marksmanship-constructor-controls {
+  flex: none;
+  display: grid;
+  gap: 5px;
+  max-width: 760px;
+  width: 100%;
+  margin-inline: auto;
+  font-size: 12px;
+}
+
+.marksmanship-constructor-row,
+.marksmanship-constructor-coordinates {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.marksmanship-constructor-controls button,
+.marksmanship-constructor-controls select,
+.marksmanship-constructor-controls input[type='number'] {
+  min-height: 36px;
+  box-sizing: border-box;
+  font: inherit;
+}
+
+.marksmanship-constructor-controls button[aria-pressed='true'] {
+  outline: 2px solid currentColor;
+}
+
+.marksmanship-constructor-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.marksmanship-constructor-time label { flex: 1; }
+.marksmanship-constructor-time input { flex: 1; min-width: 80px; }
+.marksmanship-constructor-coordinates input { width: 68px; }
+.marksmanship-constructor-details-toggle { justify-self: center; }
+.marksmanship-constructor-details { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+
+@media (max-width: 430px) {
+  .marksmanship-constructor-screen { padding-inline: 5px; gap: 4px; }
+  .marksmanship-constructor-controls { font-size: 11px; }
+  .marksmanship-constructor-controls button,
+  .marksmanship-constructor-controls select,
+  .marksmanship-constructor-controls input[type='number'] { min-height: 34px; }
+  .marksmanship-constructor-controls button { padding-inline: 5px; }
+  .marksmanship-constructor-coordinates label { width: 100%; justify-content: space-between; }
+}

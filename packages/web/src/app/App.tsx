@@ -277,7 +277,10 @@ function AppExperience(): JSX.Element {
     if (user !== null) preloadCriticalArtwork();
   }, [user]);
   const bottomNavVisible =
-    location.pathname !== '/dev/tournament-result-preview' && isBottomNavVisible(location, user);
+    location.pathname !== '/dev/tournament-result-preview' &&
+    (!MARKSMANSHIP_CONSTRUCTOR_ENABLED ||
+      location.pathname !== '/profile/marksmanship-constructor') &&
+    isBottomNavVisible(location, user);
   const backdropClassName = appBackdropClassName(location.pathname, location.search);
   const surfaceClassName = appSurfaceClassName(location.pathname);
   const weeklyStartModalEnabled =

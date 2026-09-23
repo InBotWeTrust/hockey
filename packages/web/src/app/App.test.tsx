@@ -32,6 +32,12 @@ vi.mock('../game/PlayView.js', () => ({
   PlayView: () => <div data-testid="play-view" />,
 }));
 
+vi.mock('../game/MarksmanshipConstructorCourt.js', () => ({
+  getConstructorScene: () => ({ playerX: 286, goalOffsetX: 0,
+    goalieState: { position: { x: 286, y: 100 }, width: 64, height: 64 } }),
+  MarksmanshipConstructorCourt: () => <div aria-label="Площадка конструктора" />,
+}));
+
 vi.mock('../components/DuelInviteToast.js', () => ({
   DuelInviteToast: () => <div data-testid="duel-invite-toast" />,
 }));
