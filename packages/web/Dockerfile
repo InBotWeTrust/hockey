@@ -23,9 +23,15 @@ ARG VITE_VK_APP_ID="54571497"
 ENV VITE_VK_APP_ID=$VITE_VK_APP_ID
 ARG VITE_DEV_ACCESS_CODE_LOGIN_ENABLED="false"
 ENV VITE_DEV_ACCESS_CODE_LOGIN_ENABLED=$VITE_DEV_ACCESS_CODE_LOGIN_ENABLED
+ARG VITE_MARKSMANSHIP_CONSTRUCTOR=""
+ENV VITE_MARKSMANSHIP_CONSTRUCTOR=$VITE_MARKSMANSHIP_CONSTRUCTOR
+ARG HOCKEY_DEPLOY_TARGET="production"
+RUN test "$HOCKEY_DEPLOY_TARGET" != "production" || test "$VITE_MARKSMANSHIP_CONSTRUCTOR" != "dev-only-enabled"
 ARG APP_BUILD_SHA=""
 ENV VITE_APP_BUILD_SHA=$APP_BUILD_SHA
 RUN pnpm --filter @hockey/web build
+RUN node packages/web/scripts/check-constructor-build.mjs packages/web/dist \
+  $(if [ "$VITE_MARKSMANSHIP_CONSTRUCTOR" = "dev-only-enabled" ]; then echo enabled; else echo disabled; fi)
 
 # ---- Runner ----
 FROM nginx:1.25-alpine AS runner

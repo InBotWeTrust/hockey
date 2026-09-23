@@ -69,6 +69,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // Production maps would embed source text for the dev-only constructor.
+    sourcemap: process.env.VITE_MARKSMANSHIP_CONSTRUCTOR === 'dev-only-enabled',
   },
 });

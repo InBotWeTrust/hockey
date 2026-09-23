@@ -48,6 +48,7 @@ import type { ExperienceRatingPlayer } from '../api/experienceRating.js';
 import { StatRatingModal } from '../profile/StatRatingModal.js';
 import type { StatRatingMetric, StatRatingPlayer } from '../api/statRating.js';
 import { preloadArtwork, profileArtworkUrls } from '../app/artworkCache.js';
+import { MARKSMANSHIP_CONSTRUCTOR_ENABLED } from '../app/devOnlyFeatures.js';
 
 export type TrophySectionKey = keyof NonNullable<ProfileData['trophyDetails']>;
 
@@ -760,13 +761,28 @@ export function ProfileScreen(): JSX.Element {
       <section className="profile-passport glass" aria-label="Спортивный паспорт">
         <div className="profile-passport__top">
           <div className="profile-identity__main">
-            <div className="profile-identity__avatar">
-              {profile.avatarUrl !== undefined && profile.avatarUrl !== null ? (
-                <img src={profile.avatarUrl} alt="" />
-              ) : (
-                <span>{initial}</span>
-              )}
-            </div>
+            {MARKSMANSHIP_CONSTRUCTOR_ENABLED ? (
+              <button
+                type="button"
+                className="profile-identity__avatar"
+                aria-label="Конструктор меткости"
+                onClick={() => navigate('/profile/marksmanship-constructor')}
+              >
+                {profile.avatarUrl !== undefined && profile.avatarUrl !== null ? (
+                  <img src={profile.avatarUrl} alt="" />
+                ) : (
+                  <span>{initial}</span>
+                )}
+              </button>
+            ) : (
+              <div className="profile-identity__avatar">
+                {profile.avatarUrl !== undefined && profile.avatarUrl !== null ? (
+                  <img src={profile.avatarUrl} alt="" />
+                ) : (
+                  <span>{initial}</span>
+                )}
+              </div>
+            )}
             <div className="profile-identity__copy">
               <span className="profile-identity__name">{profile.displayName}</span>
               <span className="profile-identity__level">

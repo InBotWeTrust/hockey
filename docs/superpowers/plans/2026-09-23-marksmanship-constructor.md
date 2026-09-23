@@ -34,7 +34,7 @@
 ## File map
 
 - `packages/game-core/src/marksmanshipConstructor.ts`: pure replay snapshot and manual static-geometry projection; exported through `index.ts`.
-- `packages/web/src/game/MarksmanshipConstructorCourt.tsx`: deterministic Pixi court using existing `Goal`, `Goalie`, `Player`, `Puck`, background and coordinate scale.
+- `packages/web/src/game/MarksmanshipConstructorCourt.tsx`: deterministic Pixi amateur court using existing `Goal`, `Goalie`, `Player`, `Puck`, background and coordinate scale, plus coordinate grid and hitbox overlay.
 - `packages/web/src/screens/MarksmanshipConstructorScreen.tsx` and `.css`: controls, result card, responsive placement, details drawer and Back button.
 - `packages/web/src/app/devOnlyFeatures.ts`: build-time gate, disabled unless an exact build flag is true outside production mode.
 - `packages/web/src/screens/ProfileScreen.tsx`, `packages/web/src/app/App.tsx`: avatar and route only behind the gate.
@@ -117,9 +117,9 @@ const result = playerX >= goalieMin && playerX <= goalieMax ? 'save'
 
 **Interfaces:** `MarksmanshipConstructorCourt({ snapshot, selectedTimeMs, showHitboxes, onDragCenter }: Props)` renders the game's long court background and the existing Pixi `Goal`, `Goalie`, `Player`, `Puck` classes with `coords.ts` scaling. It never starts a live game loop or submits a shot. `onDragCenter` is available only in manual mode.
 
-- [ ] Write failing scene tests for renderer creation/destruction, resizing, selected-time updates, manual drag coordinates and no callbacks that submit attempts. Pin visual option values against the same exported options used by `PlayView`.
+- [ ] Write failing scene tests for renderer creation/destruction, resizing, selected-time updates, manual drag of player/goal/goalie, and no callbacks that submit attempts. Pin amateur background and visual option values against the same exported options used by `PlayView`; verify X grid alignment and that `showHitboxes=false` hides all three overlays without changing the projection. For a fixed seed, assert time-0 positions and positions after a time step against `simulateShooter`, `simulateGoal` and `simulateGoalie` with `getSessionPhaseOffsets(seed)` and `getDailyPeriodSpeedPreset(1)`.
 - [ ] Run `pnpm --filter @hockey/web exec vitest run src/game/MarksmanshipConstructorCourt.test.tsx` and record RED.
-- [ ] Implement the controlled scene using existing sprites/options and game-core snapshot positions. Keep logical court `572×700` separate from visible long-court background proportion; use the same `Scale` conversion and perspective transform as `PlayView`. Show hitbox X bounds as a debug overlay based on authoritative measurements, not sprite edges.
+- [ ] Implement the controlled scene using the existing amateur-court artwork and real player, blue amateur-goalie, goal and puck sprites/options with game-core snapshot positions. Keep logical court `572×700` separate from visible long-court background proportion; use the same `Scale` conversion and perspective transform as `PlayView`. Add a vertical X grid and readable coordinate labels. The single `Хитбоксы` toggle shows or hides goal, goalie and player outlines; mark the shot-line X separately. Show authoritative hitbox X bounds, not sprite edges, for goal and goalie.
 - [ ] Run GREEN, typecheck and existing `PlayView.test.tsx`; visually compare a fixed seed/time with live `PlayView`, then commit.
 
 ### Task 5: One-screen constructor UI
@@ -128,7 +128,7 @@ const result = playerX >= goalieMin && playerX <= goalieMax ? 'save'
 
 **Interfaces:** Uses Tasks 1–4. Two modes: `Игровая попытка` and `Ручная расстановка`. Result card shows `ГОЛ`/`МИМО`/`СЕЙВ`, points only when authoritative, decisive trait and short Russian explanation. A details drawer shows bounds and sample timestamps. Back routes to `/profile`.
 
-- [ ] Write failing UI tests for mode switching, initial game arrangement, seed/shot/time inputs, pause/scrub/shoot, manual numeric coordinates with `центр хитбокса` labels, invalid values, missing replay inputs, and no points in manual mode. Add a test for result copy and for the details drawer.
+- [ ] Write failing UI tests for mode switching, selected-seed initial game arrangement, time-step Back/Forward, wheel/slider scrub, Reset to time 0 for the same seed, seed/start selection, shot time, manual numeric coordinates with `центр хитбокса` labels, invalid values, missing replay inputs, and no points in manual mode. Add tests for the `Хитбоксы` visual toggle, result copy and details drawer.
 - [ ] Run `pnpm --filter @hockey/web exec vitest run src/screens/MarksmanshipConstructorScreen.test.tsx` and record RED.
 - [ ] Implement the controls and result card. Use a full-height court container, safe-area-aware compact controls, center-ice result positioning and collision-aware compact placement. Use CSS `dvh` with fallback; preserve minimum touch targets and allow a short-screen scroll fallback. Keep drag and numeric inputs synchronized through one state model.
 - [ ] Run GREEN and typecheck. In the internal browser inspect desktop width, a 390×844 phone and a short 375×667 phone; check visible controls/court/result, safe-area, keyboard, drag, hitbox labels and card/object overlap. Record screenshots or notes.

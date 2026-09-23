@@ -6,6 +6,8 @@ import { ProfileScreen } from './ProfileScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { ProfileData } from './profileTypes.js';
 
+vi.mock('../app/devOnlyFeatures.js', () => ({ MARKSMANSHIP_CONSTRUCTOR_ENABLED: true }));
+
 const { preloadArtwork } = vi.hoisted(() => ({ preloadArtwork: vi.fn() }));
 
 vi.mock('../app/artworkCache.js', async (importOriginal) => {
@@ -270,6 +272,7 @@ function renderProfile(): void {
           <Route path="/profile/achievements" element={<div>achievements screen</div>} />
           <Route path="/profile/settings" element={<div>settings screen</div>} />
           <Route path="/profile/story" element={<div>story screen</div>} />
+          <Route path="/profile/marksmanship-constructor" element={<div>constructor screen</div>} />
           <Route path="/inventory" element={<div>inventory shop</div>} />
         </Routes>
       </MemoryRouter>
@@ -286,6 +289,13 @@ describe('ProfileScreen', () => {
       refreshToken: 'refresh',
       user: { id: 'u1', displayName: 'Alice T' },
     });
+  });
+
+  it('opens the dev constructor by tapping the profile avatar', async () => {
+    mockProfileRequest();
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Конструктор меткости' }));
+    expect(screen.getByText('constructor screen')).toBeInTheDocument();
   });
 
   it('retains the currently visible profile artwork when its data is loaded', async () => {

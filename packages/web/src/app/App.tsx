@@ -25,6 +25,7 @@ import { canAccessAndroidRelease } from '../mobileUpdate/access.js';
 import { MandatoryAndroidUpdateModal } from '../components/MandatoryAndroidUpdateModal.js';
 import { preloadCriticalArtwork } from './artworkCache.js';
 import { prepareInitialPlayerExperience } from './playerStartup.js';
+import { MARKSMANSHIP_CONSTRUCTOR_ENABLED } from './devOnlyFeatures.js';
 
 function loadDailyScreen() {
   return import('../screens/DailyScreen.js');
@@ -72,6 +73,11 @@ const WeeklyChallengeScreen = lazy(() =>
 const ProfileScreen = lazy(() =>
   import('../screens/ProfileScreen.js').then((module) => ({ default: module.ProfileScreen })),
 );
+const MarksmanshipConstructorScreen = MARKSMANSHIP_CONSTRUCTOR_ENABLED
+  ? lazy(() => import('../screens/MarksmanshipConstructorScreen.js').then((module) => ({
+    default: module.MarksmanshipConstructorScreen,
+  })))
+  : null;
 const ProfileSettingsScreen = lazy(() =>
   import('../screens/ProfileSettingsScreen.js').then((module) => ({
     default: module.ProfileSettingsScreen,
@@ -435,6 +441,12 @@ function AppExperience(): JSX.Element {
                   </PrivateRoute>
                 }
               />
+              {MARKSMANSHIP_CONSTRUCTOR_ENABLED && MarksmanshipConstructorScreen !== null && (
+                <Route
+                  path="/profile/marksmanship-constructor"
+                  element={<PrivateRoute><MarksmanshipConstructorScreen /></PrivateRoute>}
+                />
+              )}
               <Route
                 path="/profile/settings"
                 element={

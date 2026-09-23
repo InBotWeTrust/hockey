@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+vi.mock('./devOnlyFeatures.js', () => ({ MARKSMANSHIP_CONSTRUCTOR_ENABLED: true }));
 import { queryClient } from './queryClient.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
@@ -118,6 +120,17 @@ describe('App routing + auth', () => {
       receivedAtPerformanceMs: null,
     });
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
+  });
+
+  it('opens the dev marksmanship constructor from its direct route', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      user: { id: 'u1', displayName: 'Alice T' },
+    });
+    window.history.replaceState({}, '', '/profile/marksmanship-constructor');
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Конструктор меткости' })).toBeInTheDocument();
   });
 
   it('does not mount the browser service-worker update prompt inside Android', () => {
