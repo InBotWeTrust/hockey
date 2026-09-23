@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+vi.mock('./devOnlyFeatures.js', () => ({ MARKSMANSHIP_CONSTRUCTOR_ENABLED: true }));
 import { queryClient } from './queryClient.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
@@ -28,6 +30,12 @@ vi.mock('./playerStartup.js', () => ({ prepareInitialPlayerExperience }));
 
 vi.mock('../game/PlayView.js', () => ({
   PlayView: () => <div data-testid="play-view" />,
+}));
+
+vi.mock('../game/MarksmanshipConstructorCourt.js', () => ({
+  getConstructorScene: () => ({ playerX: 286, goalOffsetX: 0,
+    goalieState: { position: { x: 286, y: 100 }, width: 64, height: 64 } }),
+  MarksmanshipConstructorCourt: () => <div aria-label="Площадка конструктора" />,
 }));
 
 vi.mock('../components/DuelInviteToast.js', () => ({
@@ -118,6 +126,18 @@ describe('App routing + auth', () => {
       receivedAtPerformanceMs: null,
     });
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
+  });
+
+  it('opens the dev marksmanship constructor from its direct route', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      user: { id: 'u1', displayName: 'Alice T' },
+    });
+    window.history.replaceState({}, '', '/profile/marksmanship-constructor');
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Конструктор меткости' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Навигация' })).not.toBeInTheDocument();
   });
 
   it('does not mount the browser service-worker update prompt inside Android', () => {

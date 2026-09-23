@@ -104,7 +104,7 @@ const PLAY_ROUTE_TRANSITION_MS = 580;
 
 const LONG_COURT_RINK_ASPECT_RATIO = '1212 / 2000';
 
-const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
+export const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
   top: '24.55%',
   height: '74.2%',
   bottom: 'auto',
@@ -381,7 +381,7 @@ interface PlaySessionSnapshot {
   shotsTotal: number | undefined;
 }
 
-const PERSPECTIVE_PLAYER_OPTIONS: PlayerOptions = {
+export const PERSPECTIVE_PLAYER_OPTIONS: PlayerOptions = {
   spriteUrls: {
     left: '/sprites/ultimate-player-left.webp',
     right: '/sprites/ultimate-player-right.webp',
@@ -419,7 +419,7 @@ export const TRAINING_STREET_PLAYER_OPTIONS: PlayerOptions = {
   },
 };
 
-const PERSPECTIVE_GOAL_OPTIONS: GoalOptions = {
+export const PERSPECTIVE_GOAL_OPTIONS: GoalOptions = {
   spriteUrl: '/sprites/test-goal-clean.webp',
   gateWidth: 92,
   gateAspect: 1097 / 734,
@@ -435,7 +435,7 @@ export const TRAINING_COURSE_GOAL_OPTIONS: GoalOptions = {
   gateAspect: 1533 / 1026,
 };
 
-const PERSPECTIVE_GOALIE_OPTIONS: GoalieOptions = {
+export const PERSPECTIVE_GOALIE_OPTIONS: GoalieOptions = {
   idleSpriteUrl: '/sprites/test-goalie-black.webp',
   saveSpriteUrl: '/sprites/test-goalie-black-save.webp',
   visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
@@ -453,7 +453,7 @@ export const TRAINING_AMATEUR_GOALIE_OPTIONS: GoalieOptions = {
   saveSpriteUrl: '/sprites/training-goalie-amateur-save.webp',
 };
 
-const PERSPECTIVE_PUCK_OPTIONS: PuckOptions = {
+export const PERSPECTIVE_PUCK_OPTIONS: PuckOptions = {
   radiusScaleX: 1.16,
   radiusScaleY: 0.82,
   rotation: 0,

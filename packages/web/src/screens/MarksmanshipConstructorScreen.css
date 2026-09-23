@@ -1,0 +1,284 @@
+.marksmanship-constructor-screen {
+  box-sizing: border-box;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: max(12px, env(safe-area-inset-top)) 14px max(24px, env(safe-area-inset-bottom));
+  overflow-y: auto;
+  background: #dceaf5;
+  color: #14253a;
+}
+
+.marksmanship-constructor-header {
+  flex: none;
+  width: min(100%, 760px);
+  margin-inline: auto;
+}
+
+.marksmanship-constructor-header .page-header-standard__title {
+  font-size: clamp(19px, 5vw, 24px);
+}
+
+.marksmanship-constructor-stage {
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+
+.marksmanship-constructor-court-wrap {
+  position: relative;
+  box-sizing: border-box;
+  width: min(100%, 760px);
+  aspect-ratio: 1212 / 1509;
+  overflow: hidden;
+  border: 3px solid #1e3a5f;
+  border-radius: 36px;
+  background: #eaf1f8;
+}
+
+.marksmanship-constructor-court-wrap > .marksmanship-constructor-court {
+  position: absolute !important;
+  top: -32.54%;
+  left: 0;
+}
+
+.marksmanship-constructor-result {
+  --result-glow: rgba(21, 128, 61, 0.54);
+  --result-glow-soft: rgba(21, 128, 61, 0.2);
+  position: absolute;
+  z-index: 2;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(420px, calc(100% - 40px));
+  padding: clamp(14px, 2vmin, 18px) clamp(24px, 5vmin, 36px);
+  border-radius: 24px;
+  border: 1.5px solid rgba(255, 255, 255, 0.86);
+  background: rgba(172, 184, 198, 0.74);
+  box-shadow: 0 0 0 2px var(--result-glow-soft), 0 0 34px var(--result-glow),
+    0 0 86px var(--result-glow-soft), 0 22px 58px rgba(15, 23, 42, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+  backdrop-filter: blur(18px) saturate(115%);
+  -webkit-backdrop-filter: blur(18px) saturate(115%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.marksmanship-constructor-result--save {
+  --result-glow: rgba(14, 165, 233, 0.58);
+  --result-glow-soft: rgba(14, 165, 233, 0.2);
+}
+
+.marksmanship-constructor-result--miss {
+  --result-glow: rgba(239, 68, 68, 0.58);
+  --result-glow-soft: rgba(239, 68, 68, 0.2);
+}
+
+.marksmanship-constructor-result__top {
+  font-family: var(--font-sans);
+  font-weight: 900;
+  font-size: clamp(38px, 6vmin, 58px);
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: #111827;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+.marksmanship-constructor-controls {
+  flex: none;
+  display: grid;
+  gap: 10px;
+  width: min(100%, 760px);
+  margin-inline: auto;
+}
+
+.marksmanship-constructor-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.marksmanship-constructor-primary-controls > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.marksmanship-constructor-primary-controls {
+  width: min(100%, 760px);
+  margin-inline: auto;
+}
+
+:is(.marksmanship-constructor-controls, .marksmanship-constructor-primary-controls) button,
+:is(.marksmanship-constructor-controls, .marksmanship-constructor-primary-controls) select,
+.marksmanship-constructor-controls input[type='number'] {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.86);
+  border-radius: 12px;
+  background: rgba(239, 246, 252, 0.9);
+  box-shadow: 0 4px 12px rgba(15, 42, 71, 0.12);
+  color: #14253a;
+  font: inherit;
+  font-weight: 800;
+}
+
+.marksmanship-constructor-primary-controls button[aria-pressed='true'] {
+  background: #1e3a5f;
+  color: #fff;
+}
+
+.marksmanship-constructor-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 800;
+}
+
+.marksmanship-constructor-steps .marksmanship-constructor-step {
+  min-width: 112px;
+  min-height: 56px;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.marksmanship-constructor-step-input {
+  display: grid !important;
+  justify-items: center;
+  gap: 3px !important;
+  font-size: 12px;
+}
+
+.marksmanship-constructor-step-input input {
+  width: 86px;
+  min-height: 40px !important;
+  text-align: center;
+}
+
+.marksmanship-constructor-time {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
+  gap: 6px;
+  width: 100%;
+}
+
+.marksmanship-constructor-time__heading {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-weight: 800;
+}
+
+.marksmanship-constructor-time input {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  accent-color: #1e6090;
+}
+
+.marksmanship-constructor-details {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.86);
+  border-radius: 18px;
+  background: rgba(239, 246, 252, 0.9);
+  box-shadow: 0 8px 24px rgba(15, 42, 71, 0.1);
+}
+
+.marksmanship-constructor-details__grid {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.marksmanship-constructor-detail-label {
+  color: #14253a;
+  font-weight: 900;
+}
+
+.marksmanship-constructor-points-row {
+  font-size: clamp(20px, 3.2vw, 26px);
+  line-height: 1.2;
+}
+
+.marksmanship-constructor-points {
+  color: #176036;
+  font-weight: 900;
+}
+
+.marksmanship-constructor-episodes {
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.86);
+  border-radius: 18px;
+  background: rgba(239, 246, 252, 0.9);
+  box-shadow: 0 8px 24px rgba(15, 42, 71, 0.1);
+}
+
+.marksmanship-constructor-episodes h2 {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+
+.marksmanship-constructor-episodes select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid #c8d9e8;
+  border-radius: 12px;
+  background: #fff;
+  color: #14253a;
+  font: inherit;
+  font-weight: 800;
+}
+
+.marksmanship-constructor-episodes ol {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.marksmanship-constructor-episodes li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid #c8d9e8;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.marksmanship-constructor-episodes__copy { min-width: 0; font-size: 13px; line-height: 1.25; }
+.marksmanship-constructor-episodes li p { margin: 3px 0 0; }
+.marksmanship-constructor-episodes li button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+@media (max-width: 430px) {
+  .marksmanship-constructor-screen { padding-inline: 8px; gap: 8px; }
+  .marksmanship-constructor-court-wrap { border-radius: 22px; }
+  .marksmanship-constructor-controls { gap: 8px; }
+  .marksmanship-constructor-row { gap: 5px; }
+  :is(.marksmanship-constructor-controls, .marksmanship-constructor-primary-controls) button,
+  .marksmanship-constructor-primary-controls select,
+  .marksmanship-constructor-controls input[type='number'] { padding-inline: 8px; font-size: 12px; }
+  .marksmanship-constructor-controls label { font-size: 12px; }
+  .marksmanship-constructor-steps .marksmanship-constructor-step { min-width: 96px; }
+}
