@@ -73,6 +73,7 @@ import { rewardColor } from '../app/rewardColors.js';
 import type { ScoreBoardOpponent } from '../components/ScoreBoard.js';
 import { GlassSelect } from '../components/GlassSelect.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
+import { DuelLimitsSection } from '../components/duel/DuelLimitsSection.js';
 import { TrainingHistorySection } from '../components/TrainingHistorySection.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
@@ -143,6 +144,7 @@ import {
   searchAmateurOpponents,
   settleAmateurDuel,
   type AmateurDuelKind,
+  type AmateurDuelOverview,
   type AmateurDuelInventoryAvailabilityItem,
   type AmateurDuelLoadoutItem,
   type AmateurDuelLoadoutSelection,
@@ -3832,7 +3834,7 @@ function TrainingPlaceholder({
     }
   }
 
-  if (data && playTraining) {
+  if (data && autoPlay && playTraining) {
     const shouldPlayEntrance = playEntranceOnStart || localPlayEntrance;
     return (
       <TrainingPlayView
@@ -4340,11 +4342,13 @@ function DuelKindPreferencePicker({
   onChange,
   onInfo,
   locks,
+  limits,
 }: {
   selected: AmateurDuelKind[];
   onChange: (next: AmateurDuelKind[]) => void;
   onInfo: () => void;
   locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
+  limits?: AmateurDuelOverview['format_limits'];
 }): JSX.Element {
   const selectedSet = new Set(selected);
   const toggleKind = (kind: AmateurDuelKind) => {
@@ -4390,8 +4394,9 @@ function DuelKindPreferencePicker({
             label={duelKindText(kind)}
             checked={selectedSet.has(kind)}
             active={selectedSet.has(kind)}
-            disabled={locks?.[kind]?.blocked === true}
-            title={locks?.[kind] ? ordinaryDuelLockCopy(locks[kind]!) : undefined}
+            disabled={locks?.[kind]?.blocked === true || limits?.[kind]?.available === false}
+            title={locks?.[kind] ? ordinaryDuelLockCopy(locks[kind]!)
+              : limits?.[kind]?.available === false ? 'Лимит дуэлей этого формата исчерпан' : undefined}
             onClick={() => toggleKind(kind)}
           />
         ))}
@@ -4504,6 +4509,26 @@ function MatchmakingRulesContent(): JSX.Element {
   );
 }
 
+export function duelAdmissionErrorCopy(error: unknown): string {
+  if (!(error instanceof ApiError) || error.status !== 409) {
+    return error instanceof Error ? error.message : 'Не удалось начать дуэль. Попробуйте ещё раз.';
+  }
+  const limit = error.details?.duelLimit;
+  if (!limit || typeof limit !== 'object') return error.message;
+  const details = limit as { reason?: unknown; retryAt?: unknown };
+  const reason = {
+    daily: 'Дневной лимит дуэлей исчерпан.',
+    weekly: 'Недельный лимит дуэлей исчерпан.',
+    monthly: 'Месячный лимит дуэлей исчерпан.',
+    format: 'Месячный лимит этого формата исчерпан.',
+    outgoing: 'Достигнут лимит исходящих вызовов.',
+  }[String(details.reason)] ?? error.message;
+  const retry = typeof details.retryAt === 'string' ? new Date(details.retryAt) : null;
+  return retry && !Number.isNaN(retry.getTime())
+    ? `${reason} Снова доступно ${retry.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} (МСК).`
+    : reason;
+}
+
 function AmateurDuelsPage({
   onBack,
   onOpenMatch,
@@ -4552,16 +4577,25 @@ function AmateurDuelsPage({
   const duelLock = matches.data?.duel_lock;
   const duelBlocked = duelLock?.blocked === true;
   useGameplayLockRefresh(duelLock);
+  const searchKind = (selectedTemplateId
+    ? templates.data?.templates.find((item) => item.id === selectedTemplateId)
+    : sortDuelTemplates(templates.data?.templates ?? [])[0])?.duel_kind ?? null;
   const opponents = useQuery({
-    queryKey: ['amateur-duel', 'opponents', 'search', opponentQuery],
-    queryFn: () => searchAmateurOpponents(opponentQuery, 12),
-    enabled: !duelBlocked && duelCreationMode === 'challenge' && opponentQuery.trim().length > 0,
+    queryKey: ['amateur-duel', 'opponents', 'search', opponentQuery, searchKind],
+    queryFn: () => searchAmateurOpponents(opponentQuery, 12, [searchKind!]),
+    enabled: !duelBlocked && duelCreationMode === 'challenge' && searchKind !== null && opponentQuery.trim().length > 0,
   });
   const onlineOpponents = useQuery({
-    queryKey: ['amateur-duel', 'opponents', 'online'],
-    queryFn: () => searchAmateurOpponents('', 12),
-    enabled: !duelBlocked && duelCreationMode === 'challenge',
+    queryKey: ['amateur-duel', 'opponents', 'online', searchKind],
+    queryFn: () => searchAmateurOpponents('', 12, [searchKind!]),
+    enabled: !duelBlocked && duelCreationMode === 'challenge' && searchKind !== null,
+    refetchInterval: 15_000,
   });
+  useEffect(() => {
+    if (!selectedOpponent || !searchKind) return;
+    if (selectedOpponent.format_limits?.[searchKind]?.available === false ||
+        selectedOpponent.format_locks?.[searchKind]?.blocked) setSelectedOpponent(null);
+  }, [searchKind, selectedOpponent]);
   const rating = useQuery({
     queryKey: ['amateur-duel', 'rating', 'current'],
     queryFn: () => fetchAmateurRating(),
@@ -4644,7 +4678,8 @@ function AmateurDuelsPage({
       match.status === 'invited' || match.status === 'ready_check' || match.status === 'active',
   );
   const openDuelSlotsUsed = activeMatches.length;
-  const hasOpenDuelSlot = openDuelSlotsUsed < 5;
+  const openDuelSlotsLimit = matches.data?.open_duel_slots_limit ?? 2;
+  const hasOpenDuelSlot = openDuelSlotsUsed < openDuelSlotsLimit;
   const currentMatches = activeMatches.filter((match) => match.status !== 'invited');
   const incomingInvites = activeMatches.filter(
     (match) => match.status === 'invited' && match.me.side === 'opponent',
@@ -4661,7 +4696,12 @@ function AmateurDuelsPage({
     ? selectedOpponent?.format_locks?.[selectedTemplate.duel_kind]
     : null;
   const challengeLock = duelLock ?? selectedFormatLock ?? selectedOpponentLock;
-  const eligibleMatchmakingKinds = matchmakingKinds.filter((kind) => !formatLocks?.[kind]?.blocked);
+  const formatLimits = matches.data?.format_limits;
+  const selectedSelfLimit = selectedTemplate ? formatLimits?.[selectedTemplate.duel_kind] : null;
+  const selectedOpponentLimit = selectedTemplate
+    ? selectedOpponent?.format_limits?.[selectedTemplate.duel_kind] : null;
+  const eligibleMatchmakingKinds = matchmakingKinds.filter((kind) =>
+    !formatLocks?.[kind]?.blocked && formatLimits?.[kind]?.available !== false);
   const unavailableFormat = DUEL_KIND_OPTIONS.find((kind) => formatLocks?.[kind]?.blocked);
   const matchmakingFormatLock = unavailableFormat ? formatLocks?.[unavailableFormat] : null;
   const opponentOptions = opponentQuery.trim().length > 0 ? (opponents.data?.users ?? []) : [];
@@ -4701,6 +4741,8 @@ function AmateurDuelsPage({
 
   const canChallenge =
     !challengeLock?.blocked &&
+    selectedSelfLimit?.available !== false &&
+    selectedOpponentLimit?.available !== false &&
     hasOpenDuelSlot &&
     selectedTemplate !== null &&
     selectedOpponent !== null &&
@@ -4774,7 +4816,7 @@ function AmateurDuelsPage({
           )}
           <section className="duel-section" aria-label="Текущие дуэли">
             <div className="section-label duel-section-title">
-              Текущие дуэли ({openDuelSlotsUsed}/5)
+              Текущие дуэли ({openDuelSlotsUsed}/{openDuelSlotsLimit})
             </div>
             {currentMatches.length === 0 ? (
               <div role="status" className="duel-empty-current">
@@ -4796,6 +4838,7 @@ function AmateurDuelsPage({
               {renderDuelCards(outgoingInvites)}
             </section>
           )}
+          <DuelLimitsSection limits={matches.data?.duel_limits} loading={matches.isPending} onReset={() => { void matches.refetch(); }} />
           <div className="duel-section">
             <div className="section-label duel-section-title">Новая дуэль</div>
             <section className="duel-creation-card" aria-label="Новая дуэль">
@@ -4813,6 +4856,7 @@ function AmateurDuelsPage({
                   <DuelKindPreferencePicker
                     selected={eligibleMatchmakingKinds}
                     {...(formatLocks === undefined ? {} : { locks: formatLocks })}
+                    {...(formatLimits === undefined ? {} : { limits: formatLimits })}
                     onChange={setMatchmakingKinds}
                     onInfo={() => setMatchmakingRulesOpen(true)}
                   />
@@ -4838,6 +4882,11 @@ function AmateurDuelsPage({
                   {!duelBlocked && matchmakingFormatLock && (
                     <p role="status" className="modal-copy">
                       Некоторые форматы недоступны. {ordinaryDuelLockCopy(matchmakingFormatLock)}
+                    </p>
+                  )}
+                  {matchmakingMut.error && (
+                    <p role="alert" className="modal-copy">
+                      {duelAdmissionErrorCopy(matchmakingMut.error)}
                     </p>
                   )}
                   {matchmakingTicket && (
@@ -4887,6 +4936,11 @@ function AmateurDuelsPage({
                       {ordinaryDuelLockCopy(challengeLock)}
                     </p>
                   )}
+                  {(selectedSelfLimit?.available === false || selectedOpponentLimit?.available === false) && (
+                    <p role="status" className="modal-copy">
+                      {selectedSelfLimit?.available === false ? 'У вас' : 'У соперника'} исчерпан лимит дуэлей для выбранного формата.
+                    </p>
+                  )}
                   {templateItems.length > 0 && selectedTemplate ? (
                     <>
                       <GlassSelect
@@ -4895,7 +4949,7 @@ function AmateurDuelsPage({
                         value={selectedTemplate.id}
                         options={templateItems.map((template) => ({
                           value: template.id,
-                          label: duelTemplateOptionLabel(template),
+                          label: `${duelTemplateOptionLabel(template)}${formatLimits?.[template.duel_kind]?.available === false || selectedOpponent?.format_limits?.[template.duel_kind]?.available === false ? ' — лимит исчерпан' : ''}`,
                         }))}
                         onChange={setSelectedTemplateId}
                       />
@@ -5186,7 +5240,7 @@ function AmateurDuelsPage({
                   </button>
                   {challengeMut.error && (
                     <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>
-                      {challengeMut.error.message}
+                      {duelAdmissionErrorCopy(challengeMut.error)}
                     </div>
                   )}
                 </>

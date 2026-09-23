@@ -15,6 +15,7 @@ export interface InventoryItem {
   description: string;
   imageUrl: string | null;
   currencyPrice: number;
+  starPrice?: number;
   chargesPerPurchase: number;
   lowStockThreshold?: number;
   resourceUnit?: DuelInventoryResourceUnit;
@@ -116,9 +117,19 @@ export function patchEquipment(patch: EquipmentPatch): Promise<InventoryState> {
   });
 }
 
-export function purchaseInventoryItem(itemId: string): Promise<InventoryState> {
+export function purchaseInventoryItem(
+  itemId: string,
+  purchase?: { currency: 'coins' | 'stars'; expectedPriceStars?: number; idempotencyKey: string },
+): Promise<InventoryState> {
   return apiFetch<InventoryState>(`/inventory/items/${itemId}/purchase`, {
     method: 'POST',
+    ...(purchase === undefined ? {} : {
+      body: JSON.stringify({
+        currency: purchase.currency,
+        idempotency_key: purchase.idempotencyKey,
+        ...(purchase.expectedPriceStars === undefined ? {} : { expected_price_stars: purchase.expectedPriceStars }),
+      }),
+    }),
   });
 }
 

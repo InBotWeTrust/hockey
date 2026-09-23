@@ -10,6 +10,7 @@ import {
   type GameplayAction,
 } from '../duel/gameplayLocks.js';
 import { assertFullAmateurAccess } from '../profile/amateurAccess.js';
+import { getGameSettings } from '../duel/gameSettings.js';
 
 type EquipmentKind = 'stick' | 'skates' | 'nutrition';
 type InventoryKind = EquipmentKind | 'recovery';
@@ -67,6 +68,7 @@ interface InventoryItemDto {
   description: string;
   imageUrl: string | null;
   currencyPrice: number;
+  starPrice: number;
   chargesPerPurchase: number;
   lowStockThreshold: number;
   resourceUnit: ResourceUnit;
@@ -240,6 +242,8 @@ function transactionCategory(reason: string): TransactionCategory {
 }
 
 export function transactionTitle(reason: string, metadata: Record<string, unknown>): string {
+  if (reason === 'inventory_purchase' && metadata.payment_currency === 'stars')
+    return 'Покупка за звёзды';
   const title = stringMetadata(metadata, 'title');
   if (title) return title;
   if (reason === 'inventory_purchase') return 'Покупка инвентаря';
@@ -425,6 +429,7 @@ async function resolveEquippableInventorySelection(
 
 async function fetchInventoryState(client: DbClient, userId: string): Promise<InventoryState> {
   await ensureInventoryRows(client, userId);
+  const starDivisor = (await getGameSettings(client as PoolClient)).amateur.starInventoryPriceDivisor;
   const { rows: accountRows } = await client.query<{
     balance: number;
     stars: number;
@@ -495,6 +500,7 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
       description: row.description,
       imageUrl: row.photo_url,
       currencyPrice: Number(row.currency_price),
+      starPrice: Math.ceil(Number(row.currency_price) / starDivisor),
       chargesPerPurchase: Number(row.charges_per_purchase),
       lowStockThreshold: Number(row.low_stock_threshold),
       resourceUnit: row.resource_unit,
@@ -663,8 +669,26 @@ async function purchaseInventoryItem(
   client: PoolClient,
   userId: string,
   itemId: string,
+  purchase: {
+    currency: 'coins' | 'stars';
+    expectedPriceStars?: number;
+    idempotencyKey?: string;
+  } = { currency: 'coins' },
 ): Promise<InventoryState> {
   await ensureInventoryRows(client, userId);
+  if (purchase.idempotencyKey) {
+    await client.query('select id from users where id = $1 for update', [userId]);
+    const previous = await client.query<{ inventory_item_id: string; currency: string }>(
+      `select inventory_item_id, currency from inventory_purchase_request
+        where user_id = $1 and idempotency_key = $2`,
+      [userId, purchase.idempotencyKey],
+    );
+    if (previous.rows[0]) {
+      if (previous.rows[0].inventory_item_id !== itemId || previous.rows[0].currency !== purchase.currency)
+        throw new AppError('conflict', 'purchase request key was already used', 409);
+      return fetchInventoryState(client, userId);
+    }
+  }
 
   const { rows: itemRows } = await client.query<{
     id: string;
@@ -684,25 +708,39 @@ async function purchaseInventoryItem(
   if (!item) throw new AppError('not_found', 'inventory item not found', 404);
 
   const price = Number(item.currency_price);
+  const starDivisor = (await getGameSettings(client)).amateur.starInventoryPriceDivisor;
+  const starPrice = Math.ceil(price / starDivisor);
   const charges = Number(item.charges_per_purchase);
   if (charges <= 0) {
     throw new AppError('conflict', 'inventory item is not purchasable', 409);
+  }
+
+  if (purchase.currency === 'stars' && purchase.expectedPriceStars !== starPrice) {
+    throw new AppError('conflict', 'Цена в звёздах изменилась. Обновите магазин.', 409);
   }
 
   const { rows: accountRows } = await client.query<{
     balance: number;
     reserved_balance: number;
   }>(
-    `update user_currency_account
+    purchase.currency === 'coins' ? `update user_currency_account
         set balance = balance - $2,
             updated_at = now()
       where user_id = $1
         and balance >= $2
-      returning balance, reserved_balance`,
-    [userId, price],
+      returning balance, reserved_balance` :
+      'select balance, reserved_balance from user_currency_account where user_id = $1',
+    purchase.currency === 'coins' ? [userId, price] : [userId],
   );
   const account = accountRows[0];
   if (!account) throw new AppError('conflict', 'not enough currency balance', 409);
+  if (purchase.currency === 'stars') {
+    const stars = await client.query(
+      'update users set xp = xp - $2 where id = $1 and xp >= $2 returning xp',
+      [userId, starPrice],
+    );
+    if (stars.rowCount === 0) throw new AppError('conflict', 'Недостаточно звёзд', 409);
+  }
 
   const { rows: instanceRows } = await client.query<{ id: string }>(
     `insert into user_inventory_instance
@@ -720,7 +758,7 @@ async function purchaseInventoryItem(
      values ($1, 'inventory_purchase', $2, 0, $3, $4, $5)`,
     [
       userId,
-      -price,
+      purchase.currency === 'coins' ? -price : 0,
       Number(account.balance),
       Number(account.reserved_balance),
       JSON.stringify({
@@ -729,9 +767,21 @@ async function purchaseInventoryItem(
         title: item.title,
         item_kind: item.item_kind,
         charges_added: charges,
+        payment_currency: purchase.currency,
+        ...(purchase.currency === 'stars' ? { stars: -starPrice } : {}),
       }),
     ],
   );
+
+  if (purchase.idempotencyKey) {
+    await client.query(
+      `insert into inventory_purchase_request
+         (user_id, idempotency_key, inventory_item_id, currency, price_paid, instance_id)
+       values ($1, $2, $3, $4, $5, $6)`,
+      [userId, purchase.idempotencyKey, item.id, purchase.currency,
+        purchase.currency === 'stars' ? starPrice : price, instanceId],
+    );
+  }
 
   return fetchInventoryState(client, userId);
 }
@@ -899,11 +949,23 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
   app.post('/inventory/items/:itemId/purchase', { preHandler: [app.authenticate] }, async (req) => {
     const params = itemParamsSchema.safeParse(req.params);
     if (!params.success) throw new AppError('bad_request', 'invalid inventory item id', 400);
+    const body = z.object({
+      currency: z.enum(['coins', 'stars']).default('coins'),
+      expected_price_stars: z.number().int().min(0).optional(),
+      idempotency_key: z.string().uuid().optional(),
+    }).safeParse(req.body ?? {});
+    if (!body.success) throw new AppError('bad_request', 'invalid purchase payload', 400);
+    if (body.data.currency === 'stars' && !body.data.idempotency_key)
+      throw new AppError('bad_request', 'idempotency key is required for star purchase', 400);
 
     const client = await app.pg.connect();
     try {
       await client.query('begin');
-      const state = await purchaseInventoryItem(client, req.user.id, params.data.itemId);
+      const state = await purchaseInventoryItem(client, req.user.id, params.data.itemId, {
+        currency: body.data.currency,
+        ...(body.data.expected_price_stars === undefined ? {} : { expectedPriceStars: body.data.expected_price_stars }),
+        ...(body.data.idempotency_key === undefined ? {} : { idempotencyKey: body.data.idempotency_key }),
+      });
       await client.query('commit');
       return state;
     } catch (err) {

@@ -11,7 +11,7 @@ vi.hoisted(() => {
   });
 });
 import { render, screen, waitFor, fireEvent, act, within, cleanup } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createDuelStumbleRandomness,
@@ -28,6 +28,7 @@ import {
   createClassicTournamentCondition,
   dailyCharacterVisuals,
   duelBackLabel,
+  duelAdmissionErrorCopy,
   duelEquipmentEffectLabel,
   duelEventTiming,
   duelInventoryBadgeLabel,
@@ -59,6 +60,21 @@ import type { AmateurDuelMatchState } from '../api/amateurDuel.js';
 import type { BonusGameCard } from '../api/bonusGames.js';
 import type { ClassicTournamentState } from '../api/tournamentClassic.js';
 import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
+import { ApiError } from '../api/apiFetch.js';
+
+describe('duel admission conflict copy', () => {
+  it('shows the structured limit and Moscow retry time', () => {
+    expect(duelAdmissionErrorCopy(new ApiError(409, 'conflict', 'Ошибка', {
+      duelLimit: { reason: 'daily', retryAt: '2026-09-22T21:00:00Z' },
+    }))).toContain('Дневной лимит дуэлей исчерпан. Снова доступно 23.09.2026, 00:00:00 (МСК).');
+  });
+
+  it('explains the outgoing invitation limit without a retry time', () => {
+    expect(duelAdmissionErrorCopy(new ApiError(409, 'conflict', 'Ошибка', {
+      duelLimit: { reason: 'outgoing' },
+    }))).toBe('Достигнут лимит исходящих вызовов.');
+  });
+});
 
 vi.mock('../game/PixiStage.js', () => ({
   PixiStage: () => <div data-testid="pixi-stage-stub" />,
@@ -400,7 +416,7 @@ function LocationProbe(): JSX.Element {
   return <div aria-label="location">{`${location.pathname}${location.search}`}</div>;
 }
 
-function renderWith(initialEntries: string[] = ['/']) {
+function renderWith(initialEntries: string[] = ['/'], routeControl?: JSX.Element) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
@@ -412,6 +428,7 @@ function renderWith(initialEntries: string[] = ['/']) {
       >
         <DailyScreen />
         <LocationProbe />
+        {routeControl}
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -4424,6 +4441,52 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: /Начальный уровень/ })).not.toBeInTheDocument();
   });
 
+  it('opens the open-training details after leaving a playable training route', async () => {
+    const unlockedCatalog = {
+      ...initialTrainingCatalog,
+      open_training_unlocked: true,
+      open_training_unlock_source: 'course' as const,
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/duel/training/course')
+        ? unlockedCatalog
+        : url.includes('/duel/training/state')
+          ? trainingActiveState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    useTrainingSessionStore.setState({ data: trainingActiveState });
+
+    function OpenTrainingRoute(): JSX.Element {
+      const navigate = useNavigate();
+      return (
+        <button
+          type="button"
+          onClick={() => navigate('/?view=training&section=open&from=sections', { replace: true })}
+        >
+          Перейти на страницу открытой тренировки
+        </button>
+      );
+    }
+
+    renderWith(['/?view=training&play=1'], <OpenTrainingRoute />);
+    expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Перейти на страницу открытой тренировки' }));
+
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=training&section=open&from=sections');
+    expect(await screen.findByRole('button', { name: 'Продолжить тренировку' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Продолжить тренировку' }));
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=training&play=1');
+    expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
+  });
+
   it('switches an active training session to the selected period before opening the rink', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch');
     let resolveSwitch!: (response: Response) => void;
@@ -5727,11 +5790,41 @@ describe('DailyScreen', () => {
     ).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Входящие приглашения' })).not.toBeInTheDocument();
     expect(within(creation).queryByText('Новая дуэль')).not.toBeInTheDocument();
-    expect(screen.getByText('Текущие дуэли (2/5)')).toHaveClass(
+    expect(screen.getByText('Текущие дуэли (2/2)')).toHaveClass(
       'section-label',
       'duel-section-title',
     );
     expect(screen.getByText('Новая дуэль')).toHaveClass('section-label', 'duel-section-title');
+  });
+
+  it('shows shared duel limits and expands each period into format usage', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/duel/amateur/matches')
+        ? { matches: [], duel_limits: {
+            daily: { used: 2, limit: 8, reset_at: new Date(Date.now() + 3600000).toISOString(), by_format: { express: 1, express_plus: 1, classic: 0 } },
+            weekly: { used: 5, limit: 40, reset_at: new Date(Date.now() + 86400000).toISOString(), by_format: { express: 2, express_plus: 2, classic: 1 } },
+            monthly: { used: 12, limit: 129, format_limit: 43,
+              reset_at: new Date(Date.now() + 172800000).toISOString(),
+              by_format: { express: 4, express_plus: 5, classic: 3 } },
+          } }
+        : url.includes('/duel/amateur/templates') ? { templates: [] }
+          : url.includes('/duel/amateur/rating') ? { season_key: '2026-09', rating: [] }
+            : url.includes('/duel/training/state') ? trainingIdleState
+              : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    const limits = await screen.findByRole('region', { name: 'Лимиты дуэлей' });
+    await waitFor(() => expect(limits).toHaveTextContent(/Сегодня 6\/8 \(до обновления: (?:1 ч|59 мин) .*сек\)/));
+    expect(within(limits).getByRole('button', { name: /Неделя/ })).not.toHaveTextContent('сек');
+    expect(within(limits).getByRole('button', { name: /Месяц/ })).not.toHaveTextContent('сек');
+    fireEvent.click(within(limits).getByRole('button', { name: /Сегодня/ }));
+    expect(within(limits).getByText('Экспресс: сыграно 1')).toBeInTheDocument();
+    fireEvent.click(within(limits).getByRole('button', { name: /Месяц/ }));
+    expect(within(limits).getByText('Экспресс: осталось 39 из 43')).toBeInTheDocument();
   });
 
   it('renders plain duel metadata and muted invite actions', async () => {
@@ -6289,6 +6382,66 @@ describe('DailyScreen', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Классика' })).toBeDisabled());
     expect(screen.getByRole('button', { name: 'Начать поиск' })).toBeDisabled();
     expect(screen.getByText(/Некоторые форматы недоступны/)).toBeInTheDocument();
+  });
+
+  it('excludes a monthly-limit-exhausted format from matchmaking while keeping another playable', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/duel/amateur/matches')
+        ? { matches: [], duel_lock: null, format_locks: {}, format_limits: {
+            express: { available: false, reason: 'format', retryAt: '2026-10-01T00:00:00Z' },
+            express_plus: { available: true, reason: null, retryAt: null },
+            classic: { available: true, reason: null, retryAt: null },
+          } }
+        : url.includes('/duel/amateur/templates')
+          ? { templates: challengeTemplates }
+          : url.includes('/duel/amateur/rating')
+            ? { season_key: '2026-09', rating: [] }
+            : url.includes('/duel/training/state')
+              ? trainingIdleState
+              : url.includes('/matchmaking/join')
+                ? { ticket: { id: 'queued', status: 'queued', expires_at: new Date(Date.now() + 120_000).toISOString(), duel_kinds: ['express_plus', 'classic'] } }
+                : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Экспресс' })).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Классика' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([input]) => String(input).includes('/matchmaking/join'));
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ duel_kinds: ['express_plus', 'classic'] });
+    });
+  });
+
+  it('removes a selected opponent when switching to a format unavailable to that opponent', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/duel/amateur/opponents')
+        ? { users: url.includes('kinds=classic') ? [] : [{ userId: 'rival-1', displayName: 'Соперник',
+            avatarUrl: null, lastSeenAt: new Date().toISOString(), format_locks: {},
+            format_limits: { express: { available: true, reason: null, retryAt: null },
+              classic: { available: false, reason: 'format', retryAt: null } } }] }
+        : url.includes('/duel/amateur/templates') ? { templates: challengeTemplates }
+          : url.includes('/duel/amateur/matches') ? { matches: [], duel_lock: null }
+            : url.includes('/duel/amateur/rating') ? { season_key: '2026-09', rating: [] }
+              : url.includes('/duel/training/state') ? trainingIdleState
+                : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), { status: 200,
+        headers: { 'content-type': 'application/json' } });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Вызвать' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать соперника Соперник' }));
+    expect(screen.getByRole('button', { name: 'Вызвать игрока' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Шаблон дуэли' }));
+    fireEvent.click(await screen.findByRole('option', { name: /Классика/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Выберите соперника' })).toBeDisabled());
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('kinds=classic'))).toBe(true);
   });
 
   it('lets a challenger cancel an unanswered duel invite from the current duels list', async () => {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { triggerHaptic } from '../feedback/haptics.js';
 import type { UseMutationResult } from '@tanstack/react-query';
@@ -60,6 +61,8 @@ import {
 } from '../api/payments.js';
 
 type ShopTab = 'goods' | 'bank' | 'history';
+type InventoryPurchaseInput = { item: InventoryItem; currency: 'coins' | 'stars' };
+const inventoryStarPrice = (item: InventoryItem) => item.starPrice ?? Math.ceil(item.currencyPrice / 25);
 type HistoryFilter = InventoryTransactionFilter;
 
 const SHOP_TABS: Array<{ id: ShopTab; label: string }> = [
@@ -163,6 +166,7 @@ export function InventoryScreen(): JSX.Element {
   const [activeTab, setActiveTab] = useState<ShopTab>(isPaymentReturn ? 'bank' : 'goods');
   const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
   const [purchaseItem, setPurchaseItem] = useState<InventoryItem | null>(null);
+  const purchaseRequestIds = useRef<{ coins: string | null; stars: string | null }>({ coins: null, stars: null });
   const [purchaseNotice, setPurchaseNotice] = useState<{
     title: string;
     amount: string;
@@ -184,9 +188,17 @@ export function InventoryScreen(): JSX.Element {
     queryFn: fetchReceiptEmail,
     enabled: ownerId !== undefined,
   });
-  const purchaseMutation = useMutation<InventoryState, Error, InventoryItem>({
-    mutationFn: (item) => purchaseInventoryItem(item.itemId ?? item.id),
-    onSuccess: (inventory, item) => {
+  const purchaseMutation = useMutation<InventoryState, Error, InventoryPurchaseInput>({
+    mutationFn: ({ item, currency }) => {
+      const key = purchaseRequestIds.current[currency] ?? crypto.randomUUID();
+      purchaseRequestIds.current[currency] = key;
+      return purchaseInventoryItem(item.itemId ?? item.id, {
+        currency,
+        idempotencyKey: key,
+        ...(currency === 'stars' ? { expectedPriceStars: inventoryStarPrice(item) } : {}),
+      });
+    },
+    onSuccess: (inventory, { item }) => {
       triggerHaptic('success');
       queryClient.setQueryData(['inventory', 'me'], inventory);
       void queryClient.invalidateQueries({ queryKey: ['inventory', 'transactions'] });
@@ -327,6 +339,7 @@ export function InventoryScreen(): JSX.Element {
 
   const openPurchase = (item: InventoryItem): void => {
     purchaseMutation.reset();
+    purchaseRequestIds.current = { coins: null, stars: null };
     setDetailsItem(null);
     setPurchaseItem(item);
   };
@@ -447,7 +460,8 @@ export function InventoryScreen(): JSX.Element {
           <GoodsCategoryCatalog
             category={selectedCategory}
             inventory={inventory}
-            tokens={tokens}
+          tokens={tokens}
+          stars={inventory?.balances.stars ?? 0}
             purchaseMutation={purchaseMutation}
             onDetails={setDetailsItem}
             onBuy={openPurchase}
@@ -482,8 +496,8 @@ export function InventoryScreen(): JSX.Element {
       {detailsItem !== null && (
         <InventoryItemModal
           item={detailsItem}
-          canBuy={tokens >= detailsItem.currencyPrice}
-          isBuying={purchaseMutation.isPending && purchaseMutation.variables?.id === detailsItem.id}
+          canBuy={tokens >= detailsItem.currencyPrice || (inventory?.balances.stars ?? 0) >= inventoryStarPrice(detailsItem)}
+          isBuying={purchaseMutation.isPending && purchaseMutation.variables?.item.id === detailsItem.id}
           error={purchaseMutation.isError ? purchaseMutation.error.message : null}
           onClose={() => {
             purchaseMutation.reset();
@@ -496,13 +510,15 @@ export function InventoryScreen(): JSX.Element {
       {purchaseItem !== null && (
         <PurchaseConfirmModal
           item={purchaseItem}
+          canBuyCoins={tokens >= purchaseItem.currencyPrice}
+          canBuyStars={(inventory?.balances.stars ?? 0) >= inventoryStarPrice(purchaseItem)}
           isSaving={purchaseMutation.isPending}
           error={purchaseMutation.isError ? purchaseMutation.error.message : null}
           onClose={() => {
             purchaseMutation.reset();
             setPurchaseItem(null);
           }}
-          onConfirm={() => purchaseMutation.mutate(purchaseItem)}
+          onConfirm={(currency) => purchaseMutation.mutate({ item: purchaseItem, currency })}
         />
       )}
 
@@ -572,6 +588,7 @@ function GoodsCategoryCatalog({
   category,
   inventory,
   tokens,
+  stars,
   purchaseMutation,
   onDetails,
   onBuy,
@@ -579,7 +596,8 @@ function GoodsCategoryCatalog({
   category: ShopCategory;
   inventory: InventoryState | undefined;
   tokens: number;
-  purchaseMutation: UseMutationResult<InventoryState, Error, InventoryItem>;
+  stars: number;
+  purchaseMutation: UseMutationResult<InventoryState, Error, InventoryPurchaseInput>;
   onDetails: (item: InventoryItem) => void;
   onBuy: (item: InventoryItem) => void;
 }): JSX.Element {
@@ -597,13 +615,14 @@ function GoodsCategoryCatalog({
         }}
       >
         {items.map((item) => {
-          const canBuy = tokens >= item.currencyPrice;
+          const canBuy = tokens >= item.currencyPrice || stars >= inventoryStarPrice(item);
           return (
             <InventoryProductCard
               key={item.id}
               item={item}
               canBuy={canBuy}
-              isBuying={purchaseMutation.isPending && purchaseMutation.variables?.id === item.id}
+              coinAffordable={tokens >= item.currencyPrice}
+              isBuying={purchaseMutation.isPending && purchaseMutation.variables?.item.id === item.id}
               onDetails={() => onDetails(item)}
               onBuy={() => onBuy(item)}
             />
@@ -866,12 +885,14 @@ function BalanceChip({
 function InventoryProductCard({
   item,
   canBuy,
+  coinAffordable,
   isBuying,
   onDetails,
   onBuy,
 }: {
   item: InventoryItem;
   canBuy: boolean;
+  coinAffordable: boolean;
   isBuying: boolean;
   onDetails: () => void;
   onBuy: () => void;
@@ -956,20 +977,27 @@ function InventoryProductCard({
           {purchaseBundleLabel(item)}
         </div>
         <div
-          aria-label={`${numberText(item.currencyPrice)} монет`}
+          aria-label={`${numberText(item.currencyPrice)} монет или ${numberText(inventoryStarPrice(item))} звёзд`}
           style={{
-            color: rewardColor('coin'),
             fontSize: 13,
             fontWeight: 950,
             lineHeight: 1.1,
             display: 'inline-flex',
             alignItems: 'center',
             gap: 5,
+            whiteSpace: 'nowrap',
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          <CircleDollarSign size={14} strokeWidth={2.55} aria-hidden="true" />
-          <span>{numberText(item.currencyPrice)}</span>
+          <span style={{ color: rewardColor('coin'), display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            <CircleDollarSign size={14} fill="none" stroke="currentColor" aria-hidden="true" />
+            {numberText(item.currencyPrice)}
+          </span>
+          <span style={{ color: 'var(--muted)', fontSize: 11 }}>или</span>
+          <span style={{ color: rewardColor('star'), display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            <Star size={13} fill="currentColor" aria-hidden="true" />
+            {numberText(inventoryStarPrice(item))}
+          </span>
         </div>
       </button>
       <button
@@ -978,7 +1006,9 @@ function InventoryProductCard({
         disabled={!canBuy || isBuying}
         onClick={onBuy}
         aria-label={
-          canBuy
+          !coinAffordable && canBuy
+            ? `Выбрать способ покупки ${item.title}`
+            : canBuy
             ? `Купить ${item.title} за ${numberText(item.currencyPrice)} монет`
             : `Не хватает монет на ${item.title}`
         }
@@ -1087,7 +1117,7 @@ function InventoryItemModal({
         </div>
 
         <div className="glass" style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 9 }}>
-          <DetailRow label="Цена" value={`${numberText(item.currencyPrice)} монет`} tone="coin" />
+          <DetailRow label="Цена" value={<PurchasePrice item={item} />} />
           <DetailRow label="Ресурс" value={purchaseBundleLabel(item)} />
         </div>
 
@@ -1124,30 +1154,34 @@ function InventoryItemModal({
 
 function PurchaseConfirmModal({
   item,
+  canBuyCoins,
+  canBuyStars,
   isSaving,
   error,
   onClose,
   onConfirm,
 }: {
   item: InventoryItem;
+  canBuyCoins: boolean;
+  canBuyStars: boolean;
   isSaving: boolean;
   error: string | null;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (currency: 'coins' | 'stars') => void;
 }): JSX.Element {
   return (
     <AccessibleModal
-      title={`Купить ${item.title}?`}
-      copy={
-        <>
-          Будет списано {numberText(item.currencyPrice)} монет. В инвентарь добавится{' '}
-          {purchaseBundleLabel(item)}.
-        </>
-      }
+      title={`Купить ${item.kind === 'stick' ? 'клюшку ' : item.kind === 'skates' ? 'коньки ' : ''}«${item.title}»?`}
+      copy={`В инвентарь добавится ${purchaseBundleLabel(item)}.`}
       onRequestClose={onClose}
       closeBlocked={isSaving}
       backdropStyle={{ zIndex: 430 }}
       cardStyle={{ width: 'min(390px, calc(100vw - 28px))' }}
+      headerAction={
+        <button type="button" className="icon-btn" aria-label="Закрыть" disabled={isSaving} onClick={onClose}>
+          <X size={15} />
+        </button>
+      }
     >
       <div style={{ display: 'grid', gap: 14 }}>
         {error !== null && (
@@ -1155,17 +1189,22 @@ function PurchaseConfirmModal({
             {error}
           </div>
         )}
-        <div className="modal-actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
-          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={isSaving}>
-            Отмена
+        <div style={{ display: 'grid', gap: 8 }}>
+          <button
+            type="button"
+            className="modal-primary btn--cta"
+            onClick={() => onConfirm('coins')}
+            disabled={isSaving || !canBuyCoins}
+          >
+            {isSaving ? 'Покупка...' : `Купить за ${numberText(item.currencyPrice)} монет`}
           </button>
           <button
             type="button"
             className="modal-primary btn--cta"
-            onClick={onConfirm}
-            disabled={isSaving}
+            onClick={() => onConfirm('stars')}
+            disabled={isSaving || !canBuyStars}
           >
-            {isSaving ? 'Покупка...' : 'Купить'}
+            {isSaving ? 'Покупка...' : `Купить за ${numberText(inventoryStarPrice(item))} звёзд`}
           </button>
         </div>
       </div>
@@ -1457,13 +1496,30 @@ function TransactionAmountBadge({ amount }: { amount: InventoryTransactionAmount
   );
 }
 
+function PurchasePrice({ item }: { item: InventoryItem }): JSX.Element {
+  return (
+    <span aria-label={`${numberText(item.currencyPrice)} монет или ${numberText(inventoryStarPrice(item))} звёзд`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+      <span style={{ color: rewardColor('coin'), display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+        <CircleDollarSign size={14} fill="none" stroke="currentColor" aria-hidden="true" />
+        {numberText(item.currencyPrice)}
+      </span>
+      <span style={{ color: 'var(--muted)' }}>или</span>
+      <span style={{ color: rewardColor('star'), display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+        <Star size={13} fill="currentColor" aria-hidden="true" />
+        {numberText(inventoryStarPrice(item))}
+      </span>
+    </span>
+  );
+}
+
 function DetailRow({
   label,
   value,
   tone,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   tone?: RewardTone;
 }): JSX.Element {
   return (

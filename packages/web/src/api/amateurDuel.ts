@@ -272,6 +272,7 @@ export interface AmateurDuelMatchState extends AmateurDuelMatch {
 
 export interface AmateurOpponent {
   format_locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
+  format_limits?: AmateurDuelOverview['format_limits'];
   userId: string;
   displayName: string;
   avatarUrl: string | null;
@@ -290,6 +291,7 @@ export interface AmateurRatingRow {
   goals_against: number;
   matches_played: number;
   active_duration_seconds: number;
+  place?: number | null;
 }
 
 export interface AmateurDuelHistoryStats {
@@ -308,6 +310,15 @@ export interface AmateurDuelHistoryResponse {
 
 export interface AmateurDuelRatingResponse {
   season_key: string;
+  scope?: 'overall' | AmateurDuelKind;
+  reward_rules?: {
+    enabled: boolean;
+    first: { coins: number; stars: number; experience: number; tokens: number };
+    second?: { coins: number; stars: number; experience: number; tokens: number };
+    third?: { coins: number; stars: number; experience: number; tokens: number };
+    fourToTen?: { coins: number; stars: number; experience: number; tokens: number };
+    elevenToFifty?: { coins: number; stars: number; experience: number; tokens: number };
+  };
   rating_visible: boolean;
   available_seasons: string[];
   rating: AmateurRatingRow[];
@@ -323,8 +334,17 @@ export interface MonthlyRatingCongratulation {
   rewarded_count: number;
   coins: number;
   stars: number;
+  experience?: number;
   tokens: number;
   created_at: string;
+  awards?: Array<{
+    scope: 'overall' | 'express' | 'express_plus' | 'classic';
+    place: number;
+    coins: number;
+    stars: number;
+    experience: number;
+    tokens: number;
+  }>;
 }
 
 export interface PendingMonthlyRatingCongratulationsResponse {
@@ -409,13 +429,27 @@ export function fetchAmateurTemplates(): Promise<{ templates: AmateurDuelTemplat
   return apiFetch<{ templates: AmateurDuelTemplate[] }>('/duel/amateur/templates');
 }
 
-export function searchAmateurOpponents(q = '', limit = 20): Promise<{ users: AmateurOpponent[] }> {
+export function searchAmateurOpponents(
+  q = '', limit = 20, kinds: AmateurDuelKind[] = ['express', 'express_plus', 'classic'],
+): Promise<{ users: AmateurOpponent[] }> {
   const params = new URLSearchParams({ q, limit: String(limit) });
+  params.set('kinds', kinds.join(','));
   return apiFetch<{ users: AmateurOpponent[] }>(`/duel/amateur/opponents?${params.toString()}`);
 }
 
 export interface AmateurDuelOverview {
+  open_duel_slots_limit?: number;
+  duel_limits?: {
+    daily: { used: number; limit: number; reset_at: string; by_format: Record<AmateurDuelKind, number> };
+    weekly: { used: number; limit: number; reset_at: string; by_format: Record<AmateurDuelKind, number> };
+    monthly: { used: number; limit: number; reset_at: string; format_limit: number; by_format: Record<AmateurDuelKind, number> };
+  };
   format_locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
+  format_limits?: Partial<Record<AmateurDuelKind, {
+    available: boolean;
+    reason: 'daily' | 'weekly' | 'monthly' | 'format' | null;
+    retryAt: string | null;
+  }>>;
   matches: AmateurDuelMatch[];
   duel_lock?: GameplayLockDTO | null;
   gameplay_lock?: GameplayLockDTO | null;
@@ -468,9 +502,14 @@ export function challengeAmateurDuel(body: {
 
 export function checkAmateurDuelChallengeAvailability(
   opponentUserId: string,
-): Promise<{ available: true }> {
+): Promise<{ available: boolean; formats?: Record<AmateurDuelKind, {
+  available: boolean;
+  reason: 'daily' | 'weekly' | 'monthly' | 'format' | 'open_slots' | 'outgoing' | 'tournament' | null;
+  retryAt: string | null;
+  player: 'self' | 'opponent' | null;
+}> }> {
   const query = new URLSearchParams({ opponent_user_id: opponentUserId });
-  return apiFetch<{ available: true }>(`/duel/amateur/challenge/availability?${query.toString()}`);
+  return apiFetch(`/duel/amateur/challenge/availability?${query.toString()}`);
 }
 
 export function acceptAmateurDuel(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
@@ -592,9 +631,13 @@ export function settleAmateurDuel(matchId: string): Promise<{ match: AmateurDuel
   );
 }
 
-export function fetchAmateurRating(seasonKey?: string): Promise<AmateurDuelRatingResponse> {
+export function fetchAmateurRating(
+  seasonKey?: string,
+  scope?: 'overall' | AmateurDuelKind,
+): Promise<AmateurDuelRatingResponse> {
   const params = new URLSearchParams();
   if (seasonKey) params.set('season_key', seasonKey);
+  if (scope) params.set('scope', scope);
   const query = params.toString();
   return apiFetch<AmateurDuelRatingResponse>(`/duel/amateur/rating${query ? `?${query}` : ''}`);
 }

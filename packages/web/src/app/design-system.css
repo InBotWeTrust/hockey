@@ -7057,6 +7057,42 @@ button.profile-story-series-card {
   padding: 0;
 }
 
+.modal-card.duel-rating-info-modal {
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  padding: 22px 22px 18px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass);
+}
+
+.duel-rating-info-modal .modal-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.duel-rating-info-modal > div:last-child {
+  margin-top: 10px !important;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.duel-rating-info-modal p {
+  margin: 0 0 10px;
+}
+
+.duel-rating-info-modal p:last-child {
+  margin-bottom: 0;
+}
+
+.duel-rating-info-modal__confirm.btn--cta {
+  width: 100%;
+  margin-top: 18px;
+  padding: 12px 0;
+  font-size: 14px;
+}
+
 .tournament-details__content.duel-rating-table-card {
   display: grid;
   gap: 10px;
@@ -7170,6 +7206,66 @@ button.profile-story-series-card {
   line-height: 1.35;
   text-align: center;
   text-shadow: 0 1px 7px rgba(4, 15, 28, 0.82);
+}
+
+.duel-limits-card {
+  padding: 6px 14px;
+  border-radius: 22px;
+}
+
+.duel-limits-period + .duel-limits-period {
+  border-top: 1px solid rgba(15, 23, 42, 0.12);
+}
+
+.duel-limits-period__toggle {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 750;
+  text-align: left;
+  cursor: pointer;
+}
+
+.duel-limits-period__summary {
+  min-width: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.duel-limits-period__timer {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.duel-limits-period__toggle svg {
+  flex: none;
+  margin-left: auto;
+}
+
+.duel-limits-period__toggle[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+
+.duel-limits-period__formats {
+  display: grid;
+  gap: 6px;
+  padding: 0 2px 12px;
+  color: rgba(15, 23, 42, 0.68);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.duel-limits-card__loading {
+  padding: 12px 2px;
+  color: rgba(15, 23, 42, 0.6);
+  font-size: 13px;
 }
 
 .duel-state-card {
@@ -14525,6 +14621,12 @@ button.daily-calendar__day:active {
   pointer-events: none;
 }
 
+.duel-profile-challenge[aria-disabled='true'] {
+  opacity: 0.58;
+  filter: grayscale(0.45);
+  cursor: pointer;
+}
+
 .achievement-reward-toast__status {
   display: block;
   font-size: 12px;
@@ -14578,27 +14680,6 @@ button.daily-calendar__day:active {
   box-shadow:
     0 0 0 2px rgba(255, 255, 255, 0.1),
     0 3px 10px rgba(255, 255, 255, 0.2);
-}
-
-.duel-challenge-option__indicator {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 19px;
-  height: 19px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(100, 116, 139, 0.55);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  color: transparent;
-}
-
-.duel-challenge-option__indicator[data-selected='true'] {
-  border-color: rgba(255, 255, 255, 0.9);
-  background: #ffffff;
-  color: #1e293b;
 }
 
 .achievement-reward-toast__icon svg {

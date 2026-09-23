@@ -727,7 +727,14 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     });
 
     expect(available.statusCode).toBe(200);
-    expect(available.json()).toEqual({ available: true });
+    expect(available.json()).toMatchObject({
+      available: true,
+      formats: {
+        express: { available: true },
+        express_plus: { available: true },
+        classic: { available: true },
+      },
+    });
   });
 
   it('rechecks the playoff pairing when an older ordinary invitation is accepted', async () => {
@@ -838,6 +845,11 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       headers: auth(tokenA),
     });
     expect(search.json().users.map((u: { userId: string }) => u.userId)).not.toContain(userB);
+    const blockedProfile = await app.inject({ method: 'GET',
+      url: `/duel/amateur/challenge/availability?opponent_user_id=${userB}`,
+      headers: auth(tokenA) });
+    expect(blockedProfile.json()).toMatchObject({ available: false,
+      formats: { classic: { available: false, reason: 'tournament', player: 'opponent' } } });
     const refused = await app.inject({
       method: 'POST',
       url: '/duel/amateur/matchmaking/join',
@@ -1129,7 +1141,6 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       payload: { shot_index: 1, input: { tapTime: 1000 }, claimed_result: 'goal' },
     });
     expect(shot.statusCode).toBe(200);
-    expect((await challenge(templateId, await createOpponent(99))).statusCode).toBe(200);
     expect(
       (
         await app.inject({
@@ -1140,6 +1151,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         })
       ).statusCode,
     ).toBe(200);
+    expect((await challenge(templateId, await createOpponent(99))).statusCode).toBe(200);
   });
 
   it('returns a bounded acknowledgement instead of the full match after an accepted shot', async () => {
@@ -1792,21 +1804,78 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     }
   });
 
-  it('limits one player to five open duel slots', async () => {
+  it('limits one player to two unanswered outgoing invitations', async () => {
     const templateId = await createTemplate();
     const opponentIds = await Promise.all(
       Array.from({ length: 6 }, (_, index) => createOpponent(index)),
     );
 
-    for (const opponentId of opponentIds.slice(0, 5)) {
+    for (const opponentId of opponentIds.slice(0, 2)) {
       const created = await challenge(templateId, opponentId);
       expect(created.statusCode).toBe(200);
       expect(created.json().match.status).toBe('invited');
     }
 
-    const blocked = await challenge(templateId, opponentIds[5]);
+    const blocked = await challenge(templateId, opponentIds[2]);
     expect(blocked.statusCode).toBe(409);
-    expect(blocked.json().error.message).toBe('open duel slot limit reached');
+    expect(blocked.json().error.message).toBe('outgoing duel invitation limit reached');
+  });
+
+  it('limits a player to two open ordinary duels including incoming invitations', async () => {
+    const templateId = await createTemplate();
+    const challengers = [userB, await createOpponent(8101), await createOpponent(8102)];
+    for (const [index, challengerId] of challengers.entries()) {
+      const token = await createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET })
+        .issueAccessToken({ sub: challengerId });
+      const created = await app.inject({
+        method: 'POST', url: '/duel/amateur/challenge', headers: auth(token),
+        payload: { template_id: templateId, opponent_user_id: userA },
+      });
+      expect(created.statusCode).toBe(index < 2 ? 200 : 409);
+      if (index === 2) expect(created.json().error.message).toBe('open duel slot limit reached');
+    }
+  });
+
+  it('hides opponents with two open duels and reports the same block in profile availability', async () => {
+    const templateId = await createTemplate();
+    const others = [await createOpponent(8201), await createOpponent(8202)];
+    for (const other of others) {
+      const token = await createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET })
+        .issueAccessToken({ sub: other });
+      const created = await app.inject({ method: 'POST', url: '/duel/amateur/challenge',
+        headers: auth(token), payload: { template_id: templateId, opponent_user_id: userB } });
+      expect(created.statusCode).toBe(200);
+    }
+    const listed = await app.inject({ method: 'GET', url: '/duel/amateur/opponents?limit=1', headers: auth(tokenA) });
+    expect(listed.json().users).toHaveLength(1);
+    expect(listed.json().users[0].userId).not.toBe(userB);
+    const availability = await app.inject({ method: 'GET',
+      url: `/duel/amateur/challenge/availability?opponent_user_id=${userB}`, headers: auth(tokenA) });
+    expect(availability.json()).toMatchObject({ available: false,
+      formats: { express: { available: false, reason: 'open_slots', player: 'opponent' } } });
+  });
+
+  it('filters candidate results by the selected format without hiding another available format', async () => {
+    const express = await createTemplate({ duelKind: 'express' });
+    await createTemplate({ duelKind: 'classic' });
+    const viewer = await createOpponent(8301);
+    const viewerToken = await createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET })
+      .issueAccessToken({ sub: viewer });
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('amateur.limits.per_format_monthly', '1'::jsonb, '', '')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    const invite = await challenge(express);
+    expect(invite.statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST',
+      url: `/duel/amateur/matches/${invite.json().match.id}/accept`, headers: auth(tokenB) })).statusCode).toBe(200);
+    const search = (kind: string) => app.inject({ method: 'GET',
+      url: `/duel/amateur/opponents?kinds=${kind}&q=Player%20B&limit=1`, headers: auth(viewerToken) });
+    const expressUsers = (await search('express')).json().users;
+    const classicUsers = (await search('classic')).json().users;
+    expect(expressUsers.map((user: { userId: string }) => user.userId)).not.toContain(userB);
+    expect(classicUsers.map((user: { userId: string }) => user.userId)).toContain(userB);
   });
 
   it('rejects duel challenges from beginners and against beginners', async () => {
@@ -2085,6 +2154,197 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(template.ranked_same_opponent_limit).toBe(100);
   });
 
+  it('reports accepted ordinary duel usage by period and format, excluding pending invitations', async () => {
+    const templateId = await createTemplate();
+    const pending = await challenge(templateId);
+    expect(pending.statusCode).toBe(200);
+    const before = await app.inject({ method: 'GET', url: '/duel/amateur/matches', headers: auth(tokenA) });
+    expect(before.json().duel_limits).toMatchObject({
+      daily: { used: 0, limit: 8, by_format: { express: 0, express_plus: 0, classic: 0 } },
+      weekly: { used: 0, limit: 40 },
+      monthly: { used: 0, limit: 129, format_limit: 43 },
+    });
+    const accepted = await app.inject({
+      method: 'POST', url: `/duel/amateur/matches/${pending.json().match.id}/accept`, headers: auth(tokenB),
+    });
+    expect(accepted.statusCode).toBe(200);
+    const after = await app.inject({ method: 'GET', url: '/duel/amateur/matches', headers: auth(tokenA) });
+    const limits = after.json().duel_limits;
+    for (const period of ['daily', 'weekly', 'monthly']) {
+      expect(limits[period]).toMatchObject({ used: 1, by_format: { classic: 1, express: 0, express_plus: 0 } });
+    }
+  });
+
+  it('blocks a new ordinary invitation when either player has used the monthly format place', async () => {
+    const templateId = await createTemplate();
+    const thirdUserId = await createOpponent(8001);
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('amateur.limits.per_format_monthly', '1'::jsonb, '', '')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    const existing = await challenge(templateId);
+    expect(existing.statusCode).toBe(200);
+    const accepted = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${existing.json().match.id}/accept`,
+      headers: auth(tokenB),
+    });
+    expect(accepted.statusCode).toBe(200);
+    const next = await challenge(templateId, thirdUserId);
+    expect(next.statusCode).toBe(409);
+  });
+
+  it('releases both duel places and invitation progress when a ready-check duel is cancelled', async () => {
+    const matchId = (await challenge(await createTemplate())).json().match.id;
+    const accepted = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/accept`,
+      headers: auth(tokenB),
+    });
+    expect(accepted.statusCode).toBe(200);
+    const cancelled = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/cancel`,
+      headers: auth(tokenA),
+    });
+    expect(cancelled.statusCode).toBe(200);
+    const reservations = await pool.query<{ released_at: Date | null }>(
+      'select released_at from amateur_duel_limit_reservation where match_id = $1',
+      [matchId],
+    );
+    expect(reservations.rows).toHaveLength(2);
+    expect(reservations.rows.every((row) => row.released_at !== null)).toBe(true);
+    const events = await pool.query(
+      `select 1 from event_log where type = 'amateur_duel_challenge_accepted'
+        and payload->>'match_id' = $1`,
+      [matchId],
+    );
+    expect(events.rowCount).toBe(0);
+  });
+
+  it('releases an active duel before either player has taken a shot', async () => {
+    const matchId = (await challenge(await createTemplate())).json().match.id;
+    expect((await app.inject({ method: 'POST', url: `/duel/amateur/matches/${matchId}/accept`, headers: auth(tokenB) })).statusCode).toBe(200);
+    for (const token of [tokenA, tokenB]) {
+      expect((await app.inject({
+        method: 'POST', url: `/duel/amateur/matches/${matchId}/ready`, headers: auth(token), payload: { loadout: {} },
+      })).statusCode).toBe(200);
+    }
+    const cancelled = await app.inject({
+      method: 'POST', url: `/duel/amateur/matches/${matchId}/cancel`, headers: auth(tokenB),
+    });
+    expect(cancelled.statusCode).toBe(200);
+    const reservations = await pool.query<{ released_at: Date | null }>(
+      'select released_at from amateur_duel_limit_reservation where match_id = $1', [matchId],
+    );
+    expect(reservations.rows.every((row) => row.released_at !== null)).toBe(true);
+  });
+
+  it('accepts only one of two concurrent invitations for a player with one remaining place', async () => {
+    const templateId = await createTemplate();
+    const thirdUserId = await createOpponent(8002);
+    const tokenC = await createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET })
+      .issueAccessToken({ sub: thirdUserId });
+    const firstId = (await challenge(templateId, userB)).json().match.id;
+    const secondId = (await challenge(templateId, thirdUserId)).json().match.id;
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('amateur.limits.daily', '1'::jsonb, '', '')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    const responses = await Promise.all([
+      app.inject({ method: 'POST', url: `/duel/amateur/matches/${firstId}/accept`, headers: auth(tokenB) }),
+      app.inject({ method: 'POST', url: `/duel/amateur/matches/${secondId}/accept`, headers: auth(tokenC) }),
+    ]);
+    expect(responses.map((response) => response.statusCode).sort()).toEqual([200, 409]);
+    const places = await pool.query<{ total: number }>(
+      'select count(*)::int as total from amateur_duel_limit_reservation where user_id = $1 and released_at is null',
+      [userA],
+    );
+    expect(places.rows[0]?.total).toBe(1);
+  });
+
+  it('snapshots ordinary duel experience and reward settings at acceptance', async () => {
+    await pool.query('update users set experience = case when id = $1 then 100 else 125 end where id = any($2::uuid[])',
+      [userA, [userA, userB]]);
+    const matchId = (await challenge(await createTemplate())).json().match.id;
+    expect((await app.inject({
+      method: 'POST', url: `/duel/amateur/matches/${matchId}/accept`, headers: auth(tokenB),
+    })).statusCode).toBe(200);
+    const snapshot = await pool.query<{ ordinary_reward_snapshot: unknown }>(
+      'select ordinary_reward_snapshot from amateur_duel_match where id = $1', [matchId],
+    );
+    expect(snapshot.rows[0]?.ordinary_reward_snapshot).toMatchObject({
+      equalExperienceMinimumGap: 20,
+      stronger: { stars: 5, experience: 5 },
+    });
+    const experiences = await pool.query<{ user_id: string; experience_snapshot: number }>(
+      'select user_id, experience_snapshot from amateur_duel_participant where match_id = $1',
+      [matchId],
+    );
+    expect(new Map(experiences.rows.map((row) => [row.user_id, row.experience_snapshot])))
+      .toEqual(new Map([[userA, 100], [userB, 125]]));
+  });
+
+  it('settles new ordinary stars and experience once from acceptance snapshots', async () => {
+    await pool.query('update users set experience = case when id = $1 then 100 else 125 end where id = any($2::uuid[])',
+      [userA, [userA, userB]]);
+    const matchId = (await challenge(await createTemplate())).json().match.id;
+    expect((await app.inject({
+      method: 'POST', url: `/duel/amateur/matches/${matchId}/accept`, headers: auth(tokenB),
+    })).statusCode).toBe(200);
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('amateur.reward.stronger.stars', '99'::jsonb, '', '')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    await pool.query('update users set experience = 1000 where id = any($1::uuid[])', [[userA, userB]]);
+    await pool.query("update amateur_duel_match set status = 'active' where id = $1", [matchId]);
+    await pool.query(
+      `update amateur_duel_participant
+          set state = 'completed', current_period = 1, shots_taken = 10,
+              goals = case when user_id = $2 then 2 else 1 end,
+              active_duration_ms = 1000, completed_at = now()
+        where match_id = $1`,
+      [matchId, userA],
+    );
+    const settle = () => app.inject({
+      method: 'POST', url: `/duel/amateur/matches/${matchId}/settle`, headers: auth(tokenA),
+    });
+    expect((await settle()).statusCode).toBe(200);
+    expect((await settle()).statusCode).toBe(200);
+    const balances = await pool.query<{ id: string; xp: number; experience: number }>(
+      'select id, xp, experience from users where id = any($1::uuid[])', [[userA, userB]],
+    );
+    expect(new Map(balances.rows.map((row) => [row.id, [row.xp, row.experience]])))
+      .toEqual(new Map([[userA, [5, 1005]], [userB, [0, 1001]]]));
+  });
+
+  it('buys inventory wholly with stars at the quoted price exactly once', async () => {
+    const itemId = await createInventoryItem('stick', 'Star-priced stick');
+    await pool.query('update admin_inventory_items set currency_price = 6490 where id = $1', [itemId]);
+    await pool.query('update users set xp = 260 where id = $1', [userA]);
+    const request = (idempotencyKey: string, expectedPriceStars: number) => app.inject({
+      method: 'POST',
+      url: `/inventory/items/${itemId}/purchase`,
+      headers: auth(tokenA),
+      payload: { currency: 'stars', expected_price_stars: expectedPriceStars, idempotency_key: idempotencyKey },
+    });
+    const key = '00000000-0000-4000-8000-000000000001';
+    expect((await request(key, 260)).statusCode).toBe(200);
+    expect((await request(key, 260)).statusCode).toBe(200);
+    const state = await pool.query<{ xp: number; coin_balance: number; instances: number }>(
+      `select u.xp, c.balance as coin_balance,
+              (select count(*)::int from user_inventory_instance where user_id = u.id and inventory_item_id = $2) as instances
+         from users u join user_currency_account c on c.user_id = u.id where u.id = $1`,
+      [userA, itemId],
+    );
+    expect(state.rows[0]).toEqual({ xp: 0, coin_balance: 100, instances: 1 });
+    expect((await request('00000000-0000-4000-8000-000000000002', 260)).statusCode).toBe(409);
+    expect((await request('00000000-0000-4000-8000-000000000003', 259)).statusCode).toBe(409);
+  });
+
   it('stores configured no-inventory skates and nutrition timings in duel rules snapshot', async () => {
     await pool.query(
       `insert into game_settings (key, value, label, description)
@@ -2333,7 +2593,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         })
       ).statusCode,
     ).toBe(200);
-    await pool.query("update amateur_duel_match set status='active' where id=$1", [matchId]);
+    // A historical match has no new global reward snapshot: preserve its legacy matrix.
+    await pool.query("update amateur_duel_match set status='active', ordinary_reward_snapshot=null where id=$1", [matchId]);
     await pool.query(
       "update amateur_duel_participant set state='completed',current_period=1,shots_taken=2,goals=case when user_id=$2 then 2 else 1 end,experience_snapshot=0,completed_at=now() where match_id=$1",
       [matchId, userA],
@@ -3367,9 +3628,11 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
 
     expect(rating.statusCode).toBe(200);
     expect(rating.json().rating).toEqual([
-      expect.objectContaining({ user_id: userA, points: 3, wins: 1, matches_played: 1 }),
-      expect.objectContaining({ user_id: userB, points: 0, losses: 1, matches_played: 1 }),
+      expect.objectContaining({ user_id: userA, points: 3, wins: 1, matches_played: 1, place: 1 }),
+      expect.objectContaining({ user_id: userB, points: 0, losses: 1, matches_played: 1, place: 2 }),
     ]);
+    expect(rating.json().me_rank).toBe(1);
+    expect(rating.json()).not.toHaveProperty('prize_threshold');
 
     const history = await app.inject({
       method: 'GET',
@@ -3381,6 +3644,37 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       rating_place: 1,
       stats: { duels: 1, wins: 1, points: 3 },
     });
+  });
+
+  it('separates the three monthly duel formats while keeping their total in the overall rating', async () => {
+    const opponents = [userB, await createOpponent(8101), await createOpponent(8102)];
+    for (const [index, kind] of (['express', 'express_plus', 'classic'] as const).entries()) {
+      const templateId = await createTemplate({ duelKind: kind });
+      const matchId = (await challenge(templateId, opponents[index]!)).json().match.id;
+      await pool.query(
+        `update amateur_duel_match set status='settled', ranked=true,
+                season_key='2026-09', settled_at=now(), settled_reason='completed'
+          where id=$1`,
+        [matchId],
+      );
+      await pool.query(
+        `insert into amateur_duel_rating_match
+           (match_id,user_id,season_key,points,wins,active_duration_seconds)
+         values ($1,$2,'2026-09',$3,1,60)`,
+        [matchId, userA, index + 1],
+      );
+    }
+    for (const [scope, points, matches] of [
+      ['overall', 6, 3], ['express', 1, 1], ['express_plus', 2, 1], ['classic', 3, 1],
+    ] as const) {
+      const response = await app.inject({
+        method: 'GET', url: `/duel/amateur/rating?season_key=2026-09&scope=${scope}`,
+        headers: auth(tokenA),
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().scope).toBe(scope);
+      expect(response.json().rating[0]).toMatchObject({ points, matches_played: matches });
+    }
   });
 
   it('returns rating visibility and available Moscow seasons', async () => {
@@ -4105,7 +4399,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         headers: auth(tokenB),
       });
       expect(accepted.statusCode).toBe(200);
-      await pool.query("update amateur_duel_match set status = 'active' where id = $1", [matchId]);
+      // Exercise the compatibility path for historical matches made before global rewards.
+      await pool.query("update amateur_duel_match set status = 'active', ordinary_reward_snapshot = null where id = $1", [matchId]);
       await pool.query(
         `update amateur_duel_participant
           set state = $3, current_period = 1, shots_taken = 10,
@@ -4364,7 +4659,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     async (source) => {
       const matchId = await oldSeasonMatch('2026-08-31T20:59:59Z');
       await pool.query(
-        `update amateur_duel_match set ranked=false,source=$2,
+      `update amateur_duel_match set ranked=false,source=$2,ordinary_reward_snapshot=null,
       reward_rules=jsonb_set(reward_rules,'{draw}','{"coins":5,"stars":3,"tokens":1}'),
       rules_snapshot=jsonb_set(rules_snapshot,'{rewardRules,draw}','{"coins":5,"stars":3,"tokens":1}') where id=$1`,
         [matchId, source],
@@ -4404,6 +4699,10 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         rating: (await pool.query('select * from amateur_duel_rating_live order by user_id')).rows,
       });
       const frozen = await ratingState();
+      const balanceAfterMonthlyClose = (await pool.query<{ xp: number; balance: number }>(
+        'select xp, balance from users join user_currency_account on user_id=id where id=$1',
+        [userA],
+      )).rows[0]!;
       for (let retry = 0; retry < 2; retry += 1) {
         const response = await app.inject({
           method: 'POST',
@@ -4449,7 +4748,10 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
             [userA],
           )
         ).rows,
-      ).toEqual([{ xp: 3, balance: 105 }]);
+      ).toEqual([{
+        xp: Number(balanceAfterMonthlyClose.xp) + 3,
+        balance: Number(balanceAfterMonthlyClose.balance) + 5,
+      }]);
       expect(
         (
           await pool.query(
@@ -4490,8 +4792,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     { first: 'settle', activeCount: 2, timeout: '2026-08-31T20:59:00Z', month: '2026-08' },
     { first: 'close', activeCount: 1, timeout: '2026-08-31T20:59:00Z', month: '2026-08' },
     { first: 'settle', activeCount: 1, timeout: '2026-08-31T20:59:00Z', month: '2026-08' },
-    { first: 'close', activeCount: 2, timeout: '2026-08-31T21:00:00Z', month: '2026-09' },
-    { first: 'settle', activeCount: 2, timeout: '2026-08-31T21:00:00Z', month: '2026-09' },
+    { first: 'close', activeCount: 2, timeout: '2026-08-31T21:00:00Z', month: '2026-08' },
+    { first: 'settle', activeCount: 2, timeout: '2026-08-31T21:00:00Z', month: '2026-08' },
   ])('materializes final timers before $first ($activeCount active, $month)', async (fixture) => {
     const matchId = await oldSeasonMatch('2026-09-01T01:00:00Z');
     await pool.query(
@@ -4592,7 +4894,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   });
 
   it.each(['accepted', 'completed'] as const)(
-    'carries an active boundary-spanning %s match forward without changing the closed season',
+    'keeps a boundary-spanning %s match in its acceptance month',
     async (state) => {
       const matchId = await oldSeasonMatch('2026-09-01T01:00:00Z');
       await pool.query(
@@ -4606,8 +4908,11 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
             matchId,
           ])
         ).rows[0],
-      ).toEqual({ status: 'active', season_key: '2026-09' });
+      ).toEqual({ status: state === 'accepted' ? 'active' : 'settled', season_key: '2026-08' });
       const before = (await pool.query('select * from monthly_duel_rating_season')).rows;
+      if (state === 'accepted') {
+        expect(before).toEqual([]);
+      }
       expect(
         (
           await app.inject({
@@ -4624,12 +4929,15 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
             [matchId],
           )
         ).rows,
-      ).toEqual([{ season_key: '2026-09' }]);
-      expect((await pool.query('select * from monthly_duel_rating_season')).rows).toEqual(before);
+      ).toEqual([{ season_key: '2026-08' }]);
+      await reconcileCompletedMonthlyRating(pool, new Date('2026-09-01T01:00:00Z'));
+      expect(
+        (await pool.query("select season_key from monthly_duel_rating_season where season_key='2026-08'")).rows,
+      ).toEqual([{ season_key: '2026-08' }]);
     },
   );
 
-  it('assigns a late-reconciled completed match to its completion month, independent of request month', async () => {
+  it('keeps a late-reconciled completed match in its acceptance month', async () => {
     const matchId = await oldSeasonMatch('2026-10-01T01:00:00Z');
     await pool.query(
       "update amateur_duel_match set season_key='2026-06',starts_at='2026-06-30T19:00:00Z' where id=$1",
@@ -4655,7 +4963,26 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
           [matchId],
         )
       ).rows,
-    ).toEqual([{ season_key: '2026-07' }]);
+    ).toEqual([{ season_key: '2026-06' }]);
+  });
+
+  it('keeps the acceptance month when the first shot is after the month boundary', async () => {
+    const matchId = await createActiveMatch(true);
+    await pool.query("update amateur_duel_match set season_key='2026-08' where id=$1", [matchId]);
+    await pool.query(
+      "update amateur_duel_limit_reservation set accepted_at='2026-08-31T20:59:00Z' where match_id=$1",
+      [matchId],
+    );
+    const shot = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${matchId}/shot`,
+      headers: auth(tokenA),
+      payload: { shot_index: 1, input: { tapTime: 1000 }, claimed_result: 'goal' },
+    });
+    expect(shot.statusCode).toBe(200);
+    expect(
+      (await pool.query('select season_key from amateur_duel_match where id=$1', [matchId])).rows,
+    ).toEqual([{ season_key: '2026-08' }]);
   });
 
   it('locks the complete match-list recipient set before processing recent matches', async () => {
@@ -4807,7 +5134,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(settled.json().match.winner_user_id).toBe(userA);
     expect(settled.json().match.outcome).toBe('challenger_win');
     const stars = await pool.query<{ xp: number }>(`select xp from users where id = $1`, [userA]);
-    expect(Number(stars.rows[0]?.xp)).toBe(7);
+    expect(Number(stars.rows[0]?.xp)).toBe(3);
   });
 
   it('normalizes legacy stick snapshots and applies the stick speed bonus on duel shot', async () => {

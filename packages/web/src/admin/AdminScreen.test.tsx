@@ -1470,6 +1470,14 @@ describe('AdminScreen', () => {
                 updatedAt: null,
                 updatedBy: null,
               },
+              ...(['overall', 'express', 'express_plus', 'classic'] as const).map((scope) => ({
+                key: `amateur.monthly_rating.${scope}.enabled`,
+                label: `${{ overall: 'Общий зачёт', express: 'Экспресс', express_plus: 'Микс', classic: 'Классика' }[scope]}: начислять награды`,
+                description: 'Выключение оставляет таблицу видимой и сохраняет суммы.',
+                type: 'select', defaultValue: 'enabled', value: 'enabled',
+                options: [{ value: 'enabled', label: 'Включено' }, { value: 'disabled', label: 'Выключено' }],
+                updatedAt: null, updatedBy: null,
+              })),
             ],
             balance: { goalies: [], sticks: [], dailyPeriodSpeedPresets: [] },
           }),
@@ -1676,6 +1684,12 @@ describe('AdminScreen', () => {
     expect(
       screen.getByRole('button', { name: 'Сохранить Восстановление между режимами' }),
     ).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
+    fireEvent.click(await screen.findByText('Любительская лига'));
+    expect(await screen.findByText(/Месячный рейтинг: общий зачёт и форматы/)).toBeInTheDocument();
+    for (const label of ['Общий зачёт', 'Экспресс', 'Микс', 'Классика']) {
+      expect(screen.getByText(`${label}: начислять награды`)).toBeInTheDocument();
+    }
   });
 
   it('shows access denial for players', () => {

@@ -1,4 +1,4 @@
-import { CircleDollarSign, Star, Ticket } from 'lucide-react';
+import { CircleDollarSign, Star, Ticket, Trophy } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { MonthlyRatingCongratulation } from '../../api/amateurDuel.js';
 import { rewardColor, type RewardTone } from '../../app/rewardColors.js';
@@ -24,6 +24,13 @@ function placeTitle(place: number, seasonKey: string): string {
   if (place === 1) return `Вы победитель зачета дуэлей за ${month}`;
   return `Вы заняли ${place}-е место в зачете дуэлей за ${month}`;
 }
+
+const scopeLabels = {
+  overall: 'Общий зачёт',
+  express: 'Экспресс',
+  express_plus: 'Микс',
+  classic: 'Классика',
+} as const;
 
 function seasonLabel(seasonKey: string): string {
   const match = /^(\d{4})-(\d{2})$/.exec(seasonKey);
@@ -61,19 +68,44 @@ export function MonthlyRatingRewardModal({
       icon: <Star size={20} strokeWidth={2.55} fill="currentColor" />,
     },
     {
+      label: 'Опыт',
+      value: congratulation.experience ?? 0,
+      tone: 'star' as const,
+      icon: <Trophy size={20} strokeWidth={2.55} />,
+    },
+    {
       label: 'Токены',
       value: congratulation.tokens,
       tone: 'token' as const,
       icon: <Ticket size={20} strokeWidth={2.55} />,
     },
   ].filter((reward) => reward.value > 0);
+  const awards = congratulation.awards?.filter((award) =>
+    award.coins + award.stars + award.experience + award.tokens > 0,
+  ) ?? [];
 
   return (
     <AccessibleModal
-      title={placeTitle(congratulation.place, congratulation.season_key)}
+      title={awards.length > 1
+        ? `Ваши награды в зачётах дуэлей за ${seasonLabel(congratulation.season_key)}`
+        : placeTitle(congratulation.place, congratulation.season_key)}
       closeBlocked
       cardClassName="duel-result-card regular-podium-modal"
     >
+      <img
+        src="/modes/amateur-duel.webp"
+        alt="Два хоккеиста соревнуются в дуэли"
+        style={{ width: '100%', maxHeight: 180, objectFit: 'contain' }}
+      />
+      {awards.length > 0 && (
+        <div aria-label="Победы в зачётах">
+          {awards.map((award) => (
+            <p key={award.scope}>
+              {scopeLabels[award.scope]}: {award.place === 1 ? 'победа' : `${award.place}-е место`}
+            </p>
+          ))}
+        </div>
+      )}
       <section
         className="regular-podium-modal__rewards"
         aria-labelledby="monthly-rating-rewards-title"
@@ -83,7 +115,7 @@ export function MonthlyRatingRewardModal({
         </h3>
         <div className="regular-podium-modal__reward-list">
           {rewards.map((reward) => (
-            <RewardValue key={reward.tone} {...reward} />
+            <RewardValue key={reward.label} {...reward} />
           ))}
         </div>
       </section>

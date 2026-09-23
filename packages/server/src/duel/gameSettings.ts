@@ -1,4 +1,14 @@
 import type { Pool, PoolClient } from 'pg';
+import type { DuelLimitSettings } from './amateur/limitRules.js';
+import {
+  DEFAULT_ORDINARY_REWARD_SETTINGS,
+  type OrdinaryRewardSettings,
+} from './amateur/ordinaryReward.js';
+import {
+  DEFAULT_MONTHLY_RATING_SETTINGS,
+  type MonthlyRatingSettings,
+  type MonthlyRatingReward,
+} from './amateur/monthlyRatingSettings.js';
 import { GAMEPLAY_RECOVERY_MINUTES } from './gameplayLocks.js';
 import {
   DAILY_PERIOD_SPEED_PRESETS,
@@ -51,6 +61,10 @@ export interface GameSettings {
     dailyCooldownMinutes: number;
   };
   amateur: {
+    limits: DuelLimitSettings;
+    duelRewards: OrdinaryRewardSettings;
+    monthlyRating: MonthlyRatingSettings;
+    starInventoryPriceDivisor: number;
     unlockGoalsRequired: number;
     ratingVisibility: 'enabled' | 'disabled';
     noInventoryTiming: {
@@ -61,6 +75,43 @@ export interface GameSettings {
 }
 
 const goalieOptions = GOALIES.map((goalie) => ({ value: goalie.id, label: goalie.name }));
+const monthlyRatingScopes = ['overall', 'express', 'express_plus', 'classic'] as const;
+const overallRatingBands = ['first', 'second', 'third', 'fourToTen', 'elevenToFifty'] as const;
+const monthlyRatingCurrencies = ['coins', 'stars', 'experience', 'tokens'] as const;
+const monthlyScopeLabels = {
+  overall: 'Общий зачёт', express: 'Экспресс', express_plus: 'Микс', classic: 'Классика',
+};
+const monthlyBandLabels = {
+  first: '1-е место', second: '2-е место', third: '3-е место',
+  fourToTen: '4–10-е места', elevenToFifty: '11–50-е места',
+};
+const monthlyCurrencyLabels = { coins: 'монеты', stars: 'звёзды', experience: 'опыт', tokens: 'токены' };
+
+const monthlyRatingDefinitions: GameSettingDefinition[] = monthlyRatingScopes.flatMap((scope) => {
+  const prefix = `amateur.monthly_rating.${scope}`;
+  const config = DEFAULT_MONTHLY_RATING_SETTINGS[scope];
+  const bands = scope === 'overall' ? overallRatingBands : (['first'] as const);
+  return [
+    {
+      key: `${prefix}.enabled`,
+      label: `${monthlyScopeLabels[scope]}: начислять награды`,
+      description: 'Выключение оставляет таблицу видимой и сохраняет суммы. Нулевые выплаты не показываются в поздравлении.',
+      type: 'select' as const,
+      defaultValue: 'enabled',
+      options: [{ value: 'enabled', label: 'Включено' }, { value: 'disabled', label: 'Выключено' }],
+    },
+    ...bands.flatMap((band) => monthlyRatingCurrencies.map((currency) => ({
+      key: `${prefix}.${band}.${currency}`,
+      label: `${monthlyScopeLabels[scope]}: ${monthlyBandLabels[band]} — ${monthlyCurrencyLabels[currency]}`,
+      description: 'Если все четыре суммы места равны нулю, награды и поздравления нет. Несколько побед объединяются в одну модалку за месяц.',
+      type: 'number' as const,
+      defaultValue: (config as unknown as Record<string, MonthlyRatingReward>)[band]![currency],
+      min: 0,
+      max: 2_147_483_647,
+      step: 1,
+    }))),
+  ];
+});
 
 type DailySpeedField = keyof Omit<DailyPeriodSpeedPreset, 'periodNumber'>;
 
@@ -437,6 +488,58 @@ export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
       { value: 'disabled', label: 'Выключен' },
     ],
   },
+  {
+    key: 'amateur.star_inventory_price_divisor',
+    label: 'Монет цены за одну звезду инвентаря',
+    description: 'Цена за звёзды = монетная цена, делённая на это число с округлением вверх.',
+    type: 'number',
+    defaultValue: 25,
+    min: 1,
+    max: 100_000,
+    step: 1,
+  },
+  ...([
+    ['daily', 'Новых дуэлей в день', 8],
+    ['weekly', 'Новых дуэлей в неделю', 40],
+    ['monthly', 'Новых дуэлей в месяц', 129],
+    ['per_format_monthly', 'Новых дуэлей формата в месяц', 43],
+    ['outgoing_invites', 'Ожидающих исходящих вызовов', 2],
+  ] as const).map(([key, label, defaultValue]) => ({
+    key: `amateur.limits.${key}`,
+    label,
+    description: 'Общий лимит обычных дуэлей по календарю Москвы.',
+    type: 'number' as const,
+    defaultValue,
+    min: 1,
+    max: 100_000,
+    step: 1,
+  })),
+  ...([
+    ['equal_experience_tolerance_percent', 'Допуск опыта, %', 10],
+    ['equal_experience_minimum_gap', 'Минимальная разница опыта', 20],
+  ] as const).map(([key, label, defaultValue]) => ({
+    key: `amateur.reward.${key}`,
+    label,
+    description: 'Сравнение опыта соперников при принятии обычной дуэли.',
+    type: 'number' as const,
+    defaultValue,
+    min: 0,
+    max: key === 'equal_experience_tolerance_percent' ? 100 : 2_147_483_647,
+    step: 1,
+  })),
+  ...(['stronger', 'equal', 'weaker', 'draw', 'loss'] as const).flatMap((category) =>
+    (['stars', 'experience'] as const).map((currency) => ({
+      key: `amateur.reward.${category}.${currency}`,
+      label: `${category}: ${currency === 'stars' ? 'звёзды' : 'опыт'}`,
+      description: 'Награда обычной дуэли; снимок суммы сохраняется при принятии.',
+      type: 'number' as const,
+      defaultValue: DEFAULT_ORDINARY_REWARD_SETTINGS[category][currency],
+      min: 0,
+      max: 2_147_483_647,
+      step: 1,
+    })),
+  ),
+  ...monthlyRatingDefinitions,
   ...noInventorySkatesDefinitions,
   ...noInventoryNutritionDefinitions,
 ];
@@ -517,6 +620,19 @@ export async function listGameSettings(pool: Queryable): Promise<GameSettingDTO[
 export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
   const settings = await listGameSettings(pool);
   const values = new Map(settings.map((setting) => [setting.key, setting.value]));
+  const monthlyRating = structuredClone(DEFAULT_MONTHLY_RATING_SETTINGS);
+  for (const scope of monthlyRatingScopes) {
+    const prefix = `amateur.monthly_rating.${scope}`;
+    const config = monthlyRating[scope];
+    config.enabled = values.get(`${prefix}.enabled`) !== 'disabled';
+    const bands = scope === 'overall' ? overallRatingBands : (['first'] as const);
+    for (const band of bands) {
+      const reward = (config as unknown as Record<string, MonthlyRatingReward>)[band]!;
+      for (const currency of monthlyRatingCurrencies) {
+        reward[currency] = Number(values.get(`${prefix}.${band}.${currency}`));
+      }
+    }
+  }
 
   const dailyShotsPerPeriod = Number(values.get('daily.shots_per_period'));
   const dailyPeriodMinutes = Number(values.get('daily.period_duration_minutes'));
@@ -589,6 +705,28 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
       dailyCooldownMinutes: GAMEPLAY_RECOVERY_MINUTES,
     },
     amateur: {
+      monthlyRating,
+      starInventoryPriceDivisor: Number(values.get('amateur.star_inventory_price_divisor')),
+      limits: {
+        daily: Number(values.get('amateur.limits.daily')),
+        weekly: Number(values.get('amateur.limits.weekly')),
+        monthly: Number(values.get('amateur.limits.monthly')),
+        perFormatMonthly: Number(values.get('amateur.limits.per_format_monthly')),
+        outgoingInvites: Number(values.get('amateur.limits.outgoing_invites')),
+      },
+      duelRewards: {
+        equalExperienceTolerancePercent: Number(values.get('amateur.reward.equal_experience_tolerance_percent')),
+        equalExperienceMinimumGap: Number(values.get('amateur.reward.equal_experience_minimum_gap')),
+        ...Object.fromEntries(
+          (['stronger', 'equal', 'weaker', 'draw', 'loss'] as const).map((category) => [
+            category,
+            {
+              stars: Number(values.get(`amateur.reward.${category}.stars`)),
+              experience: Number(values.get(`amateur.reward.${category}.experience`)),
+            },
+          ]),
+        ) as Pick<OrdinaryRewardSettings, 'stronger' | 'equal' | 'weaker' | 'draw' | 'loss'>,
+      },
       unlockGoalsRequired: Number.isFinite(amateurUnlockGoalsRequired)
         ? Math.max(0, Math.trunc(amateurUnlockGoalsRequired))
         : 300,

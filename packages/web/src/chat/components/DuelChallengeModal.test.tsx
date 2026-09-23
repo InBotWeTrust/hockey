@@ -92,11 +92,30 @@ describe('DuelChallengeModal Amateur preview access', () => {
 
     const option = await screen.findByRole('button', { name: /Экспресс/ });
     await waitFor(() => expect(option).toHaveAttribute('aria-pressed', 'true'));
-    expect(option.querySelector('.duel-challenge-option__indicator')).toHaveAttribute(
-      'data-selected',
-      'true',
-    );
-    expect(option.querySelector('.duel-challenge-option__indicator svg')).toBeInTheDocument();
+    expect(option.querySelector('.duel-equipment-option__check--selected svg')).toBeInTheDocument();
+  });
+
+  it('blocks a format when the opponent has reached its monthly limit', async () => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'amateur' });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const body = url.includes('/templates')
+        ? { templates: [template, { ...template, id: 'template-classic', duel_kind: 'classic', title: 'Классика' }] }
+        : { available: true, formats: {
+          express: { available: false, reason: 'format', retryAt: '2026-10-01T00:00:00.000Z', player: 'opponent' },
+          classic: { available: true, reason: null, retryAt: null, player: null },
+        } };
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    renderModal();
+    const express = await screen.findByRole('button', { name: /Экспресс/ });
+    await waitFor(() => expect(express).toBeDisabled());
+    expect(express.querySelector('.duel-equipment-option__check')).toBeNull();
+    expect(screen.getByText(/У соперника исчерпан месячный лимит этого формата/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Классика/ })).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Классика/ })).toHaveAttribute('aria-pressed', 'true'));
+    expect(screen.getByRole('button', { name: /Классика/ }).querySelector('.duel-equipment-option__check--selected')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Вызвать' })).toBeEnabled();
   });
 
   it('guards profile challenge submission locally for a known beginner', async () => {

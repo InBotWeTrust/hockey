@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { UserProfileScreen } from '../screens/UserProfileScreen.js';
@@ -102,6 +102,22 @@ describe('UserProfileScreen', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Это ваш соперник в плей-офф. Сначала сыграйте серию — после этого обычная дуэль станет доступна.',
     );
+    expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument();
+  });
+
+  it('shows the blocked challenge button and reward-style limit toast before opening setup', async () => {
+    vi.mocked(amateurDuelApi.checkAmateurDuelChallengeAvailability).mockResolvedValue({
+      available: false,
+      formats: { express: { available: false, reason: 'daily', retryAt: null, player: 'self' },
+        express_plus: { available: false, reason: 'daily', retryAt: null, player: 'self' },
+        classic: { available: false, reason: 'daily', retryAt: null, player: 'self' } },
+    });
+    renderPublicProfile();
+    const button = await screen.findByRole('button', { name: /вызвать на дуэль/i });
+    await waitFor(() => expect(button).toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(button);
+    expect(await screen.findByRole('status')).toHaveClass('achievement-reward-toast');
+    expect(screen.getByRole('status')).toHaveTextContent('У вас исчерпан дневной лимит дуэлей.');
     expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument();
   });
 });
