@@ -13,6 +13,7 @@ import {
   type MarksmanshipShotClassification,
   type MarksmanshipSeriesGoal,
   type MarksmanshipV3Reason,
+  type MarksmanshipV4Technique,
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -94,6 +95,24 @@ function formatPoints(value: number): string {
   return new Intl.NumberFormat('ru-RU').format(value).replaceAll('\u00a0', ' ');
 }
 
+function formatMarksmanshipPoints(value: number, scoring: MarksmanshipScoringRules): string {
+  if (scoring.version !== 4) return formatPoints(value);
+  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(value / 10)
+    .replaceAll('\u00a0', ' ');
+}
+
+function marksmanshipV4TechniqueLabel(technique: MarksmanshipV4Technique): string {
+  switch (technique) {
+    case 'ordinary': return 'Простой';
+    case 'near_goalie': return 'Рядом с вратарём';
+    case 'board_side': return 'У борта';
+    case 'counter_direction': return 'Противоход';
+    case 'precise': return 'Меткий';
+    case 'behind_goalie': return 'За вратаря';
+    case 'super_precise': return 'Суперметкий';
+  }
+}
+
 function marksmanshipDifficultyLabel(code: MarksmanshipDifficultyCode): string {
   switch (code) {
     case 'open':
@@ -136,7 +155,15 @@ function marksmanshipResultPresentation(input: {
 }): PlayResultPresentation | null {
   const details = input.scoreDetails;
   if (input.serverResult !== 'goal') return null;
-  if (input.awardedPoints <= 0 || input.difficultyCode === null) return null;
+  if (input.awardedPoints <= 0) return null;
+  if (details?.version === 4) {
+    if (details.result !== 'goal' || details.technique === null ||
+      details.pointsTenths !== input.awardedPoints) return null;
+    return {
+      breakdown: [{ points: details.pointsTenths, label: marksmanshipV4TechniqueLabel(details.technique) }],
+    };
+  }
+  if (input.difficultyCode === null) return null;
   if (details?.version === 3) {
     if (details.reason === null || details.category !== input.awardedPoints) return null;
     return {
@@ -178,8 +205,10 @@ function marksmanshipResultPresentation(input: {
 
 function MarksmanshipScoreNotice({
   parts,
+  scoring,
 }: {
   parts: readonly { points: number; label: string }[];
+  scoring: MarksmanshipScoringRules;
 }): JSX.Element {
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -227,7 +256,7 @@ function MarksmanshipScoreNotice({
         {parts.map((part) => (
           <div className="bonus-game-marksmanship-score__part" key={part.label}>
             <span className="game-scoreboard__label">{part.label}</span>
-            <strong className="game-scoreboard__value">+{formatPoints(part.points)}</strong>
+            <strong className="game-scoreboard__value">+{formatMarksmanshipPoints(part.points, scoring)}</strong>
           </div>
         ))}
       </div>
@@ -547,13 +576,13 @@ function BonusResult({
       ) : marksmanshipRules ? (
         <div
           className="bonus-game-result-metrics"
-          aria-label={`Итого: ${attempt.total_points} очков, цель ${marksmanshipRules.targetPoints}`}
+          aria-label={`Итого: ${formatMarksmanshipPoints(attempt.total_points, marksmanshipRules.scoring)} очков, цель ${formatMarksmanshipPoints(marksmanshipRules.targetPoints, marksmanshipRules.scoring)}`}
         >
-          <BonusResultMetric label="Набрано" value={formatPoints(attempt.total_points)} />
-          <BonusResultMetric label="Цель" value={formatPoints(marksmanshipRules.targetPoints)} />
+          <BonusResultMetric label="Набрано" value={formatMarksmanshipPoints(attempt.total_points, marksmanshipRules.scoring)} />
+          <BonusResultMetric label="Цель" value={formatMarksmanshipPoints(marksmanshipRules.targetPoints, marksmanshipRules.scoring)} />
           <BonusResultMetric
             label="Не хватило"
-            value={formatPoints(Math.max(0, marksmanshipRules.targetPoints - attempt.total_points))}
+            value={formatMarksmanshipPoints(Math.max(0, marksmanshipRules.targetPoints - attempt.total_points), marksmanshipRules.scoring)}
           />
         </div>
       ) : (
@@ -1167,8 +1196,8 @@ export function BonusGamePlayScreen(): JSX.Element {
                   label: 'ПЕРИОД',
                   value: `${periodNumber}/${attempt.rules.total_periods}`,
                 },
-                { id: 'points', label: 'ОЧКИ', value: formatPoints(attempt.total_points) },
-                { id: 'target', label: 'НУЖНО', value: formatPoints(marksmanshipTarget) },
+                { id: 'points', label: 'ОЧКИ', value: formatMarksmanshipPoints(attempt.total_points, marksmanshipRules!.scoring) },
+                { id: 'target', label: 'НУЖНО', value: formatMarksmanshipPoints(marksmanshipTarget, marksmanshipRules!.scoring) },
                 { id: 'time', label: 'ВРЕМЯ', value: visibleTimer, tone: 'timer' },
               ],
             },
@@ -1235,7 +1264,7 @@ export function BonusGamePlayScreen(): JSX.Element {
               </span>
             </div>
           ) : marksmanshipScoreParts?.length ? (
-            <MarksmanshipScoreNotice parts={marksmanshipScoreParts} />
+            <MarksmanshipScoreNotice parts={marksmanshipScoreParts} scoring={marksmanshipRules!.scoring} />
           ) : undefined
         }
         timer={isTerminal ? '00:00' : isIdle ? formatCountdown(idleTimerMs) : undefined}

@@ -34,7 +34,7 @@ export interface MarksmanshipScoreBracket {
 }
 
 export interface MarksmanshipScoringRules {
-  version?: 3;
+  version?: 3 | 4;
   scanStepMs: number;
   counterDirectionBonus: number;
   counterDirectionGoalDistance: number;
@@ -55,6 +55,61 @@ export interface MarksmanshipV3Score {
   category: 1 | 2 | 3 | 4;
   points: 1 | 2 | 3 | 4;
   reason: MarksmanshipV3Reason;
+}
+
+export type MarksmanshipV4Technique =
+  | 'ordinary' | 'near_goalie' | 'board_side' | 'counter_direction'
+  | 'precise' | 'behind_goalie' | 'super_precise';
+
+export interface MarksmanshipV4Measurements {
+  goalieGap: number;
+  postGap: number;
+  goalieOverlapsGoal: boolean;
+  shooterDirection: number;
+  goalDirection: number;
+  goalieTravel: number;
+  goalieAtTapCoversPuck: boolean;
+  goalOffset: number;
+  maxGoalOffset: number;
+  goaliePosition: number;
+}
+
+export interface MarksmanshipV4Score {
+  technique: MarksmanshipV4Technique;
+  points: 10 | 12 | 13 | 14 | 15 | 20;
+  availableTechniques: MarksmanshipV4Technique[];
+}
+
+const V4_PRIORITY: readonly { technique: MarksmanshipV4Technique; points: MarksmanshipV4Score['points'] }[] = [
+  { technique: 'super_precise', points: 20 },
+  { technique: 'behind_goalie', points: 15 },
+  { technique: 'precise', points: 14 },
+  { technique: 'counter_direction', points: 13 },
+  { technique: 'board_side', points: 13 },
+  { technique: 'near_goalie', points: 12 },
+  { technique: 'ordinary', points: 10 },
+];
+
+export function classifyMarksmanshipV4Score(m: MarksmanshipV4Measurements): MarksmanshipV4Score {
+  const counterDirection = m.shooterDirection !== 0 && m.goalDirection !== 0 &&
+    m.shooterDirection !== m.goalDirection;
+  const nearGoalie = m.goalieGap <= 80;
+  const boardSide = m.maxGoalOffset > 0 &&
+    Math.abs(m.goalOffset) >= m.maxGoalOffset - 30 &&
+    (m.goalOffset < 0 ? m.goaliePosition <= 150 : m.goaliePosition >= 422);
+  const active: Record<MarksmanshipV4Technique, boolean> = {
+    super_precise: m.goalieGap <= 12 && m.postGap <= 12,
+    behind_goalie: counterDirection && m.goalieTravel >= 200 && m.goalieAtTapCoversPuck,
+    precise: m.goalieOverlapsGoal && m.goalieGap <= 35,
+    counter_direction: counterDirection,
+    board_side: boardSide,
+    near_goalie: nearGoalie,
+    ordinary: true,
+  };
+  const availableTechniques = V4_PRIORITY.filter(({ technique }) => active[technique])
+    .map(({ technique }) => technique);
+  const primary = V4_PRIORITY.find(({ technique }) => active[technique])!;
+  return { technique: primary.technique, points: primary.points, availableTechniques };
 }
 
 export const DEFAULT_MARKSMANSHIP_SCORING_RULES = {
@@ -94,6 +149,11 @@ export const DEFAULT_MARKSMANSHIP_V3_SCORING_RULES = {
   ],
 } as const satisfies MarksmanshipScoringRules;
 
+export const DEFAULT_MARKSMANSHIP_V4_SCORING_RULES = {
+  ...DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
+  version: 4,
+} as const satisfies MarksmanshipScoringRules;
+
 const MARKSMANSHIP_DIFFICULTY_CODES = new Set<MarksmanshipDifficultyCode>([
   'open',
   'timed',
@@ -129,10 +189,11 @@ export function parseMarksmanshipScoringRules(value: unknown): MarksmanshipScori
     'tripleMultiplier',
   ] as const;
   const isV3 = isRecord(value) && value.version === 3;
+  const isV4 = isRecord(value) && value.version === 4;
   const isLegacy = isRecord(value) && hasExactKeys(value, legacyKeys);
   if (
     !isRecord(value) ||
-    (!isLegacy && !hasExactKeys(value, isV3 ? [...v2Keys, 'version'] : v2Keys)) ||
+    (!isLegacy && !hasExactKeys(value, isV3 || isV4 ? [...v2Keys, 'version'] : v2Keys)) ||
     !Number.isInteger(value.scanStepMs) ||
     (value.scanStepMs as number) < 1 ||
     (value.scanStepMs as number) > 1_000 ||
@@ -144,7 +205,7 @@ export function parseMarksmanshipScoringRules(value: unknown): MarksmanshipScori
     value.counterDirectionGoalDistance < 0 ||
     value.counterDirectionGoalDistance > 10_000 ||
     !Array.isArray(value.brackets) ||
-    value.brackets.length !== (isV3 ? 4 : MARKSMANSHIP_DIFFICULTY_CODES.size) ||
+    value.brackets.length !== (isV3 || isV4 ? 4 : MARKSMANSHIP_DIFFICULTY_CODES.size) ||
     (!isLegacy &&
       (!Number.isInteger(value.closeGoalieBonus) ||
         (value.closeGoalieBonus as number) < 0 ||
@@ -189,7 +250,7 @@ export function parseMarksmanshipScoringRules(value: unknown): MarksmanshipScori
     return { minWindowMs, points: bracket.points as number, code };
   });
   if (!seenThresholds.has(0)) throw new Error('invalid marksmanship scoring rules');
-  if (isV3 && (
+  if ((isV3 || isV4) && (
     value.scanStepMs !== 10 || value.counterDirectionGoalDistance !== 24 ||
     value.counterDirectionBonus !== 0 || value.closeGoalieBonus !== 0 ||
     value.behindGoalieBonus !== 0 || value.boardNarrowBonus !== 0 ||
@@ -200,7 +261,7 @@ export function parseMarksmanshipScoringRules(value: unknown): MarksmanshipScori
   )) throw new Error('invalid marksmanship scoring rules');
 
   return {
-    ...(isV3 ? { version: 3 as const } : {}),
+    ...(isV3 ? { version: 3 as const } : isV4 ? { version: 4 as const } : {}),
     scanStepMs: value.scanStepMs as number,
     counterDirectionBonus: value.counterDirectionBonus as number,
     counterDirectionGoalDistance: value.counterDirectionGoalDistance,
@@ -227,7 +288,7 @@ export interface MarksmanshipShotInput {
 export interface MarksmanshipShotClassification {
   result: ShotResult;
   windowDurationMs: number | null;
-  opportunity: 'scored' | 'human_error' | 'closed';
+  opportunity: 'scored' | 'human_error' | 'too_short' | 'closed';
   timingErrorMs: number | null;
   basePoints: number;
   counterDirection: boolean;
@@ -239,12 +300,15 @@ export interface MarksmanshipShotClassification {
   difficultyCode: MarksmanshipDifficultyCode | null;
   category?: 1 | 2 | 3 | 4 | null;
   reason?: MarksmanshipV3Reason | null;
+  v4Score?: MarksmanshipV4Score | null;
+  v4Measurements?: MarksmanshipV4Measurements | null;
 }
 
 export interface MarksmanshipShotContext {
   result: ShotResult;
   counterDirection: boolean;
   geometry: MarksmanshipGeometry;
+  v4Measurements?: MarksmanshipV4Measurements;
 }
 
 export interface MarksmanshipGeometryInput {
@@ -522,6 +586,49 @@ function goalWindowDuration(input: MarksmanshipShotInput): number {
   return successfulSamples * stepMs;
 }
 
+function goalWindowDurationV4(input: MarksmanshipShotInput): number {
+  const coarse = goalWindowDuration(input);
+  if (coarse > 40) return coarse;
+  const step = input.scoring.scanStepMs;
+  const isGoal = (delta: number): boolean => resolvePerspectiveCourtShot(
+    shiftedShotInput(input.shotInput, delta), input.goalie, input.seed, input.shotIndex,
+    STICK_NEUTRAL, input.phaseOffsets,
+  ).type === 'goal';
+  const earliest = Math.max(0, input.earliestTapTime);
+  let left = 0;
+  let right = 0;
+  while (input.shotInput.tapTime + left - step >= earliest && isGoal(left - step)) left -= step;
+  while (isGoal(right + step)) right += step;
+  if (input.shotInput.tapTime + left - step >= earliest) {
+    let failed = left - step;
+    let passed = left;
+    for (let index = 0; index < 8; index += 1) {
+      const midpoint = (failed + passed) / 2;
+      if (isGoal(midpoint)) passed = midpoint;
+      else failed = midpoint;
+    }
+    left = passed;
+  }
+  {
+    let passed = right;
+    let failed = right + step;
+    for (let index = 0; index < 8; index += 1) {
+      const midpoint = (passed + failed) / 2;
+      if (isGoal(midpoint)) passed = midpoint;
+      else failed = midpoint;
+    }
+    right = passed;
+  }
+  return Math.max(1, Math.round(right - left));
+}
+
+export function marksmanshipV4OpportunityForWindow(
+  windowDurationMs: number | null,
+): 'human_error' | 'too_short' | 'closed' {
+  if (windowDurationMs === null) return 'closed';
+  return windowDurationMs < 25 ? 'too_short' : 'human_error';
+}
+
 function geometryForShot(
   input: MarksmanshipShotInput,
   puckX: number,
@@ -612,9 +719,69 @@ function resultX(input: MarksmanshipShotInput, result: ShotResult): number {
   ).x;
 }
 
+function measurementsForV4Shot(input: MarksmanshipShotInput, puckX: number): MarksmanshipV4Measurements {
+  const speed = input.shotInput.puckSpeedPerMs ?? PUCK_SPEED_PER_MS;
+  const goalie = {
+    ...input.goalie,
+    frequency: input.shotInput.goalieFrequency ?? input.goalie.frequency,
+    goalFrequency: input.shotInput.goalFrequency ?? input.goalie.goalFrequency,
+  };
+  const tapTime = input.shotInput.tapTime;
+  const goalieCrossTime = tapTime + (PUCK_START.y - GOALIE_Y) / speed;
+  const goalCrossTime = tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed;
+  const atTap = simulateGoalie(goalie, input.seed, input.shotIndex, tapTime, input.phaseOffsets.goalie);
+  const atCross = simulateGoalie(goalie, input.seed, input.shotIndex, goalieCrossTime, input.phaseOffsets.goalie);
+  const visualX = (x: number): number =>
+    PERSPECTIVE_COURT_VISUAL_X_CENTER +
+    (x - PERSPECTIVE_COURT_VISUAL_X_CENTER) * PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE;
+  const goalieHalfWidthAt = (width: number): number => Math.max(0,
+    (width + GOALIE_HITBOX_EXPAND) * PERSPECTIVE_COURT_HITBOX_GOALIE_WIDTH_SCALE -
+    PERSPECTIVE_COURT_HITBOX_GOALIE_INSET * 2,
+  ) / 2;
+  const goalieCenter = visualX(atCross.position.x);
+  const goalieHalfWidth = goalieHalfWidthAt(atCross.width);
+  const goalieMin = goalieCenter - goalieHalfWidth;
+  const goalieMax = goalieCenter + goalieHalfWidth;
+  const goalOffset = simulateGoal(goalie, goalieCrossTime, input.phaseOffsets.goal).offsetX;
+  const goalCenter = (GOAL_OPENING.xMin + GOAL_OPENING.xMax) / 2 +
+    goalOffset * PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE;
+  const goalWidth = Math.max(0,
+    (GOAL_OPENING.xMax - GOAL_HITBOX_MARGIN - (GOAL_OPENING.xMin + GOAL_HITBOX_MARGIN)) *
+    PERSPECTIVE_COURT_HITBOX_GOAL_WIDTH_SCALE - PERSPECTIVE_COURT_HITBOX_GOAL_INSET * 2,
+  );
+  const goalMin = goalCenter - goalWidth / 2;
+  const goalMax = goalCenter + goalWidth / 2;
+  const goalAtCross = simulateGoal(goalie, goalCrossTime, input.phaseOffsets.goal).offsetX;
+  const goalMinAtCross = (GOAL_OPENING.xMin + GOAL_OPENING.xMax) / 2 +
+    goalAtCross * PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE - goalWidth / 2;
+  const goalMaxAtCross = goalMinAtCross + goalWidth;
+  const shooterTime = input.shotInput.shooterTapTime ?? tapTime;
+  const shooterBefore = simulateShooter(shooterTime - 5 + input.phaseOffsets.shooter,
+    input.shotInput.shooterFrequency).x;
+  const shooterAfter = simulateShooter(shooterTime + 5 + input.phaseOffsets.shooter,
+    input.shotInput.shooterFrequency).x;
+  const goalBefore = simulateGoal(goalie, tapTime - 5, input.phaseOffsets.goal).offsetX;
+  const goalAfter = simulateGoal(goalie, tapTime + 5, input.phaseOffsets.goal).offsetX;
+  const goalieAtTapCenter = visualX(atTap.position.x);
+  const goalieAtTapHalfWidth = goalieHalfWidthAt(atTap.width);
+  return {
+    goalieGap: Math.max(0, goalieMin - puckX, puckX - goalieMax),
+    postGap: Math.min(Math.abs(puckX - goalMinAtCross), Math.abs(puckX - goalMaxAtCross)),
+    goalieOverlapsGoal: goalieMax >= goalMin && goalieMin <= goalMax,
+    shooterDirection: Math.sign(shooterAfter - shooterBefore),
+    goalDirection: Math.sign(goalAfter - goalBefore),
+    goalieTravel: Math.abs(atCross.position.x - atTap.position.x),
+    goalieAtTapCoversPuck: puckX >= goalieAtTapCenter - goalieAtTapHalfWidth &&
+      puckX <= goalieAtTapCenter + goalieAtTapHalfWidth,
+    goalOffset,
+    maxGoalOffset: goalie.goalAmplitude,
+    goaliePosition: atCross.position.x,
+  };
+}
+
 function nearestGoalDelta(input: MarksmanshipShotInput): number | null {
   const stepMs = input.scoring.scanStepMs;
-  const maxSteps = Math.floor(OPPORTUNITY_SCAN_MS / stepMs);
+  const maxSteps = Math.floor((input.scoring.version === 4 ? 600 : OPPORTUNITY_SCAN_MS) / stepMs);
   for (let step = 1; step <= maxSteps; step += 1) {
     for (const direction of [-1, 1] as const) {
       const deltaMs = step * stepMs * direction;
@@ -645,17 +812,25 @@ export function resolveMarksmanshipShotContext(
     input.phaseOffsets,
   );
   const geometry = geometryForShot(input, resultX(input, result));
+  const v4Measurements = input.scoring.version === 4
+    ? measurementsForV4Shot(input, resultX(input, result)) : undefined;
+  const resolvedGeometry = v4Measurements === undefined ? geometry : {
+    ...geometry,
+    counterDirection: classifyMarksmanshipV4Score(v4Measurements)
+      .availableTechniques.includes('counter_direction'),
+  };
   return {
     result,
-    counterDirection: geometry.counterDirection,
-    geometry,
+    counterDirection: resolvedGeometry.counterDirection,
+    geometry: resolvedGeometry,
+    ...(v4Measurements === undefined ? {} : { v4Measurements }),
   };
 }
 
 export function classifyMarksmanshipShot(
   input: MarksmanshipShotInput,
 ): MarksmanshipShotClassification {
-  const { result, counterDirection, geometry } = resolveMarksmanshipShotContext(input);
+  const { result, counterDirection, geometry, v4Measurements } = resolveMarksmanshipShotContext(input);
   const series = classifyMarksmanshipSeries(
     {
       tapTime: input.shotInput.tapTime,
@@ -668,24 +843,55 @@ export function classifyMarksmanshipShot(
   );
   if (result.type !== 'goal') {
     const timingErrorMs = nearestGoalDelta(input);
+    const opportunityInput = input.scoring.version === 4 && timingErrorMs !== null
+      ? { ...input, shotInput: shiftedShotInput(input.shotInput, timingErrorMs) }
+      : null;
+    const opportunityContext = opportunityInput === null ? null
+      : resolveMarksmanshipShotContext(opportunityInput);
+    const availableMeasurements = opportunityContext?.result.type === 'goal'
+      ? opportunityContext.v4Measurements ?? null : null;
+    const availableScore = availableMeasurements === null ? null
+      : classifyMarksmanshipV4Score(availableMeasurements);
+    const availableWindowMs = input.scoring.version === 4 && timingErrorMs !== null
+      ? goalWindowDurationV4(opportunityInput!)
+      : null;
     return {
       result,
-      windowDurationMs: null,
-      opportunity: timingErrorMs === null ? 'closed' : 'human_error',
+      windowDurationMs: availableWindowMs,
+      opportunity: input.scoring.version === 4
+        ? marksmanshipV4OpportunityForWindow(availableWindowMs)
+        : timingErrorMs === null ? 'closed' : 'human_error',
       timingErrorMs,
       basePoints: 0,
-      counterDirection,
-      geometry,
+      counterDirection: input.scoring.version === 4
+        ? availableScore?.availableTechniques.includes('counter_direction') ?? false
+        : counterDirection,
+      geometry: opportunityContext?.geometry ?? geometry,
       series: { ...series, type: 'single', index: 1, multiplier: 1 },
       situationBonus: 0,
       seriesBonus: 0,
       awardedPoints: 0,
       difficultyCode: null,
       ...(input.scoring.version === 3 ? { category: null, reason: null } : {}),
+      ...(input.scoring.version !== 4 ? {} : {
+        v4Measurements: availableMeasurements, v4Score: availableScore,
+      }),
     };
   }
 
-  const windowDurationMs = goalWindowDuration(input);
+  const windowDurationMs = input.scoring.version === 4
+    ? goalWindowDurationV4(input) : goalWindowDuration(input);
+  if (input.scoring.version === 4) {
+    if (v4Measurements === undefined) throw new Error('missing V4 measurements');
+    const v4Score = classifyMarksmanshipV4Score(v4Measurements);
+    return {
+      result, windowDurationMs, opportunity: 'scored', timingErrorMs: 0,
+      basePoints: v4Score.points, counterDirection, geometry,
+      series: { ...series, multiplier: 1 }, situationBonus: 0, seriesBonus: 0,
+      awardedPoints: v4Score.points, difficultyCode: null,
+      v4Measurements, v4Score,
+    };
+  }
   const bracket = bracketForWindow(windowDurationMs, input.scoring);
   if (input.scoring.version === 3) {
     const score = classifyMarksmanshipV3Score(windowDurationMs, geometry);
