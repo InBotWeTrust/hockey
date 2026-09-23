@@ -45,9 +45,12 @@ export {
 } from './court/perspective.js';
 export {
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
   classifyMarksmanshipGeometry,
+  classifyMarksmanshipV3Geometry,
   classifyMarksmanshipSeries,
   classifyMarksmanshipShot,
+  classifyMarksmanshipV3Score,
   isStrictCounterDirection,
   parseMarksmanshipScoringRules,
   resolveMarksmanshipShotContext,
@@ -63,6 +66,8 @@ export {
   type MarksmanshipScoreBreakdown,
   type MarksmanshipScoreBreakdownInput,
   type MarksmanshipScoringRules,
+  type MarksmanshipV3Reason,
+  type MarksmanshipV3Score,
   type MarksmanshipShotClassification,
   type MarksmanshipShotContext,
   type MarksmanshipShotInput,

@@ -3,7 +3,10 @@ import { resolvePerspectiveCourtShot } from '../src/court/perspective.js';
 import type { GoalieConfig } from '../src/goalie/types.js';
 import {
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
   classifyMarksmanshipGeometry,
+  classifyMarksmanshipV3Geometry,
+  classifyMarksmanshipV3Score,
   classifyMarksmanshipSeries,
   classifyMarksmanshipShot,
   isStrictCounterDirection,
@@ -119,6 +122,88 @@ describe('scoreMarksmanshipWindow', () => {
     expect(scoreMarksmanshipWindow(windowDurationMs, DEFAULT_MARKSMANSHIP_SCORING_RULES)).toBe(
       expected,
     );
+  });
+});
+
+describe('single-category marksmanship', () => {
+  const emptyGeometry = {
+    boardSide: false,
+    boardSideLocation: null,
+    goalieNearGoal: false,
+    closeToGoalie: false,
+    counterDirection: false,
+    behindGoalie: false,
+  } as const;
+
+  it.each([
+    [69, 4], [70, 3], [99, 3], [100, 2], [159, 2], [160, 1],
+  ])('awards one category for a %d ms window', (windowDurationMs, expected) => {
+    expect(classifyMarksmanshipV3Score(windowDurationMs, emptyGeometry)).toMatchObject({
+      category: expected,
+      points: expected,
+    });
+  });
+
+  it('uses only the strongest reason when geometry overlaps', () => {
+    expect(classifyMarksmanshipV3Score(120, {
+      ...emptyGeometry,
+      boardSide: true,
+      boardSideLocation: 'left',
+      goalieNearGoal: true,
+      closeToGoalie: true,
+      counterDirection: true,
+      behindGoalie: true,
+    })).toEqual({ category: 4, points: 4, reason: 'close_counter_direction' });
+  });
+
+  it('measures both boards and the goalkeeper-to-goal hitbox gap inclusively', () => {
+    const input = {
+      puckX: 200, shooterX: 79, shooterDirection: 1,
+      goalieCenterX: 200, goalieHalfWidth: 10, goalieDirection: 1,
+      goalXMin: 234, goalXMax: 300,
+    };
+    expect(classifyMarksmanshipV3Geometry(input)).toMatchObject({
+      boardSideLocation: 'left', goalieNearGoal: true,
+    });
+    expect(classifyMarksmanshipV3Geometry({ ...input, shooterX: 493 })).toMatchObject({
+      boardSideLocation: 'right', goalieNearGoal: true,
+    });
+    expect(classifyMarksmanshipV3Geometry({ ...input, shooterX: 80, goalXMin: 235 })).toMatchObject({
+      boardSideLocation: null, goalieNearGoal: false,
+    });
+  });
+
+  it('parses V3 without changing old snapshots', () => {
+    expect(parseMarksmanshipScoringRules(DEFAULT_MARKSMANSHIP_V3_SCORING_RULES)).toEqual(
+      DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
+    );
+    expect(parseMarksmanshipScoringRules(DEFAULT_MARKSMANSHIP_SCORING_RULES)).toEqual(
+      DEFAULT_MARKSMANSHIP_SCORING_RULES,
+    );
+    expect(() => parseMarksmanshipScoringRules({
+      ...DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
+      unknown: 1,
+    })).toThrow('invalid marksmanship scoring rules');
+  });
+
+  it('does not add a rapid series multiplier to a V3 goal', () => {
+    const shotInput = findShotInput('goal');
+    const previousGoals = [
+      { tapTime: shotInput.tapTime - 200, shooterTapTime: shotInput.shooterTapTime! - 200 },
+      { tapTime: shotInput.tapTime - 100, shooterTapTime: shotInput.shooterTapTime! - 100 },
+    ];
+    const classification = classifyMarksmanshipShot({
+      shotInput, goalie: movingGoalie, seed: 'marksmanship-fixture', shotIndex: 1,
+      phaseOffsets: offsets, earliestTapTime: 0,
+      scoring: DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
+      previousGoals,
+    });
+    expect(classification.result.type).toBe('goal');
+    expect(classification.awardedPoints).toBe(classification.category);
+    expect(classification.awardedPoints).toBeGreaterThanOrEqual(1);
+    expect(classification.awardedPoints).toBeLessThanOrEqual(4);
+    expect(classification.seriesBonus).toBe(0);
+    expect(classification.situationBonus).toBe(0);
   });
 });
 
