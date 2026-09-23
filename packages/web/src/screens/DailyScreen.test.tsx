@@ -11,7 +11,7 @@ vi.hoisted(() => {
   });
 });
 import { render, screen, waitFor, fireEvent, act, within, cleanup } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createDuelStumbleRandomness,
@@ -416,7 +416,7 @@ function LocationProbe(): JSX.Element {
   return <div aria-label="location">{`${location.pathname}${location.search}`}</div>;
 }
 
-function renderWith(initialEntries: string[] = ['/']) {
+function renderWith(initialEntries: string[] = ['/'], routeControl?: JSX.Element) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
@@ -428,6 +428,7 @@ function renderWith(initialEntries: string[] = ['/']) {
       >
         <DailyScreen />
         <LocationProbe />
+        {routeControl}
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -4438,6 +4439,52 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'На лёд' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Начальный уровень/ })).not.toBeInTheDocument();
+  });
+
+  it('opens the open-training details after leaving a playable training route', async () => {
+    const unlockedCatalog = {
+      ...initialTrainingCatalog,
+      open_training_unlocked: true,
+      open_training_unlock_source: 'course' as const,
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/duel/training/course')
+        ? unlockedCatalog
+        : url.includes('/duel/training/state')
+          ? trainingActiveState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    useTrainingSessionStore.setState({ data: trainingActiveState });
+
+    function OpenTrainingRoute(): JSX.Element {
+      const navigate = useNavigate();
+      return (
+        <button
+          type="button"
+          onClick={() => navigate('/?view=training&section=open&from=sections', { replace: true })}
+        >
+          Перейти на страницу открытой тренировки
+        </button>
+      );
+    }
+
+    renderWith(['/?view=training&play=1'], <OpenTrainingRoute />);
+    expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Перейти на страницу открытой тренировки' }));
+
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=training&section=open&from=sections');
+    expect(await screen.findByRole('button', { name: 'Продолжить тренировку' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Продолжить тренировку' }));
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=training&play=1');
+    expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
   });
 
   it('switches an active training session to the selected period before opening the rink', async () => {
