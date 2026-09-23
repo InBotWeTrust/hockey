@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
   STICK_NEUTRAL,
   type GoalieConfig,
   type MarksmanshipShotClassification,
@@ -976,6 +977,64 @@ describe('BonusGamePlayScreen', () => {
     act(() => vi.advanceTimersByTime(1_999));
     expect(screen.getByRole('status', { name: 'Очки за бросок' })).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByRole('status', { name: 'Очки за бросок' })).not.toBeInTheDocument();
+  });
+
+  it('shows one authoritative V3 reason only when the goal result becomes visible', async () => {
+    const original = marksmanshipAttempt();
+    const v3Attempt = marksmanshipAttempt({
+      total_points: 4,
+      rules: {
+        ...original.rules,
+        qualification_rules: {
+          type: 'points_in_time', targetPoints: 25, activeTimeMs: 30_000,
+          scoring: DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
+        },
+      },
+    });
+    const submitShot = vi.fn(async () => ({
+      serverResult: 'goal' as const, awardedPoints: 4, totalPoints: 4,
+      difficultyCode: 'instant' as const, counterDirection: true,
+      scoreDetails: {
+        version: 3 as const, windowDurationMs: 60, difficultyCode: 'instant' as const,
+        counterDirection: true, opportunity: 'scored' as const, timingErrorMs: 0,
+        geometry: {
+          boardSide: false, boardSideLocation: null, goalieNearGoal: true,
+          closeToGoalie: true, counterDirection: true, behindGoalie: true,
+        },
+        category: 4 as const, reason: 'close_counter_direction' as const,
+      },
+      predictedMarksmanship: null, attempt: v3Attempt, rewardGranted: false,
+    }));
+    setStore({ attempt: v3Attempt, submitShot });
+    renderScreen();
+    const props = playViewProbe.mock.calls.at(-1)?.[0] as {
+      submitShot: (args: { shotIndex: number; input: ShotInput; claimedResult: 'goal' }) => Promise<unknown>;
+      onResultVisibilityChange: (visible: boolean) => void;
+    };
+    await act(async () => {
+      await props.submitShot({
+        shotIndex: 1, claimedResult: 'goal',
+        input: {
+          tapTime: 11_060, shooterTapTime: 11_060, puckSpeedPerMs: 1.25,
+          shooterFrequency: 0.75, goalieFrequency: 0.6, goalFrequency: 0.5,
+        },
+      });
+    });
+    expect(screen.queryByRole('status', { name: 'Очки за бросок' })).not.toBeInTheDocument();
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(240);
+    vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockReturnValue(480);
+    vi.useFakeTimers();
+    act(() => props.onResultVisibilityChange(true));
+    const notice = screen.getByRole('status', { name: 'Очки за бросок' });
+    expect(within(notice).getByText('Рядом с уходящим вратарём')).toBeInTheDocument();
+    expect(within(notice).getByText('+4')).toBeInTheDocument();
+    expect(notice.querySelectorAll('.bonus-game-marksmanship-score__part')).toHaveLength(1);
+    expect(notice.querySelector('.bonus-game-marksmanship-score__inner')).toHaveStyle({
+      '--marksmanship-label-size': `${8 * (237 / 480)}px`,
+      '--marksmanship-value-size': `${18 * (237 / 480)}px`,
+    });
+    act(() => vi.advanceTimersByTime(2_000));
     expect(screen.queryByRole('status', { name: 'Очки за бросок' })).not.toBeInTheDocument();
   });
 

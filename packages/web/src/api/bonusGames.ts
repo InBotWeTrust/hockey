@@ -6,6 +6,7 @@ import type {
   MarksmanshipGeometry,
   MarksmanshipScoringRules,
   MarksmanshipSeriesClassification,
+  MarksmanshipV3Reason,
 } from '@hockey/game-core';
 
 export type BonusGameCardState =
@@ -248,6 +249,17 @@ export type MarksmanshipScoreDetails =
       series: MarksmanshipSeriesClassification;
       situationBonus: number;
       seriesBonus: number;
+    }
+  | {
+      version: 3;
+      windowDurationMs: number | null;
+      difficultyCode: MarksmanshipDifficultyCode | null;
+      counterDirection: boolean;
+      opportunity: 'scored' | 'human_error' | 'closed';
+      timingErrorMs: number | null;
+      geometry: MarksmanshipGeometry;
+      category: 1 | 2 | 3 | 4 | null;
+      reason: MarksmanshipV3Reason | null;
     };
 
 export interface BonusShotResponse {

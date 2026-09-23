@@ -12,6 +12,7 @@ import {
   type MarksmanshipScoringRules,
   type MarksmanshipShotClassification,
   type MarksmanshipSeriesGoal,
+  type MarksmanshipV3Reason,
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -110,6 +111,21 @@ function marksmanshipDifficultyLabel(code: MarksmanshipDifficultyCode): string {
   }
 }
 
+function marksmanshipV3ReasonLabel(reason: MarksmanshipV3Reason): string {
+  switch (reason) {
+    case 'ordinary': return 'Обычный гол';
+    case 'timed': return 'Точный момент';
+    case 'narrow': return 'Узкий момент';
+    case 'instant': return 'Мгновенный момент';
+    case 'goalie_covers_goal': return 'Вратарь прикрывает ворота';
+    case 'near_goalie': return 'Рядом с вратарём';
+    case 'left_board': return 'От левого борта';
+    case 'right_board': return 'От правого борта';
+    case 'counter_direction': return 'Противоход';
+    case 'close_counter_direction': return 'Рядом с уходящим вратарём';
+  }
+}
+
 function marksmanshipResultPresentation(input: {
   serverResult: 'goal' | 'save' | 'miss';
   awardedPoints: number;
@@ -121,6 +137,12 @@ function marksmanshipResultPresentation(input: {
   const details = input.scoreDetails;
   if (input.serverResult !== 'goal') return null;
   if (input.awardedPoints <= 0 || input.difficultyCode === null) return null;
+  if (details?.version === 3) {
+    if (details.reason === null || details.category !== input.awardedPoints) return null;
+    return {
+      breakdown: [{ points: input.awardedPoints, label: marksmanshipV3ReasonLabel(details.reason) }],
+    };
+  }
   if (details?.version === 2) {
     const geometry = details.geometry;
     const breakdown = [
