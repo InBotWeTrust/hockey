@@ -17,7 +17,6 @@ import {
   duelLimitUsage,
   reserveDuelCapacity,
 } from './admission.js';
-import { DEFAULT_MONTHLY_RATING_SETTINGS } from './monthlyRatingSettings.js';
 import {
   DEFAULT_DUEL_INVENTORY_TIMING,
   GAME_CORE_VERSION,
@@ -6478,11 +6477,6 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     );
     const closedSettings = snapshot.rows[0]?.settings_snapshot as
       | typeof settings.amateur.monthlyRating | undefined;
-    const ratingSettings = snapshot.rows.length === 0
-      ? settings.amateur.monthlyRating
-      : closedSettings?.[query.scope]?.minimumMatches
-        ? closedSettings : DEFAULT_MONTHLY_RATING_SETTINGS;
-    const threshold = ratingSettings[query.scope].minimumMatches;
     const { rows } = await app.pg.query<RatingRow>(
       `with entries as (
          select entry.* from amateur_duel_rating_match entry
@@ -6517,16 +6511,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
                  ranked.user_id asc`,
       [seasonKey, query.scope],
     );
-    let eligiblePlace = 0;
-    const rating = rows.map((row) => {
-      const eligible = row.matches_played >= threshold;
-      return {
-        ...row,
-        eligible,
-        matches_to_qualify: Math.max(0, threshold - row.matches_played),
-        place: eligible ? ++eligiblePlace : null,
-      };
-    });
+    const rating = rows.map((row, index) => ({ ...row, place: index + 1 }));
     const { rows: seasonRows } = await app.pg.query<{ season_key: string }>(
       `select distinct season_key
          from (
@@ -6539,8 +6524,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     return {
       season_key: seasonKey,
       scope: query.scope,
-      prize_threshold: threshold,
-      reward_rules: ratingSettings[query.scope],
+      reward_rules: closedSettings?.[query.scope]?.first
+        ? closedSettings[query.scope] : settings.amateur.monthlyRating[query.scope],
       rating_visible: settings.amateur.ratingVisibility === 'enabled',
       available_seasons: seasonRows.map((row) => row.season_key),
       rating,

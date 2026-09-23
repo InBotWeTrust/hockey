@@ -46,12 +46,11 @@ export function AmateurDuelRatingTab({
   const seasonIndex = seasons.indexOf(seasonKey);
   const previousSeason = seasonIndex > 0 ? seasons[seasonIndex - 1] : undefined;
   const nextSeason = seasonIndex >= 0 ? seasons[seasonIndex + 1] : undefined;
-  const rows = (data?.rating ?? []).filter((row) => row.eligible !== false).map((row, index) => ({
+  const rows = (data?.rating ?? []).map((row, index) => ({
     ...row,
     rank: row.place ?? index + 1,
     played: row.matches_played,
   }));
-  const unqualified = (data?.rating ?? []).filter((row) => row.eligible === false);
 
   return (
     <section className="duel-section" aria-label="Рейтинг дуэлей">
@@ -98,7 +97,7 @@ export function AmateurDuelRatingTab({
           <div className="duel-state-card duel-state-card--error">
             Не удалось загрузить рейтинг.
           </div>
-        ) : rows.length === 0 && unqualified.length === 0 ? (
+        ) : rows.length === 0 ? (
           <p className="duel-rating-empty">Рейтинг появится после первых завершённых дуэлей.</p>
         ) : rows.length > 0 ? (
           <TournamentStandingsTable
@@ -117,16 +116,6 @@ export function AmateurDuelRatingTab({
             }
           />
         ) : null}
-        {unqualified.length > 0 && (
-          <section aria-label="Пока вне зачёта" style={{ display: 'grid', gap: 6, marginTop: 14 }}>
-            <h3 style={{ margin: 0 }}>Пока вне зачёта</h3>
-            {unqualified.map((row) => (
-              <div key={row.user_id}>
-                {row.display_name} — ещё {row.matches_to_qualify ?? 0} матчей до зачёта
-              </div>
-            ))}
-          </section>
-        )}
       </section>
       {rulesOpen && (
         <AccessibleModal
@@ -140,7 +129,7 @@ export function AmateurDuelRatingTab({
           }}
         >
           <p>В зачёт входят только обычные завершённые дуэли. Турнирные игры не учитываются.</p>
-          <p>Для попадания в таблицу нужно сыграть не менее {data?.reward_rules?.minimumMatches ?? data?.prize_threshold ?? (scope === 'overall' ? 30 : 10)} дуэлей {scope === 'overall' ? 'за месяц' : 'в этом формате за месяц'}.</p>
+          <p>Игрок попадает в таблицу после первой завершённой обычной дуэли за месяц.</p>
           <p>Места определяются по очкам, затем по очным встречам, числу матчей и победам.</p>
           {data?.reward_rules?.enabled === false ? (
             <p>Награды за этот зачёт сейчас выключены.</p>

@@ -3,7 +3,6 @@ export type MonthlyRatingReward = { coins: number; stars: number; experience: nu
 
 export interface RatingScopeSettings {
   enabled: boolean;
-  minimumMatches: number;
   first: MonthlyRatingReward;
 }
 
@@ -24,14 +23,12 @@ export interface MonthlyRatingSettings {
 const zero: MonthlyRatingReward = { coins: 0, stars: 0, experience: 0, tokens: 0 };
 const format = (): RatingScopeSettings => ({
   enabled: true,
-  minimumMatches: 10,
   first: { coins: 0, stars: 30, experience: 30, tokens: 0 },
 });
 
 export const DEFAULT_MONTHLY_RATING_SETTINGS: MonthlyRatingSettings = {
   overall: {
     enabled: true,
-    minimumMatches: 30,
     first: { coins: 15_000, stars: 300, experience: 0, tokens: 10 },
     second: { coins: 10_000, stars: 200, experience: 0, tokens: 7 },
     third: { coins: 7_500, stars: 150, experience: 0, tokens: 5 },

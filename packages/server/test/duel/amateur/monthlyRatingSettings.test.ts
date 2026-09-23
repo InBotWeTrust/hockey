@@ -7,10 +7,6 @@ import {
 describe('monthly rating settings', () => {
   it('defaults to the approved general bands and one prize per format', () => {
     const settings = DEFAULT_MONTHLY_RATING_SETTINGS;
-    expect(settings.overall.minimumMatches).toBe(30);
-    expect(settings.express.minimumMatches).toBe(10);
-    expect(settings.express_plus.minimumMatches).toBe(10);
-    expect(settings.classic.minimumMatches).toBe(10);
     expect(monthlyRewardForPlace(settings, 'overall', 1, 1)).toEqual({
       coins: 15000, stars: 300, experience: 0, tokens: 10,
     });

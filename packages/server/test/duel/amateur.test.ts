@@ -3628,9 +3628,11 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
 
     expect(rating.statusCode).toBe(200);
     expect(rating.json().rating).toEqual([
-      expect.objectContaining({ user_id: userA, points: 3, wins: 1, matches_played: 1 }),
-      expect.objectContaining({ user_id: userB, points: 0, losses: 1, matches_played: 1 }),
+      expect.objectContaining({ user_id: userA, points: 3, wins: 1, matches_played: 1, place: 1 }),
+      expect.objectContaining({ user_id: userB, points: 0, losses: 1, matches_played: 1, place: 2 }),
     ]);
+    expect(rating.json().me_rank).toBe(1);
+    expect(rating.json()).not.toHaveProperty('prize_threshold');
 
     const history = await app.inject({
       method: 'GET',
@@ -4697,9 +4699,10 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         rating: (await pool.query('select * from amateur_duel_rating_live order by user_id')).rows,
       });
       const frozen = await ratingState();
-      const starsAfterMonthlyClose = Number((await pool.query(
-        'select xp from users where id = $1', [userA],
-      )).rows[0].xp);
+      const balanceAfterMonthlyClose = (await pool.query<{ xp: number; balance: number }>(
+        'select xp, balance from users join user_currency_account on user_id=id where id=$1',
+        [userA],
+      )).rows[0]!;
       for (let retry = 0; retry < 2; retry += 1) {
         const response = await app.inject({
           method: 'POST',
@@ -4745,7 +4748,10 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
             [userA],
           )
         ).rows,
-      ).toEqual([{ xp: starsAfterMonthlyClose + 3, balance: 105 }]);
+      ).toEqual([{
+        xp: Number(balanceAfterMonthlyClose.xp) + 3,
+        balance: Number(balanceAfterMonthlyClose.balance) + 5,
+      }]);
       expect(
         (
           await pool.query(

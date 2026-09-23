@@ -291,8 +291,6 @@ export interface AmateurRatingRow {
   goals_against: number;
   matches_played: number;
   active_duration_seconds: number;
-  eligible?: boolean;
-  matches_to_qualify?: number;
   place?: number | null;
 }
 
@@ -313,10 +311,8 @@ export interface AmateurDuelHistoryResponse {
 export interface AmateurDuelRatingResponse {
   season_key: string;
   scope?: 'overall' | AmateurDuelKind;
-  prize_threshold?: number;
   reward_rules?: {
     enabled: boolean;
-    minimumMatches: number;
     first: { coins: number; stars: number; experience: number; tokens: number };
     second?: { coins: number; stars: number; experience: number; tokens: number };
     third?: { coins: number; stars: number; experience: number; tokens: number };

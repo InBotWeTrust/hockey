@@ -65,13 +65,17 @@ describe('inventory star price', () => {
 });
 
 describe('monthly rating admin settings', () => {
-  it('exposes independent payout switches and the approved scope defaults', async () => {
-    const settings = await getGameSettings({ query: async () => ({ rows: [] }) } as never);
-    expect(settings.amateur.monthlyRating.overall.minimumMatches).toBe(30);
-    expect(settings.amateur.monthlyRating.express.minimumMatches).toBe(10);
+  it('exposes payouts without match thresholds and ignores legacy threshold values', async () => {
+    const settings = await getGameSettings({ query: async () => ({ rows: [
+      { key: 'amateur.monthly_rating.overall.minimum_matches', value: 30 },
+      { key: 'amateur.monthly_rating.express.minimum_matches', value: 10 },
+    ] }) } as never);
+    expect(settings.amateur.monthlyRating.overall).not.toHaveProperty('minimumMatches');
+    expect(settings.amateur.monthlyRating.express).not.toHaveProperty('minimumMatches');
     expect(settings.amateur.monthlyRating.express.first).toMatchObject({ stars: 30, experience: 30 });
     expect(GAME_SETTING_DEFINITIONS.map((setting) => setting.key)).toContain('amateur.monthly_rating.classic.enabled');
     expect(GAME_SETTING_DEFINITIONS.map((setting) => setting.key)).toContain('amateur.monthly_rating.overall.first.experience');
+    expect(GAME_SETTING_DEFINITIONS.some((setting) => setting.key.endsWith('.minimum_matches'))).toBe(false);
   });
 });
 

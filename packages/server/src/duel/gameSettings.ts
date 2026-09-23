@@ -100,16 +100,6 @@ const monthlyRatingDefinitions: GameSettingDefinition[] = monthlyRatingScopes.fl
       defaultValue: 'enabled',
       options: [{ value: 'enabled', label: 'Включено' }, { value: 'disabled', label: 'Выключено' }],
     },
-    {
-      key: `${prefix}.minimum_matches`,
-      label: `${monthlyScopeLabels[scope]}: личный порог матчей`,
-      description: 'Применяется к ещё не закрытому месяцу; в закрытом сохраняется снимок.',
-      type: 'number' as const,
-      defaultValue: config.minimumMatches,
-      min: 1,
-      max: 1000,
-      step: 1,
-    },
     ...bands.flatMap((band) => monthlyRatingCurrencies.map((currency) => ({
       key: `${prefix}.${band}.${currency}`,
       label: `${monthlyScopeLabels[scope]}: ${monthlyBandLabels[band]} — ${monthlyCurrencyLabels[currency]}`,
@@ -635,7 +625,6 @@ export async function getGameSettings(pool: Queryable): Promise<GameSettings> {
     const prefix = `amateur.monthly_rating.${scope}`;
     const config = monthlyRating[scope];
     config.enabled = values.get(`${prefix}.enabled`) !== 'disabled';
-    config.minimumMatches = Number(values.get(`${prefix}.minimum_matches`));
     const bands = scope === 'overall' ? overallRatingBands : (['first'] as const);
     for (const band of bands) {
       const reward = (config as unknown as Record<string, MonthlyRatingReward>)[band]!;
