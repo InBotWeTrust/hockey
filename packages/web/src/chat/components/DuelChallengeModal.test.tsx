@@ -92,11 +92,7 @@ describe('DuelChallengeModal Amateur preview access', () => {
 
     const option = await screen.findByRole('button', { name: /Экспресс/ });
     await waitFor(() => expect(option).toHaveAttribute('aria-pressed', 'true'));
-    expect(option.querySelector('.duel-challenge-option__indicator')).toHaveAttribute(
-      'data-selected',
-      'true',
-    );
-    expect(option.querySelector('.duel-challenge-option__indicator svg')).toBeInTheDocument();
+    expect(option.querySelector('.duel-equipment-option__check--selected svg')).toBeInTheDocument();
   });
 
   it('blocks a format when the opponent has reached its monthly limit', async () => {
@@ -114,9 +110,12 @@ describe('DuelChallengeModal Amateur preview access', () => {
     renderModal();
     const express = await screen.findByRole('button', { name: /Экспресс/ });
     await waitFor(() => expect(express).toBeDisabled());
+    expect(express.querySelector('.duel-equipment-option__check')).toBeNull();
     expect(screen.getByText(/У соперника исчерпан месячный лимит этого формата/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Классика/ })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Вызвать' })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Классика/ })).toHaveAttribute('aria-pressed', 'true'));
+    expect(screen.getByRole('button', { name: /Классика/ }).querySelector('.duel-equipment-option__check--selected')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Вызвать' })).toBeEnabled();
   });
 
   it('guards profile challenge submission locally for a known beginner', async () => {

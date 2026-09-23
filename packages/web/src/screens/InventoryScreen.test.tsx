@@ -712,7 +712,7 @@ describe('InventoryScreen', () => {
     expect(within(recovery).getByText('Снимает 15 минут')).toBeInTheDocument();
     expect(within(recovery).getByText('Снимает 30 минут')).toBeInTheDocument();
     expect(within(recovery).getByText('Снимает 1 час')).toBeInTheDocument();
-    expect(within(recovery).getByLabelText('600 монет')).toBeInTheDocument();
+    expect(within(recovery).getByLabelText('600 монет или 24 звёзд')).toBeInTheDocument();
     expect(within(recovery).getAllByLabelText(/1.000 монет/)).not.toHaveLength(0);
     expect(within(recovery).getAllByLabelText(/1.800 монет/)).not.toHaveLength(0);
   });
@@ -1269,13 +1269,62 @@ describe('InventoryScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: /Подробнее о Бронзовая клюшка/i }));
 
     const dialog = screen.getByRole('dialog', { name: 'Бронзовая клюшка' });
-    expect(within(dialog).getByText('120 монет')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('120 монет или 5 звёзд')).toBeInTheDocument();
     expect(within(dialog).getByText('5 бросков')).toBeInTheDocument();
     expect(within(dialog).getByText('Надёжная клюшка для первых дуэлей.')).toBeInTheDocument();
     expect(within(dialog).queryByText('5 периодов')).not.toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Купить' })).toBeEnabled();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Бронзовая клюшка' })).not.toBeInTheDocument();
+  });
+
+  it('shows both purchase currencies inline with an outlined coin and filled star', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory('/inventory?category=stick');
+
+    const card = await screen.findByRole('button', { name: 'Открыть Бронзовая клюшка' });
+    const cardPrice = within(card).getByLabelText('120 монет или 5 звёзд');
+    expect(within(cardPrice).getByText('или')).toBeInTheDocument();
+    expect(cardPrice.querySelectorAll('svg[fill="currentColor"]')).toHaveLength(1);
+    const cardCoin = cardPrice.querySelector('svg');
+    expect(cardCoin).toHaveAttribute('stroke', 'currentColor');
+    expect(cardCoin).toHaveAttribute('fill', 'none');
+
+    fireEvent.click(card);
+    const dialog = screen.getByRole('dialog', { name: 'Бронзовая клюшка' });
+    const detailPrice = within(dialog).getByLabelText('120 монет или 5 звёзд');
+    expect(within(dialog).getByText('Цена')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Бонусная цена')).not.toBeInTheDocument();
+    expect(within(detailPrice).getByText('или')).toBeInTheDocument();
+    expect(detailPrice.querySelectorAll('svg[fill="currentColor"]')).toHaveLength(1);
+    const detailCoin = detailPrice.querySelector('svg');
+    expect(detailCoin).toHaveAttribute('stroke', 'currentColor');
+    expect(detailCoin).toHaveAttribute('fill', 'none');
+  });
+
+  it('confirms a purchase with a header close control and two matching currency actions', async () => {
+    mockInventoryFetch(inventoryWithItems);
+    renderInventory('/inventory?category=stick');
+    fireEvent.click(await screen.findByRole('button', { name: 'Купить Бронзовая клюшка за 120 монет' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Купить клюшку «Бронзовая клюшка»?' });
+    expect(within(dialog).getByText('В инвентарь добавится 5 бросков.')).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Цена:/)).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Закрыть' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Отмена' })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Купить за 120 монет' })).toHaveClass('btn--cta');
+    expect(within(dialog).getByRole('button', { name: 'Купить за 5 звёзд' })).toHaveClass('btn--cta');
+  });
+
+  it('names skates in the purchase confirmation and quotes the product title', async () => {
+    mockInventoryFetch({
+      ...inventoryWithItems,
+      balances: { ...inventoryWithItems.balances, tokens: 2000 },
+    });
+    renderInventory('/inventory?category=skates');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Купить Серебряные коньки за 1 500 монет' }));
+    expect(screen.getByRole('dialog', { name: 'Купить коньки «Серебряные коньки»?' })).toBeInTheDocument();
   });
 
   it('disables purchase when tokens are not enough', async () => {
@@ -1324,12 +1373,12 @@ describe('InventoryScreen', () => {
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Купить Бронзовая клюшка за 120 монет' }));
 
-    const confirm = screen.getByRole('dialog', { name: 'Купить Бронзовая клюшка?' });
+    const confirm = screen.getByRole('dialog', { name: 'Купить клюшку «Бронзовая клюшка»?' });
     expect(document.body.firstElementChild).toHaveAttribute('inert');
     expect(
-      within(confirm).getByText('Будет списано 120 монет. В инвентарь добавится 5 бросков.'),
+      within(confirm).getByText('В инвентарь добавится 5 бросков.'),
     ).toBeInTheDocument();
-    fireEvent.click(within(confirm).getByRole('button', { name: 'Купить' }));
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Купить за 120 монет' }));
 
     expect(await screen.findByLabelText('Монеты: 880')).toBeInTheDocument();
     expect(await screen.findByText('Бронзовая клюшка добавлена')).toBeInTheDocument();
@@ -1361,7 +1410,7 @@ describe('InventoryScreen', () => {
     });
     renderInventory('/inventory?category=stick');
     fireEvent.click(await screen.findByRole('button', { name: 'Выбрать способ покупки Бронзовая клюшка' }));
-    const dialog = screen.getByRole('dialog', { name: 'Купить Бронзовая клюшка?' });
+    const dialog = screen.getByRole('dialog', { name: 'Купить клюшку «Бронзовая клюшка»?' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Купить за 5 звёзд' }));
     await waitFor(() => {
       const call = vi.mocked(globalThis.fetch).mock.calls.find(([url, init]) =>

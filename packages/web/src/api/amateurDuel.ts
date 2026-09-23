@@ -433,12 +433,21 @@ export function fetchAmateurTemplates(): Promise<{ templates: AmateurDuelTemplat
   return apiFetch<{ templates: AmateurDuelTemplate[] }>('/duel/amateur/templates');
 }
 
-export function searchAmateurOpponents(q = '', limit = 20): Promise<{ users: AmateurOpponent[] }> {
+export function searchAmateurOpponents(
+  q = '', limit = 20, kinds: AmateurDuelKind[] = ['express', 'express_plus', 'classic'],
+): Promise<{ users: AmateurOpponent[] }> {
   const params = new URLSearchParams({ q, limit: String(limit) });
+  params.set('kinds', kinds.join(','));
   return apiFetch<{ users: AmateurOpponent[] }>(`/duel/amateur/opponents?${params.toString()}`);
 }
 
 export interface AmateurDuelOverview {
+  open_duel_slots_limit?: number;
+  duel_limits?: {
+    daily: { used: number; limit: number; reset_at: string; by_format: Record<AmateurDuelKind, number> };
+    weekly: { used: number; limit: number; reset_at: string; by_format: Record<AmateurDuelKind, number> };
+    monthly: { used: number; limit: number; reset_at: string; format_limit: number; by_format: Record<AmateurDuelKind, number> };
+  };
   format_locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
   format_limits?: Partial<Record<AmateurDuelKind, {
     available: boolean;
@@ -497,9 +506,9 @@ export function challengeAmateurDuel(body: {
 
 export function checkAmateurDuelChallengeAvailability(
   opponentUserId: string,
-): Promise<{ available: true; formats?: Record<AmateurDuelKind, {
+): Promise<{ available: boolean; formats?: Record<AmateurDuelKind, {
   available: boolean;
-  reason: 'daily' | 'weekly' | 'monthly' | 'format' | 'outgoing' | null;
+  reason: 'daily' | 'weekly' | 'monthly' | 'format' | 'open_slots' | 'outgoing' | 'tournament' | null;
   retryAt: string | null;
   player: 'self' | 'opponent' | null;
 }> }> {

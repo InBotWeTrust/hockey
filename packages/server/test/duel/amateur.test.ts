@@ -845,6 +845,11 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       headers: auth(tokenA),
     });
     expect(search.json().users.map((u: { userId: string }) => u.userId)).not.toContain(userB);
+    const blockedProfile = await app.inject({ method: 'GET',
+      url: `/duel/amateur/challenge/availability?opponent_user_id=${userB}`,
+      headers: auth(tokenA) });
+    expect(blockedProfile.json()).toMatchObject({ available: false,
+      formats: { classic: { available: false, reason: 'tournament', player: 'opponent' } } });
     const refused = await app.inject({
       method: 'POST',
       url: '/duel/amateur/matchmaking/join',
@@ -1816,6 +1821,63 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(blocked.json().error.message).toBe('outgoing duel invitation limit reached');
   });
 
+  it('limits a player to two open ordinary duels including incoming invitations', async () => {
+    const templateId = await createTemplate();
+    const challengers = [userB, await createOpponent(8101), await createOpponent(8102)];
+    for (const [index, challengerId] of challengers.entries()) {
+      const token = await createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET })
+        .issueAccessToken({ sub: challengerId });
+      const created = await app.inject({
+        method: 'POST', url: '/duel/amateur/challenge', headers: auth(token),
+        payload: { template_id: templateId, opponent_user_id: userA },
+      });
+      expect(created.statusCode).toBe(index < 2 ? 200 : 409);
+      if (index === 2) expect(created.json().error.message).toBe('open duel slot limit reached');
+    }
+  });
+
+  it('hides opponents with two open duels and reports the same block in profile availability', async () => {
+    const templateId = await createTemplate();
+    const others = [await createOpponent(8201), await createOpponent(8202)];
+    for (const other of others) {
+      const token = await createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET })
+        .issueAccessToken({ sub: other });
+      const created = await app.inject({ method: 'POST', url: '/duel/amateur/challenge',
+        headers: auth(token), payload: { template_id: templateId, opponent_user_id: userB } });
+      expect(created.statusCode).toBe(200);
+    }
+    const listed = await app.inject({ method: 'GET', url: '/duel/amateur/opponents?limit=1', headers: auth(tokenA) });
+    expect(listed.json().users).toHaveLength(1);
+    expect(listed.json().users[0].userId).not.toBe(userB);
+    const availability = await app.inject({ method: 'GET',
+      url: `/duel/amateur/challenge/availability?opponent_user_id=${userB}`, headers: auth(tokenA) });
+    expect(availability.json()).toMatchObject({ available: false,
+      formats: { express: { available: false, reason: 'open_slots', player: 'opponent' } } });
+  });
+
+  it('filters candidate results by the selected format without hiding another available format', async () => {
+    const express = await createTemplate({ duelKind: 'express' });
+    await createTemplate({ duelKind: 'classic' });
+    const viewer = await createOpponent(8301);
+    const viewerToken = await createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET })
+      .issueAccessToken({ sub: viewer });
+    await pool.query(
+      `insert into game_settings (key, value, label, description)
+       values ('amateur.limits.per_format_monthly', '1'::jsonb, '', '')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    const invite = await challenge(express);
+    expect(invite.statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST',
+      url: `/duel/amateur/matches/${invite.json().match.id}/accept`, headers: auth(tokenB) })).statusCode).toBe(200);
+    const search = (kind: string) => app.inject({ method: 'GET',
+      url: `/duel/amateur/opponents?kinds=${kind}&q=Player%20B&limit=1`, headers: auth(viewerToken) });
+    const expressUsers = (await search('express')).json().users;
+    const classicUsers = (await search('classic')).json().users;
+    expect(expressUsers.map((user: { userId: string }) => user.userId)).not.toContain(userB);
+    expect(classicUsers.map((user: { userId: string }) => user.userId)).toContain(userB);
+  });
+
   it('rejects duel challenges from beginners and against beginners', async () => {
     const templateId = await createTemplate();
 
@@ -2090,6 +2152,27 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       .templates.find((item: { id: string }) => item.id === templateId);
     expect(template.ranked_daily_limit).toBe(100);
     expect(template.ranked_same_opponent_limit).toBe(100);
+  });
+
+  it('reports accepted ordinary duel usage by period and format, excluding pending invitations', async () => {
+    const templateId = await createTemplate();
+    const pending = await challenge(templateId);
+    expect(pending.statusCode).toBe(200);
+    const before = await app.inject({ method: 'GET', url: '/duel/amateur/matches', headers: auth(tokenA) });
+    expect(before.json().duel_limits).toMatchObject({
+      daily: { used: 0, limit: 8, by_format: { express: 0, express_plus: 0, classic: 0 } },
+      weekly: { used: 0, limit: 40 },
+      monthly: { used: 0, limit: 129, format_limit: 43 },
+    });
+    const accepted = await app.inject({
+      method: 'POST', url: `/duel/amateur/matches/${pending.json().match.id}/accept`, headers: auth(tokenB),
+    });
+    expect(accepted.statusCode).toBe(200);
+    const after = await app.inject({ method: 'GET', url: '/duel/amateur/matches', headers: auth(tokenA) });
+    const limits = after.json().duel_limits;
+    for (const period of ['daily', 'weekly', 'monthly']) {
+      expect(limits[period]).toMatchObject({ used: 1, by_format: { classic: 1, express: 0, express_plus: 0 } });
+    }
   });
 
   it('blocks a new ordinary invitation when either player has used the monthly format place', async () => {

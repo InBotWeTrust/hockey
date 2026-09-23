@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
@@ -26,6 +26,7 @@ import {
 } from '../../screens/profileSections.js';
 import { DuelChallengeModal, hasOpenDuelWithUser } from '../components/DuelChallengeModal.js';
 import { AppToast } from '../../components/AppToast.js';
+import { allFormatsBlockedCopy } from '../components/duelAvailabilityCopy.js';
 
 function formatJoined(iso: string): string {
   return new Date(iso).toLocaleDateString('ru-RU', {
@@ -43,6 +44,7 @@ export function UserProfileScreen(): JSX.Element {
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
   const [duelPickerOpen, setDuelPickerOpen] = useState(false);
   const [duelToast, setDuelToast] = useState<string | null>(null);
+  const [challengeRequested, setChallengeRequested] = useState(false);
 
   const { data, isLoading, isError, refetch } = useQuery<UserPublicProfileDTO>({
     queryKey: userKeys.profile(userId),
@@ -65,7 +67,10 @@ export function UserProfileScreen(): JSX.Element {
   });
   const challengeAvailability = useMutation({
     mutationFn: () => checkAmateurDuelChallengeAvailability(userId),
-    onSuccess: () => setDuelPickerOpen(true),
+    onSuccess: (result) => {
+      if (result.available) setDuelPickerOpen(true);
+      else setDuelToast(allFormatsBlockedCopy(result.formats));
+    },
     onError: (error) => {
       setDuelToast(error instanceof Error ? error.message : 'Не удалось проверить доступность дуэли');
     },
@@ -78,6 +83,23 @@ export function UserProfileScreen(): JSX.Element {
     !isSelf &&
     canCurrentUserDuel &&
     (data?.competitionLevel === 'amateur' || data?.competitionLevel === 'professional');
+  const previewAvailability = useQuery({
+    queryKey: ['amateur-duel', 'challenge-availability', userId],
+    queryFn: () => checkAmateurDuelChallengeAvailability(userId),
+    enabled: canDuel,
+    retry: false,
+    refetchInterval: 15_000,
+  });
+  useEffect(() => {
+    if (!challengeRequested || previewAvailability.isPending) return;
+    setChallengeRequested(false);
+    if (previewAvailability.data?.available === false) {
+      setDuelToast(allFormatsBlockedCopy(previewAvailability.data.formats));
+    } else if (previewAvailability.isError) {
+      setDuelToast(previewAvailability.error instanceof Error
+        ? previewAvailability.error.message : 'Не удалось проверить доступность дуэли');
+    } else challengeAvailability.mutate();
+  }, [challengeRequested, previewAvailability.data, previewAvailability.isPending, previewAvailability.isError]);
   const openMatchesQuery = useQuery({
     queryKey: ['amateur-duel', 'matches'],
     queryFn: fetchAmateurMatches,
@@ -203,9 +225,19 @@ export function UserProfileScreen(): JSX.Element {
               {canDuel && (
                 <button
                   type="button"
-                  className="btn btn--cta"
-                  disabled={hasOpenDuel || challengeAvailability.isPending}
-                  onClick={() => challengeAvailability.mutate()}
+                  className="btn btn--cta duel-profile-challenge"
+                  aria-disabled={hasOpenDuel || previewAvailability.data?.available !== true}
+                  disabled={challengeAvailability.isPending}
+                  onClick={() => {
+                    if (hasOpenDuel) setDuelToast('С этим игроком уже есть открытая дуэль.');
+                    else if (previewAvailability.data?.available === false) {
+                      setDuelToast(allFormatsBlockedCopy(previewAvailability.data.formats));
+                    } else if (previewAvailability.isError) {
+                      setDuelToast(previewAvailability.error instanceof Error
+                        ? previewAvailability.error.message : 'Не удалось проверить доступность дуэли');
+                    } else if (previewAvailability.isPending) setChallengeRequested(true);
+                    else challengeAvailability.mutate();
+                  }}
                   style={{
                     width: '100%',
                     display: 'inline-flex',
@@ -262,7 +294,7 @@ export function UserProfileScreen(): JSX.Element {
             />
           )}
           {duelToast !== null && (
-            <AppToast message={duelToast} onDismiss={() => setDuelToast(null)} />
+            <AppToast message={duelToast} onDismiss={() => setDuelToast(null)} variant="reward" />
           )}
         </>
       )}

@@ -95,8 +95,8 @@ function challengeErrorText(error: unknown): string {
     const limit = error.details?.duelLimit as { reason?: string; retryAt?: string } | undefined;
     if (limit?.reason) {
       return limitMessage({
-        reason: ['daily', 'weekly', 'monthly', 'format', 'outgoing'].includes(limit.reason)
-          ? limit.reason as 'daily' | 'weekly' | 'monthly' | 'format' | 'outgoing' : null,
+        reason: ['daily', 'weekly', 'monthly', 'format', 'open_slots', 'outgoing', 'tournament'].includes(limit.reason)
+          ? limit.reason as 'daily' | 'weekly' | 'monthly' | 'format' | 'open_slots' | 'outgoing' | 'tournament' : null,
         retryAt: limit.retryAt ?? null,
         player: null,
       });
@@ -110,12 +110,14 @@ function challengeErrorText(error: unknown): string {
 }
 
 function limitMessage(format: {
-  reason: 'daily' | 'weekly' | 'monthly' | 'format' | 'outgoing' | null;
+  reason: 'daily' | 'weekly' | 'monthly' | 'format' | 'open_slots' | 'outgoing' | 'tournament' | null;
   retryAt: string | null;
   player: 'self' | 'opponent' | null;
 }): string {
   const who = format.player === 'opponent' ? 'У соперника'
     : format.player === 'self' ? 'У вас' : 'Достигнут';
+  if (format.reason === 'open_slots') return `${who} уже две открытые дуэли.`;
+  if (format.reason === 'tournament') return `${who} сейчас недоступны обычные дуэли из-за турнира.`;
   const reason = format.reason === 'daily' ? 'исчерпан дневной лимит дуэлей'
     : format.reason === 'weekly' ? 'исчерпан недельный лимит дуэлей'
       : format.reason === 'monthly' ? 'исчерпан месячный лимит дуэлей'
@@ -164,6 +166,18 @@ export function DuelChallengeModal({
 
   useEffect(() => {
     if (templates.length === 0) return;
+    if (availabilityQuery.data?.formats) {
+      const current = templates.find((template) => template.id === selectedTemplateId);
+      if (current && availabilityQuery.data.formats[current.duel_kind]?.available !== false) return;
+      const first = templates.find((template) =>
+        availabilityQuery.data.formats?.[template.duel_kind]?.available !== false);
+      setSelectedTemplateId(first?.id ?? null);
+      return;
+    }
+    if (availabilityQuery.data?.available === false) {
+      setSelectedTemplateId(null);
+      return;
+    }
     if (
       selectedTemplateId !== null &&
       templates.some((template) => template.id === selectedTemplateId)
@@ -171,7 +185,7 @@ export function DuelChallengeModal({
       return;
     }
     setSelectedTemplateId(templates[0]?.id ?? null);
-  }, [selectedTemplateId, templates]);
+  }, [selectedTemplateId, templates, availabilityQuery.data]);
 
   const challengeMutation = useMutation({
     mutationFn: (templateId: string) =>
@@ -255,7 +269,7 @@ export function DuelChallengeModal({
                   aria-pressed={selected}
                   disabled={blocked}
                   title={blocked ? limitMessage(availability) : undefined}
-                  className={selected ? 'glass-dark' : 'glass'}
+                  className="glass"
                   onClick={() => {
                     setSelectedTemplateId(template.id);
                     setError(null);
@@ -266,27 +280,31 @@ export function DuelChallengeModal({
                     textAlign: 'left',
                     display: 'grid',
                     gap: 4,
+                    gridTemplateColumns: 'minmax(0, 1fr) 20px',
                     cursor: 'pointer',
-                    color: selected ? '#ffffff' : 'var(--ink)',
-                    position: 'relative',
+                    color: 'var(--ink)',
+                    boxShadow: selected ? 'inset 0 0 0 2px #1f2a3d' : undefined,
                   }}
                 >
-                  <span
-                    className="duel-challenge-option__indicator"
-                    data-selected={selected}
-                    aria-hidden="true"
-                  >
-                    {selected ? <Check size={13} strokeWidth={3} /> : null}
-                  </span>
-                  <span style={{ fontSize: 15, fontWeight: 900 }}>
+                  {!blocked && (
+                    <span
+                      className={`duel-equipment-option__check${selected ? ' duel-equipment-option__check--selected' : ''}`}
+                      style={{ gridColumn: 2, gridRow: '1 / span 3', alignSelf: 'center' }}
+                      aria-hidden="true"
+                    >
+                      {selected ? <Check size={11} strokeWidth={3} /> : null}
+                    </span>
+                  )}
+                  <span style={{ gridColumn: 1, fontSize: 15, fontWeight: 900 }}>
                     {duelKindText(template.duel_kind)}
                   </span>
-                  {blocked && <span style={{ fontSize: 12 }}>{limitMessage(availability)}</span>}
+                  {blocked && <span style={{ gridColumn: 1, fontSize: 12 }}>{limitMessage(availability)}</span>}
                   <span
                     style={{
                       fontSize: 12,
                       fontWeight: 700,
-                      color: selected ? 'rgba(255,255,255,0.78)' : 'var(--muted)',
+                      gridColumn: 1,
+                      color: 'var(--muted)',
                     }}
                   >
                     {templateMeta(template)}

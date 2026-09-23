@@ -5743,11 +5743,41 @@ describe('DailyScreen', () => {
     ).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Входящие приглашения' })).not.toBeInTheDocument();
     expect(within(creation).queryByText('Новая дуэль')).not.toBeInTheDocument();
-    expect(screen.getByText('Текущие дуэли (2/5)')).toHaveClass(
+    expect(screen.getByText('Текущие дуэли (2/2)')).toHaveClass(
       'section-label',
       'duel-section-title',
     );
     expect(screen.getByText('Новая дуэль')).toHaveClass('section-label', 'duel-section-title');
+  });
+
+  it('shows shared duel limits and expands each period into format usage', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/duel/amateur/matches')
+        ? { matches: [], duel_limits: {
+            daily: { used: 2, limit: 8, reset_at: new Date(Date.now() + 3600000).toISOString(), by_format: { express: 1, express_plus: 1, classic: 0 } },
+            weekly: { used: 5, limit: 40, reset_at: new Date(Date.now() + 86400000).toISOString(), by_format: { express: 2, express_plus: 2, classic: 1 } },
+            monthly: { used: 12, limit: 129, format_limit: 43,
+              reset_at: new Date(Date.now() + 172800000).toISOString(),
+              by_format: { express: 4, express_plus: 5, classic: 3 } },
+          } }
+        : url.includes('/duel/amateur/templates') ? { templates: [] }
+          : url.includes('/duel/amateur/rating') ? { season_key: '2026-09', rating: [] }
+            : url.includes('/duel/training/state') ? trainingIdleState
+              : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    const limits = await screen.findByRole('region', { name: 'Лимиты дуэлей' });
+    await waitFor(() => expect(limits).toHaveTextContent(/Сегодня 6\/8 \(до обновления: (?:1 ч|59 мин) .*сек\)/));
+    expect(within(limits).getByRole('button', { name: /Неделя/ })).not.toHaveTextContent('сек');
+    expect(within(limits).getByRole('button', { name: /Месяц/ })).not.toHaveTextContent('сек');
+    fireEvent.click(within(limits).getByRole('button', { name: /Сегодня/ }));
+    expect(within(limits).getByText('Экспресс: сыграно 1')).toBeInTheDocument();
+    fireEvent.click(within(limits).getByRole('button', { name: /Месяц/ }));
+    expect(within(limits).getByText('Экспресс: осталось 39 из 43')).toBeInTheDocument();
   });
 
   it('renders plain duel metadata and muted invite actions', async () => {
@@ -6339,6 +6369,32 @@ describe('DailyScreen', () => {
       const call = fetchMock.mock.calls.find(([input]) => String(input).includes('/matchmaking/join'));
       expect(JSON.parse(String(call?.[1]?.body))).toEqual({ duel_kinds: ['express_plus', 'classic'] });
     });
+  });
+
+  it('removes a selected opponent when switching to a format unavailable to that opponent', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/duel/amateur/opponents')
+        ? { users: url.includes('kinds=classic') ? [] : [{ userId: 'rival-1', displayName: 'Соперник',
+            avatarUrl: null, lastSeenAt: new Date().toISOString(), format_locks: {},
+            format_limits: { express: { available: true, reason: null, retryAt: null },
+              classic: { available: false, reason: 'format', retryAt: null } } }] }
+        : url.includes('/duel/amateur/templates') ? { templates: challengeTemplates }
+          : url.includes('/duel/amateur/matches') ? { matches: [], duel_lock: null }
+            : url.includes('/duel/amateur/rating') ? { season_key: '2026-09', rating: [] }
+              : url.includes('/duel/training/state') ? trainingIdleState
+                : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), { status: 200,
+        headers: { 'content-type': 'application/json' } });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Вызвать' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать соперника Соперник' }));
+    expect(screen.getByRole('button', { name: 'Вызвать игрока' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Шаблон дуэли' }));
+    fireEvent.click(await screen.findByRole('option', { name: /Классика/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Выберите соперника' })).toBeDisabled());
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('kinds=classic'))).toBe(true);
   });
 
   it('lets a challenger cancel an unanswered duel invite from the current duels list', async () => {
