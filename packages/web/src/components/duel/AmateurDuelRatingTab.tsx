@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Info, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import { fetchAmateurRating } from '../../api/amateurDuel.js';
 import type { UserPickerItem } from '../../chat/api.js';
 import { TournamentStandingsTable } from '../../tournament/TournamentStandingsTable.js';
@@ -55,10 +55,10 @@ export function AmateurDuelRatingTab({
 
   return (
     <section className="duel-section" aria-label="Рейтинг дуэлей">
-      <div className="section-label duel-section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="section-label duel-section-title duel-section-title--with-action">
         Рейтинг
-        <button type="button" className="icon-btn" aria-label="Правила рейтинга дуэлей" onClick={() => setRulesOpen(true)}>
-          <Info size={16} />
+        <button type="button" className="section-info-btn duel-section-info-btn" aria-label="Правила рейтинга дуэлей" onClick={() => setRulesOpen(true)}>
+          <Info size={12} color="rgba(240, 248, 255, 0.92)" />
         </button>
       </div>
       <SegmentedTabs
@@ -132,7 +132,12 @@ export function AmateurDuelRatingTab({
         <AccessibleModal
           title={`Рейтинг: ${RATING_SCOPES.find((item) => item.id === scope)?.label ?? scope}`}
           onRequestClose={() => setRulesOpen(false)}
-          headerAction={<button type="button" className="icon-btn" aria-label="Закрыть правила" onClick={() => setRulesOpen(false)}><X size={16} /></button>}
+          cardClassName="duel-rating-info-modal"
+          backdropStyle={{
+            background: 'rgba(15, 23, 42, 0.35)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+          }}
         >
           <p>В зачёт входят только обычные завершённые дуэли. Турнирные игры не учитываются.</p>
           <p>Для попадания в таблицу нужно сыграть не менее {data?.reward_rules?.minimumMatches ?? data?.prize_threshold ?? (scope === 'overall' ? 30 : 10)} дуэлей {scope === 'overall' ? 'за месяц' : 'в этом формате за месяц'}.</p>
@@ -158,6 +163,9 @@ export function AmateurDuelRatingTab({
               ))}
             </div>
           ) : <p>Загрузка наград…</p>}
+          <button type="button" className="btn btn--cta duel-rating-info-modal__confirm" onClick={() => setRulesOpen(false)}>
+            Понятно
+          </button>
         </AccessibleModal>
       )}
     </section>

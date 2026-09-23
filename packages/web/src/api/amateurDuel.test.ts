@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
 import { useAuthStore } from '../auth/authStore.js';
-import { acceptAmateurDuel, challengeAmateurDuel, declineAmateurDuel } from './amateurDuel.js';
+import { acceptAmateurDuel, challengeAmateurDuel, declineAmateurDuel, searchAmateurOpponents } from './amateurDuel.js';
 
 describe('alternate Amateur duel mutation API', () => {
   beforeEach(() => {
@@ -39,5 +39,14 @@ describe('alternate Amateur duel mutation API', () => {
       sequence: 1,
       toast: { goalsRemaining: 184, unlockGoalsRequired: 300 },
     });
+  });
+
+  it('sends only the selected duel formats when searching candidates', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ users: [] }), { status: 200,
+        headers: { 'content-type': 'application/json' } }),
+    );
+    await searchAmateurOpponents('Иван', 12, ['classic']);
+    expect(String(fetchMock.mock.calls.at(-1)?.[0])).toContain('kinds=classic');
   });
 });

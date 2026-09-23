@@ -22,6 +22,10 @@ it('switches between four duel rating scopes while retaining the selected month'
     </QueryClientProvider>,
   );
   expect(await screen.findByRole('tab', { name: 'Экспресс' })).toBeInTheDocument();
+  const ratingHeading = screen.getByText('Рейтинг');
+  expect(ratingHeading).toHaveClass('duel-section-title--with-action');
+  expect(screen.getByRole('button', { name: 'Правила рейтинга дуэлей' }))
+    .toHaveClass('duel-section-info-btn');
   fireEvent.click(screen.getByRole('tab', { name: 'Экспресс' }));
   await waitFor(() => expect(fetchAmateurRating).toHaveBeenCalledWith('2026-09', 'express'));
   expect(screen.getByText('Сентябрь 2026')).toBeInTheDocument();
@@ -46,8 +50,10 @@ it('opens rules for the selected scope and shows configured reward and threshold
   );
   fireEvent.click(await screen.findByRole('button', { name: 'Правила рейтинга дуэлей' }));
   const dialog = screen.getByRole('dialog', { name: 'Рейтинг: Общий' });
+  expect(dialog).toHaveClass('duel-rating-info-modal');
   expect(dialog).toHaveTextContent('30 дуэлей');
   expect(dialog).toHaveTextContent('300 звёзд');
-  fireEvent.click(screen.getByRole('button', { name: 'Закрыть правила' }));
+  expect(screen.queryByRole('button', { name: 'Закрыть правила' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 });

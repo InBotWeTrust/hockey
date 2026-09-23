@@ -659,12 +659,33 @@ describe('UserProfileSheet', () => {
     fireEvent.click(await screen.findByRole('button', { name: /вызвать на дуэль/i }));
 
     const toast = await screen.findByRole('status');
-    expect(toast).toHaveClass('duel-challenge-toast');
+    expect(toast).toHaveClass('achievement-reward-toast');
     expect(toast).toHaveTextContent(
       'Это ваш соперник в плей-офф. Сначала сыграйте серию — после этого обычная дуэль станет доступна.',
     );
     expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument();
     expect(amateurDuelApi.challengeAmateurDuel).not.toHaveBeenCalled();
+  });
+
+  it('shows a reward-style toast when the opponent has no open duel places', async () => {
+    useAuthStore.setState({ accessToken: 'tok', refreshToken: 'rtok',
+      user: { id: 'me', displayName: 'Me', competitionLevel: 'amateur' } });
+    vi.mocked(api.fetchUserProfile).mockImplementation(async (userId) =>
+      userId === 'me' ? { ...publicProfile, id: 'me' } : publicProfile);
+    vi.mocked(amateurDuelApi.checkAmateurDuelChallengeAvailability).mockResolvedValue({
+      available: false,
+      formats: { express: { available: false, reason: 'open_slots', retryAt: null, player: 'opponent' },
+        express_plus: { available: false, reason: 'open_slots', retryAt: null, player: 'opponent' },
+        classic: { available: false, reason: 'open_slots', retryAt: null, player: 'opponent' } },
+    });
+    await renderSheet({ sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null }, onClose: vi.fn() });
+    const button = await screen.findByRole('button', { name: /вызвать на дуэль/i });
+    await waitFor(() => expect(button).toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(button);
+    expect(await screen.findByRole('status')).toHaveClass('achievement-reward-toast');
+    expect(screen.getByText('Дуэль недоступна')).toHaveClass('achievement-reward-toast__status');
+    expect(screen.getByRole('status')).toHaveTextContent('У соперника уже две открытые дуэли.');
+    expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument();
   });
 
   it('closes the duel type modal with Escape without closing the profile sheet', async () => {

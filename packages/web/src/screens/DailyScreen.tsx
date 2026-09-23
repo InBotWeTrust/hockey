@@ -73,6 +73,7 @@ import { rewardColor } from '../app/rewardColors.js';
 import type { ScoreBoardOpponent } from '../components/ScoreBoard.js';
 import { GlassSelect } from '../components/GlassSelect.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
+import { DuelLimitsSection } from '../components/duel/DuelLimitsSection.js';
 import { TrainingHistorySection } from '../components/TrainingHistorySection.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
@@ -4576,16 +4577,25 @@ function AmateurDuelsPage({
   const duelLock = matches.data?.duel_lock;
   const duelBlocked = duelLock?.blocked === true;
   useGameplayLockRefresh(duelLock);
+  const searchKind = (selectedTemplateId
+    ? templates.data?.templates.find((item) => item.id === selectedTemplateId)
+    : sortDuelTemplates(templates.data?.templates ?? [])[0])?.duel_kind ?? null;
   const opponents = useQuery({
-    queryKey: ['amateur-duel', 'opponents', 'search', opponentQuery],
-    queryFn: () => searchAmateurOpponents(opponentQuery, 12),
-    enabled: !duelBlocked && duelCreationMode === 'challenge' && opponentQuery.trim().length > 0,
+    queryKey: ['amateur-duel', 'opponents', 'search', opponentQuery, searchKind],
+    queryFn: () => searchAmateurOpponents(opponentQuery, 12, [searchKind!]),
+    enabled: !duelBlocked && duelCreationMode === 'challenge' && searchKind !== null && opponentQuery.trim().length > 0,
   });
   const onlineOpponents = useQuery({
-    queryKey: ['amateur-duel', 'opponents', 'online'],
-    queryFn: () => searchAmateurOpponents('', 12),
-    enabled: !duelBlocked && duelCreationMode === 'challenge',
+    queryKey: ['amateur-duel', 'opponents', 'online', searchKind],
+    queryFn: () => searchAmateurOpponents('', 12, [searchKind!]),
+    enabled: !duelBlocked && duelCreationMode === 'challenge' && searchKind !== null,
+    refetchInterval: 15_000,
   });
+  useEffect(() => {
+    if (!selectedOpponent || !searchKind) return;
+    if (selectedOpponent.format_limits?.[searchKind]?.available === false ||
+        selectedOpponent.format_locks?.[searchKind]?.blocked) setSelectedOpponent(null);
+  }, [searchKind, selectedOpponent]);
   const rating = useQuery({
     queryKey: ['amateur-duel', 'rating', 'current'],
     queryFn: () => fetchAmateurRating(),
@@ -4668,7 +4678,8 @@ function AmateurDuelsPage({
       match.status === 'invited' || match.status === 'ready_check' || match.status === 'active',
   );
   const openDuelSlotsUsed = activeMatches.length;
-  const hasOpenDuelSlot = openDuelSlotsUsed < 5;
+  const openDuelSlotsLimit = matches.data?.open_duel_slots_limit ?? 2;
+  const hasOpenDuelSlot = openDuelSlotsUsed < openDuelSlotsLimit;
   const currentMatches = activeMatches.filter((match) => match.status !== 'invited');
   const incomingInvites = activeMatches.filter(
     (match) => match.status === 'invited' && match.me.side === 'opponent',
@@ -4805,7 +4816,7 @@ function AmateurDuelsPage({
           )}
           <section className="duel-section" aria-label="Текущие дуэли">
             <div className="section-label duel-section-title">
-              Текущие дуэли ({openDuelSlotsUsed}/5)
+              Текущие дуэли ({openDuelSlotsUsed}/{openDuelSlotsLimit})
             </div>
             {currentMatches.length === 0 ? (
               <div role="status" className="duel-empty-current">
@@ -4827,6 +4838,7 @@ function AmateurDuelsPage({
               {renderDuelCards(outgoingInvites)}
             </section>
           )}
+          <DuelLimitsSection limits={matches.data?.duel_limits} loading={matches.isPending} onReset={() => { void matches.refetch(); }} />
           <div className="duel-section">
             <div className="section-label duel-section-title">Новая дуэль</div>
             <section className="duel-creation-card" aria-label="Новая дуэль">

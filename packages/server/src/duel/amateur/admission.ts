@@ -4,6 +4,50 @@ import type { DuelLimitSettings } from './limitRules.js';
 import { limitWindows } from './limitRules.js';
 
 type DuelKind = 'express' | 'express_plus' | 'classic';
+type DuelPeriod = 'daily' | 'weekly' | 'monthly';
+
+export interface DuelLimitUsage {
+  daily: { used: number; limit: number; reset_at: string; by_format: Record<DuelKind, number> };
+  weekly: { used: number; limit: number; reset_at: string; by_format: Record<DuelKind, number> };
+  monthly: { used: number; limit: number; reset_at: string; format_limit: number; by_format: Record<DuelKind, number> };
+}
+
+export async function duelLimitUsage(
+  client: PoolClient,
+  userId: string,
+  limits: DuelLimitSettings,
+  now: Date,
+): Promise<DuelLimitUsage> {
+  const windows = limitWindows(now);
+  const { rows } = await client.query<{
+    duel_kind: DuelKind; daily: number; weekly: number; monthly: number;
+  }>(
+    `select duel_kind,
+       count(*) filter (where accepted_at >= $2)::int as daily,
+       count(*) filter (where accepted_at >= $3)::int as weekly,
+       count(*) filter (where accepted_at >= $4)::int as monthly
+       from amateur_duel_limit_reservation
+      where user_id = $1 and released_at is null
+      group by duel_kind`,
+    [userId, windows.dayStart, windows.weekStart, windows.monthStart],
+  );
+  const kinds: DuelKind[] = ['express', 'express_plus', 'classic'];
+  const periods: DuelPeriod[] = ['daily', 'weekly', 'monthly'];
+  const resets = { daily: windows.nextDay, weekly: windows.nextWeek, monthly: windows.nextMonth };
+  const byPeriod = {} as Record<DuelPeriod, { used: number; limit: number; reset_at: string; by_format: Record<DuelKind, number> }>;
+  for (const period of periods) {
+    const byFormat = Object.fromEntries(kinds.map((kind) => [kind,
+      rows.find((row) => row.duel_kind === kind)?.[period] ?? 0,
+    ])) as Record<DuelKind, number>;
+    byPeriod[period] = {
+      used: Object.values(byFormat).reduce((sum, count) => sum + count, 0),
+      limit: limits[period],
+      reset_at: resets[period].toISOString(),
+      by_format: byFormat,
+    };
+  }
+  return { ...byPeriod, monthly: { ...byPeriod.monthly, format_limit: limits.perFormatMonthly } };
+}
 
 interface Capacity {
   available: number;

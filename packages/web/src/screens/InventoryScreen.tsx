@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { triggerHaptic } from '../feedback/haptics.js';
 import type { UseMutationResult } from '@tanstack/react-query';
@@ -976,23 +977,27 @@ function InventoryProductCard({
           {purchaseBundleLabel(item)}
         </div>
         <div
-          aria-label={`${numberText(item.currencyPrice)} монет`}
+          aria-label={`${numberText(item.currencyPrice)} монет или ${numberText(inventoryStarPrice(item))} звёзд`}
           style={{
-            color: rewardColor('coin'),
             fontSize: 13,
             fontWeight: 950,
             lineHeight: 1.1,
             display: 'inline-flex',
             alignItems: 'center',
             gap: 5,
+            whiteSpace: 'nowrap',
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          <CircleDollarSign size={14} strokeWidth={2.55} aria-hidden="true" />
-          <span>{numberText(item.currencyPrice)}</span>
-        </div>
-        <div aria-label={`${numberText(inventoryStarPrice(item))} звёзд`} style={{ color: rewardColor('star'), fontSize: 12, fontWeight: 850 }}>
-          <Star size={13} aria-hidden="true" /> {numberText(inventoryStarPrice(item))}
+          <span style={{ color: rewardColor('coin'), display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            <CircleDollarSign size={14} fill="none" stroke="currentColor" aria-hidden="true" />
+            {numberText(item.currencyPrice)}
+          </span>
+          <span style={{ color: 'var(--muted)', fontSize: 11 }}>или</span>
+          <span style={{ color: rewardColor('star'), display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            <Star size={13} fill="currentColor" aria-hidden="true" />
+            {numberText(inventoryStarPrice(item))}
+          </span>
         </div>
       </button>
       <button
@@ -1112,8 +1117,7 @@ function InventoryItemModal({
         </div>
 
         <div className="glass" style={{ borderRadius: 18, padding: 14, display: 'grid', gap: 9 }}>
-          <DetailRow label="Цена" value={`${numberText(item.currencyPrice)} монет`} tone="coin" />
-          <DetailRow label="Бонусная цена" value={`${numberText(inventoryStarPrice(item))} звёзд`} tone="star" />
+          <DetailRow label="Цена" value={<PurchasePrice item={item} />} />
           <DetailRow label="Ресурс" value={purchaseBundleLabel(item)} />
         </div>
 
@@ -1167,17 +1171,17 @@ function PurchaseConfirmModal({
 }): JSX.Element {
   return (
     <AccessibleModal
-      title={`Купить ${item.title}?`}
-      copy={
-        <>
-          Будет списано {numberText(item.currencyPrice)} монет. В инвентарь добавится{' '}
-          {purchaseBundleLabel(item)}.
-        </>
-      }
+      title={`Купить ${item.kind === 'stick' ? 'клюшку ' : item.kind === 'skates' ? 'коньки ' : ''}«${item.title}»?`}
+      copy={`В инвентарь добавится ${purchaseBundleLabel(item)}.`}
       onRequestClose={onClose}
       closeBlocked={isSaving}
       backdropStyle={{ zIndex: 430 }}
       cardStyle={{ width: 'min(390px, calc(100vw - 28px))' }}
+      headerAction={
+        <button type="button" className="icon-btn" aria-label="Закрыть" disabled={isSaving} onClick={onClose}>
+          <X size={15} />
+        </button>
+      }
     >
       <div style={{ display: 'grid', gap: 14 }}>
         {error !== null && (
@@ -1185,27 +1189,24 @@ function PurchaseConfirmModal({
             {error}
           </div>
         )}
-        <div className="modal-actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
-          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={isSaving}>
-            Отмена
-          </button>
+        <div style={{ display: 'grid', gap: 8 }}>
           <button
             type="button"
             className="modal-primary btn--cta"
             onClick={() => onConfirm('coins')}
             disabled={isSaving || !canBuyCoins}
           >
-            {isSaving ? 'Покупка...' : 'Купить'}
+            {isSaving ? 'Покупка...' : `Купить за ${numberText(item.currencyPrice)} монет`}
+          </button>
+          <button
+            type="button"
+            className="modal-primary btn--cta"
+            onClick={() => onConfirm('stars')}
+            disabled={isSaving || !canBuyStars}
+          >
+            {isSaving ? 'Покупка...' : `Купить за ${numberText(inventoryStarPrice(item))} звёзд`}
           </button>
         </div>
-        <button
-          type="button"
-          className="btn btn--ghost"
-          onClick={() => onConfirm('stars')}
-          disabled={isSaving || !canBuyStars}
-        >
-          Купить за {numberText(inventoryStarPrice(item))} звёзд
-        </button>
       </div>
     </AccessibleModal>
   );
@@ -1495,13 +1496,30 @@ function TransactionAmountBadge({ amount }: { amount: InventoryTransactionAmount
   );
 }
 
+function PurchasePrice({ item }: { item: InventoryItem }): JSX.Element {
+  return (
+    <span aria-label={`${numberText(item.currencyPrice)} монет или ${numberText(inventoryStarPrice(item))} звёзд`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+      <span style={{ color: rewardColor('coin'), display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+        <CircleDollarSign size={14} fill="none" stroke="currentColor" aria-hidden="true" />
+        {numberText(item.currencyPrice)}
+      </span>
+      <span style={{ color: 'var(--muted)' }}>или</span>
+      <span style={{ color: rewardColor('star'), display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+        <Star size={13} fill="currentColor" aria-hidden="true" />
+        {numberText(inventoryStarPrice(item))}
+      </span>
+    </span>
+  );
+}
+
 function DetailRow({
   label,
   value,
   tone,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   tone?: RewardTone;
 }): JSX.Element {
   return (
