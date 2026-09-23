@@ -27,14 +27,18 @@ function classify(scoring: typeof DEFAULT_MARKSMANSHIP_SCORING_RULES | typeof DE
 
 describe('marksmanship score details', () => {
   it('stores one V3 reason without series or situation bonuses', () => {
-    const details = toMarksmanshipScoreDetails(classify(DEFAULT_MARKSMANSHIP_V3_SCORING_RULES), 3);
+    const details = toMarksmanshipScoreDetails(
+      classify(DEFAULT_MARKSMANSHIP_V3_SCORING_RULES), DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
+    );
     expect(details).toMatchObject({ version: 3, category: expect.any(Number), reason: expect.any(String) });
     expect(details).not.toHaveProperty('seriesBonus');
     expect(details).not.toHaveProperty('situationBonus');
   });
 
   it('preserves the V2 detail shape for an old attempt', () => {
-    const details = toMarksmanshipScoreDetails(classify(DEFAULT_MARKSMANSHIP_SCORING_RULES), 2);
+    const details = toMarksmanshipScoreDetails(
+      classify(DEFAULT_MARKSMANSHIP_SCORING_RULES), DEFAULT_MARKSMANSHIP_SCORING_RULES,
+    );
     expect(details).toMatchObject({ version: 2, seriesBonus: 0, situationBonus: 0 });
     expect(details).not.toHaveProperty('category');
   });

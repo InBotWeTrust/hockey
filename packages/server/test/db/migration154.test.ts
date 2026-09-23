@@ -28,7 +28,8 @@ describe.skipIf(!hasIntegrationEnv)('migration 154 marksmanship single-category 
       period_rules: Array<{ durationMs: number }>;
       reward_coins: number;
       reward_stars: number;
-    }>(`select target_goals, qualification_rules, period_rules, reward_coins, reward_stars
+      preview_revision: number;
+    }>(`select target_goals, qualification_rules, period_rules, reward_coins, reward_stars, preview_revision
           from bonus_game where skill_code = 'marksmanship' order by sort_order`);
     expect(rows.map((row) => row.target_goals)).toEqual([25, 43, 65, 88, 113, 142, 170, 201, 237, 272]);
     rows.forEach((row, index) => {
@@ -39,6 +40,7 @@ describe.skipIf(!hasIntegrationEnv)('migration 154 marksmanship single-category 
       expect(row.period_rules[0]?.durationMs).toBe(30_000 + index * 20_000);
       expect(row.reward_coins).toBeGreaterThanOrEqual(0);
       expect(row.reward_stars).toBeGreaterThanOrEqual(0);
+      expect(row.preview_revision).toBeGreaterThanOrEqual(2);
     });
   });
 });

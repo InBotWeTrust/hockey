@@ -101,8 +101,7 @@ export const BONUS_SHOT_TIME_STALE_CODE = 'bonus_shot_time_stale';
 const LEGACY_BONUS_GAME_CORE_VERSION = 62;
 
 function supportsBonusGameCoreVersion(version: number): boolean {
-  return version === GAME_CORE_VERSION || version === 63 ||
-    version === LEGACY_BONUS_GAME_CORE_VERSION;
+  return version === GAME_CORE_VERSION || version === LEGACY_BONUS_GAME_CORE_VERSION;
 }
 
 export class BonusAttemptAlreadyActiveError extends AppError {
@@ -1249,11 +1248,9 @@ export async function submitBonusShot(
               getSessionPhaseOffsets(attempt.attempt_seed),
             ).type;
           const awardedPoints = classification?.awardedPoints ?? 0;
-          const scoreDetails = classification === null ? null : toMarksmanshipScoreDetails(
-            classification,
-            qualificationRules.type === 'points_in_time' &&
-              qualificationRules.scoring.version === 3 ? 3 : 2,
-          );
+          const scoreDetails = classification !== null && qualificationRules.type === 'points_in_time'
+            ? toMarksmanshipScoreDetails(classification, qualificationRules.scoring)
+            : null;
 
           if (input.claimedResult !== serverResult) {
             await appendEvent(

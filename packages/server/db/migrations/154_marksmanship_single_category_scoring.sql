@@ -41,6 +41,7 @@ update bonus_game as game
        description = 'Наберите ' || definition.target_points ||
          ' очков за отведённое время. Каждый гол даёт от 1 до 4 очков за самый сложный признак момента.',
        preview_story = 'Каждый гол даёт 1–4 очка. Чем короче время, когда бросок мог стать голевым, тем выше оценка. Борт и положение вратаря могут её повысить, но очки за признаки не складываются.',
+       preview_revision = game.preview_revision + 1,
        revision = game.revision + 1
   from definition
  where game.id = definition.id

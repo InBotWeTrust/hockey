@@ -3,6 +3,7 @@ import type {
   MarksmanshipGeometry,
   MarksmanshipSeriesClassification,
   MarksmanshipShotClassification,
+  MarksmanshipScoringRules,
   MarksmanshipV3Reason,
 } from '@hockey/game-core';
 
@@ -39,7 +40,7 @@ export type MarksmanshipScoreDetails =
 
 export function toMarksmanshipScoreDetails(
   classification: MarksmanshipShotClassification,
-  version: 2 | 3,
+  scoring: MarksmanshipScoringRules,
 ): Extract<MarksmanshipScoreDetails, { version: 2 | 3 }> {
   const common = {
     windowDurationMs: classification.windowDurationMs,
@@ -49,7 +50,7 @@ export function toMarksmanshipScoreDetails(
     timingErrorMs: classification.timingErrorMs,
     geometry: classification.geometry,
   };
-  if (version === 3) {
+  if (scoring.version === 3) {
     if (classification.result.type === 'goal' &&
       (classification.category == null || classification.reason == null)) {
       throw new Error('missing V3 category for marksmanship goal');

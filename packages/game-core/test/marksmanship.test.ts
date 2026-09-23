@@ -156,6 +156,19 @@ describe('single-category marksmanship', () => {
     })).toEqual({ category: 4, points: 4, reason: 'close_counter_direction' });
   });
 
+  it('raises a narrow board goal but not an open board goal', () => {
+    const leftBoard = { ...emptyGeometry, boardSide: true, boardSideLocation: 'left' as const };
+    expect(classifyMarksmanshipV3Score(159, leftBoard)).toEqual({
+      category: 3, points: 3, reason: 'left_board',
+    });
+    expect(classifyMarksmanshipV3Score(160, leftBoard)).toEqual({
+      category: 1, points: 1, reason: 'ordinary',
+    });
+    expect(classifyMarksmanshipV3Score(159, { ...leftBoard, boardSideLocation: 'right' })).toEqual({
+      category: 3, points: 3, reason: 'right_board',
+    });
+  });
+
   it('measures both boards and the goalkeeper-to-goal hitbox gap inclusively', () => {
     const input = {
       puckX: 200, shooterX: 79, shooterDirection: 1,
@@ -171,6 +184,8 @@ describe('single-category marksmanship', () => {
     expect(classifyMarksmanshipV3Geometry({ ...input, shooterX: 80, goalXMin: 235 })).toMatchObject({
       boardSideLocation: null, goalieNearGoal: false,
     });
+    expect(classifyMarksmanshipV3Geometry({ ...input, puckX: 175 }).closeToGoalie).toBe(true);
+    expect(classifyMarksmanshipV3Geometry({ ...input, puckX: 174 }).closeToGoalie).toBe(false);
   });
 
   it('parses V3 without changing old snapshots', () => {

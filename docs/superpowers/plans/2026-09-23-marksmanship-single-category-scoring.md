@@ -16,7 +16,7 @@
 - Временные пороги: `<70` → 4, `70–99` → 3, `100–159` → 2, `≥160` мс → 1; шаг сканирования 10 мс.
 - Геометрия только повышает категорию до 2/3/4 по порогам 24 и 15 игровых единиц; двойка и тройка не влияют на очки V3.
 - Длительности 30–210 секунд шагом 20 секунд; доли целей 50/53/57/60/63/67/70/73/77/80% от медианного контрольного результата.
-- Старые snapshots, броски, награды и попытки не переписывать. Поддерживать game-core 62 и 63 при добавлении новой версии.
+- Старые snapshots, броски, награды и попытки не переписывать. Общий game-core оставить на 63; поддерживать бонусные попытки 62/63 и различать V3 по снимку scoring.
 - Стандартные «ГОЛ», «МИМО», «СЭЙВ» не менять; плашка V3 — одна секция на 2 секунды, не шире табло, одновременно с результатом.
 - Код/коммиты на английском, интерфейс на русском. Dev и production не публиковать в рамках выполнения этого плана без отдельного запроса.
 - Перед тестами прочесть существующие инструкции тестирования; если `docs/engineering/testing.md` отсутствует в checkout, отметить это и использовать package scripts. После изменений game-core сначала собрать его `dist`.
@@ -74,17 +74,16 @@ const category = Math.max(
 **Files:**
 - Modify: `packages/server/src/bonusGames/qualification.ts`
 - Modify: `packages/server/src/bonusGames/service.ts`
-- Modify: `packages/game-core/src/version.ts`
 - Test: `packages/server/test/bonusGames/types.test.ts`
 - Test: `packages/server/test/bonusGames/shots.test.ts`
 
 **Interfaces:**
 - `BonusQualificationRules` использует union правил Task 1; `score_details.version: 3` содержит `windowDurationMs`, `category`, `reason`, `geometry`, `opportunity`, `timingErrorMs`, без `seriesBonus` и `situationBonus`. Старые варианты 1/2 остаются доступны для чтения.
-- `GAME_CORE_VERSION` становится 64; сервер поддерживает 62, 63 и 64 для бонусных попыток, но начисляет по `rules_snapshot.qualificationRules.scoring`, а не по версии установленного клиента.
+- `GAME_CORE_VERSION` остаётся 63; сервер поддерживает 62 и 63 для бонусных попыток, но начисляет по `rules_snapshot.qualificationRules.scoring`, а не по версии установленного клиента.
 
-- [ ] **Step 1: Написать RED-тесты сервера.** В `shots.test.ts` создать V3 попытку с голом и проверить `awarded_points`/`total_points` в диапазоне 1–4, один `reason` и `score_details.version = 3`; промах и сэйв = 0; повтор той же пары `attempt_id + shot_index` возвращает тот же результат без нового начисления. Отдельно создать снимок V2 с версией ядра 63, затем продолжить его и сравнить старый `score_details.version = 2` и сумму; проверить принятие 62, 63, 64, отклонение неподдерживаемой версии.
+- [ ] **Step 1: Написать RED-тесты сервера.** В `shots.test.ts` создать V3 попытку с голом и проверить `awarded_points`/`total_points` в диапазоне 1–4, один `reason` и `score_details.version = 3`; промах и сэйв = 0; повтор той же пары `attempt_id + shot_index` возвращает тот же результат без нового начисления. Отдельно создать снимок V2 с версией ядра 63, затем продолжить его и сравнить старый `score_details.version = 2` и сумму; проверить принятие 62/63, отклонение неподдерживаемой версии.
 - [ ] **Step 2: Запустить RED.** `pnpm --filter @hockey/server test -- test/bonusGames/shots.test.ts`; интеграционные тесты требуют существующего тестового PostgreSQL. Если БД недоступна, не объявлять RED/GREEN по ним и отдельно выполнить доступные unit-тесты.
-- [ ] **Step 3: Реализовать серверную ветку.** Расширить типы/валидацию `points_in_time`, повысить `GAME_CORE_VERSION`, заменить двухверсийную проверку `isSupportedBonusGameCoreVersion` явным набором 62/63/64. В `service.ts` вынести текущий V2 literal в `legacyScoreDetails(classification)` без изменения полей; формировать V3 `scoreDetails` только когда снимок V3. Не менять idempotency, транзакцию и таблицы истории.
+- [ ] **Step 3: Реализовать серверную ветку.** Расширить типы/валидацию `points_in_time`; сохранить `GAME_CORE_VERSION = 63` и поддержку 62/63. В `service.ts` вынести текущий V2 literal в `legacyScoreDetails(classification)` без изменения полей; формировать V3 `scoreDetails` только когда снимок V3. Не менять idempotency, транзакцию и таблицы истории.
 
 ```ts
 const isV3 = qualificationRules.type === 'points_in_time' &&
