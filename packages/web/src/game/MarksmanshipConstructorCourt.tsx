@@ -37,6 +37,7 @@ import {
   PERSPECTIVE_PLAYER_OPTIONS,
   PERSPECTIVE_PUCK_OPTIONS,
   TRAINING_AMATEUR_GOALIE_OPTIONS,
+  LONG_COURT_GAME_LAYER_STYLE,
 } from './PlayView.js';
 
 export interface ConstructorScene {
@@ -72,6 +73,7 @@ export interface MarksmanshipConstructorCourtProps {
 
 interface Renderers {
   goal: Goal;
+  futureGoal: Goal;
   goalie: Goalie;
   player: Player;
   puck: Puck;
@@ -85,22 +87,6 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
   const draggingRef = useRef<DraggableEntity | null>(null);
   const scene = getConstructorScene(props.seed, props.timeMs, props.goalie, props.shotIndex);
   const playerX = props.manual?.playerX ?? scene.playerX;
-  const goalOffsetX = props.manual === undefined || props.manual === null
-    ? scene.goalOffsetX
-    : (props.manual.goalCenterX - PERSPECTIVE_COURT_VISUAL_X_CENTER) /
-      PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE;
-  const goalieState = props.manual === undefined || props.manual === null
-    ? scene.goalieState
-    : {
-      position: {
-        x: PERSPECTIVE_COURT_VISUAL_X_CENTER +
-          (props.manual.goalieCenterX - PERSPECTIVE_COURT_VISUAL_X_CENTER) /
-            PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
-        y: GOALIE_Y,
-      },
-      width: GOALIE_SIZE.width,
-      height: GOALIE_SIZE.height,
-    };
 
   const draw = useCallback(() => {
     const renderers = renderersRef.current;
@@ -118,7 +104,15 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
           (current.manual.goalieCenterX - PERSPECTIVE_COURT_VISUAL_X_CENTER) /
             PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE, y: GOALIE_Y },
         width: GOALIE_SIZE.width, height: GOALIE_SIZE.height };
+    const currentSpeeds = getDailyPeriodSpeedPreset(1);
+    const currentOffsets = getSessionPhaseOffsets(current.seed);
+    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / currentSpeeds.puckSpeedPerMs;
+    const futureOffset = simulateGoal({ ...current.goalie,
+      goalFrequency: currentSpeeds.goalFrequency }, current.timeMs + flightMs,
+      currentOffsets.goal).offsetX;
     renderers.goal.update(renderers.scale, offset);
+    renderers.futureGoal.container.visible = current.manual === undefined || current.manual === null;
+    renderers.futureGoal.update(renderers.scale, futureOffset);
     renderers.goalie.update(goaliePosition, renderers.scale);
     renderers.player.update(renderers.scale, x, PUCK_START.y);
     renderers.puck.resetAtStart(renderers.scale, x);
@@ -126,13 +120,16 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
 
   const handleReady = useCallback((app: Application, scale: Scale) => {
     const goal = new Goal(PERSPECTIVE_GOAL_OPTIONS);
+    const futureGoal = new Goal(PERSPECTIVE_GOAL_OPTIONS);
+    futureGoal.container.alpha = 0.38;
     const goalie = new Goalie(TRAINING_AMATEUR_GOALIE_OPTIONS);
     const player = new Player('right', PERSPECTIVE_PLAYER_OPTIONS);
     const puck = new Puck('right', PERSPECTIVE_PUCK_OPTIONS);
     const layer = new Container();
-    layer.addChild(goal.container, goalie.container, player.container, puck.container);
+    layer.addChild(futureGoal.container, goal.container, goalie.container,
+      player.container, puck.container);
     app.stage.addChild(layer);
-    renderersRef.current = { goal, goalie, player, puck, scale };
+    renderersRef.current = { goal, futureGoal, goalie, player, puck, scale };
     draw();
   }, [draw]);
 
@@ -150,6 +147,7 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
     const renderers = renderersRef.current;
     renderersRef.current = null;
     renderers?.goal.destroy();
+    renderers?.futureGoal.destroy();
     renderers?.goalie.destroy();
     renderers?.player.destroy();
     renderers?.puck.destroy();
@@ -173,6 +171,8 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
     tapTime: props.timeMs - (PUCK_START.y - GOALIE_Y) / speeds.puckSpeedPerMs,
   }, props.goalie, props.seed, props.shotIndex, STICK_NEUTRAL, offsets);
   const goalBounds = props.manual?.goalHitbox ?? { minX: goalAtNow.xMin, maxX: goalAtNow.xMax };
+  const futureGoalBounds = getPerspectiveCourtGoalOpening(shotInput, props.goalie, offsets);
+  const futureGoalCenter = (futureGoalBounds.xMin + futureGoalBounds.xMax) / 2;
   const goalieBounds = props.manual?.goalieHitbox ?? { minX: goalieAtNow.xMin, maxX: goalieAtNow.xMax };
   const goalY = ((GOAL.y + GOAL_OPENING.y) / 2) * PERSPECTIVE_COURT_VISUAL_Y_SCALE +
     PERSPECTIVE_COURT_GOAL_VISUAL_Y_OFFSET;
@@ -180,6 +180,15 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
     PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET;
   const playerY = PUCK_START.y * PERSPECTIVE_COURT_VISUAL_Y_SCALE +
     PERSPECTIVE_COURT_VISUAL_Y_OFFSET;
+  const nextScene = getConstructorScene(props.seed, props.timeMs + 25, props.goalie, props.shotIndex);
+  const directions = props.manual ? null : [
+    { name: 'Игрок', x: playerX, y: playerY - 58,
+      right: nextScene.playerX >= scene.playerX },
+    { name: 'Ворота', x: (goalBounds.minX + goalBounds.maxX) / 2, y: goalY - 52,
+      right: nextScene.goalOffsetX >= scene.goalOffsetX },
+    { name: 'Вратарь', x: (goalieBounds.minX + goalieBounds.maxX) / 2, y: goalieY + 10,
+      right: nextScene.goalieState.position.x >= scene.goalieState.position.x },
+  ];
 
   const drag = (event: ReactPointerEvent<SVGRectElement>, entity: DraggableEntity) => {
     if (draggingRef.current !== entity || props.onDragCenter === undefined) return;
@@ -195,14 +204,16 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
       width: '100%', aspectRatio: '1212 / 2000', overflow: 'hidden' }}>
       <img src="/sprites/amateur-daily-court.webp" alt="Любительская площадка"
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-      <div style={{ position: 'absolute', inset: 0 }}>
+      <div style={{ position: 'absolute', left: 0, right: 0,
+        ...LONG_COURT_GAME_LAYER_STYLE }}>
         <PixiStage onReady={handleReady} onResize={handleResize}
           preloadAssets={['/sprites/test-goal-clean.webp',
             '/sprites/training-goalie-amateur.webp', '/sprites/training-goalie-amateur-save.webp']} />
       </div>
+      <div style={{ position: 'absolute', left: 0, right: 0,
+        ...LONG_COURT_GAME_LAYER_STYLE }}>
       <svg viewBox="0 0 572 700" aria-label="Координатная сетка"
-        style={{ position: 'absolute', width: '100%', aspectRatio: '572 / 700',
-          maxHeight: '100%', top: '50%', transform: 'translateY(-50%)',
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%',
           pointerEvents: props.onDragCenter ? 'auto' : 'none' }}>
         {Array.from({ length: 12 }, (_, index) => index * 50).map((x) => (
           <g key={x}>
@@ -210,6 +221,19 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
             <text x={x + 2} y={692} fontSize={13} fill="#173b59">{x}</text>
           </g>
         ))}
+        <line aria-label="Линия броска игрока" x1={playerX} x2={playerX} y1={0} y2={playerY}
+          stroke="#245f9b" strokeWidth={1.5} strokeDasharray="6 5" />
+        {!props.manual && (
+          <g aria-label="Ворота при прилёте шайбы" data-center-x={futureGoalCenter}
+            pointerEvents="none">
+            <rect x={futureGoalBounds.xMin} y={goalY - 16}
+              width={futureGoalBounds.xMax - futureGoalBounds.xMin} height={32}
+              fill="none" stroke="#ffe487" strokeWidth={2} strokeDasharray="6 4" />
+            <text x={futureGoalCenter} y={goalY - 38} textAnchor="middle" fontSize={16}
+              fontWeight={700} fill="#fff" stroke="#173b59" strokeWidth={3}
+              paintOrder="stroke">ПРИ ПРИЛЁТЕ</text>
+          </g>
+        )}
         {props.showHitboxes && (
           <g aria-label="Хитбоксы фигур">
             <rect x={goalBounds.minX} y={goalY - 14} width={goalBounds.maxX - goalBounds.minX}
@@ -219,10 +243,16 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
               fill="none" stroke="#d8424d" strokeWidth={2} />
             <rect x={playerX - 50.5} y={playerY - 45} width={101} height={90}
               fill="none" stroke="#2563eb" strokeWidth={2} />
-            <line x1={playerX} x2={playerX} y1={goalY} y2={playerY}
-              stroke="#245f9b" strokeDasharray="6 5" />
           </g>
         )}
+        {directions?.map(({ name, x, y, right }) => (
+          <g key={name} aria-label={`${name} ${name === 'Ворота' ? 'движутся' : 'движется'} ${right ? 'вправо' : 'влево'}`}
+            transform={`translate(${x} ${y})`} pointerEvents="none">
+            <circle r={15} fill="#102b45" fillOpacity={0.85} stroke="#dceaf5" strokeWidth={1.5} />
+            <text x={0} y={7} textAnchor="middle" fontSize={23} fontWeight={700}
+              fill="#fff">{right ? '→' : '←'}</text>
+          </g>
+        ))}
         {props.onDragCenter && ([
           ['goal', (goalBounds.minX + goalBounds.maxX) / 2, goalY],
           ['goalie', (goalieBounds.minX + goalieBounds.maxX) / 2, goalieY],
@@ -231,7 +261,7 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
           <rect key={entity} role="button" tabIndex={0}
             aria-label={`Двигать ${entity === 'goal' ? 'ворота' : entity === 'goalie' ? 'вратаря' : 'игрока'}`}
             x={x - 35} y={y - 35} width={70} height={70} fill="transparent"
-            onPointerDown={(event) => { draggingRef.current = entity; }}
+            onPointerDown={() => { draggingRef.current = entity; }}
             onPointerMove={(event) => drag(event, entity)}
             onPointerUp={() => { draggingRef.current = null; }}
             onKeyDown={(event) => {
@@ -240,6 +270,7 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
             }} />
         ))}
       </svg>
+      </div>
     </div>
   );
 }

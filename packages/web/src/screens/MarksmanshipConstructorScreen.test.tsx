@@ -36,16 +36,23 @@ describe('MarksmanshipConstructorScreen', () => {
     expect(screen.getByLabelText('Время сцены')).toHaveValue('0');
   });
 
-  it('uses one visual hitbox switch and a manual mode without invented points', () => {
+  it('keeps the hitbox switch without offering manual placement', () => {
     renderScreen();
     expect(screen.getByRole('button', { name: 'Хитбоксы: вкл' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Хитбоксы: вкл' }));
     expect(screen.getByRole('button', { name: 'Хитбоксы: выкл' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Ручная расстановка' }));
-    expect(screen.getByLabelText('Центр хитбокса ворот')).toBeInTheDocument();
-    expect(screen.getByLabelText('Центр хитбокса вратаря')).toBeInTheDocument();
-    expect(screen.getByLabelText('X линии броска игрока')).toBeInTheDocument();
-    expect(screen.getByText('Ручная расстановка — очки не рассчитываются')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ручная расстановка' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Центр хитбокса ворот')).not.toBeInTheDocument();
+  });
+
+  it('scrubs the whole three-minute first period', () => {
+    renderScreen();
+    const time = screen.getByLabelText('Время сцены');
+    expect(time).toHaveAttribute('max', '180000');
+    fireEvent.change(time, { target: { value: '180000' } });
+    expect(screen.getByText('03:00.00')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Сбросить' }));
+    expect(time).toHaveValue('0');
   });
 
   it('shows a concise result over the ice and returns to profile', () => {

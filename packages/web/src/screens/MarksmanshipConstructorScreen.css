@@ -23,16 +23,16 @@
 }
 
 .marksmanship-constructor-stage {
-  flex: 1 1 auto;
-  min-height: 320px;
+  flex: none;
+  min-height: 0;
   display: grid;
   place-items: center;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .marksmanship-constructor-court-wrap {
   position: relative;
-  height: 100%;
+  width: 100%;
   max-width: 100%;
   aspect-ratio: 1212 / 2000;
   margin-inline: auto;
@@ -74,8 +74,7 @@
   font-size: 12px;
 }
 
-.marksmanship-constructor-row,
-.marksmanship-constructor-coordinates {
+.marksmanship-constructor-row {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -84,8 +83,7 @@
 }
 
 .marksmanship-constructor-controls button,
-.marksmanship-constructor-controls select,
-.marksmanship-constructor-controls input[type='number'] {
+.marksmanship-constructor-controls select {
   min-height: 36px;
   box-sizing: border-box;
   font: inherit;
@@ -103,7 +101,6 @@
 
 .marksmanship-constructor-time label { flex: 1; }
 .marksmanship-constructor-time input { flex: 1; min-width: 80px; }
-.marksmanship-constructor-coordinates input { width: 68px; }
 .marksmanship-constructor-details-toggle { justify-self: center; }
 .marksmanship-constructor-details { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 
@@ -111,8 +108,6 @@
   .marksmanship-constructor-screen { padding-inline: 5px; gap: 4px; }
   .marksmanship-constructor-controls { font-size: 11px; }
   .marksmanship-constructor-controls button,
-  .marksmanship-constructor-controls select,
-  .marksmanship-constructor-controls input[type='number'] { min-height: 34px; }
+  .marksmanship-constructor-controls select { min-height: 34px; }
   .marksmanship-constructor-controls button { padding-inline: 5px; }
-  .marksmanship-constructor-coordinates label { width: 100%; justify-content: space-between; }
 }

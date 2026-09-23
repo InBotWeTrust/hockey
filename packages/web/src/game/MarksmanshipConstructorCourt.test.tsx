@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import {
   getDailyPeriodSpeedPreset,
+  DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
+  buildMarksmanshipReplaySnapshot,
+  deriveShotSeed,
   getGoalie,
   getSessionPhaseOffsets,
   simulateGoal,
@@ -56,6 +59,43 @@ describe('controlled marksmanship court', () => {
     rerender(<MarksmanshipConstructorCourt {...props} showHitboxes={false} />);
     expect(screen.queryByLabelText('Хитбоксы фигур')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Координатная сетка')).toBeInTheDocument();
+    expect(screen.getByLabelText('Линия броска игрока')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Игрок движется (влево|вправо)/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Ворота движутся (влево|вправо)/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Вратарь движется (влево|вправо)/)).toBeInTheDocument();
+  });
+
+  it('places the playable layer at the same vertical bounds as the daily game', () => {
+    render(<MarksmanshipConstructorCourt seed="constructor-start-a" timeMs={0}
+      goalie={getGoalie('rookie')} shotIndex={1} showHitboxes />);
+    expect(screen.getByTestId('constructor-pixi-stage').parentElement).toHaveStyle({
+      top: '24.55%', height: '74.2%',
+    });
+    expect(screen.getByLabelText('Координатная сетка').parentElement).toHaveStyle({
+      top: '24.55%', height: '74.2%',
+    });
+  });
+
+  it('marks the future goal position used to resolve the shot', () => {
+    const seed = 'constructor-start-a';
+    const goalie = getGoalie('rookie');
+    const timeMs = 0;
+    const speeds = getDailyPeriodSpeedPreset(1);
+    const snapshot = buildMarksmanshipReplaySnapshot({
+      shotInput: { tapTime: timeMs, shooterTapTime: timeMs,
+        puckSpeedPerMs: speeds.puckSpeedPerMs,
+        shooterFrequency: speeds.shooterFrequency,
+        goalieFrequency: speeds.goalieFrequency,
+        goalFrequency: speeds.goalFrequency },
+      goalie, seed: deriveShotSeed(seed, 1, 1), shotIndex: 1,
+      phaseOffsets: getSessionPhaseOffsets(seed), earliestTapTime: 0,
+      scoring: DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
+    });
+    render(<MarksmanshipConstructorCourt seed={seed} timeMs={timeMs} goalie={goalie}
+      shotIndex={1} showHitboxes />);
+    const future = screen.getByLabelText('Ворота при прилёте шайбы');
+    const center = (snapshot.goalCross.goalHitbox.minX + snapshot.goalCross.goalHitbox.maxX) / 2;
+    expect(Number(future.getAttribute('data-center-x'))).toBeCloseTo(center, 3);
   });
 
   it('sends dragged player center to manual mode', () => {

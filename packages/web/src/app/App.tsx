@@ -567,7 +567,7 @@ function AppExperience(): JSX.Element {
             </Routes>
           </Suspense>
         </div>
-        <BottomNav />
+        {bottomNavVisible && <BottomNav />}
       </div>
       {!isNativeAndroid() && <UpdatePrompt />}
     </>

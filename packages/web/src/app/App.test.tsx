@@ -137,6 +137,7 @@ describe('App routing + auth', () => {
     window.history.replaceState({}, '', '/profile/marksmanship-constructor');
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Конструктор меткости' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Навигация' })).not.toBeInTheDocument();
   });
 
   it('does not mount the browser service-worker update prompt inside Android', () => {
