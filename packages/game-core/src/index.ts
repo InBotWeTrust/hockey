@@ -40,6 +40,7 @@ export {
   PERSPECTIVE_COURT_VISUAL_Y_SCALE,
   PERSPECTIVE_COURT_VISUAL_X_CENTER,
   getPerspectiveCourtGoalOpening,
+  getPerspectiveCourtGoalieHitbox,
   resolvePerspectiveCourtEmptyGoalShot,
   resolvePerspectiveCourtShot,
 } from './court/perspective.js';
@@ -79,6 +80,11 @@ export {
   type MarksmanshipShotInput,
   type StrictCounterDirectionInput,
 } from './marksmanship.js';
+export {
+  buildMarksmanshipReplaySnapshot,
+  type ConstructorHitbox,
+  type MarksmanshipReplaySnapshot,
+} from './marksmanshipConstructor.js';
 export {
   ADVANCED_TRAINING_EXERCISE_KEYS,
   ADVANCED_TRAINING_SCENARIOS,
