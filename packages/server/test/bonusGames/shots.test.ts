@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
   deriveShotSeed,
   GAME_CORE_VERSION,
   GOAL_OPENING,
@@ -250,7 +251,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     return { id: game.rows[0]!.id, arenaId: defaultArenaId };
   }
 
-  async function createMarksmanshipGame(targetPoints: number): Promise<TestGame> {
+  async function createMarksmanshipGame(targetPoints: number, v3 = false): Promise<TestGame> {
     gameSequence += 1;
     const slug = `shot-game-${gameSequence}`;
     const game = await pool.query<{ id: string }>(
@@ -271,7 +272,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
           type: 'points_in_time',
           targetPoints,
           activeTimeMs: MARKSMANSHIP_PERIOD.durationMs,
-          scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
+          scoring: v3 ? DEFAULT_MARKSMANSHIP_V3_SCORING_RULES : DEFAULT_MARKSMANSHIP_SCORING_RULES,
         }),
         JSON.stringify([MARKSMANSHIP_PERIOD]),
         defaultArenaId,
@@ -563,6 +564,30 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
         seriesBonus: 0,
       },
     });
+  });
+
+  it('settles one V3 category once and retains the V2 snapshot calculation', async () => {
+    const userId = await createUser();
+    const v3Game = await createMarksmanshipGame(100, true);
+    const v3AttemptId = await createActiveAttempt(userId, v3Game.id);
+    const request = {
+      userId, attemptId: v3AttemptId, claimedShotIndex: 1,
+      input: marksmanshipInput(11_060), claimedResult: 'goal' as const,
+      now: new Date(NOW.getTime() + 11_060),
+    };
+    const first = await submitBonusShot(pool, request);
+    expect(first).toMatchObject({
+      serverResult: 'goal', awardedPoints: 4, totalPoints: 4,
+      scoreDetails: { version: 3, category: 4, reason: 'instant' },
+    });
+    expect(await submitBonusShot(pool, request)).toEqual(first);
+    expect(await storedMarksmanshipState(v3AttemptId)).toMatchObject({ total_points: 4, shots: 1 });
+
+    const v2Game = await createMarksmanshipGame(1_000);
+    const v2AttemptId = await createActiveAttempt(userId, v2Game.id);
+    await pool.query('update bonus_game_attempt set game_core_version = 63 where id = $1', [v2AttemptId]);
+    const old = await submitBonusShot(pool, { ...request, attemptId: v2AttemptId });
+    expect(old).toMatchObject({ awardedPoints: 155, scoreDetails: { version: 2 } });
   });
 
   it.each([
