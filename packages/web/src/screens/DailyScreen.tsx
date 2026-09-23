@@ -3834,7 +3834,7 @@ function TrainingPlaceholder({
     }
   }
 
-  if (data && playTraining) {
+  if (data && autoPlay && playTraining) {
     const shouldPlayEntrance = playEntranceOnStart || localPlayEntrance;
     return (
       <TrainingPlayView
