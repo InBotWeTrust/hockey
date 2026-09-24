@@ -120,6 +120,28 @@ function mockProfileRequest(
         headers: { 'content-type': 'application/json' },
       });
     }
+    if (url.endsWith('/api/referrals/me')) {
+      return new Response(
+        JSON.stringify({
+          code: 'TEAM-77',
+          totalInvited: 12,
+          qualifiedInvited: 8,
+          counts: { beginner: 4, amateur: 5, professional: 3 },
+          unclaimedRewardsCount: 2,
+          milestones: [
+            {
+              id: 'reward-10',
+              qualifiedReferrals: 10,
+              rewardStars: 150,
+              unlockId: null,
+              unlockedAt: null,
+              claimedAt: null,
+            },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
     if (url.endsWith('/api/inventory/me')) {
       return new Response(
         JSON.stringify({
@@ -345,6 +367,15 @@ describe('ProfileScreen', () => {
     expect(screen.getByRole('button', { name: 'Открыть инвентарь' })).toHaveClass(
       'profile-section-label',
     );
+    expect(await screen.findByAltText('Два хоккеиста вместе')).toHaveAttribute(
+      'src',
+      '/profile/referral-friends.webp',
+    );
+    expect(screen.getByLabelText('Есть награды за приглашения')).toBeInTheDocument();
+    expect(screen.queryByText(/Можно забрать наград/)).not.toBeInTheDocument();
+    expect(screen.getByText('Ссылка для приглашения')).toBeInTheDocument();
+    expect(screen.getByText('Код приглашения')).toBeInTheDocument();
+    expect(screen.getByText('8 из 10 до 150 звёзд')).toBeInTheDocument();
     expect(screen.getByText('Профиль')).toHaveClass('profile-section-label');
     expect(screen.getByText('Настройки', { selector: '.profile-settings-card__title' })).toBeInTheDocument();
     expect(screen.queryByText('Профиль и аккаунт')).not.toBeInTheDocument();
@@ -623,6 +654,9 @@ describe('ProfileScreen', () => {
     const cards = await screen.findByLabelText('Спортивные данные игрока');
     const cardButtons = Array.from(cards.querySelectorAll<HTMLButtonElement>('button'));
     expect(cardButtons.map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Открыть приглашённых друзей',
+      'Скопировать ссылку',
+      'Скопировать код',
       'Открыть инвентарь',
       'Выбрать клюшку',
       'Выбрать коньки',

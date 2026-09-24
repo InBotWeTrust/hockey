@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg';
 import { evaluateDailyClosedAchievements } from '../../achievements/engine.js';
 import { AppError } from '../../plugins/errors.js';
 import { observeCareerGoal } from '../../achievements/service.js';
+import { reconcileReferralQualification } from '../../referrals/service.js';
 import { appendEvent } from '../eventLog.js';
 
 export const PERIOD_DURATION_MS = 20 * 60 * 1000;
@@ -107,6 +108,7 @@ async function insertPeriodLog(
         lifetimeTotal: Number(updatedUser.rows[0]!.lifetime_goals_total),
       });
     }
+    await reconcileReferralQualification(client, pool.user_id);
   }
   await appendEvent(client, pool.user_id, 'period_closed', {
     day_pool_id: pool.id,

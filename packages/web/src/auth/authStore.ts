@@ -13,6 +13,7 @@ export interface AuthUser {
   competitionLevel?: 'beginner' | 'amateur' | 'professional';
   currencyBalance?: number;
   starBalance?: number;
+  unclaimedReferralRewardsCount?: number;
   displaySource?: 'telegram' | 'vk' | 'custom';
   linkedProviders?: Array<'telegram' | 'vk'>;
   customDisplayName?: string | null;

@@ -57,7 +57,7 @@ function isChatRoute(pathname: string): boolean {
 }
 
 function isProfileRoute(pathname: string): boolean {
-  return pathname.startsWith('/profile');
+  return pathname.startsWith('/profile') || pathname === '/referrals';
 }
 
 function isSectionContext(location: ReturnType<typeof useLocation>): boolean {
@@ -189,6 +189,7 @@ export function BottomNav(): JSX.Element | null {
       Boolean(user) &&
       !isDemo &&
       (user?.role === undefined ||
+        user?.unclaimedReferralRewardsCount === undefined ||
         user?.experimentalTrainingCourt === undefined ||
         user?.grip === undefined ||
         user?.competitionLevel === undefined),
@@ -208,6 +209,9 @@ export function BottomNav(): JSX.Element | null {
     if (refreshedUser.grip !== undefined) patch.grip = refreshedUser.grip;
     if (refreshedUser.competitionLevel !== undefined) {
       patch.competitionLevel = refreshedUser.competitionLevel;
+    }
+    if (refreshedUser.unclaimedReferralRewardsCount !== undefined) {
+      patch.unclaimedReferralRewardsCount = refreshedUser.unclaimedReferralRewardsCount;
     }
     if (Object.keys(patch).length > 0) {
       updateUser(patch);
@@ -457,7 +461,7 @@ export function BottomNav(): JSX.Element | null {
           label="Раздевалка"
           disabled={isDemo}
           active={isProfile}
-          icon={<User size={ICON_SIZE} strokeWidth={2} />}
+          icon={<span style={{ position: 'relative', display: 'inline-flex' }}><User size={ICON_SIZE} strokeWidth={2} />{(user?.unclaimedReferralRewardsCount ?? 0) > 0 ? <span className="bottom-nav__badge" aria-label={`Награды за приглашения: ${user!.unclaimedReferralRewardsCount}`}>{user!.unclaimedReferralRewardsCount! > 99 ? '99+' : user!.unclaimedReferralRewardsCount}</span> : null}</span>}
           onClick={openProfileRoute}
         />
         {showAdmin && (

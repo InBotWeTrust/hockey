@@ -26,6 +26,7 @@ import { MandatoryAndroidUpdateModal } from '../components/MandatoryAndroidUpdat
 import { preloadCriticalArtwork } from './artworkCache.js';
 import { prepareInitialPlayerExperience } from './playerStartup.js';
 import { MARKSMANSHIP_CONSTRUCTOR_ENABLED } from './devOnlyFeatures.js';
+import { InviteScreen } from '../screens/InviteScreen.js';
 
 function loadDailyScreen() {
   return import('../screens/DailyScreen.js');
@@ -72,6 +73,9 @@ const WeeklyChallengeScreen = lazy(() =>
 );
 const ProfileScreen = lazy(() =>
   import('../screens/ProfileScreen.js').then((module) => ({ default: module.ProfileScreen })),
+);
+const ReferralsScreen = lazy(() =>
+  import('../screens/ReferralsScreen.js').then((module) => ({ default: module.ReferralsScreen })),
 );
 const MarksmanshipConstructorScreen = MARKSMANSHIP_CONSTRUCTOR_ENABLED
   ? lazy(() => import('../screens/MarksmanshipConstructorScreen.js').then((module) => ({
@@ -344,6 +348,7 @@ function AppExperience(): JSX.Element {
           <Suspense fallback={<RouteLoading />}>
             <Routes>
               <Route path="/login" element={<LoginScreen />} />
+              <Route path="/invite/:code" element={<InviteScreen />} />
               <Route path="/prices" element={<PricesScreen />} />
               <Route path="/terms" element={<TermsScreen />} />
               <Route path="/offer" element={<OfferScreen />} />
@@ -443,6 +448,10 @@ function AppExperience(): JSX.Element {
                     <ProfileScreen />
                   </PrivateRoute>
                 }
+              />
+              <Route
+                path="/referrals"
+                element={<PrivateRoute><ReferralsScreen /></PrivateRoute>}
               />
               {MARKSMANSHIP_CONSTRUCTOR_ENABLED && MarksmanshipConstructorScreen !== null && (
                 <Route

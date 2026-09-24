@@ -17,6 +17,7 @@ import {
 } from '../../achievements/engine.js';
 import { observeCareerActivityStreak, observeCareerGoal } from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
+import { reconcileReferralQualification } from '../../referrals/service.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveDailySeed, deriveShotSeed } from '../seed.js';
 import { reconcileDayPool, type DayPoolRow } from './reconcile.js';
@@ -873,6 +874,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
             lifetimeTotal: Number(updatedUser.rows[0]!.lifetime_goals_total),
           });
         }
+        await reconcileReferralQualification(client, req.user.id);
         await appendEvent(client, req.user.id, 'period_closed', {
           day_pool_id: pool.id,
           period_number: pool.current_period,

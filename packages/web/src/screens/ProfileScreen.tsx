@@ -10,6 +10,7 @@ import {
   Target,
   TrendingUp,
   Trophy,
+  Copy,
   X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -49,6 +50,7 @@ import { StatRatingModal } from '../profile/StatRatingModal.js';
 import type { StatRatingMetric, StatRatingPlayer } from '../api/statRating.js';
 import { preloadArtwork, profileArtworkUrls } from '../app/artworkCache.js';
 import { MARKSMANSHIP_CONSTRUCTOR_ENABLED } from '../app/devOnlyFeatures.js';
+import { fetchReferralSummary, type ReferralSummary } from '../api/referrals.js';
 
 export type TrophySectionKey = keyof NonNullable<ProfileData['trophyDetails']>;
 
@@ -233,6 +235,39 @@ function EquipmentPanel({
             </span>
           </button>
         </span>
+      </div>
+    </section>
+  );
+}
+
+function ReferralPanel({ summary, onOpen }: { summary: ReferralSummary | undefined; onOpen: () => void }): JSX.Element {
+  const next = summary?.milestones.find((item) => item.unlockedAt === null) ?? null;
+  const inviteUrl = summary ? `${window.location.origin}/invite/${summary.code}` : '';
+  const copy = (value: string): void => { void navigator.clipboard.writeText(value); };
+  return (
+    <section className="profile-referral-section" aria-label="Приглашай друзей">
+      <button type="button" className="section-label profile-section-label" aria-label="Открыть приглашённых друзей" onClick={onOpen}>Приглашай друзей</button>
+      <div className="profile-referral-panel glass" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.key === 'Enter') onOpen(); }}>
+        <span className="profile-referral-panel__artwork">
+          <img src="/profile/referral-friends.webp" alt="Два хоккеиста вместе" />
+        </span>
+        {(summary?.unclaimedRewardsCount ?? 0) > 0 ? (
+          <span className="profile-referral-panel__attention attention-dot-pulse" aria-label="Есть награды за приглашения" />
+        ) : null}
+        <span className="profile-referral-panel__copy">
+          <strong>{summary?.totalInvited ?? 0} приглашено</strong>
+          {next ? <small>{summary?.qualifiedInvited ?? 0} из {next.qualifiedReferrals} до {next.rewardStars} звёзд</small> : null}
+          <span className="profile-referral-panel__progress"><i style={{ width: `${next ? Math.min(100, ((summary?.qualifiedInvited ?? 0) / next.qualifiedReferrals) * 100) : 100}%` }} /></span>
+          <span className="profile-referral-copy-row">
+            <span className="profile-referral-copy-row__value"><small>Ссылка для приглашения</small><strong>{inviteUrl || 'Загружаем…'}</strong></span>
+            <button type="button" className="icon-btn" aria-label="Скопировать ссылку" disabled={!inviteUrl} onClick={(event) => { event.stopPropagation(); copy(inviteUrl); }}><Copy size={15} /></button>
+          </span>
+          <span className="profile-referral-copy-row">
+            <span className="profile-referral-copy-row__value"><small>Код приглашения</small><strong>{summary?.code ?? '—'}</strong></span>
+            <button type="button" className="icon-btn" aria-label="Скопировать код" disabled={!summary} onClick={(event) => { event.stopPropagation(); if (summary) copy(summary.code); }}><Copy size={15} /></button>
+          </span>
+        </span>
+        <ChevronRight size={20} />
       </div>
     </section>
   );
@@ -673,6 +708,7 @@ export function ProfileScreen(): JSX.Element {
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
   });
+  const referralQuery = useQuery({ queryKey: ['referrals', 'summary'], queryFn: fetchReferralSummary });
   const synchronizeProfileStats = useCallback(
     (player: StatRatingPlayer): void => {
       queryClient.setQueryData<ProfileData>(['profile'], (current) => {
@@ -719,6 +755,9 @@ export function ProfileScreen(): JSX.Element {
       ...(profile.displaySource !== undefined ? { displaySource: profile.displaySource } : {}),
       ...(profile.linkedProviders !== undefined
         ? { linkedProviders: profile.linkedProviders }
+        : {}),
+      ...(profile.unclaimedReferralRewardsCount !== undefined
+        ? { unclaimedReferralRewardsCount: profile.unclaimedReferralRewardsCount }
         : {}),
     });
   }, [profileQuery.data, updateUser]);
@@ -888,6 +927,7 @@ export function ProfileScreen(): JSX.Element {
       ) : null}
 
       <section className="profile-sports-data" aria-label="Спортивные данные игрока">
+        <ReferralPanel summary={referralQuery.data} onOpen={() => navigate('/referrals')} />
         <EquipmentPanel
           inventory={inventoryQuery.data}
           onOpen={() => navigate('/profile/equipment')}

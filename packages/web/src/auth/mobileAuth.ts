@@ -1,6 +1,7 @@
 import { apiFetch } from '../api/apiFetch.js';
 import { isNativeAndroid } from '../platform/runtime.js';
 import { useAuthStore, type AuthSession } from './authStore.js';
+import { clearPendingReferralCode, referralAuthFields } from './referral.js';
 
 export type MobileAuthProvider = 'telegram' | 'vk';
 
@@ -55,7 +56,7 @@ export async function startMobileAuth(provider: MobileAuthProvider): Promise<voi
   const codeVerifier = randomVerifier();
   const attempt = await apiFetch<{ attemptId: string; expiresAt: string }>('/mobile/auth/attempt', {
     method: 'POST',
-    body: JSON.stringify({ provider, codeChallenge: await challenge(codeVerifier) }),
+    body: JSON.stringify({ provider, codeChallenge: await challenge(codeVerifier), ...referralAuthFields() }),
   });
   await plugins.SecureSession.save({
     slot: 'pendingAuth',
@@ -110,6 +111,7 @@ export async function handleMobileAuthDeepLink(
     body: JSON.stringify({ handoffCode, codeVerifier: pending.codeVerifier }),
   });
   useAuthStore.getState().setSession(session);
+  clearPendingReferralCode();
   await plugins.SecureSession.clear({ slot: 'pendingAuth' });
   await plugins.Browser.close().catch(() => undefined);
   navigateHome();

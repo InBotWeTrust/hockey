@@ -43,6 +43,7 @@ describe('LoginScreen', () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
     localStorage.clear();
+    sessionStorage.clear();
     useAuthStore.getState().clearSession();
     delete (window as TelegramWebAppWindow).Telegram;
     vi.unstubAllEnvs();
@@ -91,6 +92,16 @@ describe('LoginScreen', () => {
       height: 'var(--app-viewport-height, 100dvh)',
       overflowY: 'auto',
     });
+  });
+
+  it('prefills and edits the optional referral code', () => {
+    sessionStorage.setItem('hockey.pendingReferral', 'TEAM25');
+    renderWith();
+    const input = screen.getByRole('textbox', { name: /код приглашения/i });
+    expect(input).toHaveValue('TEAM25');
+    fireEvent.change(input, { target: { value: ' new-77 ' } });
+    expect(input).toHaveValue('NEW77');
+    expect(sessionStorage.getItem('hockey.pendingReferral')).toBe('NEW77');
   });
 
   it('matches the native Telegram widget dimensions for every login action', () => {

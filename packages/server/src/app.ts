@@ -38,6 +38,8 @@ import { coinPackageRoutes } from './payments/routes.js';
 import { createYooKassaClient, type YooKassaClient } from './payments/yookassaClient.js';
 import { nativeCorsPlugin } from './plugins/nativeCors.js';
 import { mobileReleaseRoutes } from './mobileRelease/routes.js';
+import { referralRoutes } from './referrals/routes.js';
+import { referralAdminRoutes } from './referrals/adminRoutes.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -184,6 +186,8 @@ export async function buildApp(options: BuildAppOptions = {}) {
     ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
   });
   await app.register(meRoutes);
+  await app.register(referralRoutes);
+  await app.register(referralAdminRoutes);
   await app.register(arenaRoutes);
   await app.register(bonusGameRoutes, { bonusSeedSecret: config.DAILY_SEED_SECRET });
   await app.register(inventoryRoutes);

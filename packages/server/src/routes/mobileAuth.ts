@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { createJwt } from '../auth/jwt.js';
 import {
@@ -35,6 +35,9 @@ interface AuthUserRow {
 const attemptSchema = z.object({
   provider: z.enum(['telegram', 'vk']),
   codeChallenge: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  referralCode: z.string().trim().min(1).max(32).optional(),
+  referralSource: z.enum(['manual', 'link']).optional(),
+  installationId: z.string().min(8).max(128).optional(),
 });
 
 const exchangeSchema = z.object({
@@ -68,7 +71,13 @@ export const mobileAuthRoutes: FastifyPluginAsync<MobileAuthRoutesOptions> = asy
   app.post('/mobile/auth/attempt', async (req, reply) => {
     const body = attemptSchema.safeParse(req.body);
     if (!body.success) throw new AppError('bad_request', 'invalid mobile auth attempt', 400);
-    const attempt = await createMobileAuthAttempt(app.redis, body.data);
+    const hash = (value: string): string => createHmac('sha256', opts.accessSecret).update(value).digest('hex');
+    const attempt = await createMobileAuthAttempt(app.redis, {
+      provider: body.data.provider,
+      codeChallenge: body.data.codeChallenge,
+      ...(body.data.referralCode ? { referralCode: body.data.referralCode, referralSource: body.data.referralSource ?? 'manual', referralIpHash: hash(`ip:${req.ip}`) } : {}),
+      ...(body.data.referralCode && body.data.installationId ? { referralInstallationHash: hash(`installation:${body.data.installationId}`) } : {}),
+    });
     reply.status(201).send(attempt);
   });
 
@@ -169,9 +178,11 @@ export const mobileAuthRoutes: FastifyPluginAsync<MobileAuthRoutesOptions> = asy
       accessToken: exchange.accessToken,
       appId: opts.vkAppId,
     });
+    const attempt = await assertMobileAuthAttempt(app.redis, state.attemptId, 'vk');
     const user = await findOrLinkOrCreateVkUser(app.pg, {
       vkUserId: exchange.vkUserId,
       profile,
+      ...attempt,
       ...(opts.accountRecoveryTelegramProviderUids === undefined
         ? {}
         : { recoveryMergeTelegramProviderUids: opts.accountRecoveryTelegramProviderUids }),
@@ -197,7 +208,7 @@ export const mobileAuthRoutes: FastifyPluginAsync<MobileAuthRoutesOptions> = asy
     } catch {
       throw new AppError('unauthenticated', 'telegram hash invalid', 401);
     }
-    await assertMobileAuthAttempt(app.redis, attemptId, 'telegram');
+    const attempt = await assertMobileAuthAttempt(app.redis, attemptId, 'telegram');
     const displayName =
       [telegramUser.firstName, telegramUser.lastName].filter(Boolean).join(' ') ||
       telegramUser.username ||
@@ -209,6 +220,7 @@ export const mobileAuthRoutes: FastifyPluginAsync<MobileAuthRoutesOptions> = asy
       ...(telegramUser.username === undefined ? {} : { username: telegramUser.username }),
       ...(telegramUser.firstName ? { firstName: telegramUser.firstName } : {}),
       ...(telegramUser.lastName === undefined ? {} : { lastName: telegramUser.lastName }),
+      ...attempt,
       ...(opts.accountRecoveryTelegramProviderUids === undefined
         ? {}
         : { recoveryMergeTelegramProviderUids: opts.accountRecoveryTelegramProviderUids }),

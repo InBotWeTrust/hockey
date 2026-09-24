@@ -9,6 +9,12 @@ import { detectTimezone } from '../auth/timezone.js';
 import { useTelegramMiniAppAuth } from '../auth/useTelegramMiniAppAuth.js';
 import { startMobileAuth, type MobileAuthProvider } from '../auth/mobileAuth.js';
 import { isNativeAndroid } from '../platform/runtime.js';
+import {
+  clearPendingReferralCode,
+  getPendingReferralCode,
+  referralAuthFields,
+  setPendingReferralCode,
+} from '../auth/referral.js';
 
 const COMPACT_CODE_VIEWPORT_HEIGHT = 520;
 
@@ -37,16 +43,18 @@ export function LoginScreen(): JSX.Element {
   const [mobileAuthError, setMobileAuthError] = useState<string | null>(null);
   const [compactCodeViewport, setCompactCodeViewport] = useState(isKeyboardSizedViewport);
   const [miniAppLoginStarted, setMiniAppLoginStarted] = useState(false);
+  const [referralCode, setReferralCode] = useState(getPendingReferralCode);
   const miniAppAuth = useTelegramMiniAppAuth(miniAppLoginStarted);
 
   const mutation = useMutation<AuthSession, Error, TelegramAuthPayload>({
     mutationFn: (payload) =>
       apiFetch<AuthSession>('/auth/telegram', {
         method: 'POST',
-        body: JSON.stringify({ ...payload, timezone: detectTimezone() }),
+        body: JSON.stringify({ ...payload, timezone: detectTimezone(), ...referralAuthFields() }),
       }),
     onSuccess: (session) => {
       setSession(session);
+      clearPendingReferralCode();
       navigate('/', { replace: true });
     },
   });
@@ -81,6 +89,10 @@ export function LoginScreen(): JSX.Element {
             <Link to="/privacy">Политика конфиденциальности</Link>, а также даёте{' '}
             <Link to="/personal-data-consent">согласие на обработку персональных данных</Link>.
           </p>
+          <label className="login-screen__referral">
+            <span>Код приглашения <small>необязательно</small></span>
+            <input value={referralCode} maxLength={32} autoCapitalize="characters" autoComplete="off" placeholder="Введите код" onChange={(event) => setReferralCode(setPendingReferralCode(event.target.value))} />
+          </label>
           <button
             type="button"
             className="btn btn--cta"
@@ -170,6 +182,17 @@ export function LoginScreen(): JSX.Element {
       <div className="login-screen__spacer" style={{ flex: 1, minHeight: 8 }} />
 
       <div className="login-screen__actions">
+        <label className="login-screen__referral">
+          <span>Код приглашения <small>необязательно</small></span>
+          <input
+            value={referralCode}
+            maxLength={32}
+            autoCapitalize="characters"
+            autoComplete="off"
+            placeholder="Введите код"
+            onChange={(event) => setReferralCode(setPendingReferralCode(event.target.value))}
+          />
+        </label>
         {isNativeAndroid() ? (
           <>
             <button

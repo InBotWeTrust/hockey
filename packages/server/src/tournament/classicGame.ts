@@ -14,6 +14,7 @@ import {
   observeCareerActivityStreak,
   observeCareerGoal,
 } from '../achievements/service.js';
+import { reconcileReferralQualification } from '../referrals/service.js';
 import { deriveClassicTournamentSeed, deriveShotSeed } from '../duel/seed.js';
 import {
   assertGameplayActionAllowed,
@@ -1645,6 +1646,7 @@ export async function submitClassicGameShot(
       lifetimeGoals: Number(user.lifetime_goals_total),
       level: Number(user.level),
     });
+    await reconcileReferralQualification(client, input.userId);
     if (serverResult === 'goal') {
       await observeCareerGoal(client, input.userId, {
         eventKey: `tournament-classic:${session.id}:${session.current_period}:${input.shotIndex}`,
