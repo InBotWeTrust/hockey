@@ -7595,11 +7595,17 @@ button.profile-story-series-card {
 
 .duel-result-card__compact-meta {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  column-gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
   row-gap: 7px;
   align-items: baseline;
   padding: 1px 2px 2px;
+}
+
+.duel-result-card__points-rewards {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .duel-result-card__compact-fact {
@@ -11960,6 +11966,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-duel-result__matchup {
+  container-type: inline-size;
   margin-top: 10px;
   padding: 10px;
   border: 1px solid rgba(255, 255, 255, 0.7);
@@ -12032,6 +12039,57 @@ button.daily-calendar__day:active {
   line-height: 1.2;
 }
 
+.duel-result-card__points-rewards--single-line {
+  min-width: 0;
+  width: 100%;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  gap: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+@container (max-width: 300px) {
+  .duel-result-card__points-rewards--single-line {
+    font-size: 11px;
+  }
+}
+
+@container (max-width: 250px) {
+  .duel-result-card__points-rewards--single-line {
+    font-size: 9px;
+  }
+}
+
+@container (max-width: 205px) {
+  .duel-result-card__points-rewards--single-line {
+    font-size: 7px;
+  }
+}
+
+.duel-result-card__reward-values {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: clamp(3px, 0.8vw, 8px);
+}
+
+.duel-result-card__points-rewards--single-line .duel-result-points,
+.duel-result-card__points-rewards--single-line .duel-result-points strong,
+.duel-result-card__points-rewards--single-line .duel-earned-rewards__item {
+  font-size: inherit;
+}
+
+.duel-result-card__points-rewards--single-line .duel-earned-rewards {
+  flex-wrap: nowrap;
+  gap: clamp(3px, 0.8vw, 8px);
+}
+
+.duel-result-card__points-rewards--single-line .duel-earned-rewards__item svg {
+  width: 1.3em;
+  height: 1.3em;
+}
+
 .tournament-duel-result__meta strong,
 .tournament-duel-result__meta b {
   color: #4f5f73;
@@ -12043,13 +12101,8 @@ button.daily-calendar__day:active {
   flex: 0 0 auto;
   align-items: baseline;
   gap: 5px;
-  margin-left: auto;
-  padding: 5px 8px;
-  border: 1px solid rgba(82, 98, 119, 0.2);
-  border-radius: 999px;
-  background: rgba(82, 98, 119, 0.1);
   color: #667487;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   line-height: 1;
   white-space: nowrap;

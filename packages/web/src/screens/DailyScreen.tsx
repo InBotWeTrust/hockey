@@ -6364,8 +6364,6 @@ function DuelResultCard({
   const hasPeriodDetails = mePeriods.length > 0 || opponentPeriods.length > 0;
   const hasMultiplePeriods = match.rules.totalPeriods > 1;
   const tiebreaker = duelTiebreakerExplanation(match);
-  const hasSupplementalDetails =
-    tiebreaker !== null || Boolean(match.earned_reward?.stars || match.earned_reward?.experience);
 
   return (
     <div
@@ -6390,7 +6388,10 @@ function DuelResultCard({
         {compact ? (
           <>
             <div className="duel-result-card__compact-meta">
-              <DuelResultCompactFact label="Очки" value={pointsText} />
+              <div className="duel-result-card__points-rewards">
+                <DuelResultCompactFact label="Очки" value={pointsText} />
+                <DuelEarnedRewards reward={match.earned_reward ?? null} />
+              </div>
               <DuelResultCompactFact label="Начало" value={formatShortDateTime(match.starts_at)} />
             </div>
             <section className="duel-result-card__compact-summary">
@@ -6412,15 +6413,10 @@ function DuelResultCard({
                 }}
               />
             </section>
-            {hasSupplementalDetails && (
+            {tiebreaker && (
               <div className="duel-result-card__compact-details">
-                {tiebreaker && (
-                  <>
-                    <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
-                    <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
-                  </>
-                )}
-                <DuelEarnedRewards reward={match.earned_reward ?? null} />
+                <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
+                <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
               </div>
             )}
           </>
@@ -6520,13 +6516,22 @@ function DuelResultCard({
                 </strong>
               </div>
               <div className="tournament-duel-result__meta">
-                <span>
-                  <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
-                </span>
-                {match.source !== 'tournament' && (
-                  <span className="duel-result-points" aria-label={`Очки за дуэль: ${pointsText}`}>
-                    <span>Очки</span>
-                    <strong>{pointsText}</strong>
+                {match.source !== 'tournament' ? (
+                  <span className="duel-result-card__points-rewards duel-result-card__points-rewards--single-line">
+                    <span>
+                      <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
+                    </span>
+                    <span className="duel-result-card__reward-values">
+                      <span className="duel-result-points" aria-label={`Очки за дуэль: ${pointsText}`}>
+                        <span>Очки</span>
+                        <strong>{pointsText}</strong>
+                      </span>
+                      <DuelEarnedRewards reward={match.earned_reward ?? null} />
+                    </span>
+                  </span>
+                ) : (
+                  <span>
+                    <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
                   </span>
                 )}
                 {series !== null && series.winsRequired > 1 && (
@@ -6539,7 +6544,7 @@ function DuelResultCard({
                 )}
               </div>
             </div>
-            {hasSupplementalDetails && (
+            {tiebreaker && (
               <div
                 style={{
                   marginTop: 10,
@@ -6547,13 +6552,8 @@ function DuelResultCard({
                   gap: 8,
                 }}
               >
-                {tiebreaker && (
-                  <>
-                    <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
-                    <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
-                  </>
-                )}
-                <DuelEarnedRewards reward={match.earned_reward ?? null} />
+                <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
+                <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
               </div>
             )}
           </>

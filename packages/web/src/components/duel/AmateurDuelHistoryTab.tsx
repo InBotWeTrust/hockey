@@ -6,7 +6,6 @@ import {
   type AmateurDuelHistoryCalendarMatch,
 } from '../../api/amateurDuel.js';
 import { UserAvatar } from '../../chat/components/UserAvatar.js';
-import { DuelEarnedRewards } from './DuelEarnedRewards.js';
 
 const WEEKDAYS = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
 const MONTH_NAMES = [
@@ -395,7 +394,6 @@ export function AmateurDuelHistoryTab({
                           {duelKindLabel(match.duel_kind)} · {match.my_goals}:{match.opponent_goals}{' '}
                           · {venueLabel(match.venue_role)}
                         </span>
-                        <DuelEarnedRewards reward={match.earned_reward ?? null} />
                       </span>
                       <span className="duel-day-match__aside">
                         <span
