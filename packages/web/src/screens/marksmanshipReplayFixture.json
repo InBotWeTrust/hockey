@@ -1,0 +1,2442 @@
+[
+  {
+    "key": "egor-78",
+    "label": "Егор · 78",
+    "matchSeed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7",
+    "goalieId": "rookie",
+    "stickZoneMultiplier": 1,
+    "shots": [
+      {
+        "index": 1,
+        "wallMs": 1231,
+        "input": {
+          "tapTime": 987.1000000089407,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 987.1000000089407,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s1",
+        "result": "goal"
+      },
+      {
+        "index": 2,
+        "wallMs": 3281,
+        "input": {
+          "tapTime": 2044.7000000029802,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 1636.9000000059605,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s2",
+        "result": "goal"
+      },
+      {
+        "index": 3,
+        "wallMs": 5389,
+        "input": {
+          "tapTime": 3125.9000000059605,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 2302.6000000089407,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s3",
+        "result": "goal"
+      },
+      {
+        "index": 4,
+        "wallMs": 8196,
+        "input": {
+          "tapTime": 4951.4000000059605,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 3702.6000000089407,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s4",
+        "result": "goal"
+      },
+      {
+        "index": 5,
+        "wallMs": 11455,
+        "input": {
+          "tapTime": 7209.20000000298,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 5536.20000000298,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s5",
+        "result": "goal"
+      },
+      {
+        "index": 6,
+        "wallMs": 13950,
+        "input": {
+          "tapTime": 8697.20000000298,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 6600.5,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s6",
+        "result": "save"
+      },
+      {
+        "index": 7,
+        "wallMs": 15951,
+        "input": {
+          "tapTime": 9743.40000000596,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 7222.70000000298,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s7",
+        "result": "goal"
+      },
+      {
+        "index": 8,
+        "wallMs": 17899,
+        "input": {
+          "tapTime": 10683.700000017881,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 7756.300000011921,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s8",
+        "result": "goal"
+      },
+      {
+        "index": 9,
+        "wallMs": 19971,
+        "input": {
+          "tapTime": 11766.300000011921,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 8415.800000011921,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s9",
+        "result": "goal"
+      },
+      {
+        "index": 10,
+        "wallMs": 22038,
+        "input": {
+          "tapTime": 12837.500000014901,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 9064.700000017881,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s10",
+        "result": "goal"
+      },
+      {
+        "index": 11,
+        "wallMs": 24126,
+        "input": {
+          "tapTime": 13927.100000023842,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 9730.100000023842,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s11",
+        "result": "goal"
+      },
+      {
+        "index": 12,
+        "wallMs": 26098,
+        "input": {
+          "tapTime": 14918.900000020862,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 10305.100000023842,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s12",
+        "result": "miss"
+      },
+      {
+        "index": 13,
+        "wallMs": 28993,
+        "input": {
+          "tapTime": 16784.400000035763,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 11746.300000026822,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s13",
+        "result": "goal"
+      },
+      {
+        "index": 14,
+        "wallMs": 31407,
+        "input": {
+          "tapTime": 17838.300000041723,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 12383.500000029802,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s14",
+        "result": "goal"
+      },
+      {
+        "index": 15,
+        "wallMs": 33895,
+        "input": {
+          "tapTime": 19702.600000038743,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 13819.000000029802,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s15",
+        "result": "goal"
+      },
+      {
+        "index": 16,
+        "wallMs": 35908,
+        "input": {
+          "tapTime": 20712.300000026822,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 14411.300000026822,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s16",
+        "result": "goal"
+      },
+      {
+        "index": 17,
+        "wallMs": 37996,
+        "input": {
+          "tapTime": 21802.300000026822,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 15086.500000029802,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s17",
+        "result": "goal"
+      },
+      {
+        "index": 18,
+        "wallMs": 40082,
+        "input": {
+          "tapTime": 22884.100000023842,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 15752.900000035763,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s18",
+        "result": "goal"
+      },
+      {
+        "index": 19,
+        "wallMs": 42138,
+        "input": {
+          "tapTime": 23933.90000002086,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 16377.600000038743,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s19",
+        "result": "goal"
+      },
+      {
+        "index": 20,
+        "wallMs": 44178,
+        "input": {
+          "tapTime": 24980.800000026822,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 17009.400000035763,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s20",
+        "result": "goal"
+      },
+      {
+        "index": 21,
+        "wallMs": 46254,
+        "input": {
+          "tapTime": 26028.000000029802,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 17648.100000038743,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s21",
+        "result": "goal"
+      },
+      {
+        "index": 22,
+        "wallMs": 48243,
+        "input": {
+          "tapTime": 27045.40000002086,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 18246.800000026822,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s22",
+        "result": "goal"
+      },
+      {
+        "index": 23,
+        "wallMs": 51122,
+        "input": {
+          "tapTime": 28919.90000002086,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 19695.800000026822,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s23",
+        "result": "goal"
+      },
+      {
+        "index": 24,
+        "wallMs": 53151,
+        "input": {
+          "tapTime": 29967.500000029802,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 20319.500000029802,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s24",
+        "result": "goal"
+      },
+      {
+        "index": 25,
+        "wallMs": 55205,
+        "input": {
+          "tapTime": 31018.300000026822,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 20960.300000026822,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s25",
+        "result": "goal"
+      },
+      {
+        "index": 26,
+        "wallMs": 57274,
+        "input": {
+          "tapTime": 32084.100000023842,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 21618.70000001788,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s26",
+        "result": "goal"
+      },
+      {
+        "index": 27,
+        "wallMs": 59337,
+        "input": {
+          "tapTime": 33124.10000003874,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 22251.000000029802,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s27",
+        "result": "goal"
+      },
+      {
+        "index": 28,
+        "wallMs": 62219,
+        "input": {
+          "tapTime": 34915.0000000447,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 23633.400000035763,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s28",
+        "result": "miss"
+      },
+      {
+        "index": 29,
+        "wallMs": 64209,
+        "input": {
+          "tapTime": 35987.0000000447,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 24288.300000041723,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s29",
+        "result": "goal"
+      },
+      {
+        "index": 30,
+        "wallMs": 66292,
+        "input": {
+          "tapTime": 37073.60000003874,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 24955.600000038743,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s30",
+        "result": "goal"
+      },
+      {
+        "index": 31,
+        "wallMs": 69122,
+        "input": {
+          "tapTime": 38904.60000003874,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 26372.600000038743,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s31",
+        "result": "goal"
+      },
+      {
+        "index": 32,
+        "wallMs": 71187,
+        "input": {
+          "tapTime": 39967.20000003278,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 27010.500000029802,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s32",
+        "result": "goal"
+      },
+      {
+        "index": 33,
+        "wallMs": 73211,
+        "input": {
+          "tapTime": 40992.80000004172,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 27602.900000035763,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s33",
+        "result": "goal"
+      },
+      {
+        "index": 34,
+        "wallMs": 75300,
+        "input": {
+          "tapTime": 42076.0000000447,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 28271.000000044703,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s34",
+        "result": "goal"
+      },
+      {
+        "index": 35,
+        "wallMs": 77390,
+        "input": {
+          "tapTime": 43148.400000050664,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 28912.200000047684,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s35",
+        "result": "goal"
+      },
+      {
+        "index": 36,
+        "wallMs": 79377,
+        "input": {
+          "tapTime": 44187.000000059605,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 29524.900000050664,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s36",
+        "result": "goal"
+      },
+      {
+        "index": 37,
+        "wallMs": 81467,
+        "input": {
+          "tapTime": 45282.600000053644,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 30192.400000050664,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s37",
+        "result": "goal"
+      },
+      {
+        "index": 38,
+        "wallMs": 83542,
+        "input": {
+          "tapTime": 46290.5000000447,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 30789.000000044703,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s38",
+        "result": "goal"
+      },
+      {
+        "index": 39,
+        "wallMs": 85578,
+        "input": {
+          "tapTime": 47363.700000047684,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 31443.800000041723,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s39",
+        "result": "goal"
+      },
+      {
+        "index": 40,
+        "wallMs": 88439,
+        "input": {
+          "tapTime": 49220.900000050664,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 32873.200000047684,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s40",
+        "result": "goal"
+      },
+      {
+        "index": 41,
+        "wallMs": 90970,
+        "input": {
+          "tapTime": 50284.200000047684,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 33516.5000000447,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s41",
+        "result": "goal"
+      },
+      {
+        "index": 42,
+        "wallMs": 92518,
+        "input": {
+          "tapTime": 51323.400000050664,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 34124.700000047684,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s42",
+        "result": "goal"
+      },
+      {
+        "index": 43,
+        "wallMs": 94567,
+        "input": {
+          "tapTime": 52380.300000056624,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 34757.100000053644,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s43",
+        "result": "goal"
+      },
+      {
+        "index": 44,
+        "wallMs": 96641,
+        "input": {
+          "tapTime": 53452.400000050664,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 35404.900000050664,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s44",
+        "result": "goal"
+      },
+      {
+        "index": 45,
+        "wallMs": 98713,
+        "input": {
+          "tapTime": 54526.100000053644,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 36054.400000050664,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s45",
+        "result": "goal"
+      },
+      {
+        "index": 46,
+        "wallMs": 100731,
+        "input": {
+          "tapTime": 55559.900000065565,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 36663.300000056624,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s46",
+        "result": "goal"
+      },
+      {
+        "index": 47,
+        "wallMs": 102291,
+        "input": {
+          "tapTime": 56141.700000062585,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 36828.600000053644,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s47",
+        "result": "goal"
+      },
+      {
+        "index": 48,
+        "wallMs": 104361,
+        "input": {
+          "tapTime": 57207.400000065565,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 37487.000000059605,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s48",
+        "result": "goal"
+      },
+      {
+        "index": 49,
+        "wallMs": 106859,
+        "input": {
+          "tapTime": 58677.800000056624,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 38550.100000053644,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s49",
+        "result": "save"
+      },
+      {
+        "index": 50,
+        "wallMs": 108833,
+        "input": {
+          "tapTime": 59657.600000068545,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 39096.600000053644,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s50",
+        "result": "goal"
+      },
+      {
+        "index": 51,
+        "wallMs": 110878,
+        "input": {
+          "tapTime": 60699.100000068545,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 39726.500000059605,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s51",
+        "result": "goal"
+      },
+      {
+        "index": 52,
+        "wallMs": 112988,
+        "input": {
+          "tapTime": 61808.300000056624,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 40410.500000059605,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s52",
+        "result": "goal"
+      },
+      {
+        "index": 53,
+        "wallMs": 115056,
+        "input": {
+          "tapTime": 62855.600000053644,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 41050.800000056624,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s53",
+        "result": "goal"
+      },
+      {
+        "index": 54,
+        "wallMs": 117108,
+        "input": {
+          "tapTime": 63906.100000053644,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 41684.700000062585,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s54",
+        "result": "goal"
+      },
+      {
+        "index": 55,
+        "wallMs": 119204,
+        "input": {
+          "tapTime": 64961.0000000447,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 42333.500000059605,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s55",
+        "result": "goal"
+      },
+      {
+        "index": 56,
+        "wallMs": 121271,
+        "input": {
+          "tapTime": 66052.30000004172,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 42991.000000059605,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s56",
+        "result": "goal"
+      },
+      {
+        "index": 57,
+        "wallMs": 123294,
+        "input": {
+          "tapTime": 67085.20000003278,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 43599.100000053644,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s57",
+        "result": "goal"
+      },
+      {
+        "index": 58,
+        "wallMs": 126137,
+        "input": {
+          "tapTime": 68934.0000000298,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 45032.200000047684,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s58",
+        "result": "goal"
+      },
+      {
+        "index": 59,
+        "wallMs": 128199,
+        "input": {
+          "tapTime": 69985.0000000447,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 45673.600000053644,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s59",
+        "result": "goal"
+      },
+      {
+        "index": 60,
+        "wallMs": 130242,
+        "input": {
+          "tapTime": 71043.30000004172,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 46314.800000056624,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s60",
+        "result": "goal"
+      },
+      {
+        "index": 61,
+        "wallMs": 132281,
+        "input": {
+          "tapTime": 72057.5000000447,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 46920.300000056624,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s61",
+        "result": "goal"
+      },
+      {
+        "index": 62,
+        "wallMs": 134340,
+        "input": {
+          "tapTime": 73106.80000004172,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 47546.200000062585,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s62",
+        "result": "goal"
+      },
+      {
+        "index": 63,
+        "wallMs": 136434,
+        "input": {
+          "tapTime": 74160.0000000447,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 48183.700000062585,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s63",
+        "result": "goal"
+      },
+      {
+        "index": 64,
+        "wallMs": 138508,
+        "input": {
+          "tapTime": 75269.90000005066,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 48866.500000059605,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s64",
+        "result": "goal"
+      },
+      {
+        "index": 65,
+        "wallMs": 140500,
+        "input": {
+          "tapTime": 76261.90000005066,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 49450.000000059605,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s65",
+        "result": "goal"
+      },
+      {
+        "index": 66,
+        "wallMs": 144284,
+        "input": {
+          "tapTime": 78960.90000005066,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 51724.900000050664,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s66",
+        "result": "goal"
+      },
+      {
+        "index": 67,
+        "wallMs": 146407,
+        "input": {
+          "tapTime": 79992.30000005662,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 52349.600000053644,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s67",
+        "result": "goal"
+      },
+      {
+        "index": 68,
+        "wallMs": 148512,
+        "input": {
+          "tapTime": 81039.5000000596,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 52980.600000053644,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s68",
+        "result": "goal"
+      },
+      {
+        "index": 69,
+        "wallMs": 150543,
+        "input": {
+          "tapTime": 82072.20000006258,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 53606.100000053644,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s69",
+        "result": "goal"
+      },
+      {
+        "index": 70,
+        "wallMs": 152559,
+        "input": {
+          "tapTime": 83122.30000005662,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 54232.800000056624,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s70",
+        "result": "goal"
+      },
+      {
+        "index": 71,
+        "wallMs": 154690,
+        "input": {
+          "tapTime": 84200.90000005066,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 54884.100000053644,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s71",
+        "result": "goal"
+      },
+      {
+        "index": 72,
+        "wallMs": 156754,
+        "input": {
+          "tapTime": 85239.10000005364,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 55501.200000047684,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s72",
+        "result": "goal"
+      },
+      {
+        "index": 73,
+        "wallMs": 158900,
+        "input": {
+          "tapTime": 86294.10000005364,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 56132.200000047684,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s73",
+        "result": "goal"
+      },
+      {
+        "index": 74,
+        "wallMs": 160837,
+        "input": {
+          "tapTime": 87341.90000005066,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 56763.80000004172,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s74",
+        "result": "goal"
+      },
+      {
+        "index": 75,
+        "wallMs": 163427,
+        "input": {
+          "tapTime": 89204.90000005066,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 58201.5000000447,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s75",
+        "result": "goal"
+      },
+      {
+        "index": 76,
+        "wallMs": 165470,
+        "input": {
+          "tapTime": 90251.80000005662,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 58815.80000004172,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s76",
+        "result": "goal"
+      },
+      {
+        "index": 77,
+        "wallMs": 167542,
+        "input": {
+          "tapTime": 91305.0000000596,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 59449.5000000447,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s77",
+        "result": "goal"
+      },
+      {
+        "index": 78,
+        "wallMs": 169632,
+        "input": {
+          "tapTime": 92403.60000006855,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 60124.300000056624,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s78",
+        "result": "goal"
+      },
+      {
+        "index": 79,
+        "wallMs": 171684,
+        "input": {
+          "tapTime": 93446.5000000596,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 60755.300000056624,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s79",
+        "result": "goal"
+      },
+      {
+        "index": 80,
+        "wallMs": 173756,
+        "input": {
+          "tapTime": 94521.40000006557,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 61405.600000068545,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s80",
+        "result": "goal"
+      },
+      {
+        "index": 81,
+        "wallMs": 175796,
+        "input": {
+          "tapTime": 95554.90000006557,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 62031.300000071526,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s81",
+        "result": "goal"
+      },
+      {
+        "index": 82,
+        "wallMs": 177838,
+        "input": {
+          "tapTime": 96585.30000007153,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 62645.300000071526,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s82",
+        "result": "goal"
+      },
+      {
+        "index": 83,
+        "wallMs": 179650,
+        "input": {
+          "tapTime": 97341.80000007153,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 62969.000000074506,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7:p1:s83",
+        "result": "miss"
+      }
+    ]
+  },
+  {
+    "key": "dmitry-79",
+    "label": "Дмитрий · 79",
+    "matchSeed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14",
+    "goalieId": "rookie",
+    "stickZoneMultiplier": 1,
+    "shots": [
+      {
+        "index": 1,
+        "wallMs": 1464,
+        "input": {
+          "tapTime": 1199.5,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 1199.5,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s1",
+        "result": "goal"
+      },
+      {
+        "index": 2,
+        "wallMs": 3294,
+        "input": {
+          "tapTime": 2035.3999998569489,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 1620.2999999523163,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s2",
+        "result": "goal"
+      },
+      {
+        "index": 3,
+        "wallMs": 5353,
+        "input": {
+          "tapTime": 3111.5,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 2269.7000000476837,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s3",
+        "result": "goal"
+      },
+      {
+        "index": 4,
+        "wallMs": 7383,
+        "input": {
+          "tapTime": 4133.499999761581,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 2882,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s4",
+        "result": "goal"
+      },
+      {
+        "index": 5,
+        "wallMs": 9439,
+        "input": {
+          "tapTime": 5176.899999856949,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 3515.600000143051,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s5",
+        "result": "goal"
+      },
+      {
+        "index": 6,
+        "wallMs": 11467,
+        "input": {
+          "tapTime": 6201.299999952316,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 4131.300000190735,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s6",
+        "result": "goal"
+      },
+      {
+        "index": 7,
+        "wallMs": 13527,
+        "input": {
+          "tapTime": 7262.899999856949,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 4766.400000095367,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s7",
+        "result": "goal"
+      },
+      {
+        "index": 8,
+        "wallMs": 15587,
+        "input": {
+          "tapTime": 8353.5,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 5431.600000143051,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s8",
+        "result": "goal"
+      },
+      {
+        "index": 9,
+        "wallMs": 17615,
+        "input": {
+          "tapTime": 9363.399999856949,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 6031.100000143051,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s9",
+        "result": "goal"
+      },
+      {
+        "index": 10,
+        "wallMs": 19672,
+        "input": {
+          "tapTime": 10438.400000095367,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 6679.800000190735,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s10",
+        "result": "goal"
+      },
+      {
+        "index": 11,
+        "wallMs": 21723,
+        "input": {
+          "tapTime": 11485,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 7315.700000047684,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s11",
+        "result": "goal"
+      },
+      {
+        "index": 12,
+        "wallMs": 23771,
+        "input": {
+          "tapTime": 12540.400000095367,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 7948.100000143051,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s12",
+        "result": "goal"
+      },
+      {
+        "index": 13,
+        "wallMs": 25778,
+        "input": {
+          "tapTime": 13548.799999952316,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 8530.700000047684,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s13",
+        "result": "miss"
+      },
+      {
+        "index": 14,
+        "wallMs": 27920,
+        "input": {
+          "tapTime": 14687.799999713898,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 9260.599999904633,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s14",
+        "result": "goal"
+      },
+      {
+        "index": 15,
+        "wallMs": 29959,
+        "input": {
+          "tapTime": 15729.199999809265,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 9875.199999809265,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s15",
+        "result": "goal"
+      },
+      {
+        "index": 16,
+        "wallMs": 31987,
+        "input": {
+          "tapTime": 16760.200000047684,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 10479.399999856949,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s16",
+        "result": "goal"
+      },
+      {
+        "index": 17,
+        "wallMs": 34078,
+        "input": {
+          "tapTime": 17854.299999952316,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 11146.699999809265,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s17",
+        "result": "goal"
+      },
+      {
+        "index": 18,
+        "wallMs": 35810,
+        "input": {
+          "tapTime": 18575.400000095367,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 11460.399999856949,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s18",
+        "result": "miss"
+      },
+      {
+        "index": 19,
+        "wallMs": 37832,
+        "input": {
+          "tapTime": 19520.5,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 11975.899999856949,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s19",
+        "result": "goal"
+      },
+      {
+        "index": 20,
+        "wallMs": 39412,
+        "input": {
+          "tapTime": 20195.400000095367,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 12222.099999904633,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s20",
+        "result": "miss"
+      },
+      {
+        "index": 21,
+        "wallMs": 41411,
+        "input": {
+          "tapTime": 21191.50000023842,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 12789.200000047684,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s21",
+        "result": "goal"
+      },
+      {
+        "index": 22,
+        "wallMs": 43518,
+        "input": {
+          "tapTime": 22298.299999952316,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 13469.399999856949,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s22",
+        "result": "goal"
+      },
+      {
+        "index": 23,
+        "wallMs": 45556,
+        "input": {
+          "tapTime": 23324.60000014305,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 14084.700000047684,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s23",
+        "result": "goal"
+      },
+      {
+        "index": 24,
+        "wallMs": 47607,
+        "input": {
+          "tapTime": 24363.60000014305,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 14696.100000143051,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s24",
+        "result": "goal"
+      },
+      {
+        "index": 25,
+        "wallMs": 49667,
+        "input": {
+          "tapTime": 25443,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 15345.900000095367,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s25",
+        "result": "goal"
+      },
+      {
+        "index": 26,
+        "wallMs": 51731,
+        "input": {
+          "tapTime": 26505.200000047684,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 15977.200000047684,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s26",
+        "result": "goal"
+      },
+      {
+        "index": 27,
+        "wallMs": 53800,
+        "input": {
+          "tapTime": 27567.700000286102,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 16612.60000014305,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s27",
+        "result": "goal"
+      },
+      {
+        "index": 28,
+        "wallMs": 55849,
+        "input": {
+          "tapTime": 28624.900000095367,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 17261.5,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s28",
+        "result": "goal"
+      },
+      {
+        "index": 29,
+        "wallMs": 57919,
+        "input": {
+          "tapTime": 29686.800000190735,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 17896.299999952316,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s29",
+        "result": "save"
+      },
+      {
+        "index": 30,
+        "wallMs": 59977,
+        "input": {
+          "tapTime": 30744.10000014305,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 18529.599999904633,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s30",
+        "result": "goal"
+      },
+      {
+        "index": 31,
+        "wallMs": 62202,
+        "input": {
+          "tapTime": 31802.900000333786,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 19177.5,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s31",
+        "result": "save"
+      },
+      {
+        "index": 32,
+        "wallMs": 63473,
+        "input": {
+          "tapTime": 32246.00000023842,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 19193.89999985695,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s32",
+        "result": "goal"
+      },
+      {
+        "index": 33,
+        "wallMs": 65310,
+        "input": {
+          "tapTime": 33076.50000023842,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 19609.199999809265,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s33",
+        "result": "goal"
+      },
+      {
+        "index": 34,
+        "wallMs": 67338,
+        "input": {
+          "tapTime": 34120.30000042915,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 20225,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s34",
+        "result": "goal"
+      },
+      {
+        "index": 35,
+        "wallMs": 69396,
+        "input": {
+          "tapTime": 35162.900000333786,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 20856.799999952316,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s35",
+        "result": "goal"
+      },
+      {
+        "index": 36,
+        "wallMs": 71439,
+        "input": {
+          "tapTime": 36207.10000038147,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 21474.299999952316,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s36",
+        "result": "goal"
+      },
+      {
+        "index": 37,
+        "wallMs": 73527,
+        "input": {
+          "tapTime": 37283.30000042915,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 22124.199999809265,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s37",
+        "result": "goal"
+      },
+      {
+        "index": 38,
+        "wallMs": 75556,
+        "input": {
+          "tapTime": 38290.50000047684,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 22720.39999985695,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s38",
+        "result": "goal"
+      },
+      {
+        "index": 39,
+        "wallMs": 77607,
+        "input": {
+          "tapTime": 39397.30000042915,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 23399.39999985695,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s39",
+        "result": "save"
+      },
+      {
+        "index": 40,
+        "wallMs": 79672,
+        "input": {
+          "tapTime": 40443.80000042915,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 24034.49999976158,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s40",
+        "result": "goal"
+      },
+      {
+        "index": 41,
+        "wallMs": 81708,
+        "input": {
+          "tapTime": 41479.400000572205,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 24647.199999809265,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s41",
+        "result": "goal"
+      },
+      {
+        "index": 42,
+        "wallMs": 83807,
+        "input": {
+          "tapTime": 42557.50000047684,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 25297.199999809265,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s42",
+        "result": "goal"
+      },
+      {
+        "index": 43,
+        "wallMs": 85837,
+        "input": {
+          "tapTime": 43602.900000333786,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 25912.99999976158,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s43",
+        "result": "goal"
+      },
+      {
+        "index": 44,
+        "wallMs": 87934,
+        "input": {
+          "tapTime": 44674.10000038147,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 26558.199999809265,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s44",
+        "result": "goal"
+      },
+      {
+        "index": 45,
+        "wallMs": 89982,
+        "input": {
+          "tapTime": 45734.10000038147,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 27190.099999904633,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s45",
+        "result": "goal"
+      },
+      {
+        "index": 46,
+        "wallMs": 92042,
+        "input": {
+          "tapTime": 46810.300000190735,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 27854.89999985695,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s46",
+        "result": "goal"
+      },
+      {
+        "index": 47,
+        "wallMs": 94064,
+        "input": {
+          "tapTime": 47836.09999990463,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 28469.599999666214,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s47",
+        "result": "goal"
+      },
+      {
+        "index": 48,
+        "wallMs": 95639,
+        "input": {
+          "tapTime": 48380,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 28587.799999713898,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s48",
+        "result": "goal"
+      },
+      {
+        "index": 49,
+        "wallMs": 97769,
+        "input": {
+          "tapTime": 49521.60000014305,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 29302.89999985695,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s49",
+        "result": "miss"
+      },
+      {
+        "index": 50,
+        "wallMs": 99447,
+        "input": {
+          "tapTime": 50198.90000009537,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 29552.89999985695,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s50",
+        "result": "goal"
+      },
+      {
+        "index": 51,
+        "wallMs": 101448,
+        "input": {
+          "tapTime": 51192.799999952316,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 30119.699999809265,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s51",
+        "result": "goal"
+      },
+      {
+        "index": 52,
+        "wallMs": 103882,
+        "input": {
+          "tapTime": 52283.5,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 30782.699999809265,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s52",
+        "result": "goal"
+      },
+      {
+        "index": 53,
+        "wallMs": 105580,
+        "input": {
+          "tapTime": 53339.50000023842,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 31410.599999904633,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s53",
+        "result": "goal"
+      },
+      {
+        "index": 54,
+        "wallMs": 107730,
+        "input": {
+          "tapTime": 54386.800000190735,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 32035.5,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s54",
+        "result": "goal"
+      },
+      {
+        "index": 55,
+        "wallMs": 109727,
+        "input": {
+          "tapTime": 55461.40000009537,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 32701.700000047684,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s55",
+        "result": "goal"
+      },
+      {
+        "index": 56,
+        "wallMs": 111792,
+        "input": {
+          "tapTime": 56536.60000014305,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 33351.90000009537,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s56",
+        "result": "goal"
+      },
+      {
+        "index": 57,
+        "wallMs": 113819,
+        "input": {
+          "tapTime": 57545.40000009537,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 33935.300000190735,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s57",
+        "result": "goal"
+      },
+      {
+        "index": 58,
+        "wallMs": 115892,
+        "input": {
+          "tapTime": 58610.700000047684,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 34568.50000023842,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s58",
+        "result": "goal"
+      },
+      {
+        "index": 59,
+        "wallMs": 117944,
+        "input": {
+          "tapTime": 59683.400000333786,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 35232.30000042915,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s59",
+        "result": "save"
+      },
+      {
+        "index": 60,
+        "wallMs": 120003,
+        "input": {
+          "tapTime": 60727.00000023842,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 35849.20000052452,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s60",
+        "result": "goal"
+      },
+      {
+        "index": 61,
+        "wallMs": 122022,
+        "input": {
+          "tapTime": 61801.10000038147,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 36495.80000066757,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s61",
+        "result": "save"
+      },
+      {
+        "index": 62,
+        "wallMs": 123487,
+        "input": {
+          "tapTime": 62296.60000038147,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 36563.20000076294,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s62",
+        "result": "goal"
+      },
+      {
+        "index": 63,
+        "wallMs": 125256,
+        "input": {
+          "tapTime": 63057.60000038147,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 36913.20000076294,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s63",
+        "result": "goal"
+      },
+      {
+        "index": 64,
+        "wallMs": 127305,
+        "input": {
+          "tapTime": 64089.200000047684,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 37517.60000061989,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s64",
+        "result": "goal"
+      },
+      {
+        "index": 65,
+        "wallMs": 129355,
+        "input": {
+          "tapTime": 65164.700000047684,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 38165.20000052452,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s65",
+        "result": "goal"
+      },
+      {
+        "index": 66,
+        "wallMs": 131400,
+        "input": {
+          "tapTime": 66207.10000014305,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 38780.900000572205,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s66",
+        "result": "goal"
+      },
+      {
+        "index": 67,
+        "wallMs": 133458,
+        "input": {
+          "tapTime": 67283.40000009537,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 39430.20000052452,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s67",
+        "result": "goal"
+      },
+      {
+        "index": 68,
+        "wallMs": 135529,
+        "input": {
+          "tapTime": 68342.10000014305,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 40061.20000052452,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s68",
+        "result": "goal"
+      },
+      {
+        "index": 69,
+        "wallMs": 137586,
+        "input": {
+          "tapTime": 69384.2000002861,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 40675.80000066757,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s69",
+        "result": "goal"
+      },
+      {
+        "index": 70,
+        "wallMs": 139649,
+        "input": {
+          "tapTime": 70444.7000002861,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 41309.20000076294,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s70",
+        "result": "goal"
+      },
+      {
+        "index": 71,
+        "wallMs": 141741,
+        "input": {
+          "tapTime": 71553.2000002861,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 41991.90000081062,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s71",
+        "result": "goal"
+      },
+      {
+        "index": 72,
+        "wallMs": 143803,
+        "input": {
+          "tapTime": 72594.40000033379,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 42607.20000076294,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s72",
+        "result": "goal"
+      },
+      {
+        "index": 73,
+        "wallMs": 145897,
+        "input": {
+          "tapTime": 73710.50000047684,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 43307.80000090599,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s73",
+        "result": "miss"
+      },
+      {
+        "index": 74,
+        "wallMs": 147900,
+        "input": {
+          "tapTime": 74708.4000005722,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 43895.90000104904,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s74",
+        "result": "goal"
+      },
+      {
+        "index": 75,
+        "wallMs": 149934,
+        "input": {
+          "tapTime": 75737.30000042915,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 44499.000000953674,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s75",
+        "result": "goal"
+      },
+      {
+        "index": 76,
+        "wallMs": 151995,
+        "input": {
+          "tapTime": 76797.70000052452,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 45131.70000100136,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s76",
+        "result": "goal"
+      },
+      {
+        "index": 77,
+        "wallMs": 154082,
+        "input": {
+          "tapTime": 77853.60000038147,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 45762.70000100136,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s77",
+        "result": "goal"
+      },
+      {
+        "index": 78,
+        "wallMs": 155773,
+        "input": {
+          "tapTime": 78578.80000042915,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 46061.100001096725,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s78",
+        "result": "goal"
+      },
+      {
+        "index": 79,
+        "wallMs": 157859,
+        "input": {
+          "tapTime": 79638.50000023842,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 46709.20000100136,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s79",
+        "result": "goal"
+      },
+      {
+        "index": 80,
+        "wallMs": 159382,
+        "input": {
+          "tapTime": 80193.60000014305,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 46838.70000100136,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s80",
+        "result": "goal"
+      },
+      {
+        "index": 81,
+        "wallMs": 161448,
+        "input": {
+          "tapTime": 81237.90000033379,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 47471.90000104904,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s81",
+        "result": "goal"
+      },
+      {
+        "index": 82,
+        "wallMs": 163509,
+        "input": {
+          "tapTime": 82300.50000047684,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 48120.100001096725,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s82",
+        "result": "goal"
+      },
+      {
+        "index": 83,
+        "wallMs": 165547,
+        "input": {
+          "tapTime": 83327.60000038147,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 48735.70000100136,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s83",
+        "result": "goal"
+      },
+      {
+        "index": 84,
+        "wallMs": 167609,
+        "input": {
+          "tapTime": 84385.30000042915,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 49366.90000104904,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s84",
+        "result": "goal"
+      },
+      {
+        "index": 85,
+        "wallMs": 169650,
+        "input": {
+          "tapTime": 85446.70000052452,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 49999.40000104904,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s85",
+        "result": "goal"
+      },
+      {
+        "index": 86,
+        "wallMs": 171739,
+        "input": {
+          "tapTime": 86516.00000047684,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 50641.40000104904,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s86",
+        "result": "goal"
+      },
+      {
+        "index": 87,
+        "wallMs": 173803,
+        "input": {
+          "tapTime": 87582.70000076294,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 51292.70000123978,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s87",
+        "result": "goal"
+      },
+      {
+        "index": 88,
+        "wallMs": 175799,
+        "input": {
+          "tapTime": 88584.80000066757,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 51887.00000119209,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s88",
+        "result": "goal"
+      },
+      {
+        "index": 89,
+        "wallMs": 177881,
+        "input": {
+          "tapTime": 89675.30000066757,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 52550.00000119209,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s89",
+        "result": "save"
+      },
+      {
+        "index": 90,
+        "wallMs": 179932,
+        "input": {
+          "tapTime": 90702.4000005722,
+          "goalFrequency": 0.5,
+          "puckSpeedPerMs": 1.25,
+          "shooterTapTime": 53161.30000114441,
+          "goalieFrequency": 0.6,
+          "shooterFrequency": 0.75
+        },
+        "seed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14:p1:s90",
+        "result": "goal"
+      }
+    ]
+  }
+]
