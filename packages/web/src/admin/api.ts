@@ -4,12 +4,28 @@ import type { CoinPackage } from '../api/payments.js';
 
 export type AdminRole = 'player' | 'admin';
 export interface AdminReferralsResponse {
-  summary: { totalInvitations: number; qualifiedInvitations: number; inviters: number; rewardsClaimed: number; starsIssued: number };
+  summary: { totalInvitations: number; qualifiedInvitations: number; conversionPercent: number; inviters: number; rewardsClaimed: number; starsIssued: number };
   inviters: Array<{ userId: string; displayName: string; code: string; totalInvited: number; qualifiedInvited: number; professionals: number; claimableStars: number; claimedStars: number; riskSignals: number }>;
   total: number;
 }
 export interface AdminReferralMilestone { id: string; qualified_referrals: number; reward_stars: number; archived_at: string | null; unclaimed_count: number; claimed_count: number }
+export interface AdminReferralRelationship {
+  inviter_user_id: string;
+  inviter_name: string;
+  code: string;
+  invitee_user_id: string;
+  invitee_name: string;
+  experience: number;
+  joined_at: string;
+  qualified_at: string | null;
+  competition_level: 'beginner' | 'amateur' | 'professional';
+  risk_signals: number;
+}
 export const fetchAdminReferrals = (q = '') => apiFetch<AdminReferralsResponse>(`/admin/referrals?q=${encodeURIComponent(q)}`);
+export const fetchAdminReferralRelationships = (filters: { q?: string; level?: string; risk?: string } = {}) => {
+  const params = new URLSearchParams({ q: filters.q ?? '', level: filters.level ?? 'all', risk: filters.risk ?? 'all' });
+  return apiFetch<{ relationships: AdminReferralRelationship[]; total: number }>(`/admin/referrals/relationships?${params}`);
+};
 export const fetchAdminReferralMilestones = () => apiFetch<{ milestones: AdminReferralMilestone[] }>('/admin/referrals/milestones');
 export const previewAdminReferralMilestone = (qualifiedReferrals: number, milestoneId?: string) => apiFetch<{ newlyEligibleCount: number }>(`/admin/referrals/milestones/preview?qualifiedReferrals=${qualifiedReferrals}${milestoneId ? `&milestoneId=${encodeURIComponent(milestoneId)}` : ''}`);
 export const createAdminReferralMilestone = (body: { qualifiedReferrals: number; rewardStars: number }) => apiFetch('/admin/referrals/milestones', { method: 'POST', body: JSON.stringify(body) });

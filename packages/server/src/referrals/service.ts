@@ -12,9 +12,9 @@ export function normalizeReferralCode(value: string): string {
   return value.trim().toUpperCase();
 }
 
-export function generateReferralCode(bytes = randomBytes(8)): string {
+export function generateReferralCode(bytes = randomBytes(10)): string {
   let result = '';
-  for (let index = 0; index < 8; index += 1) {
+  for (let index = 0; index < 10; index += 1) {
     result += REFERRAL_ALPHABET[bytes[index]! % REFERRAL_ALPHABET.length];
   }
   return result;
@@ -58,7 +58,7 @@ export async function resolveReferralInviter(
     [code],
   );
   const row = result.rows[0];
-  if (!row) throw new AppError('bad_request', 'referral_code_invalid', 400);
+  if (!row) throw new AppError('referral_code_invalid', 'referral_code_invalid', 400);
   return { userId: row.user_id, code: row.code };
 }
 
@@ -76,26 +76,53 @@ export async function attachReferralRelationship(
   if (input.inviteeUserId === input.inviterUserId) {
     throw new AppError('bad_request', 'referral_code_self', 400);
   }
-  await db.query('delete from referral_risk_signal where expires_at <= now()');
-  await db.query(
-    `insert into referral_relationship
-       (invitee_user_id, inviter_user_id, referral_code, source)
-     values ($1, $2, $3, $4)`,
-    [input.inviteeUserId, input.inviterUserId, input.code, input.source],
-  );
-
-  for (const [signalType, signalHash] of [
-    ['ip', input.ipHash],
-    ['installation', input.installationHash],
-  ] as const) {
-    if (!signalHash) continue;
-    await db.query(
-      `insert into referral_risk_signal
-         (relationship_invitee_user_id, signal_type, signal_hash)
-       values ($1, $2, $3)`,
-      [input.inviteeUserId, signalType, signalHash],
+  await transaction(db, async (client) => {
+    await client.query('delete from referral_risk_signal where expires_at <= now()');
+    await client.query(
+      `insert into referral_relationship
+         (invitee_user_id, inviter_user_id, referral_code, source)
+       values ($1, $2, $3, $4)`,
+      [input.inviteeUserId, input.inviterUserId, input.code, input.source],
     );
-  }
+
+    for (const [signalType, signalHash] of [
+      ['ip', input.ipHash],
+      ['installation', input.installationHash],
+    ] as const) {
+      if (!signalHash) continue;
+      await client.query('select pg_advisory_xact_lock(hashtext($1))', [
+        `referral-risk:${signalType}:${signalHash}`,
+      ]);
+      await client.query(
+        `insert into referral_risk_signal
+           (relationship_invitee_user_id, signal_type, signal_hash)
+         values ($1, $2, $3)`,
+        [input.inviteeUserId, signalType, signalHash],
+      );
+      const velocity = await client.query<{ count: number }>(
+        `select count(distinct relationship_invitee_user_id)::int as count
+           from referral_risk_signal
+          where signal_type = $1
+            and signal_hash = $2
+            and created_at >= now() - interval '24 hours'
+            and expires_at > now()`,
+        [signalType, signalHash],
+      );
+      if (Number(velocity.rows[0]?.count ?? 0) >= 4) {
+        await client.query(
+          `insert into referral_risk_signal
+             (relationship_invitee_user_id, signal_type, signal_hash)
+           values ($1, 'velocity', $2)`,
+          [input.inviteeUserId, signalHash],
+        );
+      }
+    }
+  });
+}
+
+export async function cleanupExpiredReferralRiskSignals(db: Queryable): Promise<number> {
+  const result = await db.query('delete from referral_risk_signal where expires_at <= now()');
+  return result.rowCount ?? 0;
 }
 
 export async function ensureNewUserReferral(
@@ -168,7 +195,7 @@ export async function reconcileReferralQualification(
          from referral_relationship relationship
          join users invited on invited.id = relationship.invitee_user_id
         where relationship.invitee_user_id = $1
-        for update of relationship`,
+        for update of relationship, invited`,
       [inviteeUserId],
     );
     const row = result.rows[0];
@@ -200,6 +227,7 @@ export async function reconcileReferralQualification(
       [row.inviter_user_id],
     );
     const qualifiedCount = Number(countResult.rows[0]?.count ?? 0);
+    await client.query("select pg_advisory_xact_lock(hashtext('referral-milestones'))");
     await client.query(
       `insert into referral_reward_unlock
          (inviter_user_id, milestone_id, qualified_referrals_snapshot, reward_stars_snapshot)

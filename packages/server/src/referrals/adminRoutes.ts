@@ -123,6 +123,10 @@ export const referralAdminRoutes: FastifyPluginAsync = async (app) => {
       summary: {
         totalInvitations: Number(row.total_invitations),
         qualifiedInvitations: Number(row.qualified_invitations),
+        conversionPercent:
+          Number(row.total_invitations) === 0
+            ? 0
+            : (Number(row.qualified_invitations) / Number(row.total_invitations)) * 100,
         inviters: Number(row.inviters),
         rewardsClaimed: Number(row.rewards_claimed),
         starsIssued: Number(row.stars_issued),
@@ -248,6 +252,7 @@ export const referralAdminRoutes: FastifyPluginAsync = async (app) => {
     const client = await app.pg.connect();
     try {
       await client.query('begin');
+      await client.query("select pg_advisory_xact_lock(hashtext('referral-milestones'))");
       const inserted = await client.query<{ id: string }>(
         `insert into referral_milestone (qualified_referrals, reward_stars, sort_order)
          values ($1, $2, $1)
@@ -282,6 +287,7 @@ export const referralAdminRoutes: FastifyPluginAsync = async (app) => {
     const client = await app.pg.connect();
     try {
       await client.query('begin');
+      await client.query("select pg_advisory_xact_lock(hashtext('referral-milestones'))");
       const previous = await client.query(
         'select * from referral_milestone where id = $1 for update',
         [params.id],
@@ -315,20 +321,33 @@ export const referralAdminRoutes: FastifyPluginAsync = async (app) => {
 
   app.delete('/admin/referrals/milestones/:id', { preHandler: adminPreHandlers }, async (req) => {
     const params = z.object({ id: z.string().uuid() }).parse(req.params);
-    const result = await app.pg.query(
-      `update referral_milestone
-          set archived_at = coalesce(archived_at, now()), updated_at = now()
-        where id = $1 and archived_at is null
-        returning to_jsonb(referral_milestone.*) as previous`,
-      [params.id],
-    );
-    if (!result.rows[0]) throw new AppError('not_found', 'referral milestone not found', 404);
-    await app.pg.query(
-      `insert into referral_milestone_audit
-         (milestone_id, admin_user_id, action, before_value)
-       values ($1, $2, 'archived', $3)`,
-      [params.id, req.user.id, JSON.stringify(result.rows[0].previous)],
-    );
-    return { ok: true };
+    const client = await app.pg.connect();
+    try {
+      await client.query('begin');
+      await client.query("select pg_advisory_xact_lock(hashtext('referral-milestones'))");
+      const result = await client.query(
+        `update referral_milestone
+            set archived_at = coalesce(archived_at, now()), updated_at = now()
+          where id = $1 and archived_at is null
+          returning to_jsonb(referral_milestone.*) as previous`,
+        [params.id],
+      );
+      if (!result.rows[0]) {
+        throw new AppError('not_found', 'referral milestone not found', 404);
+      }
+      await client.query(
+        `insert into referral_milestone_audit
+           (milestone_id, admin_user_id, action, before_value)
+         values ($1, $2, 'archived', $3)`,
+        [params.id, req.user.id, JSON.stringify(result.rows[0].previous)],
+      );
+      await client.query('commit');
+      return { ok: true };
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
   });
 };

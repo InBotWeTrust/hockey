@@ -40,7 +40,13 @@ export function LoginScreen(): JSX.Element {
   const [mobilePendingProvider, setMobilePendingProvider] = useState<MobileAuthProvider | null>(
     null,
   );
-  const [mobileAuthError, setMobileAuthError] = useState<string | null>(null);
+  const [mobileAuthError, setMobileAuthError] = useState<string | null>(() => {
+    try {
+      const message = sessionStorage.getItem('hockey.mobileAuthError');
+      sessionStorage.removeItem('hockey.mobileAuthError');
+      return message;
+    } catch { return null; }
+  });
   const [compactCodeViewport, setCompactCodeViewport] = useState(isKeyboardSizedViewport);
   const [miniAppLoginStarted, setMiniAppLoginStarted] = useState(false);
   const [referralCode, setReferralCode] = useState(getPendingReferralCode);
@@ -169,7 +175,7 @@ export function LoginScreen(): JSX.Element {
       <div className="login-screen__brand">
         <img src="/icons/app-logo.webp" alt="Ультимейт Хоккей" className="login-screen__logo" />
         <h1 className="login-screen__title">Ультимейт Хоккей</h1>
-        <div className="login-screen__tagline">Живи жизнью профессионального хоккеиста</div>
+        <div className="login-screen__tagline">Построй карьеру профессионального хоккеиста</div>
         <div className="login-screen__benefits" aria-label="Возможности игры">
           {['тренировки', 'игры', 'соревнования', 'призы'].map((benefit) => (
             <span key={benefit} className="login-screen__benefit">
@@ -182,17 +188,6 @@ export function LoginScreen(): JSX.Element {
       <div className="login-screen__spacer" style={{ flex: 1, minHeight: 8 }} />
 
       <div className="login-screen__actions">
-        <label className="login-screen__referral">
-          <span>Код приглашения <small>необязательно</small></span>
-          <input
-            value={referralCode}
-            maxLength={32}
-            autoCapitalize="characters"
-            autoComplete="off"
-            placeholder="Введите код"
-            onChange={(event) => setReferralCode(setPendingReferralCode(event.target.value))}
-          />
-        </label>
         {isNativeAndroid() ? (
           <>
             <button
@@ -268,6 +263,18 @@ export function LoginScreen(): JSX.Element {
             </button>
           </>
         )}
+
+        <label className="login-screen__referral">
+          <span>Код приглашения <small>необязательно</small></span>
+          <input
+            value={referralCode}
+            maxLength={32}
+            autoCapitalize="characters"
+            autoComplete="off"
+            placeholder="Введите код"
+            onChange={(event) => setReferralCode(setPendingReferralCode(event.target.value))}
+          />
+        </label>
 
         {devCodeLoginEnabled && !devCodeExpanded ? (
           <button
@@ -422,9 +429,9 @@ export function LoginScreen(): JSX.Element {
             paddingBottom: 'max(2px, var(--app-safe-bottom))',
           }}
         >
-          Нажимая «Войти», вы соглашаетесь с документами:{' '}
-          <Link to="/terms">Условия использования</Link> и{' '}
-          <Link to="/privacy">Политика конфиденциальности</Link> и даёте{' '}
+          Нажимая «Войти», вы соглашаетесь с{' '}
+          <Link to="/terms">Условиями использования</Link>,{' '}
+          <Link to="/privacy">Политикой конфиденциальности</Link> и даёте{' '}
           <Link to="/personal-data-consent">согласие на обработку персональных данных</Link>.
         </div>
       </div>

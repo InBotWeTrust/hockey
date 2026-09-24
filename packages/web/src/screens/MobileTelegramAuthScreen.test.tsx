@@ -44,4 +44,39 @@ describe('MobileTelegramAuthScreen', () => {
       ),
     );
   });
+
+  it('follows the verified invalid-referral completion URL', async () => {
+    const navigateTo = vi.fn();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          redirectUrl:
+            'https://ultimatehockey.ru/mobile/auth/complete?error=referral_code_invalid',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    render(
+      <MemoryRouter initialEntries={[`/mobile-auth/telegram?attempt=${'a'.repeat(43)}`]}>
+        <MobileTelegramAuthScreen navigateTo={navigateTo} />
+      </MemoryRouter>,
+    );
+
+    const script = screen.getByTestId('telegram-login-container').querySelector('script')!;
+    const callbackName = script.getAttribute('data-onauth')!.replace('(user)', '');
+    await act(async () => {
+      (window as typeof window & Record<string, AuthCallback>)[callbackName]!({
+        id: 42,
+        first_name: 'Egor',
+        auth_date: 1,
+        hash: 'signed',
+      });
+    });
+
+    await waitFor(() =>
+      expect(navigateTo).toHaveBeenCalledWith(
+        'https://ultimatehockey.ru/mobile/auth/complete?error=referral_code_invalid',
+      ),
+    );
+  });
 });
