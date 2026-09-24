@@ -43,6 +43,7 @@ import {
   observeCareerActivityStreak,
   observeCareerGoal,
 } from '../../achievements/service.js';
+import { reconcileReferralQualification } from '../../referrals/service.js';
 import { AppError } from '../../plugins/errors.js';
 import { assertFullAmateurAccess } from '../../profile/amateurAccess.js';
 import { enqueueDuelPush } from '../../push/duel.js';
@@ -6337,6 +6338,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           lifetimeGoals: Number(user.lifetime_goals_total),
           level: Number(user.level),
         });
+        await reconcileReferralQualification(client, req.user.id);
         if (serverResult === 'goal') {
           await observeCareerGoal(client, req.user.id, {
             eventKey: `amateur-duel:${match.id}:${participant.current_period}:${body.shot_index}`,

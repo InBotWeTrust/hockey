@@ -3,6 +3,18 @@ import type { ChatAttachmentDTO } from '../chat/api.js';
 import type { CoinPackage } from '../api/payments.js';
 
 export type AdminRole = 'player' | 'admin';
+export interface AdminReferralsResponse {
+  summary: { totalInvitations: number; qualifiedInvitations: number; inviters: number; rewardsClaimed: number; starsIssued: number };
+  inviters: Array<{ userId: string; displayName: string; code: string; totalInvited: number; qualifiedInvited: number; professionals: number; claimableStars: number; claimedStars: number; riskSignals: number }>;
+  total: number;
+}
+export interface AdminReferralMilestone { id: string; qualified_referrals: number; reward_stars: number; archived_at: string | null; unclaimed_count: number; claimed_count: number }
+export const fetchAdminReferrals = (q = '') => apiFetch<AdminReferralsResponse>(`/admin/referrals?q=${encodeURIComponent(q)}`);
+export const fetchAdminReferralMilestones = () => apiFetch<{ milestones: AdminReferralMilestone[] }>('/admin/referrals/milestones');
+export const previewAdminReferralMilestone = (qualifiedReferrals: number, milestoneId?: string) => apiFetch<{ newlyEligibleCount: number }>(`/admin/referrals/milestones/preview?qualifiedReferrals=${qualifiedReferrals}${milestoneId ? `&milestoneId=${encodeURIComponent(milestoneId)}` : ''}`);
+export const createAdminReferralMilestone = (body: { qualifiedReferrals: number; rewardStars: number }) => apiFetch('/admin/referrals/milestones', { method: 'POST', body: JSON.stringify(body) });
+export const updateAdminReferralMilestone = (id: string, body: { qualifiedReferrals: number; rewardStars: number }) => apiFetch(`/admin/referrals/milestones/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+export const archiveAdminReferralMilestone = (id: string) => apiFetch(`/admin/referrals/milestones/${id}`, { method: 'DELETE' });
 export type AdminIdentitySource = 'custom' | 'telegram' | 'vk';
 export type AdminLevelFilter = 'all' | 'beginner' | 'amateur' | 'professional';
 export type AdminFeedbackKind = 'review' | 'suggestion' | 'question';
