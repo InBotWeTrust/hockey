@@ -12,6 +12,8 @@ import {
   type MarksmanshipV4Technique,
 } from '@hockey/game-core';
 import { MarksmanshipConstructorCourt } from '../game/MarksmanshipConstructorCourt.js';
+import { MarksmanshipRecordedReplay } from './MarksmanshipRecordedReplay.js';
+import { RECORDED_RUNS } from './marksmanshipReplayData.js';
 import { groupGoalEpisodes, type GoalEpisode, type GoalSample } from './marksmanshipGoalEpisodes.js';
 import './MarksmanshipConstructorScreen.css';
 
@@ -46,6 +48,7 @@ export function MarksmanshipConstructorScreen(): JSX.Element {
   const [episodes, setEpisodes] = useState<GoalEpisode[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [techniqueFilter, setTechniqueFilter] = useState<'all' | MarksmanshipV4Technique>('all');
+  const [selectedTab, setSelectedTab] = useState('synthetic');
 
   useEffect(() => {
     if (preStart) return;
@@ -122,6 +125,14 @@ export function MarksmanshipConstructorScreen(): JSX.Element {
           onClick={() => navigate('/profile')}><ArrowLeft size={18} /></button>
         <h1 className="page-header-standard__title">Конструктор меткости</h1>
       </header>
+      <nav className="marksmanship-replay-tabs" role="tablist" aria-label="Режим конструктора">
+        {[{ key: 'synthetic', label: 'Учебная схема' }, ...RECORDED_RUNS].map((tab) => (
+          <button type="button" key={tab.key} role="tab"
+            aria-selected={selectedTab === tab.key}
+            onClick={() => setSelectedTab(tab.key)}>{tab.label}</button>
+        ))}
+      </nav>
+      {selectedTab === 'synthetic' ? <>
       <div className="marksmanship-constructor-row marksmanship-constructor-primary-controls">
         <button type="button" aria-label={`Хитбоксы: ${showHitboxes ? 'вкл' : 'выкл'}`}
           aria-pressed={showHitboxes} onClick={() => setShowHitboxes(!showHitboxes)}>
@@ -211,6 +222,8 @@ export function MarksmanshipConstructorScreen(): JSX.Element {
             </li>)}</ol>}
         </section>}
       </section>
+      </> : <MarksmanshipRecordedReplay key={selectedTab}
+        run={RECORDED_RUNS.find((run) => run.key === selectedTab)!} />}
     </main>
   );
 }
