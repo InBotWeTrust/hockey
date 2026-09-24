@@ -97,9 +97,15 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
   }
   const row = rows[0]!;
   const profileProgress = await buildProfileProgress(app.pg, row, { claimedOnly: false });
-  const [trophySummary, trophyDetails] = await Promise.all([
+  const [trophySummary, trophyDetails, referralAttention] = await Promise.all([
     fetchTrophySummary(app.pg, row.id),
     fetchTrophyDetails(app.pg, row.id),
+    app.pg.query<{ count: number }>(
+      `select count(*)::int as count
+         from referral_reward_unlock
+        where inviter_user_id = $1 and claimed_at is null`,
+      [row.id],
+    ),
   ]);
   const experimentalTrainingCourt = await canUseExperimentalTrainingCourt(app.pg, {
     id: row.id,
@@ -122,6 +128,7 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
     trophySummary,
     trophyDetails,
     unclaimedAchievementsCount: profileProgress.unclaimedAchievementsCount,
+    unclaimedReferralRewardsCount: Number(referralAttention.rows[0]?.count ?? 0),
     currencyBalance: Number(row.currency_balance),
     starBalance: Number(row.star_balance),
     experienceBalance: Number(row.experience),

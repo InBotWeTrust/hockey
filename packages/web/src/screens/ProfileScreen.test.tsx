@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProfileScreen } from './ProfileScreen.js';
@@ -119,6 +119,28 @@ function mockProfileRequest(
         status,
         headers: { 'content-type': 'application/json' },
       });
+    }
+    if (url.endsWith('/api/referrals/me')) {
+      return new Response(
+        JSON.stringify({
+          code: 'TEAM-77',
+          totalInvited: 12,
+          qualifiedInvited: 8,
+          counts: { beginner: 4, amateur: 5, professional: 3 },
+          unclaimedRewardsCount: 2,
+          milestones: [
+            {
+              id: 'reward-10',
+              qualifiedReferrals: 10,
+              rewardStars: 150,
+              unlockId: null,
+              unlockedAt: null,
+              claimedAt: null,
+            },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
     }
     if (url.endsWith('/api/inventory/me')) {
       return new Response(
@@ -298,6 +320,30 @@ describe('ProfileScreen', () => {
     expect(screen.getByText('constructor screen')).toBeInTheDocument();
   });
 
+  it('shows the task-style copied toast for one second after copying a referral value', async () => {
+    mockProfileRequest();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    renderProfile();
+    const copyButton = await screen.findByRole('button', { name: 'Скопировать код' });
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(copyButton);
+      await Promise.resolve();
+    });
+
+    expect(writeText).toHaveBeenCalledWith('TEAM-77');
+    expect(screen.getByRole('status')).toHaveClass('achievement-reward-toast');
+    expect(screen.getByRole('status')).toHaveClass('profile-referral-copy-toast');
+    expect(screen.getByRole('status')).toHaveTextContent('Скопировано');
+    act(() => vi.advanceTimersByTime(999));
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
   it('retains the currently visible profile artwork when its data is loaded', async () => {
     mockProfileRequest();
     renderProfile();
@@ -345,12 +391,34 @@ describe('ProfileScreen', () => {
     expect(screen.getByRole('button', { name: 'Открыть инвентарь' })).toHaveClass(
       'profile-section-label',
     );
+    const inventorySection = screen.getByRole('region', { name: 'Инвентарь' });
+    const referralSection = screen.getByRole('region', { name: 'Приглашай друзей' });
+    expect(inventorySection.compareDocumentPosition(referralSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(await screen.findByAltText('Два хоккеиста вместе')).toHaveAttribute(
+      'src',
+      '/profile/referral-friends.webp',
+    );
+    expect(screen.getByLabelText('Есть награды за приглашения')).toBeInTheDocument();
+    expect(screen.queryByText(/Можно забрать наград/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открыть приглашённых друзей' })).toHaveTextContent(
+      'Приглашай друзей · 12',
+    );
+    expect(screen.getByText('Играть вместе выгоднее')).toBeInTheDocument();
+    expect(screen.queryByText(/Приглашай друзей в приложение и получай/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Код приглашения')).not.toBeInTheDocument();
+    expect(screen.queryByText('TEAM-77')).not.toBeInTheDocument();
+    expect(screen.queryByText('Скопировать')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ссылка для приглашения')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Скопировать код' })).toHaveTextContent('Код');
+    expect(screen.getByRole('button', { name: 'Скопировать ссылку' })).toHaveTextContent('Ссылка');
+    expect(screen.queryByText(/\/invite\/TEAM-77/)).not.toBeInTheDocument();
+    expect(screen.queryByText('8 из 10 до 150 звёзд')).not.toBeInTheDocument();
     expect(screen.getByText('Профиль')).toHaveClass('profile-section-label');
     expect(screen.getByText('Настройки', { selector: '.profile-settings-card__title' })).toBeInTheDocument();
     expect(screen.queryByText('Профиль и аккаунт')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Домашняя арена' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Открыть задания' })).toBeInTheDocument();
-    expect(screen.getByText('Задания · 1/1, уровни · 1/1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Задания')).not.toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Открыть задания' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Настройки' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Раздевалка игрока')).not.toBeInTheDocument();
   });
@@ -600,7 +668,7 @@ describe('ProfileScreen', () => {
     renderProfile();
 
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Открыть задание Снайпер недели' }),
+      await screen.findByRole('button', { name: 'Открыть задание Снайпер недели', hidden: true }),
     );
 
     expect(screen.getByRole('dialog', { name: 'Снайпер недели' })).toBeInTheDocument();
@@ -628,6 +696,9 @@ describe('ProfileScreen', () => {
       'Выбрать коньки',
       'Выбрать питание',
       'Восстановление: 0 минут',
+      'Открыть приглашённых друзей',
+      'Скопировать код',
+      'Скопировать ссылку',
       'Открыть задания',
       'Открыть задание Снайпер недели',
       'Настройки',
@@ -949,7 +1020,7 @@ describe('ProfileScreen', () => {
     });
     renderProfile();
 
-    const task = await screen.findByRole('button', { name: 'Открыть задание Заброшено шайб' });
+    const task = await screen.findByRole('button', { name: 'Открыть задание Заброшено шайб', hidden: true });
     expect(within(task).getByText('Ур. 2/8')).toHaveClass('profile-career-award__level');
     expect(screen.getByText('Задания · 0/1, уровни · 2/8')).toBeInTheDocument();
 
@@ -980,6 +1051,7 @@ describe('ProfileScreen', () => {
 
     const achievement = await screen.findByRole('button', {
       name: 'Открыть задание Тренировочный монстр',
+      hidden: true,
     });
     expect(achievement.querySelector('.profile-achievement-title')).toHaveClass(
       'profile-achievement-title--compact',
@@ -1015,6 +1087,7 @@ describe('ProfileScreen', () => {
     const career = await screen.findByLabelText('Задания');
     const achievementButtons = within(career).getAllByRole('button', {
       name: /Открыть задание/,
+      hidden: true,
     });
 
     expect(achievementButtons.map((button) => button.textContent)).toEqual([

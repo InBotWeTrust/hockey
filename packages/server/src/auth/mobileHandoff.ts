@@ -55,7 +55,7 @@ function verifierChallenge(verifier: string): string {
 
 export async function createMobileAuthAttempt(
   redis: MobileAuthRedis,
-  input: { provider: MobileAuthProvider; codeChallenge: string },
+  input: { provider: MobileAuthProvider; codeChallenge: string; referralCode?: string; referralSource?: 'manual' | 'link'; referralIpHash?: string; referralInstallationHash?: string },
 ): Promise<{ attemptId: string; expiresAt: string }> {
   if (!/^[A-Za-z0-9_-]{43}$/.test(input.codeChallenge)) {
     throw new AppError('mobile_auth_pkce_invalid', 'invalid PKCE challenge', 400);
@@ -98,13 +98,21 @@ export async function assertMobileAuthAttempt(
   redis: MobileAuthRedis,
   attemptId: string,
   provider: MobileAuthProvider,
-): Promise<void> {
+): Promise<{ referralCode?: string; referralSource?: 'manual' | 'link'; referralIpHash?: string; referralInstallationHash?: string }> {
   const raw = await redis.get(`${ATTEMPT_PREFIX}${attemptId}`);
   if (!raw) throw new AppError('mobile_auth_attempt_invalid', 'auth attempt expired', 404);
-  const attempt = JSON.parse(raw) as { provider?: string };
+  const attempt = JSON.parse(raw) as { provider?: string; referralCode?: string; referralSource?: 'manual' | 'link'; referralIpHash?: string; referralInstallationHash?: string };
   if (attempt.provider !== provider) {
     throw new AppError('mobile_auth_provider_mismatch', 'auth provider mismatch', 409);
   }
+  return {
+    ...(attempt.referralCode ? { referralCode: attempt.referralCode } : {}),
+    ...(attempt.referralSource ? { referralSource: attempt.referralSource } : {}),
+    ...(attempt.referralIpHash ? { referralIpHash: attempt.referralIpHash } : {}),
+    ...(attempt.referralInstallationHash
+      ? { referralInstallationHash: attempt.referralInstallationHash }
+      : {}),
+  };
 }
 
 export async function consumeMobileAuthHandoff(

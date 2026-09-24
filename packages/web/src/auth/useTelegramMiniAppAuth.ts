@@ -9,6 +9,7 @@ import {
   loadTelegramMiniAppScript,
   type TelegramMiniAppWebApp,
 } from './telegramMiniApp.js';
+import { clearPendingReferralCode, referralAuthFields } from './referral.js';
 
 export function useTelegramMiniAppAuth(enabled = true): {
   isTelegramMiniApp: boolean;
@@ -27,10 +28,11 @@ export function useTelegramMiniAppAuth(enabled = true): {
     mutationFn: (initData) =>
       apiFetch<AuthSession>('/auth/telegram-mini-app', {
         method: 'POST',
-        body: JSON.stringify({ initData, timezone: detectTimezone() }),
+        body: JSON.stringify({ initData, timezone: detectTimezone(), ...referralAuthFields() }),
       }),
     onSuccess: (session) => {
       setSession(session);
+      clearPendingReferralCode();
     },
   });
 

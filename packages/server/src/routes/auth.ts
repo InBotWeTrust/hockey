@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 import { verifyTelegramLoginPayload, verifyTelegramMiniAppInitData } from '../auth/telegram.js';
 import { createJwt, verifyAccessToken, verifyRefreshToken } from '../auth/jwt.js';
@@ -15,6 +16,7 @@ export interface AuthRoutesOptions {
   accountRecoveryTelegramProviderUids?: readonly string[];
   accessSecret: string;
   refreshSecret: string;
+  accessTtlSec?: number;
   devLoginEnabled?: boolean;
   devAccessCodeLoginEnabled?: boolean;
 }
@@ -29,6 +31,9 @@ const tgBodySchema = z
     auth_date: z.union([z.string(), z.number()]),
     hash: z.string(),
     timezone: z.string().optional(),
+    referralCode: z.string().trim().min(1).max(32).optional(),
+    referralSource: z.enum(['manual', 'link']).optional(),
+    installationId: z.string().min(8).max(128).optional(),
   })
   .passthrough();
 
@@ -38,11 +43,17 @@ const vkBodySchema = z.object({
   codeVerifier: z.string().min(1),
   deviceId: z.string().min(1),
   timezone: z.string().optional(),
+  referralCode: z.string().trim().min(1).max(32).optional(),
+  referralSource: z.enum(['manual', 'link']).optional(),
+  installationId: z.string().min(8).max(128).optional(),
 });
 
 const tgMiniAppBodySchema = z.object({
   initData: z.string().min(1),
   timezone: z.string().optional(),
+  referralCode: z.string().trim().min(1).max(32).optional(),
+  referralSource: z.enum(['manual', 'link']).optional(),
+  installationId: z.string().min(8).max(128).optional(),
 });
 
 const devAccessCodeBodySchema = z.object({
@@ -77,6 +88,28 @@ function safeIanaTimezone(input: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function referralRiskFields(
+  secret: string,
+  ip: string,
+  input: {
+    referralCode?: string | undefined;
+    referralSource?: 'manual' | 'link' | undefined;
+    installationId?: string | undefined;
+  },
+) {
+  if (input.referralCode === undefined) return {};
+  const hash = (value: string): string =>
+    createHmac('sha256', secret).update(value).digest('hex');
+  return {
+    referralCode: input.referralCode,
+    referralSource: input.referralSource ?? ('manual' as const),
+    referralIpHash: hash(`ip:${ip}`),
+    ...(input.installationId !== undefined
+      ? { referralInstallationHash: hash(`installation:${input.installationId}`) }
+      : {}),
+  };
 }
 
 async function buildAuthUser(app: Parameters<FastifyPluginAsync>[0], user: AppUser) {
@@ -118,6 +151,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
   const jwt = createJwt({
     accessSecret: opts.accessSecret,
     refreshSecret: opts.refreshSecret,
+    ...(opts.accessTtlSec === undefined ? {} : { accessTtlSec: opts.accessTtlSec }),
   });
 
   app.post('/auth/telegram', async (req, reply) => {
@@ -125,7 +159,12 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
     if (!parsed.success) {
       throw new AppError('bad_request', 'invalid telegram payload', 400);
     }
-    const { timezone: rawTimezone, ...tgPayload } = parsed.data;
+    const { timezone: rawTimezone } = parsed.data;
+    const tgPayload: Record<string, unknown> = { ...parsed.data };
+    delete tgPayload.timezone;
+    delete tgPayload.referralCode;
+    delete tgPayload.referralSource;
+    delete tgPayload.installationId;
     let tgUser;
     try {
       tgUser = verifyTelegramLoginPayload(
@@ -153,6 +192,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
       ...(tgUser.lastName !== undefined ? { lastName: tgUser.lastName } : {}),
       ...(tz !== undefined ? { timezone: tz } : {}),
       ...(currentUserId !== undefined ? { currentUserId } : {}),
+      ...referralRiskFields(opts.accessSecret, req.ip, parsed.data),
       ...(opts.accountRecoveryTelegramProviderUids !== undefined
         ? { recoveryMergeTelegramProviderUids: opts.accountRecoveryTelegramProviderUids }
         : {}),
@@ -205,6 +245,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
       ...(tgUser.lastName !== undefined ? { lastName: tgUser.lastName } : {}),
       ...(tz !== undefined ? { timezone: tz } : {}),
       ...(currentUserId !== undefined ? { currentUserId } : {}),
+      ...referralRiskFields(opts.accessSecret, req.ip, parsed.data),
       ...(opts.accountRecoveryTelegramProviderUids !== undefined
         ? { recoveryMergeTelegramProviderUids: opts.accountRecoveryTelegramProviderUids }
         : {}),
@@ -271,6 +312,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
       vkUserId: exchange.vkUserId,
       profile,
       ...(currentUserId !== undefined ? { currentUserId } : {}),
+      ...referralRiskFields(opts.accessSecret, req.ip, parsed.data),
       ...(tz !== undefined ? { timezone: tz } : {}),
       ...(opts.accountRecoveryTelegramProviderUids !== undefined
         ? { recoveryMergeTelegramProviderUids: opts.accountRecoveryTelegramProviderUids }

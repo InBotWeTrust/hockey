@@ -10,6 +10,7 @@ import {
   Target,
   TrendingUp,
   Trophy,
+  Copy,
   X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -49,6 +50,7 @@ import { StatRatingModal } from '../profile/StatRatingModal.js';
 import type { StatRatingMetric, StatRatingPlayer } from '../api/statRating.js';
 import { preloadArtwork, profileArtworkUrls } from '../app/artworkCache.js';
 import { MARKSMANSHIP_CONSTRUCTOR_ENABLED } from '../app/devOnlyFeatures.js';
+import { fetchReferralSummary, type ReferralSummary } from '../api/referrals.js';
 
 export type TrophySectionKey = keyof NonNullable<ProfileData['trophyDetails']>;
 
@@ -238,6 +240,54 @@ function EquipmentPanel({
   );
 }
 
+function ReferralPanel({ summary, onOpen }: { summary: ReferralSummary | undefined; onOpen: () => void }): JSX.Element {
+  const [copyToastSequence, setCopyToastSequence] = useState(0);
+  const inviteUrl = summary ? `${window.location.origin}/invite/${summary.code}` : '';
+  useEffect(() => {
+    if (copyToastSequence === 0) return undefined;
+    const timer = window.setTimeout(() => setCopyToastSequence(0), 1_000);
+    return () => window.clearTimeout(timer);
+  }, [copyToastSequence]);
+  const copy = (value: string): void => {
+    void navigator.clipboard.writeText(value).then(() => setCopyToastSequence((value) => value + 1));
+  };
+  return (
+    <section className="profile-referral-section" aria-label="Приглашай друзей">
+      <button type="button" className="section-label profile-section-label" aria-label="Открыть приглашённых друзей" onClick={onOpen}>
+        Приглашай друзей
+        {(summary?.totalInvited ?? 0) > 0 ? <span className="profile-referral-section__count"> · {summary?.totalInvited}</span> : null}
+      </button>
+      <div className="profile-referral-panel glass" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.key === 'Enter') onOpen(); }}>
+        <span className="profile-referral-panel__artwork">
+          <img src="/profile/referral-friends.webp" alt="Два хоккеиста вместе" />
+        </span>
+        <span className="profile-referral-panel__copy">
+          <strong>Играть вместе выгоднее</strong>
+          <span className="profile-referral-actions">
+            <span className="profile-referral-actions__group profile-referral-actions__copy">
+              <span className="profile-referral-actions__buttons">
+                <button type="button" aria-label="Скопировать код" disabled={!summary} onClick={(event) => { event.stopPropagation(); if (summary) copy(summary.code); }}><Copy size={13} /><span>Код</span></button>
+                <button type="button" aria-label="Скопировать ссылку" disabled={!inviteUrl} onClick={(event) => { event.stopPropagation(); copy(inviteUrl); }}><Copy size={13} /><span>Ссылка</span></button>
+              </span>
+            </span>
+          </span>
+        </span>
+        <span className="profile-referral-panel__side">
+          {(summary?.unclaimedRewardsCount ?? 0) > 0 ? (
+            <span className="profile-referral-panel__attention attention-dot-pulse" aria-label="Есть награды за приглашения" />
+          ) : null}
+          <ChevronRight size={20} aria-hidden="true" />
+        </span>
+      </div>
+      {copyToastSequence > 0 ? (
+        <div className="achievement-reward-toast profile-referral-copy-toast" role="status" aria-live="polite">
+          <strong className="achievement-reward-toast__title">Скопировано</strong>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function formatRecoveryDuration(minutes: number): string {
   if (minutes === 60) return '1 час';
   return `${minutes} минут`;
@@ -293,10 +343,12 @@ function CareerPanel({
   profile,
   onOpen,
   onChoose,
+  hidden = false,
 }: {
   profile: ProfileData;
   onOpen: () => void;
   onChoose: (achievement: ProfileData['achievements'][number]) => void;
+  hidden?: boolean;
 }): JSX.Element {
   const summary = summarizeAchievementProgress(profile.achievements);
   const earned = profile.achievements
@@ -310,7 +362,7 @@ function CareerPanel({
       return 0;
     });
   return (
-    <section className="profile-career-section" aria-label="Задания">
+    <section className={`profile-career-section${hidden ? ' profile-career-section--hidden' : ''}`} aria-label="Задания" hidden={hidden}>
       <button
         type="button"
         className="section-label profile-section-label"
@@ -673,6 +725,7 @@ export function ProfileScreen(): JSX.Element {
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
   });
+  const referralQuery = useQuery({ queryKey: ['referrals', 'summary'], queryFn: fetchReferralSummary });
   const synchronizeProfileStats = useCallback(
     (player: StatRatingPlayer): void => {
       queryClient.setQueryData<ProfileData>(['profile'], (current) => {
@@ -719,6 +772,9 @@ export function ProfileScreen(): JSX.Element {
       ...(profile.displaySource !== undefined ? { displaySource: profile.displaySource } : {}),
       ...(profile.linkedProviders !== undefined
         ? { linkedProviders: profile.linkedProviders }
+        : {}),
+      ...(profile.unclaimedReferralRewardsCount !== undefined
+        ? { unclaimedReferralRewardsCount: profile.unclaimedReferralRewardsCount }
         : {}),
     });
   }, [profileQuery.data, updateUser]);
@@ -894,10 +950,12 @@ export function ProfileScreen(): JSX.Element {
           onChoose={setPickerKind}
           onOpenRecovery={() => setRecoveryStockOpen(true)}
         />
+        <ReferralPanel summary={referralQuery.data} onOpen={() => navigate('/referrals')} />
         <CareerPanel
           profile={profile}
           onOpen={() => navigate('/profile/achievements')}
           onChoose={setSelectedAchievement}
+          hidden
         />
         <CommunityLinks />
       </section>

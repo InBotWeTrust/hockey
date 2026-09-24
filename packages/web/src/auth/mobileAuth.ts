@@ -1,6 +1,7 @@
 import { apiFetch } from '../api/apiFetch.js';
 import { isNativeAndroid } from '../platform/runtime.js';
 import { useAuthStore, type AuthSession } from './authStore.js';
+import { clearPendingReferralCode, referralAuthFields } from './referral.js';
 
 export type MobileAuthProvider = 'telegram' | 'vk';
 
@@ -55,7 +56,7 @@ export async function startMobileAuth(provider: MobileAuthProvider): Promise<voi
   const codeVerifier = randomVerifier();
   const attempt = await apiFetch<{ attemptId: string; expiresAt: string }>('/mobile/auth/attempt', {
     method: 'POST',
-    body: JSON.stringify({ provider, codeChallenge: await challenge(codeVerifier) }),
+    body: JSON.stringify({ provider, codeChallenge: await challenge(codeVerifier), ...referralAuthFields() }),
   });
   await plugins.SecureSession.save({
     slot: 'pendingAuth',
@@ -68,14 +69,14 @@ export async function startMobileAuth(provider: MobileAuthProvider): Promise<voi
   await plugins.Browser.open({ url });
 }
 
-function navigateToHome(): void {
-  window.history.replaceState({}, '', '/');
+function navigateTo(path = '/'): void {
+  window.history.replaceState({}, '', path);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
 export async function handleMobileAuthDeepLink(
   rawUrl: string,
-  navigateHome: () => void = navigateToHome,
+  navigateHome: () => void = () => navigateTo('/'),
 ): Promise<boolean> {
   let url: URL;
   try {
@@ -85,11 +86,21 @@ export async function handleMobileAuthDeepLink(
   }
   if (
     url.origin !== 'https://ultimatehockey.ru' ||
-    url.pathname !== '/mobile/auth/complete' ||
-    url.searchParams.getAll('code').length !== 1
+    url.pathname !== '/mobile/auth/complete'
   ) {
     return false;
   }
+  const authError = url.searchParams.get('error');
+  if (authError === 'referral_code_invalid' && url.searchParams.getAll('error').length === 1) {
+    const plugins = nativePlugins();
+    clearPendingReferralCode();
+    try { sessionStorage.setItem('hockey.mobileAuthError', 'Код приглашения не найден. Проверьте код или оставьте поле пустым.'); } catch { /* noop */ }
+    await plugins.SecureSession.clear({ slot: 'pendingAuth' });
+    await plugins.Browser.close().catch(() => undefined);
+    navigateTo('/login');
+    return true;
+  }
+  if (url.searchParams.getAll('code').length !== 1) return false;
   const handoffCode = url.searchParams.get('code');
   if (!handoffCode || !/^[A-Za-z0-9_-]{43}$/.test(handoffCode)) return false;
 
@@ -110,6 +121,7 @@ export async function handleMobileAuthDeepLink(
     body: JSON.stringify({ handoffCode, codeVerifier: pending.codeVerifier }),
   });
   useAuthStore.getState().setSession(session);
+  clearPendingReferralCode();
   await plugins.SecureSession.clear({ slot: 'pendingAuth' });
   await plugins.Browser.close().catch(() => undefined);
   navigateHome();

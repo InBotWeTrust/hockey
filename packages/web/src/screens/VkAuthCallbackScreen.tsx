@@ -12,6 +12,7 @@ import {
   getRedirectUri,
   getStoredState,
 } from '../auth/vkAuth.js';
+import { clearPendingReferralCode, referralAuthFields } from '../auth/referral.js';
 
 function detectTimezone(): string {
   try {
@@ -62,10 +63,12 @@ export function VkAuthCallbackScreen(): JSX.Element {
             deviceId: extractDeviceIdFromUrl(),
             redirectUri: getRedirectUri(),
             timezone: detectTimezone(),
+            ...referralAuthFields(),
           }),
         });
         cleanupOAuthState();
         setSession(session);
+        clearPendingReferralCode();
         navigate('/', { replace: true });
       } catch (err) {
         cleanupOAuthState();

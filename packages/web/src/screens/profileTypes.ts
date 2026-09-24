@@ -63,6 +63,7 @@ export interface ProfileData {
     completedChallenges: ChallengeTrophyDetail[];
   };
   unclaimedAchievementsCount?: number;
+  unclaimedReferralRewardsCount?: number;
   currencyBalance?: number;
   starBalance?: number;
   experienceBalance?: number;
