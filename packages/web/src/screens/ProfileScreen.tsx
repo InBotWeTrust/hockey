@@ -241,34 +241,49 @@ function EquipmentPanel({
 }
 
 function ReferralPanel({ summary, onOpen }: { summary: ReferralSummary | undefined; onOpen: () => void }): JSX.Element {
-  const next = summary?.milestones.find((item) => item.unlockedAt === null) ?? null;
+  const [copyToastSequence, setCopyToastSequence] = useState(0);
   const inviteUrl = summary ? `${window.location.origin}/invite/${summary.code}` : '';
-  const copy = (value: string): void => { void navigator.clipboard.writeText(value); };
+  useEffect(() => {
+    if (copyToastSequence === 0) return undefined;
+    const timer = window.setTimeout(() => setCopyToastSequence(0), 1_000);
+    return () => window.clearTimeout(timer);
+  }, [copyToastSequence]);
+  const copy = (value: string): void => {
+    void navigator.clipboard.writeText(value).then(() => setCopyToastSequence((value) => value + 1));
+  };
   return (
     <section className="profile-referral-section" aria-label="Приглашай друзей">
-      <button type="button" className="section-label profile-section-label" aria-label="Открыть приглашённых друзей" onClick={onOpen}>Приглашай друзей</button>
+      <button type="button" className="section-label profile-section-label" aria-label="Открыть приглашённых друзей" onClick={onOpen}>
+        Приглашай друзей
+        {(summary?.totalInvited ?? 0) > 0 ? <span className="profile-referral-section__count"> · {summary?.totalInvited}</span> : null}
+      </button>
       <div className="profile-referral-panel glass" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.key === 'Enter') onOpen(); }}>
         <span className="profile-referral-panel__artwork">
           <img src="/profile/referral-friends.webp" alt="Два хоккеиста вместе" />
         </span>
-        {(summary?.unclaimedRewardsCount ?? 0) > 0 ? (
-          <span className="profile-referral-panel__attention attention-dot-pulse" aria-label="Есть награды за приглашения" />
-        ) : null}
         <span className="profile-referral-panel__copy">
-          <strong>{summary?.totalInvited ?? 0} приглашено</strong>
-          {next ? <small>{summary?.qualifiedInvited ?? 0} из {next.qualifiedReferrals} до {next.rewardStars} звёзд</small> : null}
-          <span className="profile-referral-panel__progress"><i style={{ width: `${next ? Math.min(100, ((summary?.qualifiedInvited ?? 0) / next.qualifiedReferrals) * 100) : 100}%` }} /></span>
-          <span className="profile-referral-copy-row">
-            <span className="profile-referral-copy-row__value"><small>Ссылка для приглашения</small><strong>{inviteUrl || 'Загружаем…'}</strong></span>
-            <button type="button" className="icon-btn" aria-label="Скопировать ссылку" disabled={!inviteUrl} onClick={(event) => { event.stopPropagation(); copy(inviteUrl); }}><Copy size={15} /></button>
-          </span>
-          <span className="profile-referral-copy-row">
-            <span className="profile-referral-copy-row__value"><small>Код приглашения</small><strong>{summary?.code ?? '—'}</strong></span>
-            <button type="button" className="icon-btn" aria-label="Скопировать код" disabled={!summary} onClick={(event) => { event.stopPropagation(); if (summary) copy(summary.code); }}><Copy size={15} /></button>
+          <strong>Играть вместе выгоднее</strong>
+          <span className="profile-referral-actions">
+            <span className="profile-referral-actions__group profile-referral-actions__copy">
+              <span className="profile-referral-actions__buttons">
+                <button type="button" aria-label="Скопировать код" disabled={!summary} onClick={(event) => { event.stopPropagation(); if (summary) copy(summary.code); }}><Copy size={13} /><span>Код</span></button>
+                <button type="button" aria-label="Скопировать ссылку" disabled={!inviteUrl} onClick={(event) => { event.stopPropagation(); copy(inviteUrl); }}><Copy size={13} /><span>Ссылка</span></button>
+              </span>
+            </span>
           </span>
         </span>
-        <ChevronRight size={20} />
+        <span className="profile-referral-panel__side">
+          {(summary?.unclaimedRewardsCount ?? 0) > 0 ? (
+            <span className="profile-referral-panel__attention attention-dot-pulse" aria-label="Есть награды за приглашения" />
+          ) : null}
+          <ChevronRight size={20} aria-hidden="true" />
+        </span>
       </div>
+      {copyToastSequence > 0 ? (
+        <div className="achievement-reward-toast profile-referral-copy-toast" role="status" aria-live="polite">
+          <strong className="achievement-reward-toast__title">Скопировано</strong>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -328,10 +343,12 @@ function CareerPanel({
   profile,
   onOpen,
   onChoose,
+  hidden = false,
 }: {
   profile: ProfileData;
   onOpen: () => void;
   onChoose: (achievement: ProfileData['achievements'][number]) => void;
+  hidden?: boolean;
 }): JSX.Element {
   const summary = summarizeAchievementProgress(profile.achievements);
   const earned = profile.achievements
@@ -345,7 +362,7 @@ function CareerPanel({
       return 0;
     });
   return (
-    <section className="profile-career-section" aria-label="Задания">
+    <section className={`profile-career-section${hidden ? ' profile-career-section--hidden' : ''}`} aria-label="Задания" hidden={hidden}>
       <button
         type="button"
         className="section-label profile-section-label"
@@ -927,17 +944,18 @@ export function ProfileScreen(): JSX.Element {
       ) : null}
 
       <section className="profile-sports-data" aria-label="Спортивные данные игрока">
-        <ReferralPanel summary={referralQuery.data} onOpen={() => navigate('/referrals')} />
         <EquipmentPanel
           inventory={inventoryQuery.data}
           onOpen={() => navigate('/profile/equipment')}
           onChoose={setPickerKind}
           onOpenRecovery={() => setRecoveryStockOpen(true)}
         />
+        <ReferralPanel summary={referralQuery.data} onOpen={() => navigate('/referrals')} />
         <CareerPanel
           profile={profile}
           onOpen={() => navigate('/profile/achievements')}
           onChoose={setSelectedAchievement}
+          hidden
         />
         <CommunityLinks />
       </section>

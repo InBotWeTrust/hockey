@@ -58,7 +58,7 @@ describe('LoginScreen', () => {
     expect(screen.getByAltText('Ультимейт Хоккей')).toHaveClass('login-screen__logo');
     expect(heading.closest('main')).toHaveClass('login-screen');
     expect(screen.getByText(/Нажимая «Войти»/)).toHaveClass('login-screen__terms');
-    expect(screen.getByText('Живи жизнью профессионального хоккеиста')).toHaveClass(
+    expect(screen.getByText('Построй карьеру профессионального хоккеиста')).toHaveClass(
       'login-screen__tagline',
     );
     for (const benefit of ['тренировки', 'игры', 'соревнования', 'призы']) {
@@ -68,6 +68,8 @@ describe('LoginScreen', () => {
     const vkButton = screen.getByRole('button', { name: /войти через вконтакте/i });
     expect(vkButton).toBeInTheDocument();
     expect(vkButton).toHaveClass('login-screen__auth-button');
+    expect(vkButton.compareDocumentPosition(screen.getByPlaceholderText('Введите код')))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(vkButton).toHaveStyle({ background: '#0077ff' });
     expect(vkButton.querySelector('img')).toHaveAttribute('src', '/icons/vk-community.png');
     expect(screen.getByRole('button', { name: /демо-режим/i })).toHaveClass(
@@ -76,11 +78,11 @@ describe('LoginScreen', () => {
     expect(screen.getByRole('button', { name: /войти как dev/i })).toHaveClass(
       'login-screen__auth-button',
     );
-    expect(screen.getByRole('link', { name: 'Условия использования' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Условиями использования' })).toHaveAttribute(
       'href',
       '/terms',
     );
-    expect(screen.getByRole('link', { name: 'Политика конфиденциальности' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Политикой конфиденциальности' })).toHaveAttribute(
       'href',
       '/privacy',
     );
@@ -100,8 +102,8 @@ describe('LoginScreen', () => {
     const input = screen.getByRole('textbox', { name: /код приглашения/i });
     expect(input).toHaveValue('TEAM25');
     fireEvent.change(input, { target: { value: ' new-77 ' } });
-    expect(input).toHaveValue('NEW77');
-    expect(sessionStorage.getItem('hockey.pendingReferral')).toBe('NEW77');
+    expect(input).toHaveValue('NEW-77');
+    expect(sessionStorage.getItem('hockey.pendingReferral')).toBe('NEW-77');
   });
 
   it('matches the native Telegram widget dimensions for every login action', () => {
@@ -149,7 +151,7 @@ describe('LoginScreen', () => {
 
   it('keeps the brand compact so benefit pills stay above the rink safety net', () => {
     expect(designSystemCss).toMatch(
-      /\.login-screen__logo\s*{[^}]*width:\s*clamp\(76px,\s*12dvh,\s*96px\);[^}]*height:\s*clamp\(76px,\s*12dvh,\s*96px\);/s,
+      /\.login-screen__logo\s*{[^}]*width:\s*clamp\(64px,\s*10dvh,\s*80px\);[^}]*height:\s*clamp\(64px,\s*10dvh,\s*80px\);/s,
     );
   });
 

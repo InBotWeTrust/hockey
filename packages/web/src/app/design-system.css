@@ -230,7 +230,7 @@
   --glass-border: rgba(221, 239, 255, 0.82);
 }
 .app-shell--login::before {
-  background-image: url('/sprites/login-rink-night-v2.webp');
+  background-image: url('/sprites/login-rink-journey-v9.webp');
   background-position: 50% 50%;
   background-repeat: no-repeat;
   background-size: cover;
@@ -240,7 +240,13 @@
 }
 .app-shell--login::after {
   opacity: 1;
-  background: rgba(2, 10, 24, 0.1);
+  background: linear-gradient(
+    180deg,
+    rgba(2, 10, 24, 0.48) 0%,
+    rgba(2, 10, 24, 0.22) 30%,
+    rgba(2, 10, 24, 0.08) 60%,
+    rgba(2, 10, 24, 0.1) 100%
+  );
 }
 
 .tournament-duel-result__artwork {
@@ -380,8 +386,8 @@
   padding: clamp(12px, 2.4dvh, 24px) 16px 0;
 }
 .login-screen__logo {
-  width: clamp(76px, 12dvh, 96px);
-  height: clamp(76px, 12dvh, 96px);
+  width: clamp(64px, 10dvh, 80px);
+  height: clamp(64px, 10dvh, 80px);
   border-radius: 22px;
   object-fit: cover;
   display: inline-block;
@@ -514,11 +520,14 @@
   display: none;
 }
 .login-screen__terms {
+  width: calc(100vw - 16px);
+  max-width: 430px;
+  align-self: center;
   margin-top: 3px;
-  color: rgba(245, 250, 255, 0.88);
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 1.5;
+  color: rgba(245, 250, 255, 0.8);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.4;
   text-align: center;
   text-shadow: 0 2px 8px rgba(0, 8, 22, 0.94);
 }
@@ -570,9 +579,9 @@
     padding-top: 8px;
   }
   .login-screen__logo {
-    width: 80px;
-    height: 80px;
-    border-radius: 22px;
+    width: 68px;
+    height: 68px;
+    border-radius: 19px;
   }
   .login-screen__actions {
     gap: 7px;
@@ -4816,6 +4825,7 @@
   display: grid;
   gap: 7px;
 }
+.profile-career-section--hidden { display: none; }
 
 .profile-referral-panel {
   position: relative;
@@ -4847,40 +4857,79 @@
   object-fit: cover;
 }
 .profile-referral-panel__attention {
-  position: absolute;
-  top: 14px;
-  right: 14px;
   width: 7px;
   height: 7px;
+  margin-top: 8px;
   border-radius: 999px;
   background: rgba(220, 38, 38, .94);
 }
-.profile-referral-panel__copy { min-width: 0; display: grid; gap: 3px; }
-.profile-referral-panel__copy > strong { font-size: 14px; }
-.profile-referral-panel__copy > small { color: var(--muted); font-size: 10px; font-weight: 750; }
-.profile-referral-panel__progress { height: 5px; overflow: hidden; border-radius: 999px; background: rgba(15,23,42,.12); }
-.profile-referral-panel__progress i { display: block; height: 100%; border-radius: inherit; background: var(--blue-deep); }
-.profile-referral-copy-row { min-width: 0; height: 22px; padding: 2px 3px 2px 6px; border-radius: 9px; background: rgba(255,255,255,.48); display: flex; align-items: center; gap: 4px; }
-.profile-referral-copy-row__value { min-width: 0; flex: 1; display: grid; gap: 1px; }
-.profile-referral-copy-row__value small { color: var(--muted); font-size: 6.5px; font-weight: 750; line-height: 1; }
-.profile-referral-copy-row__value strong { overflow: hidden; font-size: 8.5px; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
-.profile-referral-copy-row .icon-btn { width: 18px; height: 18px; min-height: 18px; }
-.profile-referral-copy-row .icon-btn svg { width: 11px; height: 11px; }
+.profile-referral-panel__side {
+  width: 20px;
+  height: 86px;
+  display: grid;
+  grid-template-rows: 1fr auto 1fr;
+  justify-items: center;
+  align-items: start;
+}
+.profile-referral-panel__side > svg { grid-row: 2; align-self: center; }
+.profile-referral-section__count { color: rgba(255,255,255,.94); }
+.profile-referral-panel__copy { min-width: 0; height: 86px; display: grid; align-content: center; gap: 12px; }
+.profile-referral-panel__copy > strong { font-size: 19px; font-weight: 950; line-height: 1.05; }
+.profile-referral-panel__copy > small { color: var(--muted); font-size: 8.5px; line-height: 1.15; font-weight: 750; }
+.profile-referral-actions { min-width: 0; display: flex; align-items: stretch; gap: 5px; }
+.profile-referral-actions__group { min-width: 0; display: grid; }
+.profile-referral-actions__copy { flex: 0 0 auto; }
+.profile-referral-actions__label { color: var(--muted-soft); font-size: 8px; font-weight: 850; line-height: 1; letter-spacing: .05em; text-transform: uppercase; }
+.profile-referral-actions__value { height: 30px; overflow: hidden; display: flex; align-items: center; font-size: 15px; line-height: 1; letter-spacing: .035em; text-overflow: ellipsis; white-space: nowrap; }
+.profile-referral-actions__buttons { height: 30px; display: flex; gap: 4px; }
+.profile-referral-actions__buttons > button {
+  width: 72px;
+  min-width: 0;
+  padding: 0 7px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 9px;
+  background: #0f304d;
+  color: #fff;
+  box-shadow: 0 3px 8px rgba(15,48,77,.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font: 800 7px/1 var(--font-sans);
+  cursor: pointer;
+}
+.profile-referral-actions__buttons > button:active { transform: scale(.96); }
+.profile-referral-actions__buttons > button:disabled { cursor: default; opacity: .55; }
 
 .referrals-screen { width: 100%; max-width: 100%; min-width: 0; overflow-x: clip; gap: 14px; padding-bottom: calc(var(--bottom-nav-space) + 14px); }
+.referral-invite-card { width: 100%; min-width: 0; padding: 16px; border-radius: 24px; display: grid; gap: 15px; }
+.referral-invite-card__copy { display: grid; gap: 6px; }
+.referral-invite-card__copy h2 { margin: 0; color: var(--ink); font-size: 17px; line-height: 1.1; }
+.referral-invite-card__copy p { margin: 0; color: var(--muted); font-size: 11px; font-weight: 700; line-height: 1.35; }
+.referral-invite-card__fields { min-width: 0; display: grid; gap: 8px; }
+.referral-invite-field { min-width: 0; min-height: 52px; padding: 8px 8px 8px 11px; border: 1px solid rgba(255,255,255,.62); border-radius: 15px; background: rgba(255,255,255,.26); display: flex; align-items: center; gap: 9px; }
+.referral-invite-field > span { min-width: 0; flex: 1; display: grid; gap: 3px; }
+.referral-invite-field small { color: var(--muted-soft); font-size: 8px; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
+.referral-invite-field strong { min-width: 0; overflow: hidden; color: var(--ink); font-size: 13px; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
+.referral-invite-field:first-child strong { font-size: 17px; letter-spacing: .05em; }
+.referral-invite-field button { flex: 0 0 auto; height: 34px; padding: 0 11px; border: 1px solid rgba(255,255,255,.22); border-radius: 10px; background: #0f304d; color: #fff; box-shadow: 0 3px 8px rgba(15,48,77,.2); display: inline-flex; align-items: center; justify-content: center; gap: 5px; font: 800 9px/1 var(--font-sans); cursor: pointer; }
+.referral-invite-field button:active { transform: scale(.97); }
 .referral-rewards-section { width: 100%; max-width: 100%; min-width: 0; display: grid; gap: 7px; }
 .referral-rewards-section > .section-label { width: max-content; margin: 0; padding: 2px 8px; }
 .referral-rewards { width: 100%; max-width: 100%; min-width: 0; overflow: hidden; padding: 14px; border-radius: 24px; }
 .referral-rewards__track { width: 100%; min-width: 0; display: flex; gap: 7px; overflow-x: auto; overscroll-behavior-inline: contain; padding: 2px; }
 .referral-reward { min-width: 66px; padding: 9px 6px; border: 1px solid var(--glass-border); border-radius: 16px; background: rgba(255,255,255,.48); color: var(--ink); display: grid; justify-items: center; gap: 5px; }
 .referral-reward > span { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: rgba(15,23,42,.1); font: 800 11px var(--font-mono); }
-.referral-reward strong { display: flex; align-items: center; gap: 3px; color: var(--amber-deep); font-size: 12px; }
+.referral-reward strong { display: flex; align-items: center; gap: 3px; color: var(--reward-star); font-size: 12px; }
 .referral-reward small { font-size: 9px; font-weight: 850; }
 .referral-reward--claimable { border-color: rgba(217,119,6,.45); cursor: pointer; box-shadow: 0 6px 16px rgba(217,119,6,.14); }
-.referral-rewards > p { margin: 11px 0 0; color: var(--muted); font-size: 11px; font-weight: 750; }
+.referral-rewards__progress { position: relative; height: 23px; margin-top: 11px; overflow: hidden; border: 1px solid rgba(255,255,255,.72); border-radius: 999px; background: rgba(92,115,137,.17); box-shadow: inset 0 1px 3px rgba(15,23,42,.08); }
+.referral-rewards__progress > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg,#3d8fc4,#64b7da); }
+.referral-rewards__progress > strong { position: absolute; inset: 0; display: grid; place-items: center; color: #10263d; font-size: 10px; font-weight: 950; font-variant-numeric: tabular-nums; text-shadow: 0 1px 1px rgba(255,255,255,.74); }
 .referral-list-section { width: 100%; max-width: 100%; min-width: 0; display: grid; gap: 7px; }
 .referral-list-section > .section-label { width: max-content; margin: 0; padding: 2px 8px; }
-.referral-list-section > .section-label span { color: var(--muted); }
+.referral-list-section > .section-label { display: inline-flex; align-items: center; gap: 4px; }
+.referral-list-section__count { color: rgba(255,255,255,.94); }
 .referral-player-list { width: 100%; max-width: 100%; min-width: 0; overflow: hidden; border-radius: 24px; }
 .referral-player { width: 100%; min-height: 64px; padding: 10px 13px; border: 0; border-bottom: 1px solid rgba(255,255,255,.56); background: transparent; color: var(--ink); display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer; }
 .referral-player:last-child { border-bottom: 0; }
@@ -4892,6 +4941,10 @@
 .referral-player__experience { flex: 0 0 auto; color: var(--reward-experience); display: inline-flex; align-items: center; gap: 2px; font-weight: 900; font-variant-numeric: tabular-nums; }
 .referral-player__experience svg { width: 12px; height: 12px; stroke-width: 2.6; }
 .referral-empty { margin: 0; padding: 18px; color: var(--muted); font-size: 12px; text-align: center; }
+.referral-empty--inline { padding: 5px 8px 3px; color: rgba(255,255,255,.78); text-align: left; }
+.referrals-empty-state { padding: 18px; border-radius: 24px; display: grid; gap: 5px; text-align: center; }
+.referrals-empty-state strong { font-size: 14px; }
+.referrals-empty-state span { color: var(--muted); font-size: 11px; font-weight: 700; }
 .referral-load-more { width: calc(100% - 24px); margin: 10px 12px 12px; }
 
 .profile-community-story-grid {
@@ -14802,6 +14855,16 @@ button.daily-calendar__day:active {
 .achievement-reward-toast {
   width: min(398px, calc(100vw - 32px));
   pointer-events: none;
+}
+
+.profile-referral-copy-toast {
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 8px 16px;
+}
+
+.profile-referral-copy-toast .achievement-reward-toast__title {
+  margin-top: 0;
 }
 
 .duel-profile-challenge[aria-disabled='true'] {

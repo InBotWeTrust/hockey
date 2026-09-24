@@ -6,6 +6,7 @@ import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import {
   claimReferralReward,
+  generateReferralCode,
   reconcileReferralQualification,
 } from '../../src/referrals/service.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
@@ -14,6 +15,15 @@ const migrationsDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../db/migrations',
 );
+
+describe('referral code generation', () => {
+  it('creates a fixed ten-character code', () => {
+    const code = generateReferralCode(Buffer.from([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]));
+
+    expect(code).toBe('ABCDEFGHJK');
+    expect(code).toHaveLength(10);
+  });
+});
 
 describe.skipIf(!hasIntegrationEnv)('referral rewards', () => {
   let pool: Pool;

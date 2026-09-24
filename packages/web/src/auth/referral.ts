@@ -3,7 +3,7 @@ const PENDING_REFERRAL_SOURCE_KEY = 'hockey.pendingReferralSource';
 const INSTALLATION_KEY = 'hockey.installationId';
 
 export function normalizeReferralCode(value: string): string {
-  return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 32);
+  return value.trim().toUpperCase().slice(0, 32);
 }
 
 export function getPendingReferralCode(): string {

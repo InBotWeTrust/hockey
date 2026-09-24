@@ -1,14 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { archiveAdminReferralMilestone, createAdminReferralMilestone, fetchAdminReferralMilestones, fetchAdminReferrals, previewAdminReferralMilestone, updateAdminReferralMilestone, type AdminReferralMilestone } from './api.js';
+import { archiveAdminReferralMilestone, createAdminReferralMilestone, fetchAdminReferralMilestones, fetchAdminReferralRelationships, fetchAdminReferrals, previewAdminReferralMilestone, updateAdminReferralMilestone, type AdminReferralMilestone } from './api.js';
 
 export function ReferralsAdmin(): JSX.Element {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [threshold, setThreshold] = useState('');
   const [stars, setStars] = useState('');
+  const [level, setLevel] = useState('all');
+  const [risk, setRisk] = useState('all');
   const referrals = useQuery({ queryKey: ['admin', 'referrals', search], queryFn: () => fetchAdminReferrals(search) });
   const milestones = useQuery({ queryKey: ['admin', 'referrals', 'milestones'], queryFn: fetchAdminReferralMilestones });
+  const relationships = useQuery({ queryKey: ['admin', 'referrals', 'relationships', search, level, risk], queryFn: () => fetchAdminReferralRelationships({ q: search, level, risk }) });
   const preview = useQuery({ queryKey: ['admin', 'referrals', 'preview', threshold], queryFn: () => previewAdminReferralMilestone(Number(threshold)), enabled: Number(threshold) > 0 });
   const refresh = async (): Promise<void> => { await queryClient.invalidateQueries({ queryKey: ['admin', 'referrals'] }); };
   const create = useMutation({ mutationFn: createAdminReferralMilestone, onSuccess: refresh });
@@ -28,10 +31,18 @@ export function ReferralsAdmin(): JSX.Element {
   const summary = referrals.data?.summary;
   return <section className="admin-referrals">
     <div className="admin-summary-grid">
-      {[['Приглашений', summary?.totalInvitations], ['Стали любителями', summary?.qualifiedInvitations], ['Приглашают', summary?.inviters], ['Выдано звёзд', summary?.starsIssued]].map(([label, value]) => <article className="glass admin-summary-card" key={String(label)}><span>{label}</span><strong>{value ?? '—'}</strong></article>)}
+      {[['Приглашений', summary?.totalInvitations], ['Стали любителями', summary?.qualifiedInvitations], ['Конверсия', summary ? `${summary.conversionPercent.toFixed(1)}%` : undefined], ['Приглашают', summary?.inviters], ['Выдано звёзд', summary?.starsIssued]].map(([label, value]) => <article className="glass admin-summary-card" key={String(label)}><span>{label}</span><strong>{value ?? '—'}</strong></article>)}
     </div>
     <section className="glass admin-panel"><h2>Рейтинг пригласивших</h2><input className="input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Имя, фамилия, Telegram или VK ID" />
       <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Игрок</th><th>Код</th><th>Всего</th><th>Любители</th><th>Риск</th></tr></thead><tbody>{referrals.data?.inviters.map((item) => <tr key={item.userId}><td>{item.displayName}</td><td>{item.code}</td><td>{item.totalInvited}</td><td>{item.qualifiedInvited}</td><td>{item.riskSignals}</td></tr>)}</tbody></table></div>
+    </section>
+    <section className="glass admin-panel"><h2>Связи приглашений</h2>
+      <div className="admin-referral-form">
+        <select className="input" aria-label="Уровень приглашённого" value={level} onChange={(event) => setLevel(event.target.value)}><option value="all">Все уровни</option><option value="beginner">Новички</option><option value="amateur">Любители</option><option value="professional">Профи</option></select>
+        <select className="input" aria-label="Риск регистрации" value={risk} onChange={(event) => setRisk(event.target.value)}><option value="all">Любой риск</option><option value="yes">Есть сигналы</option><option value="no">Без сигналов</option></select>
+      </div>
+      <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Пригласил</th><th>Код</th><th>Друг</th><th>Уровень</th><th>Опыт</th><th>Присоединился</th><th>Риск</th></tr></thead><tbody>{relationships.data?.relationships.map((item) => <tr key={item.invitee_user_id}><td>{item.inviter_name}</td><td>{item.code}</td><td>{item.invitee_name}</td><td>{item.competition_level}</td><td>{item.experience}</td><td>{new Date(item.joined_at).toLocaleDateString('ru-RU')}</td><td>{item.risk_signals}</td></tr>)}</tbody></table></div>
+      <small>Всего связей: {relationships.data?.total ?? 0}. Связи и сигналы доступны только для просмотра.</small>
     </section>
     <section className="glass admin-panel"><h2>Ступени наград</h2>
       <form className="admin-referral-form" onSubmit={(event) => { event.preventDefault(); const qualifiedReferrals = Number(threshold); const rewardStars = Number(stars); if (qualifiedReferrals > 0 && rewardStars > 0 && window.confirm(`Награду сразу откроют ${preview.data?.newlyEligibleCount ?? 0} игроков. Сохранить?`)) create.mutate({ qualifiedReferrals, rewardStars }); }}><input className="input" inputMode="numeric" value={threshold} onChange={(event) => setThreshold(event.target.value)} placeholder="Друзей" /><input className="input" inputMode="numeric" value={stars} onChange={(event) => setStars(event.target.value)} placeholder="Звёзд" /><button className="btn btn--cta" type="submit">Добавить</button></form>

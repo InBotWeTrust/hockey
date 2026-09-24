@@ -10,12 +10,18 @@ export interface MobileTelegramAuthScreenProps {
 function isCompletionUrl(rawUrl: string): boolean {
   try {
     const url = new URL(rawUrl);
-    return (
-      url.origin === 'https://ultimatehockey.ru' &&
-      url.pathname === '/mobile/auth/complete' &&
-      url.searchParams.getAll('code').length === 1 &&
-      /^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('code') ?? '')
-    );
+    if (
+      url.origin !== 'https://ultimatehockey.ru' ||
+      url.pathname !== '/mobile/auth/complete'
+    ) {
+      return false;
+    }
+    const keys = [...url.searchParams.keys()];
+    if (keys.length !== 1) return false;
+    const code = url.searchParams.getAll('code');
+    if (code.length === 1) return /^[A-Za-z0-9_-]{43}$/.test(code[0] ?? '');
+    const error = url.searchParams.getAll('error');
+    return error.length === 1 && error[0] === 'referral_code_invalid';
   } catch {
     return false;
   }

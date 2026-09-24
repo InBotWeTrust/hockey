@@ -16,7 +16,7 @@ begin
         insert into referral_code (user_id, code, created_at)
         values (
           existing_user.id,
-          upper(substr(md5(existing_user.id::text || ':' || attempt::text), 1, 16)),
+          upper(substr(md5(existing_user.id::text || ':' || attempt::text), 1, 10)),
           existing_user.created_at
         );
         exit;

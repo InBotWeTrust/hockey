@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Check, ChevronRight, Star, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight, Copy, Star, TrendingUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../auth/authStore.js';
 import {
@@ -36,8 +36,10 @@ function ReferralSection({ level, title, onSelect }: { level: ReferralLevel; tit
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
   const total = query.data?.pages[0]?.total ?? 0;
   return <section className="referral-list-section">
-    <div className="section-label">{title} <span>{total}</span></div>
-    <div className="glass referral-player-list">
+    <div className="section-label">{title} <span className="referral-list-section__count">· {total}</span></div>
+    {total === 0 && !query.isLoading ? (
+      <p className="referral-empty referral-empty--inline">Пока никого</p>
+    ) : <div className="glass referral-player-list">
       {query.isLoading ? <p className="referral-empty">Загружаем…</p> : null}
       {items.map((player) => <button type="button" className="referral-player" key={player.userId} onClick={() => onSelect({ userId: player.userId, displayName: player.displayName, avatarUrl: player.avatarUrl, accountKind: 'player' })}>
         <span className="referral-player__avatar">{player.avatarUrl ? <img src={player.avatarUrl} alt="" /> : player.displayName.charAt(0).toUpperCase()}</span>
@@ -50,18 +52,28 @@ function ReferralSection({ level, title, onSelect }: { level: ReferralLevel; tit
         </span>
         <ChevronRight size={18} />
       </button>)}
-      {total === 0 && !query.isLoading ? <p className="referral-empty">Пока никого</p> : null}
       {query.hasNextPage ? <button type="button" className="btn btn--ghost referral-load-more" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>{query.isFetchingNextPage ? 'Загружаем…' : 'Показать ещё'}</button> : null}
-    </div>
+    </div>}
   </section>;
 }
 
 export function ReferralsScreen(): JSX.Element {
   const navigate = useNavigate();
   const [selectedPlayer, setSelectedPlayer] = useState<UserPickerItem | null>(null);
+  const [copyToastSequence, setCopyToastSequence] = useState(0);
   const queryClient = useQueryClient();
   const updateUser = useAuthStore((state) => state.updateUser);
   const summary = useQuery({ queryKey: ['referrals', 'summary'], queryFn: fetchReferralSummary });
+  const inviteUrl = summary.data ? `${window.location.origin}/invite/${summary.data.code}` : '';
+  useEffect(() => {
+    if (copyToastSequence === 0) return undefined;
+    const timer = window.setTimeout(() => setCopyToastSequence(0), 1_000);
+    return () => window.clearTimeout(timer);
+  }, [copyToastSequence]);
+  const copy = (value: string): void => {
+    void navigator.clipboard.writeText(value).then(() => setCopyToastSequence((value) => value + 1));
+  };
+  const nextMilestone = summary.data?.milestones.find((item) => item.unlockedAt === null) ?? null;
   const claim = useMutation({
     mutationFn: claimReferralReward,
     onSuccess: async (result) => {
@@ -81,6 +93,25 @@ export function ReferralsScreen(): JSX.Element {
         <h1 className="page-header-standard__title">Приглашённые друзья</h1>
       </header>
       {summary.data ? (
+        <section className="referral-invite-card glass" aria-label="Как приглашать друзей">
+          <div className="referral-invite-card__copy">
+            <h2>Приглашай друзей</h2>
+            <p>Поделись ссылкой или кодом – друг должен указать его при первой регистрации. Когда он перейдёт в «Любители», приглашение засчитается в шкале наград, а за открытые ступени можно будет забрать звёзды.</p>
+            <p>Следи за прогрессом друзей ниже и напоминай им об игре, если они пропускают матчи.</p>
+          </div>
+          <div className="referral-invite-card__fields">
+            <div className="referral-invite-field">
+              <span><small>Код приглашения</small><strong>{summary.data.code}</strong></span>
+              <button type="button" aria-label="Скопировать код приглашения" onClick={() => copy(summary.data.code)}><Copy size={15} /><span>Копировать</span></button>
+            </div>
+            <div className="referral-invite-field">
+              <span><small>Ссылка для приглашения</small><strong>{inviteUrl}</strong></span>
+              <button type="button" aria-label="Скопировать ссылку приглашения" onClick={() => copy(inviteUrl)}><Copy size={15} /><span>Копировать</span></button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+      {summary.data ? (
         <section className="referral-rewards-section" aria-label="Награды за приглашения">
           <div className="section-label">Шкала наград</div>
           <div className="referral-rewards glass">
@@ -94,12 +125,34 @@ export function ReferralsScreen(): JSX.Element {
                 </button>;
               })}
             </div>
-            <p>{summary.data.qualifiedInvited} друзей дошли до уровня «Любитель»</p>
+            {nextMilestone ? (
+              <div
+                className="referral-rewards__progress"
+                role="progressbar"
+                aria-label="Прогресс до следующей награды"
+                aria-valuemin={0}
+                aria-valuemax={nextMilestone.qualifiedReferrals}
+                aria-valuenow={Math.min(summary.data.qualifiedInvited, nextMilestone.qualifiedReferrals)}
+              >
+                <span style={{ width: `${Math.min(100, (summary.data.qualifiedInvited / nextMilestone.qualifiedReferrals) * 100)}%` }} />
+                <strong>{summary.data.qualifiedInvited} / {nextMilestone.qualifiedReferrals}</strong>
+              </div>
+            ) : null}
           </div>
         </section>
       ) : null}
-      {sections.map((section) => <ReferralSection key={section.level} {...section} onSelect={setSelectedPlayer} />)}
+      {summary.data?.totalInvited === 0 ? (
+        <section className="referrals-empty-state glass" aria-label="Приглашённые друзья пока отсутствуют">
+          <strong>Здесь появятся приглашённые друзья</strong>
+          <span>Поделись ссылкой или кодом выше</span>
+        </section>
+      ) : summary.data ? sections.map((section) => <ReferralSection key={section.level} {...section} onSelect={setSelectedPlayer} />) : null}
       <UserProfileSheet sender={selectedPlayer} onClose={() => setSelectedPlayer(null)} />
+      {copyToastSequence > 0 ? (
+        <div className="achievement-reward-toast profile-referral-copy-toast" role="status" aria-live="polite">
+          <strong className="achievement-reward-toast__title">Скопировано</strong>
+        </div>
+      ) : null}
     </main>
   );
 }

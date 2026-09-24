@@ -5,15 +5,15 @@ describe('referral auth state', () => {
   beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
 
   it('normalizes and keeps the pending code through an OAuth redirect', () => {
-    expect(setPendingReferralCode(' ab-c 12 ', 'link')).toBe('ABC12');
-    expect(getPendingReferralCode()).toBe('ABC12');
-    expect(referralAuthFields()).toMatchObject({ referralCode: 'ABC12', referralSource: 'link' });
+    expect(setPendingReferralCode(' аб-в 12! ', 'link')).toBe('АБ-В 12!');
+    expect(getPendingReferralCode()).toBe('АБ-В 12!');
+    expect(referralAuthFields()).toMatchObject({ referralCode: 'АБ-В 12!', referralSource: 'link' });
     clearPendingReferralCode();
     expect(getPendingReferralCode()).toBe('');
   });
 
-  it('rejects punctuation and caps the stored code length', () => {
-    expect(normalizeReferralCode(`!?${'a'.repeat(40)}`)).toBe('A'.repeat(32));
+  it('keeps arbitrary characters and caps the stored code length', () => {
+    expect(normalizeReferralCode(`!?${'a'.repeat(40)}`)).toBe(`!?${'A'.repeat(30)}`);
   });
 
   it('reuses a stable installation id', () => {

@@ -17,6 +17,7 @@ import { AppError } from '../plugins/errors.js';
 export interface MobileAuthRoutesOptions {
   accessSecret: string;
   refreshSecret: string;
+  accessTtlSec?: number;
   telegramBotToken: string;
   vkAppId?: string;
   accountRecoveryTelegramProviderUids?: readonly string[];
@@ -61,12 +62,21 @@ const telegramCompleteSchema = z
 const VK_CALLBACK_URI = 'https://ultimatehockey.ru/api/mobile/auth/vk/callback';
 const COMPLETE_URL = 'https://ultimatehockey.ru/mobile/auth/complete';
 
+function referralErrorUrl(error: unknown): string | null {
+  if (!(error instanceof AppError) || error.code !== 'referral_code_invalid') return null;
+  return `${COMPLETE_URL}?error=referral_code_invalid`;
+}
+
 function opaqueCode(bytes = 32): string {
   return randomBytes(bytes).toString('base64url');
 }
 
 export const mobileAuthRoutes: FastifyPluginAsync<MobileAuthRoutesOptions> = async (app, opts) => {
-  const jwt = createJwt({ accessSecret: opts.accessSecret, refreshSecret: opts.refreshSecret });
+  const jwt = createJwt({
+    accessSecret: opts.accessSecret,
+    refreshSecret: opts.refreshSecret,
+    ...(opts.accessTtlSec === undefined ? {} : { accessTtlSec: opts.accessTtlSec }),
+  });
 
   app.post('/mobile/auth/attempt', async (req, reply) => {
     const body = attemptSchema.safeParse(req.body);
@@ -179,14 +189,21 @@ export const mobileAuthRoutes: FastifyPluginAsync<MobileAuthRoutesOptions> = asy
       appId: opts.vkAppId,
     });
     const attempt = await assertMobileAuthAttempt(app.redis, state.attemptId, 'vk');
-    const user = await findOrLinkOrCreateVkUser(app.pg, {
-      vkUserId: exchange.vkUserId,
-      profile,
-      ...attempt,
-      ...(opts.accountRecoveryTelegramProviderUids === undefined
-        ? {}
-        : { recoveryMergeTelegramProviderUids: opts.accountRecoveryTelegramProviderUids }),
-    });
+    let user;
+    try {
+      user = await findOrLinkOrCreateVkUser(app.pg, {
+        vkUserId: exchange.vkUserId,
+        profile,
+        ...attempt,
+        ...(opts.accountRecoveryTelegramProviderUids === undefined
+          ? {}
+          : { recoveryMergeTelegramProviderUids: opts.accountRecoveryTelegramProviderUids }),
+      });
+    } catch (error) {
+      const redirectUrl = referralErrorUrl(error);
+      if (redirectUrl) return reply.redirect(redirectUrl);
+      throw error;
+    }
     const { handoffCode } = await completeMobileAuthAttempt(app.redis, {
       attemptId: state.attemptId,
       userId: user.id,
@@ -213,18 +230,25 @@ export const mobileAuthRoutes: FastifyPluginAsync<MobileAuthRoutesOptions> = asy
       [telegramUser.firstName, telegramUser.lastName].filter(Boolean).join(' ') ||
       telegramUser.username ||
       'player';
-    const user = await findOrCreateTelegramUser(app.pg, {
-      providerUid: String(telegramUser.id),
-      displayName,
-      ...(telegramUser.photoUrl === undefined ? {} : { avatarUrl: telegramUser.photoUrl }),
-      ...(telegramUser.username === undefined ? {} : { username: telegramUser.username }),
-      ...(telegramUser.firstName ? { firstName: telegramUser.firstName } : {}),
-      ...(telegramUser.lastName === undefined ? {} : { lastName: telegramUser.lastName }),
-      ...attempt,
-      ...(opts.accountRecoveryTelegramProviderUids === undefined
-        ? {}
-        : { recoveryMergeTelegramProviderUids: opts.accountRecoveryTelegramProviderUids }),
-    });
+    let user;
+    try {
+      user = await findOrCreateTelegramUser(app.pg, {
+        providerUid: String(telegramUser.id),
+        displayName,
+        ...(telegramUser.photoUrl === undefined ? {} : { avatarUrl: telegramUser.photoUrl }),
+        ...(telegramUser.username === undefined ? {} : { username: telegramUser.username }),
+        ...(telegramUser.firstName ? { firstName: telegramUser.firstName } : {}),
+        ...(telegramUser.lastName === undefined ? {} : { lastName: telegramUser.lastName }),
+        ...attempt,
+        ...(opts.accountRecoveryTelegramProviderUids === undefined
+          ? {}
+          : { recoveryMergeTelegramProviderUids: opts.accountRecoveryTelegramProviderUids }),
+      });
+    } catch (error) {
+      const redirectUrl = referralErrorUrl(error);
+      if (redirectUrl) return reply.send({ redirectUrl });
+      throw error;
+    }
     const { handoffCode } = await completeMobileAuthAttempt(app.redis, {
       attemptId,
       userId: user.id,

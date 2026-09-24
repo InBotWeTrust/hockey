@@ -16,6 +16,7 @@ export interface AuthRoutesOptions {
   accountRecoveryTelegramProviderUids?: readonly string[];
   accessSecret: string;
   refreshSecret: string;
+  accessTtlSec?: number;
   devLoginEnabled?: boolean;
   devAccessCodeLoginEnabled?: boolean;
 }
@@ -150,6 +151,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opt
   const jwt = createJwt({
     accessSecret: opts.accessSecret,
     refreshSecret: opts.refreshSecret,
+    ...(opts.accessTtlSec === undefined ? {} : { accessTtlSec: opts.accessTtlSec }),
   });
 
   app.post('/auth/telegram', async (req, reply) => {
