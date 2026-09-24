@@ -12,11 +12,25 @@ import {
   simulateShooter,
 } from '@hockey/game-core';
 import { MarksmanshipConstructorCourt, getConstructorScene } from './MarksmanshipConstructorCourt.js';
+import { RECORDED_RUNS } from '../screens/marksmanshipReplayData.js';
+import { getReplayFrame } from '../screens/marksmanshipReplayTimeline.js';
 
 vi.mock('./PixiStage.js', () => ({ PixiStage: ({ preloadAssets }: { preloadAssets: string[] }) =>
   <div data-testid="constructor-pixi-stage" data-assets={preloadAssets.join(',')} /> }));
 
 describe('controlled marksmanship court', () => {
+  it('uses the saved player clock and scene clock independently in a recorded shot', () => {
+    const run = RECORDED_RUNS[0]!;
+    const shot = run.shots[1]!;
+    const frame = getReplayFrame(run, shot.wallMs);
+    render(<MarksmanshipConstructorCourt seed={run.key} timeMs={frame.sceneMs}
+      goalie={getGoalie(run.goalieId)} shotIndex={shot.index} showHitboxes
+      replay={{ run, frame }} />);
+    const expectedPlayerX = simulateShooter(shot.shooterMs + run.phaseOffsets.shooter,
+      shot.input.shooterFrequency).x;
+    expect(Number(screen.getByLabelText('Линия броска игрока').getAttribute('x1')))
+      .toBeCloseTo(expectedPlayerX, 5);
+  });
   it('uses the first daily period speeds and seed phase offsets at time zero', () => {
     const seed = 'constructor-start-a';
     const goalie = getGoalie('rookie');

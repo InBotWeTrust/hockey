@@ -20,6 +20,48 @@
   font-size: clamp(19px, 5vw, 24px);
 }
 
+.marksmanship-replay-tabs {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: min(100%, 760px);
+  margin-inline: auto;
+}
+
+.marksmanship-replay-tabs button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 5px;
+  border: 1px solid #aabfd2;
+  border-radius: 12px;
+  background: rgba(239, 246, 252, 0.9);
+  color: #14253a;
+  font: inherit;
+  font-size: clamp(11px, 2.6vw, 15px);
+  font-weight: 800;
+}
+
+.marksmanship-replay-tabs button[aria-selected='true'] {
+  border-color: #1e3a5f;
+  background: #1e3a5f;
+  color: #fff;
+}
+
+.marksmanship-constructor-playback button {
+  width: 100%;
+  min-height: 50px;
+  background: #1e3a5f !important;
+  color: #fff !important;
+}
+
+.marksmanship-replay-note {
+  margin: 0;
+  color: #304b64;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .marksmanship-constructor-stage {
   flex: none;
   display: grid;

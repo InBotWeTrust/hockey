@@ -28,6 +28,8 @@ import {
   type ManualProjection,
 } from '@hockey/game-core';
 import { type Scale } from './coords.js';
+import type { RecordedRun, RecordedShot } from '../screens/marksmanshipReplayData.js';
+import type { ReplayFrame } from '../screens/marksmanshipReplayTimeline.js';
 import { PixiStage } from './PixiStage.js';
 import { Goal } from './renderer/Goal.js';
 import { Goalie } from './renderer/Goalie.js';
@@ -71,6 +73,26 @@ export interface MarksmanshipConstructorCourtProps {
   preStart?: boolean;
   manual?: ManualProjection | null;
   onDragCenter?: (entity: DraggableEntity, x: number) => void;
+  replay?: { run: RecordedRun; frame: ReplayFrame };
+}
+
+function replayShot(run: RecordedRun, frame: ReplayFrame): RecordedShot {
+  return frame.shot ?? run.shots.find((shot) => shot.wallMs > frame.wallMs) ??
+    frame.anchor ?? run.shots[0]!;
+}
+
+function getReplayScene(run: RecordedRun, frame: ReplayFrame, goalie: GoalieConfig): ConstructorScene {
+  const shot = replayShot(run, frame);
+  return {
+    playerX: simulateShooter(frame.shooterMs + run.phaseOffsets.shooter,
+      shot.input.shooterFrequency).x,
+    goalOffsetX: simulateGoal({ ...goalie,
+      goalFrequency: shot.input.goalFrequency ?? goalie.goalFrequency },
+    frame.sceneMs, run.phaseOffsets.goal).offsetX,
+    goalieState: simulateGoalie({ ...goalie,
+      frequency: shot.input.goalieFrequency ?? goalie.frequency },
+    shot.seed, shot.index, frame.sceneMs, run.phaseOffsets.goalie),
+  };
 }
 
 interface Renderers {
@@ -109,7 +131,8 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
   const propsRef = useRef(props);
   propsRef.current = props;
   const draggingRef = useRef<DraggableEntity | null>(null);
-  const scene = getConstructorScene(props.seed, props.timeMs, props.goalie, props.shotIndex);
+  const scene = props.replay ? getReplayScene(props.replay.run, props.replay.frame, props.goalie)
+    : getConstructorScene(props.seed, props.timeMs, props.goalie, props.shotIndex);
   const playerX = props.preStart ? PERSPECTIVE_COURT_VISUAL_X_CENTER
     : props.manual?.playerX ?? scene.playerX;
 
@@ -117,7 +140,8 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
     const renderers = renderersRef.current;
     if (renderers === null) return;
     const current = propsRef.current;
-    const sample = getConstructorScene(current.seed, current.timeMs, current.goalie, current.shotIndex);
+    const sample = current.replay ? getReplayScene(current.replay.run, current.replay.frame,
+      current.goalie) : getConstructorScene(current.seed, current.timeMs, current.goalie, current.shotIndex);
     const x = current.preStart ? PERSPECTIVE_COURT_VISUAL_X_CENTER
       : current.manual?.playerX ?? sample.playerX;
     const offset = current.preStart ? 0 : current.manual === undefined || current.manual === null
@@ -133,27 +157,48 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
           (current.manual.goalieCenterX - PERSPECTIVE_COURT_VISUAL_X_CENTER) /
             PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE, y: GOALIE_Y },
         width: GOALIE_SIZE.width, height: GOALIE_SIZE.height };
-    const currentSpeeds = getDailyPeriodSpeedPreset(1);
-    const currentOffsets = getSessionPhaseOffsets(current.seed);
+    const replaySample = current.replay && replayShot(current.replay.run, current.replay.frame);
+    const baseSpeeds = getDailyPeriodSpeedPreset(1);
+    const currentSpeeds = { ...baseSpeeds,
+      puckSpeedPerMs: replaySample?.input.puckSpeedPerMs ?? baseSpeeds.puckSpeedPerMs,
+      goalieFrequency: replaySample?.input.goalieFrequency ?? baseSpeeds.goalieFrequency,
+      goalFrequency: replaySample?.input.goalFrequency ?? baseSpeeds.goalFrequency };
+    const currentOffsets = current.replay?.run.phaseOffsets ?? getSessionPhaseOffsets(current.seed);
+    const currentSceneTime = current.replay?.frame.sceneMs ?? current.timeMs;
+    const futureBaseTime = current.replay?.frame.shot?.sceneMs ?? currentSceneTime;
     const goalFlightMs = (PUCK_START.y - GOAL_OPENING.y) / currentSpeeds.puckSpeedPerMs;
     const goalieFlightMs = (PUCK_START.y - GOALIE_Y) / currentSpeeds.puckSpeedPerMs;
     const futureOffset = simulateGoal({ ...current.goalie,
-      goalFrequency: currentSpeeds.goalFrequency }, current.timeMs + goalFlightMs,
+      goalFrequency: currentSpeeds.goalFrequency }, futureBaseTime + goalFlightMs,
       currentOffsets.goal).offsetX;
     const futureGoalieState = simulateGoalie({ ...current.goalie,
       frequency: currentSpeeds.goalieFrequency },
-    deriveShotSeed(current.seed, 1, current.shotIndex), current.shotIndex,
-    current.timeMs + goalieFlightMs, currentOffsets.goalie);
+    replaySample?.seed ?? deriveShotSeed(current.seed, 1, current.shotIndex),
+    replaySample?.index ?? current.shotIndex,
+    futureBaseTime + goalieFlightMs, currentOffsets.goalie);
     renderers.goal.update(renderers.scale, offset);
     renderers.futureGoal.container.visible = !current.preStart &&
-      (current.manual === undefined || current.manual === null);
+      (current.manual === undefined || current.manual === null) &&
+      (!current.replay || current.replay.frame.shot !== null);
     renderers.futureGoal.update(renderers.scale, futureOffset);
-    renderers.futureGoalie.container.visible = !current.preStart &&
-      (current.manual === undefined || current.manual === null);
+    renderers.futureGoalie.container.visible = renderers.futureGoal.container.visible;
     renderers.futureGoalie.update(futureGoalieState, renderers.scale);
     renderers.goalie.update(goaliePosition, renderers.scale);
     renderers.player.update(renderers.scale, x, PUCK_START.y);
-    renderers.puck.resetAtStart(renderers.scale, x);
+    renderers.goalie.setSavePose(current.replay?.frame.phase === 'result' &&
+      current.replay.frame.shot?.result === 'save');
+    if (current.replay?.frame.phase === 'flight') {
+      const path = renderers.puck.shotPath(x, GOAL_OPENING.y);
+      renderers.puck.release();
+      renderers.puck.playShot(path.start, path.end, 0, 1);
+      renderers.puck.update(current.replay.frame.flightProgress, renderers.scale);
+    } else if (current.replay?.frame.phase === 'result') {
+      renderers.puck.holdAt(renderers.puck.shotPath(x, GOAL_OPENING.y).end);
+      renderers.puck.update(0, renderers.scale);
+    } else {
+      renderers.puck.release();
+      renderers.puck.resetAtStart(renderers.scale, x);
+    }
   }, []);
 
   const handleReady = useCallback((app: Application, scale: Scale) => {
@@ -182,7 +227,7 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
   // PixiStage owns the stage; these renderers own async sprite texture loads.
   // Its callbacks can arrive after a prop update, so draw reads propsRef.
   useEffect(() => { draw(); }, [draw, props.seed, props.timeMs, props.goalie,
-    props.shotIndex, props.manual, props.preStart]);
+    props.shotIndex, props.manual, props.preStart, props.replay]);
   useEffect(() => () => {
     const renderers = renderersRef.current;
     renderersRef.current = null;
@@ -194,33 +239,39 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
     renderers?.puck.destroy();
   }, []);
 
-  const offsets = getSessionPhaseOffsets(props.seed);
-  const speeds = getDailyPeriodSpeedPreset(1);
-  const shotInput = {
-    tapTime: props.timeMs,
-    puckSpeedPerMs: speeds.puckSpeedPerMs,
-    shooterFrequency: speeds.shooterFrequency,
-    goalieFrequency: speeds.goalieFrequency,
-    goalFrequency: speeds.goalFrequency,
-  };
+  const activeShot = props.replay && replayShot(props.replay.run, props.replay.frame);
+  const sceneTimeMs = props.replay?.frame.sceneMs ?? props.timeMs;
+  const offsets = props.replay?.run.phaseOffsets ?? getSessionPhaseOffsets(props.seed);
+  const defaultSpeeds = getDailyPeriodSpeedPreset(1);
+  const speeds = { ...defaultSpeeds,
+    puckSpeedPerMs: activeShot?.input.puckSpeedPerMs ?? defaultSpeeds.puckSpeedPerMs,
+    shooterFrequency: activeShot?.input.shooterFrequency ?? defaultSpeeds.shooterFrequency,
+    goalieFrequency: activeShot?.input.goalieFrequency ?? defaultSpeeds.goalieFrequency,
+    goalFrequency: activeShot?.input.goalFrequency ?? defaultSpeeds.goalFrequency };
+  const shotInput = activeShot?.input ?? { tapTime: sceneTimeMs,
+    shooterTapTime: sceneTimeMs, puckSpeedPerMs: speeds.puckSpeedPerMs,
+    shooterFrequency: speeds.shooterFrequency, goalieFrequency: speeds.goalieFrequency,
+    goalFrequency: speeds.goalFrequency };
+  const shotSeed = activeShot?.seed ?? deriveShotSeed(props.seed, 1, props.shotIndex);
+  const shotIndex = activeShot?.index ?? props.shotIndex;
+  const stick = { ...STICK_NEUTRAL,
+    shotZoneMultiplier: props.replay?.run.stickZoneMultiplier ?? STICK_NEUTRAL.shotZoneMultiplier };
   const goalAtNow = getPerspectiveCourtGoalOpening({
     ...shotInput,
-    tapTime: props.timeMs - (PUCK_START.y - GOAL_OPENING.y) / speeds.puckSpeedPerMs,
+    tapTime: sceneTimeMs - (PUCK_START.y - GOAL_OPENING.y) / speeds.puckSpeedPerMs,
   }, props.goalie, offsets);
   const goalieAtNow = getPerspectiveCourtGoalieHitbox({
     ...shotInput,
-    tapTime: props.timeMs - (PUCK_START.y - GOALIE_Y) / speeds.puckSpeedPerMs,
-  }, props.goalie, deriveShotSeed(props.seed, 1, props.shotIndex), props.shotIndex,
-  STICK_NEUTRAL, offsets);
+    tapTime: sceneTimeMs - (PUCK_START.y - GOALIE_Y) / speeds.puckSpeedPerMs,
+  }, props.goalie, shotSeed, shotIndex, stick, offsets);
   const goalBounds = props.preStart
     ? { minX: PERSPECTIVE_COURT_VISUAL_X_CENTER - (goalAtNow.xMax - goalAtNow.xMin) / 2,
       maxX: PERSPECTIVE_COURT_VISUAL_X_CENTER + (goalAtNow.xMax - goalAtNow.xMin) / 2 }
     : props.manual?.goalHitbox ?? { minX: goalAtNow.xMin, maxX: goalAtNow.xMax };
   const futureGoalBounds = getPerspectiveCourtGoalOpening(shotInput, props.goalie, offsets);
   const futureGoalCenter = (futureGoalBounds.xMin + futureGoalBounds.xMax) / 2;
-  const shotSeed = deriveShotSeed(props.seed, 1, props.shotIndex);
   const futureGoalieBounds = getPerspectiveCourtGoalieHitbox(shotInput, props.goalie,
-    shotSeed, props.shotIndex, STICK_NEUTRAL, offsets);
+    shotSeed, shotIndex, stick, offsets);
   const futureGoalieCenter = (futureGoalieBounds.xMin + futureGoalieBounds.xMax) / 2;
   const goalieBounds = props.preStart
     ? { minX: PERSPECTIVE_COURT_VISUAL_X_CENTER - (goalieAtNow.xMax - goalieAtNow.xMin) / 2,
@@ -232,10 +283,11 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
     PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET;
   const goalFlightMs = (PUCK_START.y - GOAL_OPENING.y) / speeds.puckSpeedPerMs;
   const goalieFlightMs = (PUCK_START.y - GOALIE_Y) / speeds.puckSpeedPerMs;
+  const trailStartMs = activeShot?.sceneMs ?? sceneTimeMs;
   const goalTrail = Array.from({ length: 17 }, (_, index) => {
     const progress = index / 16;
     const state = simulateGoal({ ...props.goalie, goalFrequency: speeds.goalFrequency },
-      props.timeMs + goalFlightMs * progress, offsets.goal);
+      trailStartMs + goalFlightMs * progress, offsets.goal);
     return { x: PERSPECTIVE_COURT_VISUAL_X_CENTER +
       state.offsetX * PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
     y: goalY - 34 - 25 * Math.sin(Math.PI * progress) };
@@ -243,24 +295,29 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
   const goalieTrail = Array.from({ length: 17 }, (_, index) => {
     const progress = index / 16;
     const state = simulateGoalie({ ...props.goalie, frequency: speeds.goalieFrequency },
-      shotSeed, props.shotIndex, props.timeMs + goalieFlightMs * progress, offsets.goalie);
+      shotSeed, shotIndex, trailStartMs + goalieFlightMs * progress, offsets.goalie);
     return { x: PERSPECTIVE_COURT_VISUAL_X_CENTER +
       (state.position.x - PERSPECTIVE_COURT_VISUAL_X_CENTER) * PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
     y: goalieY + 43 + 25 * Math.sin(Math.PI * progress) };
   });
   const playerY = PUCK_START.y * PERSPECTIVE_COURT_VISUAL_Y_SCALE +
     PERSPECTIVE_COURT_VISUAL_Y_OFFSET;
-  const nextScene = getConstructorScene(props.seed, props.timeMs + 25, props.goalie, props.shotIndex);
+  const nextScene = props.replay ? getReplayScene(props.replay.run,
+    { ...props.replay.frame, sceneMs: sceneTimeMs + 25,
+      shooterMs: props.replay.frame.shooterMs + 25 }, props.goalie)
+    : getConstructorScene(props.seed, props.timeMs + 25, props.goalie, props.shotIndex);
   const futureGoalRight = simulateGoal({ ...props.goalie,
-    goalFrequency: speeds.goalFrequency }, props.timeMs + goalFlightMs + 25,
+    goalFrequency: speeds.goalFrequency }, trailStartMs + goalFlightMs + 25,
   offsets.goal).offsetX >= simulateGoal({ ...props.goalie,
-    goalFrequency: speeds.goalFrequency }, props.timeMs + goalFlightMs,
+    goalFrequency: speeds.goalFrequency }, trailStartMs + goalFlightMs,
   offsets.goal).offsetX;
   const futureGoalieRight = simulateGoalie({ ...props.goalie,
-    frequency: speeds.goalieFrequency }, shotSeed, props.shotIndex,
-  props.timeMs + goalieFlightMs + 25, offsets.goalie).position.x >=
+    frequency: speeds.goalieFrequency }, shotSeed, shotIndex,
+  trailStartMs + goalieFlightMs + 25, offsets.goalie).position.x >=
     simulateGoalie({ ...props.goalie, frequency: speeds.goalieFrequency }, shotSeed,
-      props.shotIndex, props.timeMs + goalieFlightMs, offsets.goalie).position.x;
+      shotIndex, trailStartMs + goalieFlightMs, offsets.goalie).position.x;
+  const showFuture = !props.manual && !props.preStart &&
+    (!props.replay || props.replay.frame.shot !== null);
   const directions = props.manual || props.preStart ? null : [
     { name: 'Игрок', x: playerX, y: playerY - 14,
       right: nextScene.playerX >= scene.playerX, ghost: false },
@@ -307,11 +364,11 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
         ))}
         {!props.preStart && <line aria-label="Линия броска игрока" x1={playerX} x2={playerX} y1={0} y2={playerY - 14}
           stroke="#245f9b" strokeWidth={1.5} strokeDasharray="6 5" />}
-        {!props.manual && !props.preStart && <>
+        {showFuture && <>
           <MotionTrail label="Путь ворот до встречи с шайбой" points={goalTrail} color="#169a5c" />
           <MotionTrail label="Путь вратаря до встречи с шайбой" points={goalieTrail} color="#bd5964" />
         </>}
-        {!props.manual && !props.preStart && (
+        {showFuture && (
           <g aria-label="Ворота при прилёте шайбы" data-center-x={futureGoalCenter}
             pointerEvents="none">
             {props.showHitboxes && <rect x={futureGoalBounds.xMin} y={goalY - 16}
@@ -319,7 +376,7 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
               fill="none" stroke="#169a5c" strokeOpacity={0.55} strokeWidth={2} strokeDasharray="6 4" />}
           </g>
         )}
-        {!props.manual && !props.preStart && (
+        {showFuture && (
           <g aria-label="Вратарь при встрече с шайбой" data-center-x={futureGoalieCenter}
             pointerEvents="none">
             {props.showHitboxes && <rect x={futureGoalieBounds.xMin} y={goalieY - 16}
@@ -338,7 +395,7 @@ export function MarksmanshipConstructorCourt(props: MarksmanshipConstructorCourt
               fill="none" stroke="#2563eb" strokeWidth={2} />
           </g>
         )}
-        {directions?.map(({ name, x, y, right, ghost }) => (
+        {directions?.filter(({ ghost }) => !ghost || showFuture).map(({ name, x, y, right, ghost }) => (
           <g key={name} aria-label={`${name} ${name.endsWith('ворота') || name === 'Ворота' ? 'движутся' : 'движется'} ${right ? 'вправо' : 'влево'}`}
             transform={`translate(${x} ${y})`} pointerEvents="none">
             <circle r={15} fill="#102b45" fillOpacity={ghost ? 0.34 : 0.85}

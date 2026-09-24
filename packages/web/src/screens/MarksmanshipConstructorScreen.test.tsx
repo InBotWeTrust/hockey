@@ -19,6 +19,18 @@ function renderScreen() {
 }
 
 describe('MarksmanshipConstructorScreen', () => {
+  it('switches between the synthetic scheme and the two recorded runs', () => {
+    renderScreen();
+    expect(screen.getByRole('tab', { name: 'Учебная схема' })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: 'Егор · 78' }));
+    expect(screen.getByRole('tab', { name: 'Егор · 78' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByLabelText('Начало игры')).not.toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: 'Время повтора' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Дмитрий · 79' }));
+    expect(screen.getByRole('list', { name: 'Записанные голы' }).querySelectorAll('li')).toHaveLength(79);
+    fireEvent.click(screen.getByRole('tab', { name: 'Учебная схема' }));
+    expect(screen.getByLabelText('Начало игры')).toBeInTheDocument();
+  });
   it('starts at time zero and steps all entities through first-period time', () => {
     renderScreen();
     expect(screen.getByLabelText('Начало игры')).toHaveValue('pre-start');

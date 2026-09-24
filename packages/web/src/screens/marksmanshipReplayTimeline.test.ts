@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RecordedRun } from './marksmanshipReplayData.js';
 import { getReplayFrame, seekReplayTime } from './marksmanshipReplayTimeline.js';
+import { RECORDED_RUNS } from './marksmanshipReplayData.js';
 
 const run: RecordedRun = {
   key: 'test', label: 'Тест', goalieId: 'rookie', stickZoneMultiplier: 1,
@@ -42,5 +43,16 @@ describe('recorded-run timeline', () => {
     expect(seekReplayTime(100, 50)).toBe(150);
     expect(seekReplayTime(180_000, 50)).toBe(180_000);
     expect(getReplayFrame(run, 180_050).wallMs).toBe(180_000);
+  });
+
+  it('lands on both saved clocks at all 173 historical shot anchors', () => {
+    for (const recordedRun of RECORDED_RUNS) {
+      for (const shot of recordedRun.shots) {
+        const frame = getReplayFrame(recordedRun, shot.wallMs);
+        expect([frame.shot?.index, frame.sceneMs, frame.shooterMs]).toEqual([
+          shot.index, shot.sceneMs, shot.shooterMs,
+        ]);
+      }
+    }
   });
 });
