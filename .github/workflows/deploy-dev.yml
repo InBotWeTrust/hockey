@@ -104,6 +104,43 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Diagnose SSH connectivity
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          python3 - <<'PY'
+          import ipaddress
+          import os
+          import socket
+
+          host = os.environ['HOST']
+          for family, name in ((socket.AF_INET, 'IPv4'), (socket.AF_INET6, 'IPv6')):
+              try:
+                  addresses = socket.getaddrinfo(host, 22, family, socket.SOCK_STREAM)
+              except socket.gaierror:
+                  print(f'{name} DNS: unavailable')
+                  continue
+              if family == socket.AF_INET6:
+                  addresses = [entry for entry in addresses
+                               if ipaddress.ip_address(entry[4][0]).ipv4_mapped is None]
+              if not addresses:
+                  print(f'{name} DNS: unavailable')
+                  continue
+              print(f'{name} DNS: available')
+              reachable = False
+              for _, socktype, proto, _, sockaddr in addresses:
+                  try:
+                      with socket.socket(family, socktype, proto) as connection:
+                          connection.settimeout(10)
+                          connection.connect(sockaddr)
+                          reachable = connection.recv(4) == b'SSH-'
+                  except OSError:
+                      continue
+                  if reachable:
+                      break
+              print(f"{name} SSH: {'reachable' if reachable else 'unreachable'}")
+          PY
+
       - name: Setup SSH key
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
