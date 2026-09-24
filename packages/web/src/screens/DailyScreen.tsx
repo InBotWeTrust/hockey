@@ -45,6 +45,7 @@ import {
 } from '../game/PlayView.js';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
+import { DuelEarnedRewards } from '../components/duel/DuelEarnedRewards.js';
 import { startVkOAuth } from '../auth/vkAuth.js';
 import { detectTimezone } from '../auth/timezone.js';
 import { apiFetch, ApiError } from '../api/apiFetch.js';
@@ -6363,7 +6364,8 @@ function DuelResultCard({
   const hasPeriodDetails = mePeriods.length > 0 || opponentPeriods.length > 0;
   const hasMultiplePeriods = match.rules.totalPeriods > 1;
   const tiebreaker = duelTiebreakerExplanation(match);
-  const hasSupplementalDetails = tiebreaker !== null || match.rules.winStarReward > 0;
+  const hasSupplementalDetails =
+    tiebreaker !== null || Boolean(match.earned_reward?.stars || match.earned_reward?.experience);
 
   return (
     <div
@@ -6410,7 +6412,7 @@ function DuelResultCard({
                 }}
               />
             </section>
-            {(tiebreaker || match.rules.winStarReward > 0) && (
+            {hasSupplementalDetails && (
               <div className="duel-result-card__compact-details">
                 {tiebreaker && (
                   <>
@@ -6418,13 +6420,7 @@ function DuelResultCard({
                     <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
                   </>
                 )}
-                {match.rules.winStarReward > 0 && (
-                  <DuelResultDetailRow
-                    label="Звёзды за победу"
-                    value={`+${match.rules.winStarReward}`}
-                    tone="star"
-                  />
-                )}
+                <DuelEarnedRewards reward={match.earned_reward ?? null} />
               </div>
             )}
           </>
@@ -6557,13 +6553,7 @@ function DuelResultCard({
                     <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
                   </>
                 )}
-                {match.rules.winStarReward > 0 && (
-                  <DuelResultDetailRow
-                    label="Звёзды за победу"
-                    value={`+${match.rules.winStarReward}`}
-                    tone="star"
-                  />
-                )}
+                <DuelEarnedRewards reward={match.earned_reward ?? null} />
               </div>
             )}
           </>

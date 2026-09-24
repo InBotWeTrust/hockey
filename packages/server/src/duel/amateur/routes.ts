@@ -780,6 +780,7 @@ interface DuelMatchDTO {
   settled_reason: string | null;
   accepted_at: string | null;
   settled_at: string | null;
+  earned_reward: { stars: number; experience: number } | null;
   created_at: string;
   server_now: string;
   period_started_at: string | null;
@@ -3641,6 +3642,17 @@ async function buildMatchDto(
   const opponent = participants.find((participant) => participant.user_id !== currentUserId);
   if (!me || !opponent) throw new AppError('forbidden', 'duel match access denied', 403);
   const rules = parseRulesSnapshot(match.rules_snapshot);
+  const earnedReward =
+    match.status === 'settled' && match.source !== 'tournament'
+      ? await client
+          .query<{ metadata: Record<string, unknown> }>(
+            `select metadata from currency_ledger
+              where duel_match_id = $1 and user_id = $2 and reason = 'duel_reward'
+              order by id desc limit 1`,
+            [match.id, currentUserId],
+          )
+          .then(({ rows }) => earnedRewardFromMetadata(rows[0]?.metadata))
+      : null;
   const meForDto = await participantWithTournamentLoadoutPreview(client, match, me, rules);
   const periodEndsAt =
     me.state === 'period_active' && me.period_started_at !== null
@@ -3743,6 +3755,7 @@ async function buildMatchDto(
     settled_reason: match.settled_reason,
     accepted_at: match.accepted_at?.toISOString() ?? null,
     settled_at: match.settled_at?.toISOString() ?? null,
+    earned_reward: earnedReward,
     created_at: match.created_at.toISOString(),
     server_now: now.toISOString(),
     period_started_at: me.period_started_at?.toISOString() ?? null,
@@ -3758,6 +3771,17 @@ async function buildMatchDto(
     ),
     opponent: participantDto(opponent, match, rules, [], opponentCurrentStats),
   };
+}
+
+function earnedRewardFromMetadata(
+  metadata: Record<string, unknown> | undefined,
+): { stars: number; experience: number } | null {
+  if (metadata === undefined) return null;
+  const amount = (key: string) => {
+    const value = metadata[key];
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+  };
+  return { stars: amount('stars'), experience: amount('experience') };
 }
 
 async function buildMatchStateDto(
@@ -4950,6 +4974,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       source: AmateurDuelSource;
       home_user_id: string | null;
       venue_policy: MatchmakingVenuePolicy | 'direct_challenge' | 'home_selected' | null;
+      reward_metadata: Record<string, unknown> | null;
     }>(
       `select m.id,
               extract(day from m.settled_at at time zone $2)::int as local_day,
@@ -4964,7 +4989,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
               m.outcome,
               m.source,
               m.home_user_id,
-              m.venue_policy
+              m.venue_policy,
+              (select reward.metadata from currency_ledger reward
+                where reward.duel_match_id = m.id and reward.user_id = $1
+                  and reward.reason = 'duel_reward'
+                order by reward.id desc limit 1) as reward_metadata
          ${validDuelSql}
           and to_char(m.settled_at at time zone $2, 'YYYY-MM') = $3
         order by m.settled_at asc`,
@@ -5017,6 +5046,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           req.user.id,
         ),
         result,
+        earned_reward: earnedRewardFromMetadata(row.reward_metadata ?? undefined),
       });
       days.set(row.local_day, matches);
     }

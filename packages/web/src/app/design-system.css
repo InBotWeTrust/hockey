@@ -7513,6 +7513,31 @@ button.profile-story-series-card {
   gap: 3px;
 }
 
+.duel-earned-rewards {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.duel-earned-rewards__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.duel-earned-rewards__item svg {
+  flex: none;
+}
+
+.duel-day-match__copy .duel-earned-rewards__item {
+  font-size: 12px;
+}
+
 .duel-day-match__copy strong,
 .duel-day-match__copy span {
   overflow: hidden;
