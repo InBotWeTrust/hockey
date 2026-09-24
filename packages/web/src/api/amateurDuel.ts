@@ -249,6 +249,7 @@ export interface AmateurDuelMatch {
   settled_reason: string | null;
   accepted_at: string | null;
   settled_at: string | null;
+  earned_reward?: { stars: number; experience: number } | null;
   created_at: string;
   server_now: string;
   period_started_at: string | null;
@@ -364,6 +365,7 @@ export interface AmateurDuelHistoryCalendarMatch {
   opponent_goals: number;
   venue_role: 'home' | 'away' | 'neutral';
   result: 'win' | 'draw' | 'loss';
+  earned_reward?: { stars: number; experience: number } | null;
 }
 
 export interface AmateurDuelHistoryCalendarResponse {

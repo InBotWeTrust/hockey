@@ -294,6 +294,7 @@ const settledDuelMatch: AmateurDuelMatchState = {
   winner_user_id: 'u1',
   outcome: 'challenger_win',
   settled_reason: 'completed',
+  earned_reward: { stars: 3, experience: 3 },
   accepted_at: '2026-05-16T10:00:00.000Z',
   settled_at: '2026-05-16T10:03:00.000Z',
   created_at: '2026-05-16T09:55:00.000Z',
@@ -5303,6 +5304,7 @@ describe('DailyScreen', () => {
                     opponent_goals: 1,
                     result: 'win',
                     venue_role: 'home',
+                    earned_reward: { stars: 3, experience: 3 },
                   },
                   {
                     id: 'calendar-loss-2',
@@ -5439,6 +5441,8 @@ describe('DailyScreen', () => {
       name: 'Дуэль с Duel Opponent, Классика, счёт 3:1, Дома, Победа',
     });
     expect(duelRow).toHaveAttribute('aria-expanded', 'false');
+    expect(within(duelRow).queryByLabelText('Звёзды: 3')).not.toBeInTheDocument();
+    expect(within(duelRow).queryByLabelText('Опыт: 3')).not.toBeInTheDocument();
     expect(duelRow.querySelector('.duel-day-match__chevron')).toHaveClass('lucide-chevron-right');
     fireEvent.click(duelRow);
     expect(duelRow).toHaveAttribute('aria-expanded', 'true');
@@ -5446,6 +5450,13 @@ describe('DailyScreen', () => {
       'Подробности дуэли с Duel Opponent',
     );
     expect(expandedDetails).toBeInTheDocument();
+    expect(within(expandedDetails).getByLabelText('Звёзды: 3')).toBeInTheDocument();
+    expect(within(expandedDetails).getByLabelText('Опыт: 3')).toBeInTheDocument();
+    const historyRewardRow = expandedDetails.querySelector('.duel-result-card__points-rewards');
+    expect(historyRewardRow).toContainElement(within(expandedDetails).getByText('Очки'));
+    expect(historyRewardRow).toContainElement(within(expandedDetails).getByLabelText('Звёзды: 3'));
+    expect(historyRewardRow).toContainElement(within(expandedDetails).getByLabelText('Опыт: 3'));
+    expect(historyRewardRow?.nextElementSibling).toHaveTextContent('Начало');
     expect(within(expandedDetails).queryByText('Результат')).not.toBeInTheDocument();
     expect(within(expandedDetails).queryByText('Ничья')).not.toBeInTheDocument();
     const totalResultHeading = within(expandedDetails).getByText('Итоговый результат');
@@ -8025,6 +8036,7 @@ describe('DailyScreen', () => {
   it('shows a result modal for a settled amateur duel', async () => {
     const expressMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
+      earned_reward: { stars: 5, experience: 5 },
       me: {
         ...settledDuelMatch.me,
         inventory_report: [
@@ -8074,6 +8086,19 @@ describe('DailyScreen', () => {
     expect(within(dialog).getByText('Формат:')).toBeInTheDocument();
     expect(within(dialog).getByText('Экспресс')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('Очки за дуэль: +3')).toHaveTextContent('+3');
+    expect(within(dialog).getByLabelText('Звёзды: 5')).toHaveTextContent('5');
+    expect(within(dialog).getByLabelText('Опыт: 5')).toHaveTextContent('5');
+    const modalRewardRow = dialog.querySelector<HTMLElement>('.duel-result-card__points-rewards');
+    expect(modalRewardRow).toContainElement(within(dialog).getByLabelText('Очки за дуэль: +3'));
+    expect(modalRewardRow).toContainElement(within(dialog).getByLabelText('Звёзды: 5'));
+    expect(modalRewardRow).toContainElement(within(dialog).getByLabelText('Опыт: 5'));
+    expect(within(dialog).getByLabelText('Итог игры: Tester — Duel Opponent, 3:1'))
+      .toContainElement(modalRewardRow);
+    expect(modalRewardRow).toHaveTextContent('Формат: ЭкспрессОчки+3');
+    expect(modalRewardRow).toHaveClass('duel-result-card__points-rewards--single-line');
+    expect(modalRewardRow?.firstElementChild).toHaveTextContent('Формат: Экспресс');
+    expect(modalRewardRow?.lastElementChild).toHaveClass('duel-result-card__reward-values');
+    expect(within(dialog).queryByText('Звёзды за победу')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Соперник')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Начало')).not.toBeInTheDocument();
     expect(within(dialog).getByText('+3')).toBeInTheDocument();

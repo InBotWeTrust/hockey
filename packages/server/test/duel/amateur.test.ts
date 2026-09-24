@@ -3812,6 +3812,13 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       opponentState: 'completed',
       outcome: 'challenger_win',
     });
+    await pool.query(
+      `insert into currency_ledger
+         (user_id, reason, available_delta, reserved_delta, balance_after, reserved_after,
+          duel_match_id, metadata)
+       values ($1, 'duel_reward', 0, 0, 0, 0, $2, '{"stars":3,"experience":3}'::jsonb)`,
+      [userA, includedId],
+    );
     const tournamentId = await insertHistoryMatch({
       settledAt: '2026-05-01T03:00:00.000Z',
       settledReason: 'completed',
@@ -3863,10 +3870,25 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       expect.objectContaining({
         day: 30,
         matches: [
-          expect.objectContaining({ id: includedId, result: 'win', venue_role: 'neutral' }),
+          expect.objectContaining({ id: includedId, result: 'win', venue_role: 'neutral', earned_reward: { stars: 3, experience: 3 } }),
         ],
       }),
     ]);
+
+    const matchResponse = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${includedId}`,
+      headers: auth(tokenA),
+    });
+    expect(matchResponse.statusCode).toBe(200);
+    expect(matchResponse.json().match.earned_reward).toEqual({ stars: 3, experience: 3 });
+    const opponentResponse = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${includedId}`,
+      headers: auth(tokenB),
+    });
+    expect(opponentResponse.statusCode).toBe(200);
+    expect(opponentResponse.json().match.earned_reward).toBeNull();
 
     const technicalMonth = await app.inject({
       method: 'GET',
@@ -3878,7 +3900,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       expect.objectContaining({
         day: 2,
         matches: [
-          expect.objectContaining({ id: technicalWinId, result: 'win', venue_role: 'neutral' }),
+          expect.objectContaining({ id: technicalWinId, result: 'win', venue_role: 'neutral', earned_reward: null }),
         ],
       }),
     ]);
