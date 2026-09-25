@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type * as PlayViewModule from '../game/PlayView.js';
 
 vi.mock('./devOnlyFeatures.js', () => ({ MARKSMANSHIP_CONSTRUCTOR_ENABLED: true }));
 import { queryClient } from './queryClient.js';
@@ -28,7 +29,8 @@ const prepareInitialPlayerExperience = vi.hoisted(() => vi.fn());
 
 vi.mock('./playerStartup.js', () => ({ prepareInitialPlayerExperience }));
 
-vi.mock('../game/PlayView.js', () => ({
+vi.mock('../game/PlayView.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof PlayViewModule>()),
   PlayView: () => <div data-testid="play-view" />,
 }));
 
@@ -126,6 +128,14 @@ describe('App routing + auth', () => {
       receivedAtPerformanceMs: null,
     });
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
+  });
+
+  it('opens a local second-period daily preview without authentication', async () => {
+    window.history.replaceState({}, '', '/dev/daily-period-preview');
+    render(<App />);
+
+    expect(await screen.findByText('Предпросмотр · ежедневная игра')).toBeInTheDocument();
+    expect(screen.getByText('2-й период')).toBeInTheDocument();
   });
 
   it('opens the dev marksmanship constructor from its direct route', async () => {

@@ -220,16 +220,18 @@ export function duelPrimaryButtonLabel(
   return baseLabel;
 }
 
-export function duelFatigueNoticeLabel(condition: DuelPlayerCondition | null): string | null {
-  if (!condition) return null;
-  if (condition.status === 'exhausted_stop') return 'Передышка · бросок недоступен';
+export function duelFatigueNoticeLabel(
+  condition: DuelPlayerCondition | null,
+  periodSpeedRatio = 1,
+  showPeriodFatigue = false,
+): string | null {
+  if (condition?.status === 'exhausted_stop') return 'Передышка · бросок недоступен';
 
-  const speedPercent = Math.round(condition.shooterSpeedMultiplier * 100);
-  if (condition.status === 'nutrition_slowdown' || condition.fatigueLevel === 'heavy') {
-    return `Сильная усталость · скорость ${speedPercent}%`;
-  }
-  if (condition.status !== 'tired') return null;
-  return `Усталость · скорость ${speedPercent}%`;
+  const isHeavy = condition?.status === 'nutrition_slowdown' || condition?.fatigueLevel === 'heavy';
+  const isTired = condition?.status === 'tired';
+  if (!isHeavy && !isTired && (!showPeriodFatigue || periodSpeedRatio >= 0.999)) return null;
+  const speedPercent = Math.round(periodSpeedRatio * (condition?.shooterSpeedMultiplier ?? 1) * 100);
+  return `${isHeavy ? 'Сильная усталость' : 'Усталость'} · скорость ${speedPercent}%`;
 }
 
 function sameDuelConditionUiState(
@@ -264,6 +266,7 @@ export interface PlayViewProps<TState> {
   periodLabel?: string | undefined;
   scoreboardPeriodNumber?: number;
   periodSpeedPresets?: readonly DailyPeriodSpeedPreset[] | undefined;
+  showPeriodFatigueNotice?: boolean | undefined;
   speedOverrides?: SpeedOverrides | undefined;
   stickEffects?: StickEffects | undefined;
   periodsTotal?: number;
@@ -582,6 +585,7 @@ export function PlayView<TState>({
   periodLabel,
   scoreboardPeriodNumber,
   periodSpeedPresets,
+  showPeriodFatigueNotice = false,
   speedOverrides,
   stickEffects = STICK_NEUTRAL,
   periodsTotal = 3,
@@ -1918,7 +1922,15 @@ export function PlayView<TState>({
   const isDuelShotBlocked = active && currentDuelCondition?.canShoot === false;
   const isDuelRestBlocked = isDuelShotBlocked && currentDuelCondition?.status === 'exhausted_stop';
   const effectiveShotButtonLabel = duelPrimaryButtonLabel(shotButtonLabel, currentDuelCondition);
-  const duelFatigueNotice = duelFatigueNoticeLabel(currentDuelCondition);
+  const firstPeriodSpeed = periodSpeedPresetFor(1, periodSpeedPresets).shooterFrequency;
+  const periodSpeedRatio = firstPeriodSpeed > 0 ? speeds.shooterFreq / firstPeriodSpeed : 1;
+  const duelFatigueNotice = active
+    ? duelFatigueNoticeLabel(
+        currentDuelCondition,
+        periodSpeedRatio,
+        showPeriodFatigueNotice || duelCondition !== undefined,
+      )
+    : null;
   const showDuelStumbleNotice =
     duelStumbleNoticeVisible && currentDuelCondition?.status !== 'exhausted_stop';
   const primaryButtonDisabled =

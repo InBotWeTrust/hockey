@@ -9036,6 +9036,7 @@ function DailyPlayView({
     <>
       <PlayView<DailyStateResponse>
         suppressedByModal={shouldSuppressRink}
+        showPeriodFatigueNotice
         showIceCar={shouldShowIceCar}
         playEntranceOnMount={data.state === 'period_active' ? playEntranceOnMount : false}
         onEntranceConsumed={onEntranceConsumed}
@@ -10169,6 +10170,59 @@ function TrainingPlayView({
   );
 }
 
+interface DailyPeriodPreviewState {
+  shots: number;
+  goals: number;
+}
+
+export function DailyPeriodPreviewScreen(): JSX.Element {
+  const navigate = useNavigate();
+  const [state, setState] = useState<DailyPeriodPreviewState>({ shots: 0, goals: 0 });
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  const applyPreviewState = useCallback((next: DailyPeriodPreviewState): void => {
+    stateRef.current = next;
+    setState(next);
+  }, []);
+
+  return (
+    <>
+      <div className="visually-hidden">
+        <div>Предпросмотр · ежедневная игра</div>
+        <div>2-й период</div>
+      </div>
+      <PlayView<DailyPeriodPreviewState>
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => navigate('/demo')}
+        backLabel="К демо"
+        active={state.shots < 30}
+        seed="daily-period-two-preview"
+        goalieId="rookie"
+        periodNumber={2}
+        showPeriodFatigueNotice
+        goals={state.goals}
+        shots={state.shots}
+        shotsTotal={30}
+        timer="20:00"
+        optimisticAddShot={(claimedResult) => {
+          applyPreviewState({
+            shots: stateRef.current.shots + 1,
+            goals: stateRef.current.goals + (claimedResult === 'goal' ? 1 : 0),
+          });
+        }}
+        submitShot={async ({ claimedResult }) => ({
+          serverResult: claimedResult,
+          state: stateRef.current,
+        })}
+        applyState={applyPreviewState}
+        {...dailyCharacterVisuals(false)}
+      />
+    </>
+  );
+}
+
 export function DemoScreen(): JSX.Element {
   const navigate = useNavigate();
   const setSession = useAuthStore((s) => s.setSession);
@@ -10305,7 +10359,7 @@ export function DemoCompletionModal({
       <div className="modal-card demo-completion-modal">
         <h2 className="modal-title">Первый период сыгран</h2>
         <p className="modal-copy">
-          Необходимо войти, чтобы играть сезон, сохранять прогресс и открывать новые режимы игры
+          Необходимо войти, чтобы играть сезон, сохранять прогресс и открывать новые режимы&nbsp;игры
         </p>
 
         <div
