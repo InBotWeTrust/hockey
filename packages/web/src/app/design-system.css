@@ -265,6 +265,15 @@
   width: min(100%, 380px);
 }
 
+.modal-card.demo-completion-modal {
+  width: min(100%, 380px);
+  text-align: center;
+}
+
+.demo-completion-modal .modal-copy {
+  text-wrap: balance;
+}
+
 .regular-podium-modal .modal-copy {
   margin-top: 6px;
   overflow: hidden;
@@ -3954,6 +3963,12 @@
   text-wrap: pretty;
   white-space: pre-line;
   animation: initial-training-feedback-notice-drop 180ms ease-out both;
+}
+
+.duel-fatigue-notice.initial-training-feedback-notice--scoreboard {
+  max-width: min(calc(100% - 40px), 316px);
+  font-size: clamp(9px, 2.75vw, 12px);
+  white-space: nowrap;
 }
 
 @keyframes initial-training-feedback-notice-drop {

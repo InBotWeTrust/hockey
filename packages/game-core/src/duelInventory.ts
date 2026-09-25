@@ -265,14 +265,17 @@ export function getDuelPlayerCondition(
   const rawNutritionCost = rawNutritionResourceCost(input, speedPressureMultiplier);
   const nutritionConsumed = cappedNutritionConsumed(input, rawNutritionCost);
   const puckSpeedDelta = activeStickPuckSpeedDelta(input.loadout.stick);
+  const fatigueMs = accumulatedFatigueMs(input, nutritionTiming);
+  const fatigue = fatigueState(fatigueMs, nutritionTiming);
 
   const skatesActive =
     input.loadout.skates?.resourceUnit === 'distance' &&
     input.loadout.skates.resourceAvailable > rawSkatesCost;
   const movementTiming = globalTimingFor(input.loadout.fallbackSkatesTiming);
-  const stumble = skatesActive
-    ? { active: false, offsetPx: 0 }
-    : defaultSkateStumbleWindow(input, movementTiming);
+  const stumble =
+    skatesActive || fatigue.status === 'exhausted_stop'
+      ? { active: false, offsetPx: 0 }
+      : defaultSkateStumbleWindow(input, movementTiming);
   if (stumble.active) {
     return condition(
       reusable,
@@ -288,9 +291,6 @@ export function getDuelPlayerCondition(
       skatesConsumed,
     );
   }
-
-  const fatigueMs = accumulatedFatigueMs(input, nutritionTiming);
-  const fatigue = fatigueState(fatigueMs, nutritionTiming);
 
   return condition(
     reusable,

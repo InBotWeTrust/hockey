@@ -354,6 +354,35 @@ describe('duel inventory condition', () => {
     expect(atConfiguredInterval.canShoot).toBe(false);
   });
 
+  it('rests without stumbling when a stumble window overlaps the fatigue stop', () => {
+    const timing = {
+      ...DEFAULT_DUEL_INVENTORY_TIMING,
+      stumbleIntervalMinRolls: 0,
+      stumbleIntervalMaxRolls: 0,
+      stumbleIntervalMinMs: 13_000,
+      stumbleIntervalMaxMs: 13_000,
+      stumbleDurationMinMs: 500,
+      stumbleDurationMaxMs: 500,
+      stumbleRecoveryMinMs: 200,
+      stumbleRecoveryMaxMs: 200,
+    };
+    const condition = getDuelPlayerCondition({
+      seed: 'rest-overlap',
+      userId: 'user-a',
+      periodNumber: 1,
+      elapsedMs: 13_000,
+      movementDistancePx: 0,
+      baseLaneWidthPx: 572,
+      baselineShooterSpeed: 0.75,
+      currentShooterSpeed: 1.5,
+      loadout: loadout({ fallbackSkatesTiming: timing }),
+    });
+
+    expect(condition.status).toBe('exhausted_stop');
+    expect(condition.stumbleActive).toBe(false);
+    expect(condition.shooterSpeedMultiplier).toBe(0);
+  });
+
   it('cycles the approved global fatigue stages after energy runs out', () => {
     const common = {
       seed: 'match-seed',

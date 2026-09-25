@@ -298,6 +298,10 @@ export function dailyCharacterVisuals(usesAmateurCourt: boolean) {
         goalieOptions: TRAINING_AMATEUR_GOALIE_OPTIONS,
       };
 }
+
+export function demoCharacterVisuals() {
+  return dailyCharacterVisuals(false);
+}
 const LEGACY_STANDARD_ARENA_BACKGROUNDS = new Set([
   '/sprites/arena-ice-court.webp',
   '/sprites/arena-ice-court-v2.webp',
@@ -1976,7 +1980,7 @@ function ArenaVideoCube({
               style={{
                 position: 'relative',
                 zIndex: 3,
-                width: '70%',
+                width: 'min(160px, 70%)',
                 minWidth: 0,
                 minHeight: 'clamp(36px, 4.8vh, 44px)',
                 margin: '0 auto',
@@ -2284,6 +2288,7 @@ function DailyHubScoreboard({
               ? 'max-content max-content'
               : 'minmax(0, 1fr) auto',
         alignItems: 'center',
+        justifyContent: spacious ? 'center' : undefined,
         justifyItems: timerOnly ? 'center' : align === 'left' ? 'start' : 'center',
         gap:
           align === 'left'
@@ -7127,7 +7132,7 @@ function DuelResultPeriodComparison({
                   display: 'grid',
                   gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                   gap: 8,
-                  marginTop: hasMultiplePeriods ? 8 : 0,
+                  marginTop: 10,
                 }}
               >
                 <DuelResultParticipantPeriodStats title="Вы" period={mePeriod} />
@@ -9031,6 +9036,7 @@ function DailyPlayView({
     <>
       <PlayView<DailyStateResponse>
         suppressedByModal={shouldSuppressRink}
+        showPeriodFatigueNotice
         showIceCar={shouldShowIceCar}
         playEntranceOnMount={data.state === 'period_active' ? playEntranceOnMount : false}
         onEntranceConsumed={onEntranceConsumed}
@@ -10164,6 +10170,59 @@ function TrainingPlayView({
   );
 }
 
+interface DailyPeriodPreviewState {
+  shots: number;
+  goals: number;
+}
+
+export function DailyPeriodPreviewScreen(): JSX.Element {
+  const navigate = useNavigate();
+  const [state, setState] = useState<DailyPeriodPreviewState>({ shots: 0, goals: 0 });
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  const applyPreviewState = useCallback((next: DailyPeriodPreviewState): void => {
+    stateRef.current = next;
+    setState(next);
+  }, []);
+
+  return (
+    <>
+      <div className="visually-hidden">
+        <div>Предпросмотр · ежедневная игра</div>
+        <div>2-й период</div>
+      </div>
+      <PlayView<DailyPeriodPreviewState>
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => navigate('/demo')}
+        backLabel="К демо"
+        active={state.shots < 30}
+        seed="daily-period-two-preview"
+        goalieId="rookie"
+        periodNumber={2}
+        showPeriodFatigueNotice
+        goals={state.goals}
+        shots={state.shots}
+        shotsTotal={30}
+        timer="20:00"
+        optimisticAddShot={(claimedResult) => {
+          applyPreviewState({
+            shots: stateRef.current.shots + 1,
+            goals: stateRef.current.goals + (claimedResult === 'goal' ? 1 : 0),
+          });
+        }}
+        submitShot={async ({ claimedResult }) => ({
+          serverResult: claimedResult,
+          state: stateRef.current,
+        })}
+        applyState={applyPreviewState}
+        {...dailyCharacterVisuals(false)}
+      />
+    </>
+  );
+}
+
 export function DemoScreen(): JSX.Element {
   const navigate = useNavigate();
   const setSession = useAuthStore((s) => s.setSession);
@@ -10235,6 +10294,8 @@ export function DemoScreen(): JSX.Element {
         shotsTotal={DEMO_SHOTS_PER_PERIOD}
         timer="ДЕМО"
         timerLabel="РЕЖИМ"
+        speedOverrides={DEMO_SPEED_OVERRIDES}
+        {...demoCharacterVisuals()}
         backLabel="На вход"
         optimisticAddShot={() => {}}
         submitShot={submitDemoShot}
@@ -10258,7 +10319,14 @@ export function DemoScreen(): JSX.Element {
   );
 }
 
-function DemoCompletionModal({
+export const DEMO_SPEED_OVERRIDES: SpeedOverrides = {
+  goalFreq: 0.35,
+  goalieFreq: 0.4,
+  shooterFreq: 0.45,
+  puckSpeed: 1,
+};
+
+export function DemoCompletionModal({
   goals,
   shots,
   botUsername,
@@ -10282,50 +10350,17 @@ function DemoCompletionModal({
   const goalRate = formatGoalRate(goals, shots);
   return (
     <div
+      className="modal-backdrop"
       role="dialog"
       aria-modal="true"
       aria-label="Демо завершено"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 430,
-        background: 'rgba(15, 23, 42, 0.22)',
-        backdropFilter: 'blur(8px) saturate(130%)',
-        WebkitBackdropFilter: 'blur(8px) saturate(130%)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20,
-      }}
+      style={{ zIndex: 430 }}
     >
-      <div
-        style={{
-          width: '100%',
-          maxWidth: 368,
-          padding: '26px 22px 20px',
-          borderRadius: 28,
-          textAlign: 'center',
-          background:
-            'linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(241, 245, 249, 0.9) 100%)',
-          backdropFilter: 'blur(22px) saturate(160%)',
-          WebkitBackdropFilter: 'blur(22px) saturate(160%)',
-          border: '1px solid rgba(255, 255, 255, 0.68)',
-          boxShadow:
-            '0 30px 80px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9)',
-        }}
-      >
-        <div style={{ fontSize: 25, fontWeight: 900, letterSpacing: 0 }}>Первый период сыгран</div>
-        <div
-          style={{
-            marginTop: 10,
-            color: 'var(--muted)',
-            fontSize: 14,
-            lineHeight: 1.45,
-            fontWeight: 700,
-          }}
-        >
-          Необходимо войти, чтобы играть сезон, сохранять прогресс и открывать новые режимы игры
-        </div>
+      <div className="modal-card demo-completion-modal">
+        <h2 className="modal-title">Первый период сыгран</h2>
+        <p className="modal-copy">
+          Необходимо войти, чтобы играть сезон, сохранять прогресс и открывать новые режимы&nbsp;игры
+        </p>
 
         <div
           style={{
@@ -10351,32 +10386,32 @@ function DemoCompletionModal({
         >
           <button
             type="button"
-            className="btn"
+            className="btn login-screen__auth-button login-screen__auth-button--vk"
             disabled={vkPending}
             onClick={onVkLogin}
             style={{
-              width: 242,
-              height: 42,
               padding: '0 14px',
-              borderRadius: 12,
               background: '#0077ff',
               color: '#ffffff',
               justifyContent: 'center',
-              fontSize: 16,
               fontWeight: 700,
               letterSpacing: 0,
               boxShadow: 'none',
               whiteSpace: 'nowrap',
             }}
           >
+            <img
+              src="/icons/vk-community.png"
+              alt=""
+              aria-hidden="true"
+              className="login-screen__auth-icon"
+            />
             Войти через ВКонтакте
           </button>
 
           <TelegramLoginButton
             botUsername={botUsername}
             onAuth={onTelegramAuth}
-            cornerRadius={12}
-            size="large"
           />
 
           {(telegramPending || telegramError || vkError) && (
