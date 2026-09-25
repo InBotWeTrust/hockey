@@ -22,12 +22,21 @@ function streakSuffix(rules: BonusQualificationRules): string {
     : ` · серия ${rules.requiredGoalStreak}`;
 }
 
+function formatQualificationPoints(
+  points: number,
+  rules: Extract<BonusQualificationRules, { type: 'points_in_time' }>,
+): string {
+  return rules.scoring.version === 5
+    ? new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(points / 10)
+    : String(points);
+}
+
 export function qualificationDescription(rules: BonusQualificationRules): string {
   if (rules.type === 'survive_goal_windows') {
     return enduranceQualificationLines(rules).join(' · ');
   }
   if (rules.type === 'points_in_time') {
-    return `${rules.targetPoints} очков за ${formatTime(rules.activeTimeMs)}`;
+    return `${formatQualificationPoints(rules.targetPoints, rules)} очков за ${formatTime(rules.activeTimeMs)}`;
   }
   if (rules.type === 'goals_in_time') {
     return `${rules.targetGoals} голов за ${formatTime(rules.activeTimeMs)}${streakSuffix(rules)}`;
@@ -49,7 +58,9 @@ export function qualificationProgress(
     return `ГОЛЫ ${state.goals}`;
   }
   if (rules.type === 'points_in_time') {
-    return `ЦЕЛЬ ${state.totalPoints ?? 0}/${rules.targetPoints}`;
+    const current = formatQualificationPoints(state.totalPoints ?? 0, rules);
+    const target = formatQualificationPoints(rules.targetPoints, rules);
+    return `ЦЕЛЬ ${current}/${target}`;
   }
   const primary = `ЦЕЛЬ ${state.goals}/${rules.targetGoals}`;
   if (rules.requiredGoalStreak === undefined) return primary;

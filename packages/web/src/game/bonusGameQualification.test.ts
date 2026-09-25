@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MARKSMANSHIP_SCORING_RULES } from '@hockey/game-core';
+import { DEFAULT_MARKSMANSHIP_SCORING_RULES, DEFAULT_MARKSMANSHIP_V5_SCORING_RULES } from '@hockey/game-core';
 import { qualificationDescription, qualificationProgress } from './bonusGameQualification.js';
 
 describe('qualificationDescription', () => {
@@ -24,6 +24,13 @@ describe('qualificationDescription', () => {
         scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
       }),
     ).toBe('1100 очков за 00:30');
+  });
+
+  it('shows V5 target points in tenths on a bonus-game card', () => {
+    expect(qualificationDescription({
+      type: 'points_in_time', targetPoints: 90, activeTimeMs: 30_000,
+      scoring: DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
+    })).toBe('9 очков за 00:30');
   });
 
   it('describes accuracy qualification as goals from a fixed shot quota', () => {
@@ -97,5 +104,13 @@ describe('qualificationProgress', () => {
         { goals: 4, shots: 5, totalPoints: 450, currentStreak: 2, bestStreak: 3 },
       ),
     ).toBe('ЦЕЛЬ 450/1100');
+  });
+
+  it('shows V5 points in tenths in the progress label', () => {
+    expect(qualificationProgress({
+      type: 'points_in_time', targetPoints: 90, activeTimeMs: 30_000,
+      scoring: DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
+    }, { goals: 4, shots: 5, totalPoints: 17, currentStreak: 0, bestStreak: 0 }))
+      .toBe('ЦЕЛЬ 1,7/9');
   });
 });

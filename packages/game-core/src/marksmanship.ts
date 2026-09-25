@@ -6,6 +6,8 @@ import {
   PERSPECTIVE_COURT_HITBOX_GOAL_INSET,
   PERSPECTIVE_COURT_HITBOX_GOAL_WIDTH_SCALE,
   PERSPECTIVE_COURT_VISUAL_X_CENTER,
+  getPerspectiveCourtGoalOpening,
+  getPerspectiveCourtGoalieHitbox,
   resolvePerspectiveCourtShot,
 } from './court/perspective.js';
 import { simulateGoal } from './goal/simulate.js';
@@ -18,6 +20,11 @@ import { simulateShooter } from './shooter/simulate.js';
 import { SHOOTER_FREQUENCY, SHOOTER_MAX_X, SHOOTER_MIN_X } from './shooter/types.js';
 import { GOALIE_HITBOX_EXPAND, GOAL_HITBOX_MARGIN } from './shot/resolve.js';
 import { PUCK_SPEED_PER_MS, STICK_NEUTRAL, type ShotInput, type ShotResult } from './shot/types.js';
+import {
+  classifyMarksmanshipV5Score,
+  type MarksmanshipV5Measurements,
+  type MarksmanshipV5Score,
+} from './marksmanshipV5.js';
 
 export type MarksmanshipDifficultyCode =
   | 'open'
@@ -34,7 +41,7 @@ export interface MarksmanshipScoreBracket {
 }
 
 export interface MarksmanshipScoringRules {
-  version?: 3 | 4;
+  version?: 3 | 4 | 5;
   scanStepMs: number;
   counterDirectionBonus: number;
   counterDirectionGoalDistance: number;
@@ -154,6 +161,11 @@ export const DEFAULT_MARKSMANSHIP_V4_SCORING_RULES = {
   version: 4,
 } as const satisfies MarksmanshipScoringRules;
 
+export const DEFAULT_MARKSMANSHIP_V5_SCORING_RULES = {
+  ...DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
+  version: 5,
+} as const satisfies MarksmanshipScoringRules;
+
 const MARKSMANSHIP_DIFFICULTY_CODES = new Set<MarksmanshipDifficultyCode>([
   'open',
   'timed',
@@ -190,10 +202,11 @@ export function parseMarksmanshipScoringRules(value: unknown): MarksmanshipScori
   ] as const;
   const isV3 = isRecord(value) && value.version === 3;
   const isV4 = isRecord(value) && value.version === 4;
+  const isV5 = isRecord(value) && value.version === 5;
   const isLegacy = isRecord(value) && hasExactKeys(value, legacyKeys);
   if (
     !isRecord(value) ||
-    (!isLegacy && !hasExactKeys(value, isV3 || isV4 ? [...v2Keys, 'version'] : v2Keys)) ||
+    (!isLegacy && !hasExactKeys(value, isV3 || isV4 || isV5 ? [...v2Keys, 'version'] : v2Keys)) ||
     !Number.isInteger(value.scanStepMs) ||
     (value.scanStepMs as number) < 1 ||
     (value.scanStepMs as number) > 1_000 ||
@@ -205,7 +218,7 @@ export function parseMarksmanshipScoringRules(value: unknown): MarksmanshipScori
     value.counterDirectionGoalDistance < 0 ||
     value.counterDirectionGoalDistance > 10_000 ||
     !Array.isArray(value.brackets) ||
-    value.brackets.length !== (isV3 || isV4 ? 4 : MARKSMANSHIP_DIFFICULTY_CODES.size) ||
+    value.brackets.length !== (isV3 || isV4 || isV5 ? 4 : MARKSMANSHIP_DIFFICULTY_CODES.size) ||
     (!isLegacy &&
       (!Number.isInteger(value.closeGoalieBonus) ||
         (value.closeGoalieBonus as number) < 0 ||
@@ -250,7 +263,7 @@ export function parseMarksmanshipScoringRules(value: unknown): MarksmanshipScori
     return { minWindowMs, points: bracket.points as number, code };
   });
   if (!seenThresholds.has(0)) throw new Error('invalid marksmanship scoring rules');
-  if ((isV3 || isV4) && (
+  if ((isV3 || isV4 || isV5) && (
     value.scanStepMs !== 10 || value.counterDirectionGoalDistance !== 24 ||
     value.counterDirectionBonus !== 0 || value.closeGoalieBonus !== 0 ||
     value.behindGoalieBonus !== 0 || value.boardNarrowBonus !== 0 ||
@@ -261,7 +274,8 @@ export function parseMarksmanshipScoringRules(value: unknown): MarksmanshipScori
   )) throw new Error('invalid marksmanship scoring rules');
 
   return {
-    ...(isV3 ? { version: 3 as const } : isV4 ? { version: 4 as const } : {}),
+    ...(isV3 ? { version: 3 as const } : isV4 ? { version: 4 as const }
+      : isV5 ? { version: 5 as const } : {}),
     scanStepMs: value.scanStepMs as number,
     counterDirectionBonus: value.counterDirectionBonus as number,
     counterDirectionGoalDistance: value.counterDirectionGoalDistance,
@@ -302,6 +316,8 @@ export interface MarksmanshipShotClassification {
   reason?: MarksmanshipV3Reason | null;
   v4Score?: MarksmanshipV4Score | null;
   v4Measurements?: MarksmanshipV4Measurements | null;
+  v5Score?: MarksmanshipV5Score | null;
+  v5Measurements?: MarksmanshipV5Measurements | null;
 }
 
 export interface MarksmanshipShotContext {
@@ -309,6 +325,7 @@ export interface MarksmanshipShotContext {
   counterDirection: boolean;
   geometry: MarksmanshipGeometry;
   v4Measurements?: MarksmanshipV4Measurements;
+  v5Measurements?: MarksmanshipV5Measurements;
 }
 
 export interface MarksmanshipGeometryInput {
@@ -779,9 +796,51 @@ function measurementsForV4Shot(input: MarksmanshipShotInput, puckX: number): Mar
   };
 }
 
+function movementDirection(before: number, after: number): -1 | 0 | 1 {
+  const delta = after - before;
+  if (Math.abs(delta) < 1e-7) return 0;
+  return delta < 0 ? -1 : 1;
+}
+
+function measurementsForV5Shot(input: MarksmanshipShotInput, puckX: number): MarksmanshipV5Measurements {
+  const shot = input.shotInput;
+  const speed = shot.puckSpeedPerMs ?? PUCK_SPEED_PER_MS;
+  const effectiveGoalie = {
+    ...input.goalie,
+    frequency: shot.goalieFrequency ?? input.goalie.frequency,
+    goalFrequency: shot.goalFrequency ?? input.goalie.goalFrequency,
+  };
+  const goalieCrossTime = shot.tapTime + (PUCK_START.y - GOALIE_Y) / speed;
+  const goalCrossTime = shot.tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed;
+  const goalie = getPerspectiveCourtGoalieHitbox(
+    shot, effectiveGoalie, input.seed, input.shotIndex, STICK_NEUTRAL, input.phaseOffsets,
+  );
+  const goal = getPerspectiveCourtGoalOpening(shot, effectiveGoalie, input.phaseOffsets);
+  const shooterTime = (shot.shooterTapTime ?? shot.tapTime) + input.phaseOffsets.shooter;
+  const shooterAt = simulateShooter(shooterTime, shot.shooterFrequency).x;
+  const shooterBefore = simulateShooter(shooterTime - 5, shot.shooterFrequency).x;
+  const goalieX = (timeMs: number): number => simulateGoalie(
+    effectiveGoalie, input.seed, input.shotIndex, timeMs, input.phaseOffsets.goalie,
+  ).position.x;
+  const goalX = (timeMs: number): number => simulateGoal(
+    effectiveGoalie, timeMs, input.phaseOffsets.goal,
+  ).offsetX;
+  return {
+    puckX,
+    goalMin: goal.xMin,
+    goalMax: goal.xMax,
+    goalieMin: goalie.xMin,
+    goalieMax: goalie.xMax,
+    shooterDirection: movementDirection(shooterBefore, shooterAt),
+    goalieDirection: movementDirection(goalieX(goalieCrossTime - 5), goalieX(goalieCrossTime + 5)),
+    goalDirection: movementDirection(goalX(goalCrossTime - 5), goalX(goalCrossTime + 5)),
+  };
+}
+
 function nearestGoalDelta(input: MarksmanshipShotInput): number | null {
   const stepMs = input.scoring.scanStepMs;
-  const maxSteps = Math.floor((input.scoring.version === 4 ? 600 : OPPORTUNITY_SCAN_MS) / stepMs);
+  const maxSteps = Math.floor((input.scoring.version === 4 || input.scoring.version === 5
+    ? 600 : OPPORTUNITY_SCAN_MS) / stepMs);
   for (let step = 1; step <= maxSteps; step += 1) {
     for (const direction of [-1, 1] as const) {
       const deltaMs = step * stepMs * direction;
@@ -814,23 +873,28 @@ export function resolveMarksmanshipShotContext(
   const geometry = geometryForShot(input, resultX(input, result));
   const v4Measurements = input.scoring.version === 4
     ? measurementsForV4Shot(input, resultX(input, result)) : undefined;
-  const resolvedGeometry = v4Measurements === undefined ? geometry : {
-    ...geometry,
-    counterDirection: classifyMarksmanshipV4Score(v4Measurements)
-      .availableTechniques.includes('counter_direction'),
-  };
+  const v5Measurements = input.scoring.version === 5
+    ? measurementsForV5Shot(input, resultX(input, result)) : undefined;
+  const v4CounterDirection = v4Measurements === undefined ? undefined
+    : classifyMarksmanshipV4Score(v4Measurements).availableTechniques.includes('counter_direction');
+  const v5CounterDirection = v5Measurements === undefined || result.type !== 'goal' ? undefined
+    : classifyMarksmanshipV5Score(v5Measurements).availableTechniques.includes('counter_direction');
+  const resolvedGeometry = v4CounterDirection === undefined && v5CounterDirection === undefined
+    ? geometry : { ...geometry, counterDirection: v5CounterDirection ?? v4CounterDirection! };
   return {
     result,
     counterDirection: resolvedGeometry.counterDirection,
     geometry: resolvedGeometry,
     ...(v4Measurements === undefined ? {} : { v4Measurements }),
+    ...(v5Measurements === undefined ? {} : { v5Measurements }),
   };
 }
 
 export function classifyMarksmanshipShot(
   input: MarksmanshipShotInput,
 ): MarksmanshipShotClassification {
-  const { result, counterDirection, geometry, v4Measurements } = resolveMarksmanshipShotContext(input);
+  const { result, counterDirection, geometry, v4Measurements, v5Measurements } =
+    resolveMarksmanshipShotContext(input);
   const series = classifyMarksmanshipSeries(
     {
       tapTime: input.shotInput.tapTime,
@@ -843,29 +907,37 @@ export function classifyMarksmanshipShot(
   );
   if (result.type !== 'goal') {
     const timingErrorMs = nearestGoalDelta(input);
-    const opportunityInput = input.scoring.version === 4 && timingErrorMs !== null
+    const opportunityInput = (input.scoring.version === 4 || input.scoring.version === 5) &&
+      timingErrorMs !== null
       ? { ...input, shotInput: shiftedShotInput(input.shotInput, timingErrorMs) }
       : null;
     const opportunityContext = opportunityInput === null ? null
       : resolveMarksmanshipShotContext(opportunityInput);
-    const availableMeasurements = opportunityContext?.result.type === 'goal'
+    const availableV4Measurements = opportunityContext?.result.type === 'goal'
       ? opportunityContext.v4Measurements ?? null : null;
-    const availableScore = availableMeasurements === null ? null
-      : classifyMarksmanshipV4Score(availableMeasurements);
-    const availableWindowMs = input.scoring.version === 4 && timingErrorMs !== null
+    const availableV4Score = availableV4Measurements === null ? null
+      : classifyMarksmanshipV4Score(availableV4Measurements);
+    const availableV5Measurements = opportunityContext?.result.type === 'goal'
+      ? opportunityContext.v5Measurements ?? null : null;
+    const availableV5Score = availableV5Measurements === null ? null
+      : classifyMarksmanshipV5Score(availableV5Measurements);
+    const availableWindowMs = (input.scoring.version === 4 || input.scoring.version === 5) &&
+      timingErrorMs !== null
       ? goalWindowDurationV4(opportunityInput!)
       : null;
     return {
       result,
       windowDurationMs: availableWindowMs,
-      opportunity: input.scoring.version === 4
+      opportunity: input.scoring.version === 4 || input.scoring.version === 5
         ? marksmanshipV4OpportunityForWindow(availableWindowMs)
         : timingErrorMs === null ? 'closed' : 'human_error',
       timingErrorMs,
       basePoints: 0,
       counterDirection: input.scoring.version === 4
-        ? availableScore?.availableTechniques.includes('counter_direction') ?? false
-        : counterDirection,
+        ? availableV4Score?.availableTechniques.includes('counter_direction') ?? false
+        : input.scoring.version === 5
+          ? availableV5Score?.availableTechniques.includes('counter_direction') ?? false
+          : counterDirection,
       geometry: opportunityContext?.geometry ?? geometry,
       series: { ...series, type: 'single', index: 1, multiplier: 1 },
       situationBonus: 0,
@@ -874,13 +946,27 @@ export function classifyMarksmanshipShot(
       difficultyCode: null,
       ...(input.scoring.version === 3 ? { category: null, reason: null } : {}),
       ...(input.scoring.version !== 4 ? {} : {
-        v4Measurements: availableMeasurements, v4Score: availableScore,
+        v4Measurements: availableV4Measurements, v4Score: availableV4Score,
+      }),
+      ...(input.scoring.version !== 5 ? {} : {
+        v5Measurements: availableV5Measurements, v5Score: availableV5Score,
       }),
     };
   }
 
-  const windowDurationMs = input.scoring.version === 4
+  const windowDurationMs = input.scoring.version === 4 || input.scoring.version === 5
     ? goalWindowDurationV4(input) : goalWindowDuration(input);
+  if (input.scoring.version === 5) {
+    if (v5Measurements === undefined) throw new Error('missing V5 measurements');
+    const v5Score = classifyMarksmanshipV5Score(v5Measurements);
+    return {
+      result, windowDurationMs, opportunity: 'scored', timingErrorMs: 0,
+      basePoints: v5Score.points, counterDirection, geometry,
+      series: { ...series, multiplier: 1 }, situationBonus: 0, seriesBonus: 0,
+      awardedPoints: v5Score.points, difficultyCode: null,
+      v5Measurements, v5Score,
+    };
+  }
   if (input.scoring.version === 4) {
     if (v4Measurements === undefined) throw new Error('missing V4 measurements');
     const v4Score = classifyMarksmanshipV4Score(v4Measurements);

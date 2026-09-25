@@ -2,14 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
-  DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
   buildMarksmanshipReplaySnapshot,
   classifyMarksmanshipShot,
   deriveShotSeed,
   getDailyPeriodSpeedPreset,
   getGoalie,
   getSessionPhaseOffsets,
-  type MarksmanshipV4Technique,
+  type MarksmanshipV5Technique,
 } from '@hockey/game-core';
 import { MarksmanshipConstructorCourt } from '../game/MarksmanshipConstructorCourt.js';
 import { MarksmanshipRecordedReplay } from './MarksmanshipRecordedReplay.js';
@@ -27,15 +27,20 @@ const SPEEDS = getDailyPeriodSpeedPreset(1);
 const DEFAULT_STEP_MS = 50;
 const MAX_TIME_MS = 180_000;
 const SCAN_STEP_MS = 10;
-const TECHNIQUES: Record<MarksmanshipV4Technique, string> = {
-  ordinary: 'Обычный гол',
-  near_goalie: 'Рядом с вратарём',
-  board_side: 'У борта',
-  counter_direction: 'Против движения',
-  precise: 'Точный просвет',
-  behind_goalie: 'За спиной вратаря',
-  super_precise: 'Сверхточный просвет',
+const TECHNIQUES: Record<MarksmanshipV5Technique, string> = {
+  ordinary: 'Простой',
+  near_goalie: 'Вратарь рядом',
+  counter_direction: 'Противоход',
+  precise: 'Меткий',
+  behind_goalie: 'За вратаря',
+  corner: 'Сложный в углу',
+  edge: 'На грани',
+  super_precise: 'Суперметкий',
 };
+
+function formatV5Points(points: number): string {
+  return (points / 10).toFixed(1).replace('.', ',');
+}
 
 export function MarksmanshipConstructorScreen(): JSX.Element {
   const navigate = useNavigate();
@@ -47,7 +52,7 @@ export function MarksmanshipConstructorScreen(): JSX.Element {
   const [showHitboxes, setShowHitboxes] = useState(true);
   const [episodes, setEpisodes] = useState<GoalEpisode[]>([]);
   const [isScanning, setIsScanning] = useState(false);
-  const [techniqueFilter, setTechniqueFilter] = useState<'all' | MarksmanshipV4Technique>('all');
+  const [techniqueFilter, setTechniqueFilter] = useState<'all' | MarksmanshipV5Technique>('all');
   const [selectedTab, setSelectedTab] = useState('synthetic');
 
   useEffect(() => {
@@ -70,11 +75,11 @@ export function MarksmanshipConstructorScreen(): JSX.Element {
             goalieFrequency: SPEEDS.goalieFrequency,
             goalFrequency: SPEEDS.goalFrequency },
           goalie: GOALIE, seed: shotSeed, shotIndex: 1, phaseOffsets,
-          earliestTapTime: 0, scoring: DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
+          earliestTapTime: 0, scoring: DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
         });
         samples.push({ timeMs: nextTime,
           points: classification.result.type === 'goal' ? classification.awardedPoints : 0,
-          technique: classification.v4Score?.technique ?? null });
+          technique: classification.v5Score?.technique ?? null });
       }
       if (cancelled) return;
       if (nextTime <= MAX_TIME_MS) timer = setTimeout(scan, 0);
@@ -95,10 +100,10 @@ export function MarksmanshipConstructorScreen(): JSX.Element {
     shotIndex: 1,
     phaseOffsets: getSessionPhaseOffsets(seed),
     earliestTapTime: 0,
-    scoring: DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
+    scoring: DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
   }), [seed, timeMs]);
   const result = snapshot.classification.result.type;
-  const technique = snapshot.classification.v4Score?.technique;
+  const technique = snapshot.classification.v5Score?.technique;
   const points = result === 'goal' ? snapshot.classification.awardedPoints : null;
   const episodeIndex = result === 'goal'
     ? episodes.findIndex((episode) => timeMs >= episode.startMs - SCAN_STEP_MS &&
@@ -187,7 +192,7 @@ export function MarksmanshipConstructorScreen(): JSX.Element {
         {!preStart && <section className="marksmanship-constructor-details" aria-label="Характеристики ситуации">
           <div className="marksmanship-constructor-details__grid">
             <span className="marksmanship-constructor-points-row"><strong className="marksmanship-constructor-detail-label">Очки за бросок:</strong>{' '}
-              <span className="marksmanship-constructor-points">{points !== null ? `+${points}` : '0'}</span></span>
+              <span className="marksmanship-constructor-points">{points !== null ? `+${formatV5Points(points)}` : '0'}</span></span>
             {result === 'goal' && episodeIndex >= 0 && <span><strong className="marksmanship-constructor-detail-label">Гол №:</strong> {episodeIndex + 1}</span>}
             <span>{explanation}</span>
             <span><strong className="marksmanship-constructor-detail-label">Игрок X:</strong> {snapshot.tap.playerX.toFixed(1)}</span>
@@ -201,17 +206,17 @@ export function MarksmanshipConstructorScreen(): JSX.Element {
         {!preStart && <section className="marksmanship-constructor-episodes" aria-label="Голевые ситуации">
           <h2>Голевые ситуации — {STARTS.find((start) => start.value === seed)?.label}</h2>
           <select aria-label="Фильтр ситуаций" value={techniqueFilter}
-            onChange={(event) => setTechniqueFilter(event.target.value as 'all' | MarksmanshipV4Technique)}>
+            onChange={(event) => setTechniqueFilter(event.target.value as 'all' | MarksmanshipV5Technique)}>
             <option value="all">Все ситуации</option>
-            {(Object.entries(TECHNIQUES) as [MarksmanshipV4Technique, string][]).map(([value, label]) =>
+            {(Object.entries(TECHNIQUES) as [MarksmanshipV5Technique, string][]).map(([value, label]) =>
               <option key={value} value={value}>{label}</option>)}
           </select>
           {isScanning ? <p>Ищем голевые моменты…</p> : visibleEpisodes.length === 0 ?
             <p>{episodes.length === 0 ? 'Голевых моментов не найдено.' : 'Нет голов этого типа.'}</p> :
             <ol>{visibleEpisodes.map(({ episode, index }) => <li key={episode.startMs}>
               <div className="marksmanship-constructor-episodes__copy">
-                <div><strong>Гол №{index + 1}</strong> · {formatTime(episode.timeMs)} · +{episode.points} очков</div>
-                <p>{episode.technique ? TECHNIQUES[episode.technique as MarksmanshipV4Technique] : 'Гол в створ'}</p>
+                <div><strong>Гол №{index + 1}</strong> · {formatTime(episode.timeMs)} · +{formatV5Points(episode.points)} очков</div>
+                <p>{episode.technique ? TECHNIQUES[episode.technique as MarksmanshipV5Technique] : 'Гол в створ'}</p>
               </div>
               <button type="button" onClick={() => {
                 setClampedTime(episode.timeMs);

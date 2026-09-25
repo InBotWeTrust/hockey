@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolvePerspectiveCourtShot } from '../src/court/perspective.js';
+import { getPerspectiveCourtGoalOpening, getPerspectiveCourtGoalieHitbox, resolvePerspectiveCourtShot } from '../src/court/perspective.js';
 import type { GoalieConfig } from '../src/goalie/types.js';
 import {
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
@@ -19,6 +19,84 @@ import {
   scoreMarksmanshipWindow,
 } from '../src/marksmanship.js';
 import { STICK_NEUTRAL, type ShotInput } from '../src/shot/types.js';
+import { GOAL_OPENING, PUCK_START } from '../src/rink.js';
+import { GOALIE_Y } from '../src/goalie/types.js';
+
+const v5Rules = { ...DEFAULT_MARKSMANSHIP_V4_SCORING_RULES, version: 5 } as const;
+
+describe('visible V5 marksmanship technique', () => {
+  it('parses a V5 snapshot while preserving V4 parsing', () => {
+    expect(parseMarksmanshipScoringRules(v5Rules).version).toBe(5);
+    expect(parseMarksmanshipScoringRules(DEFAULT_MARKSMANSHIP_V4_SCORING_RULES).version).toBe(4);
+  });
+
+  it('scores a real goal once and deterministically', () => {
+    const shotInput = findShotInput('goal');
+    const input = { shotInput, goalie: movingGoalie, seed: 'marksmanship-fixture', shotIndex: 1,
+      phaseOffsets: offsets, earliestTapTime: 0, scoring: v5Rules };
+    const first = classifyMarksmanshipShot(input);
+    const second = classifyMarksmanshipShot(input);
+    expect(first).toEqual(second);
+    expect(first.result.type).toBe('goal');
+    expect(first.v5Score?.points).toBe(first.awardedPoints);
+    expect([10, 12, 13, 14, 16, 17, 18, 20]).toContain(first.awardedPoints);
+    expect(classifyMarksmanshipShot({ ...input, scoring: DEFAULT_MARKSMANSHIP_V4_SCORING_RULES }).v4Score)
+      .toBeDefined();
+  });
+
+  it('measures the goalie and goal at their different puck-crossing times', () => {
+    const shotInput = findShotInput('goal');
+    const context = resolveMarksmanshipShotContext({
+      shotInput, goalie: movingGoalie, seed: 'marksmanship-fixture', shotIndex: 1,
+      phaseOffsets: offsets, earliestTapTime: 0, scoring: v5Rules,
+    });
+    const goalie = getPerspectiveCourtGoalieHitbox(
+      shotInput, movingGoalie, 'marksmanship-fixture', 1, STICK_NEUTRAL, offsets,
+    );
+    const goal = getPerspectiveCourtGoalOpening(shotInput, movingGoalie, offsets);
+    expect(context.v5Measurements).toMatchObject({
+      goalieMin: goalie.xMin, goalieMax: goalie.xMax,
+      goalMin: goal.xMin, goalMax: goal.xMax,
+    });
+    const goalieCrossTime = shotInput.tapTime + (PUCK_START.y - GOALIE_Y) / shotInput.puckSpeedPerMs!;
+    const goalCrossTime = shotInput.tapTime + (PUCK_START.y - GOAL_OPENING.y) / shotInput.puckSpeedPerMs!;
+    expect(goalCrossTime - goalieCrossTime).toBeGreaterThan(0);
+  });
+
+  it('uses the last player direction before the tap even when scene time has advanced', () => {
+    const shotInput: ShotInput = {
+      tapTime: 750, shooterTapTime: 500, puckSpeedPerMs: 1.25,
+      shooterFrequency: 1, goalieFrequency: 0.6, goalFrequency: 0.5,
+    };
+    const context = resolveMarksmanshipShotContext({
+      shotInput, goalie: movingGoalie, seed: 'marksmanship-fixture', shotIndex: 1,
+      phaseOffsets: offsets, earliestTapTime: 0, scoring: v5Rules,
+    });
+    expect(context.v5Measurements?.shooterDirection).toBe(1);
+  });
+
+  it('treats a goal turning exactly as the puck arrives as having no direction', () => {
+    const shotInput: ShotInput = {
+      tapTime: 584, shooterTapTime: 584, puckSpeedPerMs: 1.25,
+      shooterFrequency: 0.75, goalieFrequency: 0.6, goalFrequency: 0.5,
+    };
+    const context = resolveMarksmanshipShotContext({
+      shotInput, goalie: movingGoalie, seed: 'marksmanship-fixture', shotIndex: 1,
+      phaseOffsets: offsets, earliestTapTime: 0, scoring: v5Rules,
+    });
+    expect(context.v5Measurements?.goalDirection).toBe(0);
+  });
+
+  it('awards zero for a saved puck', () => {
+    const shotInput = findShotInput('save');
+    const result = classifyMarksmanshipShot({
+      shotInput, goalie: movingGoalie, seed: 'marksmanship-fixture', shotIndex: 1,
+      phaseOffsets: offsets, earliestTapTime: 0, scoring: v5Rules,
+    });
+    expect(result.result.type).toBe('save');
+    expect(result.awardedPoints).toBe(0);
+  });
+});
 
 const movingGoalie: GoalieConfig = {
   id: 'marksmanship-test',
@@ -121,7 +199,10 @@ describe('visible V4 marksmanship technique', () => {
     expect(result.v4Score).toBeDefined();
   });
 
-  it('recognizes a missed opportunity beyond the old 250 ms horizon', () => {
+  it.each([
+    DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
+    v5Rules,
+  ])('recognizes a V$version missed opportunity beyond the old 250 ms horizon', (scoring) => {
     const times = Array.from({ length: 2_001 }, (_, index) => index * 10);
     const outcomes = times.map((tapTime) => resolvePerspectiveCourtShot({
       tapTime, shooterTapTime: tapTime, puckSpeedPerMs: 1.25,
@@ -139,7 +220,7 @@ describe('visible V4 marksmanship technique', () => {
       shotInput: { tapTime, shooterTapTime: tapTime, puckSpeedPerMs: 1.25,
         shooterFrequency: 0.75, goalieFrequency: 0.6, goalFrequency: 0.5 },
       goalie: movingGoalie, seed: 'marksmanship-fixture', shotIndex: 1,
-      phaseOffsets: offsets, earliestTapTime: 0, scoring: DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
+      phaseOffsets: offsets, earliestTapTime: 0, scoring,
     });
     expect(result.opportunity).not.toBe('closed');
     expect(Math.abs(result.timingErrorMs!)).toBeGreaterThan(250);

@@ -14,6 +14,7 @@ import {
   type MarksmanshipSeriesGoal,
   type MarksmanshipV3Reason,
   type MarksmanshipV4Technique,
+  type MarksmanshipV5Technique,
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -96,9 +97,22 @@ function formatPoints(value: number): string {
 }
 
 function formatMarksmanshipPoints(value: number, scoring: MarksmanshipScoringRules): string {
-  if (scoring.version !== 4) return formatPoints(value);
+  if (scoring.version !== 4 && scoring.version !== 5) return formatPoints(value);
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(value / 10)
     .replaceAll('\u00a0', ' ');
+}
+
+function marksmanshipV5TechniqueLabel(technique: MarksmanshipV5Technique): string {
+  switch (technique) {
+    case 'ordinary': return 'Простой';
+    case 'near_goalie': return 'Вратарь рядом';
+    case 'counter_direction': return 'Противоход';
+    case 'precise': return 'Меткий';
+    case 'behind_goalie': return 'За вратаря';
+    case 'corner': return 'Сложный в углу';
+    case 'edge': return 'На грани';
+    case 'super_precise': return 'Суперметкий';
+  }
 }
 
 function marksmanshipV4TechniqueLabel(technique: MarksmanshipV4Technique): string {
@@ -156,11 +170,13 @@ function marksmanshipResultPresentation(input: {
   const details = input.scoreDetails;
   if (input.serverResult !== 'goal') return null;
   if (input.awardedPoints <= 0) return null;
-  if (details?.version === 4) {
+  if (details?.version === 4 || details?.version === 5) {
     if (details.result !== 'goal' || details.technique === null ||
       details.pointsTenths !== input.awardedPoints) return null;
     return {
-      breakdown: [{ points: details.pointsTenths, label: marksmanshipV4TechniqueLabel(details.technique) }],
+      breakdown: [{ points: details.pointsTenths, label: details.version === 5
+        ? marksmanshipV5TechniqueLabel(details.technique)
+        : marksmanshipV4TechniqueLabel(details.technique) }],
     };
   }
   if (input.difficultyCode === null) return null;
