@@ -29,6 +29,14 @@ describe('initial training scoreboard hint', () => {
   });
 });
 
+describe('duel inventory notices', () => {
+  it('uses the same under-scoreboard placement as beginner training feedback', () => {
+    const playView = readFileSync('src/game/PlayView.tsx', 'utf8');
+    expect(playView).toContain('duel-stumble-notice initial-training-feedback-notice--scoreboard');
+    expect(playView).toContain('duel-fatigue-notice initial-training-feedback-notice--scoreboard');
+  });
+});
+
 describe('bonus game first-clear reward heading', () => {
   it('uses the primary dark ink color to separate it from descriptive copy', () => {
     expect(css).toMatch(/\.bonus-game-card__reward-title\s*\{\s*color: var\(--ink\);\s*\}/);

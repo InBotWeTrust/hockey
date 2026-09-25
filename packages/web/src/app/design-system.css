@@ -265,6 +265,11 @@
   width: min(100%, 380px);
 }
 
+.modal-card.demo-completion-modal {
+  width: min(100%, 380px);
+  text-align: center;
+}
+
 .regular-podium-modal .modal-copy {
   margin-top: 6px;
   overflow: hidden;

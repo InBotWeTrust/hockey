@@ -2113,7 +2113,7 @@ export function PlayView<TState>({
             <div
               role="status"
               aria-live="polite"
-              className="duel-stumble-notice"
+              className="duel-stumble-notice initial-training-feedback-notice--scoreboard"
               style={routeGameStyle}
             >
               Споткнулся · бросок недоступен
@@ -2122,7 +2122,7 @@ export function PlayView<TState>({
             <div
               role="status"
               aria-live="polite"
-              className={`duel-fatigue-notice${
+              className={`duel-fatigue-notice initial-training-feedback-notice--scoreboard${
                 currentDuelCondition?.status === 'exhausted_stop'
                   ? ' duel-rest-notice'
                   : currentDuelCondition?.status === 'nutrition_slowdown' ||

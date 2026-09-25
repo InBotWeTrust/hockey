@@ -24,6 +24,8 @@ import {
 const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 import {
   DailyScreen,
+  DEMO_SPEED_OVERRIDES,
+  DemoCompletionModal,
   DUEL_INVENTORY_ICON_GLASS_STYLE,
   createClassicTournamentCondition,
   dailyCharacterVisuals,
@@ -61,6 +63,41 @@ import type { BonusGameCard } from '../api/bonusGames.js';
 import type { ClassicTournamentState } from '../api/tournamentClassic.js';
 import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
 import { ApiError } from '../api/apiFetch.js';
+
+describe('demo pace', () => {
+  it('keeps every moving element slower than each ordinary game period', () => {
+    for (const preset of DAILY_PERIOD_SPEED_PRESETS) {
+      expect(DEMO_SPEED_OVERRIDES.goalFreq).toBeLessThan(preset.goalFrequency);
+      expect(DEMO_SPEED_OVERRIDES.goalieFreq).toBeLessThan(preset.goalieFrequency);
+      expect(DEMO_SPEED_OVERRIDES.shooterFreq).toBeLessThan(preset.shooterFrequency);
+      expect(DEMO_SPEED_OVERRIDES.puckSpeed).toBeLessThan(preset.puckSpeedPerMs);
+    }
+  });
+});
+
+describe('demo completion', () => {
+  it('uses the shared result modal and login button styling', () => {
+    render(
+      <DemoCompletionModal
+        goals={4}
+        shots={30}
+        botUsername=""
+        telegramPending={false}
+        telegramError={null}
+        vkPending={false}
+        vkError={null}
+        onTelegramAuth={vi.fn()}
+        onVkLogin={vi.fn()}
+      />,
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Демо завершено' });
+    expect(dialog).toHaveClass('modal-backdrop');
+    expect(within(dialog).getByText('Первый период сыгран')).toHaveClass('modal-title');
+    const vkButton = within(dialog).getByRole('button', { name: 'Войти через ВКонтакте' });
+    expect(vkButton).toHaveClass('login-screen__auth-button', 'login-screen__auth-button--vk');
+    expect(vkButton.querySelector('.login-screen__auth-icon')).not.toBeNull();
+  });
+});
 
 describe('duel admission conflict copy', () => {
   it('shows the structured limit and Moscow retry time', () => {

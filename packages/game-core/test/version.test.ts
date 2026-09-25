@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for deterministic marksmanship scoring v2', () => {
-    expect(GAME_CORE_VERSION).toBe(63);
+  it('is bumped for stationary duel stumble suppression', () => {
+    expect(GAME_CORE_VERSION).toBe(64);
   });
 });
