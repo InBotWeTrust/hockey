@@ -4,6 +4,7 @@ import {
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
   DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
   DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
   deriveShotSeed,
   GAME_CORE_VERSION,
   GOAL_OPENING,
@@ -252,7 +253,8 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     return { id: game.rows[0]!.id, arenaId: defaultArenaId };
   }
 
-  async function createMarksmanshipGame(targetPoints: number, v3 = false, v4 = false): Promise<TestGame> {
+  async function createMarksmanshipGame(targetPoints: number, v3 = false, v4 = false,
+    v5 = false): Promise<TestGame> {
     gameSequence += 1;
     const slug = `shot-game-${gameSequence}`;
     const game = await pool.query<{ id: string }>(
@@ -273,7 +275,8 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
           type: 'points_in_time',
           targetPoints,
           activeTimeMs: MARKSMANSHIP_PERIOD.durationMs,
-          scoring: v4 ? DEFAULT_MARKSMANSHIP_V4_SCORING_RULES
+          scoring: v5 ? DEFAULT_MARKSMANSHIP_V5_SCORING_RULES
+            : v4 ? DEFAULT_MARKSMANSHIP_V4_SCORING_RULES
             : v3 ? DEFAULT_MARKSMANSHIP_V3_SCORING_RULES : DEFAULT_MARKSMANSHIP_SCORING_RULES,
         }),
         JSON.stringify([MARKSMANSHIP_PERIOD]),
@@ -607,6 +610,30 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     expect(first.scoreDetails).toMatchObject({
       version: 4, result: 'goal', pointsTenths: first.awardedPoints,
       technique: expect.any(String), availableTechniques: expect.any(Array),
+    });
+    expect(await submitBonusShot(pool, request)).toEqual(first);
+    expect(await storedMarksmanshipState(attemptId)).toMatchObject({
+      total_points: first.awardedPoints, shots: 1,
+    });
+  });
+
+  it('persists one V5 technique and awards its tenths only once', async () => {
+    const userId = await createUser();
+    const game = await createMarksmanshipGame(1_000, false, false, true);
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const request = {
+      userId, attemptId, claimedShotIndex: 1,
+      input: marksmanshipInput(11_060), claimedResult: 'goal' as const,
+      now: new Date(NOW.getTime() + 11_060),
+    };
+
+    const first = await submitBonusShot(pool, request);
+    expect(first.serverResult).toBe('goal');
+    expect([10, 12, 13, 14, 16, 17, 18, 20]).toContain(first.awardedPoints);
+    expect(first.scoreDetails).toMatchObject({
+      version: 5, result: 'goal', pointsTenths: first.awardedPoints,
+      technique: expect.any(String), availableTechniques: expect.any(Array),
+      measurements: expect.objectContaining({ puckX: expect.any(Number) }),
     });
     expect(await submitBonusShot(pool, request)).toEqual(first);
     expect(await storedMarksmanshipState(attemptId)).toMatchObject({

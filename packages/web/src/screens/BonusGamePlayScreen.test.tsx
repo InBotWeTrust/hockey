@@ -7,6 +7,7 @@ import {
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
   DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
   DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
   STICK_NEUTRAL,
   type GoalieConfig,
   type MarksmanshipShotClassification,
@@ -1095,6 +1096,58 @@ describe('BonusGamePlayScreen', () => {
     expect(notice.querySelectorAll('.bonus-game-marksmanship-score__part')).toHaveLength(1);
     act(() => vi.advanceTimersByTime(2_000));
     expect(screen.queryByRole('status', { name: 'Очки за бросок' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { technique: 'edge', label: 'На грани', points: 18, value: '1,8' },
+    { technique: 'corner', label: 'Сложный в углу', points: 17, value: '1,7' },
+  ] as const)('shows the authoritative V5 $label award in tenths', async ({ technique, label, points, value }) => {
+    const original = marksmanshipAttempt();
+    const v5Attempt = marksmanshipAttempt({
+      total_points: points,
+      rules: {
+        ...original.rules,
+        qualification_rules: {
+          type: 'points_in_time', targetPoints: 25, activeTimeMs: 30_000,
+          scoring: DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
+        },
+      },
+    });
+    const submitShot = vi.fn(async () => ({
+      serverResult: 'goal' as const, awardedPoints: points, totalPoints: points,
+      difficultyCode: null, counterDirection: false,
+      scoreDetails: {
+        version: 5 as const, windowDurationMs: 80, difficultyCode: null,
+        counterDirection: false, opportunity: 'scored' as const, timingErrorMs: 0,
+        geometry: { boardSide: false, closeToGoalie: false, counterDirection: false, behindGoalie: false },
+        measurements: { puckX: 290, goalMin: 220.2, goalMax: 300,
+          goalieMin: 210, goalieMax: 280, shooterDirection: 1 as const,
+          goalDirection: 1 as const, goalieDirection: 1 as const },
+        technique, availableTechniques: [technique, 'ordinary'] as const,
+        pointsTenths: points, result: 'goal' as const,
+      },
+      predictedMarksmanship: null, attempt: v5Attempt, rewardGranted: false,
+    }));
+    setStore({ attempt: v5Attempt, submitShot });
+    renderScreen();
+    const props = playViewProbe.mock.calls.at(-1)?.[0] as {
+      submitShot: (args: { shotIndex: number; input: ShotInput; claimedResult: 'goal' }) => Promise<unknown>;
+      onResultVisibilityChange: (visible: boolean) => void;
+      scoreboardModel: (counters: { goals: number; shots: number; timer: string }) => GameScoreboardModel;
+    };
+    expect(props.scoreboardModel({ goals: 1, shots: 1, timer: '00:15' }).rows[0]?.metrics)
+      .toContainEqual({ id: 'points', label: 'ОЧКИ', value });
+    await act(async () => {
+      await props.submitShot({ shotIndex: 1, claimedResult: 'goal', input: {
+        tapTime: 11_060, shooterTapTime: 11_060, puckSpeedPerMs: 1.25,
+        shooterFrequency: 0.75, goalieFrequency: 0.6, goalFrequency: 0.5,
+      } });
+    });
+    vi.useFakeTimers();
+    act(() => props.onResultVisibilityChange(true));
+    const notice = screen.getByRole('status', { name: 'Очки за бросок' });
+    expect(within(notice).getByText(label)).toBeInTheDocument();
+    expect(within(notice).getByText(`+${value}`)).toBeInTheDocument();
   });
 
   it.each([

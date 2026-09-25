@@ -7,6 +7,8 @@ import type {
   MarksmanshipV3Reason,
   MarksmanshipV4Measurements,
   MarksmanshipV4Technique,
+  MarksmanshipV5Measurements,
+  MarksmanshipV5Technique,
 } from '@hockey/game-core';
 
 export type MarksmanshipScoreDetails =
@@ -52,12 +54,26 @@ export type MarksmanshipScoreDetails =
       availableTechniques: readonly MarksmanshipV4Technique[];
       pointsTenths: number;
       result: 'goal' | 'save' | 'miss';
+    }
+  | {
+      version: 5;
+      windowDurationMs: number | null;
+      difficultyCode: null;
+      counterDirection: boolean;
+      opportunity: 'scored' | 'human_error' | 'too_short' | 'closed';
+      timingErrorMs: number | null;
+      geometry: MarksmanshipGeometry;
+      measurements: MarksmanshipV5Measurements | null;
+      technique: MarksmanshipV5Technique | null;
+      availableTechniques: readonly MarksmanshipV5Technique[];
+      pointsTenths: number;
+      result: 'goal' | 'save' | 'miss';
     };
 
 export function toMarksmanshipScoreDetails(
   classification: MarksmanshipShotClassification,
   scoring: MarksmanshipScoringRules,
-): Extract<MarksmanshipScoreDetails, { version: 2 | 3 | 4 }> {
+): Extract<MarksmanshipScoreDetails, { version: 2 | 3 | 4 | 5 }> {
   const common = {
     windowDurationMs: classification.windowDurationMs,
     difficultyCode: classification.difficultyCode,
@@ -66,6 +82,23 @@ export function toMarksmanshipScoreDetails(
     timingErrorMs: classification.timingErrorMs,
     geometry: classification.geometry,
   };
+  if (scoring.version === 5) {
+    if (classification.v5Score === undefined || classification.v5Measurements === undefined ||
+      (classification.result.type === 'goal' && classification.v5Score === null)) {
+      throw new Error('missing V5 classification for marksmanship shot');
+    }
+    return {
+      version: 5,
+      ...common,
+      opportunity: classification.opportunity,
+      difficultyCode: null,
+      measurements: classification.v5Measurements,
+      technique: classification.v5Score?.technique ?? null,
+      availableTechniques: classification.v5Score?.availableTechniques ?? [],
+      pointsTenths: classification.awardedPoints,
+      result: classification.result.type,
+    };
+  }
   if (scoring.version === 4) {
     if (classification.v4Score === undefined || classification.v4Measurements === undefined ||
       (classification.result.type === 'goal' && classification.v4Score === null)) {

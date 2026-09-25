@@ -98,9 +98,9 @@ interface BonusAttemptVersionRow {
 export const BONUS_GAME_CORE_VERSION_MISMATCH_CODE = 'bonus_game_core_version_mismatch';
 export const BONUS_SHOT_TIME_INVALID_CODE = 'bonus_shot_time_invalid';
 export const BONUS_SHOT_TIME_STALE_CODE = 'bonus_shot_time_stale';
-const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63] as const;
+const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63, 64] as const;
 
-function supportsBonusGameCoreVersion(version: number): boolean {
+export function supportsBonusGameCoreVersion(version: number): boolean {
   return (
     version === GAME_CORE_VERSION ||
     LEGACY_BONUS_GAME_CORE_VERSIONS.some((legacy) => version === legacy)

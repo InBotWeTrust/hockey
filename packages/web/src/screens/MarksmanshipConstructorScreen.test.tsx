@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type * as ConstructorCourtModule from '../game/MarksmanshipConstructorCourt.js';
@@ -19,6 +19,16 @@ function renderScreen() {
 }
 
 describe('MarksmanshipConstructorScreen', () => {
+  it('offers the eight V5 technique filters after entering a start', () => {
+    renderScreen();
+    fireEvent.change(screen.getByLabelText('Начало игры'), { target: { value: 'start-a' } });
+    const filter = screen.getByRole('combobox', { name: 'Фильтр ситуаций' });
+    expect(within(filter).getAllByRole('option')).toHaveLength(9);
+    expect(within(filter).getByRole('option', { name: 'На грани' })).toBeInTheDocument();
+    expect(within(filter).getByRole('option', { name: 'Сложный в углу' })).toBeInTheDocument();
+    expect(within(filter).queryByRole('option', { name: 'У борта' })).not.toBeInTheDocument();
+  });
+
   it('switches between the synthetic scheme and the two recorded runs', () => {
     renderScreen();
     expect(screen.getByRole('tab', { name: 'Учебная схема' })).toHaveAttribute('aria-selected', 'true');
@@ -131,7 +141,7 @@ describe('MarksmanshipConstructorScreen', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Фильтр ситуаций' }),
       { target: { value: 'precise' } });
     expect(list.querySelectorAll('li').length).toBeLessThan(allCount);
-    expect(Array.from(list.querySelectorAll('li p')).every((item) => item.textContent === 'Точный просвет'))
+    expect(Array.from(list.querySelectorAll('li p')).every((item) => item.textContent === 'Меткий'))
       .toBe(true);
     fireEvent.change(screen.getByRole('combobox', { name: 'Фильтр ситуаций' }),
       { target: { value: 'all' } });
@@ -146,6 +156,8 @@ describe('MarksmanshipConstructorScreen', () => {
     expect(screen.getByText(label, { selector: 'output' })).toBeInTheDocument();
     expect(screen.getByText('Гол №:')).toBeInTheDocument();
     expect(screen.getByText('1', { selector: '.marksmanship-constructor-details__grid span' })).toBeInTheDocument();
+    expect(screen.getByText(/^\+\d,\d$/, { selector: '.marksmanship-constructor-points' }))
+      .toBeInTheDocument();
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
   }, 25_000);
 });
