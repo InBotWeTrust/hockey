@@ -26,14 +26,17 @@ describe('initial training scoreboard hint', () => {
     expect(notice).toContain('max-width: min(86%, 404px)');
     expect(notice).toContain('text-wrap: pretty');
     expect(notice).toContain('white-space: pre-line');
+    expect(notice).not.toContain('top: 13%');
   });
 });
 
 describe('duel inventory notices', () => {
   it('uses the same under-scoreboard placement as beginner training feedback', () => {
-    const playView = readFileSync('src/game/PlayView.tsx', 'utf8');
-    expect(playView).toContain('duel-stumble-notice initial-training-feedback-notice--scoreboard');
-    expect(playView).toContain('duel-fatigue-notice initial-training-feedback-notice--scoreboard');
+    const notice = rule('.initial-training-feedback-notice--scoreboard');
+    expect(notice).toContain('position: relative');
+    expect(notice).toContain('top: auto');
+    expect(notice).toContain('left: auto');
+    expect(notice).toContain('margin-inline: auto');
   });
 
   it('keeps a long fatigue label within the game menu and scales its font on narrow screens', () => {
