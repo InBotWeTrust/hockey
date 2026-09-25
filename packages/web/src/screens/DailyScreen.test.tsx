@@ -66,6 +66,12 @@ import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
 import { ApiError } from '../api/apiFetch.js';
 
 describe('demo pace', () => {
+  it('uses the approved faster puck speed while leaving character pacing distinct', () => {
+    expect(DEMO_SPEED_OVERRIDES.puckSpeed).toBe(1);
+    expect(DEMO_SPEED_OVERRIDES.shooterFreq).toBe(0.45);
+    expect(DEMO_SPEED_OVERRIDES.goalieFreq).toBe(0.4);
+  });
+
   it('keeps every moving element slower than each ordinary game period', () => {
     for (const preset of DAILY_PERIOD_SPEED_PRESETS) {
       expect(DEMO_SPEED_OVERRIDES.goalFreq).toBeLessThan(preset.goalFrequency);

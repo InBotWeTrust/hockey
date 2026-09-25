@@ -10269,7 +10269,7 @@ export const DEMO_SPEED_OVERRIDES: SpeedOverrides = {
   goalFreq: 0.35,
   goalieFreq: 0.4,
   shooterFreq: 0.45,
-  puckSpeed: 0.75,
+  puckSpeed: 1,
 };
 
 export function DemoCompletionModal({
