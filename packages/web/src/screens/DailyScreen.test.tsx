@@ -2156,23 +2156,26 @@ describe('DailyScreen', () => {
     } as const;
 
     expect(duelFatigueNoticeLabel(null)).toBeNull();
+    expect(duelFatigueNoticeLabel(null, 1, true)).toBeNull();
     expect(duelFatigueNoticeLabel(baseCondition)).toBeNull();
+    expect(duelFatigueNoticeLabel(null, 0.7 / 0.75, true)).toBe('Усталость · скорость 93%');
+    expect(duelFatigueNoticeLabel(baseCondition, 0.65 / 0.75, true)).toBe('Усталость · скорость 87%');
     expect(
       duelFatigueNoticeLabel({
         ...baseCondition,
         status: 'tired',
         fatigueLevel: 'medium',
         shooterSpeedMultiplier: 0.85,
-      }),
-    ).toBe('Усталость · скорость 85%');
+      }, 0.7 / 0.75),
+    ).toBe('Усталость · скорость 79%');
     expect(
       duelFatigueNoticeLabel({
         ...baseCondition,
         status: 'nutrition_slowdown',
         fatigueLevel: 'heavy',
         shooterSpeedMultiplier: 0.65,
-      }),
-    ).toBe('Сильная усталость · скорость 65%');
+      }, 0.7 / 0.75),
+    ).toBe('Сильная усталость · скорость 61%');
     expect(
       duelFatigueNoticeLabel({
         ...baseCondition,
@@ -2268,6 +2271,67 @@ describe('DailyScreen', () => {
 
     expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeEnabled();
     expect(screen.getByText('Усталость · скорость 85%')).toHaveClass('duel-fatigue-notice');
+  });
+
+  it('shows period fatigue in an active daily game without an inventory condition', () => {
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="seed"
+        goalieId="rookie"
+        periodNumber={2}
+        showPeriodFatigueNotice
+        goals={0}
+        shots={0}
+        optimisticAddShot={() => undefined}
+        submitShot={async () => null}
+        applyState={() => undefined}
+        rinkLayer={<div data-testid="test-rink-layer" />}
+      />,
+    );
+
+    expect(screen.getByText('Усталость · скорость 93%')).toHaveClass('duel-fatigue-notice');
+  });
+
+  it('combines the later period with missing energy in a tournament game', () => {
+    const heavyCondition = {
+      puckSpeedDelta: 0,
+      shooterSpeedMultiplier: 0.65,
+      canShoot: true,
+      status: 'nutrition_slowdown',
+      fatigueLevel: 'heavy',
+      stumbleActive: false,
+      shooterXOffsetPx: 0,
+      fatigueMs: 90_000,
+      nutritionConsumed: 0,
+      skatesConsumed: 0,
+    } as const;
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="seed"
+        goalieId="rookie"
+        periodNumber={2}
+        goals={0}
+        shots={0}
+        optimisticAddShot={() => undefined}
+        submitShot={async () => null}
+        applyState={() => undefined}
+        rinkLayer={<div data-testid="test-rink-layer" />}
+        duelCondition={() => heavyCondition}
+      />,
+    );
+
+    expect(screen.getByText('Сильная усталость · скорость 61%')).toHaveClass(
+      'duel-heavy-fatigue-notice',
+    );
   });
 
   it('shows a short stumble notice near the player instead of renaming the shot button', () => {
@@ -3315,7 +3379,7 @@ describe('DailyScreen', () => {
     expect(scoreboardText.indexOf('БРОСКИ')).toBeGreaterThan(scoreboardText.indexOf('ГОЛЫ'));
     expect(scoreboardText.indexOf('ВРЕМЯ')).toBeGreaterThan(scoreboardText.indexOf('БРОСКИ'));
     fireEvent.click(screen.getByRole('button', { name: 'Звук в разработке' }));
-    expect(screen.getByRole('status')).toHaveTextContent('Звук в разработке');
+    expect(screen.getByText('Звук в разработке').closest('[role="status"]')).toBeInTheDocument();
     expect(screen.getByText('00/30')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'День завершён' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'ИГРА ЗАВЕРШЕНА' })).not.toBeInTheDocument();

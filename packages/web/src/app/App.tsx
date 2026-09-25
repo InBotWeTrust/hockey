@@ -35,6 +35,13 @@ const DailyScreen = lazy(() => loadDailyScreen().then((module) => ({ default: mo
 const DemoScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DemoScreen })),
 );
+const DailyPeriodPreviewScreen = import.meta.env.DEV
+  ? lazy(() =>
+      import('../screens/DailyScreen.js').then((module) => ({
+        default: module.DailyPeriodPreviewScreen,
+      })),
+    )
+  : null;
 const TournamentResultPreviewScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({
     default: module.TournamentResultPreviewScreen,
@@ -238,6 +245,7 @@ export function appBackdropClassName(pathname: string, search = ''): string {
       new URLSearchParams(search).get('play') === '1') ||
     pathname === '/test-court' ||
     pathname === '/demo' ||
+    (import.meta.env.DEV && pathname === '/dev/daily-period-preview') ||
     pathname.startsWith('/duel/') ||
     /^\/bonus-games\/[^/]+\/play$/.test(pathname)
   ) {
@@ -341,6 +349,12 @@ function AppExperience(): JSX.Element {
               <Route path="/privacy" element={<PrivacyScreen />} />
               <Route path="/personal-data-consent" element={<PersonalDataConsentScreen />} />
               <Route path="/demo" element={<DemoScreen />} />
+              {DailyPeriodPreviewScreen && (
+                <Route
+                  path="/dev/daily-period-preview"
+                  element={<DailyPeriodPreviewScreen />}
+                />
+              )}
               <Route
                 path="/dev/tournament-result-preview"
                 element={

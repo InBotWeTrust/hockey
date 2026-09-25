@@ -9100,6 +9100,7 @@ function DailyPlayView({
     <>
       <PlayView<DailyStateResponse>
         suppressedByModal={shouldSuppressRink}
+        showPeriodFatigueNotice
         showIceCar={shouldShowIceCar}
         maintenanceMode={isBreak ? 'scrape' : 'flood'}
         playEntranceOnMount={data.state === 'period_active' ? playEntranceOnMount : false}
@@ -10231,6 +10232,59 @@ function TrainingPlayView({
             </div>
           ) : undefined
         }
+      />
+    </>
+  );
+}
+
+interface DailyPeriodPreviewState {
+  shots: number;
+  goals: number;
+}
+
+export function DailyPeriodPreviewScreen(): JSX.Element {
+  const navigate = useNavigate();
+  const [state, setState] = useState<DailyPeriodPreviewState>({ shots: 0, goals: 0 });
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  const applyPreviewState = useCallback((next: DailyPeriodPreviewState): void => {
+    stateRef.current = next;
+    setState(next);
+  }, []);
+
+  return (
+    <>
+      <div className="visually-hidden">
+        <div>Предпросмотр · ежедневная игра</div>
+        <div>2-й период</div>
+      </div>
+      <PlayView<DailyPeriodPreviewState>
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => navigate('/demo')}
+        backLabel="К демо"
+        active={state.shots < 30}
+        seed="daily-period-two-preview"
+        goalieId="rookie"
+        periodNumber={2}
+        showPeriodFatigueNotice
+        goals={state.goals}
+        shots={state.shots}
+        shotsTotal={30}
+        timer="20:00"
+        optimisticAddShot={(claimedResult) => {
+          applyPreviewState({
+            shots: stateRef.current.shots + 1,
+            goals: stateRef.current.goals + (claimedResult === 'goal' ? 1 : 0),
+          });
+        }}
+        submitShot={async ({ claimedResult }) => ({
+          serverResult: claimedResult,
+          state: stateRef.current,
+        })}
+        applyState={applyPreviewState}
+        {...dailyCharacterVisuals(false)}
       />
     </>
   );
