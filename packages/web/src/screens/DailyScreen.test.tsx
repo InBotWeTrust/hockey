@@ -29,6 +29,7 @@ import {
   DUEL_INVENTORY_ICON_GLASS_STYLE,
   createClassicTournamentCondition,
   dailyCharacterVisuals,
+  demoCharacterVisuals,
   duelBackLabel,
   duelAdmissionErrorCopy,
   duelEquipmentEffectLabel,
@@ -233,6 +234,23 @@ describe('daily character visuals', () => {
       },
     });
     expect(dailyCharacterVisuals(true)).toEqual({});
+  });
+});
+
+describe('demo character visuals', () => {
+  it('uses the beginner courtyard player and goalie sprites', () => {
+    expect(demoCharacterVisuals()).toMatchObject({
+      playerOptions: {
+        spriteUrls: {
+          left: '/sprites/street-player-left.webp',
+          right: '/sprites/street-player-right.webp',
+        },
+      },
+      goalieOptions: {
+        idleSpriteUrl: '/sprites/training-goalie-amateur.webp',
+        saveSpriteUrl: '/sprites/training-goalie-amateur-save.webp',
+      },
+    });
   });
 });
 

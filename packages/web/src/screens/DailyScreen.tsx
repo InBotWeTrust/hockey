@@ -298,6 +298,10 @@ export function dailyCharacterVisuals(usesAmateurCourt: boolean) {
         goalieOptions: TRAINING_AMATEUR_GOALIE_OPTIONS,
       };
 }
+
+export function demoCharacterVisuals() {
+  return dailyCharacterVisuals(false);
+}
 const LEGACY_STANDARD_ARENA_BACKGROUNDS = new Set([
   '/sprites/arena-ice-court.webp',
   '/sprites/arena-ice-court-v2.webp',
@@ -10237,6 +10241,7 @@ export function DemoScreen(): JSX.Element {
         timer="ДЕМО"
         timerLabel="РЕЖИМ"
         speedOverrides={DEMO_SPEED_OVERRIDES}
+        {...demoCharacterVisuals()}
         backLabel="На вход"
         optimisticAddShot={() => {}}
         submitShot={submitDemoShot}
