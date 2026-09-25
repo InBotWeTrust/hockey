@@ -2289,11 +2289,11 @@ describe('DailyScreen', () => {
         optimisticAddShot={() => undefined}
         submitShot={async () => null}
         applyState={() => undefined}
-        rinkLayer={<div data-testid="test-rink-layer" />}
       />,
     );
 
     expect(screen.getByText('Усталость · скорость 93%')).toHaveClass('duel-fatigue-notice');
+    expect(screen.getByText('Усталость · скорость 93%').parentElement).toHaveClass('game-scoreboard-stack');
   });
 
   it('combines the later period with missing energy in a tournament game', () => {
@@ -2368,7 +2368,6 @@ describe('DailyScreen', () => {
         optimisticAddShot={() => undefined}
         submitShot={async () => null}
         applyState={() => undefined}
-        rinkLayer={<div data-testid="test-rink-layer" />}
         duelCondition={() => stumbleCondition}
       />,
     );
@@ -2376,6 +2375,9 @@ describe('DailyScreen', () => {
     expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeDisabled();
     expect(screen.getByText('Споткнулся · бросок недоступен')).toHaveClass(
       'duel-stumble-notice',
+    );
+    expect(screen.getByText('Споткнулся · бросок недоступен').parentElement).toHaveClass(
+      'game-scoreboard-stack',
     );
 
     act(() => {
