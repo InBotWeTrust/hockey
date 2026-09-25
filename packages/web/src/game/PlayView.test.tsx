@@ -170,6 +170,7 @@ describe('PlayView', () => {
         periodNumber={1}
         goals={0}
         shots={0}
+        scoreboardOpponent={{ name: 'Соперник', avatarUrl: null, goals: 0, shots: 0, time: '20:00' }}
         statusNotice="Возьми чуть правее"
         statusNoticeUnderScoreboard
         optimisticAddShot={() => undefined}
@@ -181,6 +182,9 @@ describe('PlayView', () => {
     const notices = await screen.findAllByText('Возьми чуть правее');
     expect(notices).toHaveLength(1);
     expect(notices[0]).toHaveClass('initial-training-feedback-notice--scoreboard');
+    expect(notices[0]?.parentElement).toHaveClass('game-scoreboard-stack');
+    expect(screen.getByLabelText('Соперник: Соперник')).toBeInTheDocument();
+    expect(notices[0]?.parentElement?.firstElementChild).toHaveAttribute('aria-label', 'Игровое табло');
     expect(screen.getAllByRole('status')).toHaveLength(1);
 
     view.rerender(

@@ -3953,8 +3953,11 @@
 }
 
 .initial-training-feedback-notice--scoreboard {
-  top: 13%;
+  position: relative;
+  top: auto;
   bottom: auto;
+  left: auto;
+  margin-inline: auto;
   width: max-content;
   max-width: min(86%, 404px);
   box-sizing: border-box;
@@ -3962,24 +3965,18 @@
   justify-content: center;
   text-wrap: pretty;
   white-space: pre-line;
-  animation: initial-training-feedback-notice-drop 180ms ease-out both;
+  animation: scoreboard-feedback-notice-drop 180ms ease-out both;
+}
+
+@keyframes scoreboard-feedback-notice-drop {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .duel-fatigue-notice.initial-training-feedback-notice--scoreboard {
   max-width: min(calc(100% - 40px), 316px);
   font-size: clamp(9px, 2.75vw, 12px);
   white-space: nowrap;
-}
-
-@keyframes initial-training-feedback-notice-drop {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -6px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
 }
 
 .duel-heavy-fatigue-notice::before {
