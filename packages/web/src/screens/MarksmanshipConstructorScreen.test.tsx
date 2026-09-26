@@ -141,7 +141,8 @@ describe('MarksmanshipConstructorScreen', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Фильтр ситуаций' }),
       { target: { value: 'precise' } });
     expect(list.querySelectorAll('li').length).toBeLessThan(allCount);
-    expect(Array.from(list.querySelectorAll('li p')).every((item) => item.textContent === 'Меткий'))
+    expect(Array.from(list.querySelectorAll('li p')).every((item) =>
+      item.textContent?.startsWith('Меткий — ') && item.textContent.includes('просвет')))
       .toBe(true);
     fireEvent.change(screen.getByRole('combobox', { name: 'Фильтр ситуаций' }),
       { target: { value: 'all' } });
