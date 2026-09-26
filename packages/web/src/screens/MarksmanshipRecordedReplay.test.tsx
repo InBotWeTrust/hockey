@@ -41,6 +41,17 @@ describe('recorded marksmanship replay', () => {
     expect(screen.getByRole('slider', { name: 'Время повтора' })).toHaveValue('0');
   });
 
+  it.each(RECORDED_RUNS)('explains every recorded goal in $label under current V5 rules', (run) => {
+    render(<MarksmanshipRecordedReplay run={run} />);
+    const goals = screen.getByRole('list', { name: 'Записанные голы' }).querySelectorAll('li');
+    expect(goals).toHaveLength(run.shots.filter((shot) => shot.result === 'goal').length);
+    for (const goal of goals) {
+      expect(goal).toHaveTextContent('Оценка V5:');
+      expect(goal.querySelector('.marksmanship-constructor-episodes__reason'))
+        .toHaveTextContent(/просвет|зазор|края вратаря/);
+    }
+  });
+
   it('shows the saved result briefly after the puck reaches the goal', () => {
     const run = RECORDED_RUNS[0]!;
     const shot = run.shots[0]!;
