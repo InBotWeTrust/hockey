@@ -11,7 +11,8 @@ import { deriveShotSeed, getSessionPhaseOffsets } from '../src/session.js';
 const DURATIONS_MS = [
   30_000, 50_000, 70_000, 90_000, 110_000, 130_000, 150_000, 170_000, 190_000, 210_000,
 ];
-const RATIOS = [0.5, 0.53, 0.57, 0.6, 0.63, 0.67, 0.7, 0.73, 0.77, 0.8];
+// Current catalog goals use the same V6 control runs with a ten-point easier ratio ladder.
+const RATIOS = [0.4, 0.43, 0.47, 0.5, 0.53, 0.57, 0.6, 0.63, 0.67, 0.7];
 const SEEDS = Array.from({ length: 30 }, (_, index) =>
   `marksmanship-target-phase-${String(index + 1).padStart(2, '0')}`);
 const STEP_MS = 10;
@@ -112,7 +113,7 @@ describe('V6 marksmanship target calibration', () => {
     });
     const targets = medians.map((median, index) =>
       Math.max(10, Math.floor(median * RATIOS[index]! / 10) * 10));
-    expect(targets).toEqual([100, 180, 270, 360, 470, 590, 720, 850, 1000, 1150]);
+    expect(targets).toEqual([80, 140, 220, 300, 400, 500, 610, 730, 870, 1010]);
     expect(targets.every((target) => target % 10 === 0)).toBe(true);
     expect(targets.every((target, index) => index === 0 || target > targets[index - 1]!)).toBe(true);
     expect(targets.every((target, index) =>
