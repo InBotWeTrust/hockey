@@ -57,6 +57,7 @@ import {
   puckOutcomeMotion,
   puckReboundObstacles,
   puckResultContact,
+  reconcilePuckResultDisplayKind,
 } from './puckOutcomeMotion.js';
 import { SHOT_RESULT_PAUSE_MS } from './shotTiming.js';
 import {
@@ -741,7 +742,7 @@ export function PlayView<TState>({
   const [resultDisplayKind, setResultDisplayKind] = useState<ResultModalKind | null>(null);
   const [resultPresentation, setResultPresentation] = useState<PlayResultPresentation | null>(null);
   const authoritativePresentationRef = useRef<PlayResultPresentation | null | undefined>(undefined);
-  const authoritativeResultRef = useRef<ShotResult['type'] | null>(null);
+  const authoritativeResultRef = useRef<ResultModalKind | null>(null);
   const [lastResult, setLastResult] = useState<ShotResult | null>(null);
   const inlineResultKind = resultDisplayKind ?? lastResult?.type ?? null;
   const inlineResultContent =
@@ -1836,8 +1837,12 @@ export function PlayView<TState>({
           return;
         }
         if (resultCopy) {
-          authoritativeResultRef.current = res.serverResult;
-          setResultDisplayKind(res.serverResult);
+          const authoritativeDisplayKind = reconcilePuckResultDisplayKind(
+            displayKind,
+            res.serverResult,
+          );
+          authoritativeResultRef.current = authoritativeDisplayKind;
+          setResultDisplayKind(authoritativeDisplayKind);
         }
         if (res.resultPresentation !== undefined) {
           authoritativePresentationRef.current = res.resultPresentation;

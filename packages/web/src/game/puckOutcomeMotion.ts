@@ -24,6 +24,13 @@ export interface PuckReboundObstacle {
   maxY: number;
 }
 
+export function reconcilePuckResultDisplayKind(
+  localKind: ResultModalKind,
+  serverKind: ShotResult['type'],
+): ResultModalKind {
+  return localKind === 'post' && serverKind === 'miss' ? 'post' : serverKind;
+}
+
 const RINK_EDGE_INSET = 8;
 const END_BOARD_INSET = 18;
 const END_BOARD_CORNER_RADIUS = 74;
