@@ -722,6 +722,48 @@ describe('PlayView', () => {
     );
   });
 
+  it('holds the demonstration at impact until the next scene is rebased', async () => {
+    vi.useFakeTimers();
+    let now = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const clocks: number[] = [];
+    const onResultComplete = vi.fn();
+    const common = {
+      suppressedByModal: false, showIceCar: false, onBack: () => undefined,
+      active: true, seed: 'held-demonstration', goalieId: null,
+      goalieConfig: beachGoalie, periodNumber: 1, goals: 0, shots: 0,
+      speedOverrides: { goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 },
+      holdSceneAfterResult: true, initialShooterElapsedMs: 2_000,
+      receivedAtPerformanceMs: 1_000,
+      onSceneClock: (sceneMs: number) => clocks.push(sceneMs),
+      onResultComplete,
+      shotResolver: () => ({ type: 'goal' as const, hitPoint: { x: 286, y: 60 } }),
+      optimisticAddShot: () => undefined,
+      submitShot: async () => ({ serverResult: 'goal' as const, state: {} }),
+      applyState: () => undefined,
+    };
+    const view = render(<PlayView {...common} initialSceneElapsedMs={2_000}
+      clockRebaseKey="demo-1" />);
+    await act(async () => Promise.resolve());
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    now = 1_434;
+    act(() => tickerCallbacks.at(-1)?.());
+    await act(async () => vi.advanceTimersByTimeAsync(434));
+    now = 2_434;
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(onResultComplete).toHaveBeenCalledTimes(1);
+    act(() => tickerCallbacks.at(-1)?.());
+    const heldClock = clocks.at(-1)!;
+    now = 3_434;
+    act(() => tickerCallbacks.at(-1)?.());
+    expect(clocks.at(-1)).toBeCloseTo(heldClock, 3);
+    view.rerender(<PlayView {...common} initialSceneElapsedMs={4_000}
+      initialShooterElapsedMs={4_000} receivedAtPerformanceMs={3_434}
+      clockRebaseKey="demo-2" />);
+    act(() => tickerCallbacks.at(-1)?.());
+    expect(clocks.at(-1)).toBeCloseTo(4_000, 1);
+  });
+
   it('keeps the result visible until a delayed shot response can start the next window', async () => {
     vi.useFakeTimers();
     let resolveSubmit: ((value: { serverResult: 'miss'; state: { shots: number } }) => void) | null =

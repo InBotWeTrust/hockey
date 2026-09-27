@@ -14768,3 +14768,17 @@ button.daily-calendar__day:active {
     flex-direction: column;
   }
 }
+
+.advanced-training-v2-cue {
+  min-width: 54px;
+  padding: 8px 12px;
+  border: 1px solid rgba(205, 232, 255, 0.7);
+  border-radius: 999px;
+  background: rgba(11, 39, 67, 0.88);
+  color: #fff;
+  font-size: clamp(14px, 4vw, 20px);
+  font-weight: 800;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}

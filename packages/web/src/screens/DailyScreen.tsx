@@ -100,9 +100,9 @@ import {
 } from '../components/InitialTrainingCourse.js';
 import {
   AdvancedTrainingCatalog,
-  type AdvancedTrainingExerciseKey,
 } from '../components/AdvancedTrainingCourse.js';
-import { AdvancedTrainingPlay } from '../components/AdvancedTrainingPlay.js';
+import { AdvancedTrainingPlayV2 } from '../components/AdvancedTrainingPlayV2.js';
+import type { AdvancedTrainingV2Technique } from '@hockey/game-core';
 import { InitialTrainingPlay } from '../components/InitialTrainingPlay.js';
 import { fetchBonusGames } from '../api/bonusGames.js';
 import type { ProfileData } from './profileTypes.js';
@@ -3783,8 +3783,8 @@ function TrainingPlaceholder({
         !courseCatalog.gameplay_lock?.blocked
       ) {
         return (
-          <AdvancedTrainingPlay
-            exerciseKey={advancedExercise.key as AdvancedTrainingExerciseKey}
+          <AdvancedTrainingPlayV2
+            exerciseKey={advancedExercise.key as AdvancedTrainingV2Technique}
             onBack={() => navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })}
             onCourse={() => navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })}
             onCatalogRefresh={() => void refreshCourseCatalog()}
