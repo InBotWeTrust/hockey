@@ -25,6 +25,11 @@ import {
   type MarksmanshipV5Measurements,
   type MarksmanshipV5Score,
 } from './marksmanshipV5.js';
+import {
+  classifyMarksmanshipV6Score,
+  type MarksmanshipV6Measurements,
+  type MarksmanshipV6Score,
+} from './marksmanshipV6.js';
 
 export type MarksmanshipDifficultyCode =
   | 'open'
@@ -41,7 +46,7 @@ export interface MarksmanshipScoreBracket {
 }
 
 export interface MarksmanshipScoringRules {
-  version?: 3 | 4 | 5;
+  version?: 3 | 4 | 5 | 6;
   scanStepMs: number;
   counterDirectionBonus: number;
   counterDirectionGoalDistance: number;
@@ -166,6 +171,11 @@ export const DEFAULT_MARKSMANSHIP_V5_SCORING_RULES = {
   version: 5,
 } as const satisfies MarksmanshipScoringRules;
 
+export const DEFAULT_MARKSMANSHIP_V6_SCORING_RULES = {
+  ...DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
+  version: 6,
+} as const satisfies MarksmanshipScoringRules;
+
 const MARKSMANSHIP_DIFFICULTY_CODES = new Set<MarksmanshipDifficultyCode>([
   'open',
   'timed',
@@ -203,10 +213,11 @@ export function parseMarksmanshipScoringRules(value: unknown): MarksmanshipScori
   const isV3 = isRecord(value) && value.version === 3;
   const isV4 = isRecord(value) && value.version === 4;
   const isV5 = isRecord(value) && value.version === 5;
+  const isV6 = isRecord(value) && value.version === 6;
   const isLegacy = isRecord(value) && hasExactKeys(value, legacyKeys);
   if (
     !isRecord(value) ||
-    (!isLegacy && !hasExactKeys(value, isV3 || isV4 || isV5 ? [...v2Keys, 'version'] : v2Keys)) ||
+    (!isLegacy && !hasExactKeys(value, isV3 || isV4 || isV5 || isV6 ? [...v2Keys, 'version'] : v2Keys)) ||
     !Number.isInteger(value.scanStepMs) ||
     (value.scanStepMs as number) < 1 ||
     (value.scanStepMs as number) > 1_000 ||
@@ -218,7 +229,7 @@ export function parseMarksmanshipScoringRules(value: unknown): MarksmanshipScori
     value.counterDirectionGoalDistance < 0 ||
     value.counterDirectionGoalDistance > 10_000 ||
     !Array.isArray(value.brackets) ||
-    value.brackets.length !== (isV3 || isV4 || isV5 ? 4 : MARKSMANSHIP_DIFFICULTY_CODES.size) ||
+    value.brackets.length !== (isV3 || isV4 || isV5 || isV6 ? 4 : MARKSMANSHIP_DIFFICULTY_CODES.size) ||
     (!isLegacy &&
       (!Number.isInteger(value.closeGoalieBonus) ||
         (value.closeGoalieBonus as number) < 0 ||
@@ -263,7 +274,7 @@ export function parseMarksmanshipScoringRules(value: unknown): MarksmanshipScori
     return { minWindowMs, points: bracket.points as number, code };
   });
   if (!seenThresholds.has(0)) throw new Error('invalid marksmanship scoring rules');
-  if ((isV3 || isV4 || isV5) && (
+  if ((isV3 || isV4 || isV5 || isV6) && (
     value.scanStepMs !== 10 || value.counterDirectionGoalDistance !== 24 ||
     value.counterDirectionBonus !== 0 || value.closeGoalieBonus !== 0 ||
     value.behindGoalieBonus !== 0 || value.boardNarrowBonus !== 0 ||
@@ -275,7 +286,7 @@ export function parseMarksmanshipScoringRules(value: unknown): MarksmanshipScori
 
   return {
     ...(isV3 ? { version: 3 as const } : isV4 ? { version: 4 as const }
-      : isV5 ? { version: 5 as const } : {}),
+      : isV5 ? { version: 5 as const } : isV6 ? { version: 6 as const } : {}),
     scanStepMs: value.scanStepMs as number,
     counterDirectionBonus: value.counterDirectionBonus as number,
     counterDirectionGoalDistance: value.counterDirectionGoalDistance,
@@ -318,6 +329,8 @@ export interface MarksmanshipShotClassification {
   v4Measurements?: MarksmanshipV4Measurements | null;
   v5Score?: MarksmanshipV5Score | null;
   v5Measurements?: MarksmanshipV5Measurements | null;
+  v6Score?: MarksmanshipV6Score | null;
+  v6Measurements?: MarksmanshipV6Measurements | null;
 }
 
 export interface MarksmanshipShotContext {
@@ -326,6 +339,7 @@ export interface MarksmanshipShotContext {
   geometry: MarksmanshipGeometry;
   v4Measurements?: MarksmanshipV4Measurements;
   v5Measurements?: MarksmanshipV5Measurements;
+  v6Measurements?: MarksmanshipV6Measurements;
 }
 
 export interface MarksmanshipGeometryInput {
@@ -839,7 +853,8 @@ function measurementsForV5Shot(input: MarksmanshipShotInput, puckX: number): Mar
 
 function nearestGoalDelta(input: MarksmanshipShotInput): number | null {
   const stepMs = input.scoring.scanStepMs;
-  const maxSteps = Math.floor((input.scoring.version === 4 || input.scoring.version === 5
+  const maxSteps = Math.floor((input.scoring.version === 4 || input.scoring.version === 5 ||
+    input.scoring.version === 6
     ? 600 : OPPORTUNITY_SCAN_MS) / stepMs);
   for (let step = 1; step <= maxSteps; step += 1) {
     for (const direction of [-1, 1] as const) {
@@ -875,25 +890,31 @@ export function resolveMarksmanshipShotContext(
     ? measurementsForV4Shot(input, resultX(input, result)) : undefined;
   const v5Measurements = input.scoring.version === 5
     ? measurementsForV5Shot(input, resultX(input, result)) : undefined;
+  const v6Measurements = input.scoring.version === 6
+    ? measurementsForV5Shot(input, resultX(input, result)) : undefined;
   const v4CounterDirection = v4Measurements === undefined ? undefined
     : classifyMarksmanshipV4Score(v4Measurements).availableTechniques.includes('counter_direction');
   const v5CounterDirection = v5Measurements === undefined || result.type !== 'goal' ? undefined
     : classifyMarksmanshipV5Score(v5Measurements).availableTechniques.includes('counter_direction');
-  const resolvedGeometry = v4CounterDirection === undefined && v5CounterDirection === undefined
-    ? geometry : { ...geometry, counterDirection: v5CounterDirection ?? v4CounterDirection! };
+  const v6CounterDirection = v6Measurements === undefined || result.type !== 'goal' ? undefined
+    : classifyMarksmanshipV6Score(v6Measurements).availableTechniques.includes('counter_direction');
+  const resolvedGeometry = v4CounterDirection === undefined && v5CounterDirection === undefined &&
+    v6CounterDirection === undefined ? geometry
+    : { ...geometry, counterDirection: v6CounterDirection ?? v5CounterDirection ?? v4CounterDirection! };
   return {
     result,
     counterDirection: resolvedGeometry.counterDirection,
     geometry: resolvedGeometry,
     ...(v4Measurements === undefined ? {} : { v4Measurements }),
     ...(v5Measurements === undefined ? {} : { v5Measurements }),
+    ...(v6Measurements === undefined ? {} : { v6Measurements }),
   };
 }
 
 export function classifyMarksmanshipShot(
   input: MarksmanshipShotInput,
 ): MarksmanshipShotClassification {
-  const { result, counterDirection, geometry, v4Measurements, v5Measurements } =
+  const { result, counterDirection, geometry, v4Measurements, v5Measurements, v6Measurements } =
     resolveMarksmanshipShotContext(input);
   const series = classifyMarksmanshipSeries(
     {
@@ -907,7 +928,8 @@ export function classifyMarksmanshipShot(
   );
   if (result.type !== 'goal') {
     const timingErrorMs = nearestGoalDelta(input);
-    const opportunityInput = (input.scoring.version === 4 || input.scoring.version === 5) &&
+    const opportunityInput = (input.scoring.version === 4 || input.scoring.version === 5 ||
+      input.scoring.version === 6) &&
       timingErrorMs !== null
       ? { ...input, shotInput: shiftedShotInput(input.shotInput, timingErrorMs) }
       : null;
@@ -921,14 +943,20 @@ export function classifyMarksmanshipShot(
       ? opportunityContext.v5Measurements ?? null : null;
     const availableV5Score = availableV5Measurements === null ? null
       : classifyMarksmanshipV5Score(availableV5Measurements);
-    const availableWindowMs = (input.scoring.version === 4 || input.scoring.version === 5) &&
+    const availableV6Measurements = opportunityContext?.result.type === 'goal'
+      ? opportunityContext.v6Measurements ?? null : null;
+    const availableV6Score = availableV6Measurements === null ? null
+      : classifyMarksmanshipV6Score(availableV6Measurements);
+    const availableWindowMs = (input.scoring.version === 4 || input.scoring.version === 5 ||
+      input.scoring.version === 6) &&
       timingErrorMs !== null
       ? goalWindowDurationV4(opportunityInput!)
       : null;
     return {
       result,
       windowDurationMs: availableWindowMs,
-      opportunity: input.scoring.version === 4 || input.scoring.version === 5
+      opportunity: input.scoring.version === 4 || input.scoring.version === 5 ||
+        input.scoring.version === 6
         ? marksmanshipV4OpportunityForWindow(availableWindowMs)
         : timingErrorMs === null ? 'closed' : 'human_error',
       timingErrorMs,
@@ -937,6 +965,8 @@ export function classifyMarksmanshipShot(
         ? availableV4Score?.availableTechniques.includes('counter_direction') ?? false
         : input.scoring.version === 5
           ? availableV5Score?.availableTechniques.includes('counter_direction') ?? false
+          : input.scoring.version === 6
+            ? availableV6Score?.availableTechniques.includes('counter_direction') ?? false
           : counterDirection,
       geometry: opportunityContext?.geometry ?? geometry,
       series: { ...series, type: 'single', index: 1, multiplier: 1 },
@@ -951,11 +981,26 @@ export function classifyMarksmanshipShot(
       ...(input.scoring.version !== 5 ? {} : {
         v5Measurements: availableV5Measurements, v5Score: availableV5Score,
       }),
+      ...(input.scoring.version !== 6 ? {} : {
+        v6Measurements: availableV6Measurements, v6Score: availableV6Score,
+      }),
     };
   }
 
-  const windowDurationMs = input.scoring.version === 4 || input.scoring.version === 5
+  const windowDurationMs = input.scoring.version === 4 || input.scoring.version === 5 ||
+    input.scoring.version === 6
     ? goalWindowDurationV4(input) : goalWindowDuration(input);
+  if (input.scoring.version === 6) {
+    if (v6Measurements === undefined) throw new Error('missing V6 measurements');
+    const v6Score = classifyMarksmanshipV6Score(v6Measurements);
+    return {
+      result, windowDurationMs, opportunity: 'scored', timingErrorMs: 0,
+      basePoints: v6Score.points, counterDirection, geometry,
+      series: { ...series, multiplier: 1 }, situationBonus: 0, seriesBonus: 0,
+      awardedPoints: v6Score.points, difficultyCode: null,
+      v6Measurements, v6Score,
+    };
+  }
   if (input.scoring.version === 5) {
     if (v5Measurements === undefined) throw new Error('missing V5 measurements');
     const v5Score = classifyMarksmanshipV5Score(v5Measurements);

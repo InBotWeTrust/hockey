@@ -49,6 +49,7 @@ export {
   DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
   DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
   DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
   classifyMarksmanshipGeometry,
   classifyMarksmanshipV3Geometry,
   classifyMarksmanshipSeries,
@@ -87,6 +88,12 @@ export {
   type MarksmanshipV5Score,
   type MarksmanshipV5Technique,
 } from './marksmanshipV5.js';
+export {
+  classifyMarksmanshipV6Score,
+  type MarksmanshipV6Measurements,
+  type MarksmanshipV6Score,
+  type MarksmanshipV6Technique,
+} from './marksmanshipV6.js';
 export {
   buildMarksmanshipReplaySnapshot,
   projectManualMarksmanship,

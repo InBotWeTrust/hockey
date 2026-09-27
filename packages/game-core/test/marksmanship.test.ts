@@ -5,6 +5,7 @@ import {
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
   DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
   DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
   classifyMarksmanshipGeometry,
   classifyMarksmanshipV3Geometry,
   classifyMarksmanshipV3Score,
@@ -23,6 +24,32 @@ import { GOAL_OPENING, PUCK_START } from '../src/rink.js';
 import { GOALIE_Y } from '../src/goalie/types.js';
 
 const v5Rules = { ...DEFAULT_MARKSMANSHIP_V4_SCORING_RULES, version: 5 } as const;
+
+describe('versioned V6 marksmanship scoring', () => {
+  it('parses V6 snapshots without changing V5 parsing', () => {
+    expect(parseMarksmanshipScoringRules(DEFAULT_MARKSMANSHIP_V6_SCORING_RULES).version).toBe(6);
+    expect(parseMarksmanshipScoringRules(v5Rules).version).toBe(5);
+  });
+
+  it('awards one V6 technique for a real goal and none for a save or miss', () => {
+    const shot = (resultType: 'goal' | 'save' | 'miss') => classifyMarksmanshipShot({
+      shotInput: findShotInput(resultType), goalie: movingGoalie,
+      seed: 'marksmanship-fixture', shotIndex: 1,
+      phaseOffsets: offsets, earliestTapTime: 0,
+      scoring: DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
+    });
+    const goal = shot('goal');
+    expect(goal.result.type).toBe('goal');
+    expect(goal.v6Score?.points).toBe(goal.awardedPoints);
+    expect(goal.v6Measurements).toBeDefined();
+    for (const resultType of ['save', 'miss'] as const) {
+      const result = shot(resultType);
+      expect(result.result.type).toBe(resultType);
+      expect(result.awardedPoints).toBe(0);
+      expect(result.opportunity).not.toBe('scored');
+    }
+  });
+});
 
 describe('visible V5 marksmanship technique', () => {
   it('parses a V5 snapshot while preserving V4 parsing', () => {
