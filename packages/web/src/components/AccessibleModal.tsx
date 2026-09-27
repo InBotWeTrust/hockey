@@ -104,7 +104,7 @@ export function AccessibleModal({
     );
     const backgrounds = Array.from(document.body.children)
       .filter((element): element is HTMLElement => element instanceof HTMLElement)
-      .filter((element) => element !== portalBranch)
+      .filter((element) => element !== portalBranch && !element.hasAttribute('data-pwa-update-root'))
       .map<BackgroundSnapshot>((element) => ({
         element,
         inert: element.getAttribute('inert'),
@@ -119,10 +119,11 @@ export function AccessibleModal({
     activeModalStack.push(modalId);
 
     const initialFocus = initialFocusRef?.current ?? focusableElements(dialog)[0] ?? dialog;
-    initialFocus.focus();
+    if (!document.querySelector('[data-pwa-update-root]')) initialFocus.focus();
 
     const onKeyDown = (event: KeyboardEvent): void => {
       if (activeModalStack.at(-1) !== modalId) return;
+      if (document.querySelector('[data-pwa-update-root]')) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         if (!closeBlockedRef.current) onRequestCloseRef.current('escape');

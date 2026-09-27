@@ -1,6 +1,9 @@
+import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
 const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+const UPDATE_ACTIVATION_TIMEOUT_MS = 5_000;
 
 let updateCheckTimer: number | null = null;
 let activeRegistration: ServiceWorkerRegistration | null = null;
@@ -32,6 +35,8 @@ function setupUpdateChecks(registration: ServiceWorkerRegistration): void {
 }
 
 export function UpdatePrompt(): JSX.Element | null {
+  const fallbackTimerRef = useRef<number | null>(null);
+  const updateButtonRef = useRef<HTMLButtonElement | null>(null);
   const {
     needRefresh: [needRefresh],
     updateServiceWorker,
@@ -44,13 +49,48 @@ export function UpdatePrompt(): JSX.Element | null {
     },
   });
 
+  useEffect(() => () => {
+    if (fallbackTimerRef.current !== null) window.clearTimeout(fallbackTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (needRefresh) updateButtonRef.current?.focus();
+  }, [needRefresh]);
+
+  const applyUpdate = (): void => {
+    if (fallbackTimerRef.current !== null) window.clearTimeout(fallbackTimerRef.current);
+    let reloadRequested = false;
+    const reload = (): void => {
+      if (reloadRequested) return;
+      reloadRequested = true;
+      if (fallbackTimerRef.current !== null) window.clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+      window.location.reload();
+    };
+
+    if (!activeRegistration?.waiting) {
+      reload();
+      return;
+    }
+
+    fallbackTimerRef.current = window.setTimeout(reload, UPDATE_ACTIVATION_TIMEOUT_MS);
+    void updateServiceWorker(true).catch(reload);
+  };
+
   if (!needRefresh) return null;
 
-  return (
+  return createPortal(
     <div
+      data-pwa-update-root=""
       role="dialog"
       aria-modal="true"
       aria-label="Доступно обновление"
+      onKeyDown={(event) => {
+        if (event.key !== 'Tab') return;
+        event.preventDefault();
+        event.stopPropagation();
+        updateButtonRef.current?.focus();
+      }}
       style={{
         position: 'fixed',
         inset: 0,
@@ -90,11 +130,10 @@ export function UpdatePrompt(): JSX.Element | null {
           Перезагрузим приложение, чтобы открыть свежую версию.
         </div>
         <button
+          ref={updateButtonRef}
           type="button"
           className="btn btn--cta"
-          onClick={() => {
-            void updateServiceWorker(true);
-          }}
+          onClick={applyUpdate}
           style={{
             marginTop: 18,
             width: '100%',
@@ -106,6 +145,7 @@ export function UpdatePrompt(): JSX.Element | null {
           Обновить приложение
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
