@@ -75,14 +75,14 @@ describe('puckOutcomeMotion', () => {
     expect(motion?.durationMs).toBeLessThan(265);
   });
 
-  it('keeps the board reflection angle when the goal shortens the rebound', () => {
+  it('does not pin a rebound to the boards when the goal is immediately behind it', () => {
     const motion = puckOutcomeMotion('miss', { x: 250, y: GOAL_OPENING.y }, false, 1, [
       { minX: 234, maxX: 338, minY: 30, maxY: 60 },
     ]);
 
     expect(motion?.waypoint?.position).toEqual({ x: 250, y: 18 });
-    expect(motion?.end).toEqual({ x: 250, y: 30 });
-    expect(motion?.durationMs).toBeGreaterThan(45);
+    expect(motion?.end).toEqual({ x: 250, y: 113 });
+    expect(motion?.durationMs).toBe(265);
   });
 
   it('stops a rebound before it crosses the goalie', () => {

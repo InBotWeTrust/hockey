@@ -33,6 +33,7 @@ const END_BOARD_STRAIGHT_MAX_X =
 const END_BOARD_MIN_IMPACT_MS = 45;
 const END_BOARD_REBOUND_MS = 220;
 const END_BOARD_REBOUND_DISTANCE = 95;
+const END_BOARD_MIN_OBSTACLE_DISTANCE = 18;
 const SAVE_DEFLECTION_X = 60;
 const SAVE_DEFLECTION_Y = 100;
 const SAVE_VISUAL_CONTACT_Y_OFFSET = 14;
@@ -124,9 +125,15 @@ function endBoardMissMotion(
     x: clampToRink(impact.x + reflected.x * END_BOARD_REBOUND_DISTANCE),
     y: impact.y + reflected.y * END_BOARD_REBOUND_DISTANCE,
   };
+  const plannedDistance = Math.hypot(plannedEnd.x - impact.x, plannedEnd.y - impact.y);
   const obstacleT = obstacles.reduce<number | null>((nearest, obstacle) => {
     const intersection = segmentObstacleIntersection(impact, plannedEnd, obstacle);
-    if (intersection === null) return nearest;
+    if (
+      intersection === null ||
+      intersection * plannedDistance <= END_BOARD_MIN_OBSTACLE_DISTANCE
+    ) {
+      return nearest;
+    }
     return nearest === null ? intersection : Math.min(nearest, intersection);
   }, null);
   const reboundProgress = obstacleT ?? 1;
