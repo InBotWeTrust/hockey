@@ -1,4 +1,4 @@
-import type { GoalieConfig } from '@hockey/game-core';
+import type { AdvancedTrainingV2Technique, GoalieConfig } from '@hockey/game-core';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 import type { GameplayLockDTO } from './gameplayLock.js';
 import { apiFetch } from './apiFetch.js';
@@ -54,15 +54,8 @@ export interface AdvancedTrainingCatalogResponse {
   completed_count: number;
   total_count: number;
   exercises: Array<{
-    key:
-      | 'board-side'
-      | 'open-net'
-      | 'crossing'
-      | 'goalie-leaving'
-      | 'narrow-gap'
-      | 'counter-direction'
-      | 'second-tempo'
-      | 'rhythm-reset';
+    key: AdvancedTrainingV2Technique | 'board-side' | 'open-net' | 'crossing' |
+      'goalie-leaving' | 'narrow-gap' | 'counter-direction' | 'second-tempo' | 'rhythm-reset';
     position: number;
     title: string;
     description: string | null;
