@@ -205,4 +205,19 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
       `select count(*)::int as count from advanced_training_v2_shot where run_id = $1`, [state.run_id]);
     expect(count.rows[0]?.count).toBe(1);
   });
+
+  it('resumes the same progressed run after another start request', async () => {
+    const url = '/duel/training/advanced/v2/near_goalie/start';
+    const started = await app.inject({ method: 'POST', url, headers: headers() });
+    const initial = started.json().state;
+    const shot = await app.inject({ method: 'POST',
+      url: '/duel/training/advanced/v2/near_goalie/shot', headers: headers(),
+      payload: { run_id: initial.run_id, shot_index: 1, scenario_id: initial.scenario_id,
+        input: { tapTime: initial.scenario.targetTapTimeMs }, claimed_result: 'goal' } });
+    expect(shot.statusCode).toBe(200);
+    const resumed = await app.inject({ method: 'POST', url, headers: headers() });
+    expect(resumed.statusCode).toBe(200);
+    expect(resumed.json().state).toMatchObject({ run_id: initial.run_id,
+      shot_index: 1, side: 'right', side_successes: { left: 1, right: 0 } });
+  });
 });

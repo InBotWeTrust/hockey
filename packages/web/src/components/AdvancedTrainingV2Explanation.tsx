@@ -17,7 +17,7 @@ type Evaluation = {
 };
 
 export function getAdvancedTrainingV2Explanation(scenario: AdvancedTrainingV2Scenario,
-  evaluation: Evaluation): string {
+  evaluation: Evaluation, actualTapTimeMs = scenario.targetTapTimeMs): string {
   if (!evaluation.success || evaluation.result.type !== 'goal' || !evaluation.measurements) {
     throw new Error('Demonstration scenario did not produce the selected category');
   }
@@ -39,7 +39,7 @@ export function getAdvancedTrainingV2Explanation(scenario: AdvancedTrainingV2Sce
           : scenario.technique === 'edge'
             ? `Шайба прошла в ${Math.abs(scenario.side === 'left' ? m.goalieMin - m.puckX : m.puckX - m.goalieMax).toFixed(1)} ед. от вратаря; внутренний просвет ${gap.toFixed(1)} ед.`
             : `Внутренний просвет ${sideCopy} от вратаря — ${gap.toFixed(1)} ед.`;
-  const impactTime = scenario.targetTapTimeMs +
+  const impactTime = actualTapTimeMs +
     (PUCK_START.y - GOAL_OPENING.y) / scenario.speeds.puckSpeedPerMs;
-  return `${ADVANCED_TRAINING_V2_TITLES[scenario.technique]}. ${relation} Нажать «Бросок»: ${(scenario.targetTapTimeMs / 1000).toFixed(2)} с. Попадание: ${(impactTime / 1000).toFixed(2)} с.`;
+  return `${ADVANCED_TRAINING_V2_TITLES[scenario.technique]}. ${relation} Нажать «Бросок»: ${(actualTapTimeMs / 1000).toFixed(2)} с. Попадание: ${(impactTime / 1000).toFixed(2)} с.`;
 }

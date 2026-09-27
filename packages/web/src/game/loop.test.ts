@@ -51,6 +51,17 @@ function makeTicker(): TestTicker {
 }
 
 describe('createGameLoop', () => {
+  it('reports the actual scene and shooter clocks used by the render tick', () => {
+    const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const onClockTick = vi.fn();
+    const loop = makeLoop({ getGoalieId: () => 'rookie',
+      getInitialClocks: () => ({ sceneElapsedMs: 2400, shooterElapsedMs: 2400 }), onClockTick });
+    const ticker = makeTicker();
+    loop.attach(ticker);
+    (ticker.add.mock.calls[0]?.[0] as (ticker: Ticker) => void)(ticker);
+    expect(onClockTick).toHaveBeenLastCalledWith(2400, 2400);
+    nowSpy.mockRestore();
+  });
   it('renders the supplied goalie configuration when no goalie id is available', () => {
     const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1000);
     const scale = { factor: 1, offsetX: 0, offsetY: 0 };
