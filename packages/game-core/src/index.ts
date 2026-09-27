@@ -1,4 +1,14 @@
 export { GAME_CORE_VERSION } from './version.js';
+export {
+  getAdvancedTrainingV2Scenario,
+  getAdvancedTrainingV2Side,
+  evaluateAdvancedTrainingV2Shot,
+  type AdvancedTrainingV2Technique,
+  type AdvancedTrainingV2Side,
+  type AdvancedTrainingV2Stage,
+  type AdvancedTrainingV2Scenario,
+} from './advancedTrainingV2.js';
+export { ADVANCED_TRAINING_V2_SCENARIOS, ADVANCED_TRAINING_V2_BANK_VERSION } from './advancedTrainingV2Scenarios.js';
 export { createRng, type Rng } from './rng.js';
 export { RINK, GOAL, GOAL_OPENING, PUCK_START, type Vec2 } from './rink.js';
 export type { GoalieConfig, GoalieState, GoaliePatternId } from './goalie/types.js';
