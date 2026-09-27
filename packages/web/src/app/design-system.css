@@ -2569,6 +2569,10 @@
   margin-top: 8px;
 }
 
+.bonus-game-result-metrics--shot-stats-marksmanship {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .bonus-game-result-metric {
   min-width: 0;
   padding: 12px 6px;

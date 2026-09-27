@@ -619,11 +619,12 @@ function BonusResult({
       )}
       {enduranceRules || marksmanshipRules ? (
         <div
-          className="bonus-game-result-metrics bonus-game-result-metrics--shot-stats"
-          aria-label={`Броски ${attempt.shots_taken}, попадания ${accuracy}%`}
+          className={`bonus-game-result-metrics bonus-game-result-metrics--shot-stats${marksmanshipRules ? ' bonus-game-result-metrics--shot-stats-marksmanship' : ''}`}
+          aria-label={`Броски ${attempt.shots_taken}, попадания ${accuracy}%${marksmanshipRules ? `, голов ${attempt.goals}` : ''}`}
         >
           <BonusResultMetric label="Броски" value={String(attempt.shots_taken)} />
           <BonusResultMetric label="Попадания" value={`${accuracy}%`} />
+          {marksmanshipRules ? <BonusResultMetric label="Голы" value={String(attempt.goals)} /> : null}
         </div>
       ) : null}
       {kind === 'completed' && attempt.reward_granted && rewardParts.length > 0 ? (
