@@ -15,6 +15,7 @@ import {
   type MarksmanshipV3Reason,
   type MarksmanshipV4Technique,
   type MarksmanshipV5Technique,
+  type MarksmanshipV6Technique,
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -97,7 +98,7 @@ function formatPoints(value: number): string {
 }
 
 function formatMarksmanshipPoints(value: number, scoring: MarksmanshipScoringRules): string {
-  if (scoring.version !== 4 && scoring.version !== 5) return formatPoints(value);
+  if (scoring.version !== 4 && scoring.version !== 5 && scoring.version !== 6) return formatPoints(value);
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(value / 10)
     .replaceAll('\u00a0', ' ');
 }
@@ -113,6 +114,10 @@ function marksmanshipV5TechniqueLabel(technique: MarksmanshipV5Technique): strin
     case 'edge': return 'На грани';
     case 'super_precise': return 'Суперметкий';
   }
+}
+
+function marksmanshipV6TechniqueLabel(technique: MarksmanshipV6Technique): string {
+  return technique === 'complex' ? 'Сложный' : marksmanshipV5TechniqueLabel(technique);
 }
 
 function marksmanshipV4TechniqueLabel(technique: MarksmanshipV4Technique): string {
@@ -170,13 +175,14 @@ function marksmanshipResultPresentation(input: {
   const details = input.scoreDetails;
   if (input.serverResult !== 'goal') return null;
   if (input.awardedPoints <= 0) return null;
-  if (details?.version === 4 || details?.version === 5) {
+  if (details?.version === 4 || details?.version === 5 || details?.version === 6) {
     if (details.result !== 'goal' || details.technique === null ||
       details.pointsTenths !== input.awardedPoints) return null;
     return {
-      breakdown: [{ points: details.pointsTenths, label: details.version === 5
-        ? marksmanshipV5TechniqueLabel(details.technique)
-        : marksmanshipV4TechniqueLabel(details.technique) }],
+      breakdown: [{ points: details.pointsTenths, label: details.version === 6
+        ? marksmanshipV6TechniqueLabel(details.technique)
+        : details.version === 5 ? marksmanshipV5TechniqueLabel(details.technique)
+          : marksmanshipV4TechniqueLabel(details.technique) }],
     };
   }
   if (input.difficultyCode === null) return null;

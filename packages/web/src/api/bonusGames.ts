@@ -9,6 +9,8 @@ import type {
   MarksmanshipV4Technique,
   MarksmanshipV5Measurements,
   MarksmanshipV5Technique,
+  MarksmanshipV6Measurements,
+  MarksmanshipV6Technique,
   MarksmanshipSeriesClassification,
   MarksmanshipV3Reason,
 } from '@hockey/game-core';
@@ -290,6 +292,20 @@ export type MarksmanshipScoreDetails =
       measurements: MarksmanshipV5Measurements | null;
       technique: MarksmanshipV5Technique | null;
       availableTechniques: readonly MarksmanshipV5Technique[];
+      pointsTenths: number;
+      result: 'goal' | 'save' | 'miss';
+    }
+  | {
+      version: 6;
+      windowDurationMs: number | null;
+      difficultyCode: null;
+      counterDirection: boolean;
+      opportunity: 'scored' | 'human_error' | 'too_short' | 'closed';
+      timingErrorMs: number | null;
+      geometry: MarksmanshipGeometry;
+      measurements: MarksmanshipV6Measurements | null;
+      technique: MarksmanshipV6Technique | null;
+      availableTechniques: readonly MarksmanshipV6Technique[];
       pointsTenths: number;
       result: 'goal' | 'save' | 'miss';
     };

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
-  DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
   buildMarksmanshipReplaySnapshot,
   classifyMarksmanshipShot,
   deriveShotSeed,
@@ -10,13 +10,13 @@ import {
   getGoalie,
   getSessionPhaseOffsets,
   resolveMarksmanshipShotContext,
-  type MarksmanshipV5Technique,
+  type MarksmanshipV6Technique,
 } from '@hockey/game-core';
 import { MarksmanshipConstructorCourt } from '../game/MarksmanshipConstructorCourt.js';
 import { MarksmanshipRecordedReplay } from './MarksmanshipRecordedReplay.js';
 import { RECORDED_RUNS } from './marksmanshipReplayData.js';
 import { groupGoalEpisodes, type GoalEpisode, type GoalSample } from './marksmanshipGoalEpisodes.js';
-import { describeMarksmanshipV5Situation, MARKSMANSHIP_V5_NAMES } from './marksmanshipSituation.js';
+import { describeMarksmanshipV6Situation, MARKSMANSHIP_V6_NAMES } from './marksmanshipSituation.js';
 import './MarksmanshipConstructorScreen.css';
 
 const STARTS = [
@@ -29,7 +29,7 @@ const SPEEDS = getDailyPeriodSpeedPreset(1);
 const DEFAULT_STEP_MS = 50;
 const MAX_TIME_MS = 180_000;
 const SCAN_STEP_MS = 10;
-const TECHNIQUES = MARKSMANSHIP_V5_NAMES;
+const TECHNIQUES = MARKSMANSHIP_V6_NAMES;
 
 function formatV5Points(points: number): string {
   return (points / 10).toFixed(1).replace('.', ',');
@@ -45,7 +45,7 @@ export function MarksmanshipConstructorScreen(): JSX.Element {
   const [showHitboxes, setShowHitboxes] = useState(true);
   const [episodes, setEpisodes] = useState<GoalEpisode[]>([]);
   const [isScanning, setIsScanning] = useState(false);
-  const [techniqueFilter, setTechniqueFilter] = useState<'all' | MarksmanshipV5Technique>('all');
+  const [techniqueFilter, setTechniqueFilter] = useState<'all' | MarksmanshipV6Technique>('all');
   const [selectedTab, setSelectedTab] = useState('synthetic');
 
   useEffect(() => {
@@ -68,11 +68,11 @@ export function MarksmanshipConstructorScreen(): JSX.Element {
             goalieFrequency: SPEEDS.goalieFrequency,
             goalFrequency: SPEEDS.goalFrequency },
           goalie: GOALIE, seed: shotSeed, shotIndex: 1, phaseOffsets,
-          earliestTapTime: 0, scoring: DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
+          earliestTapTime: 0, scoring: DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
         });
         samples.push({ timeMs: nextTime,
           points: classification.result.type === 'goal' ? classification.awardedPoints : 0,
-          technique: classification.v5Score?.technique ?? null });
+          technique: classification.v6Score?.technique ?? null });
       }
       if (cancelled) return;
       if (nextTime <= MAX_TIME_MS) timer = setTimeout(scan, 0);
@@ -93,10 +93,10 @@ export function MarksmanshipConstructorScreen(): JSX.Element {
     shotIndex: 1,
     phaseOffsets: getSessionPhaseOffsets(seed),
     earliestTapTime: 0,
-    scoring: DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
+    scoring: DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
   }), [seed, timeMs]);
   const result = snapshot.classification.result.type;
-  const technique = snapshot.classification.v5Score?.technique;
+  const technique = snapshot.classification.v6Score?.technique;
   const points = result === 'goal' ? snapshot.classification.awardedPoints : null;
   const episodeIndex = result === 'goal'
     ? episodes.findIndex((episode) => timeMs >= episode.startMs - SCAN_STEP_MS &&
@@ -116,11 +116,11 @@ export function MarksmanshipConstructorScreen(): JSX.Element {
         shotIndex: 1,
         phaseOffsets,
         earliestTapTime: 0,
-        scoring: DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
+        scoring: DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
       });
       return { episode, index,
-        description: context.result.type === 'goal' && context.v5Measurements
-          ? describeMarksmanshipV5Situation(context.v5Measurements) : null };
+        description: context.result.type === 'goal' && context.v6Measurements
+          ? describeMarksmanshipV6Situation(context.v6Measurements) : null };
     });
   }, [episodes, seed]);
   const visibleEpisodes = describedEpisodes.filter(({ episode }) =>
@@ -221,9 +221,9 @@ export function MarksmanshipConstructorScreen(): JSX.Element {
         {!preStart && <section className="marksmanship-constructor-episodes" aria-label="Голевые ситуации">
           <h2>Голевые ситуации — {STARTS.find((start) => start.value === seed)?.label}</h2>
           <select aria-label="Фильтр ситуаций" value={techniqueFilter}
-            onChange={(event) => setTechniqueFilter(event.target.value as 'all' | MarksmanshipV5Technique)}>
+            onChange={(event) => setTechniqueFilter(event.target.value as 'all' | MarksmanshipV6Technique)}>
             <option value="all">Все ситуации</option>
-            {(Object.entries(TECHNIQUES) as [MarksmanshipV5Technique, string][]).map(([value, label]) =>
+            {(Object.entries(TECHNIQUES) as [MarksmanshipV6Technique, string][]).map(([value, label]) =>
               <option key={value} value={value}>{label}</option>)}
           </select>
           {isScanning ? <p>Ищем голевые моменты…</p> : visibleEpisodes.length === 0 ?

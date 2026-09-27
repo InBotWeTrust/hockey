@@ -19,11 +19,12 @@ function renderScreen() {
 }
 
 describe('MarksmanshipConstructorScreen', () => {
-  it('offers the eight V5 technique filters after entering a start', () => {
+  it('offers the nine V6 technique filters after entering a start', () => {
     renderScreen();
     fireEvent.change(screen.getByLabelText('Начало игры'), { target: { value: 'start-a' } });
     const filter = screen.getByRole('combobox', { name: 'Фильтр ситуаций' });
-    expect(within(filter).getAllByRole('option')).toHaveLength(9);
+    expect(within(filter).getAllByRole('option')).toHaveLength(10);
+    expect(within(filter).getByRole('option', { name: 'Сложный' })).toBeInTheDocument();
     expect(within(filter).getByRole('option', { name: 'На грани' })).toBeInTheDocument();
     expect(within(filter).getByRole('option', { name: 'Сложный в углу' })).toBeInTheDocument();
     expect(within(filter).queryByRole('option', { name: 'У борта' })).not.toBeInTheDocument();

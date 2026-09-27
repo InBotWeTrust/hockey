@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUp } from 'lucide-react';
 import {
-  DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
+  classifyMarksmanshipV6Score,
   STICK_NEUTRAL,
   getGoalie,
   getPerspectiveCourtGoalOpening,
@@ -11,7 +12,7 @@ import {
 } from '@hockey/game-core';
 import { MarksmanshipConstructorCourt } from '../game/MarksmanshipConstructorCourt.js';
 import type { RecordedResult, RecordedRun } from './marksmanshipReplayData.js';
-import { describeMarksmanshipV5Situation } from './marksmanshipSituation.js';
+import { describeMarksmanshipV6Situation } from './marksmanshipSituation.js';
 import {
   REPLAY_DURATION_MS,
   REPLAY_RESULT_VISIBLE_MS,
@@ -43,11 +44,12 @@ export function MarksmanshipRecordedReplay({ run }: { run: RecordedRun }): JSX.E
       shotIndex: shot.index,
       phaseOffsets: run.phaseOffsets,
       earliestTapTime: 0,
-      scoring: DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
+      scoring: DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
     });
-    return context.result.type === 'goal' && context.v5Measurements
-      ? describeMarksmanshipV5Situation(context.v5Measurements)
-      : { name: 'Не определено', reason: 'Сохранённый гол не совпал с расчётом V5' };
+    return context.result.type === 'goal' && context.v6Measurements
+      ? { ...describeMarksmanshipV6Situation(context.v6Measurements),
+          points: classifyMarksmanshipV6Score(context.v6Measurements).points }
+      : { name: 'Не определено', reason: 'Сохранённый гол не совпал с расчётом V6', points: null };
   }), [goals, goalie, run.phaseOffsets]);
   const stepMs = Math.max(1, Math.min(REPLAY_DURATION_MS,
     Math.round(Number(stepInput) || DEFAULT_STEP_MS)));
@@ -155,7 +157,10 @@ export function MarksmanshipRecordedReplay({ run }: { run: RecordedRun }): JSX.E
         <ol aria-label="Записанные голы">{goals.map((shot, index) => <li key={shot.index}>
           <div className="marksmanship-constructor-episodes__copy">
             <div><strong>Гол №{index + 1}</strong> · бросок {shot.index} · {formatReplayTime(shot.wallMs)}</div>
-            <p className="marksmanship-constructor-episodes__reason">Оценка V5: {goalDescriptions[index]!.name} — {goalDescriptions[index]!.reason}</p>
+            <p className="marksmanship-constructor-episodes__reason">Оценка V6: {goalDescriptions[index]!.name}
+              {goalDescriptions[index]!.points !== null
+                ? ` · ${(goalDescriptions[index]!.points! / 10).toFixed(1).replace('.', ',')} очка` : ''}
+              {' — '}{goalDescriptions[index]!.reason}</p>
           </div>
           <button type="button" className="marksmanship-constructor-episodes__jump"
             aria-label={`Показать гол №${index + 1} на площадке`}

@@ -8,6 +8,7 @@ import {
   DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
   DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
   DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
   STICK_NEUTRAL,
   type GoalieConfig,
   type MarksmanshipShotClassification,
@@ -23,6 +24,7 @@ import {
   startBonusPeriod,
   submitBonusShot,
   type BonusGameAttempt,
+  type MarksmanshipScoreDetails,
 } from '../api/bonusGames.js';
 import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
 import { useAuthStore } from '../auth/authStore.js';
@@ -1101,7 +1103,8 @@ describe('BonusGamePlayScreen', () => {
   it.each([
     { technique: 'edge', label: 'На грани', points: 18, value: '1,8' },
     { technique: 'corner', label: 'Сложный в углу', points: 17, value: '1,7' },
-  ] as const)('shows the authoritative V5 $label award in tenths', async ({ technique, label, points, value }) => {
+    { technique: 'complex', label: 'Сложный', points: 13, value: '1,3' },
+  ] as const)('shows the authoritative $label award in tenths', async ({ technique, label, points, value }) => {
     const original = marksmanshipAttempt();
     const v5Attempt = marksmanshipAttempt({
       total_points: points,
@@ -1109,7 +1112,8 @@ describe('BonusGamePlayScreen', () => {
         ...original.rules,
         qualification_rules: {
           type: 'points_in_time', targetPoints: 25, activeTimeMs: 30_000,
-          scoring: DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
+          scoring: technique === 'complex'
+            ? DEFAULT_MARKSMANSHIP_V6_SCORING_RULES : DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
         },
       },
     });
@@ -1117,7 +1121,8 @@ describe('BonusGamePlayScreen', () => {
       serverResult: 'goal' as const, awardedPoints: points, totalPoints: points,
       difficultyCode: null, counterDirection: false,
       scoreDetails: {
-        version: 5 as const, windowDurationMs: 80, difficultyCode: null,
+        version: technique === 'complex' ? 6 as const : 5 as const,
+        windowDurationMs: 80, difficultyCode: null,
         counterDirection: false, opportunity: 'scored' as const, timingErrorMs: 0,
         geometry: { boardSide: false, closeToGoalie: false, counterDirection: false, behindGoalie: false },
         measurements: { puckX: 290, goalMin: 220.2, goalMax: 300,
@@ -1125,7 +1130,7 @@ describe('BonusGamePlayScreen', () => {
           goalDirection: 1 as const, goalieDirection: 1 as const },
         technique, availableTechniques: [technique, 'ordinary'] as const,
         pointsTenths: points, result: 'goal' as const,
-      },
+      } as MarksmanshipScoreDetails,
       predictedMarksmanship: null, attempt: v5Attempt, rewardGranted: false,
     }));
     setStore({ attempt: v5Attempt, submitShot });

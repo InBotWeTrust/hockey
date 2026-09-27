@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { MarksmanshipV5Measurements } from '@hockey/game-core';
-import { describeMarksmanshipV5Situation } from './marksmanshipSituation.js';
+import { describeMarksmanshipV5Situation, describeMarksmanshipV6Situation } from './marksmanshipSituation.js';
+
+it('describes the new V6 complex gap without changing V5 text', () => {
+  const measurements = { ...base, goalieMin: 170, goalieMax: 243.76, puckX: 120,
+    shooterDirection: 1 as const, goalDirection: 1 as const };
+  expect(describeMarksmanshipV6Situation(measurements)).toEqual({
+    name: 'Сложный', reason: 'Слева от вратаря: внутренний просвет 70,0',
+  });
+  expect(describeMarksmanshipV5Situation(measurements).name).not.toBe('Сложный');
+});
 
 const base: MarksmanshipV5Measurements = {
   puckX: 120,

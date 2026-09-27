@@ -26,7 +26,7 @@ function formatQualificationPoints(
   points: number,
   rules: Extract<BonusQualificationRules, { type: 'points_in_time' }>,
 ): string {
-  return rules.scoring.version === 5
+  return rules.scoring.version === 5 || rules.scoring.version === 6
     ? new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(points / 10)
     : String(points);
 }

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { GOAL_OPENING, PUCK_START } from '@hockey/game-core';
+import { DEFAULT_MARKSMANSHIP_V6_SCORING_RULES, GOAL_OPENING, PUCK_START,
+  getGoalie, resolveMarksmanshipShotContext, classifyMarksmanshipV6Score } from '@hockey/game-core';
 import { RECORDED_RUNS } from './marksmanshipReplayData.js';
 import { MarksmanshipRecordedReplay } from './MarksmanshipRecordedReplay.js';
 
@@ -9,6 +10,25 @@ vi.mock('../game/MarksmanshipConstructorCourt.js', () => ({
 }));
 
 describe('recorded marksmanship replay', () => {
+  it.each([
+    [0, 78, 936],
+    [1, 79, 943],
+  ])('keeps recorded outcomes and scores run %i with V6', (runIndex, goalCount, expectedTenths) => {
+    const run = RECORDED_RUNS[runIndex]!;
+    const goals = run.shots.filter((shot) => shot.result === 'goal');
+    expect(goals).toHaveLength(goalCount);
+    const scores = goals.map((shot) => {
+      const context = resolveMarksmanshipShotContext({
+        shotInput: shot.input, goalie: getGoalie(run.goalieId), seed: shot.seed,
+        shotIndex: shot.index, phaseOffsets: run.phaseOffsets, earliestTapTime: 0,
+        scoring: DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
+      });
+      expect(context.result.type).toBe('goal');
+      return classifyMarksmanshipV6Score(context.v6Measurements!);
+    });
+    expect(scores.reduce((sum, score) => sum + score.points, 0)).toBe(expectedTenths);
+    if (runIndex === 1) expect(scores[6]).toMatchObject({ technique: 'complex', points: 13 });
+  });
   it('moves the slider by the editable millisecond step and clamps at zero', () => {
     render(<MarksmanshipRecordedReplay run={RECORDED_RUNS[0]!} />);
     const time = screen.getByRole('slider', { name: 'Время повтора' });
@@ -41,14 +61,18 @@ describe('recorded marksmanship replay', () => {
     expect(screen.getByRole('slider', { name: 'Время повтора' })).toHaveValue('0');
   });
 
-  it.each(RECORDED_RUNS)('explains every recorded goal in $label under current V5 rules', (run) => {
+  it.each(RECORDED_RUNS)('explains every recorded goal in $label as a V6 estimate', (run) => {
     render(<MarksmanshipRecordedReplay run={run} />);
     const goals = screen.getByRole('list', { name: 'Записанные голы' }).querySelectorAll('li');
     expect(goals).toHaveLength(run.shots.filter((shot) => shot.result === 'goal').length);
     for (const goal of goals) {
-      expect(goal).toHaveTextContent('Оценка V5:');
+      expect(goal).toHaveTextContent('Оценка V6:');
+      expect(goal).toHaveTextContent(/\d,\d очка/);
       expect(goal.querySelector('.marksmanship-constructor-episodes__reason'))
         .toHaveTextContent(/просвет|зазор|края вратаря/);
+    }
+    if (run.key === RECORDED_RUNS[1]!.key) {
+      expect(goals[6]).toHaveTextContent('Оценка V6: Сложный · 1,3 очка');
     }
   });
 
