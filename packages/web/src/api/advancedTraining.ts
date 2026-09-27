@@ -1,4 +1,8 @@
 import type {
+  AdvancedTrainingV2Scenario,
+  AdvancedTrainingV2Side,
+  AdvancedTrainingV2Technique,
+  MarksmanshipV6Measurements,
   AdvancedTrainingFeedbackCode,
   AdvancedTrainingScenario,
   GoalieConfig,
@@ -91,5 +95,59 @@ export function restartAdvancedTrainingPractice(
   return apiFetch(`/duel/training/advanced/${exerciseKey}/practice/restart`, {
     method: 'POST',
     body: JSON.stringify({ run_id: runId }),
+  });
+}
+
+export interface AdvancedTrainingV2RunState {
+  run_id: string;
+  exercise_key: AdvancedTrainingV2Technique;
+  stage: 'practice' | 'assessment';
+  side: AdvancedTrainingV2Side;
+  side_successes: { left: number; right: number };
+  shot_index: number;
+  scenario_id: string;
+  scenario: AdvancedTrainingV2Scenario;
+  seed: string;
+  game_core_version: number;
+  bank_version: number;
+  server_now: string;
+}
+
+export interface AdvancedTrainingV2ShotResponse {
+  scenario_id: string;
+  tap_time: number;
+  server_result: ShotResult['type'];
+  success: boolean;
+  actual_technique: AdvancedTrainingV2Technique | 'ordinary' | null;
+  actual_side: AdvancedTrainingV2Side | null;
+  measurements: MarksmanshipV6Measurements | null;
+  feedback_code: 'correct' | 'wrong_category' | 'goal' | 'save' | 'miss' | 'post';
+  stage_finished: boolean;
+  completed: boolean;
+  reward_granted: { stars: number; experience: number } | null;
+  state: AdvancedTrainingV2RunState;
+}
+
+export function startAdvancedTrainingV2Exercise(exerciseKey: AdvancedTrainingV2Technique):
+  Promise<{ state: AdvancedTrainingV2RunState }> {
+  return apiFetch(`/duel/training/advanced/v2/${exerciseKey}/start`, { method: 'POST' });
+}
+
+export function submitAdvancedTrainingV2Shot(exerciseKey: AdvancedTrainingV2Technique, body: {
+  run_id: string;
+  shot_index: number;
+  scenario_id: string;
+  input: Pick<ShotInput, 'tapTime' | 'shooterTapTime'>;
+  claimed_result: ShotResult['type'];
+}): Promise<AdvancedTrainingV2ShotResponse> {
+  return apiFetch(`/duel/training/advanced/v2/${exerciseKey}/shot`, {
+    method: 'POST', body: JSON.stringify(body),
+  });
+}
+
+export function startAdvancedTrainingV2Assessment(exerciseKey: AdvancedTrainingV2Technique,
+  runId: string): Promise<{ state: AdvancedTrainingV2RunState }> {
+  return apiFetch(`/duel/training/advanced/v2/${exerciseKey}/assessment/start`, {
+    method: 'POST', body: JSON.stringify({ run_id: runId }),
   });
 }

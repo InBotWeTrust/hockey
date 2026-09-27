@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { AdvancedTrainingV2Technique } from '@hockey/game-core';
 import { Check, ChevronRight, Star, TrendingUp, X } from 'lucide-react';
 import { rewardColor } from '../app/rewardColors.js';
 import { AccessibleModal } from './AccessibleModal.js';
@@ -49,7 +50,7 @@ export function advancedTrainingFeedbackTone(
 }
 
 export interface AdvancedTrainingCatalogExercise {
-  key: AdvancedTrainingExerciseKey;
+  key: AdvancedTrainingExerciseKey | AdvancedTrainingV2Technique;
   position: number;
   title: string;
   description: string | null;
@@ -171,7 +172,7 @@ export function AdvancedTrainingCatalog({
   onStart,
 }: {
   catalog: AdvancedTrainingCatalogModel;
-  onStart: (key: AdvancedTrainingExerciseKey) => void;
+  onStart: (key: AdvancedTrainingCatalogExercise['key']) => void;
 }): JSX.Element {
   const [selectedExercise, setSelectedExercise] =
     useState<AdvancedTrainingCatalogExercise | null>(null);
