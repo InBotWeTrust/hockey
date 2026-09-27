@@ -250,7 +250,6 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
           exercises: buildAdvancedTrainingV2Catalog(
             advancedCompleted,
             advancedConfig.enabled && advancedAccess.unlocked,
-            advancedConfig,
           ),
         },
       };

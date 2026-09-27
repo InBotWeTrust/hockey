@@ -281,6 +281,7 @@ export interface PlayViewProps<TState> {
   timer?: string | undefined;
   timerLabel?: string | undefined;
   autoShotDelayMs?: number | undefined;
+  autoShotAtSceneMs?: number | undefined;
   scoreboardNotice?: string | undefined;
   scoreboardModel?:
     | GameScoreboardModel
@@ -603,6 +604,7 @@ export function PlayView<TState>({
   timer,
   timerLabel,
   autoShotDelayMs,
+  autoShotAtSceneMs,
   scoreboardNotice,
   scoreboardModel,
   scoreboardAccessory,
@@ -1889,12 +1891,17 @@ export function PlayView<TState>({
 
   useEffect(() => {
     if (!active || !pixiReady || autoShotDelayMs === undefined) return;
-    const timeout = window.setTimeout(
-      () => autoShotHandlerRef.current(),
-      Math.max(0, autoShotDelayMs),
-    );
+    const timeout = window.setTimeout(() => {
+      if (autoShotAtSceneMs !== undefined) {
+        loopRef.current?.rebaseTime({
+          sceneElapsedMs: autoShotAtSceneMs,
+          shooterElapsedMs: autoShotAtSceneMs,
+        });
+      }
+      autoShotHandlerRef.current();
+    }, Math.max(0, autoShotDelayMs));
     return () => window.clearTimeout(timeout);
-  }, [active, autoShotDelayMs, clockRebaseKey, pixiReady]);
+  }, [active, autoShotDelayMs, autoShotAtSceneMs, clockRebaseKey, pixiReady]);
 
   const handleInactiveAction = useCallback(async (): Promise<void> => {
     if (!inactiveAction || isInactiveActionPending) return;
