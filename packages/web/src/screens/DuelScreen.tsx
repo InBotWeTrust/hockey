@@ -43,6 +43,11 @@ import { Goal } from '../game/renderer/Goal.js';
 import { Goalie } from '../game/renderer/Goalie.js';
 import { Hitboxes } from '../game/renderer/Hitboxes.js';
 import { Puck } from '../game/renderer/Puck.js';
+import {
+  puckOutcomeMotion,
+  puckReboundObstacles,
+  puckResultContact,
+} from '../game/puckOutcomeMotion.js';
 import { Player } from '../game/renderer/Player.js';
 import { createGameLoop, type GameLoop, type SpeedOverrides } from '../game/loop.js';
 import type { Scale } from '../game/coords.js';
@@ -147,6 +152,10 @@ export function DuelScreen(): JSX.Element {
   const [showHitboxes, setShowHitboxes] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const reduceMotion =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const [speeds, setSpeeds] = useState<SpeedOverrides>(DEFAULT_SPEEDS);
   const speedsRef = useRef<SpeedOverrides>(DEFAULT_SPEEDS);
@@ -156,6 +165,8 @@ export function DuelScreen(): JSX.Element {
     () => (PUCK_START.y - GOAL_OPENING.y) / speeds.puckSpeed,
     [speeds.puckSpeed],
   );
+  const visualFlightDurationMs = reduceMotion ? 0 : flightDurationMs;
+  const visualPauseMs = reduceMotion ? 1 : PAUSE_MS;
 
   useEffect(() => {
     try {
@@ -280,6 +291,8 @@ export function DuelScreen(): JSX.Element {
       phaseOffsets: offsets,
       shooterX: sx,
     });
+    const tGoalCross = tapTime + (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
+    const goalAtCross = simulateGoal(activeCfg, tGoalCross, offsets.goal ?? 0);
 
     // Flavor text — deterministic, mirrors resolveShot internals
     let subText: string | null = null;
@@ -302,8 +315,7 @@ export function DuelScreen(): JSX.Element {
             ? 'Точно в ловушку!'
             : 'Вратарь на месте!';
     } else if (result.type === 'goal') {
-      const tGoalCross = tapTime + (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
-      const goalOffsetAtGoal = simulateGoal(activeCfg, tGoalCross, offsets.goal ?? 0).offsetX;
+      const goalOffsetAtGoal = goalAtCross.offsetX;
       const oMin = GOAL_OPENING.xMin + goalOffsetAtGoal;
       const oMax = GOAL_OPENING.xMax + goalOffsetAtGoal;
       const rel = (sx - oMin) / (oMax - oMin); // 0=left edge, 1=right edge
@@ -312,8 +324,7 @@ export function DuelScreen(): JSX.Element {
         subText = Math.random() < 0.5 ? 'Мощный щелчок!' : 'Отличный кистевой!';
       else subText = 'Отличный бросок!';
     } else if (result.type === 'miss') {
-      const tGoalCross = tapTime + (PUCK_START.y - GOAL_OPENING.y) / overrides.puckSpeed;
-      const goalOffsetAtGoal = simulateGoal(activeCfg, tGoalCross, offsets.goal ?? 0).offsetX;
+      const goalOffsetAtGoal = goalAtCross.offsetX;
       const dist = distanceToNewTrainingCourtGoalEdge(sx, goalOffsetAtGoal);
       if (dist <= TRAINING_NEW_COURT_POST_EDGE_DISTANCE) displayKind = 'post';
       subText =
@@ -328,21 +339,48 @@ export function DuelScreen(): JSX.Element {
 
     loop.beginShooterPause();
     player?.playShot();
-    const puckShotPath = puck.shotPath(sx, GOAL_OPENING.y);
-    puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), flightDurationMs);
+    const puckShotPath = {
+      start: puck.bladePoint(sx),
+      end: puckResultContact(result, sx),
+    };
+    puck.playShot(
+      puckShotPath.start,
+      puckShotPath.end,
+      loop.getRenderNow(),
+      visualFlightDurationMs,
+    );
+    const outcomeMotion = puckOutcomeMotion(
+      displayKind,
+      puckShotPath.end,
+      reduceMotion,
+      overrides.puckSpeed,
+      displayKind === 'miss'
+        ? puckReboundObstacles(
+            goalAtCross.offsetX,
+            simulateGoalie(activeCfg, st.seed, st.shotIndex, tGoalCross, offsets.goalie ?? 0),
+          )
+        : [],
+    );
 
     window.setTimeout(() => {
       loop.beginScenePause();
-      puck.holdAt({
-        x: puckShotPath.end.x,
-        y: result.type === 'save' ? GOAL_OPENING.y + 20 : GOAL_OPENING.y,
-      });
+      if (outcomeMotion && outcomeMotion.durationMs > 0) {
+        puck.playOutcomeMotion(
+          puckShotPath.end,
+          outcomeMotion.end,
+          loop.getRenderNow(),
+          outcomeMotion.durationMs,
+          outcomeMotion.waypoint,
+        );
+      } else {
+        puck.holdAt(outcomeMotion?.end ?? puckShotPath.end);
+      }
       if (result.type === 'save') goalie.setSavePose(true);
       useTrainingStore.getState().applyResult(result);
       setResultSubText(subText);
       setResultDisplayKind(displayKind);
       setIsShowingResult(true);
-    }, flightDurationMs);
+    }, visualFlightDurationMs);
 
     window.setTimeout(() => {
       loop.endScenePause();
@@ -351,8 +389,8 @@ export function DuelScreen(): JSX.Element {
       if (result.type === 'save') goalie.setSavePose(false);
       setIsShowingResult(false);
       setResultDisplayKind(null);
-    }, flightDurationMs + PAUSE_MS);
-  }, [flightDurationMs]);
+    }, visualFlightDurationMs + visualPauseMs);
+  }, [reduceMotion, visualFlightDurationMs, visualPauseMs]);
 
   useEffect(() => {
     hitboxesRef.current?.setVisible(showHitboxes);
@@ -520,7 +558,7 @@ export function DuelScreen(): JSX.Element {
       {isShowingResult && state.lastResult && (
         <ResultModal
           result={state.lastResult}
-          durationMs={PAUSE_MS}
+          durationMs={visualPauseMs}
           subText={resultSubText}
           displayKind={resultDisplayKind ?? undefined}
         />

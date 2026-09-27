@@ -53,6 +53,11 @@ import { Hitboxes, type HitboxesOptions } from './renderer/Hitboxes.js';
 import { IceCar, iceCarPosAt } from './renderer/IceCar.js';
 import { Player, type PlayerOptions } from './renderer/Player.js';
 import { Puck, type PuckOptions } from './renderer/Puck.js';
+import {
+  puckOutcomeMotion,
+  puckReboundObstacles,
+  puckResultContact,
+} from './puckOutcomeMotion.js';
 import { SHOT_RESULT_PAUSE_MS } from './shotTiming.js';
 import {
   TRAINING_LONG_COURT_BACKGROUND,
@@ -1743,16 +1748,26 @@ export function PlayView<TState>({
 
     loop.beginShooterPause();
     playerRef.current?.playShot();
-    const targetPoint =
-      result.type === 'goal'
-        ? result.hitPoint
-        : result.type === 'save'
-          ? result.goalieContact
-          : { x: sx, y: GOAL_OPENING.y };
+    const targetPoint = puckResultContact(result, sx);
     const puckShotPath = {
       start: puck.bladePoint(sx),
       end: targetPoint,
     };
+    const reboundObstacles =
+      displayKind === 'miss'
+        ? puckReboundObstacles(
+            simulateGoal(activeCfg, tGoalCross, offsets.goal).offsetX,
+            simulateGoalie(activeCfg, seed, shotIndex, tGoalCross, offsets.goalie),
+          )
+        : [];
+    const outcomeMotion = puckOutcomeMotion(
+      displayKind,
+      puckShotPath.end,
+      reduceMotion,
+      puckSpeed,
+      reboundObstacles,
+    );
+    const visualOutcomeDurationMs = outcomeMotion?.durationMs ?? 0;
     puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), visualFlightMs);
 
     const scheduleShotTimeout = (fn: () => void, delay: number): void => {
@@ -1767,11 +1782,18 @@ export function PlayView<TState>({
     scheduleShotTimeout(() => {
       if (continuousClockDuringResult) loop.endShooterPause(flightMs);
       else loop.beginScenePause();
-      if (freezeRenderingDuringResult) loop.detach();
-      puck.holdAt({
-        x: puckShotPath.end.x,
-        y: result.type === 'save' ? GOAL_OPENING.y + 20 : GOAL_OPENING.y,
-      });
+      if (outcomeMotion && visualOutcomeDurationMs > 0) {
+        puck.playOutcomeMotion(
+          puckShotPath.end,
+          outcomeMotion.end,
+          loop.getRenderNow(),
+          visualOutcomeDurationMs,
+          outcomeMotion.waypoint,
+        );
+      } else {
+        puck.holdAt(outcomeMotion?.end ?? puckShotPath.end);
+      }
+      if (freezeRenderingDuringResult && visualOutcomeDurationMs === 0) loop.detach();
       if (result.type === 'save') goalie.setSavePose(true);
       setScoreboardSnapshot(null);
       setLastResult(result);
@@ -1781,6 +1803,13 @@ export function PlayView<TState>({
       setIsShowingResult(true);
       reportResultVisibility(true);
     }, visualFlightMs);
+
+    if (freezeRenderingDuringResult && outcomeMotion && visualOutcomeDurationMs > 0) {
+      scheduleShotTimeout(() => {
+        puck.holdAt(outcomeMotion.end);
+        loop.detach();
+      }, visualFlightMs + visualOutcomeDurationMs);
+    }
 
     scheduleShotTimeout(() => {
       if (!continuousClockDuringResult && !holdSceneAfterResult) {
