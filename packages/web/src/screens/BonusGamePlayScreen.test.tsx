@@ -687,6 +687,8 @@ describe('BonusGamePlayScreen', () => {
       expect(dialog).toHaveTextContent(copy);
       expect(dialog).toHaveTextContent(durationMetric);
       expect(dialog).toHaveTextContent(goalsMetric);
+      expect(dialog).toHaveTextContent(status === 'failed' ? 'Броски7' : 'Броски18');
+      expect(dialog).toHaveTextContent(status === 'failed' ? 'Попадания57%' : 'Попадания67%');
     },
   );
 
@@ -1257,6 +1259,27 @@ describe('BonusGamePlayScreen', () => {
     renderScreen();
 
     expect(screen.getByRole('dialog', { name: 'Игра пройдена' })).toBeInTheDocument();
+  });
+
+  it('shows marksmanship shots and hit rate in a two-card row before the reward', () => {
+    setStore({
+      attempt: marksmanshipAttempt({
+        status: 'completed',
+        state: 'closed',
+        period_started_at: null,
+        period_ends_at: null,
+        reward_granted: true,
+      }),
+    });
+    renderScreen();
+
+    const dialog = screen.getByRole('dialog', { name: 'Игра пройдена' });
+    const rows = dialog.querySelectorAll('.bonus-game-result-metrics');
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toHaveTextContent('Броски12');
+    expect(rows[1]).toHaveTextContent('Попадания58%');
+    expect(rows[1]?.children).toHaveLength(2);
+    expect(rows[1]?.nextElementSibling).toHaveClass('bonus-game-result-reward');
   });
 
   it('shows marksmanship failure score, target, shortfall and both next actions', () => {

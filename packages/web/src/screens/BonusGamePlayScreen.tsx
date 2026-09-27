@@ -617,6 +617,15 @@ function BonusResult({
           <BonusResultMetric label="Точность" value={`${accuracy}%`} />
         </div>
       )}
+      {enduranceRules || marksmanshipRules ? (
+        <div
+          className="bonus-game-result-metrics bonus-game-result-metrics--shot-stats"
+          aria-label={`Броски ${attempt.shots_taken}, попадания ${accuracy}%`}
+        >
+          <BonusResultMetric label="Броски" value={String(attempt.shots_taken)} />
+          <BonusResultMetric label="Попадания" value={`${accuracy}%`} />
+        </div>
+      ) : null}
       {kind === 'completed' && attempt.reward_granted && rewardParts.length > 0 ? (
         <div className="bonus-game-result-reward">
           <span className="bonus-game-result-reward-label">Награда</span>
