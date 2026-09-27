@@ -46,6 +46,12 @@ export class Puck {
     end: Vec2;
     startedAt: number;
     durationMs: number;
+    easing: 'linear' | 'ease-out';
+    fullVisualOffset: boolean;
+    waypoint?: {
+      position: Vec2;
+      progress: number;
+    };
   } | null = null;
   private held: Vec2 | null = null;
   private destroyed = false;
@@ -94,7 +100,34 @@ export class Puck {
 
   playShot(start: Vec2, end: Vec2, now: number, durationMs = 300): void {
     if (this.destroyed) return;
-    this.flight = { start, end, startedAt: now, durationMs };
+    this.flight = {
+      start,
+      end,
+      startedAt: now,
+      durationMs,
+      easing: 'linear',
+      fullVisualOffset: false,
+    };
+  }
+
+  playOutcomeMotion(
+    start: Vec2,
+    end: Vec2,
+    now: number,
+    durationMs: number,
+    waypoint?: { position: Vec2; progress: number },
+  ): void {
+    if (this.destroyed) return;
+    this.held = null;
+    this.flight = {
+      start,
+      end,
+      startedAt: now,
+      durationMs,
+      easing: 'ease-out',
+      fullVisualOffset: true,
+      ...(waypoint ? { waypoint } : {}),
+    };
   }
 
   holdAt(pos: Vec2): void {
@@ -117,17 +150,34 @@ export class Puck {
       return;
     }
     if (!this.flight) return;
-    const t = Math.min(1, Math.max(0, (now - this.flight.startedAt) / this.flight.durationMs));
-    const x = this.flight.start.x + (this.flight.end.x - this.flight.start.x) * t;
-    const y = this.flight.start.y + (this.flight.end.y - this.flight.start.y) * t;
+    const progress = Math.min(
+      1,
+      Math.max(0, (now - this.flight.startedAt) / this.flight.durationMs),
+    );
     const flight = this.flight;
+    let segmentStart = flight.start;
+    let segmentEnd = flight.end;
+    let t = flight.easing === 'ease-out' ? 1 - (1 - progress) ** 2 : progress;
+    if (flight.waypoint) {
+      if (progress <= flight.waypoint.progress) {
+        segmentEnd = flight.waypoint.position;
+        t = flight.waypoint.progress === 0 ? 1 : progress / flight.waypoint.progress;
+      } else {
+        segmentStart = flight.waypoint.position;
+        const reboundProgress =
+          (progress - flight.waypoint.progress) / (1 - flight.waypoint.progress);
+        t = 1 - (1 - reboundProgress) ** 2;
+      }
+    }
+    const x = segmentStart.x + (segmentEnd.x - segmentStart.x) * t;
+    const y = segmentStart.y + (segmentEnd.y - segmentStart.y) * t;
     this.draw(
       { x, y },
       scale,
-      this.flightVisualYOffset * t,
-      t >= 1 ? null : { start: flight.start, progress: t },
+      flight.fullVisualOffset ? this.flightVisualYOffset : this.flightVisualYOffset * t,
+      progress >= 1 ? null : { start: segmentStart, progress },
     );
-    if (t >= 1) {
+    if (progress >= 1) {
       this.held = flight.end;
       this.flight = null;
       this.clearMotionEffects();
