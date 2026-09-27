@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { evaluateAdvancedTrainingV2Shot, getAdvancedTrainingV2Scenario, getGoalie,
   resolvePerspectiveCourtShot, type AdvancedTrainingV2Scenario,
-  type AdvancedTrainingV2Side, type AdvancedTrainingV2Technique,
-  type ShotResult } from '@hockey/game-core';
+  type AdvancedTrainingV2Side, type AdvancedTrainingV2Technique } from '@hockey/game-core';
 import { startAdvancedTrainingV2Exercise, type AdvancedTrainingV2RunState } from '../api/advancedTraining.js';
 import { startAdvancedTrainingV2Assessment, submitAdvancedTrainingV2Shot,
   type AdvancedTrainingV2ShotResponse } from '../api/advancedTraining.js';
@@ -235,6 +234,7 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
         : undefined}
       onSceneClock={onSceneClock}
       autoShotDelayMs={phase === 'demo' ? demoScenario.targetTapTimeMs - demoScenario.sceneStartMs : undefined}
+      autoShotAtSceneMs={phase === 'demo' ? demoScenario.targetTapTimeMs : undefined}
       clockRebaseKey={`${scenario.id}:${isDemo ? demoEpoch : `${run.shot_index}:${sceneEpoch}`}`}
       initialSceneElapsedMs={scenario.sceneStartMs}
       initialShooterElapsedMs={scenario.sceneStartMs}

@@ -1,6 +1,8 @@
 import type { Pool, PoolClient } from 'pg';
 import type { AdvancedTrainingV2Technique } from '@hockey/game-core';
-import { loadAdvancedTrainingConfig, type AdvancedTrainingConfig } from './advancedCourse.js';
+import { loadAdvancedTrainingConfig } from './advancedCourse.js';
+
+export const ADVANCED_TRAINING_V2_REWARD = { stars: 1, experience: 1 } as const;
 
 type Queryable = Pool | PoolClient;
 
@@ -31,7 +33,6 @@ export async function fetchAdvancedTrainingV2Completions(
 export function buildAdvancedTrainingV2Catalog(
   completed: ReadonlySet<AdvancedTrainingV2Technique>,
   accessUnlocked: boolean,
-  config: AdvancedTrainingConfig,
 ) {
   let nextAvailableAssigned = false;
   return ADVANCED_TRAINING_V2_EXERCISES.map((exercise, index) => {
@@ -42,8 +43,8 @@ export function buildAdvancedTrainingV2Catalog(
       ...exercise,
       position: index + 1,
       goal: 'Слева и справа: практика 1+1, зачёт 2+2',
-      rewardStars: config.rewardStars,
-      rewardExperience: config.rewardExperience,
+      rewardStars: ADVANCED_TRAINING_V2_REWARD.stars,
+      rewardExperience: ADVANCED_TRAINING_V2_REWARD.experience,
       state: isCompleted ? 'completed' as const : isAvailable ? 'available' as const : 'locked' as const,
     };
   });

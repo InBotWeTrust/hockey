@@ -10,7 +10,7 @@ import { observeCareerExperience } from '../../achievements/service.js';
 import { assertFullAmateurAccess } from '../../profile/amateurAccess.js';
 import { assertGameplayActionAllowed, lockUserGameplay } from '../gameplayLocks.js';
 import { deriveAdvancedTrainingSeed } from '../seed.js';
-import { ADVANCED_TRAINING_V2_EXERCISES, buildAdvancedTrainingV2Catalog,
+import { ADVANCED_TRAINING_V2_EXERCISES, ADVANCED_TRAINING_V2_REWARD, buildAdvancedTrainingV2Catalog,
   fetchAdvancedTrainingV2Completions, loadAdvancedTrainingConfig } from './advancedCourseV2.js';
 import { isInitialTrainingCompleted } from './initialCourse.js';
 
@@ -113,7 +113,7 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
       const config = await loadAdvancedTrainingConfig(client);
       if (!config.enabled) throw new AppError('advanced_training_disabled', 'advanced training is disabled', 409);
       const completed = await fetchAdvancedTrainingV2Completions(client, req.user.id);
-      const exercise = buildAdvancedTrainingV2Catalog(completed, true, config)
+      const exercise = buildAdvancedTrainingV2Catalog(completed, true)
         .find(({ key }) => key === exerciseKey);
       if (!exercise || exercise.state === 'locked') {
         throw new AppError('advanced_training_exercise_locked', 'advanced training exercise is locked', 409);
@@ -213,25 +213,24 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
         const completed = run.stage === 'assessment' && stageFinished;
         let rewardGranted: { stars: number; experience: number } | null = null;
         if (completed) {
-          const config = await loadAdvancedTrainingConfig(client);
           const completion = await client.query(
             `insert into advanced_training_v2_completion
                (user_id, exercise_key, reward_stars, reward_experience)
              values ($1, $2, $3, $4)
              on conflict (user_id, exercise_key) do nothing returning exercise_key`,
-            [req.user.id, exerciseKey, config.rewardStars, config.rewardExperience]);
+            [req.user.id, exerciseKey, ADVANCED_TRAINING_V2_REWARD.stars, ADVANCED_TRAINING_V2_REWARD.experience]);
           if (completion.rows[0]) {
             const user = await client.query<{ experience: number }>(
               `update users set xp = xp + $2, experience = experience + $3
                 where id = $1 returning experience`,
-              [req.user.id, config.rewardStars, config.rewardExperience]);
-            if (config.rewardExperience > 0 && user.rows[0]) {
+              [req.user.id, ADVANCED_TRAINING_V2_REWARD.stars, ADVANCED_TRAINING_V2_REWARD.experience]);
+            if (user.rows[0]) {
               await observeCareerExperience(client, req.user.id, {
                 eventKey: `advanced-training:v2:${exerciseKey}:reward`, occurredAt: new Date(),
                 lifetimeTotal: Number(user.rows[0].experience),
               });
             }
-            rewardGranted = { stars: config.rewardStars, experience: config.rewardExperience };
+            rewardGranted = { ...ADVANCED_TRAINING_V2_REWARD };
           }
         }
         const updated = await client.query<AdvancedTrainingV2Run>(
