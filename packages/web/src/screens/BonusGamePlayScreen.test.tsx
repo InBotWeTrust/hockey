@@ -1276,10 +1276,11 @@ describe('BonusGamePlayScreen', () => {
     const dialog = screen.getByRole('dialog', { name: 'Игра пройдена' });
     const rows = dialog.querySelectorAll('.bonus-game-result-metrics');
     expect(rows).toHaveLength(2);
-    expect(rows[1]).toHaveTextContent('Броски12');
-    expect(rows[1]).toHaveTextContent('Попадания58%');
-    expect(rows[1]).toHaveTextContent('Голы7');
-    expect(rows[1]?.children).toHaveLength(3);
+    expect(Array.from(rows[1]?.children ?? [], (card) => card.textContent)).toEqual([
+      'Броски12',
+      'Голы7',
+      'Попадания58%',
+    ]);
     expect(rows[1]?.nextElementSibling).toHaveClass('bonus-game-result-reward');
   });
 
