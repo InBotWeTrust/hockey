@@ -23,10 +23,12 @@ function score(overrides: Partial<MarksmanshipV6Measurements>) {
 describe('marksmanship V6 classification', () => {
   it.each([
     [{ goalieMax: 290, puckX: 295 }, 'super_precise', 20],
+    [{ goalieMax: 299.5, puckX: 299.8 }, 'super_precise', 20],
     [{ goalieMax: 270, puckX: 276 }, 'edge', 18],
     [{ goalieMax: 240, puckX: 280 }, 'precise', 14],
     [{ goalieMax: 239.999, puckX: 280 }, 'complex', 13],
     [{ goalieMax: 220.2, puckX: 280 }, 'complex', 13],
+    [{ goalMin: 220.199, goalieMax: 220.199, puckX: 280 }, 'ordinary', 10],
     [{ goalMin: 162.161, goalMax: 241.961, goalieMin: 106.392,
       goalieMax: 180.152, puckX: 220.099, shooterDirection: -1,
       goalDirection: 1, goalieDirection: -1 }, 'complex', 13],
