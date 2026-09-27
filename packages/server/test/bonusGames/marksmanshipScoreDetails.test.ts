@@ -4,6 +4,7 @@ import {
   DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
   DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
   DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
   classifyMarksmanshipShot,
   type GoalieConfig,
 } from '@hockey/game-core';
@@ -18,7 +19,7 @@ const goalie: GoalieConfig = {
 
 function classify(scoring: typeof DEFAULT_MARKSMANSHIP_SCORING_RULES |
   typeof DEFAULT_MARKSMANSHIP_V3_SCORING_RULES | typeof DEFAULT_MARKSMANSHIP_V4_SCORING_RULES |
-  typeof DEFAULT_MARKSMANSHIP_V5_SCORING_RULES) {
+  typeof DEFAULT_MARKSMANSHIP_V5_SCORING_RULES | typeof DEFAULT_MARKSMANSHIP_V6_SCORING_RULES) {
   return classifyMarksmanshipShot({
     shotInput: {
       tapTime: 11_060, shooterTapTime: 11_060, puckSpeedPerMs: 1.25,
@@ -34,8 +35,38 @@ describe('marksmanship score details', () => {
   it('accepts the previous core version for saved bonus attempts only', () => {
     expect(typeof bonusService.supportsBonusGameCoreVersion).toBe('function');
     expect(bonusService.supportsBonusGameCoreVersion(64)).toBe(true);
+    expect(bonusService.supportsBonusGameCoreVersion(65)).toBe(true);
     expect(bonusService.supportsBonusGameCoreVersion(61)).toBe(false);
-    expect(bonusService.supportsBonusGameCoreVersion(66)).toBe(false);
+    expect(bonusService.supportsBonusGameCoreVersion(67)).toBe(false);
+  });
+
+  it('does not validate a V6 snapshot under the old core-65 engine', () => {
+    expect(bonusService.supportsBonusGameScoringVersion(65, 5)).toBe(true);
+    expect(bonusService.supportsBonusGameScoringVersion(65, 6)).toBe(false);
+    expect(bonusService.supportsBonusGameScoringVersion(66, 6)).toBe(true);
+  });
+
+  it('stores one selected V6 technique and authoritative tenths for a goal', () => {
+    const classification = classify(DEFAULT_MARKSMANSHIP_V6_SCORING_RULES);
+    expect(classification.result.type).toBe('goal');
+    const details = toMarksmanshipScoreDetails(classification, DEFAULT_MARKSMANSHIP_V6_SCORING_RULES);
+    expect(details).toMatchObject({
+      version: 6,
+      technique: classification.v6Score?.technique,
+      availableTechniques: classification.v6Score?.availableTechniques,
+      pointsTenths: classification.awardedPoints,
+      result: 'goal',
+    });
+  });
+
+  it('stores zero V6 points for a miss even when a nearby opportunity has a technique', () => {
+    const goal = classify(DEFAULT_MARKSMANSHIP_V6_SCORING_RULES);
+    const details = toMarksmanshipScoreDetails({
+      ...goal, result: { type: 'miss', reason: 'wide' }, opportunity: 'human_error',
+      v6Score: goal.v6Score, v6Measurements: goal.v6Measurements, awardedPoints: 0,
+    }, DEFAULT_MARKSMANSHIP_V6_SCORING_RULES);
+    expect(details).toMatchObject({ version: 6, result: 'miss', pointsTenths: 0 });
+    expect(details).not.toHaveProperty('seriesBonus');
   });
 
   it('stores the selected V5 technique and tenths for a confirmed goal', () => {

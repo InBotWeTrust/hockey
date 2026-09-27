@@ -92,19 +92,28 @@ interface BonusShotRow {
 
 interface BonusAttemptVersionRow {
   game_core_version: number;
+  scoring_version: string | null;
 }
 
 /** Stable service conflict code for the Task 7 HTTP/client error mapping. */
 export const BONUS_GAME_CORE_VERSION_MISMATCH_CODE = 'bonus_game_core_version_mismatch';
 export const BONUS_SHOT_TIME_INVALID_CODE = 'bonus_shot_time_invalid';
 export const BONUS_SHOT_TIME_STALE_CODE = 'bonus_shot_time_stale';
-const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63, 64] as const;
+const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63, 64, 65] as const;
 
 export function supportsBonusGameCoreVersion(version: number): boolean {
   return (
     version === GAME_CORE_VERSION ||
     LEGACY_BONUS_GAME_CORE_VERSIONS.some((legacy) => version === legacy)
   );
+}
+
+export function supportsBonusGameScoringVersion(
+  coreVersion: number,
+  scoringVersion: number | null,
+): boolean {
+  return supportsBonusGameCoreVersion(coreVersion) &&
+    (scoringVersion !== 6 || coreVersion === GAME_CORE_VERSION);
 }
 
 export class BonusAttemptAlreadyActiveError extends AppError {
@@ -438,9 +447,10 @@ async function fetchOwnedAttemptVersion(
   client: PoolClient,
   userId: string,
   attemptId: string,
-): Promise<number> {
+): Promise<BonusAttemptVersionRow> {
   const { rows } = await client.query<BonusAttemptVersionRow>(
-    `select game_core_version
+    `select game_core_version,
+            rules_snapshot #>> '{qualificationRules,scoring,version}' as scoring_version
        from bonus_game_attempt
       where id = $1 and user_id = $2`,
     [attemptId, userId],
@@ -449,7 +459,7 @@ async function fetchOwnedAttemptVersion(
   if (attempt === undefined) {
     throw new AppError('bonus_attempt_not_active', 'bonus attempt is not active', 409);
   }
-  return Number(attempt.game_core_version);
+  return attempt;
 }
 
 function unsupportedBonusGameCoreVersion(): AppError {
@@ -1079,11 +1089,11 @@ export async function submitBonusShot(
   let response: SubmitBonusShotResult | null = null;
   try {
     // Read-only preflight keeps unsupported attempts free of account, shot, reward, and audit writes.
-    if (
-      !supportsBonusGameCoreVersion(
-        await fetchOwnedAttemptVersion(client, input.userId, input.attemptId),
-      )
-    ) {
+    const savedVersion = await fetchOwnedAttemptVersion(client, input.userId, input.attemptId);
+    if (!supportsBonusGameScoringVersion(
+      Number(savedVersion.game_core_version),
+      savedVersion.scoring_version === null ? null : Number(savedVersion.scoring_version),
+    )) {
       throw unsupportedBonusGameCoreVersion();
     }
 
@@ -1092,7 +1102,11 @@ export async function submitBonusShot(
     const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
     await lockBonusGameCatalogForRead(client);
     await assertBonusGameAccessibleToUser(client, input.userId, owned.bonus_game_id);
-    if (!supportsBonusGameCoreVersion(Number(owned.game_core_version))) {
+    const ownedQualification = qualificationForAttempt(owned);
+    if (!supportsBonusGameScoringVersion(
+      Number(owned.game_core_version),
+      ownedQualification.type === 'points_in_time' ? ownedQualification.scoring.version ?? null : null,
+    )) {
       throw unsupportedBonusGameCoreVersion();
     }
     let attempt = owned;
