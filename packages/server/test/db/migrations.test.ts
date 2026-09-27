@@ -165,6 +165,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         type: string;
         targetGoals?: number;
         targetPoints?: number;
+        scoring?: { version?: number };
         shotsLimit?: number;
         activeTimeMs?: number;
         goalWindowMs?: number;
@@ -269,8 +270,10 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       enduranceTrack.every((game) => game.qualification_rules.type === 'survive_goal_windows'),
     ).toBe(true);
     expect(marksmanshipTrack.map((game) => game.qualification_rules.targetPoints)).toEqual([
-      1250, 2200, 3300, 4500, 5800, 7350, 8850, 10500, 12350, 14150,
+      100, 180, 270, 360, 470, 590, 720, 850, 1000, 1150,
     ]);
+    expect(marksmanshipTrack.every((game) => game.qualification_rules.scoring?.version === 6))
+      .toBe(true);
     expect(
       enduranceTrack.map((game) => ({
         activeTimeMs: game.qualification_rules.activeTimeMs,
