@@ -1,5 +1,6 @@
 import type {
   AdvancedTrainingV2Scenario,
+  AdvancedTrainingContinuousContext,
   AdvancedTrainingV2Side,
   AdvancedTrainingV2Technique,
   MarksmanshipV6Measurements,
@@ -107,6 +108,9 @@ export interface AdvancedTrainingV2RunState {
   shot_index: number;
   scenario_id: string;
   scenario: AdvancedTrainingV2Scenario;
+  movement_id: string;
+  movement: AdvancedTrainingContinuousContext;
+  resume_scene_ms: number;
   seed: string;
   game_core_version: number;
   bank_version: number;
@@ -114,7 +118,7 @@ export interface AdvancedTrainingV2RunState {
 }
 
 export interface AdvancedTrainingV2ShotResponse {
-  scenario_id: string;
+  movement_id: string;
   tap_time: number;
   server_result: ShotResult['type'];
   success: boolean;
@@ -136,7 +140,7 @@ export function startAdvancedTrainingV2Exercise(exerciseKey: AdvancedTrainingV2T
 export function submitAdvancedTrainingV2Shot(exerciseKey: AdvancedTrainingV2Technique, body: {
   run_id: string;
   shot_index: number;
-  scenario_id: string;
+  movement_id: string;
   input: Pick<ShotInput, 'tapTime' | 'shooterTapTime'>;
   claimed_result: ShotResult['type'];
 }): Promise<AdvancedTrainingV2ShotResponse> {

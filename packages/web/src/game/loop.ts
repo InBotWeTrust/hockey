@@ -55,6 +55,8 @@ export interface GameLoopOpts {
   ) => DuelPlayerCondition | null;
   onDuelConditionChange?: (condition: DuelPlayerCondition | null) => void;
   onClockTick?: (sceneElapsedMs: number, shooterElapsedMs: number) => void;
+  getMaxSceneTimeMs?: () => number | undefined;
+  getTimeScale?: (sceneElapsedMs: number) => number;
 }
 
 export interface GameLoop {
@@ -116,6 +118,7 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     return { sceneElapsedMs: elapsedMs, shooterElapsedMs: elapsedMs };
   };
   let renderNowMs = performance.now();
+  let lastRealNowMs = renderNowMs;
   const initial = initialClocks();
   let sceneStartMs = renderNowMs - initial.sceneElapsedMs;
   let shooterStartMs = renderNowMs - initial.shooterElapsedMs;
@@ -183,8 +186,13 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
   }
 
   function advanceRenderClock(): number {
-    const now = performance.now();
-    renderNowMs = now;
+    const realNow = performance.now();
+    const realDelta = Math.max(0, realNow - lastRealNowMs);
+    lastRealNowMs = realNow;
+    const scale = Math.max(0, Math.min(1, opts.getTimeScale?.(sceneT(renderNowMs)) ?? 1));
+    const maxSceneTime = opts.getMaxSceneTimeMs?.();
+    const remaining = maxSceneTime === undefined ? Infinity : Math.max(0, maxSceneTime - sceneT(renderNowMs));
+    renderNowMs += Math.min(realDelta * scale, remaining);
     return renderNowMs;
   }
 
@@ -332,7 +340,8 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
   };
 
   const rebaseTime = (clocks: GameLoopClocks): void => {
-    renderNowMs = performance.now();
+    lastRealNowMs = performance.now();
+    renderNowMs = lastRealNowMs;
     sceneStartMs = renderNowMs - Math.max(0, clocks.sceneElapsedMs);
     shooterStartMs = renderNowMs - Math.max(0, clocks.shooterElapsedMs);
     shooterPausedTotal = 0;

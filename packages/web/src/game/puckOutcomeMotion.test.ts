@@ -1,8 +1,17 @@
 import { GOAL_OPENING, RINK } from '@hockey/game-core';
 import { describe, expect, it } from 'vitest';
-import { puckOutcomeMotion, puckResultContact } from './puckOutcomeMotion.js';
+import {
+  puckOutcomeMotion,
+  puckResultContact,
+  reconcilePuckResultDisplayKind,
+} from './puckOutcomeMotion.js';
 
 describe('puckOutcomeMotion', () => {
+  it('keeps a detected post hit when the server confirms the underlying miss', () => {
+    expect(reconcilePuckResultDisplayKind('post', 'miss')).toBe('post');
+    expect(reconcilePuckResultDisplayKind('goal', 'save')).toBe('save');
+  });
+
   it('starts each outcome at its visual result contact', () => {
     expect(puckResultContact({ type: 'save', goalieContact: { x: 240, y: 82 } }, 190)).toEqual({
       x: 240,

@@ -348,6 +348,27 @@ describe('PlayView', () => {
     );
   });
 
+  it('holds an early practice tap until the visible scene reaches the valid shot', async () => {
+    let now = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
+    render(<PlayView suppressedByModal={false} showIceCar={false}
+      onBack={() => undefined} active seed="practice-assist" goalieId="rookie"
+      periodNumber={1} goals={0} shots={0}
+      initialSceneElapsedMs={9_880} initialShooterElapsedMs={9_880}
+      practiceShotWindow={{ armStartMs: 9_880, targetMs: 10_002, endMs: 10_004 }}
+      shotResolver={shotResolver} optimisticAddShot={() => undefined}
+      submitShot={() => new Promise(() => undefined)} applyState={() => undefined} />);
+    await act(async () => Promise.resolve());
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    expect(shotResolver).not.toHaveBeenCalled();
+    now = 1_122;
+    act(() => tickerCallbacks.at(-1)?.());
+    expect(shotResolver).toHaveBeenCalledWith(expect.objectContaining({
+      input: expect.objectContaining({ tapTime: 10_002, shooterTapTime: 10_002 }),
+    }));
+  });
+
   it('rebases separate clocks when a reconciled authoritative snapshot arrives', () => {
     vi.spyOn(performance, 'now').mockReturnValue(1_000);
     const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
@@ -910,21 +931,20 @@ describe('PlayView', () => {
     expect(clocks.at(-1)).toBeCloseTo(4_000, 1);
   });
 
-  it('fires a demonstration auto-shot at the exact validated scene time', async () => {
+  it('does not teleport the scene to an auto-shot timestamp', async () => {
     vi.useFakeTimers();
     const shotResolver = vi.fn(() => ({ type: 'miss' as const, reason: 'wide' as const }));
     render(<PlayView suppressedByModal={false} showIceCar={false}
       onBack={() => undefined} active seed="exact-demonstration" goalieId={null}
       goalieConfig={beachGoalie} periodNumber={1} goals={0} shots={0}
       initialSceneElapsedMs={1_660} initialShooterElapsedMs={1_660}
-      autoShotDelayMs={100} autoShotAtSceneMs={4_420}
+      autoShotDelayMs={100}
       shotResolver={shotResolver} optimisticAddShot={() => undefined}
       submitShot={async () => ({ serverResult: 'miss', state: {} })}
       applyState={() => undefined} />);
     await act(async () => vi.advanceTimersByTimeAsync(100));
-    expect(shotResolver).toHaveBeenCalledWith(expect.objectContaining({
-      input: expect.objectContaining({ tapTime: 4_420, shooterTapTime: 4_420 }),
-    }));
+    const shot = (shotResolver.mock.calls as unknown as Array<[{ input: { tapTime: number } }]>)[0]?.[0];
+    expect(shot?.input.tapTime).toBeLessThan(2_000);
   });
 
   it('keeps the result visible until a delayed shot response can start the next window', async () => {

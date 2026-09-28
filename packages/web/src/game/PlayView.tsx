@@ -57,6 +57,7 @@ import {
   puckOutcomeMotion,
   puckReboundObstacles,
   puckResultContact,
+  reconcilePuckResultDisplayKind,
 } from './puckOutcomeMotion.js';
 import { SHOT_RESULT_PAUSE_MS } from './shotTiming.js';
 import {
@@ -286,7 +287,10 @@ export interface PlayViewProps<TState> {
   timer?: string | undefined;
   timerLabel?: string | undefined;
   autoShotDelayMs?: number | undefined;
-  autoShotAtSceneMs?: number | undefined;
+  maxSceneTimeMs?: number | undefined;
+  sceneTimeScale?: ((sceneMs: number) => number) | undefined;
+  practiceShotWindow?: { armStartMs: number; targetMs: number; endMs: number } | undefined;
+  shotTriggerKey?: number | undefined;
   scoreboardNotice?: string | undefined;
   scoreboardModel?:
     | GameScoreboardModel
@@ -303,6 +307,8 @@ export interface PlayViewProps<TState> {
   waitForShotResponseBeforeResultClose?: boolean | undefined;
   freezeRenderingDuringResult?: boolean | undefined;
   holdSceneAfterResult?: boolean | undefined;
+  resumeHeldResultKey?: number | undefined;
+  preserveSceneOnModalReturn?: boolean | undefined;
   backLabel?: string | undefined;
   bottomInset?: string | undefined;
   sessionStartedAt?: string | null | undefined;
@@ -335,6 +341,10 @@ export interface PlayViewProps<TState> {
   rinkBorder?: string | undefined;
   hideScoreboard?: boolean | undefined;
   overlayControls?: ReactNode;
+  rinkOverlay?: ReactNode;
+  rinkUnderlay?: ReactNode;
+  overlayControlsTop?: string | undefined;
+  overlayControlsCentered?: boolean | undefined;
   gameLayerStyle?: CSSProperties | undefined;
   playerGrip?: 'left' | 'right' | undefined;
   playerOptions?: PlayerOptions | undefined;
@@ -609,7 +619,10 @@ export function PlayView<TState>({
   timer,
   timerLabel,
   autoShotDelayMs,
-  autoShotAtSceneMs,
+  maxSceneTimeMs,
+  sceneTimeScale,
+  practiceShotWindow,
+  shotTriggerKey,
   scoreboardNotice,
   scoreboardModel,
   scoreboardAccessory,
@@ -623,6 +636,8 @@ export function PlayView<TState>({
   waitForShotResponseBeforeResultClose = false,
   freezeRenderingDuringResult = false,
   holdSceneAfterResult = false,
+  resumeHeldResultKey,
+  preserveSceneOnModalReturn = false,
   backLabel = 'К режимам',
   bottomInset = 'calc(8px + var(--app-dock-safe-bottom))',
   sessionStartedAt,
@@ -646,6 +661,10 @@ export function PlayView<TState>({
   rinkBorder = '3px solid #1e3a5f',
   hideScoreboard = true,
   overlayControls,
+  rinkOverlay,
+  rinkUnderlay,
+  overlayControlsTop,
+  overlayControlsCentered = false,
   gameLayerStyle = LONG_COURT_GAME_LAYER_STYLE,
   playerGrip,
   playerOptions = PERSPECTIVE_PLAYER_OPTIONS,
@@ -709,6 +728,17 @@ export function PlayView<TState>({
   sceneShotIndexRef.current = sceneShotIndex;
   const onSceneClockRef = useRef(onSceneClock);
   onSceneClockRef.current = onSceneClock;
+  const maxSceneTimeRef = useRef(maxSceneTimeMs);
+  maxSceneTimeRef.current = maxSceneTimeMs;
+  const sceneTimeScaleRef = useRef(sceneTimeScale);
+  sceneTimeScaleRef.current = sceneTimeScale;
+  const practiceShotWindowRef = useRef(practiceShotWindow);
+  practiceShotWindowRef.current = practiceShotWindow;
+  const queuedPracticeShotRef = useRef<number | null>(null);
+  const queuedShotHandlerRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    queuedPracticeShotRef.current = null;
+  }, [active, clockRebaseKey, practiceShotWindow?.targetMs]);
   const sessionTimingRef = useRef<PlaySessionTiming>({
     sessionStartedAt: sessionStartedAt ?? null,
     serverNow: serverNow ?? null,
@@ -761,7 +791,7 @@ export function PlayView<TState>({
   const [resultDisplayKind, setResultDisplayKind] = useState<ResultModalKind | null>(null);
   const [resultPresentation, setResultPresentation] = useState<PlayResultPresentation | null>(null);
   const authoritativePresentationRef = useRef<PlayResultPresentation | null | undefined>(undefined);
-  const authoritativeResultRef = useRef<ShotResult['type'] | null>(null);
+  const authoritativeResultRef = useRef<ResultModalKind | null>(null);
   const [lastResult, setLastResult] = useState<ShotResult | null>(null);
   const inlineResultKind = resultDisplayKind ?? lastResult?.type ?? null;
   const inlineResultContent =
@@ -1403,11 +1433,20 @@ export function PlayView<TState>({
         getGoalieConfig: () => goalieConfigRef.current,
         getSpeedOverrides: () => speedsRef.current,
         getInitialClocks: () => computeInitialPlayClocks(sessionTimingRef.current),
+        getMaxSceneTimeMs: () => queuedPracticeShotRef.current ?? maxSceneTimeRef.current,
+        getTimeScale: (sceneMs) => shotAnimationInProgressRef.current
+          ? 1 : sceneTimeScaleRef.current?.(sceneMs) ?? 1,
         getDuelCondition: (elapsedMs, activeSpeeds, reusable) =>
           duelConditionRef.current?.(elapsedMs, activeSpeeds, reusable) ?? null,
         onDuelConditionChange: syncCurrentDuelCondition,
-        onClockTick: (sceneElapsedMs, shooterElapsedMs) =>
-          onSceneClockRef.current?.(sceneElapsedMs, shooterElapsedMs),
+        onClockTick: (sceneElapsedMs, shooterElapsedMs) => {
+          onSceneClockRef.current?.(sceneElapsedMs, shooterElapsedMs);
+          const target = queuedPracticeShotRef.current;
+          if (target !== null && sceneElapsedMs >= target) {
+            queuedPracticeShotRef.current = null;
+            queuedShotHandlerRef.current();
+          }
+        },
       });
       tickerRef.current = app.ticker;
       loopRef.current = loop;
@@ -1472,6 +1511,20 @@ export function PlayView<TState>({
     loop.rebaseTime(computeInitialPlayClocks(sessionTimingRef.current));
   }, [clockRebaseKey, pixiReady]);
 
+  const lastResumeHeldResultKeyRef = useRef(resumeHeldResultKey);
+  useLayoutEffect(() => {
+    if (resumeHeldResultKey === undefined ||
+      resumeHeldResultKey === lastResumeHeldResultKeyRef.current) return;
+    lastResumeHeldResultKeyRef.current = resumeHeldResultKey;
+    if (!heldResultRef.current) return;
+    heldResultRef.current = false;
+    puckRef.current?.release();
+    goalieRef.current?.setSavePose(false);
+    loopRef.current?.endScenePause();
+    loopRef.current?.endShooterPause();
+    if (freezeRenderingDuringResult && tickerRef.current) loopRef.current?.attach(tickerRef.current);
+  }, [resumeHeldResultKey, freezeRenderingDuringResult]);
+
   // React to suppressedByModal flips after Pixi is up. handleReady applies
   // the initial state inline; this hook handles transitions only.
   useLayoutEffect(() => {
@@ -1533,6 +1586,14 @@ export function PlayView<TState>({
       loop.attach(ticker);
       return;
     }
+    if (active && preserveSceneOnModalReturn) {
+      goal.container.visible = true;
+      player.container.visible = true;
+      goalie.container.visible = !hideGoalieRef.current;
+      puck.container.visible = true;
+      loop.attach(ticker);
+      return;
+    }
     if (skipNextUnsuppressedEntranceRef.current) {
       skipNextUnsuppressedEntranceRef.current = false;
       goal.container.visible = true;
@@ -1560,6 +1621,7 @@ export function PlayView<TState>({
     drawReadyPresence,
     goalsOnlyWhileInactive,
     pixiReady,
+    preserveSceneOnModalReturn,
     readyPresence,
     showIceCar,
     startEntranceAnimation,
@@ -1868,8 +1930,12 @@ export function PlayView<TState>({
           return;
         }
         if (resultCopy) {
-          authoritativeResultRef.current = res.serverResult;
-          setResultDisplayKind(res.serverResult);
+          const authoritativeDisplayKind = reconcilePuckResultDisplayKind(
+            displayKind,
+            res.serverResult,
+          );
+          authoritativeResultRef.current = authoritativeDisplayKind;
+          setResultDisplayKind(authoritativeDisplayKind);
         }
         if (res.resultPresentation !== undefined) {
           authoritativePresentationRef.current = res.resultPresentation;
@@ -1914,6 +1980,7 @@ export function PlayView<TState>({
   ]);
 
   const autoShotHandlerRef = useRef(handleShotTap);
+  queuedShotHandlerRef.current = handleShotTap;
   useEffect(() => {
     autoShotHandlerRef.current = handleShotTap;
   }, [handleShotTap]);
@@ -1921,16 +1988,17 @@ export function PlayView<TState>({
   useEffect(() => {
     if (!active || !pixiReady || autoShotDelayMs === undefined) return;
     const timeout = window.setTimeout(() => {
-      if (autoShotAtSceneMs !== undefined) {
-        loopRef.current?.rebaseTime({
-          sceneElapsedMs: autoShotAtSceneMs,
-          shooterElapsedMs: autoShotAtSceneMs,
-        });
-      }
       autoShotHandlerRef.current();
     }, Math.max(0, autoShotDelayMs));
     return () => window.clearTimeout(timeout);
-  }, [active, autoShotDelayMs, autoShotAtSceneMs, clockRebaseKey, pixiReady]);
+  }, [active, autoShotDelayMs, clockRebaseKey, pixiReady]);
+
+  const previousShotTriggerKey = useRef(shotTriggerKey);
+  useEffect(() => {
+    if (shotTriggerKey === undefined || shotTriggerKey === previousShotTriggerKey.current) return;
+    previousShotTriggerKey.current = shotTriggerKey;
+    if (active && pixiReady) autoShotHandlerRef.current();
+  }, [active, pixiReady, shotTriggerKey]);
 
   const handleInactiveAction = useCallback(async (): Promise<void> => {
     if (!inactiveAction || isInactiveActionPending) return;
@@ -1965,6 +2033,14 @@ export function PlayView<TState>({
     const cur = sessionRef.current;
     if (!cur.active && inactiveAction) {
       void handleInactiveAction();
+      return;
+    }
+    if (queuedPracticeShotRef.current !== null) return;
+    const practiceWindow = practiceShotWindowRef.current;
+    const sceneMs = loopRef.current?.getSceneT();
+    if (practiceWindow && sceneMs !== undefined &&
+      sceneMs >= practiceWindow.armStartMs && sceneMs <= practiceWindow.targetMs) {
+      queuedPracticeShotRef.current = practiceWindow.targetMs;
       return;
     }
     handleShotTap();
@@ -2194,18 +2270,23 @@ export function PlayView<TState>({
               ...routeGameStyle,
             }}
           >
+            {rinkUnderlay}
             <PixiStage
               onReady={handleReady}
               onResize={handleResize}
               preloadAssets={preloadAssets}
             />
+            {rinkOverlay}
           </div>
           {overlayControls && (
             <div
               style={{
                 position: 'absolute',
-                top: 'clamp(112px, 22%, 148px)',
-                left: 'clamp(10px, 3.4%, 18px)',
+                top: overlayControlsTop ?? 'clamp(112px, 22%, 148px)',
+                left: overlayControlsCentered ? '50%' : 'clamp(10px, 3.4%, 18px)',
+                transform: overlayControlsCentered ? 'translateX(-50%)' : undefined,
+                width: overlayControlsCentered ? 'max-content' : undefined,
+                maxWidth: 'calc(100% - 20px)',
                 zIndex: 7,
                 pointerEvents: 'auto',
                 ...routeGameStyle,
