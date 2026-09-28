@@ -286,7 +286,9 @@ export interface PlayViewProps<TState> {
   timer?: string | undefined;
   timerLabel?: string | undefined;
   autoShotDelayMs?: number | undefined;
-  autoShotAtSceneMs?: number | undefined;
+  maxSceneTimeMs?: number | undefined;
+  sceneTimeScale?: ((sceneMs: number) => number) | undefined;
+  shotTriggerKey?: number | undefined;
   scoreboardNotice?: string | undefined;
   scoreboardModel?:
     | GameScoreboardModel
@@ -609,7 +611,9 @@ export function PlayView<TState>({
   timer,
   timerLabel,
   autoShotDelayMs,
-  autoShotAtSceneMs,
+  maxSceneTimeMs,
+  sceneTimeScale,
+  shotTriggerKey,
   scoreboardNotice,
   scoreboardModel,
   scoreboardAccessory,
@@ -709,6 +713,10 @@ export function PlayView<TState>({
   sceneShotIndexRef.current = sceneShotIndex;
   const onSceneClockRef = useRef(onSceneClock);
   onSceneClockRef.current = onSceneClock;
+  const maxSceneTimeRef = useRef(maxSceneTimeMs);
+  maxSceneTimeRef.current = maxSceneTimeMs;
+  const sceneTimeScaleRef = useRef(sceneTimeScale);
+  sceneTimeScaleRef.current = sceneTimeScale;
   const sessionTimingRef = useRef<PlaySessionTiming>({
     sessionStartedAt: sessionStartedAt ?? null,
     serverNow: serverNow ?? null,
@@ -1403,6 +1411,9 @@ export function PlayView<TState>({
         getGoalieConfig: () => goalieConfigRef.current,
         getSpeedOverrides: () => speedsRef.current,
         getInitialClocks: () => computeInitialPlayClocks(sessionTimingRef.current),
+        getMaxSceneTimeMs: () => maxSceneTimeRef.current,
+        getTimeScale: (sceneMs) => shotAnimationInProgressRef.current
+          ? 1 : sceneTimeScaleRef.current?.(sceneMs) ?? 1,
         getDuelCondition: (elapsedMs, activeSpeeds, reusable) =>
           duelConditionRef.current?.(elapsedMs, activeSpeeds, reusable) ?? null,
         onDuelConditionChange: syncCurrentDuelCondition,
@@ -1921,16 +1932,17 @@ export function PlayView<TState>({
   useEffect(() => {
     if (!active || !pixiReady || autoShotDelayMs === undefined) return;
     const timeout = window.setTimeout(() => {
-      if (autoShotAtSceneMs !== undefined) {
-        loopRef.current?.rebaseTime({
-          sceneElapsedMs: autoShotAtSceneMs,
-          shooterElapsedMs: autoShotAtSceneMs,
-        });
-      }
       autoShotHandlerRef.current();
     }, Math.max(0, autoShotDelayMs));
     return () => window.clearTimeout(timeout);
-  }, [active, autoShotDelayMs, autoShotAtSceneMs, clockRebaseKey, pixiReady]);
+  }, [active, autoShotDelayMs, clockRebaseKey, pixiReady]);
+
+  const previousShotTriggerKey = useRef(shotTriggerKey);
+  useEffect(() => {
+    if (shotTriggerKey === undefined || shotTriggerKey === previousShotTriggerKey.current) return;
+    previousShotTriggerKey.current = shotTriggerKey;
+    if (active && pixiReady) autoShotHandlerRef.current();
+  }, [active, pixiReady, shotTriggerKey]);
 
   const handleInactiveAction = useCallback(async (): Promise<void> => {
     if (!inactiveAction || isInactiveActionPending) return;

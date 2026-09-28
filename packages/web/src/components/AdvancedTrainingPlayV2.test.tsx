@@ -50,7 +50,16 @@ describe('advanced training V2 demonstration', () => {
     expect(state.playProps?.seed).toBe(left.sessionSeed);
     expect(state.playProps?.sceneShotIndex).toBe(1);
     expect(state.playProps?.initialSceneElapsedMs).toBe(left.sceneStartMs);
-    expect(state.playProps?.autoShotDelayMs).toBeCloseTo(left.targetTapTimeMs - left.sceneStartMs, 4);
+    expect(state.playProps?.autoShotDelayMs).toBeUndefined();
+    expect(state.playProps?.maxSceneTimeMs).toBe(left.targetTapTimeMs);
+    await act(async () => (state.playProps?.onSceneClock as (sceneMs: number) => void)(left.targetTapTimeMs));
+    expect(screen.getByRole('button', { name: 'Показать бросок' })).toBeInTheDocument();
+    expect(state.playProps?.hitboxesVisible).toBe(true);
+    expect(screen.getByText(/Игрок [←→•]/)).toBeInTheDocument();
+    expect(screen.getByText(/Ворота [←→•]/)).toBeInTheDocument();
+    expect(screen.getByText(/Вратарь [←→•]/)).toBeInTheDocument();
+    await act(async () => screen.getByRole('button', { name: 'Показать бросок' }).click());
+    expect(state.playProps?.shotTriggerKey).toBe(1);
     await act(async () => {
       const complete = state.playProps?.onResultComplete as () => void;
       complete();
@@ -136,7 +145,7 @@ describe('advanced training V2 demonstration', () => {
       await (state.playProps?.submitShot as (args: Record<string, unknown>) => Promise<unknown>)(
         { shotIndex: 1, input: { tapTime: scenario.targetTapTimeMs - 950 }, claimedResult: 'goal' });
     });
-    expect(String(state.playProps?.statusNotice)).toContain('простой бросок');
+    expect(String(state.playProps?.statusNotice)).toContain('Простой бросок');
     expect(state.playProps?.goals).toBe(0);
   });
 });

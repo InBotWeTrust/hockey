@@ -51,6 +51,26 @@ function makeTicker(): TestTicker {
 }
 
 describe('createGameLoop', () => {
+  it('slows time continuously and stops exactly at a demonstration frame', () => {
+    const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const onClockTick = vi.fn();
+    const loop = makeLoop({ getGoalieId: () => 'rookie',
+      getInitialClocks: () => ({ sceneElapsedMs: 100, shooterElapsedMs: 100 }),
+      getTimeScale: () => 0.5, getMaxSceneTimeMs: () => 200, onClockTick });
+    const ticker = makeTicker();
+    loop.attach(ticker);
+    const tick = ticker.add.mock.calls[0]?.[0] as (ticker: Ticker) => void;
+    nowSpy.mockReturnValue(1100);
+    tick(ticker);
+    expect(onClockTick).toHaveBeenLastCalledWith(150, 150);
+    nowSpy.mockReturnValue(1300);
+    tick(ticker);
+    expect(onClockTick).toHaveBeenLastCalledWith(200, 200);
+    nowSpy.mockReturnValue(1500);
+    tick(ticker);
+    expect(onClockTick).toHaveBeenLastCalledWith(200, 200);
+    nowSpy.mockRestore();
+  });
   it('reports the actual scene and shooter clocks used by the render tick', () => {
     const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1000);
     const onClockTick = vi.fn();

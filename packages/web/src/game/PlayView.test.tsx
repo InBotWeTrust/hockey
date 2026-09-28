@@ -910,21 +910,20 @@ describe('PlayView', () => {
     expect(clocks.at(-1)).toBeCloseTo(4_000, 1);
   });
 
-  it('fires a demonstration auto-shot at the exact validated scene time', async () => {
+  it('does not teleport the scene to an auto-shot timestamp', async () => {
     vi.useFakeTimers();
     const shotResolver = vi.fn(() => ({ type: 'miss' as const, reason: 'wide' as const }));
     render(<PlayView suppressedByModal={false} showIceCar={false}
       onBack={() => undefined} active seed="exact-demonstration" goalieId={null}
       goalieConfig={beachGoalie} periodNumber={1} goals={0} shots={0}
       initialSceneElapsedMs={1_660} initialShooterElapsedMs={1_660}
-      autoShotDelayMs={100} autoShotAtSceneMs={4_420}
+      autoShotDelayMs={100}
       shotResolver={shotResolver} optimisticAddShot={() => undefined}
       submitShot={async () => ({ serverResult: 'miss', state: {} })}
       applyState={() => undefined} />);
     await act(async () => vi.advanceTimersByTimeAsync(100));
-    expect(shotResolver).toHaveBeenCalledWith(expect.objectContaining({
-      input: expect.objectContaining({ tapTime: 4_420, shooterTapTime: 4_420 }),
-    }));
+    const shot = (shotResolver.mock.calls as unknown as Array<[{ input: { tapTime: number } }]>)[0]?.[0];
+    expect(shot?.input.tapTime).toBeLessThan(2_000);
   });
 
   it('keeps the result visible until a delayed shot response can start the next window', async () => {

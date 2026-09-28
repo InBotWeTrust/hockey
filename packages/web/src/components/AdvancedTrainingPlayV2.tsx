@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { evaluateAdvancedTrainingV2Shot, getAdvancedTrainingV2Scenario, getGoalie,
+  getSessionPhaseOffsets, simulateGoal, simulateGoalie, simulateShooter,
   resolvePerspectiveCourtShot, type AdvancedTrainingV2Scenario,
   type AdvancedTrainingV2Side, type AdvancedTrainingV2Technique } from '@hockey/game-core';
 import { startAdvancedTrainingV2Exercise, type AdvancedTrainingV2RunState } from '../api/advancedTraining.js';
@@ -9,11 +10,30 @@ import { PlayView, TRAINING_AMATEUR_GOALIE_OPTIONS, TRAINING_COURSE_GOAL_OPTIONS
   TRAINING_STREET_PLAYER_OPTIONS, type PlayShotResolver } from '../game/PlayView.js';
 import { TRAINING_LONG_COURT_BACKGROUND } from '../game/trainingNewCourt.js';
 import { AccessibleModal } from './AccessibleModal.js';
-import { ADVANCED_TRAINING_V2_TITLES, getAdvancedTrainingV2Explanation } from './AdvancedTrainingV2Explanation.js';
+import { ADVANCED_TRAINING_V2_TITLES, getAdvancedTrainingV2Explanation,
+  getAdvancedTrainingV2FailureExplanation } from './AdvancedTrainingV2Explanation.js';
 import { getAdvancedTrainingV2Cue } from './advancedTrainingV2Timing.js';
 
 type Phase = 'intro' | 'demo' | 'explanation' | 'practice-intro' | 'play' |
   'side-transition' | 'practice-finished' | 'completed';
+
+function getDemoTapDirections(scenario: AdvancedTrainingV2Scenario): readonly string[] {
+  const t = scenario.targetTapTimeMs;
+  const offsets = getSessionPhaseOffsets(scenario.sessionSeed);
+  const goalie = { ...getGoalie(scenario.goalieId), frequency: scenario.speeds.goalieFrequency,
+    goalFrequency: scenario.speeds.goalFrequency };
+  const direction = (before: number, after: number) =>
+    after > before ? '→' : after < before ? '←' : '•';
+  const player = direction(simulateShooter(t - 5 + offsets.shooter, scenario.speeds.shooterFrequency).x,
+    simulateShooter(t + 5 + offsets.shooter, scenario.speeds.shooterFrequency).x);
+  const goal = direction(simulateGoal(goalie, t - 5, offsets.goal).offsetX,
+    simulateGoal(goalie, t + 5, offsets.goal).offsetX);
+  const keeper = direction(simulateGoalie(goalie, scenario.shotSeed, scenario.shotIndex,
+    t - 5, offsets.goalie).position.x,
+  simulateGoalie(goalie, scenario.shotSeed, scenario.shotIndex,
+    t + 5, offsets.goalie).position.x);
+  return [`Игрок ${player}`, `Ворота ${goal}`, `Вратарь ${keeper}`];
+}
 
 export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalogRefresh }: {
   exerciseKey: AdvancedTrainingV2Technique;
@@ -25,6 +45,9 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
   const [phase, setPhase] = useState<Phase>('intro');
   const [demoSide, setDemoSide] = useState<AdvancedTrainingV2Side>('left');
   const [demoEpoch, setDemoEpoch] = useState(0);
+  const [demoReady, setDemoReady] = useState(false);
+  const [demoShotTrigger, setDemoShotTrigger] = useState(0);
+  const [demoFired, setDemoFired] = useState(false);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -65,6 +88,7 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
     ? demoScenario : run?.scenario ?? null;
   const validatedDemo = useMemo(() => evaluateAdvancedTrainingV2Shot(demoScenario,
     { tapTime: demoScenario.targetTapTimeMs }), [demoScenario]);
+  const demoDirections = useMemo(() => getDemoTapDirections(demoScenario), [demoScenario]);
   const speedOverrides = scenario ? {
     shooterFreq: scenario.speeds.shooterFrequency,
     goalieFreq: scenario.speeds.goalieFrequency,
@@ -86,6 +110,8 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
     }
     demoEvaluationRef.current = null;
     demoTapTimeRef.current = null;
+    setDemoReady(false);
+    setDemoFired(false);
     setDemoSide(side);
     setDemoEpoch((value) => value + 1);
     setExplanation(null);
@@ -127,6 +153,10 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
   }, [demoScenario, exerciseKey, onCatalogRefresh, phase, run?.side, validatedDemo]);
 
   const onSceneClock = useCallback((sceneMs: number) => {
+    if (phase === 'demo') {
+      if (sceneMs >= demoScenario.targetTapTimeMs && !demoFired) setDemoReady(true);
+      return;
+    }
     if (phase !== 'play' || !run) return;
     const cue = getAdvancedTrainingV2Cue(run.scenario, sceneMs, run.stage);
     setCueLabel(run.stage === 'practice'
@@ -141,7 +171,7 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
     setFeedback('Момент прошёл. Попробуй ещё раз.');
     setCueLabel(null);
     setSceneEpoch((value) => value + 1);
-  }, [phase, run]);
+  }, [demoFired, demoScenario.targetTapTimeMs, phase, run]);
 
   const applyState = useCallback((state: AdvancedTrainingV2RunState) => {
     if (runRef.current && state.run_id === runRef.current.run_id &&
@@ -182,8 +212,14 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
       sceneShotIndex={scenario.shotIndex}
       timer={`${run.side_successes.left + run.side_successes.right}/${run.stage === 'practice' ? 2 : 4}`}
       timerLabel={run.stage === 'practice' ? 'ПРАКТИКА' : 'ЗАЧЁТ'}
-      shotButtonLabel={isDemo ? 'ПОКАЗ' : 'БРОСОК'}
+      shotButtonLabel="БРОСОК"
       primaryActionBlocked={isDemo}
+      hitboxesVisible={phase === 'demo' && demoReady && !demoFired}
+      maxSceneTimeMs={phase === 'demo' && !demoFired ? demoScenario.targetTapTimeMs : undefined}
+      shotTriggerKey={demoShotTrigger}
+      sceneTimeScale={phase === 'play' && run.stage === 'practice'
+        ? (sceneMs) => Math.abs(sceneMs - run.scenario.targetTapTimeMs) <= 650 ? 0.35 : 1
+        : undefined}
       backLabel="К упражнениям"
       optimisticAddShot={() => undefined}
       submitShot={async ({ input, claimedResult }) => {
@@ -200,8 +236,8 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
           pendingOutcomeRef.current = response;
           setFeedback(response.success ? 'Верно! Ситуация засчитана.'
             : response.server_result === 'goal'
-              ? `Гол, но это ${response.actual_technique === 'ordinary' ? 'простой бросок' :
-                response.actual_technique ? ADVANCED_TRAINING_V2_TITLES[response.actual_technique] : 'другая ситуация'}.`
+              ? getAdvancedTrainingV2FailureExplanation(run.scenario,
+                response.actual_technique, response.measurements)
               : response.server_result === 'save' ? 'Сэйв: вратарь перекрыл бросок.'
                 : 'Мимо: шайба не попала в ворота.');
           return {
@@ -229,12 +265,22 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
         ? `Показ ${demoSide === 'left' ? 'слева' : 'справа'}: ${ADVANCED_TRAINING_V2_TITLES[exerciseKey]}`
         : `Бросайте ${run.side === 'left' ? 'слева' : 'справа'}`)}
       statusNoticeTone={error ? 'error' : feedback ? 'warning' : undefined}
-      overlayControls={phase === 'play' && run.stage === 'practice' && cueLabel
-        ? <div className="advanced-training-v2-cue" role="status" aria-live="polite">{cueLabel}</div>
-        : undefined}
+      overlayControls={phase === 'demo' && demoReady && !demoFired
+        ? <div className="advanced-training-v2-demo-stop" role="status">
+          <span>Стоп-кадр: сейчас нужно нажать «Бросок».</span>
+          <span className="advanced-training-v2-demo-stop__directions">
+            {demoDirections.map((item) => <span key={item}>{item}</span>)}
+          </span>
+          <button type="button" onClick={() => {
+            setDemoFired(true);
+            setDemoReady(false);
+            setDemoShotTrigger((value) => value + 1);
+          }}>Показать бросок</button>
+        </div>
+        : phase === 'play' && run.stage === 'practice' && cueLabel
+          ? <div className="advanced-training-v2-cue" role="status" aria-live="polite">{cueLabel}</div>
+          : undefined}
       onSceneClock={onSceneClock}
-      autoShotDelayMs={phase === 'demo' ? demoScenario.targetTapTimeMs - demoScenario.sceneStartMs : undefined}
-      autoShotAtSceneMs={phase === 'demo' ? demoScenario.targetTapTimeMs : undefined}
       clockRebaseKey={`${scenario.id}:${isDemo ? demoEpoch : `${run.shot_index}:${sceneEpoch}`}`}
       initialSceneElapsedMs={scenario.sceneStartMs}
       initialShooterElapsedMs={scenario.sceneStartMs}

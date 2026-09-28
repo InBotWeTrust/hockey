@@ -15065,3 +15065,41 @@ button.daily-calendar__day:active {
   white-space: nowrap;
   pointer-events: none;
 }
+
+.advanced-training-v2-demo-stop {
+  display: grid;
+  gap: 10px;
+  max-width: min(340px, 86vw);
+  padding: 12px;
+  border: 1px solid rgba(205, 232, 255, 0.8);
+  border-radius: 14px;
+  background: rgba(11, 39, 67, 0.94);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.advanced-training-v2-demo-stop button {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 9px;
+  background: #d9edff;
+  color: #08182b;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.advanced-training-v2-demo-stop__directions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.advanced-training-v2-demo-stop__directions span {
+  padding: 4px 7px;
+  border: 1px solid rgba(205, 232, 255, 0.55);
+  border-radius: 7px;
+}
