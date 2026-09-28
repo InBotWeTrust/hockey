@@ -51,6 +51,7 @@ import {
 } from './advancedCourse.js';
 import { ADVANCED_TRAINING_V2_EXERCISES, buildAdvancedTrainingV2Catalog,
   fetchAdvancedTrainingV2Completions } from './advancedCourseV2.js';
+import { buildOpenWindowCatalog, fetchOpenWindowCompletions } from './openWindowCourse.js';
 
 const paramsSchema = z.object({ exerciseKey: z.string().min(1).max(80) });
 const shotBodySchema = z.object({
@@ -214,11 +215,14 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
       const beginnerTrainingCompleted = await isInitialTrainingCompleted(client, req.user.id);
       const advancedConfig = await loadAdvancedTrainingConfig(client);
       const advancedCompleted = await fetchAdvancedTrainingV2Completions(client, req.user.id);
+      const openWindowCompleted = await fetchOpenWindowCompletions(client, req.user.id);
       const amateurAccess = await resolveAmateurAccess(client, req.user.id);
       const advancedAccess = resolveAdvancedTrainingAccess(
         amateurAccess.hasFullAccess,
         beginnerTrainingCompleted,
       );
+      const openWindowCatalog = buildOpenWindowCatalog(openWindowCompleted,
+        advancedConfig.enabled && advancedAccess.unlocked);
       const accessSource = await fetchInitialTrainingOpenAccess(client, req.user.id);
       const gameplayLock = await getGameplayLockState(client, {
         userId: req.user.id,
@@ -245,12 +249,15 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
         advanced_training: {
           enabled: advancedConfig.enabled,
           access: advancedAccess,
+          completed_count: openWindowCatalog.completed_count,
+          total_count: openWindowCatalog.total_count,
+          exercises: openWindowCatalog.steps,
+        },
+        legacy_advanced_training: {
           completed_count: advancedCompleted.size,
           total_count: ADVANCED_TRAINING_V2_EXERCISES.length,
-          exercises: buildAdvancedTrainingV2Catalog(
-            advancedCompleted,
-            advancedConfig.enabled && advancedAccess.unlocked,
-          ),
+          exercises: buildAdvancedTrainingV2Catalog(advancedCompleted,
+            advancedConfig.enabled && advancedAccess.unlocked),
         },
       };
     });

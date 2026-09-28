@@ -86,6 +86,17 @@ describe('open-window scene bank', () => {
     }
   });
 
+  it('provides continuous series and complete three-minute runs for pace steps', () => {
+    for (let variant = 0; variant < 7; variant += 1) {
+      expect(getOpenWindowScene('pace_short', variant).endMs -
+        getOpenWindowScene('pace_short', variant).startMs).toBe(30_000);
+      expect(getOpenWindowScene('pace_faster', variant).endMs -
+        getOpenWindowScene('pace_faster', variant).startMs).toBe(60_000);
+      expect(getOpenWindowScene('pace_three_minutes', variant).endMs -
+        getOpenWindowScene('pace_three_minutes', variant).startMs).toBe(180_000);
+    }
+  });
+
   it('rejects a declared window that hides a closed gap between two goals', () => {
     const candidate = OPEN_WINDOW_STEPS.flatMap((step) =>
       Array.from({ length: 7 }, (_, variant) => getOpenWindowScene(step.key, variant)))

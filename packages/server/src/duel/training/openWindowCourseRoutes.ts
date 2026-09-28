@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
-import { GAME_CORE_VERSION, OPEN_WINDOW_BANK_VERSION,
+import { GAME_CORE_VERSION, OPEN_WINDOW_BANK_VERSION, getDailyPeriodSpeedPreset,
   evaluateOpenWindowDecision, getOpenWindowScene, scanOpenWindows,
   type OpenWindowStepKey } from '@hockey/game-core';
 import { observeCareerExperience } from '../../achievements/service.js';
@@ -17,6 +17,7 @@ import { buildOpenWindowCatalog, fetchOpenWindowCompletions,
 const paramsSchema = z.object({ stepKey: z.string().min(1).max(80) });
 const stateQuerySchema = z.object({ run_id: z.string().uuid() });
 const attemptBodySchema = z.object({ run_id: z.string().uuid() });
+const finishBodySchema = z.object({ run_id: z.string().uuid(), attempt_token: z.string().uuid() });
 const decisionBodySchema = z.object({
   run_id: z.string().uuid(), attempt_token: z.string().uuid(),
   decision_index: z.number().int().positive(), scene_id: z.string().min(1),
@@ -39,17 +40,24 @@ interface OpenWindowRun {
   sound_count: number;
   practice_decisions: number;
   full_runs: number;
+  series_decisions: number;
+  shots_taken: number;
+  active_elapsed_ms: number;
+  skip_recorded: boolean;
   game_core_version: number;
   bank_version: number;
   attempt_started_at: Date | null;
 }
 
 function toState(run: OpenWindowRun) {
+  const now = new Date();
+  const curatedScene = getOpenWindowScene(run.step_key, run.scene_variant);
   return {
     run_id: run.id,
     step_key: run.step_key,
     phase: run.phase,
-    scene: getOpenWindowScene(run.step_key, run.scene_variant),
+    scene: run.step_key.startsWith('pace_')
+      ? { ...curatedScene, shotIndex: run.shots_taken + 1 } : curatedScene,
     demonstration: getOpenWindowScene(run.step_key, 0),
     attempt_token: run.attempt_token,
     attempt_index: run.attempt_index,
@@ -57,10 +65,16 @@ function toState(run: OpenWindowRun) {
     sound_count: run.sound_count,
     practice_decisions: run.practice_decisions,
     full_runs: run.full_runs,
+    series_decisions: run.series_decisions,
+    shots_taken: run.shots_taken,
+    active_elapsed_ms: run.attempt_started_at
+      ? Math.max(0, now.getTime() - run.attempt_started_at.getTime())
+      : run.active_elapsed_ms,
+    skip_recorded: run.skip_recorded,
     game_core_version: run.game_core_version,
     bank_version: run.bank_version,
     attempt_started_at: run.attempt_started_at?.toISOString() ?? null,
-    server_now: new Date().toISOString(),
+    server_now: now.toISOString(),
   };
 }
 
@@ -102,6 +116,28 @@ async function lockedRun(client: PoolClient, userId: string, runId: string,
   return run;
 }
 
+async function recordCompletion(client: PoolClient, userId: string,
+  stepKey: OpenWindowStepKey): Promise<{ stars: number; experience: number } | null> {
+  const stageFinish = (['notice_independent', 'anticipate_timing',
+    'decide_sequence', 'pace_three_minutes'] as string[]).includes(stepKey);
+  const reward = stageFinish ? 1 : 0;
+  const completion = await client.query(
+    `insert into open_window_training_completion
+       (user_id, step_key, stage, reward_stars, reward_experience)
+     values ($1, $2, $3, $4, $4)
+     on conflict (user_id, step_key) do nothing returning step_key`,
+    [userId, stepKey, stepKey.split('_')[0], reward]);
+  if (!completion.rows[0] || !stageFinish) return null;
+  const user = await client.query<{ experience: number }>(
+    `update users set xp = xp + 1, experience = experience + 1
+      where id = $1 returning experience`, [userId]);
+  if (user.rows[0]) await observeCareerExperience(client, userId, {
+    eventKey: `open-window:${stepKey}:reward`, occurredAt: new Date(),
+    lifetimeTotal: Number(user.rows[0].experience),
+  });
+  return { stars: 1, experience: 1 };
+}
+
 export const openWindowCourseRoutes: FastifyPluginAsync = async (app) => {
   app.get('/duel/training/advanced/open-windows/catalog',
     { preHandler: [app.authenticate] }, async (req) => {
@@ -139,7 +175,22 @@ export const openWindowCourseRoutes: FastifyPluginAsync = async (app) => {
         const existing = active.rows[0];
         if (existing?.step_key === stepKey && existing.game_core_version === GAME_CORE_VERSION &&
           existing.bank_version === OPEN_WINDOW_BANK_VERSION) {
-          return { state: toState(existing), restarted_due_to_version: false };
+          const scene = getOpenWindowScene(stepKey, existing.scene_variant);
+          const expired = existing.attempt_started_at !== null &&
+            Date.now() - existing.attempt_started_at.getTime() >
+              scene.endMs - scene.startMs + 1000;
+          if (expired) {
+            const { rows } = await client.query<OpenWindowRun>(
+              `update open_window_training_run set attempt_started_at = null,
+                 active_elapsed_ms = 0, attempt_token = $2,
+                 skip_recorded = false, series_decisions = 0, shots_taken = 0,
+                 sound_count = case when step_key like 'pace_%' then 0 else sound_count end
+               where id = $1 returning *`, [existing.id, randomUUID()]);
+            return { state: toState(rows[0]!), restarted_due_to_version: false,
+              restarted_due_to_timeout: true };
+          }
+          return { state: toState(existing), restarted_due_to_version: false,
+            restarted_due_to_timeout: false };
         }
         await client.query(`update open_window_training_run set state = 'abandoned'
           where user_id = $1 and state = 'active'`, [req.user.id]);
@@ -182,9 +233,66 @@ export const openWindowCourseRoutes: FastifyPluginAsync = async (app) => {
         const run = await lockedRun(client, req.user.id, body.data.run_id, stepKey);
         if (run.attempt_started_at) return { state: toState(run) };
         const { rows } = await client.query<OpenWindowRun>(
-          `update open_window_training_run set attempt_started_at = now()
+          `update open_window_training_run
+             set attempt_started_at = now() - (active_elapsed_ms * interval '1 millisecond')
             where id = $1 returning *`, [run.id]);
         return { state: toState(rows[0]!) };
+      });
+    });
+
+  app.post('/duel/training/advanced/open-windows/:stepKey/finish',
+    { preHandler: [app.authenticate] }, async (req) => {
+      const stepKey = stepKeyFromParams(req.params);
+      const body = finishBodySchema.safeParse(req.body);
+      if (!body.success) throw new AppError('bad_request', 'invalid finish request', 400);
+      if (!stepKey.startsWith('pace_')) {
+        throw new AppError('open_window_finish_unavailable', 'not a continuous series', 409);
+      }
+      return transaction(app, async (client) => {
+        const data = body.data;
+        const run = await lockedRun(client, req.user.id, data.run_id, stepKey, true);
+        const previous = await client.query<{ response: unknown }>(
+          `select response from open_window_training_finish
+            where run_id = $1 and attempt_token = $2`, [run.id, data.attempt_token]);
+        if (previous.rows[0]) return previous.rows[0].response;
+        if (run.state !== 'active' || run.attempt_token !== data.attempt_token ||
+          !run.attempt_started_at) {
+          throw new AppError('open_window_stale_attempt', 'attempt is no longer active', 409);
+        }
+        const scene = getOpenWindowScene(stepKey, run.scene_variant);
+        const durationMs = scene.endMs - scene.startMs;
+        const elapsed = Date.now() - run.attempt_started_at.getTime();
+        if (elapsed < durationMs - 250) {
+          throw new AppError('open_window_series_incomplete', 'series is still active', 409);
+        }
+        const isFinal = stepKey === 'pace_three_minutes';
+        const sound = run.series_decisions >= 5 && run.sound_count >= 4;
+        const practiceReady = isFinal || run.series_decisions >= 5 && run.sound_count >= 3;
+        const completed = run.phase === 'check' &&
+          (isFinal ? run.full_runs >= 1 : sound);
+        const nextPhase = run.phase === 'practice'
+          ? practiceReady ? 'check' : 'practice'
+          : isFinal || completed ? 'check' : 'practice';
+        const nextFullRuns = run.full_runs + Number(isFinal && run.phase === 'check');
+        const rewardGranted = completed ? await recordCompletion(client, req.user.id, stepKey) : null;
+        const { rows } = await client.query<OpenWindowRun>(
+          `update open_window_training_run set
+             state = $2, phase = $3, scene_variant = $4,
+             attempt_token = $5, attempt_index = attempt_index + 1,
+             full_runs = $6, series_decisions = 0, shots_taken = 0,
+             sound_count = 0, active_elapsed_ms = 0, attempt_started_at = null,
+             completed_at = case when $7 then now() else null end
+           where id = $1 returning *`,
+          [run.id, completed ? 'completed' : 'active', nextPhase,
+            nextPhase === 'check' ? Math.min(6, run.scene_variant + 1) : 1,
+            randomUUID(), nextFullRuns, completed]);
+        const response = { completed, reward_granted: rewardGranted,
+          summary: { decisions: run.series_decisions, sound: run.sound_count,
+            shots: run.shots_taken, active_ms: durationMs }, state: toState(rows[0]!) };
+        await client.query(`insert into open_window_training_finish
+          (run_id, attempt_token, response) values ($1, $2, $3::jsonb)`,
+        [run.id, data.attempt_token, JSON.stringify(response)]);
+        return response;
       });
     });
 
@@ -215,63 +323,83 @@ export const openWindowCourseRoutes: FastifyPluginAsync = async (app) => {
           !run.attempt_started_at) {
           throw new AppError('open_window_stale_attempt', 'attempt is no longer active', 409);
         }
-        const scene = getOpenWindowScene(stepKey, run.scene_variant);
+        const scene = stepKey.startsWith('pace_')
+          ? { ...getOpenWindowScene(stepKey, run.scene_variant), shotIndex: run.shots_taken + 1 }
+          : getOpenWindowScene(stepKey, run.scene_variant);
         if (data.scene_id !== scene.id) throw new AppError('open_window_scene_mismatch', 'wrong scene', 409);
         const now = Date.now();
         const elapsed = now - run.attempt_started_at.getTime();
-        const tap = data.input.type === 'shot' ? data.input.tap_time_ms : scene.endMs;
         const sceneTime = scene.startMs + elapsed;
+        const traversalMs = 500 / getDailyPeriodSpeedPreset(1).shooterFrequency;
+        const partialSkip = stepKey === 'decide_skip' && data.input.type === 'skip' &&
+          !run.skip_recorded && sceneTime >= scene.startMs + traversalMs &&
+          sceneTime < scene.targetWindow.startMs;
+        const tap = data.input.type === 'shot' ? data.input.tap_time_ms :
+          partialSkip ? sceneTime : scene.endMs;
         if (tap < scene.startMs || tap > scene.endMs ||
-          (data.input.type === 'shot' && Math.abs(sceneTime - tap) > 250) ||
-          (data.input.type === 'skip' && sceneTime < scene.endMs - 250)) {
+          (data.input.type === 'shot' && Math.abs(sceneTime - tap) > 750) ||
+          (data.input.type === 'skip' && !partialSkip && sceneTime < scene.endMs - 250)) {
           throw new AppError('open_window_invalid_timing', 'decision outside active scene', 409);
         }
-        const intervalStart = scene.skipSegment && data.input.type === 'skip'
-          ? scene.skipSegment.startMs : scene.startMs;
-        const intervalEnd = scene.skipSegment && data.input.type === 'skip'
-          ? scene.skipSegment.endMs : scene.endMs;
+        const intervalStart = stepKey.startsWith('pace_') && data.input.type === 'shot'
+          ? Math.max(scene.startMs, tap - 500)
+          : partialSkip ? Math.floor(sceneTime - traversalMs) : scene.startMs;
+        const intervalEnd = stepKey.startsWith('pace_') && data.input.type === 'shot'
+          ? Math.min(scene.endMs, tap + 500)
+          : partialSkip ? Math.floor(sceneTime) : scene.endMs;
         const intervals = scanOpenWindows(scene, intervalStart, intervalEnd);
         const evaluation = evaluateOpenWindowDecision(scene,
           data.input.type === 'shot' ? { type: 'shot', tapTimeMs: tap } : { type: 'skip' }, intervals);
         const sound = data.input.type === 'skip'
           ? evaluation.opportunity === 'sensible_skip' :
           stepKey.startsWith('notice_') ? evaluation.relevant : evaluation.onTime;
+        if (partialSkip) {
+          const { rows } = await client.query<OpenWindowRun>(
+            `update open_window_training_run set
+               skip_recorded = true, decision_index = $2, attempt_token = $3
+             where id = $1 returning *`, [run.id, data.decision_index, randomUUID()]);
+          const response = { server_result: null, evaluation, sound,
+            completed: false, reward_granted: null, state: toState(rows[0]!) };
+          await client.query(`insert into open_window_training_decision
+            (run_id, decision_index, attempt_token, scene_id, input, evaluation, response)
+            values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb)`,
+          [run.id, data.decision_index, data.attempt_token, scene.id,
+            JSON.stringify(data.input), JSON.stringify(evaluation), JSON.stringify(response)]);
+          return response;
+        }
+        if (stepKey.startsWith('pace_')) {
+          const { rows } = await client.query<OpenWindowRun>(
+            `update open_window_training_run set
+              decision_index = $2, attempt_token = $3,
+              series_decisions = series_decisions + 1,
+              shots_taken = shots_taken + $4,
+              sound_count = sound_count + $5,
+              active_elapsed_ms = $6, attempt_started_at = null
+             where id = $1 returning *`,
+            [run.id, data.decision_index, randomUUID(), Number(data.input.type === 'shot'),
+              Number(sound), tap - scene.startMs]);
+          const response = { server_result: evaluation.result, evaluation, sound,
+            completed: false, reward_granted: null, state: toState(rows[0]!) };
+          await client.query(`insert into open_window_training_decision
+            (run_id, decision_index, attempt_token, scene_id, input, evaluation, response)
+            values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb)`,
+          [run.id, data.decision_index, data.attempt_token, scene.id,
+            JSON.stringify(data.input), JSON.stringify(evaluation), JSON.stringify(response)]);
+          return response;
+        }
         const nextPhase = run.phase === 'practice' && sound ? 'check' : run.phase;
         const nextAttempt = run.attempt_index + 1;
         const nextSound = run.phase === 'check' ? run.sound_count + Number(sound) : run.sound_count;
         const finishedCheck = run.phase === 'check' && nextAttempt >= 6;
         const completed = finishedCheck && nextSound >= 4;
-        const stageFinish = completed && (['notice_independent', 'anticipate_timing',
-          'decide_sequence', 'pace_three_minutes'] as string[]).includes(stepKey);
-        let rewardGranted: { stars: number; experience: number } | null = null;
-        if (stageFinish) {
-          const completion = await client.query(
-            `insert into open_window_training_completion
-              (user_id, step_key, stage, reward_stars, reward_experience)
-             values ($1, $2, $3, 1, 1)
-             on conflict (user_id, step_key) do nothing returning step_key`,
-            [req.user.id, stepKey, stepKey.split('_')[0]]);
-          if (completion.rows[0]) {
-            const user = await client.query<{ experience: number }>(
-              `update users set xp = xp + 1, experience = experience + 1
-                where id = $1 returning experience`, [req.user.id]);
-            if (user.rows[0]) await observeCareerExperience(client, req.user.id, {
-              eventKey: `open-window:${stepKey}:reward`, occurredAt: new Date(),
-              lifetimeTotal: Number(user.rows[0].experience),
-            });
-            rewardGranted = { stars: 1, experience: 1 };
-          }
-        }
-        if (completed && !stageFinish) await client.query(
-          `insert into open_window_training_completion
-            (user_id, step_key, stage, reward_stars, reward_experience)
-           values ($1, $2, $3, 0, 0) on conflict do nothing`,
-          [req.user.id, stepKey, stepKey.split('_')[0]]);
+        const rewardGranted = completed
+          ? await recordCompletion(client, req.user.id, stepKey) : null;
         const { rows } = await client.query<OpenWindowRun>(
           `update open_window_training_run set
              state = $2, phase = $3, scene_variant = $4, attempt_token = $5,
              attempt_index = $6, decision_index = $7, sound_count = $8,
              practice_decisions = practice_decisions + $9, attempt_started_at = null,
+             skip_recorded = false,
              completed_at = case when $10 then now() else null end
            where id = $1 returning *`,
           [run.id, completed ? 'completed' : 'active',

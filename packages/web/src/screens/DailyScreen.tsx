@@ -101,8 +101,8 @@ import {
 import {
   AdvancedTrainingCatalog,
 } from '../components/AdvancedTrainingCourse.js';
-import { AdvancedTrainingPlayV2 } from '../components/AdvancedTrainingPlayV2.js';
-import type { AdvancedTrainingV2Technique } from '@hockey/game-core';
+import { OpenWindowTrainingPlay } from '../components/OpenWindowTrainingPlay.js';
+import type { OpenWindowStepKey } from '@hockey/game-core';
 import { InitialTrainingPlay } from '../components/InitialTrainingPlay.js';
 import type { ProfileData } from './profileTypes.js';
 import {
@@ -3787,10 +3787,10 @@ function TrainingPlaceholder({
         !courseCatalog.gameplay_lock?.blocked
       ) {
         return (
-          <AdvancedTrainingPlayV2
-            exerciseKey={advancedExercise.key as AdvancedTrainingV2Technique}
+          <OpenWindowTrainingPlay
+            key={advancedExercise.key}
+            stepKey={advancedExercise.key as OpenWindowStepKey}
             onBack={() => navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })}
-            onCourse={() => navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })}
             onCatalogRefresh={() => void refreshCourseCatalog()}
           />
         );
@@ -3817,6 +3817,18 @@ function TrainingPlaceholder({
             />
           </ModeShell>
           {trainingLockModal}
+          {exerciseParam && params.get('play') === '1' && !advancedExercise ? (
+            <AccessibleModal title="Упражнение обновилось"
+              copy="Это упражнение заменено новым курсом. Старые результаты сохранены. Начни новый курс с первого шага."
+              onClose={() => navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })}>
+              <div className="modal-actions">
+                <button type="button" className="modal-primary btn btn--cta"
+                  onClick={() => navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })}>
+                  К новому курсу
+                </button>
+              </div>
+            </AccessibleModal>
+          ) : null}
         </>
       );
     }

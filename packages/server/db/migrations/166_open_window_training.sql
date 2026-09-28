@@ -11,6 +11,10 @@ create table open_window_training_run (
   sound_count int not null default 0 check (sound_count >= 0),
   practice_decisions int not null default 0 check (practice_decisions >= 0),
   full_runs int not null default 0 check (full_runs >= 0),
+  series_decisions int not null default 0 check (series_decisions >= 0),
+  shots_taken int not null default 0 check (shots_taken >= 0),
+  active_elapsed_ms int not null default 0 check (active_elapsed_ms >= 0),
+  skip_recorded boolean not null default false,
   game_core_version int not null,
   bank_version int not null,
   attempt_started_at timestamptz,
@@ -41,4 +45,12 @@ create table open_window_training_completion (
   reward_experience int not null check (reward_experience >= 0),
   completed_at timestamptz not null default now(),
   primary key (user_id, step_key)
+);
+
+create table open_window_training_finish (
+  run_id uuid not null references open_window_training_run(id) on delete cascade,
+  attempt_token uuid not null,
+  response jsonb not null,
+  created_at timestamptz not null default now(),
+  primary key (run_id, attempt_token)
 );

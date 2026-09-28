@@ -46,7 +46,10 @@ for (const step of OPEN_WINDOW_STEPS) {
         role: variant === 0 ? 'demonstration' : variant === 1 ? 'practice' : 'check',
         sessionSeed, shotIndex: 1, goalieId,
         startMs: targetMs - 6_000,
-        endMs: step.key === 'pace_three_minutes' ? targetMs - 6_000 + 180_000 : targetMs + 2_000,
+        endMs: step.key === 'pace_three_minutes' ? targetMs - 6_000 + 180_000
+          : step.key === 'pace_faster' ? targetMs - 6_000 + 60_000
+            : step.key === 'pace_short' ? targetMs - 6_000 + 30_000
+              : targetMs + 2_000,
         targetMs, targetWindow,
         ...(skipSegment ? { skipSegment } : {}),
         bankVersion, gameCoreVersion: GAME_CORE_VERSION,

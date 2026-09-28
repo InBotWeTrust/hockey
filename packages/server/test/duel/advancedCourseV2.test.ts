@@ -86,10 +86,10 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
       values ($1, 'counter-direction', 7, 1, 1)`, [userId]);
     const response = await app.inject({ method: 'GET', url: '/duel/training/course', headers: headers() });
     expect(response.statusCode).toBe(200);
-    expect(response.json().advanced_training).toMatchObject({
+    expect(response.json().legacy_advanced_training).toMatchObject({
       completed_count: 0, total_count: 8,
     });
-    expect(response.json().advanced_training.exercises[0]).toMatchObject({
+    expect(response.json().legacy_advanced_training.exercises[0]).toMatchObject({
       key: 'near_goalie', title: 'Вратарь рядом', state: 'available',
     });
   });
@@ -196,7 +196,9 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
         movement_id: movementId, input: { tapTime }, claimed_result: 'goal' },
     });
     const target = nextGoalTap(state);
-    state = await prepareEpisode(state, target - 1000);
+    // The authored trajectory also scores at target - 1000; use a verified
+    // closed moment to exercise the stale/repeated-time contract.
+    state = await prepareEpisode(state, target - 1500);
     await pool.query(`update advanced_training_v2_run set episode_started_at = now()
       where id = $1`, [state.run_id]);
     expect((await submit(target)).statusCode).toBe(409);
@@ -206,15 +208,15 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
     expect((await submit(target)).statusCode).toBe(409);
     await pool.query(`update advanced_training_v2_run
       set episode_started_at = now() - ($2::int * interval '1 millisecond') where id = $1`,
-    [state.run_id, target - 1000 + 50]);
+    [state.run_id, target - 1500 + 50]);
     expect((await submit(target, 'stale-movement')).statusCode).toBe(409);
-    const wrong = await submit(target - 1000);
+    const wrong = await submit(target - 1500);
     expect(wrong.statusCode).toBe(200);
     expect(wrong.json()).toMatchObject({ success: false,
       state: { side: 'left', side_successes: { left: 0, right: 0 } } });
     state = wrong.json().state;
-    state = await prepareEpisode(state, target - 1000);
-    const repeatedTime = await submit(target - 1000);
+    state = await prepareEpisode(state, target - 1500);
+    const repeatedTime = await submit(target - 1500);
     expect(repeatedTime.statusCode).toBe(200);
     state = repeatedTime.json().state;
     state = await prepareEpisode(state, nextGoalTap(state));

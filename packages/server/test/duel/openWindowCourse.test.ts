@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { buildApp } from '../../src/app.js';
@@ -7,6 +8,7 @@ import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { INITIAL_TRAINING_EXERCISE_KEYS } from '../../src/duel/training/initialCourse.js';
+import { OPEN_WINDOW_STEPS } from '@hockey/game-core';
 import { createTestPool, createTestRedis, getTestUrls, hasIntegrationEnv,
   resetDatabase, resetRedis } from '../helpers/testDb.js';
 
@@ -76,6 +78,14 @@ describe.skipIf(!hasIntegrationEnv)('open-window advanced course', () => {
       key: 'notice_frame', stage: 'notice', state: 'available',
     });
     expect(response.json().steps[1]).toMatchObject({ state: 'locked' });
+    const course = await app.inject({ method: 'GET',
+      url: '/duel/training/course', headers: headers() });
+    expect(course.statusCode).toBe(200);
+    expect(course.json().advanced_training.total_count).toBe(12);
+    expect(course.json().advanced_training.exercises[0]).toMatchObject({
+      key: 'notice_frame', state: 'available',
+    });
+    expect(course.json().exercises).toHaveLength(INITIAL_TRAINING_EXERCISE_KEYS.length);
   });
 
   it('starts and resumes the same first-period scene without changing old completion', async () => {
@@ -94,6 +104,23 @@ describe.skipIf(!hasIntegrationEnv)('open-window advanced course', () => {
     expect(state.statusCode).toBe(200);
     expect(state.json().state.attempt_token).toBe(start.json().state.attempt_token);
     expect(state.json().state.scene.id).toBe(start.json().state.scene.id);
+    const attempt = await app.inject({ method: 'POST',
+      url: '/duel/training/advanced/open-windows/notice_frame/attempt/start',
+      headers: headers(), payload: { run_id: runId } });
+    expect(attempt.statusCode).toBe(200);
+    await pool.query(`update open_window_training_run
+      set attempt_started_at = now() - interval '2 seconds' where id = $1`, [runId]);
+    const resumed = await app.inject({ method: 'GET',
+      url: `/duel/training/advanced/open-windows/notice_frame/state?run_id=${runId}`,
+      headers: headers() });
+    expect(resumed.json().state.active_elapsed_ms).toBeGreaterThanOrEqual(1900);
+    await pool.query(`update open_window_training_run
+      set attempt_started_at = now() - interval '20 seconds' where id = $1`, [runId]);
+    const expired = await app.inject({ method: 'POST', url, headers: headers() });
+    expect(expired.statusCode).toBe(200);
+    expect(expired.json().state.run_id).toBe(runId);
+    expect(expired.json().state.attempt_started_at).toBeNull();
+    expect(expired.json().state.attempt_token).not.toBe(start.json().state.attempt_token);
   });
 
   it('starts a timed attempt and records a shot decision once', async () => {
@@ -168,5 +195,156 @@ describe.skipIf(!hasIntegrationEnv)('open-window advanced course', () => {
     expect(duplicate.json()).toEqual(finalResponse);
     expect((await pool.query(`select count(*)::int as n from open_window_training_completion
       where user_id = $1`, [userId])).rows[0].n).toBe(1);
+  });
+
+  it('keeps pace-series motion continuous across shots and pauses result time', async () => {
+    for (const step of OPEN_WINDOW_STEPS.slice(0, 9)) {
+      await pool.query(`insert into open_window_training_completion
+        (user_id, step_key, stage, reward_stars, reward_experience)
+        values ($1, $2, $3, 0, 0)`, [userId, step.key, step.stage]);
+    }
+    const base = '/duel/training/advanced/open-windows/pace_short';
+    const started = await app.inject({ method: 'POST', url: `${base}/start`, headers: headers() });
+    expect(started.statusCode).toBe(200);
+    const initial = started.json().state;
+    const attempt = await app.inject({ method: 'POST', url: `${base}/attempt/start`,
+      headers: headers(), payload: { run_id: initial.run_id } });
+    const scene = attempt.json().state.scene;
+    await pool.query(`update open_window_training_run
+      set attempt_started_at = now() - ($2::int * interval '1 millisecond') where id = $1`,
+    [initial.run_id, scene.targetMs - scene.startMs]);
+    const decision = await app.inject({ method: 'POST', url: `${base}/decision`,
+      headers: headers(), payload: { run_id: initial.run_id,
+        attempt_token: initial.attempt_token, decision_index: 1, scene_id: scene.id,
+        input: { type: 'shot', tap_time_ms: scene.targetMs } } });
+    expect(decision.statusCode).toBe(200);
+    expect(decision.json().state).toMatchObject({ phase: 'practice',
+      scene: { id: scene.id, sessionSeed: scene.sessionSeed, shotIndex: 2 },
+      attempt_started_at: null, active_elapsed_ms: scene.targetMs - scene.startMs });
+    const resumed = await app.inject({ method: 'POST', url: `${base}/attempt/start`,
+      headers: headers(), payload: { run_id: initial.run_id } });
+    expect(resumed.statusCode).toBe(200);
+    expect(resumed.json().state.attempt_started_at).toBeTruthy();
+    expect(resumed.json().state.scene.id).toBe(scene.id);
+  });
+
+  it('finishes a full three-minute run only after active time, then requires a second check run', async () => {
+    for (const step of OPEN_WINDOW_STEPS.slice(0, 11)) {
+      await pool.query(`insert into open_window_training_completion
+        (user_id, step_key, stage, reward_stars, reward_experience)
+        values ($1, $2, $3, 0, 0)`, [userId, step.key, step.stage]);
+    }
+    const base = '/duel/training/advanced/open-windows/pace_three_minutes';
+    const started = await app.inject({ method: 'POST', url: `${base}/start`, headers: headers() });
+    let state = started.json().state;
+    expect(state.scene.endMs - state.scene.startMs).toBe(180_000);
+    for (let runNumber = 0; runNumber < 3; runNumber += 1) {
+      const attempt = await app.inject({ method: 'POST', url: `${base}/attempt/start`,
+        headers: headers(), payload: { run_id: state.run_id } });
+      expect(attempt.statusCode).toBe(200);
+      state = attempt.json().state;
+      const tooEarly = await app.inject({ method: 'POST', url: `${base}/finish`,
+        headers: headers(), payload: { run_id: state.run_id,
+          attempt_token: state.attempt_token } });
+      expect(tooEarly.statusCode).toBe(409);
+      await pool.query(`update open_window_training_run
+        set attempt_started_at = now() - interval '180 seconds' where id = $1`,
+      [state.run_id]);
+      const finished = await app.inject({ method: 'POST', url: `${base}/finish`,
+        headers: headers(), payload: { run_id: state.run_id,
+          attempt_token: state.attempt_token } });
+      expect(finished.statusCode).toBe(200);
+      const duplicate = await app.inject({ method: 'POST', url: `${base}/finish`,
+        headers: headers(), payload: { run_id: state.run_id,
+          attempt_token: state.attempt_token } });
+      expect(duplicate.statusCode).toBe(200);
+      expect(duplicate.json()).toEqual(finished.json());
+      state = finished.json().state;
+      expect(state.full_runs).toBe(runNumber);
+      if (runNumber === 0) expect(state.phase).toBe('check');
+      if (runNumber === 2) {
+        expect(finished.json().completed).toBe(true);
+        expect(finished.json().reward_granted).toEqual({ stars: 1, experience: 1 });
+      }
+    }
+  });
+
+  it('lets the player skip one closed traversal and then shoot in the same moving scene', async () => {
+    for (const step of OPEN_WINDOW_STEPS.slice(0, 7)) {
+      await pool.query(`insert into open_window_training_completion
+        (user_id, step_key, stage, reward_stars, reward_experience)
+        values ($1, $2, $3, 0, 0)`, [userId, step.key, step.stage]);
+    }
+    const base = '/duel/training/advanced/open-windows/decide_skip';
+    const start = await app.inject({ method: 'POST', url: `${base}/start`, headers: headers() });
+    const initial = start.json().state;
+    const attempt = await app.inject({ method: 'POST', url: `${base}/attempt/start`,
+      headers: headers(), payload: { run_id: initial.run_id } });
+    const scene = attempt.json().state.scene;
+    await pool.query(`update open_window_training_run
+      set attempt_started_at = now() - ($2::int * interval '1 millisecond') where id = $1`,
+    [initial.run_id, scene.skipSegment.endMs - scene.startMs]);
+    const skipped = await app.inject({ method: 'POST', url: `${base}/decision`,
+      headers: headers(), payload: { run_id: initial.run_id,
+        attempt_token: initial.attempt_token, decision_index: 1, scene_id: scene.id,
+        input: { type: 'skip' } } });
+    expect(skipped.statusCode).toBe(200);
+    expect(skipped.json()).toMatchObject({ sound: true, state: {
+      scene: { id: scene.id }, phase: 'practice', skip_recorded: true,
+      attempt_index: 0,
+    } });
+    await pool.query(`update open_window_training_run
+      set attempt_started_at = now() - ($2::int * interval '1 millisecond') where id = $1`,
+    [initial.run_id, scene.targetMs - scene.startMs]);
+    const afterSkip = skipped.json().state;
+    const shot = await app.inject({ method: 'POST', url: `${base}/decision`,
+      headers: headers(), payload: { run_id: initial.run_id,
+        attempt_token: afterSkip.attempt_token, decision_index: 2, scene_id: scene.id,
+        input: { type: 'shot', tap_time_ms: scene.targetMs } } });
+    expect(shot.statusCode).toBe(200);
+    expect(shot.json()).toMatchObject({ sound: true, state: {
+      phase: 'check', skip_recorded: false,
+    } });
+  });
+
+  it('rejects another player and restarts a run with stale simulation rules', async () => {
+    const base = '/duel/training/advanced/open-windows/notice_frame';
+    const started = await app.inject({ method: 'POST', url: `${base}/start`, headers: headers() });
+    const original = started.json().state;
+    const otherToken = await createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET })
+      .issueAccessToken({ sub: randomUUID() });
+    const alien = await app.inject({ method: 'GET',
+      url: `${base}/state?run_id=${original.run_id}`,
+      headers: { authorization: `Bearer ${otherToken}` } });
+    expect(alien.statusCode).toBe(401);
+    await pool.query(`update open_window_training_run
+      set game_core_version = game_core_version - 1 where id = $1`, [original.run_id]);
+    const stale = await app.inject({ method: 'GET',
+      url: `${base}/state?run_id=${original.run_id}`, headers: headers() });
+    expect(stale.statusCode).toBe(409);
+    const restarted = await app.inject({ method: 'POST', url: `${base}/start`, headers: headers() });
+    expect(restarted.statusCode).toBe(200);
+    expect(restarted.json().restarted_due_to_version).toBe(true);
+    expect(restarted.json().state.run_id).not.toBe(original.run_id);
+    expect((await pool.query(`select state from open_window_training_run where id = $1`,
+      [original.run_id])).rows[0].state).toBe('abandoned');
+  });
+
+  it('accepts a human tap when network delivery adds half a second', async () => {
+    const base = '/duel/training/advanced/open-windows/notice_frame';
+    const started = await app.inject({ method: 'POST', url: `${base}/start`, headers: headers() });
+    const initial = started.json().state;
+    const attempt = await app.inject({ method: 'POST', url: `${base}/attempt/start`,
+      headers: headers(), payload: { run_id: initial.run_id } });
+    const scene = attempt.json().state.scene;
+    await pool.query(`update open_window_training_run
+      set attempt_started_at = now() - ($2::int * interval '1 millisecond') where id = $1`,
+    [initial.run_id, scene.targetMs - scene.startMs + 500]);
+    const response = await app.inject({ method: 'POST', url: `${base}/decision`,
+      headers: headers(), payload: { run_id: initial.run_id,
+        attempt_token: initial.attempt_token, decision_index: 1, scene_id: scene.id,
+        input: { type: 'shot', tap_time_ms: scene.targetMs } } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().evaluation.onTime).toBe(true);
   });
 });

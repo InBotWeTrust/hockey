@@ -65,6 +65,11 @@ import type { ClassicTournamentState } from '../api/tournamentClassic.js';
 import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
 import { ApiError } from '../api/apiFetch.js';
 
+vi.mock('../components/OpenWindowTrainingPlay.js', () => ({
+  OpenWindowTrainingPlay: ({ stepKey }: { stepKey: string }) =>
+    <div data-testid="open-window-training-play">Новый курс: {stepKey}</div>,
+}));
+
 describe('demo pace', () => {
   it('uses the approved faster puck speed while leaving character pacing distinct', () => {
     expect(DEMO_SPEED_OVERRIDES.puckSpeed).toBe(1);
@@ -4393,6 +4398,58 @@ describe('DailyScreen', () => {
     expect(
       fetchSpy.mock.calls.some(([url]) => String(url).includes('/advanced/board-side/start')),
     ).toBe(false);
+  });
+
+  it('opens the new open-window course while keeping beginner training unchanged', async () => {
+    const course: InitialTrainingCatalogResponse = {
+      ...initialTrainingCatalog,
+      beginner_training_completed: true,
+      advanced_training: {
+        enabled: true,
+        access: { amateur_completed: true, beginner_training_completed: true, unlocked: true },
+        completed_count: 0, total_count: 12,
+        exercises: [{ key: 'notice_frame', position: 1, title: 'Найди просвет',
+          description: 'Увидь открытый путь.', skill: 'notice', goal: 'Замечай просвет',
+          rewardStars: 0, rewardExperience: 0, state: 'available' }],
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/duel/training/course') ? course
+        : url.includes('/duel/training/state') ? trainingIdleState : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=training&section=advanced&exercise=notice_frame&play=1']);
+    expect(await screen.findByTestId('open-window-training-play')).toHaveTextContent(
+      'Новый курс: notice_frame');
+  });
+
+  it('explains an old advanced exercise link instead of silently showing the new catalog', async () => {
+    const course: InitialTrainingCatalogResponse = {
+      ...initialTrainingCatalog,
+      beginner_training_completed: true,
+      advanced_training: {
+        enabled: true,
+        access: { amateur_completed: true, beginner_training_completed: true, unlocked: true },
+        completed_count: 0, total_count: 12,
+        exercises: [{ key: 'notice_frame', position: 1, title: 'Найди просвет',
+          description: 'Увидь открытый путь.', skill: 'notice', goal: 'Замечай просвет',
+          rewardStars: 0, rewardExperience: 0, state: 'available' }],
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/duel/training/course') ? course
+        : url.includes('/duel/training/state') ? trainingIdleState : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    });
+    renderWith(['/?view=training&section=advanced&exercise=near_goalie&play=1']);
+    expect(await screen.findByRole('dialog', { name: 'Упражнение обновилось' })).toBeInTheDocument();
+    expect(screen.getByText(/Старые результаты сохранены/)).toBeInTheDocument();
   });
 
   it('keeps all three training cards visible while the course catalog is loading', async () => {

@@ -1106,7 +1106,7 @@
     "shotIndex": 1,
     "goalieId": "wall",
     "startMs": 3848,
-    "endMs": 11848,
+    "endMs": 33848,
     "targetMs": 9848,
     "targetWindow": {
       "startMs": 9737,
@@ -1123,7 +1123,7 @@
     "shotIndex": 1,
     "goalieId": "wall",
     "startMs": 456,
-    "endMs": 8456,
+    "endMs": 30456,
     "targetMs": 6456,
     "targetWindow": {
       "startMs": 6303,
@@ -1140,7 +1140,7 @@
     "shotIndex": 1,
     "goalieId": "wall",
     "startMs": 793,
-    "endMs": 8793,
+    "endMs": 30793,
     "targetMs": 6793,
     "targetWindow": {
       "startMs": 6628,
@@ -1157,7 +1157,7 @@
     "shotIndex": 1,
     "goalieId": "wall",
     "startMs": 5188,
-    "endMs": 13188,
+    "endMs": 35188,
     "targetMs": 11188,
     "targetWindow": {
       "startMs": 11091,
@@ -1174,7 +1174,7 @@
     "shotIndex": 1,
     "goalieId": "wall",
     "startMs": 5641,
-    "endMs": 13641,
+    "endMs": 35641,
     "targetMs": 11641,
     "targetWindow": {
       "startMs": 11583,
@@ -1191,7 +1191,7 @@
     "shotIndex": 1,
     "goalieId": "wall",
     "startMs": 1017,
-    "endMs": 9017,
+    "endMs": 31017,
     "targetMs": 7017,
     "targetWindow": {
       "startMs": 6892,
@@ -1208,7 +1208,7 @@
     "shotIndex": 1,
     "goalieId": "wall",
     "startMs": 3946,
-    "endMs": 11946,
+    "endMs": 33946,
     "targetMs": 9946,
     "targetWindow": {
       "startMs": 9872,
@@ -1225,7 +1225,7 @@
     "shotIndex": 1,
     "goalieId": "wall",
     "startMs": 3653,
-    "endMs": 11653,
+    "endMs": 63653,
     "targetMs": 9653,
     "targetWindow": {
       "startMs": 9500,
@@ -1242,7 +1242,7 @@
     "shotIndex": 1,
     "goalieId": "wall",
     "startMs": 1758,
-    "endMs": 9758,
+    "endMs": 61758,
     "targetMs": 7758,
     "targetWindow": {
       "startMs": 7561,
@@ -1259,7 +1259,7 @@
     "shotIndex": 1,
     "goalieId": "wall",
     "startMs": 3959,
-    "endMs": 11959,
+    "endMs": 63959,
     "targetMs": 9959,
     "targetWindow": {
       "startMs": 9826,
@@ -1276,7 +1276,7 @@
     "shotIndex": 1,
     "goalieId": "wall",
     "startMs": 1515,
-    "endMs": 9515,
+    "endMs": 61515,
     "targetMs": 7515,
     "targetWindow": {
       "startMs": 7439,
@@ -1293,7 +1293,7 @@
     "shotIndex": 1,
     "goalieId": "wall",
     "startMs": 3049,
-    "endMs": 11049,
+    "endMs": 63049,
     "targetMs": 9049,
     "targetWindow": {
       "startMs": 9008,
@@ -1310,7 +1310,7 @@
     "shotIndex": 1,
     "goalieId": "wall",
     "startMs": 4850,
-    "endMs": 12850,
+    "endMs": 64850,
     "targetMs": 10850,
     "targetWindow": {
       "startMs": 10696,
@@ -1327,7 +1327,7 @@
     "shotIndex": 1,
     "goalieId": "wall",
     "startMs": 5501,
-    "endMs": 13501,
+    "endMs": 65501,
     "targetMs": 11501,
     "targetWindow": {
       "startMs": 11434,

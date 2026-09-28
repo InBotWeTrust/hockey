@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { AdvancedTrainingV2Technique } from '@hockey/game-core';
+import type { AdvancedTrainingV2Technique, OpenWindowStepKey } from '@hockey/game-core';
 import { Check, ChevronRight, Star, TrendingUp, X } from 'lucide-react';
 import { rewardColor } from '../app/rewardColors.js';
 import { AccessibleModal } from './AccessibleModal.js';
@@ -50,7 +50,7 @@ export function advancedTrainingFeedbackTone(
 }
 
 export interface AdvancedTrainingCatalogExercise {
-  key: AdvancedTrainingExerciseKey | AdvancedTrainingV2Technique;
+  key: AdvancedTrainingExerciseKey | AdvancedTrainingV2Technique | OpenWindowStepKey;
   position: number;
   title: string;
   description: string | null;
