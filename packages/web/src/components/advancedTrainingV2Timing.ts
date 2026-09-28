@@ -1,4 +1,16 @@
-import type { AdvancedTrainingV2Scenario, AdvancedTrainingWindow } from '@hockey/game-core';
+import type { AdvancedTrainingEpisodeProfile, AdvancedTrainingV2Scenario,
+  AdvancedTrainingWindow } from '@hockey/game-core';
+
+export function getAdvancedTrainingEpisodeCue(episode: AdvancedTrainingEpisodeProfile,
+  sceneMs: number, stage: 'practice' | 'assessment'): AdvancedTrainingContinuousCue {
+  const remainingMs = episode.intervalStartMs - sceneMs;
+  const secondsRemaining = remainingMs > 0 && remainingMs <= 4000
+    ? Math.ceil(remainingMs / 1000) as 4 | 3 | 2 | 1 : null;
+  return { secondsRemaining,
+    shootNow: stage === 'practice' && sceneMs >= episode.intervalStartMs &&
+      sceneMs <= episode.intervalEndMs,
+    expired: sceneMs > episode.episodeEndMs };
+}
 
 export const PRACTICE_SHOT_ARM_LEAD_MS = 240;
 export const PRACTICE_SHOT_SLOW_LEAD_MS = 650;

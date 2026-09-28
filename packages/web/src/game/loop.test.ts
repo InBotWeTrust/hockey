@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Ticker } from 'pixi.js';
-import type { GoalieConfig } from '@hockey/game-core';
+import { getAdvancedTrainingEpisode, sampleAdvancedTrainingEpisode,
+  type GoalieConfig } from '@hockey/game-core';
 import { createGameLoop } from './loop.js';
 
 const stationaryCustomGoalie: GoalieConfig = {
@@ -51,6 +52,29 @@ function makeTicker(): TestTicker {
 }
 
 describe('createGameLoop', () => {
+  it('renders the same episode sample that game-core evaluates', () => {
+    const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const episode = getAdvancedTrainingEpisode('near_goalie', 'left');
+    const sample = sampleAdvancedTrainingEpisode(episode, episode.intervalStartMs);
+    const goalUpdate = vi.fn();
+    const goalieUpdate = vi.fn();
+    const playerUpdate = vi.fn();
+    const loop = makeLoop({ getGoalieId: () => 'rookie',
+      getInitialClocks: () => ({ sceneElapsedMs: episode.intervalStartMs,
+        shooterElapsedMs: episode.intervalStartMs }),
+      getEpisodeSample: (ms) => sampleAdvancedTrainingEpisode(episode, ms),
+      goalRenderer: { update: goalUpdate } as never,
+      goalieRenderer: { update: goalieUpdate } as never,
+      playerRenderer: { update: playerUpdate } as never });
+    const ticker = makeTicker();
+    loop.attach(ticker);
+    (ticker.add.mock.calls[0]?.[0] as (ticker: Ticker) => void)(ticker);
+    expect(goalUpdate.mock.calls[0]?.[1] * 0.9).toBeCloseTo(sample.goalOffsetX);
+    expect(goalieUpdate.mock.calls[0]?.[0].position.x).toBeCloseTo(
+      286 + (sample.goalieX - 286) / 0.9);
+    expect(playerUpdate.mock.calls[0]?.[1]).toBeCloseTo(sample.playerX);
+    nowSpy.mockRestore();
+  });
   it('slows time continuously and stops exactly at a demonstration frame', () => {
     const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1000);
     const onClockTick = vi.fn();

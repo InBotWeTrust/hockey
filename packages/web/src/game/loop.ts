@@ -9,8 +9,12 @@ import {
   type GoalState,
   type SessionPhaseOffsets,
   type GoalieSimulator,
+  type AdvancedTrainingEpisodeSample,
   SHOOTER_CENTER_X,
   SHOOTER_AMPLITUDE,
+  PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
+  PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
+  PERSPECTIVE_COURT_VISUAL_X_CENTER,
   type DuelPlayerCondition,
 } from '@hockey/game-core';
 import type { Scale } from './coords.js';
@@ -57,6 +61,7 @@ export interface GameLoopOpts {
   onClockTick?: (sceneElapsedMs: number, shooterElapsedMs: number) => void;
   getMaxSceneTimeMs?: () => number | undefined;
   getTimeScale?: (sceneElapsedMs: number) => number;
+  getEpisodeSample?: (sceneElapsedMs: number) => AdvancedTrainingEpisodeSample | null;
 }
 
 export interface GameLoop {
@@ -277,6 +282,7 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       }
       frozenConditionShooterX = null;
     }
+    const episodeSample = opts.getEpisodeSample?.(tScene) ?? null;
     const goalState: GoalState = simulateGoal(activeCfg, tScene, o.goal);
     const goalieSeed = opts.getSeed();
     const goalieShotIndex = opts.getShotIndex();
@@ -291,12 +297,13 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     }
     const goalieState: GoalieState = goalieSimulator(tScene, o.goalie);
     const shiftedShooterTWithOffset = rawShooterTWithOffset + shooterTimeShift;
-    const sx = conditionPausesShooter
+    const ordinaryShooterX = conditionPausesShooter
       ? (frozenConditionShooterX ??
         shooterX(shiftedShooterTWithOffset, effectiveShooterFreq) +
           (condition?.shooterXOffsetPx ?? 0))
       : shooterX(shiftedShooterTWithOffset, effectiveShooterFreq) +
         (condition?.shooterXOffsetPx ?? 0);
+    const sx = episodeSample?.playerX ?? ordinaryShooterX;
     lastRenderedShooterX = sx;
     if (!conditionPausesShooter) {
       lastShooterFreq = effectiveShooterFreq;
@@ -304,13 +311,23 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     }
     const scale = opts.getScale();
 
-    opts.goalRenderer.update(scale, goalState.offsetX);
-    opts.goalieRenderer.update(goalieState, scale);
+    const goalOffsetX = episodeSample
+      ? episodeSample.goalOffsetX / PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE
+      : goalState.offsetX;
+    const renderedGoalieState = episodeSample ? {
+      ...goalieState,
+      position: { ...goalieState.position,
+        x: PERSPECTIVE_COURT_VISUAL_X_CENTER +
+          (episodeSample.goalieX - PERSPECTIVE_COURT_VISUAL_X_CENTER) /
+          PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE },
+    } : goalieState;
+    opts.goalRenderer.update(scale, goalOffsetX);
+    opts.goalieRenderer.update(renderedGoalieState, scale);
     opts.playerRenderer.update(scale, sx, undefined, {
       stumbling: condition?.stumbleActive === true,
       resting: condition?.status === 'exhausted_stop',
     });
-    opts.hitboxRenderer?.update(scale, goalState.offsetX, goalieState);
+    opts.hitboxRenderer?.update(scale, goalOffsetX, renderedGoalieState);
 
     if (opts.puckRenderer.isHeld()) {
       opts.puckRenderer.update(now, scale);

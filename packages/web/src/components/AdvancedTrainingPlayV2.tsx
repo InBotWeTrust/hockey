@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GOAL, GOALIE_Y, GOAL_OPENING, PUCK_START, RINK,
-  PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE, PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET,
-  PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE, PERSPECTIVE_COURT_GOAL_VISUAL_Y_OFFSET,
+  PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET, PERSPECTIVE_COURT_GOAL_VISUAL_Y_OFFSET,
   PERSPECTIVE_COURT_VISUAL_X_CENTER, PERSPECTIVE_COURT_VISUAL_Y_OFFSET,
   PERSPECTIVE_COURT_VISUAL_Y_SCALE,
-  evaluateAdvancedTrainingV2Shot, getAdvancedTrainingV2Scenario, getGoalie,
-  findNextAdvancedTrainingWindow, getAdvancedTrainingContinuousSeed, deriveShotSeed,
-  type AdvancedTrainingWindow,
-  getSessionPhaseOffsets, simulateGoal, simulateGoalie, simulateShooter,
-  resolvePerspectiveCourtShot, type AdvancedTrainingV2Scenario,
+  getAdvancedTrainingV2Scenario, getGoalie,
+  getAdvancedTrainingEpisode, sampleAdvancedTrainingEpisode,
+  evaluateAdvancedTrainingEpisodeShot, validateAdvancedTrainingEpisode,
+  getAdvancedTrainingContinuousSeed, deriveShotSeed,
+  type AdvancedTrainingV2Scenario,
   type AdvancedTrainingV2Side, type AdvancedTrainingV2Technique } from '@hockey/game-core';
 import { startAdvancedTrainingV2Exercise, type AdvancedTrainingV2RunState } from '../api/advancedTraining.js';
-import { startAdvancedTrainingV2Assessment, submitAdvancedTrainingV2Shot,
+import { startAdvancedTrainingV2Assessment, startAdvancedTrainingV2Episode, submitAdvancedTrainingV2Shot,
   type AdvancedTrainingV2ShotResponse } from '../api/advancedTraining.js';
 import { PlayView, TRAINING_AMATEUR_GOALIE_OPTIONS, TRAINING_COURSE_GOAL_OPTIONS,
   TRAINING_STREET_PLAYER_OPTIONS, type PlayShotResolver } from '../game/PlayView.js';
@@ -20,11 +19,10 @@ import { AccessibleModal } from './AccessibleModal.js';
 import { ADVANCED_TRAINING_V2_TITLES, getAdvancedTrainingV2Explanation,
   getAdvancedTrainingV2FailureExplanation, getAdvancedTrainingV2StopHint,
   type TrainingMotionDirection } from './AdvancedTrainingV2Explanation.js';
-import { PRACTICE_SHOT_ARM_LEAD_MS, PRACTICE_SHOT_SLOW_LEAD_MS,
-  PRACTICE_SHOT_SLOW_SCALE, getAdvancedTrainingContinuousCue } from './advancedTrainingV2Timing.js';
+import { getAdvancedTrainingEpisodeCue } from './advancedTrainingV2Timing.js';
 
 type Phase = 'intro' | 'demo' | 'explanation' | 'practice-intro' | 'play' |
-  'side-transition' | 'practice-finished' | 'completed';
+  'practice-finished' | 'completed' | 'timeout' | 'hint' | 'resetting';
 
 type DemoDirectionMarker = { name: string; x: number; y: number;
   direction: TrainingMotionDirection; color: string };
@@ -35,47 +33,31 @@ type DemoFuturePreview = { goalX: number; goalY: number; goalieX: number; goalie
 function getContinuousDemoScenario(technique: AdvancedTrainingV2Technique,
   side: AdvancedTrainingV2Side): AdvancedTrainingV2Scenario {
   const base = getAdvancedTrainingV2Scenario(technique, side, 'demonstration', 0);
+  const episode = getAdvancedTrainingEpisode(technique, side);
+  validateAdvancedTrainingEpisode(episode);
   const sessionSeed = getAdvancedTrainingContinuousSeed(technique);
-  const movement = { runSeed: sessionSeed, technique, side,
-    speeds: base.speeds, goalieId: base.goalieId };
-  const window = findNextAdvancedTrainingWindow(movement, 0);
-  if (!window) throw new Error('No valid demonstration moment on the exercise trajectory');
   return { ...base, sessionSeed, shotSeed: deriveShotSeed(sessionSeed, 1, 1),
-    sceneStartMs: Math.max(0, window.targetMs - 4 * 500 / base.speeds.shooterFrequency),
-    targetTapTimeMs: window.targetMs };
+    sceneStartMs: episode.sceneStartMs,
+    targetTapTimeMs: episode.intervalStartMs + 250 };
 }
 
 function getDemoFuturePreview(scenario: AdvancedTrainingV2Scenario): DemoFuturePreview {
-  const offsets = getSessionPhaseOffsets(scenario.sessionSeed);
-  const goalie = getGoalie(scenario.goalieId);
-  const goalFlightMs = (PUCK_START.y - GOAL_OPENING.y) / scenario.speeds.puckSpeedPerMs;
-  const goalieFlightMs = (PUCK_START.y - GOALIE_Y) / scenario.speeds.puckSpeedPerMs;
+  const episode = getAdvancedTrainingEpisode(scenario.technique, scenario.side);
+  const goalFlightMs = (PUCK_START.y - GOAL_OPENING.y) / episode.puckSpeedPerMs;
+  const goalieFlightMs = (PUCK_START.y - GOALIE_Y) / episode.puckSpeedPerMs;
   const goalAt = scenario.targetTapTimeMs + goalFlightMs;
   const goalieAt = scenario.targetTapTimeMs + goalieFlightMs;
-  const goalSettings = { ...goalie, goalFrequency: scenario.speeds.goalFrequency };
-  const goalieSettings = { ...goalie, frequency: scenario.speeds.goalieFrequency };
-  const goalPosition = (time: number) => simulateGoal(goalSettings, time, offsets.goal).offsetX;
-  const goaliePosition = (time: number) => simulateGoalie(goalieSettings,
-    scenario.shotSeed, scenario.shotIndex, time, offsets.goalie).position.x;
-  const motion = (before: number, after: number): TrainingMotionDirection =>
-    after > before ? 'right' : after < before ? 'left' : 'still';
-  const goalOffset = goalPosition(goalAt);
-  const goalieState = simulateGoalie({ ...goalie, frequency: scenario.speeds.goalieFrequency },
-    scenario.shotSeed, scenario.shotIndex,
-    goalieAt, offsets.goalie);
-  const goalieCenterX = TRAINING_AMATEUR_GOALIE_OPTIONS.visualXCenter ??
-    PERSPECTIVE_COURT_VISUAL_X_CENTER;
+  const goal = sampleAdvancedTrainingEpisode(episode, goalAt);
+  const goalie = sampleAdvancedTrainingEpisode(episode, goalieAt);
   return {
-    goalX: GOAL.x + GOAL.width / 2 + goalOffset *
-      (TRAINING_COURSE_GOAL_OPTIONS.visualOffsetXScale ?? 1),
+    goalX: PERSPECTIVE_COURT_VISUAL_X_CENTER + goal.goalOffsetX,
     goalY: (GOAL.y + GOAL.height) * (TRAINING_COURSE_GOAL_OPTIONS.visualYScale ?? 1) +
       (TRAINING_COURSE_GOAL_OPTIONS.visualYOffset ?? 0),
-    goalieX: goalieCenterX + (goalieState.position.x - goalieCenterX) *
-      (TRAINING_AMATEUR_GOALIE_OPTIONS.visualXScale ?? 1),
+    goalieX: goalie.goalieX,
     goalieY: GOALIE_Y * (TRAINING_AMATEUR_GOALIE_OPTIONS.visualYScale ?? 1) +
       (TRAINING_AMATEUR_GOALIE_OPTIONS.visualYOffset ?? 0),
-    goalDirection: motion(goalPosition(goalAt - 5), goalPosition(goalAt + 5)),
-    goalieDirection: motion(goaliePosition(goalieAt - 5), goaliePosition(goalieAt + 5)),
+    goalDirection: goal.goalDirection < 0 ? 'left' : 'right',
+    goalieDirection: goalie.goalieDirection < 0 ? 'left' : 'right',
   };
 }
 
@@ -103,38 +85,23 @@ function DemoFutureEntities({ preview }: { preview: DemoFuturePreview }): JSX.El
 
 function getDemoTapDirections(scenario: AdvancedTrainingV2Scenario): readonly DemoDirectionMarker[] {
   const t = scenario.targetTapTimeMs;
-  const offsets = getSessionPhaseOffsets(scenario.sessionSeed);
-  const goalie = { ...getGoalie(scenario.goalieId), frequency: scenario.speeds.goalieFrequency,
-    goalFrequency: scenario.speeds.goalFrequency };
-  const direction = (before: number, after: number): TrainingMotionDirection =>
-    after > before ? 'right' : after < before ? 'left' : 'still';
-  const playerBefore = simulateShooter(t - 5 + offsets.shooter, scenario.speeds.shooterFrequency).x;
-  const playerNow = simulateShooter(t + offsets.shooter, scenario.speeds.shooterFrequency).x;
-  const playerAfter = simulateShooter(t + 5 + offsets.shooter, scenario.speeds.shooterFrequency).x;
-  const goalBefore = simulateGoal(goalie, t - 5, offsets.goal).offsetX;
-  const goalNow = simulateGoal(goalie, t, offsets.goal).offsetX;
-  const goalAfter = simulateGoal(goalie, t + 5, offsets.goal).offsetX;
-  const keeperBefore = simulateGoalie(goalie, scenario.shotSeed, scenario.shotIndex,
-    t - 5, offsets.goalie).position.x;
-  const keeperNow = simulateGoalie(goalie, scenario.shotSeed, scenario.shotIndex,
-    t, offsets.goalie).position.x;
-  const keeperAfter = simulateGoalie(goalie, scenario.shotSeed, scenario.shotIndex,
-    t + 5, offsets.goalie).position.x;
+  const frame = sampleAdvancedTrainingEpisode(
+    getAdvancedTrainingEpisode(scenario.technique, scenario.side), t);
+  const direction = (value: -1 | 1): TrainingMotionDirection => value < 0 ? 'left' : 'right';
   return [
-    { name: 'Игрок', x: playerNow,
+    { name: 'Игрок', x: frame.playerX,
       y: PUCK_START.y * PERSPECTIVE_COURT_VISUAL_Y_SCALE + PERSPECTIVE_COURT_VISUAL_Y_OFFSET,
-      direction: direction(playerBefore, playerAfter), color: '#3b82f6' },
+      direction: direction(frame.playerDirection), color: '#3b82f6' },
     { name: 'Ворота',
-      x: PERSPECTIVE_COURT_VISUAL_X_CENTER + goalNow * PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
+      x: PERSPECTIVE_COURT_VISUAL_X_CENTER + frame.goalOffsetX,
       y: (GOAL.y + GOAL.height) * PERSPECTIVE_COURT_VISUAL_Y_SCALE +
         PERSPECTIVE_COURT_GOAL_VISUAL_Y_OFFSET - 70,
-      direction: direction(goalBefore, goalAfter), color: '#22c55e' },
+      direction: direction(frame.goalDirection), color: '#22c55e' },
     { name: 'Вратарь',
-      x: PERSPECTIVE_COURT_VISUAL_X_CENTER +
-        (keeperNow - PERSPECTIVE_COURT_VISUAL_X_CENTER) * PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
+      x: frame.goalieX,
       y: GOALIE_Y * PERSPECTIVE_COURT_VISUAL_Y_SCALE +
         PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET + 66,
-      direction: direction(keeperBefore, keeperAfter), color: '#ef4444' },
+      direction: direction(frame.goalieDirection), color: '#ef4444' },
   ];
 }
 
@@ -194,42 +161,53 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
   const [run, setRun] = useState<AdvancedTrainingV2RunState | null>(null);
   const [phase, setPhase] = useState<Phase>('intro');
   const [demoSide, setDemoSide] = useState<AdvancedTrainingV2Side>('left');
+  const [displaySide, setDisplaySide] = useState<AdvancedTrainingV2Side>('left');
   const [demoEpoch, setDemoEpoch] = useState(0);
   const [demoReady, setDemoReady] = useState(false);
   const [demoShotTrigger, setDemoShotTrigger] = useState(0);
   const [demoFired, setDemoFired] = useState(false);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [restartNotice, setRestartNotice] = useState(false);
   const [coachFeedback, setCoachFeedback] = useState<string | null>(null);
   const [resumeHeldResultKey, setResumeHeldResultKey] = useState(0);
-  const [feedbackRevision, setFeedbackRevision] = useState(0);
-  const [cueLabel, setCueLabel] = useState<string | null>(null);
-  const [opportunity, setOpportunity] = useState<AdvancedTrainingWindow | null>(null);
+  const [cueLabel, setCueLabel] = useState<string | null>('Ожидаем\nмомент');
+  const [replayEpoch, setReplayEpoch] = useState(0);
+  const [nextPhase, setNextPhase] = useState<Phase>('play');
   const [reward, setReward] = useState<{ stars: number; experience: number } | null>(null);
-  const demoEvaluationRef = useRef<ReturnType<typeof evaluateAdvancedTrainingV2Shot> | null>(null);
+  const demoEvaluationRef = useRef<ReturnType<typeof evaluateAdvancedTrainingEpisodeShot> | null>(null);
   const pendingOutcomeRef = useRef<AdvancedTrainingV2ShotResponse | null>(null);
+  const submittedSideRef = useRef<AdvancedTrainingV2Side | null>(null);
   const shotPendingRef = useRef(false);
   const timeoutPendingRef = useRef(false);
   const runRef = useRef<AdvancedTrainingV2RunState | null>(null);
   runRef.current = run;
+  const applyState = useCallback((state: AdvancedTrainingV2RunState) => {
+    if (runRef.current && state.run_id === runRef.current.run_id &&
+      state.shot_index < runRef.current.shot_index) return;
+    runRef.current = state;
+    setRun(state);
+  }, []);
+  const beginEpisode = useCallback(async (state: AdvancedTrainingV2RunState) => {
+    setPhase('resetting');
+    try {
+      const started = await startAdvancedTrainingV2Episode(exerciseKey,
+        state.run_id, state.movement_id);
+      if (runRef.current?.run_id !== state.run_id) return;
+      applyState(started.state);
+      window.requestAnimationFrame(() => {
+        setDisplaySide(started.state.side);
+        setReplayEpoch((value) => value + 1);
+        setResumeHeldResultKey((value) => value + 1);
+        setCueLabel('Ожидаем\nмомент');
+        window.requestAnimationFrame(() => setPhase('play'));
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Не удалось начать попытку');
+    }
+  }, [applyState, exerciseKey]);
   const startRequestRef = useRef<{ key: AdvancedTrainingV2Technique;
     request: ReturnType<typeof startAdvancedTrainingV2Exercise> } | null>(null);
-
-  useEffect(() => {
-    if (!run) return;
-    const next = findNextAdvancedTrainingWindow(run.movement, run.resume_scene_ms);
-    setOpportunity(next);
-    if (!next) setError('Не удалось найти следующий момент для броска. Прогресс сохранён.');
-  }, [run?.shot_index, run?.side, run?.stage, run?.run_id]);
-
-  useEffect(() => {
-    if (feedback !== 'Момент прошёл. Попробуй ещё раз.' &&
-      !feedback?.startsWith('Мимо:') && !feedback?.startsWith('Сэйв:')) return;
-    const timer = window.setTimeout(() => setFeedback((current) =>
-      current === feedback ? null : current), 1500);
-    return () => window.clearTimeout(timer);
-  }, [feedback, feedbackRevision]);
 
   useEffect(() => {
     let active = true;
@@ -237,24 +215,33 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
       startRequestRef.current = { key: exerciseKey,
         request: startAdvancedTrainingV2Exercise(exerciseKey) };
     }
-    void startRequestRef.current.request.then(({ state }) => {
+    void startRequestRef.current.request.then(({ state, restarted_due_to_version }) => {
       if (!active) return;
-      setRun(state);
-      setPhase(state.stage === 'practice' && state.side_successes.left >= 1 &&
-        state.side_successes.right >= 1 ? 'practice-finished' :
-        state.shot_index > 0 || state.stage === 'assessment' ? 'play' : 'intro');
+      applyState(state);
+      setDisplaySide(state.side);
+      setRestartNotice(Boolean(restarted_due_to_version));
+      if (state.stage === 'practice' && state.side_successes.left >= 1 &&
+        state.side_successes.right >= 1) setPhase('practice-finished');
+      else if (state.shot_index > 0 || state.stage === 'assessment') void beginEpisode(state);
+      else setPhase('intro');
     }).catch((cause: unknown) => {
       if (active) setError(cause instanceof Error ? cause.message : 'Не удалось начать упражнение');
     });
     return () => { active = false; };
-  }, [exerciseKey]);
+  }, [applyState, beginEpisode, exerciseKey]);
 
   const demoScenario = useMemo(() => getContinuousDemoScenario(exerciseKey, demoSide),
     [exerciseKey, demoSide]);
+  const demoEpisode = useMemo(() => getAdvancedTrainingEpisode(exerciseKey, demoSide),
+    [exerciseKey, demoSide]);
+  const playEpisode = useMemo(() => getAdvancedTrainingEpisode(exerciseKey, displaySide),
+    [exerciseKey, displaySide]);
+  const episode = phase === 'demo' || phase === 'explanation' ? demoEpisode :
+    playEpisode;
   const scenario: AdvancedTrainingV2Scenario | null = phase === 'demo' || phase === 'explanation'
     ? demoScenario : run?.scenario ?? null;
-  const validatedDemo = useMemo(() => evaluateAdvancedTrainingV2Shot(demoScenario,
-    { tapTime: demoScenario.targetTapTimeMs }), [demoScenario]);
+  const validatedDemo = useMemo(() => evaluateAdvancedTrainingEpisodeShot(demoEpisode,
+    demoScenario.targetTapTimeMs), [demoEpisode, demoScenario]);
   const demoDirections = useMemo(() => getDemoTapDirections(demoScenario), [demoScenario]);
   const demoFuturePreview = useMemo(() => getDemoFuturePreview(demoScenario), [demoScenario]);
   const demoStopHint = getAdvancedTrainingV2StopHint(demoScenario, {
@@ -266,17 +253,16 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
     shooterFreq: scenario.speeds.shooterFrequency,
     goalieFreq: scenario.speeds.goalieFrequency,
     goalFreq: scenario.speeds.goalFrequency,
-    puckSpeed: scenario.speeds.puckSpeedPerMs,
+    puckSpeed: episode.puckSpeedPerMs,
   } : undefined;
 
   const shotResolver: PlayShotResolver = useCallback((context) =>
-    resolvePerspectiveCourtShot(context.input, context.goalieConfig, context.seed,
-      context.shotIndex, context.stickEffects, context.phaseOffsets), []);
+    evaluateAdvancedTrainingEpisodeShot(episode, context.input.tapTime).result, [episode]);
 
   const startDemonstration = useCallback((side: AdvancedTrainingV2Side) => {
     const selected = getContinuousDemoScenario(exerciseKey, side);
-    const validation = evaluateAdvancedTrainingV2Shot(selected,
-      { tapTime: selected.targetTapTimeMs });
+    const validation = evaluateAdvancedTrainingEpisodeShot(
+      getAdvancedTrainingEpisode(exerciseKey, side), selected.targetTapTimeMs);
     if (!validation.success || validation.result.type !== 'goal') {
       setError('Сценарий показа не прошёл проверку движка. Упражнение нельзя запустить.');
       return;
@@ -309,26 +295,35 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
     if (!outcome || (runRef.current?.shot_index ?? 0) > outcome.state.shot_index) {
       return;
     }
-    if (outcome.server_result === 'goal' && !outcome.success) {
-      setCoachFeedback(getAdvancedTrainingV2FailureExplanation(run!.scenario,
-        outcome.actual_technique, outcome.measurements));
-      setCueLabel(null);
-      return;
-    }
-    if (outcome.server_result === 'save') setFeedback('Сэйв: вратарь перекрыл бросок.');
-    if (outcome.server_result === 'miss') setFeedback('Мимо: шайба не попала в ворота.');
-    setFeedbackRevision((value) => value + 1);
     if (outcome.completed) {
       setReward(outcome.reward_granted);
       onCatalogRefresh(exerciseKey);
-      setPhase('completed');
+      setNextPhase('completed');
     } else if (outcome.stage_finished && outcome.state.stage === 'practice') {
-      setPhase('practice-finished');
-    } else if (run?.side !== outcome.state.side) {
-      setPhase('side-transition');
+      setNextPhase('practice-finished');
     } else {
-      setResumeHeldResultKey((value) => value + 1);
+      setNextPhase('play');
     }
+    let hint: string;
+    if (outcome.server_result === 'goal' && !outcome.success) {
+      hint = getAdvancedTrainingV2FailureExplanation(run!.scenario,
+        outcome.actual_technique, outcome.measurements);
+    } else if (outcome.success) {
+      hint = outcome.completed
+        ? '– Получился нужный гол. Ты выполнил обе стороны и прошёл упражнение.\n\nПосмотри итог и награду.'
+        : outcome.stage_finished
+          ? '– Получился нужный гол. Практика завершена с обеих сторон.\n\nТеперь переходи к зачёту.'
+          : submittedSideRef.current !== outcome.state.side
+        ? `– Получился нужный гол. Эта сторона пройдена.\n\nТеперь попробуй ${outcome.state.side === 'left' ? 'слева' : 'справа'} от ворот.`
+        : `– Получился нужный гол. Ты выбрал правильный момент.\n\nПовтори бросок в следующем эпизоде.`;
+    } else if (outcome.server_result === 'save') {
+      hint = '– Получился сэйв: шайба пришла туда, где стоял вратарь.\n\nДождись свободного прохода между вратарём и штангой.';
+    } else {
+      hint = '– Шайба прошла мимо ворот: в момент прилёта створ был в стороне.\n\nДождись, когда игрок окажется напротив открытой части ворот.';
+    }
+    setCoachFeedback(hint);
+    setCueLabel(null);
+    setPhase('hint');
   }, [demoScenario, exerciseKey, onCatalogRefresh, phase, run?.side, validatedDemo]);
 
   const onSceneClock = useCallback((sceneMs: number) => {
@@ -336,31 +331,22 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
       if (sceneMs >= demoScenario.targetTapTimeMs && !demoFired) setDemoReady(true);
       return;
     }
-    if (phase !== 'play' || !run || !opportunity || coachFeedback || shotPendingRef.current) return;
-    const cue = getAdvancedTrainingContinuousCue(opportunity, sceneMs,
-      run.movement.speeds.shooterFrequency, run.stage);
+    if (phase !== 'play' || !run || shotPendingRef.current) return;
+    const cue = getAdvancedTrainingEpisodeCue(episode, sceneMs, run.stage);
     setCueLabel(cue.shootNow ? 'Бросай'
-      : cue.secondsRemaining === null ? null : String(cue.secondsRemaining));
+      : cue.secondsRemaining === null
+        ? run.stage === 'practice' || sceneMs < episode.intervalStartMs - 4000
+          ? 'Ожидаем\nмомент' : null
+        : String(cue.secondsRemaining));
     if (!cue.expired) {
       timeoutPendingRef.current = false;
       return;
     }
     if (shotPendingRef.current || timeoutPendingRef.current) return;
     timeoutPendingRef.current = true;
-    setFeedback('Момент прошёл. Попробуй ещё раз.');
-    setFeedbackRevision((value) => value + 1);
     setCueLabel(null);
-    const next = findNextAdvancedTrainingWindow(run.movement, opportunity.endMs + 1);
-    setOpportunity(next);
-    if (!next) setError('Не удалось найти следующий момент для броска. Прогресс сохранён.');
-  }, [coachFeedback, demoFired, demoScenario.targetTapTimeMs, opportunity, phase, run]);
-
-  const applyState = useCallback((state: AdvancedTrainingV2RunState) => {
-    if (runRef.current && state.run_id === runRef.current.run_id &&
-      state.shot_index < runRef.current.shot_index) return;
-    runRef.current = state;
-    setRun(state);
-  }, []);
+    setPhase('timeout');
+  }, [demoFired, demoScenario.targetTapTimeMs, episode, phase, run]);
 
   if (!run || !scenario || !speedOverrides) {
     return <main className="screen initial-training-play-state" role={error ? 'alert' : undefined}>
@@ -370,8 +356,9 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
   }
 
   const isDemo = phase === 'demo' || phase === 'explanation';
-  const active = phase === 'demo' || phase === 'play';
-  const showModal = !active && phase !== 'explanation';
+  const active = phase === 'demo' || phase === 'explanation' || phase === 'play' || phase === 'timeout' ||
+    phase === 'hint' || phase === 'resetting';
+  const showModal = !active;
 
   return <>
     <PlayView<AdvancedTrainingV2RunState>
@@ -395,24 +382,19 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
       timer={`${run.side_successes.left + run.side_successes.right}/${run.stage === 'practice' ? 2 : 4}`}
       timerLabel={run.stage === 'practice' ? 'ПРАКТИКА' : 'ЗАЧЁТ'}
       shotButtonLabel="БРОСОК"
-      primaryActionBlocked={isDemo || Boolean(coachFeedback)}
+      primaryActionBlocked={phase !== 'play' || Boolean(coachFeedback)}
       hitboxesVisible={false}
       maxSceneTimeMs={phase === 'demo' && !demoFired ? demoScenario.targetTapTimeMs : undefined}
       shotTriggerKey={demoShotTrigger}
-      sceneTimeScale={phase === 'play' && run.stage === 'practice'
-        ? (sceneMs) => opportunity && sceneMs >= opportunity.startMs - PRACTICE_SHOT_SLOW_LEAD_MS &&
-          sceneMs <= opportunity.endMs + PRACTICE_SHOT_SLOW_LEAD_MS
-          ? PRACTICE_SHOT_SLOW_SCALE : 1
-        : undefined}
-      practiceShotWindow={phase === 'play' && run.stage === 'practice' && opportunity
-        ? { armStartMs: opportunity.startMs - PRACTICE_SHOT_ARM_LEAD_MS,
-          targetMs: opportunity.targetMs, endMs: opportunity.endMs }
-        : undefined}
+      sceneTimeScale={phase === 'explanation' || phase === 'timeout' || phase === 'hint' || phase === 'resetting'
+        ? () => 0 : undefined}
+      episodeSampler={(sceneMs) => sampleAdvancedTrainingEpisode(episode, sceneMs)}
       backLabel="К упражнениям"
       optimisticAddShot={() => undefined}
       submitShot={async ({ input, claimedResult }) => {
         if (isDemo) return { serverResult: claimedResult, state: run, isCurrent: () => true };
         shotPendingRef.current = true;
+        submittedSideRef.current = run.side;
         setCueLabel(null);
         try {
           const response = await submitAdvancedTrainingV2Shot(exerciseKey, {
@@ -443,12 +425,12 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
       goalieOptions={TRAINING_AMATEUR_GOALIE_OPTIONS}
       shotResolver={shotResolver}
       resultCopy={{ goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' }}
-      statusNotice={error ?? feedback ?? (isDemo
+      statusNotice={error ?? (isDemo
         ? exerciseKey === 'near_goalie'
           ? `Ситуация "Вратарь рядом"\nВратарь ${demoSide === 'left' ? 'слева' : 'справа'} от ворот`
           : `Ситуация "${ADVANCED_TRAINING_V2_TITLES[exerciseKey]}"\nПоказ ${demoSide === 'left' ? 'слева' : 'справа'}`
-        : practiceSideNotice(exerciseKey, run.side))}
-      statusNoticeTone={error ? 'error' : feedback ? 'warning' : undefined}
+        : practiceSideNotice(exerciseKey, displaySide))}
+      statusNoticeTone={error ? 'error' : undefined}
       statusNoticeUnderScoreboard
       overlayControlsTop={phase === 'demo' && demoReady && !demoFired || coachFeedback
         ? '49%' : phase === 'play' ? '53%' : undefined}
@@ -456,6 +438,8 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
         Boolean(coachFeedback) || phase === 'play'}
       rinkOverlay={phase === 'demo' && demoReady && !demoFired
         ? <DemoDirectionOverlay markers={demoDirections} preview={demoFuturePreview} /> : undefined}
+      rinkCover={phase === 'resetting' ? <div className="advanced-training-v2-reset-cover"
+        aria-label="Подготовка следующей попытки" /> : undefined}
       rinkUnderlay={phase === 'demo' && demoReady && !demoFired
         ? <DemoFutureEntities preview={demoFuturePreview} /> : undefined}
       overlayControls={phase === 'demo' && demoReady && !demoFired
@@ -489,30 +473,32 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
             </div>
             <button type="button" className="btn btn--cta" onClick={() => {
               setCoachFeedback(null);
-              setResumeHeldResultKey((value) => value + 1);
+              if (nextPhase !== 'play') {
+                setPhase(nextPhase);
+                return;
+              }
+              void beginEpisode(runRef.current ?? run);
             }}>Понятно</button>
           </div>
-        : phase === 'play'
-          ? <div className={`game-scoreboard advanced-training-v2-cue${cueLabel === null
+        : phase === 'play' && cueLabel !== null
+          ? <div className={`game-scoreboard advanced-training-v2-cue${cueLabel === 'Ожидаем\nмомент'
             ? ' advanced-training-v2-cue--waiting' : ''}`} role="status"
-            aria-live="polite">{cueLabel ?? 'Ожидаем\nмомент'}</div>
+            aria-live="polite">{cueLabel}</div>
           : undefined}
       onSceneClock={onSceneClock}
-      clockRebaseKey={isDemo ? `${scenario.id}:${demoEpoch}` : `${run.run_id}:continuous`}
-      initialSceneElapsedMs={isDemo ? scenario.sceneStartMs : run.resume_scene_ms}
-      initialShooterElapsedMs={isDemo ? scenario.sceneStartMs : run.resume_scene_ms}
+      clockRebaseKey={isDemo ? `${scenario.id}:${demoEpoch}` : `${run.run_id}:${replayEpoch}`}
+      initialSceneElapsedMs={isDemo ? scenario.sceneStartMs : 0}
+      initialShooterElapsedMs={isDemo ? scenario.sceneStartMs : 0}
       onShotResolved={isDemo ? ({ input }) => {
-        demoEvaluationRef.current = evaluateAdvancedTrainingV2Shot(demoScenario, {
-          tapTime: input.tapTime,
-          ...(input.shooterTapTime === undefined ? {} : { shooterTapTime: input.shooterTapTime }),
-        });
+        demoEvaluationRef.current = evaluateAdvancedTrainingEpisodeShot(demoEpisode, input.tapTime);
         return null;
       } : undefined}
       onResultComplete={onResultComplete}
       waitForShotResponseBeforeResultClose
       holdSceneAfterResult={isDemo || phase === 'play'}
       resumeHeldResultKey={resumeHeldResultKey}
-      preserveSceneOnModalReturn={phase === 'play' && resumeHeldResultKey > 0}
+      preserveSceneOnModalReturn={phase === 'play' || phase === 'hint' ||
+        phase === 'timeout' || phase === 'resetting'}
     />
 
     <AccessibleModal open={phase === 'intro'} title="Сначала – показ" onRequestClose={onCourse}
@@ -520,6 +506,7 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
       <p className="modal-copy">{exerciseKey === 'near_goalie'
         ? '– Посмотри как выполняется бросок, когда вратарь находится слева от ворот, а затем когда справа. Потом попробуй выполнить сам.'
         : '– Сначала посмотрите настоящий бросок слева и справа. Потом попробуете сами.'}</p>
+      {restartNotice ? <p className="modal-copy">– Правила упражнения обновились. Начни эту попытку заново; уже пройденные упражнения сохранены.</p> : null}
       {error ? <p className="modal-copy" role="alert">{error}</p> : null}
       <div className="modal-actions"><button type="button" className="modal-primary btn btn--cta"
         onClick={() => startDemonstration('left')}>{exerciseKey === 'near_goalie'
@@ -541,30 +528,31 @@ export function AdvancedTrainingPlayV2({ exerciseKey, onBack, onCourse, onCatalo
       </div>
     </AccessibleModal>
 
+    <AccessibleModal open={phase === 'timeout'} title="Момент упущен"
+      onRequestClose={() => { setCoachFeedback(
+        '– Ты не бросил, пока проход к воротам был открыт.\n\nДождись следующего отсчёта и нажми «Бросок» в нужный момент.');
+        setNextPhase('play'); setPhase('hint'); }}
+      cardClassName="advanced-training-v2-modal" beforeHeader={<DemoCoachModalAvatar />}>
+      <p className="modal-copy">– Окно для броска прошло. Бросок не засчитан.</p>
+      <div className="modal-actions"><button type="button" className="modal-primary btn btn--cta"
+        onClick={() => { setCoachFeedback(
+          '– Ты не бросил, пока проход к воротам был открыт.\n\nДождись следующего отсчёта и нажми «Бросок» в нужный момент.');
+          setNextPhase('play'); setPhase('hint'); }}>Продолжить</button></div>
+    </AccessibleModal>
+
     <AccessibleModal open={phase === 'practice-intro'} title="Теперь твоя очередь" onRequestClose={onCourse}
       cardClassName="advanced-training-v2-modal" beforeHeader={<DemoCoachModalAvatar />}>
       <p className="modal-copy">– Сначала один правильный гол слева, затем один справа.</p>
       <div className="modal-actions"><button type="button" className="modal-primary btn btn--cta"
-        onClick={() => setPhase('play')}>Начать практику</button></div>
-    </AccessibleModal>
-
-    <AccessibleModal open={phase === 'side-transition'} title="Смена стороны" onRequestClose={onCourse}
-      cardClassName="advanced-training-v2-modal" beforeHeader={<DemoCoachModalAvatar />}>
-      <p className="modal-copy">– Отлично! Теперь попробуй {run.side === 'right' ? 'справа' : 'слева'}.</p>
-      <div className="modal-actions"><button type="button" className="modal-primary btn btn--cta"
-        onClick={() => { setFeedback(null); setCueLabel(null);
-          setResumeHeldResultKey((value) => value + 1); setPhase('play'); }}>
-        Продолжить
-      </button></div>
+        onClick={() => void beginEpisode(run)}>Начать практику</button></div>
     </AccessibleModal>
 
     <AccessibleModal open={phase === 'practice-finished'} title="Практика завершена" onRequestClose={onCourse}
       cardClassName="advanced-training-v2-modal" beforeHeader={<DemoCoachModalAvatar />}>
-      <p className="modal-copy">– По одному правильному голу с каждой стороны. Теперь зачёт: по два с каждой стороны, без подсказок.</p>
+      <p className="modal-copy">– По одному правильному голу с каждой стороны. Теперь зачёт: по два с каждой стороны. Отсчёт предупредит о моменте, а когда бросать – решай сам.</p>
       <div className="modal-actions"><button type="button" className="modal-primary btn btn--cta"
         onClick={() => void startAdvancedTrainingV2Assessment(exerciseKey, run.run_id)
-          .then(({ state }) => { applyState(state); setFeedback(null); setCueLabel(null);
-            setResumeHeldResultKey((value) => value + 1); setPhase('play'); })
+          .then(({ state }) => { applyState(state); void beginEpisode(state); })
           .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Не удалось начать зачёт'))}>
         Начать зачёт
       </button></div>

@@ -15074,6 +15074,14 @@ button.daily-calendar__day:active {
   line-height: 1.15;
 }
 
+.advanced-training-v2-reset-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  background: #eaf1f8;
+  pointer-events: auto;
+}
+
 .advanced-training-v2-demo-stop {
   display: grid;
   gap: 8px;

@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for continuous advanced training', () => {
-    expect(GAME_CORE_VERSION).toBe(67);
+  it('is bumped for repeatable advanced training episodes', () => {
+    expect(GAME_CORE_VERSION).toBe(68);
   });
 });

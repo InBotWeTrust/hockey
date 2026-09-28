@@ -1,6 +1,7 @@
 import type {
   AdvancedTrainingV2Scenario,
   AdvancedTrainingContinuousContext,
+  AdvancedTrainingEpisodeProfile,
   AdvancedTrainingV2Side,
   AdvancedTrainingV2Technique,
   MarksmanshipV6Measurements,
@@ -110,6 +111,8 @@ export interface AdvancedTrainingV2RunState {
   scenario: AdvancedTrainingV2Scenario;
   movement_id: string;
   movement: AdvancedTrainingContinuousContext;
+  episode: AdvancedTrainingEpisodeProfile;
+  attempt_ordinal: number;
   resume_scene_ms: number;
   seed: string;
   game_core_version: number;
@@ -133,8 +136,15 @@ export interface AdvancedTrainingV2ShotResponse {
 }
 
 export function startAdvancedTrainingV2Exercise(exerciseKey: AdvancedTrainingV2Technique):
-  Promise<{ state: AdvancedTrainingV2RunState }> {
+  Promise<{ state: AdvancedTrainingV2RunState; restarted_due_to_version?: boolean }> {
   return apiFetch(`/duel/training/advanced/v2/${exerciseKey}/start`, { method: 'POST' });
+}
+
+export function startAdvancedTrainingV2Episode(exerciseKey: AdvancedTrainingV2Technique,
+  runId: string, movementId: string): Promise<{ state: AdvancedTrainingV2RunState }> {
+  return apiFetch(`/duel/training/advanced/v2/${exerciseKey}/episode/start`, {
+    method: 'POST', body: JSON.stringify({ run_id: runId, movement_id: movementId }),
+  });
 }
 
 export function submitAdvancedTrainingV2Shot(exerciseKey: AdvancedTrainingV2Technique, body: {

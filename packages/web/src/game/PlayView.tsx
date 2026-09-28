@@ -33,6 +33,7 @@ import {
   type SessionPhaseOffsets,
   type ShotInput,
   type ShotResult,
+  type AdvancedTrainingEpisodeSample,
   type StickEffects,
 } from '@hockey/game-core';
 import { useAuthStore } from '../auth/authStore.js';
@@ -289,6 +290,7 @@ export interface PlayViewProps<TState> {
   autoShotDelayMs?: number | undefined;
   maxSceneTimeMs?: number | undefined;
   sceneTimeScale?: ((sceneMs: number) => number) | undefined;
+  episodeSampler?: ((sceneMs: number) => AdvancedTrainingEpisodeSample) | undefined;
   practiceShotWindow?: { armStartMs: number; targetMs: number; endMs: number } | undefined;
   shotTriggerKey?: number | undefined;
   scoreboardNotice?: string | undefined;
@@ -342,6 +344,7 @@ export interface PlayViewProps<TState> {
   hideScoreboard?: boolean | undefined;
   overlayControls?: ReactNode;
   rinkOverlay?: ReactNode;
+  rinkCover?: ReactNode;
   rinkUnderlay?: ReactNode;
   overlayControlsTop?: string | undefined;
   overlayControlsCentered?: boolean | undefined;
@@ -621,6 +624,7 @@ export function PlayView<TState>({
   autoShotDelayMs,
   maxSceneTimeMs,
   sceneTimeScale,
+  episodeSampler,
   practiceShotWindow,
   shotTriggerKey,
   scoreboardNotice,
@@ -662,6 +666,7 @@ export function PlayView<TState>({
   hideScoreboard = true,
   overlayControls,
   rinkOverlay,
+  rinkCover,
   rinkUnderlay,
   overlayControlsTop,
   overlayControlsCentered = false,
@@ -732,6 +737,8 @@ export function PlayView<TState>({
   maxSceneTimeRef.current = maxSceneTimeMs;
   const sceneTimeScaleRef = useRef(sceneTimeScale);
   sceneTimeScaleRef.current = sceneTimeScale;
+  const episodeSamplerRef = useRef(episodeSampler);
+  episodeSamplerRef.current = episodeSampler;
   const practiceShotWindowRef = useRef(practiceShotWindow);
   practiceShotWindowRef.current = practiceShotWindow;
   const queuedPracticeShotRef = useRef<number | null>(null);
@@ -1436,6 +1443,7 @@ export function PlayView<TState>({
         getMaxSceneTimeMs: () => queuedPracticeShotRef.current ?? maxSceneTimeRef.current,
         getTimeScale: (sceneMs) => shotAnimationInProgressRef.current
           ? 1 : sceneTimeScaleRef.current?.(sceneMs) ?? 1,
+        getEpisodeSample: (sceneMs) => episodeSamplerRef.current?.(sceneMs) ?? null,
         getDuelCondition: (elapsedMs, activeSpeeds, reusable) =>
           duelConditionRef.current?.(elapsedMs, activeSpeeds, reusable) ?? null,
         onDuelConditionChange: syncCurrentDuelCondition,
@@ -1719,9 +1727,10 @@ export function PlayView<TState>({
       0.1,
       overrides.shooterFreq * (duelShotCondition?.shooterSpeedMultiplier ?? 1),
     );
-    const sx =
+    const ordinaryShooterX =
       computeShooterX(shooterTapTime + offsets.shooter, effectiveShooterFreq) +
       (duelShotCondition?.shooterXOffsetPx ?? 0);
+    const sx = episodeSamplerRef.current?.(tapTime).playerX ?? ordinaryShooterX;
     const puckSpeed = clampPuckSpeed(
       overrides.puckSpeed + (duelShotCondition?.puckSpeedDelta ?? 0),
     );
@@ -1763,7 +1772,11 @@ export function PlayView<TState>({
     const visualPauseMs = reduceMotion ? 1 : SHOT_RESULT_PAUSE_MS;
     const tGoalCross = tapTime + flightMs;
     const tGoalieCross = tapTime + (PUCK_START.y - GOALIE_Y) / puckSpeed;
-    if (result.type === 'save') {
+    const authoredEpisode = episodeSamplerRef.current !== undefined;
+    if (authoredEpisode) {
+      subText = result.type === 'goal' ? 'Отличный бросок!'
+        : result.type === 'save' ? 'Вратарь на месте!' : 'Мимо ворот';
+    } else if (result.type === 'save') {
       const gs = simulateGoalie(activeCfg, seed, shotIndex, tGoalieCross, offsets.goalie);
       const rel = sx - gs.position.x;
       const sixth = gs.width / 6;
@@ -1816,7 +1829,7 @@ export function PlayView<TState>({
       end: targetPoint,
     };
     const reboundObstacles =
-      displayKind === 'miss'
+      displayKind === 'miss' && !authoredEpisode
         ? puckReboundObstacles(
             simulateGoal(activeCfg, tGoalCross, offsets.goal).offsetX,
             simulateGoalie(activeCfg, seed, shotIndex, tGoalCross, offsets.goalie),
@@ -2295,6 +2308,7 @@ export function PlayView<TState>({
               {overlayControls}
             </div>
           )}
+          {rinkCover}
           {hudAddon && (
             <div
               style={{

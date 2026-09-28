@@ -14,6 +14,10 @@ export { evaluateAdvancedTrainingContinuousShot, findNextAdvancedTrainingWindow,
   ADVANCED_TRAINING_WINDOW_SCAN_STEP_MS, ADVANCED_TRAINING_WINDOW_SCAN_HORIZON_MS,
   type AdvancedTrainingContinuousContext, type AdvancedTrainingWindow,
 } from './advancedTrainingContinuous.js';
+export { getAdvancedTrainingEpisode, sampleAdvancedTrainingEpisode,
+  evaluateAdvancedTrainingEpisodeShot, validateAdvancedTrainingEpisode,
+  type AdvancedTrainingEpisodeProfile, type AdvancedTrainingEpisodeSample,
+} from './advancedTrainingEpisode.js';
 export { createRng, type Rng } from './rng.js';
 export { RINK, GOAL, GOAL_OPENING, PUCK_START, type Vec2 } from './rink.js';
 export type { GoalieConfig, GoalieState, GoaliePatternId } from './goalie/types.js';

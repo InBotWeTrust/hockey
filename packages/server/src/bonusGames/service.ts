@@ -99,7 +99,7 @@ interface BonusAttemptVersionRow {
 export const BONUS_GAME_CORE_VERSION_MISMATCH_CODE = 'bonus_game_core_version_mismatch';
 export const BONUS_SHOT_TIME_INVALID_CODE = 'bonus_shot_time_invalid';
 export const BONUS_SHOT_TIME_STALE_CODE = 'bonus_shot_time_stale';
-const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63, 64, 65] as const;
+const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63, 64, 65, 66, 67] as const;
 
 export function supportsBonusGameCoreVersion(version: number): boolean {
   return (
@@ -113,7 +113,7 @@ export function supportsBonusGameScoringVersion(
   scoringVersion: number | null,
 ): boolean {
   return supportsBonusGameCoreVersion(coreVersion) &&
-    (scoringVersion !== 6 || coreVersion === GAME_CORE_VERSION);
+    (scoringVersion !== 6 || coreVersion >= 66);
 }
 
 export class BonusAttemptAlreadyActiveError extends AppError {

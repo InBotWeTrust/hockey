@@ -37,13 +37,15 @@ describe('marksmanship score details', () => {
     expect(bonusService.supportsBonusGameCoreVersion(64)).toBe(true);
     expect(bonusService.supportsBonusGameCoreVersion(65)).toBe(true);
     expect(bonusService.supportsBonusGameCoreVersion(61)).toBe(false);
-    expect(bonusService.supportsBonusGameCoreVersion(67)).toBe(false);
+    expect(bonusService.supportsBonusGameCoreVersion(66)).toBe(true);
+    expect(bonusService.supportsBonusGameCoreVersion(67)).toBe(true);
   });
 
   it('does not validate a V6 snapshot under the old core-65 engine', () => {
     expect(bonusService.supportsBonusGameScoringVersion(65, 5)).toBe(true);
     expect(bonusService.supportsBonusGameScoringVersion(65, 6)).toBe(false);
     expect(bonusService.supportsBonusGameScoringVersion(66, 6)).toBe(true);
+    expect(bonusService.supportsBonusGameScoringVersion(67, 6)).toBe(true);
   });
 
   it('stores one selected V6 technique and authoritative tenths for a goal', () => {

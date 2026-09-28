@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { getAdvancedTrainingV2Scenario } from '@hockey/game-core';
-import { PRACTICE_SHOT_ARM_LEAD_MS, getAdvancedTrainingContinuousCue, getAdvancedTrainingV2Cue } from
-  './advancedTrainingV2Timing.js';
+import { getAdvancedTrainingEpisode, getAdvancedTrainingV2Scenario } from '@hockey/game-core';
+import { PRACTICE_SHOT_ARM_LEAD_MS, getAdvancedTrainingContinuousCue,
+  getAdvancedTrainingV2Cue, getAdvancedTrainingEpisodeCue } from './advancedTrainingV2Timing.js';
 
 const scenario = getAdvancedTrainingV2Scenario('precise', 'left', 'practice', 0);
 const traverse = 500 / scenario.speeds.shooterFrequency;
@@ -23,6 +23,31 @@ describe('advanced training V2 cues', () => {
       .toMatchObject({ traversal: null, shootNow: false });
     expect(getAdvancedTrainingV2Cue(scenario, scenario.targetTapTimeMs, 'assessment'))
       .toMatchObject({ traversal: null, shootNow: false });
+  });
+});
+
+describe('repeatable episode cues', () => {
+  const episode = getAdvancedTrainingEpisode('near_goalie', 'left');
+  it('counts four real seconds and shows practice shoot only in the valid interval', () => {
+    for (const remaining of [4, 3, 2, 1] as const) {
+      const t = episode.intervalStartMs - (remaining - 0.5) * 1000;
+      expect(getAdvancedTrainingEpisodeCue(episode, t, 'practice').secondsRemaining)
+        .toBe(remaining);
+    }
+    expect(getAdvancedTrainingEpisodeCue(episode, episode.intervalStartMs - 1,
+      'practice').shootNow).toBe(false);
+    expect(getAdvancedTrainingEpisodeCue(episode, episode.intervalStartMs,
+      'practice').shootNow).toBe(true);
+    expect(getAdvancedTrainingEpisodeCue(episode, episode.intervalEndMs,
+      'practice').shootNow).toBe(true);
+    expect(getAdvancedTrainingEpisodeCue(episode, episode.intervalEndMs + 1,
+      'practice').shootNow).toBe(false);
+  });
+  it('removes the assessment card after 1 without a shoot cue', () => {
+    expect(getAdvancedTrainingEpisodeCue(episode, episode.intervalStartMs - 500,
+      'assessment').secondsRemaining).toBe(1);
+    expect(getAdvancedTrainingEpisodeCue(episode, episode.intervalStartMs,
+      'assessment')).toMatchObject({ secondsRemaining: null, shootNow: false });
   });
 });
 

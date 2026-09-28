@@ -3,7 +3,9 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import { ADVANCED_TRAINING_V2_SCENARIOS, GAME_CORE_VERSION,
-  evaluateAdvancedTrainingContinuousShot, getAdvancedTrainingContinuousSeed,
+  evaluateAdvancedTrainingEpisodeShot, getAdvancedTrainingEpisode,
+  validateAdvancedTrainingEpisode, type AdvancedTrainingEpisodeProfile,
+  getAdvancedTrainingContinuousSeed,
   getAdvancedTrainingV2Scenario, type AdvancedTrainingV2Side,
   type AdvancedTrainingV2Stage, type AdvancedTrainingV2Technique,
   type ShotInput } from '@hockey/game-core';
@@ -17,9 +19,10 @@ import { ADVANCED_TRAINING_V2_EXERCISES, ADVANCED_TRAINING_V2_REWARD, buildAdvan
 import { isInitialTrainingCompleted } from './initialCourse.js';
 
 const paramsSchema = z.object({ exerciseKey: z.string().min(1).max(80) });
-const CONTINUOUS_BANK_VERSION = 2;
+const EPISODE_BANK_VERSION = 3;
 const stateQuerySchema = z.object({ run_id: z.string().uuid() });
 const runBodySchema = stateQuerySchema;
+const episodeStartBodySchema = runBodySchema.extend({ movement_id: z.string().min(1) });
 const shotBodySchema = z.object({
   run_id: z.string().uuid(), shot_index: z.number().int().positive(),
   movement_id: z.string().min(1),
@@ -38,14 +41,19 @@ export interface AdvancedTrainingV2Run {
   side_successes: { left: number; right: number };
   seed: string;
   attempt_ordinal: number;
+  episode_token: string;
   shot_index: number;
   game_core_version: number;
   bank_version: number;
   started_at: Date;
+  episode_started_at: Date | null;
 }
 
 export function advancedTrainingV2State(run: AdvancedTrainingV2Run, resumeSceneMs = 0) {
+  void resumeSceneMs;
   const scenario = scenarioForRun(run);
+  const episode = getAdvancedTrainingEpisode(run.exercise_key, run.side);
+  validateAdvancedTrainingEpisode(episode);
   const movement = { runSeed: getAdvancedTrainingContinuousSeed(run.exercise_key),
     technique: run.exercise_key, side: run.side, speeds: scenario.speeds,
     goalieId: scenario.goalieId };
@@ -53,8 +61,8 @@ export function advancedTrainingV2State(run: AdvancedTrainingV2Run, resumeSceneM
     run_id: run.id, exercise_key: run.exercise_key, stage: run.stage,
     side: run.side, side_successes: run.side_successes, shot_index: run.shot_index,
     scenario_id: scenario.id, scenario, seed: run.seed,
-    movement_id: `continuous-v1:${run.exercise_key}`,
-    movement, resume_scene_ms: resumeSceneMs,
+    movement_id: `${episode.id}:${run.stage}:${run.attempt_ordinal}:${run.episode_token}`,
+    movement, episode, attempt_ordinal: run.attempt_ordinal, resume_scene_ms: episode.sceneStartMs,
     game_core_version: run.game_core_version, bank_version: run.bank_version,
     server_now: new Date().toISOString(),
   };
@@ -62,24 +70,28 @@ export function advancedTrainingV2State(run: AdvancedTrainingV2Run, resumeSceneM
 
 export function evaluateAdvancedTrainingV2RunShot(run: AdvancedTrainingV2Run,
   input: Pick<ShotInput, 'tapTime' | 'shooterTapTime'>) {
-  return evaluateAdvancedTrainingContinuousShot(advancedTrainingV2State(run).movement, input);
+  return evaluateAdvancedTrainingEpisodeShot(
+    getAdvancedTrainingEpisode(run.exercise_key, run.side), input.tapTime);
 }
 
-export function assertAdvancedTrainingV2TapTime(tapTime: number, previousTapTime: number | null,
-  maxTapTime = Infinity): void {
-  if (previousTapTime !== null && tapTime <= previousTapTime) {
-    throw new AppError('advanced_training_time_not_monotonic', 'shot time must advance', 409);
-  }
-  if (tapTime > maxTapTime) {
-    throw new AppError('advanced_training_time_out_of_range', 'shot time is in the future', 409);
+export function assertAdvancedTrainingV2TapTime(tapTime: number,
+  episode: AdvancedTrainingEpisodeProfile, elapsedRealMs?: number): void {
+  if (!Number.isFinite(tapTime) || tapTime < episode.sceneStartMs ||
+    tapTime > episode.episodeEndMs || elapsedRealMs !== undefined &&
+    (tapTime > elapsedRealMs + 750 || elapsedRealMs > tapTime + 5000)) {
+    throw new AppError('advanced_training_time_out_of_range', 'shot time is outside the episode', 409);
   }
 }
 
-async function lastTapTime(client: PoolClient, runId: string): Promise<number | null> {
-  const result = await client.query<{ tap_time: number | null }>(
-    `select max((input->>'tapTime')::double precision) as tap_time
-       from advanced_training_v2_shot where run_id = $1`, [runId]);
-  return result.rows[0]?.tap_time ?? null;
+export function assertAdvancedTrainingV2Duplicate(
+  stored: { scenario_id: string; input: { tapTime: number; shooterTapTime?: number | undefined } },
+  submitted: { movement_id: string; input: { tapTime: number; shooterTapTime?: number | undefined } },
+): void {
+  if (stored.scenario_id !== submitted.movement_id ||
+    stored.input.tapTime !== submitted.input.tapTime ||
+    stored.input.shooterTapTime !== submitted.input.shooterTapTime) {
+    throw new AppError('advanced_training_duplicate_mismatch', 'shot payload changed', 409);
+  }
 }
 
 function scenarioForRun(run: AdvancedTrainingV2Run) {
@@ -94,7 +106,7 @@ function scenarioForRun(run: AdvancedTrainingV2Run) {
 }
 
 export function assertAdvancedTrainingV2RunVersion(run: AdvancedTrainingV2Run): void {
-  if (run.game_core_version !== GAME_CORE_VERSION || run.bank_version !== CONTINUOUS_BANK_VERSION) {
+  if (run.game_core_version !== GAME_CORE_VERSION || run.bank_version !== EPISODE_BANK_VERSION) {
     throw new AppError('advanced_training_version_changed', 'Training rules changed. Restart the exercise.', 409);
   }
 }
@@ -154,8 +166,8 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
       const existing = active.rows[0];
       if (existing?.exercise_key === exerciseKey &&
         existing.game_core_version === GAME_CORE_VERSION &&
-        existing.bank_version === CONTINUOUS_BANK_VERSION) {
-        return { state: advancedTrainingV2State(existing, await lastTapTime(client, existing.id) ?? 0) };
+        existing.bank_version === EPISODE_BANK_VERSION) {
+        return { state: advancedTrainingV2State(existing), restarted_due_to_version: false };
       }
       await client.query(`update advanced_training_v2_run set state = 'abandoned'
         where user_id = $1 and state = 'active'`, [req.user.id]);
@@ -167,8 +179,11 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
         `insert into advanced_training_v2_run (id, user_id, exercise_key, state, stage, side,
           seed, game_core_version, bank_version)
          values ($1, $2, $3, 'active', 'practice', 'left', $4, $5, $6) returning *`,
-        [runId, req.user.id, exerciseKey, seed, GAME_CORE_VERSION, CONTINUOUS_BANK_VERSION]);
-      return { state: advancedTrainingV2State(inserted.rows[0]!) };
+        [runId, req.user.id, exerciseKey, seed, GAME_CORE_VERSION, EPISODE_BANK_VERSION]);
+      return { state: advancedTrainingV2State(inserted.rows[0]!),
+        restarted_due_to_version: existing?.exercise_key === exerciseKey &&
+          (existing.game_core_version !== GAME_CORE_VERSION ||
+            existing.bank_version !== EPISODE_BANK_VERSION) };
     });
   });
 
@@ -180,9 +195,29 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
     return transaction(app, async (client) => {
       const run = await loadAdvancedTrainingV2Run(client, query.data.run_id, req.user.id);
       if (run.exercise_key !== exerciseKey) throw new AppError('not_found', 'run not found', 404);
-      return { state: advancedTrainingV2State(run, await lastTapTime(client, run.id) ?? 0) };
+      return { state: advancedTrainingV2State(run) };
     });
   });
+
+  app.post('/duel/training/advanced/v2/:exerciseKey/episode/start',
+    { preHandler: [app.authenticate] }, async (req) => {
+      const parsed = paramsSchema.safeParse(req.params);
+      const body = episodeStartBodySchema.safeParse(req.body);
+      if (!parsed.success || !body.success) throw new AppError('bad_request', 'invalid episode start', 400);
+      const exerciseKey = parseExerciseKey(parsed.data.exerciseKey);
+      return transaction(app, async (client) => {
+        await lockUserGameplay(client, req.user.id);
+        const run = await loadAdvancedTrainingV2Run(client, body.data.run_id, req.user.id);
+        if (run.exercise_key !== exerciseKey) throw new AppError('not_found', 'run not found', 404);
+        if (run.state !== 'active' || body.data.movement_id !== advancedTrainingV2State(run).movement_id) {
+          throw new AppError('advanced_training_scenario_mismatch', 'episode changed; reload the exercise', 409);
+        }
+        const updated = await client.query<AdvancedTrainingV2Run>(
+          `update advanced_training_v2_run set episode_token = gen_random_uuid(), episode_started_at = now()
+           where id = $1 returning *`, [run.id]);
+        return { state: advancedTrainingV2State(updated.rows[0]!) };
+      });
+    });
 
   app.post('/duel/training/advanced/v2/:exerciseKey/assessment/start',
     { preHandler: [app.authenticate] }, async (req) => {
@@ -200,10 +235,10 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
         }
         const updated = await client.query<AdvancedTrainingV2Run>(
           `update advanced_training_v2_run set stage = 'assessment', side = 'left',
-            side_successes = '{"left":0,"right":0}'::jsonb, attempt_ordinal = 0
+            side_successes = '{"left":0,"right":0}'::jsonb, attempt_ordinal = 0,
+            episode_token = gen_random_uuid(), episode_started_at = null
            where id = $1 returning *`, [run.id]);
-        return { state: advancedTrainingV2State(updated.rows[0]!,
-          await lastTapTime(client, run.id) ?? 0) };
+        return { state: advancedTrainingV2State(updated.rows[0]!) };
       });
     });
 
@@ -217,10 +252,14 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
         await lockUserGameplay(client, req.user.id);
         const run = await loadAdvancedTrainingV2Run(client, body.data.run_id, req.user.id);
         if (run.exercise_key !== exerciseKey) throw new AppError('not_found', 'run not found', 404);
-        const prior = await client.query<{ evaluation: { response: unknown } }>(
-          `select evaluation from advanced_training_v2_shot where run_id = $1 and shot_index = $2`,
+        const prior = await client.query<{ evaluation: { response: unknown };
+          scenario_id: string; input: { tapTime: number; shooterTapTime?: number } }>(
+          `select evaluation, scenario_id, input from advanced_training_v2_shot where run_id = $1 and shot_index = $2`,
           [run.id, body.data.shot_index]);
-        if (prior.rows[0]) return prior.rows[0].evaluation.response;
+        if (prior.rows[0]) {
+          assertAdvancedTrainingV2Duplicate(prior.rows[0], body.data);
+          return prior.rows[0].evaluation.response;
+        }
         if (run.state !== 'active' || run.stage === 'practice' &&
           run.side_successes.left >= 1 && run.side_successes.right >= 1) {
           throw new AppError('advanced_training_run_closed', 'run is not accepting shots', 409);
@@ -232,9 +271,12 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
         if (body.data.movement_id !== movementId) {
           throw new AppError('advanced_training_scenario_mismatch', 'scenario changed; reload the exercise', 409);
         }
+        if (!run.episode_started_at) {
+          throw new AppError('advanced_training_episode_not_started', 'start the episode first', 409);
+        }
         assertAdvancedTrainingV2TapTime(body.data.input.tapTime,
-          await lastTapTime(client, run.id),
-          Date.now() - new Date(run.started_at).getTime() + 5000);
+          getAdvancedTrainingEpisode(run.exercise_key, run.side),
+          Date.now() - new Date(run.episode_started_at).getTime());
         const evaluation = evaluateAdvancedTrainingV2RunShot(run, {
           tapTime: body.data.input.tapTime,
           ...(body.data.input.shooterTapTime === undefined ? {} :
@@ -271,6 +313,8 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
         const updated = await client.query<AdvancedTrainingV2Run>(
           `update advanced_training_v2_run set side_successes = $2::jsonb, side = $3,
              attempt_ordinal = attempt_ordinal + 1, shot_index = $4,
+             episode_token = gen_random_uuid(),
+             episode_started_at = null,
              state = $5, completed_at = case when $5 = 'completed' then now() else completed_at end
            where id = $1 returning *`,
           [run.id, JSON.stringify(successes), nextSide, body.data.shot_index,
@@ -283,7 +327,7 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
           feedback_code: evaluation.success ? 'correct' : evaluation.result.type === 'goal'
             ? 'wrong_category' : evaluation.result.type,
           stage_finished: stageFinished, completed, reward_granted: rewardGranted,
-          state: advancedTrainingV2State(updated.rows[0]!, body.data.input.tapTime),
+          state: advancedTrainingV2State(updated.rows[0]!),
         };
         await client.query(
           `insert into advanced_training_v2_shot

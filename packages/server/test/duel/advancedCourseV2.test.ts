@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
-import { findNextAdvancedTrainingWindow } from '@hockey/game-core';
+import type { AdvancedTrainingEpisodeProfile } from '@hockey/game-core';
 import { buildApp } from '../../src/app.js';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { createJwt } from '../../src/auth/jwt.js';
@@ -67,11 +67,17 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
   });
 
   const headers = () => ({ authorization: `Bearer ${token}` });
-  const nextGoalTap = (state: { movement: Parameters<typeof findNextAdvancedTrainingWindow>[0];
-    resume_scene_ms: number }): number => {
-    const window = findNextAdvancedTrainingWindow(state.movement, state.resume_scene_ms);
-    expect(window).not.toBeNull();
-    return window!.targetMs;
+  const nextGoalTap = (state: { episode: AdvancedTrainingEpisodeProfile }): number =>
+    state.episode.intervalStartMs + 250;
+  const prepareEpisode = async (state: { run_id: string; movement_id: string }, tapTime: number) => {
+    const started = await app.inject({ method: 'POST',
+      url: '/duel/training/advanced/v2/near_goalie/episode/start', headers: headers(),
+      payload: { run_id: state.run_id, movement_id: state.movement_id } });
+    expect(started.statusCode).toBe(200);
+    await pool.query(`update advanced_training_v2_run
+      set episode_started_at = now() - ($2::int * interval '1 millisecond') where id = $1`,
+    [state.run_id, tapTime + 50]);
+    return started.json().state;
   };
 
   it('shows eight V2 categories with 0/8 progress despite a V1 completion', async () => {
@@ -98,7 +104,7 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
     expect(start.statusCode).toBe(200);
     expect(start.json().state).toMatchObject({
       stage: 'practice', side: 'left', side_successes: { left: 0, right: 0 },
-      movement: { technique: 'near_goalie', side: 'left' }, resume_scene_ms: 0,
+      episode: { technique: 'near_goalie', side: 'left' }, resume_scene_ms: 0,
     });
     const runId = start.json().state.run_id as string;
     const resume = await app.inject({ method: 'GET',
@@ -127,9 +133,7 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
     let state = start.json().state;
     const runId = state.run_id as string;
     const shot = async (claimedResult = 'miss') => {
-      if (state.shot_index > 0) await pool.query(
-        `update advanced_training_v2_run set started_at = now() - interval '10 minutes' where id = $1`,
-        [runId]);
+      state = await prepareEpisode(state, nextGoalTap(state));
       const response = await app.inject({ method: 'POST',
         url: '/duel/training/advanced/v2/near_goalie/shot', headers: headers(),
         payload: { run_id: runId, shot_index: state.shot_index + 1,
@@ -182,7 +186,7 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
     expect(response.statusCode).toBe(409);
   });
 
-  it('rejects a stale movement and does not credit a wrong shot or backwards time', async () => {
+  it('rejects a stale attempt and permits repeated episode-local time', async () => {
     const started = await app.inject({ method: 'POST',
       url: '/duel/training/advanced/v2/near_goalie/start', headers: headers() });
     let state = started.json().state;
@@ -192,16 +196,28 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
         movement_id: movementId, input: { tapTime }, claimed_result: 'goal' },
     });
     const target = nextGoalTap(state);
+    state = await prepareEpisode(state, target - 1000);
+    await pool.query(`update advanced_training_v2_run set episode_started_at = now()
+      where id = $1`, [state.run_id]);
+    expect((await submit(target)).statusCode).toBe(409);
+    await pool.query(`update advanced_training_v2_run
+      set episode_started_at = now() - ($2::int * interval '1 millisecond') where id = $1`,
+    [state.run_id, target + 6000]);
+    expect((await submit(target)).statusCode).toBe(409);
+    await pool.query(`update advanced_training_v2_run
+      set episode_started_at = now() - ($2::int * interval '1 millisecond') where id = $1`,
+    [state.run_id, target - 1000 + 50]);
     expect((await submit(target, 'stale-movement')).statusCode).toBe(409);
     const wrong = await submit(target - 1000);
     expect(wrong.statusCode).toBe(200);
     expect(wrong.json()).toMatchObject({ success: false,
       state: { side: 'left', side_successes: { left: 0, right: 0 } } });
     state = wrong.json().state;
-    expect((await submit(target - 1000)).statusCode).toBe(409);
-    await pool.query(
-      `update advanced_training_v2_run set started_at = now() - interval '10 minutes' where id = $1`,
-      [state.run_id]);
+    state = await prepareEpisode(state, target - 1000);
+    const repeatedTime = await submit(target - 1000);
+    expect(repeatedTime.statusCode).toBe(200);
+    state = repeatedTime.json().state;
+    state = await prepareEpisode(state, nextGoalTap(state));
     const correct = await submit(nextGoalTap(state));
     expect(correct.json()).toMatchObject({ success: true, actual_technique: 'near_goalie',
       state: { side: 'right', side_successes: { left: 1, right: 0 } } });
@@ -210,7 +226,8 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
   it('serializes concurrent copies of one shot without double progress', async () => {
     const started = await app.inject({ method: 'POST',
       url: '/duel/training/advanced/v2/near_goalie/start', headers: headers() });
-    const state = started.json().state;
+    const state = await prepareEpisode(started.json().state,
+      nextGoalTap(started.json().state));
     const request = () => app.inject({ method: 'POST',
       url: '/duel/training/advanced/v2/near_goalie/shot', headers: headers(),
       payload: { run_id: state.run_id, shot_index: 1, movement_id: state.movement_id,
@@ -227,7 +244,8 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
   it('resumes the same progressed run after another start request', async () => {
     const url = '/duel/training/advanced/v2/near_goalie/start';
     const started = await app.inject({ method: 'POST', url, headers: headers() });
-    const initial = started.json().state;
+    const initial = await prepareEpisode(started.json().state,
+      nextGoalTap(started.json().state));
     const shot = await app.inject({ method: 'POST',
       url: '/duel/training/advanced/v2/near_goalie/shot', headers: headers(),
       payload: { run_id: initial.run_id, shot_index: 1, movement_id: initial.movement_id,
@@ -237,6 +255,6 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
     expect(resumed.statusCode).toBe(200);
     expect(resumed.json().state).toMatchObject({ run_id: initial.run_id,
       shot_index: 1, side: 'right', side_successes: { left: 1, right: 0 } });
-    expect(resumed.json().state.resume_scene_ms).toBe(shot.json().tap_time);
+    expect(resumed.json().state.resume_scene_ms).toBe(0);
   });
 });

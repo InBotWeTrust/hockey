@@ -10,6 +10,29 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-28-advanced-training-repeatable-attempts-design.md`
 
+## Implementation status (2026-09-28)
+
+The exercise-only episode profile, server attempt identity, practice/assessment cues,
+modal-to-coach-hint flow, covered reset, and compatibility notice are implemented on
+`feature/repeatable-advanced-training`. The core validator checks every millisecond of
+the 500 ms target interval for all 16 category/side profiles. Local core/web tests,
+typecheck, lint, and build are the verification gates. Server database integration
+tests require isolated `TEST_DATABASE_URL`/`TEST_REDIS_URL` and must not be reported as
+passing when skipped. Rendered mobile acceptance remains a separate gate; no release
+or deployment is implied by this plan.
+
+Final local verification: the bonus-game V6 compatibility check now accepts saved
+core-66 and core-67 attempts without changing scoring rules. Server suite: 565 passed,
+1233 skipped (isolated DB/Redis unavailable). Full web suite, targeted game-core tests,
+typecheck, lint, build, and diff check passed. Rendered browser acceptance is still
+unverified; no deployment has been made.
+
+Review hardening: each playable episode now starts through a server endpoint that
+rotates its token and records `episode_started_at`. Shot submission must match that
+server clock within an early/late tolerance, so waiting with a token cannot submit
+an expired target time. The client requests the new start after every acknowledged
+hint, stage change, or reconnect before revealing the rink.
+
 ## Global Constraints
 
 - Validate at least 500 ms of real, successful tap time in assessment and practice for all 8 categories × 2 sides; no approximate or unvalidated fallback.
