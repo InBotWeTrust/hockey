@@ -2,9 +2,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
-import { ADVANCED_TRAINING_V2_BANK_VERSION, ADVANCED_TRAINING_V2_SCENARIOS, GAME_CORE_VERSION,
-  evaluateAdvancedTrainingV2Shot, getAdvancedTrainingV2Scenario, type AdvancedTrainingV2Side,
-  type AdvancedTrainingV2Stage, type AdvancedTrainingV2Technique } from '@hockey/game-core';
+import { ADVANCED_TRAINING_V2_SCENARIOS, GAME_CORE_VERSION,
+  evaluateAdvancedTrainingContinuousShot, getAdvancedTrainingContinuousSeed,
+  getAdvancedTrainingV2Scenario, type AdvancedTrainingV2Side,
+  type AdvancedTrainingV2Stage, type AdvancedTrainingV2Technique,
+  type ShotInput } from '@hockey/game-core';
 import { AppError } from '../../plugins/errors.js';
 import { observeCareerExperience } from '../../achievements/service.js';
 import { assertFullAmateurAccess } from '../../profile/amateurAccess.js';
@@ -15,11 +17,12 @@ import { ADVANCED_TRAINING_V2_EXERCISES, ADVANCED_TRAINING_V2_REWARD, buildAdvan
 import { isInitialTrainingCompleted } from './initialCourse.js';
 
 const paramsSchema = z.object({ exerciseKey: z.string().min(1).max(80) });
+const CONTINUOUS_BANK_VERSION = 2;
 const stateQuerySchema = z.object({ run_id: z.string().uuid() });
 const runBodySchema = stateQuerySchema;
 const shotBodySchema = z.object({
   run_id: z.string().uuid(), shot_index: z.number().int().positive(),
-  scenario_id: z.string().min(1),
+  movement_id: z.string().min(1),
   input: z.object({ tapTime: z.number().finite().min(0),
     shooterTapTime: z.number().finite().min(0).optional() }),
   claimed_result: z.enum(['goal', 'save', 'miss']),
@@ -38,17 +41,45 @@ export interface AdvancedTrainingV2Run {
   shot_index: number;
   game_core_version: number;
   bank_version: number;
+  started_at: Date;
 }
 
-export function advancedTrainingV2State(run: AdvancedTrainingV2Run) {
+export function advancedTrainingV2State(run: AdvancedTrainingV2Run, resumeSceneMs = 0) {
   const scenario = scenarioForRun(run);
+  const movement = { runSeed: getAdvancedTrainingContinuousSeed(run.exercise_key),
+    technique: run.exercise_key, side: run.side, speeds: scenario.speeds,
+    goalieId: scenario.goalieId };
   return {
     run_id: run.id, exercise_key: run.exercise_key, stage: run.stage,
     side: run.side, side_successes: run.side_successes, shot_index: run.shot_index,
     scenario_id: scenario.id, scenario, seed: run.seed,
+    movement_id: `continuous-v1:${run.exercise_key}`,
+    movement, resume_scene_ms: resumeSceneMs,
     game_core_version: run.game_core_version, bank_version: run.bank_version,
     server_now: new Date().toISOString(),
   };
+}
+
+export function evaluateAdvancedTrainingV2RunShot(run: AdvancedTrainingV2Run,
+  input: Pick<ShotInput, 'tapTime' | 'shooterTapTime'>) {
+  return evaluateAdvancedTrainingContinuousShot(advancedTrainingV2State(run).movement, input);
+}
+
+export function assertAdvancedTrainingV2TapTime(tapTime: number, previousTapTime: number | null,
+  maxTapTime = Infinity): void {
+  if (previousTapTime !== null && tapTime <= previousTapTime) {
+    throw new AppError('advanced_training_time_not_monotonic', 'shot time must advance', 409);
+  }
+  if (tapTime > maxTapTime) {
+    throw new AppError('advanced_training_time_out_of_range', 'shot time is in the future', 409);
+  }
+}
+
+async function lastTapTime(client: PoolClient, runId: string): Promise<number | null> {
+  const result = await client.query<{ tap_time: number | null }>(
+    `select max((input->>'tapTime')::double precision) as tap_time
+       from advanced_training_v2_shot where run_id = $1`, [runId]);
+  return result.rows[0]?.tap_time ?? null;
 }
 
 function scenarioForRun(run: AdvancedTrainingV2Run) {
@@ -63,7 +94,7 @@ function scenarioForRun(run: AdvancedTrainingV2Run) {
 }
 
 export function assertAdvancedTrainingV2RunVersion(run: AdvancedTrainingV2Run): void {
-  if (run.game_core_version !== GAME_CORE_VERSION || run.bank_version !== ADVANCED_TRAINING_V2_BANK_VERSION) {
+  if (run.game_core_version !== GAME_CORE_VERSION || run.bank_version !== CONTINUOUS_BANK_VERSION) {
     throw new AppError('advanced_training_version_changed', 'Training rules changed. Restart the exercise.', 409);
   }
 }
@@ -123,8 +154,8 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
       const existing = active.rows[0];
       if (existing?.exercise_key === exerciseKey &&
         existing.game_core_version === GAME_CORE_VERSION &&
-        existing.bank_version === ADVANCED_TRAINING_V2_BANK_VERSION) {
-        return { state: advancedTrainingV2State(existing) };
+        existing.bank_version === CONTINUOUS_BANK_VERSION) {
+        return { state: advancedTrainingV2State(existing, await lastTapTime(client, existing.id) ?? 0) };
       }
       await client.query(`update advanced_training_v2_run set state = 'abandoned'
         where user_id = $1 and state = 'active'`, [req.user.id]);
@@ -136,7 +167,7 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
         `insert into advanced_training_v2_run (id, user_id, exercise_key, state, stage, side,
           seed, game_core_version, bank_version)
          values ($1, $2, $3, 'active', 'practice', 'left', $4, $5, $6) returning *`,
-        [runId, req.user.id, exerciseKey, seed, GAME_CORE_VERSION, ADVANCED_TRAINING_V2_BANK_VERSION]);
+        [runId, req.user.id, exerciseKey, seed, GAME_CORE_VERSION, CONTINUOUS_BANK_VERSION]);
       return { state: advancedTrainingV2State(inserted.rows[0]!) };
     });
   });
@@ -149,7 +180,7 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
     return transaction(app, async (client) => {
       const run = await loadAdvancedTrainingV2Run(client, query.data.run_id, req.user.id);
       if (run.exercise_key !== exerciseKey) throw new AppError('not_found', 'run not found', 404);
-      return { state: advancedTrainingV2State(run) };
+      return { state: advancedTrainingV2State(run, await lastTapTime(client, run.id) ?? 0) };
     });
   });
 
@@ -171,7 +202,8 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
           `update advanced_training_v2_run set stage = 'assessment', side = 'left',
             side_successes = '{"left":0,"right":0}'::jsonb, attempt_ordinal = 0
            where id = $1 returning *`, [run.id]);
-        return { state: advancedTrainingV2State(updated.rows[0]!) };
+        return { state: advancedTrainingV2State(updated.rows[0]!,
+          await lastTapTime(client, run.id) ?? 0) };
       });
     });
 
@@ -196,11 +228,14 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
         if (body.data.shot_index !== run.shot_index + 1) {
           throw new AppError('advanced_training_shot_index_mismatch', 'shot index mismatch', 409);
         }
-        const scenario = scenarioForRun(run);
-        if (body.data.scenario_id !== scenario.id) {
+        const movementId = advancedTrainingV2State(run).movement_id;
+        if (body.data.movement_id !== movementId) {
           throw new AppError('advanced_training_scenario_mismatch', 'scenario changed; reload the exercise', 409);
         }
-        const evaluation = evaluateAdvancedTrainingV2Shot(scenario, {
+        assertAdvancedTrainingV2TapTime(body.data.input.tapTime,
+          await lastTapTime(client, run.id),
+          Date.now() - new Date(run.started_at).getTime() + 5000);
+        const evaluation = evaluateAdvancedTrainingV2RunShot(run, {
           tapTime: body.data.input.tapTime,
           ...(body.data.input.shooterTapTime === undefined ? {} :
             { shooterTapTime: body.data.input.shooterTapTime }),
@@ -241,20 +276,20 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
           [run.id, JSON.stringify(successes), nextSide, body.data.shot_index,
             completed ? 'completed' : 'active']);
         const response = {
-          scenario_id: scenario.id, tap_time: body.data.input.tapTime,
+          movement_id: movementId, tap_time: body.data.input.tapTime,
           server_result: evaluation.result.type,
           success: evaluation.success, actual_technique: evaluation.actualTechnique,
           actual_side: evaluation.actualSide, measurements: evaluation.measurements,
           feedback_code: evaluation.success ? 'correct' : evaluation.result.type === 'goal'
             ? 'wrong_category' : evaluation.result.type,
           stage_finished: stageFinished, completed, reward_granted: rewardGranted,
-          state: advancedTrainingV2State(updated.rows[0]!),
+          state: advancedTrainingV2State(updated.rows[0]!, body.data.input.tapTime),
         };
         await client.query(
           `insert into advanced_training_v2_shot
             (run_id, shot_index, scenario_id, input, server_result, evaluation, game_core_version)
            values ($1, $2, $3, $4::jsonb, $5, $6::jsonb, $7)`,
-          [run.id, body.data.shot_index, scenario.id, JSON.stringify(body.data.input),
+          [run.id, body.data.shot_index, movementId, JSON.stringify(body.data.input),
             evaluation.result.type, JSON.stringify({ response }), GAME_CORE_VERSION]);
         return response;
       });

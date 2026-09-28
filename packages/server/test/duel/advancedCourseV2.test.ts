@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
+import { findNextAdvancedTrainingWindow } from '@hockey/game-core';
 import { buildApp } from '../../src/app.js';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { createJwt } from '../../src/auth/jwt.js';
@@ -66,6 +67,12 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
   });
 
   const headers = () => ({ authorization: `Bearer ${token}` });
+  const nextGoalTap = (state: { movement: Parameters<typeof findNextAdvancedTrainingWindow>[0];
+    resume_scene_ms: number }): number => {
+    const window = findNextAdvancedTrainingWindow(state.movement, state.resume_scene_ms);
+    expect(window).not.toBeNull();
+    return window!.targetMs;
+  };
 
   it('shows eight V2 categories with 0/8 progress despite a V1 completion', async () => {
     await pool.query(`insert into advanced_training_completion
@@ -91,13 +98,13 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
     expect(start.statusCode).toBe(200);
     expect(start.json().state).toMatchObject({
       stage: 'practice', side: 'left', side_successes: { left: 0, right: 0 },
-      scenario: { technique: 'near_goalie', side: 'left', stage: 'practice' },
+      movement: { technique: 'near_goalie', side: 'left' }, resume_scene_ms: 0,
     });
     const runId = start.json().state.run_id as string;
     const resume = await app.inject({ method: 'GET',
       url: `/duel/training/advanced/v2/near_goalie/state?run_id=${runId}`, headers: headers() });
     expect(resume.statusCode).toBe(200);
-    expect(resume.json().state.scenario.id).toBe(start.json().state.scenario.id);
+    expect(resume.json().state.movement_id).toBe(start.json().state.movement_id);
     const oldState = await pool.query<{ state: string }>(`select state from advanced_training_run where id = $1`,
       [oldRun.rows[0]!.id]);
     expect(oldState.rows[0]?.state).toBe('abandoned');
@@ -120,11 +127,14 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
     let state = start.json().state;
     const runId = state.run_id as string;
     const shot = async (claimedResult = 'miss') => {
+      if (state.shot_index > 0) await pool.query(
+        `update advanced_training_v2_run set started_at = now() - interval '10 minutes' where id = $1`,
+        [runId]);
       const response = await app.inject({ method: 'POST',
         url: '/duel/training/advanced/v2/near_goalie/shot', headers: headers(),
         payload: { run_id: runId, shot_index: state.shot_index + 1,
-          scenario_id: state.scenario_id,
-          input: { tapTime: state.scenario.targetTapTimeMs },
+          movement_id: state.movement_id,
+          input: { tapTime: nextGoalTap(state) },
           claimed_result: claimedResult } });
       expect(response.statusCode).toBe(200);
       state = response.json().state;
@@ -136,7 +146,7 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
       state: { side: 'right', side_successes: { left: 1, right: 0 } } });
     const duplicate = await app.inject({ method: 'POST',
       url: '/duel/training/advanced/v2/near_goalie/shot', headers: headers(),
-      payload: { run_id: runId, shot_index: 1, scenario_id: first.scenario_id,
+      payload: { run_id: runId, shot_index: 1, movement_id: first.movement_id,
         input: { tapTime: first.tap_time }, claimed_result: 'goal' } });
     expect(duplicate.statusCode).toBe(200);
     expect(duplicate.json()).toEqual(first);
@@ -157,7 +167,7 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
     expect(user.rows[0]).toMatchObject({ xp: 1, experience: 1 });
     const replay = await app.inject({ method: 'POST',
       url: '/duel/training/advanced/v2/near_goalie/shot', headers: headers(),
-      payload: { run_id: runId, shot_index: 6, scenario_id: final.scenario_id,
+      payload: { run_id: runId, shot_index: 6, movement_id: final.movement_id,
         input: { tapTime: final.tap_time }, claimed_result: 'goal' } });
     expect(replay.statusCode).toBe(200);
     expect(replay.json()).toEqual(final);
@@ -172,25 +182,29 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
     expect(response.statusCode).toBe(409);
   });
 
-  it('rejects a stale scene and does not credit a miss or another primary category', async () => {
+  it('rejects a stale movement and does not credit a wrong shot or backwards time', async () => {
     const started = await app.inject({ method: 'POST',
       url: '/duel/training/advanced/v2/near_goalie/start', headers: headers() });
     let state = started.json().state;
-    const submit = async (tapTime: number, scenarioId = state.scenario_id) => app.inject({
+    const submit = async (tapTime: number, movementId = state.movement_id) => app.inject({
       method: 'POST', url: '/duel/training/advanced/v2/near_goalie/shot', headers: headers(),
       payload: { run_id: state.run_id, shot_index: state.shot_index + 1,
-        scenario_id: scenarioId, input: { tapTime }, claimed_result: 'goal' },
+        movement_id: movementId, input: { tapTime }, claimed_result: 'goal' },
     });
-    expect((await submit(state.scenario.targetTapTimeMs, 'stale-scenario')).statusCode).toBe(409);
-    const miss = await submit(state.scenario.targetTapTimeMs - 1000);
-    expect(miss.statusCode).toBe(200);
-    expect(miss.json()).toMatchObject({ server_result: 'miss', success: false,
+    const target = nextGoalTap(state);
+    expect((await submit(target, 'stale-movement')).statusCode).toBe(409);
+    const wrong = await submit(target - 1000);
+    expect(wrong.statusCode).toBe(200);
+    expect(wrong.json()).toMatchObject({ success: false,
       state: { side: 'left', side_successes: { left: 0, right: 0 } } });
-    state = miss.json().state;
-    const other = await submit(state.scenario.targetTapTimeMs - 950);
-    expect(other.statusCode).toBe(200);
-    expect(other.json()).toMatchObject({ server_result: 'goal', success: false,
-      actual_technique: 'ordinary', state: { side: 'left', side_successes: { left: 0, right: 0 } } });
+    state = wrong.json().state;
+    expect((await submit(target - 1000)).statusCode).toBe(409);
+    await pool.query(
+      `update advanced_training_v2_run set started_at = now() - interval '10 minutes' where id = $1`,
+      [state.run_id]);
+    const correct = await submit(nextGoalTap(state));
+    expect(correct.json()).toMatchObject({ success: true, actual_technique: 'near_goalie',
+      state: { side: 'right', side_successes: { left: 1, right: 0 } } });
   });
 
   it('serializes concurrent copies of one shot without double progress', async () => {
@@ -199,8 +213,8 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
     const state = started.json().state;
     const request = () => app.inject({ method: 'POST',
       url: '/duel/training/advanced/v2/near_goalie/shot', headers: headers(),
-      payload: { run_id: state.run_id, shot_index: 1, scenario_id: state.scenario_id,
-        input: { tapTime: state.scenario.targetTapTimeMs }, claimed_result: 'goal' } });
+      payload: { run_id: state.run_id, shot_index: 1, movement_id: state.movement_id,
+        input: { tapTime: nextGoalTap(state) }, claimed_result: 'goal' } });
     const [a, b] = await Promise.all([request(), request()]);
     expect(a.statusCode).toBe(200);
     expect(b.statusCode).toBe(200);
@@ -216,12 +230,13 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
     const initial = started.json().state;
     const shot = await app.inject({ method: 'POST',
       url: '/duel/training/advanced/v2/near_goalie/shot', headers: headers(),
-      payload: { run_id: initial.run_id, shot_index: 1, scenario_id: initial.scenario_id,
-        input: { tapTime: initial.scenario.targetTapTimeMs }, claimed_result: 'goal' } });
+      payload: { run_id: initial.run_id, shot_index: 1, movement_id: initial.movement_id,
+        input: { tapTime: nextGoalTap(initial) }, claimed_result: 'goal' } });
     expect(shot.statusCode).toBe(200);
     const resumed = await app.inject({ method: 'POST', url, headers: headers() });
     expect(resumed.statusCode).toBe(200);
     expect(resumed.json().state).toMatchObject({ run_id: initial.run_id,
       shot_index: 1, side: 'right', side_successes: { left: 1, right: 0 } });
+    expect(resumed.json().state.resume_scene_ms).toBe(shot.json().tap_time);
   });
 });
