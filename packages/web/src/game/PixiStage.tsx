@@ -15,11 +15,9 @@ const SPRITE_ASSETS = [
   '/sprites/ultimate-player-right-shoot.webp',
   '/sprites/player-falling.webp',
   '/sprites/player-rest.webp',
-  '/sprites/ice-resurfacer-center.webp',
-  '/sprites/ice-resurfacer-left-down.webp',
-  '/sprites/ice-resurfacer-left-up.webp',
-  '/sprites/ice-resurfacer-right-down.webp',
-  '/sprites/ice-resurfacer-right-up.webp',
+  '/sprites/rink-caretaker-scrape.webp',
+  '/sprites/rink-caretaker-scrape-down.webp',
+  '/sprites/rink-caretaker-flood.webp',
 ];
 
 export interface PixiStageProps {

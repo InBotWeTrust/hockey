@@ -9101,6 +9101,7 @@ function DailyPlayView({
       <PlayView<DailyStateResponse>
         suppressedByModal={shouldSuppressRink}
         showIceCar={shouldShowIceCar}
+        maintenanceMode={isBreak ? 'scrape' : 'flood'}
         playEntranceOnMount={data.state === 'period_active' ? playEntranceOnMount : false}
         onEntranceConsumed={onEntranceConsumed}
         playRouteTransitionOnMount={playRouteTransitionOnMount}
@@ -9690,6 +9691,7 @@ function ClassicTournamentPlayView({
       <PlayView<ClassicTournamentState>
         suppressedByModal={!active || shouldShowSummary}
         showIceCar={(data.state === 'break_active' || locked) && !shouldShowSummary}
+        maintenanceMode={data.state === 'break_active' ? 'scrape' : 'flood'}
         onBack={onBack}
         backLabel="К турниру"
         active={active}
@@ -10172,6 +10174,7 @@ function TrainingPlayView({
       <PlayView<TrainingStateResponse>
         suppressedByModal={!isTrainingPlayable}
         showIceCar={isTrainingClosed || isTrainingLocked}
+        maintenanceMode="flood"
         playEntranceOnMount={isTrainingPlayable ? playEntranceOnMount : false}
         onEntranceConsumed={onEntranceConsumed}
         playRouteTransitionOnMount={playRouteTransitionOnMount}
@@ -10293,6 +10296,7 @@ export function DemoScreen(): JSX.Element {
       <PlayView<DemoSessionState>
         suppressedByModal={completionOpen}
         showIceCar={completionOpen}
+        maintenanceMode={completionOpen ? 'flood' : 'scrape'}
         onBack={() => navigate('/login', { replace: true })}
         active={demoState.status === 'active'}
         seed={demoState.seed}
