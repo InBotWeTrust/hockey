@@ -1,4 +1,8 @@
 export { GAME_CORE_VERSION } from './version.js';
+export { sampleOpenWindowScene, resolveOpenWindowShot, scanOpenWindows,
+  evaluateOpenWindowDecision, type OpenWindowScene, type OpenWindowFrame,
+  type OpenWindowInterval, type OpenWindowDecision, type OpenWindowDecisionEvaluation,
+} from './openWindowTraining.js';
 export {
   getAdvancedTrainingV2Scenario,
   getAdvancedTrainingV2Side,
