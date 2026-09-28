@@ -19,6 +19,7 @@ import { trainingRoutes } from './duel/training/routes.js';
 import { initialTrainingCourseRoutes } from './duel/training/initialCourseRoutes.js';
 import { advancedTrainingCourseRoutes } from './duel/training/advancedCourseRoutes.js';
 import { advancedTrainingV2Routes } from './duel/training/advancedCourseV2Routes.js';
+import { openWindowCourseRoutes } from './duel/training/openWindowCourseRoutes.js';
 import { amateurDuelRoutes } from './duel/amateur/routes.js';
 import { weeklyChallengeRoutes } from './weeklyChallenge/routes.js';
 import { chatRoutes } from './chat/routes.js';
@@ -220,6 +221,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(advancedTrainingV2Routes, {
     trainingSeedSecret: config.DAILY_SEED_SECRET,
   });
+  await app.register(openWindowCourseRoutes);
   await app.register(amateurDuelRoutes, {
     duelSeedSecret: config.DAILY_SEED_SECRET,
     ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),

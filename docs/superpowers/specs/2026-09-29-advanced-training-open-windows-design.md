@@ -73,6 +73,11 @@ of poor decisions. The final check consists of multiple full three-minute
 runs and reports decision quality and goal throughput separately. It does not
 claim that one run establishes a stable skill level.
 
+The pace stage uses continuous skating through each series and all three
+minutes of each final run. A shot advances the ordinary shot index and game
+state; it does not reset to another pre-authored one-shot episode. Its timer
+counts active game time, not pauses for a result or a coaching explanation.
+
 ## Window and feedback model
 
 Use the same deterministic simulation and shot resolver as the daily game.
