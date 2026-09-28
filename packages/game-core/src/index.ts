@@ -9,6 +9,11 @@ export {
   type AdvancedTrainingV2Scenario,
 } from './advancedTrainingV2.js';
 export { ADVANCED_TRAINING_V2_SCENARIOS, ADVANCED_TRAINING_V2_BANK_VERSION } from './advancedTrainingV2Scenarios.js';
+export { evaluateAdvancedTrainingContinuousShot, findNextAdvancedTrainingWindow,
+  getAdvancedTrainingContinuousSeed,
+  ADVANCED_TRAINING_WINDOW_SCAN_STEP_MS, ADVANCED_TRAINING_WINDOW_SCAN_HORIZON_MS,
+  type AdvancedTrainingContinuousContext, type AdvancedTrainingWindow,
+} from './advancedTrainingContinuous.js';
 export { createRng, type Rng } from './rng.js';
 export { RINK, GOAL, GOAL_OPENING, PUCK_START, type Vec2 } from './rink.js';
 export type { GoalieConfig, GoalieState, GoaliePatternId } from './goalie/types.js';

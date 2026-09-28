@@ -5,7 +5,9 @@ import { classifyMarksmanshipV6Score, type MarksmanshipV6Measurements,
   type MarksmanshipV6Technique } from './marksmanshipV6.js';
 import type { ShotInput, ShotResult } from './shot/types.js';
 import { ADVANCED_TRAINING_V2_SCENARIOS } from './advancedTrainingV2Scenarios.js';
-import { GAME_CORE_VERSION } from './version.js';
+
+// The V2 catalog remains valid against its original deterministic shot rules.
+const V2_BANK_GAME_CORE_VERSION = 66;
 
 export type AdvancedTrainingV2Technique = Exclude<MarksmanshipV6Technique, 'ordinary'>;
 export type AdvancedTrainingV2Side = 'left' | 'right';
@@ -64,7 +66,7 @@ export function getAdvancedTrainingV2Scenario(
     throw new RangeError('Invalid advanced training V2 scenario request');
   }
   const scenario = matching[ordinal % matching.length]!;
-  if (scenario.gameCoreVersion !== GAME_CORE_VERSION) {
+  if (scenario.gameCoreVersion !== V2_BANK_GAME_CORE_VERSION) {
     throw new Error('Advanced training V2 scenario bank requires revalidation');
   }
   return scenario;
@@ -80,7 +82,7 @@ export function evaluateAdvancedTrainingV2Shot(
   success: boolean;
   measurements: MarksmanshipV6Measurements | null;
 } {
-  if (scenario.gameCoreVersion !== GAME_CORE_VERSION) {
+  if (scenario.gameCoreVersion !== V2_BANK_GAME_CORE_VERSION) {
     throw new Error('Advanced training V2 scenario bank requires revalidation');
   }
   const context = resolveMarksmanshipShotContext({

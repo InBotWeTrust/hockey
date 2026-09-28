@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for V6 marksmanship scoring', () => {
-    expect(GAME_CORE_VERSION).toBe(66);
+  it('is bumped for continuous advanced training', () => {
+    expect(GAME_CORE_VERSION).toBe(67);
   });
 });
