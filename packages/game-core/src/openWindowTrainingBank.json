@@ -1,0 +1,1458 @@
+[
+  {
+    "id": "open-window-v1:notice_frame:0",
+    "stepKey": "notice_frame",
+    "role": "demonstration",
+    "sessionSeed": "open-window:v1:notice_frame:0:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 1495,
+    "endMs": 9495,
+    "targetMs": 7495,
+    "targetWindow": {
+      "startMs": 7302,
+      "endMs": 7689
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_frame:1",
+    "stepKey": "notice_frame",
+    "role": "practice",
+    "sessionSeed": "open-window:v1:notice_frame:1:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 356,
+    "endMs": 8356,
+    "targetMs": 6356,
+    "targetWindow": {
+      "startMs": 6203,
+      "endMs": 6510
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_frame:2",
+    "stepKey": "notice_frame",
+    "role": "check",
+    "sessionSeed": "open-window:v1:notice_frame:2:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 3977,
+    "endMs": 11977,
+    "targetMs": 9977,
+    "targetWindow": {
+      "startMs": 9834,
+      "endMs": 10121
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_frame:3",
+    "stepKey": "notice_frame",
+    "role": "check",
+    "sessionSeed": "open-window:v1:notice_frame:3:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 2917,
+    "endMs": 10917,
+    "targetMs": 8917,
+    "targetWindow": {
+      "startMs": 8720,
+      "endMs": 9115
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_frame:4",
+    "stepKey": "notice_frame",
+    "role": "check",
+    "sessionSeed": "open-window:v1:notice_frame:4:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 2260,
+    "endMs": 10260,
+    "targetMs": 8260,
+    "targetWindow": {
+      "startMs": 8082,
+      "endMs": 8438
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_frame:5",
+    "stepKey": "notice_frame",
+    "role": "check",
+    "sessionSeed": "open-window:v1:notice_frame:5:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 4683,
+    "endMs": 12683,
+    "targetMs": 10683,
+    "targetWindow": {
+      "startMs": 10529,
+      "endMs": 10837
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_frame:6",
+    "stepKey": "notice_frame",
+    "role": "check",
+    "sessionSeed": "open-window:v1:notice_frame:6:1",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 410,
+    "endMs": 8410,
+    "targetMs": 6410,
+    "targetWindow": {
+      "startMs": 6257,
+      "endMs": 6564
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_motion:0",
+    "stepKey": "notice_motion",
+    "role": "demonstration",
+    "sessionSeed": "open-window:v1:notice_motion:0:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 4263,
+    "endMs": 12263,
+    "targetMs": 10263,
+    "targetWindow": {
+      "startMs": 10136,
+      "endMs": 10390
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_motion:1",
+    "stepKey": "notice_motion",
+    "role": "practice",
+    "sessionSeed": "open-window:v1:notice_motion:1:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 3105,
+    "endMs": 11105,
+    "targetMs": 9105,
+    "targetWindow": {
+      "startMs": 8956,
+      "endMs": 9254
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_motion:2",
+    "stepKey": "notice_motion",
+    "role": "check",
+    "sessionSeed": "open-window:v1:notice_motion:2:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 2774,
+    "endMs": 10774,
+    "targetMs": 8774,
+    "targetWindow": {
+      "startMs": 8621,
+      "endMs": 8928
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_motion:3",
+    "stepKey": "notice_motion",
+    "role": "check",
+    "sessionSeed": "open-window:v1:notice_motion:3:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 670,
+    "endMs": 8670,
+    "targetMs": 6670,
+    "targetWindow": {
+      "startMs": 6473,
+      "endMs": 6867
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_motion:4",
+    "stepKey": "notice_motion",
+    "role": "check",
+    "sessionSeed": "open-window:v1:notice_motion:4:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 2225,
+    "endMs": 10225,
+    "targetMs": 8225,
+    "targetWindow": {
+      "startMs": 8071,
+      "endMs": 8379
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_motion:5",
+    "stepKey": "notice_motion",
+    "role": "check",
+    "sessionSeed": "open-window:v1:notice_motion:5:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 2130,
+    "endMs": 10130,
+    "targetMs": 8130,
+    "targetWindow": {
+      "startMs": 7993,
+      "endMs": 8267
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_motion:6",
+    "stepKey": "notice_motion",
+    "role": "check",
+    "sessionSeed": "open-window:v1:notice_motion:6:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 2968,
+    "endMs": 10968,
+    "targetMs": 8968,
+    "targetWindow": {
+      "startMs": 8771,
+      "endMs": 9166
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_independent:0",
+    "stepKey": "notice_independent",
+    "role": "demonstration",
+    "sessionSeed": "open-window:v1:notice_independent:0:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 4308,
+    "endMs": 12308,
+    "targetMs": 10308,
+    "targetWindow": {
+      "startMs": 10111,
+      "endMs": 10505
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_independent:1",
+    "stepKey": "notice_independent",
+    "role": "practice",
+    "sessionSeed": "open-window:v1:notice_independent:1:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 3169,
+    "endMs": 11169,
+    "targetMs": 9169,
+    "targetWindow": {
+      "startMs": 9045,
+      "endMs": 9294
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_independent:2",
+    "stepKey": "notice_independent",
+    "role": "check",
+    "sessionSeed": "open-window:v1:notice_independent:2:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 1888,
+    "endMs": 9888,
+    "targetMs": 7888,
+    "targetWindow": {
+      "startMs": 7734,
+      "endMs": 8042
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_independent:3",
+    "stepKey": "notice_independent",
+    "role": "check",
+    "sessionSeed": "open-window:v1:notice_independent:3:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 2037,
+    "endMs": 10037,
+    "targetMs": 8037,
+    "targetWindow": {
+      "startMs": 7840,
+      "endMs": 8235
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_independent:4",
+    "stepKey": "notice_independent",
+    "role": "check",
+    "sessionSeed": "open-window:v1:notice_independent:4:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 705,
+    "endMs": 8705,
+    "targetMs": 6705,
+    "targetWindow": {
+      "startMs": 6508,
+      "endMs": 6902
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_independent:5",
+    "stepKey": "notice_independent",
+    "role": "check",
+    "sessionSeed": "open-window:v1:notice_independent:5:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 2713,
+    "endMs": 10713,
+    "targetMs": 8713,
+    "targetWindow": {
+      "startMs": 8588,
+      "endMs": 8838
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:notice_independent:6",
+    "stepKey": "notice_independent",
+    "role": "check",
+    "sessionSeed": "open-window:v1:notice_independent:6:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 771,
+    "endMs": 8771,
+    "targetMs": 6771,
+    "targetWindow": {
+      "startMs": 6618,
+      "endMs": 6925
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_direction:0",
+    "stepKey": "anticipate_direction",
+    "role": "demonstration",
+    "sessionSeed": "open-window:v1:anticipate_direction:0:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 3794,
+    "endMs": 11794,
+    "targetMs": 9794,
+    "targetWindow": {
+      "startMs": 9697,
+      "endMs": 9891
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_direction:1",
+    "stepKey": "anticipate_direction",
+    "role": "practice",
+    "sessionSeed": "open-window:v1:anticipate_direction:1:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 1501,
+    "endMs": 9501,
+    "targetMs": 7501,
+    "targetWindow": {
+      "startMs": 7337,
+      "endMs": 7666
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_direction:2",
+    "stepKey": "anticipate_direction",
+    "role": "check",
+    "sessionSeed": "open-window:v1:anticipate_direction:2:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 4074,
+    "endMs": 12074,
+    "targetMs": 10074,
+    "targetWindow": {
+      "startMs": 9920,
+      "endMs": 10228
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_direction:3",
+    "stepKey": "anticipate_direction",
+    "role": "check",
+    "sessionSeed": "open-window:v1:anticipate_direction:3:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 1541,
+    "endMs": 9541,
+    "targetMs": 7541,
+    "targetWindow": {
+      "startMs": 7344,
+      "endMs": 7738
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_direction:4",
+    "stepKey": "anticipate_direction",
+    "role": "check",
+    "sessionSeed": "open-window:v1:anticipate_direction:4:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 3015,
+    "endMs": 11015,
+    "targetMs": 9015,
+    "targetWindow": {
+      "startMs": 8861,
+      "endMs": 9169
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_direction:5",
+    "stepKey": "anticipate_direction",
+    "role": "check",
+    "sessionSeed": "open-window:v1:anticipate_direction:5:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 3101,
+    "endMs": 11101,
+    "targetMs": 9101,
+    "targetWindow": {
+      "startMs": 8948,
+      "endMs": 9255
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_direction:6",
+    "stepKey": "anticipate_direction",
+    "role": "check",
+    "sessionSeed": "open-window:v1:anticipate_direction:6:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 1159,
+    "endMs": 9159,
+    "targetMs": 7159,
+    "targetWindow": {
+      "startMs": 6962,
+      "endMs": 7356
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_opening:0",
+    "stepKey": "anticipate_opening",
+    "role": "demonstration",
+    "sessionSeed": "open-window:v1:anticipate_opening:0:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 2864,
+    "endMs": 10864,
+    "targetMs": 8864,
+    "targetWindow": {
+      "startMs": 8711,
+      "endMs": 9018
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_opening:1",
+    "stepKey": "anticipate_opening",
+    "role": "practice",
+    "sessionSeed": "open-window:v1:anticipate_opening:1:1",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 1740,
+    "endMs": 9740,
+    "targetMs": 7740,
+    "targetWindow": {
+      "startMs": 7659,
+      "endMs": 7822
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_opening:2",
+    "stepKey": "anticipate_opening",
+    "role": "check",
+    "sessionSeed": "open-window:v1:anticipate_opening:2:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 4752,
+    "endMs": 12752,
+    "targetMs": 10752,
+    "targetWindow": {
+      "startMs": 10648,
+      "endMs": 10857
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_opening:3",
+    "stepKey": "anticipate_opening",
+    "role": "check",
+    "sessionSeed": "open-window:v1:anticipate_opening:3:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 2265,
+    "endMs": 10265,
+    "targetMs": 8265,
+    "targetWindow": {
+      "startMs": 8068,
+      "endMs": 8462
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_opening:4",
+    "stepKey": "anticipate_opening",
+    "role": "check",
+    "sessionSeed": "open-window:v1:anticipate_opening:4:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 1441,
+    "endMs": 9441,
+    "targetMs": 7441,
+    "targetWindow": {
+      "startMs": 7261,
+      "endMs": 7621
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_opening:5",
+    "stepKey": "anticipate_opening",
+    "role": "check",
+    "sessionSeed": "open-window:v1:anticipate_opening:5:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 299,
+    "endMs": 8299,
+    "targetMs": 6299,
+    "targetWindow": {
+      "startMs": 6146,
+      "endMs": 6453
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_opening:6",
+    "stepKey": "anticipate_opening",
+    "role": "check",
+    "sessionSeed": "open-window:v1:anticipate_opening:6:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 4142,
+    "endMs": 12142,
+    "targetMs": 10142,
+    "targetWindow": {
+      "startMs": 9989,
+      "endMs": 10296
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_timing:0",
+    "stepKey": "anticipate_timing",
+    "role": "demonstration",
+    "sessionSeed": "open-window:v1:anticipate_timing:0:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 450,
+    "endMs": 8450,
+    "targetMs": 6450,
+    "targetWindow": {
+      "startMs": 6297,
+      "endMs": 6604
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_timing:1",
+    "stepKey": "anticipate_timing",
+    "role": "practice",
+    "sessionSeed": "open-window:v1:anticipate_timing:1:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 2454,
+    "endMs": 10454,
+    "targetMs": 8454,
+    "targetWindow": {
+      "startMs": 8301,
+      "endMs": 8608
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_timing:2",
+    "stepKey": "anticipate_timing",
+    "role": "check",
+    "sessionSeed": "open-window:v1:anticipate_timing:2:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 5748,
+    "endMs": 13748,
+    "targetMs": 11748,
+    "targetWindow": {
+      "startMs": 11595,
+      "endMs": 11902
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_timing:3",
+    "stepKey": "anticipate_timing",
+    "role": "check",
+    "sessionSeed": "open-window:v1:anticipate_timing:3:2",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 3105,
+    "endMs": 11105,
+    "targetMs": 9105,
+    "targetWindow": {
+      "startMs": 8952,
+      "endMs": 9259
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_timing:4",
+    "stepKey": "anticipate_timing",
+    "role": "check",
+    "sessionSeed": "open-window:v1:anticipate_timing:4:1",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 646,
+    "endMs": 8646,
+    "targetMs": 6646,
+    "targetWindow": {
+      "startMs": 6493,
+      "endMs": 6800
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_timing:5",
+    "stepKey": "anticipate_timing",
+    "role": "check",
+    "sessionSeed": "open-window:v1:anticipate_timing:5:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 3138,
+    "endMs": 11138,
+    "targetMs": 9138,
+    "targetWindow": {
+      "startMs": 8985,
+      "endMs": 9292
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:anticipate_timing:6",
+    "stepKey": "anticipate_timing",
+    "role": "check",
+    "sessionSeed": "open-window:v1:anticipate_timing:6:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 3352,
+    "endMs": 11352,
+    "targetMs": 9352,
+    "targetWindow": {
+      "startMs": 9215,
+      "endMs": 9490
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_risk:0",
+    "stepKey": "decide_risk",
+    "role": "demonstration",
+    "sessionSeed": "open-window:v1:decide_risk:0:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 263,
+    "endMs": 8263,
+    "targetMs": 6263,
+    "targetWindow": {
+      "startMs": 6145,
+      "endMs": 6382
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_risk:1",
+    "stepKey": "decide_risk",
+    "role": "practice",
+    "sessionSeed": "open-window:v1:decide_risk:1:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 3266,
+    "endMs": 11266,
+    "targetMs": 9266,
+    "targetWindow": {
+      "startMs": 9131,
+      "endMs": 9402
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_risk:2",
+    "stepKey": "decide_risk",
+    "role": "check",
+    "sessionSeed": "open-window:v1:decide_risk:2:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 5249,
+    "endMs": 13249,
+    "targetMs": 11249,
+    "targetWindow": {
+      "startMs": 11096,
+      "endMs": 11403
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_risk:3",
+    "stepKey": "decide_risk",
+    "role": "check",
+    "sessionSeed": "open-window:v1:decide_risk:3:1",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 1235,
+    "endMs": 9235,
+    "targetMs": 7235,
+    "targetWindow": {
+      "startMs": 7158,
+      "endMs": 7313
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_risk:4",
+    "stepKey": "decide_risk",
+    "role": "check",
+    "sessionSeed": "open-window:v1:decide_risk:4:2",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 5858,
+    "endMs": 13858,
+    "targetMs": 11858,
+    "targetWindow": {
+      "startMs": 11811,
+      "endMs": 11906
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_risk:5",
+    "stepKey": "decide_risk",
+    "role": "check",
+    "sessionSeed": "open-window:v1:decide_risk:5:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 270,
+    "endMs": 8270,
+    "targetMs": 6270,
+    "targetWindow": {
+      "startMs": 6160,
+      "endMs": 6380
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_risk:6",
+    "stepKey": "decide_risk",
+    "role": "check",
+    "sessionSeed": "open-window:v1:decide_risk:6:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 3445,
+    "endMs": 11445,
+    "targetMs": 9445,
+    "targetWindow": {
+      "startMs": 9381,
+      "endMs": 9509
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_skip:0",
+    "stepKey": "decide_skip",
+    "role": "demonstration",
+    "sessionSeed": "open-window:v1:decide_skip:0:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 1739,
+    "endMs": 9739,
+    "targetMs": 7739,
+    "targetWindow": {
+      "startMs": 7542,
+      "endMs": 7936
+    },
+    "skipSegment": {
+      "startMs": 6208,
+      "endMs": 6875
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_skip:1",
+    "stepKey": "decide_skip",
+    "role": "practice",
+    "sessionSeed": "open-window:v1:decide_skip:1:1",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 1977,
+    "endMs": 9977,
+    "targetMs": 7977,
+    "targetWindow": {
+      "startMs": 7824,
+      "endMs": 8131
+    },
+    "skipSegment": {
+      "startMs": 6490,
+      "endMs": 7157
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_skip:2",
+    "stepKey": "decide_skip",
+    "role": "check",
+    "sessionSeed": "open-window:v1:decide_skip:2:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 453,
+    "endMs": 8453,
+    "targetMs": 6453,
+    "targetWindow": {
+      "startMs": 6300,
+      "endMs": 6607
+    },
+    "skipSegment": {
+      "startMs": 4966,
+      "endMs": 5633
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_skip:3",
+    "stepKey": "decide_skip",
+    "role": "check",
+    "sessionSeed": "open-window:v1:decide_skip:3:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 2514,
+    "endMs": 10514,
+    "targetMs": 8514,
+    "targetWindow": {
+      "startMs": 8426,
+      "endMs": 8603
+    },
+    "skipSegment": {
+      "startMs": 7092,
+      "endMs": 7759
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_skip:4",
+    "stepKey": "decide_skip",
+    "role": "check",
+    "sessionSeed": "open-window:v1:decide_skip:4:10",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 5172,
+    "endMs": 13172,
+    "targetMs": 11172,
+    "targetWindow": {
+      "startMs": 11131,
+      "endMs": 11214
+    },
+    "skipSegment": {
+      "startMs": 9797,
+      "endMs": 10464
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_skip:5",
+    "stepKey": "decide_skip",
+    "role": "check",
+    "sessionSeed": "open-window:v1:decide_skip:5:1",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 1676,
+    "endMs": 9676,
+    "targetMs": 7676,
+    "targetWindow": {
+      "startMs": 7523,
+      "endMs": 7830
+    },
+    "skipSegment": {
+      "startMs": 6189,
+      "endMs": 6856
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_skip:6",
+    "stepKey": "decide_skip",
+    "role": "check",
+    "sessionSeed": "open-window:v1:decide_skip:6:3",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 3403,
+    "endMs": 11403,
+    "targetMs": 9403,
+    "targetWindow": {
+      "startMs": 9322,
+      "endMs": 9484
+    },
+    "skipSegment": {
+      "startMs": 7988,
+      "endMs": 8655
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_sequence:0",
+    "stepKey": "decide_sequence",
+    "role": "demonstration",
+    "sessionSeed": "open-window:v1:decide_sequence:0:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 2552,
+    "endMs": 10552,
+    "targetMs": 8552,
+    "targetWindow": {
+      "startMs": 8441,
+      "endMs": 8663
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_sequence:1",
+    "stepKey": "decide_sequence",
+    "role": "practice",
+    "sessionSeed": "open-window:v1:decide_sequence:1:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 2216,
+    "endMs": 10216,
+    "targetMs": 8216,
+    "targetWindow": {
+      "startMs": 8077,
+      "endMs": 8356
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_sequence:2",
+    "stepKey": "decide_sequence",
+    "role": "check",
+    "sessionSeed": "open-window:v1:decide_sequence:2:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 2935,
+    "endMs": 10935,
+    "targetMs": 8935,
+    "targetWindow": {
+      "startMs": 8768,
+      "endMs": 9102
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_sequence:3",
+    "stepKey": "decide_sequence",
+    "role": "check",
+    "sessionSeed": "open-window:v1:decide_sequence:3:2",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 4360,
+    "endMs": 12360,
+    "targetMs": 10360,
+    "targetWindow": {
+      "startMs": 10295,
+      "endMs": 10425
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_sequence:4",
+    "stepKey": "decide_sequence",
+    "role": "check",
+    "sessionSeed": "open-window:v1:decide_sequence:4:19",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 3621,
+    "endMs": 11621,
+    "targetMs": 9621,
+    "targetWindow": {
+      "startMs": 9571,
+      "endMs": 9672
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_sequence:5",
+    "stepKey": "decide_sequence",
+    "role": "check",
+    "sessionSeed": "open-window:v1:decide_sequence:5:0",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 4131,
+    "endMs": 12131,
+    "targetMs": 10131,
+    "targetWindow": {
+      "startMs": 10027,
+      "endMs": 10236
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:decide_sequence:6",
+    "stepKey": "decide_sequence",
+    "role": "check",
+    "sessionSeed": "open-window:v1:decide_sequence:6:2",
+    "shotIndex": 1,
+    "goalieId": "rookie",
+    "startMs": 5561,
+    "endMs": 13561,
+    "targetMs": 11561,
+    "targetWindow": {
+      "startMs": 11475,
+      "endMs": 11647
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_short:0",
+    "stepKey": "pace_short",
+    "role": "demonstration",
+    "sessionSeed": "open-window:v1:pace_short:0:0",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 3848,
+    "endMs": 11848,
+    "targetMs": 9848,
+    "targetWindow": {
+      "startMs": 9737,
+      "endMs": 9959
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_short:1",
+    "stepKey": "pace_short",
+    "role": "practice",
+    "sessionSeed": "open-window:v1:pace_short:1:0",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 456,
+    "endMs": 8456,
+    "targetMs": 6456,
+    "targetWindow": {
+      "startMs": 6303,
+      "endMs": 6610
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_short:2",
+    "stepKey": "pace_short",
+    "role": "check",
+    "sessionSeed": "open-window:v1:pace_short:2:0",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 793,
+    "endMs": 8793,
+    "targetMs": 6793,
+    "targetWindow": {
+      "startMs": 6628,
+      "endMs": 6959
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_short:3",
+    "stepKey": "pace_short",
+    "role": "check",
+    "sessionSeed": "open-window:v1:pace_short:3:2",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 5188,
+    "endMs": 13188,
+    "targetMs": 11188,
+    "targetWindow": {
+      "startMs": 11091,
+      "endMs": 11285
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_short:4",
+    "stepKey": "pace_short",
+    "role": "check",
+    "sessionSeed": "open-window:v1:pace_short:4:0",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 5641,
+    "endMs": 13641,
+    "targetMs": 11641,
+    "targetWindow": {
+      "startMs": 11583,
+      "endMs": 11700
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_short:5",
+    "stepKey": "pace_short",
+    "role": "check",
+    "sessionSeed": "open-window:v1:pace_short:5:0",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 1017,
+    "endMs": 9017,
+    "targetMs": 7017,
+    "targetWindow": {
+      "startMs": 6892,
+      "endMs": 7143
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_short:6",
+    "stepKey": "pace_short",
+    "role": "check",
+    "sessionSeed": "open-window:v1:pace_short:6:12",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 3946,
+    "endMs": 11946,
+    "targetMs": 9946,
+    "targetWindow": {
+      "startMs": 9872,
+      "endMs": 10021
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_faster:0",
+    "stepKey": "pace_faster",
+    "role": "demonstration",
+    "sessionSeed": "open-window:v1:pace_faster:0:0",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 3653,
+    "endMs": 11653,
+    "targetMs": 9653,
+    "targetWindow": {
+      "startMs": 9500,
+      "endMs": 9807
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_faster:1",
+    "stepKey": "pace_faster",
+    "role": "practice",
+    "sessionSeed": "open-window:v1:pace_faster:1:0",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 1758,
+    "endMs": 9758,
+    "targetMs": 7758,
+    "targetWindow": {
+      "startMs": 7561,
+      "endMs": 7955
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_faster:2",
+    "stepKey": "pace_faster",
+    "role": "check",
+    "sessionSeed": "open-window:v1:pace_faster:2:0",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 3959,
+    "endMs": 11959,
+    "targetMs": 9959,
+    "targetWindow": {
+      "startMs": 9826,
+      "endMs": 10092
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_faster:3",
+    "stepKey": "pace_faster",
+    "role": "check",
+    "sessionSeed": "open-window:v1:pace_faster:3:2",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 1515,
+    "endMs": 9515,
+    "targetMs": 7515,
+    "targetWindow": {
+      "startMs": 7439,
+      "endMs": 7592
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_faster:4",
+    "stepKey": "pace_faster",
+    "role": "check",
+    "sessionSeed": "open-window:v1:pace_faster:4:1",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 3049,
+    "endMs": 11049,
+    "targetMs": 9049,
+    "targetWindow": {
+      "startMs": 9008,
+      "endMs": 9090
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_faster:5",
+    "stepKey": "pace_faster",
+    "role": "check",
+    "sessionSeed": "open-window:v1:pace_faster:5:1",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 4850,
+    "endMs": 12850,
+    "targetMs": 10850,
+    "targetWindow": {
+      "startMs": 10696,
+      "endMs": 11004
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_faster:6",
+    "stepKey": "pace_faster",
+    "role": "check",
+    "sessionSeed": "open-window:v1:pace_faster:6:1",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 5501,
+    "endMs": 13501,
+    "targetMs": 11501,
+    "targetWindow": {
+      "startMs": 11434,
+      "endMs": 11568
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_three_minutes:0",
+    "stepKey": "pace_three_minutes",
+    "role": "demonstration",
+    "sessionSeed": "open-window:v1:pace_three_minutes:0:0",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 529,
+    "endMs": 180529,
+    "targetMs": 6529,
+    "targetWindow": {
+      "startMs": 6375,
+      "endMs": 6683
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_three_minutes:1",
+    "stepKey": "pace_three_minutes",
+    "role": "practice",
+    "sessionSeed": "open-window:v1:pace_three_minutes:1:1",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 5319,
+    "endMs": 185319,
+    "targetMs": 11319,
+    "targetWindow": {
+      "startMs": 11166,
+      "endMs": 11473
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_three_minutes:2",
+    "stepKey": "pace_three_minutes",
+    "role": "check",
+    "sessionSeed": "open-window:v1:pace_three_minutes:2:0",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 4087,
+    "endMs": 184087,
+    "targetMs": 10087,
+    "targetWindow": {
+      "startMs": 9890,
+      "endMs": 10284
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_three_minutes:3",
+    "stepKey": "pace_three_minutes",
+    "role": "check",
+    "sessionSeed": "open-window:v1:pace_three_minutes:3:4",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 2440,
+    "endMs": 182440,
+    "targetMs": 8440,
+    "targetWindow": {
+      "startMs": 8350,
+      "endMs": 8531
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_three_minutes:4",
+    "stepKey": "pace_three_minutes",
+    "role": "check",
+    "sessionSeed": "open-window:v1:pace_three_minutes:4:4",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 3247,
+    "endMs": 183247,
+    "targetMs": 9247,
+    "targetWindow": {
+      "startMs": 9190,
+      "endMs": 9304
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_three_minutes:5",
+    "stepKey": "pace_three_minutes",
+    "role": "check",
+    "sessionSeed": "open-window:v1:pace_three_minutes:5:0",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 1209,
+    "endMs": 181209,
+    "targetMs": 7209,
+    "targetWindow": {
+      "startMs": 7055,
+      "endMs": 7363
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  },
+  {
+    "id": "open-window-v1:pace_three_minutes:6",
+    "stepKey": "pace_three_minutes",
+    "role": "check",
+    "sessionSeed": "open-window:v1:pace_three_minutes:6:6",
+    "shotIndex": 1,
+    "goalieId": "wall",
+    "startMs": 3386,
+    "endMs": 183386,
+    "targetMs": 9386,
+    "targetWindow": {
+      "startMs": 9290,
+      "endMs": 9483
+    },
+    "bankVersion": 1,
+    "gameCoreVersion": 69
+  }
+]

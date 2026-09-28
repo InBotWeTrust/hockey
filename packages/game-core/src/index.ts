@@ -3,6 +3,10 @@ export { sampleOpenWindowScene, resolveOpenWindowShot, scanOpenWindows,
   evaluateOpenWindowDecision, type OpenWindowScene, type OpenWindowFrame,
   type OpenWindowInterval, type OpenWindowDecision, type OpenWindowDecisionEvaluation,
 } from './openWindowTraining.js';
+export { OPEN_WINDOW_STEPS, OPEN_WINDOW_BANK_VERSION, getOpenWindowScene,
+  validateOpenWindowScene, type OpenWindowStepKey, type OpenWindowStage,
+  type CuratedOpenWindowScene,
+} from './openWindowTrainingScenes.js';
 export {
   getAdvancedTrainingV2Scenario,
   getAdvancedTrainingV2Side,
