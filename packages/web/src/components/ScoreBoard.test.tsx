@@ -16,6 +16,13 @@ function expectTextOrder(text: string, parts: string[]): void {
 }
 
 describe('ScoreBoard', () => {
+  it('keeps long feedback from widening the rink scoreboard stack', () => {
+    const stackRule = designSystemCss.match(/\.game-scoreboard-stack \{(?<body>[\s\S]*?)\n\}/)?.groups?.body;
+    expect(stackRule).toContain('grid-template-columns: minmax(0, 1fr);');
+    expect(stackRule).toContain('width: 100%;');
+    expect(stackRule).toContain('min-width: 0;');
+  });
+
   it('uses a translucent liquid-glass surface instead of an opaque fill', () => {
     const scoreboardRule = designSystemCss.match(/\.game-scoreboard \{(?<body>[\s\S]*?)\n\}/)?.groups
       ?.body;

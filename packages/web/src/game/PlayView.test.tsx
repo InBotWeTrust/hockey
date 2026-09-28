@@ -348,6 +348,27 @@ describe('PlayView', () => {
     );
   });
 
+  it('holds an early practice tap until the visible scene reaches the valid shot', async () => {
+    let now = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
+    render(<PlayView suppressedByModal={false} showIceCar={false}
+      onBack={() => undefined} active seed="practice-assist" goalieId="rookie"
+      periodNumber={1} goals={0} shots={0}
+      initialSceneElapsedMs={9_880} initialShooterElapsedMs={9_880}
+      practiceShotWindow={{ armStartMs: 9_880, targetMs: 10_002, endMs: 10_004 }}
+      shotResolver={shotResolver} optimisticAddShot={() => undefined}
+      submitShot={() => new Promise(() => undefined)} applyState={() => undefined} />);
+    await act(async () => Promise.resolve());
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    expect(shotResolver).not.toHaveBeenCalled();
+    now = 1_122;
+    act(() => tickerCallbacks.at(-1)?.());
+    expect(shotResolver).toHaveBeenCalledWith(expect.objectContaining({
+      input: expect.objectContaining({ tapTime: 10_002, shooterTapTime: 10_002 }),
+    }));
+  });
+
   it('rebases separate clocks when a reconciled authoritative snapshot arrives', () => {
     vi.spyOn(performance, 'now').mockReturnValue(1_000);
     const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
