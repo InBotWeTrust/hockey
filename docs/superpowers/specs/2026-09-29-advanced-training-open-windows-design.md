@@ -77,7 +77,12 @@ claim that one run establishes a stable skill level.
 
 Use the same deterministic simulation and shot resolver as the daily game.
 For a selected seed and time span, sample candidate tap times and group
-contiguous successful times into open-window intervals. Retain the geometry
+contiguous successful times into open-window intervals. Stage 1 teaching and
+check scenes must provide at least one interval of 200 ms or more; stage 2
+scenes must provide at least one interval of 160 ms or more. Later stages mix
+broad and narrow intervals without filtering them to a single named category.
+These lower bounds are scene-selection rules, not altered simulation speeds or
+guaranteed human reaction times. Retain the geometry
 and motion at the shot and puck-arrival times to explain why an interval
 opens or closes. The scene bank is generated and validated against the pinned
 game-core version; changing that version requires validating or regenerating
@@ -128,11 +133,15 @@ idempotent; reconnect restores a consistent run or starts a new attempt at
 an explicit boundary, never half-way through a different trajectory.
 
 The old category-based course is replaced in the advanced-training surface,
-not silently repurposed under the same progress semantics. Existing completed
-old exercises remain historical records; they do not imply completion of the
-new decision course. Active old runs receive a clear restart message and are
-not evaluated under new rules. Preserve one-time rewards and prevent replay
-from granting them repeatedly. Beginner exercises are unaffected.
+not silently repurposed under the same progress semantics. A separately
+versioned course state and completion record keeps old history interpretable.
+Existing completed old exercises remain historical records; they do not imply
+completion of the new decision course. Active old runs receive a clear restart
+message and are not evaluated under new rules. Each of the four new stages
+grants its existing-style reward once (one star and one experience point);
+substeps and retries grant none. Old rewards are not revoked. Replays, request
+duplicates, and concurrent requests cannot grant a stage reward twice.
+Beginner exercises are unaffected.
 
 ## Delivery and evidence
 
