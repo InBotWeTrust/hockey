@@ -51,7 +51,7 @@ import { PixiStage } from './PixiStage.js';
 import { Goal, type GoalOptions } from './renderer/Goal.js';
 import { Goalie, type GoalieOptions } from './renderer/Goalie.js';
 import { Hitboxes, type HitboxesOptions } from './renderer/Hitboxes.js';
-import { IceCar, iceCarPosAt } from './renderer/IceCar.js';
+import { IceCar, iceCarPosAt, type IceMaintenanceMode } from './renderer/IceCar.js';
 import { Player, type PlayerOptions } from './renderer/Player.js';
 import { Puck, type PuckOptions } from './renderer/Puck.js';
 import {
@@ -164,6 +164,7 @@ function startIceCarLoop(
   iceCarRafRef: { current: number | null },
   mountedRef: { current: boolean },
   scaleRef: { current: Scale },
+  maintenanceModeRef: { current: IceMaintenanceMode },
 ): void {
   if (iceCarRafRef.current !== null) return;
   const iceCar = iceCarRef.current;
@@ -174,8 +175,16 @@ function startIceCarLoop(
   const carStep = (rafTime: number): void => {
     if (!mountedRef.current) return;
     if (t0 < 0) t0 = rafTime;
-    const pos = iceCarPosAt(rafTime - t0);
-    iceCar.update(scaleRef.current, pos.x, pos.y, pos.rot, pos.variant);
+    const pos = iceCarPosAt(rafTime - t0, maintenanceModeRef.current);
+    iceCar.update(
+      scaleRef.current,
+      pos.x,
+      pos.y,
+      pos.rot,
+      pos.variant,
+      pos.heading,
+      pos.mirrorX,
+    );
     iceCarRafRef.current = requestAnimationFrame(carStep);
   };
   iceCarRafRef.current = requestAnimationFrame(carStep);
@@ -260,6 +269,7 @@ function sameDuelConditionUiState(
 export interface PlayViewProps<TState> {
   suppressedByModal: boolean;
   showIceCar: boolean;
+  maintenanceMode?: IceMaintenanceMode | undefined;
   playEntranceOnMount?: boolean | undefined;
   onEntranceConsumed?: (() => void) | undefined;
   playRouteTransitionOnMount?: boolean | undefined;
@@ -594,6 +604,7 @@ function TrainingPerspectiveRink({
 export function PlayView<TState>({
   suppressedByModal,
   showIceCar,
+  maintenanceMode = 'scrape',
   playEntranceOnMount = false,
   onEntranceConsumed,
   playRouteTransitionOnMount = false,
@@ -873,6 +884,8 @@ export function PlayView<TState>({
   suppressedRef.current = suppressedByModal;
   const showIceCarRef = useRef(showIceCar);
   showIceCarRef.current = showIceCar;
+  const maintenanceModeRef = useRef(maintenanceMode);
+  maintenanceModeRef.current = maintenanceMode;
   const hideGoalieRef = useRef(hideGoalie);
   hideGoalieRef.current = hideGoalie;
   const playEntranceOnMountRef = useRef(playEntranceOnMount);
@@ -1468,7 +1481,7 @@ export function PlayView<TState>({
         puck.container.visible = false;
         goal.update(initialScale, 0);
         if (showIceCarRef.current) {
-          startIceCarLoop(iceCarRef, iceCarRafRef, mountedRef, scaleRef);
+          startIceCarLoop(iceCarRef, iceCarRafRef, mountedRef, scaleRef, maintenanceModeRef);
         } else {
           iceCar.container.visible = false;
         }
@@ -1561,7 +1574,7 @@ export function PlayView<TState>({
       goalie.container.visible = false;
       puck.container.visible = false;
       if (showIceCar) {
-        startIceCarLoop(iceCarRef, iceCarRafRef, mountedRef, scaleRef);
+        startIceCarLoop(iceCarRef, iceCarRafRef, mountedRef, scaleRef, maintenanceModeRef);
       } else {
         stopIceCarLoop(iceCarRef, iceCarRafRef);
       }
