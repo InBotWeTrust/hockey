@@ -323,7 +323,7 @@ describe('ProfileScreen', () => {
     expect(screen.getByText('constructor screen')).toBeInTheDocument();
   });
 
-  it('uses system copy feedback and a selection haptic without an internal toast', async () => {
+  it('shows copy confirmation and a selection haptic after copying a referral code', async () => {
     mockProfileRequest();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
@@ -335,7 +335,7 @@ describe('ProfileScreen', () => {
     });
 
     expect(writeText).toHaveBeenCalledWith('TEAM-77');
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Скопировано');
     expect(triggerHaptic).toHaveBeenCalledWith('selection');
   });
 
