@@ -417,10 +417,13 @@ function LocationProbe(): JSX.Element {
   return <div aria-label="location">{`${location.pathname}${location.search}`}</div>;
 }
 
-function renderWith(initialEntries: string[] = ['/'], routeControl?: JSX.Element) {
-  const client = new QueryClient({
+function renderWith(
+  initialEntries: string[] = ['/'],
+  routeControl?: JSX.Element,
+  client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
-  });
+  }),
+) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter
@@ -4291,6 +4294,49 @@ describe('DailyScreen', () => {
     );
     expect(await screen.findByRole('button', { name: /Начальный уровень/ })).toBeInTheDocument();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('keeps the last confirmed exercise progress visible while refreshing after remount', async () => {
+    const client = new QueryClient({
+      defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
+    });
+    const completedCatalog: InitialTrainingCatalogResponse = {
+      ...initialTrainingCatalog,
+      completed_count: 7,
+      beginner_training_completed: true,
+      open_training_unlocked: true,
+      exercises: initialTrainingCatalog.exercises.map((exercise) => ({
+        ...exercise,
+        state: 'completed',
+      })),
+    };
+    let courseRequestCount = 0;
+    const pendingRefresh = new Promise<Response>(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/course')) {
+        courseRequestCount += 1;
+        if (courseRequestCount > 1) return pendingRefresh;
+        return new Response(JSON.stringify(completedCatalog), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(
+        JSON.stringify(url.includes('/duel/training/state') ? trainingIdleState : baseState),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+
+    const firstRender = renderWith(['/?view=training&from=sections'], undefined, client);
+    expect(await screen.findByText('7 из 7 упражнений')).toBeInTheDocument();
+    firstRender.unmount();
+
+    renderWith(['/?view=training&from=sections'], undefined, client);
+
+    expect(screen.getByText('7 из 7 упражнений')).toBeInTheDocument();
+    expect(screen.queryByText('Загрузка прогресса…')).not.toBeInTheDocument();
+    expect(courseRequestCount).toBe(2);
   });
 
   it.each([
