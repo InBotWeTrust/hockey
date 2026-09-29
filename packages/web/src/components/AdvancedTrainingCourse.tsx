@@ -74,6 +74,7 @@ export function AdvancedTrainingHubCard({
   unlocked,
   access,
   onOpen,
+  loading = false,
 }: {
   completedCount: number;
   totalCount: number;
@@ -83,20 +84,24 @@ export function AdvancedTrainingHubCard({
     beginner_training_completed: boolean;
   };
   onOpen: () => void;
+  loading?: boolean;
 }): JSX.Element {
   return (
     <button
       type="button"
       className="section-card-surface amateur-hub-card advanced-training-mode-card"
-      disabled={!unlocked}
-      onClick={onOpen}
+      disabled={!loading && !unlocked}
+      aria-disabled={loading || !unlocked}
+      onClick={() => {
+        if (!loading && unlocked) onOpen();
+      }}
       aria-label={`Продвинутый уровень, пройдено ${completedCount} из ${totalCount} упражнений`}
     >
       <span className="amateur-hub-card__art" aria-hidden="true">
         <img
           src={ADVANCED_COVER}
           alt="Продвинутый уровень"
-          className={unlocked ? undefined : 'advanced-training-mode-card__artwork--locked'}
+          className={unlocked || loading ? undefined : 'advanced-training-mode-card__artwork--locked'}
           draggable={false}
         />
       </span>

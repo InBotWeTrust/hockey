@@ -4265,9 +4265,21 @@ describe('DailyScreen', () => {
     renderWith(['/?view=training&from=sections']);
 
     expect(await screen.findByRole('heading', { name: 'Тренировка' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Начальный уровень/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Начальный уровень/ })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /Начальный уровень/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.queryByText(/Выбери модель периода/)).not.toBeInTheDocument();
 
@@ -4425,11 +4437,17 @@ describe('DailyScreen', () => {
       initialTrainingCatalog,
     );
     expect(
+      initialTrainingCatalogAfterRefresh(
+        initialTrainingCatalog,
+        { enabled: false } as InitialTrainingCatalogResponse,
+      ),
+    ).toBe(initialTrainingCatalog);
+    expect(
       initialTrainingCatalogAfterRefresh(initialTrainingCatalog, {
         ...initialTrainingCatalog,
         enabled: false,
       }),
-    ).toBeNull();
+    ).toMatchObject({ enabled: false });
   });
 
   it('optimistically unlocks the next exercise after a verified completion', () => {
@@ -4457,7 +4475,7 @@ describe('DailyScreen', () => {
     });
   });
 
-  it('preserves the existing open-training screen while the course flag is disabled', async () => {
+  it('keeps the course cards visible while the course start flag is disabled', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       const body = url.includes('/duel/training/course')
@@ -4473,8 +4491,10 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=training']);
 
-    expect(await screen.findByRole('button', { name: 'На лёд' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Начальный уровень/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Начальный уровень/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'На лёд' })).not.toBeInTheDocument();
   });
 
   it('opens the open-training details after leaving a playable training route', async () => {

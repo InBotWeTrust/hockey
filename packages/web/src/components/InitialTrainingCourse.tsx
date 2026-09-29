@@ -80,8 +80,10 @@ export function InitialTrainingHub({
       <button
         type="button"
         className="section-card-surface amateur-hub-card initial-training-mode-card"
-        disabled={loading}
-        onClick={onOpenCourse}
+        aria-disabled={loading}
+        onClick={() => {
+          if (!loading) onOpenCourse();
+        }}
         aria-label={`Начальный уровень, пройдено ${catalog.completed_count} из ${catalog.total_count} упражнений`}
       >
         <span className="amateur-hub-card__art" aria-hidden="true">
@@ -104,13 +106,17 @@ export function InitialTrainingHub({
         unlocked={!loading && advanced.enabled && advanced.access.unlocked}
         access={advanced.access}
         onOpen={onOpenAdvanced}
+        loading={loading}
       />
 
       <button
         type="button"
         className="section-card-surface amateur-hub-card initial-training-mode-card initial-training-mode-card--open"
-        disabled={loading || !catalog.open_training_unlocked}
-        onClick={onOpenTraining}
+        disabled={!loading && !catalog.open_training_unlocked}
+        aria-disabled={loading || !catalog.open_training_unlocked}
+        onClick={() => {
+          if (!loading && catalog.open_training_unlocked) onOpenTraining();
+        }}
         aria-label="Открытая тренировка"
       >
         <span className="amateur-hub-card__art" aria-hidden="true">
