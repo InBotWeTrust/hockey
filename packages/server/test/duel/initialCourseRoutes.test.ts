@@ -18,6 +18,7 @@ import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import {
+  DEFAULT_INITIAL_TRAINING_CONFIG,
   INITIAL_TRAINING_EXERCISE_KEYS,
   isInitialTrainingCompleted,
 } from '../../src/duel/training/initialCourse.js';
@@ -88,13 +89,16 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
     accessToken = await jwt.issueAccessToken({ sub: userId });
     await pool.query(
-      `update game_settings
-          set value = jsonb_set(
-            jsonb_set(value, '{enabled}', 'true'::jsonb),
-            '{targetGoals,first-shot}',
-            '1'::jsonb
-          )
-        where key = 'training.initial_course.config'`,
+      `insert into game_settings (key, value, label, description)
+       values ('training.initial_course.config', $1::jsonb, 'Начальное обучение', 'Test config')
+       on conflict (key) do update set value = excluded.value`,
+      [
+        JSON.stringify({
+          ...DEFAULT_INITIAL_TRAINING_CONFIG,
+          enabled: true,
+          targetGoals: { ...DEFAULT_INITIAL_TRAINING_CONFIG.targetGoals, 'first-shot': 1 },
+        }),
+      ],
     );
   });
 
