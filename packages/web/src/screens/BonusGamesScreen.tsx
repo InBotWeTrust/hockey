@@ -7,6 +7,7 @@ import {
   CircleDollarSign,
   Info,
   Star,
+  Target,
   TrendingUp,
   X,
 } from 'lucide-react';
@@ -28,12 +29,13 @@ import {
 } from '../amateur/amateurAccess.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { AppToast } from '../components/AppToast.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import {
   enduranceQualificationLines,
   qualificationDescription,
 } from '../game/bonusGameQualification.js';
-import { catalogBonusGameArtwork } from '../game/bonusGameArtwork.js';
+import { catalogBonusGameArtwork, versionBonusGameArtwork } from '../game/bonusGameArtwork.js';
 import { bonusGameArtworkUrls, preloadArtwork } from '../app/artworkCache.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
@@ -41,6 +43,7 @@ import { useDailyStore } from '../stores/dailyStore.js';
 
 const SAFE_UI_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
 const LAST_SKILL_STORAGE_KEY = 'bonus-games:last-skill';
+const CLOSED_BONUS_SKILLS = new Set<BonusSkillCode>(['marksmanship', 'endurance']);
 
 function formatAttemptResetCountdown(resetsAt: string, nowMs: number): string | null {
   const resetMs = Date.parse(resetsAt);
@@ -110,13 +113,13 @@ export function BonusGamesScreen(): JSX.Element {
   });
   const [switchGame, setSwitchGame] = useState<BonusGameCard | null>(null);
   const [purchaseGame, setPurchaseGame] = useState<BonusGameCard | null>(null);
+  const [previewGame, setPreviewGame] = useState<BonusGameCard | null>(null);
+  const [sectionToast, setSectionToast] = useState<string | null>(null);
   const switchAttemptRequestRef = useRef(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() => {
     const stored = localStorage.getItem(LAST_SKILL_STORAGE_KEY);
-    return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance'
-      ? stored
-      : 'speed';
+    return stored === 'accuracy' ? 'accuracy' : 'speed';
   });
   const [allowanceNowMs, setAllowanceNowMs] = useState(() => Date.now());
   const refreshedAllowanceResetRef = useRef<string | null>(null);
@@ -189,7 +192,9 @@ export function BonusGamesScreen(): JSX.Element {
     switchAttemptMutation.mutate({ attemptId: activeAttempt.id, game: switchGame });
   };
 
-  const openGame = (game: BonusGameCard): void => {
+  const confirmGameStart = (game: BonusGameCard): void => {
+    setPreviewGame(null);
+    startMutation.reset();
     if (game.state === 'level_locked') {
       performGameAction(game);
       return;
@@ -200,6 +205,15 @@ export function BonusGamesScreen(): JSX.Element {
       return;
     }
     performGameAction(game);
+  };
+  const openGame = (game: BonusGameCard): void => {
+    if (game.state === 'level_locked' || game.state === 'purchase_required') {
+      performGameAction(game);
+      return;
+    }
+    if (game.state === 'in_progress' || game.active_attempt !== null || isPlayable(game)) {
+      setPreviewGame(game);
+    }
   };
   const games = allGames.filter((game) => game.skill_code === selectedSkill);
   const selectedAllowance = catalogQuery.data?.attempt_allowances?.[selectedSkill];
@@ -231,6 +245,10 @@ export function BonusGamesScreen(): JSX.Element {
   }, [allowanceCountdown, catalogQuery, selectedAllowance]);
   const canStartNewAttempt = selectedAllowance === undefined || selectedAllowance.remaining > 0;
   const selectSkill = (skill: BonusSkillCode): void => {
+    if (CLOSED_BONUS_SKILLS.has(skill)) {
+      setSectionToast('Раздел в разработке');
+      return;
+    }
     setSelectedSkill(skill);
     localStorage.setItem(LAST_SKILL_STORAGE_KEY, skill);
   };
@@ -413,7 +431,72 @@ export function BonusGamesScreen(): JSX.Element {
           </div>
         )}
       </section>
+      {sectionToast !== null ? (
+        <AppToast message={sectionToast} onDismiss={() => setSectionToast(null)} />
+      ) : null}
       {rulesOpen && <BonusGamesRulesModal onClose={() => setRulesOpen(false)} />}
+      {previewGame !== null ? (
+        <AccessibleModal
+          title={previewGame.preview_title}
+          closeBlocked={startMutation.isPending}
+          onRequestClose={() => {
+            if (startMutation.isPending) return;
+            startMutation.reset();
+            setPreviewGame(null);
+          }}
+          cardClassName="bonus-game-preview-modal bonus-game-launch-modal"
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть"
+              disabled={startMutation.isPending}
+              onClick={() => {
+                startMutation.reset();
+                setPreviewGame(null);
+              }}
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
+          }
+        >
+          <img
+            className="bonus-game-preview-modal__artwork"
+            src={versionBonusGameArtwork(previewGame.preview_artwork_url)}
+            alt={`Локация «${previewGame.arena.title}» и её вратарь`}
+          />
+          <p className="modal-copy bonus-game-preview-modal__story">
+            {previewGame.preview_story}
+          </p>
+          <p className="bonus-game-preview-modal__condition">
+            <Target
+              className="bonus-game-preview-modal__condition-icon"
+              size={17}
+              strokeWidth={2.4}
+              aria-hidden="true"
+            />
+            {previewGame.qualification_rules.type === 'survive_goal_windows' ? (
+              <span className="bonus-game-preview-modal__condition-lines">
+                {enduranceQualificationLines(previewGame.qualification_rules).map((line) => (
+                  <span key={line}>{line}</span>
+                ))}
+              </span>
+            ) : (
+              qualificationDescription(previewGame.qualification_rules)
+            )}
+          </p>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="modal-primary btn btn--cta"
+              disabled={startMutation.isPending}
+              onClick={() => confirmGameStart(previewGame)}
+            >
+              {startMutation.isPending ? 'Начинаем…' : 'К игре'}
+            </button>
+          </div>
+        </AccessibleModal>
+      ) : null}
       {purchaseGame !== null ? (
         <AccessibleModal
           title="Открыть бонусную игру?"

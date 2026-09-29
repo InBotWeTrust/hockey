@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
+import { REQUIRE_BEGINNER_TRAINING_FOR_ADVANCED } from '../../releaseGates.js';
 
 type Queryable = Pool | PoolClient;
 
@@ -62,7 +63,9 @@ export function resolveAdvancedTrainingAccess(
   return {
     amateur_completed: amateurCompleted,
     beginner_training_completed: beginnerTrainingCompleted,
-    unlocked: amateurCompleted && beginnerTrainingCompleted,
+    unlocked:
+      amateurCompleted &&
+      (!REQUIRE_BEGINNER_TRAINING_FOR_ADVANCED || beginnerTrainingCompleted),
   };
 }
 

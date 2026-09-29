@@ -17,6 +17,7 @@ import type { Pool, PoolClient } from 'pg';
 import { appendEvent } from '../duel/eventLog.js';
 import { deriveBonusAttemptSeed, deriveShotSeed } from '../duel/seed.js';
 import { AppError } from '../plugins/errors.js';
+import { isBonusSkillReleased } from '../releaseGates.js';
 import {
   consumePeriodLoadout,
   hasPeriodLoadoutSelection,
@@ -172,6 +173,7 @@ const EXPECTED_START_ERROR_CODES_AFTER_RECONCILE = new Set([
   'bonus_previous_game_required',
   'bonus_purchase_required',
   'bonus_game_inactive',
+  'bonus_game_unreleased',
 ]);
 
 function isExpectedStartErrorAfterReconcile(error: unknown): error is AppError {
@@ -583,6 +585,9 @@ export async function startOrResumeBonusAttempt(
 
     if (deferredError === null) {
       const game = await fetchStartableGame(client, input.userId, input.gameId);
+      if (!isBonusSkillReleased(game.skill_code)) {
+        throw new AppError('bonus_game_unreleased', 'bonus game is not released', 409);
+      }
       if (game.predecessor_id !== null && !game.predecessor_completed) {
         throw new AppError(
           'bonus_previous_game_required',

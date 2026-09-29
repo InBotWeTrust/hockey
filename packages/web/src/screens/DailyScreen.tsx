@@ -79,6 +79,7 @@ import { TrainingHistorySection } from '../components/TrainingHistorySection.js'
 import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { AppToast } from '../components/AppToast.js';
 import type { UserPickerItem } from '../chat/api.js';
 import type {
   DailyGameStats,
@@ -103,7 +104,6 @@ import {
 } from '../components/AdvancedTrainingCourse.js';
 import { AdvancedTrainingPlay } from '../components/AdvancedTrainingPlay.js';
 import { InitialTrainingPlay } from '../components/InitialTrainingPlay.js';
-import { fetchBonusGames } from '../api/bonusGames.js';
 import type { ProfileData } from './profileTypes.js';
 import {
   arenaCourtImage,
@@ -3551,6 +3551,7 @@ function TrainingPlaceholder({
   const [courseCatalogLoaded, setCourseCatalogLoaded] = useState(false);
   const [courseCatalogError, setCourseCatalogError] = useState(false);
   const [trainingLockModalOpen, setTrainingLockModalOpen] = useState(false);
+  const [sectionToast, setSectionToast] = useState<string | null>(null);
   const refreshedTrainingDayRef = useRef<string | null>(null);
 
   const refreshCourseCatalog = useCallback(async (): Promise<void> => {
@@ -3811,20 +3812,21 @@ function TrainingPlaceholder({
     }
     if (!autoPlay && section !== 'open') {
       return (
-        <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
-          <InitialTrainingHub
-            catalog={courseCatalog}
-            onOpenCourse={() =>
-              navigate(`/?view=training&section=course${fromSectionsSuffix}`, { replace: true })
-            }
-            onOpenTraining={() =>
-              navigate(`/?view=training&section=open${fromSectionsSuffix}`, { replace: true })
-            }
-            onOpenAdvanced={() =>
-              navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })
-            }
-          />
-        </ModeShell>
+        <>
+          <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
+            <InitialTrainingHub
+              catalog={courseCatalog}
+              onOpenCourse={() => setSectionToast('Раздел в разработке')}
+              onOpenTraining={() =>
+                navigate(`/?view=training&section=open${fromSectionsSuffix}`, { replace: true })
+              }
+              onOpenAdvanced={() => setSectionToast('Раздел в разработке')}
+            />
+          </ModeShell>
+          {sectionToast !== null ? (
+            <AppToast message={sectionToast} onDismiss={() => setSectionToast(null)} />
+          ) : null}
+        </>
       );
     }
   }

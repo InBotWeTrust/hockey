@@ -23,10 +23,10 @@ describe('advanced training catalog', () => {
   });
   it.each([
     [false, false, false],
-    [true, false, false],
+    [true, false, true],
     [false, true, false],
     [true, true, true],
-  ])('requires amateur=%s and beginner=%s', (amateur, beginner, unlocked) => {
+  ])('requires amateur=%s while the beginner prerequisite is disabled', (amateur, beginner, unlocked) => {
     expect(resolveAdvancedTrainingAccess(amateur, beginner)).toEqual({
       amateur_completed: amateur,
       beginner_training_completed: beginner,

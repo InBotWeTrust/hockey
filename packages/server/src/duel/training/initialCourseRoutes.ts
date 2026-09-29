@@ -19,6 +19,7 @@ import {
 } from '@hockey/game-core';
 import { observeCareerExperience } from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
+import { INITIAL_TRAINING_RELEASED } from '../../releaseGates.js';
 import { resolveAmateurAccess } from '../../profile/amateurAccess.js';
 import { appendEvent } from '../eventLog.js';
 import {
@@ -266,7 +267,7 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
           now,
         });
         const config = await loadInitialTrainingConfig(client);
-        if (!config.enabled) {
+        if (!INITIAL_TRAINING_RELEASED || !config.enabled) {
           throw new AppError(
             'initial_training_disabled',
             'initial training course is disabled',

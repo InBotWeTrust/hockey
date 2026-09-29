@@ -2,7 +2,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_MARKSMANSHIP_SCORING_RULES } from '@hockey/game-core';
 import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { ApiError } from '../api/apiFetch.js';
@@ -269,105 +268,83 @@ describe('BonusGamesScreen', () => {
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
   });
 
-  it('shows the marksmanship tab with a point target and timed unlimited attempt', async () => {
-    mockCatalog([
-      card({
-        id: 'marksmanship-1',
-        title: 'Первый момент',
-        skill_code: 'marksmanship',
-        qualification_rules: {
-          type: 'points_in_time',
-          targetPoints: 1_100,
-          activeTimeMs: 30_000,
-          scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
-        },
-        period_rules: [
-          {
-            ...card({}).period_rules[0],
-            duration_ms: 30_000,
-            shots_limit: null,
-          },
-        ],
-      }),
-    ]);
+  it('opens the game description without creating an attempt and closes it safely', async () => {
+    mockCatalog([card({ id: 'speed-preview', title: 'Пляж' })]);
     renderCatalog();
 
-    fireEvent.click(await screen.findByRole('tab', { name: 'Меткость' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
 
-    const gameCard = screen.getByRole('heading', { name: 'Первый момент' }).closest('article')!;
-    expect(within(gameCard).getByText('1100 очков за 00:30')).toBeInTheDocument();
-    expect(within(gameCard).getByText('1 период · без лимита бросков')).toBeInTheDocument();
-    expect(gameCard).not.toHaveTextContent('голов');
-  });
-
-  it('renders endurance rules as separate readable lines in featured and compact cards', async () => {
-    localStorage.setItem('bonus-games:last-skill', 'endurance');
-    mockCatalog([
-      card({
-        id: 'endurance-featured',
-        title: 'Выносливость 2',
-        skill_code: 'endurance',
-        description:
-          'Продержитесь до конца периода, забивая хотя бы 1 шайбу в каждом временном окне.',
-        qualification_rules: {
-          type: 'survive_goal_windows',
-          activeTimeMs: 190_000,
-          goalWindowMs: 6_500,
-        },
-        period_rules: [
-          {
-            ...card({}).period_rules[0],
-            duration_ms: 190_000,
-            shots_limit: null,
-          },
-        ],
-      }),
-      card({
-        id: 'endurance-compact',
-        title: 'Выносливость 3',
-        skill_code: 'endurance',
-        sort_order: 3,
-        state: 'sequence_locked',
-        is_unlocked: false,
-        qualification_rules: {
-          type: 'survive_goal_windows',
-          activeTimeMs: 200_000,
-          goalWindowMs: 6_000,
-        },
-        period_rules: [
-          {
-            ...card({}).period_rules[0],
-            duration_ms: 200_000,
-            shots_limit: null,
-          },
-        ],
-      }),
-    ]);
-    renderCatalog();
-
-    const featuredCard = (await screen.findByRole('heading', { name: 'Выносливость 2' })).closest(
-      'article',
-    )!;
-    const compactCard = screen.getByRole('heading', { name: 'Выносливость 3' }).closest('article')!;
-
+    expect(screen.getByRole('dialog', { name: 'Первая квалификация' })).toBeInTheDocument();
     expect(
-      within(featuredCard).getByText(
-        'Продержитесь до конца периода, забивая хотя бы 1 шайбу в каждом временном окне.',
-      ),
-    ).toBeInTheDocument();
-    expect(within(featuredCard).getByText('Продержаться 03:10 мин')).toHaveClass(
-      'bonus-game-card__details-primary',
-    );
-    expect(within(featuredCard).getByText('Гол не реже, чем раз в 6.5 сек')).toHaveClass(
-      'bonus-game-card__details-window',
-    );
-    expect(within(featuredCard).getByText('1 период · без лимита бросков')).toHaveClass(
-      'bonus-game-card__details-secondary',
-    );
-    expect(within(compactCard).getByText('Продержаться 03:20 мин')).toBeInTheDocument();
-    expect(within(compactCard).getByText('Гол не реже, чем раз в 6 сек')).toBeInTheDocument();
-    expect(within(compactCard).getByText('1 период · без лимита бросков')).toBeInTheDocument();
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.filter(
+          ([input, init]) =>
+            String(input).endsWith('/api/bonus-games/speed-preview/attempts') &&
+            init?.method === 'POST',
+        ),
+    ).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+
+    expect(screen.queryByRole('dialog', { name: 'Первая квалификация' })).toBeNull();
+    expect(
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.filter(
+          ([input, init]) =>
+            String(input).endsWith('/api/bonus-games/speed-preview/attempts') &&
+            init?.method === 'POST',
+        ),
+    ).toHaveLength(0);
   });
+
+  it('creates one attempt only after the player confirms the description', async () => {
+    mockCatalog([card({ id: 'speed-confirm', title: 'Пляж' })]);
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
+
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(globalThis.fetch)
+          .mock.calls.filter(
+            ([input, init]) =>
+              String(input).endsWith('/api/bonus-games/speed-confirm/attempts') &&
+              init?.method === 'POST',
+          ),
+      ).toHaveLength(1),
+    );
+  });
+
+  it.each(['Меткость', 'Выносливость']) (
+    'keeps the closed %s filter visible and shows the shared development toast',
+    async (label) => {
+      mockCatalog([card({})]);
+      renderCatalog();
+
+      fireEvent.click(await screen.findByRole('tab', { name: label }));
+
+      expect(screen.getByText('Раздел в разработке')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Скорость' })).toHaveAttribute('aria-selected', 'true');
+    },
+  );
+
+  it.each(['marksmanship', 'endurance'] as const)(
+    'ignores the previously stored closed %s filter on load',
+    async (skill) => {
+      localStorage.setItem('bonus-games:last-skill', skill);
+      mockCatalog([card({})]);
+      renderCatalog();
+
+      expect(await screen.findByRole('tab', { name: 'Скорость' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    },
+  );
 
   it('shows completed games progress and counts down to the attempt reset', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-24T23:59:55.000Z'));
@@ -389,10 +366,7 @@ describe('BonusGamesScreen', () => {
     expect(screen.getByText('До обновления 00:00:05').closest('[aria-live]')).toBeNull();
   });
 
-  it.each([
-    ['speed', 'Скорость'],
-    ['endurance', 'Выносливость'],
-  ] as const)(
+  it.each([['speed', 'Скорость']] as const)(
     'renders completed/total %s games as a semantic progress fill',
     async (skill, label) => {
       localStorage.setItem('bonus-games:last-skill', skill);
@@ -407,7 +381,7 @@ describe('BonusGamesScreen', () => {
           }),
           card({ id: `${skill}-2`, skill_code: skill, title: `${label} 2`, sort_order: 2 }),
         ],
-        skill === 'endurance' ? { enduranceRemaining: 37 } : { speedRemaining: 1 },
+        { speedRemaining: 1 },
       );
       renderCatalog();
 
@@ -418,9 +392,7 @@ describe('BonusGamesScreen', () => {
       expect(progress).toHaveAttribute('aria-valuemax', '2');
       expect(progress.querySelector('span')).toHaveStyle({ width: '50%' });
       expect(within(progress).getByText('1/2 игр')).toBeInTheDocument();
-      expect(
-        screen.getByText(skill === 'endurance' ? '37 из 100 попыток' : '1 из 2 попыток'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('1 из 2 попыток')).toBeInTheDocument();
     },
   );
 
@@ -671,6 +643,7 @@ describe('BonusGamesScreen', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Играть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
     await waitFor(() =>
       expect(screen.getByLabelText('location')).toHaveTextContent(
         '/bonus-games/accuracy-2/play?attempt=attempt-new',
@@ -836,6 +809,7 @@ describe('BonusGamesScreen', () => {
     const play = await screen.findByRole('button', { name: 'Играть' });
     expect(play).toBeEnabled();
     fireEvent.click(play);
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     const dialog = screen.getByRole('dialog', { name: 'Уже идёт другая игра' });
     expect(dialog).toHaveTextContent('Скорость · Скоростной пляж');
@@ -922,6 +896,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
     const switchButton = within(
       screen.getByRole('dialog', { name: 'Уже идёт другая игра' }),
     ).getByRole('button', { name: 'Завершить и начать эту' });
@@ -1346,6 +1321,7 @@ describe('BonusGamesScreen', () => {
     expect(repeatButton).toBeEnabled();
     expect(repeatButton).toHaveClass('bonus-game-card__hit-area');
     fireEvent.click(repeatButton);
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
     expect(screen.getByRole('dialog', { name: 'Уже идёт другая игра' })).toBeInTheDocument();
   });
 
@@ -1406,6 +1382,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Продолжить' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     expect(screen.getByLabelText('location')).toHaveTextContent(
       '/bonus-games/beach/play?attempt=attempt-1',
@@ -1432,6 +1409,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Продолжить' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     expect(screen.getByLabelText('location')).toHaveTextContent(
       '/bonus-games/beach/play?attempt=attempt-archived',
@@ -1632,6 +1610,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     await waitFor(() =>
       expect(screen.getByLabelText('location')).toHaveTextContent(
@@ -1789,6 +1768,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Не удалось выполнить запрос. Попробуйте ещё раз.',
@@ -1808,6 +1788,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Не удалось выполнить запрос. Попробуйте ещё раз.',

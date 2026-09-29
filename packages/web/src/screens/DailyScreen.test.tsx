@@ -4126,7 +4126,7 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ' })).not.toBeInTheDocument();
   });
 
-  it('shows the initial-course hub and opens its seven-card catalog when enabled', async () => {
+  it('keeps the initial-course catalog renderable on its direct route', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       const body = url.includes('/duel/training/course')
@@ -4140,9 +4140,8 @@ describe('DailyScreen', () => {
       });
     });
 
-    renderWith(['/?view=training']);
+    renderWith(['/?view=training&section=course']);
 
-    fireEvent.click(await screen.findByRole('button', { name: /Начальный уровень/ }));
     expect(screen.getByLabelText('location')).toHaveTextContent('/?view=training&section=course');
     expect(await screen.findAllByRole('article')).toHaveLength(7);
     expect(screen.getByRole('button', { name: 'Начать: Первый бросок' })).toBeEnabled();
@@ -4281,6 +4280,41 @@ describe('DailyScreen', () => {
     );
     expect(await screen.findByRole('button', { name: /Начальный уровень/ })).toBeInTheDocument();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['Начальный уровень', /Начальный уровень, пройдено/],
+    ['Продвинутый уровень', /Продвинутый уровень, пройдено/],
+  ] as const)('keeps %s visible but opens the shared development toast', async (_, cardName) => {
+    const course: InitialTrainingCatalogResponse = {
+      ...initialTrainingCatalog,
+      advanced_training: {
+        ...initialTrainingCatalog.advanced_training,
+        access: {
+          amateur_completed: true,
+          beginner_training_completed: true,
+          unlocked: true,
+        },
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/duel/training/course')
+        ? course
+        : url.includes('/duel/training/state')
+          ? trainingIdleState
+          : baseState;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=training&from=sections']);
+    fireEvent.click(await screen.findByRole('button', { name: cardName }));
+
+    expect(screen.getByText('Раздел в разработке')).toBeInTheDocument();
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=training&from=sections');
   });
 
   it('does not replace the training hub with open training when the course catalog fails to load', async () => {

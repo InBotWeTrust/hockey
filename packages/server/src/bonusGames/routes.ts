@@ -79,6 +79,10 @@ const SAFE_BONUS_ERRORS: Readonly<
     statusCode: 409,
     message: 'this bonus game is not available',
   },
+  bonus_game_unreleased: {
+    statusCode: 409,
+    message: 'this bonus game is not released yet',
+  },
   bonus_attempt_already_active: {
     statusCode: 409,
     message: 'another bonus attempt is already active',
