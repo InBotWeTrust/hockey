@@ -7,6 +7,7 @@ const SESSION_OWNED_QUERY_PREFIXES: readonly QueryKey[] = [
   ['achievements'],
   ['weekly-challenge'],
   ['home-arenas'],
+  ['training', 'course'],
   ['training', 'history'],
   ['daily', 'history'],
 ];
