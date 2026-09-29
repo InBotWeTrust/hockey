@@ -343,6 +343,27 @@ describe('ProfileScreen', () => {
     expect(triggerHaptic).toHaveBeenCalledWith('selection');
   });
 
+  it('keeps copy controls separate from the referral card open action', async () => {
+    mockProfileRequest();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    renderProfile();
+
+    const copyButton = await screen.findByRole('button', { name: 'Скопировать код' });
+    const panel = copyButton.closest('.profile-referral-panel');
+    expect(panel).not.toHaveAttribute('role', 'button');
+    expect(within(panel as HTMLElement).getByRole('button', { name: 'Открыть карточку приглашений' })).toHaveClass(
+      'profile-referral-panel__open',
+    );
+
+    await act(async () => {
+      fireEvent.click(copyButton);
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByLabelText('Спортивный паспорт')).toBeInTheDocument();
+  });
+
   it('retains the currently visible profile artwork when its data is loaded', async () => {
     mockProfileRequest();
     renderProfile();
@@ -735,6 +756,7 @@ describe('ProfileScreen', () => {
       'Выбрать питание',
       'Восстановление: 0 минут',
       'Открыть приглашённых друзей',
+      'Открыть карточку приглашений',
       'Скопировать код',
       'Скопировать ссылку',
       'Открыть задания',

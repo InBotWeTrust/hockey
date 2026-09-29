@@ -23,6 +23,9 @@ function copyWithSelection(value: string): boolean {
 }
 
 export async function copyText(value: string): Promise<boolean> {
+  const androidWebRuntime = /Android/i.test(window.navigator.userAgent);
+  if (androidWebRuntime && copyWithSelection(value)) return true;
+
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(value);
