@@ -54,7 +54,6 @@ export interface GameLoopOpts {
     reusable?: DuelPlayerCondition,
   ) => DuelPlayerCondition | null;
   onDuelConditionChange?: (condition: DuelPlayerCondition | null) => void;
-  onClockTick?: (sceneElapsedMs: number, shooterElapsedMs: number) => void;
 }
 
 export interface GameLoop {
@@ -247,7 +246,6 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       conditionPauseReleaseX = frozenConditionShooterX;
     }
     const tShooter = shooterT(now);
-    opts.onClockTick?.(tScene, tShooter);
     const effectiveShooterFreq = conditionPausesShooter
       ? sf
       : Math.max(0.1, sf * (condition?.shooterSpeedMultiplier ?? 1));

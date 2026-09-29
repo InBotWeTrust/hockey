@@ -271,7 +271,6 @@ export interface PlayViewProps<TState> {
   scoreboardGoals?: number | undefined;
   shots: number;
   shotIndexBase?: number | undefined;
-  sceneShotIndex?: number | undefined;
   shotsTotal?: number | undefined;
   timer?: string | undefined;
   timerLabel?: string | undefined;
@@ -291,7 +290,6 @@ export interface PlayViewProps<TState> {
   continuousClockDuringResult?: boolean | undefined;
   waitForShotResponseBeforeResultClose?: boolean | undefined;
   freezeRenderingDuringResult?: boolean | undefined;
-  holdSceneAfterResult?: boolean | undefined;
   backLabel?: string | undefined;
   bottomInset?: string | undefined;
   sessionStartedAt?: string | null | undefined;
@@ -303,7 +301,6 @@ export interface PlayViewProps<TState> {
   periodEndsAt?: number | undefined;
   scoreboardEndsAt?: number | undefined;
   onTimerExpired?: (() => void | Promise<void>) | undefined;
-  onSceneClock?: ((sceneElapsedMs: number, shooterElapsedMs: number) => void) | undefined;
   optimisticAddShot: (claimed: ShotResult['type']) => void;
   submitShot: (args: {
     shotIndex: number;
@@ -591,7 +588,6 @@ export function PlayView<TState>({
   scoreboardGoals,
   shots,
   shotIndexBase,
-  sceneShotIndex,
   shotsTotal,
   timer,
   timerLabel,
@@ -608,7 +604,6 @@ export function PlayView<TState>({
   continuousClockDuringResult = false,
   waitForShotResponseBeforeResultClose = false,
   freezeRenderingDuringResult = false,
-  holdSceneAfterResult = false,
   backLabel = 'К режимам',
   bottomInset = 'calc(8px + var(--app-dock-safe-bottom))',
   sessionStartedAt,
@@ -620,7 +615,6 @@ export function PlayView<TState>({
   periodEndsAt,
   scoreboardEndsAt,
   onTimerExpired,
-  onSceneClock,
   optimisticAddShot,
   submitShot,
   applyState,
@@ -690,10 +684,6 @@ export function PlayView<TState>({
   }, [statusNotice, statusNoticeDelayMs]);
   const sessionRef = useRef(session);
   sessionRef.current = session;
-  const sceneShotIndexRef = useRef(sceneShotIndex);
-  sceneShotIndexRef.current = sceneShotIndex;
-  const onSceneClockRef = useRef(onSceneClock);
-  onSceneClockRef.current = onSceneClock;
   const sessionTimingRef = useRef<PlaySessionTiming>({
     sessionStartedAt: sessionStartedAt ?? null,
     serverNow: serverNow ?? null,
@@ -798,7 +788,6 @@ export function PlayView<TState>({
   const shotAnimationInProgressRef = useRef(false);
   const shotSubmitPendingRef = useRef(false);
   const resultVisualCompleteRef = useRef(false);
-  const heldResultRef = useRef(false);
   const pendingResultCloseRef = useRef<(() => void) | null>(null);
   const resultVisibilityRef = useRef(false);
   const [pixiReady, setPixiReady] = useState(false);
@@ -1383,7 +1372,7 @@ export function PlayView<TState>({
         hitboxRenderer: hitboxes,
         getScale: () => scaleRef.current,
         getSeed: () => sessionRef.current.seed ?? 'fallback',
-        getShotIndex: () => sceneShotIndexRef.current ?? sessionRef.current.shots + 1,
+        getShotIndex: () => sessionRef.current.shots + 1,
         getGoalieId: () => sessionRef.current.goalieId,
         getGoalieConfig: () => goalieConfigRef.current,
         getSpeedOverrides: () => speedsRef.current,
@@ -1391,8 +1380,6 @@ export function PlayView<TState>({
         getDuelCondition: (elapsedMs, activeSpeeds, reusable) =>
           duelConditionRef.current?.(elapsedMs, activeSpeeds, reusable) ?? null,
         onDuelConditionChange: syncCurrentDuelCondition,
-        onClockTick: (sceneElapsedMs, shooterElapsedMs) =>
-          onSceneClockRef.current?.(sceneElapsedMs, shooterElapsedMs),
       });
       tickerRef.current = app.ticker;
       loopRef.current = loop;
@@ -1448,11 +1435,6 @@ export function PlayView<TState>({
     if (shotAnimationInProgressRef.current) {
       pendingClockRebaseRef.current = true;
       return;
-    }
-    if (heldResultRef.current) {
-      puckRef.current?.release();
-      goalieRef.current?.setSavePose(false);
-      heldResultRef.current = false;
     }
     loop.rebaseTime(computeInitialPlayClocks(sessionTimingRef.current));
   }, [clockRebaseKey, pixiReady]);
@@ -1773,7 +1755,7 @@ export function PlayView<TState>({
     }, visualFlightMs);
 
     scheduleShotTimeout(() => {
-      if (!continuousClockDuringResult && !holdSceneAfterResult) {
+      if (!continuousClockDuringResult) {
         loop.endScenePause();
         loop.endShooterPause();
       }
@@ -1781,13 +1763,9 @@ export function PlayView<TState>({
         pendingClockRebaseRef.current = false;
         scheduleClockRebaseFromLatestTiming();
       }
-      if (!holdSceneAfterResult) {
-        puck.release();
-        if (result.type === 'save') goalie.setSavePose(false);
-        if (freezeRenderingDuringResult && tickerRef.current) loop.attach(tickerRef.current);
-      } else {
-        heldResultRef.current = true;
-      }
+      puck.release();
+      if (result.type === 'save') goalie.setSavePose(false);
+      if (freezeRenderingDuringResult && tickerRef.current) loop.attach(tickerRef.current);
       shotAnimationInProgressRef.current = false;
       resultVisualCompleteRef.current = true;
       setIsShotInProgress(false);
@@ -1860,7 +1838,6 @@ export function PlayView<TState>({
     continuousClockDuringResult,
     waitForShotResponseBeforeResultClose,
     freezeRenderingDuringResult,
-    holdSceneAfterResult,
     optimisticAddShot,
     submitShot,
     applyState,
