@@ -4456,7 +4456,7 @@ describe('DailyScreen', () => {
     expect(screen.getByText(/Старые результаты сохранены/)).toBeInTheDocument();
   });
 
-  it('uses the shared route loader until the training catalog is ready', async () => {
+  it('keeps the training page shell visible while the catalog is loading', async () => {
     let resolveCourse!: (response: Response) => void;
     const courseResponse = new Promise<Response>((resolve) => {
       resolveCourse = resolve;
@@ -4472,12 +4472,11 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=training&from=sections']);
 
-    expect(await screen.findByRole('status')).toHaveClass('route-loading');
-    expect(screen.getByRole('status')).toHaveTextContent('Загрузка…');
-    expect(screen.queryByRole('heading', { name: 'Тренировка' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Начальный уровень/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Продвинутый уровень/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Открытая тренировка' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Тренировка' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Начальный уровень/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).toBeDisabled();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.queryByText(/Выбери модель периода/)).not.toBeInTheDocument();
 
     resolveCourse(

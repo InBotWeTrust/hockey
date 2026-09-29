@@ -94,6 +94,7 @@ import {
   type InitialTrainingExerciseKey,
 } from '../api/initialTraining.js';
 import {
+  INITIAL_TRAINING_HUB_LOADING_CATALOG,
   InitialTrainingCatalog,
   InitialTrainingHub,
 } from '../components/InitialTrainingCourse.js';
@@ -3688,9 +3689,15 @@ function TrainingPlaceholder({
     trainingSection !== 'advanced'
   ) {
     return (
-      <main className="screen route-loading" role="status">
-        Загрузка…
-      </main>
+      <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
+        <InitialTrainingHub
+          catalog={INITIAL_TRAINING_HUB_LOADING_CATALOG}
+          loading
+          onOpenCourse={() => undefined}
+          onOpenTraining={() => undefined}
+          onOpenAdvanced={() => undefined}
+        />
+      </ModeShell>
     );
   }
 
