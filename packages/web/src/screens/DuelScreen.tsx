@@ -53,6 +53,7 @@ import { createGameLoop, type GameLoop, type SpeedOverrides } from '../game/loop
 import type { Scale } from '../game/coords.js';
 import { useTrainingStore } from '../stores/trainingStore.js';
 import { useAuthStore } from '../auth/authStore.js';
+import { triggerShotOutcomeHaptic } from '../feedback/haptics.js';
 import { ResultModal, type ResultModalKind } from '../components/ResultModal.js';
 import { ScoreBoard } from '../components/ScoreBoard.js';
 import { SettingsSheet } from '../components/SettingsSheet.js';
@@ -380,6 +381,7 @@ export function DuelScreen(): JSX.Element {
       setResultSubText(subText);
       setResultDisplayKind(displayKind);
       setIsShowingResult(true);
+      if (displayKind !== 'goal') triggerShotOutcomeHaptic(displayKind);
     }, visualFlightDurationMs);
 
     window.setTimeout(() => {
