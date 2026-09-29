@@ -44,11 +44,12 @@ import {
   type InitialTrainingExerciseKey,
 } from './initialCourse.js';
 import {
+  ADVANCED_TRAINING_EXERCISES,
+  buildAdvancedTrainingCatalog,
+  fetchAdvancedTrainingCompletions,
   loadAdvancedTrainingConfig,
   resolveAdvancedTrainingAccess,
 } from './advancedCourse.js';
-import { ADVANCED_TRAINING_V2_EXERCISES, buildAdvancedTrainingV2Catalog,
-  fetchAdvancedTrainingV2Completions } from './advancedCourseV2.js';
 
 const paramsSchema = z.object({ exerciseKey: z.string().min(1).max(80) });
 const shotBodySchema = z.object({
@@ -205,7 +206,7 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
       const completed = await fetchInitialTrainingCompletions(client, req.user.id);
       const beginnerTrainingCompleted = await isInitialTrainingCompleted(client, req.user.id);
       const advancedConfig = await loadAdvancedTrainingConfig(client);
-      const advancedCompleted = await fetchAdvancedTrainingV2Completions(client, req.user.id);
+      const advancedCompleted = await fetchAdvancedTrainingCompletions(client, req.user.id);
       const amateurAccess = await resolveAmateurAccess(client, req.user.id);
       const advancedAccess = resolveAdvancedTrainingAccess(
         amateurAccess.hasFullAccess,
@@ -238,8 +239,8 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
           enabled: advancedConfig.enabled,
           access: advancedAccess,
           completed_count: advancedCompleted.size,
-          total_count: ADVANCED_TRAINING_V2_EXERCISES.length,
-          exercises: buildAdvancedTrainingV2Catalog(
+          total_count: ADVANCED_TRAINING_EXERCISES.length,
+          exercises: buildAdvancedTrainingCatalog(
             advancedCompleted,
             advancedConfig.enabled && advancedAccess.unlocked,
             advancedConfig,
