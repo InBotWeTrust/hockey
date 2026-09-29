@@ -432,7 +432,11 @@ export function BonusGamesScreen(): JSX.Element {
         )}
       </section>
       {sectionToast !== null ? (
-        <AppToast message={sectionToast} onDismiss={() => setSectionToast(null)} />
+        <AppToast
+          message={sectionToast}
+          onDismiss={() => setSectionToast(null)}
+          durationMs={1_500}
+        />
       ) : null}
       {rulesOpen && <BonusGamesRulesModal onClose={() => setRulesOpen(false)} />}
       {previewGame !== null ? (

@@ -3854,7 +3854,11 @@ function TrainingPlaceholder({
             />
           </ModeShell>
           {sectionToast !== null ? (
-            <AppToast message={sectionToast} onDismiss={() => setSectionToast(null)} />
+            <AppToast
+              message={sectionToast}
+              onDismiss={() => setSectionToast(null)}
+              durationMs={1_500}
+            />
           ) : null}
         </>
       );

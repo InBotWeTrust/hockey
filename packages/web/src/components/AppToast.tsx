@@ -1,17 +1,28 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 interface AppToastProps {
   message: string;
   onDismiss: () => void;
   variant?: 'default' | 'reward';
+  durationMs?: number;
 }
 
-export function AppToast({ message, onDismiss, variant = 'default' }: AppToastProps): JSX.Element {
+export function AppToast({
+  message,
+  onDismiss,
+  variant = 'default',
+  durationMs = 4_500,
+}: AppToastProps): JSX.Element {
+  const onDismissRef = useRef(onDismiss);
   useEffect(() => {
-    const timer = window.setTimeout(onDismiss, 4_500);
+    onDismissRef.current = onDismiss;
+  }, [onDismiss]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => onDismissRef.current(), durationMs);
     return () => window.clearTimeout(timer);
-  }, [message, onDismiss]);
+  }, [durationMs, message]);
 
   const sentenceBreak = message.indexOf('. ');
   const title = sentenceBreak >= 0 ? message.slice(0, sentenceBreak + 1) : null;
