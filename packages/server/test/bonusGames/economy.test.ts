@@ -1,7 +1,12 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../src/releaseGates.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/releaseGates.js')>()),
+  isBonusSkillReleased: () => true,
+}));
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import {
   acknowledgeBonusPreview,
