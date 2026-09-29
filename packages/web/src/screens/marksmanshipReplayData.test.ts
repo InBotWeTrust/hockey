@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { RECORDED_RUNS, verifyRecordedRun } from './marksmanshipReplayData.js';
 
 describe('recorded marksmanship runs', () => {
-  it('contains only the two selected attempts with their recorded shot and goal counts', () => {
+  it('contains the three selected attempts with their recorded shot and goal counts', () => {
     expect(RECORDED_RUNS.map((run) => [run.key, run.shots.length,
       run.shots.filter((shot) => shot.result === 'goal').length])).toEqual([
       ['egor-78', 83, 78],
       ['dmitry-79', 90, 79],
+      ['vladislav-76', 88, 76],
     ]);
   });
 
