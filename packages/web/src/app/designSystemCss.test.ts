@@ -112,6 +112,27 @@ describe('profile story image treatment', () => {
   });
 });
 
+describe('narrow profile and sections card geometry', () => {
+  it('gives every profile inventory item the same responsive column width', () => {
+    const loadout = rule('.profile-loadout');
+    const slot = rule('.profile-loadout-slot');
+
+    expect(loadout).toContain('display: grid');
+    expect(loadout).toContain('grid-auto-flow: column');
+    expect(loadout).toContain('grid-auto-columns: calc((100% - 20px) / 3.18)');
+    expect(slot).not.toContain('flex:');
+  });
+
+  it('keeps the daily card chevron in its own column on narrow screens', () => {
+    expect(css).toMatch(
+      /@media \(max-width: 390px\)[\s\S]*?\.sections-quick-card--wide\s*\{[\s\S]*?grid-template-columns: 86px minmax\(0, 1fr\) 20px;/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 360px\)[\s\S]*?\.sections-quick-card--wide\s*\{[\s\S]*?grid-template-columns: 76px minmax\(0, 1fr\) 20px;/,
+    );
+  });
+});
+
 describe('profile community and story layout', () => {
   it('keeps the story square while making room for a taller profile card', () => {
     const storyCard = rule('.profile-story-card');

@@ -5066,7 +5066,10 @@
 }
 
 .profile-loadout {
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc((100% - 20px) / 3.18);
+  justify-content: start;
   gap: 10px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -5082,7 +5085,6 @@
 
 .profile-loadout-slot {
   min-width: 0;
-  flex: 0 0 calc((100% - 20px) / 3.18);
   display: grid;
   gap: 3px;
   scroll-snap-align: start;
@@ -8857,7 +8859,7 @@ button.daily-calendar__day:active {
   .sections-quick-card--wide {
     min-height: 116px;
     padding: 14px;
-    grid-template-columns: 86px minmax(0, 1fr);
+    grid-template-columns: 86px minmax(0, 1fr) 20px;
     gap: 12px;
   }
 
@@ -8941,7 +8943,7 @@ button.daily-calendar__day:active {
   .sections-quick-card--wide {
     min-height: 104px;
     padding: 11px;
-    grid-template-columns: 76px minmax(0, 1fr);
+    grid-template-columns: 76px minmax(0, 1fr) 20px;
     gap: 10px;
   }
 
