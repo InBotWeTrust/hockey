@@ -1,7 +1,7 @@
 import type { InventoryEquipmentKind, InventoryState } from '../api/inventory.js';
 import type { BonusGameCard, BonusSkillCode } from '../api/bonusGames.js';
 import { achievementThumbnailUrl } from '../achievements/artwork.js';
-import { catalogBonusGameArtwork } from '../game/bonusGameArtwork.js';
+import { catalogBonusGameArtwork, versionBonusGameArtwork } from '../game/bonusGameArtwork.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from '../screens/inventoryArtwork.js';
 import {
   SHOP_CATEGORY_META,
@@ -121,7 +121,10 @@ export function bonusGameArtworkUrls(
       [
         ...(featuredGame === undefined
           ? []
-          : [catalogBonusGameArtwork(featuredGame.arena.thumbnail_url, 'featured')]),
+          : [
+              catalogBonusGameArtwork(featuredGame.arena.thumbnail_url, 'featured'),
+              versionBonusGameArtwork(featuredGame.preview_artwork_url),
+            ]),
         ...compactGames
           .slice(0, RETAINED_BONUS_GAME_ARTWORK_COUNT - (featuredGame === undefined ? 0 : 1))
           .map((game) => catalogBonusGameArtwork(game.arena.thumbnail_url, 'compact')),

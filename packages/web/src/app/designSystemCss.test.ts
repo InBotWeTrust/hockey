@@ -107,6 +107,20 @@ describe('bonus game modal depth', () => {
       expect(bonusModal).toContain('backdrop-filter: none');
     }
   });
+
+  it('matches the shop item modal geometry without changing the preview copy rhythm', () => {
+    const launch = rule('.modal-card.bonus-game-launch-modal');
+    const artwork = rule('.bonus-game-launch-modal .bonus-game-preview-modal__artwork');
+    const story = rule('.bonus-game-preview-modal__story');
+
+    expect(launch).toContain('width: min(430px, calc(100vw - 28px))');
+    expect(launch).toContain(
+      'max-height: calc(100dvh - 48px - var(--app-safe-top) - var(--app-safe-bottom))',
+    );
+    expect(launch).toContain('padding: 24px 22px 22px');
+    expect(artwork).toContain('border-radius: 22px');
+    expect(story).toContain('margin-top: 12px');
+  });
 });
 
 describe('experience rating scroll containment', () => {

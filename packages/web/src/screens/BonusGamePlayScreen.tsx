@@ -19,7 +19,7 @@ import {
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleDollarSign, Star, Target, TrendingUp } from 'lucide-react';
+import { CircleDollarSign, Star, Target, TrendingUp, X } from 'lucide-react';
 import type {
   BonusGameAttempt,
   BonusPeriodLoadoutSelection,
@@ -405,17 +405,30 @@ function BonusPreview({
   attempt,
   busy,
   onAcknowledge,
+  onClose,
 }: {
   attempt: BonusGameAttempt;
   busy: boolean;
   onAcknowledge: (dismissFuture: boolean) => void | Promise<unknown>;
+  onClose: () => void;
 }): JSX.Element {
   return (
     <AccessibleModal
       title={attempt.rules.preview_title}
-      closeBlocked={true}
-      onClose={() => undefined}
-      cardClassName="bonus-game-preview-modal"
+      closeBlocked={busy}
+      onRequestClose={onClose}
+      cardClassName="bonus-game-preview-modal bonus-game-launch-modal"
+      headerAction={
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Закрыть"
+          disabled={busy}
+          onClick={onClose}
+        >
+          <X size={15} />
+        </button>
+      }
     >
       <img
         className="bonus-game-preview-modal__artwork"
@@ -1468,7 +1481,12 @@ export function BonusGamePlayScreen(): JSX.Element {
       ) : null}
 
       {previewRequired ? (
-        <BonusPreview attempt={attempt} busy={inFlight} onAcknowledge={acknowledgePreview} />
+        <BonusPreview
+          attempt={attempt}
+          busy={inFlight}
+          onAcknowledge={acknowledgePreview}
+          onClose={leavePlaySurface}
+        />
       ) : null}
 
       {isBreak ? (

@@ -755,10 +755,37 @@ describe('BonusGamePlayScreen', () => {
     const qualification = screen.getByText('20 голов из 50 бросков');
     expect(qualification).toBeInTheDocument();
     expect(qualification.querySelector('.bonus-game-preview-modal__condition-icon')).not.toBeNull();
-    const acknowledgeButton = screen.getByRole('button', { name: 'К игре' });
+    const closeButton = screen.getByRole('button', { name: 'Закрыть' });
     expect(
       screen.queryByRole('checkbox', { name: 'Больше не показывать' }),
     ).not.toBeInTheDocument();
+    fireEvent.click(closeButton);
+
+    expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games');
+    expect(acknowledgePreview).not.toHaveBeenCalled();
+  });
+
+  it('acknowledges the qualification preview through the primary action', async () => {
+    const acknowledgePreview = vi.fn(async () => attempt({ preview_required: false }));
+    setStore({
+      attempt: attempt({
+        state: 'idle',
+        current_period: 0,
+        period_started_at: null,
+        period_ends_at: null,
+        shots_taken: 0,
+        current_period_shots_taken: 0,
+        goals: 0,
+        current_goal_streak: 0,
+        best_goal_streak: 0,
+        preview_required: true,
+      }),
+      acknowledgePreview,
+    });
+
+    renderScreen();
+
+    const acknowledgeButton = screen.getByRole('button', { name: 'К игре' });
     fireEvent.click(acknowledgeButton);
 
     await waitFor(() => expect(acknowledgePreview).toHaveBeenCalledWith(false));
