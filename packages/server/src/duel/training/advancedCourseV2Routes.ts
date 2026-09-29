@@ -121,7 +121,7 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
       const active = await client.query<AdvancedTrainingV2Run>(
         `select * from advanced_training_v2_run where user_id = $1 and state = 'active' for update`, [req.user.id]);
       const existing = active.rows[0];
-      if (existing?.exercise_key === exerciseKey &&
+      if (existing?.exercise_key === exerciseKey && existing.shot_index === 0 &&
         existing.game_core_version === GAME_CORE_VERSION &&
         existing.bank_version === ADVANCED_TRAINING_V2_BANK_VERSION) {
         return { state: advancedTrainingV2State(existing) };
