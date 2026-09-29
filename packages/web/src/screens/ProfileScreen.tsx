@@ -24,7 +24,11 @@ import {
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { DuelEquipmentSelectionRadio } from '../components/duel/DuelLockerTab.js';
 import { CommunityLinks } from '../components/CommunityLinks.js';
-import { triggerHaptic } from '../feedback/haptics.js';
+import {
+  runWebVibrationDiagnostic,
+  triggerHaptic,
+  type WebVibrationDiagnostic,
+} from '../feedback/haptics.js';
 import { copyText } from '../platform/clipboard.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
@@ -428,6 +432,7 @@ function EquipmentPickerModal({
   onClose: () => void;
   onSelect: (item: InventoryItem | null) => void;
 }): JSX.Element {
+  const [hapticDiagnostic, setHapticDiagnostic] = useState<WebVibrationDiagnostic | null>(null);
   const label = kind === 'stickItemId' ? 'клюшку' : kind === 'skatesItemId' ? 'коньки' : 'питание';
   const group = kind === 'stickItemId' ? 'stick' : kind === 'skatesItemId' ? 'skates' : 'nutrition';
   const defaultTitle =
@@ -494,6 +499,25 @@ function EquipmentPickerModal({
           );
         })}
       </div>
+      {MARKSMANSHIP_CONSTRUCTOR_ENABLED ? (
+        <div className="profile-haptic-diagnostic">
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => setHapticDiagnostic(runWebVibrationDiagnostic())}
+          >
+            Проверить вибрацию
+          </button>
+          {hapticDiagnostic ? (
+            <p role="status">
+              Режим: {hapticDiagnostic.runtime} · Страница: {hapticDiagnostic.visibility} · API:{' '}
+              {hapticDiagnostic.apiAvailable ? 'да' : 'нет'} · Ответ:{' '}
+              {hapticDiagnostic.result === null ? 'нет' : String(hapticDiagnostic.result)}
+              {hapticDiagnostic.error ? ` · Ошибка: ${hapticDiagnostic.error}` : ''}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </AccessibleModal>
   );
 }

@@ -9,13 +9,16 @@ import type { ProfileData } from './profileTypes.js';
 vi.mock('../app/devOnlyFeatures.js', () => ({ MARKSMANSHIP_CONSTRUCTOR_ENABLED: true }));
 
 const { preloadArtwork } = vi.hoisted(() => ({ preloadArtwork: vi.fn() }));
-const { triggerHaptic } = vi.hoisted(() => ({ triggerHaptic: vi.fn() }));
+const { runWebVibrationDiagnostic, triggerHaptic } = vi.hoisted(() => ({
+  runWebVibrationDiagnostic: vi.fn(),
+  triggerHaptic: vi.fn(),
+}));
 
 vi.mock('../app/artworkCache.js', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return { ...actual, preloadArtwork };
 });
-vi.mock('../feedback/haptics.js', () => ({ triggerHaptic }));
+vi.mock('../feedback/haptics.js', () => ({ runWebVibrationDiagnostic, triggerHaptic }));
 
 const profile = {
   id: 'u1',
@@ -309,6 +312,7 @@ describe('ProfileScreen', () => {
     vi.restoreAllMocks();
     preloadArtwork.mockClear();
     triggerHaptic.mockClear();
+    runWebVibrationDiagnostic.mockReset();
     useAuthStore.getState().setSession({
       accessToken: 'access',
       refreshToken: 'refresh',
@@ -675,6 +679,26 @@ describe('ProfileScreen', () => {
     fireEvent.click(baseOption);
     expect(triggerHaptic).toHaveBeenCalledTimes(1);
     expect(triggerHaptic).toHaveBeenCalledWith('selection');
+  });
+
+  it('shows the direct Android vibration diagnostic inside the dev equipment picker', async () => {
+    runWebVibrationDiagnostic.mockReturnValue({
+      runtime: 'standalone-pwa',
+      visibility: 'visible',
+      apiAvailable: true,
+      result: false,
+      error: null,
+    });
+    mockProfileRequest();
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать клюшку' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить вибрацию' }));
+
+    expect(runWebVibrationDiagnostic).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Режим: standalone-pwa · Страница: visible · API: да · Ответ: false',
+    );
   });
 
   it('opens achievement details from a career award', async () => {

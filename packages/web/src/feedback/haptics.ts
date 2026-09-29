@@ -10,6 +10,14 @@ export interface HapticCapabilities {
   vibration: boolean;
 }
 
+export interface WebVibrationDiagnostic {
+  runtime: FeedbackRuntime;
+  visibility: DocumentVisibilityState;
+  apiAvailable: boolean;
+  result: boolean | null;
+  error: string | null;
+}
+
 const WEB_PATTERNS: Record<HapticKind, VibratePattern> = {
   selection: 8,
   impact: 15,
@@ -54,6 +62,26 @@ export function getHapticCapabilities(): HapticCapabilities {
     telegram,
     vibration: runtime !== 'telegram-mini-app' && typeof window.navigator.vibrate === 'function',
   };
+}
+
+export function runWebVibrationDiagnostic(): WebVibrationDiagnostic {
+  const diagnostic: WebVibrationDiagnostic = {
+    runtime: detectFeedbackRuntime(),
+    visibility: document.visibilityState,
+    apiAvailable: typeof window.navigator.vibrate === 'function',
+    result: null,
+    error: null,
+  };
+  if (!diagnostic.apiAvailable) return diagnostic;
+
+  try {
+    return { ...diagnostic, result: window.navigator.vibrate(40) };
+  } catch (error) {
+    return {
+      ...diagnostic,
+      error: error instanceof Error ? error.name : 'UnknownError',
+    };
+  }
 }
 
 export function triggerHaptic(kind: HapticKind): void {
