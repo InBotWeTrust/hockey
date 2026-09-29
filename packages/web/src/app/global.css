@@ -25,6 +25,7 @@
   --app-safe-top: var(--app-safe-top-raw);
   --app-safe-bottom: var(--app-safe-bottom-raw);
   --app-dock-safe-bottom: var(--app-safe-bottom);
+  --app-play-safe-bottom: 0px;
   --bottom-nav-bottom-gap: max(8px, calc(var(--app-safe-bottom-raw) - 18px));
 
   --ink: #0f172a;
@@ -93,6 +94,7 @@
   --app-safe-top: var(--app-safe-top-raw);
   --app-safe-bottom: max(24px, var(--app-safe-bottom-raw));
   --app-dock-safe-bottom: clamp(8px, calc(var(--app-safe-bottom-raw) - 22px), 12px);
+  --app-play-safe-bottom: var(--app-dock-safe-bottom);
   --bottom-nav-bottom-gap: var(--app-dock-safe-bottom);
 }
 
