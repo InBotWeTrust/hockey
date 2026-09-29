@@ -364,10 +364,12 @@ export const openWindowCourseRoutes: FastifyPluginAsync = async (app) => {
           const input: ObservationInput = data.input.type === 'mark'
             ? { type: 'mark', tapTimeMs: data.input.tap_time_ms }
             : data.input;
+          const { rows: clockRows } = await client.query<{ current_time: Date }>(
+            'select clock_timestamp() as current_time');
           let evaluation;
           try {
             evaluation = validateObservationSubmission(scene, input,
-              Date.now() - run.attempt_started_at.getTime());
+              clockRows[0]!.current_time.getTime() - run.attempt_started_at.getTime());
           } catch (cause) {
             if (!(cause instanceof RangeError)) throw cause;
             throw new AppError('open_window_invalid_timing', cause.message, 409);

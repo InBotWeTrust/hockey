@@ -146,7 +146,7 @@ describe.skipIf(!hasIntegrationEnv)('open-window advanced course', () => {
     const result = await app.inject({ method: 'POST',
       url: '/duel/training/advanced/open-windows/notice_frame/decision',
       headers: headers(), payload: decision });
-    expect(result.statusCode).toBe(200);
+    expect(result.statusCode, JSON.stringify(result.json())).toBe(200);
     expect(result.json()).toMatchObject({ server_result: null,
       observation_feedback: 'observed', completed: true });
     const duplicate = await app.inject({ method: 'POST',
@@ -181,7 +181,7 @@ describe.skipIf(!hasIntegrationEnv)('open-window advanced course', () => {
         input: { type: 'classify', answer: decisionIndex === 1 ? 'open' : 'closed' } };
       const result = await app.inject({ method: 'POST', url: `${base}/decision`,
         headers: headers(), payload });
-      expect(result.statusCode).toBe(200);
+      expect(result.statusCode, JSON.stringify(result.json())).toBe(200);
       state = result.json().state;
       if (decisionIndex === 2) { finalPayload = payload; finalResponse = result.json(); }
       expect(result.json().sound).toBe(true);
@@ -200,7 +200,7 @@ describe.skipIf(!hasIntegrationEnv)('open-window advanced course', () => {
     expect(duplicate.statusCode).toBe(200);
     expect(duplicate.json()).toEqual(finalResponse);
     expect((await pool.query(`select count(*)::int as n from open_window_training_completion
-      where user_id = $1`, [userId])).rows[0].n).toBe(1);
+      where user_id = $1 and step_key = 'notice_motion'`, [userId])).rows[0].n).toBe(1);
   });
 
   it('keeps pace-series motion continuous across shots and pauses result time', async () => {
