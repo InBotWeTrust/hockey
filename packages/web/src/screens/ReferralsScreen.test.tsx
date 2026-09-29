@@ -74,7 +74,7 @@ describe('ReferralsScreen', () => {
     });
     expect(writeText).toHaveBeenCalledWith('TEAM-77');
     expect(screen.getByRole('status')).toHaveTextContent('Скопировано');
-    act(() => vi.advanceTimersByTime(1_000));
+    act(() => vi.advanceTimersByTime(1_500));
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     vi.useRealTimers();
   });

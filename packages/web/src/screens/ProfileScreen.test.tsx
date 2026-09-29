@@ -311,7 +311,7 @@ describe('ProfileScreen', () => {
     });
   });
 
-  it('shows the task-style copied toast for one second after copying a referral value', async () => {
+  it('shows the task-style copied toast for 1.5 seconds and triggers a selection haptic', async () => {
     mockProfileRequest();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
@@ -328,7 +328,8 @@ describe('ProfileScreen', () => {
     expect(screen.getByRole('status')).toHaveClass('achievement-reward-toast');
     expect(screen.getByRole('status')).toHaveClass('profile-referral-copy-toast');
     expect(screen.getByRole('status')).toHaveTextContent('Скопировано');
-    act(() => vi.advanceTimersByTime(999));
+    expect(triggerHaptic).toHaveBeenCalledWith('selection');
+    act(() => vi.advanceTimersByTime(1_499));
     expect(screen.getByRole('status')).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(1));
     expect(screen.queryByRole('status')).not.toBeInTheDocument();

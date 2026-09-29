@@ -605,7 +605,7 @@ export function PlayView<TState>({
   waitForShotResponseBeforeResultClose = false,
   freezeRenderingDuringResult = false,
   backLabel = 'К режимам',
-  bottomInset = 'calc(8px + var(--app-safe-bottom))',
+  bottomInset = 'var(--app-dock-safe-bottom)',
   sessionStartedAt,
   serverNow,
   receivedAtPerformanceMs,
