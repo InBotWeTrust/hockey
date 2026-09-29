@@ -1,4 +1,8 @@
 export { GAME_CORE_VERSION } from './version.js';
+export { OBSERVATION_BANK_VERSION, getObservationScene, validateObservationScene,
+  evaluateObservationDecision, type ObservationScene, type ObservationStepKey,
+  type ObservationInput, type ObservationEvaluation,
+} from './openWindowObservation.js';
 export { sampleOpenWindowScene, resolveOpenWindowShot, scanOpenWindows,
   evaluateOpenWindowDecision, type OpenWindowScene, type OpenWindowFrame,
   type OpenWindowInterval, type OpenWindowDecision, type OpenWindowDecisionEvaluation,

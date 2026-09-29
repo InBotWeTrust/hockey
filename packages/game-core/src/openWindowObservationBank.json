@@ -1,0 +1,50 @@
+[
+  {
+    "id": "observation-v1:demo", "stepKey": "notice_frame", "source": "authored",
+    "sessionSeed": "open-window:v1:notice_frame:0:0", "goalieId": "rookie", "shotIndex": 1,
+    "startMs": 1495, "endMs": 9495, "decisionMs": 7495,
+    "opening": { "startMs": 7302, "endMs": 7689 },
+    "bankVersion": 1, "gameCoreVersion": 69,
+    "explanation": "Вратарь сместился, и появился путь к воротам."
+  },
+  {
+    "id": "observation-v1:paused-open", "stepKey": "notice_motion", "source": "authored",
+    "sessionSeed": "open-window:v1:notice_motion:0:0", "goalieId": "rookie", "shotIndex": 1,
+    "startMs": 4263, "endMs": 12263, "decisionMs": 10263,
+    "opening": { "startMs": 10136, "endMs": 10390 },
+    "bankVersion": 1, "gameCoreVersion": 69,
+    "explanation": "Игрок находится напротив свободной части ворот."
+  },
+  {
+    "id": "observation-v1:paused-closed", "stepKey": "notice_motion", "source": "authored",
+    "sessionSeed": "open-window:v1:notice_motion:0:0", "goalieId": "rookie", "shotIndex": 1,
+    "startMs": 4263, "endMs": 12263, "decisionMs": 9463,
+    "opening": null,
+    "bankVersion": 1, "gameCoreVersion": 69,
+    "explanation": "Сейчас свободного пути от игрока к воротам нет."
+  },
+  {
+    "id": "observation-v1:recorded-open-egor", "stepKey": "notice_independent", "source": "recorded",
+    "recordingKey": "egor-78", "sessionSeed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7",
+    "goalieId": "rookie", "shotIndex": 1, "startMs": 600, "endMs": 1100,
+    "decisionMs": 987, "opening": { "startMs": 966, "endMs": 1034 },
+    "bankVersion": 1, "gameCoreVersion": 69,
+    "explanation": "На короткое время путь от игрока к воротам открылся."
+  },
+  {
+    "id": "observation-v1:recorded-closed-egor", "stepKey": "notice_independent", "source": "recorded",
+    "recordingKey": "egor-78", "sessionSeed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7",
+    "goalieId": "rookie", "shotIndex": 1, "startMs": 350, "endMs": 850,
+    "decisionMs": 600, "opening": null,
+    "bankVersion": 1, "gameCoreVersion": 69,
+    "explanation": "В этом фрагменте путь к воротам оставался закрытым."
+  },
+  {
+    "id": "observation-v1:recorded-open-dmitry", "stepKey": "notice_independent", "source": "recorded",
+    "recordingKey": "dmitry-79", "sessionSeed": "4122e7b60cfc1d92d12c73f8e8c709eacd0dae621e6616f2c723df31919e3d14",
+    "goalieId": "rookie", "shotIndex": 1, "startMs": 800, "endMs": 1400,
+    "decisionMs": 1200, "opening": { "startMs": 912, "endMs": 1254 },
+    "bankVersion": 1, "gameCoreVersion": 69,
+    "explanation": "Игрок оказался напротив открытой части ворот."
+  }
+]
