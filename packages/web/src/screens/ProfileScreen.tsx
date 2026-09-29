@@ -24,7 +24,12 @@ import {
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { DuelEquipmentSelectionRadio } from '../components/duel/DuelLockerTab.js';
 import { CommunityLinks } from '../components/CommunityLinks.js';
-import { triggerHaptic } from '../feedback/haptics.js';
+import {
+  runWebVibrationDiagnostic,
+  triggerHaptic,
+  type WebVibrationDiagnostic,
+} from '../feedback/haptics.js';
+import { copyText } from '../platform/clipboard.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
@@ -243,12 +248,27 @@ function EquipmentPanel({
 }
 
 function ReferralPanel({ summary, onOpen }: { summary: ReferralSummary | undefined; onOpen: () => void }): JSX.Element {
+  const [copyToastSequence, setCopyToastSequence] = useState(0);
   const inviteUrl = summary ? `${window.location.origin}/invite/${summary.code}` : '';
   const copy = (value: string): void => {
-    void navigator.clipboard.writeText(value).then(() => triggerHaptic('selection'));
+    void copyText(value).then((copied) => {
+      if (!copied) return;
+      triggerHaptic('selection');
+      setCopyToastSequence((sequence) => sequence + 1);
+    });
   };
+  useEffect(() => {
+    if (copyToastSequence === 0) return undefined;
+    const timeout = window.setTimeout(() => setCopyToastSequence(0), 1_500);
+    return () => window.clearTimeout(timeout);
+  }, [copyToastSequence]);
   return (
     <section className="profile-referral-section" aria-label="Приглашай друзей">
+      {copyToastSequence > 0 ? (
+        <div role="status" aria-live="polite" className="achievement-reward-toast profile-referral-copy-toast">
+          <strong className="achievement-reward-toast__title">Скопировано</strong>
+        </div>
+      ) : null}
       <button type="button" className="section-label profile-section-label" aria-label="Открыть приглашённых друзей" onClick={onOpen}>
         Приглашай друзей
         {(summary?.totalInvited ?? 0) > 0 ? <span className="profile-referral-section__count"> · {summary?.totalInvited}</span> : null}
@@ -412,6 +432,7 @@ function EquipmentPickerModal({
   onClose: () => void;
   onSelect: (item: InventoryItem | null) => void;
 }): JSX.Element {
+  const [hapticDiagnostic, setHapticDiagnostic] = useState<WebVibrationDiagnostic | null>(null);
   const label = kind === 'stickItemId' ? 'клюшку' : kind === 'skatesItemId' ? 'коньки' : 'питание';
   const group = kind === 'stickItemId' ? 'stick' : kind === 'skatesItemId' ? 'skates' : 'nutrition';
   const defaultTitle =
@@ -478,6 +499,25 @@ function EquipmentPickerModal({
           );
         })}
       </div>
+      {MARKSMANSHIP_CONSTRUCTOR_ENABLED ? (
+        <div className="profile-haptic-diagnostic">
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => setHapticDiagnostic(runWebVibrationDiagnostic())}
+          >
+            Проверить вибрацию
+          </button>
+          {hapticDiagnostic ? (
+            <p role="status">
+              Режим: {hapticDiagnostic.runtime} · Страница: {hapticDiagnostic.visibility} · API:{' '}
+              {hapticDiagnostic.apiAvailable ? 'да' : 'нет'} · Ответ:{' '}
+              {hapticDiagnostic.result === null ? 'нет' : String(hapticDiagnostic.result)}
+              {hapticDiagnostic.error ? ` · Ошибка: ${hapticDiagnostic.error}` : ''}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </AccessibleModal>
   );
 }

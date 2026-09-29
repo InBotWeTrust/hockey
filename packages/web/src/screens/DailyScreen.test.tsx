@@ -506,10 +506,13 @@ function LocationProbe(): JSX.Element {
   return <div aria-label="location">{`${location.pathname}${location.search}`}</div>;
 }
 
-function renderWith(initialEntries: string[] = ['/'], routeControl?: JSX.Element) {
-  const client = new QueryClient({
+function renderWith(
+  initialEntries: string[] = ['/'],
+  routeControl?: JSX.Element,
+  client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
-  });
+  }),
+) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter
@@ -4456,7 +4459,7 @@ describe('DailyScreen', () => {
     expect(screen.getByText(/Старые результаты сохранены/)).toBeInTheDocument();
   });
 
-  it('uses the shared route loader until the training catalog is ready', async () => {
+  it('keeps the training page shell visible while the catalog is loading', async () => {
     let resolveCourse!: (response: Response) => void;
     const courseResponse = new Promise<Response>((resolve) => {
       resolveCourse = resolve;
@@ -4472,12 +4475,23 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=training&from=sections']);
 
-    expect(await screen.findByRole('status')).toHaveClass('route-loading');
-    expect(screen.getByRole('status')).toHaveTextContent('Загрузка…');
-    expect(screen.queryByRole('heading', { name: 'Тренировка' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Начальный уровень/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Продвинутый уровень/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Открытая тренировка' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Тренировка' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Начальный уровень/ })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /Начальный уровень/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.queryByText(/Выбери модель периода/)).not.toBeInTheDocument();
 
     resolveCourse(
@@ -4490,6 +4504,48 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
+  it('keeps the last confirmed exercise progress visible while refreshing after remount', async () => {
+    const client = new QueryClient({
+      defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
+    });
+    const completedCatalog: InitialTrainingCatalogResponse = {
+      ...initialTrainingCatalog,
+      completed_count: 7,
+      beginner_training_completed: true,
+      open_training_unlocked: true,
+      exercises: initialTrainingCatalog.exercises.map((exercise) => ({
+        ...exercise,
+        state: 'completed',
+      })),
+    };
+    let courseRequestCount = 0;
+    const pendingRefresh = new Promise<Response>(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/course')) {
+        courseRequestCount += 1;
+        if (courseRequestCount > 1) return pendingRefresh;
+        return new Response(JSON.stringify(completedCatalog), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(
+        JSON.stringify(url.includes('/duel/training/state') ? trainingIdleState : baseState),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+
+    const firstRender = renderWith(['/?view=training&from=sections'], undefined, client);
+    expect(await screen.findByText('7 из 7 упражнений')).toBeInTheDocument();
+    firstRender.unmount();
+
+    renderWith(['/?view=training&from=sections'], undefined, client);
+
+    expect(screen.getByText('7 из 7 упражнений')).toBeInTheDocument();
+    expect(screen.queryByText('Загрузка прогресса…')).not.toBeInTheDocument();
+    expect(courseRequestCount).toBe(2);
+  });
   it('does not replace the training hub with open training when the course catalog fails to load', async () => {
     let courseAttempts = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -4599,11 +4655,17 @@ describe('DailyScreen', () => {
       initialTrainingCatalog,
     );
     expect(
+      initialTrainingCatalogAfterRefresh(
+        initialTrainingCatalog,
+        { enabled: false } as InitialTrainingCatalogResponse,
+      ),
+    ).toBe(initialTrainingCatalog);
+    expect(
       initialTrainingCatalogAfterRefresh(initialTrainingCatalog, {
         ...initialTrainingCatalog,
         enabled: false,
       }),
-    ).toBeNull();
+    ).toMatchObject({ enabled: false });
   });
 
   it('optimistically unlocks the next exercise after a verified completion', () => {
@@ -4631,7 +4693,7 @@ describe('DailyScreen', () => {
     });
   });
 
-  it('preserves the existing open-training screen while the course flag is disabled', async () => {
+  it('keeps the course cards visible while the course start flag is disabled', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       const body = url.includes('/duel/training/course')
@@ -4647,8 +4709,10 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=training']);
 
-    expect(await screen.findByRole('button', { name: 'На лёд' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Начальный уровень/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Начальный уровень/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'На лёд' })).not.toBeInTheDocument();
   });
 
   it('opens the open-training details after leaving a playable training route', async () => {

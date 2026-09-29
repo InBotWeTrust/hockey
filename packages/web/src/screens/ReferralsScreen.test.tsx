@@ -63,7 +63,7 @@ describe('ReferralsScreen', () => {
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toHaveTextContent('Никита Орлов');
   });
 
-  it('shows invite instructions and uses native copy feedback with a selection haptic', async () => {
+  it('shows invite instructions and confirms a copied code with a selection haptic', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     renderScreen();
@@ -76,7 +76,7 @@ describe('ReferralsScreen', () => {
       await Promise.resolve();
     });
     expect(writeText).toHaveBeenCalledWith('TEAM-77');
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Скопировано');
     expect(triggerHaptic).toHaveBeenCalledWith('selection');
   });
 

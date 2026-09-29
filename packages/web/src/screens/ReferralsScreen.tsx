@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, ChevronRight, Copy, Star, TrendingUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -13,6 +13,7 @@ import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
 import type { UserPickerItem } from '../chat/api.js';
 import { formatProfileNumber } from './profileSections.js';
 import { triggerHaptic } from '../feedback/haptics.js';
+import { copyText } from '../platform/clipboard.js';
 
 const sections: Array<{ level: ReferralLevel; title: string }> = [
   { level: 'beginner', title: 'Новички' },
@@ -61,13 +62,23 @@ function ReferralSection({ level, title, onSelect }: { level: ReferralLevel; tit
 export function ReferralsScreen(): JSX.Element {
   const navigate = useNavigate();
   const [selectedPlayer, setSelectedPlayer] = useState<UserPickerItem | null>(null);
+  const [copyToastSequence, setCopyToastSequence] = useState(0);
   const queryClient = useQueryClient();
   const updateUser = useAuthStore((state) => state.updateUser);
   const summary = useQuery({ queryKey: ['referrals', 'summary'], queryFn: fetchReferralSummary });
   const inviteUrl = summary.data ? `${window.location.origin}/invite/${summary.data.code}` : '';
   const copy = (value: string): void => {
-    void navigator.clipboard.writeText(value).then(() => triggerHaptic('selection'));
+    void copyText(value).then((copied) => {
+      if (!copied) return;
+      triggerHaptic('selection');
+      setCopyToastSequence((sequence) => sequence + 1);
+    });
   };
+  useEffect(() => {
+    if (copyToastSequence === 0) return undefined;
+    const timeout = window.setTimeout(() => setCopyToastSequence(0), 1_500);
+    return () => window.clearTimeout(timeout);
+  }, [copyToastSequence]);
   const nextMilestone = summary.data?.milestones.find((item) => item.unlockedAt === null) ?? null;
   const claim = useMutation({
     mutationFn: claimReferralReward,
@@ -83,6 +94,11 @@ export function ReferralsScreen(): JSX.Element {
 
   return (
     <main className="screen profile-detail-screen referrals-screen">
+      {copyToastSequence > 0 ? (
+        <div role="status" aria-live="polite" className="achievement-reward-toast profile-referral-copy-toast">
+          <strong className="achievement-reward-toast__title">Скопировано</strong>
+        </div>
+      ) : null}
       <header className="profile-page-header page-header-standard">
         <button type="button" className="icon-btn page-header-standard__back" aria-label="Назад" onClick={() => navigate('/profile')}><ArrowLeft size={18} /></button>
         <h1 className="page-header-standard__title">Приглашённые друзья</h1>

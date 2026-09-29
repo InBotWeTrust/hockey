@@ -94,6 +94,7 @@ import {
   type InitialTrainingExerciseKey,
 } from '../api/initialTraining.js';
 import {
+  INITIAL_TRAINING_HUB_LOADING_CATALOG,
   InitialTrainingCatalog,
   InitialTrainingHub,
 } from '../components/InitialTrainingCourse.js';
@@ -3491,7 +3492,14 @@ export function initialTrainingCatalogAfterRefresh(
   refreshed: InitialTrainingCatalogResponse | undefined,
 ): InitialTrainingCatalogResponse | null {
   if (refreshed === undefined) return current;
-  return refreshed.enabled ? refreshed : null;
+  if (
+    !Array.isArray(refreshed.exercises) ||
+    !refreshed.advanced_training ||
+    !Array.isArray(refreshed.advanced_training.exercises)
+  ) {
+    return current;
+  }
+  return refreshed;
 }
 
 export function initialTrainingCatalogAfterCompletion(
@@ -3521,6 +3529,8 @@ export function initialTrainingCatalogAfterCompletion(
   };
 }
 
+const INITIAL_TRAINING_COURSE_QUERY_KEY = ['training', 'course'] as const;
+
 function TrainingPlaceholder({
   autoPlay = false,
   onBack,
@@ -3542,6 +3552,7 @@ function TrainingPlaceholder({
 }): JSX.Element {
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const data = useTrainingSessionStore((s) => s.data);
   const loading = useTrainingSessionStore((s) => s.loading);
   const error = useTrainingSessionStore((s) => s.error);
@@ -3552,8 +3563,11 @@ function TrainingPlaceholder({
   const [playTraining, setPlayTraining] = useState(() => autoPlay);
   const [localPlayEntrance, setLocalPlayEntrance] = useState(false);
   const [now, setNow] = useState(Date.now());
-  const [courseCatalog, setCourseCatalog] = useState<InitialTrainingCatalogResponse | null>(null);
-  const [courseCatalogLoaded, setCourseCatalogLoaded] = useState(false);
+  const [courseCatalog, setCourseCatalog] = useState<InitialTrainingCatalogResponse | null>(() =>
+    queryClient.getQueryData<InitialTrainingCatalogResponse>(INITIAL_TRAINING_COURSE_QUERY_KEY) ??
+    null,
+  );
+  const [courseCatalogLoaded, setCourseCatalogLoaded] = useState(courseCatalog !== null);
   const [courseCatalogError, setCourseCatalogError] = useState(false);
   const [trainingLockModalOpen, setTrainingLockModalOpen] = useState(false);
   const refreshedTrainingDayRef = useRef<string | null>(null);
@@ -3561,15 +3575,22 @@ function TrainingPlaceholder({
   const refreshCourseCatalog = useCallback(async (): Promise<void> => {
     try {
       const next = await fetchInitialTrainingCourse();
-      setCourseCatalog((current) => initialTrainingCatalogAfterRefresh(current, next));
+      const current =
+        queryClient.getQueryData<InitialTrainingCatalogResponse>(
+          INITIAL_TRAINING_COURSE_QUERY_KEY,
+        ) ?? null;
+      const refreshed = initialTrainingCatalogAfterRefresh(current, next);
+      if (refreshed !== null) {
+        queryClient.setQueryData(INITIAL_TRAINING_COURSE_QUERY_KEY, refreshed);
+      }
+      setCourseCatalog(refreshed);
       setCourseCatalogError(false);
     } catch {
-      setCourseCatalog((current) => initialTrainingCatalogAfterRefresh(current, undefined));
       setCourseCatalogError(true);
     } finally {
       setCourseCatalogLoaded(true);
     }
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     void refreshCourseCatalog();
@@ -3688,9 +3709,15 @@ function TrainingPlaceholder({
     trainingSection !== 'advanced'
   ) {
     return (
-      <main className="screen route-loading" role="status">
-        Загрузка…
-      </main>
+      <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
+        <InitialTrainingHub
+          catalog={INITIAL_TRAINING_HUB_LOADING_CATALOG}
+          loading
+          onOpenCourse={() => undefined}
+          onOpenTraining={() => undefined}
+          onOpenAdvanced={() => undefined}
+        />
+      </ModeShell>
     );
   }
 
@@ -3741,9 +3768,12 @@ function TrainingPlaceholder({
           }}
           onOpenTraining={() => navigate(`/?view=training&section=open${fromSectionsSuffix}`, { replace: true })}
           onCatalogRefresh={(completedKey) => {
-            setCourseCatalog((current) =>
-              current ? initialTrainingCatalogAfterCompletion(current, completedKey) : current,
-            );
+            setCourseCatalog((current) => {
+              if (current === null) return current;
+              const completed = initialTrainingCatalogAfterCompletion(current, completedKey);
+              queryClient.setQueryData(INITIAL_TRAINING_COURSE_QUERY_KEY, completed);
+              return completed;
+            });
             void refreshCourseCatalog();
           }}
         />
