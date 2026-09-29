@@ -659,7 +659,7 @@ export function PlayView<TState>({
   resumeHeldResultKey,
   preserveSceneOnModalReturn = false,
   backLabel = 'К режимам',
-  bottomInset = 'calc(8px + var(--app-dock-safe-bottom))',
+  bottomInset = 'calc(8px + var(--app-safe-bottom))',
   sessionStartedAt,
   serverNow,
   receivedAtPerformanceMs,
@@ -2237,7 +2237,8 @@ export function PlayView<TState>({
         top: 'calc(var(--app-safe-top) + 6px)',
         left: 0,
         right: 0,
-        bottom: bottomInset,
+        bottom: 'auto',
+        height: `calc(var(--app-viewport-height, 100dvh) - var(--app-safe-top) - 6px - ${bottomInset})`,
         minHeight: 0,
         overflow: 'hidden',
       }}
