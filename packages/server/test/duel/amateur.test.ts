@@ -1141,7 +1141,30 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       payload: { shot_index: 1, input: { tapTime: 1000 }, claimed_result: 'goal' },
     });
     expect(shot.statusCode).toBe(200);
-    expect((await challenge(templateId, await createOpponent(99))).statusCode).toBe(200);
+    const pendingChallenge = await challenge(templateId, await createOpponent(99));
+    expect(pendingChallenge.statusCode).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/duel/amateur/matches/${pendingChallenge.json().match.id}/cancel`,
+          headers: auth(tokenA),
+        })
+      ).statusCode,
+    ).toBe(200);
+    await pool.query(
+      `update amateur_duel_match
+          set status = 'settled', settled_reason = 'completed', settled_at = now(),
+              winner_user_id = $2, updated_at = now()
+        where id = $1`,
+      [matchId, userA],
+    );
+    await pool.query(
+      `update amateur_duel_limit_reservation
+          set released_at = now()
+        where match_id = $1 and released_at is null`,
+      [matchId],
+    );
     expect(
       (
         await app.inject({
