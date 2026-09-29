@@ -94,11 +94,6 @@ export function ReferralsScreen(): JSX.Element {
 
   return (
     <main className="screen profile-detail-screen referrals-screen">
-      {copyToastSequence > 0 ? (
-        <div role="status" aria-live="polite" className="achievement-reward-toast profile-referral-copy-toast">
-          <strong className="achievement-reward-toast__title">Скопировано</strong>
-        </div>
-      ) : null}
       <header className="profile-page-header page-header-standard">
         <button type="button" className="icon-btn page-header-standard__back" aria-label="Назад" onClick={() => navigate('/profile')}><ArrowLeft size={18} /></button>
         <h1 className="page-header-standard__title">Приглашённые друзья</h1>

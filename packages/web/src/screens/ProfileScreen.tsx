@@ -259,11 +259,6 @@ function ReferralPanel({ summary, onOpen }: { summary: ReferralSummary | undefin
   }, [copyToastSequence]);
   return (
     <section className="profile-referral-section" aria-label="Приглашай друзей">
-      {copyToastSequence > 0 ? (
-        <div role="status" aria-live="polite" className="achievement-reward-toast profile-referral-copy-toast">
-          <strong className="achievement-reward-toast__title">Скопировано</strong>
-        </div>
-      ) : null}
       <button type="button" className="section-label profile-section-label" aria-label="Открыть приглашённых друзей" onClick={onOpen}>
         Приглашай друзей
         {(summary?.totalInvited ?? 0) > 0 ? <span className="profile-referral-section__count"> · {summary?.totalInvited}</span> : null}
