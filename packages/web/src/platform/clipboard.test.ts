@@ -34,4 +34,13 @@ describe('copyText', () => {
     expect(execCommand).toHaveBeenCalledWith('copy');
     expect(document.querySelector('textarea')).toBeNull();
   });
+
+  it('reports failure cleanly when neither copy mechanism is available', async () => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: undefined });
+
+    await expect(copyText('TEAM-77')).resolves.toBe(false);
+
+    expect(document.querySelector('textarea')).toBeNull();
+  });
 });

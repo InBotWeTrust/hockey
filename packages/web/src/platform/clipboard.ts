@@ -1,4 +1,6 @@
 function copyWithSelection(value: string): boolean {
+  if (typeof document.execCommand !== 'function') return false;
+
   const textarea = document.createElement('textarea');
   textarea.value = value;
   textarea.readOnly = true;
@@ -10,7 +12,11 @@ function copyWithSelection(value: string): boolean {
   textarea.select();
 
   try {
-    return document.execCommand('copy');
+    try {
+      return document.execCommand('copy');
+    } catch {
+      return false;
+    }
   } finally {
     textarea.remove();
   }
