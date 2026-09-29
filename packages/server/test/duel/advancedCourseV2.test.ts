@@ -111,10 +111,6 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
   });
 
   it('counts only authoritative goals on each side and grants the reward once', async () => {
-    await pool.query(`update game_settings set value = jsonb_set(
-      jsonb_set(value, '{rewardStars}', '4'::jsonb),
-      '{rewardExperience}', '3'::jsonb)
-      where key = 'training.advanced_course.config'`);
     const start = await app.inject({ method: 'POST',
       url: '/duel/training/advanced/v2/near_goalie/start', headers: headers() });
     let state = start.json().state;
