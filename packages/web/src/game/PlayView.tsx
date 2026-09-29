@@ -311,6 +311,8 @@ export interface PlayViewProps<TState> {
     | undefined;
   scoreboardAccessory?: ReactNode;
   shotButtonLabel?: string | undefined;
+  hidePrimaryAction?: boolean | undefined;
+  observationAction?: ((sceneMs: number) => void) | undefined;
   primaryActionBlocked?: boolean | undefined;
   inactiveAction?: (() => unknown | Promise<unknown>) | undefined;
   onInactiveActionStart?: (() => void) | undefined;
@@ -643,6 +645,8 @@ export function PlayView<TState>({
   scoreboardModel,
   scoreboardAccessory,
   shotButtonLabel = 'БРОСОК',
+  hidePrimaryAction = false,
+  observationAction,
   primaryActionBlocked = false,
   inactiveAction,
   onInactiveActionStart,
@@ -2064,6 +2068,10 @@ export function PlayView<TState>({
       void handleInactiveAction();
       return;
     }
+    if (observationAction) {
+      observationAction(loopRef.current?.getSceneT() ?? 0);
+      return;
+    }
     if (queuedPracticeShotRef.current !== null) return;
     const practiceWindow = practiceShotWindowRef.current;
     const sceneMs = loopRef.current?.getSceneT();
@@ -2073,7 +2081,8 @@ export function PlayView<TState>({
       return;
     }
     handleShotTap();
-  }, [handleInactiveAction, handleShotTap, inactiveAction, primaryActionBlocked]);
+  }, [handleInactiveAction, handleShotTap, inactiveAction, observationAction,
+    primaryActionBlocked]);
 
   const timerValue = timer ?? formatMs(scoreboardRemaining);
   const visibleScoreboardGoals = scoreboardSnapshot?.goals ?? scoreboardGoals ?? goals;
@@ -2378,7 +2387,7 @@ export function PlayView<TState>({
             <Home size={22} />
           </button>
         )}
-        <button
+        {hidePrimaryAction ? <span aria-hidden="true" /> : <button
           type="button"
           className={isDuelRestBlocked ? 'btn btn--cta btn--duel-blocked' : 'btn btn--cta'}
           onClick={handlePrimaryTap}
@@ -2393,7 +2402,7 @@ export function PlayView<TState>({
           }}
         >
           {effectiveShotButtonLabel}
-        </button>
+        </button>}
         {hideSoundAction ? (
           <span aria-hidden="true" />
         ) : (

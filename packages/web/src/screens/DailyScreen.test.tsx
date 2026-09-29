@@ -69,6 +69,10 @@ vi.mock('../components/OpenWindowTrainingPlay.js', () => ({
   OpenWindowTrainingPlay: ({ stepKey }: { stepKey: string }) =>
     <div data-testid="open-window-training-play">Новый курс: {stepKey}</div>,
 }));
+vi.mock('../components/OpenWindowObservationPlay.js', () => ({
+  OpenWindowObservationPlay: ({ stepKey }: { stepKey: string }) =>
+    <div data-testid="open-window-observation-play">Наблюдение: {stepKey}</div>,
+}));
 
 describe('demo pace', () => {
   it('uses the approved faster puck speed while leaving character pacing distinct', () => {
@@ -4408,7 +4412,7 @@ describe('DailyScreen', () => {
         enabled: true,
         access: { amateur_completed: true, beginner_training_completed: true, unlocked: true },
         completed_count: 0, total_count: 12,
-        exercises: [{ key: 'notice_frame', position: 1, title: 'Найди просвет',
+        exercises: [{ key: 'notice_frame', position: 1, title: 'Увидеть открытый путь',
           description: 'Увидь открытый путь.', skill: 'notice', goal: 'Замечай просвет',
           rewardStars: 0, rewardExperience: 0, state: 'available' }],
       },
@@ -4422,8 +4426,8 @@ describe('DailyScreen', () => {
       });
     });
     renderWith(['/?view=training&section=advanced&exercise=notice_frame&play=1']);
-    expect(await screen.findByTestId('open-window-training-play')).toHaveTextContent(
-      'Новый курс: notice_frame');
+    expect(await screen.findByTestId('open-window-observation-play')).toHaveTextContent(
+      'Наблюдение: notice_frame');
   });
 
   it('explains an old advanced exercise link instead of silently showing the new catalog', async () => {
@@ -4434,7 +4438,7 @@ describe('DailyScreen', () => {
         enabled: true,
         access: { amateur_completed: true, beginner_training_completed: true, unlocked: true },
         completed_count: 0, total_count: 12,
-        exercises: [{ key: 'notice_frame', position: 1, title: 'Найди просвет',
+        exercises: [{ key: 'notice_frame', position: 1, title: 'Увидеть открытый путь',
           description: 'Увидь открытый путь.', skill: 'notice', goal: 'Замечай просвет',
           rewardStars: 0, rewardExperience: 0, state: 'available' }],
       },

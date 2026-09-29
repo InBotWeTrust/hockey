@@ -234,6 +234,31 @@ describe('PlayView', () => {
     await waitFor(() => expect(screen.queryByText('Возьми чуть правее')).toBeNull());
   });
 
+  it('uses the primary button to mark an observation without taking a shot', () => {
+    const mark = vi.fn();
+    const submitShot = vi.fn(() => new Promise<null>(() => undefined));
+    render(<PlayView suppressedByModal={false} showIceCar={false}
+      onBack={() => undefined} active seed="observation" goalieId="rookie"
+      goalieConfig={beachGoalie} periodNumber={1} goals={0} shots={0}
+      shotButtonLabel="ВИЖУ ШАНС" observationAction={mark}
+      optimisticAddShot={() => undefined} submitShot={submitShot}
+      applyState={() => undefined} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'ВИЖУ ШАНС' }));
+    expect(mark).toHaveBeenCalledOnce();
+    expect(mark).toHaveBeenCalledWith(expect.any(Number));
+    expect(submitShot).not.toHaveBeenCalled();
+  });
+
+  it('hides the shot control during a paused observation lesson', () => {
+    render(<PlayView suppressedByModal={false} showIceCar={false}
+      onBack={() => undefined} active seed="observation-paused" goalieId="rookie"
+      goalieConfig={beachGoalie} periodNumber={1} goals={0} shots={0}
+      hidePrimaryAction optimisticAddShot={() => undefined}
+      submitShot={() => new Promise(() => undefined)} applyState={() => undefined} />);
+    expect(screen.queryByRole('button', { name: 'БРОСОК' })).toBeNull();
+  });
+
   it('passes the exact supplied goalie configuration to local shot resolution', () => {
     const resolvedContexts: Parameters<PlayShotResolver>[0][] = [];
     const shotResolver: PlayShotResolver = (context) => {

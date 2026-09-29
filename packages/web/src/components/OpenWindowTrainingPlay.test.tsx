@@ -22,10 +22,10 @@ vi.mock('../api/openWindowTraining.js', () => ({
 
 import { OpenWindowTrainingPlay } from './OpenWindowTrainingPlay.js';
 
-const practice = getOpenWindowScene('notice_frame', 1);
-const demonstration = getOpenWindowScene('notice_frame', 0);
+const practice = getOpenWindowScene('anticipate_direction', 1);
+const demonstration = getOpenWindowScene('anticipate_direction', 0);
 const run = {
-  run_id: '11111111-1111-4111-8111-111111111111', step_key: 'notice_frame',
+  run_id: '11111111-1111-4111-8111-111111111111', step_key: 'anticipate_direction',
   phase: 'practice' as const, scene: practice, demonstration,
   attempt_token: '22222222-2222-4222-8222-222222222222', attempt_index: 0,
   decision_index: 0, sound_count: 0, practice_decisions: 0, full_runs: 0,
@@ -44,7 +44,7 @@ describe('open-window training play', () => {
   });
 
   it('demonstrates daily first-period movement without the old episode sampler or shoot cue', async () => {
-    render(<OpenWindowTrainingPlay stepKey="notice_frame" onBack={vi.fn()}
+    render(<OpenWindowTrainingPlay stepKey="anticipate_direction" onBack={vi.fn()}
       onCatalogRefresh={vi.fn()} />);
     expect(await screen.findByRole('dialog', { name: 'Сначала – показ' })).toBeInTheDocument();
     await act(async () => screen.getByRole('button', { name: 'Смотреть показ' }).click());
@@ -66,7 +66,7 @@ describe('open-window training play', () => {
       evaluation: { opportunity: 'shot_window', timing: 'on_time',
         relevant: true, onTime: true, result: 'goal' },
       sound: true, completed: false, reward_granted: null, state: decided });
-    render(<OpenWindowTrainingPlay stepKey="notice_frame" onBack={vi.fn()}
+    render(<OpenWindowTrainingPlay stepKey="anticipate_direction" onBack={vi.fn()}
       onCatalogRefresh={vi.fn()} />);
     await screen.findByRole('dialog', { name: 'Сначала – показ' });
     await act(async () => screen.getByRole('button', { name: 'Смотреть показ' }).click());

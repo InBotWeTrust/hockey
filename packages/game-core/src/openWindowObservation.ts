@@ -1,6 +1,11 @@
 import bank from './openWindowObservationBank.json' with { type: 'json' };
 import { GAME_CORE_VERSION } from './version.js';
-import { resolveOpenWindowShot } from './openWindowTraining.js';
+import { sampleOpenWindowScene } from './openWindowTraining.js';
+import { GOAL_OPENING } from './rink.js';
+import { GOALIE_SIZE } from './goalie/types.js';
+import { PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
+  PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
+  PERSPECTIVE_COURT_VISUAL_X_CENTER } from './court/perspective.js';
 
 export type ObservationStepKey = 'notice_frame' | 'notice_motion' | 'notice_independent';
 export type ObservationInput =
@@ -28,7 +33,7 @@ export interface ObservationScene {
   explanation: string;
 }
 
-export const OBSERVATION_BANK_VERSION = 1;
+export const OBSERVATION_BANK_VERSION = 4;
 
 export function validateObservationScene(scene: ObservationScene): void {
   if (!Number.isFinite(scene.startMs) || !Number.isFinite(scene.endMs) ||
@@ -42,10 +47,17 @@ export function validateObservationScene(scene: ObservationScene): void {
     scene.gameCoreVersion !== GAME_CORE_VERSION) {
     throw new Error(`Stale observation scene: ${scene.id}`);
   }
-  if (scene.stepKey === 'notice_motion' && scene.source === 'authored') {
-    const atFrame = resolveOpenWindowShot({ ...scene, targetMs: scene.decisionMs },
-      scene.decisionMs).type;
-    if ((scene.opening !== null) !== (atFrame === 'goal')) {
+  if (scene.source === 'authored') {
+    const frame = sampleOpenWindowScene({ ...scene, targetMs: scene.decisionMs },
+      scene.decisionMs);
+    const visibleGoalOffset = frame.goalOffsetX * PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE;
+    const visibleGoalieX = PERSPECTIVE_COURT_VISUAL_X_CENTER +
+      (frame.goalieX - PERSPECTIVE_COURT_VISUAL_X_CENTER) *
+        PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE;
+    const visiblyOpen = frame.shooterX > GOAL_OPENING.xMin + visibleGoalOffset + 8 &&
+      frame.shooterX < GOAL_OPENING.xMax + visibleGoalOffset - 8 &&
+      Math.abs(frame.shooterX - visibleGoalieX) > GOALIE_SIZE.width / 2 + 13;
+    if ((scene.opening !== null) !== visiblyOpen) {
       throw new Error(`Observation frame contradicts its answer: ${scene.id}`);
     }
   }

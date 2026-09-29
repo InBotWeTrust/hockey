@@ -101,6 +101,7 @@ import {
   AdvancedTrainingCatalog,
 } from '../components/AdvancedTrainingCourse.js';
 import { OpenWindowTrainingPlay } from '../components/OpenWindowTrainingPlay.js';
+import { OpenWindowObservationPlay } from '../components/OpenWindowObservationPlay.js';
 import type { OpenWindowStepKey } from '@hockey/game-core';
 import { InitialTrainingPlay } from '../components/InitialTrainingPlay.js';
 import type { ProfileData } from './profileTypes.js';
@@ -3779,7 +3780,17 @@ function TrainingPlaceholder({
         params.get('play') === '1' &&
         !courseCatalog.gameplay_lock?.blocked
       ) {
-        return (
+        const ObservationPlay = advancedExercise.key === 'notice_frame' ||
+          advancedExercise.key === 'notice_motion' ||
+          advancedExercise.key === 'notice_independent';
+        return ObservationPlay ? (
+          <OpenWindowObservationPlay
+            key={advancedExercise.key}
+            stepKey={advancedExercise.key as 'notice_frame' | 'notice_motion' | 'notice_independent'}
+            onBack={() => navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })}
+            onCatalogRefresh={() => void refreshCourseCatalog()}
+          />
+        ) : (
           <OpenWindowTrainingPlay
             key={advancedExercise.key}
             stepKey={advancedExercise.key as OpenWindowStepKey}

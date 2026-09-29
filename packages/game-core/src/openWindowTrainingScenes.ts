@@ -23,12 +23,12 @@ export const OPEN_WINDOW_STEPS: readonly {
   title: string;
   objective: string;
 }[] = [
-  { key: 'notice_frame', stage: 'notice', title: 'Найди просвет',
-    objective: 'Увидь открытый путь к воротам на стоп-кадре.' },
-  { key: 'notice_motion', stage: 'notice', title: 'Заметь в движении',
-    objective: 'Замечай открытый путь, пока все движутся.' },
-  { key: 'notice_independent', stage: 'notice', title: 'Брось сам',
-    objective: 'Самостоятельно выбери открытый момент в разных ситуациях.' },
+  { key: 'notice_frame', stage: 'notice', title: 'Увидеть открытый путь',
+    objective: 'Посмотри, как движение открывает путь к воротам.' },
+  { key: 'notice_motion', stage: 'notice', title: 'Открыто или закрыто',
+    objective: 'На остановленном кадре реши, есть ли путь к воротам.' },
+  { key: 'notice_independent', stage: 'notice', title: 'Заметить шанс в игре',
+    objective: 'В игровом движении отмечай открытый путь или пропускай эпизод.' },
   { key: 'anticipate_direction', stage: 'anticipate', title: 'Прочитай движение',
     objective: 'Увидь, куда движутся игрок, ворота и вратарь.' },
   { key: 'anticipate_opening', stage: 'anticipate', title: 'Поймай открытие',
