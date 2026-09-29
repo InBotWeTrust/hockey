@@ -3492,7 +3492,14 @@ export function initialTrainingCatalogAfterRefresh(
   refreshed: InitialTrainingCatalogResponse | undefined,
 ): InitialTrainingCatalogResponse | null {
   if (refreshed === undefined) return current;
-  return refreshed.enabled ? refreshed : null;
+  if (
+    !Array.isArray(refreshed.exercises) ||
+    !refreshed.advanced_training ||
+    !Array.isArray(refreshed.advanced_training.exercises)
+  ) {
+    return current;
+  }
+  return refreshed;
 }
 
 export function initialTrainingCatalogAfterCompletion(
