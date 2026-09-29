@@ -263,7 +263,13 @@ function ReferralPanel({ summary, onOpen }: { summary: ReferralSummary | undefin
         Приглашай друзей
         {(summary?.totalInvited ?? 0) > 0 ? <span className="profile-referral-section__count"> · {summary?.totalInvited}</span> : null}
       </button>
-      <div className="profile-referral-panel glass" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.key === 'Enter') onOpen(); }}>
+      <div className="profile-referral-panel glass">
+        <button
+          type="button"
+          className="profile-referral-panel__open"
+          aria-label="Открыть карточку приглашений"
+          onClick={onOpen}
+        />
         <span className="profile-referral-panel__artwork">
           <img src="/profile/referral-friends.webp" alt="Два хоккеиста вместе" />
         </span>
@@ -272,8 +278,8 @@ function ReferralPanel({ summary, onOpen }: { summary: ReferralSummary | undefin
           <span className="profile-referral-actions">
             <span className="profile-referral-actions__group profile-referral-actions__copy">
               <span className="profile-referral-actions__buttons">
-                <button type="button" aria-label="Скопировать код" disabled={!summary} onClick={(event) => { event.stopPropagation(); if (summary) copy(summary.code); }}><Copy size={13} /><span>Код</span></button>
-                <button type="button" aria-label="Скопировать ссылку" disabled={!inviteUrl} onClick={(event) => { event.stopPropagation(); copy(inviteUrl); }}><Copy size={13} /><span>Ссылка</span></button>
+                <button type="button" aria-label="Скопировать код" disabled={!summary} onClick={() => { if (summary) copy(summary.code); }}><Copy size={13} /><span>Код</span></button>
+                <button type="button" aria-label="Скопировать ссылку" disabled={!inviteUrl} onClick={() => copy(inviteUrl)}><Copy size={13} /><span>Ссылка</span></button>
               </span>
             </span>
           </span>

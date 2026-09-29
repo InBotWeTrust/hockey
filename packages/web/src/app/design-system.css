@@ -4806,7 +4806,28 @@
   align-items: center;
   gap: 10px;
   color: var(--ink);
+}
+.profile-referral-panel__open {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.profile-referral-panel__open:focus-visible {
+  outline: 2px solid rgba(15, 48, 77, 0.72);
+  outline-offset: 3px;
+}
+.profile-referral-panel > :not(.profile-referral-panel__open) {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
 }
 .profile-referral-panel__artwork {
   width: 86px;
@@ -4863,6 +4884,9 @@
   gap: 3px;
   font: 800 7px/1 var(--font-sans);
   cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 .profile-referral-actions__buttons > button:active { transform: scale(.96); }
 .profile-referral-actions__buttons > button:disabled { cursor: default; opacity: .55; }
