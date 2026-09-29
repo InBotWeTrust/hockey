@@ -1661,7 +1661,7 @@ describe('BonusGamesScreen', () => {
     );
   });
 
-  it('retains only the first three currently visible arena artworks for the active skill', async () => {
+  it('retains the first three visible arenas and the featured launch preview', async () => {
     mockCatalog([
       card({
         id: 'speed-1',
@@ -1723,6 +1723,7 @@ describe('BonusGamesScreen', () => {
     await waitFor(() =>
       expect(preloadArtwork).toHaveBeenCalledWith([
         '/bonus-games/arenas/featured/speed-1.webp?v=20260829-world-tour-user-pngs-v10',
+        '/bonus-games/previews/beach.webp?v=20260829-world-tour-user-pngs-v10',
         '/bonus-games/arenas/compact/speed-2.webp?v=20260829-world-tour-user-pngs-v10',
         '/bonus-games/arenas/compact/speed-3.webp?v=20260829-world-tour-user-pngs-v10',
       ]),
