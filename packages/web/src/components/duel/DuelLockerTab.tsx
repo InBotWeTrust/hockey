@@ -15,6 +15,7 @@ import {
   formatRecoveryMinutesTotal,
   recoveryMinutesAvailable,
 } from '../../screens/inventoryResourceLabels.js';
+import { triggerHaptic } from '../../feedback/haptics.js';
 
 const DUEL_INVENTORY_SLOTS = [
   { kind: 'skates', label: 'Коньки' },
@@ -356,6 +357,11 @@ function DuelEquipmentDetailsModal({
   const items = (inventory?.items[kind] ?? []).filter(isDuelLockerItemAvailable);
   const activeId = duelEquipmentIdFor(inventory, kind);
   const showBaseEquipment = true;
+  const selectItem = (itemId: string | null): void => {
+    if (itemId === activeId) return;
+    triggerHaptic('selection');
+    onSelect(itemId);
+  };
 
   return (
     <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 420 }}>
@@ -404,7 +410,7 @@ function DuelEquipmentDetailsModal({
               type="button"
               data-no-drag-scroll="true"
               disabled={isSaving}
-              onClick={() => onSelect(null)}
+              onClick={() => selectItem(null)}
               className={`glass duel-equipment-option${activeId === null ? ' duel-equipment-option--selected' : ''}`}
               aria-pressed={activeId === null}
               style={{
@@ -470,7 +476,7 @@ function DuelEquipmentDetailsModal({
                 type="button"
                 data-no-drag-scroll="true"
                 disabled={isSaving || item.chargesAvailable <= 0}
-                onClick={() => onSelect(item.id)}
+                onClick={() => selectItem(item.id)}
                 aria-pressed={selected}
                 className={`glass duel-equipment-option${selected ? ' duel-equipment-option--selected' : ''}`}
                 style={{
@@ -574,4 +580,3 @@ function DuelEquipmentDetailsModal({
     </div>
   );
 }
-

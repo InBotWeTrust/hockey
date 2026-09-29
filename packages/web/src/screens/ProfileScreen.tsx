@@ -21,7 +21,9 @@ import {
   type InventoryState,
 } from '../api/inventory.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { DuelEquipmentSelectionRadio } from '../components/duel/DuelLockerTab.js';
 import { CommunityLinks } from '../components/CommunityLinks.js';
+import { triggerHaptic } from '../feedback/haptics.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
@@ -374,47 +376,65 @@ function EquipmentPickerModal({
     group === 'stick' ? 'Обычная клюшка' : group === 'skates' ? 'Обычные коньки' : 'Без питания';
   const selected = inventory.equipped[kind];
   const availableItems = inventory.items[group].filter((item) => item.chargesAvailable > 0);
+  const selectItem = (item: InventoryItem | null): void => {
+    const nextId = item?.instanceId ?? item?.id ?? null;
+    if (nextId === selected) return;
+    triggerHaptic('selection');
+    onSelect(item);
+  };
   return (
     <AccessibleModal
       title={`Выбрать ${label}`}
       ariaLabel={`Выбрать ${label}`}
       onRequestClose={onClose}
+      cardStyle={{
+        width: 'min(430px, calc(100vw - 28px))',
+        maxHeight: 'calc(100dvh - 112px - var(--app-safe-top) - var(--app-safe-bottom))',
+        overflow: 'hidden',
+      }}
       headerAction={
         <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
           <X size={15} />
         </button>
       }
     >
-      <div className="profile-picker-list">
+      <div className="profile-picker-list no-scrollbar">
         <button
           type="button"
           aria-label={`Выбрать ${defaultTitle}`}
-          className={`profile-picker-item${selected === null ? ' profile-picker-item--selected' : ''}`}
-          onClick={() => onSelect(null)}
+          aria-pressed={selected === null}
+          className={`glass duel-equipment-option${selected === null ? ' duel-equipment-option--selected' : ''}`}
+          onClick={() => selectItem(null)}
         >
           <img src={placeholderArtworkForKind(group)} alt="" />
           <span>
             <strong>{defaultTitle}</strong>
             <small>Базовый вариант</small>
           </span>
+          <DuelEquipmentSelectionRadio selected={selected === null} />
         </button>
-        {availableItems.map((item) => (
-          <button
-            type="button"
-            className={`profile-picker-item${selected === item.id || selected === item.instanceId ? ' profile-picker-item--selected' : ''}`}
-            key={item.id}
-            onClick={() => onSelect(item)}
-          >
-            <img src={artworkForInventoryItem(item)} alt="" />
-            <span>
-              <strong>{item.title}</strong>
-              <small>
-                Осталось:{' '}
-                {formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}
-              </small>
-            </span>
-          </button>
-        ))}
+        {availableItems.map((item) => {
+          const itemSelected = selected === item.id || selected === item.instanceId;
+          return (
+            <button
+              type="button"
+              aria-pressed={itemSelected}
+              className={`glass duel-equipment-option${itemSelected ? ' duel-equipment-option--selected' : ''}`}
+              key={item.id}
+              onClick={() => selectItem(item)}
+            >
+              <img src={artworkForInventoryItem(item)} alt="" />
+              <span>
+                <strong>{item.title}</strong>
+                <small>
+                  Осталось:{' '}
+                  {formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}
+                </small>
+              </span>
+              <DuelEquipmentSelectionRadio selected={itemSelected} />
+            </button>
+          );
+        })}
       </div>
     </AccessibleModal>
   );

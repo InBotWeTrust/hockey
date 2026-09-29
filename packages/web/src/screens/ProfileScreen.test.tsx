@@ -7,11 +7,13 @@ import { useAuthStore } from '../auth/authStore.js';
 import type { ProfileData } from './profileTypes.js';
 
 const { preloadArtwork } = vi.hoisted(() => ({ preloadArtwork: vi.fn() }));
+const { triggerHaptic } = vi.hoisted(() => ({ triggerHaptic: vi.fn() }));
 
 vi.mock('../app/artworkCache.js', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return { ...actual, preloadArtwork };
 });
+vi.mock('../feedback/haptics.js', () => ({ triggerHaptic }));
 
 const profile = {
   id: 'u1',
@@ -279,6 +281,7 @@ describe('ProfileScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     preloadArtwork.mockClear();
+    triggerHaptic.mockClear();
     useAuthStore.getState().setSession({
       accessToken: 'access',
       refreshToken: 'refresh',
@@ -581,6 +584,25 @@ describe('ProfileScreen', () => {
         'Осталось: 3 минуты энергии',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('matches duel locker cards and haptics in the profile equipment picker', async () => {
+    mockProfileRequest();
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать клюшку' }));
+    const dialog = screen.getByRole('dialog', { name: 'Выбрать клюшку' });
+    const selectedOption = within(dialog).getByRole('button', { name: /Ледяной клинок/ });
+    const baseOption = within(dialog).getByRole('button', { name: 'Выбрать Обычная клюшка' });
+
+    expect(selectedOption).toHaveClass('duel-equipment-option', 'duel-equipment-option--selected');
+    expect(selectedOption.querySelector('.duel-equipment-option__check--selected svg')).toBeInTheDocument();
+    expect(baseOption.querySelector('.duel-equipment-option__check:not(.duel-equipment-option__check--selected)')).toBeInTheDocument();
+
+    fireEvent.click(selectedOption);
+    expect(triggerHaptic).not.toHaveBeenCalled();
+    fireEvent.click(baseOption);
+    expect(triggerHaptic).toHaveBeenCalledTimes(1);
+    expect(triggerHaptic).toHaveBeenCalledWith('selection');
   });
 
   it('opens achievement details from a career award', async () => {
