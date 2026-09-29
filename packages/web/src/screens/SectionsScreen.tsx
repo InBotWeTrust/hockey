@@ -27,6 +27,7 @@ import { MonthlyRatingRewardModal } from '../components/duel/MonthlyRatingReward
 import { summarizeAchievementProgress } from '../achievements/progressSummary.js';
 import { fetchBonusGames } from '../api/bonusGames.js';
 import { preloadInitialTrainingHubArtwork } from '../components/InitialTrainingCourse.js';
+import { useAuthStore } from '../auth/authStore.js';
 
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
 const SECTION_ARTWORK_SIZE = 86;
@@ -36,6 +37,35 @@ const MONTHLY_RATING_CONGRATULATIONS_KEY = [
   'congratulations',
   'pending',
 ] as const;
+const BONUS_PROGRESS_STORAGE_PREFIX = 'hockey.bonusGamesProgress.v1:';
+
+type StoredBonusProgress = { completed: number; total: number };
+
+function readStoredBonusProgress(userId: string | undefined): StoredBonusProgress | null {
+  if (userId === undefined) return null;
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(`${BONUS_PROGRESS_STORAGE_PREFIX}${userId}`) ?? 'null',
+    ) as Partial<StoredBonusProgress> | null;
+    return parsed !== null && Number.isInteger(parsed.completed) && Number.isInteger(parsed.total)
+      ? { completed: parsed.completed!, total: parsed.total! }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeBonusProgress(userId: string | undefined, progress: StoredBonusProgress): void {
+  if (userId === undefined) return;
+  try {
+    window.localStorage.setItem(
+      `${BONUS_PROGRESS_STORAGE_PREFIX}${userId}`,
+      JSON.stringify(progress),
+    );
+  } catch {
+    // Cached progress is optional; live catalog data remains authoritative.
+  }
+}
 
 const SECTION_ARTWORK = {
   achievements: '/achievements/first-goal.webp',
@@ -63,6 +93,8 @@ export function SectionsScreen(): JSX.Element {
   const [podiumAckError, setPodiumAckError] = useState<string | null>(null);
   const [monthlyRatingAckError, setMonthlyRatingAckError] = useState<string | null>(null);
   const [failureAckError, setFailureAckError] = useState<string | null>(null);
+  const userId = useAuthStore((state) => state.user?.id);
+  const [storedBonusProgress] = useState(() => readStoredBonusProgress(userId));
   const weeklyChallenge = useQuery({
     queryKey: weeklyChallengeKeys.current,
     queryFn: fetchWeeklyChallenge,
@@ -75,6 +107,13 @@ export function SectionsScreen(): JSX.Element {
     queryKey: ['bonus-games'],
     queryFn: fetchBonusGames,
   });
+  useEffect(() => {
+    if (bonusGamesQuery.data === undefined) return;
+    storeBonusProgress(userId, {
+      completed: bonusGamesQuery.data.games.filter((game) => game.is_completed).length,
+      total: bonusGamesQuery.data.games.length,
+    });
+  }, [bonusGamesQuery.data, userId]);
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile', 'sections'],
     queryFn: () => apiFetch<ProfileData>('/me?includeTournamentCongratulations=true'),
@@ -89,11 +128,13 @@ export function SectionsScreen(): JSX.Element {
   });
 
   const pendingCongratulations = profileQuery.data?.pendingTournamentCongratulations ?? [];
-  const bonusGamesMeta = bonusGamesQuery.isError
-    ? 'Прогресс недоступен'
-    : bonusGamesQuery.data
+  const bonusGamesMeta = bonusGamesQuery.data
       ? `Пройдено: ${bonusGamesQuery.data.games.filter((game) => game.is_completed).length}/${bonusGamesQuery.data.games.length}`
-      : 'Пройдено: —/—';
+      : storedBonusProgress
+        ? `Пройдено: ${storedBonusProgress.completed}/${storedBonusProgress.total}`
+        : bonusGamesQuery.isError
+          ? 'Прогресс недоступен'
+          : 'Пройдено: —/—';
   const profileQueueReady = profileQuery.isSuccess;
   const activeCongratulation = profileQueueReady ? (pendingCongratulations[0] ?? null) : null;
   const pendingMonthlyRatingCongratulations = (monthlyRatingQuery.data?.congratulations ?? [])

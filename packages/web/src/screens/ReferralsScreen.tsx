@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, ChevronRight, Copy, Star, TrendingUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -12,6 +12,7 @@ import {
 import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
 import type { UserPickerItem } from '../chat/api.js';
 import { formatProfileNumber } from './profileSections.js';
+import { triggerHaptic } from '../feedback/haptics.js';
 
 const sections: Array<{ level: ReferralLevel; title: string }> = [
   { level: 'beginner', title: 'Новички' },
@@ -60,18 +61,12 @@ function ReferralSection({ level, title, onSelect }: { level: ReferralLevel; tit
 export function ReferralsScreen(): JSX.Element {
   const navigate = useNavigate();
   const [selectedPlayer, setSelectedPlayer] = useState<UserPickerItem | null>(null);
-  const [copyToastSequence, setCopyToastSequence] = useState(0);
   const queryClient = useQueryClient();
   const updateUser = useAuthStore((state) => state.updateUser);
   const summary = useQuery({ queryKey: ['referrals', 'summary'], queryFn: fetchReferralSummary });
   const inviteUrl = summary.data ? `${window.location.origin}/invite/${summary.data.code}` : '';
-  useEffect(() => {
-    if (copyToastSequence === 0) return undefined;
-    const timer = window.setTimeout(() => setCopyToastSequence(0), 1_000);
-    return () => window.clearTimeout(timer);
-  }, [copyToastSequence]);
   const copy = (value: string): void => {
-    void navigator.clipboard.writeText(value).then(() => setCopyToastSequence((value) => value + 1));
+    void navigator.clipboard.writeText(value).then(() => triggerHaptic('selection'));
   };
   const nextMilestone = summary.data?.milestones.find((item) => item.unlockedAt === null) ?? null;
   const claim = useMutation({
@@ -148,11 +143,6 @@ export function ReferralsScreen(): JSX.Element {
         </section>
       ) : summary.data ? sections.map((section) => <ReferralSection key={section.level} {...section} onSelect={setSelectedPlayer} />) : null}
       <UserProfileSheet sender={selectedPlayer} onClose={() => setSelectedPlayer(null)} />
-      {copyToastSequence > 0 ? (
-        <div className="achievement-reward-toast profile-referral-copy-toast" role="status" aria-live="polite">
-          <strong className="achievement-reward-toast__title">Скопировано</strong>
-        </div>
-      ) : null}
     </main>
   );
 }

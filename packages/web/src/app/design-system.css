@@ -2592,7 +2592,7 @@
   margin-top: 8px;
 }
 
-.bonus-game-result-metrics--shot-stats-marksmanship {
+.bonus-game-result-metrics--shot-stats-three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 

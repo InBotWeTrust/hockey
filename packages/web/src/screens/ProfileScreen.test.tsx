@@ -323,28 +323,20 @@ describe('ProfileScreen', () => {
     expect(screen.getByText('constructor screen')).toBeInTheDocument();
   });
 
-  it('shows the task-style copied toast for one second after copying a referral value', async () => {
+  it('uses system copy feedback and a selection haptic without an internal toast', async () => {
     mockProfileRequest();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     renderProfile();
     const copyButton = await screen.findByRole('button', { name: 'Скопировать код' });
-    vi.useFakeTimers();
-
     await act(async () => {
       fireEvent.click(copyButton);
       await Promise.resolve();
     });
 
     expect(writeText).toHaveBeenCalledWith('TEAM-77');
-    expect(screen.getByRole('status')).toHaveClass('achievement-reward-toast');
-    expect(screen.getByRole('status')).toHaveClass('profile-referral-copy-toast');
-    expect(screen.getByRole('status')).toHaveTextContent('Скопировано');
-    act(() => vi.advanceTimersByTime(999));
-    expect(screen.getByRole('status')).toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(1));
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    vi.useRealTimers();
+    expect(triggerHaptic).toHaveBeenCalledWith('selection');
   });
 
   it('retains the currently visible profile artwork when its data is loaded', async () => {

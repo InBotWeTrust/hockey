@@ -10,6 +10,7 @@ import type { WeeklyChallenge } from '../api/weeklyChallenge.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { SectionsScreen } from './SectionsScreen.js';
+import { useAuthStore } from '../auth/authStore.js';
 
 const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 
@@ -305,6 +306,15 @@ function sectionAchievement(id: string, status: AchievementDto['status']): Achie
 }
 
 describe('SectionsScreen', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useAuthStore.setState({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      user: { id: 'u1', displayName: 'Игрок' },
+    });
+  });
+
   it('keeps the two quick cards readable on screens up to 360px wide', () => {
     expect(designSystemCss).toMatch(
       /@media \(max-width:\s*360px\)[\s\S]*?\.sections-quick-card\s*\{[^}]*grid-template-columns:\s*46px minmax\(0,\s*1fr\);/s,
@@ -1073,6 +1083,26 @@ describe('SectionsScreen', () => {
 
     fireEvent.click(bonusGames);
     expect(screen.getByTestId('location')).toHaveTextContent('/bonus-games');
+  });
+
+  it('shows the last known bonus progress immediately while refreshing the catalog', () => {
+    localStorage.setItem(
+      'hockey.bonusGamesProgress.v1:u1',
+      JSON.stringify({ completed: 35, total: 40 }),
+    );
+    const catalog = deferredResponse();
+    mockSectionsApi();
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/bonus-games')) return catalog.promise;
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    renderSections();
+
+    expect(screen.getByRole('button', { name: 'Бонусные игры' })).toHaveTextContent(
+      'Пройдено: 35/40',
+    );
   });
 
   it('shows the live remaining-goals preview on a full-color Amateur card', async () => {

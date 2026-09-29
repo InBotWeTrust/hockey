@@ -662,11 +662,11 @@ describe('BonusGamePlayScreen', () => {
   });
 
   it.each([
-    ['failed', false, 'Не успел забить', 'Продержался01:05', 'Голы4'],
-    ['completed', true, 'Награда за первое прохождение', 'Время03:00', 'Голы12'],
+    ['failed', false, 'Не успел забить', ['Продержался01:05', 'В среднем на бросок9,3 сек'], ['Броски7', 'Голы4', 'Попадания57%']],
+    ['completed', true, 'Награда за первое прохождение', ['Время03:00', 'В среднем на бросок10 сек'], ['Броски18', 'Голы12', 'Попадания67%']],
   ] as const)(
-    'renders endurance %s copy and duration metrics',
-    (status, rewardGranted, copy, durationMetric, goalsMetric) => {
+    'renders endurance %s copy and two-row performance metrics',
+    (status, rewardGranted, copy, firstRowMetrics, secondRowMetrics) => {
       setStore({
         attempt: enduranceAttempt({
           status,
@@ -685,10 +685,10 @@ describe('BonusGamePlayScreen', () => {
 
       const dialog = screen.getByRole('dialog');
       expect(dialog).toHaveTextContent(copy);
-      expect(dialog).toHaveTextContent(durationMetric);
-      expect(dialog).toHaveTextContent(goalsMetric);
-      expect(dialog).toHaveTextContent(status === 'failed' ? 'Броски7' : 'Броски18');
-      expect(dialog).toHaveTextContent(status === 'failed' ? 'Попадания57%' : 'Попадания67%');
+      const rows = dialog.querySelectorAll('.bonus-game-result-metrics');
+      expect(rows).toHaveLength(2);
+      expect(Array.from(rows[0]?.children ?? [], (card) => card.textContent)).toEqual(firstRowMetrics);
+      expect(Array.from(rows[1]?.children ?? [], (card) => card.textContent)).toEqual(secondRowMetrics);
     },
   );
 

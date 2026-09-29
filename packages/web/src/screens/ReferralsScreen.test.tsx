@@ -5,6 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as referralsApi from '../api/referrals.js';
 import { ReferralsScreen } from './ReferralsScreen.js';
 
+const { triggerHaptic } = vi.hoisted(() => ({ triggerHaptic: vi.fn() }));
+vi.mock('../feedback/haptics.js', () => ({ triggerHaptic }));
+
 vi.mock('../chat/components/UserProfileSheet.js', () => ({
   UserProfileSheet: ({ sender }: { sender: { displayName: string } | null }) =>
     sender ? <div role="dialog" aria-label="Профиль игрока">{sender.displayName}</div> : null,
@@ -49,6 +52,7 @@ describe('ReferralsScreen', () => {
         : [],
       total: level === 'beginner' ? 1 : 0,
     }));
+    triggerHaptic.mockClear();
   });
 
   it('opens an invitee in the same swipeable profile sheet used by chats', async () => {
@@ -59,7 +63,7 @@ describe('ReferralsScreen', () => {
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toHaveTextContent('Никита Орлов');
   });
 
-  it('shows invite instructions and copies the referral code with the shared toast', async () => {
+  it('shows invite instructions and uses native copy feedback with a selection haptic', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     renderScreen();
@@ -67,16 +71,13 @@ describe('ReferralsScreen', () => {
     expect(await screen.findByRole('heading', { name: 'Приглашай друзей' })).toBeInTheDocument();
     expect(screen.getByText(/друг должен указать его при первой регистрации/)).toBeInTheDocument();
     const copyCode = screen.getByRole('button', { name: 'Скопировать код приглашения' });
-    vi.useFakeTimers();
     await act(async () => {
       fireEvent.click(copyCode);
       await Promise.resolve();
     });
     expect(writeText).toHaveBeenCalledWith('TEAM-77');
-    expect(screen.getByRole('status')).toHaveTextContent('Скопировано');
-    act(() => vi.advanceTimersByTime(1_000));
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    vi.useRealTimers();
+    expect(triggerHaptic).toHaveBeenCalledWith('selection');
   });
 
   it('renders invitee experience with the profile experience treatment', async () => {

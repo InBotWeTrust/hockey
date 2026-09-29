@@ -549,6 +549,14 @@ function BonusResult({
       : kind === 'completed'
         ? enduranceRules.activeTimeMs
         : Math.min(enduranceRules.activeTimeMs, derivedSurvivedTimeMs ?? 0);
+  const averageEnduranceShotMs =
+    enduranceDurationMs !== null && attempt.shots_taken > 0
+      ? enduranceDurationMs / attempt.shots_taken
+      : null;
+  const averageEnduranceShotText =
+    averageEnduranceShotMs === null
+      ? '—'
+      : `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(averageEnduranceShotMs / 1_000)} сек`;
   const rewardParts = [
     attempt.reward.coins > 0
       ? {
@@ -606,7 +614,7 @@ function BonusResult({
             label={kind === 'completed' ? 'Время' : 'Продержался'}
             value={formatCountdown(enduranceDurationMs)}
           />
-          <BonusResultMetric label="Голы" value={String(attempt.goals)} />
+          <BonusResultMetric label="В среднем на бросок" value={averageEnduranceShotText} />
         </div>
       ) : marksmanshipRules ? (
         <div
@@ -632,13 +640,13 @@ function BonusResult({
       )}
       {enduranceRules || marksmanshipRules ? (
         <div
-          className={`bonus-game-result-metrics bonus-game-result-metrics--shot-stats${marksmanshipRules ? ' bonus-game-result-metrics--shot-stats-marksmanship' : ''}`}
+          className="bonus-game-result-metrics bonus-game-result-metrics--shot-stats bonus-game-result-metrics--shot-stats-three"
           aria-label={marksmanshipRules
             ? `Броски ${attempt.shots_taken}, голов ${attempt.goals}, попадания ${accuracy}%`
-            : `Броски ${attempt.shots_taken}, попадания ${accuracy}%`}
+            : `Броски ${attempt.shots_taken}, голов ${attempt.goals}, попадания ${accuracy}%`}
         >
           <BonusResultMetric label="Броски" value={String(attempt.shots_taken)} />
-          {marksmanshipRules ? <BonusResultMetric label="Голы" value={String(attempt.goals)} /> : null}
+          <BonusResultMetric label="Голы" value={String(attempt.goals)} />
           <BonusResultMetric label="Попадания" value={`${accuracy}%`} />
         </div>
       ) : null}

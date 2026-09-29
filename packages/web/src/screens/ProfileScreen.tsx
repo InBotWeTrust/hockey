@@ -243,15 +243,9 @@ function EquipmentPanel({
 }
 
 function ReferralPanel({ summary, onOpen }: { summary: ReferralSummary | undefined; onOpen: () => void }): JSX.Element {
-  const [copyToastSequence, setCopyToastSequence] = useState(0);
   const inviteUrl = summary ? `${window.location.origin}/invite/${summary.code}` : '';
-  useEffect(() => {
-    if (copyToastSequence === 0) return undefined;
-    const timer = window.setTimeout(() => setCopyToastSequence(0), 1_000);
-    return () => window.clearTimeout(timer);
-  }, [copyToastSequence]);
   const copy = (value: string): void => {
-    void navigator.clipboard.writeText(value).then(() => setCopyToastSequence((value) => value + 1));
+    void navigator.clipboard.writeText(value).then(() => triggerHaptic('selection'));
   };
   return (
     <section className="profile-referral-section" aria-label="Приглашай друзей">
@@ -281,11 +275,6 @@ function ReferralPanel({ summary, onOpen }: { summary: ReferralSummary | undefin
           <ChevronRight size={20} aria-hidden="true" />
         </span>
       </div>
-      {copyToastSequence > 0 ? (
-        <div className="achievement-reward-toast profile-referral-copy-toast" role="status" aria-live="polite">
-          <strong className="achievement-reward-toast__title">Скопировано</strong>
-        </div>
-      ) : null}
     </section>
   );
 }
