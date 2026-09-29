@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, type RenderResult } from '@testing-library/react';
+import { fireEvent, render, screen, within, type RenderResult } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { InventoryState } from '../api/inventory.js';
@@ -9,6 +9,9 @@ import {
   ProfileStoryScreen,
   ProfileStatsScreen,
 } from './ProfileDestinationScreens.js';
+
+const { triggerHaptic } = vi.hoisted(() => ({ triggerHaptic: vi.fn() }));
+vi.mock('../feedback/haptics.js', () => ({ triggerHaptic }));
 
 const profile = {
   id: 'u1',
@@ -69,6 +72,7 @@ beforeEach(() => {
     },
   };
   vi.restoreAllMocks();
+  triggerHaptic.mockClear();
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input.toString();
     if (url.endsWith('/api/me')) {
@@ -185,7 +189,14 @@ describe('profile destination screens', () => {
     expect(screen.getByText('Наборы для восстановления')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Клюшка: Точная клюшка/ }));
-    expect(await screen.findByRole('dialog', { name: 'Клюшка' })).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: 'Клюшка' });
+    const selectedOption = within(dialog).getByRole('button', { name: /Точная клюшка/ });
+    expect(selectedOption.querySelector('.duel-equipment-option__check--selected svg')).toBeInTheDocument();
+    fireEvent.click(selectedOption);
+    expect(triggerHaptic).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: /Обычная клюшка/ }));
+    expect(triggerHaptic).toHaveBeenCalledTimes(1);
+    expect(triggerHaptic).toHaveBeenCalledWith('selection');
   });
 
   it('shows base artwork for every empty beginner equipment slot', async () => {

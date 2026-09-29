@@ -5357,47 +5357,55 @@
 }
 
 .profile-picker-list {
+  min-height: 0;
+  max-height: min(54dvh, 430px);
+  overflow-y: auto;
   display: grid;
-  gap: 9px;
+  gap: 8px;
+  padding-right: 2px;
 }
 
-.profile-picker-item {
+.profile-picker-list .duel-equipment-option {
   width: 100%;
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
+  grid-template-columns: 56px minmax(0, 1fr) 22px;
   align-items: center;
-  gap: 11px;
-  padding: 8px;
+  gap: 10px;
+  min-height: 78px;
+  padding: 10px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.42);
+  font: inherit;
   color: var(--ink);
+  text-align: left;
+  cursor: pointer;
 }
 
-.profile-picker-item--selected {
-  outline: 2px solid rgba(33, 97, 137, 0.72);
-}
-
-.profile-picker-item img {
-  width: 58px;
-  height: 58px;
-  border-radius: 12px;
+.profile-picker-list .duel-equipment-option > img {
+  width: 56px;
+  height: 56px;
+  display: block;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 14px;
   object-fit: cover;
 }
 
-.profile-picker-item span {
+.profile-picker-list .duel-equipment-option > span:not(.duel-equipment-option__check) {
   min-width: 0;
   display: grid;
-  gap: 4px;
+  gap: 5px;
 }
 
-.profile-picker-item strong {
-  font-size: 14px;
+.profile-picker-list .duel-equipment-option strong {
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1.12;
 }
 
-.profile-picker-item small {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 750;
+.profile-picker-list .duel-equipment-option small {
+  color: rgba(15, 23, 42, 0.62);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.25;
 }
 
 .achievement-details-modal__content {
