@@ -2,6 +2,7 @@ import { getTelegramMiniApp } from '../auth/telegramMiniApp.js';
 
 export type FeedbackRuntime = 'telegram-mini-app' | 'standalone-pwa' | 'browser';
 export type HapticKind = 'selection' | 'impact' | 'success' | 'warning' | 'error';
+export type ShotOutcomeHapticKind = 'save' | 'miss' | 'post';
 
 export interface HapticCapabilities {
   runtime: FeedbackRuntime;
@@ -15,6 +16,18 @@ const WEB_PATTERNS: Record<HapticKind, VibratePattern> = {
   success: [10, 35, 15],
   warning: [18, 35, 18],
   error: [25, 35, 25],
+};
+
+const SHOT_WEB_PATTERNS: Record<ShotOutcomeHapticKind, VibratePattern> = {
+  save: 8,
+  miss: 18,
+  post: 35,
+};
+
+const SHOT_TELEGRAM_STYLES: Record<ShotOutcomeHapticKind, 'soft' | 'light' | 'medium'> = {
+  save: 'soft',
+  miss: 'light',
+  post: 'medium',
 };
 
 interface StandaloneNavigator extends Navigator {
@@ -64,5 +77,21 @@ export function triggerHaptic(kind: HapticKind): void {
     window.navigator.vibrate?.(WEB_PATTERNS[kind]);
   } catch {
     // Haptics are progressive enhancement and must never block the user's action.
+  }
+}
+
+export function triggerShotOutcomeHaptic(kind: ShotOutcomeHapticKind): void {
+  if (document.visibilityState === 'hidden') return;
+
+  try {
+    const webApp = getTelegramMiniApp();
+    if (webApp !== null) {
+      webApp.HapticFeedback?.impactOccurred(SHOT_TELEGRAM_STYLES[kind]);
+      return;
+    }
+
+    window.navigator.vibrate?.(SHOT_WEB_PATTERNS[kind]);
+  } catch {
+    // Unsupported or blocked haptics must not interrupt gameplay.
   }
 }

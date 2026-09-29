@@ -37,6 +37,7 @@ import {
   type StickEffects,
 } from '@hockey/game-core';
 import { useAuthStore } from '../auth/authStore.js';
+import { triggerShotOutcomeHaptic } from '../feedback/haptics.js';
 import {
   buildGameScoreboardModel,
   GameScoreboard,
@@ -1889,6 +1890,8 @@ export function PlayView<TState>({
       setResultDisplayKind(authoritativeResultRef.current ?? displayKind);
       setResultPresentation(authoritativePresentationRef.current ?? localResultPresentation);
       setIsShowingResult(true);
+      const visibleKind = authoritativeResultRef.current ?? displayKind;
+      if (visibleKind !== 'goal') triggerShotOutcomeHaptic(visibleKind);
       reportResultVisibility(true);
     }, visualFlightMs);
 
