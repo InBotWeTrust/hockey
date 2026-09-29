@@ -30,7 +30,7 @@ describe('MarksmanshipConstructorScreen', () => {
     expect(within(filter).queryByRole('option', { name: 'У борта' })).not.toBeInTheDocument();
   });
 
-  it('switches between the synthetic scheme and the two recorded runs', () => {
+  it('switches between the synthetic scheme and the three recorded runs', () => {
     renderScreen();
     expect(screen.getByRole('tab', { name: 'Учебная схема' })).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByRole('tab', { name: 'Егор · 78' }));
@@ -39,6 +39,8 @@ describe('MarksmanshipConstructorScreen', () => {
     expect(screen.getByRole('slider', { name: 'Время повтора' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Дмитрий · 79' }));
     expect(screen.getByRole('list', { name: 'Записанные голы' }).querySelectorAll('li')).toHaveLength(79);
+    fireEvent.click(screen.getByRole('tab', { name: 'Владислав · 76' }));
+    expect(screen.getByRole('list', { name: 'Записанные голы' }).querySelectorAll('li')).toHaveLength(76);
     fireEvent.click(screen.getByRole('tab', { name: 'Учебная схема' }));
     expect(screen.getByLabelText('Начало игры')).toBeInTheDocument();
   });
