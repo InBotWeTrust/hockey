@@ -6821,7 +6821,7 @@ describe('DailyScreen', () => {
     expect(screen.getByRole('listbox', { name: 'Шаблон дуэли' })).toBeInTheDocument();
   });
 
-  it('removes a selected opponent when switching to a format unavailable to that opponent', async () => {
+  it('keeps the selected opponent when an unavailable format option is pressed', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       const data = url.includes('/duel/amateur/opponents')
@@ -6841,10 +6841,14 @@ describe('DailyScreen', () => {
     fireEvent.click(await screen.findByRole('tab', { name: 'Вызвать' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Выбрать соперника Соперник' }));
     expect(screen.getByRole('button', { name: 'Вызвать игрока' })).toBeEnabled();
-    fireEvent.click(screen.getByRole('combobox', { name: 'Шаблон дуэли' }));
-    fireEvent.click(await screen.findByRole('option', { name: /Классика/ }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Выберите соперника' })).toBeDisabled());
-    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('kinds=classic'))).toBe(true);
+    const select = screen.getByRole('combobox', { name: 'Шаблон дуэли' });
+    fireEvent.click(select);
+    const unavailable = await screen.findByRole('option', { name: /Классика/ });
+    expect(unavailable).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(unavailable);
+    expect(select).toHaveTextContent('Экспресс');
+    expect(screen.getByRole('button', { name: 'Вызвать игрока' })).toBeEnabled();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('kinds=classic'))).toBe(false);
   });
 
   it('lets a challenger cancel an unanswered duel invite from the current duels list', async () => {
