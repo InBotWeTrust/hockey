@@ -346,7 +346,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
       seedSecret: SEED_SECRET,
     });
 
-    expect((await fetchBonusAttemptAllowances(pool, userId, NOW)).speed).toMatchObject({
+    expect((await fetchBonusAttemptAllowances(pool, userId, NOW)).accuracy).toMatchObject({
       used: 0,
       remaining: 2,
     });
@@ -363,7 +363,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
       now: NOW,
     });
 
-    expect((await fetchBonusAttemptAllowances(pool, userId, NOW)).speed).toMatchObject({
+    expect((await fetchBonusAttemptAllowances(pool, userId, NOW)).accuracy).toMatchObject({
       used: 1,
       remaining: 1,
     });
