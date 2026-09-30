@@ -26,8 +26,7 @@ const prepareInitialPlayerExperience = vi.hoisted(() => vi.fn());
 
 vi.mock('./playerStartup.js', () => ({ prepareInitialPlayerExperience }));
 
-vi.mock('../game/PlayView.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof PlayViewModule>()),
+vi.mock('../game/PlayView.js', () => ({
   PlayView: () => <div data-testid="play-view" />,
 }));
 
