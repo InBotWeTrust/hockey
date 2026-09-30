@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import {
@@ -106,6 +114,13 @@ function venueLabel(venueRole: AmateurDuelHistoryCalendarMatch['venue_role']): s
   if (venueRole === 'home') return 'Дома';
   if (venueRole === 'away') return 'В гостях';
   return 'Нейтральное поле';
+}
+
+export function splitDuelResultRows<T>(results: readonly T[]): T[][] {
+  if (results.length === 0) return [];
+  if (results.length <= 5) return [Array.from(results)];
+  const firstRowSize = results.length <= 8 ? 4 : Math.ceil(results.length / 2);
+  return [Array.from(results.slice(0, firstRowSize)), Array.from(results.slice(firstRowSize))];
 }
 
 function HistorySummaryCard({
@@ -295,6 +310,12 @@ export function AmateurDuelHistoryTab({
                   </span>
                 );
               }
+              const resultRows = splitDuelResultRows(matches);
+              const longestRow = Math.max(...resultRows.map((row) => row.length));
+              const resultSize = matches.length > 8
+                ? `${Math.max(0.75, (38 - Math.max(0, longestRow - 1)) / longestRow).toFixed(2)}px`
+                : '4px';
+              const resultStyle = { '--duel-result-size': resultSize } as CSSProperties;
               return (
                 <button
                   key={day}
@@ -310,12 +331,20 @@ export function AmateurDuelHistoryTab({
                   >
                     {matches.length}
                   </span>
-                  <span className="daily-calendar__duel-results" aria-hidden="true">
-                    {matches.map((match) => (
-                      <i
-                        key={match.id}
-                        className={`daily-calendar__duel-result daily-calendar__duel-result--${match.result}`}
-                      />
+                  <span
+                    className="daily-calendar__duel-results"
+                    aria-hidden="true"
+                    style={resultStyle}
+                  >
+                    {resultRows.map((row, rowIndex) => (
+                      <span className="daily-calendar__duel-results-row" key={rowIndex}>
+                        {row.map((match) => (
+                          <i
+                            key={match.id}
+                            className={`daily-calendar__duel-result daily-calendar__duel-result--${match.result}`}
+                          />
+                        ))}
+                      </span>
                     ))}
                   </span>
                 </button>
