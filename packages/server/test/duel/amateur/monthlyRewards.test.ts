@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   reconcileCompletedMonthlyRating,
   getPendingMonthlyRatingCongratulations,
@@ -510,18 +510,31 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
       `insert into amateur_duel_limit_reservation (match_id, user_id, duel_kind, accepted_at)
        select item.id, $2, 'express',
               date_trunc('month', now() at time zone 'Europe/Moscow') at time zone 'Europe/Moscow'
-                + ((item.ordinal - 1) / 2) * interval '1 day'
          from unnest($1::uuid[]) with ordinality as item(id, ordinal)`, [matches.rows.map((row) => row.id), opponent],
     );
     const jwt = createJwt({ accessSecret: jwtSecret, refreshSecret: 'monthly-test-refresh-at-least-16' });
-    const auth = { authorization: `Bearer ${await jwt.issueAccessToken({ sub: self })}` };
-    const response = await app.inject({ method: 'GET',
-      url: `/duel/amateur/challenge/availability?opponent_user_id=${opponent}`, headers: auth });
-    expect(response.statusCode).toBe(200);
-    expect(response.json().formats.express).toMatchObject({
-      available: false, reason: 'format', player: 'opponent',
-    });
-    expect(response.json().formats.classic).toMatchObject({ available: true });
+    const realNow = new Date();
+    const moscowNow = new Date(realNow.getTime() + 3 * 60 * 60 * 1000);
+    const monthEndUtc = new Date(Date.UTC(
+      moscowNow.getUTCFullYear(),
+      moscowNow.getUTCMonth() + 1,
+      0,
+      12,
+    ) - 3 * 60 * 60 * 1000);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(monthEndUtc);
+    try {
+      const auth = { authorization: `Bearer ${await jwt.issueAccessToken({ sub: self })}` };
+      const response = await app.inject({ method: 'GET',
+        url: `/duel/amateur/challenge/availability?opponent_user_id=${opponent}`, headers: auth });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().formats.express).toMatchObject({
+        available: false, reason: 'format', player: 'opponent',
+      });
+      expect(response.json().formats.classic).toMatchObject({ available: true });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

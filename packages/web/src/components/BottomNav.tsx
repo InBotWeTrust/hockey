@@ -102,7 +102,7 @@ function normalizeNavLocation(location: string | NavLocation): NavLocation {
   return typeof location === 'string' ? { pathname: location, search: '' } : location;
 }
 
-function isOpenRinkRoute(location: NavLocation): boolean {
+export function isOpenRinkRoute(location: NavLocation): boolean {
   if (/^\/bonus-games\/[^/]+\/play$/.test(location.pathname)) return true;
   if (location.pathname !== '/') return false;
   const params = new URLSearchParams(location.search);

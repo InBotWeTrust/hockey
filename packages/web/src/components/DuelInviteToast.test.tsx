@@ -21,15 +21,15 @@ function LocationProbe(): JSX.Element {
   );
 }
 
-function renderToast(): void {
+function renderToast(suppressed = false): ReturnType<typeof render> {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  render(
+  return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/chat/direct']}>
         <LocationProbe />
-        <DuelInviteToast />
+        <DuelInviteToast suppressed={suppressed} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -183,5 +183,23 @@ describe('DuelInviteToast', () => {
       hideToast?.();
     });
     expect(screen.queryByText('Дима вызывает на дуэль')).not.toBeInTheDocument();
+  });
+
+  it('keeps an incoming invite hidden during gameplay and shows it after gameplay ends', () => {
+    const view = renderToast(true);
+
+    emitInvite();
+
+    expect(screen.queryByText('Дима вызывает на дуэль')).toBeNull();
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={['/chat/direct']}>
+          <LocationProbe />
+          <DuelInviteToast suppressed={false} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText('Дима вызывает на дуэль')).toBeInTheDocument();
   });
 });

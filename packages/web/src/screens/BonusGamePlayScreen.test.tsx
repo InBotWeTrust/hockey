@@ -542,17 +542,6 @@ describe('BonusGamePlayScreen', () => {
     );
   });
 
-  it('splits the endurance preview condition into two readable lines', () => {
-    setStore({
-      attempt: enduranceAttempt({ preview_required: true }),
-    });
-
-    renderScreen();
-
-    expect(screen.getByText('Продержаться 03:00 мин')).toBeInTheDocument();
-    expect(screen.getByText('Гол не реже, чем раз в 7 сек')).toBeInTheDocument();
-  });
-
   it('freezes only the goal timer while the shot-result modal is visible', async () => {
     vi.useFakeTimers();
     let performanceNow = 1_000;
@@ -697,7 +686,7 @@ describe('BonusGamePlayScreen', () => {
     expect(screen.getByRole('dialog')).toHaveTextContent('Продержался01:05');
   });
 
-  it('shows the qualification preview over the mounted ice without a dismissal checkbox', async () => {
+  it('restores a preview-pending attempt directly on the rink and acknowledges it silently', async () => {
     const acknowledgePreview = vi.fn(async () => attempt({ preview_required: false }));
     setStore({
       attempt: attempt({
@@ -718,47 +707,7 @@ describe('BonusGamePlayScreen', () => {
     renderScreen();
 
     expect(screen.getByTestId('bonus-play-view')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Первая квалификация' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Локация «Пляж» и её вратарь' })).toHaveAttribute(
-      'src',
-      '/bonus-games/location-cards/beach.webp?v=20260829-world-tour-user-pngs-v10',
-    );
-    const qualification = screen.getByText('20 голов из 50 бросков');
-    expect(qualification).toBeInTheDocument();
-    expect(qualification.querySelector('.bonus-game-preview-modal__condition-icon')).not.toBeNull();
-    const closeButton = screen.getByRole('button', { name: 'Закрыть' });
-    expect(
-      screen.queryByRole('checkbox', { name: 'Больше не показывать' }),
-    ).not.toBeInTheDocument();
-    fireEvent.click(closeButton);
-
-    expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games');
-    expect(acknowledgePreview).not.toHaveBeenCalled();
-  });
-
-  it('acknowledges the qualification preview through the primary action', async () => {
-    const acknowledgePreview = vi.fn(async () => attempt({ preview_required: false }));
-    setStore({
-      attempt: attempt({
-        state: 'idle',
-        current_period: 0,
-        period_started_at: null,
-        period_ends_at: null,
-        shots_taken: 0,
-        current_period_shots_taken: 0,
-        goals: 0,
-        current_goal_streak: 0,
-        best_goal_streak: 0,
-        preview_required: true,
-      }),
-      acknowledgePreview,
-    });
-
-    renderScreen();
-
-    const acknowledgeButton = screen.getByRole('button', { name: 'К игре' });
-    fireEvent.click(acknowledgeButton);
-
+    expect(screen.queryByRole('dialog')).toBeNull();
     await waitFor(() => expect(acknowledgePreview).toHaveBeenCalledWith(false));
   });
 

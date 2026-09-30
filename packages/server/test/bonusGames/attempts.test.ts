@@ -15,6 +15,7 @@ import {
   BONUS_GAME_CATALOG_LOCK_OBJECT_ID,
   acknowledgeBonusPreview,
   abandonBonusAttempt,
+  fetchBonusAttemptAllowances,
   lockBonusGameCatalogForMutation,
   startBonusPeriod,
   startOrResumeBonusAttempt,
@@ -338,6 +339,39 @@ describe.skipIf(!hasIntegrationEnv)('bonus game attempt lifecycle', () => {
     expect(first.created).toBe(true);
     expect(second.created).toBe(false);
     expect(second.attempt.id).toBe(first.attempt.id);
+  });
+
+  it('does not spend the daily allowance until the first period starts', async () => {
+    const userId = await createUser();
+    const game = await createGame({ sortOrder: 1 });
+    const created = await startOrResumeBonusAttempt(pool, {
+      userId,
+      gameId: game.id,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+
+    expect((await fetchBonusAttemptAllowances(pool, userId, NOW)).accuracy).toMatchObject({
+      used: 0,
+      remaining: 2,
+    });
+
+    await acknowledgeBonusPreview(pool, {
+      userId,
+      attemptId: created.attempt.id,
+      dismissFuture: false,
+      now: NOW,
+    });
+    await startBonusPeriod(pool, {
+      userId,
+      attemptId: created.attempt.id,
+      now: NOW,
+    });
+
+    expect((await fetchBonusAttemptAllowances(pool, userId, NOW)).accuracy).toMatchObject({
+      used: 1,
+      remaining: 1,
+    });
   });
 
   it('reuses a dismissed preview only until the game preview revision changes', async () => {

@@ -274,7 +274,7 @@ describe('BonusGamesScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
 
-    expect(screen.getByRole('dialog', { name: 'Первая квалификация' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Описание игры «Пляж»' })).toBeInTheDocument();
     expect(
       vi
         .mocked(globalThis.fetch)
@@ -287,7 +287,7 @@ describe('BonusGamesScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
 
-    expect(screen.queryByRole('dialog', { name: 'Первая квалификация' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Описание игры «Пляж»' })).toBeNull();
     expect(
       vi
         .mocked(globalThis.fetch)
@@ -362,8 +362,19 @@ describe('BonusGamesScreen', () => {
       'bonus-games-attempt-progress__value',
     );
     expect(screen.getByText('1 из 2 попыток')).toBeInTheDocument();
-    expect(screen.getByText('До обновления 00:00:05')).toBeInTheDocument();
-    expect(screen.getByText('До обновления 00:00:05').closest('[aria-live]')).toBeNull();
+    expect(screen.getByText('До обновления: 5 сек')).toBeInTheDocument();
+    expect(screen.getByText('До обновления: 5 сек').closest('[aria-live]')).toBeNull();
+  });
+
+  it.each([
+    ['2026-08-25T02:01:46.000Z', 'До обновления: 2 ч 1 мин 46 сек'],
+    ['2026-08-29T02:01:46.000Z', 'До обновления: 4 д 2 ч 1 мин'],
+  ])('formats the allowance reset %s in readable units', async (resetsAt, expected) => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-25T00:00:00.000Z'));
+    mockCatalog([card({})], { resetsAt });
+    renderCatalog();
+
+    expect(await screen.findByText(expected)).toBeInTheDocument();
   });
 
   it.each([['speed', 'Скорость']] as const)(
@@ -408,7 +419,7 @@ describe('BonusGamesScreen', () => {
           .mock.calls.filter(([input]) => String(input).endsWith('/api/bonus-games')),
       ).toHaveLength(2),
     );
-    expect(screen.getByText('До обновления 00:00:00')).toBeInTheDocument();
+    expect(screen.getByText('До обновления: 0 сек')).toBeInTheDocument();
   });
 
   it('keeps the first two beginner games on their normal paths and explains third games without a request', async () => {
@@ -809,7 +820,6 @@ describe('BonusGamesScreen', () => {
     const play = await screen.findByRole('button', { name: 'Играть' });
     expect(play).toBeEnabled();
     fireEvent.click(play);
-    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     const dialog = screen.getByRole('dialog', { name: 'Уже идёт другая игра' });
     expect(dialog).toHaveTextContent('Скорость · Скоростной пляж');
@@ -896,12 +906,11 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
-    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
     const switchButton = within(
       screen.getByRole('dialog', { name: 'Уже идёт другая игра' }),
     ).getByRole('button', { name: 'Завершить и начать эту' });
     fireEvent.click(switchButton);
-    fireEvent.click(switchButton);
+    fireEvent.click(await screen.findByRole('button', { name: 'К игре' }));
 
     await waitFor(() =>
       expect(screen.getByLabelText('location')).toHaveTextContent(
@@ -1321,7 +1330,6 @@ describe('BonusGamesScreen', () => {
     expect(repeatButton).toBeEnabled();
     expect(repeatButton).toHaveClass('bonus-game-card__hit-area');
     fireEvent.click(repeatButton);
-    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
     expect(screen.getByRole('dialog', { name: 'Уже идёт другая игра' })).toBeInTheDocument();
   });
 
@@ -1382,7 +1390,6 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Продолжить' }));
-    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     expect(screen.getByLabelText('location')).toHaveTextContent(
       '/bonus-games/beach/play?attempt=attempt-1',
@@ -1409,7 +1416,6 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Продолжить' }));
-    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     expect(screen.getByLabelText('location')).toHaveTextContent(
       '/bonus-games/beach/play?attempt=attempt-archived',
@@ -1610,6 +1616,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    expect(screen.getByRole('dialog', { name: /Описание игры/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     await waitFor(() =>
@@ -1618,6 +1625,26 @@ describe('BonusGamesScreen', () => {
       ),
     );
     expect(useBonusGameStore.getState().attempt?.id).toBe('attempt-new');
+  });
+
+  it('shows the description before creating an attempt and closes it without spending one', async () => {
+    mockCatalog([card({ title: 'Скоростной пляж' })]);
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Описание игры «Скоростной пляж»' });
+    expect(dialog).toHaveTextContent('18 голов из 30 бросков');
+    expect(
+      vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),
+    ).toHaveLength(0);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
+
+    expect(screen.queryByRole('dialog', { name: 'Описание игры «Скоростной пляж»' })).toBeNull();
+    expect(
+      vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),
+    ).toHaveLength(0);
   });
 
   it('shows two independent daily attempt allowances', async () => {

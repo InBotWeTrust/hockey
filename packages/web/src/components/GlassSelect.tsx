@@ -11,6 +11,7 @@ import { Check, ChevronDown } from 'lucide-react';
 export interface GlassSelectOption<T extends string> {
   value: T;
   label: string;
+  disabled?: boolean;
 }
 
 export function GlassSelect<T extends string>({
@@ -40,14 +41,31 @@ export function GlassSelect<T extends string>({
     options.findIndex((option) => option.value === selected?.value),
   );
 
+  function enabledIndexFrom(start: number, offset: 1 | -1): number {
+    if (options.length === 0) return 0;
+    for (let step = 1; step <= options.length; step += 1) {
+      const index = (start + offset * step + options.length) % options.length;
+      if (options[index]?.disabled !== true) return index;
+    }
+    return start;
+  }
+
+  function edgeEnabledIndex(edge: 'first' | 'last'): number {
+    const indexes = edge === 'first'
+      ? options.map((_, index) => index)
+      : options.map((_, index) => index).reverse();
+    return indexes.find((index) => options[index]?.disabled !== true) ?? selectedIndex;
+  }
+
   function openMenu(index = selectedIndex): void {
-    setActiveIndex(Math.min(Math.max(index, 0), Math.max(options.length - 1, 0)));
+    const bounded = Math.min(Math.max(index, 0), Math.max(options.length - 1, 0));
+    setActiveIndex(options[bounded]?.disabled === true ? enabledIndexFrom(bounded, 1) : bounded);
     setOpen(true);
   }
 
   function selectActiveOption(): void {
     const option = options[activeIndex];
-    if (option === undefined) return;
+    if (option === undefined || option.disabled === true) return;
     onChange(option.value);
     setOpen(false);
     buttonRef.current?.focus();
@@ -66,14 +84,12 @@ export function GlassSelect<T extends string>({
         return;
       }
       const offset = event.key === 'ArrowDown' ? 1 : -1;
-      setActiveIndex((current) =>
-        options.length === 0 ? 0 : (current + offset + options.length) % options.length,
-      );
+      setActiveIndex((current) => enabledIndexFrom(current, offset));
       return;
     }
     if (event.key === 'Home' || event.key === 'End') {
       event.preventDefault();
-      const nextIndex = event.key === 'Home' ? 0 : Math.max(options.length - 1, 0);
+      const nextIndex = edgeEnabledIndex(event.key === 'Home' ? 'first' : 'last');
       if (!open) openMenu(nextIndex);
       else setActiveIndex(nextIndex);
       return;
@@ -255,6 +271,7 @@ function GlassSelectMenu<T extends string>({
       {options.map((option, index) => {
         const selected = option.value === value;
         const active = index === activeIndex;
+        const disabled = option.disabled === true;
         return (
           <button
             key={option.value}
@@ -264,9 +281,14 @@ function GlassSelectMenu<T extends string>({
             role="option"
             tabIndex={-1}
             aria-selected={selected}
+            aria-disabled={disabled}
             data-active={active ? 'true' : 'false'}
-            onMouseMove={() => onActiveIndexChange(index)}
-            onClick={() => onSelect(option.value)}
+            onMouseMove={() => {
+              if (!disabled) onActiveIndexChange(index);
+            }}
+            onClick={() => {
+              if (!disabled) onSelect(option.value);
+            }}
             style={{
               width: '100%',
               minWidth: 0,
@@ -274,7 +296,7 @@ function GlassSelectMenu<T extends string>({
               border: 'none',
               borderRadius: 12,
               background: active ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-              color: '#ffffff',
+              color: disabled ? 'rgba(255, 255, 255, 0.48)' : '#ffffff',
               padding: '0 10px',
               display: 'grid',
               gridTemplateColumns: '18px minmax(0, 1fr)',
@@ -284,7 +306,7 @@ function GlassSelectMenu<T extends string>({
               fontSize: 13,
               fontWeight: 850,
               textAlign: 'left',
-              cursor: 'pointer',
+              cursor: disabled ? 'not-allowed' : 'pointer',
             }}
           >
             {selected ? <Check size={16} /> : <span />}
