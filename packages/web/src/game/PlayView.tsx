@@ -363,6 +363,7 @@ export interface PlayViewProps<TState> {
   statusNoticeTone?: 'success' | 'warning' | 'error' | undefined;
   statusNoticeClassName?: string | undefined;
   statusNoticeDelayMs?: number | undefined;
+  statusNoticeUnderScoreboard?: boolean | undefined;
   inlineResultNotice?: boolean | undefined;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
   readyPresence?: ReadyPresence | undefined;
@@ -664,6 +665,7 @@ export function PlayView<TState>({
   statusNoticeTone,
   statusNoticeClassName,
   statusNoticeDelayMs = 0,
+  statusNoticeUnderScoreboard = false,
   inlineResultNotice = false,
   scoreboardOpponent,
   readyPresence,
