@@ -671,6 +671,7 @@ describe('BonusGamesScreen', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Играть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
     await waitFor(() =>
       expect(screen.getByLabelText('location')).toHaveTextContent(
         '/bonus-games/accuracy-2/play?attempt=attempt-new',
@@ -926,7 +927,7 @@ describe('BonusGamesScreen', () => {
       screen.getByRole('dialog', { name: 'Уже идёт другая игра' }),
     ).getByRole('button', { name: 'Завершить и начать эту' });
     fireEvent.click(switchButton);
-    fireEvent.click(switchButton);
+    fireEvent.click(await screen.findByRole('button', { name: 'К игре' }));
 
     await waitFor(() =>
       expect(screen.getByLabelText('location')).toHaveTextContent(
@@ -1632,6 +1633,8 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    expect(screen.getByRole('dialog', { name: /Описание игры/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     await waitFor(() =>
       expect(screen.getByLabelText('location')).toHaveTextContent(
@@ -1639,6 +1642,26 @@ describe('BonusGamesScreen', () => {
       ),
     );
     expect(useBonusGameStore.getState().attempt?.id).toBe('attempt-new');
+  });
+
+  it('shows the description before creating an attempt and closes it without spending one', async () => {
+    mockCatalog([card({ title: 'Скоростной пляж' })]);
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Описание игры «Скоростной пляж»' });
+    expect(dialog).toHaveTextContent('18 голов из 30 бросков');
+    expect(
+      vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),
+    ).toHaveLength(0);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
+
+    expect(screen.queryByRole('dialog', { name: 'Описание игры «Скоростной пляж»' })).toBeNull();
+    expect(
+      vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),
+    ).toHaveLength(0);
   });
 
   it('shows two independent daily attempt allowances', async () => {
@@ -1789,6 +1812,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Не удалось выполнить запрос. Попробуйте ещё раз.',
@@ -1808,6 +1832,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Не удалось выполнить запрос. Попробуйте ещё раз.',
