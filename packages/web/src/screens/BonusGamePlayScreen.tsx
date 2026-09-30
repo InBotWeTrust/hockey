@@ -19,7 +19,7 @@ import {
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleDollarSign, Star, Target, TrendingUp, X } from 'lucide-react';
+import { CircleDollarSign, Star, TrendingUp } from 'lucide-react';
 import type {
   BonusGameAttempt,
   BonusPeriodLoadoutSelection,
@@ -43,8 +43,6 @@ import { useBonusGameStore } from '../stores/bonusGameStore.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
 import { useOnboardingGate } from '../onboarding/OnboardingGate.js';
 import {
-  enduranceQualificationLines,
-  qualificationDescription,
   qualificationProgress,
 } from '../game/bonusGameQualification.js';
 import { versionBonusGameArtwork, versionBonusGameGoalkeeper } from '../game/bonusGameArtwork.js';
