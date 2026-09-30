@@ -1022,6 +1022,15 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   it('keeps an invitation readable after its template is soft deleted', async () => {
     const templateId = await createTemplate();
     const matchId = (await challenge(templateId)).json().match.id;
+    await pool.query(
+      `update users
+          set last_seen_at = case
+            when id = $1 then '2026-09-30T12:34:56.000Z'::timestamptz
+            else '2026-09-30T10:00:00.000Z'::timestamptz
+          end
+        where id = any($2::uuid[])`,
+      [userA, [userA, userB]],
+    );
     await pool.query('update amateur_duel_template set deleted_at = now() where id = $1', [
       templateId,
     ]);
@@ -1032,6 +1041,10 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().match.id).toBe(matchId);
+    const opponentLastSeenAt = response.json().match.opponent.last_seen_at;
+    expect(opponentLastSeenAt).toEqual(expect.any(String));
+    expect(Number.isNaN(Date.parse(opponentLastSeenAt))).toBe(false);
+    expect(opponentLastSeenAt).not.toBe('2026-09-30T10:00:00.000Z');
   });
 
   it('exposes safe-start locks for invitation acceptance, readiness and the next period before T-60', async () => {

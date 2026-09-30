@@ -234,16 +234,18 @@ export function duelPrimaryButtonLabel(
   return baseLabel;
 }
 
-export function duelFatigueNoticeLabel(condition: DuelPlayerCondition | null): string | null {
-  if (!condition) return null;
-  if (condition.status === 'exhausted_stop') return 'Передышка · бросок недоступен';
+export function duelFatigueNoticeLabel(
+  condition: DuelPlayerCondition | null,
+  periodSpeedRatio = 1,
+  showPeriodFatigue = false,
+): string | null {
+  if (condition?.status === 'exhausted_stop') return 'Передышка · бросок недоступен';
 
-  const speedPercent = Math.round(condition.shooterSpeedMultiplier * 100);
-  if (condition.status === 'nutrition_slowdown' || condition.fatigueLevel === 'heavy') {
-    return `Сильная усталость · скорость ${speedPercent}%`;
-  }
-  if (condition.status !== 'tired') return null;
-  return `Усталость · скорость ${speedPercent}%`;
+  const isHeavy = condition?.status === 'nutrition_slowdown' || condition?.fatigueLevel === 'heavy';
+  const isTired = condition?.status === 'tired';
+  if (!isHeavy && !isTired && (!showPeriodFatigue || periodSpeedRatio >= 0.999)) return null;
+  const speedPercent = Math.round(periodSpeedRatio * (condition?.shooterSpeedMultiplier ?? 1) * 100);
+  return `${isHeavy ? 'Сильная усталость' : 'Усталость'} · скорость ${speedPercent}%`;
 }
 
 function sameDuelConditionUiState(
@@ -279,6 +281,7 @@ export interface PlayViewProps<TState> {
   periodLabel?: string | undefined;
   scoreboardPeriodNumber?: number;
   periodSpeedPresets?: readonly DailyPeriodSpeedPreset[] | undefined;
+  showPeriodFatigueNotice?: boolean | undefined;
   speedOverrides?: SpeedOverrides | undefined;
   stickEffects?: StickEffects | undefined;
   periodsTotal?: number;
@@ -360,6 +363,7 @@ export interface PlayViewProps<TState> {
   statusNoticeTone?: 'success' | 'warning' | 'error' | undefined;
   statusNoticeClassName?: string | undefined;
   statusNoticeDelayMs?: number | undefined;
+  statusNoticeUnderScoreboard?: boolean | undefined;
   inlineResultNotice?: boolean | undefined;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
   readyPresence?: ReadyPresence | undefined;
@@ -597,6 +601,7 @@ export function PlayView<TState>({
   periodLabel,
   scoreboardPeriodNumber,
   periodSpeedPresets,
+  showPeriodFatigueNotice = false,
   speedOverrides,
   stickEffects = STICK_NEUTRAL,
   periodsTotal = 3,
@@ -660,6 +665,7 @@ export function PlayView<TState>({
   statusNoticeTone,
   statusNoticeClassName,
   statusNoticeDelayMs = 0,
+  statusNoticeUnderScoreboard = false,
   inlineResultNotice = false,
   scoreboardOpponent,
   readyPresence,
@@ -1964,9 +1970,73 @@ export function PlayView<TState>({
   const isDuelShotBlocked = active && currentDuelCondition?.canShoot === false;
   const isDuelRestBlocked = isDuelShotBlocked && currentDuelCondition?.status === 'exhausted_stop';
   const effectiveShotButtonLabel = duelPrimaryButtonLabel(shotButtonLabel, currentDuelCondition);
-  const duelFatigueNotice = duelFatigueNoticeLabel(currentDuelCondition);
+  const firstPeriodSpeed = periodSpeedPresetFor(1, periodSpeedPresets).shooterFrequency;
+  const periodSpeedRatio = firstPeriodSpeed > 0 ? speeds.shooterFreq / firstPeriodSpeed : 1;
+  const duelFatigueNotice = active
+    ? duelFatigueNoticeLabel(
+        currentDuelCondition,
+        periodSpeedRatio,
+        showPeriodFatigueNotice || duelCondition !== undefined,
+      )
+    : null;
   const showDuelStumbleNotice =
     duelStumbleNoticeVisible && currentDuelCondition?.status !== 'exhausted_stop';
+  const isRouteCameraZoomed = routeCameraPhase === 'zoomed' || routeCameraPhase === 'exiting';
+  const routeGameStyle: CSSProperties = {
+    opacity: isRouteCameraZoomed ? 0 : 1,
+    transition:
+      routeCameraPhase === 'zoomed' ? 'opacity 300ms ease 260ms' : 'opacity 300ms ease',
+    willChange: isRouteCameraZoomed ? 'opacity' : 'auto',
+  };
+  const noticeInScoreboard =
+    !rinkLayer &&
+    !hideRinkScoreboard &&
+    (showDuelStumbleNotice || Boolean(duelFatigueNotice) || (statusNoticeUnderScoreboard && Boolean(effectiveStatusNotice)));
+  const gameNotice = showDuelStumbleNotice ? (
+    <div
+      role="status"
+      aria-live="polite"
+      className={`duel-stumble-notice${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}`}
+      style={routeGameStyle}
+    >
+      Споткнулся · бросок недоступен
+    </div>
+  ) : duelFatigueNotice ? (
+    <div
+      role="status"
+      aria-live="polite"
+      className={`duel-fatigue-notice${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
+        currentDuelCondition?.status === 'exhausted_stop'
+          ? ' duel-rest-notice'
+          : currentDuelCondition?.status === 'nutrition_slowdown' ||
+              currentDuelCondition?.fatigueLevel === 'heavy'
+            ? ' duel-heavy-fatigue-notice'
+            : ''
+      }`}
+      style={routeGameStyle}
+    >
+      {duelFatigueNotice}
+    </div>
+  ) : effectiveStatusNotice ? (
+    <div
+      role="status"
+      aria-live="polite"
+      className={`initial-training-feedback-notice${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
+        effectiveStatusNoticeTone === 'warning'
+          ? ' initial-training-feedback-notice--warning'
+          : effectiveStatusNoticeTone === 'error'
+            ? ' initial-training-feedback-notice--error'
+            : ''
+      }${statusNoticeClassName ? ` ${statusNoticeClassName}` : ''}${
+        inlineResultContent !== null && inlineResultKind !== null
+          ? ` game-inline-result-notice game-inline-result-notice--${inlineResultKind}`
+          : ''
+      }`}
+      style={routeGameStyle}
+    >
+      {effectiveStatusNotice}
+    </div>
+  ) : null;
   const primaryButtonDisabled =
     primaryActionBlocked ||
     (suppressedByModal && !inactiveAction) ||
@@ -2005,6 +2075,7 @@ export function PlayView<TState>({
                 }))}
             />
             {scoreboardAccessory}
+            {noticeInScoreboard && gameNotice}
           </div>
         )
       }
@@ -2016,9 +2087,6 @@ export function PlayView<TState>({
     routeCameraPhase === 'zoomed'
       ? `opacity 280ms ease 220ms, transform 420ms cubic-bezier(.16,.84,.24,1) 160ms`
       : 'opacity 280ms ease, transform 420ms cubic-bezier(.16,.84,.24,1)';
-  const routeGameTransition =
-    routeCameraPhase === 'zoomed' ? 'opacity 300ms ease 260ms' : 'opacity 300ms ease';
-  const isRouteCameraZoomed = routeCameraPhase === 'zoomed' || routeCameraPhase === 'exiting';
   const routeChromeStyle: CSSProperties = {
     opacity: isRouteCameraZoomed ? 0 : 1,
     transform: isRouteCameraZoomed ? 'translate3d(0, 12px, 0)' : 'translate3d(0, 0, 0)',
@@ -2033,11 +2101,6 @@ export function PlayView<TState>({
     transition: routeCameraTransition,
     filter: isRouteCameraZoomed ? 'blur(0.5px) saturate(1.03)' : 'none',
     willChange: isRouteCameraZoomed ? 'transform, filter' : 'auto',
-  };
-  const routeGameStyle: CSSProperties = {
-    opacity: isRouteCameraZoomed ? 0 : 1,
-    transition: routeGameTransition,
-    willChange: isRouteCameraZoomed ? 'opacity' : 'auto',
   };
 
   return (
@@ -2156,51 +2219,7 @@ export function PlayView<TState>({
               {hudAddon}
             </div>
           )}
-          {showDuelStumbleNotice ? (
-            <div
-              role="status"
-              aria-live="polite"
-              className="duel-stumble-notice"
-              style={routeGameStyle}
-            >
-              Споткнулся · бросок недоступен
-            </div>
-          ) : duelFatigueNotice ? (
-            <div
-              role="status"
-              aria-live="polite"
-              className={`duel-fatigue-notice${
-                currentDuelCondition?.status === 'exhausted_stop'
-                  ? ' duel-rest-notice'
-                  : currentDuelCondition?.status === 'nutrition_slowdown' ||
-                      currentDuelCondition?.fatigueLevel === 'heavy'
-                    ? ' duel-heavy-fatigue-notice'
-                    : ''
-              }`}
-              style={routeGameStyle}
-            >
-              {duelFatigueNotice}
-            </div>
-          ) : effectiveStatusNotice ? (
-            <div
-              role="status"
-              aria-live="polite"
-              className={`initial-training-feedback-notice${
-                effectiveStatusNoticeTone === 'warning'
-                  ? ' initial-training-feedback-notice--warning'
-                  : effectiveStatusNoticeTone === 'error'
-                    ? ' initial-training-feedback-notice--error'
-                    : ''
-              }${statusNoticeClassName ? ` ${statusNoticeClassName}` : ''}${
-                inlineResultContent !== null && inlineResultKind !== null
-                  ? ` game-inline-result-notice game-inline-result-notice--${inlineResultKind}`
-                  : ''
-              }`}
-              style={routeGameStyle}
-            >
-              {effectiveStatusNotice}
-            </div>
-          ) : null}
+          {!noticeInScoreboard && gameNotice}
         </div>
       </div>
 

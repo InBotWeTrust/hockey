@@ -91,6 +91,36 @@ describe('ChatListItem', () => {
     expect(screen.getByText('Вы: Привет из лички')).toBeInTheDocument();
   });
 
+  it('shows an online dot only for an online direct-chat counterpart', () => {
+    setMe();
+    const now = new Date('2026-05-03T13:50:00.000Z');
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+
+    const { rerender } = render(
+      <ChatListItem
+        chat={makeChat({
+          dmCounterpart: {
+            ...makeChat().dmCounterpart!,
+            lastSeenAt: new Date(now.getTime() - 30_000).toISOString(),
+          },
+        })}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('Friend в сети')).toBeInTheDocument();
+
+    rerender(
+      <ChatListItem
+        chat={makeChat({ type: 'group', name: 'Команда', dmCounterpart: null })}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.queryByLabelText(/в сети/)).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
   it('uses the bundled avatar for the official account', () => {
     setMe();
 

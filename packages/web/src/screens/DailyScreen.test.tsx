@@ -31,6 +31,7 @@ import {
   duelAdmissionErrorCopy,
   duelEquipmentEffectLabel,
   duelEventTiming,
+  duelRinkPrimaryLabel,
   duelInventoryBadgeLabel,
   duelInventoryItemRemaining,
   duelScoreboardOpponent,
@@ -2156,23 +2157,26 @@ describe('DailyScreen', () => {
     } as const;
 
     expect(duelFatigueNoticeLabel(null)).toBeNull();
+    expect(duelFatigueNoticeLabel(null, 1, true)).toBeNull();
     expect(duelFatigueNoticeLabel(baseCondition)).toBeNull();
+    expect(duelFatigueNoticeLabel(null, 0.7 / 0.75, true)).toBe('Усталость · скорость 93%');
+    expect(duelFatigueNoticeLabel(baseCondition, 0.65 / 0.75, true)).toBe('Усталость · скорость 87%');
     expect(
       duelFatigueNoticeLabel({
         ...baseCondition,
         status: 'tired',
         fatigueLevel: 'medium',
         shooterSpeedMultiplier: 0.85,
-      }),
-    ).toBe('Усталость · скорость 85%');
+      }, 0.7 / 0.75),
+    ).toBe('Усталость · скорость 79%');
     expect(
       duelFatigueNoticeLabel({
         ...baseCondition,
         status: 'nutrition_slowdown',
         fatigueLevel: 'heavy',
         shooterSpeedMultiplier: 0.65,
-      }),
-    ).toBe('Сильная усталость · скорость 65%');
+      }, 0.7 / 0.75),
+    ).toBe('Сильная усталость · скорость 61%');
     expect(
       duelFatigueNoticeLabel({
         ...baseCondition,
@@ -2270,6 +2274,67 @@ describe('DailyScreen', () => {
     expect(screen.getByText('Усталость · скорость 85%')).toHaveClass('duel-fatigue-notice');
   });
 
+  it('shows period fatigue in an active daily game without an inventory condition', () => {
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="seed"
+        goalieId="rookie"
+        periodNumber={2}
+        showPeriodFatigueNotice
+        goals={0}
+        shots={0}
+        optimisticAddShot={() => undefined}
+        submitShot={async () => null}
+        applyState={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText('Усталость · скорость 93%')).toHaveClass('duel-fatigue-notice');
+    expect(screen.getByText('Усталость · скорость 93%').parentElement).toHaveClass('game-scoreboard-stack');
+  });
+
+  it('combines the later period with missing energy in a tournament game', () => {
+    const heavyCondition = {
+      puckSpeedDelta: 0,
+      shooterSpeedMultiplier: 0.65,
+      canShoot: true,
+      status: 'nutrition_slowdown',
+      fatigueLevel: 'heavy',
+      stumbleActive: false,
+      shooterXOffsetPx: 0,
+      fatigueMs: 90_000,
+      nutritionConsumed: 0,
+      skatesConsumed: 0,
+    } as const;
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="seed"
+        goalieId="rookie"
+        periodNumber={2}
+        goals={0}
+        shots={0}
+        optimisticAddShot={() => undefined}
+        submitShot={async () => null}
+        applyState={() => undefined}
+        rinkLayer={<div data-testid="test-rink-layer" />}
+        duelCondition={() => heavyCondition}
+      />,
+    );
+
+    expect(screen.getByText('Сильная усталость · скорость 61%')).toHaveClass(
+      'duel-heavy-fatigue-notice',
+    );
+  });
+
   it('shows a short stumble notice near the player instead of renaming the shot button', () => {
     vi.useFakeTimers();
     const stumbleCondition = {
@@ -2304,7 +2369,6 @@ describe('DailyScreen', () => {
         optimisticAddShot={() => undefined}
         submitShot={async () => null}
         applyState={() => undefined}
-        rinkLayer={<div data-testid="test-rink-layer" />}
         duelCondition={() => stumbleCondition}
       />,
     );
@@ -2312,6 +2376,9 @@ describe('DailyScreen', () => {
     expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeDisabled();
     expect(screen.getByText('Споткнулся · бросок недоступен')).toHaveClass(
       'duel-stumble-notice',
+    );
+    expect(screen.getByText('Споткнулся · бросок недоступен').parentElement).toHaveClass(
+      'game-scoreboard-stack',
     );
 
     act(() => {
@@ -3315,7 +3382,7 @@ describe('DailyScreen', () => {
     expect(scoreboardText.indexOf('БРОСКИ')).toBeGreaterThan(scoreboardText.indexOf('ГОЛЫ'));
     expect(scoreboardText.indexOf('ВРЕМЯ')).toBeGreaterThan(scoreboardText.indexOf('БРОСКИ'));
     fireEvent.click(screen.getByRole('button', { name: 'Звук в разработке' }));
-    expect(screen.getByRole('status')).toHaveTextContent('Звук в разработке');
+    expect(screen.getByText('Звук в разработке').closest('[role="status"]')).toBeInTheDocument();
     expect(screen.getByText('00/30')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'День завершён' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'ИГРА ЗАВЕРШЕНА' })).not.toBeInTheDocument();
@@ -5522,8 +5589,14 @@ describe('DailyScreen', () => {
     });
     fireEvent(window, new Event('resize'));
     await waitFor(() => {
-      expect(dayDialog.querySelector('.duel-day-scroll-hint')).toBeInTheDocument();
+      expect(
+        within(dayDialog).getByRole('button', { name: 'Показать ниже' }),
+      ).toBeInTheDocument();
     });
+    const scrollBy = vi.fn();
+    Object.defineProperty(dayList!, 'scrollBy', { configurable: true, value: scrollBy });
+    fireEvent.click(within(dayDialog).getByRole('button', { name: 'Показать ниже' }));
+    expect(scrollBy).toHaveBeenCalledWith({ top: 150, behavior: 'smooth' });
     dayList!.scrollTop = 200;
     fireEvent.scroll(dayList!);
     await waitFor(() => {
@@ -6698,6 +6771,45 @@ describe('DailyScreen', () => {
         ),
       ).toBe(true);
     });
+  });
+
+  it('shows the online opponent dot on an outgoing duel invite card', async () => {
+    const invitedMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'invited',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      ready_expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+      me: { ...settledDuelMatch.me, side: 'challenger', state: 'loadout_pending' },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        side: 'opponent',
+        state: 'invited',
+        last_seen_at: new Date(Date.now() - 30_000).toISOString(),
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/duel/amateur/matches')
+        ? { matches: [invitedMatch] }
+        : url.includes('/duel/amateur/templates')
+          ? { templates: [] }
+          : url.includes('/duel/amateur/rating')
+            ? { season_key: '2026-05', rating: [] }
+            : url.includes('/duel/training/state')
+              ? trainingIdleState
+              : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&section=duels']);
+
+    expect(await screen.findByLabelText('Duel Opponent в сети')).toBeInTheDocument();
   });
 
   it('keeps current duel status beside truncated long opponent names', async () => {
@@ -8114,6 +8226,38 @@ describe('DailyScreen', () => {
 
     expect(duelEventTiming(activeMatch, now)).toMatchObject({
       label: 'До технического поражения',
+      value: '05:00',
+    });
+  });
+
+  it('prioritizes my active break over the opponent period on the rink', () => {
+    const now = Date.parse('2026-05-16T10:10:00.000Z');
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      server_now: '2026-05-16T10:10:00.000Z',
+      break_ends_at: '2026-05-16T10:15:00.000Z',
+      me: {
+        ...settledDuelMatch.me,
+        state: 'break_active',
+        current_period: 1,
+        break_ends_at: '2026-05-16T10:15:00.000Z',
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'period_active',
+        current_period: 2,
+        current_period_shots: 7,
+      },
+    };
+
+    expect(duelRinkPrimaryLabel(activeMatch, now)).toBe('Перерыв');
+    expect(duelEventTiming(activeMatch, now)).toMatchObject({
+      label: 'Перерыв',
       value: '05:00',
     });
   });

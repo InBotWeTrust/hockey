@@ -3934,6 +3934,33 @@
   background: #fb7185;
 }
 
+.initial-training-feedback-notice--scoreboard {
+  position: relative;
+  top: auto;
+  bottom: auto;
+  left: auto;
+  margin-inline: auto;
+  width: max-content;
+  max-width: min(86%, 404px);
+  box-sizing: border-box;
+  border-radius: clamp(14px, 4vw, 22px);
+  justify-content: center;
+  text-wrap: pretty;
+  white-space: pre-line;
+  animation: scoreboard-feedback-notice-drop 180ms ease-out both;
+}
+
+@keyframes scoreboard-feedback-notice-drop {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.duel-fatigue-notice.initial-training-feedback-notice--scoreboard {
+  max-width: min(calc(100% - 40px), 316px);
+  font-size: clamp(9px, 2.75vw, 12px);
+  white-space: nowrap;
+}
+
 .duel-heavy-fatigue-notice::before {
   background: #f97316;
 }
@@ -7607,6 +7634,8 @@
   flex-direction: column;
   gap: 8px;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   overscroll-behavior: contain;
   padding-right: 2px;
 }
@@ -7626,7 +7655,7 @@
   background: linear-gradient(180deg, rgba(231, 238, 246, 0), rgba(231, 238, 246, 0.96) 74%);
 }
 
-.duel-day-scroll-hint span {
+.duel-day-scroll-hint button {
   width: 28px;
   height: 20px;
   border: 1px solid rgba(15, 23, 42, 0.12);
@@ -7636,6 +7665,9 @@
   color: rgba(15, 23, 42, 0.58);
   display: grid;
   place-items: center;
+  padding: 0;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .duel-day-dialog > .modal-actions {
@@ -7767,6 +7799,11 @@
   border-radius: 0 0 17px 17px;
   background: rgba(255, 255, 255, 0.34);
   box-shadow: none;
+}
+
+.duel-inline-result .duel-result-card__scroll {
+  overflow: visible !important;
+  overscroll-behavior: auto !important;
 }
 
 .duel-result-card__compact-meta {

@@ -19,6 +19,33 @@ describe('design system toast positioning', () => {
   });
 });
 
+describe('initial training scoreboard hint', () => {
+  it('centers a content-width notice without exceeding the scoreboard or leaving an orphan word', () => {
+    const notice = rule('.initial-training-feedback-notice--scoreboard');
+    expect(notice).toContain('width: max-content');
+    expect(notice).toContain('max-width: min(86%, 404px)');
+    expect(notice).toContain('text-wrap: pretty');
+    expect(notice).toContain('white-space: pre-line');
+    expect(notice).not.toContain('top: 13%');
+  });
+});
+
+describe('duel inventory notices', () => {
+  it('uses the same under-scoreboard placement as beginner training feedback', () => {
+    const notice = rule('.initial-training-feedback-notice--scoreboard');
+    expect(notice).toContain('position: relative');
+    expect(notice).toContain('top: auto');
+    expect(notice).toContain('left: auto');
+    expect(notice).toContain('margin-inline: auto');
+  });
+
+  it('keeps a long fatigue label within the game menu and scales its font on narrow screens', () => {
+    const notice = rule('.duel-fatigue-notice.initial-training-feedback-notice--scoreboard');
+    expect(notice).toContain('max-width: min(calc(100% - 40px), 316px)');
+    expect(notice).toContain('font-size: clamp(9px, 2.75vw, 12px)');
+    expect(notice).toContain('white-space: nowrap');
+  });
+});
 describe('bonus game first-clear reward heading', () => {
   it('uses the primary dark ink color to separate it from descriptive copy', () => {
     expect(css).toMatch(/\.bonus-game-card__reward-title\s*\{\s*color: var\(--ink\);\s*\}/);
