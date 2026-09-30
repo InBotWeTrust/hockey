@@ -78,6 +78,7 @@ import { DuelLimitsSection } from '../components/duel/DuelLimitsSection.js';
 import { TrainingHistorySection } from '../components/TrainingHistorySection.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
+import { isLastSeenOnline } from '../chat/lastSeen.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import type { UserPickerItem } from '../chat/api.js';
 import type {
@@ -220,7 +221,6 @@ const DUEL_KIND_ARTWORK_IMAGES: Record<AmateurDuelKind, string> = {
 };
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
 const TRAINING_SPEED_OVERRIDES_STORAGE_KEY = 'hockey.trainingSpeedOverrides';
-const OPPONENT_ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const OPPONENT_RECENT_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 1000;
 const DUEL_INTERMISSION_CONTINUE_GRACE_MS = 5 * 60 * 1000;
@@ -2432,7 +2432,7 @@ function arenaDuelCtaLabel(match: AmateurDuelMatch, fallbackNow: number): string
   return 'К дуэли';
 }
 
-function duelRinkPrimaryLabel(match: AmateurDuelMatch, fallbackNow: number): string {
+export function duelRinkPrimaryLabel(match: AmateurDuelMatch, fallbackNow: number): string {
   const nowMs = duelMatchNowMs(match, fallbackNow);
   if (match.me.state === 'period_active') return 'Бросок';
   if (canStartArenaDuelPeriod(match, nowMs)) return 'Начать';
@@ -2441,6 +2441,7 @@ function duelRinkPrimaryLabel(match: AmateurDuelMatch, fallbackNow: number): str
   if (match.status === 'invited' && isDuelInviteForMe(match)) return 'Примите вызов';
   if (match.status === 'invited') return 'Ждём ответ';
   if (match.status === 'active' && match.me.state === 'accepted') return 'Начать';
+  if (match.me.state === 'break_active') return 'Перерыв';
   if (match.status === 'active' && match.opponent.state === 'period_active')
     return 'Ждём соперника';
   return arenaDuelCtaLabel(match, fallbackNow);
@@ -2551,6 +2552,16 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
     };
   }
 
+  if (match.me.state === 'break_active' && breakEndsAt > 0) {
+    const value = formatMs(breakEndsAt - now);
+    return {
+      activePeriod: duelNextPeriod(match),
+      ariaLabel: `Перерыв. До конца ${value}. Счёт ${score}`,
+      label: 'Перерыв',
+      value,
+    };
+  }
+
   if (match.status === 'active' && match.opponent.state === 'period_active') {
     const opponentRule = duelParticipantPeriodRule(match, match.opponent);
     if (opponentRule.mode === 'quota' && opponentRule.shotsLimit !== null) {
@@ -2573,16 +2584,6 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
         value,
       };
     }
-  }
-
-  if (match.me.state === 'break_active' && breakEndsAt > 0) {
-    const value = formatMs(breakEndsAt - now);
-    return {
-      activePeriod: duelNextPeriod(match),
-      ariaLabel: `Перерыв. До конца ${value}. Счёт ${score}`,
-      label: 'Перерыв',
-      value,
-    };
   }
 
   if (match.status === 'active') {
@@ -4012,8 +4013,7 @@ function msSinceLastSeen(iso: string | null | undefined): number | null {
 }
 
 function isOpponentOnlineNow(iso: string | null | undefined): boolean {
-  const ms = msSinceLastSeen(iso);
-  return ms !== null && ms <= OPPONENT_ONLINE_WINDOW_MS;
+  return isLastSeenOnline(iso);
 }
 
 function isOpponentRecentlySeen(iso: string | null | undefined): boolean {
@@ -5481,18 +5481,41 @@ function DuelListCard({
         rowGap: 6,
       }}
     >
-      <UserAvatar
-        avatarUrl={match.opponent.avatar_url}
-        name={match.opponent.display_name}
-        size={42}
-        fontSize={16}
+      <span
         style={{
+          position: 'relative',
+          display: 'inline-flex',
           gridColumn: '1 / 2',
           gridRow: '1 / span 2',
-          border: '1px solid rgba(255,255,255,0.78)',
-          boxShadow: '0 10px 18px rgba(15,23,42,0.16)',
         }}
-      />
+      >
+        <UserAvatar
+          avatarUrl={match.opponent.avatar_url}
+          name={match.opponent.display_name}
+          size={42}
+          fontSize={16}
+          style={{
+            border: '1px solid rgba(255,255,255,0.78)',
+            boxShadow: '0 10px 18px rgba(15,23,42,0.16)',
+          }}
+        />
+        {isLastSeenOnline(match.opponent.last_seen_at) && (
+          <span
+            aria-label={`${match.opponent.display_name} в сети`}
+            className="presence-dot"
+            style={{
+              position: 'absolute',
+              right: 0,
+              bottom: 0,
+              width: 11,
+              height: 11,
+              borderRadius: 999,
+              background: '#22c55e',
+              border: '2px solid rgba(226, 240, 252, 0.98)',
+            }}
+          />
+        )}
+      </span>
       <div className="duel-card-heading" style={{ gridColumn: '2 / 3', gridRow: '1', minWidth: 0 }}>
         <div
           className="duel-card-opponent-name"

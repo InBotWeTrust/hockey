@@ -7744,6 +7744,8 @@ button.profile-story-series-card {
   flex-direction: column;
   gap: 8px;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   overscroll-behavior: contain;
   padding-right: 2px;
 }
@@ -7763,7 +7765,7 @@ button.profile-story-series-card {
   background: linear-gradient(180deg, rgba(231, 238, 246, 0), rgba(231, 238, 246, 0.96) 74%);
 }
 
-.duel-day-scroll-hint span {
+.duel-day-scroll-hint button {
   width: 28px;
   height: 20px;
   border: 1px solid rgba(15, 23, 42, 0.12);
@@ -7773,6 +7775,9 @@ button.profile-story-series-card {
   color: rgba(15, 23, 42, 0.58);
   display: grid;
   place-items: center;
+  padding: 0;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .duel-day-dialog > .modal-actions {
@@ -7904,6 +7909,11 @@ button.profile-story-series-card {
   border-radius: 0 0 17px 17px;
   background: rgba(255, 255, 255, 0.34);
   box-shadow: none;
+}
+
+.duel-inline-result .duel-result-card__scroll {
+  overflow: visible !important;
+  overscroll-behavior: auto !important;
 }
 
 .duel-result-card__compact-meta {

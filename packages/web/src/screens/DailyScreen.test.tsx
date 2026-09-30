@@ -34,6 +34,7 @@ import {
   duelAdmissionErrorCopy,
   duelEquipmentEffectLabel,
   duelEventTiming,
+  duelRinkPrimaryLabel,
   duelInventoryBadgeLabel,
   duelInventoryItemRemaining,
   duelScoreboardOpponent,
@@ -5694,8 +5695,14 @@ describe('DailyScreen', () => {
     });
     fireEvent(window, new Event('resize'));
     await waitFor(() => {
-      expect(dayDialog.querySelector('.duel-day-scroll-hint')).toBeInTheDocument();
+      expect(
+        within(dayDialog).getByRole('button', { name: 'Показать ниже' }),
+      ).toBeInTheDocument();
     });
+    const scrollBy = vi.fn();
+    Object.defineProperty(dayList!, 'scrollBy', { configurable: true, value: scrollBy });
+    fireEvent.click(within(dayDialog).getByRole('button', { name: 'Показать ниже' }));
+    expect(scrollBy).toHaveBeenCalledWith({ top: 150, behavior: 'smooth' });
     dayList!.scrollTop = 200;
     fireEvent.scroll(dayList!);
     await waitFor(() => {
@@ -6870,6 +6877,45 @@ describe('DailyScreen', () => {
         ),
       ).toBe(true);
     });
+  });
+
+  it('shows the online opponent dot on an outgoing duel invite card', async () => {
+    const invitedMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'invited',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      ready_expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+      me: { ...settledDuelMatch.me, side: 'challenger', state: 'loadout_pending' },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        side: 'opponent',
+        state: 'invited',
+        last_seen_at: new Date(Date.now() - 30_000).toISOString(),
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.includes('/duel/amateur/matches')
+        ? { matches: [invitedMatch] }
+        : url.includes('/duel/amateur/templates')
+          ? { templates: [] }
+          : url.includes('/duel/amateur/rating')
+            ? { season_key: '2026-05', rating: [] }
+            : url.includes('/duel/training/state')
+              ? trainingIdleState
+              : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&section=duels']);
+
+    expect(await screen.findByLabelText('Duel Opponent в сети')).toBeInTheDocument();
   });
 
   it('keeps current duel status beside truncated long opponent names', async () => {
@@ -8286,6 +8332,38 @@ describe('DailyScreen', () => {
 
     expect(duelEventTiming(activeMatch, now)).toMatchObject({
       label: 'До технического поражения',
+      value: '05:00',
+    });
+  });
+
+  it('prioritizes my active break over the opponent period on the rink', () => {
+    const now = Date.parse('2026-05-16T10:10:00.000Z');
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      status: 'active',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      server_now: '2026-05-16T10:10:00.000Z',
+      break_ends_at: '2026-05-16T10:15:00.000Z',
+      me: {
+        ...settledDuelMatch.me,
+        state: 'break_active',
+        current_period: 1,
+        break_ends_at: '2026-05-16T10:15:00.000Z',
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'period_active',
+        current_period: 2,
+        current_period_shots: 7,
+      },
+    };
+
+    expect(duelRinkPrimaryLabel(activeMatch, now)).toBe('Перерыв');
+    expect(duelEventTiming(activeMatch, now)).toMatchObject({
+      label: 'Перерыв',
       value: '05:00',
     });
   });

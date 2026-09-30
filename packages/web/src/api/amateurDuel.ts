@@ -138,6 +138,7 @@ export interface AmateurDuelParticipant {
   user_id: string;
   display_name: string;
   avatar_url: string | null;
+  last_seen_at?: string | null;
   side: 'challenger' | 'opponent';
   state: AmateurDuelParticipantState;
   current_period: number;

@@ -7,6 +7,7 @@ import { useLongPress } from '../useLongPress.js';
 import { UserAvatar } from './UserAvatar.js';
 import { messageBodyPreview } from '../messagePreview.js';
 import { chatAvatarUrl, directChatAvatarUrl } from '../chatAvatar.js';
+import { isLastSeenOnline } from '../lastSeen.js';
 
 interface ChatListItemProps {
   chat: ChatDTO;
@@ -77,6 +78,8 @@ function ChatListItemImpl({
   const isChannel = chat.type === 'channel';
   const isPinned = chat.pinnedAt !== null;
   const avatarUrl = chat.type === 'direct' ? directChatAvatarUrl(chat) : chatAvatarUrl(chat);
+  const directCounterpartOnline =
+    chat.type === 'direct' && isLastSeenOnline(chat.dmCounterpart?.lastSeenAt);
   const unread = Math.max(chat.unreadCount, liveUnread);
   const suppressNextOpenRef = useRef(false);
 
@@ -158,7 +161,25 @@ function ChatListItemImpl({
           {isChannel ? <Megaphone size={18} /> : <MessageSquareMore size={18} />}
         </span>
       ) : (
-        <UserAvatar avatarUrl={avatarUrl} name={displayTitle(chat)} size={40} />
+        <span style={{ position: 'relative', display: 'inline-flex' }}>
+          <UserAvatar avatarUrl={avatarUrl} name={displayTitle(chat)} size={40} />
+          {directCounterpartOnline && (
+            <span
+              aria-label={`${displayTitle(chat)} в сети`}
+              className="presence-dot"
+              style={{
+                position: 'absolute',
+                right: 0,
+                bottom: 0,
+                width: 11,
+                height: 11,
+                borderRadius: 999,
+                background: '#22c55e',
+                border: '2px solid rgba(226, 240, 252, 0.98)',
+              }}
+            />
+          )}
+        </span>
       )}
 
       <div style={{ minWidth: 0 }}>
