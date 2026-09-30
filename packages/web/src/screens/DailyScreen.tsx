@@ -4616,6 +4616,7 @@ function AmateurDuelsPage({
   const [opponentQuery, setOpponentQuery] = useState('');
   const [selectedOpponent, setSelectedOpponent] = useState<AmateurOpponent | null>(null);
   const [matchmakingNow, setMatchmakingNow] = useState(Date.now());
+  const challengeAutoSelectPending = useRef(false);
 
   const templates = useQuery({
     queryKey: ['amateur-duel', 'templates'],
@@ -4752,6 +4753,15 @@ function AmateurDuelsPage({
   const selectedSelfLimit = selectedTemplate ? formatLimits?.[selectedTemplate.duel_kind] : null;
   const selectedOpponentLimit = selectedTemplate
     ? selectedOpponent?.format_limits?.[selectedTemplate.duel_kind] : null;
+  const isChallengeTemplateAvailable = (template: AmateurDuelTemplate): boolean =>
+    !formatLocks?.[template.duel_kind]?.blocked &&
+    formatLimits?.[template.duel_kind]?.available !== false &&
+    !selectedOpponent?.format_locks?.[template.duel_kind]?.blocked &&
+    selectedOpponent?.format_limits?.[template.duel_kind]?.available !== false;
+  const selectedChallengeTemplateAvailable = selectedTemplate
+    ? isChallengeTemplateAvailable(selectedTemplate)
+    : false;
+  const firstAvailableChallengeTemplate = templateItems.find(isChallengeTemplateAvailable) ?? null;
   const eligibleMatchmakingKinds = matchmakingKinds.filter((kind) =>
     !formatLocks?.[kind]?.blocked && formatLimits?.[kind]?.available !== false);
   const unavailableFormat = DUEL_KIND_OPTIONS.find((kind) => formatLocks?.[kind]?.blocked);
@@ -4784,6 +4794,22 @@ function AmateurDuelsPage({
   useEffect(() => {
     if (!selectedTemplateId && templateItems[0]) setSelectedTemplateId(templateItems[0].id);
   }, [selectedTemplateId, templateItems]);
+
+  useEffect(() => {
+    if (duelCreationMode !== 'challenge' || !challengeAutoSelectPending.current ||
+        !templates.isSuccess || !matches.isSuccess || !selectedTemplate) return;
+    challengeAutoSelectPending.current = false;
+    if (!selectedChallengeTemplateAvailable && firstAvailableChallengeTemplate) {
+      setSelectedTemplateId(firstAvailableChallengeTemplate.id);
+    }
+  }, [
+    duelCreationMode,
+    firstAvailableChallengeTemplate,
+    matches.isSuccess,
+    selectedChallengeTemplateAvailable,
+    selectedTemplate,
+    templates.isSuccess,
+  ]);
 
   useEffect(() => {
     if (!matchmakingTicket) return undefined;
@@ -4901,7 +4927,17 @@ function AmateurDuelsPage({
                   { id: 'matchmaking', label: 'Найти' },
                   { id: 'challenge', label: 'Вызвать' },
                 ]}
-                onChange={(id) => setDuelCreationMode(id as 'matchmaking' | 'challenge')}
+                onChange={(id) => {
+                  const nextMode = id as 'matchmaking' | 'challenge';
+                  challengeAutoSelectPending.current = nextMode === 'challenge';
+                  if (nextMode === 'challenge' && templates.isSuccess && matches.isSuccess) {
+                    challengeAutoSelectPending.current = false;
+                    if (!selectedChallengeTemplateAvailable && firstAvailableChallengeTemplate) {
+                      setSelectedTemplateId(firstAvailableChallengeTemplate.id);
+                    }
+                  }
+                  setDuelCreationMode(nextMode);
+                }}
               />
               {duelCreationMode === 'matchmaking' ? (
                 <>
@@ -4984,12 +5020,12 @@ function AmateurDuelsPage({
               ) : (
                 <>
                   {!duelBlocked && challengeLock?.blocked && (
-                    <p role="status" className="modal-copy">
+                    <p role="status" className="modal-copy duel-format-warning">
                       {ordinaryDuelLockCopy(challengeLock)}
                     </p>
                   )}
                   {(selectedSelfLimit?.available === false || selectedOpponentLimit?.available === false) && (
-                    <p role="status" className="modal-copy">
+                    <p role="status" className="modal-copy duel-format-warning">
                       {selectedSelfLimit?.available === false ? 'У вас' : 'У соперника'} исчерпан лимит дуэлей для выбранного формата.
                     </p>
                   )}
@@ -5003,7 +5039,10 @@ function AmateurDuelsPage({
                           value: template.id,
                           label: `${duelTemplateOptionLabel(template)}${formatLimits?.[template.duel_kind]?.available === false || selectedOpponent?.format_limits?.[template.duel_kind]?.available === false ? ' — лимит исчерпан' : ''}`,
                         }))}
-                        onChange={setSelectedTemplateId}
+                        onChange={(templateId) => {
+                          challengeAutoSelectPending.current = false;
+                          setSelectedTemplateId(templateId);
+                        }}
                       />
                     </>
                   ) : (
