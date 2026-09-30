@@ -377,6 +377,7 @@
 }
 .onboarding-flow__startup {
   display: grid;
+  gap: 18px;
   justify-items: center;
   text-align: center;
   color: rgba(238, 246, 255, 0.82);
@@ -385,6 +386,8 @@
   letter-spacing: -0.01em;
 }
 .onboarding-flow__startup p {
+  display: grid;
+  gap: 4px;
   margin: 0;
 }
 .onboarding-tutorial {
