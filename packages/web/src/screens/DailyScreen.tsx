@@ -4374,12 +4374,14 @@ function DuelKindPreferencePicker({
   onInfo,
   locks,
   limits,
+  onLimitUnavailable,
 }: {
   selected: AmateurDuelKind[];
   onChange: (next: AmateurDuelKind[]) => void;
   onInfo: () => void;
   locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
   limits?: AmateurDuelOverview['format_limits'];
+  onLimitUnavailable: (kind: AmateurDuelKind) => void;
 }): JSX.Element {
   const selectedSet = new Set(selected);
   const toggleKind = (kind: AmateurDuelKind) => {
@@ -4419,18 +4421,25 @@ function DuelKindPreferencePicker({
           gap: 6,
         }}
       >
-        {DUEL_KIND_OPTIONS.map((kind) => (
-          <DuelKindPreferenceButton
-            key={kind}
-            label={duelKindText(kind)}
-            checked={selectedSet.has(kind)}
-            active={selectedSet.has(kind)}
-            disabled={locks?.[kind]?.blocked === true || limits?.[kind]?.available === false}
-            title={locks?.[kind] ? ordinaryDuelLockCopy(locks[kind]!)
-              : limits?.[kind]?.available === false ? 'Лимит дуэлей этого формата исчерпан' : undefined}
-            onClick={() => toggleKind(kind)}
-          />
-        ))}
+        {DUEL_KIND_OPTIONS.map((kind) => {
+          const limitUnavailable = limits?.[kind]?.available === false;
+          return (
+            <DuelKindPreferenceButton
+              key={kind}
+              label={duelKindText(kind)}
+              checked={selectedSet.has(kind)}
+              active={selectedSet.has(kind)}
+              disabled={locks?.[kind]?.blocked === true}
+              ariaDisabled={limitUnavailable}
+              title={locks?.[kind] ? ordinaryDuelLockCopy(locks[kind]!)
+                : limitUnavailable ? 'Лимит дуэлей этого формата исчерпан' : undefined}
+              onClick={() => {
+                if (limitUnavailable) onLimitUnavailable(kind);
+                else toggleKind(kind);
+              }}
+            />
+          );
+        })}
       </div>
     </div>
   );
@@ -4442,6 +4451,7 @@ function DuelKindPreferenceButton({
   active,
   onClick,
   disabled = false,
+  ariaDisabled = false,
   title,
 }: {
   label: string;
@@ -4449,12 +4459,14 @@ function DuelKindPreferenceButton({
   active: boolean;
   onClick: () => void;
   disabled?: boolean;
+  ariaDisabled?: boolean;
   title?: string | undefined;
 }): JSX.Element {
   return (
     <button
       type="button"
       aria-pressed={checked}
+      aria-disabled={ariaDisabled}
       disabled={disabled}
       title={title}
       onClick={onClick}
@@ -4476,6 +4488,7 @@ function DuelKindPreferenceButton({
         boxShadow: 'none',
         whiteSpace: 'nowrap',
         cursor: 'pointer',
+        opacity: ariaDisabled ? 0.58 : 1,
       }}
     >
       {label}
@@ -4587,6 +4600,7 @@ function AmateurDuelsPage({
     'classic',
   ]);
   const [matchmakingRulesOpen, setMatchmakingRulesOpen] = useState(false);
+  const [formatLimitToast, setFormatLimitToast] = useState<string | null>(null);
   const [quickPickInfoOpen, setQuickPickInfoOpen] = useState(false);
   const [opponentSearchInfoOpen, setOpponentSearchInfoOpen] = useState(false);
   const [lockerInfoOpen, setLockerInfoOpen] = useState(false);
@@ -4925,6 +4939,11 @@ function AmateurDuelsPage({
                     {...(formatLocks === undefined ? {} : { locks: formatLocks })}
                     {...(formatLimits === undefined ? {} : { limits: formatLimits })}
                     onChange={setMatchmakingKinds}
+                    onLimitUnavailable={(kind) => {
+                      setFormatLimitToast(
+                        `Месячный лимит формата «${duelKindText(kind)}» исчерпан.`,
+                      );
+                    }}
                     onInfo={() => setMatchmakingRulesOpen(true)}
                   />
                   <button
@@ -5411,6 +5430,9 @@ function AmateurDuelsPage({
         />
       )}
       <UserProfileSheet sender={ratingProfile} onClose={() => setRatingProfile(null)} />
+      {formatLimitToast !== null && (
+        <AppToast message={formatLimitToast} onDismiss={() => setFormatLimitToast(null)} />
+      )}
     </ModeShell>
   );
 }
