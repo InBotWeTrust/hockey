@@ -5035,10 +5035,18 @@ function AmateurDuelsPage({
                         ariaLabel="Шаблон дуэли"
                         buttonClassName="duel-template-select"
                         value={selectedTemplate.id}
-                        options={templateItems.map((template) => ({
-                          value: template.id,
-                          label: `${duelTemplateOptionLabel(template)}${formatLimits?.[template.duel_kind]?.available === false || selectedOpponent?.format_limits?.[template.duel_kind]?.available === false ? ' — лимит исчерпан' : ''}`,
-                        }))}
+                        options={templateItems.map((template) => {
+                          const unavailable =
+                            formatLimits?.[template.duel_kind]?.available === false ||
+                            selectedOpponent?.format_limits?.[template.duel_kind]?.available === false;
+                          return {
+                            value: template.id,
+                            label: unavailable
+                              ? `Лимит: ${duelTemplateOptionLabel(template)}`
+                              : duelTemplateOptionLabel(template),
+                            disabled: unavailable,
+                          };
+                        })}
                         onChange={(templateId) => {
                           challengeAutoSelectPending.current = false;
                           setSelectedTemplateId(templateId);
