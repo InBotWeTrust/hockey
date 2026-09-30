@@ -168,6 +168,11 @@ export function AmateurDuelHistoryTab({
       Boolean(list && list.scrollHeight - list.scrollTop - list.clientHeight > 2),
     );
   }, []);
+  const scrollDayListDown = useCallback(() => {
+    const list = dayListRef.current;
+    if (!list) return;
+    list.scrollBy({ top: Math.round(list.clientHeight * 0.75), behavior: 'smooth' });
+  }, []);
   const calendar = useQuery({
     queryKey: ['amateur-duel', 'history', 'calendar', monthKey],
     queryFn: () => fetchAmateurHistoryCalendar(monthKey),
@@ -414,10 +419,10 @@ export function AmateurDuelHistoryTab({
               })}
             </div>
             {canScrollDayListDown ? (
-              <div className="duel-day-scroll-hint" aria-hidden="true">
-                <span>
+              <div className="duel-day-scroll-hint">
+                <button type="button" aria-label="Показать ниже" onClick={scrollDayListDown}>
                   <ChevronDown size={15} />
-                </span>
+                </button>
               </div>
             ) : null}
             <div className="modal-actions">
