@@ -8080,6 +8080,19 @@ button.profile-story-series-card {
   --glass-select-shadow: 0 8px 18px rgba(4, 15, 28, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.92);
 }
 
+.duel-format-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  border-radius: 14px;
+  background: rgba(220, 230, 239, 0.94);
+  color: #334155;
+  box-shadow:
+    0 8px 18px rgba(4, 15, 28, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  text-shadow: none;
+}
+
 .duel-opponent-search__icon {
   flex: 0 0 auto;
   color: rgba(15, 23, 42, 0.72);
