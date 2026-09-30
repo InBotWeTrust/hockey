@@ -8526,18 +8526,22 @@ button.daily-calendar__day:active {
   right: 4px;
   bottom: 4px;
   left: 4px;
-  display: flex;
-  justify-content: center;
+  display: grid;
   gap: 1px;
+  justify-items: center;
   overflow: hidden;
 }
 
+.daily-calendar__duel-results-row {
+  display: flex;
+  justify-content: center;
+  gap: 1px;
+}
+
 .daily-calendar__duel-result {
-  width: 4px;
-  flex: 1 1 4px;
-  max-width: 4px;
-  min-width: 0;
-  aspect-ratio: 1;
+  width: var(--duel-result-size, 4px);
+  height: var(--duel-result-size, 4px);
+  flex: 0 0 auto;
   border-radius: 50%;
   box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.78);
 }

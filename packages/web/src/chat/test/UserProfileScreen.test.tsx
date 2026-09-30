@@ -117,7 +117,7 @@ describe('UserProfileScreen', () => {
     await waitFor(() => expect(button).toHaveAttribute('aria-disabled', 'true'));
     fireEvent.click(button);
     expect(await screen.findByRole('status')).toHaveClass('achievement-reward-toast');
-    expect(screen.getByRole('status')).toHaveTextContent('У вас исчерпан дневной лимит дуэлей.');
+    expect(screen.getByRole('status')).toHaveTextContent('Вы исчерпали дневной лимит дуэлей.');
     expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument();
   });
 });
