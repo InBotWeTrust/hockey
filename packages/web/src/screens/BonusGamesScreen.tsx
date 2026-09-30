@@ -16,6 +16,7 @@ import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import {
   fetchBonusGames,
   abandonBonusAttempt,
+  acknowledgeBonusPreview,
   purchaseBonusGame,
   startBonusAttempt,
   type BonusGameCard,
@@ -125,8 +126,13 @@ export function BonusGamesScreen(): JSX.Element {
   const refreshedAllowanceResetRef = useRef<string | null>(null);
   const catalogQuery = useQuery({ queryKey: ['bonus-games'], queryFn: fetchBonusGames });
   const startMutation = useMutation({
-    mutationFn: startBonusAttempt,
+    mutationFn: async (gameId: string) => {
+      const response = await startBonusAttempt(gameId);
+      if (!response.attempt.preview_required) return response;
+      return await acknowledgeBonusPreview(response.attempt.id, false);
+    },
     onSuccess: (response) => {
+      setPreviewGame(null);
       useBonusGameStore.getState().applyState(response.attempt);
       navigate(
         `/bonus-games/${response.attempt.game_id}/play?attempt=${encodeURIComponent(response.attempt.id)}`,
@@ -170,7 +176,7 @@ export function BonusGamesScreen(): JSX.Element {
       );
       return;
     }
-    if (isPlayable(game)) startMutation.mutate(game.id);
+    if (isPlayable(game)) setPreviewGame(game);
   };
 
   const switchAttemptMutation = useMutation({
@@ -192,9 +198,7 @@ export function BonusGamesScreen(): JSX.Element {
     switchAttemptMutation.mutate({ attemptId: activeAttempt.id, game: switchGame });
   };
 
-  const confirmGameStart = (game: BonusGameCard): void => {
-    setPreviewGame(null);
-    startMutation.reset();
+  const openGame = (game: BonusGameCard): void => {
     if (game.state === 'level_locked') {
       performGameAction(game);
       return;
@@ -205,15 +209,6 @@ export function BonusGamesScreen(): JSX.Element {
       return;
     }
     performGameAction(game);
-  };
-  const openGame = (game: BonusGameCard): void => {
-    if (game.state === 'level_locked' || game.state === 'purchase_required') {
-      performGameAction(game);
-      return;
-    }
-    if (game.state === 'in_progress' || game.active_attempt !== null || isPlayable(game)) {
-      setPreviewGame(game);
-    }
   };
   const games = allGames.filter((game) => game.skill_code === selectedSkill);
   const selectedAllowance = catalogQuery.data?.attempt_allowances?.[selectedSkill];
@@ -441,7 +436,9 @@ export function BonusGamesScreen(): JSX.Element {
       {rulesOpen && <BonusGamesRulesModal onClose={() => setRulesOpen(false)} />}
       {previewGame !== null ? (
         <AccessibleModal
-          title={previewGame.preview_title}
+          title={previewGame.preview_title || previewGame.title}
+          ariaLabel={`Описание игры «${previewGame.title}»`}
+          copy={null}
           closeBlocked={startMutation.isPending}
           onRequestClose={() => {
             if (startMutation.isPending) return;
@@ -489,14 +486,19 @@ export function BonusGamesScreen(): JSX.Element {
               qualificationDescription(previewGame.qualification_rules)
             )}
           </p>
+          {startMutation.isError ? (
+            <p role="alert" className="bonus-game-abandon-error">
+              {safeUiError(startMutation.error)}
+            </p>
+          ) : null}
           <div className="modal-actions">
             <button
               type="button"
               className="modal-primary btn btn--cta"
               disabled={startMutation.isPending}
-              onClick={() => confirmGameStart(previewGame)}
+              onClick={() => startMutation.mutate(previewGame.id)}
             >
-              {startMutation.isPending ? 'Начинаем…' : 'К игре'}
+              {startMutation.isPending ? 'Подготавливаем…' : 'К игре'}
             </button>
           </div>
         </AccessibleModal>
