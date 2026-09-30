@@ -6,7 +6,6 @@ import { useEffect, useState } from 'react';
 import {
   BottomNav,
   ADMIN_NAV_HOME_EVENT,
-  isBottomNavVisible,
   isOpenRinkRoute,
 } from './BottomNav.js';
 import { useAuthStore } from '../auth/authStore.js';
