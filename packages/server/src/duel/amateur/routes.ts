@@ -533,6 +533,8 @@ interface DuelMatchRow {
   opponent_name?: string;
   challenger_avatar_url?: string | null;
   opponent_avatar_url?: string | null;
+  challenger_last_seen_at?: Date | null;
+  opponent_last_seen_at?: Date | null;
 }
 
 interface ReconciledMatch {
@@ -726,6 +728,7 @@ interface DuelParticipantDTO {
   user_id: string;
   display_name: string;
   avatar_url: string | null;
+  last_seen_at: string | null;
   side: ParticipantSide;
   state: ParticipantState;
   current_period: number;
@@ -2480,7 +2483,9 @@ async function fetchMatchForUpdate(client: PoolClient, matchId: string): Promise
   await lockMatchRewardRecipients(client, [matchId]);
   const { rows } = await client.query<DuelMatchRow>(
     `select m.*, cu.display_name as challenger_name, cu.avatar_url as challenger_avatar_url,
-            ou.display_name as opponent_name, ou.avatar_url as opponent_avatar_url
+            cu.last_seen_at as challenger_last_seen_at,
+            ou.display_name as opponent_name, ou.avatar_url as opponent_avatar_url,
+            ou.last_seen_at as opponent_last_seen_at
        from amateur_duel_match m
        join users cu on cu.id = m.challenger_user_id
        join users ou on ou.id = m.opponent_user_id
@@ -3236,9 +3241,15 @@ async function settleMatchIfReady(
       ...(match.challenger_avatar_url !== undefined
         ? { challenger_avatar_url: match.challenger_avatar_url }
         : {}),
+      ...(match.challenger_last_seen_at !== undefined
+        ? { challenger_last_seen_at: match.challenger_last_seen_at }
+        : {}),
       ...(match.opponent_name !== undefined ? { opponent_name: match.opponent_name } : {}),
       ...(match.opponent_avatar_url !== undefined
         ? { opponent_avatar_url: match.opponent_avatar_url }
+        : {}),
+      ...(match.opponent_last_seen_at !== undefined
+        ? { opponent_last_seen_at: match.opponent_last_seen_at }
         : {}),
     },
     changed: true,
@@ -3567,6 +3578,10 @@ function participantDto(
     participant.side === 'challenger'
       ? (match.challenger_avatar_url ?? null)
       : (match.opponent_avatar_url ?? null);
+  const lastSeenAt =
+    participant.side === 'challenger'
+      ? (match.challenger_last_seen_at ?? null)
+      : (match.opponent_last_seen_at ?? null);
   const shotsTaken = Number(participant.shots_taken) + (liveStats?.shots ?? 0);
   const goals = Number(participant.goals) + (liveStats?.goals ?? 0);
   const periodEndsAt =
@@ -3584,6 +3599,7 @@ function participantDto(
     user_id: participant.user_id,
     display_name: displayName,
     avatar_url: avatarUrl,
+    last_seen_at: lastSeenAt?.toISOString() ?? null,
     side: participant.side,
     state: participant.state,
     current_period: participant.current_period,
@@ -4419,9 +4435,15 @@ async function activateReadyMatch(
     ...(match.challenger_avatar_url !== undefined
       ? { challenger_avatar_url: match.challenger_avatar_url }
       : {}),
+    ...(match.challenger_last_seen_at !== undefined
+      ? { challenger_last_seen_at: match.challenger_last_seen_at }
+      : {}),
     ...(match.opponent_name !== undefined ? { opponent_name: match.opponent_name } : {}),
     ...(match.opponent_avatar_url !== undefined
       ? { opponent_avatar_url: match.opponent_avatar_url }
+      : {}),
+    ...(match.opponent_last_seen_at !== undefined
+      ? { opponent_last_seen_at: match.opponent_last_seen_at }
       : {}),
   };
 }
@@ -4429,7 +4451,9 @@ async function activateReadyMatch(
 async function notifySettlement(app: Parameters<FastifyPluginAsync>[0], matchId: string) {
   const { rows } = await app.pg.query<DuelMatchRow>(
     `select m.*, cu.display_name as challenger_name, cu.avatar_url as challenger_avatar_url,
-            ou.display_name as opponent_name, ou.avatar_url as opponent_avatar_url
+            cu.last_seen_at as challenger_last_seen_at,
+            ou.display_name as opponent_name, ou.avatar_url as opponent_avatar_url,
+            ou.last_seen_at as opponent_last_seen_at
        from amateur_duel_match m
        join users cu on cu.id = m.challenger_user_id
        join users ou on ou.id = m.opponent_user_id
@@ -4741,7 +4765,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       const now = new Date();
       const { rows } = await client.query<DuelMatchRow>(
         `select m.*, cu.display_name as challenger_name, cu.avatar_url as challenger_avatar_url,
-                ou.display_name as opponent_name, ou.avatar_url as opponent_avatar_url
+                cu.last_seen_at as challenger_last_seen_at,
+                ou.display_name as opponent_name, ou.avatar_url as opponent_avatar_url,
+                ou.last_seen_at as opponent_last_seen_at
            from amateur_duel_match m
            join users cu on cu.id = m.challenger_user_id
            join users ou on ou.id = m.opponent_user_id
@@ -4854,7 +4880,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       const offsetParam = query.season_key ? '$4' : '$3';
       const { rows } = await client.query<DuelMatchRow>(
         `select m.*, cu.display_name as challenger_name, cu.avatar_url as challenger_avatar_url,
-	                ou.display_name as opponent_name, ou.avatar_url as opponent_avatar_url
+                    cu.last_seen_at as challenger_last_seen_at,
+	                ou.display_name as opponent_name, ou.avatar_url as opponent_avatar_url,
+                    ou.last_seen_at as opponent_last_seen_at
 	           from amateur_duel_match m
 	           join users cu on cu.id = m.challenger_user_id
 	           join users ou on ou.id = m.opponent_user_id
@@ -5073,7 +5101,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       const now = new Date();
       const { rows } = await client.query<DuelMatchRow>(
         `select m.*, cu.display_name as challenger_name, cu.avatar_url as challenger_avatar_url,
-                ou.display_name as opponent_name, ou.avatar_url as opponent_avatar_url
+                cu.last_seen_at as challenger_last_seen_at,
+                ou.display_name as opponent_name, ou.avatar_url as opponent_avatar_url,
+                ou.last_seen_at as opponent_last_seen_at
            from amateur_duel_match m
            join users cu on cu.id = m.challenger_user_id
            join users ou on ou.id = m.opponent_user_id

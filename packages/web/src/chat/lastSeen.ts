@@ -2,7 +2,7 @@
 // Pure: takes the ISO timestamp and the current time, returns a Russian-
 // localized phrase. `now` is a parameter so tests can pin time.
 
-const ONLINE_WINDOW_MS = 2 * 60 * 1000; // < 2 min from last_seen → online
+export const ONLINE_WINDOW_MS = 2 * 60 * 1000; // < 2 min from last_seen → online
 const HOUR_MS = 60 * 60 * 1000;
 
 const WEEKDAY_SHORT = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'] as const;
@@ -34,13 +34,22 @@ function pluralizeMinutes(n: number): string {
 // *something* under the DM header so the layout stays balanced.
 export const LAST_SEEN_FALLBACK = 'был(а) давно';
 
+export function isLastSeenOnline(
+  iso: string | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!iso) return false;
+  const seenAt = Date.parse(iso);
+  return !Number.isNaN(seenAt) && now.getTime() - seenAt < ONLINE_WINDOW_MS;
+}
+
 export function formatLastSeen(iso: string | null, now: Date = new Date()): string {
   if (!iso) return LAST_SEEN_FALLBACK;
   const seen = new Date(iso);
   const ms = now.getTime() - seen.getTime();
   if (Number.isNaN(ms)) return LAST_SEEN_FALLBACK;
 
-  if (ms < ONLINE_WINDOW_MS) return 'в сети';
+  if (isLastSeenOnline(iso, now)) return 'в сети';
 
   if (ms < HOUR_MS) {
     const minutes = Math.max(1, Math.floor(ms / 60_000));
