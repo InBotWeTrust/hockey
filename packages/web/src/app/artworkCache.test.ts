@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  bonusGameArtworkUrls,
   preloadArtwork,
+  preloadCriticalArtwork,
   preloadStartupArtwork,
   profileArtworkUrls,
   shopArtworkUrls,
   startupArtworkUrls,
 } from './artworkCache.js';
+import type { BonusGameCard } from '../api/bonusGames.js';
 import type { InventoryItem, InventoryState } from '../api/inventory.js';
 import type { ProfileData } from '../screens/profileTypes.js';
 
@@ -85,6 +88,51 @@ function inventoryWithSelectedEquipment(): InventoryState {
 }
 
 describe('preloadArtwork', () => {
+  it('warms the featured bonus game preview before entering the play screen', () => {
+    const game = {
+      id: 'beach',
+      skill_code: 'speed',
+      sort_order: 1,
+      preview_artwork_url: '/bonus-games/previews/beach.webp',
+      arena: { thumbnail_url: '/bonus-games/arenas/beach.webp' },
+    } as BonusGameCard;
+
+    expect(bonusGameArtworkUrls([game], 'speed', 'beach')).toEqual([
+      '/bonus-games/arenas/featured/beach.webp?v=20260829-world-tour-user-pngs-v10',
+      '/bonus-games/previews/beach.webp?v=20260829-world-tour-user-pngs-v10',
+    ]);
+  });
+
+  it('retains the current section artwork used by shop, bonus games, and amateurs', () => {
+    const created: Array<{ decoding: string; fetchPriority: string; src: string }> = [];
+    vi.stubGlobal(
+      'Image',
+      vi.fn(() => {
+        const image = { decoding: '', fetchPriority: '', src: '' };
+        created.push(image);
+        return image;
+      }),
+    );
+
+    preloadCriticalArtwork();
+
+    expect(created.map((image) => image.src)).toEqual(
+      expect.arrayContaining([
+        '/modes/shop-retail-v2.webp',
+        '/bonus-games/section-card-v5.webp',
+        '/modes/amateur-game-v3.webp',
+      ]),
+    );
+    expect(created.map((image) => image.src)).not.toEqual(
+      expect.arrayContaining([
+        '/modes/shop-retail.webp',
+        '/bonus-games/section-card.webp',
+        '/modes/amateur-game.webp',
+      ]),
+    );
+    vi.unstubAllGlobals();
+  });
+
   it('collects the shop overview and only the open category artwork', () => {
     expect(shopArtworkUrls(inventoryWithSelectedEquipment(), 'recovery')).toEqual([
       '/shop/shop-background.webp',

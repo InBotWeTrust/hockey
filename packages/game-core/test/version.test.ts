@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for the wider duel stumble interval', () => {
-    expect(GAME_CORE_VERSION).toBe(58);
+  it('is bumped for deterministic marksmanship scoring v2', () => {
+    expect(GAME_CORE_VERSION).toBe(63);
   });
 });

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Award, Medal, Sunrise, Target, TrendingUp, Trophy, X } from 'lucide-react';
@@ -29,6 +29,7 @@ import { Sheet } from '../../components/Sheet.js';
 import { TrophyHistoryModal, type TrophySectionKey } from '../../screens/ProfileScreen.js';
 import { CommunityLinks } from '../../components/CommunityLinks.js';
 import { AppToast } from '../../components/AppToast.js';
+import { allFormatsBlockedCopy } from './duelAvailabilityCopy.js';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 
 interface UserProfileSheetProps {
@@ -318,10 +319,14 @@ function UserProfileSheetContent({
   const [earlyPlayerStatusOpen, setEarlyPlayerStatusOpen] = useState(false);
   const [duelPickerOpen, setDuelPickerOpen] = useState(false);
   const [duelToast, setDuelToast] = useState<string | null>(null);
+  const [challengeRequested, setChallengeRequested] = useState(false);
 
   const challengeAvailability = useMutation({
     mutationFn: () => checkAmateurDuelChallengeAvailability(senderId),
-    onSuccess: () => setDuelPickerOpen(true),
+    onSuccess: (result) => {
+      if (result.available) setDuelPickerOpen(true);
+      else setDuelToast(allFormatsBlockedCopy(result.formats));
+    },
     onError: (error) => {
       setDuelToast(error instanceof Error ? error.message : 'Не удалось проверить доступность дуэли');
     },
@@ -358,6 +363,23 @@ function UserProfileSheetContent({
     !isSelf &&
     canCurrentUserDuel &&
     (profile?.competitionLevel === 'amateur' || profile?.competitionLevel === 'professional');
+  const previewAvailability = useQuery({
+    queryKey: ['amateur-duel', 'challenge-availability', senderId],
+    queryFn: () => checkAmateurDuelChallengeAvailability(senderId),
+    enabled: canDuel,
+    retry: false,
+    refetchInterval: 15_000,
+  });
+  useEffect(() => {
+    if (!challengeRequested || previewAvailability.isPending) return;
+    setChallengeRequested(false);
+    if (previewAvailability.data?.available === false) {
+      setDuelToast(allFormatsBlockedCopy(previewAvailability.data.formats));
+    } else if (previewAvailability.isError) {
+      setDuelToast(previewAvailability.error instanceof Error
+        ? previewAvailability.error.message : 'Не удалось проверить доступность дуэли');
+    } else challengeAvailability.mutate();
+  }, [challengeRequested, previewAvailability.data, previewAvailability.isPending, previewAvailability.isError]);
   const openMatchesQuery = useQuery({
     queryKey: ['amateur-duel', 'matches'],
     queryFn: fetchAmateurMatches,
@@ -447,9 +469,20 @@ function UserProfileSheetContent({
             {canDuel && (
               <button
                 type="button"
-                className="btn btn--cta"
-                onClick={() => challengeAvailability.mutate()}
-                disabled={hasOpenDuel || challengeAvailability.isPending}
+                className="btn btn--cta duel-profile-challenge"
+                aria-disabled={hasOpenDuel || previewAvailability.data?.available !== true}
+                onClick={() => {
+                  if (hasOpenDuel) setDuelToast('С этим игроком уже есть открытая дуэль.');
+                  else if (previewAvailability.data?.available === false) {
+                    setDuelToast(allFormatsBlockedCopy(previewAvailability.data.formats));
+                  } else if (previewAvailability.isError) {
+                    setDuelToast(previewAvailability.error instanceof Error
+                      ? previewAvailability.error.message : 'Не удалось проверить доступность дуэли');
+                  }
+                  else if (previewAvailability.isPending) setChallengeRequested(true);
+                  else challengeAvailability.mutate();
+                }}
+                disabled={challengeAvailability.isPending}
                 style={{ marginTop: 14, padding: '14px 0', fontSize: 15, fontWeight: 600 }}
               >
                 {hasOpenDuel ? 'Дуэль уже открыта' : 'Вызвать на дуэль'}
@@ -531,7 +564,7 @@ function UserProfileSheetContent({
           />
         )}
         {duelToast !== null && (
-          <AppToast message={duelToast} onDismiss={() => setDuelToast(null)} />
+          <AppToast message={duelToast} onDismiss={() => setDuelToast(null)} variant="reward" />
         )}
       </div>
     </Sheet>

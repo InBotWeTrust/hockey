@@ -37,10 +37,13 @@ const initialAttempt: BonusGameAttempt = {
   period_ends_at: '2026-08-24T10:20:00.000Z',
   break_started_at: null,
   break_ends_at: null,
+  goal_window_started_at: null,
+  goal_window_ends_at: null,
   closed_at: null,
   shots_taken: 2,
   current_period_shots_taken: 2,
   goals: 1,
+  total_points: 300,
   current_goal_streak: 1,
   best_goal_streak: 1,
   preview_required: false,
@@ -238,6 +241,10 @@ describe('bonusGameStore', () => {
     vi.mocked(fetchCurrentBonusAttempt).mockReturnValueOnce(staleRefresh.promise);
     vi.mocked(submitBonusShot).mockResolvedValueOnce({
       server_result: 'goal',
+      awarded_points: 0,
+      total_points: afterShot.total_points,
+      difficulty_code: null,
+      counter_direction: false,
       attempt: afterShot,
       reward_granted: false,
       balances: { coins: 10, stars: 2, experience: 7 },
@@ -351,6 +358,10 @@ describe('bonusGameStore', () => {
       .mockReturnValueOnce(r2.promise);
     vi.mocked(submitBonusShot).mockResolvedValueOnce({
       server_result: 'goal',
+      awarded_points: 0,
+      total_points: afterShot.total_points,
+      difficulty_code: null,
+      counter_direction: false,
       attempt: afterShot,
       reward_granted: false,
       balances: { coins: 10, stars: 2, experience: 7 },
@@ -539,6 +550,10 @@ describe('bonusGameStore', () => {
     const authoritativeAttempt = { ...initialAttempt, shots_taken: 3, goals: 1 };
     vi.mocked(submitBonusShot).mockResolvedValueOnce({
       server_result: 'save',
+      awarded_points: 0,
+      total_points: authoritativeAttempt.total_points,
+      difficulty_code: null,
+      counter_direction: false,
       attempt: authoritativeAttempt,
       reward_granted: false,
       balances: { coins: 10, stars: 2, experience: 7 },
@@ -557,6 +572,95 @@ describe('bonusGameStore', () => {
     expect(useBonusGameStore.getState().pendingShot).toBeNull();
     expect(useBonusGameStore.getState().inFlight).toBe(false);
     expect(useBonusGameStore.getState().receivedAtPerformanceMs).toBe(1_000);
+  });
+
+  it('keeps points authoritative while preserving the client marksmanship preview', async () => {
+    // This catches either optimistic point invention or losing the score/classification needed by the result modal.
+    const authoritativeAttempt = {
+      ...initialAttempt,
+      shots_taken: 3,
+      current_period_shots_taken: 3,
+      goals: 2,
+      total_points: 455,
+    };
+    const predictedMarksmanship = {
+      result: { type: 'goal' as const, hitPoint: { x: 286, y: 44 } },
+      windowDurationMs: 180,
+      opportunity: 'scored' as const,
+      timingErrorMs: 0,
+      basePoints: 115,
+      counterDirection: true,
+      geometry: {
+        boardSide: false,
+        closeToGoalie: false,
+        counterDirection: true,
+        behindGoalie: false,
+      },
+      series: { type: 'single' as const, index: 1 as const, multiplier: 1, passId: 1 },
+      situationBonus: 15,
+      seriesBonus: 0,
+      awardedPoints: 130,
+      difficultyCode: 'timed' as const,
+    };
+    const scoreDetails = {
+      version: 2 as const,
+      windowDurationMs: 60,
+      difficultyCode: 'very_narrow' as const,
+      counterDirection: false,
+      opportunity: 'scored' as const,
+      timingErrorMs: 0,
+      geometry: {
+        boardSide: true,
+        closeToGoalie: false,
+        counterDirection: false,
+        behindGoalie: false,
+      },
+      series: { type: 'single' as const, index: 1 as const, multiplier: 1, passId: 2 },
+      situationBonus: 0,
+      seriesBonus: 0,
+    };
+    vi.mocked(submitBonusShot).mockResolvedValueOnce({
+      server_result: 'goal',
+      awarded_points: 155,
+      total_points: 455,
+      difficulty_code: 'very_narrow',
+      counter_direction: false,
+      score_details: scoreDetails,
+      attempt: authoritativeAttempt,
+      reward_granted: false,
+      balances: { coins: 10, stars: 2, experience: 7 },
+    });
+    useBonusGameStore.getState().applyState(initialAttempt);
+
+    useBonusGameStore.getState().optimisticAddShot('goal');
+    expect(useBonusGameStore.getState().attempt?.total_points).toBe(300);
+
+    const result = await useBonusGameStore.getState().submitShot(shot, {
+      deferApply: true,
+      predictedMarksmanship,
+    });
+
+    expect(result).toMatchObject({
+      awardedPoints: 155,
+      totalPoints: 455,
+      difficultyCode: 'very_narrow',
+      counterDirection: false,
+      scoreDetails,
+      predictedMarksmanship,
+    });
+    expect(useBonusGameStore.getState().pendingShot).toMatchObject({
+      attempt: authoritativeAttempt,
+      awardedPoints: 155,
+      totalPoints: 455,
+      difficultyCode: 'very_narrow',
+      counterDirection: false,
+      scoreDetails,
+      predictedMarksmanship,
+    });
+
+    useBonusGameStore.getState().applyPendingShot();
+
+    expect(useBonusGameStore.getState().attempt?.total_points).toBe(455);
   });
 
   it('silently restores authoritative state when a shot request is rejected', async () => {
@@ -672,6 +776,10 @@ describe('bonusGameStore', () => {
     performanceNow = 1_000;
     shotRequest.resolve({
       server_result: 'save',
+      awarded_points: 0,
+      total_points: failedAttempt.total_points,
+      difficulty_code: null,
+      counter_direction: false,
       attempt: failedAttempt,
       reward_granted: false,
       balances: { coins: 10, stars: 2, experience: 7 },
@@ -696,6 +804,12 @@ describe('bonusGameStore', () => {
     expect(fetchBonusAttempt).not.toHaveBeenCalled();
     expect(useBonusGameStore.getState().pendingShot).toEqual({
       attempt: failedAttempt,
+      awardedPoints: 0,
+      totalPoints: failedAttempt.total_points,
+      difficultyCode: null,
+      counterDirection: false,
+      predictedMarksmanship: null,
+      scoreDetails: null,
       receivedAtPerformanceMs: 1_000,
     });
 
@@ -742,6 +856,10 @@ describe('bonusGameStore', () => {
     };
     vi.mocked(submitBonusShot).mockImplementation(async (_attemptId, body) => ({
       server_result: 'goal',
+      awarded_points: 0,
+      total_points: speedAttempt.total_points,
+      difficulty_code: null,
+      counter_direction: false,
       attempt: {
         ...speedAttempt,
         shots_taken: body.claimed_shot_index,
@@ -800,6 +918,10 @@ describe('bonusGameStore', () => {
     performanceNow = 1_000;
     shotRequest.resolve({
       server_result: 'goal',
+      awarded_points: 0,
+      total_points: completedAttempt.total_points,
+      difficulty_code: null,
+      counter_direction: false,
       attempt: completedAttempt,
       reward_granted: true,
       balances: { coins: 110, stars: 3, experience: 57 },
@@ -830,7 +952,16 @@ describe('bonusGameStore', () => {
       period_ends_at: null,
     };
     useBonusGameStore.setState({
-      pendingShot: { attempt: failedAttempt, receivedAtPerformanceMs: 1_000 },
+      pendingShot: {
+        attempt: failedAttempt,
+        awardedPoints: 0,
+        totalPoints: failedAttempt.total_points,
+        difficultyCode: null,
+        counterDirection: false,
+        predictedMarksmanship: null,
+        scoreDetails: null,
+        receivedAtPerformanceMs: 1_000,
+      },
       inFlight: true,
     });
 
@@ -912,14 +1043,7 @@ describe('bonusGameStore', () => {
 
   it('sends one shot while the first submission is still pending', async () => {
     // This catches replacing the synchronous ref guard with a React-render-timed state guard.
-    let resolveShot:
-      | ((value: {
-          server_result: 'goal' | 'save' | 'miss';
-          attempt: BonusGameAttempt;
-          reward_granted: boolean;
-          balances: { coins: number; stars: number; experience: number };
-        }) => void)
-      | undefined;
+    let resolveShot: ((value: BonusShotResponse) => void) | undefined;
     vi.mocked(submitBonusShot).mockReturnValueOnce(
       new Promise((resolve) => {
         resolveShot = resolve;
@@ -935,6 +1059,10 @@ describe('bonusGameStore', () => {
 
     resolveShot?.({
       server_result: 'goal',
+      awarded_points: 0,
+      total_points: initialAttempt.total_points,
+      difficulty_code: null,
+      counter_direction: false,
       attempt: { ...initialAttempt, shots_taken: 3, goals: 2 },
       reward_granted: false,
       balances: { coins: 10, stars: 2, experience: 7 },

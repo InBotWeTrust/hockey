@@ -3,15 +3,21 @@ import {
   GAME_CORE_VERSION,
   GOAL_OPENING,
   PUCK_START,
+  classifyMarksmanshipShot,
   getSessionPhaseOffsets,
   resolvePerspectiveCourtShot,
   STICK_NEUTRAL,
+  type MarksmanshipDifficultyCode,
+  type MarksmanshipGeometry,
+  type MarksmanshipSeriesClassification,
+  type MarksmanshipSeriesGoal,
   type ShotInput,
 } from '@hockey/game-core';
 import type { Pool, PoolClient } from 'pg';
 import { appendEvent } from '../duel/eventLog.js';
 import { deriveBonusAttemptSeed, deriveShotSeed } from '../duel/seed.js';
 import { AppError } from '../plugins/errors.js';
+import { isBonusSkillReleased } from '../releaseGates.js';
 import {
   consumePeriodLoadout,
   hasPeriodLoadoutSelection,
@@ -24,6 +30,7 @@ import {
   type BalanceSnapshot,
 } from './economy.js';
 import { assertBonusGameAccessibleToUser, lockBonusGameCatalogForRead } from './catalog.js';
+import { BONUS_SHOT_RESULT_PAUSE_MS, nextEnduranceGoalWindow } from './endurance.js';
 import { closeBonusPeriod, reconcileBonusAttempt } from './reconcile.js';
 import {
   advanceGoalStreak,
@@ -62,15 +69,42 @@ export interface SubmitBonusShotInput {
 
 export interface SubmitBonusShotResult {
   serverResult: BonusShotResult;
+  awardedPoints: number;
+  totalPoints: number;
+  difficultyCode: MarksmanshipDifficultyCode | null;
+  counterDirection: boolean;
+  scoreDetails: MarksmanshipScoreDetails | null;
   attempt: BonusGameAttemptDTO;
   rewardGranted: BonusRewardSnapshot | null;
   balances: BalanceSnapshot;
 }
 
+export type MarksmanshipScoreDetails =
+  | {
+      version: 1;
+      windowDurationMs: number | null;
+      difficultyCode: MarksmanshipDifficultyCode | null;
+      counterDirection: boolean;
+    }
+  | {
+      version: 2;
+      windowDurationMs: number | null;
+      difficultyCode: MarksmanshipDifficultyCode | null;
+      counterDirection: boolean;
+      opportunity: 'scored' | 'human_error' | 'closed';
+      timingErrorMs: number | null;
+      geometry: MarksmanshipGeometry;
+      series: MarksmanshipSeriesClassification;
+      situationBonus: number;
+      seriesBonus: number;
+    };
+
 interface BonusShotRow {
   period_number: number;
   shot_index: number;
   server_result: BonusShotResult;
+  awarded_points: number;
+  score_details: MarksmanshipScoreDetails | null;
 }
 
 interface BonusAttemptVersionRow {
@@ -81,6 +115,11 @@ interface BonusAttemptVersionRow {
 export const BONUS_GAME_CORE_VERSION_MISMATCH_CODE = 'bonus_game_core_version_mismatch';
 export const BONUS_SHOT_TIME_INVALID_CODE = 'bonus_shot_time_invalid';
 export const BONUS_SHOT_TIME_STALE_CODE = 'bonus_shot_time_stale';
+const LEGACY_BONUS_GAME_CORE_VERSION = 62;
+
+function supportsBonusGameCoreVersion(version: number): boolean {
+  return version === GAME_CORE_VERSION || version === LEGACY_BONUS_GAME_CORE_VERSION;
+}
 
 export class BonusAttemptAlreadyActiveError extends AppError {
   constructor(public readonly activeAttempt: { id: string; gameId: string }) {
@@ -134,6 +173,7 @@ const EXPECTED_START_ERROR_CODES_AFTER_RECONCILE = new Set([
   'bonus_previous_game_required',
   'bonus_purchase_required',
   'bonus_game_inactive',
+  'bonus_game_unreleased',
 ]);
 
 function isExpectedStartErrorAfterReconcile(error: unknown): error is AppError {
@@ -161,11 +201,14 @@ export function toBonusAttemptDto(
     state: attempt.state,
     currentPeriod: Number(attempt.current_period),
     periodStartedAt: toIso(attempt.period_started_at),
+    goalWindowStartedAt: toIso(attempt.goal_window_started_at),
+    goalWindowEndsAt: toIso(attempt.goal_window_ends_at),
     breakStartedAt: toIso(attempt.break_started_at),
     closedAt: toIso(attempt.closed_at),
     shotsTaken: Number(attempt.shots_taken),
     currentPeriodShotsTaken: derived.currentPeriodShotsTaken,
     goals: Number(attempt.goals),
+    totalPoints: Number(attempt.total_points),
     currentGoalStreak: Number(attempt.current_goal_streak),
     bestGoalStreak: Number(attempt.best_goal_streak),
     previewRequired: attempt.preview_acknowledged_at === null,
@@ -212,6 +255,54 @@ export async function loadBonusAttemptDto(
   });
 }
 
+export async function reconcileCurrentBonusAttempt(
+  pool: Pool,
+  input: { userId: string; now: Date },
+): Promise<BonusGameAttemptDTO | null> {
+  const client = await begin(pool);
+  try {
+    await lockBonusEconomyBalances(client, input.userId, input.now);
+    const attempt = await fetchActiveAttempt(client, input.userId);
+    if (attempt === null) {
+      await client.query('commit');
+      return null;
+    }
+    const reconciled = await reconcileBonusAttempt(client, attempt, input.now);
+    const result =
+      reconciled.status === 'active' ? await loadBonusAttemptDto(client, reconciled) : null;
+    await client.query('commit');
+    return result;
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function reconcileOwnedBonusAttempt(
+  pool: Pool,
+  input: { userId: string; attemptId: string; now: Date },
+): Promise<BonusGameAttemptDTO> {
+  const client = await begin(pool);
+  try {
+    await lockBonusEconomyBalances(client, input.userId, input.now);
+    const attempt = await fetchOwnedAttempt(client, input.userId, input.attemptId);
+    const reconciled =
+      attempt.status === 'active'
+        ? await reconcileBonusAttempt(client, attempt, input.now)
+        : attempt;
+    const result = await loadBonusAttemptDto(client, reconciled);
+    await client.query('commit');
+    return result;
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function lockUser(client: PoolClient, userId: string): Promise<LockedUserRow> {
   const { rows } = await client.query<LockedUserRow>(
     `select timezone
@@ -225,7 +316,9 @@ async function lockUser(client: PoolClient, userId: string): Promise<LockedUserR
   return user;
 }
 
-const BONUS_DAILY_ATTEMPT_LIMIT = 2 as const;
+export function bonusDailyAttemptLimit(skillCode: BonusSkillCode): number {
+  return skillCode === 'marksmanship' || skillCode === 'endurance' ? 100 : 2;
+}
 
 async function reserveDailyAttemptSlot(
   client: PoolClient,
@@ -256,7 +349,7 @@ async function reserveDailyAttemptSlot(
       )
       order by candidate.slot
       limit 1`,
-    [input.userId, localDate, input.skillCode, BONUS_DAILY_ATTEMPT_LIMIT],
+    [input.userId, localDate, input.skillCode, bonusDailyAttemptLimit(input.skillCode)],
   );
   const slot = slotResult.rows[0]?.slot;
   if (slot === undefined) {
@@ -282,7 +375,9 @@ export async function fetchBonusAttemptAllowances(
                 at time zone timezone) as resets_at
          from users
         where id = $1
-     ), skills(skill_code) as (values ('speed'::text), ('accuracy'::text))
+     ), skills(skill_code) as (
+       values ('speed'::text), ('accuracy'::text), ('marksmanship'::text), ('endurance'::text)
+     )
      select skills.skill_code,
             count(slot.attempt_id)::int as used,
             player.resets_at
@@ -297,14 +392,15 @@ export async function fetchBonusAttemptAllowances(
   );
   const fallbackReset = new Date(now.getTime() + 86_400_000).toISOString();
   const result = {} as Record<BonusSkillCode, BonusAttemptAllowanceDTO>;
-  for (const skillCode of ['speed', 'accuracy'] as const) {
+  for (const skillCode of ['speed', 'accuracy', 'marksmanship', 'endurance'] as const) {
     const row = rows.find((candidate) => candidate.skill_code === skillCode);
-    const used = Math.min(BONUS_DAILY_ATTEMPT_LIMIT, Number(row?.used ?? 0));
+    const dailyLimit = bonusDailyAttemptLimit(skillCode);
+    const used = Math.min(dailyLimit, Number(row?.used ?? 0));
     result[skillCode] = {
       skillCode,
-      dailyLimit: BONUS_DAILY_ATTEMPT_LIMIT,
+      dailyLimit,
       used,
-      remaining: BONUS_DAILY_ATTEMPT_LIMIT - used,
+      remaining: dailyLimit - used,
       resetsAt: row?.resets_at.toISOString() ?? fallbackReset,
     };
   }
@@ -322,6 +418,17 @@ async function fetchActiveAttempt(
     [userId],
   );
   return rows[0] ?? null;
+}
+
+async function hasActiveAttempt(client: PoolClient, userId: string): Promise<boolean> {
+  const { rows } = await client.query<{ active: boolean }>(
+    `select exists(
+       select 1 from bonus_game_attempt
+        where user_id = $1 and status = 'active'
+     ) as active`,
+    [userId],
+  );
+  return rows[0]?.active === true;
 }
 
 async function fetchOwnedAttempt(
@@ -455,6 +562,9 @@ export async function startOrResumeBonusAttempt(
     const user = await lockUser(client, input.userId);
     await lockBonusGameCatalogForRead(client);
     await assertBonusGameAccessibleToUser(client, input.userId, input.gameId);
+    if (await hasActiveAttempt(client, input.userId)) {
+      await lockBonusEconomyBalances(client, input.userId, input.now);
+    }
     const active = await fetchActiveAttempt(client, input.userId);
     if (active !== null) {
       await assertBonusGameAccessibleToUser(client, input.userId, active.bonus_game_id);
@@ -475,6 +585,9 @@ export async function startOrResumeBonusAttempt(
 
     if (deferredError === null) {
       const game = await fetchStartableGame(client, input.userId, input.gameId);
+      if (!isBonusSkillReleased(game.skill_code)) {
+        throw new AppError('bonus_game_unreleased', 'bonus game is not released', 409);
+      }
       if (game.predecessor_id !== null && !game.predecessor_completed) {
         throw new AppError(
           'bonus_previous_game_required',
@@ -608,6 +721,7 @@ export async function startBonusPeriod(
   let result: BonusGameAttemptDTO | null = null;
   try {
     await lockUser(client, input.userId);
+    await lockBonusEconomyBalances(client, input.userId, input.now);
     const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
     await lockBonusGameCatalogForRead(client);
     await assertBonusGameAccessibleToUser(client, input.userId, owned.bonus_game_id);
@@ -633,6 +747,11 @@ export async function startBonusPeriod(
       deferredError = new AppError('bonus_period_not_ready', 'bonus period is not ready', 409);
     } else {
       const nextPeriod = Number(attempt.current_period) + 1;
+      const qualificationRules = qualificationForAttempt(attempt);
+      const goalWindowEndsAt =
+        qualificationRules.type === 'survive_goal_windows'
+          ? new Date(input.now.getTime() + qualificationRules.goalWindowMs)
+          : null;
       if (attempt.rules_snapshot.useInventory) {
         await consumePeriodLoadout(client, {
           userId: input.userId,
@@ -645,10 +764,18 @@ export async function startBonusPeriod(
       const { rows } = await client.query<BonusGameAttemptRow>(
         `update bonus_game_attempt
             set state = 'period_active', current_period = current_period + 1,
-                period_started_at = $1, break_started_at = null, updated_at = $1
-          where id = $2
+                period_started_at = $1,
+                goal_window_started_at = $2,
+                goal_window_ends_at = $3,
+                break_started_at = null, updated_at = $1
+          where id = $4
         returning *`,
-        [input.now, attempt.id],
+        [
+          input.now,
+          qualificationRules.type === 'survive_goal_windows' ? input.now : null,
+          goalWindowEndsAt,
+          attempt.id,
+        ],
       );
       result = await loadBonusAttemptDto(client, rows[0]!);
     }
@@ -717,6 +844,7 @@ export async function abandonBonusAttempt(
   let result: BonusGameAttemptDTO | null = null;
   try {
     await lockUser(client, input.userId);
+    await lockBonusEconomyBalances(client, input.userId, input.now);
     const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
     await lockBonusGameCatalogForRead(client);
     await assertBonusGameAccessibleToUser(client, input.userId, owned.bonus_game_id);
@@ -730,7 +858,8 @@ export async function abandonBonusAttempt(
       const { rows } = await client.query<BonusGameAttemptRow>(
         `update bonus_game_attempt
             set status = 'abandoned', state = 'closed', closed_at = $1,
-                period_started_at = null, break_started_at = null, updated_at = $1
+                period_started_at = null, goal_window_started_at = null,
+                goal_window_ends_at = null, break_started_at = null, updated_at = $1
           where id = $2
         returning *`,
         [input.now, attempt.id],
@@ -754,7 +883,7 @@ async function fetchAcceptedBonusShot(
   shotIndex: number,
 ): Promise<BonusShotRow | null> {
   const { rows } = await client.query<BonusShotRow>(
-    `select period_number, shot_index, server_result
+    `select period_number, shot_index, server_result, awarded_points, score_details
        from shot_session
       where mode = 'bonus'
         and bonus_game_attempt_id = $1
@@ -771,6 +900,7 @@ interface BonusPeriodShotState {
   count: number;
   lastTapTime: number | null;
   lastShooterTapTime: number | null;
+  goalInputs: MarksmanshipSeriesGoal[];
 }
 
 async function fetchBonusPeriodShotState(
@@ -782,6 +912,7 @@ async function fetchBonusPeriodShotState(
     count: number;
     last_tap_time: number | null;
     last_shooter_tap_time: number | null;
+    goal_inputs: MarksmanshipSeriesGoal[];
   }>(
     `select count(*)::int as count,
             (array_agg(
@@ -791,7 +922,16 @@ async function fetchBonusPeriodShotState(
             (array_agg(
               (input_payload->>'shooterTapTime')::double precision
               order by shot_index desc
-            ))[1] as last_shooter_tap_time
+            ))[1] as last_shooter_tap_time,
+            coalesce(
+              jsonb_agg(
+                jsonb_build_object(
+                  'tapTime', (input_payload->>'tapTime')::double precision,
+                  'shooterTapTime', (input_payload->>'shooterTapTime')::double precision
+                ) order by shot_index
+              ) filter (where server_result = 'goal'),
+              '[]'::jsonb
+            ) as goal_inputs
        from shot_session
       where mode = 'bonus'
         and bonus_game_attempt_id = $1
@@ -804,6 +944,10 @@ async function fetchBonusPeriodShotState(
     lastTapTime: row.last_tap_time === null ? null : Number(row.last_tap_time),
     lastShooterTapTime:
       row.last_shooter_tap_time === null ? null : Number(row.last_shooter_tap_time),
+    goalInputs: row.goal_inputs.map((goal) => ({
+      tapTime: Number(goal.tapTime),
+      shooterTapTime: Number(goal.shooterTapTime),
+    })),
   };
 }
 
@@ -875,8 +1019,6 @@ const BONUS_SHOT_STALE_TOLERANCE_MS = 12_000;
 const BONUS_SHOT_FUTURE_TOLERANCE_MS = 2_500;
 const BONUS_SHOT_CLOCK_RELATION_TOLERANCE_MS = 100;
 const BONUS_SHOT_TIMER_DRIFT_ALLOWANCE_PER_SHOT_MS = 2_000;
-const BONUS_SHOT_RESULT_PAUSE_MS = 1_000;
-
 function invalidBonusShotTime(): AppError {
   return new AppError(BONUS_SHOT_TIME_INVALID_CODE, 'bonus shot timing is invalid', 400);
 }
@@ -956,7 +1098,9 @@ export async function submitBonusShot(
   try {
     // Read-only preflight keeps unsupported attempts free of account, shot, reward, and audit writes.
     if (
-      (await fetchOwnedAttemptVersion(client, input.userId, input.attemptId)) !== GAME_CORE_VERSION
+      !supportsBonusGameCoreVersion(
+        await fetchOwnedAttemptVersion(client, input.userId, input.attemptId),
+      )
     ) {
       throw unsupportedBonusGameCoreVersion();
     }
@@ -966,193 +1110,330 @@ export async function submitBonusShot(
     const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
     await lockBonusGameCatalogForRead(client);
     await assertBonusGameAccessibleToUser(client, input.userId, owned.bonus_game_id);
-    if (Number(owned.game_core_version) !== GAME_CORE_VERSION) {
+    if (!supportsBonusGameCoreVersion(Number(owned.game_core_version))) {
       throw unsupportedBonusGameCoreVersion();
     }
-    let attempt = await reconcileBonusAttempt(client, owned, input.now);
-
-    if (attempt.status !== 'active' || attempt.state !== 'period_active') {
-      const accepted = await fetchAcceptedBonusShot(
-        client,
-        attempt.id,
-        attempt.current_period,
-        input.claimedShotIndex,
-      );
-      if (accepted !== null) {
-        response = {
-          serverResult: accepted.server_result,
-          attempt: await loadBonusAttemptDto(client, attempt),
-          rewardGranted: null,
-          balances,
-        };
-      } else if (attempt.status !== 'active') {
-        deferredError = new AppError(
-          'bonus_attempt_not_active',
-          'bonus attempt is not active',
-          409,
-        );
-      } else {
-        deferredError = new AppError('bonus_period_not_ready', 'bonus period is not active', 409);
-      }
-    } else {
-      const rule = periodRuleForAttempt(attempt);
-      const periodShotState = await fetchBonusPeriodShotState(
-        client,
-        attempt.id,
-        attempt.current_period,
-      );
-      const acceptedShotCount = periodShotState.count;
-      const expectedShotIndex = acceptedShotCount + 1;
-      if (input.claimedShotIndex !== expectedShotIndex) {
-        deferredError = new AppError(
-          'bonus_shot_index_mismatch',
-          `bonus shot index mismatch: expected ${expectedShotIndex}`,
-          409,
-        );
-      } else if (rule.shotsLimit !== null && acceptedShotCount >= rule.shotsLimit) {
-        deferredError = new AppError(
-          'bonus_period_not_ready',
-          'bonus period shot quota is exhausted',
-          409,
-        );
-      } else {
-        const previousInput =
-          periodShotState.lastTapTime === null || periodShotState.lastShooterTapTime === null
-            ? null
-            : {
-                tapTime: periodShotState.lastTapTime,
-                shooterTapTime: periodShotState.lastShooterTapTime,
-              };
-        assertBonusShotTimeFresh(
-          attempt,
-          acceptedShotCount,
-          previousInput,
-          input.input,
-          rule,
-          input.now,
-        );
-        const shotSeed = deriveShotSeed(
-          attempt.attempt_seed,
+    let attempt = owned;
+    const isMarksmanship = attempt.rules_snapshot.skillCode === 'marksmanship';
+    const isEndurance = attempt.rules_snapshot.skillCode === 'endurance';
+    const acceptsLateSettlement = isMarksmanship || isEndurance;
+    const acceptedBeforeReconcile = acceptsLateSettlement
+      ? await fetchAcceptedBonusShot(
+          client,
+          attempt.id,
           attempt.current_period,
-          expectedShotIndex,
-        );
-        const shotInput = authoritativeShotInput(input.input, rule);
-        const goalie = buildBonusGoalieConfig(
-          attempt.rules_snapshot.slug,
-          attempt.rules_snapshot.title,
-          rule,
-        );
-        const serverResult = resolvePerspectiveCourtShot(
-          shotInput,
-          goalie,
-          shotSeed,
-          expectedShotIndex,
-          STICK_NEUTRAL,
-          getSessionPhaseOffsets(attempt.attempt_seed),
-        ).type;
+          input.claimedShotIndex,
+        )
+      : null;
+    if (acceptedBeforeReconcile !== null) {
+      response = {
+        serverResult: acceptedBeforeReconcile.server_result,
+        awardedPoints: Number(acceptedBeforeReconcile.awarded_points),
+        totalPoints: Number(attempt.total_points),
+        difficultyCode: acceptedBeforeReconcile.score_details?.difficultyCode ?? null,
+        counterDirection: acceptedBeforeReconcile.score_details?.counterDirection ?? false,
+        scoreDetails: acceptedBeforeReconcile.score_details,
+        attempt: await loadBonusAttemptDto(client, attempt),
+        rewardGranted: null,
+        balances,
+      };
+    } else {
+      if (!acceptsLateSettlement) {
+        attempt = await reconcileBonusAttempt(client, attempt, input.now);
+      }
 
-        if (input.claimedResult !== serverResult) {
-          await appendEvent(
-            client,
-            input.userId,
-            'shot_mismatch',
-            {
-              mode: 'bonus',
-              bonus_game_attempt_id: attempt.id,
-              period_number: attempt.current_period,
-              shot_index: expectedShotIndex,
-              claimed_result: input.claimedResult,
-              server_result: serverResult,
-            },
-            input.now,
-          );
+      if (attempt.status !== 'active' || attempt.state !== 'period_active') {
+        const acceptedAfterReconcile = !acceptsLateSettlement
+          ? await fetchAcceptedBonusShot(
+              client,
+              attempt.id,
+              attempt.current_period,
+              input.claimedShotIndex,
+            )
+          : null;
+        if (acceptedAfterReconcile !== null) {
+          response = {
+            serverResult: acceptedAfterReconcile.server_result,
+            awardedPoints: Number(acceptedAfterReconcile.awarded_points),
+            totalPoints: Number(attempt.total_points),
+            difficultyCode: acceptedAfterReconcile.score_details?.difficultyCode ?? null,
+            counterDirection: acceptedAfterReconcile.score_details?.counterDirection ?? false,
+            scoreDetails: acceptedAfterReconcile.score_details,
+            attempt: await loadBonusAttemptDto(client, attempt),
+            rewardGranted: null,
+            balances,
+          };
+        } else if (attempt.status !== 'active') {
           deferredError = new AppError(
-            'bonus_shot_result_mismatch',
-            'bonus shot result mismatch',
+            'bonus_attempt_not_active',
+            'bonus attempt is not active',
             409,
           );
         } else {
-          await client.query(
-            `insert into shot_session
-               (user_id, mode, bonus_game_attempt_id, period_number, shot_index,
-                seed, input_payload, server_result, game_core_version, created_at)
-             values ($1, 'bonus', $2, $3, $4,
-                     $5, $6::jsonb, $7, $8, $9)`,
-            [
-              input.userId,
-              attempt.id,
-              attempt.current_period,
-              expectedShotIndex,
+          deferredError = new AppError('bonus_period_not_ready', 'bonus period is not active', 409);
+        }
+      } else {
+        const rule = periodRuleForAttempt(attempt);
+        if (attempt.period_started_at === null) {
+          throw new AppError('internal_error', 'active bonus period has no start time', 500);
+        }
+        const periodShotState = await fetchBonusPeriodShotState(
+          client,
+          attempt.id,
+          attempt.current_period,
+        );
+        const acceptedShotCount = periodShotState.count;
+        const expectedShotIndex = acceptedShotCount + 1;
+        const authoritativeShotStartedAt = new Date(
+          attempt.period_started_at.getTime() +
+            input.input.tapTime +
+            acceptedShotCount * BONUS_SHOT_RESULT_PAUSE_MS,
+        );
+        const periodEndsAt = new Date(attempt.period_started_at.getTime() + rule.durationMs);
+        const enduranceDeadlineExceeded =
+          isEndurance &&
+          (attempt.goal_window_ends_at === null ||
+            authoritativeShotStartedAt > attempt.goal_window_ends_at ||
+            authoritativeShotStartedAt > periodEndsAt);
+        if (
+          (isMarksmanship && authoritativeShotStartedAt > periodEndsAt) ||
+          enduranceDeadlineExceeded
+        ) {
+          attempt = await reconcileBonusAttempt(client, attempt, input.now);
+          deferredError = new AppError('bonus_period_not_ready', 'bonus period is not active', 409);
+        } else if (input.claimedShotIndex !== expectedShotIndex) {
+          deferredError = new AppError(
+            'bonus_shot_index_mismatch',
+            `bonus shot index mismatch: expected ${expectedShotIndex}`,
+            409,
+          );
+        } else if (rule.shotsLimit !== null && acceptedShotCount >= rule.shotsLimit) {
+          deferredError = new AppError(
+            'bonus_period_not_ready',
+            'bonus period shot quota is exhausted',
+            409,
+          );
+        } else {
+          const previousInput =
+            periodShotState.lastTapTime === null || periodShotState.lastShooterTapTime === null
+              ? null
+              : {
+                  tapTime: periodShotState.lastTapTime,
+                  shooterTapTime: periodShotState.lastShooterTapTime,
+                };
+          assertBonusShotTimeFresh(
+            attempt,
+            acceptedShotCount,
+            previousInput,
+            input.input,
+            rule,
+            input.now,
+          );
+          const shotSeed = deriveShotSeed(
+            attempt.attempt_seed,
+            attempt.current_period,
+            expectedShotIndex,
+          );
+          const shotInput = authoritativeShotInput(input.input, rule);
+          const goalie = buildBonusGoalieConfig(
+            attempt.rules_snapshot.slug,
+            attempt.rules_snapshot.title,
+            rule,
+          );
+          const qualificationRules = qualificationForAttempt(attempt);
+          const classification =
+            qualificationRules.type === 'points_in_time'
+              ? classifyMarksmanshipShot({
+                  shotInput,
+                  goalie,
+                  seed: shotSeed,
+                  shotIndex: expectedShotIndex,
+                  phaseOffsets: getSessionPhaseOffsets(attempt.attempt_seed),
+                  earliestTapTime:
+                    previousInput === null
+                      ? 0
+                      : previousInput.tapTime +
+                        (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs,
+                  scoring: qualificationRules.scoring,
+                  previousGoals: periodShotState.goalInputs,
+                })
+              : null;
+          const serverResult =
+            classification?.result.type ??
+            resolvePerspectiveCourtShot(
+              shotInput,
+              goalie,
               shotSeed,
-              JSON.stringify(shotInput),
-              serverResult,
-              attempt.game_core_version,
-              input.now,
-            ],
-          );
-          const nextStreak = advanceGoalStreak(
-            {
-              current: Number(attempt.current_goal_streak),
-              best: Number(attempt.best_goal_streak),
-            },
-            serverResult,
-          );
-          const updated = await client.query<BonusGameAttemptRow>(
-            `update bonus_game_attempt
-                set shots_taken = shots_taken + 1,
-                    goals = goals + $2,
-                    current_goal_streak = $3,
-                    best_goal_streak = $4,
-                    updated_at = $5
-              where id = $1
-              returning *`,
-            [
-              attempt.id,
-              serverResult === 'goal' ? 1 : 0,
-              nextStreak.current,
-              nextStreak.best,
-              input.now,
-            ],
-          );
-          attempt = updated.rows[0]!;
+              expectedShotIndex,
+              STICK_NEUTRAL,
+              getSessionPhaseOffsets(attempt.attempt_seed),
+            ).type;
+          const awardedPoints = classification?.awardedPoints ?? 0;
+          const scoreDetails =
+            classification === null
+              ? null
+              : {
+                  version: 2 as const,
+                  windowDurationMs: classification.windowDurationMs,
+                  difficultyCode: classification.difficultyCode,
+                  counterDirection: classification.counterDirection,
+                  opportunity: classification.opportunity,
+                  timingErrorMs: classification.timingErrorMs,
+                  geometry: classification.geometry,
+                  series: classification.series,
+                  situationBonus: classification.situationBonus,
+                  seriesBonus: classification.seriesBonus,
+                };
 
-          let rewardGranted: BonusRewardSnapshot | null = null;
-          const qualification = evaluateBonusQualification(qualificationForAttempt(attempt), {
-            goals: Number(attempt.goals),
-            shotsTaken: Number(attempt.shots_taken),
-            bestGoalStreak: Number(attempt.best_goal_streak),
-            activeElapsedMs: await activeElapsedMs(client, attempt, input.now),
-          });
-          if (qualification.passed) {
-            await closeBonusPeriod(client, attempt, input.now, 'target_reached');
-            const reward = await grantFirstClearReward(client, {
-              userId: input.userId,
-              gameId: attempt.bonus_game_id,
-              attemptId: attempt.id,
-              reward: attempt.reward_snapshot,
-              now: input.now,
-            });
-            balances = reward.balances;
-            rewardGranted = reward.granted ? attempt.reward_snapshot : null;
-            const completed = await client.query<BonusGameAttemptRow>(
-              `update bonus_game_attempt
-                  set status = 'completed', state = 'closed', closed_at = $1,
-                      period_started_at = null, break_started_at = null, updated_at = $1
-                where id = $2
-                returning *`,
-              [input.now, attempt.id],
+          if (input.claimedResult !== serverResult) {
+            await appendEvent(
+              client,
+              input.userId,
+              'shot_mismatch',
+              {
+                mode: 'bonus',
+                bonus_game_attempt_id: attempt.id,
+                period_number: attempt.current_period,
+                shot_index: expectedShotIndex,
+                claimed_result: input.claimedResult,
+                server_result: serverResult,
+              },
+              input.now,
             );
-            attempt = completed.rows[0]!;
-          } else if (rule.shotsLimit !== null && expectedShotIndex >= rule.shotsLimit) {
-            attempt = await reconcileBonusAttempt(client, attempt, input.now);
-          }
+            deferredError = new AppError(
+              'bonus_shot_result_mismatch',
+              'bonus shot result mismatch',
+              409,
+            );
+          } else {
+            await client.query(
+              `insert into shot_session
+                 (user_id, mode, bonus_game_attempt_id, period_number, shot_index,
+                  seed, input_payload, server_result, game_core_version,
+                  awarded_points, score_details, created_at)
+               values ($1, 'bonus', $2, $3, $4,
+                       $5, $6::jsonb, $7, $8, $9, $10::jsonb, $11)`,
+              [
+                input.userId,
+                attempt.id,
+                attempt.current_period,
+                expectedShotIndex,
+                shotSeed,
+                JSON.stringify(shotInput),
+                serverResult,
+                attempt.game_core_version,
+                awardedPoints,
+                scoreDetails === null ? null : JSON.stringify(scoreDetails),
+                input.now,
+              ],
+            );
+            const nextStreak = advanceGoalStreak(
+              {
+                current: Number(attempt.current_goal_streak),
+                best: Number(attempt.best_goal_streak),
+              },
+              serverResult,
+            );
+            const updated = await client.query<BonusGameAttemptRow>(
+              `update bonus_game_attempt
+                  set shots_taken = shots_taken + 1,
+                      goals = goals + $2,
+                      total_points = total_points + $3,
+                      current_goal_streak = $4,
+                      best_goal_streak = $5,
+                      updated_at = $6
+                where id = $1
+                returning *`,
+              [
+                attempt.id,
+                serverResult === 'goal' ? 1 : 0,
+                awardedPoints,
+                nextStreak.current,
+                nextStreak.best,
+                input.now,
+              ],
+            );
+            attempt = updated.rows[0]!;
 
-          response = {
-            serverResult,
-            attempt: await loadBonusAttemptDto(client, attempt),
-            rewardGranted,
-            balances,
-          };
+            let rewardGranted: BonusRewardSnapshot | null = null;
+            if (isEndurance && serverResult === 'goal') {
+              if (qualificationRules.type !== 'survive_goal_windows') {
+                throw new AppError('internal_error', 'invalid endurance rules snapshot', 500);
+              }
+              const flightMs = (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs;
+              const nextWindow = nextEnduranceGoalWindow({
+                shotStartedAt: authoritativeShotStartedAt,
+                flightMs,
+                goalWindowMs: qualificationRules.goalWindowMs,
+              });
+              const windowUpdate = await client.query<BonusGameAttemptRow>(
+                `update bonus_game_attempt
+                    set goal_window_started_at = $2,
+                        goal_window_ends_at = $3,
+                        updated_at = $4
+                  where id = $1
+                  returning *`,
+                [attempt.id, nextWindow.startsAt, nextWindow.endsAt, input.now],
+              );
+              attempt = windowUpdate.rows[0]!;
+              attempt = await reconcileBonusAttempt(client, attempt, input.now);
+              balances = await lockBonusEconomyBalances(client, input.userId, input.now);
+            } else if (isEndurance) {
+              attempt = await reconcileBonusAttempt(client, attempt, input.now);
+              balances = await lockBonusEconomyBalances(client, input.userId, input.now);
+            } else if (!isEndurance) {
+              const qualification = evaluateBonusQualification(qualificationRules, {
+                goals: Number(attempt.goals),
+                shotsTaken: Number(attempt.shots_taken),
+                bestGoalStreak: Number(attempt.best_goal_streak),
+                activeElapsedMs: await activeElapsedMs(
+                  client,
+                  attempt,
+                  isMarksmanship ? authoritativeShotStartedAt : input.now,
+                ),
+                totalPoints: Number(attempt.total_points),
+              });
+              if (qualification.passed) {
+                await closeBonusPeriod(client, attempt, input.now, 'target_reached');
+                const reward = await grantFirstClearReward(client, {
+                  userId: input.userId,
+                  gameId: attempt.bonus_game_id,
+                  attemptId: attempt.id,
+                  reward: attempt.reward_snapshot,
+                  now: input.now,
+                });
+                balances = reward.balances;
+                rewardGranted = reward.granted ? attempt.reward_snapshot : null;
+                const completed = await client.query<BonusGameAttemptRow>(
+                  `update bonus_game_attempt
+                    set status = 'completed', state = 'closed', closed_at = $1,
+                        period_started_at = null, goal_window_started_at = null,
+                        goal_window_ends_at = null, break_started_at = null, updated_at = $1
+                  where id = $2
+                  returning *`,
+                  [input.now, attempt.id],
+                );
+                attempt = completed.rows[0]!;
+              } else if (
+                isMarksmanship ||
+                (rule.shotsLimit !== null && expectedShotIndex >= rule.shotsLimit)
+              ) {
+                attempt = await reconcileBonusAttempt(client, attempt, input.now);
+              }
+            }
+
+            response = {
+              serverResult,
+              awardedPoints,
+              totalPoints: Number(attempt.total_points),
+              difficultyCode: scoreDetails?.difficultyCode ?? null,
+              counterDirection: scoreDetails?.counterDirection ?? false,
+              scoreDetails,
+              attempt: await loadBonusAttemptDto(client, attempt),
+              rewardGranted,
+              balances,
+            };
+          }
         }
       }
     }

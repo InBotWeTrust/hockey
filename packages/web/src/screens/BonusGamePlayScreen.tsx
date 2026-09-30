@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  classifyMarksmanshipShot,
   GOAL_OPENING,
   PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
   PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET,
@@ -7,21 +8,28 @@ import {
   PUCK_START,
   STICK_NEUTRAL,
   type GoalieConfig,
+  type MarksmanshipDifficultyCode,
+  type MarksmanshipShotClassification,
+  type MarksmanshipSeriesGoal,
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleDollarSign, Star, Target, TrendingUp } from 'lucide-react';
+import { CircleDollarSign, Star, Target, TrendingUp, X } from 'lucide-react';
 import type {
   BonusGameAttempt,
   BonusPeriodLoadoutSelection,
   BonusPeriodRule,
+  MarksmanshipScoreDetails,
 } from '../api/bonusGames.js';
+import { startBonusAttempt } from '../api/bonusGames.js';
 import { fetchMyInventory, type InventoryEquipmentKind } from '../api/inventory.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
-import { PlayView } from '../game/PlayView.js';
+import type { GameScoreboardModel } from '../components/ScoreBoard.js';
+import { PlayView, type PlayResultPresentation } from '../game/PlayView.js';
 import {
   deriveBonusGameClockBasis,
   deriveBonusGameClockEpoch,
+  deriveEnduranceClock,
   futureBonusPeriodDurationMs,
 } from '../game/bonusGameTiming.js';
 import type { SpeedOverrides } from '../game/loop.js';
@@ -29,7 +37,11 @@ import type { GoalieOptions } from '../game/renderer/Goalie.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
 import { useOnboardingGate } from '../onboarding/OnboardingGate.js';
-import { qualificationDescription, qualificationProgress } from '../game/bonusGameQualification.js';
+import {
+  enduranceQualificationLines,
+  qualificationDescription,
+  qualificationProgress,
+} from '../game/bonusGameQualification.js';
 import { versionBonusGameArtwork, versionBonusGameGoalkeeper } from '../game/bonusGameArtwork.js';
 
 const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpriteUrl'> = {
@@ -42,6 +54,9 @@ const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpri
   saveVisualYOffset: 10,
 };
 
+const AMATEUR_GOALKEEPER_READY_URL = '/sprites/test-goalie-black.webp';
+const AMATEUR_GOALKEEPER_SAVE_URL = '/sprites/test-goalie-black-save.webp';
+
 // PlayView normally applies the deferred server DTO at the end of the puck animation.
 // Keep a screen-level fallback so a throttled/lost animation callback cannot leave the
 // accepted shot locked forever and prevent the next (possibly qualifying) shot.
@@ -49,10 +64,15 @@ const BONUS_PENDING_SHOT_FALLBACK_PADDING_MS = 1_250;
 const BONUS_PENDING_SHOT_FALLBACK_MIN_DELAY_MS = 250;
 
 function bonusGoalieOptions(attempt: BonusGameAttempt): GoalieOptions {
+  const usesEnduranceAmateurGoalkeeper = attempt.rules.skill_code === 'endurance';
   return {
     ...BONUS_GAME_GOALIE_OPTIONS,
-    idleSpriteUrl: versionBonusGameGoalkeeper(attempt.goalkeeper_ready_url),
-    saveSpriteUrl: versionBonusGameGoalkeeper(attempt.goalkeeper_save_url),
+    idleSpriteUrl: usesEnduranceAmateurGoalkeeper
+      ? AMATEUR_GOALKEEPER_READY_URL
+      : versionBonusGameGoalkeeper(attempt.goalkeeper_ready_url),
+    saveSpriteUrl: usesEnduranceAmateurGoalkeeper
+      ? AMATEUR_GOALKEEPER_SAVE_URL
+      : versionBonusGameGoalkeeper(attempt.goalkeeper_save_url),
   };
 }
 
@@ -61,6 +81,85 @@ function formatCountdown(ms: number): string {
   const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
   const seconds = String(totalSeconds % 60).padStart(2, '0');
   return `${minutes}:${seconds}`;
+}
+
+function formatTenths(ms: number): string {
+  return (Math.ceil(Math.max(0, ms) / 100) / 10).toFixed(1).replace('.', ',');
+}
+
+function formatPoints(value: number): string {
+  return new Intl.NumberFormat('ru-RU').format(value).replaceAll('\u00a0', ' ');
+}
+
+function marksmanshipDifficultyLabel(code: MarksmanshipDifficultyCode): string {
+  switch (code) {
+    case 'open':
+      return 'Открытое окно';
+    case 'timed':
+      return 'Точный момент';
+    case 'precise':
+      return 'Точное окно';
+    case 'narrow':
+      return 'Сложное окно';
+    case 'very_narrow':
+      return 'Узкое окно';
+    case 'instant':
+      return 'Мгновенное окно';
+  }
+}
+
+function marksmanshipResultPresentation(input: {
+  serverResult: 'goal' | 'save' | 'miss';
+  awardedPoints: number;
+  difficultyCode: MarksmanshipDifficultyCode | null;
+  counterDirection: boolean;
+  scoreDetails?: MarksmanshipScoreDetails | null;
+}): PlayResultPresentation | null {
+  const details = input.scoreDetails;
+  if (input.serverResult !== 'goal') {
+    if (details?.version !== 2) return null;
+    if (details.opportunity === 'human_error' && details.timingErrorMs !== null) {
+      const direction = details.timingErrorMs > 0 ? 'раньше' : 'позже';
+      return {
+        title: input.serverResult === 'save' ? 'СЭЙВ' : 'МИМО',
+        details: ['Момент был', `Бросок на ${Math.abs(details.timingErrorMs)} мс ${direction}`],
+      };
+    }
+    if (details.opportunity === 'closed') {
+      return {
+        title: input.serverResult === 'save' ? 'СЭЙВ' : 'МИМО',
+        details: ['Закрытая ситуация', 'Голевого окна не было'],
+      };
+    }
+    return null;
+  }
+  if (input.awardedPoints <= 0 || input.difficultyCode === null) return null;
+  const technique =
+    details?.version === 2 && details.series.type === 'triple'
+      ? 'Три за прокат'
+      : details?.version === 2 && details.series.type === 'double'
+        ? 'Два за секунду'
+        : details?.version === 2 && details.geometry.behindGoalie
+          ? `За вратаря${details.counterDirection ? ' · противоход' : ''}`
+          : input.counterDirection
+            ? 'Точный момент · противоход'
+            : marksmanshipDifficultyLabel(input.difficultyCode);
+  const breakdown =
+    details?.version === 2
+      ? [
+          `${input.awardedPoints - details.seriesBonus - details.situationBonus} за точность`,
+          ...(details.seriesBonus > 0 ? [`+${details.seriesBonus} серия`] : []),
+          ...(details.situationBonus > 0 ? [`+${details.situationBonus} ситуация`] : []),
+        ].join(' · ')
+      : null;
+  return {
+    title: 'ГОЛ',
+    details: [
+      `+${input.awardedPoints}`,
+      technique,
+      ...(breakdown === null ? [] : [breakdown]),
+    ],
+  };
 }
 
 function authoritativeRemainingMs(
@@ -182,17 +281,30 @@ function BonusPreview({
   attempt,
   busy,
   onAcknowledge,
+  onClose,
 }: {
   attempt: BonusGameAttempt;
   busy: boolean;
   onAcknowledge: (dismissFuture: boolean) => void | Promise<unknown>;
+  onClose: () => void;
 }): JSX.Element {
   return (
     <AccessibleModal
       title={attempt.rules.preview_title}
-      closeBlocked={true}
-      onClose={() => undefined}
-      cardClassName="bonus-game-preview-modal"
+      closeBlocked={busy}
+      onRequestClose={onClose}
+      cardClassName="bonus-game-preview-modal bonus-game-launch-modal"
+      headerAction={
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Закрыть"
+          disabled={busy}
+          onClick={onClose}
+        >
+          <X size={15} />
+        </button>
+      }
     >
       <img
         className="bonus-game-preview-modal__artwork"
@@ -207,7 +319,15 @@ function BonusPreview({
           strokeWidth={2.4}
           aria-hidden="true"
         />
-        {qualificationDescription(attempt.rules.qualification_rules)}
+        {attempt.rules.qualification_rules.type === 'survive_goal_windows' ? (
+          <span className="bonus-game-preview-modal__condition-lines">
+            {enduranceQualificationLines(attempt.rules.qualification_rules).map((line) => (
+              <span key={line}>{line}</span>
+            ))}
+          </span>
+        ) : (
+          qualificationDescription(attempt.rules.qualification_rules)
+        )}
       </p>
       <div className="modal-actions">
         <button
@@ -266,19 +386,45 @@ function BonusResult({
   kind,
   attempt,
   onCatalog,
+  onRetry,
+  retrying,
+  survivedTimeMs,
 }: {
   kind: 'failed' | 'completed' | 'abandoned';
   attempt: BonusGameAttempt;
   onCatalog: () => void;
+  onRetry: () => void;
+  retrying: boolean;
+  survivedTimeMs?: number;
 }): JSX.Element {
   const title = kind === 'completed' ? 'Игра пройдена' : 'Попытка завершена';
+  const enduranceRules =
+    attempt.rules.qualification_rules.type === 'survive_goal_windows'
+      ? attempt.rules.qualification_rules
+      : null;
   let copy: string;
-  if (kind === 'failed') copy = 'Цель не достигнута';
+  if (kind === 'failed') copy = enduranceRules ? 'Не успел забить' : 'Цель не достигнута';
   else if (kind === 'abandoned') copy = 'Прогресс попытки потерян';
   else if (attempt.reward_granted) copy = 'Награда за первое прохождение';
   else copy = 'Повтор завершён без награды';
   const accuracy =
     attempt.shots_taken > 0 ? Math.round((attempt.goals / attempt.shots_taken) * 100) : 0;
+  const marksmanshipRules =
+    attempt.rules.qualification_rules.type === 'points_in_time'
+      ? attempt.rules.qualification_rules
+      : null;
+  const periodStartedAtMs = Date.parse(attempt.period_started_at ?? '');
+  const closedAtMs = Date.parse(attempt.closed_at ?? '');
+  const derivedSurvivedTimeMs =
+    Number.isFinite(periodStartedAtMs) && Number.isFinite(closedAtMs)
+      ? Math.max(0, closedAtMs - periodStartedAtMs)
+      : survivedTimeMs;
+  const enduranceDurationMs =
+    enduranceRules === null
+      ? null
+      : kind === 'completed'
+        ? enduranceRules.activeTimeMs
+        : Math.min(enduranceRules.activeTimeMs, derivedSurvivedTimeMs ?? 0);
   const rewardParts = [
     attempt.reward.coins > 0
       ? {
@@ -327,14 +473,39 @@ function BonusResult({
         WebkitBackdropFilter: 'blur(8px)',
       }}
     >
-      <div
-        className="bonus-game-result-metrics"
-        aria-label={`Итого: ${attempt.goals} голов из ${attempt.shots_taken} бросков, точность ${accuracy}%`}
-      >
-        <BonusResultMetric label="Голы" value={String(attempt.goals)} />
-        <BonusResultMetric label="Броски" value={String(attempt.shots_taken)} />
-        <BonusResultMetric label="Точность" value={`${accuracy}%`} />
-      </div>
+      {enduranceRules && enduranceDurationMs !== null ? (
+        <div
+          className="bonus-game-result-metrics bonus-game-result-metrics--endurance"
+          aria-label={`Время ${formatCountdown(enduranceDurationMs)}, голов ${attempt.goals}`}
+        >
+          <BonusResultMetric
+            label={kind === 'completed' ? 'Время' : 'Продержался'}
+            value={formatCountdown(enduranceDurationMs)}
+          />
+          <BonusResultMetric label="Голы" value={String(attempt.goals)} />
+        </div>
+      ) : marksmanshipRules ? (
+        <div
+          className="bonus-game-result-metrics"
+          aria-label={`Итого: ${attempt.total_points} очков, цель ${marksmanshipRules.targetPoints}`}
+        >
+          <BonusResultMetric label="Набрано" value={formatPoints(attempt.total_points)} />
+          <BonusResultMetric label="Цель" value={formatPoints(marksmanshipRules.targetPoints)} />
+          <BonusResultMetric
+            label="Не хватило"
+            value={formatPoints(Math.max(0, marksmanshipRules.targetPoints - attempt.total_points))}
+          />
+        </div>
+      ) : (
+        <div
+          className="bonus-game-result-metrics"
+          aria-label={`Итого: ${attempt.goals} голов из ${attempt.shots_taken} бросков, точность ${accuracy}%`}
+        >
+          <BonusResultMetric label="Голы" value={String(attempt.goals)} />
+          <BonusResultMetric label="Броски" value={String(attempt.shots_taken)} />
+          <BonusResultMetric label="Точность" value={`${accuracy}%`} />
+        </div>
+      )}
       {kind === 'completed' && attempt.reward_granted && rewardParts.length > 0 ? (
         <div className="bonus-game-result-reward">
           <span className="bonus-game-result-reward-label">Награда</span>
@@ -354,6 +525,11 @@ function BonusResult({
         </div>
       ) : null}
       <div className="modal-actions bonus-game-result-actions">
+        {kind === 'failed' && marksmanshipRules ? (
+          <button type="button" className="btn btn--ghost" disabled={retrying} onClick={onRetry}>
+            {retrying ? 'Начинаем…' : 'Повторить'}
+          </button>
+        ) : null}
         <button type="button" className="modal-primary btn btn--cta" onClick={onCatalog}>
           К бонусным играм
         </button>
@@ -506,10 +682,25 @@ export function BonusGamePlayScreen(): JSX.Element {
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [inventorySelection, setInventorySelection] = useState<BonusPeriodLoadoutSelection>({});
   const [isConfirmingAbandon, setIsConfirmingAbandon] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [enduranceEntranceAttemptId, setEnduranceEntranceAttemptId] = useState<string | null>(null);
   const abandonRequestRef = useRef(false);
   const loadedRouteRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const predictedMarksmanshipRef = useRef<{
+    shotIndex: number;
+    classification: MarksmanshipShotClassification;
+  } | null>(null);
+  const earliestMarksmanshipTapRef = useRef(0);
+  const marksmanshipGoalInputsRef = useRef<MarksmanshipSeriesGoal[]>([]);
+  const lastEnduranceElapsedMsRef = useRef<number | undefined>(undefined);
   const isAuthoritativeBreak = attempt?.status === 'active' && attempt.state === 'break_active';
+
+  useEffect(() => {
+    predictedMarksmanshipRef.current = null;
+    earliestMarksmanshipTapRef.current = 0;
+    marksmanshipGoalInputsRef.current = [];
+  }, [attempt?.current_period, attempt?.id]);
 
   useEffect(() => {
     if (pendingShot === null) return;
@@ -584,6 +775,106 @@ export function BonusGamePlayScreen(): JSX.Element {
   const refreshAttempt = useCallback(async (): Promise<void> => {
     if (attempt) await loadAttempt(attempt.id);
   }, [attempt, loadAttempt]);
+  const activeEnduranceAttempt =
+    attempt?.status === 'active' &&
+    attempt.state === 'period_active' &&
+    attempt.rules.qualification_rules.type === 'survive_goal_windows'
+      ? attempt
+      : null;
+  const recordEnduranceClock = useCallback(
+    (totalRemainingMs: number): void => {
+      if (activeEnduranceAttempt === null) return;
+      const enduranceRules = activeEnduranceAttempt.rules.qualification_rules;
+      if (enduranceRules.type !== 'survive_goal_windows') return;
+      lastEnduranceElapsedMsRef.current = Math.max(
+        0,
+        enduranceRules.activeTimeMs - totalRemainingMs,
+      );
+    },
+    [activeEnduranceAttempt],
+  );
+  const [enduranceClock, setEnduranceClock] = useState<ReturnType<
+    typeof deriveEnduranceClock
+  > | null>(null);
+  const [enduranceGoalTimerPaused, setEnduranceGoalTimerPaused] = useState(false);
+  const frozenEnduranceGoalMsRef = useRef<number | null>(null);
+  const enduranceElapsedRequestedRef = useRef(false);
+  useEffect(() => {
+    enduranceElapsedRequestedRef.current = false;
+  }, [
+    activeEnduranceAttempt?.id,
+    activeEnduranceAttempt?.period_ends_at,
+    activeEnduranceAttempt?.goal_window_ends_at,
+  ]);
+  useEffect(() => {
+    if (activeEnduranceAttempt === null) {
+      setEnduranceClock(null);
+      frozenEnduranceGoalMsRef.current = null;
+      return;
+    }
+    const receivedAt = receivedAtPerformanceMs ?? performance.now();
+    const update = (): void => {
+      const authoritativeClock = deriveEnduranceClock(
+        activeEnduranceAttempt,
+        receivedAt,
+        performance.now(),
+      );
+      const nextClock = enduranceGoalTimerPaused
+        ? {
+            ...authoritativeClock,
+            goalRemainingMs: frozenEnduranceGoalMsRef.current ?? authoritativeClock.goalRemainingMs,
+          }
+        : authoritativeClock;
+      setEnduranceClock(nextClock);
+      recordEnduranceClock(authoritativeClock.totalRemainingMs);
+      const deadlineElapsed =
+        authoritativeClock.totalRemainingMs === 0 ||
+        (!enduranceGoalTimerPaused && authoritativeClock.goalRemainingMs === 0);
+      if (!enduranceElapsedRequestedRef.current && deadlineElapsed) {
+        enduranceElapsedRequestedRef.current = true;
+        void refreshAttempt();
+      }
+    };
+    update();
+    const intervalId = window.setInterval(update, 100);
+    return () => window.clearInterval(intervalId);
+  }, [
+    activeEnduranceAttempt,
+    enduranceGoalTimerPaused,
+    receivedAtPerformanceMs,
+    recordEnduranceClock,
+    refreshAttempt,
+  ]);
+  const handleEnduranceResultVisibility = useCallback(
+    (visible: boolean): void => {
+      if (visible && activeEnduranceAttempt !== null) {
+        const receivedAt = receivedAtPerformanceMs ?? performance.now();
+        const currentClock =
+          enduranceClock ??
+          deriveEnduranceClock(activeEnduranceAttempt, receivedAt, performance.now());
+        frozenEnduranceGoalMsRef.current = currentClock.goalRemainingMs;
+      } else {
+        frozenEnduranceGoalMsRef.current = null;
+      }
+      setEnduranceGoalTimerPaused(visible);
+    },
+    [activeEnduranceAttempt, enduranceClock, receivedAtPerformanceMs],
+  );
+  useEffect(() => {
+    if (activeEnduranceAttempt === null) return;
+    const reconcile = (): void => {
+      void loadAttempt(activeEnduranceAttempt.id);
+    };
+    const reconcileWhenVisible = (): void => {
+      if (document.visibilityState === 'visible') reconcile();
+    };
+    window.addEventListener('online', reconcile);
+    document.addEventListener('visibilitychange', reconcileWhenVisible);
+    return () => {
+      window.removeEventListener('online', reconcile);
+      document.removeEventListener('visibilitychange', reconcileWhenVisible);
+    };
+  }, [activeEnduranceAttempt, loadAttempt]);
   const handleStartPeriod = useCallback(async (): Promise<BonusGameAttempt | null> => {
     if (inFlight) return null;
     const result = await startPeriod(attempt?.rules.use_inventory ? inventorySelection : undefined);
@@ -595,7 +886,9 @@ export function BonusGamePlayScreen(): JSX.Element {
       setInventoryOpen(true);
       return null;
     }
-    return await handleStartPeriod();
+    const result = await handleStartPeriod();
+    if (result === null) setEnduranceEntranceAttemptId(null);
+    return result;
   }, [attempt?.rules.use_inventory, handleStartPeriod]);
 
   const confirmAndAbandon = useCallback(async (): Promise<void> => {
@@ -611,6 +904,21 @@ export function BonusGamePlayScreen(): JSX.Element {
     abandonRequestRef.current = false;
     setIsConfirmingAbandon(false);
   }, [abandon, leavePlaySurface, queryClient]);
+
+  const retryAttempt = useCallback(async (): Promise<void> => {
+    if (isRetrying || attempt === null) return;
+    setIsRetrying(true);
+    try {
+      const response = await startBonusAttempt(attempt.game_id);
+      useBonusGameStore.getState().applyState(response.attempt);
+      navigate(
+        `/bonus-games/${response.attempt.game_id}/play?attempt=${encodeURIComponent(response.attempt.id)}`,
+        { replace: true },
+      );
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [attempt, isRetrying, navigate]);
 
   if (needsReconcile && attempt === null) {
     return (
@@ -695,6 +1003,62 @@ export function BonusGamePlayScreen(): JSX.Element {
     (total, period) => total + (period.shots_limit ?? 0),
     0,
   );
+  const marksmanshipRules =
+    attempt.rules.qualification_rules.type === 'points_in_time'
+      ? attempt.rules.qualification_rules
+      : null;
+  const isMarksmanship = marksmanshipRules !== null;
+  const isEndurance = attempt.rules.qualification_rules.type === 'survive_goal_windows';
+  const marksmanshipTarget = marksmanshipRules?.targetPoints ?? null;
+  const enduranceRules =
+    attempt.rules.qualification_rules.type === 'survive_goal_windows'
+      ? attempt.rules.qualification_rules
+      : null;
+  const showEnduranceTimer =
+    isEndurance &&
+    (isPeriodActive || (isIdle && enduranceEntranceAttemptId === attempt.id));
+  const visibleEnduranceClock =
+    activeEnduranceAttempt === null
+      ? null
+      : (enduranceClock ??
+        deriveEnduranceClock(
+          activeEnduranceAttempt,
+          receivedAtPerformanceMs ?? performance.now(),
+          performance.now(),
+        ));
+  const enduranceScoreboardModel:
+    | ((counters: { goals: number; shots: number }) => GameScoreboardModel)
+    | undefined =
+    enduranceRules === null
+      ? undefined
+      : ({ goals: visibleGoals, shots: visibleShots }) => ({
+          rows: [
+            {
+              id: 'summary',
+              metrics: [
+                { id: 'period', label: 'ПЕРИОД', value: `${periodNumber}/1` },
+                {
+                  id: 'goals',
+                  label: 'ГОЛЫ',
+                  value: String(visibleGoals),
+                },
+                {
+                  id: 'shots',
+                  label: 'БРОСКИ',
+                  value: String(visibleShots),
+                },
+                {
+                  id: 'total-time',
+                  label: 'ВРЕМЯ',
+                  value: formatCountdown(
+                    visibleEnduranceClock?.totalRemainingMs ?? enduranceRules.activeTimeMs,
+                  ),
+                  tone: 'timer',
+                },
+              ],
+            },
+          ],
+        });
 
   return (
     <>
@@ -722,12 +1086,43 @@ export function BonusGamePlayScreen(): JSX.Element {
         shots={attempt.shots_taken}
         shotIndexBase={attempt.current_period_shots_taken}
         shotsTotal={terminalShotsTotal > 0 ? terminalShotsTotal : undefined}
-        scoreboardNotice={qualificationProgress(attempt.rules.qualification_rules, {
-          goals: attempt.goals,
-          shots: attempt.shots_taken,
-          currentStreak: attempt.current_goal_streak,
-          bestStreak: attempt.best_goal_streak,
-        })}
+        scoreboardNotice={
+          isEndurance
+            ? undefined
+            : marksmanshipTarget === null
+              ? qualificationProgress(attempt.rules.qualification_rules, {
+                  goals: attempt.goals,
+                  shots: attempt.shots_taken,
+                  totalPoints: attempt.total_points,
+                  currentStreak: attempt.current_goal_streak,
+                  bestStreak: attempt.best_goal_streak,
+                })
+              : `${formatPoints(attempt.total_points)} / ${formatPoints(marksmanshipTarget)}`
+        }
+        scoreboardModel={enduranceScoreboardModel}
+        scoreboardAccessory={
+          showEnduranceTimer ? (
+            <div
+              className={`game-scoreboard game-scoreboard--stable-surface bonus-game-endurance-timer bonus-game-endurance-timer--${
+                (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 4_000
+                  ? 'danger'
+                  : (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <=
+                      10_000
+                    ? 'warning'
+                    : 'success'
+              }`}
+              role="timer"
+              aria-label="До обязательного гола"
+            >
+              <span className="game-scoreboard__label">ТАЙМЕР</span>
+              <span className="bonus-game-endurance-timer__value">
+                {formatTenths(
+                  visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs,
+                )}
+              </span>
+            </div>
+          ) : undefined
+        }
         timer={isTerminal ? '00:00' : isIdle ? formatCountdown(idleTimerMs) : undefined}
         shotButtonLabel={
           needsReconcile
@@ -746,6 +1141,9 @@ export function BonusGamePlayScreen(): JSX.Element {
         inactiveAction={
           isIdle && !isBetweenPeriods && !previewRequired ? requestStartPeriod : undefined
         }
+        onInactiveActionStart={
+          isEndurance ? () => setEnduranceEntranceAttemptId(attempt.id) : undefined
+        }
         entranceBeforeInactiveAction={true}
         goalsOnlyWhileInactive={true}
         sessionStartedAt={attempt.period_started_at}
@@ -756,7 +1154,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         clockRebaseKey={clockRebaseKey}
         periodEndsAt={localPeriodEndsAt}
         scoreboardEndsAt={scoreboardEndsAt}
-        onTimerExpired={isPeriodActive ? refreshAttempt : undefined}
+        onTimerExpired={isPeriodActive && !isEndurance ? refreshAttempt : undefined}
         optimisticAddShot={optimisticAddShot}
         submitShot={async ({ shotIndex, input, claimedResult }) => {
           if (input.shooterTapTime === undefined) return null;
@@ -781,17 +1179,91 @@ export function BonusGamePlayScreen(): JSX.Element {
               },
               claimed_result: claimedResult,
             },
-            { deferApply: true },
+            {
+              deferApply: true,
+              ...(isMarksmanship
+                ? {
+                    predictedMarksmanship:
+                      predictedMarksmanshipRef.current?.shotIndex === shotIndex
+                        ? predictedMarksmanshipRef.current.classification
+                        : null,
+                  }
+                : {}),
+            },
           );
           if (!mountedRef.current) applyPendingShot();
           return result
             ? {
                 serverResult: result.serverResult,
                 state: result.attempt,
+                resultPresentation: isMarksmanship
+                  ? marksmanshipResultPresentation({
+                      serverResult: result.serverResult,
+                      awardedPoints: result.awardedPoints,
+                      difficultyCode: result.difficultyCode,
+                      counterDirection: result.counterDirection,
+                      scoreDetails: result.scoreDetails,
+                    })
+                  : undefined,
                 ...(result.isCurrent === undefined ? {} : { isCurrent: result.isCurrent }),
               }
             : null;
         }}
+        onShotResolved={
+          isMarksmanship
+            ? (context) => {
+                const classification = classifyMarksmanshipShot({
+                  shotInput: context.input,
+                  goalie: context.goalieConfig,
+                  seed: context.seed,
+                  shotIndex: context.shotIndex,
+                  phaseOffsets: context.phaseOffsets,
+                  earliestTapTime: earliestMarksmanshipTapRef.current,
+                  scoring: marksmanshipRules!.scoring,
+                  previousGoals: marksmanshipGoalInputsRef.current,
+                });
+                predictedMarksmanshipRef.current = {
+                  shotIndex: context.shotIndex,
+                  classification,
+                };
+                earliestMarksmanshipTapRef.current =
+                  context.input.tapTime +
+                  (PUCK_START.y - GOAL_OPENING.y) /
+                    (context.input.puckSpeedPerMs ?? speedOverrides.puckSpeed);
+                if (classification.result.type === 'goal') {
+                  marksmanshipGoalInputsRef.current = [
+                    ...marksmanshipGoalInputsRef.current,
+                    {
+                      tapTime: context.input.tapTime,
+                      shooterTapTime: context.input.shooterTapTime ?? context.input.tapTime,
+                    },
+                  ];
+                }
+                return marksmanshipResultPresentation({
+                  serverResult: classification.result.type,
+                  awardedPoints: classification.awardedPoints,
+                  difficultyCode: classification.difficultyCode,
+                  counterDirection: classification.counterDirection,
+                  scoreDetails: {
+                    version: 2,
+                    windowDurationMs: classification.windowDurationMs,
+                    difficultyCode: classification.difficultyCode,
+                    counterDirection: classification.counterDirection,
+                    opportunity: classification.opportunity,
+                    timingErrorMs: classification.timingErrorMs,
+                    geometry: classification.geometry,
+                    series: classification.series,
+                    situationBonus: classification.situationBonus,
+                    seriesBonus: classification.seriesBonus,
+                  },
+                });
+              }
+            : undefined
+        }
+        resultCopy={isMarksmanship ? { goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' } : undefined}
+        onResultVisibilityChange={
+          isEndurance && isPeriodActive ? handleEnduranceResultVisibility : undefined
+        }
         applyState={() => undefined}
         applyResolvedState={(next) => applyPendingShot(next)}
         overlayControls={
@@ -804,11 +1276,25 @@ export function BonusGamePlayScreen(): JSX.Element {
       />
 
       {terminalKind ? (
-        <BonusResult kind={terminalKind} attempt={attempt} onCatalog={leavePlaySurface} />
+        <BonusResult
+          kind={terminalKind}
+          attempt={attempt}
+          onCatalog={leavePlaySurface}
+          onRetry={() => void retryAttempt()}
+          retrying={isRetrying}
+          {...(lastEnduranceElapsedMsRef.current === undefined
+            ? {}
+            : { survivedTimeMs: lastEnduranceElapsedMsRef.current })}
+        />
       ) : null}
 
       {previewRequired ? (
-        <BonusPreview attempt={attempt} busy={inFlight} onAcknowledge={acknowledgePreview} />
+        <BonusPreview
+          attempt={attempt}
+          busy={inFlight}
+          onAcknowledge={acknowledgePreview}
+          onClose={leavePlaySurface}
+        />
       ) : null}
 
       {isBreak ? (

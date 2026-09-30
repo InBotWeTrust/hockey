@@ -10,6 +10,7 @@ import {
   Target,
   TrendingUp,
   Trophy,
+  Copy,
   X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -21,7 +22,10 @@ import {
   type InventoryState,
 } from '../api/inventory.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { DuelEquipmentSelectionRadio } from '../components/duel/DuelLockerTab.js';
 import { CommunityLinks } from '../components/CommunityLinks.js';
+import { triggerHaptic } from '../feedback/haptics.js';
+import { copyText } from '../platform/clipboard.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
 import {
@@ -48,6 +52,7 @@ import type { ExperienceRatingPlayer } from '../api/experienceRating.js';
 import { StatRatingModal } from '../profile/StatRatingModal.js';
 import type { StatRatingMetric, StatRatingPlayer } from '../api/statRating.js';
 import { preloadArtwork, profileArtworkUrls } from '../app/artworkCache.js';
+import { fetchReferralSummary, type ReferralSummary } from '../api/referrals.js';
 
 export type TrophySectionKey = keyof NonNullable<ProfileData['trophyDetails']>;
 
@@ -237,6 +242,64 @@ function EquipmentPanel({
   );
 }
 
+function ReferralPanel({ summary, onOpen }: { summary: ReferralSummary | undefined; onOpen: () => void }): JSX.Element {
+  const [copyToastSequence, setCopyToastSequence] = useState(0);
+  const inviteUrl = summary ? `${window.location.origin}/invite/${summary.code}` : '';
+  const copy = (value: string): void => {
+    void copyText(value).then((copied) => {
+      if (!copied) return;
+      triggerHaptic('selection');
+      setCopyToastSequence((sequence) => sequence + 1);
+    });
+  };
+  useEffect(() => {
+    if (copyToastSequence === 0) return undefined;
+    const timeout = window.setTimeout(() => setCopyToastSequence(0), 1_500);
+    return () => window.clearTimeout(timeout);
+  }, [copyToastSequence]);
+  return (
+    <section className="profile-referral-section" aria-label="Приглашай друзей">
+      <button type="button" className="section-label profile-section-label" aria-label="Открыть приглашённых друзей" onClick={onOpen}>
+        Приглашай друзей
+        {(summary?.totalInvited ?? 0) > 0 ? <span className="profile-referral-section__count"> · {summary?.totalInvited}</span> : null}
+      </button>
+      <div className="profile-referral-panel glass">
+        <button
+          type="button"
+          className="profile-referral-panel__open"
+          aria-label="Открыть карточку приглашений"
+          onClick={onOpen}
+        />
+        <span className="profile-referral-panel__artwork">
+          <img src="/profile/referral-friends.webp" alt="Два хоккеиста вместе" />
+        </span>
+        <span className="profile-referral-panel__copy">
+          <strong>Играть вместе выгоднее</strong>
+          <span className="profile-referral-actions">
+            <span className="profile-referral-actions__group profile-referral-actions__copy">
+              <span className="profile-referral-actions__buttons">
+                <button type="button" aria-label="Скопировать код" disabled={!summary} onClick={() => { if (summary) copy(summary.code); }}><Copy size={13} /><span>Код</span></button>
+                <button type="button" aria-label="Скопировать ссылку" disabled={!inviteUrl} onClick={() => copy(inviteUrl)}><Copy size={13} /><span>Ссылка</span></button>
+              </span>
+            </span>
+          </span>
+        </span>
+        <span className="profile-referral-panel__side">
+          {(summary?.unclaimedRewardsCount ?? 0) > 0 ? (
+            <span className="profile-referral-panel__attention attention-dot-pulse" aria-label="Есть награды за приглашения" />
+          ) : null}
+          <ChevronRight size={20} aria-hidden="true" />
+        </span>
+      </div>
+      {copyToastSequence > 0 ? (
+        <div className="achievement-reward-toast profile-referral-copy-toast" role="status" aria-live="polite">
+          <strong className="achievement-reward-toast__title">Скопировано</strong>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function formatRecoveryDuration(minutes: number): string {
   if (minutes === 60) return '1 час';
   return `${minutes} минут`;
@@ -292,10 +355,12 @@ function CareerPanel({
   profile,
   onOpen,
   onChoose,
+  hidden = false,
 }: {
   profile: ProfileData;
   onOpen: () => void;
   onChoose: (achievement: ProfileData['achievements'][number]) => void;
+  hidden?: boolean;
 }): JSX.Element {
   const summary = summarizeAchievementProgress(profile.achievements);
   const earned = profile.achievements
@@ -309,7 +374,7 @@ function CareerPanel({
       return 0;
     });
   return (
-    <section className="profile-career-section" aria-label="Задания">
+    <section className={`profile-career-section${hidden ? ' profile-career-section--hidden' : ''}`} aria-label="Задания" hidden={hidden}>
       <button
         type="button"
         className="section-label profile-section-label"
@@ -374,47 +439,65 @@ function EquipmentPickerModal({
     group === 'stick' ? 'Обычная клюшка' : group === 'skates' ? 'Обычные коньки' : 'Без питания';
   const selected = inventory.equipped[kind];
   const availableItems = inventory.items[group].filter((item) => item.chargesAvailable > 0);
+  const selectItem = (item: InventoryItem | null): void => {
+    const nextId = item?.instanceId ?? item?.id ?? null;
+    if (nextId === selected) return;
+    triggerHaptic('selection');
+    onSelect(item);
+  };
   return (
     <AccessibleModal
       title={`Выбрать ${label}`}
       ariaLabel={`Выбрать ${label}`}
       onRequestClose={onClose}
+      cardStyle={{
+        width: 'min(430px, calc(100vw - 28px))',
+        maxHeight: 'calc(100dvh - 112px - var(--app-safe-top) - var(--app-safe-bottom))',
+        overflow: 'hidden',
+      }}
       headerAction={
         <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
           <X size={15} />
         </button>
       }
     >
-      <div className="profile-picker-list">
+      <div className="profile-picker-list no-scrollbar">
         <button
           type="button"
           aria-label={`Выбрать ${defaultTitle}`}
-          className={`profile-picker-item${selected === null ? ' profile-picker-item--selected' : ''}`}
-          onClick={() => onSelect(null)}
+          aria-pressed={selected === null}
+          className={`glass duel-equipment-option${selected === null ? ' duel-equipment-option--selected' : ''}`}
+          onClick={() => selectItem(null)}
         >
           <img src={placeholderArtworkForKind(group)} alt="" />
           <span>
             <strong>{defaultTitle}</strong>
             <small>Базовый вариант</small>
           </span>
+          <DuelEquipmentSelectionRadio selected={selected === null} />
         </button>
-        {availableItems.map((item) => (
-          <button
-            type="button"
-            className={`profile-picker-item${selected === item.id || selected === item.instanceId ? ' profile-picker-item--selected' : ''}`}
-            key={item.id}
-            onClick={() => onSelect(item)}
-          >
-            <img src={artworkForInventoryItem(item)} alt="" />
-            <span>
-              <strong>{item.title}</strong>
-              <small>
-                Осталось:{' '}
-                {formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}
-              </small>
-            </span>
-          </button>
-        ))}
+        {availableItems.map((item) => {
+          const itemSelected = selected === item.id || selected === item.instanceId;
+          return (
+            <button
+              type="button"
+              aria-pressed={itemSelected}
+              className={`glass duel-equipment-option${itemSelected ? ' duel-equipment-option--selected' : ''}`}
+              key={item.id}
+              onClick={() => selectItem(item)}
+            >
+              <img src={artworkForInventoryItem(item)} alt="" />
+              <span>
+                <strong>{item.title}</strong>
+                <small>
+                  Осталось:{' '}
+                  {formatInventoryResourceAmount(item.kind, item.chargesAvailable, item.resourceUnit)}
+                </small>
+              </span>
+              <DuelEquipmentSelectionRadio selected={itemSelected} />
+            </button>
+          );
+        })}
       </div>
     </AccessibleModal>
   );
@@ -672,6 +755,7 @@ export function ProfileScreen(): JSX.Element {
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
   });
+  const referralQuery = useQuery({ queryKey: ['referrals', 'summary'], queryFn: fetchReferralSummary });
   const synchronizeProfileStats = useCallback(
     (player: StatRatingPlayer): void => {
       queryClient.setQueryData<ProfileData>(['profile'], (current) => {
@@ -718,6 +802,9 @@ export function ProfileScreen(): JSX.Element {
       ...(profile.displaySource !== undefined ? { displaySource: profile.displaySource } : {}),
       ...(profile.linkedProviders !== undefined
         ? { linkedProviders: profile.linkedProviders }
+        : {}),
+      ...(profile.unclaimedReferralRewardsCount !== undefined
+        ? { unclaimedReferralRewardsCount: profile.unclaimedReferralRewardsCount }
         : {}),
     });
   }, [profileQuery.data, updateUser]);
@@ -878,10 +965,12 @@ export function ProfileScreen(): JSX.Element {
           onChoose={setPickerKind}
           onOpenRecovery={() => setRecoveryStockOpen(true)}
         />
+        <ReferralPanel summary={referralQuery.data} onOpen={() => navigate('/referrals')} />
         <CareerPanel
           profile={profile}
           onOpen={() => navigate('/profile/achievements')}
           onChoose={setSelectedAchievement}
+          hidden
         />
         <CommunityLinks />
       </section>

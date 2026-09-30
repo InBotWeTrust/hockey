@@ -127,13 +127,15 @@ describe('PlayView rink availability visuals', () => {
     });
   });
 
-  it('keeps play controls above the compact dock inset by default', async () => {
+  it('fits play controls inside the visual viewport with the platform-specific play inset', async () => {
     renderPlayView({ showIceCar: false });
 
     const root = await screen.findByRole('main');
 
     expect(root).toHaveStyle({
-      bottom: 'calc(8px + var(--app-dock-safe-bottom))',
+      bottom: 'auto',
+      height:
+        'calc(var(--app-viewport-height, 100dvh) - var(--app-safe-top) - 6px - var(--app-play-safe-bottom))',
     });
   });
 

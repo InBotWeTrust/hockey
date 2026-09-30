@@ -1,14 +1,17 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type GoalieConfig } from '@hockey/game-core';
 import { useState } from 'react';
-import { PlayView, type PlayShotResolver } from './PlayView.js';
+import { PlayView, TRAINING_COURSE_GOAL_OPTIONS, type PlayShotResolver } from './PlayView.js';
 import type * as ReactModule from 'react';
 
 const tickerCallbacks = vi.hoisted(() => [] as Array<() => void>);
 const tickerEvents = vi.hoisted(() => [] as Array<'add' | 'remove'>);
 const playerContainers = vi.hoisted(() => [] as Array<{ visible: boolean }>);
 const goalieContainers = vi.hoisted(() => [] as Array<{ visible: boolean }>);
+const puckShotPaths = vi.hoisted(
+  () => [] as Array<{ start: { x: number; y: number }; end: { x: number; y: number } }>,
+);
 
 vi.mock('pixi.js', () => ({
   Container: class Container {
@@ -79,10 +82,15 @@ vi.mock('./renderer/Puck.js', () => ({
       return false;
     }
     resetAtStart(): void {}
+    bladePoint(shooterX: number): { x: number; y: number } {
+      return { x: shooterX + 41, y: 580 };
+    }
     shotPath(): { start: { x: number; y: number }; end: { x: number; y: number } } {
       return { start: { x: 286, y: 580 }, end: { x: 286, y: 60 } };
     }
-    playShot(): void {}
+    playShot(start: { x: number; y: number }, end: { x: number; y: number }): void {
+      puckShotPaths.push({ start, end });
+    }
     holdAt(): void {}
     release(): void {}
     update(): void {}
@@ -134,11 +142,19 @@ describe('PlayView', () => {
     tickerEvents.length = 0;
     playerContainers.length = 0;
     goalieContainers.length = 0;
+    puckShotPaths.length = 0;
   });
 
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it('keeps the upright transparent goal asset scoped to the initial training course', () => {
+    expect(TRAINING_COURSE_GOAL_OPTIONS).toMatchObject({
+      spriteUrl: '/sprites/training-course-goal-transparent.png',
+      gateAspect: 1533 / 1026,
+    });
   });
 
   it('passes the exact supplied goalie configuration to local shot resolution', () => {
@@ -379,6 +395,33 @@ describe('PlayView', () => {
     expect(submitShot).toHaveBeenCalledTimes(1);
   });
 
+  it('animates a resolved goal toward its authoritative hit point', () => {
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="bonus-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotsTotal={30}
+        shotResolver={() => ({ type: 'goal', hitPoint: { x: 180, y: 60 } })}
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+
+    expect(puckShotPaths.at(-1)?.end).toEqual({ x: 180, y: 60 });
+  });
+
   it('reveals the optimistic scoreboard result only when the puck reaches the goal', async () => {
     vi.useFakeTimers();
 
@@ -435,6 +478,7 @@ describe('PlayView', () => {
         goalieId={null}
         goalieConfig={beachGoalie}
         periodNumber={3}
+        periodLabel="УПРАЖНЕНИЕ"
         scoreboardPeriodNumber={1}
         scoreboardPeriodsTotal={1}
         goals={0}
@@ -446,7 +490,8 @@ describe('PlayView', () => {
       />,
     );
 
-    expect(screen.getByLabelText('Игровое табло')).toHaveTextContent('ПЕРИОД1/1');
+    expect(screen.getByLabelText('Игровое табло')).toHaveTextContent('УПРАЖНЕНИЕ1/1');
+    expect(screen.getByText('УПРАЖНЕНИЕ')).toHaveClass('game-scoreboard__label--small');
   });
 
   it('blocks the primary action without stopping an active scene', () => {
@@ -535,6 +580,62 @@ describe('PlayView', () => {
     expect(goalieContainers.at(-1)?.visible).toBe(true);
   });
 
+  it('announces an inactive action before its entrance animation starts', async () => {
+    const onInactiveActionStart = vi.fn();
+    const inactiveAction = vi.fn(async () => null);
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active={false}
+        seed="daily-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotsTotal={30}
+        shotButtonLabel="НАЧАТЬ"
+        inactiveAction={inactiveAction}
+        onInactiveActionStart={onInactiveActionStart}
+        entranceBeforeInactiveAction
+        optimisticAddShot={() => undefined}
+        submitShot={async () => null}
+        applyState={() => undefined}
+      />,
+    );
+    await act(async () => Promise.resolve());
+
+    fireEvent.click(screen.getByRole('button', { name: 'НАЧАТЬ' }));
+
+    expect(onInactiveActionStart).toHaveBeenCalledTimes(1);
+    expect(inactiveAction).not.toHaveBeenCalled();
+  });
+
+  it('keeps a hidden goalkeeper out of the entrance animation', async () => {
+    const commonProps = {
+      showIceCar: false,
+      onBack: () => undefined,
+      seed: 'course-seed',
+      goalieId: 'rookie',
+      goalieConfig: beachGoalie,
+      periodNumber: 1,
+      goals: 0,
+      shots: 0,
+      optimisticAddShot: () => undefined,
+      submitShot: async () => null,
+      applyState: () => undefined,
+      hideGoalie: true,
+    } as const;
+    const view = render(<PlayView {...commonProps} active={false} suppressedByModal />);
+    await act(async () => Promise.resolve());
+
+    view.rerender(<PlayView {...commonProps} active suppressedByModal={false} />);
+
+    expect(goalieContainers.at(-1)?.visible).toBe(false);
+  });
+
   it('keeps authoritative clocks continuous through the shot result pause', async () => {
     vi.useFakeTimers();
     let now = 1_000;
@@ -550,6 +651,7 @@ describe('PlayView', () => {
       serverResult: 'miss' as const,
       state: resolvedSnapshot,
     }));
+    const onResultVisibilityChange = vi.fn();
     const commonProps = {
       suppressedByModal: false,
       showIceCar: false,
@@ -567,6 +669,7 @@ describe('PlayView', () => {
       clockRebaseKey: 'period-1',
       speedOverrides: { goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 },
       continuousClockDuringResult: true,
+      onResultVisibilityChange,
       freezeRenderingDuringResult: true,
       shotResolver,
       optimisticAddShot: () => undefined,
@@ -584,11 +687,7 @@ describe('PlayView', () => {
       );
     }
     const view = render(
-      <PlayView
-        {...commonProps}
-        shots={0}
-        applyResolvedState={applyResolvedState}
-      />,
+      <PlayView {...commonProps} shots={0} applyResolvedState={applyResolvedState} />,
     );
     await act(async () => Promise.resolve());
 
@@ -600,11 +699,13 @@ describe('PlayView', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(434);
     });
+    expect(onResultVisibilityChange).toHaveBeenLastCalledWith(true);
     expect(tickerEvents.at(-1)).toBe('remove');
     now = 2_434;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_000);
     });
+    expect(onResultVisibilityChange).toHaveBeenLastCalledWith(false);
     expect(tickerEvents.at(-1)).toBe('add');
     act(() => tickerCallbacks.at(-1)?.());
 
@@ -619,6 +720,152 @@ describe('PlayView', () => {
         }),
       }),
     );
+  });
+
+  it('keeps the result visible until a delayed shot response can start the next window', async () => {
+    vi.useFakeTimers();
+    let resolveSubmit: ((value: { serverResult: 'miss'; state: { shots: number } }) => void) | null =
+      null;
+    const submitShot = vi.fn(
+      () =>
+        new Promise<{ serverResult: 'miss'; state: { shots: number } }>((resolve) => {
+          resolveSubmit = resolve;
+        }),
+    );
+    const onResultVisibilityChange = vi.fn();
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="delayed-endurance-response"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        speedOverrides={{ goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 }}
+        continuousClockDuringResult
+        freezeRenderingDuringResult
+        waitForShotResponseBeforeResultClose
+        shotResolver={() => ({ type: 'miss', reason: 'wide' })}
+        optimisticAddShot={() => undefined}
+        submitShot={submitShot}
+        applyState={() => undefined}
+        onResultVisibilityChange={onResultVisibilityChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => vi.advanceTimersByTimeAsync(1_500));
+
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(onResultVisibilityChange).toHaveBeenLastCalledWith(true);
+
+    await act(async () => {
+      resolveSubmit?.({ serverResult: 'miss', state: { shots: 1 } });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(onResultVisibilityChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('keeps the default result lifecycle independent from a delayed shot response', async () => {
+    vi.useFakeTimers();
+    const submitShot = vi.fn(() => new Promise<never>(() => undefined));
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="delayed-default-response"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        speedOverrides={{ goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 }}
+        shotResolver={() => ({ type: 'miss', reason: 'wide' })}
+        optimisticAddShot={() => undefined}
+        submitShot={submitShot}
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => vi.advanceTimersByTimeAsync(1_500));
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('reveals optimistic custom scoreboard counters only with the visual result', async () => {
+    vi.useFakeTimers();
+    const shotResolver: PlayShotResolver = vi.fn(() => ({
+      type: 'goal',
+      hitPoint: { x: 400, y: 190 },
+    }));
+
+    function Harness(): JSX.Element {
+      const [goals, setGoals] = useState(0);
+      const [shots, setShots] = useState(0);
+      return (
+        <PlayView
+          suppressedByModal={false}
+          showIceCar={false}
+          onBack={() => undefined}
+          active
+          seed="bonus-seed"
+          goalieId={null}
+          goalieConfig={beachGoalie}
+          periodNumber={1}
+          goals={goals}
+          shots={shots}
+          speedOverrides={{
+            goalFreq: 0.45,
+            goalieFreq: 0.5,
+            shooterFreq: 0.65,
+            puckSpeed: 1.2,
+          }}
+          shotResolver={shotResolver}
+          scoreboardModel={({ goals: visibleGoals, shots: visibleShots }) => ({
+            rows: [
+              {
+                id: 'summary',
+                metrics: [
+                  {
+                    id: 'goals-shots',
+                    label: 'ГОЛЫ / БРОСКИ',
+                    value: `${visibleGoals}/${visibleShots}`,
+                  },
+                ],
+              },
+            ],
+          })}
+          optimisticAddShot={() => {
+            setGoals((value) => value + 1);
+            setShots((value) => value + 1);
+          }}
+          submitShot={async () => null}
+          applyState={() => undefined}
+        />
+      );
+    }
+
+    render(<Harness />);
+    await act(async () => Promise.resolve());
+    expect(screen.getByText('0/0')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    expect(screen.getByText('0/0')).toBeInTheDocument();
+    expect(screen.queryByText('1/1')).toBeNull();
+
+    await act(async () => vi.advanceTimersByTimeAsync(434));
+    expect(screen.getByText('1/1')).toBeInTheDocument();
   });
 
   it('does not accumulate a rejected shot in the next authoritative clock relation', async () => {
@@ -867,6 +1114,49 @@ describe('PlayView', () => {
     expect(screen.getByRole('status')).not.toHaveTextContent('СЭЙВ');
   });
 
+  it('replaces the endurance timer with an inline shot result and then restores it', async () => {
+    vi.useFakeTimers();
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="endurance-inline-result"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        statusNotice="6,2"
+        statusNoticeClassName="bonus-game-endurance-notice"
+        inlineResultNotice
+        resultCopy={{ goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' }}
+        shotResolver={() => ({ type: 'save', goalieContact: { x: 286, y: 80 } })}
+        optimisticAddShot={() => undefined}
+        submitShot={async () => ({ serverResult: 'save', state: {} })}
+        applyState={() => undefined}
+      />,
+    );
+
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByRole('status')).toHaveTextContent('6,2');
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => vi.advanceTimersByTimeAsync(500));
+
+    expect(screen.getByRole('status')).toHaveTextContent('СЭЙВ');
+    expect(screen.getByRole('status')).toHaveClass(
+      'bonus-game-endurance-notice',
+      'game-inline-result-notice',
+      'game-inline-result-notice--save',
+      'initial-training-feedback-notice--warning',
+    );
+
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(screen.getByRole('status')).toHaveTextContent('6,2');
+  });
+
   it('reconciles visible result copy with a fast authoritative server result', async () => {
     vi.useFakeTimers();
     render(
@@ -1008,6 +1298,113 @@ describe('PlayView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
     await act(async () => vi.advanceTimersByTimeAsync(5));
     expect(applyState).toHaveBeenCalledWith({});
+  });
+
+  it('renders the local shot presentation and replaces it with authoritative details', async () => {
+    vi.useFakeTimers();
+    let resolveShot:
+      | ((value: {
+          serverResult: 'goal';
+          state: { total: number };
+          resultPresentation: { title: string; details: string[] };
+        }) => void)
+      | undefined;
+    render(
+      <PlayView<{ total: number }>
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        reduceMotion
+        active
+        seed="marksmanship-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotResolver={() => ({ type: 'goal', hitPoint: { x: 286, y: 60 } })}
+        onShotResolved={() => ({
+          title: 'ГОЛ',
+          details: ['+170', 'Точный момент · противоход'],
+        })}
+        optimisticAddShot={() => undefined}
+        submitShot={() =>
+          new Promise((resolve) => {
+            resolveShot = resolve;
+          })
+        }
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+
+    expect(screen.getByRole('status')).toHaveTextContent('ГОЛ+170Точный момент · противоход');
+
+    await act(async () => {
+      resolveShot?.({
+        serverResult: 'goal',
+        state: { total: 155 },
+        resultPresentation: { title: 'ГОЛ', details: ['+155', 'Узкое окно'] },
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole('status')).toHaveTextContent('ГОЛ+155Узкое окно');
+  });
+
+  it('applies the centered endurance notice variant to its in-rink timer', async () => {
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="endurance-notice-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        statusNotice="7,0"
+        statusNoticeClassName="bonus-game-endurance-notice"
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('7,0')).toHaveClass(
+        'bonus-game-endurance-notice',
+      );
+    });
+  });
+
+  it('renders a scoreboard accessory directly below the in-rink scoreboard', () => {
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="scoreboard-accessory-seed"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        scoreboardAccessory={<div aria-label="До обязательного гола">7,0</div>}
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    const accessory = screen.getByLabelText('До обязательного гола');
+    expect(accessory.closest('.game-scoreboard-overlay')).toBeInTheDocument();
+    expect(accessory.previousElementSibling).toHaveAttribute('aria-label', 'Игровое табло');
   });
 
   it('does not apply a resolved shot after its game session is no longer current', async () => {

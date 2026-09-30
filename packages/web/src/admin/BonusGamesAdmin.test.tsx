@@ -462,6 +462,121 @@ describe('bonus games admin', () => {
     });
   });
 
+  it('creates and edits endurance games with only compatible qualification controls', async () => {
+    const bodies: Array<{ method: string; path: string; body: Record<string, unknown> }> = [];
+    let games: AdminBonusGame[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = requestPath(input);
+      const method = init?.method ?? 'GET';
+      if (path === '/api/admin/bonus-games' && method === 'GET') {
+        return jsonResponse({ games });
+      }
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
+      bodies.push({ method, path, body });
+      const saved: AdminBonusGame = {
+        ...makeBonusGame({
+          id: games[0]?.id ?? '88888888-8888-4888-8888-888888888888',
+          slug: 'endurance-test',
+          title: 'Тест выносливости',
+          targetGoals: 1,
+          totalPeriods: 1,
+          breakDurationMs: 0,
+          useInventory: false,
+          periods: [
+            {
+              ...bonusGame.periods[0]!,
+              durationMs: 210_000,
+              shotsLimit: null,
+            },
+          ],
+        }),
+        skillCode: 'endurance',
+        qualificationRules: {
+          type: 'survive_goal_windows',
+          activeTimeMs: 210_000,
+          goalWindowMs: 6_000,
+        },
+      };
+      games = [saved];
+      return jsonResponse({ game: saved }, method === 'POST' ? 201 : 200);
+    });
+
+    renderBonusGames();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Выносливость' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
+    const createDialog = await screen.findByRole('dialog', { name: 'Новая бонусная игра' });
+    fillRequiredDraft(createDialog);
+
+    expect(within(createDialog).getByLabelText('Навык')).toHaveValue('Выносливость');
+    expect(within(createDialog).getByLabelText('Общая длительность, мс')).toHaveValue(180_000);
+    expect(within(createDialog).getByLabelText('Окно до гола, мс')).toHaveValue(7_000);
+    expect(within(createDialog).queryByLabelText('Нужно голов')).not.toBeInTheDocument();
+    expect(within(createDialog).queryByLabelText('Бросков в квалификации')).not.toBeInTheDocument();
+    expect(
+      within(createDialog).queryByLabelText('Обязательная серия (0 — нет)'),
+    ).not.toBeInTheDocument();
+    expect(within(createDialog).queryByLabelText('Перерыв, мс')).not.toBeInTheDocument();
+    expect(within(createDialog).queryByLabelText('Лимит бросков')).not.toBeInTheDocument();
+    expect(within(createDialog).queryByLabelText('Использовать инвентарь')).not.toBeInTheDocument();
+
+    fireEvent.change(within(createDialog).getByLabelText('Окно до гола, мс'), {
+      target: { value: '999' },
+    });
+    expect(within(createDialog).getByText('Проверьте условие квалификации.')).toBeInTheDocument();
+    expect(within(createDialog).getByRole('button', { name: 'Сохранить' })).toBeDisabled();
+    fireEvent.change(within(createDialog).getByLabelText('Общая длительность, мс'), {
+      target: { value: '210000' },
+    });
+    fireEvent.change(within(createDialog).getByLabelText('Окно до гола, мс'), {
+      target: { value: '6000' },
+    });
+    expect(within(createDialog).getByLabelText('Длительность, мс')).toHaveValue(210_000);
+    fireEvent.click(within(createDialog).getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({
+      method: 'POST',
+      path: '/api/admin/bonus-games',
+      body: {
+        skillCode: 'endurance',
+        targetGoals: 1,
+        qualificationRules: {
+          type: 'survive_goal_windows',
+          activeTimeMs: 210_000,
+          goalWindowMs: 6_000,
+        },
+        totalPeriods: 1,
+        breakDurationMs: 0,
+        useInventory: false,
+        periods: [{ periodNumber: 1, durationMs: 210_000, shotsLimit: null }],
+      },
+    });
+
+    const editDialog = await openBonusEditor(games[0]!);
+    expect(within(editDialog).getByLabelText('Общая длительность, мс')).toHaveValue(210_000);
+    expect(within(editDialog).getByLabelText('Окно до гола, мс')).toHaveValue(6_000);
+    fireEvent.click(within(editDialog).getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toMatchObject({
+      method: 'PATCH',
+      path: '/api/admin/bonus-games/88888888-8888-4888-8888-888888888888',
+      body: {
+        targetGoals: 1,
+        qualificationRules: {
+          type: 'survive_goal_windows',
+          activeTimeMs: 210_000,
+          goalWindowMs: 6_000,
+        },
+        totalPeriods: 1,
+        breakDurationMs: 0,
+        useInventory: false,
+        periods: [{ periodNumber: 1, durationMs: 210_000, shotsLimit: null }],
+      },
+    });
+    expect(bodies[1]!.body).not.toHaveProperty('skillCode');
+  });
+
   it('separates draft validation from activation validation and trims active media', async () => {
     let savedBody: Record<string, unknown> | null = null;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {

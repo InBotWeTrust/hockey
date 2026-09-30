@@ -26,6 +26,7 @@ import {
 import { MonthlyRatingRewardModal } from '../components/duel/MonthlyRatingRewardModal.js';
 import { summarizeAchievementProgress } from '../achievements/progressSummary.js';
 import { fetchBonusGames } from '../api/bonusGames.js';
+import { preloadInitialTrainingHubArtwork } from '../components/InitialTrainingCourse.js';
 
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
 const SECTION_ARTWORK_SIZE = 86;
@@ -97,7 +98,7 @@ export function SectionsScreen(): JSX.Element {
   const activeCongratulation = profileQueueReady ? (pendingCongratulations[0] ?? null) : null;
   const pendingMonthlyRatingCongratulations = (monthlyRatingQuery.data?.congratulations ?? [])
     .filter((congratulation) =>
-      [congratulation.coins, congratulation.stars, congratulation.tokens].some(
+      [congratulation.coins, congratulation.stars, congratulation.experience ?? 0, congratulation.tokens].some(
         (value) => value > 0,
       ),
     )
@@ -177,6 +178,10 @@ export function SectionsScreen(): JSX.Element {
     },
     onError: () => setMonthlyRatingAckError('Не удалось закрыть. Попробуйте ещё раз.'),
   });
+
+  useEffect(() => {
+    preloadInitialTrainingHubArtwork();
+  }, []);
 
   useEffect(() => {
     if (dailyData === null) void refreshDaily();

@@ -16,6 +16,8 @@ import { mediaRoutes } from './routes/media.js';
 import { meRoutes } from './routes/me.js';
 import { dailyRoutes } from './duel/daily/routes.js';
 import { trainingRoutes } from './duel/training/routes.js';
+import { initialTrainingCourseRoutes } from './duel/training/initialCourseRoutes.js';
+import { advancedTrainingCourseRoutes } from './duel/training/advancedCourseRoutes.js';
 import { amateurDuelRoutes } from './duel/amateur/routes.js';
 import { weeklyChallengeRoutes } from './weeklyChallenge/routes.js';
 import { chatRoutes } from './chat/routes.js';
@@ -36,6 +38,9 @@ import { coinPackageRoutes } from './payments/routes.js';
 import { createYooKassaClient, type YooKassaClient } from './payments/yookassaClient.js';
 import { nativeCorsPlugin } from './plugins/nativeCors.js';
 import { mobileReleaseRoutes } from './mobileRelease/routes.js';
+import { referralRoutes } from './referrals/routes.js';
+import { referralAdminRoutes } from './referrals/adminRoutes.js';
+import { referralRiskCleanupPlugin } from './referrals/riskCleanup.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -155,12 +160,14 @@ export async function buildApp(options: BuildAppOptions = {}) {
       : {}),
     accessSecret: config.JWT_SECRET,
     refreshSecret: config.REFRESH_SECRET,
+    ...(config.ACCESS_TOKEN_TTL_SEC === undefined ? {} : { accessTtlSec: config.ACCESS_TOKEN_TTL_SEC }),
     devLoginEnabled: config.NODE_ENV !== 'production',
     devAccessCodeLoginEnabled: config.DEV_ACCESS_CODE_LOGIN_ENABLED === true,
   });
   await app.register(mobileAuthRoutes, {
     accessSecret: config.JWT_SECRET,
     refreshSecret: config.REFRESH_SECRET,
+    ...(config.ACCESS_TOKEN_TTL_SEC === undefined ? {} : { accessTtlSec: config.ACCESS_TOKEN_TTL_SEC }),
     telegramBotToken: config.TELEGRAM_BOT_TOKEN,
     ...(config.VK_APP_ID === undefined ? {} : { vkAppId: config.VK_APP_ID }),
     ...(config.ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS === undefined
@@ -182,6 +189,9 @@ export async function buildApp(options: BuildAppOptions = {}) {
     ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
   });
   await app.register(meRoutes);
+  await app.register(referralRoutes);
+  await app.register(referralAdminRoutes);
+  if (config.NODE_ENV !== 'test') await app.register(referralRiskCleanupPlugin);
   await app.register(arenaRoutes);
   await app.register(bonusGameRoutes, { bonusSeedSecret: config.DAILY_SEED_SECRET });
   await app.register(inventoryRoutes);
@@ -200,6 +210,12 @@ export async function buildApp(options: BuildAppOptions = {}) {
   );
   await app.register(dailyRoutes, { dailySeedSecret: config.DAILY_SEED_SECRET });
   await app.register(trainingRoutes, { trainingSeedSecret: config.DAILY_SEED_SECRET });
+  await app.register(initialTrainingCourseRoutes, {
+    trainingSeedSecret: config.DAILY_SEED_SECRET,
+  });
+  await app.register(advancedTrainingCourseRoutes, {
+    trainingSeedSecret: config.DAILY_SEED_SECRET,
+  });
   await app.register(amateurDuelRoutes, {
     duelSeedSecret: config.DAILY_SEED_SECRET,
     ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),

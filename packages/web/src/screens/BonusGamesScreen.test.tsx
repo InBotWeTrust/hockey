@@ -7,6 +7,7 @@ import { useAuthStore } from '../auth/authStore.js';
 import { ApiError } from '../api/apiFetch.js';
 import type { DailyStateResponse } from '../api/duel.js';
 import { useDailyStore } from '../stores/dailyStore.js';
+import { useBonusGameStore } from '../stores/bonusGameStore.js';
 import { BonusGamesScreen } from './BonusGamesScreen.js';
 
 const { preloadArtwork } = vi.hoisted(() => ({ preloadArtwork: vi.fn() }));
@@ -83,6 +84,8 @@ function mockCatalog(
     unlockStarBalance?: number;
     speedRemaining?: number;
     accuracyRemaining?: number;
+    marksmanshipRemaining?: number;
+    enduranceRemaining?: number;
     resetsAt?: string;
     dailyAccess?: { qualifyingGoals: number; unlockGoalsRequired: number };
   } = {},
@@ -95,6 +98,8 @@ function mockCatalog(
     unlockStarBalance = 6,
     speedRemaining = 2,
     accuracyRemaining = 2,
+    marksmanshipRemaining = 100,
+    enduranceRemaining = 100,
     resetsAt = '2026-08-25T00:00:00.000Z',
     dailyAccess,
   } = options;
@@ -124,6 +129,20 @@ function mockCatalog(
                   daily_limit: 2,
                   used: 2 - accuracyRemaining,
                   remaining: accuracyRemaining,
+                  resets_at: resetsAt,
+                },
+                marksmanship: {
+                  skill_code: 'marksmanship',
+                  daily_limit: 100,
+                  used: 100 - marksmanshipRemaining,
+                  remaining: marksmanshipRemaining,
+                  resets_at: resetsAt,
+                },
+                endurance: {
+                  skill_code: 'endurance',
+                  daily_limit: 100,
+                  used: 100 - enduranceRemaining,
+                  remaining: enduranceRemaining,
                   resets_at: resetsAt,
                 },
               },
@@ -245,10 +264,89 @@ describe('BonusGamesScreen', () => {
       user: null,
     });
     useDailyStore.setState({ data: null });
+    useBonusGameStore.getState().applyState(null);
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
   });
 
-  it('shows a readable attempt allowance and counts down to its reset', async () => {
+  it('opens the game description without creating an attempt and closes it safely', async () => {
+    mockCatalog([card({ id: 'speed-preview', title: 'Пляж' })]);
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+
+    expect(screen.getByRole('dialog', { name: 'Первая квалификация' })).toBeInTheDocument();
+    expect(
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.filter(
+          ([input, init]) =>
+            String(input).endsWith('/api/bonus-games/speed-preview/attempts') &&
+            init?.method === 'POST',
+        ),
+    ).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+
+    expect(screen.queryByRole('dialog', { name: 'Первая квалификация' })).toBeNull();
+    expect(
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.filter(
+          ([input, init]) =>
+            String(input).endsWith('/api/bonus-games/speed-preview/attempts') &&
+            init?.method === 'POST',
+        ),
+    ).toHaveLength(0);
+  });
+
+  it('creates one attempt only after the player confirms the description', async () => {
+    mockCatalog([card({ id: 'speed-confirm', title: 'Пляж' })]);
+    renderCatalog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
+
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(globalThis.fetch)
+          .mock.calls.filter(
+            ([input, init]) =>
+              String(input).endsWith('/api/bonus-games/speed-confirm/attempts') &&
+              init?.method === 'POST',
+          ),
+      ).toHaveLength(1),
+    );
+  });
+
+  it.each(['Меткость', 'Выносливость']) (
+    'keeps the closed %s filter visible and shows the shared development toast',
+    async (label) => {
+      mockCatalog([card({})]);
+      renderCatalog();
+
+      fireEvent.click(await screen.findByRole('tab', { name: label }));
+
+      expect(screen.getByText('Раздел в разработке')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Скорость' })).toHaveAttribute('aria-selected', 'true');
+    },
+  );
+
+  it.each(['marksmanship', 'endurance'] as const)(
+    'ignores the previously stored closed %s filter on load',
+    async (skill) => {
+      localStorage.setItem('bonus-games:last-skill', skill);
+      mockCatalog([card({})]);
+      renderCatalog();
+
+      expect(await screen.findByRole('tab', { name: 'Скорость' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    },
+  );
+
+  it('shows completed games progress and counts down to the attempt reset', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-24T23:59:55.000Z'));
     mockCatalog([card({ state: 'available', is_unlocked: true })], {
       speedRemaining: 1,
@@ -256,8 +354,61 @@ describe('BonusGamesScreen', () => {
     });
     renderCatalog();
 
-    expect(await screen.findByText('1 из 2 попыток')).toBeInTheDocument();
+    const progress = await screen.findByRole('progressbar', { name: 'Пройдено игр: Скорость' });
+    expect(progress).toHaveAttribute('aria-valuemin', '0');
+    expect(progress).toHaveAttribute('aria-valuenow', '0');
+    expect(progress).toHaveAttribute('aria-valuemax', '1');
+    expect(within(progress).getByText('0/1 игр')).toHaveClass(
+      'bonus-games-attempt-progress__value',
+    );
+    expect(screen.getByText('1 из 2 попыток')).toBeInTheDocument();
     expect(screen.getByText('До обновления 00:00:05')).toBeInTheDocument();
+    expect(screen.getByText('До обновления 00:00:05').closest('[aria-live]')).toBeNull();
+  });
+
+  it.each([['speed', 'Скорость']] as const)(
+    'renders completed/total %s games as a semantic progress fill',
+    async (skill, label) => {
+      localStorage.setItem('bonus-games:last-skill', skill);
+      mockCatalog(
+        [
+          card({
+            id: `${skill}-1`,
+            skill_code: skill,
+            title: `${label} 1`,
+            state: 'completed',
+            is_completed: true,
+          }),
+          card({ id: `${skill}-2`, skill_code: skill, title: `${label} 2`, sort_order: 2 }),
+        ],
+        { speedRemaining: 1 },
+      );
+      renderCatalog();
+
+      const progress = await screen.findByRole('progressbar', {
+        name: `Пройдено игр: ${label}`,
+      });
+      expect(progress).toHaveAttribute('aria-valuenow', '1');
+      expect(progress).toHaveAttribute('aria-valuemax', '2');
+      expect(progress.querySelector('span')).toHaveStyle({ width: '50%' });
+      expect(within(progress).getByText('1/2 игр')).toBeInTheDocument();
+      expect(screen.getByText('1 из 2 попыток')).toBeInTheDocument();
+    },
+  );
+
+  it('refetches the catalog once when the allowance reset countdown reaches zero', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-25T00:00:00.000Z'));
+    mockCatalog([card({})], { resetsAt: '2026-08-25T00:00:00.000Z' });
+    renderCatalog();
+
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(globalThis.fetch)
+          .mock.calls.filter(([input]) => String(input).endsWith('/api/bonus-games')),
+      ).toHaveLength(2),
+    );
+    expect(screen.getByText('До обновления 00:00:00')).toBeInTheDocument();
   });
 
   it('keeps the first two beginner games on their normal paths and explains third games without a request', async () => {
@@ -492,6 +643,7 @@ describe('BonusGamesScreen', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Играть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
     await waitFor(() =>
       expect(screen.getByLabelText('location')).toHaveTextContent(
         '/bonus-games/accuracy-2/play?attempt=attempt-new',
@@ -657,6 +809,7 @@ describe('BonusGamesScreen', () => {
     const play = await screen.findByRole('button', { name: 'Играть' });
     expect(play).toBeEnabled();
     fireEvent.click(play);
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     const dialog = screen.getByRole('dialog', { name: 'Уже идёт другая игра' });
     expect(dialog).toHaveTextContent('Скорость · Скоростной пляж');
@@ -743,6 +896,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
     const switchButton = within(
       screen.getByRole('dialog', { name: 'Уже идёт другая игра' }),
     ).getByRole('button', { name: 'Завершить и начать эту' });
@@ -811,7 +965,7 @@ describe('BonusGamesScreen', () => {
     );
   });
 
-  it('uses card-wide controls for actionable games and a lock marker for closed games', async () => {
+  it('maps completed, available, progression-locked and purchase-required cards to visual statuses', async () => {
     mockCatalog([
       card({ id: 'beach', title: 'Пляж', state: 'completed', is_completed: true }),
       card({
@@ -828,6 +982,15 @@ describe('BonusGamesScreen', () => {
         title: 'Пиратская бухта',
         state: 'available',
       }),
+      card({
+        id: 'paid-game',
+        title: 'Платная игра',
+        sort_order: 4,
+        state: 'purchase_required',
+        access_type: 'paid',
+        unlock_price_stars: 4,
+        is_unlocked: false,
+      }),
     ]);
     renderCatalog();
 
@@ -840,8 +1003,48 @@ describe('BonusGamesScreen', () => {
       'section-label',
       'sections-group__title',
     );
-    expect(screen.getByLabelText('Игра пройдена')).toBeInTheDocument();
-    expect(screen.getByLabelText('Игра закрыта')).toBeInTheDocument();
+    const completedCard = screen.getByRole('heading', { name: 'Пляж' }).closest('article')!;
+    const availableCard = screen
+      .getByRole('heading', { name: 'Пиратская бухта' })
+      .closest('article')!;
+    const lockedCard = screen
+      .getByRole('heading', { name: 'Горнолыжный курорт' })
+      .closest('article')!;
+    const paidCard = screen.getByRole('heading', { name: 'Платная игра' }).closest('article')!;
+    expect(within(completedCard).getByText('Пройдена')).toHaveClass(
+      'bonus-game-card__status--completed',
+      'training-exercise-card__stage--complete',
+    );
+    expect(within(availableCard).getByText('Не пройдена')).toHaveClass(
+      'bonus-game-card__status--available',
+      'training-exercise-card__stage--available',
+    );
+    expect(within(lockedCard).getByText('Закрыта')).toHaveClass(
+      'bonus-game-card__status--locked',
+      'training-exercise-card__stage--locked',
+    );
+    expect(within(paidCard).getByText('Закрыта')).toHaveClass(
+      'bonus-game-card__status--locked',
+      'training-exercise-card__stage--locked',
+    );
+    for (const cardElement of [completedCard, availableCard, lockedCard, paidCard]) {
+      expect(
+        within(cardElement.querySelector('.bonus-game-card__content')!).getByText(
+          /Пройдена|Не пройдена|Закрыта/,
+        ),
+      ).toHaveClass('bonus-game-card__status');
+      expect(
+        cardElement.querySelector('.bonus-game-card__artwork-frame .bonus-game-card__status'),
+      ).toBeNull();
+    }
+    expect(within(availableCard).getByRole('img')).not.toHaveClass(
+      'bonus-game-card__artwork--locked',
+    );
+    expect(availableCard.querySelector('.bonus-game-card__chevron')).not.toHaveClass(
+      'bonus-game-card__chevron--hidden',
+    );
+    expect(within(lockedCard).queryByLabelText('Игра пройдена')).toBeNull();
+    expect(within(paidCard).queryByLabelText('Игра пройдена')).toBeNull();
     expect(screen.queryByText('Нужно пройти: Пляж')).not.toBeInTheDocument();
     expect(screen.queryByText('Готова к игре')).not.toBeInTheDocument();
   });
@@ -864,8 +1067,8 @@ describe('BonusGamesScreen', () => {
     expect(completedCard).not.toBeNull();
     expect(completedCard).toHaveClass('bonus-game-card--compact', 'bonus-game-card--completed');
     const completionMarker = within(completedCard!).getByLabelText('Игра пройдена');
-    expect(completionMarker).toHaveClass('bonus-game-card__completed-pill');
-    expect(completionMarker.parentElement).toBe(completedCard);
+    expect(completionMarker).toHaveClass('bonus-game-card__completion-badge');
+    expect(completionMarker.parentElement).toHaveClass('bonus-game-card__artwork-frame');
     expect(completionMarker).not.toHaveTextContent('Пройдено');
     expect(completedCard!.querySelector('.bonus-game-card__completion')).toBeNull();
     expect(within(completedCard!).getByRole('button', { name: 'Повторить' })).toHaveClass(
@@ -940,7 +1143,81 @@ describe('BonusGamesScreen', () => {
       'bonus-game-card__chevron--hidden',
     );
     expect(lockedCard!.querySelector('.bonus-game-card__chevron')).toBeInTheDocument();
-    expect(within(lockedCard!).getByLabelText('Игра закрыта')).toBeInTheDocument();
+    expect(within(lockedCard!).getByText('Закрыта')).toHaveClass('bonus-game-card__status--locked');
+  });
+
+  it('keeps an active attempt yellow, resumable, and separate from the remaining allowance', async () => {
+    mockCatalog(
+      [
+        card({
+          id: 'active-game',
+          title: 'Активная игра',
+          state: 'in_progress',
+          active_attempt: {
+            id: 'attempt-active',
+            game_id: 'active-game',
+            state: 'period_active',
+            current_period: 1,
+            period_started_at: '2026-08-26T12:00:00.000Z',
+            break_started_at: null,
+            goal_window_started_at: null,
+            goal_window_ends_at: null,
+            shots_taken: 4,
+            goals: 2,
+            total_points: 0,
+          },
+        }),
+      ],
+      { speedRemaining: 1 },
+    );
+    renderCatalog();
+
+    const progress = await screen.findByRole('progressbar', { name: 'Пройдено игр: Скорость' });
+    const activeCard = screen.getByRole('heading', { name: 'Активная игра' }).closest('article')!;
+    expect(progress).toHaveAttribute('aria-valuenow', '0');
+    expect(within(activeCard).getByText('Не пройдена')).toHaveClass(
+      'bonus-game-card__status--available',
+    );
+    expect(activeCard.querySelector('.bonus-game-card__chevron')).not.toHaveClass(
+      'bonus-game-card__chevron--hidden',
+    );
+    expect(within(activeCard).queryByLabelText('Игра пройдена')).toBeNull();
+  });
+
+  it('places the completion badge inside featured artwork too', async () => {
+    mockCatalog([
+      card({
+        id: 'completed-active',
+        title: 'Пройденная активная',
+        state: 'completed',
+        is_completed: true,
+        active_attempt: {
+          id: 'attempt-completed',
+          game_id: 'completed-active',
+          state: 'period_active',
+          current_period: 1,
+          period_started_at: '2026-08-26T12:00:00.000Z',
+          break_started_at: null,
+          goal_window_started_at: null,
+          goal_window_ends_at: null,
+          shots_taken: 4,
+          goals: 2,
+          total_points: 0,
+        },
+      }),
+    ]);
+    renderCatalog();
+
+    const featuredCard = (
+      await screen.findByRole('heading', {
+        name: 'Пройденная активная',
+      })
+    ).closest('article')!;
+    expect(featuredCard).toHaveClass('bonus-game-card--featured');
+    const artwork = featuredCard.querySelector<HTMLElement>('.bonus-game-card__artwork-frame')!;
+    expect(within(artwork).getByLabelText('Игра пройдена')).toHaveClass(
+      'bonus-game-card__completion-badge',
+    );
   });
 
   it('shows a chevron only for an available game or an unfinished attempt', async () => {
@@ -966,7 +1243,9 @@ describe('BonusGamesScreen', () => {
     const availableCard = (await screen.findByRole('heading', { name: 'Доступная игра' })).closest(
       'article',
     );
-    const levelLockedCard = screen.getByRole('heading', { name: 'Любительская игра' }).closest('article');
+    const levelLockedCard = screen
+      .getByRole('heading', { name: 'Любительская игра' })
+      .closest('article');
     const purchaseRequiredCard = screen
       .getByRole('heading', { name: 'Платная игра' })
       .closest('article');
@@ -1042,6 +1321,7 @@ describe('BonusGamesScreen', () => {
     expect(repeatButton).toBeEnabled();
     expect(repeatButton).toHaveClass('bonus-game-card__hit-area');
     fireEvent.click(repeatButton);
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
     expect(screen.getByRole('dialog', { name: 'Уже идёт другая игра' })).toBeInTheDocument();
   });
 
@@ -1102,6 +1382,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Продолжить' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     expect(screen.getByLabelText('location')).toHaveTextContent(
       '/bonus-games/beach/play?attempt=attempt-1',
@@ -1128,6 +1409,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Продолжить' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     expect(screen.getByLabelText('location')).toHaveTextContent(
       '/bonus-games/beach/play?attempt=attempt-archived',
@@ -1239,7 +1521,9 @@ describe('BonusGamesScreen', () => {
     ]);
     renderCatalog();
 
-    const paidCard = (await screen.findByRole('heading', { name: 'Платная игра' })).closest('article');
+    const paidCard = (await screen.findByRole('heading', { name: 'Платная игра' })).closest(
+      'article',
+    );
     expect(paidCard).not.toBeNull();
     expect(within(paidCard!).getByRole('img')).toHaveClass('bonus-game-card__artwork--locked');
   });
@@ -1297,7 +1581,7 @@ describe('BonusGamesScreen', () => {
     expect(screen.getByText('2 периода · 21 бросок')).toHaveClass(
       'bonus-game-card__details-secondary',
     );
-    expect(screen.getByText('За первое прохождение')).toBeInTheDocument();
+    expect(screen.getByText('За первое прохождение:')).toBeInTheDocument();
     expect(screen.getByLabelText('Монеты: 21')).toHaveTextContent('21');
     expect(screen.getByLabelText('Звёзды: 22')).toHaveTextContent('22');
     expect(screen.getByLabelText('Опыт: 25')).toHaveTextContent('25');
@@ -1318,7 +1602,7 @@ describe('BonusGamesScreen', () => {
     expect(await screen.findByLabelText('Звёзды: 3')).toHaveTextContent('3');
     expect(screen.queryByLabelText('Монеты: 0')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Опыт: 0')).not.toBeInTheDocument();
-    expect(screen.getAllByText('За первое прохождение')).toHaveLength(1);
+    expect(screen.getAllByText('За первое прохождение:')).toHaveLength(1);
   });
 
   it('keeps the created attempt id in the play URL for durable reload', async () => {
@@ -1326,12 +1610,14 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     await waitFor(() =>
       expect(screen.getByLabelText('location')).toHaveTextContent(
         '/bonus-games/00000000-0000-4000-8000-000000000601/play?attempt=attempt-new',
       ),
     );
+    expect(useBonusGameStore.getState().attempt?.id).toBe('attempt-new');
   });
 
   it('shows two independent daily attempt allowances', async () => {
@@ -1344,38 +1630,67 @@ describe('BonusGamesScreen', () => {
     );
     renderCatalog();
 
-    expect(await screen.findByText('1 из 2 попыток')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('progressbar', { name: 'Пройдено игр: Скорость' }),
+    ).toHaveAttribute('aria-valuenow', '0');
     fireEvent.click(screen.getByRole('tab', { name: 'Точность' }));
-    expect(screen.getByText('2 из 2 попыток')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Пройдено игр: Точность' })).toHaveAttribute(
+      'aria-valuenow',
+      '0',
+    );
   });
 
-  it('retains only the first three currently visible arena artworks for the active skill', async () => {
+  it('retains the first three visible arenas and the featured launch preview', async () => {
     mockCatalog([
       card({
         id: 'speed-1',
         sort_order: 1,
-        arena: { id: 'arena-1', slug: 'speed-1', title: 'Первая', artwork_url: '/bonus-games/arenas/speed-1.webp', thumbnail_url: '/bonus-games/arenas/speed-1.webp' },
+        arena: {
+          id: 'arena-1',
+          slug: 'speed-1',
+          title: 'Первая',
+          artwork_url: '/bonus-games/arenas/speed-1.webp',
+          thumbnail_url: '/bonus-games/arenas/speed-1.webp',
+        },
       }),
       card({
         id: 'speed-2',
         sort_order: 2,
         state: 'sequence_locked',
         is_unlocked: false,
-        arena: { id: 'arena-2', slug: 'speed-2', title: 'Вторая', artwork_url: '/bonus-games/arenas/speed-2.webp', thumbnail_url: '/bonus-games/arenas/speed-2.webp' },
+        arena: {
+          id: 'arena-2',
+          slug: 'speed-2',
+          title: 'Вторая',
+          artwork_url: '/bonus-games/arenas/speed-2.webp',
+          thumbnail_url: '/bonus-games/arenas/speed-2.webp',
+        },
       }),
       card({
         id: 'speed-3',
         sort_order: 3,
         state: 'sequence_locked',
         is_unlocked: false,
-        arena: { id: 'arena-3', slug: 'speed-3', title: 'Третья', artwork_url: '/bonus-games/arenas/speed-3.webp', thumbnail_url: '/bonus-games/arenas/speed-3.webp' },
+        arena: {
+          id: 'arena-3',
+          slug: 'speed-3',
+          title: 'Третья',
+          artwork_url: '/bonus-games/arenas/speed-3.webp',
+          thumbnail_url: '/bonus-games/arenas/speed-3.webp',
+        },
       }),
       card({
         id: 'speed-4',
         sort_order: 4,
         state: 'sequence_locked',
         is_unlocked: false,
-        arena: { id: 'arena-4', slug: 'speed-4', title: 'Четвёртая', artwork_url: '/bonus-games/arenas/speed-4.webp', thumbnail_url: '/bonus-games/arenas/speed-4.webp' },
+        arena: {
+          id: 'arena-4',
+          slug: 'speed-4',
+          title: 'Четвёртая',
+          artwork_url: '/bonus-games/arenas/speed-4.webp',
+          thumbnail_url: '/bonus-games/arenas/speed-4.webp',
+        },
       }),
     ]);
     renderCatalog();
@@ -1387,6 +1702,7 @@ describe('BonusGamesScreen', () => {
     await waitFor(() =>
       expect(preloadArtwork).toHaveBeenCalledWith([
         '/bonus-games/arenas/featured/speed-1.webp?v=20260829-world-tour-user-pngs-v10',
+        '/bonus-games/previews/beach.webp?v=20260829-world-tour-user-pngs-v10',
         '/bonus-games/arenas/compact/speed-2.webp?v=20260829-world-tour-user-pngs-v10',
         '/bonus-games/arenas/compact/speed-3.webp?v=20260829-world-tour-user-pngs-v10',
       ]),
@@ -1398,6 +1714,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     expect(await screen.findByText('0 из 2 попыток')).toBeInTheDocument();
+    expect(screen.getByText('0/1 игр')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Попытки закончились' })).toBeDisabled();
     expect(
       vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),
@@ -1421,10 +1738,15 @@ describe('BonusGamesScreen', () => {
     );
     renderCatalog();
 
-    const nextGame = (await screen.findByRole('heading', { name: 'Третья игра' })).closest('article');
+    const nextGame = (await screen.findByRole('heading', { name: 'Третья игра' })).closest(
+      'article',
+    );
     expect(nextGame).not.toBeNull();
-    expect(within(nextGame!).getByAltText('Площадка «Пляж»')).toHaveClass(
+    expect(within(nextGame!).getByAltText('Площадка «Пляж»')).not.toHaveClass(
       'bonus-game-card__artwork--locked',
+    );
+    expect(within(nextGame!).getByText('Не пройдена')).toHaveClass(
+      'bonus-game-card__status--available',
     );
     expect(within(nextGame!).getByRole('button', { name: 'Попытки закончились' })).toHaveClass(
       'bonus-game-card__hit-area--unavailable',
@@ -1446,6 +1768,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Не удалось выполнить запрос. Попробуйте ещё раз.',
@@ -1465,6 +1788,7 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Не удалось выполнить запрос. Попробуйте ещё раз.',

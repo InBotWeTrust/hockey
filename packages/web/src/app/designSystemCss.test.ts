@@ -19,6 +19,72 @@ describe('design system toast positioning', () => {
   });
 });
 
+describe('bonus game first-clear reward heading', () => {
+  it('uses the primary dark ink color to separate it from descriptive copy', () => {
+    expect(css).toMatch(/\.bonus-game-card__reward-title\s*\{\s*color: var\(--ink\);\s*\}/);
+  });
+});
+
+describe('bonus game progress and endurance timer surfaces', () => {
+  it('uses the featured bonus card surface for the progress container', () => {
+    const progress = rule('.bonus-games-attempt-progress');
+
+    expect(progress).toContain('border: 1px solid rgba(255, 255, 255, 0.94)');
+    expect(progress).toContain('border-radius: 22px');
+    expect(progress).toContain('background: rgba(237, 244, 250, 0.84)');
+    expect(progress).toContain('0 18px 42px rgba(15, 23, 42, 0.18)');
+    expect(progress).toContain('0 0 0 2px rgba(74, 144, 226, 0.12)');
+    expect(progress).toContain('inset 0 1px 0 rgba(255, 255, 255, 0.9)');
+  });
+
+  it('leaves the endurance timer surface to the shared scoreboard class', () => {
+    const timer = rule('.bonus-game-endurance-timer');
+    const warning = rule('.bonus-game-endurance-timer--warning');
+    const danger = rule('.bonus-game-endurance-timer--danger');
+
+    expect(timer).toContain('width: auto');
+    expect(timer).toContain('min-width: clamp(120px, 34%, 180px)');
+    expect(timer).not.toContain('background:');
+    expect(timer).not.toContain('background-color:');
+    expect(timer).not.toContain('box-shadow:');
+    expect(timer).not.toContain('backdrop-filter:');
+    expect(timer).not.toContain('border:');
+    expect(warning).toContain('color: #d9ae3d');
+    expect(warning).not.toContain('background:');
+    expect(warning).not.toContain('box-shadow:');
+    expect(danger).toContain('color: #df6b6b');
+    expect(danger).not.toContain('background:');
+    expect(danger).not.toContain('box-shadow:');
+  });
+});
+
+describe('bonus game modal depth', () => {
+  it('avoids composited card-shaped ghosts while retaining the shared modal geometry', () => {
+    const preview = rule('.modal-card.bonus-game-preview-modal');
+    const result = rule('.modal-card.bonus-game-result-modal');
+
+    for (const bonusModal of [preview, result]) {
+      expect(bonusModal).toContain('background: rgba(226, 233, 241, 0.94)');
+      expect(bonusModal).toContain('box-shadow: none');
+      expect(bonusModal).toContain('backdrop-filter: none');
+    }
+  });
+
+  it('matches the shop item modal geometry without changing the preview copy rhythm', () => {
+    const launch = rule('.modal-card.bonus-game-launch-modal');
+    const artwork = rule('.bonus-game-launch-modal .bonus-game-preview-modal__artwork');
+    const story = rule('.bonus-game-preview-modal__story');
+
+    expect(launch).toContain('width: min(430px, calc(100vw - 28px))');
+    expect(launch).toContain(
+      'max-height: calc(100dvh - 48px - var(--app-safe-top) - var(--app-safe-bottom))',
+    );
+    expect(launch).toContain('padding: 24px 22px 22px');
+    expect(artwork).toContain('border-radius: 22px');
+    expect(story).toContain('margin-top: 12px');
+  });
+});
+
 describe('experience rating scroll containment', () => {
   it('disables scroll chaining and gives the sticky header an opaque surface', () => {
     const viewport = rule('.experience-rating__viewport');
@@ -43,6 +109,27 @@ describe('profile story image treatment', () => {
     const image = rule('.profile-story-card > img');
 
     expect(image).toContain('border: 1px solid rgba(255, 255, 255, 0.88)');
+  });
+});
+
+describe('narrow profile and sections card geometry', () => {
+  it('gives every profile inventory item the same responsive column width', () => {
+    const loadout = rule('.profile-loadout');
+    const slot = rule('.profile-loadout-slot');
+
+    expect(loadout).toContain('display: grid');
+    expect(loadout).toContain('grid-auto-flow: column');
+    expect(loadout).toContain('grid-auto-columns: calc((100% - 20px) / 3.18)');
+    expect(slot).not.toContain('flex:');
+  });
+
+  it('keeps the daily card chevron in its own column on narrow screens', () => {
+    expect(css).toMatch(
+      /@media \(max-width: 390px\)[\s\S]*?\.sections-quick-card--wide\s*\{[\s\S]*?grid-template-columns: 86px minmax\(0, 1fr\) 20px;/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 360px\)[\s\S]*?\.sections-quick-card--wide\s*\{[\s\S]*?grid-template-columns: 76px minmax\(0, 1fr\) 20px;/,
+    );
   });
 });
 

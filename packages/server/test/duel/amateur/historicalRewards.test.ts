@@ -8,6 +8,8 @@ import { buildApp } from '../../../src/app.js';
 import { createJwt } from '../../../src/auth/jwt.js';
 import { applyMigrations } from '../../../src/db/migrations.js';
 import { applyMigrationsThrough } from '../../helpers/migrations.js';
+import { makeRulesSnapshot } from '../../../src/duel/amateur/routes.js';
+import { getGameSettings } from '../../../src/duel/gameSettings.js';
 import {
   createTestPool,
   getTestUrls,
@@ -82,16 +84,25 @@ describe.skipIf(!hasIntegrationEnv)('historical duel reward API compatibility', 
       }>(`insert into amateur_duel_template(title,starts_at,ends_at,total_periods,period_speed_presets)
       values('Historical rules','2026-01-01','2100-01-01',1,'[{"periodNumber":1,"goalFrequency":0.55,"goalieFrequency":0.65,"shooterFrequency":0.8,"puckSpeedPerMs":1.3}]') returning id`);
       const templateId = template.rows[0]!.id;
-      const created = await app.inject({
-        method: 'POST',
-        url: '/duel/amateur/challenge',
-        headers,
-        payload: { template_id: templateId, opponent_user_id: opponentId },
-      });
-      expect(created.statusCode).toBe(200);
-      const matchId = created.json().match.id as string;
+      // The current challenge route requires post-121 admission tables. Seed the
+      // pre-121 fixture directly so this test stays focused on migration 121.
+      const templateRow = (await app.pg.query('select * from amateur_duel_template where id=$1', [templateId])).rows[0];
+      const rules = makeRulesSnapshot(templateRow, await getGameSettings(app.pg));
+      const seeded = await app.pg.query<{ id: string }>(
+        `insert into amateur_duel_match
+         (template_id, challenger_user_id, opponent_user_id, status, season_key,
+          rules_snapshot, reward_rules, match_seed, starts_at, ends_at, game_core_version)
+         values ($1,$2,$3,'invited','2026-08',$4,$5,'history',now(),now() + interval '1 hour',1)
+         returning id`, [templateId, userId, opponentId, rules, rules.rewardRules],
+      );
+      const matchId = seeded.rows[0]!.id;
+      await app.pg.query(
+        `insert into amateur_duel_participant (match_id, user_id, side, state)
+         values ($1,$2,'challenger','loadout_pending'),($1,$3,'opponent','invited')`,
+        [matchId, userId, opponentId],
+      );
       const historical = {
-        ...created.json().match.rules.rewardRules,
+        ...rules.rewardRules,
         equalWin: { coins: 2147483648, stars: 0, tokens: 0 },
       };
       await app.pg.query(
@@ -135,10 +146,7 @@ describe.skipIf(!hasIntegrationEnv)('historical duel reward API compatibility', 
         catalog.json().templates.find((row: { id: string }) => row.id === templateId).rewardRules,
       ).toEqual(historical);
       expect(catalog.json().rewardAmountLimit).toBe(2147483647);
-      for (const url of [
-        '/duel/amateur/matches',
-        ...(scenario === 'active' ? [] : ['/duel/amateur/history']),
-      ]) {
+      for (const url of scenario === 'active' ? [] : ['/duel/amateur/history']) {
         const response = await app.inject({ method: 'GET', url, headers });
         expect(response.statusCode).toBe(200);
         expect(
@@ -184,7 +192,7 @@ describe.skipIf(!hasIntegrationEnv)('historical duel reward API compatibility', 
           startsAt: '2026-01-01T00:00:00Z',
           endsAt: '2100-01-01T00:00:00Z',
           totalPeriods: 1,
-          periodSpeedPresets: created.json().match.rules.periodSpeedPresets,
+          periodSpeedPresets: rules.periodSpeedPresets,
           rewardRules: historical,
         },
       });

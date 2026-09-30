@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from 'pg';
 import type { VkProfile } from './vk.js';
 import { recomputeEffectiveProfile, type DisplaySource } from './profile.js';
 import { AppError } from '../plugins/errors.js';
+import { ensureNewUserReferral, type ReferralSource } from '../referrals/service.js';
 
 export interface FindOrCreateInput {
   providerUid: string;
@@ -14,6 +15,10 @@ export interface FindOrCreateInput {
   timezone?: string;
   currentUserId?: string;
   recoveryMergeTelegramProviderUids?: readonly string[];
+  referralCode?: string;
+  referralSource?: ReferralSource;
+  referralIpHash?: string;
+  referralInstallationHash?: string;
 }
 
 export interface AppUser {
@@ -289,6 +294,15 @@ export async function findOrCreateTelegramUser(
     await client.query("insert into user_sticks (user_id, stick_id) values ($1, 'training')", [
       userId,
     ]);
+    await ensureNewUserReferral(client, {
+      userId,
+      ...(input.referralCode !== undefined ? { referralCode: input.referralCode } : {}),
+      ...(input.referralSource !== undefined ? { referralSource: input.referralSource } : {}),
+      ...(input.referralIpHash !== undefined ? { ipHash: input.referralIpHash } : {}),
+      ...(input.referralInstallationHash !== undefined
+        ? { installationHash: input.referralInstallationHash }
+        : {}),
+    });
     const profile = await recomputeEffectiveProfile(client, userId);
     await client.query('commit');
     return {
@@ -312,6 +326,10 @@ export interface FindOrLinkVkInput {
   currentUserId?: string;
   timezone?: string;
   recoveryMergeTelegramProviderUids?: readonly string[];
+  referralCode?: string;
+  referralSource?: ReferralSource;
+  referralIpHash?: string;
+  referralInstallationHash?: string;
 }
 
 async function updateVkProfile(pool: Queryable, userId: string, profile: VkProfile): Promise<void> {
@@ -562,6 +580,15 @@ export async function findOrLinkOrCreateVkUser(
     await client.query("insert into user_sticks (user_id, stick_id) values ($1, 'training')", [
       userId,
     ]);
+    await ensureNewUserReferral(client, {
+      userId,
+      ...(input.referralCode !== undefined ? { referralCode: input.referralCode } : {}),
+      ...(input.referralSource !== undefined ? { referralSource: input.referralSource } : {}),
+      ...(input.referralIpHash !== undefined ? { ipHash: input.referralIpHash } : {}),
+      ...(input.referralInstallationHash !== undefined
+        ? { installationHash: input.referralInstallationHash }
+        : {}),
+    });
     const profile = await recomputeEffectiveProfile(client, userId);
     await client.query('commit');
     return {

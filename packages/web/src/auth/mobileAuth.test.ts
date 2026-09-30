@@ -89,4 +89,18 @@ describe('Android mobile authentication', () => {
     expect(secureSession.clear).toHaveBeenCalledWith({ slot: 'pendingAuth' });
     expect(navigateHome).toHaveBeenCalledOnce();
   });
+
+  it('returns to login and clears an invalid referral code from native OAuth', async () => {
+    sessionStorage.setItem('hockey.pendingReferral', 'WRONG');
+
+    await expect(
+      handleMobileAuthDeepLink('https://ultimatehockey.ru/mobile/auth/complete?error=referral_code_invalid'),
+    ).resolves.toBe(true);
+
+    expect(sessionStorage.getItem('hockey.pendingReferral')).toBeNull();
+    expect(sessionStorage.getItem('hockey.mobileAuthError')).toMatch(/Код приглашения не найден/);
+    expect(browser.close).toHaveBeenCalledOnce();
+    expect(secureSession.clear).toHaveBeenCalledWith({ slot: 'pendingAuth' });
+    expect(window.location.pathname).toBe('/login');
+  });
 });

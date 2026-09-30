@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_MARKSMANSHIP_SCORING_RULES } from '@hockey/game-core';
 import {
   advanceGoalStreak,
   evaluateBonusQualification,
@@ -16,6 +17,24 @@ describe('normalizeBonusQualificationRules', () => {
       { type: 'goals_in_time', targetGoals: 20, activeTimeMs: 120_000 },
       { type: 'goals_in_time', targetGoals: 20, activeTimeMs: 120_000 },
     ],
+    [
+      {
+        type: 'points_in_time',
+        targetPoints: 1_100,
+        activeTimeMs: 30_000,
+        scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
+      },
+      {
+        type: 'points_in_time',
+        targetPoints: 1_100,
+        activeTimeMs: 30_000,
+        scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
+      },
+    ],
+    [
+      { type: 'survive_goal_windows', activeTimeMs: 180_000, goalWindowMs: 7_000 },
+      { type: 'survive_goal_windows', activeTimeMs: 180_000, goalWindowMs: 7_000 },
+    ],
   ])('parses supported qualification rule %#', (input, expected) => {
     expect(normalizeBonusQualificationRules(input, { targetGoals: 1, shotsLimit: 1 })).toEqual(
       expected,
@@ -32,11 +51,32 @@ describe('normalizeBonusQualificationRules', () => {
 });
 
 describe('evaluateBonusQualification', () => {
+  it('keeps endurance terminal evaluation in the deadline helper', () => {
+    expect(() =>
+      evaluateBonusQualification(
+        { type: 'survive_goal_windows', activeTimeMs: 180_000, goalWindowMs: 7_000 },
+        {
+          goals: 1,
+          shotsTaken: 1,
+          bestGoalStreak: 1,
+          activeElapsedMs: 180_000,
+          totalPoints: 0,
+        },
+      ),
+    ).toThrow('endurance qualification is deadline-based');
+  });
+
   it('passes goals from shots when the target is reached', () => {
     expect(
       evaluateBonusQualification(
         { type: 'goals_from_shots', targetGoals: 18, shotsLimit: 30 },
-        { goals: 18, shotsTaken: 27, bestGoalStreak: 2, activeElapsedMs: 60_000 },
+        {
+          goals: 18,
+          shotsTaken: 27,
+          bestGoalStreak: 2,
+          activeElapsedMs: 60_000,
+          totalPoints: 0,
+        },
       ),
     ).toMatchObject({ passed: true, primaryMet: true, streakMet: true });
   });
@@ -50,6 +90,7 @@ describe('evaluateBonusQualification', () => {
         shotsTaken: 25,
         bestGoalStreak: 4,
         activeElapsedMs: 119_999,
+        totalPoints: 0,
       }).passed,
     ).toBe(true);
     expect(
@@ -58,6 +99,7 @@ describe('evaluateBonusQualification', () => {
         shotsTaken: 25,
         bestGoalStreak: 4,
         activeElapsedMs: 120_001,
+        totalPoints: 0,
       }).passed,
     ).toBe(false);
   });
@@ -70,10 +112,36 @@ describe('evaluateBonusQualification', () => {
         shotsLimit: 30,
         requiredGoalStreak: 3,
       },
-      { goals: 24, shotsTaken: 30, bestGoalStreak: 2, activeElapsedMs: 30_000 },
+      {
+        goals: 24,
+        shotsTaken: 30,
+        bestGoalStreak: 2,
+        activeElapsedMs: 30_000,
+        totalPoints: 0,
+      },
     );
 
     expect(result).toMatchObject({ passed: false, primaryMet: true, streakMet: false });
+  });
+
+  it('passes points in time at the exact score and time boundary', () => {
+    const result = evaluateBonusQualification(
+      {
+        type: 'points_in_time',
+        targetPoints: 1_100,
+        activeTimeMs: 30_000,
+        scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
+      },
+      {
+        goals: 0,
+        shotsTaken: 0,
+        bestGoalStreak: 0,
+        activeElapsedMs: 30_000,
+        totalPoints: 1_100,
+      },
+    );
+
+    expect(result).toMatchObject({ passed: true, primaryMet: true, streakMet: true });
   });
 });
 
@@ -125,6 +193,76 @@ describe('validateBonusSkillRules', () => {
         [period(1, 60_000, 15), period(2, 60_000, null)],
       ),
     ).toThrow('accuracy periods require a shots limit');
+  });
+
+  it('accepts marksmanship only with one matching no-quota period and disabled inventory', () => {
+    const rules = {
+      type: 'points_in_time',
+      targetPoints: 1_100,
+      activeTimeMs: 30_000,
+      scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
+    } as const;
+
+    expect(() =>
+      validateBonusSkillRules('marksmanship', rules, [period(1, 30_000, null)], false),
+    ).not.toThrow();
+    expect(() =>
+      validateBonusSkillRules(
+        'marksmanship',
+        rules,
+        [period(1, 15_000, null), period(2, 15_000, null)],
+        false,
+      ),
+    ).toThrow('marksmanship requires exactly one period');
+    expect(() =>
+      validateBonusSkillRules('marksmanship', rules, [period(1, 30_000, 10)], false),
+    ).toThrow('marksmanship period cannot have a shots limit');
+    expect(() =>
+      validateBonusSkillRules('marksmanship', rules, [period(1, 30_000, null)], true),
+    ).toThrow('marksmanship inventory must be disabled');
+  });
+
+  it('accepts endurance only with one matching no-quota period and disabled inventory', () => {
+    const rules = {
+      type: 'survive_goal_windows',
+      activeTimeMs: 180_000,
+      goalWindowMs: 7_000,
+    } as const;
+
+    expect(() =>
+      validateBonusSkillRules('endurance', rules, [period(1, 180_000, null)], false),
+    ).not.toThrow();
+    expect(() =>
+      validateBonusSkillRules(
+        'endurance',
+        rules,
+        [period(1, 90_000, null), period(2, 90_000, null)],
+        false,
+      ),
+    ).toThrow('endurance requires exactly one period');
+    expect(() =>
+      validateBonusSkillRules('endurance', rules, [period(1, 180_000, 1)], false),
+    ).toThrow('endurance period cannot have a shots limit');
+    expect(() =>
+      validateBonusSkillRules('endurance', rules, [period(1, 179_999, null)], false),
+    ).toThrow('endurance active time must equal the period duration');
+    expect(() =>
+      validateBonusSkillRules('endurance', rules, [period(1, 180_000, null)], true),
+    ).toThrow('endurance inventory must be disabled');
+  });
+
+  it('rejects malformed marksmanship scoring snapshots', () => {
+    expect(() =>
+      normalizeBonusQualificationRules(
+        {
+          type: 'points_in_time',
+          targetPoints: 1_100,
+          activeTimeMs: 30_000,
+          scoring: { ...DEFAULT_MARKSMANSHIP_SCORING_RULES, scanStepMs: 0 },
+        },
+        { targetGoals: 1, shotsLimit: 1 },
+      ),
+    ).toThrow('invalid bonus qualification rules');
   });
 });
 

@@ -4,6 +4,7 @@ import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
 import { DAILY_PERIOD_SPEED_PRESETS, GAME_CORE_VERSION, GOALIES, STICKS } from '@hockey/game-core';
 import { AppError } from '../plugins/errors.js';
+import { reconcileReferralQualification } from '../referrals/service.js';
 import {
   ACHIEVEMENT_AVAILABILITIES,
   ACHIEVEMENT_CATEGORIES,
@@ -4149,6 +4150,9 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
           occurredAt,
           lifetimeTotal: body.data.experience,
         });
+      }
+      if (body.data.level !== undefined || body.data.lifetimeGoalsTotal !== undefined) {
+        await reconcileReferralQualification(client, params.userId);
       }
 
       for (const onboardingChange of onboardingChanges) {

@@ -4,17 +4,22 @@ import type { BonusQualificationRules } from './qualification.js';
 import type { PeriodLoadoutSnapshot } from '../inventory/periodLoadout.js';
 
 export type BonusGameStatus = 'draft' | 'active' | 'archived';
-export type BonusSkillCode = 'speed' | 'accuracy';
+export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship' | 'endurance';
 export type BonusGameAccessType = 'free' | 'paid';
 export type BonusGameAttemptStatus = 'active' | 'completed' | 'failed' | 'abandoned';
 export type BonusGameAttemptState = 'idle' | 'period_active' | 'break_active' | 'closed';
-export type BonusPeriodClosedReason = 'quota' | 'timeout' | 'target_reached' | 'attempt_abandoned';
+export type BonusPeriodClosedReason =
+  | 'quota'
+  | 'timeout'
+  | 'target_reached'
+  | 'attempt_abandoned'
+  | 'goal_window_timeout';
 export type BonusGameEconomyEventKind = 'unlock_purchase' | 'unlock_refund' | 'first_clear_reward';
 export type BonusGoaliePattern = Extract<GoaliePatternId, 'linear' | 'sine' | 'dash'>;
 
 export interface BonusAttemptAllowanceDTO {
   skillCode: BonusSkillCode;
-  dailyLimit: 2;
+  dailyLimit: number;
   used: number;
   remaining: number;
   resetsAt: string;
@@ -122,10 +127,13 @@ export interface BonusGameAttemptRow {
   state: BonusGameAttemptState;
   current_period: number;
   period_started_at: Date | null;
+  goal_window_started_at: Date | null;
+  goal_window_ends_at: Date | null;
   break_started_at: Date | null;
   closed_at: Date | null;
   shots_taken: number;
   goals: number;
+  total_points: number;
   current_goal_streak: number;
   best_goal_streak: number;
   preview_acknowledged_at: Date | null;
@@ -150,6 +158,7 @@ export interface BonusGamePeriodLogRow {
   ended_at: Date;
   shots_taken: number;
   goals: number;
+  total_points: number;
   duration_ms: number;
   closed_reason: BonusPeriodClosedReason;
   created_at: Date;
@@ -234,11 +243,14 @@ export interface BonusGameAttemptDTO {
   state: BonusGameAttemptState;
   currentPeriod: number;
   periodStartedAt: string | null;
+  goalWindowStartedAt: string | null;
+  goalWindowEndsAt: string | null;
   breakStartedAt: string | null;
   closedAt: string | null;
   shotsTaken: number;
   currentPeriodShotsTaken: number;
   goals: number;
+  totalPoints: number;
   currentGoalStreak: number;
   bestGoalStreak: number;
   previewRequired: boolean;

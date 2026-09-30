@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProfileScreen } from './ProfileScreen.js';
@@ -7,11 +7,13 @@ import { useAuthStore } from '../auth/authStore.js';
 import type { ProfileData } from './profileTypes.js';
 
 const { preloadArtwork } = vi.hoisted(() => ({ preloadArtwork: vi.fn() }));
+const { triggerHaptic } = vi.hoisted(() => ({ triggerHaptic: vi.fn() }));
 
 vi.mock('../app/artworkCache.js', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return { ...actual, preloadArtwork };
 });
+vi.mock('../feedback/haptics.js', () => ({ triggerHaptic }));
 
 const profile = {
   id: 'u1',
@@ -115,6 +117,28 @@ function mockProfileRequest(
         status,
         headers: { 'content-type': 'application/json' },
       });
+    }
+    if (url.endsWith('/api/referrals/me')) {
+      return new Response(
+        JSON.stringify({
+          code: 'TEAM-77',
+          totalInvited: 12,
+          qualifiedInvited: 8,
+          counts: { beginner: 4, amateur: 5, professional: 3 },
+          unclaimedRewardsCount: 2,
+          milestones: [
+            {
+              id: 'reward-10',
+              qualifiedReferrals: 10,
+              rewardStars: 150,
+              unlockId: null,
+              unlockedAt: null,
+              claimedAt: null,
+            },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
     }
     if (url.endsWith('/api/inventory/me')) {
       return new Response(
@@ -279,11 +303,58 @@ describe('ProfileScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     preloadArtwork.mockClear();
+    triggerHaptic.mockClear();
     useAuthStore.getState().setSession({
       accessToken: 'access',
       refreshToken: 'refresh',
       user: { id: 'u1', displayName: 'Alice T' },
     });
+  });
+
+  it('shows the task-style copied toast for 1.5 seconds and triggers a selection haptic', async () => {
+    mockProfileRequest();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    renderProfile();
+    const copyButton = await screen.findByRole('button', { name: 'Скопировать код' });
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(copyButton);
+      await Promise.resolve();
+    });
+
+    expect(writeText).toHaveBeenCalledWith('TEAM-77');
+    expect(screen.getByRole('status')).toHaveClass('achievement-reward-toast');
+    expect(screen.getByRole('status')).toHaveClass('profile-referral-copy-toast');
+    expect(screen.getByRole('status')).toHaveTextContent('Скопировано');
+    expect(triggerHaptic).toHaveBeenCalledWith('selection');
+    act(() => vi.advanceTimersByTime(1_499));
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it('keeps copy controls separate from the referral card open action', async () => {
+    mockProfileRequest();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    renderProfile();
+
+    const copyButton = await screen.findByRole('button', { name: 'Скопировать код' });
+    const panel = copyButton.closest('.profile-referral-panel');
+    expect(panel).not.toHaveAttribute('role', 'button');
+    expect(within(panel as HTMLElement).getByRole('button', { name: 'Открыть карточку приглашений' })).toHaveClass(
+      'profile-referral-panel__open',
+    );
+
+    await act(async () => {
+      fireEvent.click(copyButton);
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByLabelText('Спортивный паспорт')).toBeInTheDocument();
   });
 
   it('retains the currently visible profile artwork when its data is loaded', async () => {
@@ -333,12 +404,34 @@ describe('ProfileScreen', () => {
     expect(screen.getByRole('button', { name: 'Открыть инвентарь' })).toHaveClass(
       'profile-section-label',
     );
+    const inventorySection = screen.getByRole('region', { name: 'Инвентарь' });
+    const referralSection = screen.getByRole('region', { name: 'Приглашай друзей' });
+    expect(inventorySection.compareDocumentPosition(referralSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(await screen.findByAltText('Два хоккеиста вместе')).toHaveAttribute(
+      'src',
+      '/profile/referral-friends.webp',
+    );
+    expect(screen.getByLabelText('Есть награды за приглашения')).toBeInTheDocument();
+    expect(screen.queryByText(/Можно забрать наград/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Открыть приглашённых друзей' })).toHaveTextContent(
+      'Приглашай друзей · 12',
+    );
+    expect(screen.getByText('Играть вместе выгоднее')).toBeInTheDocument();
+    expect(screen.queryByText(/Приглашай друзей в приложение и получай/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Код приглашения')).not.toBeInTheDocument();
+    expect(screen.queryByText('TEAM-77')).not.toBeInTheDocument();
+    expect(screen.queryByText('Скопировать')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ссылка для приглашения')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Скопировать код' })).toHaveTextContent('Код');
+    expect(screen.getByRole('button', { name: 'Скопировать ссылку' })).toHaveTextContent('Ссылка');
+    expect(screen.queryByText(/\/invite\/TEAM-77/)).not.toBeInTheDocument();
+    expect(screen.queryByText('8 из 10 до 150 звёзд')).not.toBeInTheDocument();
     expect(screen.getByText('Профиль')).toHaveClass('profile-section-label');
     expect(screen.getByText('Настройки', { selector: '.profile-settings-card__title' })).toBeInTheDocument();
     expect(screen.queryByText('Профиль и аккаунт')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Домашняя арена' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Открыть задания' })).toBeInTheDocument();
-    expect(screen.getByText('Задания · 1/1, уровни · 1/1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Задания')).not.toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Открыть задания' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Настройки' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Раздевалка игрока')).not.toBeInTheDocument();
   });
@@ -583,12 +676,31 @@ describe('ProfileScreen', () => {
     ).toBeInTheDocument();
   });
 
+  it('matches duel locker cards and haptics in the profile equipment picker', async () => {
+    mockProfileRequest();
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать клюшку' }));
+    const dialog = screen.getByRole('dialog', { name: 'Выбрать клюшку' });
+    const selectedOption = within(dialog).getByRole('button', { name: /Ледяной клинок/ });
+    const baseOption = within(dialog).getByRole('button', { name: 'Выбрать Обычная клюшка' });
+
+    expect(selectedOption).toHaveClass('duel-equipment-option', 'duel-equipment-option--selected');
+    expect(selectedOption.querySelector('.duel-equipment-option__check--selected svg')).toBeInTheDocument();
+    expect(baseOption.querySelector('.duel-equipment-option__check:not(.duel-equipment-option__check--selected)')).toBeInTheDocument();
+
+    fireEvent.click(selectedOption);
+    expect(triggerHaptic).not.toHaveBeenCalled();
+    fireEvent.click(baseOption);
+    expect(triggerHaptic).toHaveBeenCalledTimes(1);
+    expect(triggerHaptic).toHaveBeenCalledWith('selection');
+  });
+
   it('opens achievement details from a career award', async () => {
     mockProfileRequest();
     renderProfile();
 
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Открыть задание Снайпер недели' }),
+      await screen.findByRole('button', { name: 'Открыть задание Снайпер недели', hidden: true }),
     );
 
     expect(screen.getByRole('dialog', { name: 'Снайпер недели' })).toBeInTheDocument();
@@ -616,6 +728,10 @@ describe('ProfileScreen', () => {
       'Выбрать коньки',
       'Выбрать питание',
       'Восстановление: 0 минут',
+      'Открыть приглашённых друзей',
+      'Открыть карточку приглашений',
+      'Скопировать код',
+      'Скопировать ссылку',
       'Открыть задания',
       'Открыть задание Снайпер недели',
       'Настройки',
@@ -937,7 +1053,7 @@ describe('ProfileScreen', () => {
     });
     renderProfile();
 
-    const task = await screen.findByRole('button', { name: 'Открыть задание Заброшено шайб' });
+    const task = await screen.findByRole('button', { name: 'Открыть задание Заброшено шайб', hidden: true });
     expect(within(task).getByText('Ур. 2/8')).toHaveClass('profile-career-award__level');
     expect(screen.getByText('Задания · 0/1, уровни · 2/8')).toBeInTheDocument();
 
@@ -968,6 +1084,7 @@ describe('ProfileScreen', () => {
 
     const achievement = await screen.findByRole('button', {
       name: 'Открыть задание Тренировочный монстр',
+      hidden: true,
     });
     expect(achievement.querySelector('.profile-achievement-title')).toHaveClass(
       'profile-achievement-title--compact',
@@ -1003,6 +1120,7 @@ describe('ProfileScreen', () => {
     const career = await screen.findByLabelText('Задания');
     const achievementButtons = within(career).getAllByRole('button', {
       name: /Открыть задание/,
+      hidden: true,
     });
 
     expect(achievementButtons.map((button) => button.textContent)).toEqual([

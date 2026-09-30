@@ -40,6 +40,11 @@ describe('loadConfig', () => {
     expect(cfg.PORT).toBe(3000);
   });
 
+  it('accepts an optional access token lifetime for long-running local sessions', () => {
+    expect(loadConfig({ ...base, ACCESS_TOKEN_TTL_SEC: '604800' }).ACCESS_TOKEN_TTL_SEC).toBe(604800);
+    expect(loadConfig(base).ACCESS_TOKEN_TTL_SEC).toBeUndefined();
+  });
+
   it('treats VK_APP_ID as optional and normalizes blank value', () => {
     expect(loadConfig({ ...base, VK_APP_ID: '' }).VK_APP_ID).toBeUndefined();
     expect(loadConfig({ ...base, VK_APP_ID: '777' }).VK_APP_ID).toBe('777');

@@ -45,6 +45,7 @@ import {
 } from '../game/PlayView.js';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
+import { DuelEarnedRewards } from '../components/duel/DuelEarnedRewards.js';
 import { startVkOAuth } from '../auth/vkAuth.js';
 import { detectTimezone } from '../auth/timezone.js';
 import { apiFetch, ApiError } from '../api/apiFetch.js';
@@ -73,10 +74,12 @@ import { rewardColor } from '../app/rewardColors.js';
 import type { ScoreBoardOpponent } from '../components/ScoreBoard.js';
 import { GlassSelect } from '../components/GlassSelect.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
+import { DuelLimitsSection } from '../components/duel/DuelLimitsSection.js';
 import { TrainingHistorySection } from '../components/TrainingHistorySection.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
 import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { AppToast } from '../components/AppToast.js';
 import type { UserPickerItem } from '../chat/api.js';
 import type {
   DailyGameStats,
@@ -86,6 +89,22 @@ import type {
   ShotResultType,
 } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
+import {
+  fetchInitialTrainingCourse,
+  type InitialTrainingCatalogResponse,
+  type InitialTrainingExerciseKey,
+} from '../api/initialTraining.js';
+import {
+  INITIAL_TRAINING_HUB_LOADING_CATALOG,
+  InitialTrainingCatalog,
+  InitialTrainingHub,
+} from '../components/InitialTrainingCourse.js';
+import {
+  AdvancedTrainingCatalog,
+  type AdvancedTrainingExerciseKey,
+} from '../components/AdvancedTrainingCourse.js';
+import { AdvancedTrainingPlay } from '../components/AdvancedTrainingPlay.js';
+import { InitialTrainingPlay } from '../components/InitialTrainingPlay.js';
 import type { ProfileData } from './profileTypes.js';
 import {
   arenaCourtImage,
@@ -127,6 +146,7 @@ import {
   searchAmateurOpponents,
   settleAmateurDuel,
   type AmateurDuelKind,
+  type AmateurDuelOverview,
   type AmateurDuelInventoryAvailabilityItem,
   type AmateurDuelLoadoutItem,
   type AmateurDuelLoadoutSelection,
@@ -3462,6 +3482,50 @@ function ModeShell({
   );
 }
 
+export function initialTrainingCatalogAfterRefresh(
+  current: InitialTrainingCatalogResponse | null,
+  refreshed: InitialTrainingCatalogResponse | undefined,
+): InitialTrainingCatalogResponse | null {
+  if (refreshed === undefined) return current;
+  if (
+    !Array.isArray(refreshed.exercises) ||
+    !refreshed.advanced_training ||
+    !Array.isArray(refreshed.advanced_training.exercises)
+  ) {
+    return current;
+  }
+  return refreshed;
+}
+
+export function initialTrainingCatalogAfterCompletion(
+  current: InitialTrainingCatalogResponse,
+  completedKey: InitialTrainingExerciseKey,
+): InitialTrainingCatalogResponse {
+  const completedExercise = current.exercises.find((exercise) => exercise.key === completedKey);
+  if (!completedExercise || completedExercise.state === 'completed') return current;
+  const completedCount = Math.min(current.total_count, current.completed_count + 1);
+  const unlocked = completedCount === current.total_count;
+  return {
+    ...current,
+    completed_count: completedCount,
+    open_training_unlocked: current.open_training_unlocked || unlocked,
+    open_training_unlock_source:
+      current.open_training_unlock_source ?? (unlocked ? 'course' : null),
+    exercises: current.exercises.map((exercise) => {
+      if (exercise.key === completedKey) return { ...exercise, state: 'completed' };
+      if (
+        exercise.position === completedExercise.position + 1 &&
+        exercise.state === 'locked'
+      ) {
+        return { ...exercise, state: 'available' };
+      }
+      return exercise;
+    }),
+  };
+}
+
+const INITIAL_TRAINING_COURSE_QUERY_KEY = ['training', 'course'] as const;
+
 function TrainingPlaceholder({
   autoPlay = false,
   onBack,
@@ -3481,6 +3545,9 @@ function TrainingPlaceholder({
   playRouteTransitionOnStart?: boolean;
   onRouteTransitionConsumed?: (() => void) | undefined;
 }): JSX.Element {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const data = useTrainingSessionStore((s) => s.data);
   const loading = useTrainingSessionStore((s) => s.loading);
   const error = useTrainingSessionStore((s) => s.error);
@@ -3491,7 +3558,39 @@ function TrainingPlaceholder({
   const [playTraining, setPlayTraining] = useState(() => autoPlay);
   const [localPlayEntrance, setLocalPlayEntrance] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [courseCatalog, setCourseCatalog] = useState<InitialTrainingCatalogResponse | null>(() =>
+    queryClient.getQueryData<InitialTrainingCatalogResponse>(INITIAL_TRAINING_COURSE_QUERY_KEY) ??
+    null,
+  );
+  const [courseCatalogLoaded, setCourseCatalogLoaded] = useState(courseCatalog !== null);
+  const [courseCatalogError, setCourseCatalogError] = useState(false);
+  const [trainingLockModalOpen, setTrainingLockModalOpen] = useState(false);
+  const [sectionToast, setSectionToast] = useState<string | null>(null);
   const refreshedTrainingDayRef = useRef<string | null>(null);
+
+  const refreshCourseCatalog = useCallback(async (): Promise<void> => {
+    try {
+      const next = await fetchInitialTrainingCourse();
+      const current =
+        queryClient.getQueryData<InitialTrainingCatalogResponse>(
+          INITIAL_TRAINING_COURSE_QUERY_KEY,
+        ) ?? null;
+      const refreshed = initialTrainingCatalogAfterRefresh(current, next);
+      if (refreshed !== null) {
+        queryClient.setQueryData(INITIAL_TRAINING_COURSE_QUERY_KEY, refreshed);
+      }
+      setCourseCatalog(refreshed);
+      setCourseCatalogError(false);
+    } catch {
+      setCourseCatalogError(true);
+    } finally {
+      setCourseCatalogLoaded(true);
+    }
+  }, [queryClient]);
+
+  useEffect(() => {
+    void refreshCourseCatalog();
+  }, [refreshCourseCatalog]);
 
   useEffect(() => {
     if (data === null) void refresh();
@@ -3544,7 +3643,229 @@ function TrainingPlaceholder({
     onPlayStart?.();
   };
 
-  if (data && playTraining) {
+  const trainingParams = new URLSearchParams(location.search);
+  const trainingSection = trainingParams.get('section');
+
+  const openTrainingExercise = (path: string): void => {
+    if (courseCatalog?.gameplay_lock?.blocked) {
+      setTrainingLockModalOpen(true);
+      return;
+    }
+    navigate(path, { replace: true });
+  };
+
+  const trainingLock = courseCatalog?.gameplay_lock ?? null;
+  const trainingLockModal = trainingLockModalOpen && trainingLock ? (
+    <AccessibleModal
+      title="Тренировка недоступна"
+      copy={
+        trainingLock.reason === 'active_daily'
+          ? 'Сначала завершите ежедневную игру.'
+          : `${gameplayLockCopy(trainingLock)}.`
+      }
+      onClose={() => setTrainingLockModalOpen(false)}
+      headerAction={
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Закрыть"
+          onClick={() => setTrainingLockModalOpen(false)}
+        >
+          <X size={16} aria-hidden="true" />
+        </button>
+      }
+    >
+      <div className="modal-actions">
+        {trainingLock.reason === 'active_daily' ? (
+          <button
+            type="button"
+            className="modal-primary btn btn--cta"
+            onClick={() => navigate('/?view=daily', { replace: true })}
+          >
+            К ежедневной игре
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="modal-primary btn btn--cta"
+            onClick={() => setTrainingLockModalOpen(false)}
+          >
+            Понятно
+          </button>
+        )}
+      </div>
+    </AccessibleModal>
+  ) : null;
+
+  if (
+    !courseCatalogLoaded &&
+    !autoPlay &&
+    trainingSection !== 'open' &&
+    trainingSection !== 'course' &&
+    trainingSection !== 'advanced'
+  ) {
+    return (
+      <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
+        <InitialTrainingHub
+          catalog={INITIAL_TRAINING_HUB_LOADING_CATALOG}
+          loading
+          onOpenCourse={() => undefined}
+          onOpenTraining={() => undefined}
+          onOpenAdvanced={() => undefined}
+        />
+      </ModeShell>
+    );
+  }
+
+  if (courseCatalogError && !courseCatalog && !autoPlay && trainingSection !== 'open') {
+    return (
+      <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
+        <div className="arena-error-state" role="alert">
+          <div className="arena-error-state__title">Не удалось загрузить раздел тренировки.</div>
+          <button
+            type="button"
+            className="btn btn--cta"
+            onClick={() => void refreshCourseCatalog()}
+          >
+            Повторить
+          </button>
+        </div>
+      </ModeShell>
+    );
+  }
+
+  if (courseCatalog) {
+    const params = trainingParams;
+    const section = trainingSection;
+    const exerciseParam = params.get('exercise');
+    const fromSectionsSuffix = params.get('from') === 'sections' ? '&from=sections' : '';
+    const exercise = courseCatalog.exercises.find((item) => item.key === exerciseParam);
+    if (
+      section === 'course' &&
+      exercise &&
+      exercise.state !== 'locked' &&
+      !courseCatalog.gameplay_lock?.blocked
+    ) {
+      const nextExercise = courseCatalog.exercises.find(
+        (item) => item.position === exercise.position + 1,
+      );
+      return (
+        <InitialTrainingPlay
+          exerciseKey={exercise.key}
+          onBack={() => navigate(`/?view=training&section=course${fromSectionsSuffix}`, { replace: true })}
+          onCourse={() => navigate(`/?view=training&section=course${fromSectionsSuffix}`, { replace: true })}
+          onNext={() => {
+            if (nextExercise) {
+              navigate(
+                `/?view=training&section=course&exercise=${encodeURIComponent(nextExercise.key)}&play=1${fromSectionsSuffix}`,
+                { replace: true },
+              );
+            }
+          }}
+          onOpenTraining={() => navigate(`/?view=training&section=open${fromSectionsSuffix}`, { replace: true })}
+          onCatalogRefresh={(completedKey) => {
+            setCourseCatalog((current) => {
+              if (current === null) return current;
+              const completed = initialTrainingCatalogAfterCompletion(current, completedKey);
+              queryClient.setQueryData(INITIAL_TRAINING_COURSE_QUERY_KEY, completed);
+              return completed;
+            });
+            void refreshCourseCatalog();
+          }}
+        />
+      );
+    }
+    if (section === 'course') {
+      return (
+        <>
+          <ModeShell
+            title="Начальное обучение"
+            onBack={() => navigate(`/?view=training${fromSectionsSuffix}`, { replace: true })}
+            variant="section-hub"
+            className="initial-training-course-screen"
+          >
+            <InitialTrainingCatalog
+              catalog={courseCatalog}
+              onStart={(key: InitialTrainingExerciseKey) =>
+                openTrainingExercise(
+                  `/?view=training&section=course&exercise=${encodeURIComponent(key)}&play=1${fromSectionsSuffix}`,
+                )
+              }
+            />
+          </ModeShell>
+          {trainingLockModal}
+        </>
+      );
+    }
+    if (section === 'advanced') {
+      const advanced = courseCatalog.advanced_training;
+      const advancedExercise = advanced.exercises.find((item) => item.key === exerciseParam);
+      if (
+        advancedExercise &&
+        advancedExercise.state !== 'locked' &&
+        params.get('play') === '1' &&
+        !courseCatalog.gameplay_lock?.blocked
+      ) {
+        return (
+          <AdvancedTrainingPlay
+            exerciseKey={advancedExercise.key as AdvancedTrainingExerciseKey}
+            onBack={() => navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })}
+            onCourse={() => navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })}
+            onCatalogRefresh={() => void refreshCourseCatalog()}
+          />
+        );
+      }
+      return (
+        <>
+          <ModeShell
+            title="Продвинутое обучение"
+            onBack={() => navigate(`/?view=training${fromSectionsSuffix}`, { replace: true })}
+            variant="section-hub"
+            className="advanced-training-course-screen"
+          >
+            <AdvancedTrainingCatalog
+              catalog={{
+                completedCount: advanced.completed_count,
+                totalCount: advanced.total_count,
+                exercises: advanced.exercises,
+              }}
+              onStart={(key) =>
+                openTrainingExercise(
+                  `/?view=training&section=advanced&exercise=${encodeURIComponent(key)}&play=1${fromSectionsSuffix}`,
+                )
+              }
+            />
+          </ModeShell>
+          {trainingLockModal}
+        </>
+      );
+    }
+    if (!autoPlay && section !== 'open') {
+      return (
+        <>
+          <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
+            <InitialTrainingHub
+              catalog={courseCatalog}
+              onOpenCourse={() => setSectionToast('Раздел в разработке')}
+              onOpenTraining={() =>
+                navigate(`/?view=training&section=open${fromSectionsSuffix}`, { replace: true })
+              }
+              onOpenAdvanced={() => setSectionToast('Раздел в разработке')}
+            />
+          </ModeShell>
+          {sectionToast !== null ? (
+            <AppToast
+              message={sectionToast}
+              onDismiss={() => setSectionToast(null)}
+              durationMs={1_500}
+            />
+          ) : null}
+        </>
+      );
+    }
+  }
+
+  if (data && autoPlay && playTraining) {
     const shouldPlayEntrance = playEntranceOnStart || localPlayEntrance;
     return (
       <TrainingPlayView
@@ -4052,11 +4373,13 @@ function DuelKindPreferencePicker({
   onChange,
   onInfo,
   locks,
+  limits,
 }: {
   selected: AmateurDuelKind[];
   onChange: (next: AmateurDuelKind[]) => void;
   onInfo: () => void;
   locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
+  limits?: AmateurDuelOverview['format_limits'];
 }): JSX.Element {
   const selectedSet = new Set(selected);
   const toggleKind = (kind: AmateurDuelKind) => {
@@ -4102,8 +4425,9 @@ function DuelKindPreferencePicker({
             label={duelKindText(kind)}
             checked={selectedSet.has(kind)}
             active={selectedSet.has(kind)}
-            disabled={locks?.[kind]?.blocked === true}
-            title={locks?.[kind] ? ordinaryDuelLockCopy(locks[kind]!) : undefined}
+            disabled={locks?.[kind]?.blocked === true || limits?.[kind]?.available === false}
+            title={locks?.[kind] ? ordinaryDuelLockCopy(locks[kind]!)
+              : limits?.[kind]?.available === false ? 'Лимит дуэлей этого формата исчерпан' : undefined}
             onClick={() => toggleKind(kind)}
           />
         ))}
@@ -4216,6 +4540,26 @@ function MatchmakingRulesContent(): JSX.Element {
   );
 }
 
+export function duelAdmissionErrorCopy(error: unknown): string {
+  if (!(error instanceof ApiError) || error.status !== 409) {
+    return error instanceof Error ? error.message : 'Не удалось начать дуэль. Попробуйте ещё раз.';
+  }
+  const limit = error.details?.duelLimit;
+  if (!limit || typeof limit !== 'object') return error.message;
+  const details = limit as { reason?: unknown; retryAt?: unknown };
+  const reason = {
+    daily: 'Дневной лимит дуэлей исчерпан.',
+    weekly: 'Недельный лимит дуэлей исчерпан.',
+    monthly: 'Месячный лимит дуэлей исчерпан.',
+    format: 'Месячный лимит этого формата исчерпан.',
+    outgoing: 'Достигнут лимит исходящих вызовов.',
+  }[String(details.reason)] ?? error.message;
+  const retry = typeof details.retryAt === 'string' ? new Date(details.retryAt) : null;
+  return retry && !Number.isNaN(retry.getTime())
+    ? `${reason} Снова доступно ${retry.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} (МСК).`
+    : reason;
+}
+
 function AmateurDuelsPage({
   onBack,
   onOpenMatch,
@@ -4264,16 +4608,25 @@ function AmateurDuelsPage({
   const duelLock = matches.data?.duel_lock;
   const duelBlocked = duelLock?.blocked === true;
   useGameplayLockRefresh(duelLock);
+  const searchKind = (selectedTemplateId
+    ? templates.data?.templates.find((item) => item.id === selectedTemplateId)
+    : sortDuelTemplates(templates.data?.templates ?? [])[0])?.duel_kind ?? null;
   const opponents = useQuery({
-    queryKey: ['amateur-duel', 'opponents', 'search', opponentQuery],
-    queryFn: () => searchAmateurOpponents(opponentQuery, 12),
-    enabled: !duelBlocked && duelCreationMode === 'challenge' && opponentQuery.trim().length > 0,
+    queryKey: ['amateur-duel', 'opponents', 'search', opponentQuery, searchKind],
+    queryFn: () => searchAmateurOpponents(opponentQuery, 12, [searchKind!]),
+    enabled: !duelBlocked && duelCreationMode === 'challenge' && searchKind !== null && opponentQuery.trim().length > 0,
   });
   const onlineOpponents = useQuery({
-    queryKey: ['amateur-duel', 'opponents', 'online'],
-    queryFn: () => searchAmateurOpponents('', 12),
-    enabled: !duelBlocked && duelCreationMode === 'challenge',
+    queryKey: ['amateur-duel', 'opponents', 'online', searchKind],
+    queryFn: () => searchAmateurOpponents('', 12, [searchKind!]),
+    enabled: !duelBlocked && duelCreationMode === 'challenge' && searchKind !== null,
+    refetchInterval: 15_000,
   });
+  useEffect(() => {
+    if (!selectedOpponent || !searchKind) return;
+    if (selectedOpponent.format_limits?.[searchKind]?.available === false ||
+        selectedOpponent.format_locks?.[searchKind]?.blocked) setSelectedOpponent(null);
+  }, [searchKind, selectedOpponent]);
   const rating = useQuery({
     queryKey: ['amateur-duel', 'rating', 'current'],
     queryFn: () => fetchAmateurRating(),
@@ -4356,7 +4709,8 @@ function AmateurDuelsPage({
       match.status === 'invited' || match.status === 'ready_check' || match.status === 'active',
   );
   const openDuelSlotsUsed = activeMatches.length;
-  const hasOpenDuelSlot = openDuelSlotsUsed < 5;
+  const openDuelSlotsLimit = matches.data?.open_duel_slots_limit ?? 2;
+  const hasOpenDuelSlot = openDuelSlotsUsed < openDuelSlotsLimit;
   const currentMatches = activeMatches.filter((match) => match.status !== 'invited');
   const incomingInvites = activeMatches.filter(
     (match) => match.status === 'invited' && match.me.side === 'opponent',
@@ -4373,7 +4727,12 @@ function AmateurDuelsPage({
     ? selectedOpponent?.format_locks?.[selectedTemplate.duel_kind]
     : null;
   const challengeLock = duelLock ?? selectedFormatLock ?? selectedOpponentLock;
-  const eligibleMatchmakingKinds = matchmakingKinds.filter((kind) => !formatLocks?.[kind]?.blocked);
+  const formatLimits = matches.data?.format_limits;
+  const selectedSelfLimit = selectedTemplate ? formatLimits?.[selectedTemplate.duel_kind] : null;
+  const selectedOpponentLimit = selectedTemplate
+    ? selectedOpponent?.format_limits?.[selectedTemplate.duel_kind] : null;
+  const eligibleMatchmakingKinds = matchmakingKinds.filter((kind) =>
+    !formatLocks?.[kind]?.blocked && formatLimits?.[kind]?.available !== false);
   const unavailableFormat = DUEL_KIND_OPTIONS.find((kind) => formatLocks?.[kind]?.blocked);
   const matchmakingFormatLock = unavailableFormat ? formatLocks?.[unavailableFormat] : null;
   const opponentOptions = opponentQuery.trim().length > 0 ? (opponents.data?.users ?? []) : [];
@@ -4413,6 +4772,8 @@ function AmateurDuelsPage({
 
   const canChallenge =
     !challengeLock?.blocked &&
+    selectedSelfLimit?.available !== false &&
+    selectedOpponentLimit?.available !== false &&
     hasOpenDuelSlot &&
     selectedTemplate !== null &&
     selectedOpponent !== null &&
@@ -4486,7 +4847,7 @@ function AmateurDuelsPage({
           )}
           <section className="duel-section" aria-label="Текущие дуэли">
             <div className="section-label duel-section-title">
-              Текущие дуэли ({openDuelSlotsUsed}/5)
+              Текущие дуэли ({openDuelSlotsUsed}/{openDuelSlotsLimit})
             </div>
             {currentMatches.length === 0 ? (
               <div role="status" className="duel-empty-current">
@@ -4508,6 +4869,7 @@ function AmateurDuelsPage({
               {renderDuelCards(outgoingInvites)}
             </section>
           )}
+          <DuelLimitsSection limits={matches.data?.duel_limits} loading={matches.isPending} onReset={() => { void matches.refetch(); }} />
           <div className="duel-section">
             <div className="section-label duel-section-title">Новая дуэль</div>
             <section className="duel-creation-card" aria-label="Новая дуэль">
@@ -4525,6 +4887,7 @@ function AmateurDuelsPage({
                   <DuelKindPreferencePicker
                     selected={eligibleMatchmakingKinds}
                     {...(formatLocks === undefined ? {} : { locks: formatLocks })}
+                    {...(formatLimits === undefined ? {} : { limits: formatLimits })}
                     onChange={setMatchmakingKinds}
                     onInfo={() => setMatchmakingRulesOpen(true)}
                   />
@@ -4550,6 +4913,11 @@ function AmateurDuelsPage({
                   {!duelBlocked && matchmakingFormatLock && (
                     <p role="status" className="modal-copy">
                       Некоторые форматы недоступны. {ordinaryDuelLockCopy(matchmakingFormatLock)}
+                    </p>
+                  )}
+                  {matchmakingMut.error && (
+                    <p role="alert" className="modal-copy">
+                      {duelAdmissionErrorCopy(matchmakingMut.error)}
                     </p>
                   )}
                   {matchmakingTicket && (
@@ -4599,6 +4967,11 @@ function AmateurDuelsPage({
                       {ordinaryDuelLockCopy(challengeLock)}
                     </p>
                   )}
+                  {(selectedSelfLimit?.available === false || selectedOpponentLimit?.available === false) && (
+                    <p role="status" className="modal-copy">
+                      {selectedSelfLimit?.available === false ? 'У вас' : 'У соперника'} исчерпан лимит дуэлей для выбранного формата.
+                    </p>
+                  )}
                   {templateItems.length > 0 && selectedTemplate ? (
                     <>
                       <GlassSelect
@@ -4607,7 +4980,7 @@ function AmateurDuelsPage({
                         value={selectedTemplate.id}
                         options={templateItems.map((template) => ({
                           value: template.id,
-                          label: duelTemplateOptionLabel(template),
+                          label: `${duelTemplateOptionLabel(template)}${formatLimits?.[template.duel_kind]?.available === false || selectedOpponent?.format_limits?.[template.duel_kind]?.available === false ? ' — лимит исчерпан' : ''}`,
                         }))}
                         onChange={setSelectedTemplateId}
                       />
@@ -4898,7 +5271,7 @@ function AmateurDuelsPage({
                   </button>
                   {challengeMut.error && (
                     <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>
-                      {challengeMut.error.message}
+                      {duelAdmissionErrorCopy(challengeMut.error)}
                     </div>
                   )}
                 </>
@@ -6021,7 +6394,6 @@ function DuelResultCard({
   const hasPeriodDetails = mePeriods.length > 0 || opponentPeriods.length > 0;
   const hasMultiplePeriods = match.rules.totalPeriods > 1;
   const tiebreaker = duelTiebreakerExplanation(match);
-  const hasSupplementalDetails = tiebreaker !== null || match.rules.winStarReward > 0;
 
   return (
     <div
@@ -6046,7 +6418,10 @@ function DuelResultCard({
         {compact ? (
           <>
             <div className="duel-result-card__compact-meta">
-              <DuelResultCompactFact label="Очки" value={pointsText} />
+              <div className="duel-result-card__points-rewards">
+                <DuelResultCompactFact label="Очки" value={pointsText} />
+                <DuelEarnedRewards reward={match.earned_reward ?? null} />
+              </div>
               <DuelResultCompactFact label="Начало" value={formatShortDateTime(match.starts_at)} />
             </div>
             <section className="duel-result-card__compact-summary">
@@ -6068,21 +6443,10 @@ function DuelResultCard({
                 }}
               />
             </section>
-            {(tiebreaker || match.rules.winStarReward > 0) && (
+            {tiebreaker && (
               <div className="duel-result-card__compact-details">
-                {tiebreaker && (
-                  <>
-                    <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
-                    <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
-                  </>
-                )}
-                {match.rules.winStarReward > 0 && (
-                  <DuelResultDetailRow
-                    label="Звёзды за победу"
-                    value={`+${match.rules.winStarReward}`}
-                    tone="star"
-                  />
-                )}
+                <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
+                <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
               </div>
             )}
           </>
@@ -6182,13 +6546,22 @@ function DuelResultCard({
                 </strong>
               </div>
               <div className="tournament-duel-result__meta">
-                <span>
-                  <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
-                </span>
-                {match.source !== 'tournament' && (
-                  <span className="duel-result-points" aria-label={`Очки за дуэль: ${pointsText}`}>
-                    <span>Очки</span>
-                    <strong>{pointsText}</strong>
+                {match.source !== 'tournament' ? (
+                  <span className="duel-result-card__points-rewards duel-result-card__points-rewards--single-line">
+                    <span>
+                      <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
+                    </span>
+                    <span className="duel-result-card__reward-values">
+                      <span className="duel-result-points" aria-label={`Очки за дуэль: ${pointsText}`}>
+                        <span>Очки</span>
+                        <strong>{pointsText}</strong>
+                      </span>
+                      <DuelEarnedRewards reward={match.earned_reward ?? null} />
+                    </span>
+                  </span>
+                ) : (
+                  <span>
+                    <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
                   </span>
                 )}
                 {series !== null && series.winsRequired > 1 && (
@@ -6201,7 +6574,7 @@ function DuelResultCard({
                 )}
               </div>
             </div>
-            {hasSupplementalDetails && (
+            {tiebreaker && (
               <div
                 style={{
                   marginTop: 10,
@@ -6209,19 +6582,8 @@ function DuelResultCard({
                   gap: 8,
                 }}
               >
-                {tiebreaker && (
-                  <>
-                    <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
-                    <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
-                  </>
-                )}
-                {match.rules.winStarReward > 0 && (
-                  <DuelResultDetailRow
-                    label="Звёзды за победу"
-                    value={`+${match.rules.winStarReward}`}
-                    tone="star"
-                  />
-                )}
+                <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
+                <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
               </div>
             )}
           </>

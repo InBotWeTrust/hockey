@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_MARKSMANSHIP_SCORING_RULES } from '@hockey/game-core';
 import { qualificationDescription, qualificationProgress } from './bonusGameQualification.js';
 
 describe('qualificationDescription', () => {
@@ -14,6 +15,17 @@ describe('qualificationDescription', () => {
     ).toBe('20 голов за 02:00');
   });
 
+  it('describes points in active time', () => {
+    expect(
+      qualificationDescription({
+        type: 'points_in_time',
+        targetPoints: 1_100,
+        activeTimeMs: 30_000,
+        scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
+      }),
+    ).toBe('1100 очков за 00:30');
+  });
+
   it('describes accuracy qualification as goals from a fixed shot quota', () => {
     expect(
       qualificationDescription({
@@ -23,6 +35,16 @@ describe('qualificationDescription', () => {
         requiredGoalStreak: 3,
       }),
     ).toBe('21 голов из 30 бросков · серия 3');
+  });
+
+  it('describes endurance as survival with a recurring goal window', () => {
+    expect(
+      qualificationDescription({
+        type: 'survive_goal_windows',
+        activeTimeMs: 180_000,
+        goalWindowMs: 7_000,
+      }),
+    ).toBe('Продержаться 03:00 мин · Гол не реже, чем раз в 7 сек');
   });
 });
 
@@ -61,5 +83,19 @@ describe('qualificationProgress', () => {
         { goals: 10, shots: 15, currentStreak: 1, bestStreak: 4 },
       ),
     ).toBe('ЦЕЛЬ 10/21');
+  });
+
+  it('shows point progress for marksmanship qualifications', () => {
+    expect(
+      qualificationProgress(
+        {
+          type: 'points_in_time',
+          targetPoints: 1_100,
+          activeTimeMs: 30_000,
+          scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
+        },
+        { goals: 4, shots: 5, totalPoints: 450, currentStreak: 2, bestStreak: 3 },
+      ),
+    ).toBe('ЦЕЛЬ 450/1100');
   });
 });

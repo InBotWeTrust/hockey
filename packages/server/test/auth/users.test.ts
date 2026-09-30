@@ -72,6 +72,76 @@ describe.skipIf(!hasIntegrationEnv)('findOrCreateTelegramUser', () => {
     expect(count.rows[0].n).toBe(1);
   });
 
+  it('creates a permanent code and attaches a valid referral only for a new user', async () => {
+    const inviter = await findOrCreateTelegramUser(pool, {
+      providerUid: 'referrer',
+      displayName: 'Referrer',
+    });
+    const code = await pool.query<{ code: string }>(
+      'select code from referral_code where user_id = $1',
+      [inviter.id],
+    );
+
+    const invitee = await findOrCreateTelegramUser(pool, {
+      providerUid: 'invitee',
+      displayName: 'Invitee',
+      referralCode: code.rows[0]!.code.toLowerCase(),
+      referralSource: 'link',
+    });
+    const relationship = await pool.query(
+      `select inviter_user_id, invitee_user_id, referral_code, source
+         from referral_relationship
+        where invitee_user_id = $1`,
+      [invitee.id],
+    );
+    expect(relationship.rows[0]).toEqual({
+      inviter_user_id: inviter.id,
+      invitee_user_id: invitee.id,
+      referral_code: code.rows[0]!.code,
+      source: 'link',
+    });
+
+    await findOrCreateTelegramUser(pool, {
+      providerUid: 'invitee',
+      displayName: 'Invitee',
+      referralCode: (await pool.query<{ code: string }>(
+        'select code from referral_code where user_id <> $1 limit 1',
+        [inviter.id],
+      )).rows[0]?.code,
+    });
+    expect(
+      Number(
+        (
+          await pool.query(
+            'select count(*) as count from referral_relationship where invitee_user_id = $1',
+            [invitee.id],
+          )
+        ).rows[0].count,
+      ),
+    ).toBe(1);
+  });
+
+  it('rejects an invalid referral code before creating a new account', async () => {
+    await expect(
+      findOrCreateTelegramUser(pool, {
+        providerUid: 'invalid-referral',
+        displayName: 'No account',
+        referralCode: 'NOTFOUND',
+      }),
+    ).rejects.toMatchObject({ statusCode: 400, message: 'referral_code_invalid' });
+    expect(
+      Number(
+        (
+          await pool.query(
+            `select count(*) as count
+               from auth_providers
+              where provider = 'telegram' and provider_uid = 'invalid-referral'`,
+          )
+        ).rows[0].count,
+      ),
+    ).toBe(0);
+  });
+
   it('optional avatarUrl persists on users row', async () => {
     const user = await findOrCreateTelegramUser(pool, {
       providerUid: '200',

@@ -1,22 +1,21 @@
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from 'fastify';
-import type { PoolClient } from 'pg';
 import { z, type ZodType } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import { listBonusGameCards, type BonusGameCardDto } from './catalog.js';
 import { purchaseBonusGame } from './economy.js';
-import { reconcileBonusAttempt } from './reconcile.js';
 import {
   abandonBonusAttempt,
   acknowledgeBonusPreview,
   BonusAttemptAlreadyActiveError,
   fetchBonusAttemptAllowances,
-  loadBonusAttemptDto,
+  reconcileCurrentBonusAttempt,
+  reconcileOwnedBonusAttempt,
   startBonusPeriod,
   startOrResumeBonusAttempt,
   submitBonusShot,
   type SubmitBonusShotInput,
 } from './service.js';
-import type { BonusGameAttemptDTO, BonusGameAttemptRow, BonusPeriodRule } from './types.js';
+import type { BonusGameAttemptDTO, BonusPeriodRule } from './types.js';
 
 export interface BonusGameRouteOptions {
   bonusSeedSecret: string;
@@ -79,6 +78,10 @@ const SAFE_BONUS_ERRORS: Readonly<
   bonus_game_inactive: {
     statusCode: 409,
     message: 'this bonus game is not available',
+  },
+  bonus_game_unreleased: {
+    statusCode: 409,
+    message: 'this bonus game is not released yet',
   },
   bonus_attempt_already_active: {
     statusCode: 409,
@@ -188,24 +191,6 @@ async function runBonusRoute<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function withTransaction<T>(
-  app: FastifyInstance,
-  fn: (client: PoolClient) => Promise<T>,
-): Promise<T> {
-  const client = await app.pg.connect();
-  try {
-    await client.query('begin');
-    const result = await fn(client);
-    await client.query('commit');
-    return result;
-  } catch (error) {
-    await client.query('rollback').catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
 function toPeriodRuleDto(rule: BonusPeriodRule) {
   return {
     period_number: rule.periodNumber,
@@ -261,12 +246,15 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
     current_period: attempt.currentPeriod,
     period_started_at: attempt.periodStartedAt,
     period_ends_at: periodEndsAt,
+    goal_window_started_at: attempt.goalWindowStartedAt,
+    goal_window_ends_at: attempt.goalWindowEndsAt,
     break_started_at: attempt.breakStartedAt,
     break_ends_at: breakEndsAt,
     closed_at: attempt.closedAt,
     shots_taken: attempt.shotsTaken,
     current_period_shots_taken: attempt.currentPeriodShotsTaken,
     goals: attempt.goals,
+    total_points: attempt.totalPoints,
     current_goal_streak: attempt.currentGoalStreak,
     best_goal_streak: attempt.bestGoalStreak,
     preview_required: attempt.previewRequired,
@@ -318,18 +306,7 @@ async function reconcileCurrentAttempt(
   userId: string,
   now: Date,
 ): Promise<BonusGameAttemptDTO | null> {
-  return withTransaction(app, async (client) => {
-    const { rows } = await client.query<BonusGameAttemptRow>(
-      `select * from bonus_game_attempt
-        where user_id = $1 and status = 'active'
-        for update`,
-      [userId],
-    );
-    const attempt = rows[0];
-    if (attempt === undefined) return null;
-    const reconciled = await reconcileBonusAttempt(client, attempt, now);
-    return reconciled.status === 'active' ? loadBonusAttemptDto(client, reconciled) : null;
-  });
+  return reconcileCurrentBonusAttempt(app.pg, { userId, now });
 }
 
 async function reconcileOwnedAttempt(
@@ -338,21 +315,7 @@ async function reconcileOwnedAttempt(
   attemptId: string,
   now: Date,
 ): Promise<BonusGameAttemptDTO> {
-  return withTransaction(app, async (client) => {
-    const { rows } = await client.query<BonusGameAttemptRow>(
-      `select * from bonus_game_attempt
-        where id = $1 and user_id = $2
-        for update`,
-      [attemptId, userId],
-    );
-    const attempt = rows[0];
-    if (attempt === undefined) {
-      throw new AppError('bonus_attempt_not_active', 'bonus attempt is not active', 409);
-    }
-    const reconciled =
-      attempt.status === 'active' ? await reconcileBonusAttempt(client, attempt, now) : attempt;
-    return loadBonusAttemptDto(client, reconciled);
-  });
+  return reconcileOwnedBonusAttempt(app.pg, { userId, attemptId, now });
 }
 
 function activeAttemptConflict(reply: FastifyReply, error: BonusAttemptAlreadyActiveError) {
@@ -392,6 +355,20 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
             used: attemptAllowances.accuracy.used,
             remaining: attemptAllowances.accuracy.remaining,
             resets_at: attemptAllowances.accuracy.resetsAt,
+          },
+          marksmanship: {
+            skill_code: attemptAllowances.marksmanship.skillCode,
+            daily_limit: attemptAllowances.marksmanship.dailyLimit,
+            used: attemptAllowances.marksmanship.used,
+            remaining: attemptAllowances.marksmanship.remaining,
+            resets_at: attemptAllowances.marksmanship.resetsAt,
+          },
+          endurance: {
+            skill_code: attemptAllowances.endurance.skillCode,
+            daily_limit: attemptAllowances.endurance.dailyLimit,
+            used: attemptAllowances.endurance.used,
+            remaining: attemptAllowances.endurance.remaining,
+            resets_at: attemptAllowances.endurance.resetsAt,
           },
         },
       };
@@ -518,6 +495,11 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
         });
         return {
           server_result: result.serverResult,
+          awarded_points: result.awardedPoints,
+          total_points: result.totalPoints,
+          difficulty_code: result.difficultyCode,
+          counter_direction: result.counterDirection,
+          score_details: result.scoreDetails,
           attempt: toAttemptHttpDto(result.attempt, now),
           reward_granted: result.attempt.rewardGranted,
           balances: result.balances,

@@ -60,6 +60,7 @@ import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSect
 import { WeeklyChallengesAdmin } from './WeeklyChallengesAdmin.js';
 import { BonusGamesAdmin } from './BonusGamesAdmin.js';
 import { OnboardingAdmin } from './OnboardingAdmin.js';
+import { ReferralsAdmin } from './ReferralsAdmin.js';
 import { TournamentAdmin } from '../tournament/TournamentAdmin.js';
 import { tournamentTimezoneLabel } from '../tournament/timezoneLabel.js';
 import {
@@ -166,6 +167,7 @@ import {
 type AdminTab =
   | 'dashboard'
   | 'users'
+  | 'referrals'
   | 'notifications'
   | 'channel'
   | 'anticheat'
@@ -190,6 +192,7 @@ type AdminFeedbackStatus = AdminFeedbackQuery['status'];
 const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'dashboard', label: 'Обзор', icon: <BarChart3 size={15} /> },
   { id: 'users', label: 'Игроки', icon: <Users size={15} /> },
+  { id: 'referrals', label: 'Рефералы', icon: <UserCheck size={15} /> },
   { id: 'notifications', label: 'Уведомления', icon: <Bell size={15} /> },
   { id: 'channel', label: 'Коммуникации', icon: <Megaphone size={15} /> },
   { id: 'anticheat', label: 'Античит', icon: <ShieldAlert size={15} /> },
@@ -1064,6 +1067,7 @@ export function AdminScreen(): JSX.Element {
           onCloseUser={() => setSelectedUserId(null)}
         />
       )}
+      {tab === 'referrals' && <ReferralsAdmin />}
       {tab === 'notifications' && (
         <NotificationsPanel
           loading={notifications.isLoading}
@@ -8487,6 +8491,14 @@ function SettingsPanel({
         <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
           {activeSection.number}. {activeSection.title}
         </div>
+        {activeSection.id === 'amateur' && (
+          <p className="glass" style={{ padding: 14, margin: 0, borderRadius: 14 }}>
+            Месячный рейтинг: общий зачёт и форматы Экспресс, Микс, Классика настраиваются отдельно.
+            Выключенный зачёт остаётся в таблице, но наград и поздравления не даёт.
+            Если все суммы места равны нулю, поздравления тоже не будет.
+            Изменения действуют только для ещё не закрытого месяца; после закрытия настройки и выплаты фиксируются.
+          </p>
+        )}
         <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {loading && <AdminPlainState>Загрузка...</AdminPlainState>}
           {!loading && sectionSettings.length === 0 && (

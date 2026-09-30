@@ -9,7 +9,12 @@ import {
   type BonusGameAttempt,
   type BonusPeriodLoadoutSelection,
   type BonusShotRequest,
+  type MarksmanshipScoreDetails,
 } from '../api/bonusGames.js';
+import type {
+  MarksmanshipDifficultyCode,
+  MarksmanshipShotClassification,
+} from '@hockey/game-core';
 import { ApiError } from '../api/apiFetch.js';
 import {
   isDefinitiveGameRequestError,
@@ -20,6 +25,12 @@ import { wasAmateurLevelRequiredErrorHandled } from '../amateur/amateurAccess.js
 
 interface PendingBonusShot {
   attempt: BonusGameAttempt;
+  awardedPoints: number;
+  totalPoints: number;
+  difficultyCode: MarksmanshipDifficultyCode | null;
+  counterDirection: boolean;
+  scoreDetails: MarksmanshipScoreDetails | null;
+  predictedMarksmanship: MarksmanshipShotClassification | null;
   receivedAtPerformanceMs: number;
 }
 
@@ -44,9 +55,18 @@ interface BonusGameStoreState {
   acknowledgePreview: (dismissFuture: boolean) => Promise<BonusGameAttempt | null>;
   submitShot: (
     body: BonusShotRequest,
-    options?: { deferApply?: boolean },
+    options?: {
+      deferApply?: boolean;
+      predictedMarksmanship?: MarksmanshipShotClassification | null;
+    },
   ) => Promise<{
     serverResult: ShotResultType;
+    awardedPoints: number;
+    totalPoints: number;
+    difficultyCode: MarksmanshipDifficultyCode | null;
+    counterDirection: boolean;
+    scoreDetails: MarksmanshipScoreDetails | null;
+    predictedMarksmanship: MarksmanshipShotClassification | null;
     attempt: BonusGameAttempt;
     rewardGranted: boolean;
     isCurrent?: (() => boolean) | undefined;
@@ -301,6 +321,11 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
           ? outcome.value
           : {
               server_result: body.claimed_result,
+              awarded_points: 0,
+              total_points: outcome.value.total_points,
+              difficulty_code: null,
+              counter_direction: false,
+              score_details: null,
               attempt: outcome.value,
               reward_granted: outcome.value.reward_granted,
               balances: { coins: 0, stars: 0, experience: 0 },
@@ -310,6 +335,12 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
         set({
           pendingShot: {
             attempt: response.attempt,
+            awardedPoints: response.awarded_points,
+            totalPoints: response.total_points,
+            difficultyCode: response.difficulty_code,
+            counterDirection: response.counter_direction,
+            scoreDetails: response.score_details ?? null,
+            predictedMarksmanship: options.predictedMarksmanship ?? null,
             receivedAtPerformanceMs,
           },
           loading: false,
@@ -326,6 +357,12 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
       const pendingAttempt = response.attempt;
       return {
         serverResult: response.server_result,
+        awardedPoints: response.awarded_points,
+        totalPoints: response.total_points,
+        difficultyCode: response.difficulty_code,
+        counterDirection: response.counter_direction,
+        scoreDetails: response.score_details ?? null,
+        predictedMarksmanship: options?.predictedMarksmanship ?? null,
         attempt: response.attempt,
         rewardGranted: response.reward_granted,
         isCurrent: () =>

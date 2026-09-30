@@ -91,6 +91,7 @@ interface UploadRequest {
 
 function createEmptyForm(sortOrder: number, skillCode: AdminBonusSkillCode): BonusGameFormState {
   const speed = skillCode === 'speed';
+  const endurance = skillCode === 'endurance';
   return {
     gameId: null,
     originalStatus: null,
@@ -102,10 +103,12 @@ function createEmptyForm(sortOrder: number, skillCode: AdminBonusSkillCode): Bon
     status: 'draft',
     accessType: 'free',
     unlockPriceStars: 0,
-    targetGoals: 18,
-    qualificationRules: speed
-      ? { type: 'goals_in_time', targetGoals: 18, activeTimeMs: 240_000 }
-      : { type: 'goals_from_shots', targetGoals: 18, shotsLimit: 30 },
+    targetGoals: endurance ? 1 : 18,
+    qualificationRules: endurance
+      ? { type: 'survive_goal_windows', activeTimeMs: 180_000, goalWindowMs: 7_000 }
+      : speed
+        ? { type: 'goals_in_time', targetGoals: 18, activeTimeMs: 240_000 }
+        : { type: 'goals_from_shots', targetGoals: 18, shotsLimit: 30 },
     totalPeriods: 1,
     breakDurationMs: 0,
     useInventory: false,
@@ -113,7 +116,13 @@ function createEmptyForm(sortOrder: number, skillCode: AdminBonusSkillCode): Bon
     previewStory: '',
     previewArtworkUrl: '',
     previewRevision: 1,
-    periods: [{ ...defaultPeriod, shotsLimit: speed ? null : 30 }],
+    periods: [
+      {
+        ...defaultPeriod,
+        durationMs: endurance ? 180_000 : defaultPeriod.durationMs,
+        shotsLimit: speed || endurance ? null : 30,
+      },
+    ],
     rewardCoins: 0,
     rewardStars: 0,
     rewardExperience: 0,
@@ -202,7 +211,16 @@ function formValidationError(form: BonusGameFormState): string | null {
         qualification.activeTimeMs < 1_000)) ||
     (form.skillCode === 'speed' && qualification.type !== 'goals_in_time') ||
     (form.skillCode === 'accuracy' && qualification.type !== 'goals_from_shots') ||
-    (qualification.requiredGoalStreak !== undefined &&
+    (form.skillCode === 'endurance' &&
+      (qualification.type !== 'survive_goal_windows' ||
+        !Number.isInteger(qualification.activeTimeMs) ||
+        qualification.activeTimeMs < 1_000 ||
+        qualification.activeTimeMs > 86_400_000 ||
+        !Number.isInteger(qualification.goalWindowMs) ||
+        qualification.goalWindowMs < 1_000 ||
+        qualification.goalWindowMs > 60_000)) ||
+    ('requiredGoalStreak' in qualification &&
+      qualification.requiredGoalStreak !== undefined &&
       (!Number.isInteger(qualification.requiredGoalStreak) || qualification.requiredGoalStreak < 1))
   ) {
     return 'Проверьте условие квалификации.';
@@ -217,7 +235,7 @@ function formValidationError(form: BonusGameFormState): string | null {
       Number.isInteger(period.durationMs) &&
       period.durationMs >= 1_000 &&
       period.durationMs <= 10_800_000 &&
-      (form.skillCode === 'speed'
+      (form.skillCode === 'speed' || form.skillCode === 'endurance'
         ? period.shotsLimit === null
         : Number.isInteger(period.shotsLimit) &&
           period.shotsLimit !== null &&
@@ -255,6 +273,17 @@ function formValidationError(form: BonusGameFormState): string | null {
     qualification.activeTimeMs !== form.periods.reduce((sum, period) => sum + period.durationMs, 0)
   ) {
     return 'Активное время должно совпадать с суммой длительностей периодов.';
+  }
+  if (
+    form.skillCode === 'endurance' &&
+    (qualification.type !== 'survive_goal_windows' ||
+      form.totalPeriods !== 1 ||
+      form.periods.length !== 1 ||
+      form.periods[0]?.durationMs !== qualification.activeTimeMs ||
+      form.periods[0]?.shotsLimit !== null ||
+      form.useInventory)
+  ) {
+    return 'Проверьте параметры выносливости.';
   }
   if (
     [
@@ -299,6 +328,21 @@ function formValidationError(form: BonusGameFormState): string | null {
 }
 
 function formToInput(form: BonusGameFormState): AdminBonusGameInput {
+  const enduranceRules =
+    form.skillCode === 'endurance' && form.qualificationRules.type === 'survive_goal_windows'
+      ? form.qualificationRules
+      : null;
+  const periods =
+    enduranceRules === null
+      ? form.periods
+      : [
+          {
+            ...(form.periods[0] ?? defaultPeriod),
+            periodNumber: 1,
+            durationMs: enduranceRules.activeTimeMs,
+            shotsLimit: null,
+          },
+        ];
   return {
     skillCode: form.skillCode,
     slug: form.slug.trim(),
@@ -308,16 +352,19 @@ function formToInput(form: BonusGameFormState): AdminBonusGameInput {
     status: form.status,
     accessType: form.accessType,
     unlockPriceStars: form.accessType === 'free' ? 0 : form.unlockPriceStars,
-    targetGoals: form.qualificationRules.targetGoals,
+    targetGoals:
+      enduranceRules === null && 'targetGoals' in form.qualificationRules
+        ? form.qualificationRules.targetGoals
+        : 1,
     qualificationRules: form.qualificationRules,
-    totalPeriods: form.totalPeriods,
-    breakDurationMs: form.breakDurationMs,
-    useInventory: form.useInventory,
+    totalPeriods: enduranceRules === null ? form.totalPeriods : 1,
+    breakDurationMs: enduranceRules === null ? form.breakDurationMs : 0,
+    useInventory: enduranceRules === null ? form.useInventory : false,
     previewTitle: form.previewTitle.trim(),
     previewStory: form.previewStory.trim(),
     previewArtworkUrl: form.previewArtworkUrl.trim(),
     previewRevision: form.previewRevision,
-    periods: form.periods,
+    periods,
     rewardCoins: form.rewardCoins,
     rewardStars: form.rewardStars,
     rewardExperience: form.rewardExperience,
@@ -410,7 +457,7 @@ export function BonusGamesAdmin(): JSX.Element {
         </button>
       </div>
       <div className="bonus-games-skill-tabs" role="tablist" aria-label="Навык бонусных игр">
-        {(['speed', 'accuracy'] as const).map((skill) => (
+        {(['speed', 'accuracy', 'endurance'] as const).map((skill) => (
           <button
             key={skill}
             type="button"
@@ -419,7 +466,7 @@ export function BonusGamesAdmin(): JSX.Element {
             className={`chip${selectedSkill === skill ? ' chip--active' : ''}`}
             onClick={() => setSelectedSkill(skill)}
           >
-            {skill === 'speed' ? 'Скорость' : 'Точность'}
+            {skill === 'speed' ? 'Скорость' : skill === 'accuracy' ? 'Точность' : 'Выносливость'}
           </button>
         ))}
       </div>
@@ -661,7 +708,10 @@ function BonusGameEditor({
     const periods = Array.from({ length: count }, (_, index) => ({
       ...(form.periods[index] ?? {
         ...defaultPeriod,
-        shotsLimit: form.skillCode === 'speed' ? null : defaultPeriod.shotsLimit,
+        shotsLimit:
+          form.skillCode === 'speed' || form.skillCode === 'endurance'
+            ? null
+            : defaultPeriod.shotsLimit,
       }),
       periodNumber: index + 1,
     }));
@@ -678,9 +728,46 @@ function BonusGameEditor({
   }
 
   function setRequiredGoalStreak(value: number): void {
+    if (form.qualificationRules.type === 'survive_goal_windows') return;
     const rules: AdminBonusQualificationRules = { ...form.qualificationRules };
     delete rules.requiredGoalStreak;
     setField('qualificationRules', value > 0 ? { ...rules, requiredGoalStreak: value } : rules);
+  }
+
+  function setEnduranceActiveTime(value: number): void {
+    const rules = form.qualificationRules;
+    if (rules.type !== 'survive_goal_windows') return;
+    onChange({
+      ...form,
+      qualificationRules: { ...rules, activeTimeMs: value },
+      periods: form.periods.map((period, index) =>
+        index === 0 ? { ...period, durationMs: value, shotsLimit: null } : period,
+      ),
+    });
+  }
+
+  function setEnduranceGoalWindow(value: number): void {
+    const rules = form.qualificationRules;
+    if (rules.type !== 'survive_goal_windows') return;
+    setField('qualificationRules', { ...rules, goalWindowMs: value });
+  }
+
+  function setQualificationTargetGoals(value: number): void {
+    const rules = form.qualificationRules;
+    if (rules.type === 'survive_goal_windows') return;
+    setField('qualificationRules', { ...rules, targetGoals: value });
+  }
+
+  function setQualificationActiveTime(value: number): void {
+    const rules = form.qualificationRules;
+    if (rules.type !== 'goals_in_time') return;
+    setField('qualificationRules', { ...rules, activeTimeMs: value });
+  }
+
+  function setQualificationShotsLimit(value: number): void {
+    const rules = form.qualificationRules;
+    if (rules.type !== 'goals_from_shots') return;
+    setField('qualificationRules', { ...rules, shotsLimit: value });
   }
 
   function requestCancel(): void {
@@ -807,67 +894,84 @@ function BonusGameEditor({
           <h3 className="admin-form-section-title bonus-game-editor__section">Квалификация</h3>
           <Grid>
             <Field label="Навык">
-              <input value={form.skillCode === 'speed' ? 'Скорость' : 'Точность'} readOnly />
+              <input
+                value={
+                  form.skillCode === 'speed'
+                    ? 'Скорость'
+                    : form.skillCode === 'accuracy'
+                      ? 'Точность'
+                      : 'Выносливость'
+                }
+                readOnly
+              />
             </Field>
-            <NumberField
-              label="Нужно голов"
-              value={form.qualificationRules.targetGoals}
-              min={1}
-              onChange={(value) =>
-                setField('qualificationRules', {
-                  ...form.qualificationRules,
-                  targetGoals: value,
-                } as AdminBonusQualificationRules)
-              }
-            />
-            {form.qualificationRules.type === 'goals_in_time' ? (
-              <NumberField
-                label="Активное время, мс"
-                value={form.qualificationRules.activeTimeMs}
-                min={1_000}
-                onChange={(value) =>
-                  setField('qualificationRules', {
-                    ...form.qualificationRules,
-                    activeTimeMs: value,
-                  } as AdminBonusQualificationRules)
-                }
-              />
+            {form.qualificationRules.type === 'survive_goal_windows' ? (
+              <>
+                <NumberField
+                  label="Общая длительность, мс"
+                  value={form.qualificationRules.activeTimeMs}
+                  min={1_000}
+                  max={86_400_000}
+                  onChange={setEnduranceActiveTime}
+                />
+                <NumberField
+                  label="Окно до гола, мс"
+                  value={form.qualificationRules.goalWindowMs}
+                  min={1_000}
+                  max={60_000}
+                  onChange={setEnduranceGoalWindow}
+                />
+              </>
             ) : (
-              <NumberField
-                label="Бросков в квалификации"
-                value={form.qualificationRules.shotsLimit}
-                min={1}
-                onChange={(value) =>
-                  setField('qualificationRules', {
-                    ...form.qualificationRules,
-                    shotsLimit: value,
-                  } as AdminBonusQualificationRules)
-                }
-              />
+              <>
+                <NumberField
+                  label="Нужно голов"
+                  value={form.qualificationRules.targetGoals}
+                  min={1}
+                  onChange={setQualificationTargetGoals}
+                />
+                {form.qualificationRules.type === 'goals_in_time' ? (
+                  <NumberField
+                    label="Активное время, мс"
+                    value={form.qualificationRules.activeTimeMs}
+                    min={1_000}
+                    onChange={setQualificationActiveTime}
+                  />
+                ) : (
+                  <NumberField
+                    label="Бросков в квалификации"
+                    value={form.qualificationRules.shotsLimit}
+                    min={1}
+                    onChange={setQualificationShotsLimit}
+                  />
+                )}
+                <NumberField
+                  label="Обязательная серия (0 — нет)"
+                  value={form.qualificationRules.requiredGoalStreak ?? 0}
+                  min={0}
+                  onChange={setRequiredGoalStreak}
+                />
+              </>
             )}
-            <NumberField
-              label="Обязательная серия (0 — нет)"
-              value={form.qualificationRules.requiredGoalStreak ?? 0}
-              min={0}
-              onChange={setRequiredGoalStreak}
-            />
           </Grid>
           <h3 className="admin-form-section-title bonus-game-editor__section">Периоды</h3>
-          <Grid>
-            <NumberField
-              label="Периодов"
-              value={form.totalPeriods}
-              min={1}
-              max={9}
-              onChange={setTotalPeriods}
-            />
-            <NumberField
-              label="Перерыв, мс"
-              value={form.breakDurationMs}
-              min={0}
-              onChange={(value) => setField('breakDurationMs', value)}
-            />
-          </Grid>
+          {form.skillCode !== 'endurance' ? (
+            <Grid>
+              <NumberField
+                label="Периодов"
+                value={form.totalPeriods}
+                min={1}
+                max={9}
+                onChange={setTotalPeriods}
+              />
+              <NumberField
+                label="Перерыв, мс"
+                value={form.breakDurationMs}
+                min={0}
+                onChange={(value) => setField('breakDurationMs', value)}
+              />
+            </Grid>
+          ) : null}
           {form.periods.map((period, index) => (
             <PeriodEditor
               key={period.periodNumber}
@@ -907,14 +1011,18 @@ function BonusGameEditor({
             onValue={(value) => setMediaValue('preview', value)}
             onFile={requestUpload}
           />
-          <h3 className="admin-form-section-title bonus-game-editor__section">Инвентарь</h3>
-          <Field label="Использовать инвентарь">
-            <input
-              type="checkbox"
-              checked={form.useInventory}
-              onChange={(event) => setField('useInventory', event.target.checked)}
-            />
-          </Field>
+          {form.skillCode !== 'endurance' ? (
+            <>
+              <h3 className="admin-form-section-title bonus-game-editor__section">Инвентарь</h3>
+              <Field label="Использовать инвентарь">
+                <input
+                  type="checkbox"
+                  checked={form.useInventory}
+                  onChange={(event) => setField('useInventory', event.target.checked)}
+                />
+              </Field>
+            </>
+          ) : null}
           <h3 className="admin-form-section-title bonus-game-editor__section">Награды и доступ</h3>
           <Grid>
             <NumberField
