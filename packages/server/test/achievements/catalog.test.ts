@@ -97,6 +97,7 @@ describe('achievement economy catalog', () => {
       expect(byId.get(id)?.availability, id).toBe('hidden');
     }
     expect(byId.get('monthly-top-1')).toMatchObject({
+      category: 'duel',
       availability: 'active',
       rewardCurrency: 7_500,
       rewardStars: 100,
@@ -104,6 +105,7 @@ describe('achievement economy catalog', () => {
       rewardTokens: 0,
     });
     expect(byId.get('monthly-top-3')).toMatchObject({
+      category: 'duel',
       availability: 'active',
       rewardCurrency: 3_750,
       rewardStars: 50,

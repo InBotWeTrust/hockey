@@ -30,7 +30,7 @@ function parseInvite(message: ChatMessageDTO): AmateurDuelInviteMessageMetadata 
   return metadata as AmateurDuelInviteMessageMetadata;
 }
 
-export function DuelInviteToast(): JSX.Element | null {
+export function DuelInviteToast({ suppressed = false }: { suppressed?: boolean }): JSX.Element | null {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [toast, setToast] = useState<DuelInviteToastState | null>(null);
@@ -54,12 +54,12 @@ export function DuelInviteToast(): JSX.Element | null {
   }, []);
 
   useEffect(() => {
-    if (!toast) return;
+    if (!toast || suppressed) return;
     const timeoutId = window.setTimeout(() => {
       setToast(null);
     }, 15_000);
     return () => window.clearTimeout(timeoutId);
-  }, [toast]);
+  }, [suppressed, toast]);
 
   const acceptMut = useMutation({
     mutationFn: (matchId: string) => acceptAmateurDuel(matchId),
@@ -86,7 +86,7 @@ export function DuelInviteToast(): JSX.Element | null {
     },
   });
 
-  if (!toast) return null;
+  if (!toast || suppressed) return null;
 
   const pending = acceptMut.isPending || declineMut.isPending;
   const name = toast.invite.challengerName || toast.message.senderDisplayName || 'Соперник';

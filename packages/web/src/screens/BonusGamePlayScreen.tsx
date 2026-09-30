@@ -19,7 +19,7 @@ import {
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleDollarSign, Star, Target, TrendingUp, X } from 'lucide-react';
+import { CircleDollarSign, Star, TrendingUp } from 'lucide-react';
 import type {
   BonusGameAttempt,
   BonusPeriodLoadoutSelection,
@@ -43,8 +43,6 @@ import { useBonusGameStore } from '../stores/bonusGameStore.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
 import { useOnboardingGate } from '../onboarding/OnboardingGate.js';
 import {
-  enduranceQualificationLines,
-  qualificationDescription,
   qualificationProgress,
 } from '../game/bonusGameQualification.js';
 import { versionBonusGameArtwork, versionBonusGameGoalkeeper } from '../game/bonusGameArtwork.js';
@@ -397,72 +395,6 @@ function BonusBreak({
       <strong className="bonus-game-break-timer" role="timer" aria-label="До конца перерыва">
         {formatCountdown(remainingMs)}
       </strong>
-    </AccessibleModal>
-  );
-}
-
-function BonusPreview({
-  attempt,
-  busy,
-  onAcknowledge,
-  onClose,
-}: {
-  attempt: BonusGameAttempt;
-  busy: boolean;
-  onAcknowledge: (dismissFuture: boolean) => void | Promise<unknown>;
-  onClose: () => void;
-}): JSX.Element {
-  return (
-    <AccessibleModal
-      title={attempt.rules.preview_title}
-      closeBlocked={busy}
-      onRequestClose={onClose}
-      cardClassName="bonus-game-preview-modal bonus-game-launch-modal"
-      headerAction={
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="Закрыть"
-          disabled={busy}
-          onClick={onClose}
-        >
-          <X size={15} />
-        </button>
-      }
-    >
-      <img
-        className="bonus-game-preview-modal__artwork"
-        src={versionBonusGameArtwork(attempt.rules.preview_artwork_url)}
-        alt={`Локация «${attempt.arena.title}» и её вратарь`}
-      />
-      <p className="modal-copy bonus-game-preview-modal__story">{attempt.rules.preview_story}</p>
-      <p className="bonus-game-preview-modal__condition">
-        <Target
-          className="bonus-game-preview-modal__condition-icon"
-          size={17}
-          strokeWidth={2.4}
-          aria-hidden="true"
-        />
-        {attempt.rules.qualification_rules.type === 'survive_goal_windows' ? (
-          <span className="bonus-game-preview-modal__condition-lines">
-            {enduranceQualificationLines(attempt.rules.qualification_rules).map((line) => (
-              <span key={line}>{line}</span>
-            ))}
-          </span>
-        ) : (
-          qualificationDescription(attempt.rules.qualification_rules)
-        )}
-      </p>
-      <div className="modal-actions">
-        <button
-          type="button"
-          className="modal-primary btn btn--cta"
-          disabled={busy}
-          onClick={() => void onAcknowledge(false)}
-        >
-          {busy ? 'Сохраняем…' : 'К игре'}
-        </button>
-      </div>
     </AccessibleModal>
   );
 }
@@ -845,6 +777,12 @@ export function BonusGamePlayScreen(): JSX.Element {
   const marksmanshipGoalInputsRef = useRef<MarksmanshipSeriesGoal[]>([]);
   const lastEnduranceElapsedMsRef = useRef<number | undefined>(undefined);
   const isAuthoritativeBreak = attempt?.status === 'active' && attempt.state === 'break_active';
+
+  useEffect(() => {
+    if (attempt?.status === 'active' && attempt.preview_required && !inFlight) {
+      void acknowledgePreview(false);
+    }
+  }, [acknowledgePreview, attempt?.id, attempt?.preview_required, attempt?.status, inFlight]);
 
   useEffect(() => {
     predictedMarksmanshipRef.current = null;
@@ -1485,15 +1423,6 @@ export function BonusGamePlayScreen(): JSX.Element {
           {...(lastEnduranceElapsedMsRef.current === undefined
             ? {}
             : { survivedTimeMs: lastEnduranceElapsedMsRef.current })}
-        />
-      ) : null}
-
-      {previewRequired ? (
-        <BonusPreview
-          attempt={attempt}
-          busy={inFlight}
-          onAcknowledge={acknowledgePreview}
-          onClose={leavePlaySurface}
         />
       ) : null}
 

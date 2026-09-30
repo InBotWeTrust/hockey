@@ -6736,8 +6736,13 @@ describe('DailyScreen', () => {
       });
     });
     renderWith(['/?view=amateur&section=duels']);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Экспресс' })).toBeDisabled());
+    const exhausted = await screen.findByRole('button', { name: 'Экспресс' });
+    await waitFor(() => expect(exhausted).toHaveAttribute('aria-disabled', 'true'));
+    expect(exhausted).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Классика' })).toBeEnabled();
+    fireEvent.click(exhausted);
+    const toastCopy = await screen.findByText('Месячный лимит формата «Экспресс» исчерпан.');
+    expect(toastCopy.closest('[role="status"]')).toHaveClass('duel-challenge-toast');
     fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([input]) => String(input).includes('/matchmaking/join'));
@@ -6805,9 +6810,18 @@ describe('DailyScreen', () => {
 
     const warning = await screen.findByText(/У вас исчерпан лимит дуэлей/);
     expect(warning).toHaveClass('duel-format-warning');
+    const select = screen.getByRole('combobox', { name: 'Шаблон дуэли' });
+    fireEvent.click(select);
+    const exhaustedExpress = await screen.findByRole('option', {
+      name: 'Лимит: Экспресс (1 период · 3 мин · на скорость)',
+    });
+    expect(exhaustedExpress).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(exhaustedExpress);
+    expect(select).toHaveTextContent('Лимит: Экспресс (1 период · 3 мин · на скорость)');
+    expect(screen.getByRole('listbox', { name: 'Шаблон дуэли' })).toBeInTheDocument();
   });
 
-  it('removes a selected opponent when switching to a format unavailable to that opponent', async () => {
+  it('keeps the selected opponent when an unavailable format option is pressed', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       const data = url.includes('/duel/amateur/opponents')
@@ -6827,10 +6841,14 @@ describe('DailyScreen', () => {
     fireEvent.click(await screen.findByRole('tab', { name: 'Вызвать' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Выбрать соперника Соперник' }));
     expect(screen.getByRole('button', { name: 'Вызвать игрока' })).toBeEnabled();
-    fireEvent.click(screen.getByRole('combobox', { name: 'Шаблон дуэли' }));
-    fireEvent.click(await screen.findByRole('option', { name: /Классика/ }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Выберите соперника' })).toBeDisabled());
-    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('kinds=classic'))).toBe(true);
+    const select = screen.getByRole('combobox', { name: 'Шаблон дуэли' });
+    fireEvent.click(select);
+    const unavailable = await screen.findByRole('option', { name: /Классика/ });
+    expect(unavailable).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(unavailable);
+    expect(select).toHaveTextContent('Экспресс');
+    expect(screen.getByRole('button', { name: 'Вызвать игрока' })).toBeEnabled();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('kinds=classic'))).toBe(false);
   });
 
   it('lets a challenger cancel an unanswered duel invite from the current duels list', async () => {
@@ -7005,6 +7023,12 @@ describe('DailyScreen', () => {
     expect(status.parentElement).toHaveClass('duel-card-details');
     expect(status.parentElement).not.toContainElement(opponentName);
     expect(status.previousElementSibling).toHaveClass('duel-card-meta');
+    expect(designSystemCss).toMatch(
+      /\.duel-card-details\s*\{[^}]*display:\s*grid;[^}]*justify-items:\s*start;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.duel-card-status\s*\{[^}]*max-width:\s*100%;/s,
+    );
   });
 
   it('labels an outgoing duel detail as waiting from my perspective', async () => {
