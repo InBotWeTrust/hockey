@@ -6530,6 +6530,68 @@ describe('DailyScreen', () => {
     });
   });
 
+  it('selects the first available duel format when opening the challenge flow', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/duel/amateur/matches')
+        ? { matches: [], duel_lock: null, format_locks: {}, format_limits: {
+            express: { available: false, reason: 'format', retryAt: '2026-10-01T00:00:00Z' },
+            express_plus: { available: true, reason: null, retryAt: null },
+            classic: { available: true, reason: null, retryAt: null },
+          } }
+        : url.includes('/duel/amateur/templates')
+          ? { templates: challengeTemplates }
+          : url.includes('/duel/amateur/rating')
+            ? { season_key: '2026-09', rating: [] }
+            : url.includes('/duel/training/state')
+              ? trainingIdleState
+              : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&section=duels']);
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Вызвать' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: 'Шаблон дуэли' })).toHaveTextContent(
+        'Микс (2 периода · 30 бросков + 3 мин на скорость)',
+      );
+    });
+    expect(screen.queryByText(/У вас исчерпан лимит дуэлей/)).not.toBeInTheDocument();
+  });
+
+  it('shows an exhausted challenge format warning on a readable status surface', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const exhausted = { available: false, reason: 'format', retryAt: '2026-10-01T00:00:00Z' };
+      const data = url.includes('/duel/amateur/matches')
+        ? { matches: [], duel_lock: null, format_locks: {}, format_limits: {
+            express: exhausted,
+            express_plus: exhausted,
+            classic: exhausted,
+          } }
+        : url.includes('/duel/amateur/templates')
+          ? { templates: challengeTemplates }
+          : url.includes('/duel/amateur/rating')
+            ? { season_key: '2026-09', rating: [] }
+            : url.includes('/duel/training/state')
+              ? trainingIdleState
+              : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=amateur&section=duels']);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Вызвать' }));
+
+    const warning = await screen.findByText(/У вас исчерпан лимит дуэлей/);
+    expect(warning).toHaveClass('duel-format-warning');
+  });
+
   it('removes a selected opponent when switching to a format unavailable to that opponent', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
