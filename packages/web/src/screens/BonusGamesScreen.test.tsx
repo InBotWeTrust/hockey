@@ -274,7 +274,7 @@ describe('BonusGamesScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
 
-    expect(screen.getByRole('dialog', { name: 'Первая квалификация' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Описание игры «Пляж»' })).toBeInTheDocument();
     expect(
       vi
         .mocked(globalThis.fetch)
@@ -287,7 +287,7 @@ describe('BonusGamesScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
 
-    expect(screen.queryByRole('dialog', { name: 'Первая квалификация' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Описание игры «Пляж»' })).toBeNull();
     expect(
       vi
         .mocked(globalThis.fetch)
@@ -820,7 +820,6 @@ describe('BonusGamesScreen', () => {
     const play = await screen.findByRole('button', { name: 'Играть' });
     expect(play).toBeEnabled();
     fireEvent.click(play);
-    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     const dialog = screen.getByRole('dialog', { name: 'Уже идёт другая игра' });
     expect(dialog).toHaveTextContent('Скорость · Скоростной пляж');
@@ -907,7 +906,6 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
-    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
     const switchButton = within(
       screen.getByRole('dialog', { name: 'Уже идёт другая игра' }),
     ).getByRole('button', { name: 'Завершить и начать эту' });
@@ -1332,7 +1330,6 @@ describe('BonusGamesScreen', () => {
     expect(repeatButton).toBeEnabled();
     expect(repeatButton).toHaveClass('bonus-game-card__hit-area');
     fireEvent.click(repeatButton);
-    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
     expect(screen.getByRole('dialog', { name: 'Уже идёт другая игра' })).toBeInTheDocument();
   });
 
@@ -1393,7 +1390,6 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Продолжить' }));
-    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     expect(screen.getByLabelText('location')).toHaveTextContent(
       '/bonus-games/beach/play?attempt=attempt-1',
@@ -1420,7 +1416,6 @@ describe('BonusGamesScreen', () => {
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Продолжить' }));
-    fireEvent.click(screen.getByRole('button', { name: 'К игре' }));
 
     expect(screen.getByLabelText('location')).toHaveTextContent(
       '/bonus-games/beach/play?attempt=attempt-archived',
