@@ -559,7 +559,7 @@ export async function startOrResumeBonusAttempt(
   let deferredError: AppError | null = null;
   let terminalReconcilePerformed = false;
   try {
-    await lockUser(client, input.userId);
+    const user = await lockUser(client, input.userId);
     await lockBonusGameCatalogForRead(client);
     await assertBonusGameAccessibleToUser(client, input.userId, input.gameId);
     if (await hasActiveAttempt(client, input.userId)) {
@@ -637,6 +637,12 @@ export async function startOrResumeBonusAttempt(
         experience: Number(game.reward_experience),
       };
       const attemptId = randomUUID();
+      await reserveDailyAttemptSlot(client, {
+        userId: input.userId,
+        timezone: user.timezone,
+        skillCode: game.skill_code,
+        now: input.now,
+      });
       const attemptSeed = deriveBonusAttemptSeed(
         attemptId,
         input.userId,
