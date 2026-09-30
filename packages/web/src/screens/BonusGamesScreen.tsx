@@ -50,10 +50,14 @@ function formatAttemptResetCountdown(resetsAt: string, nowMs: number): string | 
   const resetMs = Date.parse(resetsAt);
   if (!Number.isFinite(resetMs)) return null;
   const totalSeconds = Math.max(0, Math.ceil((resetMs - nowMs) / 1_000));
-  const hours = String(Math.floor(totalSeconds / 3_600)).padStart(2, '0');
-  const minutes = String(Math.floor((totalSeconds % 3_600) / 60)).padStart(2, '0');
-  const seconds = String(totalSeconds % 60).padStart(2, '0');
-  return `${hours}:${minutes}:${seconds}`;
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) return `${days} д ${hours} ч ${minutes} мин`;
+  if (hours > 0) return `${hours} ч ${minutes} мин ${seconds} сек`;
+  if (minutes > 0) return `${minutes} мин ${seconds} сек`;
+  return `${seconds} сек`;
 }
 
 const skillLabels: Record<BonusSkillCode, string> = {
@@ -230,7 +234,7 @@ export function BonusGamesScreen(): JSX.Element {
   useEffect(() => {
     if (
       selectedAllowance === undefined ||
-      allowanceCountdown !== '00:00:00' ||
+      Date.parse(selectedAllowance.resets_at) > allowanceNowMs ||
       refreshedAllowanceResetRef.current === selectedAllowance.resets_at
     ) {
       return;
@@ -337,7 +341,7 @@ export function BonusGamesScreen(): JSX.Element {
                   {selectedAllowance.remaining} из {selectedAllowance.daily_limit} попыток
                 </strong>
                 {allowanceCountdown !== null ? (
-                  <span>До обновления {allowanceCountdown}</span>
+                  <span>До обновления: {allowanceCountdown}</span>
                 ) : null}
               </div>
             </>

@@ -362,8 +362,19 @@ describe('BonusGamesScreen', () => {
       'bonus-games-attempt-progress__value',
     );
     expect(screen.getByText('1 из 2 попыток')).toBeInTheDocument();
-    expect(screen.getByText('До обновления 00:00:05')).toBeInTheDocument();
-    expect(screen.getByText('До обновления 00:00:05').closest('[aria-live]')).toBeNull();
+    expect(screen.getByText('До обновления: 5 сек')).toBeInTheDocument();
+    expect(screen.getByText('До обновления: 5 сек').closest('[aria-live]')).toBeNull();
+  });
+
+  it.each([
+    ['2026-08-25T02:01:46.000Z', 'До обновления: 2 ч 1 мин 46 сек'],
+    ['2026-08-29T02:01:46.000Z', 'До обновления: 4 д 2 ч 1 мин'],
+  ])('formats the allowance reset %s in readable units', async (resetsAt, expected) => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-25T00:00:00.000Z'));
+    mockCatalog([card({})], { resetsAt });
+    renderCatalog();
+
+    expect(await screen.findByText(expected)).toBeInTheDocument();
   });
 
   it.each([['speed', 'Скорость']] as const)(
@@ -408,7 +419,7 @@ describe('BonusGamesScreen', () => {
           .mock.calls.filter(([input]) => String(input).endsWith('/api/bonus-games')),
       ).toHaveLength(2),
     );
-    expect(screen.getByText('До обновления 00:00:00')).toBeInTheDocument();
+    expect(screen.getByText('До обновления: 0 сек')).toBeInTheDocument();
   });
 
   it('keeps the first two beginner games on their normal paths and explains third games without a request', async () => {
