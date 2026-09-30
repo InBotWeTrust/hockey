@@ -111,7 +111,14 @@ describe('DuelChallengeModal Amateur preview access', () => {
     const express = await screen.findByRole('button', { name: /Экспресс/ });
     await waitFor(() => expect(express).toBeDisabled());
     expect(express.querySelector('.duel-equipment-option__check')).toBeNull();
-    expect(screen.getByText(/У соперника исчерпан месячный лимит этого формата/)).toBeInTheDocument();
+    const limitCopy = screen.getByText(/У соперника исчерпан месячный лимит этого формата/);
+    const metaCopy = Array.from(express.querySelectorAll('span')).find(
+      (node) => node.textContent === '3 мин',
+    );
+    expect(limitCopy).toBeInTheDocument();
+    expect(metaCopy).toBeDefined();
+    expect(metaCopy!.compareDocumentPosition(limitCopy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(limitCopy).toHaveStyle({ color: 'var(--muted)' });
     expect(screen.getByRole('button', { name: /Классика/ })).toBeEnabled();
     await waitFor(() => expect(screen.getByRole('button', { name: /Классика/ })).toHaveAttribute('aria-pressed', 'true'));
     expect(screen.getByRole('button', { name: /Классика/ }).querySelector('.duel-equipment-option__check--selected')).toBeInTheDocument();

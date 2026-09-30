@@ -298,7 +298,6 @@ export function DuelChallengeModal({
                   <span style={{ gridColumn: 1, fontSize: 15, fontWeight: 900 }}>
                     {duelKindText(template.duel_kind)}
                   </span>
-                  {blocked && <span style={{ gridColumn: 1, fontSize: 12 }}>{limitMessage(availability)}</span>}
                   <span
                     style={{
                       fontSize: 12,
@@ -309,6 +308,11 @@ export function DuelChallengeModal({
                   >
                     {templateMeta(template)}
                   </span>
+                  {blocked && (
+                    <span style={{ gridColumn: 1, fontSize: 12, color: 'var(--muted)' }}>
+                      {limitMessage(availability)}
+                    </span>
+                  )}
                 </button>
               );
             })}
