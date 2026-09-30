@@ -221,6 +221,23 @@ describe('OnboardingFlow', () => {
     expect(staticStartupHtml).not.toContain('<img src="/icons/icon-192.png"');
   });
 
+  it('splits a retryable startup error into sentences with space before the action', () => {
+    render(
+      <StartupSplash
+        message="Не удалось подготовить игру. Проверьте соединение."
+        retry={vi.fn()}
+      />,
+    );
+
+    const alert = screen.getByRole('alert');
+    expect(alert.querySelectorAll('.onboarding-flow__startup-message-line')).toHaveLength(2);
+    expect(screen.getByText('Не удалось подготовить игру.')).toBeInTheDocument();
+    expect(screen.getByText('Проверьте соединение.')).toBeInTheDocument();
+    expect(onboardingCss).toMatch(
+      /\.onboarding-flow__startup\s*\{[^}]*gap:\s*18px;[^}]*\}/s,
+    );
+  });
+
   it('keeps tutorial navigation forward-only', async () => {
     const tutorialRequired: OnboardingRequired = {
       chain: 'beginner',

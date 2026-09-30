@@ -62,6 +62,22 @@ import type { BonusGameCard } from '../api/bonusGames.js';
 import type { ClassicTournamentState } from '../api/tournamentClassic.js';
 import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
 import { ApiError } from '../api/apiFetch.js';
+import { splitDuelResultRows } from '../components/duel/AmateurDuelHistoryTab.js';
+
+describe('duel history calendar result rows', () => {
+  it.each([
+    [5, [5]],
+    [6, [4, 2]],
+    [8, [4, 4]],
+    [22, [11, 11]],
+  ])('splits %i results into at most two stable rows', (count, expectedRowSizes) => {
+    expect(splitDuelResultRows(Array.from({ length: count }, (_, index) => index)))
+      .toEqual(expectedRowSizes.map((size, rowIndex) => {
+        const offset = expectedRowSizes.slice(0, rowIndex).reduce((total, value) => total + value, 0);
+        return Array.from({ length: size }, (_, index) => index + offset);
+      }));
+  });
+});
 
 describe('duel admission conflict copy', () => {
   it('shows the structured limit and Moscow retry time', () => {
@@ -2159,8 +2175,8 @@ describe('DailyScreen', () => {
     expect(duelFatigueNoticeLabel(null)).toBeNull();
     expect(duelFatigueNoticeLabel(null, 1, true)).toBeNull();
     expect(duelFatigueNoticeLabel(baseCondition)).toBeNull();
-    expect(duelFatigueNoticeLabel(null, 0.7 / 0.75, true)).toBe('Усталость · скорость 93%');
-    expect(duelFatigueNoticeLabel(baseCondition, 0.65 / 0.75, true)).toBe('Усталость · скорость 87%');
+    expect(duelFatigueNoticeLabel(null, 0.7 / 0.75, true)).toBe('Усталость · замедление 7%');
+    expect(duelFatigueNoticeLabel(baseCondition, 0.65 / 0.75, true)).toBe('Усталость · замедление 13%');
     expect(
       duelFatigueNoticeLabel({
         ...baseCondition,
@@ -2168,7 +2184,7 @@ describe('DailyScreen', () => {
         fatigueLevel: 'medium',
         shooterSpeedMultiplier: 0.85,
       }, 0.7 / 0.75),
-    ).toBe('Усталость · скорость 79%');
+    ).toBe('Усталость · замедление 21%');
     expect(
       duelFatigueNoticeLabel({
         ...baseCondition,
@@ -2176,7 +2192,14 @@ describe('DailyScreen', () => {
         fatigueLevel: 'heavy',
         shooterSpeedMultiplier: 0.65,
       }, 0.7 / 0.75),
-    ).toBe('Сильная усталость · скорость 61%');
+    ).toBe('Сильная усталость · замедление 39%');
+    expect(duelFatigueNoticeLabel(baseCondition, Number.NaN, true)).toBeNull();
+    expect(duelFatigueNoticeLabel({
+      ...baseCondition,
+      status: 'tired',
+      fatigueLevel: 'medium',
+      shooterSpeedMultiplier: Number.POSITIVE_INFINITY,
+    })).toBeNull();
     expect(
       duelFatigueNoticeLabel({
         ...baseCondition,
@@ -2271,7 +2294,7 @@ describe('DailyScreen', () => {
     );
 
     expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeEnabled();
-    expect(screen.getByText('Усталость · скорость 85%')).toHaveClass('duel-fatigue-notice');
+    expect(screen.getByText('Усталость · замедление 15%')).toHaveClass('duel-fatigue-notice');
   });
 
   it('shows period fatigue in an active daily game without an inventory condition', () => {
@@ -2293,8 +2316,8 @@ describe('DailyScreen', () => {
       />,
     );
 
-    expect(screen.getByText('Усталость · скорость 93%')).toHaveClass('duel-fatigue-notice');
-    expect(screen.getByText('Усталость · скорость 93%').parentElement).toHaveClass('game-scoreboard-stack');
+    expect(screen.getByText('Усталость · замедление 7%')).toHaveClass('duel-fatigue-notice');
+    expect(screen.getByText('Усталость · замедление 7%').parentElement).toHaveClass('game-scoreboard-stack');
   });
 
   it('combines the later period with missing energy in a tournament game', () => {
@@ -2330,7 +2353,7 @@ describe('DailyScreen', () => {
       />,
     );
 
-    expect(screen.getByText('Сильная усталость · скорость 61%')).toHaveClass(
+    expect(screen.getByText('Сильная усталость · замедление 39%')).toHaveClass(
       'duel-heavy-fatigue-notice',
     );
   });
@@ -5563,11 +5586,13 @@ describe('DailyScreen', () => {
       'daily-calendar__duel-result--win',
       'daily-calendar__duel-result--win',
     ]);
+    expect(playedDay.querySelectorAll('.daily-calendar__duel-results-row')).toHaveLength(1);
+    expect(playedDay.querySelectorAll('.daily-calendar__duel-results-row')[0]?.children).toHaveLength(5);
     expect(designSystemCss).toMatch(
-      /\.daily-calendar__duel-results\s*\{[^}]*overflow:\s*hidden;[^}]*\}/s,
+      /\.daily-calendar__duel-results\s*\{[^}]*display:\s*grid;[^}]*overflow:\s*hidden;[^}]*\}/s,
     );
     expect(designSystemCss).toMatch(
-      /\.daily-calendar__duel-result\s*\{[^}]*flex:\s*1 1 4px;[^}]*max-width:\s*4px;[^}]*min-width:\s*0;[^}]*aspect-ratio:\s*1;[^}]*\}/s,
+      /\.daily-calendar__duel-result\s*\{[^}]*width:\s*var\(--duel-result-size, 4px\);[^}]*height:\s*var\(--duel-result-size, 4px\);[^}]*\}/s,
     );
     expect(screen.getByText('Игровой день')).toBeInTheDocument();
     expect(screen.getByText('Победа')).toBeInTheDocument();
