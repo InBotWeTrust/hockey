@@ -6699,6 +6699,15 @@ describe('DailyScreen', () => {
 
     const warning = await screen.findByText(/У вас исчерпан лимит дуэлей/);
     expect(warning).toHaveClass('duel-format-warning');
+    const select = screen.getByRole('combobox', { name: 'Шаблон дуэли' });
+    fireEvent.click(select);
+    const exhaustedExpress = await screen.findByRole('option', {
+      name: 'Лимит: Экспресс (1 период · 3 мин · на скорость)',
+    });
+    expect(exhaustedExpress).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(exhaustedExpress);
+    expect(select).toHaveTextContent('Лимит: Экспресс (1 период · 3 мин · на скорость)');
+    expect(screen.getByRole('listbox', { name: 'Шаблон дуэли' })).toBeInTheDocument();
   });
 
   it('removes a selected opponent when switching to a format unavailable to that opponent', async () => {

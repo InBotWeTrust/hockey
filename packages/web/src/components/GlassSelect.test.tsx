@@ -105,4 +105,33 @@ describe('GlassSelect', () => {
     fireEvent.keyDown(combobox, { key: 'Escape' });
     expect(screen.queryByRole('listbox', { name: 'Размер' })).not.toBeInTheDocument();
   });
+
+  it('marks disabled options and skips them for pointer and keyboard selection', () => {
+    const onChange = vi.fn();
+    render(
+      <GlassSelect
+        ariaLabel="Формат"
+        value="express"
+        options={[
+          { value: 'express', label: 'Экспресс' },
+          { value: 'express_plus', label: 'Лимит: Микс', disabled: true },
+          { value: 'classic', label: 'Классика' },
+        ]}
+        onChange={onChange}
+      />,
+    );
+
+    const combobox = screen.getByRole('combobox', { name: 'Формат' });
+    fireEvent.click(combobox);
+    const disabledOption = screen.getByRole('option', { name: 'Лимит: Микс' });
+    expect(disabledOption).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(disabledOption);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('listbox', { name: 'Формат' })).toBeInTheDocument();
+
+    fireEvent.keyDown(combobox, { key: 'ArrowDown' });
+    expect(screen.getByRole('option', { name: 'Классика' })).toHaveAttribute('data-active', 'true');
+    fireEvent.keyDown(combobox, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith('classic');
+  });
 });
