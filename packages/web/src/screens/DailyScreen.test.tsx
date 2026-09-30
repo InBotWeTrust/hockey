@@ -6899,6 +6899,12 @@ describe('DailyScreen', () => {
     expect(status.parentElement).toHaveClass('duel-card-details');
     expect(status.parentElement).not.toContainElement(opponentName);
     expect(status.previousElementSibling).toHaveClass('duel-card-meta');
+    expect(designSystemCss).toMatch(
+      /\.duel-card-details\s*\{[^}]*display:\s*grid;[^}]*justify-items:\s*start;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.duel-card-status\s*\{[^}]*max-width:\s*100%;/s,
+    );
   });
 
   it('labels an outgoing duel detail as waiting from my perspective', async () => {

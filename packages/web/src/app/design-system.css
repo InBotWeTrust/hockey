@@ -7271,7 +7271,7 @@
 
 .duel-card-status {
   flex: 0 0 auto;
-  max-width: 52%;
+  max-width: 100%;
   padding: 5px 8px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.76);
@@ -7287,10 +7287,9 @@
 
 .duel-card-details {
   min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  display: grid;
+  justify-items: start;
+  gap: 5px;
 }
 
 .duel-card-meta {
