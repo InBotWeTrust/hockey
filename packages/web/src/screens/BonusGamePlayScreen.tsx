@@ -1067,6 +1067,7 @@ export function BonusGamePlayScreen(): JSX.Element {
           inventoryOpen || previewRequired || isBetweenPeriods || isBreak || isTerminal
         }
         showIceCar={isBreak || isTerminal}
+        maintenanceMode={isBreak ? 'scrape' : 'flood'}
         onBack={() => setConfirmAbandon(true)}
         backLabel="К бонусным играм"
         active={isPeriodActive}
