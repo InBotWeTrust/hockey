@@ -36,6 +36,7 @@ import {
   type StickEffects,
 } from '@hockey/game-core';
 import { useAuthStore } from '../auth/authStore.js';
+import { triggerShotOutcomeHaptic } from '../feedback/haptics.js';
 import {
   buildGameScoreboardModel,
   GameScoreboard,
@@ -53,6 +54,12 @@ import { Hitboxes, type HitboxesOptions } from './renderer/Hitboxes.js';
 import { IceCar, iceCarPosAt } from './renderer/IceCar.js';
 import { Player, type PlayerOptions } from './renderer/Player.js';
 import { Puck, type PuckOptions } from './renderer/Puck.js';
+import {
+  puckOutcomeMotion,
+  puckReboundObstacles,
+  puckResultContact,
+  reconcilePuckResultDisplayKind,
+} from './puckOutcomeMotion.js';
 import { SHOT_RESULT_PAUSE_MS } from './shotTiming.js';
 import {
   TRAINING_LONG_COURT_BACKGROUND,
@@ -736,7 +743,7 @@ export function PlayView<TState>({
   const [resultDisplayKind, setResultDisplayKind] = useState<ResultModalKind | null>(null);
   const [resultPresentation, setResultPresentation] = useState<PlayResultPresentation | null>(null);
   const authoritativePresentationRef = useRef<PlayResultPresentation | null | undefined>(undefined);
-  const authoritativeResultRef = useRef<ShotResult['type'] | null>(null);
+  const authoritativeResultRef = useRef<ResultModalKind | null>(null);
   const [lastResult, setLastResult] = useState<ShotResult | null>(null);
   const inlineResultKind = resultDisplayKind ?? lastResult?.type ?? null;
   const inlineResultContent =
@@ -1715,16 +1722,26 @@ export function PlayView<TState>({
 
     loop.beginShooterPause();
     playerRef.current?.playShot();
-    const targetPoint =
-      result.type === 'goal'
-        ? result.hitPoint
-        : result.type === 'save'
-          ? result.goalieContact
-          : { x: sx, y: GOAL_OPENING.y };
+    const targetPoint = puckResultContact(result, sx);
     const puckShotPath = {
       start: puck.bladePoint(sx),
       end: targetPoint,
     };
+    const reboundObstacles =
+      displayKind === 'miss'
+        ? puckReboundObstacles(
+            simulateGoal(activeCfg, tGoalCross, offsets.goal).offsetX,
+            simulateGoalie(activeCfg, seed, shotIndex, tGoalCross, offsets.goalie),
+          )
+        : [];
+    const outcomeMotion = puckOutcomeMotion(
+      displayKind,
+      puckShotPath.end,
+      reduceMotion,
+      puckSpeed,
+      reboundObstacles,
+    );
+    const visualOutcomeDurationMs = outcomeMotion?.durationMs ?? 0;
     puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), visualFlightMs);
 
     const scheduleShotTimeout = (fn: () => void, delay: number): void => {
@@ -1739,11 +1756,18 @@ export function PlayView<TState>({
     scheduleShotTimeout(() => {
       if (continuousClockDuringResult) loop.endShooterPause(flightMs);
       else loop.beginScenePause();
-      if (freezeRenderingDuringResult) loop.detach();
-      puck.holdAt({
-        x: puckShotPath.end.x,
-        y: result.type === 'save' ? GOAL_OPENING.y + 20 : GOAL_OPENING.y,
-      });
+      if (outcomeMotion && visualOutcomeDurationMs > 0) {
+        puck.playOutcomeMotion(
+          puckShotPath.end,
+          outcomeMotion.end,
+          loop.getRenderNow(),
+          visualOutcomeDurationMs,
+          outcomeMotion.waypoint,
+        );
+      } else {
+        puck.holdAt(outcomeMotion?.end ?? puckShotPath.end);
+      }
+      if (freezeRenderingDuringResult && visualOutcomeDurationMs === 0) loop.detach();
       if (result.type === 'save') goalie.setSavePose(true);
       setScoreboardSnapshot(null);
       setLastResult(result);
@@ -1751,8 +1775,17 @@ export function PlayView<TState>({
       setResultDisplayKind(authoritativeResultRef.current ?? displayKind);
       setResultPresentation(authoritativePresentationRef.current ?? localResultPresentation);
       setIsShowingResult(true);
+      const visibleKind = authoritativeResultRef.current ?? displayKind;
+      if (visibleKind !== 'goal') triggerShotOutcomeHaptic(visibleKind);
       reportResultVisibility(true);
     }, visualFlightMs);
+
+    if (freezeRenderingDuringResult && outcomeMotion && visualOutcomeDurationMs > 0) {
+      scheduleShotTimeout(() => {
+        puck.holdAt(outcomeMotion.end);
+        loop.detach();
+      }, visualFlightMs + visualOutcomeDurationMs);
+    }
 
     scheduleShotTimeout(() => {
       if (!continuousClockDuringResult) {
@@ -1807,8 +1840,12 @@ export function PlayView<TState>({
           return;
         }
         if (resultCopy) {
-          authoritativeResultRef.current = res.serverResult;
-          setResultDisplayKind(res.serverResult);
+          const authoritativeDisplayKind = reconcilePuckResultDisplayKind(
+            displayKind,
+            res.serverResult,
+          );
+          authoritativeResultRef.current = authoritativeDisplayKind;
+          setResultDisplayKind(authoritativeDisplayKind);
         }
         if (res.resultPresentation !== undefined) {
           authoritativePresentationRef.current = res.resultPresentation;

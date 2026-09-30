@@ -3,9 +3,9 @@ import { ChevronRight } from 'lucide-react';
 import type { AmateurDuelKind, AmateurDuelOverview } from '../../api/amateurDuel.js';
 
 const PERIODS = [
-  { key: 'daily', label: 'Сегодня' },
-  { key: 'weekly', label: 'Неделя' },
-  { key: 'monthly', label: 'Месяц' },
+  { key: 'daily', label: 'Сегодня', progressLabel: 'Остаток дневного лимита' },
+  { key: 'weekly', label: 'Неделя', progressLabel: 'Остаток недельного лимита' },
+  { key: 'monthly', label: 'Месяц', progressLabel: 'Остаток месячного лимита' },
 ] as const;
 const FORMATS: Array<{ key: AmateurDuelKind; label: string }> = [
   { key: 'express', label: 'Экспресс' },
@@ -50,9 +50,13 @@ export function DuelLimitsSection({
     <section className="duel-section" aria-label="Лимиты дуэлей">
       <div className="section-label duel-section-title">Лимиты</div>
       <div className="glass duel-limits-card">
-        {limits ? PERIODS.map(({ key, label }) => {
+        {limits ? PERIODS.map(({ key, label, progressLabel }) => {
           const period = limits[key];
           const expanded = open.has(key);
+          const remaining = Math.max(0, period.limit - period.used);
+          const remainingPercent = period.limit > 0
+            ? Math.min(100, Math.max(0, (remaining / period.limit) * 100))
+            : 0;
           return (
             <div className="duel-limits-period" key={key}>
               <button
@@ -66,14 +70,39 @@ export function DuelLimitsSection({
                   return next;
                 })}
               >
-                <span className="duel-limits-period__summary">{label} {Math.max(0, period.limit - period.used)}/{period.limit} <span className="duel-limits-period__timer">(до обновления: {countdown(period.reset_at, now)})</span></span>
-                <ChevronRight size={18} aria-hidden="true" />
+                <span className="duel-limits-period__heading">
+                  <span className="duel-limits-period__title">{label}</span>
+                  <ChevronRight size={18} aria-hidden="true" />
+                </span>
+                <span className="duel-limits-period__meta">
+                  <span className="duel-limits-period__timer">
+                    До обновления: {countdown(period.reset_at, now)}
+                  </span>
+                  <span className="duel-limits-period__remaining">
+                    Осталось {remaining} из {period.limit}
+                  </span>
+                </span>
+                <span
+                  className="duel-limits-period__progress"
+                  role="progressbar"
+                  aria-label={progressLabel}
+                  aria-valuemin={0}
+                  aria-valuemax={period.limit}
+                  aria-valuenow={remaining}
+                  aria-valuetext={`Осталось ${remaining} из ${period.limit}`}
+                >
+                  <span
+                    className="duel-limits-period__progress-fill"
+                    style={{ width: `${remainingPercent}%` }}
+                  />
+                </span>
               </button>
               {expanded && (
                 <div className="duel-limits-period__formats">
                   {FORMATS.map((format) => (
                     <div key={format.key}>
-                      {format.label}: {key === 'monthly'
+                      <span className="duel-limits-period__format-name">{format.label}</span>
+                      {': '}{key === 'monthly'
                         ? `осталось ${Math.max(0, limits.monthly.format_limit - period.by_format[format.key])} из ${limits.monthly.format_limit}`
                         : `сыграно ${period.by_format[format.key]}`}
                     </div>

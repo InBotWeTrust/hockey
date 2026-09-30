@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getHapticCapabilities, triggerHaptic } from './haptics.js';
+import { getHapticCapabilities, triggerHaptic, triggerShotOutcomeHaptic } from './haptics.js';
 
 interface TelegramWindow extends Window {
   Telegram?: {
@@ -95,6 +95,40 @@ describe('platform haptics', () => {
     triggerHaptic('error');
 
     expect(vibrate.mock.calls).toEqual([[8], [15], [[10, 35, 15]], [[18, 35, 18]], [[25, 35, 25]]]);
+  });
+
+  it('uses soft, light, and medium Telegram impacts for save, miss, and post', () => {
+    const impactOccurred = vi.fn();
+    const notificationOccurred = vi.fn();
+    const vibrate = vi.fn(() => true);
+    setTelegramWebApp({
+      initData: 'signed-data',
+      HapticFeedback: { selectionChanged: vi.fn(), impactOccurred, notificationOccurred },
+    });
+    setVibrate(vibrate);
+
+    triggerShotOutcomeHaptic('save');
+    triggerShotOutcomeHaptic('miss');
+    triggerShotOutcomeHaptic('post');
+
+    expect(impactOccurred.mock.calls).toEqual([['soft'], ['light'], ['medium']]);
+    expect(notificationOccurred).not.toHaveBeenCalled();
+    expect(vibrate).not.toHaveBeenCalled();
+  });
+
+  it('makes post vibration strongest and save vibration lightest on supported web devices', () => {
+    const vibrate = vi.fn(() => true);
+    setVibrate(vibrate);
+
+    triggerShotOutcomeHaptic('save');
+    triggerShotOutcomeHaptic('miss');
+    triggerShotOutcomeHaptic('post');
+
+    expect(vibrate.mock.calls).toEqual([[8], [18], [35]]);
+  });
+
+  it('does not throw when shot haptics are unavailable', () => {
+    expect(() => triggerShotOutcomeHaptic('post')).not.toThrow();
   });
 
   it('is a safe no-op without platform support or while the document is hidden', () => {

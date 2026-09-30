@@ -12,6 +12,18 @@ const goalieContainers = vi.hoisted(() => [] as Array<{ visible: boolean }>);
 const puckShotPaths = vi.hoisted(
   () => [] as Array<{ start: { x: number; y: number }; end: { x: number; y: number } }>,
 );
+const puckOutcomePaths = vi.hoisted(
+  () =>
+    [] as Array<{
+      start: { x: number; y: number };
+      end: { x: number; y: number };
+      durationMs: number;
+      waypoint?: {
+        position: { x: number; y: number };
+        progress: number;
+      };
+    }>,
+);
 
 vi.mock('pixi.js', () => ({
   Container: class Container {
@@ -91,6 +103,18 @@ vi.mock('./renderer/Puck.js', () => ({
     playShot(start: { x: number; y: number }, end: { x: number; y: number }): void {
       puckShotPaths.push({ start, end });
     }
+    playOutcomeMotion(
+      start: { x: number; y: number },
+      end: { x: number; y: number },
+      _now: number,
+      durationMs: number,
+      waypoint?: {
+        position: { x: number; y: number };
+        progress: number;
+      },
+    ): void {
+      puckOutcomePaths.push({ start, end, durationMs, ...(waypoint ? { waypoint } : {}) });
+    }
     holdAt(): void {}
     release(): void {}
     update(): void {}
@@ -143,6 +167,7 @@ describe('PlayView', () => {
     playerContainers.length = 0;
     goalieContainers.length = 0;
     puckShotPaths.length = 0;
+    puckOutcomePaths.length = 0;
   });
 
   afterEach(() => {
@@ -420,6 +445,141 @@ describe('PlayView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
 
     expect(puckShotPaths.at(-1)?.end).toEqual({ x: 180, y: 60 });
+  });
+
+  it('plays a deflection from the authoritative goalie contact after a save', async () => {
+    vi.useFakeTimers();
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="puck-outcome"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotResolver={() => ({ type: 'save', goalieContact: { x: 250, y: 80 } })}
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => vi.advanceTimersByTimeAsync(500));
+
+    expect(puckOutcomePaths.at(-1)).toEqual({
+      start: { x: 250, y: 94 },
+      end: { x: 190, y: 194 },
+      durationMs: 320,
+    });
+  });
+
+  it.each([
+    { result: { type: 'save' as const, goalieContact: { x: 250, y: 80 } }, pattern: 8 },
+    { result: { type: 'miss' as const, reason: 'wide' as const }, pattern: 18 },
+    { result: { type: 'goal' as const, hitPoint: { x: 286, y: 60 } }, pattern: null },
+  ])('signals a $result.type only when the puck reaches the result', async ({ result, pattern }) => {
+    vi.useFakeTimers();
+    const vibrate = vi.fn(() => true);
+    Object.defineProperty(window.navigator, 'vibrate', { configurable: true, value: vibrate });
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="shot-haptics"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotResolver={() => result}
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    expect(vibrate).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTimeAsync(500));
+    if (pattern === null) expect(vibrate).not.toHaveBeenCalled();
+    else expect(vibrate).toHaveBeenCalledWith(pattern);
+    expect(vibrate).toHaveBeenCalledTimes(pattern === null ? 0 : 1);
+  });
+
+  it('uses a medium impact for a shot that hits the post', async () => {
+    vi.useFakeTimers();
+    const vibrate = vi.fn(() => true);
+    Object.defineProperty(window.navigator, 'vibrate', { configurable: true, value: vibrate });
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="shot-haptics"
+        goalieId={null}
+        goalieConfig={{ ...beachGoalie, goalAmplitude: 0 }}
+        speedOverrides={{ goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.5, puckSpeed: 1.2 }}
+        initialShooterElapsedMs={823}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotResolver={() => ({ type: 'miss', reason: 'wide' })}
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => vi.advanceTimersByTimeAsync(500));
+
+    expect(screen.getByRole('status')).toHaveTextContent('ШТАНГА');
+    expect(vibrate).toHaveBeenCalledOnce();
+    expect(vibrate).toHaveBeenCalledWith(35);
+  });
+
+  it('continues an ordinary miss from the goal line to the end boards', async () => {
+    vi.useFakeTimers();
+
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="puck-outcome-miss"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        shotResolver={() => ({ type: 'miss', reason: 'wide' })}
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    await act(async () => vi.advanceTimersByTimeAsync(500));
+
+    expect(puckOutcomePaths.at(-1)?.start).toEqual(puckShotPaths.at(-1)?.end);
+    expect(puckOutcomePaths.at(-1)?.waypoint?.position.y).toBeGreaterThanOrEqual(18);
+    expect(puckOutcomePaths.at(-1)?.end.y).toBeGreaterThan(
+      puckOutcomePaths.at(-1)?.waypoint?.position.y ?? Number.POSITIVE_INFINITY,
+    );
+    expect(puckOutcomePaths.at(-1)?.durationMs).toBe(265);
   });
 
   it('reveals the optimistic scoreboard result only when the puck reaches the goal', async () => {
@@ -700,10 +860,14 @@ describe('PlayView', () => {
       await vi.advanceTimersByTimeAsync(434);
     });
     expect(onResultVisibilityChange).toHaveBeenLastCalledWith(true);
+    expect(tickerEvents.at(-1)).toBe('add');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(265);
+    });
     expect(tickerEvents.at(-1)).toBe('remove');
     now = 2_434;
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(735);
     });
     expect(onResultVisibilityChange).toHaveBeenLastCalledWith(false);
     expect(tickerEvents.at(-1)).toBe('add');
