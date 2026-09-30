@@ -6102,13 +6102,24 @@ describe('DailyScreen', () => {
     });
     renderWith(['/?view=amateur&section=duels']);
     const limits = await screen.findByRole('region', { name: 'Лимиты дуэлей' });
-    await waitFor(() => expect(limits).toHaveTextContent(/Сегодня 6\/8 \(до обновления: (?:1 ч|59 мин) .*сек\)/));
+    await waitFor(() => expect(limits).toHaveTextContent(/Сегодня.*До обновления: (?:1 ч|59 мин) .*сек.*Осталось 6 из 8/));
+    const dailyProgress = within(limits).getByRole('progressbar', { name: 'Остаток дневного лимита' });
+    expect(dailyProgress).toHaveAttribute('aria-valuemin', '0');
+    expect(dailyProgress).toHaveAttribute('aria-valuemax', '8');
+    expect(dailyProgress).toHaveAttribute('aria-valuenow', '6');
+    expect(dailyProgress).toHaveAttribute('aria-valuetext', 'Осталось 6 из 8');
+    expect(dailyProgress.querySelector('.duel-limits-period__progress-fill')).toHaveStyle({
+      width: '75%',
+    });
     expect(within(limits).getByRole('button', { name: /Неделя/ })).not.toHaveTextContent('сек');
     expect(within(limits).getByRole('button', { name: /Месяц/ })).not.toHaveTextContent('сек');
     fireEvent.click(within(limits).getByRole('button', { name: /Сегодня/ }));
-    expect(within(limits).getByText('Экспресс: сыграно 1')).toBeInTheDocument();
+    const dailyExpress = within(limits).getByText('Экспресс');
+    expect(dailyExpress).toHaveClass('duel-limits-period__format-name');
+    expect(dailyExpress.parentElement).toHaveTextContent('Экспресс: сыграно 1');
     fireEvent.click(within(limits).getByRole('button', { name: /Месяц/ }));
-    expect(within(limits).getByText('Экспресс: осталось 39 из 43')).toBeInTheDocument();
+    const monthlyExpress = within(limits).getAllByText('Экспресс')[1];
+    expect(monthlyExpress?.parentElement).toHaveTextContent('Экспресс: осталось 39 из 43');
   });
 
   it('renders plain duel metadata and muted invite actions', async () => {
