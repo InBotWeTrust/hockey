@@ -3,7 +3,12 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { BottomNav, ADMIN_NAV_HOME_EVENT, isBottomNavVisible } from './BottomNav.js';
+import {
+  BottomNav,
+  ADMIN_NAV_HOME_EVENT,
+  isBottomNavVisible,
+  isOpenRinkRoute,
+} from './BottomNav.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useChatStore } from '../chat/chatStore.js';
 
@@ -45,6 +50,22 @@ function renderBottomNav(path: string, extra?: JSX.Element): QueryClient {
 }
 
 describe('BottomNav remembered navigation', () => {
+  it.each([
+    ['/', '?view=daily'],
+    ['/', '?view=classic'],
+    ['/', '?view=training&play=1'],
+    ['/', '?view=amateur&match=match-1&play=1'],
+    ['/bonus-games/game-1/play', ''],
+  ])('recognizes active gameplay at %s%s', (pathname, search) => {
+    expect(isOpenRinkRoute({ pathname, search })).toBe(true);
+  });
+
+  it('does not treat non-playing game catalogs as active gameplay', () => {
+    expect(isOpenRinkRoute({ pathname: '/bonus-games', search: '' })).toBe(false);
+    expect(isOpenRinkRoute({ pathname: '/', search: '?view=training' })).toBe(false);
+    expect(isOpenRinkRoute({ pathname: '/', search: '?view=amateur' })).toBe(false);
+  });
+
   const vibrate = vi.fn();
 
   beforeEach(() => {

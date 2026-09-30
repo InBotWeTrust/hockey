@@ -6,7 +6,7 @@ import './design-system.css';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
-import { BottomNav, isBottomNavVisible } from '../components/BottomNav.js';
+import { BottomNav, isBottomNavVisible, isOpenRinkRoute } from '../components/BottomNav.js';
 import { DuelInviteToast } from '../components/DuelInviteToast.js';
 import { AmateurAccessToast } from '../amateur/AmateurAccessToast.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
@@ -324,7 +324,7 @@ function AppExperience(): JSX.Element {
       <ChatRealtime />
       <NativeNotificationBridge />
       <NativeUpdateBridge enabled={androidReleaseAccess} />
-      <DuelInviteToast />
+      <DuelInviteToast suppressed={isOpenRinkRoute(location)} />
       <AmateurAccessToast />
       <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />
       {androidReleaseAccess && <MandatoryAndroidUpdateModal />}
