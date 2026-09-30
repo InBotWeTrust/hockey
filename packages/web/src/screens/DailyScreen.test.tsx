@@ -6736,8 +6736,13 @@ describe('DailyScreen', () => {
       });
     });
     renderWith(['/?view=amateur&section=duels']);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Экспресс' })).toBeDisabled());
+    const exhausted = await screen.findByRole('button', { name: 'Экспресс' });
+    await waitFor(() => expect(exhausted).toHaveAttribute('aria-disabled', 'true'));
+    expect(exhausted).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Классика' })).toBeEnabled();
+    fireEvent.click(exhausted);
+    const toastCopy = await screen.findByText('Месячный лимит формата «Экспресс» исчерпан.');
+    expect(toastCopy.closest('[role="status"]')).toHaveClass('duel-challenge-toast');
     fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([input]) => String(input).includes('/matchmaking/join'));
