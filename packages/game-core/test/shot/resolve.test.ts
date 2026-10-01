@@ -33,6 +33,12 @@ function findTapTimeForShooter(targetX: number, tol = 2): number {
 }
 
 describe('resolveShot', () => {
+  it('uses the integrated shooter phase without replacing the raw scene or shooter clocks', () => {
+    const input = { tapTime: 0, shooterTapTime: 0, shooterMotionTime: 250, shooterFrequency: 1 };
+    expect(resolveEmptyGoalShot(input, baseCfg).type).toBe('goal');
+    expect(resolvePerspectiveCourtEmptyGoalShot(input, baseCfg).type).toBe('goal');
+    expect(resolveEmptyGoalShot({ tapTime: 0, shooterTapTime: 0, shooterFrequency: 1 }, baseCfg).type).toBe('miss');
+  });
   it('shooter at rink center, goalie at rink center (amp=0) → save', () => {
     const tapTime = findTapTimeForShooter(PUCK_START.x); // rink center
     const res = resolveShot({ tapTime }, baseCfg, 'seed', 0, STICK_NEUTRAL);

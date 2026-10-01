@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getBonusChallengeCondition, type BonusChallengeEnvironmentRules } from './bonusChallenge.js';
+import { createBonusChallengeMotionSampler, getBonusChallengeCondition, getBonusChallengeShooterMotionTime, type BonusChallengeEnvironmentRules } from './bonusChallenge.js';
 
 const beach: BonusChallengeEnvironmentRules = {
   fatigue: {
@@ -14,6 +14,56 @@ const beach: BonusChallengeEnvironmentRules = {
 };
 
 describe('bonus challenge environment', () => {
+  it('samples incrementally and rebases for new flights or backwards time', () => {
+    const accepted = [{ tapTime: 9900, flightMs: 200 }];
+    const local = [{ tapTime: 9900, flightMs: 200 }];
+    const sample = createBonusChallengeMotionSampler(beach, 0.65, accepted);
+    for (const time of [10000, 10100, 25000, 44000, 54000, 12000]) {
+      expect(sample(time, local)).toBeCloseTo(getBonusChallengeShooterMotionTime(beach, time, 0.65, accepted), 8);
+    }
+    local.push({ tapTime: 13000, flightMs: 300 });
+    expect(sample(14000, local)).toBeCloseTo(getBonusChallengeShooterMotionTime(beach, 14000, 0.65, local), 8);
+  });
+
+  it('integrates movement across fatigue, rest and recovery without changing the raw clock', () => {
+    expect(getBonusChallengeShooterMotionTime(beach, 10_000, 0.65, [])).toBe(10_000);
+    expect(getBonusChallengeShooterMotionTime(beach, 25_000, 0.65, [])).toBe(22_750);
+    expect(getBonusChallengeShooterMotionTime(beach, 40_000, 0.65, [])).toBe(32_500);
+    expect(getBonusChallengeShooterMotionTime(beach, 44_000, 0.65, [])).toBe(32_500);
+    expect(getBonusChallengeShooterMotionTime(beach, 54_000, 0.65, [])).toBe(42_500);
+  });
+
+  it('subtracts only the part of each shot flight spent moving, including a fatigue boundary', () => {
+    const pauses = [{ tapTime: 9_900, flightMs: 200 }];
+    expect(getBonusChallengeShooterMotionTime(beach, 10_200, 0.65, pauses)).toBe(9_985);
+    expect(getBonusChallengeShooterMotionTime(beach, 10_000, 0.65, pauses)).toBe(9_900);
+  });
+
+  it('integrates millions of short fatigue cycles analytically', () => {
+    const tinyCycle = { fatigue: { slowdownStartMs: 0, heavyStartMs: 0,
+      stopStartMs: 1, stopDurationMs: 1, recoveryDurationMs: 0,
+      slowMultiplier: 0.85, heavyMultiplier: 0.65 } };
+    expect(getBonusChallengeShooterMotionTime(tinyCycle, 10_800_000, 1, [])).toBe(3_510_000);
+  }, 1000);
+
+  it('matches a discrete reference across phases, frequency clamp and overlapping pauses', () => {
+    const rules: BonusChallengeEnvironmentRules = {
+      fatigue: { slowdownStartMs: 2, heavyStartMs: 4, stopStartMs: 7,
+        stopDurationMs: 2, recoveryDurationMs: 3, slowMultiplier: 0.85, heavyMultiplier: 0.65 },
+      speedPhases: [{ durationMs: 1000, shooterMultiplier: 0.1, puckSpeedMultiplier: 1 },
+        { durationMs: 1000, shooterMultiplier: 1.2, puckSpeedMultiplier: 1 }],
+      stumbleWindows: [{ startMs: 998, durationMs: 9 }],
+    };
+    const pauses = [{ tapTime: 990, flightMs: 12 }, { tapTime: 999, flightMs: 14 }];
+    let expected = 0;
+    for (let time = 0; time < 4007; time += 1) {
+      const condition = getBonusChallengeCondition(rules, time + 0.5);
+      if (condition.canShoot && !pauses.some((pause) => time >= pause.tapTime && time < pause.tapTime + pause.flightMs)) {
+        expected += Math.max(0.1 / 0.5, condition.shooterSpeedMultiplier);
+      }
+    }
+    expect(getBonusChallengeShooterMotionTime(rules, 4007, 0.5, pauses)).toBeCloseTo(expected, 8);
+  });
   it('applies permanent environment modifiers to every moving entity', () => {
     const rules: BonusChallengeEnvironmentRules = {
       baseModifiers: {

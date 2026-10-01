@@ -16,7 +16,7 @@ export function resolveEmptyGoalShot(
   phaseOffsets?: SessionPhaseOffsets,
 ): Extract<ShotResult, { type: 'goal' | 'miss' }> {
   const speed = input.puckSpeedPerMs ?? PUCK_SPEED_PER_MS;
-  const shooterTime = input.shooterTapTime ?? input.tapTime;
+  const shooterTime = input.shooterMotionTime ?? input.shooterTapTime ?? input.tapTime;
   const shooterX = simulateShooter(
     shooterTime + (phaseOffsets?.shooter ?? 0),
     input.shooterFrequency,
@@ -42,7 +42,7 @@ export function resolveShot(
   phaseOffsets?: SessionPhaseOffsets,
 ): ShotResult {
   const speed = input.puckSpeedPerMs ?? PUCK_SPEED_PER_MS;
-  const shooterTime = input.shooterTapTime ?? input.tapTime;
+  const shooterTime = input.shooterMotionTime ?? input.shooterTapTime ?? input.tapTime;
   const shooterX = simulateShooter(
     shooterTime + (phaseOffsets?.shooter ?? 0),
     input.shooterFrequency,

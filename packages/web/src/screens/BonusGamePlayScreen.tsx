@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import {
   classifyMarksmanshipShot,
   getBonusChallengeCondition,
+  createBonusChallengeMotionSampler,
   GOAL_OPENING,
   PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
   PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET,
@@ -762,6 +763,10 @@ export function BonusGamePlayScreen(): JSX.Element {
   const abandonRequestRef = useRef(false);
   const loadedRouteRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const motionSamplerRef = useRef<{
+    rules: unknown; history: unknown; frequency: number; period: number; attemptId: string;
+    sample: ReturnType<typeof createBonusChallengeMotionSampler>;
+  } | null>(null);
   const predictedMarksmanshipRef = useRef<{
     shotIndex: number;
     classification: MarksmanshipShotClassification;
@@ -1099,6 +1104,19 @@ export function BonusGamePlayScreen(): JSX.Element {
   const goalieConfig = goalieConfigFor(attempt, rule);
   const speedOverrides = speedOverridesFor(rule, attempt.current_loadout);
   const challengeEnvironment = attempt.rules.challenge_environment ?? null;
+  const useMotionClock = attempt.game_core_version >= 71 && challengeEnvironment !== null;
+  if (useMotionClock && (motionSamplerRef.current?.rules !== challengeEnvironment
+    || motionSamplerRef.current?.history !== attempt.current_period_shot_pauses
+    || motionSamplerRef.current?.frequency !== speedOverrides.shooterFreq
+    || motionSamplerRef.current?.period !== periodNumber
+    || motionSamplerRef.current?.attemptId !== attempt.id)) {
+    motionSamplerRef.current = {
+      rules: challengeEnvironment, history: attempt.current_period_shot_pauses,
+      frequency: speedOverrides.shooterFreq, period: periodNumber, attemptId: attempt.id,
+      sample: createBonusChallengeMotionSampler(challengeEnvironment!, speedOverrides.shooterFreq,
+        attempt.current_period_shot_pauses ?? []),
+    };
+  }
   const challengeCondition = challengeEnvironment === null
     ? undefined
     : (
@@ -1209,6 +1227,7 @@ export function BonusGamePlayScreen(): JSX.Element {
   return (
     <>
       <PlayView
+        key={attempt.id}
         suppressedByModal={
           inventoryOpen || previewRequired || isBetweenPeriods || isBreak || isTerminal
         }
@@ -1226,6 +1245,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         periodsTotal={attempt.rules.total_periods}
         speedOverrides={speedOverrides}
         duelCondition={challengeCondition}
+        shooterMotionTime={useMotionClock ? motionSamplerRef.current!.sample : undefined}
         statusNotice={challengeEnvironment?.baseModifiers?.label}
         statusNoticeClassName="bonus-challenge-environment-notice"
         statusNoticeUnderScoreboard={challengeEnvironment?.baseModifiers !== undefined}

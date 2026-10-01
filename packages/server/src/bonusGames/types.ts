@@ -311,6 +311,7 @@ export interface BonusGameAttemptDTO {
   closedAt: string | null;
   shotsTaken: number;
   currentPeriodShotsTaken: number;
+  currentPeriodShotPauses?: { tapTime: number; flightMs: number }[];
   goals: number;
   totalPoints: number;
   currentGoalStreak: number;

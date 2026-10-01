@@ -1133,6 +1133,48 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     expect(await countRows('shot_session', 'bonus_game_attempt_id = $1', [attemptId])).toBe(0);
   });
 
+  it('accepts raw clocks after fatigue and derives motion from rules rather than client phase', async () => {
+    const userId = await createUser();
+    const game = await createFatigueChallengeGame();
+    await pool.query(`update bonus_game set challenge_environment = challenge_environment || $2::jsonb where id = $1`,
+      [game.id, JSON.stringify({ speedPhases: [
+        { durationMs: 20_000, shooterMultiplier: 1, puckSpeedMultiplier: 1 },
+        { durationMs: 20_000, shooterMultiplier: 1, puckSpeedMultiplier: 2 },
+      ] })]);
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const motionInput = { ...GOAL_INPUT, tapTime: 15_000, shooterTapTime: 15_000,
+      shooterMotionTime: 14_250, shooterFrequency: 0.65, puckSpeedPerMs: 1.2,
+      goalFrequency: 0.45, goalieFrequency: 0.5 };
+    const result = resolvePerspectiveCourtShot(motionInput,
+      buildBonusGoalieConfig('test', 'test', PERIODS[0]!),
+      deriveShotSeed(ATTEMPT_SEED, 1, 1), 1, STICK_NEUTRAL,
+      getSessionPhaseOffsets(ATTEMPT_SEED)).type;
+    const response = await submitBonusShot(pool, { userId, attemptId, claimedShotIndex: 1,
+      input: { ...motionInput, shooterMotionTime: 999_999 } as SubmitBonusShotInput['input'],
+      claimedResult: result, now: new Date(NOW.getTime() + 15_000) });
+    expect(response.attempt.currentPeriodShotsTaken).toBe(1);
+    const stored = await pool.query('select input_payload from shot_session where bonus_game_attempt_id = $1', [attemptId]);
+    expect(stored.rows[0].input_payload).toMatchObject({ shooterTapTime: 15_000,
+      shooterMotionTime: 14_250, shooterFrequency: 0.65 });
+    expect(response.attempt.currentPeriodShotPauses).toEqual([{ tapTime: 15_000, flightMs: 520 / 1.2 }]);
+    const secondInput = { ...motionInput, tapTime: 26_000, shooterTapTime: 26_000 - 520 / 1.2,
+      shooterMotionTime: 23_031.666666666668, puckSpeedPerMs: 2.4 };
+    const secondResult = resolvePerspectiveCourtShot(secondInput,
+      buildBonusGoalieConfig('test', 'test', PERIODS[0]!), deriveShotSeed(ATTEMPT_SEED, 1, 2),
+      2, STICK_NEUTRAL, getSessionPhaseOffsets(ATTEMPT_SEED)).type;
+    const second = await submitBonusShot(pool, { userId, attemptId, claimedShotIndex: 2,
+      input: secondInput, claimedResult: secondResult, now: new Date(NOW.getTime() + 27_000) });
+    expect(second.attempt.currentPeriodShotsTaken).toBe(2);
+    expect(second.attempt.currentPeriodShotPauses).toEqual([
+      { tapTime: 15_000, flightMs: 520 / 1.2 }, { tapTime: 26_000, flightMs: 520 / 2.4 },
+    ]);
+    await expect(submitBonusShot(pool, { userId, attemptId, claimedShotIndex: 3,
+      input: { ...motionInput, tapTime: 1e12, shooterTapTime: 1e12 },
+      claimedResult: 'miss', now: new Date(NOW.getTime() + 30_000) })).rejects.toMatchObject({
+      code: 'bonus_shot_time_stale',
+    });
+  });
+
   it.each([
     {
       name: 'negative tap time',
