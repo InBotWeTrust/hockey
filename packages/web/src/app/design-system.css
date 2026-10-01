@@ -320,6 +320,84 @@
   line-height: 1.35;
 }
 
+.modal-card.monthly-rating-reward-modal {
+  gap: 0;
+}
+
+.monthly-rating-reward-modal .modal-title {
+  font-size: clamp(20px, 5.8vw, 25px);
+  line-height: 1.16;
+}
+
+.monthly-rating-reward-modal__artwork {
+  margin-top: 18px;
+  aspect-ratio: 1;
+  height: auto !important;
+  object-fit: cover;
+}
+
+.monthly-rating-reward-modal__placements {
+  display: grid;
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.monthly-rating-reward-modal__placements p {
+  margin: 0;
+}
+
+.monthly-rating-reward-modal__primary-result {
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.monthly-rating-reward-modal__other-standings {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.monthly-rating-reward-modal__other-standings .section-label {
+  margin: 0;
+  padding: 2px 0;
+}
+
+.monthly-rating-reward-modal__other-standings-list {
+  display: grid;
+  gap: 4px;
+}
+
+.monthly-rating-reward-modal__other-standings-list p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.monthly-rating-reward-modal__other-standings-list strong {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.monthly-rating-reward-modal .regular-podium-modal__rewards {
+  margin-top: 16px;
+}
+
+.monthly-rating-reward-modal .modal-actions {
+  margin-top: 20px;
+}
+
+.monthly-rating-reward-modal__other-standings + .modal-actions {
+  margin-top: 12px;
+}
+
 .tournament-result-preview-switcher {
   position: fixed;
   z-index: 2;

@@ -40,6 +40,13 @@ const TournamentResultPreviewScreen = lazy(() =>
     default: module.TournamentResultPreviewScreen,
   })),
 );
+const MonthlyRatingRewardPreviewScreen = import.meta.env.DEV
+  ? lazy(() =>
+      import('../components/duel/MonthlyRatingRewardPreviewScreen.js').then((module) => ({
+        default: module.MonthlyRatingRewardPreviewScreen,
+      })),
+    )
+  : null;
 const InventoryScreen = lazy(() =>
   import('../screens/InventoryScreen.js').then((module) => ({ default: module.InventoryScreen })),
 );
@@ -270,7 +277,9 @@ function AppExperience(): JSX.Element {
     if (user !== null) preloadCriticalArtwork();
   }, [user]);
   const bottomNavVisible =
-    location.pathname !== '/dev/tournament-result-preview' && isBottomNavVisible(location, user);
+    location.pathname !== '/dev/tournament-result-preview' &&
+    location.pathname !== '/dev/monthly-rating-reward-preview' &&
+    isBottomNavVisible(location, user);
   const backdropClassName = appBackdropClassName(location.pathname, location.search);
   const surfaceClassName = appSurfaceClassName(location.pathname);
   const weeklyStartModalEnabled =
@@ -341,6 +350,12 @@ function AppExperience(): JSX.Element {
               <Route path="/privacy" element={<PrivacyScreen />} />
               <Route path="/personal-data-consent" element={<PersonalDataConsentScreen />} />
               <Route path="/demo" element={<DemoScreen />} />
+              {MonthlyRatingRewardPreviewScreen && (
+                <Route
+                  path="/dev/monthly-rating-reward-preview"
+                  element={<MonthlyRatingRewardPreviewScreen />}
+                />
+              )}
               <Route
                 path="/dev/tournament-result-preview"
                 element={
@@ -572,6 +587,7 @@ function AppFrame(): JSX.Element {
     location.pathname === '/login' ||
     location.pathname === '/prices' ||
     location.pathname === '/demo' ||
+    (import.meta.env.DEV && location.pathname === '/dev/monthly-rating-reward-preview') ||
     location.pathname === '/auth/vk/callback' ||
     location.pathname === '/mobile-auth/telegram';
 
